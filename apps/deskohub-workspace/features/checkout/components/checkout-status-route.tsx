@@ -148,7 +148,7 @@ async function CheckoutStatusContent({
 }
 
 const isSignedOut = () =>
-  isStatusViewerSignedOut.pipe(
+  isStatusViewerSignedOut().pipe(
     Effect.provide(CustomerAccountContactService.Live),
     runWorkspaceEffect("checkout.status.viewer")
   );

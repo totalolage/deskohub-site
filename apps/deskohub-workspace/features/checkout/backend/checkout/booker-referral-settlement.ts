@@ -6,10 +6,10 @@ import { ReferralService } from "@/features/referrals";
 /**
  * Whether the booker's own referral is settled, so the browser's remembered
  * referral code is of no further use. The booker is the signed-in account's
- * linked customer. Without one, a guest books for themselves, so the booked
- * customer is the booker, and a paid booking settles it. Booking for someone
- * else never settles the booker's code. A failed check reports false, so the
- * code is kept.
+ * linked customer. When the session no longer has one, such as after signing
+ * out before paying, the booked customer stands in for the booker, and a paid
+ * booking settles it. Booking for someone else never settles the booker's
+ * code. A failed check reports false, so the code is kept.
  */
 export const isBookerReferralSettled = Effect.fn(
   "checkout.isBookerReferralSettled"

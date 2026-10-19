@@ -24,9 +24,13 @@ export const getReservationStatusSignInPath = (
 };
 
 /** Whether no account is signed in; an unreadable session isn't signed out. */
-export const isStatusViewerSignedOut = CustomerAccountContactService.use(
-  (contacts) => contacts.currentAccount
-).pipe(
-  Effect.map((account) => account.status === "signed-out"),
+export const isStatusViewerSignedOut = Effect.fn(
+  "checkout.status.readSignedOut"
+)(
+  function* () {
+    const contacts = yield* CustomerAccountContactService;
+    const account = yield* contacts.currentAccount;
+    return account.status === "signed-out";
+  },
   Effect.orElseSucceed(() => false)
 );

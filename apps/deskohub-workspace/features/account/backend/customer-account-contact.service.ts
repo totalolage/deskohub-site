@@ -33,7 +33,7 @@ export type CurrentLinkedAccount = LinkedCustomerAccount & {
  * signed in without a Dotypos profile linked yet, or linked. A session with
  * deletion pending reads as signed out, since it can't book or link.
  */
-export type CurrentCustomerAccount =
+type CurrentCustomerAccount =
   | { readonly status: "signed-out" }
   | {
       readonly status: "unlinked";

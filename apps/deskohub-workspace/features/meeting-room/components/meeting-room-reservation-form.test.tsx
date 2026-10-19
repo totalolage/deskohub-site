@@ -30,6 +30,10 @@ import {
 } from "@/features/checkout/product-catalog";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
+  continueAndSubmitReservation,
+  mockReservationCheckoutStep,
+} from "@/features/reservation/components/reservation-checkout-step.test-utils";
+import {
   meetingRoomReservationDefaultValues,
   normalizedMeetingRoomReservationOrderSchema,
 } from "@/features/reservation/meeting-room-reservation";
@@ -43,10 +47,6 @@ import {
   workspaceUseAction,
   workspaceUseSearchParams,
 } from "@/shared/testing/workspace-component-module-mocks";
-import {
-  continueAndSubmitReservation,
-  mockReservationCheckoutStep,
-} from "@/features/reservation/components/reservation-checkout-step.test-utils";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,

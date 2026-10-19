@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
-import {
-  type CurrentCustomerAccount,
-  CustomerAccountContactService,
-} from "@/features/account/backend/customer-account-contact.service";
+import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import {
   customerAccountIdSchema,
   customerAccountUnavailable,
@@ -15,6 +12,10 @@ import {
   getReservationStatusSignInPath,
   isStatusViewerSignedOut,
 } from "./checkout-status-sign-in";
+
+type CurrentCustomerAccount = Effect.Success<
+  CustomerAccountContactService["Service"]["currentAccount"]
+>;
 
 const orderId = workspaceReservationIdSchema.make("reservation-1");
 
@@ -50,12 +51,9 @@ describe("isStatusViewerSignedOut", () => {
   const email = reservationCustomerEmailSchema.make(testEmailAddress("ada"));
 
   const run = (
-    currentAccount: Effect.Effect<
-      CurrentCustomerAccount,
-      ReturnType<typeof customerAccountUnavailable>
-    >
+    currentAccount: CustomerAccountContactService["Service"]["currentAccount"]
   ) =>
-    isStatusViewerSignedOut.pipe(
+    isStatusViewerSignedOut().pipe(
       Effect.provide(
         Layer.mock(CustomerAccountContactService, { currentAccount })
       ),

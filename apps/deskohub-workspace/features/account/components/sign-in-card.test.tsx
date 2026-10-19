@@ -154,6 +154,22 @@ describe("account components", () => {
     expect(signInMagicLink).not.toHaveBeenCalled();
   });
 
+  test.each(["en-US", "cs-CZ"] as const)(
+    "sign-in card tells a visitor sent from a reservation link why they sign in in %s",
+    async (locale) => {
+      const { SignInCard } = await import("./sign-in-card");
+      const view = render(<SignInCard locale={locale} purpose="reservation" />);
+
+      expect(view.getByRole("heading", { level: 1 }).textContent).toBe(
+        m.accountSignInReservationTitle({}, { locale })
+      );
+      expect(
+        view.getByText(m.accountSignInReservationDescription({}, { locale }))
+      ).toBeTruthy();
+      cleanup();
+    }
+  );
+
   test("sign-in card shows the no-longer-waiting notice above the email field until a new email is sent", async () => {
     const { SignInCard } = await import("./sign-in-card");
 

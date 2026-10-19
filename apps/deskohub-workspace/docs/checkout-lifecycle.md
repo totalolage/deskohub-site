@@ -11,6 +11,25 @@ Checkout turns a customer's selected Workspace product into a temporary reservat
 - Workspace owns the customer's checkout journey, accepted price, local payment and fulfillment status, legal evidence, and recovery decisions.
 - Workspace must not become a duplicate customer profile, reservation store, payment-instrument archive, or raw provider-event archive.
 
+## Accounts and reservation steps
+
+Every reservation is made by a signed-in customer account with a verified email. There is no guest checkout. The account that submits a reservation is its author. The reservation's customer is the person it is for: the account's own customer, or someone else the account books for.
+
+A reservation page has two steps before payment:
+
+1. **Choose your space.** Product, date and time, seats, and add-ons.
+2. **Contact details.** A summary of the selection with a way back to change it, who the reservation is for, business use and invoice options, the privacy notice, and marketing consent.
+
+Payment follows. Access information shows after booking and is not a checkout step.
+
+What the contact step asks depends on the visitor:
+
+- **Signed out.** The visitor enters name, email, and phone, plus billing options. Continuing sends a verification email to that address and asks the visitor to verify it. The email carries a sign-in link, and a 6-digit code as well when sign-in codes are enabled. "Already a customer? Sign in" opens sign-in instead. The typed details travel sealed with the sign-in and come back with it for 30 minutes. Verifying signs the visitor in, saves their profile, which creates or links their customer record with any typed business and invoice billing, and continues to payment.
+- **Verified email that already has a profile.** The saved profile wins over the typed details. The page books as that profile, says so, and offers the typed details without the email for booking someone else.
+- **Signed in without a profile.** The same form, with the email fixed to the account's email. Name and phone are required. Continuing creates the profile, with billing, and continues to payment.
+- **Signed in with a profile.** The page books as the account's own customer ("Booking as"). "Book for someone else" asks for that person's name, email, the email again (the two must match), and phone.
+- **Account unavailable.** If the account can't be read, the step shows an error and a retry instead of a form.
+
 ## Price acceptance
 
 Checkout has three customer commitments:
@@ -46,7 +65,7 @@ Voucher codes follow the same customer flow but resolve to their current stored 
 
 The meeting-room reservation page accepts prefill parameters in its URL in every supported locale:
 
-- `name`, `email`, and `phone` prefill the customer fields.
+- `name`, `email`, and `phone` prefill the contact step. For a signed-in customer with a saved profile, they prefill booking for someone else.
 - `startDateTime` is a local start in `YYYY-MM-DDTHH:mm` form, interpreted in the Workspace timezone (Europe/Prague). Only whole hours are accepted.
 - `duration` accepts `hour:1`, `hour:4`, or `day:1`.
 - `discountCode` carries an ordinary discount code.
@@ -60,7 +79,7 @@ A signed checkout-restoration link takes precedence over the public contact and 
 Example with synthetic, deliberately non-working values (`example.invalid`, `EXAMPLE_CODE`):
 
 ```
-/{locale}/reservation/meeting-room?name=Guest&email=guest%40example.invalid&phone=%2B420123456789&startDateTime=2099-08-12T10%3A00&duration=hour%3A1&discountCode=EXAMPLE_CODE
+/{locale}/reservation/meeting-room?name=Example&email=customer%40example.invalid&phone=%2B420123456789&startDateTime=2099-08-12T10%3A00&duration=hour%3A1&discountCode=EXAMPLE_CODE
 ```
 
 The office reservation page accepts these parameters:
@@ -86,11 +105,13 @@ As the customer changes a selection, each reservation page writes it back to its
 
 Reloading the page, or opening a copy of its URL, restores the same selection, including after returning from the order summary to edit it. The update replaces the current browser history entry, so Back still leaves the page in one step. The page never writes `name`, `email`, `phone`, or `customer` to the URL, so contact details don't reach browser history or analytics; these parameters in an incoming link are still read and left as they arrived. Every other parameter, such as `discountCode`, also stays as it arrived.
 
+The contact step adds `step=contact` to the URL, so a reload stays on it; without it the page opens on choosing the space. Details typed by a signed-out visitor come back from sign-in in one sealed `contact` parameter that only this checkout can read and that expires after 30 minutes.
+
 ## Reservation holds and edits
 
 Reservation submission creates a temporary hold before payment. Repeating the same immediate submission is idempotent and must not create duplicate holds.
 
-The confirmation and access link go only to the reservation email, so submission rejects a typed contact email whose domain provably cannot receive mail (it does not exist, declares that it accepts no mail, or publishes neither a mail server nor an address) before any customer, hold, or payment is created, and asks the customer to correct it. A lookup that cannot reach a definite answer does not block the booking. A signed-in account booking uses the account's own email and is not rechecked.
+The confirmation and access link go only to the reservation email, so submission rejects an email typed for someone else whose domain provably cannot receive mail (it does not exist, declares that it accepts no mail, or publishes neither a mail server nor an address) before any customer, hold, or payment is created, and asks the customer to correct it. A lookup that cannot reach a definite answer does not block the booking. The account's own email is verified at sign-in and is not rechecked.
 
 Returning from the order summary to edit a reservation replaces the previous unpaid hold rather than mutating or transferring it. Availability may show the capacity that will be freed by that customer's replaceable hold, but final submission must cancel the old hold and perform the ordinary full availability check before creating the replacement.
 
@@ -112,13 +133,13 @@ Payment notifications are triggers, not sole proof. Workspace confirms the curre
 
 A payment that settles after Workspace has expired its local attempt starts durable recovery, whether Workspace learns of it from the Nexi notification or from the customer's status page. Workspace keeps the original hold only while its reservation deadline has not passed. After that deadline the slot may already have been offered to other customers, so Workspace releases the original hold and books the exact accepted reservation and price again through the normal availability check and table assignment, as long as the interval has not ended and no newer checkout reservation exists. Successful recovery atomically re-redeems any released discount-code claim and continues normal paid fulfillment, and the customer sees the ordinary confirmed status. If no capacity or table remains, or the reservation is superseded or cannot be reconstructed, Workspace atomically marks the paid Nexi attempt as requiring a refund, using the same refund-work state as operator cancellation. The status page then tells the customer that the payment arrived after the reservation was no longer available and will be refunded. While recovery is still running, the page says the reservation is being checked. An ambiguous provider state requires operator review; the page says the reservation must be checked manually and asks the customer to contact Deskohub through a prefilled support request. An explicit operator force-cancellation is never recovered into a booking: any later provider settlement requires a refund.
 
-After payment succeeds, Workspace confirms the reservation and sends a customer confirmation containing a protected link to the dedicated reservation access page. The email never contains the door PIN. When an account booked the reservation for someone else, Workspace also sends that account its own confirmation naming who the booking is for, with the reservation details and a link to the reservation's status page. It carries no access link, invoice link, or PIN; the account's sign-in authorizes the status page. This confirmation is secondary: it never delays, fails, or changes the customer's confirmation or the reservation's fulfillment, and fulfillment retries do not repeat it. A deleted account, a reservation with no recorded author, and a customer's own booking get no separate confirmation. A paid reservation remains paid if confirmation is delayed or fails; the outstanding work is retried or surfaced for operator recovery.
+After payment succeeds, Workspace confirms the reservation and sends a customer confirmation containing a protected link to the dedicated reservation access page. The email never contains the door PIN. When an account booked the reservation for someone else, Workspace also sends that account its own confirmation naming who the booking is for, with the reservation details and a link to the reservation's status page. It carries no access link, invoice link, or PIN; the account's sign-in authorizes the status page. This confirmation is secondary: it never delays, fails, or changes the customer's confirmation or the reservation's fulfillment, and fulfillment retries do not repeat it. A deleted account, a reservation made before authors were recorded, and a customer's own booking get no separate confirmation. A paid reservation remains paid if confirmation is delayed or fails; the outstanding work is retried or surfaced for operator recovery.
 
 In production, required customer delivery is complete only after delivery is confirmed. When the email provider accepts the customer send, Workspace records that send's active non-personal delivery identifier and waits for the provider's verdict instead of completing fulfillment. A delivery verdict applies only when its identifier matches the recorded one and the provider's event time is strictly newer than the outcome already recorded; older or equally timed verdicts change nothing. A strictly newer confirmation completes the waiting reservation or repairs a reservation whose only failure was that email delivery. A strictly newer delivery failure or bounce fails the waiting reservation and may reverse an already completed fulfillment to failed, so a confirmation known to be undelivered is treated as such and surfaces for recovery. Recovery of stale in-progress fulfillment never reclaims a waiting reservation. When a delivery fails or bounces, the fulfillment retry orders a fresh provider send the provider cannot collapse into the failed one; repeating that same recovery reuses one send identity until a send is accepted, and each accepted send starts a new generation for any later failure. Outside production, fulfillment completes when the provider accepts the customer send.
 
 The status page offers a new reservation only when the checkout holds no live paid reservation and no payment that could still settle, or as "Book again" after fulfillment. While a provider payment is still processing, the page says no new booking is needed; if it is still unconfirmed at the 30-minute provider abandonment cutoff, the page asks the customer not to book again until Deskohub confirms the payment or responds, and offers a prefilled support request instead of a new checkout, because releasing the local hold does not stop the provider payment from settling later. While a paid reservation lacks a delivered confirmation, the page says the payment went through and that no new booking is needed, and it calls the reservation confirmed only after Dotypos confirms it. A confirmed reservation awaiting its delivery verdict shows the address the confirmation went to. If fulfillment or delivery is still unfinished ten minutes after payment, the page stops promising automatic completion and offers the prefilled support request used for a failed delivery. A failed or bounced delivery shows the address, when known, and makes that support request the primary action. The door PIN stays on the protected access page.
 
-The status page authorizes a reservation's author signed in to their account, a signed-in account whose own customer the reservation is for, the holder of the customer's emailed protected link, and, for 24 hours, the browser that submitted the reservation. The protected access page, which shows the door PIN, authorizes the same visitors except the author: an author who booked for someone else sees the status but not the PIN. Anyone not authorized sees the reservation as not found.
+The status page authorizes a reservation's author signed in to their account, a signed-in account whose own customer the reservation is for, and the holder of the customer's emailed protected link. Submitting a reservation grants the browser no access of its own; the author's sign-in covers it. The protected access page, which shows the door PIN, authorizes the same visitors except the author: an author who booked for someone else sees the status but not the PIN. A signed-out visitor opening a status link is asked to sign in to see the reservation and returns to the status page afterwards. Anyone else not authorized sees the reservation as not found.
 
 The protected access page resolves the current PIN on each authorized request for a paid reservation that is confirmed both locally and by the reservation provider. It shows the exact start and end times programmed into the PIN but does not impose a separate display window. Those programmed AlgoPIN bounds are the sole authority for when the lock accepts it.
 
@@ -128,7 +149,7 @@ Paid fulfillment creates and durably records a time-limited front-door AlgoPIN f
 
 The reservation page always explains the privacy policy. Privacy-policy acknowledgement is not treated as marketing consent.
 
-Marketing consent is optional and belongs to the customer rather than one reservation. Checking the option grants consent; leaving it unchecked does not withdraw an earlier grant. A withdrawal is a separate deliberate action. A signed-in customer booking with their account who already consents is not shown the option again; booking for someone else still shows it, because consent belongs to the booked customer.
+Marketing consent is optional and belongs to the customer rather than one reservation. Checking the option grants consent; leaving it unchecked does not withdraw an earlier grant. A withdrawal is a separate deliberate action. A customer booking for themselves who already consents is not shown the option again. Booking for someone else never asks, because consent belongs to the account's own customer and the booker can't grant it for another person.
 
 Payment uses one affirmative checkout choice to accept the current terms and operating rules. When the service begins inside the statutory withdrawal period, that same visible choice also includes the customer's express request to begin at the reserved time and acknowledgement that the withdrawal right ends after full performance. The terms explain that a proportionate amount may be due after partial performance.
 

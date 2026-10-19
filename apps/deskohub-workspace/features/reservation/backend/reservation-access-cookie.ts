@@ -77,7 +77,7 @@ type ReservationAccessCookieSetOptions = {
   readonly secure: true;
 };
 
-export class ReservationAccessCookieError extends Data.TaggedError(
+class ReservationAccessCookieError extends Data.TaggedError(
   "ReservationAccessCookieError"
 )<{
   readonly code:

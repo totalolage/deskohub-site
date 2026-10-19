@@ -4,7 +4,6 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Deferred, Effect, Layer } from "effect";
 import type { CustomerMarketingConsent } from "@/db/schema/customer-marketing-consents";
 import {
-  type CurrentCustomerAccount,
   type CurrentLinkedAccount,
   CustomerAccountContactService,
 } from "@/features/account/backend/customer-account-contact.service";
@@ -181,10 +180,7 @@ describe("loadLinkedExistingCustomer", () => {
 describe("loadReservationCheckoutAccount", () => {
   // The page loader provides the services' live layers itself, so the test
   // swaps them for fakes that read the current scenario.
-  let currentAccount: Effect.Effect<
-    CurrentCustomerAccount,
-    CustomerAccountAccessError
-  >;
+  let currentAccount: CustomerAccountContactService["Service"]["currentAccount"];
   let linkedContact: CustomerAccountContactService["Service"]["linkedContact"];
 
   const originalContactsLive = CustomerAccountContactService.Live;
