@@ -1,10 +1,11 @@
 import "@/shared/testing/workspace-test-env";
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 import sharp from "sharp";
 import { runCommand } from "@/scripts/shared/command";
 import {
@@ -12,26 +13,24 @@ import {
   workspaceLocationMapTileConcurrency,
 } from "./workspace-location-map";
 
-const originalFetch = globalThis.fetch;
-
-const mockFetch = (
+const renderWithFetch = (
   handler: (init: RequestInit | undefined) => Promise<Response>
-) => {
-  globalThis.fetch = Object.assign(
-    (_input: RequestInfo | URL, init?: RequestInit) => handler(init),
-    { preconnect: originalFetch.preconnect }
+) =>
+  generateWorkspaceLocationMapImage().pipe(
+    Effect.provideService(
+      FetchHttpClient.Fetch,
+      Object.assign(
+        (_input: RequestInfo | URL, init?: RequestInit) => handler(init),
+        { preconnect: globalThis.fetch.preconnect }
+      )
+    )
   );
-};
-
-afterEach(() => {
-  globalThis.fetch = originalFetch;
-});
 
 describe("generateWorkspaceLocationMapImage", () => {
   test("limits concurrent OpenStreetMap tile requests and fails on a failed tile", async () => {
     let inFlight = 0;
     let maximumInFlight = 0;
-    mockFetch(async () => {
+    const failedRender = renderWithFetch(async () => {
       inFlight += 1;
       maximumInFlight = Math.max(maximumInFlight, inFlight);
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -39,9 +38,7 @@ describe("generateWorkspaceLocationMapImage", () => {
       return new Response(null, { status: 503 });
     });
 
-    const error = await Effect.runPromise(
-      Effect.flip(generateWorkspaceLocationMapImage())
-    );
+    const error = await Effect.runPromise(Effect.flip(failedRender));
 
     expect(error).toMatchObject({
       _tag: "OsmTileRequestError",
@@ -51,6 +48,24 @@ describe("generateWorkspaceLocationMapImage", () => {
     expect(maximumInFlight).toBeLessThanOrEqual(
       workspaceLocationMapTileConcurrency
     );
+  });
+
+  test("asks Next's shared fetch cache to keep each tile for at least a week", async () => {
+    const requests: (RequestInit | undefined)[] = [];
+    await Effect.runPromise(
+      Effect.flip(
+        renderWithFetch(async (init) => {
+          requests.push(init);
+          return new Response(null, { status: 503 });
+        })
+      )
+    );
+
+    expect(requests.length).toBeGreaterThan(0);
+    for (const init of requests) {
+      expect(init?.cache).toBe("force-cache");
+      expect(init?.next?.revalidate).toBeGreaterThanOrEqual(7 * 24 * 60 * 60);
+    }
   });
 });
 
