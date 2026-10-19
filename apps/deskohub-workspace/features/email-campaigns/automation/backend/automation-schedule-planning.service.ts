@@ -1,5 +1,14 @@
+import { and, asc, eq, lte, notExists } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  emailCampaignAutomations as automations,
+  emailCampaignAutomationScheduleFires as fires,
+  emailCampaigns,
+} from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
+import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
+import { planNextFire } from "./automation-schedule-fires";
 
 /** What planner step 8 did, for the plan summary. */
 export type AutomationSchedulePlan = {
@@ -32,9 +41,65 @@ export class AutomationSchedulePlanning extends Context.Service<
   AutomationSchedulePlanning,
   IAutomationSchedulePlanning
 >()("@deskohub-workspace/email-campaigns/AutomationSchedulePlanning") {
-  static Default = Layer.succeed(this, {
-    plan: () => Effect.succeed(emptyAutomationSchedulePlan),
-  });
+  static Default = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const { db } = yield* WorkspaceDatabase;
+      const facts = yield* AutomationEvaluationFacts;
 
-  static Live = this.Default;
+      return {
+        plan: (at) =>
+          db
+            .select({ campaignId: automations.campaignId })
+            .from(automations)
+            .innerJoin(
+              emailCampaigns,
+              eq(emailCampaigns.id, automations.campaignId)
+            )
+            .where(
+              and(
+                eq(emailCampaigns.status, "active"),
+                lte(automations.nextFireAt, at),
+                notExists(
+                  db
+                    .select({ campaignId: fires.campaignId })
+                    .from(fires)
+                    .where(
+                      and(
+                        eq(fires.campaignId, automations.campaignId),
+                        eq(fires.status, "entering")
+                      )
+                    )
+                )
+              )
+            )
+            .orderBy(asc(automations.campaignId))
+            .pipe(
+              Effect.flatMap(
+                Effect.forEach(({ campaignId }) =>
+                  db.transaction((tx) => planNextFire(tx, campaignId, at))
+                )
+              ),
+              Effect.map((plans) =>
+                plans.reduce(
+                  (total, plan): AutomationSchedulePlan => ({
+                    firesCreated: total.firesCreated + plan.firesCreated,
+                    firesEntered: total.firesEntered + plan.firesEntered,
+                    chunksPlanned: total.chunksPlanned + plan.chunksPlanned,
+                  }),
+                  emptyAutomationSchedulePlan
+                )
+              ),
+              Effect.provideService(AutomationEvaluationFacts, facts),
+              Effect.withSpan("AutomationSchedulePlanning.plan")
+            ),
+      } satisfies IAutomationSchedulePlanning;
+    })
+  );
+
+  static Live = this.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(WorkspaceDatabase.Default, AutomationEvaluationFacts.Live)
+    )
+  );
 }

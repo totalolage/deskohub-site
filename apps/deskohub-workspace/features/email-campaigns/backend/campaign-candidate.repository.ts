@@ -10,6 +10,7 @@ import {
   count,
   eq,
   inArray,
+  isNull,
   max,
   min,
   type SQL,
@@ -18,7 +19,10 @@ import {
 } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  WorkspaceDatabase,
+  type WorkspaceDatabaseClient,
+} from "@/db/database.service";
 import {
   customerAccountLinks,
   customerMarketingConsents,
@@ -416,3 +420,43 @@ export class CampaignCandidateRepository extends Context.Service<
 
   static Live = this.Default.pipe(Layer.provide(WorkspaceDatabase.Default));
 }
+
+/**
+ * The ids of the customers `listCandidates` returns for the purpose, in id
+ * order: a schedule fire's pool (§5.7). It runs on the caller's database
+ * or transaction, so the pool is read in the transaction that creates the
+ * fire.
+ */
+export const listCampaignCandidateIds = Effect.fn(
+  "listCampaignCandidateIds"
+)(function* (
+  db: Pick<WorkspaceDatabaseClient, "select" | "selectDistinct">,
+  purpose: CampaignPurpose
+) {
+  const consents = db
+    .select({ dotyposCustomerId: customerMarketingConsents.dotyposCustomerId })
+    .from(customerMarketingConsents);
+  if (purpose === "marketing") {
+    const active = yield* consents.where(
+      isNull(customerMarketingConsents.withdrawnAt)
+    );
+    return sortedCustomerIds(active);
+  }
+  const [reservations, accounts, all] = yield* Effect.all([
+    db
+      .selectDistinct({
+        dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+      })
+      .from(workspaceReservations),
+    db
+      .select({ dotyposCustomerId: customerAccountLinks.dotyposCustomerId })
+      .from(customerAccountLinks),
+    consents,
+  ]);
+  return sortedCustomerIds([...reservations, ...accounts, ...all]);
+});
+
+const sortedCustomerIds = (
+  rows: readonly { readonly dotyposCustomerId: DotyposCustomerId }[]
+): readonly DotyposCustomerId[] =>
+  [...new Set(rows.map(({ dotyposCustomerId }) => dotyposCustomerId))].sort();

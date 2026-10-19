@@ -1,5 +1,5 @@
 import type { DotyposService } from "@deskohub/dotypos";
-import { Effect, Option, Schema, SchemaGetter } from "effect";
+import { Effect, Option, Schema } from "effect";
 import type { WorkspaceDatabase } from "@/db/database.service";
 import {
   type ReservationActivityFetch,
@@ -9,9 +9,7 @@ import type { ReservationActivityPage } from "@/features/reservation/backend/res
 import { ReservationVisits } from "@/features/reservation/backend/reservation-visits.service";
 import { customerEventSweepSourceSchema } from "@/shared/backend/customer-events/customer-event";
 import {
-  type Instant,
-  instantStringSchema,
-  TemporalInstantSchema,
+  instantFromIsoStringSchema,
   temporalInstantToIsoString,
 } from "@/shared/utils/temporal";
 import {
@@ -21,20 +19,10 @@ import {
   registerAutomationUnitHandler,
 } from "./automation-unit-handler";
 
-/** Window bounds are whole milliseconds, so the ISO form round-trips exactly. */
-const windowBoundSchema = instantStringSchema.pipe(
-  Schema.decodeTo(TemporalInstantSchema, {
-    decode: SchemaGetter.transform((value) => Temporal.Instant.from(value)),
-    encode: SchemaGetter.transform(
-      (value) => temporalInstantToIsoString(value) as Instant
-    ),
-  })
-);
-
 const sweepPageSubjectSchema = Schema.Struct({
   source: customerEventSweepSourceSchema,
-  windowStartsAt: windowBoundSchema,
-  windowEndsAt: windowBoundSchema,
+  windowStartsAt: instantFromIsoStringSchema,
+  windowEndsAt: instantFromIsoStringSchema,
   page: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
 });
 type SweepPageSubject = typeof sweepPageSubjectSchema.Type;
