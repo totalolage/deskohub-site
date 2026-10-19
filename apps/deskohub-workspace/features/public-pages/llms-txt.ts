@@ -1,4 +1,4 @@
-import type { BlockContent, ListItem } from "mdast";
+import type { ListItem } from "mdast";
 import type { PublicOffering } from "@/features/checkout/public-offerings";
 import { getPublicOpeningHours } from "@/features/checkout/public-offerings";
 import { publicOfferingsMarkdown } from "@/features/checkout/public-offerings-markdown";
@@ -60,8 +60,17 @@ const pageLink = (pathname: PublicPagePathname): ListItem => {
   );
 };
 
-/** What a section lists after its pages. */
-const sectionItems = (topic: PublicPageTopic): ListItem[] => {
+/**
+ * What a section lists after its pages, in the same list, so every bullet
+ * stays a `-`: the contact email, or every offering under the prices.
+ */
+const sectionItems = (
+  topic: PublicPageTopic,
+  offerings: ReadonlyArray<PublicOffering>
+): ListItem[] => {
+  if (topic === "prices") {
+    return publicOfferingsMarkdown(offerings, llmsTxtLocale).children;
+  }
   if (topic !== "contact") return [];
   const { infoEmail } = workspaceSiteConstants.contact;
   return [
@@ -71,13 +80,6 @@ const sectionItems = (topic: PublicPageTopic): ListItem[] => {
     ),
   ];
 };
-
-/** What a section shows after its list. */
-const sectionFacts = (
-  topic: PublicPageTopic,
-  offerings: ReadonlyArray<PublicOffering>
-): BlockContent[] =>
-  topic === "prices" ? [publicOfferingsMarkdown(offerings, llmsTxtLocale)] : [];
 
 /**
  * `llms.txt` (https://llmstxt.org/): the business, a summary, the opening
@@ -99,18 +101,14 @@ export const llmsTxtMarkdown = ({
   ),
   markdownParagraph(getPublicOpeningHours(llmsTxtLocale)),
   ...topicSections.flatMap(([topic, heading]) => {
-    const links = [
+    const items = [
       ...pages
         .filter((pathname) => publicPageMarkdown[pathname].topic === topic)
         .map(pageLink),
-      ...sectionItems(topic),
+      ...sectionItems(topic, offerings),
     ];
-    const blocks = [
-      ...(links.length > 0 ? [markdownList(links)] : []),
-      ...sectionFacts(topic, offerings),
-    ];
-    return blocks.length > 0
-      ? [markdownHeading(2, heading(llmsTxtLocale)), ...blocks]
+    return items.length > 0
+      ? [markdownHeading(2, heading(llmsTxtLocale)), markdownList(items)]
       : [];
   }),
 ];
