@@ -50,13 +50,12 @@ const nextConfig = {
   },
   cacheComponents: true,
   experimental: {
-    // Next's TS CLI integration needs bin tsc, which the official TS6 wrapper (tsc6-only) must not provide; API-worker type checking still runs.
+    // Next's TS CLI integration needs bin tsc, which the official TS6 wrapper (tsc6-only) must not provide.
     useTypeScriptCli: false,
     // With the build cache on, Turbopack keeps about 5 GB resident while it
-    // persists the cache during type checking and prerendering, so a cold build
-    // exceeds Vercel's 8 GB build machine. The cache also pushes Vercel's build
-    // cache past its 1.5 GB limit. The type-check worker also needs more than
-    // Node's ~2 GB default heap on an 8 GB machine, so the build script raises it.
+    // persists the cache during prerendering, so a cold build exceeds Vercel's
+    // 8 GB build machine. The cache also pushes Vercel's build cache past its
+    // 1.5 GB limit.
     turbopackFileSystemCacheForBuild: false,
     // Customer avatar uploads carry up to 2 MiB of raw image bytes plus the
     // Server Action / multipart envelope, so the 1 MiB default body limit is
@@ -72,6 +71,12 @@ const nextConfig = {
   },
   partialPrefetching: true,
   reactCompiler: true,
+  // The build script type-checks with the native compiler before `next build`.
+  // Next's own check runs the TS6 compiler in a worker that peaks near its 4 GB
+  // heap limit and hangs or gets OOM-killed on Vercel's 8 GB build machine.
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   transpilePackages: [
     "@deskohub/cloudinary",
     "@deskohub/cloudinary-image",
