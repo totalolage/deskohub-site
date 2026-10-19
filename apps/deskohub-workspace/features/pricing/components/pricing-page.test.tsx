@@ -62,6 +62,7 @@ mock.module("@/features/pricing/backend/price-list.server", () => ({
   loadSharedPriceList: async (locale: Locale) => ({
     offerings: await sharedPriceList(locale),
     variesByVisitor,
+    complete: true,
   }),
   loadVisitorPriceList,
 }));

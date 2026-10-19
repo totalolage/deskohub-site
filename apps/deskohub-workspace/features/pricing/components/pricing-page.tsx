@@ -86,7 +86,8 @@ export function PricingPage({ locale }: PricingPageProps) {
  * The price list every visitor shares, prerendered outside any Suspense
  * boundary: React would put a resolved boundary's content in a hidden
  * container, which text extraction drops. Only while a release gate is
- * decided per visitor does the visitor's own list stream in its place.
+ * decided per visitor, or a shared price fell back to the catalog, does the
+ * visitor's own list stream in its place.
  */
 async function PriceLists({ locale }: PricingPageProps) {
   const { offerings, variesByVisitor } = await loadSharedPriceList(locale);

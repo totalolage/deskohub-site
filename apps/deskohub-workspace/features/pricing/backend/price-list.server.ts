@@ -19,10 +19,23 @@ export type SharedPriceList = {
   readonly offerings: ReadonlyArray<PublicPriceListOffering>;
   /**
    * True when a release gate the list reads is decided per visitor, or the
-   * list fell back to the catalog, so a visitor's own list may differ.
+   * list is incomplete, so a visitor's own list may differ.
    */
   readonly variesByVisitor: boolean;
+  /**
+   * False when an advertised price fell back to the catalog, or the whole
+   * list did, so its prices are right for now but not to keep.
+   */
+  readonly complete: boolean;
 };
+
+/**
+ * The life of an incomplete list: revalidated on the next request after a
+ * second, so a sale the provider answers again shows at once. Its `stale`
+ * and `expire` stay at the five minutes that keep it in the route's App
+ * Shell; anything shorter drops it from the shell the page prerenders.
+ */
+const incompletePriceListLife = { stale: 300, revalidate: 1, expire: 300 };
 
 /**
  * The gates the shared list reads, each with its value when it is the same
@@ -67,7 +80,7 @@ const loadSharedOfferings = Effect.fn("pricing.loadSharedOfferings")(function* (
 ) {
   const { officeOpen, discountReleaseGates, variesByVisitor } =
     yield* decideSharedReleases;
-  const { offerings } = yield* loadPublicPriceList(locale).pipe(
+  const { offerings, complete } = yield* loadPublicPriceList(locale).pipe(
     Effect.provide(
       Layer.mergeAll(
         CheckoutPricingService.withDiscountReleaseGates(
@@ -79,7 +92,11 @@ const loadSharedOfferings = Effect.fn("pricing.loadSharedOfferings")(function* (
       )
     )
   );
-  return { offerings, variesByVisitor } satisfies SharedPriceList;
+  return {
+    offerings,
+    variesByVisitor: variesByVisitor || !complete,
+    complete,
+  } satisfies SharedPriceList;
 });
 
 /**
@@ -88,25 +105,29 @@ const loadSharedOfferings = Effect.fn("pricing.loadSharedOfferings")(function* (
  * find every price. Advertised prices read only the anonymous Calendar
  * sales; no Dotypos customer is resolved and no availability is read.
  *
- * `minutes` keeps the list in the route's App Shell, which needs a `stale`
- * of at least five minutes, while it still revalidates every minute. A
- * runtime that cannot start shares the catalog prices without the office.
+ * `minutes` keeps a complete list in the route's App Shell, which needs a
+ * `stale` of at least five minutes, while it still revalidates every minute.
+ * An incomplete list is never kept that long. A runtime that cannot start
+ * shares the catalog prices without the office, as an incomplete list.
  */
 export async function loadSharedPriceList(
   locale: Locale
 ): Promise<SharedPriceList> {
   "use cache";
-  cacheLife("minutes");
 
-  return loadSharedOfferings(locale).pipe(
+  const priceList = await loadSharedOfferings(locale).pipe(
     runWorkspaceEffectOrElse("pricing.shared-price-list.load", {
       failureCode: "pricing.shared_price_list.load_failed",
-      orElse: () => ({
+      orElse: (): SharedPriceList => ({
         offerings: getPublicCatalogOfferings({ locale }),
         variesByVisitor: true,
+        complete: false,
       }),
     })
   );
+  cacheLife(priceList.complete ? "minutes" : incompletePriceListLife);
+
+  return priceList;
 }
 
 const VisitorPriceListLive = Layer.mergeAll(
