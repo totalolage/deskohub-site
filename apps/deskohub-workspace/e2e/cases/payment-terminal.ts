@@ -1,13 +1,16 @@
 import { Effect } from "effect";
+import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   activateHydratedBrowserElement,
   openBrowserPage,
   switchToBrowserTab,
   switchToMainFrame,
+  waitForBrowserCondition,
   waitForBrowserText,
   waitForBrowserUrl,
 } from "../browser";
+import { getPrefilledReservationConditionScript } from "../browser-scripts";
 import {
   prepareCheckoutPaymentAttempt,
   submitPaymentAndWaitForHostedPage,
@@ -131,14 +134,15 @@ export const assertPaymentTerminalPath = ({
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
-      execute: restartReservation(
-        run,
-        session,
-        scenario,
+      execute: retryReservation({
+        data,
         reservationPath,
-        config.timeouts
-      ),
-      id: "restart-reservation",
+        run,
+        scenario,
+        session,
+        timeouts: config.timeouts,
+      }),
+      id: "retry-reservation",
       timeoutMs: config.timeouts.uiTransition,
     });
 
@@ -176,22 +180,81 @@ const preparePaymentTerminalState = ({
     yield* assertPaymentTerminalRow(checkoutRow, scenario);
   });
 
-const restartReservation = (
-  run: Runner,
-  session: string,
-  scenario: PaymentTerminalScenario,
+/** The selection parameters the retry link must carry back to the form. */
+const getExpectedRetrySelection = (
+  data: CheckoutData
+): Readonly<Record<string, string>> => {
+  if (data.meetingRoom) {
+    return {
+      startDateTime: data.meetingRoom.startDateTime,
+      duration: getMeetingRoomReservationDurationKey(data.meetingRoom.duration),
+    };
+  }
+  if (data.office) {
+    return {
+      startsOn: data.office.startsOn,
+      seats: String(data.office.seats),
+    };
+  }
+  return data.expectedReservationDetails.kind === "cowork"
+    ? {
+        entryTier: data.expectedReservationDetails.entryTier,
+        date: data.date,
+      }
+    : { date: data.date };
+};
+
+const contactSearchParams = ["name", "email", "phone", "customer"];
+
+/** Whether a reservation page URL reopens the retried selection, contact-free. */
+const isRetryReservationUrl = (
+  value: string,
   reservationPath: string,
-  timeouts: WorkspaceE2ETimeouts
-) =>
+  expectedSelection: Readonly<Record<string, string>>
+) => {
+  const url = parseUrl(value);
+  return (
+    url?.pathname === reservationPath &&
+    Object.entries(expectedSelection).every(
+      ([name, expected]) => url.searchParams.get(name) === expected
+    ) &&
+    contactSearchParams.every((name) => !url.searchParams.has(name))
+  );
+};
+
+const retryReservation = ({
+  data,
+  reservationPath,
+  run,
+  scenario,
+  session,
+  timeouts,
+}: {
+  data: CheckoutData;
+  reservationPath: string;
+  run: Runner;
+  scenario: PaymentTerminalScenario;
+  session: string;
+  timeouts: WorkspaceE2ETimeouts;
+}) =>
   Effect.gen(function* () {
-    yield* activateStatusReserveAgain(run, session, reservationPath, timeouts);
+    const expectedSelection = getExpectedRetrySelection(data);
+    yield* activateStatusRetry(run, session, reservationPath, timeouts);
     yield* waitForBrowserUrl({
-      description: `${scenario.state} payment restart page`,
-      matches: (url) => (parseUrl(url)?.pathname ?? "") === reservationPath,
+      description: `${scenario.state} payment retry page with the original selection`,
+      matches: (url) =>
+        isRetryReservationUrl(url, reservationPath, expectedSelection),
       run,
       session,
       timeoutMs: timeouts.uiTransition,
     });
+    yield* waitForBrowserCondition(
+      run,
+      session,
+      `${scenario.state} payment retry form shows the original selection`,
+      getPrefilledReservationConditionScript(data, { includeContact: false }),
+      { timeoutMs: timeouts.uiTransition }
+    );
   });
 
 const assertTerminalStatusPage = ({
@@ -221,8 +284,7 @@ const assertTerminalStatusPage = ({
     yield* waitForBrowserText({
       description: `${scenario.state} checkout status copy`,
       matches: (text) =>
-        scenario.titlePattern.test(text) &&
-        /Start a new reservation/i.test(text),
+        scenario.titlePattern.test(text) && /Try again/i.test(text),
       run,
       session,
       timeoutMs: config.timeouts.uiTransition,
@@ -231,13 +293,13 @@ const assertTerminalStatusPage = ({
     log(`Checkout ${scenario.state} status page validated`);
   });
 
-const activateStatusReserveAgain = (
+const activateStatusRetry = (
   run: Runner,
   session: string,
   reservationPath: string,
   timeouts: WorkspaceE2ETimeouts
 ) => {
-  const selector = `#checkout-status-reserve-again[href="${reservationPath}"]`;
+  const selector = `#checkout-status-reserve-again[href^="${reservationPath}?"]`;
 
   return activateHydratedBrowserElement(run, session, selector, {
     timeoutMs: timeouts.uiTransition,

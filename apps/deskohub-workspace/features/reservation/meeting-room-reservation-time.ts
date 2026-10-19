@@ -115,6 +115,13 @@ export const getMeetingRoomLastServiceDate = ({
   );
 };
 
+/** The Prague wall-clock start that the meeting-room form and links use. */
+export const getMeetingRoomStartDateTime = (startsAt: Temporal.Instant) =>
+  startsAt
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    .toPlainDateTime()
+    .toString({ smallestUnit: "minute" });
+
 export const getMeetingRoomReservationDate = ({
   startsAt,
 }: Pick<ReservationInterval, "startsAt">) =>
@@ -131,10 +138,7 @@ export const findMeetingRoomReservationDuration = (interval: {
   readonly startsAt: Temporal.Instant;
   readonly endsAt: Temporal.Instant;
 }): MeetingRoomReservationDuration | undefined => {
-  const startDateTime = interval.startsAt
-    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    .toPlainDateTime()
-    .toString({ smallestUnit: "minute" });
+  const startDateTime = getMeetingRoomStartDateTime(interval.startsAt);
 
   return meetingRoomReservationDurations.find((duration) => {
     const candidate = getMeetingRoomReservationInterval(

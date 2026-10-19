@@ -19,3 +19,13 @@ const newReservationStatuses: ReadonlySet<CheckoutStatusKind> =
 
 export const shouldOfferNewReservation = (status: CheckoutStatusKind) =>
   newReservationStatuses.has(status);
+
+/**
+ * Statuses whose payment ended without settling and released nothing paid, so
+ * the customer may retry the same selection in a fresh checkout.
+ */
+const reservationRetryStatuses: ReadonlySet<CheckoutStatusKind> =
+  new Set<CheckoutStatusKind>(["payment_failed", "cancelled", "expired"]);
+
+export const shouldOfferReservationRetry = (status: CheckoutStatusKind) =>
+  reservationRetryStatuses.has(status);

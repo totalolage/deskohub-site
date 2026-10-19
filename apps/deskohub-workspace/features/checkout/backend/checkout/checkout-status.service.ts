@@ -17,6 +17,7 @@ import type {
   LatePaymentRecovery,
   PaymentState,
 } from "@/db/schema";
+import { shouldOfferReservationRetry } from "@/features/checkout/checkout-status-new-reservation-policy";
 import { getProviderOrderAbandonmentCutoff } from "@/features/checkout/provider-order-abandonment";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
@@ -41,10 +42,14 @@ import {
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getDotyposReservationTiming } from "@/features/reservation/backend/workspace-reservation.service";
+import { getStoredCoworkReservationSelectionSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import type { StoredMeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
+import { getStoredMeetingRoomReservationSelectionSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
 import type { StoredOfficeReservationDetails } from "@/features/reservation/office-reservation";
+import { getStoredOfficeReservationSelectionSearchParams } from "@/features/reservation/office-reservation-checkout-query";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import type { ReservationSelectionSearchParams } from "@/features/reservation/reservation-checkout-query";
 import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { nexiRequestTimeout } from "@/shared/backend/config/nexi.config";
@@ -115,6 +120,8 @@ type CheckoutReservationStatusViewModelBase = CheckoutStatusViewModelBase & {
   readonly table?: CustomerReservationTable;
   readonly tableMap?: CheckoutStatusTableMap;
   readonly supportContactPrefill?: CheckoutStatusContactPrefill;
+  /** The booked selection a retry status reopens on the reservation page. */
+  readonly retrySearchParams?: ReservationSelectionSearchParams;
 };
 
 type CheckoutCoworkStatusViewModel = CheckoutReservationStatusViewModelBase & {
@@ -284,6 +291,12 @@ const canUseAttemptForSummary = (
 
   return reservation.paymentState === "paid" && attempt.state === "paid";
 };
+
+/** Payment states that ended without settling, which the customer may retry. */
+const isRetryablePaymentState = (paymentState: PaymentState) =>
+  paymentState === "failed" ||
+  paymentState === "cancelled" ||
+  paymentState === "expired";
 
 /**
  * Payment states whose displayable attempt is normally usable, so the Dotypos
@@ -578,6 +591,85 @@ const implementation = Effect.gen(function* () {
   });
 
   /**
+   * The booked selection of a payment that ended without settling, as the
+   * reservation-page link parameters a retry reopens. The interval comes from
+   * the Dotypos reservation, which stays readable after hold cleanup cancels
+   * it. Best effort: without it the page starts a plain new reservation.
+   */
+  const loadRetrySearchParams = Effect.fn(
+    "CheckoutStatusService.loadRetrySearchParams"
+  )(
+    function* (reservation: WorkspaceReservation) {
+      if (
+        !isRetryablePaymentState(reservation.paymentState) ||
+        !reservation.dotyposReservationId
+      ) {
+        return undefined;
+      }
+
+      const dotyposReservation = yield* dotypos.getReservationWithoutCustomer(
+        reservation.dotyposReservationId
+      );
+      const timing = yield* getDotyposReservationTiming({
+        reservationId: reservation.id,
+        reservation: dotyposReservation,
+      });
+
+      return Match.value(reservation.reservationDetails).pipe(
+        Match.discriminatorsExhaustive("kind")({
+          cowork: (details) =>
+            getStoredCoworkReservationSelectionSearchParams({
+              ...details,
+              ...timing,
+            }),
+          "meeting-room": (details) =>
+            getStoredMeetingRoomReservationSelectionSearchParams({
+              ...details,
+              ...timing,
+            }),
+          office: (details) => {
+            const seats =
+              Option.getOrUndefined(
+                Schema.decodeUnknownOption(dotyposReservationSeatsSchema)(
+                  dotyposReservation.seats
+                )
+              ) ?? details.seats;
+
+            return seats === undefined
+              ? undefined
+              : getStoredOfficeReservationSelectionSearchParams({
+                  ...details,
+                  ...timing,
+                  seats,
+                });
+          },
+        })
+      );
+    },
+    (effect, reservation) =>
+      effect.pipe(
+        Effect.timeoutOrElse({
+          duration: summaryTimeout,
+          orElse: () =>
+            Effect.logWarning(
+              "Checkout status retry selection load timed out"
+            ).pipe(Effect.as(undefined)),
+        }),
+        Effect.tapError((cause) =>
+          Effect.logWarning("Checkout status retry selection load failed", {
+            cause,
+          })
+        ),
+        Effect.orElseSucceed(() => undefined),
+        Effect.annotateLogs({
+          reservationId: reservation.id,
+          dotyposReservationId: reservation.dotyposReservationId,
+          reservationKind: reservation.reservationDetails.kind,
+        })
+      )
+  );
+
+  /**
    * A provider payment unsettled past the abandonment cutoff may never settle,
    * so the page stops promising confirmation and offers support. Hold
    * cleanup later expires an empty order, which then allows a new booking.
@@ -661,6 +753,7 @@ const implementation = Effect.gen(function* () {
       const [
         { latePaymentStatusKind, statusKind, supportContactPrefill },
         reconstruction,
+        retrySearchParams,
       ] = yield* Effect.all(
         [
           resolveStatusKind(reservation),
@@ -674,6 +767,7 @@ const implementation = Effect.gen(function* () {
                 ).pipe(Effect.as(timeoutReconstruction)),
             })
           ),
+          loadRetrySearchParams(reservation),
         ],
         { concurrency: "inherit" }
       );
@@ -691,6 +785,10 @@ const implementation = Effect.gen(function* () {
           tableMap: reconstruction.tableMap,
         }),
         supportContactPrefill,
+        // A late payment that settled takes over the status, and with it the
+        // retry of the payment it replaced.
+        ...(shouldOfferReservationRetry(statusKind) &&
+          retrySearchParams && { retrySearchParams }),
       };
       const result: CheckoutReservationStatusViewModel = {
         ...resultBase,

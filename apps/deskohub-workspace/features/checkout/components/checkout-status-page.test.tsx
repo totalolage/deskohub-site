@@ -13,8 +13,9 @@ import {
 import { testEmailAddress } from "@deskohub/test-email";
 import { cleanup, render } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import type { CheckoutStatusViewModel } from "@/features/checkout/backend/checkout";
-import { m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -520,9 +521,11 @@ describe("CheckoutStatusPage", () => {
       />
     );
 
-    const ctaHref = view.container
-      .querySelector("#checkout-status-reserve-again")
-      ?.getAttribute("href");
+    const cta = view.container.querySelector("#checkout-status-reserve-again");
+    expect(cta?.textContent).toBe(
+      m.checkoutStatusTryAgain({}, { locale: "en-US" })
+    );
+    const ctaHref = cta?.getAttribute("href");
     expect(ctaHref).toBe("/en-US/reservation/cowork");
     const completedOrderStep = view.container.querySelector(
       "main ol > li:nth-child(2) > a"
@@ -1007,5 +1010,179 @@ describe("CheckoutStatusPage", () => {
         "Please confirm my reservation or refund the payment.",
       ].join("\n")
     );
+  });
+});
+
+describe("CheckoutStatusPage outcome sentences", () => {
+  beforeAll(() => {
+    registerWorkspaceComponentTestEnv();
+  });
+
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
+  });
+
+  const outcomes = [
+    {
+      status: "fulfilled",
+      paymentStatus: "paid",
+      fulfillmentStatus: "fulfilled",
+      lead: m.checkoutStatusFulfilledLead,
+    },
+    {
+      status: "paid_awaiting_delivery",
+      paymentStatus: "paid",
+      fulfillmentStatus: "awaiting_delivery",
+      lead: m.checkoutStatusPaidAwaitingDeliveryLeadWithoutEmail,
+    },
+    {
+      status: "pending",
+      paymentStatus: "pending",
+      fulfillmentStatus: "not_started",
+      lead: m.checkoutStatusPendingLead,
+    },
+    {
+      status: "payment_failed",
+      paymentStatus: "failed",
+      fulfillmentStatus: "not_started",
+      lead: m.checkoutStatusPaymentFailedLead,
+    },
+    {
+      status: "cancelled",
+      paymentStatus: "cancelled",
+      fulfillmentStatus: "not_started",
+      lead: m.checkoutStatusCancelledLead,
+    },
+    {
+      status: "expired",
+      paymentStatus: "expired",
+      fulfillmentStatus: "not_started",
+      lead: m.checkoutStatusExpiredLead,
+    },
+  ] as const;
+
+  test.each(
+    outcomes.flatMap((outcome) =>
+      (["en-US", "cs-CZ"] as const satisfies readonly Locale[]).map(
+        (locale) => ({ ...outcome, locale })
+      )
+    )
+  )(
+    "server-renders the $status sentence as plain text in $locale",
+    ({ fulfillmentStatus, lead, locale, paymentStatus, status }) => {
+      const container = document.createElement("div");
+      container.innerHTML = renderToStaticMarkup(
+        <CheckoutStatusPage
+          locale={locale}
+          status={{ ...baseStatus, status, paymentStatus, fulfillmentStatus }}
+        />
+      );
+
+      const sentence = lead({}, { locale });
+      expect(
+        [...container.querySelectorAll("p")].some(
+          (paragraph) => paragraph.textContent === sentence
+        )
+      ).toBe(true);
+    }
+  );
+});
+
+describe("CheckoutStatusPage payment retry", () => {
+  beforeAll(() => {
+    registerWorkspaceComponentTestEnv();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
+  });
+
+  const retries = [
+    {
+      kind: "cowork",
+      retrySearchParams: {
+        entryTier: "reserved-desk",
+        date: "2099-06-12",
+        coffee: "true",
+        monitorOption: "none",
+      },
+      href: "/en-US/reservation/cowork?entryTier=reserved-desk&date=2099-06-12&coffee=true&monitorOption=none",
+    },
+    {
+      kind: "meeting-room",
+      retrySearchParams: {
+        startDateTime: "2099-08-13T14:00",
+        duration: "hour:4",
+      },
+      href: "/en-US/reservation/meeting-room?startDateTime=2099-08-13T14%3A00&duration=hour%3A4",
+    },
+    {
+      kind: "office",
+      retrySearchParams: { startsOn: "2099-06-20", dayCount: "5", seats: "4" },
+      href: "/en-US/reservation/office?startsOn=2099-06-20&dayCount=5&seats=4",
+    },
+  ] as const;
+  const retryStatuses = [
+    { status: "payment_failed", paymentStatus: "failed" },
+    { status: "cancelled", paymentStatus: "cancelled" },
+    { status: "expired", paymentStatus: "expired" },
+  ] as const;
+
+  test.each(
+    retries.flatMap((retry) =>
+      retryStatuses.map((status) => ({ ...retry, ...status }))
+    )
+  )(
+    "offers Try again with the $kind selection after a $status payment",
+    ({ href, kind, paymentStatus, retrySearchParams, status }) => {
+      const view = render(
+        <CheckoutStatusPage
+          locale="en-US"
+          status={{
+            ...baseStatus,
+            kind,
+            status,
+            paymentStatus,
+            fulfillmentStatus: "not_started",
+            retrySearchParams,
+          }}
+        />
+      );
+
+      const tryAgain = view.getByRole("link", {
+        name: m.checkoutStatusTryAgain({}, { locale: "en-US" }),
+      });
+      expect(tryAgain.getAttribute("href")).toBe(href);
+      expect(
+        view.container
+          .querySelector("main ol > li:nth-child(2) > a")
+          ?.getAttribute("href")
+      ).toBe(href);
+    }
+  );
+
+  test("ignores a retry selection on a status that offers no retry", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          status: "late_payment_refund",
+          paymentStatus: "expired",
+          fulfillmentStatus: "not_started",
+          retrySearchParams: retries[0].retrySearchParams,
+        }}
+      />
+    );
+
+    const cta = view.container.querySelector("#checkout-status-reserve-again");
+    expect(cta?.textContent).toBe(
+      m.checkoutStatusReserveAgain({}, { locale: "en-US" })
+    );
+    expect(cta?.getAttribute("href")).toBe("/en-US/reservation/cowork");
   });
 });

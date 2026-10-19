@@ -43,6 +43,7 @@ Each reservation form mirrors its selection into the page URL through `useReserv
 - The office parser takes `startsOn` only inside the booking window from the server's `today`; the page preloads that start date's prices.
 - An absent parameter means "unspecified", which the parser may fill from the customer's last reservation. Encode a deliberate empty choice as an explicit value instead, as cowork writes `monitorOption=none` for an optional workstation turned off.
 - Links shared outside the app, such as agent-tool links, pass the same writers to `getShareableReservationUrl`. A quote link passes the whole quoted selection so the last reservation fills nothing; an offer link that leaves add-ons open uses `getCoworkOfferSearchParams`.
+- A failed, cancelled, or expired payment's status page links "Try again" to the original selection. `loadRetrySearchParams` (`checkout-status.service.ts`) builds it on the server with the family's `getStored*ReservationSelectionSearchParams`, which sit beside the writers and feed them, from the stored details plus the Dotypos interval. A Dotypos reservation stays readable after hold cleanup cancels it. Without the interval the link opens the family page without a selection.
 - After a Pay return the URL carries `payState` plus the edited selection. Each family's `get*RestoredReservationValues` lets selection parameters beside the token replace the restored selection (`hasReservationSelectionSearchParams`), keeping the token's checkout session, replacement token, contact, and discount intent. The Pay page's edit link carries the token alone, so it still restores the signed selection.
 
 ## Customer mode
@@ -61,6 +62,8 @@ The customer's single Order and pay activation starts checkout (`features/checko
 
 1. Only when the action returns a hosted provider session, open the hosted page in a new tab while activation remains, mark the original tab as owner in tab-local session storage, and navigate it to status.
 2. If the browser blocks the tab or activation has expired, navigate the current tab to the provider.
+
+The card explains this handoff above the consent (`CheckoutPayProviderHandoff`), and the pay button names the signed summary total formatted with `formatWorkspaceMoney`. A zero total keeps the plain label and omits the explanation, because no provider is involved.
 
 Never pre-open a placeholder tab or require a second activation. Zero-total completion, `pricing_changed`, validation failures, and any other non-provider result open or manage no tab. Keep the existing scoped Web Lock ownership (`shared/browser/return-window.ts`, `checkout-payment-window.tsx`): the owner holds an exclusive lock scoped to the status path and preempts a returned payment tab; an unmarked returned tab closes when the lock is unavailable or preempted, and stays open if the original tab is gone.
 

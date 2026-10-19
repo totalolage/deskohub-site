@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { CheckoutStatusKind } from "@/features/checkout/backend/checkout";
-import { shouldOfferNewReservation } from "@/features/checkout/checkout-status-new-reservation-policy";
+import {
+  shouldOfferNewReservation,
+  shouldOfferReservationRetry,
+} from "@/features/checkout/checkout-status-new-reservation-policy";
 
 describe("shouldOfferNewReservation", () => {
   test("starts a new reservation only when the checkout holds no live paid reservation", () => {
@@ -38,5 +41,34 @@ describe("shouldOfferNewReservation", () => {
     for (const status of withLivePaidReservation) {
       expect(shouldOfferNewReservation(status)).toBe(false);
     }
+  });
+});
+
+describe("shouldOfferReservationRetry", () => {
+  test("retries the same selection only after a payment ended without settling", () => {
+    const allStatuses: CheckoutStatusKind[] = [
+      "not_found",
+      "created",
+      "pending",
+      "payment_pending_delayed",
+      "paid_waiting_fulfillment",
+      "paid_fulfillment_delayed",
+      "paid_awaiting_delivery",
+      "paid_delivery_delayed",
+      "fulfilled",
+      "fulfillment_failed",
+      "payment_failed",
+      "cancelled",
+      "expired",
+      "late_payment_checking",
+      "late_payment_refund",
+      "late_payment_review",
+    ];
+
+    expect(allStatuses.filter(shouldOfferReservationRetry)).toEqual([
+      "payment_failed",
+      "cancelled",
+      "expired",
+    ]);
   });
 });
