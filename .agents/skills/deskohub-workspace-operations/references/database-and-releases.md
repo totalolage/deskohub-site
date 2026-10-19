@@ -12,6 +12,8 @@ Every push to `main` that touches Workspace inputs deploys production, so mergin
 2. Run pending migrations against the production Neon branch.
 3. Promote the ready deployment.
 
+After the canonical smoke check passes, the last step submits the production sitemap's canonical URLs to IndexNow with `apps/deskohub-workspace/scripts/submit-indexnow.ts`. It runs after the rollback and failure steps, with `continue-on-error`, so a failed or cancelled submission never fails or rolls back the release. A failure shows up as a `::warning` annotation on the run. The step log records only the HTTP status, host, and URL count, never the key. IndexNow verifies the key at `/<key>.txt`, which only production serves. Rotating the key means renaming the `app/<key>.txt` route folder along with `features/public-pages/indexnow-key.ts`.
+
 Don't add database branch swapping unless the user asks for it. Don't put migrations in the Vercel build.
 
 Old and new functions overlap during a rollout. When a schema change would break queries, mutations, constraints, or decoded data in the previous deployment, ship an expand, backfill, and compatibility release that keeps both representations in sync. Rename or drop the old representation only in a later release, after the compatibility version is fully deployed.
