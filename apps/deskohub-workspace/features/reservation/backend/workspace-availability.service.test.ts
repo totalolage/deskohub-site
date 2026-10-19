@@ -6,7 +6,14 @@ import {
 } from "@deskohub/dotypos";
 import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { type Context, Effect, Layer, Logger, References } from "effect";
+import {
+  type Context,
+  Effect,
+  Layer,
+  Logger,
+  Option,
+  References,
+} from "effect";
 import { TestClock } from "effect/testing";
 import "@/shared/polyfills/temporal";
 import {
@@ -15,7 +22,10 @@ import {
 } from "@/features/reservation/meeting-room-reservation-duration";
 import { getMeetingRoomDayStartTimes } from "@/features/reservation/meeting-room-reservation-time";
 import { plainDateStringSchema } from "@/shared/utils/temporal";
-import { getMeetingRoomSelectionAvailabilityQuery } from "../workspace-availability";
+import {
+  getMeetingRoomSelectionAvailabilityQuery,
+  parseWorkspaceAvailabilityQuery,
+} from "../workspace-availability";
 import {
   AdvisoryAvailabilityInventory,
   makeProviderInventory,
@@ -1672,6 +1682,8 @@ describe("WorkspaceAvailabilityService meeting-room start times", () => {
     input: Parameters<typeof runWithInventory>[1] & {
       readonly duration: MeetingRoomReservationDurationKey;
       readonly startDateTime: string;
+      /** A range the request names, parsed as the availability route does. */
+      readonly requestedRange?: { readonly from: string; readonly to: string };
     }
   ) =>
     runWithInventory(
@@ -1680,8 +1692,22 @@ describe("WorkspaceAvailabilityService meeting-room start times", () => {
           () => import("./workspace-availability.service")
         );
         const service = yield* availability.WorkspaceAvailabilityService;
-        const query = getMeetingRoomSelectionAvailabilityQuery(input);
-        if (!query) return yield* Effect.die("Start books no interval");
+        const selectionQuery = getMeetingRoomSelectionAvailabilityQuery(input);
+        if (!selectionQuery?.startsAt || !selectionQuery.endsAt) {
+          return yield* Effect.die("Start books no interval");
+        }
+        const query = input.requestedRange
+          ? Option.getOrThrow(
+              parseWorkspaceAvailabilityQuery(
+                new URLSearchParams({
+                  kind: "meeting-room",
+                  ...input.requestedRange,
+                  startsAt: selectionQuery.startsAt,
+                  endsAt: selectionQuery.endsAt,
+                })
+              )
+            )
+          : selectionQuery;
         return yield* service.getAvailability({ query });
       }),
       { tables: meetingRoomTables, ...input }
@@ -1904,7 +1930,7 @@ describe("WorkspaceAvailabilityService meeting-room start times", () => {
     }
   });
 
-  test("adds no provider load after any single check on the date", async () => {
+  test("adds no provider load after any single check on the date, whatever range it names", async () => {
     const durations = ["hour:1", "hour:4", "day:1"] as const;
     const singleChecks = durations.flatMap((duration) =>
       getMeetingRoomDayStartTimes({
@@ -1919,14 +1945,25 @@ describe("WorkspaceAvailabilityService meeting-room start times", () => {
       startDateTime: "2099-06-10T23:00",
     });
 
+    // The form's own query, then direct requests naming broader ranges.
+    const requestedRanges = [
+      undefined,
+      { from: testDate, to: "2099-06-12" },
+      { from: "2099-06-01", to: "2099-06-30" },
+    ];
+
     const listLoadsAfterSingleCheck: string[] = [];
-    for (const singleCheck of singleChecks) {
+    for (const [singleCheck, requestedRange] of singleChecks.flatMap(
+      (singleCheck) =>
+        requestedRanges.map((range) => [singleCheck, range] as const)
+    )) {
       const sharedSnapshots: SharedSnapshots = new Map();
       const loads: string[] = [];
       const onProviderRead = (read: string) => loads.push(read);
 
       await checkMeetingRoomStart({
         ...singleCheck,
+        ...(requestedRange && { requestedRange }),
         sharedSnapshots,
         onProviderRead,
       });
@@ -1945,7 +1982,7 @@ describe("WorkspaceAvailabilityService meeting-room start times", () => {
         });
         for (const load of loads.slice(loadsBeforeList)) {
           listLoadsAfterSingleCheck.push(
-            `${duration} list after ${singleCheck.duration} ${singleCheck.startDateTime}: ${load}`
+            `${duration} list after ${singleCheck.duration} ${singleCheck.startDateTime} (${requestedRange?.from ?? "form"}..${requestedRange?.to ?? ""}): ${load}`
           );
         }
       }

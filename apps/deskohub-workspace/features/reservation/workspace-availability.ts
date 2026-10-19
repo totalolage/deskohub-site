@@ -22,6 +22,7 @@ import {
   meetingRoomReservationDurationKeySchema,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import {
+  findMeetingRoomReservationDuration,
   getMeetingRoomLastServiceDate,
   getMeetingRoomReservationDate,
   getMeetingRoomReservationInterval,
@@ -466,10 +467,50 @@ const getIntervalParam = (
   return parsed ?? {};
 };
 
+const hasIntervalParam = (searchParams: URLSearchParams) =>
+  Boolean(
+    searchParams.get("startsAt")?.trim() || searchParams.get("endsAt")?.trim()
+  );
+
+const isMeetingRoomBookingInterval = (
+  interval: Partial<ReservationInterval>
+): interval is ReservationInterval =>
+  interval.startsAt !== undefined &&
+  interval.endsAt !== undefined &&
+  findMeetingRoomReservationDuration({
+    startsAt: Temporal.Instant.from(interval.startsAt),
+    endsAt: Temporal.Instant.from(interval.endsAt),
+  }) !== undefined;
+
+/**
+ * A meeting-room query names a date range, or one interval a meeting-room
+ * duration books. An interval check covers the dates the interval touches
+ * whatever range the request names, so every check for a start date reads the
+ * shared inventory snapshot that date's start-times list reads. Any other
+ * interval is rejected rather than widening that snapshot.
+ */
+const parseMeetingRoomAvailabilityQuery = (
+  searchParams: URLSearchParams,
+  range: Pick<MeetingRoomWorkspaceAvailabilityQuery, "from" | "to">
+): Option.Option<MeetingRoomWorkspaceAvailabilityQuery> => {
+  if (!hasIntervalParam(searchParams)) {
+    return Option.some({ kind: meetingRoomReservationKind, ...range });
+  }
+
+  const interval = getIntervalParam(searchParams);
+  return isMeetingRoomBookingInterval(interval)
+    ? Option.some(getMeetingRoomAvailabilityQuery(interval))
+    : Option.none();
+};
+
+/**
+ * The availability query a request names, or none for a meeting-room interval
+ * no meeting-room duration books.
+ */
 export const parseWorkspaceAvailabilityQuery = (
   searchParams: URLSearchParams,
   now = new Date()
-): WorkspaceAvailabilityQuery => {
+): Option.Option<WorkspaceAvailabilityQuery> => {
   const range = getWorkspaceAvailabilityRange(
     getCurrentWorkspaceDate(
       Temporal.Instant.fromEpochMilliseconds(now.getTime())
@@ -480,40 +521,33 @@ export const parseWorkspaceAvailabilityQuery = (
   const reservationKind = getReservationKindParam(searchParams);
 
   return Match.value(reservationKind).pipe(
-    Match.when("meeting-room", () => {
-      const interval = getIntervalParam(searchParams);
-      return {
-        kind: meetingRoomReservationKind,
-        from,
-        to,
-        ...(interval.startsAt && { startsAt: interval.startsAt }),
-        ...(interval.endsAt && { endsAt: interval.endsAt }),
-      };
-    }),
+    Match.when("meeting-room", () =>
+      parseMeetingRoomAvailabilityQuery(searchParams, { from, to })
+    ),
     Match.when("cowork", () => {
       const date = getDateParam(searchParams, "date");
       const entryTier = getTierParam(searchParams.get("entryTier"));
       const monitorOption = getMonitorParam(searchParams.get("monitorOption"));
-      return {
+      return Option.some({
         kind: coworkReservationKind,
         from,
         to,
         ...(date && { date }),
         ...(entryTier && { entryTier }),
         ...(monitorOption && { monitorOption }),
-      };
+      });
     }),
     Match.when("office", () => {
       const interval = getIntervalParam(searchParams);
       const seats = getOfficeSeatsParam(searchParams.get("seats"));
-      return {
+      return Option.some({
         kind: officeReservationKind,
         from,
         to,
         ...(interval.startsAt && { startsAt: interval.startsAt }),
         ...(interval.endsAt && { endsAt: interval.endsAt }),
         ...(seats && { seats }),
-      };
+      });
     }),
     Match.exhaustive
   );

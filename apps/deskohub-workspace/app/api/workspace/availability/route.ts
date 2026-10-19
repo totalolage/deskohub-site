@@ -41,7 +41,19 @@ const loadWorkspaceAvailabilityRequest = Effect.fn(
     return yield* loadMeetingRoomStartTimes({ query, replacementToken });
   }
 
-  const query = parseWorkspaceAvailabilityQuery(searchParams);
+  const query = yield* Option.match(
+    parseWorkspaceAvailabilityQuery(searchParams),
+    {
+      onNone: () =>
+        Effect.fail(
+          new ValidationError({
+            message:
+              "Meeting-room availability needs startsAt and endsAt of one meeting-room booking of 1 hour, 4 hours, or a whole day.",
+          })
+        ),
+      onSome: Effect.succeed,
+    }
+  );
   yield* Effect.annotateLogsScoped({ query });
   yield* Effect.logInfo("Workspace availability request parsed");
 

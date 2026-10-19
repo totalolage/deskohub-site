@@ -10,6 +10,7 @@ class SyntheticAvailabilityOutage extends Data.TaggedError(
 
 let availabilityFailure: ValidationError | SyntheticAvailabilityOutage | null =
   null;
+const loadedAvailabilityQueries: unknown[] = [];
 const loadedStartTimesQueries: unknown[] = [];
 const syntheticStartTimes = {
   date: "2099-06-10",
@@ -27,10 +28,12 @@ mock.module(
   "@/features/reservation/backend/workspace-availability-loader",
   () => ({
     WorkspaceAvailabilityLoaderLive: Layer.empty,
-    loadAvailability: () =>
-      availabilityFailure
+    loadAvailability: (request: { readonly query: unknown }) => {
+      loadedAvailabilityQueries.push(request.query);
+      return availabilityFailure
         ? Effect.fail(availabilityFailure)
-        : Effect.succeed({ unavailableDates: [] }),
+        : Effect.succeed({ unavailableDates: [] });
+    },
     loadMeetingRoomStartTimes: (request: { readonly query: unknown }) => {
       loadedStartTimesQueries.push(request.query);
       return availabilityFailure
@@ -51,6 +54,7 @@ const loadRoute = async () =>
 describe("workspace availability route", () => {
   beforeEach(() => {
     availabilityFailure = null;
+    loadedAvailabilityQueries.length = 0;
     loadedStartTimesQueries.length = 0;
   });
 
@@ -86,6 +90,61 @@ describe("workspace availability route", () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({
       error: "Workspace availability could not be loaded",
+    });
+  });
+
+  describe("meeting-room interval mode", () => {
+    const intervalUrl = (params: Record<string, string>) =>
+      `https://workspace.test/api/workspace/availability?${new URLSearchParams({
+        kind: "meeting-room",
+        ...params,
+      }).toString()}`;
+
+    test("checks the dates the interval touches instead of the named range", async () => {
+      const { GET } = await loadRoute();
+      const response = await GET(
+        new Request(
+          intervalUrl({
+            from: "2099-06-10",
+            to: "2099-06-12",
+            // 23:00-03:00 in Prague.
+            startsAt: "2099-06-10T21:00:00Z",
+            endsAt: "2099-06-11T01:00:00Z",
+          })
+        )
+      );
+
+      expect(response.status).toBe(200);
+      expect(loadedAvailabilityQueries).toEqual([
+        {
+          kind: "meeting-room",
+          from: "2099-06-10",
+          to: "2099-06-11",
+          startsAt: "2099-06-10T21:00:00Z",
+          endsAt: "2099-06-11T01:00:00Z",
+        },
+      ]);
+    });
+
+    test("answers an interval no meeting-room duration books with 400", async () => {
+      const { GET } = await loadRoute();
+      const response = await GET(
+        new Request(
+          intervalUrl({
+            from: "2099-06-10",
+            to: "2099-06-12",
+            startsAt: "2099-06-09T22:00:00Z",
+            endsAt: "2099-06-12T22:00:00Z",
+          })
+        )
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error:
+          "Meeting-room availability needs startsAt and endsAt of one meeting-room booking of 1 hour, 4 hours, or a whole day.",
+      });
+      expect(loadedAvailabilityQueries).toEqual([]);
     });
   });
 
