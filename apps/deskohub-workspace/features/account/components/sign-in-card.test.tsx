@@ -189,6 +189,61 @@ describe("account components", () => {
     ).not.toContain(m.accountSignInNoLongerWaitingNotice({}, { locale }));
   });
 
+  test("sign-in page renders the no-longer-waiting notice as a status that describes the email field", async () => {
+    const { SignInCard } = await import("./sign-in-card");
+    const page = document.createElement("div");
+    page.innerHTML = renderToStaticMarkup(
+      <SignInCard locale={locale} noLongerWaiting />
+    );
+
+    const notice = page.querySelector(
+      `#${page.querySelector("#account-sign-in-email")?.getAttribute("aria-describedby")}`
+    );
+    expect(notice?.getAttribute("role")).toBe("status");
+    expect(notice?.textContent).toBe(
+      m.accountSignInNoLongerWaitingNotice({}, { locale })
+    );
+  });
+
+  test("sign-in modal mounts the no-longer-waiting status before its text and keeps it on the email field's description", async () => {
+    const { SignInCard } = await import("./sign-in-card");
+    const insertions: MutationRecord[] = [];
+    const observer = new MutationObserver((records) =>
+      insertions.push(...records)
+    );
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    const view = render(<SignInCard locale={locale} noLongerWaiting />);
+    insertions.push(...observer.takeRecords());
+    observer.disconnect();
+    const text = m.accountSignInNoLongerWaitingNotice({}, { locale });
+    const notice = view.getByRole("status");
+    expect(notice.textContent).toBe(text);
+    // A client navigation, as when the verify modal hands over, announces
+    // the notice only if its region was already there.
+    expect(
+      insertions.some(
+        (record) =>
+          record.target === notice &&
+          [...record.addedNodes].some((node) => node.textContent === text)
+      )
+    ).toBe(true);
+
+    await act(async () => {
+      fireEvent.submit(view.container.querySelector("#account-sign-in-form")!);
+      await Promise.resolve();
+    });
+    const description = view
+      .getByLabelText(m.accountSignInEmailLabel({}, { locale }))
+      .getAttribute("aria-describedby")
+      ?.split(" ")
+      .map((id) => document.getElementById(id)?.textContent);
+    expect(description).toEqual([
+      text,
+      m.contactValidationEmailRequired({}, { locale }),
+    ]);
+  });
+
   test("sign-in card validates invalid email with localized copy before requesting a link", async () => {
     const { SignInCard } = await import("./sign-in-card");
 

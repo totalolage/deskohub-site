@@ -82,6 +82,13 @@ export function SignInCard({
   const [failure, setFailure] = useState<SignInEmailFailure | null>(null);
   const [showNoLongerWaiting, setShowNoLongerWaiting] =
     useState(noLongerWaiting);
+  const clientReady = useClientReady();
+  // A server-rendered page shows the notice from the start. A client
+  // navigation, such as the verify modal handing over, mounts the notice's
+  // live region empty first, since screen readers often skip a region
+  // inserted together with its text.
+  const [noticeRegionMounted, setNoticeRegionMounted] = useState(!clientReady);
+  useEffect(() => setNoticeRegionMounted(true), []);
   const [storedRequest, setRequest] = useEmailSignInRequest();
   // The pending request continues only to its own destination: its link
   // already lands there. A card opened without one takes the request's; a
@@ -94,7 +101,6 @@ export function SignInCard({
       ? storedRequest
       : null;
   const destination = request ? request.returnTo : requestedReturnTo;
-  const clientReady = useClientReady();
   const submissionInProgress = useRef(false);
   // The control that switched the view unmounts with it, so the next view
   // takes focus once it mounts.
@@ -186,11 +192,13 @@ export function SignInCard({
       <p className="mt-3 text-sm leading-6 text-navy-blue/68">
         {m.accountSignInDescription({}, { locale })}
       </p>
-      {showNoLongerWaiting && (
-        <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
-          {m.accountSignInNoLongerWaitingNotice({}, { locale })}
-        </p>
-      )}
+      <div id="account-sign-in-notice" role="status">
+        {showNoLongerWaiting && noticeRegionMounted && (
+          <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+            {m.accountSignInNoLongerWaitingNotice({}, { locale })}
+          </p>
+        )}
+      </div>
       <Form {...form}>
         <form
           id="account-sign-in-form"
@@ -209,7 +217,11 @@ export function SignInCard({
                 </FormLabel>
                 {/* The button joins the input's row once it fits beside it. */}
                 <div className="flex flex-col gap-3 sm:flex-row">
-                  <FormControl>
+                  <FormControl
+                    aria-describedby={
+                      showNoLongerWaiting ? "account-sign-in-notice" : undefined
+                    }
+                  >
                     <Input
                       className="min-w-0 sm:flex-1"
                       {...field}
