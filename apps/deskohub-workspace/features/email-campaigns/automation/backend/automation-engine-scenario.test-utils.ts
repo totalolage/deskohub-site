@@ -1047,19 +1047,27 @@ export const makeAutomationEngineScenario = async (input: {
     };
 
     /**
-     * Plans, then cuts the consumer of the next queued unit off while its
-     * batch request is with the provider. The unit stays claimed with its
-     * batch persisted.
+     * Plans, then cuts the consumer of the oldest enqueued deliver unit
+     * off while its batch request is with the provider. The unit stays
+     * claimed with its batch persisted; other messages stay pending.
      */
     const killDuringRequest = async (at: Temporal.Instant) => {
       const reached = resend.nextRequest();
       await plan(at);
-      const message = queue.take();
-      if (message === undefined) throw new Error("No unit was enqueued");
-      const consumer = start(message.unitId, at);
+      const { rows } = await pool.query<{ id: AutomationWorkUnitId }>(
+        "select id from email_campaign_automation_work_units where kind = 'deliver' and id = any($1) order by created_at limit 1",
+        [queue.pending().map((message) => message.unitId)]
+      );
+      const unitId = rows[0]?.id;
+      if (unitId === undefined) throw new Error("No deliver unit was enqueued");
+      // Takes its message off the queue; the others stay pending.
+      const rest = queue.pending().filter((m) => m.unitId !== unitId);
+      queue.dropPending();
+      for (const other of rest) queue.redeliver(other);
+      const consumer = start(unitId, at);
       await reached;
       await consumer.interrupt();
-      return message.unitId;
+      return unitId;
     };
 
     const lifecycle = <A, E>(
