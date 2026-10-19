@@ -338,9 +338,9 @@ describe("ReservationDatePicker typed date", () => {
 
     expect(grid.getAttribute("aria-label")).toBe("červen 2099");
     expect(
-      document.querySelector('[data-day="2099-06-10"]')?.getAttribute(
-        "data-selected"
-      )
+      document
+        .querySelector('[data-day="2099-06-10"]')
+        ?.getAttribute("data-selected")
     ).toBe("true");
   });
 });

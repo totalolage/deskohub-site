@@ -157,7 +157,6 @@
   "errorPageTitle": "Something went wrong.",
   "errorPageDescription": "The page could not be loaded. Please try again.",
   "errorPageRetry": "Try again",
-  "requiredFieldLabel": "required",
   "emailPreviewTitle": "Workspace email previews",
   "emailPreviewNavigationLabel": "Email preview templates",
   "landingUiHeroVisualTag": "Workspace flow",

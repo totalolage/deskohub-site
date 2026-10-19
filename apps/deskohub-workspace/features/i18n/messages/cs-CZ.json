@@ -158,7 +158,6 @@
   "errorPageTitle": "Něco se pokazilo.",
   "errorPageDescription": "Stránku se nepodařilo načíst. Zkuste to prosím znovu.",
   "errorPageRetry": "Zkusit znovu",
-  "requiredFieldLabel": "povinné",
   "emailPreviewTitle": "Náhledy e-mailů Workspace",
   "emailPreviewNavigationLabel": "Šablony náhledů e-mailů",
   "landingUiHeroVisualTag": "Rytmus pracovního prostoru",

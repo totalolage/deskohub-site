@@ -8,25 +8,21 @@ import { buttonVariants } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 import "react-day-picker/style.css";
 
-export type CalendarProps = Omit<
-  React.ComponentProps<typeof DayPicker>,
-  "locale"
-> & {
-  /** The site locale; month, weekday, and day names follow it. */
-  readonly locale?: string;
-};
+export type CalendarProps = React.ComponentProps<typeof DayPicker>;
+
+/** The calendar locale whose month, weekday, and day names match the site locale. */
+export const getCalendarLocale = (locale: string | undefined) =>
+  locale === "cs-CZ" ? cs : enUS;
 
 export function Calendar({
   className,
   classNames,
   showOutsideDays = true,
   components,
-  locale,
   ...props
 }: CalendarProps) {
   return (
     <DayPicker
-      locale={locale === "cs-CZ" ? cs : enUS}
       showOutsideDays={showOutsideDays}
       className={cn("p-2", className)}
       classNames={{

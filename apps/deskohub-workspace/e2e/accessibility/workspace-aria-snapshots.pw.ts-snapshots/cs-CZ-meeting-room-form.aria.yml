@@ -1,5 +1,6 @@
-- button "Datum začátku rezervace zasedací místnosti, povinné"
-- textbox "Čas začátku rezervace zasedací místnosti, povinné": /\d{1,2}:\d{2}/
+- combobox "Datum a čas začátku *": /\d{1,2}\. \d{1,2}\. \d{4}/
+- 'button "Datum začátku rezervace zasedací místnosti: vybrat v kalendáři"'
+- textbox "Čas začátku rezervace zasedací místnosti": /\d{1,2}:\d{2}/
 - radiogroup "Volné časy začátku":
   - radio [checked]
 - radiogroup "Délka rezervace *":

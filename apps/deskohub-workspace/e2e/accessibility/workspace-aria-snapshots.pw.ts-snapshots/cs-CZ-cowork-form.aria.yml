@@ -1,7 +1,8 @@
 - radiogroup "Nabídka *":
   - radio /^Sdílené místo / [checked]
   - radio /^Vyhrazené místo /
-- button "Datum rezervace, povinné"
+- combobox "Datum rezervace *": /\d{1,2}\. \d{1,2}\. \d{4}/
+- 'button "Datum rezervace: vybrat v kalendáři"'
 - switch "Káva"
 - textbox "Email *"
 - textbox "Telefon *"

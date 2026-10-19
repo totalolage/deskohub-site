@@ -32,10 +32,7 @@ const accessibilityJournalDirectory =
   workspaceE2EAccountJournalDirectory("accessibility");
 
 /** The one account an audit run owns, under its run-scoped journal. */
-const seededAccountJournalOwner = (
-  runId: WorkspaceE2ERunId,
-  label: string
-) =>
+const seededAccountJournalOwner = (runId: WorkspaceE2ERunId, label: string) =>
   ({
     journalDirectory: accessibilityJournalDirectory,
     ownerId: runId,

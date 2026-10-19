@@ -3,7 +3,6 @@
 import { Option, Predicate, Schema } from "effect";
 import { Clock } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
-import { isLocale, m } from "@/features/i18n";
 import { useFormField } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/utils";
@@ -102,12 +101,6 @@ export function ReservationDateTimePicker({
   variant = "default",
 }: ReservationDateTimePickerProps) {
   const dateTime = useMemo(() => parsePlainDateTime(value), [value]);
-  const accessibleTimeLabel = ariaRequired
-    ? `${timeLabel}, ${m.requiredFieldLabel(
-        {},
-        isLocale(locale) ? { locale } : undefined
-      )}`
-    : timeLabel;
   const [pendingTime, setPendingTime] = useState(
     () =>
       dateTime?.toPlainTime().toString({ smallestUnit: "minute" }) ??
@@ -186,7 +179,7 @@ export function ReservationDateTimePicker({
             id={id ? `${id}-time` : undefined}
             aria-describedby={ariaDescribedBy}
             aria-invalid={ariaInvalid}
-            aria-label={accessibleTimeLabel}
+            aria-label={timeLabel}
             className="pl-11"
             min={selectedDateMinimumTime}
             onBlur={onBlur}

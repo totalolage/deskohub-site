@@ -1,5 +1,6 @@
 - group "Termín rezervace *":
-  - button "Datum začátku rezervace kanceláře, povinné"
+  - combobox "Datum začátku rezervace kanceláře *": /\d{1,2}\. \d{1,2}\. \d{4}/
+  - 'button "Datum začátku rezervace kanceláře: vybrat v kalendáři"'
   - spinbutton "Počet dní *": "1"
 - radiogroup "Kolik míst v kanceláři potřebuješ? *":
   - radio /^1 místo / [checked]

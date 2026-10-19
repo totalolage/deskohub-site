@@ -1,5 +1,6 @@
 - group "Reservation dates *":
-  - button "Office reservation start date, required"
+  - combobox "Office reservation start date *": /\d{1,2}\/\d{1,2}\/\d{4}/
+  - 'button "Office reservation start date: choose from the calendar"'
   - spinbutton "Number of days *": "1"
 - radiogroup "How many office seats do you need? *":
   - radio /^1 seat / [checked]

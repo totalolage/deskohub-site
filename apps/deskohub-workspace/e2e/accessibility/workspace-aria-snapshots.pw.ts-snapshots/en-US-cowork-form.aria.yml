@@ -1,7 +1,8 @@
 - radiogroup "Offer *":
   - radio /^Open Space / [checked]
   - radio /^Reserved Desk /
-- button "Reservation date, required"
+- combobox "Reservation date *": /\d{1,2}\/\d{1,2}\/\d{4}/
+- 'button "Reservation date: choose from the calendar"'
 - switch "Coffee"
 - textbox "Email *"
 - textbox "Phone *"

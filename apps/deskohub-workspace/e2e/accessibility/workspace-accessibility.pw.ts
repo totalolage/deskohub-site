@@ -81,9 +81,9 @@ test("reservation validation is associated with its controls", async ({
 }, testInfo) => {
   await openSettledPage(page, "/en-US/reservation/cowork");
 
-  // Matches the calendar trigger before and after the typed date input.
+  // The calendar button beside the typed date field.
   const dateButton = page.getByRole("button", {
-    name: /^Reservation date(, required|: choose from the calendar)$/,
+    name: "Reservation date: choose from the calendar",
   });
   await dateButton.click();
   await expect(page.getByRole("dialog")).toBeVisible();

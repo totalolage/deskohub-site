@@ -1,5 +1,6 @@
-- button "Meeting room start date, required"
-- textbox "Meeting room start time, required": /\d{1,2}:\d{2}/
+- combobox "Start date and time *": /\d{1,2}\/\d{1,2}\/\d{4}/
+- 'button "Meeting room start date: choose from the calendar"'
+- textbox "Meeting room start time": /\d{1,2}:\d{2}/
 - radiogroup "Free start times":
   - radio [checked]
 - radiogroup "Duration *":
