@@ -1404,10 +1404,6 @@ test("prepares a multi-day office reservation with selected seats", async () => 
 });
 
 test("asserts restored cowork switches for both current offers", async () => {
-  const restoredDate = new Intl.DateTimeFormat("en-US", {
-    dateStyle: "full",
-    timeZone: "Europe/Prague",
-  }).format(new Date("2099-09-01T12:00:00Z"));
   const runCoworkPrefill = (
     data: ReturnType<typeof makeCoworkCheckoutData>
   ) => {
@@ -1429,7 +1425,7 @@ test("asserts restored cowork switches for both current offers", async () => {
   ) => {
     document.body.innerHTML = `
       <input checked name="entryTier" type="radio" value="${data.expectedReservationDetails.entryTier}" />
-      <button aria-haspopup="dialog" type="button">${restoredDate}</button>
+      <input name="date" type="hidden" value="${data.date}" />
       ${switchHtml}
       <input name="email" value="${data.email}" />
       <input name="phone" value="${data.phone}" />
