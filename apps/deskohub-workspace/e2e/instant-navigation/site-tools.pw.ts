@@ -4,10 +4,7 @@ import { expect, type Page, type Request, test } from "@playwright/test";
 import { m } from "@/features/i18n";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { workspaceE2ETimeouts } from "../timeouts";
-import {
-  enablePreviewAccess,
-  expectPublicSiteShell,
-} from "./navigation-test-helpers";
+import { enablePreviewAccess } from "./navigation-test-helpers";
 
 declare global {
   interface Window {
@@ -85,6 +82,15 @@ const recordAgentToolRequests = (page: Page) => {
   return requests;
 };
 
+// Reservation pages use the minimal header, so the form itself shows the page
+// has loaded.
+async function expectCoworkReservationForm(page: Page) {
+  await expect(
+    page.getByRole("list", { name: "Reservation steps" })
+  ).toBeVisible();
+  await expect(page.getByLabel("Reservation date")).toBeVisible();
+}
+
 test.beforeEach(async ({ baseURL, context }) => {
   await enablePreviewAccess(context, baseURL);
 });
@@ -104,7 +110,7 @@ test("registers the public agent tools as site tools and runs one through /api/m
     "opens the cowork reservation page",
     async () => {
       await page.goto("/en-US/reservation/cowork");
-      await expectPublicSiteShell(page);
+      await expectCoworkReservationForm(page);
     },
     { timeout: workspaceE2ETimeouts.browserNavigation }
   );
@@ -173,7 +179,7 @@ test("makes no /api/mcp request in a browser without document.modelContext", asy
     "opens the cowork reservation page and lets it settle",
     async () => {
       await page.goto("/en-US/reservation/cowork");
-      await expectPublicSiteShell(page);
+      await expectCoworkReservationForm(page);
       await page.waitForLoadState("load");
       await page.waitForTimeout(workspaceE2ETimeouts.siteToolsQuietPeriod);
     },
