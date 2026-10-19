@@ -166,7 +166,11 @@ function ReservationLinkedCustomerSection({
     for (const name of reservationCustomerFieldNames) {
       form.setValue(name, values[name]);
     }
-    form.setValue("emailConfirmation", "");
+    // Details carried in rather than typed here need no second entry.
+    form.setValue(
+      "emailConfirmation",
+      nextMode === "contact" ? values.email : ""
+    );
     form.clearErrors([...reservationCustomerFieldNames, "emailConfirmation"]);
     customer.setMode(nextMode);
   };

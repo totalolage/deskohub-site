@@ -94,13 +94,19 @@ describe("auth return state", () => {
     // Billing text is trimmed, so it starts and ends with a letter.
     return `x${characters.join("").replace(/\s/g, "y")}x`;
   };
-  const billingState = makeAuthReturnState(
+  // The checkout contact step seals the contact with the billing details.
+  const contactBillingState = makeAuthReturnState(
     "checkout-contact",
-    Schema.Struct({ billing: invoiceBuyerSchema })
+    Schema.Struct({
+      name: Schema.String,
+      email: Schema.String,
+      phone: Schema.String,
+      billing: invoiceBuyerSchema,
+    })
   );
 
   test.each(Object.entries(characterRanges))(
-    "carries the largest billing details in %s through a magic link",
+    "carries the largest contact and billing details in %s through a magic link",
     (_name, range) => {
       const text = (length: number, seed: number) =>
         scatteredText(range, length, seed);
@@ -118,13 +124,22 @@ describe("auth return state", () => {
         },
       });
 
+      // The contact step accepts names up to 100 characters, emails up to
+      // 255, and phones up to 20.
+      const contact = {
+        name: text(100, 7),
+        email: `${text(240, 8)}@example.cz`,
+        phone: "+420 777 060 478 123",
+        billing,
+      };
+
       const token = runSync(
-        billingState.seal({ billing }, { keys, now: after(0) })
+        contactBillingState.seal(contact, { keys, now: after(0) })
       );
       expect(token.length).toBeLessThanOrEqual(maxAuthReturnStateLength);
       expect(
-        runSync(billingState.open(token, { keys, now: after(0) }))
-      ).toEqual({ billing });
+        runSync(contactBillingState.open(token, { keys, now: after(0) }))
+      ).toEqual(contact);
 
       // The page and its other parameters take the rest of the return path.
       const page = "/cs-CZ/cowork?selection=";

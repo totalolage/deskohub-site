@@ -277,7 +277,12 @@ export const getReservationCheckoutCustomerForm = <
         : existingCustomer,
       replacesTypedContact: Boolean(checkoutContact),
     },
-    initialValues,
+    // A contact carried in by a link or a restored checkout was entered
+    // before, so it opens confirmed.
+    initialValues:
+      existingCustomer.initialMode === "contact"
+        ? { ...initialValues, emailConfirmation: initialValues.email }
+        : initialValues,
   };
 };
 

@@ -100,6 +100,7 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import type { ReservationPrePaymentOutcome } from "@/features/reservation/reservation-analytics";
 import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
+import { getReservationCustomerProfile } from "@/features/reservation/reservation-customer-profile";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
@@ -751,8 +752,10 @@ const prepareReservationDraft = Effect.fn(
 
 /**
  * The account a reservation booked "as the account" belongs to: the linked
- * Dotypos customer and the contact the reservation must carry. The account
- * advisory lock is already held, so this only reads the existing link.
+ * Dotypos customer and the contact the reservation must carry. An account
+ * without a profile yet saves the submitted contact and billing as its
+ * profile first. The account advisory lock is already held, so this reads
+ * the existing link and creates one without taking the lock again.
  */
 const resolveAccountCustomer = Effect.fn(
   "preparePayState.resolveAccountCustomer"
@@ -760,11 +763,17 @@ const resolveAccountCustomer = Effect.fn(
   if (input.customer !== "account") return undefined;
 
   const contacts = yield* CustomerAccountContactService;
-  const contact = yield* contacts.current.pipe(
-    Effect.catchIf(
-      (error) => error.reason === "not-configured",
-      () => Effect.succeed(null)
-    )
+  const account = yield* contacts.currentAccount;
+  const contact = yield* Match.value(account).pipe(
+    Match.discriminatorsExhaustive("status")({
+      "signed-out": () => Effect.succeed(null),
+      unlinked: (unlinked) =>
+        contacts.completeProfileUnderHeldLock(
+          unlinked,
+          getReservationCustomerProfile(input.reservation)
+        ),
+      linked: (linked) => contacts.linkedContact(linked),
+    })
   );
   if (!contact) {
     return yield* new CustomerAccountAccessError({ reason: "unauthenticated" });
@@ -784,43 +793,39 @@ const resolveAccountCustomer = Effect.fn(
  * Carries the remembered referral code in an account booking's first Pay
  * state when the account can still take it, so the first quote already prices
  * the invitation. The attribution is recorded only when that order is paid, so
- * an abandoned checkout leaves nothing behind. Guests, contact bookings, and
+ * an abandoned checkout leaves nothing behind. Bookings for someone else and
  * every rejection continue checkout without it.
  */
 const evaluateAccountReferralCode = Effect.fn(
   "preparePayState.evaluateAccountReferralCode"
-)(function* (input: PreparePayStateInput, code: ReferralCode | undefined) {
-  if (input.customer !== "account" || code === undefined) {
+)(function* (
+  accountCustomerId: DotyposCustomerId | undefined,
+  code: ReferralCode | undefined
+) {
+  if (accountCustomerId === undefined || code === undefined) {
     return undefined;
   }
 
-  const contacts = yield* CustomerAccountContactService;
   const referrals = yield* ReferralService;
-  return yield* contacts.currentLinkedAccount.pipe(
-    Effect.flatMap((account) =>
-      account
-        ? referrals.evaluateCheckoutReferral({
-            code,
-            dotyposCustomerId: account.dotyposCustomerId,
-          })
-        : Effect.undefined
-    ),
-    Effect.map((evaluation) =>
-      evaluation === undefined
-        ? undefined
-        : {
-            referralCode:
-              evaluation.kind === "eligible"
-                ? canonicalPromotionCodeSchema.make(evaluation.code)
-                : undefined,
-          }
-    ),
-    Effect.catch((error) =>
-      Effect.logInfo("Checkout referral code was not carried", {
-        reason: error._tag === "ReferralError" ? error.reason : error._tag,
-      }).pipe(Effect.as(undefined))
-    )
-  );
+  return yield* referrals
+    .evaluateCheckoutReferral({ code, dotyposCustomerId: accountCustomerId })
+    .pipe(
+      Effect.map((evaluation) =>
+        evaluation === undefined
+          ? undefined
+          : {
+              referralCode:
+                evaluation.kind === "eligible"
+                  ? canonicalPromotionCodeSchema.make(evaluation.code)
+                  : undefined,
+            }
+      ),
+      Effect.catch((error) =>
+        Effect.logInfo("Checkout referral code was not carried", {
+          reason: error._tag === "ReferralError" ? error.reason : error._tag,
+        }).pipe(Effect.as(undefined))
+      )
+    );
 });
 
 /**
@@ -914,10 +919,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         }).pipe(Effect.as(undefined))
       )
     );
-    const accountReferral = yield* evaluateAccountReferralCode(
-      input,
-      rememberedReferralCode
-    );
     const referralCodePrefill = yield* findReferralCodePrefill(
       input,
       rememberedReferralCode
@@ -929,10 +930,15 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     // The full state-creating section runs inside the account advisory
     // lock: authority is re-checked under the lock and the same lock is
     // held until the section completes, so deletion cannot interleave
-    // between the check and the created state. Anonymous sessions run
-    // unchanged; a session-authority failure fails closed.
+    // between the check and the created state. Only a signed-in account
+    // books; a session-authority failure fails closed.
     const result = yield* accountActivity.guardStateCreation(
       Effect.fn(function* (accountId) {
+        if (!accountId) {
+          return yield* new CustomerAccountAccessError({
+            reason: "unauthenticated",
+          });
+        }
         yield* Match.value(input.reservation).pipe(
           Match.discriminatorsExhaustive("kind")({
             cowork: () => Effect.void,
@@ -942,6 +948,10 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         );
 
         const accountCustomer = yield* resolveAccountCustomer(input);
+        const accountReferral = yield* evaluateAccountReferralCode(
+          accountCustomer?.dotyposCustomerId,
+          rememberedReferralCode
+        );
 
         // Submission locks the price: calendar sales are evaluated at this
         // booking moment here and at every later checkout re-check.
@@ -1080,19 +1090,17 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         const { checkoutSessionId, reservationDraft } = preparedDraft;
         yield* Effect.annotateLogsScoped({ reservationDraft });
 
-        // A draft started before the customer signed in has no author yet,
-        // so the signed-in account resuming it becomes its author. A draft
-        // another account authored isn't this account's to resume.
-        if (accountId) {
-          const author = yield* reservations.assignAuthor({
-            id: reservationDraft.id,
-            authorAccountId: accountId,
+        // A legacy draft started before sign-in has no author yet, so the
+        // account resuming it becomes its author. A draft another account
+        // authored isn't this account's to resume.
+        const author = yield* reservations.assignAuthor({
+          id: reservationDraft.id,
+          authorAccountId: accountId,
+        });
+        if (author !== accountId) {
+          return yield* new CheckoutAttemptUnavailableError({
+            reservation: reservationDraft,
           });
-          if (author !== accountId) {
-            return yield* new CheckoutAttemptUnavailableError({
-              reservation: reservationDraft,
-            });
-          }
         }
         yield* Effect.logInfo("Workspace reservation draft ready");
 

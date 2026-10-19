@@ -1,6 +1,6 @@
 "use client";
 
-import type { FormEvent, ReactNode } from "react";
+import { type FormEvent, type ReactNode, useEffect, useRef } from "react";
 import type { FieldPath, FieldValues, UseFormReturn } from "react-hook-form";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import type { CheckoutStatusSummaryPresentation } from "@/features/checkout/checkout-status-summary-presentation";
@@ -206,6 +206,34 @@ export function ReservationCheckoutForm<
     checkoutStep.goTo("contact");
   };
   const isContactStep = checkoutStep.step === "contact";
+  const isSubmitDisabled =
+    form.formState.isSubmitting ||
+    (isContactStep && checkoutCustomer.status === "unavailable") ||
+    isSubmittingCheckout ||
+    emailVerification.isVerifying ||
+    hasPreparedPayRedirect ||
+    Boolean(availability.unavailableMessage) ||
+    availability.isPending ||
+    advertisedPrice.isFetching ||
+    // A failed refresh keeps the previous, possibly expired, token.
+    advertisedPrice.isError ||
+    !advertisedPrice.token;
+
+  // Details typed before the email verification that signed this account in
+  // continue to payment on their own once the page can submit them. A failed
+  // attempt leaves the filled form for the customer to retry.
+  const formRef = useRef<HTMLFormElement>(null);
+  const hasContinuedCheckout = useRef(false);
+  const continuesCheckout =
+    checkoutCustomer.status === "profile-missing" &&
+    checkoutCustomer.continuesCheckout &&
+    isContactStep;
+  useEffect(() => {
+    if (!continuesCheckout || isSubmitDisabled || hasContinuedCheckout.current)
+      return;
+    hasContinuedCheckout.current = true;
+    formRef.current?.requestSubmit();
+  }, [continuesCheckout, isSubmitDisabled]);
 
   if (isPreparingCheckout) {
     return <CheckoutPayPageSkeleton locale={locale} />;
@@ -224,7 +252,12 @@ export function ReservationCheckoutForm<
       }
     >
       <Form {...form}>
-        <form className="space-y-7" noValidate onSubmit={handleSubmit}>
+        <form
+          className="space-y-7"
+          noValidate
+          onSubmit={handleSubmit}
+          ref={formRef}
+        >
           {/* Both steps stay mounted, so going back keeps what was typed. */}
           <div className="space-y-7" hidden={isContactStep}>
             {children}
@@ -253,19 +286,7 @@ export function ReservationCheckoutForm<
             )}
           </div>
           <ReservationSubmitSection
-            disabled={
-              form.formState.isSubmitting ||
-              (isContactStep && checkoutCustomer.status === "unavailable") ||
-              isSubmittingCheckout ||
-              emailVerification.isVerifying ||
-              hasPreparedPayRedirect ||
-              Boolean(availability.unavailableMessage) ||
-              availability.isPending ||
-              advertisedPrice.isFetching ||
-              // A failed refresh keeps the previous, possibly expired, token.
-              advertisedPrice.isError ||
-              !advertisedPrice.token
-            }
+            disabled={isSubmitDisabled}
             isAvailabilityLoading={availability.isPending}
             isPriceLoading={
               advertisedPrice.isFetching && !advertisedPrice.token
