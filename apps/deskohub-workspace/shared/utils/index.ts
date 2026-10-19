@@ -25,6 +25,7 @@ export type { VariableStyle } from "./variable-style";
 export {
   workspaceFormattedAddress,
   workspaceGoogleDirectionsUrl,
+  workspaceLocationMapEmailWidth,
   workspaceLocationMapImageOptions,
   workspaceLocationMapImagePath,
 } from "./workspace-location-map";
