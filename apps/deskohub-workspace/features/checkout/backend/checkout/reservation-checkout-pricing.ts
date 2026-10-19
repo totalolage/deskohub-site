@@ -99,7 +99,7 @@ export type ReservationDiscountCodePriceInput<
   readonly submittedCode: CanonicalPromotionCode;
 };
 
-export type ReservationAdvertisementQuote<
+type ReservationAdvertisedPrice<
   Reservation extends AdvertisedReservation<ReservationDetails>,
   Quote extends ReservationQuote,
 > = PayStateSubmittedCodeMetadata & {
@@ -108,10 +108,21 @@ export type ReservationAdvertisementQuote<
   readonly quote: Quote;
 };
 
+export type ReservationAdvertisementQuote<
+  Reservation extends AdvertisedReservation<ReservationDetails>,
+  Quote extends ReservationQuote,
+> = ReservationAdvertisedPrice<Reservation, Quote> & {
+  /**
+   * False when a discount source could not answer, so the price may miss a
+   * running sale. Such a price is right for this request but not to share.
+   */
+  readonly discountsComplete: boolean;
+};
+
 export type ReservationAdvertisementAffirmation<
   Reservation extends AdvertisedReservation<ReservationDetails>,
   Quote extends ReservationQuote,
-> = ReservationAdvertisementQuote<Reservation, Quote> & {
+> = ReservationAdvertisedPrice<Reservation, Quote> & {
   readonly discountQuote: AffirmedDiscountAdvertisementQuote;
 };
 
@@ -312,30 +323,31 @@ export const reservationCheckoutPricing = <
         Effect.bindTo("pricing"),
         // An advertised price previews a booking made right now.
         Effect.bind("bookedAt", () => currentInstant),
-        Effect.bind("discountQuote", ({ bookedAt, pricing }) =>
+        Effect.bind("advertisement", ({ bookedAt, pricing }) =>
           discounts.discoverAdvertisedDiscounts({
             ...pricing.discountInput,
             bookedAt,
             locale: input.locale,
           })
         ),
-        Effect.bind("preview", ({ discountQuote }) =>
+        Effect.bind("preview", ({ advertisement }) =>
           previewSubmittedCode({
-            discountQuote,
+            discountQuote: advertisement.quote,
             locale: input.locale,
             submittedCode: input.submittedCode,
           })
         ),
-        Effect.bind("quote", ({ discountQuote, preview, pricing }) =>
+        Effect.bind("quote", ({ advertisement, preview, pricing }) =>
           domain.buildQuote({
             pricing,
-            discountQuote: preview?.discountQuote ?? discountQuote,
+            discountQuote: preview?.discountQuote ?? advertisement.quote,
           })
         ),
-        Effect.map(({ preview, quote }) => ({
+        Effect.map(({ advertisement, preview, quote }) => ({
           kind: input.reservation.kind,
           reservation: input.reservation,
           quote,
+          discountsComplete: advertisement.complete,
           ...getSubmittedCodeMetadata(preview ?? {}),
         }))
       )

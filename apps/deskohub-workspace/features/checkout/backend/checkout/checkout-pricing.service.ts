@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Match } from "effect";
 import { DiscountService } from "@/features/discounts/discount.service";
+import type { DiscountReleaseGates } from "@/features/discounts/discount-release-gate.service";
 import {
   type CoworkAdvertisementAffirmation,
   type CoworkAdvertisementAffirmationInput,
@@ -219,4 +220,11 @@ export class CheckoutPricingService extends Context.Service<
   );
 
   static Live = this.Default.pipe(Layer.provide(DiscountService.Live));
+
+  /**
+   * Live pricing under discount release gates the caller already decided,
+   * for work that must not read the request, such as a cached render.
+   */
+  static withDiscountReleaseGates = (gates: DiscountReleaseGates) =>
+    this.Default.pipe(Layer.provide(DiscountService.withReleaseGates(gates)));
 }

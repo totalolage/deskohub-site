@@ -889,6 +889,7 @@
   "accountSignInCodeTooManyAttempts": "Too many wrong tries, so this code no longer works. Send a new email to get a fresh code.",
   "accountSignInCodeFailed": "We could not check the code. Please try again.",
   "accountSignInCodeVerified": "You are signed in. Taking you to your account…",
+  "accountSignInCodeVerifiedReturning": "You are signed in. Taking you back…",
   "accountSignInCodeResend": "Send a new email",
   "accountSignInCodeResendCooldown": "Send a new email in {seconds} s",
   "accountSignInCodeResent": "We sent a new email. Codes from earlier emails no longer work.",
@@ -899,6 +900,11 @@
   "accountSignInEmailLimitReached": "We have sent too many sign-in emails to this address. Please try again later.",
   "accountSignInRateLimited": "Too many requests right now. Please wait a moment and try again.",
   "accountSignInLoading": "Loading sign-in…",
+  "accountVerifyMetadataTitle": "Check your inbox | Deskohub Workspace",
+  "accountVerifyMetadataDescription": "Finish signing in to your Deskohub Workspace account with the link or code we emailed you.",
+  "accountVerifyMissingTitle": "No sign-in email is waiting",
+  "accountVerifyMissingBody": "This page continues a sign-in started in this browser tab, and none is waiting here. Ask for a new email to continue.",
+  "accountVerifyMissingAction": "Go to sign-in",
   "accountContentLoading": "Loading content…",
   "accountCallbackMetadataTitle": "Sign-in link | Deskohub Workspace",
   "accountCallbackMetadataDescription": "Open your single-use sign-in link for the Deskohub Workspace customer account.",
@@ -1096,5 +1102,8 @@
   "publicOfferingMeetingRoomUsage": "Hourly bookings start on the hour you choose. The whole-day booking runs from midnight to midnight.",
   "publicOfferingOfficeDescription": "A private office reserved only for you for whole days, with the seats you need.",
   "publicOfferingOfficeUsage": "Book whole days starting up to one month ahead. One booking can last up to {hours} hours, normally 28 days.",
-  "publicOfferingOfficeSeatPrice": "Each reserved seat, per day"
+  "publicOfferingOfficeSeatPrice": "Each reserved seat, per day",
+  "publicOfferingAddOnIncluded": "{addOn} included",
+  "publicPageTopicOffer": "Offer",
+  "publicPageTopicBooking": "Booking"
 }

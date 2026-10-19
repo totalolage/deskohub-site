@@ -1,3 +1,4 @@
+import { Option } from "effect";
 import {
   type AccountSection,
   defaultAccountSection,
@@ -18,6 +19,39 @@ export const signInReturnParam = "returnTo";
 
 /** The magic-link search parameter correlating the callback tab with the tab that sent it. */
 export const signInAttemptParam = "attempt";
+
+/**
+ * The magic-link callback's return target. Better Auth decodes a magic link's
+ * `callbackURL` once more before it redirects, which would split a query
+ * nested in a plain path, so the callback carries it base64url-encoded.
+ */
+export const signInCallbackReturnParam = "return";
+
+// Same-origin paths are ASCII, which `btoa` and `atob` take as they are.
+const encodeCallbackReturn = Option.liftThrowable((path: string) =>
+  btoa(path).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")
+);
+
+/**
+ * The callback's encoding of a return target, as `getAuthCallbackPath` writes
+ * it. It encodes any value as is, so validate the target first.
+ */
+export const encodeAuthCallbackReturn = (path: string): string | undefined =>
+  Option.getOrUndefined(encodeCallbackReturn(path));
+const decodeCallbackReturn = Option.liftThrowable((value: string) =>
+  atob(value.replaceAll("-", "+").replaceAll("_", "/"))
+);
+
+/**
+ * The same-origin return target a magic-link callback carries, validated
+ * again because anyone can craft the URL; `undefined` for anything else.
+ */
+export const readAuthCallbackReturnTo = (
+  value: string | null | undefined
+): string | undefined =>
+  value === null || value === undefined || !/^[\w-]+$/.test(value)
+    ? undefined
+    : parseSameOriginPath(Option.getOrUndefined(decodeCallbackReturn(value)));
 
 export const getAccountPath = (locale: Locale) =>
   getLocalizedPagePath(locale, "/[locale]/account");
@@ -58,9 +92,20 @@ export const getAuthCallbackPath = (
   const query = new URLSearchParams();
   if (attemptId !== undefined) query.set(signInAttemptParam, attemptId);
   const returnPath = parseSameOriginPath(returnTo);
-  if (returnPath !== undefined) query.set(signInReturnParam, returnPath);
+  const encodedReturn =
+    returnPath === undefined ? undefined : encodeAuthCallbackReturn(returnPath);
+  if (encodedReturn !== undefined) {
+    query.set(signInCallbackReturnParam, encodedReturn);
+  }
   return query.size === 0 ? path : `${path}?${query}`;
 };
+
+/**
+ * The page that waits for the sign-in email this tab requested last: the
+ * inbox instructions and, while sign-in codes are on, the code entry.
+ */
+export const getAuthVerifyPath = (locale: Locale) =>
+  getLocalizedPagePath(locale, "/[locale]/auth/verify");
 
 export const getAccountSectionPath = (
   locale: Locale,

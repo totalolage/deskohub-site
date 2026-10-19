@@ -726,12 +726,21 @@ describe("AccountPage states", () => {
   });
 
   test("redirects unauthenticated visitors without loading account data", async () => {
-    const view = await renderState({ kind: "unauthenticated" });
+    const originalReplace = window.location.replace;
+    const documentNavigations: string[] = [];
+    window.location.replace = ((href: string) => {
+      documentNavigations.push(href);
+    }) as typeof window.location.replace;
+    const view = await renderState({ kind: "unauthenticated" }).finally(() => {
+      window.location.replace = originalReplace;
+    });
 
     expect(
       view.getByRole("status", { name: m.accountSignInLoading({}, en) })
     ).toBeTruthy();
-    expect(workspaceRouterReplace).toHaveBeenCalledWith("/en-US/auth/sign-in");
+    // A document navigation loads the sign-in page, not its modal.
+    expect(documentNavigations).toEqual(["/en-US/auth/sign-in"]);
+    expect(workspaceRouterReplace).not.toHaveBeenCalled();
     expect(refreshAnalyticsAccountIdentity).not.toHaveBeenCalled();
     expect(view.queryByText(m.accountTitle({}, en))).toBeNull();
     expect(view.queryByText(m.accountSectionReservations({}, en))).toBeNull();

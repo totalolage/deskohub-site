@@ -24,6 +24,10 @@ const { act, cleanup, fireEvent, render } = await import(
   "@testing-library/react"
 );
 const { renderToStaticMarkup } = await import("react-dom/server");
+const { rememberEmailSignInRequest } = await import(
+  "@/features/account/email-sign-in-request"
+);
+const { getAuthCallbackPath } = await import("@/features/account/routes");
 
 const locale = "en-US";
 
@@ -110,6 +114,7 @@ describe("account components", () => {
 
   afterEach(() => {
     cleanup();
+    rememberEmailSignInRequest(null);
     sessionStorage.clear();
     window.location.replace = originalReplace;
     signInMagicLink.mockClear();
@@ -360,7 +365,10 @@ describe("account components", () => {
     expect(
       view.queryByText(m.accountSignInCodeTitle({}, { locale }))
     ).toBeNull();
-    expect(sessionStorage.getItem(codeRequestStorageKey)).toBeNull();
+    // Kept link-only, so a reload or the verify page can continue it.
+    expect(
+      JSON.parse(sessionStorage.getItem(codeRequestStorageKey) ?? "{}")
+    ).toMatchObject({ signInCode: false });
   });
 
   test("sign-in card asks for the code when the email carries one", async () => {
@@ -564,6 +572,141 @@ describe("account components", () => {
     expect(sessionStorage.getItem(codeRequestStorageKey)).toBeNull();
   });
 
+  const pendingReturnTo = "/en-US/cowork?date=2026-11-02&contact=sealed-a";
+  const otherReturnTo = "/en-US/meeting-room?date=2026-11-03";
+  const signedInSession = () =>
+    Promise.resolve({
+      data: {
+        session: { createdAt: new Date() },
+        user: { emailVerified: true },
+      },
+      error: null,
+    } as const);
+
+  const typeCode = async (view: ReturnType<typeof render>) => {
+    await act(async () => {
+      fireEvent.change(codeInput(view), { target: { value: "482913" } });
+    });
+  };
+
+  const focusSignedInTab = async () => {
+    getSession.mockImplementation(signedInSession);
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      await Promise.resolve();
+    });
+  };
+
+  test.each([
+    ["without a destination", undefined],
+    ["for the same destination", pendingReturnTo],
+  ] as const)(
+    "sign-in card reopened %s verifies a pending code to the request's destination",
+    async (_case, returnTo) => {
+      rememberEmailSignInRequest({
+        email: adaAddress,
+        requestedAt: Date.now(),
+        returnTo: pendingReturnTo,
+      });
+      getSession.mockImplementation(signedInSession);
+      const { SignInCard } = await import("./sign-in-card");
+
+      const view = render(<SignInCard locale={locale} returnTo={returnTo} />);
+      await typeCode(view);
+
+      const callbackURL = getAuthCallbackPath(locale, {
+        returnTo: pendingReturnTo,
+      });
+      expect(signInEmailOtp).toHaveBeenCalledWith({
+        email: adaAddress,
+        otp: "482913",
+        callbackURL,
+      });
+      expect(navigations).toEqual([callbackURL]);
+    }
+  );
+
+  test.each([
+    ["without a destination", undefined],
+    ["for the same destination", pendingReturnTo],
+  ] as const)(
+    "sign-in card reopened %s continues a link sign-in to the request's destination",
+    async (_case, returnTo) => {
+      rememberEmailSignInRequest({
+        email: adaAddress,
+        requestedAt: Date.now(),
+        returnTo: pendingReturnTo,
+      });
+      const { SignInCard } = await import("./sign-in-card");
+
+      const view = render(<SignInCard locale={locale} returnTo={returnTo} />);
+      expect(codeInput(view)).toBeTruthy();
+      await focusSignedInTab();
+
+      expect(navigations).toEqual([pendingReturnTo]);
+    }
+  );
+
+  test("sign-in card opened for another destination starts a fresh request instead of the pending one", async () => {
+    rememberEmailSignInRequest({
+      email: adaAddress,
+      requestedAt: Date.now(),
+      returnTo: pendingReturnTo,
+    });
+    signInMagicLink.mockImplementation(sentWithCode);
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = render(
+      <SignInCard locale={locale} returnTo={otherReturnTo} />
+    );
+    // The pending request's code would land on its own destination.
+    expect(
+      view.queryByLabelText(m.accountSignInCodeLabel({}, { locale }))
+    ).toBeNull();
+    // Its link already lands there, so this tab no longer follows it.
+    await focusSignedInTab();
+    expect(navigations).toEqual([]);
+    getSession.mockImplementation(() =>
+      Promise.resolve({ data: null, error: null })
+    );
+
+    await submitEmail(view);
+    const callbackURL = getAuthCallbackPath(locale, {
+      returnTo: otherReturnTo,
+    });
+    expect(signInMagicLink).toHaveBeenCalledWith(
+      expect.objectContaining({ callbackURL })
+    );
+    expect(
+      JSON.parse(sessionStorage.getItem(codeRequestStorageKey) ?? "{}")
+    ).toMatchObject({ returnTo: otherReturnTo });
+
+    getSession.mockImplementation(signedInSession);
+    await typeCode(view);
+    expect(signInEmailOtp).toHaveBeenCalledWith({
+      email: adaAddress,
+      otp: "482913",
+      callbackURL,
+    });
+    expect(navigations).toEqual([callbackURL]);
+  });
+
+  test("sign-in card opened for a destination starts fresh over a pending plain sign-in", async () => {
+    storeCodeRequest(Date.now());
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = render(
+      <SignInCard locale={locale} returnTo={otherReturnTo} />
+    );
+
+    expect(
+      view.getByLabelText(m.accountSignInEmailLabel({}, { locale }))
+    ).toBeTruthy();
+    expect(
+      view.queryByLabelText(m.accountSignInCodeLabel({}, { locale }))
+    ).toBeNull();
+  });
+
   test("sign-in card returns to the prefilled email step to change the address", async () => {
     storeCodeRequest(Date.now());
     const { SignInCard } = await import("./sign-in-card");
@@ -607,7 +750,10 @@ describe("account components", () => {
     expect(document.activeElement).toBe(
       view.getByText(m.accountSignInAcceptedTitle({}, { locale }))
     );
-    expect(sessionStorage.getItem(codeRequestStorageKey)).toBeNull();
+    // Kept link-only, so a reload or the verify page can continue it.
+    expect(
+      JSON.parse(sessionStorage.getItem(codeRequestStorageKey) ?? "{}")
+    ).toMatchObject({ signInCode: false });
   });
 
   test("sign-in card does not reopen a cancelled code step after resend resolves", async () => {
