@@ -4,7 +4,7 @@ import {
   workspaceCoworkCurrentTiers,
 } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
-import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-reservation-capacity";
+import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-advisory-seat-capacity";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { getCoworkOfferSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";

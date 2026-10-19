@@ -11,7 +11,7 @@ import {
 } from "@/features/checkout/product-catalog";
 import { getReservationQuoteDiscount } from "@/features/checkout/reservation-quote-schema";
 import { type Locale, m } from "@/features/i18n";
-import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-reservation-capacity";
+import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-advisory-seat-capacity";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
 import { getCoworkAdvertisedPriceReservation } from "@/features/reservation/cowork-reservation";
 import { getCoworkReservationSelectionSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";

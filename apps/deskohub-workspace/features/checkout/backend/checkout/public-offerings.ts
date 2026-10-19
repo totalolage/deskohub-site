@@ -7,7 +7,7 @@ import {
 } from "@/features/checkout/public-offerings";
 import { getReservationQuoteDiscount } from "@/features/checkout/reservation-quote-schema";
 import type { Locale } from "@/features/i18n";
-import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-reservation-capacity";
+import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-advisory-seat-capacity";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { currentInstant } from "@/shared/utils/temporal";
