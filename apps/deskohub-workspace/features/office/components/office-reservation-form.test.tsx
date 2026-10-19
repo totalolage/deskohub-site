@@ -9,13 +9,6 @@ import {
   test,
 } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  waitFor,
-} from "@testing-library/react";
 import { Effect, Schema } from "effect";
 import type { ComponentProps } from "react";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
@@ -34,6 +27,14 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import { plainDateStringSchema } from "@/shared/utils/temporal";
+
+// React DOM detects input events when it loads, so the DOM must exist before
+// it is imported for typed text to reach the form.
+registerWorkspaceComponentTestEnv();
+
+const { act, cleanup, fireEvent, render, waitFor } = await import(
+  "@testing-library/react"
+);
 
 const executeAsync = mock(() => Promise.resolve({}));
 const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
@@ -56,15 +57,17 @@ const {
 const officeAvailabilityResponse = ({
   from,
   to,
+  unavailableDates = [],
 }: {
   readonly from: string;
   readonly to: string;
+  readonly unavailableDates?: readonly string[];
 }) =>
   new Response(
     JSON.stringify({
       from,
       to,
-      unavailableDates: [],
+      unavailableDates,
       reservedDeskWorkstationRequiredDates: [],
       unavailableCoworkTiers: [],
       meetingRoomUnavailable: false,
@@ -579,16 +582,73 @@ describe("OfficeReservationForm", () => {
       initialValues: officeReservationDefaultValues,
       today,
     });
-    const startDate = view.getByRole("button", {
+    const startDate = view.getByRole("combobox", {
+      name: /^Office reservation start date/,
+    });
+    const calendarButton = view.getByRole("button", {
       name: /^Office reservation start date/,
     });
     expect(startDate.getAttribute("aria-invalid")).toBe("false");
 
-    await act(async () => fireEvent.click(startDate));
-    await act(async () => fireEvent.click(startDate));
+    await act(async () => fireEvent.click(calendarButton));
+    await act(async () => fireEvent.click(calendarButton));
     await act(async () => {});
 
     expect(startDate.getAttribute("aria-invalid")).toBe("true");
     expect(executeAsync).not.toHaveBeenCalled();
+  });
+
+  test("keeps a typed unavailable start date out of the form", async () => {
+    const today = decodePlainDate("2026-08-10");
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        officeAvailabilityResponse({
+          from: "2026-08-10",
+          to: "2026-09-10",
+          unavailableDates: ["2026-08-12"],
+        })
+      )
+    );
+
+    const view = renderOfficeForm({
+      initialValues: { ...officeReservationDefaultValues, startsOn: today },
+      today,
+    });
+    const startDate = view.getByRole<HTMLInputElement>("combobox", {
+      name: /^Office reservation start date/,
+    });
+    const startsOn = () =>
+      view.container.querySelector<HTMLInputElement>('input[name="startsOn"]')
+        ?.value;
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    await act(async () => {});
+    expect(startDate.value).toBe("8/10/2026");
+
+    await act(async () => {
+      fireEvent.change(startDate, { target: { value: "8/12/2026" } });
+      fireEvent.focusOut(startDate);
+    });
+
+    expect(startsOn()).toBe("");
+    expect(startDate.value).toBe("8/12/2026");
+    expect(startDate.getAttribute("aria-invalid")).toBe("true");
+    expect(
+      view.getByText("August 12, 2026 isn't available. Choose another date.")
+    ).not.toBeNull();
+
+    const form = startDate.closest("form");
+    if (!form) throw new Error("the start date is outside the form");
+    await act(async () => fireEvent.submit(form));
+    await act(async () => {});
+
+    expect(executeAsync).not.toHaveBeenCalled();
+    expect(startsOn()).toBe("");
+
+    await act(async () => {
+      fireEvent.change(startDate, { target: { value: "2026-08-11" } });
+      fireEvent.focusOut(startDate);
+    });
+    expect(startsOn()).toBe("2026-08-11");
+    expect(startDate.value).toBe("8/11/2026");
   });
 });

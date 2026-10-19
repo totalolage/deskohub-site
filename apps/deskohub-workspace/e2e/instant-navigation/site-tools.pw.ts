@@ -3,8 +3,8 @@ import "@/shared/polyfills/temporal";
 import { expect, type Page, type Request, test } from "@playwright/test";
 import { m } from "@/features/i18n";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import { enablePreviewAccess } from "../preview-access";
 import { workspaceE2ETimeouts } from "../timeouts";
-import { enablePreviewAccess } from "./navigation-test-helpers";
 
 declare global {
   interface Window {

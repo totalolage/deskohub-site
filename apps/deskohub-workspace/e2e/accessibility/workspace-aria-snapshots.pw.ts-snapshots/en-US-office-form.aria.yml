@@ -1,0 +1,19 @@
+- group "Reservation dates *":
+  - combobox "Office reservation start date *": /\d{1,2}\/\d{1,2}\/\d{4}/
+  - 'button "Office reservation start date: choose from the calendar"'
+  - spinbutton "Number of days *": "1"
+- radiogroup "How many office seats do you need? *":
+  - radio /^1 seat / [checked]
+- textbox "Email *"
+- textbox "Phone *"
+- textbox "Name *"
+- group "Reservation purpose":
+  - switch "Business use"
+  - button
+  - checkbox "Create invoice"
+- link "Privacy Policy":
+  - /url: /en-US/privacy-policy
+- checkbox /^I agree that Desktechub s\.r\.o\. may use my email/
+- link "Marketing Communications Consent":
+  - /url: /en-US/marketing-communications
+- button "Continue"

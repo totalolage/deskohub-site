@@ -622,7 +622,7 @@ const waitForPublicLegalContent = async (page: Page, locale: Locale) => {
   });
   const legalNavigation = accountMain.getByRole("navigation", {
     exact: true,
-    name: m.footerLegalLabel({}, { locale }),
+    name: m.legalScreenTitle({}, { locale }),
   });
 
   await legalTitle.waitFor({ state: "visible" });
