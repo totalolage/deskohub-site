@@ -2821,6 +2821,125 @@ describe("DotyposService reservation listing", () => {
   });
 });
 
+describe("DotyposService reservation page", () => {
+  const reservationListRequests = (fetchMock: {
+    mock: { calls: unknown[][] };
+  }) =>
+    fetchMock.mock.calls
+      .map((call) => new URL(getUrl(call as FetchCall)))
+      .filter((url) => url.pathname === "/clouds/cloud-id/reservations");
+
+  test.each([
+    { providerNextPage: "4", nextPage: Option.some(4) },
+    { providerNextPage: null, nextPage: Option.none() },
+  ])(
+    "reads the requested page with one request and reports next page $providerNextPage",
+    async ({ providerNextPage, nextPage }) => {
+      const reservations = [reservation({ id: "reservation-1" })];
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        return Response.json({
+          currentPage: "3",
+          data: reservations,
+          nextPage: providerNextPage,
+        });
+      });
+
+      const page = await runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.listReservationsPage({
+            customerId: dotyposCustomerId("customer-id"),
+            startsAtOrAfter: "2026-08-04T00:00:00Z",
+            order: "startDateAscending",
+            page: 3,
+          });
+        }),
+        fetchMock
+      );
+
+      const requests = reservationListRequests(fetchMock);
+      expect(requests).toHaveLength(1);
+      expect(Object.fromEntries(requests[0]?.searchParams ?? [])).toEqual({
+        filter:
+          "_customerId|eq|customer-id;startDate|gteq|2026-08-04T00:00:00Z",
+        sort: "startDate",
+        limit: "100",
+        page: "3",
+      });
+      expect(page).toEqual({ reservations, nextPage });
+    }
+  );
+
+  test.each([
+    {
+      failure: "a server error",
+      respond: () =>
+        Response.json(
+          { error: "unavailable", error_description: "Unavailable" },
+          { status: 503 }
+        ),
+      error: { _tag: "ExternalAPIError", statusCode: 503 },
+    },
+    {
+      failure: "a network error",
+      respond: () => {
+        throw new TypeError("fetch failed");
+      },
+      error: { _tag: "NetworkError" },
+    },
+  ])(
+    "leaves $failure to the caller instead of retrying it",
+    async ({ respond, error }) => {
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        return respond();
+      });
+
+      const result = await runWithServiceRetryingInstantly(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .listReservationsPage({ page: 1 })
+            .pipe(Effect.result);
+        }),
+        fetchMock
+      );
+
+      expect(result).toMatchObject({ _tag: "Failure", failure: error });
+      expect(reservationListRequests(fetchMock)).toHaveLength(1);
+    }
+  );
+
+  test("reads nothing for an empty id selection or an invalid page", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      return Response.json({ data: [reservation()] });
+    });
+
+    const [empty, invalid] = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* Effect.all([
+          dotypos.listReservationsPage({ ids: [], page: 1 }),
+          dotypos.listReservationsPage({ page: 0 }).pipe(Effect.result),
+        ]);
+      }),
+      fetchMock
+    );
+
+    expect(empty).toEqual({ reservations: [], nextPage: Option.none() });
+    expect(invalid).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ValidationError" },
+    });
+    expect(reservationListRequests(fetchMock)).toHaveLength(0);
+  });
+});
+
 describe("DotyposService table listing", () => {
   test("loads every table page", async () => {
     const firstTable = table({ id: "table-1", name: "Table 1" });
