@@ -232,7 +232,7 @@ describe("workspace E2E workflow", () => {
       "resolve-target": undefined,
       "test-e2e": { actions: "read", contents: "read", statuses: "write" },
       "publish-final-status": { contents: "read", statuses: "write" },
-      "publish-skipped-status": { contents: "read", statuses: "write" },
+      "publish-status-without-run": { contents: "read", statuses: "write" },
     });
   });
 
@@ -526,9 +526,9 @@ describe("workspace E2E workflow", () => {
       "resolve-target",
       "test-e2e",
     ]);
-    // A Vercel-skipped target keeps its waiver status instead of a final one.
+    // A target E2E never ran against gets no final status.
     expect(doc.jobs["publish-final-status"].if).toContain(
-      "needs.resolve-target.outputs.skipped != 'true'"
+      "needs.resolve-target.outputs.deployment == 'success'"
     );
     // As a checkout project it extended the setup phase barrier, so no
     // checkout project may run the read-only navigation tests.

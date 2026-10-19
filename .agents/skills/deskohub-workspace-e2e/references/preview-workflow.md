@@ -19,7 +19,12 @@
 3. The `test-e2e` job leases a date shard, installs dependencies, resolves and migrates the preview's Neon branch, validates Dotypos capacity, and runs `bun turbo test:e2e --filter=deskohub-workspace`.
 4. `publish-final-status` publishes the commit status.
 
-On `vercel.deployment.skipped`, `publish-skipped-status` checks the exact-SHA skipped deployment and carries the nearest earlier Workspace E2E status forward. No earlier status or an earlier success becomes success; anything else stays failure. Never infer a skip from changed paths or reuse an older preview.
+A `Workspace E2E` success means E2E ran against that commit's code. For a deployment E2E doesn't run against, `resolve-target` checks the exact-SHA deployment status, decides the status in `Decide status without an E2E run`, and `publish-status-without-run` publishes it:
+
+- `vercel.deployment.failed`: failure, asking for a fix or redeploy.
+- `vercel.deployment.skipped`: Vercel compares a commit only with its parent, so a skip after a failed, unreported, or multi-commit push says nothing about tested code. The step reuses the result of the nearest other PR commit with the identical Git tree whose status a real run published (running, passed, or failed). A status an earlier skip carried forward doesn't count. A passed run becomes success, a failed run failure, and a run still in progress a failure that asks for a rerun of this check. With no such commit, the status is failure until a Workspace preview of that exact SHA builds in Vercel; its success event then runs E2E.
+
+Only `vercel.deployment.success` events cancel a run in progress for the same PR, so a late event for an older head can't cancel a newer head's E2E. Never infer a skip from changed paths or reuse an older preview.
 
 The target is always the immutable `.vercel.app` deployment origin for the exact SHA, taken from the dispatch payload. Never scrape the Vercel PR comment or use a branch alias or custom domain.
 

@@ -2,7 +2,7 @@ name: Workspace E2E
 
 on:
   repository_dispatch:
-    types: [vercel.deployment.skipped, vercel.deployment.success]
+    types: [vercel.deployment.failed, vercel.deployment.skipped, vercel.deployment.success]
   workflow_dispatch:
     inputs:
       cleanup_stale_e2e_reservations:
@@ -28,7 +28,9 @@ permissions:
 
 concurrency:
   group: workspace-e2e-${{ github.event_name == 'workflow_dispatch' && 'prj_7FliQBcbBiBwGaO2JLrigicnXCRd' || github.event.client_payload.project.id }}-pr-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}
-  cancel-in-progress: ${{ github.event_name != 'repository_dispatch' || github.event.client_payload.state.type != 'skipped' }}
+  # Only a run that tests a newer head may cancel one in progress. A late
+  # event for an older head never tests anything and must not cancel it.
+  cancel-in-progress: ${{ github.event_name != 'repository_dispatch' || github.event.client_payload.state.type == 'success' }}
 
 jobs:
   resolve-target:
@@ -39,26 +41,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
+      deployment: ${{ steps.target.outputs.deployment }}
       eligible: ${{ steps.target.outputs.eligible }}
       head_ref: ${{ steps.target.outputs.head_ref }}
       pr_number: ${{ steps.target.outputs.pr_number }}
       sha: ${{ steps.target.outputs.sha }}
-      skipped: ${{ steps.target.outputs.skipped }}
-      skipped_status_description: ${{ steps.target.outputs.skipped_status_description }}
-      skipped_status_state: ${{ steps.target.outputs.skipped_status_state }}
+      status_description: ${{ steps.status-without-run.outputs.description }}
+      status_state: ${{ steps.status-without-run.outputs.state }}
       url: ${{ steps.target.outputs.url }}
     steps:
       - name: Resolve eligible PR and immutable preview
         id: target
         env:
           GH_TOKEN: ${{ github.token }}
+          TARGET_DEPLOYMENT: ${{ github.event_name == 'workflow_dispatch' && 'success' || github.event.client_payload.state.type }}
           TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}
           TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha || github.event.client_payload.git.sha }}
-          TARGET_SKIPPED: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.state.type == 'skipped' }}
           TARGET_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.url || github.event.client_payload.url }}
         run: |
           set -euo pipefail
 
+          case "$TARGET_DEPLOYMENT" in
+            success | skipped | failed) ;;
+            *)
+              echo "Unsupported Vercel deployment state" >&2
+              exit 1
+              ;;
+          esac
           if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "Target SHA is not a full Git commit SHA" >&2
             exit 1
@@ -108,11 +117,13 @@ jobs:
               "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses")"
             if jq -e \
               --arg target "$normalized_url" \
-              --argjson skipped "$TARGET_SKIPPED" \
+              --arg deployment "$TARGET_DEPLOYMENT" \
               'any(.[];
-                (if $skipped then
+                (if $deployment == "skipped" then
                   .state == "inactive" and
                   .description == "Skipped - Not affected"
+                elif $deployment == "failed" then
+                  .state == "failure" or .state == "error"
                 else
                   .state == "success"
                 end) and
@@ -124,11 +135,7 @@ jobs:
             fi
           done < <(jq -r '.[] | select(.creator.login == "vercel[bot]") | .id' <<<"$deployments")
           if [[ "$deployment_matches_target" != "true" ]]; then
-            if [[ "$TARGET_SKIPPED" == "true" ]]; then
-              echo "No skipped exact-SHA Workspace deployment matches the target URL" >&2
-            else
-              echo "No successful exact-SHA Workspace deployment matches the target URL" >&2
-            fi
+            echo "No $TARGET_DEPLOYMENT exact-SHA Workspace deployment matches the target URL" >&2
             exit 1
           fi
 
@@ -162,60 +169,92 @@ jobs:
 
           pr_number="$(jq -r '.[0].number' <<<"$eligible_pulls")"
 
-          if [[ "$TARGET_SKIPPED" == "true" ]]; then
-            previous_state=""
-            mapfile -t commit_shas < <(gh api --paginate \
-              "repos/$GITHUB_REPOSITORY/pulls/$pr_number/commits?per_page=100" \
-              --jq '.[].sha')
-            target_seen=false
-            for ((index=${#commit_shas[@]} - 1; index >= 0; index--)); do
-              commit_sha="${commit_shas[$index]}"
-              if [[ "$commit_sha" == "$TARGET_SHA" ]]; then
-                target_seen=true
-                continue
-              fi
-              if [[ "$target_seen" != "true" ]]; then
-                continue
-              fi
-              previous_state="$(gh api --paginate --slurp \
-                "repos/$GITHUB_REPOSITORY/commits/$commit_sha/statuses?per_page=100" | \
-                jq -r 'add | first(.[] | select(
-                  .context == "Workspace E2E" and
-                  .creator.login == "github-actions[bot]"
-                )) | .state // empty')"
-              if [[ -n "$previous_state" ]]; then
-                break
-              fi
-            done
-            if [[ "$target_seen" != "true" ]]; then
-              echo "Target SHA is missing from the matching PR history" >&2
-              exit 1
-            fi
-
-            skipped_status_state=success
-            skipped_status_description='Workspace unchanged; E2E skipped'
-            if [[ -n "$previous_state" && "$previous_state" != "success" ]]; then
-              skipped_status_state=failure
-              skipped_status_description='Workspace unchanged; prior E2E did not pass'
-            fi
-            {
-              echo "skipped_status_state=$skipped_status_state"
-              echo "skipped_status_description=$skipped_status_description"
-            } >> "$GITHUB_OUTPUT"
-          fi
-
           {
+            echo "deployment=$TARGET_DEPLOYMENT"
             echo "eligible=true"
             echo "head_ref=$TARGET_REF"
             echo "pr_number=$pr_number"
             echo "sha=$TARGET_SHA"
-            echo "skipped=$TARGET_SKIPPED"
             echo "url=$normalized_url"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Decide status without an E2E run
+        id: status-without-run
+        if: steps.target.outputs.eligible == 'true' && steps.target.outputs.deployment != 'success'
+        env:
+          DEPLOYMENT: ${{ steps.target.outputs.deployment }}
+          # Descriptions only a run that tested its own commit publishes.
+          E2E_RUN_DESCRIPTIONS: '["Protected preview E2E is running","Protected preview E2E passed","Protected preview E2E failed"]'
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.target.outputs.pr_number }}
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          decide() {
+            {
+              echo "state=$1"
+              echo "description=$2"
+            } >> "$GITHUB_OUTPUT"
+            echo "Workspace E2E for \`$TARGET_SHA\`: **$1**. $2" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          if [[ "$DEPLOYMENT" == "failed" ]]; then
+            decide failure 'Vercel preview deployment failed; fix or redeploy it to run E2E'
+            exit 0
+          fi
+
+          # Vercel skips a commit when the Workspace is unaffected relative to
+          # its parent alone, even when that parent's deployment failed or
+          # never ran E2E. Only a run on a commit with the identical tree
+          # proves this code passed, and a status carried forward by an
+          # earlier skip proves nothing.
+          pr_commits="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/commits?per_page=100" | \
+            jq 'add')"
+          target_tree="$(jq -r --arg sha "$TARGET_SHA" \
+            'first(.[] | select(.sha == $sha) | .commit.tree.sha) // empty' \
+            <<<"$pr_commits")"
+          if [[ -z "$target_tree" ]]; then
+            echo "Target SHA is missing from the matching PR history" >&2
+            exit 1
+          fi
+          mapfile -t same_tree_shas < <(jq -r \
+            --arg sha "$TARGET_SHA" \
+            --arg tree "$target_tree" \
+            '[.[] | select(.sha != $sha and .commit.tree.sha == $tree) | .sha] | reverse | .[]' \
+            <<<"$pr_commits")
+
+          for sha in "${same_tree_shas[@]}"; do
+            run_state="$(gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/commits/$sha/statuses?per_page=100" | \
+              jq -r --argjson descriptions "$E2E_RUN_DESCRIPTIONS" \
+                'add | first(.[] | select(
+                  .context == "Workspace E2E" and
+                  .creator.login == "github-actions[bot]" and
+                  (.description | IN($descriptions[]))
+                )) | .state')"
+            case "$run_state" in
+              success)
+                decide success "Same tree as ${sha:0:7}, which passed E2E"
+                exit 0
+                ;;
+              failure | error)
+                decide failure "Same tree as ${sha:0:7}, which failed E2E"
+                exit 0
+                ;;
+              pending)
+                decide failure "Same tree as ${sha:0:7}, whose E2E is still running; rerun this check after it ends"
+                exit 0
+                ;;
+            esac
+          done
+
+          decide failure 'Vercel skipped this SHA and no E2E-tested commit has its tree; deploy its Workspace preview'
+
   test-e2e:
     needs: resolve-target
-    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
+    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     environment: workspace-checkout-e2e
@@ -557,7 +596,7 @@ jobs:
 
   publish-final-status:
     needs: [resolve-target, test-e2e]
-    if: always() && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
+    if: always() && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -597,20 +636,20 @@ jobs:
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             >/dev/null
 
-  publish-skipped-status:
+  publish-status-without-run:
     needs: resolve-target
-    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped == 'true'
+    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment != 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
       statuses: write
     steps:
-      - name: Publish status for unchanged Workspace
+      - name: Publish status without an E2E run
         env:
           GH_TOKEN: ${{ github.token }}
-          STATUS_DESCRIPTION: ${{ needs.resolve-target.outputs.skipped_status_description }}
-          STATUS_STATE: ${{ needs.resolve-target.outputs.skipped_status_state }}
+          STATUS_DESCRIPTION: ${{ needs.resolve-target.outputs.status_description }}
+          STATUS_STATE: ${{ needs.resolve-target.outputs.status_state }}
           TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
         run: |
           set -euo pipefail
