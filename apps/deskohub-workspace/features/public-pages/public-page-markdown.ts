@@ -14,6 +14,7 @@ import { legalPageMarkdown } from "@/features/legal/legal-page-markdown";
 import { meetingRoomPageMarkdown } from "@/features/meeting-room/meeting-room-page-markdown";
 import { meetingRoomReservationPageMarkdown } from "@/features/meeting-room/meeting-room-reservation-page-markdown";
 import { officeReservationPageMarkdown } from "@/features/office/office-reservation-page-markdown";
+import { pricingPageMarkdown } from "@/features/pricing/pricing-page-markdown";
 import { teamPageMarkdown } from "@/features/team/team-page-markdown";
 import { ttrpgRoomPageMarkdown } from "@/features/ttrpg-room/ttrpg-room-page-markdown";
 import {
@@ -93,6 +94,11 @@ export const publicPageMarkdown = {
     topic: "offer",
     title: (locale) => m.faqMetadataTitle({}, { locale }),
     render: faqPageMarkdown,
+  },
+  "/pricing": {
+    topic: "prices",
+    title: (locale) => m.pricingPageTitle({}, { locale }),
+    render: pricingPageMarkdown,
   },
   "/meeting-room": {
     topic: "offer",

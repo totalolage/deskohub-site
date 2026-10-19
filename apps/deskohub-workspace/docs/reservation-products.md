@@ -2,6 +2,16 @@
 
 Workspace offers three reservation families: cowork, meeting room, and office. Each family owns its selection rules, availability, customer summary, and product identity; checkout must not treat one family as the default for another.
 
+## Opening hours
+
+The space is open 24/7, every day. Open Space is usable only from Prague-local
+midnight until 17:00 on the reserved date. Reserved Desk and office
+reservations have 24/7 code access for their reserved dates.
+
+The public price page lists every bookable product at its catalog price, with
+the price of any public sale running that day, together with these opening
+hours. The contact page also shows the opening hours.
+
 ## Cowork
 
 Cowork offers are exactly two, both for a single Prague calendar date:

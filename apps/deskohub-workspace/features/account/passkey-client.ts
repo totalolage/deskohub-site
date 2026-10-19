@@ -6,6 +6,7 @@ import type { Locale } from "@/features/i18n";
 import { authClient } from "./auth.client";
 import { forgetEmailSignInRequest } from "./email-sign-in-request";
 import { rememberPasskeyOnThisBrowser } from "./passkey-prompt";
+import { requestPasskeySignIn } from "./passkey-sign-in";
 import type {
   AccountPasskey,
   PasskeyChangeResult,
@@ -114,19 +115,27 @@ const toPasskeyChangeResult = (
  * Signs in with a passkey, from the button or, with `autoFill`, from the
  * email field's autofill, and continues to the sign-in destination: a
  * same-origin `returnTo`, otherwise the account. Anything but a sign-in leaves
- * the page as it is.
+ * the page as it is. Aborting `signal` cancels the attempt, and a newer
+ * attempt on the page cancels it too.
+ *
+ * Cancelling after the server accepted the passkey can't undo the sign-in:
+ * the browser keeps the session and its bookkeeping, but the attempt resolves
+ * as cancelled and doesn't navigate to its stale destination. The customer
+ * stays, signed in, on the page that cancelled it.
  */
 export const signInWithPasskey = async ({
   locale,
   returnTo,
   autoFill = false,
+  signal,
 }: {
   readonly locale: Locale;
   readonly returnTo?: string;
   readonly autoFill?: boolean;
+  readonly signal?: AbortSignal;
 }): Promise<PasskeySignInResult> => {
   const response = await settle(
-    authClient.signIn.passkey({ autoFill }).then(decodeSignInResponse)
+    requestPasskeySignIn({ autoFill, signal }).then(decodeSignInResponse)
   );
   const result = toPasskeySignInResult(response);
   if (result !== "signed-in") return result;
@@ -135,6 +144,7 @@ export const signInWithPasskey = async ({
   recordSignInCompletion("passkey");
   // A signed-in tab must not show a pending code step after a sign-out.
   forgetEmailSignInRequest();
+  if (signal?.aborted) return "cancelled";
   try {
     window.location.replace(getSignInDestination(locale, returnTo));
   } catch {

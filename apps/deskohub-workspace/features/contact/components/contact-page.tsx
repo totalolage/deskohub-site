@@ -1,3 +1,4 @@
+import { getPublicOpeningHours } from "@/features/checkout/public-offerings";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
@@ -43,6 +44,12 @@ export function ContactPage({ locale, initialValues }: ContactPageProps) {
                     {workspaceSiteConstants.location.address.postalCode}{" "}
                     {workspaceSiteConstants.location.address.city}
                   </address>
+                </dd>
+                <dt className="text-white/72">
+                  {m.contactOpeningHoursLabel({}, { locale })}:
+                </dt>
+                <dd className="min-w-0 font-bold">
+                  {getPublicOpeningHours(locale)}
                 </dd>
                 <dt className="text-white/72">
                   {m.contactEmailLabel({}, { locale })}:
