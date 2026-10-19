@@ -11,16 +11,31 @@ import {
   type AudienceFacts,
   type AudienceFilter,
   audienceFactKey,
+  type ConcreteCountParams,
   collectAudienceFactRequests,
 } from "../audience-filter";
-import { type DatePeriodBounds, datePeriodBounds } from "../date-period";
+import {
+  type DatePeriodBounds,
+  isWithinDatePeriodBounds,
+} from "../date-period";
 import { CampaignRecipientResolutionError } from "../errors";
 import {
   type AudienceCountParams,
   type AudienceCountResolver,
   type AudienceResolution,
+  type AudienceVisits,
   audienceAttributeResolvers,
 } from "./audience-attribute-resolvers";
+import {
+  type AudienceEvaluationContext,
+  AudienceScope,
+  type LiveVisits,
+  VisitSource,
+} from "./audience-evaluation-context";
+import {
+  type AudienceVisitSnapshotRow,
+  AudienceVisitSnapshots,
+} from "./audience-visit-snapshots";
 import { CampaignCandidateRepository } from "./campaign-candidate.repository";
 
 /**
@@ -30,18 +45,39 @@ import { CampaignCandidateRepository } from "./campaign-candidate.repository";
  */
 const visitLowerBoundMargin = { days: 7 } as const;
 
+/** The services a visit source needs; only snapshots need a reader. */
+export type VisitSourceRequirement<Visits extends VisitSource> =
+  Visits extends { readonly _tag: "Snapshot" } ? AudienceVisitSnapshots : never;
+
+/**
+ * Narrows an effect that reads `AudienceVisitSnapshots` only for a snapshot
+ * source to what its visit source needs, so live callers provide nothing.
+ */
+export const requiringVisitSource = <Visits extends VisitSource, A, E>(
+  effect: Effect.Effect<A, E, AudienceVisitSnapshots>
+): Effect.Effect<A, E, VisitSourceRequirement<Visits>> =>
+  effect as Effect.Effect<A, E, never>;
+
 export interface IAudienceFactsService {
   /**
-   * Resolves every count and date attribute the filter uses, as of `now`,
-   * through each attribute's resolver. Visit dates come only from bounded
-   * Dotypos range queries: each starts at the period's own start or, when it
-   * has none, just before the earliest Workspace reservation, and last-visit
-   * queries end at `now`, inclusive.
+   * Resolves every count and date attribute the filter uses in each of the
+   * contexts, through each attribute's resolver, for the customers in
+   * `scope` (everyone by default). Live visits (the default) come only from
+   * bounded Dotypos range queries: each starts at the period's own start or,
+   * when it has none, just before the earliest Workspace reservation, and
+   * visit-date queries end at the evaluation time, inclusive. A snapshot
+   * source reads a completed visit load instead and calls no Dotypos.
    */
-  readonly resolve: (input: {
+  readonly resolve: <Visits extends VisitSource = LiveVisits>(input: {
     readonly filter: AudienceFilter;
-    readonly now: Temporal.Instant;
-  }) => Effect.Effect<AudienceFacts, CampaignRecipientResolutionError>;
+    readonly contexts: readonly AudienceEvaluationContext[];
+    readonly scope?: AudienceScope;
+    readonly visits?: Visits;
+  }) => Effect.Effect<
+    AudienceFacts,
+    CampaignRecipientResolutionError,
+    VisitSourceRequirement<Visits>
+  >;
 }
 
 const decodeInterval = Schema.decodeUnknownEffect(reservationIntervalSchema);
@@ -75,23 +111,48 @@ const countResolvers: {
 const resolveCount = <Attribute extends AudienceAttributeOfKind<"count">>(
   request: {
     readonly attribute: Attribute;
-    readonly params: AudienceCountParams<Attribute>;
+    readonly params: ConcreteCountParams<AudienceCountParams<Attribute>>;
   },
   resolution: AudienceResolution
-) => countResolvers[request.attribute].count(request.params, resolution);
+) => countResolvers[request.attribute].count(request, resolution);
 
 /** Dates through the request's attribute resolver. */
 const resolveDates = (
-  { attribute, period, product }: AudienceDateRequest,
+  request: AudienceDateRequest,
   resolution: AudienceResolution
-) =>
-  audienceAttributeResolvers[attribute].dates(
-    {
-      bounds: datePeriodBounds(period, resolution.now),
-      ...(product && { product }),
-    },
-    resolution
-  );
+) => audienceAttributeResolvers[request.attribute].dates(request, resolution);
+
+/** A stored visit load's visits, filtered in memory. */
+const snapshotVisits = (
+  rows: Effect.Effect<
+    readonly AudienceVisitSnapshotRow[],
+    CampaignRecipientResolutionError
+  >
+): AudienceVisits => ({
+  startingIn: (bounds) =>
+    rows.pipe(
+      Effect.map((visits) =>
+        visits.flatMap(({ dotyposReservationId, startsAt }) =>
+          isWithinDatePeriodBounds(bounds, startsAt)
+            ? [dotyposReservationId]
+            : []
+        )
+      )
+    ),
+  begunBy: (asOf) =>
+    rows.pipe(
+      Effect.map(
+        (visits) =>
+          new Map(
+            visits.flatMap(({ dotyposReservationId, startsAt }) =>
+              Temporal.Instant.compare(startsAt, asOf) <= 0
+                ? [[dotyposReservationId, startsAt] as const]
+                : []
+            )
+          )
+      )
+    ),
+});
 
 export class AudienceFactsService extends Context.Service<
   AudienceFactsService,
@@ -114,7 +175,7 @@ export class AudienceFactsService extends Context.Service<
         Effect.mapError(CampaignRecipientResolutionError.database)
       );
 
-      const visitsIn = (bounds: DatePeriodBounds) =>
+      const reservationsStartingIn = (bounds: DatePeriodBounds) =>
         visitLowerBound.pipe(
           Effect.map((lowerBound) => bounds.startsAtOrAfter ?? lowerBound),
           Effect.flatMap((startsAtOrAfter) =>
@@ -139,9 +200,9 @@ export class AudienceFactsService extends Context.Service<
           )
         );
 
-      /** Every visit that has begun by `now`, with its start, in one query. */
-      const pastVisits = (now: Temporal.Instant) =>
-        visitsIn({ startsAtOrBefore: now }).pipe(
+      /** Every visit that has begun by `asOf`, with its start, in one query. */
+      const liveVisitsBegunBy = (asOf: Temporal.Instant) =>
+        reservationsStartingIn({ startsAtOrBefore: asOf }).pipe(
           Effect.flatMap((visits) =>
             Effect.forEach(visits, (visit) =>
               visitStart(visit).pipe(
@@ -159,6 +220,47 @@ export class AudienceFactsService extends Context.Service<
           )
         );
 
+      /**
+       * Visits from Dotypos range queries. The begun visits of each request
+       * instant are read at most once, and only if a resolver asks.
+       */
+      const liveVisits = (asOfs: readonly Temporal.Instant[]) =>
+        Effect.forEach(
+          new Map(asOfs.map((asOf) => [asOf.toString(), asOf])),
+          ([key, asOf]) =>
+            Effect.cached(liveVisitsBegunBy(asOf)).pipe(
+              Effect.map((begun) => [key, begun] as const)
+            )
+        ).pipe(
+          Effect.map((entries): AudienceVisits => {
+            const begunByInstant = new Map(entries);
+            return {
+              startingIn: (bounds) =>
+                reservationsStartingIn(bounds).pipe(
+                  Effect.map((reservations) =>
+                    reservations.flatMap(({ id }) =>
+                      id === undefined ? [] : [id]
+                    )
+                  )
+                ),
+              begunBy: (asOf) =>
+                begunByInstant.get(asOf.toString()) ?? liveVisitsBegunBy(asOf),
+            };
+          })
+        );
+
+      const visitsOf = (
+        source: VisitSource,
+        dates: readonly AudienceDateRequest[]
+      ) =>
+        VisitSource.$match(source, {
+          Live: () => liveVisits(dates.map(({ asOf }) => asOf)),
+          Snapshot: ({ id }) =>
+            AudienceVisitSnapshots.use((snapshots) =>
+              Effect.cached(snapshots.rows(id))
+            ).pipe(Effect.map(snapshotVisits)),
+        });
+
       const keyed = <
         Request extends AudienceCountRequest | AudienceDateRequest,
         Value,
@@ -175,31 +277,50 @@ export class AudienceFactsService extends Context.Service<
         ).pipe(Effect.map((entries) => new Map(entries)));
 
       return {
-        resolve: ({ filter, now }) =>
-          Effect.Do.pipe(
-            Effect.let("requests", () => collectAudienceFactRequests(filter)),
-            Effect.bind("pastVisits", () => Effect.cached(pastVisits(now))),
-            Effect.let(
-              "resolution",
-              ({ pastVisits }): AudienceResolution => ({
-                now,
-                candidates,
-                visitsIn,
-                pastVisits,
-              })
-            ),
-            Effect.bind("facts", ({ requests, resolution }) =>
-              Effect.all({
-                counts: keyed(requests.counts, (request) =>
-                  resolveCount(request, resolution)
-                ),
-                dates: keyed(requests.dates, (request) =>
-                  resolveDates(request, resolution)
-                ),
-              })
-            ),
-            Effect.map(({ facts }) => facts),
-            Effect.withSpan("AudienceFactsService.resolve")
+        resolve: <Visits extends VisitSource = LiveVisits>({
+          filter,
+          contexts,
+          scope = AudienceScope.All(),
+          visits: source,
+        }: {
+          readonly filter: AudienceFilter;
+          readonly contexts: readonly AudienceEvaluationContext[];
+          readonly scope?: AudienceScope;
+          readonly visits?: Visits;
+        }) =>
+          requiringVisitSource<
+            Visits,
+            AudienceFacts,
+            CampaignRecipientResolutionError
+          >(
+            Effect.Do.pipe(
+              Effect.let("requests", () =>
+                collectAudienceFactRequests(filter, contexts)
+              ),
+              Effect.bind("visits", ({ requests }) =>
+                visitsOf(source ?? VisitSource.Live(), requests.dates)
+              ),
+              Effect.let(
+                "resolution",
+                ({ visits }): AudienceResolution => ({
+                  candidates,
+                  scope,
+                  visits,
+                })
+              ),
+              Effect.bind("facts", ({ requests, resolution }) =>
+                Effect.all({
+                  counts: keyed(requests.counts, (request) =>
+                    resolveCount(request, resolution)
+                  ),
+                  dates: keyed(requests.dates, (request) =>
+                    resolveDates(request, resolution)
+                  ),
+                })
+              ),
+              Effect.map(({ facts }) => facts),
+              Effect.withSpan("AudienceFactsService.resolve")
+            )
           ),
       } satisfies IAudienceFactsService;
     })

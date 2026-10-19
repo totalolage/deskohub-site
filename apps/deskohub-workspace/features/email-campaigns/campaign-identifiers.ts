@@ -34,3 +34,12 @@ export const campaignConfirmationCodeSchema = Schema.NonEmptyString.pipe(
 });
 export type CampaignConfirmationCode =
   typeof campaignConfirmationCodeSchema.Type;
+
+export const audienceVisitSnapshotIdSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("AudienceVisitSnapshotId")
+).annotate({
+  identifier: "AudienceVisitSnapshotId",
+  description:
+    "Database-generated identifier of one completed load of Dotypos visits that audience evaluations read instead of calling Dotypos.",
+});
+export type AudienceVisitSnapshotId = typeof audienceVisitSnapshotIdSchema.Type;
