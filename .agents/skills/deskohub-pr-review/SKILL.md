@@ -31,9 +31,9 @@ Each push to a pull request branch starts a full Vercel preview build, so merge 
 
 1. Finish development, review, and every other required check on the branch as it stands. A branch behind `main` is fine; GitHub doesn't require it to be up to date.
 2. `git fetch origin && git merge origin/main`, then push. Always merge; never rebase or force-push.
-3. If CI stays green, merge the pull request without another review round. If CI goes red, the pull request returns to development and review.
+3. If post-merge CI stays green, merge the pull request without another review round, including when conflict resolution was needed. Only red CI returns the pull request to development and review.
 
-Merge `main` earlier only to resolve a real conflict that blocks work in progress. Main moving, a `BEHIND` merge state, and monitoring a pull request are not reasons to merge. A merge that needed conflict resolution follows the branch integration guidance in the `deskohub-repository` skill.
+Merge `main` earlier only to resolve a real conflict or a failure that blocks work in progress. Main moving, a `BEHIND` merge state, and monitoring a pull request are not reasons to merge early. For conflict resolutions in other integration contexts, follow the branch integration guidance in the `deskohub-repository` skill.
 
 ## Completion
 
