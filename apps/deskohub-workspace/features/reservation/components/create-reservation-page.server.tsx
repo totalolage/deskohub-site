@@ -123,7 +123,7 @@ export const loadRestoredReservation = Effect.fn(
  * email. An expired or foreign token leaves the form as it would otherwise
  * open.
  */
-export const loadCheckoutContact = (token: string | undefined) =>
+const loadCheckoutContact = (token: string | undefined) =>
   token
     ? checkoutContactReturnState
         .open(token)

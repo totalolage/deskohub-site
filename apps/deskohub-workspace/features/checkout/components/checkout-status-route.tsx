@@ -149,9 +149,14 @@ async function CheckoutStatusContent({
 }
 
 /** Whether no account is signed in; an unreadable session isn't signed out. */
+const readSignedOut = Effect.fn("checkout.status.readSignedOut")(function* () {
+  const contacts = yield* CustomerAccountContactService;
+  const account = yield* contacts.currentAccount;
+  return account.status === "signed-out";
+});
+
 const isSignedOut = () =>
-  CustomerAccountContactService.use((contacts) => contacts.currentAccount).pipe(
-    Effect.map((account) => account.status === "signed-out"),
+  readSignedOut().pipe(
     Effect.orElseSucceed(() => false),
     Effect.provide(CustomerAccountContactService.Live),
     runWorkspaceEffect("checkout.status.viewer")

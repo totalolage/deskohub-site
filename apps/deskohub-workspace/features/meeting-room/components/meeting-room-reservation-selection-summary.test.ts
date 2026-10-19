@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
-import { getMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
-import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import { getMeetingRoomReservationSelectionSummary } from "./meeting-room-reservation-selection-summary";
 
 describe("meeting-room selection summary", () => {
@@ -10,16 +8,8 @@ describe("meeting-room selection summary", () => {
   test.each(["en-US", "cs-CZ"] as const)(
     "formats the time identically on the server and in the browser in %s",
     (locale) => {
-      const duration = getMeetingRoomReservationDuration("hour:1");
       const summary = getMeetingRoomReservationSelectionSummary(
-        {
-          duration,
-          interval: getMeetingRoomReservationInterval(
-            "2026-10-20T11:00",
-            duration
-          ),
-          isWholeDay: false,
-        },
+        { durationKey: "hour:1", startDateTime: "2026-10-20T11:00" },
         locale
       );
 

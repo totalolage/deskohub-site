@@ -95,7 +95,6 @@ const renderOfficeReservationForm = async (
 ) => {
   const page = (await renderOfficeReservationContent({
     checkoutAccount: { status: "signed-out" },
-    checkoutAccount: { status: "signed-out" },
     ...input,
   })) as ReactElement<{
     readonly children: ReactNode;

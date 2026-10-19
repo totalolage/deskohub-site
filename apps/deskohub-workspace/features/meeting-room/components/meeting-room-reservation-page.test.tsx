@@ -90,7 +90,6 @@ const renderMeetingRoomReservationForm = async (
 ) => {
   const page = (await renderMeetingRoomReservationContent({
     checkoutAccount: { status: "signed-out" },
-    checkoutAccount: { status: "signed-out" },
     ...input,
   })) as ReactElement<{
     readonly children: ReactNode;

@@ -102,7 +102,6 @@ const renderCoworkReservationForm = async (
 ) => {
   const page = (await renderCoworkReservationContent({
     checkoutAccount: { status: "signed-out" },
-    checkoutAccount: { status: "signed-out" },
     ...input,
   })) as ReactElement<{
     readonly children: ReactNode;

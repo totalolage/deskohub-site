@@ -42,10 +42,10 @@ const checkoutFlowSteps = [
   { key: "pay", getLabel: m.checkoutOrderStepPayment },
 ] as const;
 
-export type CheckoutStepKey = (typeof checkoutFlowSteps)[number]["key"];
+type CheckoutStepKey = (typeof checkoutFlowSteps)[number]["key"];
 
 /** The current step, or `complete` once every step is done. */
-export type CheckoutFlowStage = CheckoutStepKey | "complete";
+type CheckoutFlowStage = CheckoutStepKey | "complete";
 
 export function CheckoutSteps({
   activeStepKey,

@@ -248,9 +248,8 @@ export function MeetingRoomReservationForm({
       locale={locale}
       selectionSummary={getMeetingRoomReservationSelectionSummary(
         {
-          duration: selectedDuration,
-          interval: selectedInterval,
-          isWholeDay: isWholeDaySelected,
+          durationKey: selectedDurationKey,
+          startDateTime: selectedStartDateTime,
         },
         locale
       )}
