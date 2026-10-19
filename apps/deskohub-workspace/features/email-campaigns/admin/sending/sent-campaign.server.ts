@@ -1,47 +1,38 @@
 import "server-only";
 
-import { Effect, Layer, Option } from "effect";
+import { Effect } from "effect";
 import { cache } from "react";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import { CampaignAudienceService } from "../../backend/campaign-audience.service";
-import { CampaignSendStatusService } from "../../backend/campaign-send-status.service";
 import type { CampaignId } from "../../campaign-identifiers";
+import {
+  invokeCampaignOperation,
+  runCampaignPageQuery,
+} from "../campaign-operation-query.server";
+
+const sentCampaign = Effect.fn("loadSentCampaign")(function* (
+  campaignId: CampaignId
+) {
+  const { send } = yield* invokeCampaignOperation("getCampaignSendStatus", {
+    campaignId,
+  });
+  const audienceTitle =
+    send?.audienceId == null
+      ? null
+      : yield* invokeCampaignOperation("getCampaignAudience", {
+          audienceId: send.audienceId,
+        }).pipe(
+          Effect.map((audience): string | null => audience.title),
+          Effect.catchTag("OperationNotFound", () => Effect.succeed(null))
+        );
+  return { send, audienceTitle };
+});
 
 /**
  * The campaign's send status and the current title of the audience it
- * snapshotted. The caller already authorized the page.
+ * snapshotted.
  */
-export const loadSentCampaign = cache(
-  Effect.fn(
-    function* (campaignId: CampaignId) {
-      const sendStatus = yield* CampaignSendStatusService;
-      const audiences = yield* CampaignAudienceService;
-      const send = yield* sendStatus.get({ campaignId });
-      const audienceId = Option.flatMapNullishOr(
-        send,
-        (status) => status.audienceId
-      );
-      const audienceTitle = Option.isSome(audienceId)
-        ? yield* audiences.get(audienceId.value).pipe(
-            Effect.map((audience) => audience.title),
-            Effect.catchTag("CampaignAudienceNotFound", () =>
-              Effect.succeed(null)
-            )
-          )
-        : null;
-      return { send: Option.getOrNull(send), audienceTitle };
-    },
-    (effect) =>
-      effect.pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            CampaignSendStatusService.Live,
-            CampaignAudienceService.Live
-          )
-        ),
-        runWorkspaceEffect("email-campaigns.admin.load-sent-campaign", {
-          boundary: "route",
-        })
-      )
+export const loadSentCampaign = cache((campaignId: CampaignId) =>
+  runCampaignPageQuery(
+    "email-campaigns.admin.load-sent-campaign",
+    sentCampaign(campaignId)
   )
 );

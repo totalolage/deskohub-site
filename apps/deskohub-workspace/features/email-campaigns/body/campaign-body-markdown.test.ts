@@ -140,4 +140,29 @@ describe("campaign body Markdown", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     expect(JSON.stringify(exit)).toContain("InvalidCampaignBody");
   });
+
+  test.each([
+    ["a bare URL", "See https://example.com/a?b=1&c=2 now"],
+    ["a bare URL without a query", "See https://example.com/a now"],
+    ["a bare domain", "Visit www.example.com today"],
+  ])("keeps %s typed as text when it round-trips", async (_name, text) => {
+    const typed = await parse(text.replaceAll("&", "\\&"));
+    const imported = await parse(campaignBodyToMarkdown(typed));
+
+    expect(imported).toEqual(typed);
+    expect(JSON.stringify(imported.doc)).not.toContain('"link"');
+    expect(JSON.stringify(imported.doc)).toContain(
+      JSON.stringify(text).slice(1, -1)
+    );
+  });
+
+  test("round-trips an empty body", async () => {
+    const empty = await parse("");
+
+    expect(empty.doc).toEqual({
+      type: "doc",
+      content: [{ type: "paragraph" }],
+    });
+    expect(await parse(campaignBodyToMarkdown(empty))).toEqual(empty);
+  });
 });

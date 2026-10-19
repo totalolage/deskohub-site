@@ -8,10 +8,17 @@ import { ConfirmDialog } from "@/features/administration/confirm-dialog";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
-import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import type { CampaignId } from "../../campaign-identifiers";
-import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
-import { deleteCampaign } from "./actions";
+import type { CampaignOperationFailureCopy } from "../campaign-operation-failure";
+import { useCampaignOperation } from "../use-campaign-operation";
+
+const draftDeleteFailureCopy: CampaignOperationFailureCopy = {
+  fallback: (locale) => m.emailCampaignsDraftDeleteFailed({}, { locale }),
+  codes: {
+    "campaign-read-only": (locale) =>
+      m.emailCampaignsDraftDeleteReadOnly({}, { locale }),
+  },
+};
 
 export function DeleteCampaignDraftControl({
   campaignId,
@@ -22,21 +29,11 @@ export function DeleteCampaignDraftControl({
   const locale = useRouteLocale();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { execute, isExecuting } = useWorkspaceAction(deleteCampaign, {
-    actionName: "email-campaigns.admin.delete",
-    onSuccess: ({ data }) => {
-      if (!data) return;
-      router.push(localizeAdministrationHref("/admin/email-campaigns", locale));
-    },
-    onError: ({ error }) =>
-      setError(
-        getEmailCampaignAdminActionFailureMessage(error.serverError, {
-          fallback: m.emailCampaignsDraftDeleteFailed({}, { locale }),
-          locale,
-        })
-      ),
-    onTransportError: () =>
-      setError(m.emailCampaignsDraftDeleteFailed({}, { locale })),
+  const { execute, isExecuting } = useCampaignOperation("deleteCampaign", {
+    failureCopy: draftDeleteFailureCopy,
+    onSuccess: () =>
+      router.push(localizeAdministrationHref("/admin/email-campaigns", locale)),
+    onFailure: setError,
   });
 
   return (

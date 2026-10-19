@@ -35,18 +35,17 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/shared/components/ui/tabs";
-import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import type {
   CampaignPurpose,
   CampaignTemplateKey,
 } from "../../body/campaign-content";
 import type { CampaignId } from "../../campaign-identifiers";
-import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
 import type { AudienceOption } from "../audiences/audience-page-data.server";
+import type { CampaignOperationFailureCopy } from "../campaign-operation-failure";
 import { CampaignBodyEditor } from "../editor/campaign-body-editor";
 import { campaignLocaleName } from "../sending/campaign-locale-names";
 import { CampaignSendControls } from "../sending/campaign-send-controls";
-import { createCampaign, updateCampaign } from "./actions";
+import { useCampaignOperation } from "../use-campaign-operation";
 import {
   type CampaignComposerFields,
   type CampaignComposerLocaleFields,
@@ -54,7 +53,8 @@ import {
   createCampaignComposerFields,
   hasLocaleContent,
   localeContentIssues,
-  toCampaignLocalizedContent,
+  toAdministrationCampaignContent,
+  toAdministrationCampaignContentChange,
 } from "./campaign-composer-fields";
 import { CampaignEmailPreview } from "./campaign-email-preview";
 import { CampaignTemplatePreview } from "./campaign-template-preview";
@@ -106,6 +106,26 @@ const hiddenContentMessages = {
 
 const noAudience = "none";
 
+const campaignSaveFailureCopy: CampaignOperationFailureCopy = {
+  fallback: (locale) => m.emailCampaignsComposerSaveCheckFields({}, { locale }),
+  codes: {
+    "content-invalid": (locale) =>
+      m.emailCampaignsComposerSaveContentInvalid({}, { locale }),
+    "content-markdown-invalid": (locale) =>
+      m.emailCampaignsComposerSaveContentInvalid({}, { locale }),
+    "content-locale-missing": (locale) =>
+      m.emailCampaignsComposerSaveContentInvalid({}, { locale }),
+    "audience-filter-context": (locale) =>
+      m.emailCampaignsComposerSaveAudienceFilterUnavailable({}, { locale }),
+    "audience-not-found": (locale) =>
+      m.emailCampaignsComposerSaveAudienceNotFound({}, { locale }),
+    "campaign-read-only": (locale) =>
+      m.emailCampaignsComposerSaveReadOnly({}, { locale }),
+    "service-unavailable": (locale) =>
+      m.emailCampaignsComposerSaveFailed({}, { locale }),
+  },
+};
+
 export function CampaignComposer({
   adminInbox,
   audiences,
@@ -147,55 +167,57 @@ export function CampaignComposer({
       !editable.includes(option) && hasLocaleContent(localeFields[option])
   );
 
-  const onSaveError = ({
-    error,
-  }: {
-    readonly error: { readonly serverError?: string };
-  }) =>
-    setSaveError(
-      getEmailCampaignAdminActionFailureMessage(error.serverError, {
-        fallback: m.emailCampaignsComposerSaveCheckFields(
-          {},
-          { locale: routeLocale }
-        ),
-        locale: routeLocale,
-      })
-    );
-  const create = useWorkspaceAction(createCampaign, {
-    actionName: "createCampaign",
-    onSuccess: ({ data }) => {
+  const create = useCampaignOperation("createCampaign", {
+    failureCopy: campaignSaveFailureCopy,
+    onSuccess: (created) => {
       form.reset(form.getValues());
       router.push(
         localizeAdministrationHref(
-          `/admin/email-campaigns/${data.campaignId}`,
+          `/admin/email-campaigns/${created.id}`,
           routeLocale
         )
       );
     },
-    onError: onSaveError,
+    onFailure: setSaveError,
   });
-  const update = useWorkspaceAction(updateCampaign, {
-    actionName: "updateCampaign",
+  const update = useCampaignOperation("updateCampaign", {
+    failureCopy: campaignSaveFailureCopy,
     onSuccess: () => {
       form.reset(form.getValues());
       router.refresh();
     },
-    onError: onSaveError,
+    onFailure: setSaveError,
   });
   const saving = create.isExecuting || update.isExecuting;
   const unsavedChanges = form.formState.isDirty;
 
   const save = form.handleSubmit((values) => {
     setSaveError(undefined);
-    const input = {
+    const fields = {
       title: values.title.trim(),
       purpose: values.purpose,
       templateKey: values.templateKey,
       audienceId: audience?.id ?? null,
-      content: toCampaignLocalizedContent(values, editable),
     };
-    if (draft) update.execute({ ...input, campaignId: draft.id });
-    else create.execute(input);
+    if (draft) {
+      update.execute({
+        ...fields,
+        campaignId: draft.id,
+        content: toAdministrationCampaignContentChange(
+          values,
+          editable,
+          draft.contentLocales
+        ),
+      });
+    } else {
+      create.execute({
+        requestId: crypto.randomUUID(),
+        campaign: {
+          ...fields,
+          content: toAdministrationCampaignContent(values, editable),
+        },
+      });
+    }
   });
 
   return (

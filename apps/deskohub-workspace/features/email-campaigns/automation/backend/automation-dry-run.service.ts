@@ -39,7 +39,6 @@ import {
 } from "../../errors";
 import { campaignLocales } from "../../recipient-locale";
 import type { AutomationDraftHash } from "../automation-draft-hash";
-import type { AutomationPreviewId } from "../automation-identifiers";
 import { automationPageCursor } from "../automation-page-cursor";
 import {
   automationTriggerKind,
@@ -786,4 +785,3 @@ const previewStatus = (
   createdAt: preview.createdAt.toString(),
   completedAt: preview.completedAt?.toString() ?? null,
 });
-

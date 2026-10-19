@@ -20,7 +20,7 @@ import {
   type AutomationFlowType,
 } from "@deskohub/workspace-admin-api";
 import { and, asc, eq, inArray, like } from "drizzle-orm";
-import { Effect, Exit, Layer, Option, Schema } from "effect";
+import { Effect, Exit, Layer, Schema } from "effect";
 import {
   customerEvents,
   emailCampaignAudiences,
@@ -34,7 +34,6 @@ import {
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { nextStartWithinHorizon } from "@/shared/utils/calendar-expression";
 import type { AudienceCondition, AudienceFilter } from "../../audience-filter";
 import { AudienceFactsService } from "../../backend/audience-facts.service";
 import { CampaignCandidateRepository } from "../../backend/campaign-candidate.repository";
@@ -43,7 +42,6 @@ import {
   deleteAutomatedCampaigns,
   everyoneFilter,
   seedAutomatedCampaign,
-  seedAutomationVersion,
 } from "../../backend/email-campaigns.test-utils";
 import type {
   CampaignAudienceId,
@@ -54,6 +52,7 @@ import { AutomationConditionEvaluation } from "./automation-condition-evaluation
 import { AutomationDryRun } from "./automation-dry-run.service";
 import { automationEngineTestLayer } from "./automation-engine.test-utils";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
+import { automationLifecycleTestKit } from "./automation-lifecycle.test-utils";
 import { makePreviewUnitHandler } from "./automation-preview-unit";
 import { AutomationUnitProcessor } from "./automation-unit-processor.service";
 import { makeAutomationUnitQueueFake } from "./automation-unit-queue.test-utils";
@@ -173,6 +172,7 @@ describe.skipIf(!testDatabase)(
   () => {
     if (!testDatabase) return;
     const { db } = testDatabase;
+    const kit = automationLifecycleTestKit(testDatabase, { now });
     const campaignIds: CampaignId[] = [];
     const audienceIds: CampaignAudienceId[] = [];
     const reservationIds: string[] = [];
@@ -311,11 +311,10 @@ describe.skipIf(!testDatabase)(
     const seedAutomation = async (input: {
       readonly flow: AutomationFlowType;
       readonly filter?: AudienceFilter;
-      readonly status?: "draft" | "active";
     }) => {
       const campaignId = await seedAutomatedCampaign(db, {
         purpose: "operational",
-        status: input.status ?? "draft",
+        status: "draft",
       });
       campaignIds.push(campaignId);
       const audienceId = await seedAudience(input.filter ?? everyoneFilter);
@@ -489,21 +488,8 @@ describe.skipIf(!testDatabase)(
     };
 
     afterAll(async () => {
-      if (campaignIds.length > 0) {
-        await query(
-          db
-            .delete(emailCampaignAutomationWorkUnits)
-            .where(
-              inArray(emailCampaignAutomationWorkUnits.campaignId, campaignIds)
-            )
-        );
-        await query(
-          db
-            .delete(emailCampaignAutomations)
-            .where(inArray(emailCampaignAutomations.campaignId, campaignIds))
-        );
-        await deleteAutomatedCampaigns(db, campaignIds);
-      }
+      await kit.cleanup();
+      await deleteAutomatedCampaigns(db, campaignIds);
       if (audienceIds.length > 0) {
         await query(
           db
@@ -945,31 +931,24 @@ describe.skipIf(!testDatabase)(
       });
 
       test("an active Monday v1 edited to Wednesdays previews Wednesdays", async () => {
-        const mondays = scheduleFlow("monday");
-        const campaignId = await seedAutomation({
-          flow: mondays,
-          status: "active",
-        });
-        const versionId = await seedAutomationVersion(db, {
-          campaignId,
-          purpose: "operational",
-          trigger: mondays.trigger,
-          activatedAt: ago({ hours: 1 }),
-        });
-        const nextMonday = Option.getOrThrow(
-          nextStartWithinHorizon(weekly("monday") as never, now)
-        );
-        await query(
+        // Activated through the lifecycle, so v1 fires on Mondays.
+        const { campaignId } = await kit.seedActive(scheduleFlow("monday"));
+        const [active] = await query(
           db
-            .update(emailCampaignAutomations)
-            .set({
-              activeVersionId: versionId,
-              acceptingSince: ago({ hours: 1 }),
-              nextFireAt: nextMonday,
-            })
+            .select({ nextFireAt: emailCampaignAutomations.nextFireAt })
+            .from(emailCampaignAutomations)
             .where(eq(emailCampaignAutomations.campaignId, campaignId))
         );
-        await editFlow(campaignId, scheduleFlow("wednesday"));
+        const nextMonday = active!.nextFireAt!;
+        expect(pragueOf(nextMonday).dayOfWeek).toBe(1);
+        await kit.run(
+          kit.lifecycle((lifecycle) =>
+            lifecycle.updateFlow({
+              campaignId,
+              flow: scheduleFlow("wednesday"),
+            })
+          )
+        );
 
         const started = await start(campaignId);
         expect(pragueOf(Temporal.Instant.from(started.asOf)).dayOfWeek).toBe(3);
@@ -1059,10 +1038,15 @@ describe.skipIf(!testDatabase)(
         expect(units.find((unit) => unit.id === second!.id)?.status).toBe(
           "done"
         );
+        // Planned units drop; ones a hand-off already enqueued are marked.
         expect(
           units
             .filter((unit) => rest.some(({ id }) => id === unit.id))
-            .every((unit) => unit.status === "dropped")
+            .every(
+              (unit) =>
+                unit.status === "dropped" ||
+                (unit.status === "enqueued" && unit.cancelRequestedAt !== null)
+            )
         ).toBe(true);
       });
 
