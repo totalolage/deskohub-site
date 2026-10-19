@@ -14,6 +14,7 @@ import { AccountReauthenticationStep } from "@/features/account/components/accou
 import type { AccountPasskeys } from "@/features/account/components/passkeys/use-account-passkeys";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
 import { type Locale, m } from "@/features/i18n";
+import { leaveDocument } from "@/shared/browser/document-navigation";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
@@ -72,7 +73,7 @@ export function DeleteAccountCard({
         if (data?.status === "deleted") {
           completeAnalyticsAccountSignOut();
           allowNextUnload();
-          window.location.assign(`/${locale}/account/deleted`);
+          leaveDocument(`/${locale}/account/deleted`);
           return;
         }
         void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(

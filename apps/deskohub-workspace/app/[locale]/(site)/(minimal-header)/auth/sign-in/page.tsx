@@ -1,12 +1,9 @@
 import type { Metadata } from "next";
-import { connection } from "next/server";
-import { SignInCard } from "@/features/account/components/sign-in-card";
-import { signInReturnParam } from "@/features/account/routes";
-import { arePasskeysEnabled } from "@/features/account/server/account-feature-flag.server";
+import { AuthPageShell } from "@/features/account/components/auth-card";
+import { SignInRouteCard } from "@/features/account/components/sign-in-route";
 import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { getSearchParam, type SearchParamsRecord } from "@/shared/utils";
-import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
+import type { SearchParamsRecord } from "@/shared/utils/search-params";
 
 export const instant = false;
 
@@ -18,29 +15,14 @@ export async function generateMetadata(): Promise<Metadata> {
   }));
 }
 
-export default async function CustomerSignInPage({
+export default function CustomerSignInPage({
   searchParams,
 }: {
   readonly searchParams: Promise<SearchParamsRecord>;
 }) {
-  await connection();
-  const returnTo = parseSameOriginPath(
-    getSearchParam(await searchParams, signInReturnParam)
-  );
-  // Passkey sign-in itself stays open while the flag is off; only the
-  // sign-in page's offer hides.
-  const passkeysEnabled = await arePasskeysEnabled();
-
   return runWithRequestLocale((locale) => (
-    <main className="relative min-h-[calc(100vh-var(--site-header-height))] overflow-hidden bg-[#f4f3ef] px-4 pb-20 pt-[calc(var(--site-header-height)+4rem)] sm:px-6">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_15%,rgba(236,164,35,0.22),transparent_34%),radial-gradient(circle_at_85%_75%,rgba(0,223,153,0.12),transparent_30%)]" />
-      <div className="relative mx-auto flex max-w-lg justify-center">
-        <SignInCard
-          locale={locale}
-          passkeysEnabled={passkeysEnabled}
-          returnTo={returnTo}
-        />
-      </div>
-    </main>
+    <AuthPageShell>
+      <SignInRouteCard locale={locale} searchParams={searchParams} />
+    </AuthPageShell>
   ));
 }
