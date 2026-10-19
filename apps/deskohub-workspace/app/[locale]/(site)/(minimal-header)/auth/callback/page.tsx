@@ -51,16 +51,19 @@ const CustomerAuthCallbackSession = async ({
     Effect.result,
     runWorkspaceEffect("account.callback", { boundary: "page" })
   );
+  const returnTo = readAuthCallbackReturnTo(
+    getSearchParam(await searchParams, signInCallbackReturnParam)
+  );
   if (Result.isSuccess(session) && session.success) {
-    return <AuthCallbackRedirect locale={locale} />;
+    return (
+      <AuthCallbackRedirect
+        locale={locale}
+        returning={returnTo !== undefined}
+      />
+    );
   }
   // Signing in again keeps the original return target.
-  const signInPath = getAccountSignInPath(
-    locale,
-    readAuthCallbackReturnTo(
-      getSearchParam(await searchParams, signInCallbackReturnParam)
-    )
-  );
+  const signInPath = getAccountSignInPath(locale, returnTo);
 
   return (
     <main className="relative min-h-[calc(100vh-var(--site-header-height))] overflow-hidden bg-[#f4f3ef] px-4 pb-20 pt-[calc(var(--site-header-height)+4rem)] sm:px-6">

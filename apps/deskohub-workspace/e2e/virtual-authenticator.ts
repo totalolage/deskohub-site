@@ -174,6 +174,17 @@ const watchPage = async (page: Page) => {
 };
 
 /**
+ * Pages that hold a virtual authenticator. Detaching any CDP session from a
+ * page resets Chromium's virtual authenticator environment for that page,
+ * which removes the authenticator and every credential it stores, so other
+ * CDP users leave their sessions attached on these pages.
+ */
+const authenticatorPages = new WeakSet<Page>();
+
+export const holdsVirtualAuthenticator = (page: Page) =>
+  authenticatorPages.has(page);
+
+/**
  * Adds a virtual platform authenticator to one page's target. It serves that
  * page across navigations until `remove` runs or the page closes.
  */
@@ -184,8 +195,16 @@ export const addVirtualAuthenticator = async (
   const authenticator = await attachVirtualAuthenticator(
     await page.context().newCDPSession(page)
   );
+  authenticatorPages.add(page);
   return {
     ...authenticator,
+    remove: async () => {
+      try {
+        await authenticator.remove();
+      } finally {
+        authenticatorPages.delete(page);
+      }
+    },
     waitForConditionalRequest: async (timeout) => {
       await page.waitForFunction(
         hasConditionalRequest,

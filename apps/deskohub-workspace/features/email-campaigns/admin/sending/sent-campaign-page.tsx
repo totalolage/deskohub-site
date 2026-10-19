@@ -15,7 +15,7 @@ import {
   describeAudienceFilter,
   hasPeriodEndingAtEvaluation,
 } from "../audience-filter-summary";
-import { loadDiscountGroupOptions } from "../audiences/discount-group-options.server";
+import { loadAudienceValueLookups } from "../audiences/audience-value-lookups.server";
 import {
   CampaignPurposeBadge,
   CampaignRecipientStatusBadge,
@@ -33,13 +33,12 @@ export async function SentCampaignPage({
 }: {
   readonly campaign: OnceCampaign;
 }) {
-  const [{ send, audienceTitle }, discountGroups, emails, locale] =
-    await Promise.all([
-      loadSentCampaign(campaign.id),
-      loadDiscountGroupOptions(),
-      loadSentCampaignEmails(campaign),
-      getRequestLocale(),
-    ]);
+  const [{ send, audienceTitle }, lookups, emails, locale] = await Promise.all([
+    loadSentCampaign(campaign.id),
+    loadAudienceValueLookups(),
+    loadSentCampaignEmails(campaign),
+    getRequestLocale(),
+  ]);
   const sentAt =
     send && formatAdministrationDateTime(send.createdAt.toString(), locale);
   return (
@@ -131,7 +130,7 @@ export async function SentCampaignPage({
                           filter: describeAudienceFilter(
                             send.audienceFilter,
                             locale,
-                            { discountGroups }
+                            lookups
                           ),
                           sentAt: formatAdministrationDateTime(
                             send.createdAt.toString(),
@@ -145,7 +144,7 @@ export async function SentCampaignPage({
                           filter: describeAudienceFilter(
                             send.audienceFilter,
                             locale,
-                            { discountGroups }
+                            lookups
                           ),
                         },
                         { locale }

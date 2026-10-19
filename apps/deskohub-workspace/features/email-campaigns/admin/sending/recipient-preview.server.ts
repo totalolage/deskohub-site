@@ -13,7 +13,7 @@ import {
 } from "../../backend/campaign-recipient.service";
 import type { CampaignId } from "../../campaign-identifiers";
 import { describeAudienceFilter } from "../audience-filter-summary";
-import { loadDiscountGroupOptions } from "../audiences/discount-group-options.server";
+import { loadAudienceValueLookups } from "../audiences/audience-value-lookups.server";
 import { loadAdminCampaign } from "../campaign-page-data.server";
 
 export type CampaignRecipientResolution = Effect.Success<
@@ -52,7 +52,7 @@ export const loadRecipientPreview = async (
   }
   const { audienceId } = campaign;
   if (audienceId === null) return { kind: "no-audience", campaign };
-  const discountGroups = await loadDiscountGroupOptions();
+  const lookups = await loadAudienceValueLookups();
   return Effect.gen(function* () {
     const audiences = yield* CampaignAudienceService;
     const recipients = yield* CampaignRecipientService;
@@ -60,9 +60,7 @@ export const loadRecipientPreview = async (
     const described = {
       campaign,
       audienceTitle: audience.title,
-      audienceSummary: describeAudienceFilter(audience.filter, locale, {
-        discountGroups,
-      }),
+      audienceSummary: describeAudienceFilter(audience.filter, locale, lookups),
     };
     return yield* recipients
       .resolve({ purpose: campaign.purpose, filter: audience.filter })

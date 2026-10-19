@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { NetworkError } from "@deskohub/dotypos";
 import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
@@ -11,6 +11,11 @@ import {
   withPostgresAdvisoryLock,
 } from "@/db/postgres-advisory-lock";
 import type { CustomerAccountId } from "../../customer-account";
+import {
+  encodeAuthCallbackReturn,
+  readAuthCallbackReturnTo,
+  signInCallbackReturnParam,
+} from "../../routes";
 import { CustomerAccountRepository } from "../customer-account.repository";
 import { CustomerAccountDeletionService } from "../customer-account-deletion";
 import { CustomerAccountLinkRepository } from "../customer-account-link.repository";
@@ -43,6 +48,7 @@ import {
   userIdForEmail,
   verifyMagicLink,
 } from "./auth-handler.test-utils";
+import { betterAuthMagicLinkOptions } from "./auth-options";
 
 const makeFailingVerificationDatabase = (
   email: string,
@@ -198,6 +204,47 @@ test("stores neither the emailed magic-link token nor its plain digest", async (
   // so neither the emailed token nor a single digest of it is stored.
   expect(stored).not.toContain(rawToken);
   expect(stored).not.toContain(await sha256Base64Url(rawToken));
+});
+
+test("sends an expired link to the same rejected-link callback as a replayed one", async () => {
+  // A browser cannot wait out the real ten-minute expiry, so this proves an
+  // expired link lands on the callback's rejected-link card, with the same
+  // URL as a replayed link and the return target its new sign-in keeps.
+  const sentLinks: CapturedMagicLink[] = [];
+  const { auth } = makeMemoryTestAuth({ sentLinks });
+  const returnTo =
+    "/cs-CZ/reservation/cowork?entryTier=open-space&date=2026-12-01&coffee=false";
+  const callbackURL = `/cs-CZ/auth/callback?${signInCallbackReturnParam}=${encodeAuthCallbackReturn(returnTo)}`;
+  await signInForMagicLink(auth, uniqueEmail("expired-link"), callbackURL);
+  await signInForMagicLink(auth, uniqueEmail("replayed-link"), callbackURL);
+  const [expiring, replayed] = sentLinks;
+  const firstUse = await verifyMagicLink(auth, replayed!);
+  expect(getSessionCookie(firstUse)).toBeDefined();
+
+  try {
+    setSystemTime(
+      new Date(Date.now() + (betterAuthMagicLinkOptions.expiresIn + 1) * 1000)
+    );
+    const expired = await verifyMagicLink(auth, expiring!);
+    const replay = await verifyMagicLink(auth, replayed!);
+
+    expect(getSessionCookie(expired)).toBeUndefined();
+    expect(expired.status).toBe(302);
+    expect(expired.headers.get("location")).toBe(
+      replay.headers.get("location")
+    );
+    const location = new URL(expired.headers.get("location") ?? "");
+    expect(location.origin).toBe(`https://${HOST}`);
+    expect(location.pathname).toBe("/cs-CZ/auth/callback");
+    expect(location.searchParams.get("error")).toBe("INVALID_TOKEN");
+    expect(
+      readAuthCallbackReturnTo(
+        location.searchParams.get(signInCallbackReturnParam)
+      )
+    ).toBe(returnTo);
+  } finally {
+    setSystemTime();
+  }
 });
 
 const postJson = (
