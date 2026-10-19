@@ -1097,5 +1097,8 @@
   "publicOfferingMeetingRoomUsage": "Hourly bookings start on the hour you choose. The whole-day booking runs from midnight to midnight.",
   "publicOfferingOfficeDescription": "A private office reserved only for you for whole days, with the seats you need.",
   "publicOfferingOfficeUsage": "Book whole days starting up to one month ahead. One booking can last up to {hours} hours, normally 28 days.",
-  "publicOfferingOfficeSeatPrice": "Each reserved seat, per day"
+  "publicOfferingOfficeSeatPrice": "Each reserved seat, per day",
+  "publicOfferingAddOnIncluded": "{addOn} included",
+  "publicPageTopicOffer": "Offer",
+  "publicPageTopicBooking": "Booking"
 }

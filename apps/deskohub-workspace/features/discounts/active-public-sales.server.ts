@@ -33,7 +33,22 @@ async function loadActivePublicSales(input: {
 }): Promise<readonly ActiveSale[]> {
   await connection();
 
-  return CalendarDiscountProvider.pipe(
+  return discoverActivePublicSales(input).pipe(
+    Effect.map(({ activeSales }) => activeSales),
+    Effect.orElseSucceed(() => []),
+    runWorkspaceEffect("discounts.active-public-sales.load")
+  );
+}
+
+/**
+ * The sales the calendar runs now, and whether it answered completely. It
+ * reads no request, so it suits a cached render that decided the
+ * `calendar_sales` gate beforehand.
+ */
+export const discoverActivePublicSales = Effect.fn(
+  "Discounts.discoverActivePublicSales"
+)((input: { readonly locale: Locale }) =>
+  CalendarDiscountProvider.pipe(
     Effect.flatMap((provider) => provider.discoverActiveSales(input)),
     Effect.tapError((cause) =>
       logDiscountResolutionFailure({
@@ -42,9 +57,6 @@ async function loadActivePublicSales(input: {
         provider: "calendar",
       })
     ),
-    Effect.map(({ activeSales }) => activeSales),
-    Effect.orElseSucceed(() => []),
-    Effect.provide(CalendarDiscountProvider.Live),
-    runWorkspaceEffect("discounts.active-public-sales.load")
-  );
-}
+    Effect.provide(CalendarDiscountProvider.Live)
+  )
+);

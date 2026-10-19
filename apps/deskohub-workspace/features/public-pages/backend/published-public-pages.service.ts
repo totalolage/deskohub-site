@@ -5,6 +5,7 @@ import {
   type PublicPage,
   type PublicPageReleaseGate,
   publicPages,
+  type RegisteredPublicPage,
 } from "../public-pages";
 
 interface IPublishedPublicPagesService {
@@ -13,7 +14,7 @@ interface IPublishedPublicPagesService {
    * page whose release gate is on. A gate that can't be evaluated fails
    * closed, so its page is left out.
    */
-  readonly list: Effect.Effect<ReadonlyArray<PublicPage>>;
+  readonly list: Effect.Effect<ReadonlyArray<RegisteredPublicPage>>;
 }
 
 export class PublishedPublicPagesService extends Context.Service<
@@ -33,7 +34,7 @@ export class PublishedPublicPagesService extends Context.Service<
       return {
         list: Effect.filter(
           publicPages,
-          ({ releaseGate }) =>
+          ({ releaseGate }: PublicPage) =>
             releaseGate === undefined
               ? Effect.succeed(true)
               : releaseGates[releaseGate],

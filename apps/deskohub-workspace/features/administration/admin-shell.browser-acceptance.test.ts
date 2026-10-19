@@ -16,6 +16,12 @@ const mobileViewports = [
   { height: 640, width: 390 },
 ] as const;
 const desktopViewport = { height: 600, width: 1280 } as const;
+// The narrowest phones the administration supports, where the header bar has
+// the least room.
+const narrowViewports = [
+  { height: 640, width: 320 },
+  { height: 640, width: 360 },
+] as const;
 const harnessOrigin = "http://admin-shell.test";
 const lastLinkPath = "/admin/cli/sessions";
 
@@ -30,6 +36,8 @@ const nextModuleStubs: Readonly<Record<string, string>> = {
   `,
   "next/navigation": `
     export const usePathname = () => window.location.pathname;
+    export const useSearchParams = () =>
+      new URLSearchParams(window.location.search);
   `,
 };
 
@@ -148,4 +156,44 @@ for (const locale of locales) {
       }
     }
   );
+
+  for (const viewport of narrowViewports) {
+    test.skipIf(!chromiumAvailable)(
+      `fits the ${locale} header bar in a ${viewport.width}px wide screen`,
+      async () => {
+        const page = await openAdminShell(locale, viewport);
+        try {
+          const header = page.getByRole("banner");
+          await header
+            .getByRole("navigation", {
+              name: m.shellLanguageSwitcherLabel({}, { locale }),
+            })
+            .waitFor();
+          const pageWidth = await page.evaluate(
+            () => document.documentElement.scrollWidth
+          );
+          expect(pageWidth).toBeLessThanOrEqual(viewport.width);
+          // A squeezed bar narrows the icon-only navigation button first.
+          const menuButton = await header
+            .getByRole("button", {
+              name: m.shellOpenNavigation({}, { locale }),
+            })
+            .boundingBox();
+          if (!menuButton) throw new Error("The menu button is not rendered.");
+          expect(menuButton.width).toBe(menuButton.height);
+          for (const control of await header
+            .locator("a, button")
+            .filter({ visible: true })
+            .all()) {
+            const box = await control.boundingBox();
+            if (!box) continue;
+            expect(box.x).toBeGreaterThanOrEqual(0);
+            expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+          }
+        } finally {
+          await page.close();
+        }
+      }
+    );
+  }
 }
