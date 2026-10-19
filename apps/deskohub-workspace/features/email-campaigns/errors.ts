@@ -1,7 +1,7 @@
 import { Data, type Schema } from "effect";
 import type { BetterAuthSecretsMessage } from "@/features/account/backend/auth/auth-secrets";
 import type { CampaignAudienceId, CampaignId } from "./campaign-identifiers";
-import type { CampaignStatus } from "./campaign-states";
+import type { CampaignDelivery, CampaignStatus } from "./campaign-states";
 
 export class CampaignNotFound extends Data.TaggedError("CampaignNotFound")<{
   readonly campaignId: CampaignId;
@@ -28,6 +28,20 @@ export class CampaignReadOnly extends Data.TaggedError("CampaignReadOnly")<{
   readonly campaignId: CampaignId;
   readonly status: Exclude<CampaignStatus, "draft">;
 }> {}
+
+/**
+ * A one-off operation (test send, send, retry, duplicate) was asked of an
+ * automated campaign.
+ */
+export class CampaignDeliveryMismatch extends Data.TaggedError(
+  "CampaignDeliveryMismatch"
+)<{
+  readonly campaignId: CampaignId;
+  readonly delivery: CampaignDelivery;
+}> {
+  /** Stable across transports, so clients can tell this conflict apart. */
+  static readonly code = "campaign-delivery-mismatch";
+}
 
 /** Draft campaigns use the audience, so it can be archived but not deleted. */
 export class CampaignAudienceInUse extends Data.TaggedError(

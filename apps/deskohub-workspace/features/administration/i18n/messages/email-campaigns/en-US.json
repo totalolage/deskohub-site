@@ -868,5 +868,6 @@
   "emailCampaignsTestSendTitle": "Send a test email",
   "emailCampaignsTestSendUnsavedChanges": "Save your changes first. A test send uses the saved campaign, so its code wouldn't confirm your unsaved edits.",
   "emailCampaignsActionTimedOut": "The server took too long to respond. Try again.",
+  "emailCampaignsDeliveryMismatch": "This action works only for one-off campaigns, and this campaign sends automatically.",
   "emailCampaignsActionFailedUnexpectedly": "Something went wrong on the server. Try again."
 }

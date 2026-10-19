@@ -102,6 +102,8 @@ export {
   type AdministrationCampaignCreateInput as AdministrationCampaignCreateInputType,
   AdministrationCampaignCreateRequest,
   type AdministrationCampaignCreateRequest as AdministrationCampaignCreateRequestType,
+  AdministrationCampaignDelivery,
+  type AdministrationCampaignDelivery as AdministrationCampaignDeliveryType,
   AdministrationCampaignDetail,
   type AdministrationCampaignDetail as AdministrationCampaignDetailType,
   AdministrationCampaignDuplicateRequest,

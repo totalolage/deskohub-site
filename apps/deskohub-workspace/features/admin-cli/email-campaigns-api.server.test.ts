@@ -77,6 +77,7 @@ const campaignRow = (overrides: Partial<CampaignRow> = {}): CampaignRow => ({
   templateKey: "workspace",
   content: {},
   audienceId,
+  delivery: "once",
   status: "draft",
   createdAt,
   updatedAt: createdAt,

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Schema } from "effect";
+import { AdministrationCampaignDetail } from "./email-campaigns";
 import {
   AdminCliAdministrationApi,
   AdministrationActorEmail,
@@ -374,6 +375,24 @@ describe("administration contract", () => {
         releaseReason: null,
       }).appliedAmount
     ).toBeNull();
+  });
+
+  test("decodes a campaign from before delivery modes as one-off", () => {
+    // Also the shape of campaign results stored in the CLI mutation ledger.
+    expect(
+      Schema.decodeUnknownSync(AdministrationCampaignDetail)({
+        id: "01980000-0000-7000-8000-000000000001",
+        title: "October news",
+        purpose: "operational",
+        templateKey: "workspace",
+        status: "sent",
+        audienceId: null,
+        locales: [],
+        createdAt: "2026-10-01T10:00:00Z",
+        updatedAt: "2026-10-01T10:00:00Z",
+        content: {},
+      })
+    ).toMatchObject({ delivery: "once", status: "sent" });
   });
 
   test("keeps discount codes and vouchers as separate read models", () => {

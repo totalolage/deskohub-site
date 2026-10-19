@@ -23,14 +23,17 @@ import type {
   CampaignSendId,
 } from "@/features/email-campaigns/campaign-identifiers";
 import {
+  automatedCampaignStatuses,
+  type CampaignDelivery,
   type CampaignDeliveryBatchStatus,
   type CampaignRecipientSkipReason,
   type CampaignRecipientStatus,
   type CampaignStatus,
+  campaignDeliveries,
   campaignDeliveryBatchStatuses,
   campaignRecipientSkipReasons,
   campaignRecipientStatuses,
-  campaignStatuses,
+  onceCampaignStatuses,
 } from "@/features/email-campaigns/campaign-states";
 import type { Locale } from "@/features/i18n";
 import inlangSettings from "../../project.inlang/settings.json" with {
@@ -85,6 +88,11 @@ export const emailCampaigns = pgTable(
     audienceId: text("audience_id")
       .references(() => emailCampaignAudiences.id, { onDelete: "set null" })
       .$type<CampaignAudienceId>(),
+    // The `email_campaigns_delivery_immutable` trigger rejects any change.
+    delivery: text("delivery")
+      .notNull()
+      .default("once")
+      .$type<CampaignDelivery>(),
     status: text("status").notNull().default("draft").$type<CampaignStatus>(),
     createdAt: instant("created_at").notNull().default(sql`now()`),
     updatedAt: instant("updated_at").notNull().default(sql`now()`),
@@ -97,8 +105,12 @@ export const emailCampaigns = pgTable(
       sql`${t.purpose} in (${quotedSqlList(campaignPurposes)})`
     ),
     check(
+      "email_campaigns_delivery_check",
+      sql`${t.delivery} in (${quotedSqlList(campaignDeliveries)})`
+    ),
+    check(
       "email_campaigns_status_check",
-      sql`${t.status} in (${quotedSqlList(campaignStatuses)})`
+      sql`(${t.delivery} = 'once' and ${t.status} in (${quotedSqlList(onceCampaignStatuses)})) or (${t.delivery} = 'automated' and ${t.status} in (${quotedSqlList(automatedCampaignStatuses)}))`
     ),
   ]
 );

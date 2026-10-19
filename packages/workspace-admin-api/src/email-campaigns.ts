@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import { AudienceFilter } from "./audience-filter";
 import {
@@ -51,11 +51,23 @@ export const AdministrationCampaignTemplateKey = Schema.Literals(["workspace"]);
 export type AdministrationCampaignTemplateKey =
   typeof AdministrationCampaignTemplateKey.Type;
 
+/** Chosen at creation and never changed. */
+export const AdministrationCampaignDelivery = Schema.Literals([
+  "once",
+  "automated",
+]);
+export type AdministrationCampaignDelivery =
+  typeof AdministrationCampaignDelivery.Type;
+
+/** One-off statuses, then the statuses only an automated campaign has. */
 export const AdministrationCampaignStatus = Schema.Literals([
   "draft",
   "sending",
   "sent",
   "failed",
+  "active",
+  "paused",
+  "archived",
 ]);
 export type AdministrationCampaignStatus =
   typeof AdministrationCampaignStatus.Type;
@@ -162,6 +174,10 @@ export const AdministrationCampaignSummary = Schema.Struct({
   title: Schema.String,
   purpose: AdministrationCampaignPurpose,
   templateKey: AdministrationCampaignTemplateKey,
+  /** Servers and stored results that predate automated campaigns omit it. */
+  delivery: AdministrationCampaignDelivery.pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed("once" as const))
+  ),
   status: AdministrationCampaignStatus,
   audienceId: Schema.NullOr(AdministrationCampaignAudienceId),
   locales: Schema.Array(AdministrationCampaignLocale),

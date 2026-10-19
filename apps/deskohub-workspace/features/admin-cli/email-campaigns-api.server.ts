@@ -54,6 +54,7 @@ import type {
   CampaignConfirmationRejected,
   CampaignContentInvalid,
   CampaignContentMissing,
+  CampaignDeliveryMismatch,
   CampaignDeliveryQueueFailed,
   CampaignEmailDeliveryFailed,
   CampaignEmailNotConfigured,
@@ -89,6 +90,7 @@ type CampaignApiCause =
   | CampaignConfirmationRejected
   | CampaignContentInvalid
   | CampaignContentMissing
+  | CampaignDeliveryMismatch
   | CampaignDeliveryQueueFailed
   | CampaignEmailDeliveryFailed
   | CampaignEmailNotConfigured
@@ -150,6 +152,14 @@ const toCampaignApiFailure = (cause: CampaignApiCause) =>
       ({ status }) =>
         new CliMutationRejected({
           message: `The campaign is ${status}, so it can no longer be changed.`,
+        })
+    ),
+    Match.tag(
+      "CampaignDeliveryMismatch",
+      () =>
+        new CliMutationRejected({
+          message:
+            "This campaign sends automatically, so it can't be test sent, sent, retried, or duplicated like a one-off campaign.",
         })
     ),
     Match.tag(
@@ -428,6 +438,7 @@ const toCliCampaignSummary = (
   title: campaign.title,
   purpose: campaign.purpose,
   templateKey: campaign.templateKey,
+  delivery: campaign.delivery,
   status: campaign.status,
   audienceId: campaign.audienceId,
   locales: campaignLocales(campaign.content),

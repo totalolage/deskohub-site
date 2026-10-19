@@ -17,15 +17,23 @@ import {
   type CampaignTemplateKey,
 } from "../body/campaign-content";
 import type { CampaignAudienceId, CampaignId } from "../campaign-identifiers";
+import { isOnceCampaign, type OnceCampaignStatus } from "../campaign-states";
 import {
   CampaignAudienceArchived,
   CampaignAudienceNotFound,
   CampaignContentInvalid,
+  CampaignDeliveryMismatch,
   CampaignNotFound,
   CampaignReadOnly,
 } from "../errors";
 
 type Campaign = CampaignRow;
+
+/** A campaign that sends once; only these can be sent or duplicated. */
+export type OnceCampaign = Campaign & {
+  readonly delivery: "once";
+  readonly status: OnceCampaignStatus;
+};
 
 type CampaignDraftInput = {
   readonly title: string;
@@ -47,6 +55,13 @@ export interface ICampaignService {
   readonly get: (
     campaignId: CampaignId
   ) => Effect.Effect<Campaign, CampaignNotFound | EffectDrizzleQueryError>;
+  /** Gets a campaign for a one-off operation, refusing an automated one. */
+  readonly getOnce: (
+    campaignId: CampaignId
+  ) => Effect.Effect<
+    OnceCampaign,
+    CampaignNotFound | CampaignDeliveryMismatch | EffectDrizzleQueryError
+  >;
   readonly create: (
     input: CampaignDraftInput
   ) => Effect.Effect<Campaign, CampaignWriteError | CampaignTransactionError>;
@@ -73,13 +88,16 @@ export interface ICampaignService {
     CampaignNotFound | CampaignReadOnly | EffectDrizzleQueryError
   >;
   /**
-   * Copies a campaign of any status into a new Draft titled "Copy of …". The
-   * copy keeps the source's audience only while it exists and isn't archived; otherwise the
-   * admin picks one.
+   * Copies a one-off campaign of any status into a new Draft titled "Copy
+   * of …". The copy keeps the source's audience only while it exists and
+   * isn't archived; otherwise the admin picks one.
    */
   readonly duplicate: (
     campaignId: CampaignId
-  ) => Effect.Effect<Campaign, CampaignNotFound | CampaignTransactionError>;
+  ) => Effect.Effect<
+    Campaign,
+    CampaignNotFound | CampaignDeliveryMismatch | CampaignTransactionError
+  >;
 }
 
 /** Campaign drafts and the read-only record of sent campaigns. */
@@ -106,6 +124,15 @@ export class CampaignService extends Context.Service<
               onNone: () => Effect.fail(new CampaignNotFound({ campaignId })),
               onSome: Effect.succeed,
             })
+          )
+        );
+
+      const getOnce = (campaignId: CampaignId) =>
+        get(campaignId).pipe(
+          Effect.filterOrFail(
+            isOnceCampaign,
+            ({ delivery }) =>
+              new CampaignDeliveryMismatch({ campaignId, delivery })
           )
         );
 
@@ -192,6 +219,7 @@ export class CampaignService extends Context.Service<
           .orderBy(desc(emailCampaigns.createdAt), desc(emailCampaigns.id))
           .pipe(Effect.withSpan("CampaignService.list")),
         get: Effect.fn("CampaignService.get")(get),
+        getOnce: Effect.fn("CampaignService.getOnce")(getOnce),
         create: Effect.fn("CampaignService.create")(function* (input) {
           yield* validateContent(input.content);
           return yield* db.transaction((tx) =>
@@ -247,7 +275,7 @@ export class CampaignService extends Context.Service<
         }),
         duplicate: Effect.fn("CampaignService.duplicate")(
           function* (campaignId) {
-            const source = yield* get(campaignId);
+            const source = yield* getOnce(campaignId);
             return yield* db.transaction((tx) => insertCopy(tx, source));
           }
         ),
