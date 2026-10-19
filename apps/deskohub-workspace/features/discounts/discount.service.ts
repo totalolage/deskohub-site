@@ -117,7 +117,7 @@ type AppliedDiscountCodeQuote = {
  * The anonymous discounts on an advertised price. `complete` is false when a
  * discount source could not answer, so a running sale may be missing.
  */
-export type DiscountAdvertisement = {
+type DiscountAdvertisement = {
   readonly quote: DiscountAdvertisementQuote;
   readonly complete: boolean;
 };
