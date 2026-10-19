@@ -1,9 +1,6 @@
 import { Data, type Schema } from "effect";
 import type { CalendarExpressionNeverOccurs } from "@/shared/utils/calendar-expression";
-import type {
-  CampaignAudienceId,
-  CampaignId,
-} from "../campaign-identifiers";
+import type { CampaignAudienceId, CampaignId } from "../campaign-identifiers";
 import type { AutomatedCampaignStatus } from "../campaign-states";
 import type {
   AutomationPreviewId,
@@ -107,6 +104,8 @@ export class AutomationVersionNotFound extends Data.TaggedError(
   readonly campaignId: CampaignId;
   readonly versionNumber: number;
 }> {}
+
+/**
  * A condition references a saved audience that no longer exists. It can't
  * pass again, so the condition unit ends its runs failed (evaluation
  * unavailable) instead of retrying.

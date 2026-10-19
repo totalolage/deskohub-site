@@ -1,17 +1,19 @@
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import { Context, Data, Duration, Effect, Layer } from "effect";
+import { Context, Data, Duration, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { emailCampaignAutomationWorkUnits as units } from "@/db/schema";
 import { isDatabaseQueryError } from "@/db/sql-constraint";
 import { currentInstant } from "@/shared/utils/temporal";
+import type { CampaignSendId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
 import {
   type AutomationEngineTransaction,
-  type AutomationUnitCommit,
   AutomationUnitDefect,
   type AutomationUnitExpiry,
+  type AutomationUnitSubmit,
   type ClaimedAutomationUnit,
+  type FetchedAutomationUnit,
   type RegisteredAutomationUnitHandler,
 } from "./automation-unit-handler";
 import { AutomationUnitHandlers } from "./automation-unit-handlers.service";
@@ -67,7 +69,11 @@ interface IAutomationUnitProcessor {
 type ClaimedUnit = ClaimedAutomationUnit<unknown> & {
   readonly claimId: string;
   readonly cancelRequestedAt: Temporal.Instant | null;
+  /** Set once the unit's commit persisted a send (§5.9). */
+  readonly sendId: CampaignSendId | null;
 };
+
+type PersistedUnit = ClaimedUnit & { readonly sendId: CampaignSendId };
 
 export class AutomationUnitProcessor extends Context.Service<
   AutomationUnitProcessor,
@@ -111,6 +117,7 @@ export class AutomationUnitProcessor extends Context.Service<
             attempt: units.attempts,
             deadlineMisses: units.deadlineMisses,
             cancelRequestedAt: units.cancelRequestedAt,
+            sendId: units.sendId,
           });
         const kind = supportedKinds.find(
           (supported) => supported === unit?.kind
@@ -156,7 +163,9 @@ export class AutomationUnitProcessor extends Context.Service<
 
       /**
        * Returns the unit to `enqueued`, keeping its slot, and fails so the
-       * queue redelivers. A unit marked meanwhile settles `dropped` instead.
+       * queue redelivers. A unit marked meanwhile settles `dropped` instead,
+       * unless it persisted a send: that unit is its send's only way to
+       * settle, so it ignores the mark (§5.9).
        */
       const requeue = (
         unit: ClaimedUnit,
@@ -184,16 +193,16 @@ export class AutomationUnitProcessor extends Context.Service<
                 and(
                   eq(units.id, unit.id),
                   eq(units.claimId, unit.claimId),
-                  isNull(units.cancelRequestedAt)
+                  unit.sendId === null
+                    ? isNull(units.cancelRequestedAt)
+                    : undefined
                 )
               )
               .returning({ id: units.id })
               .pipe(
                 Effect.flatMap(([requeued]) =>
                   requeued === undefined
-                    ? settleClaimed(tx, unit, "dropped", at).pipe(
-                        Effect.as("dropped" as const)
-                      )
+                    ? missedRequeue(tx, unit, at)
                     : Effect.succeed("requeued" as const)
                 )
               )
@@ -224,22 +233,84 @@ export class AutomationUnitProcessor extends Context.Service<
           );
 
       /**
+       * §5.9: submits the send a unit persisted, then settles the unit
+       * `done` in the transaction that settles the send, handing off its
+       * slot only then. Every failure, a defect included, returns the unit
+       * to `enqueued` whether or not it is marked, so a persisted send
+       * always settles, once.
+       */
+      const submitPersisted = (
+        unit: PersistedUnit,
+        submit: AutomationUnitSubmit | undefined
+      ): Effect.Effect<AutomationUnitOutcome, AutomationUnitRedelivery> =>
+        Effect.fromNullishOr(submit).pipe(
+          Effect.mapError(
+            () => new AutomationUnitDefect({ code: "submit-unsupported" })
+          ),
+          Effect.flatMap((submitSend) => submitSend(unit)),
+          Effect.timeout(unitDeadline),
+          Effect.flatMap((settlement) =>
+            slots.handOff((tx, at) =>
+              settlement(tx, at).pipe(
+                Effect.andThen(
+                  settleClaimed(tx, unit, "done", at, { ignoreMark: true })
+                )
+              )
+            )
+          ),
+          Effect.as<AutomationUnitOutcome>("done"),
+          Effect.catchTags({
+            // Taken over meanwhile: the new claimant settles it.
+            AutomationUnitClaimLost: () =>
+              Effect.succeed<AutomationUnitOutcome>("acknowledged"),
+            AutomationUnitFetchFailure: (failure) =>
+              requeue(unit, {
+                code: failure.code,
+                deadlineMissed: false,
+                cause: failure.cause,
+              }),
+            AutomationUnitDefect: (defect) =>
+              requeue(unit, {
+                code: defect.code,
+                deadlineMissed: false,
+                cause: defect.cause,
+              }),
+            TimeoutError: () =>
+              requeue(unit, { code: "deadline", deadlineMissed: false }),
+          }),
+          Effect.catchIf(isDatabaseQueryError, (cause) =>
+            requeue(unit, { code: "database", deadlineMissed: false, cause })
+          )
+        );
+
+      /**
        * One transaction: the handler's domain writes, the done CAS on the
        * unit row, the follow-up units, then the slot hand-off (§5.4). A
-       * rejected CAS rolls the handler's writes back.
+       * rejected CAS rolls the handler's writes back. A commit that
+       * persisted a send keeps the unit claimed instead and submits it.
        */
-      const commit = (unit: ClaimedUnit, commitUnit: AutomationUnitCommit) =>
+      const commit = (
+        unit: ClaimedUnit,
+        { commit: commitUnit, submit }: FetchedAutomationUnit
+      ) =>
         slots
           .handOff((tx, at) =>
             commitUnit(tx, at).pipe(
-              Effect.tap(() => settleClaimed(tx, unit, "done", at)),
               Effect.flatMap((followUps) =>
-                planAutomationUnits(tx, followUps, at)
+                holdOrSettle(tx, unit, at).pipe(
+                  Effect.tap(() => planAutomationUnits(tx, followUps, at))
+                )
               )
             )
           )
           .pipe(
-            Effect.as<AutomationUnitOutcome>("done"),
+            Effect.flatMap(
+              Option.match({
+                onNone: () => Effect.succeed<AutomationUnitOutcome>("done"),
+                onSome: (sendId) =>
+                  submitPersisted({ ...unit, sendId }, submit),
+              })
+            ),
             Effect.catchTags({
               // Marked meanwhile: settle `dropped`. Taken over: write nothing.
               AutomationUnitClaimLost: () =>
@@ -297,7 +368,7 @@ export class AutomationUnitProcessor extends Context.Service<
       ) =>
         handler.fetch(unit).pipe(
           Effect.timeout(unitDeadline),
-          Effect.flatMap((commitUnit) => commit(unit, commitUnit))
+          Effect.flatMap((fetched) => commit(unit, fetched))
         );
 
       const run = (unit: ClaimedUnit) =>
@@ -309,7 +380,7 @@ export class AutomationUnitProcessor extends Context.Service<
             expire(unit, handler).pipe(
               Effect.flatMap((expiry) =>
                 expiry === "settled"
-                  ? commit(unit, () => Effect.succeed([]))
+                  ? commit(unit, { commit: () => Effect.succeed([]) })
                   : fetchAndCommit(unit, handler)
               )
             )
@@ -352,6 +423,13 @@ export class AutomationUnitProcessor extends Context.Service<
             kind: unit.kind,
             attempt: unit.attempt,
           });
+          // A persisted send settles whatever the unit's mark (§5.9).
+          if (unit.sendId !== null) {
+            return yield* submitPersisted(
+              { ...unit, sendId: unit.sendId },
+              byKind.get(unit.kind)?.submit
+            );
+          }
           if (unit.cancelRequestedAt !== null) {
             return yield* settle(unit, { status: "dropped" });
           }
@@ -373,6 +451,56 @@ export class AutomationUnitProcessor extends Context.Service<
     )
   );
 }
+
+/**
+ * A requeue CAS that missed: the unit was marked meanwhile and settles
+ * `dropped`, unless it persisted a send, which ignores marks; then its claim
+ * was taken over.
+ */
+const missedRequeue = (
+  tx: AutomationEngineTransaction,
+  unit: ClaimedUnit,
+  at: Temporal.Instant
+) =>
+  unit.sendId === null
+    ? settleClaimed(tx, unit, "dropped", at).pipe(Effect.as("dropped" as const))
+    : Effect.fail(new AutomationUnitClaimLost());
+
+/**
+ * Settles a committed unit `done` by CAS on the caller's claim, unless its
+ * commit persisted a send (set `send_id`): then the unit stays claimed,
+ * holding its slot until the send settles, and its send's id is returned.
+ * Either way the claim must still hold and the unit be unmarked.
+ */
+const holdOrSettle = (
+  tx: AutomationEngineTransaction,
+  unit: ClaimedUnit,
+  at: Temporal.Instant
+) =>
+  tx
+    .select({ sendId: units.sendId })
+    .from(units)
+    .where(
+      and(
+        eq(units.id, unit.id),
+        eq(units.claimId, unit.claimId),
+        isNull(units.cancelRequestedAt)
+      )
+    )
+    .for("update")
+    .pipe(
+      Effect.flatMap(([held]) =>
+        held === undefined
+          ? Effect.fail(new AutomationUnitClaimLost())
+          : Effect.succeed(Option.fromNullishOr(held.sendId))
+      ),
+      Effect.tap(
+        Option.match({
+          onNone: () => settleClaimed(tx, unit, "done", at),
+          onSome: () => Effect.void,
+        })
+      )
+    );
 
 const settlementMarkCondition = {
   done: isNull(units.cancelRequestedAt),

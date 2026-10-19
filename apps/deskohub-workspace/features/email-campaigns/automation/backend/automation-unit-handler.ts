@@ -3,11 +3,11 @@ import type {
   NetworkError,
   ValidationError,
 } from "@deskohub/dotypos";
-import { Data, Effect, Schema } from "effect";
+import { Data, Effect, Option, Schema } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type { ReservationVisitsUnavailable } from "@/features/reservation/backend/reservation-visits.service";
-import type { CampaignId } from "../../campaign-identifiers";
+import type { CampaignId, CampaignSendId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
 import type { AutomationWorkUnitKind } from "../automation-work-units";
 
@@ -29,6 +29,39 @@ export type ClaimedAutomationUnit<Subject> = {
   readonly attempt: number;
   readonly deadlineMisses: number;
 };
+
+/**
+ * A unit whose commit persisted a send: it set the unit's `send_id` (§5.9).
+ * The unit holds its claim and slot until the send settles, and only the
+ * send's id matters from then on, so the subject isn't decoded again.
+ */
+export type PersistedAutomationUnit = Omit<
+  ClaimedAutomationUnit<unknown>,
+  "subject"
+> & {
+  readonly sendId: CampaignSendId;
+};
+
+/**
+ * The writes that settle a submitted send. The processor runs them in the
+ * transaction that settles the unit `done`, before its claim CAS and the
+ * slot hand-off, so the unit settles only with its send.
+ */
+export type AutomationUnitSettlement = (
+  tx: AutomationEngineTransaction,
+  at: Temporal.Instant
+) => Effect.Effect<void, AutomationUnitDefect | DatabaseQueryError>;
+
+/**
+ * Submits a persisted send outside any transaction. A failure returns the
+ * unit to `enqueued`, keeping its slot; nothing drops or fails it.
+ */
+export type AutomationUnitSubmit = (
+  unit: PersistedAutomationUnit
+) => Effect.Effect<
+  AutomationUnitSettlement,
+  AutomationUnitFetchFailure | AutomationUnitDefect | DatabaseQueryError
+>;
 
 /**
  * A unit to plan. It's inserted `planned` and holds no slot until a hand-off
@@ -161,6 +194,19 @@ export interface AutomationUnitHandler<Subject, Fetched> {
     ReadonlyArray<PlannedAutomationUnit>,
     AutomationUnitDefect | AutomationUnitRecheckFailed | DatabaseQueryError
   >;
+  /**
+   * Submits the send a commit persisted by setting the unit's `send_id`
+   * (§5.9), and returns the writes that settle it. Right after that commit,
+   * `fetched` holds this invocation's facts. A unit claimed again with
+   * `send_id` gets `None`: it skips the cancellation mark, `expire`, `fetch`
+   * and `commit` and only submits, whatever the campaign's status, since
+   * the send may already have reached the provider. Kinds that never
+   * persist a send omit it.
+   */
+  readonly submit?: (
+    unit: PersistedAutomationUnit,
+    fetched: Option.Option<Fetched>
+  ) => ReturnType<AutomationUnitSubmit>;
 }
 
 /** Commits a fetched unit at the instant sampled after its fetch. */
@@ -171,6 +217,12 @@ export type AutomationUnitCommit = (
   ReadonlyArray<PlannedAutomationUnit>,
   AutomationUnitDefect | AutomationUnitRecheckFailed | DatabaseQueryError
 >;
+
+/** A fetched unit: its commit, and the submit for a send that commit persists. */
+export type FetchedAutomationUnit = {
+  readonly commit: AutomationUnitCommit;
+  readonly submit?: AutomationUnitSubmit;
+};
 
 /** A handler with its subject and fetched types closed over, so a registry can hold every kind. */
 export interface RegisteredAutomationUnitHandler {
@@ -186,9 +238,11 @@ export interface RegisteredAutomationUnitHandler {
   readonly fetch: (
     unit: ClaimedAutomationUnit<unknown>
   ) => Effect.Effect<
-    AutomationUnitCommit,
+    FetchedAutomationUnit,
     AutomationUnitFetchFailure | AutomationUnitDefect
   >;
+  /** Submits a send an earlier invocation persisted. */
+  readonly submit?: AutomationUnitSubmit;
 }
 
 export const registerAutomationUnitHandler = <Subject, Fetched>(
@@ -202,7 +256,7 @@ export const registerAutomationUnitHandler = <Subject, Fetched>(
       ),
       Effect.map((subject) => ({ ...unit, subject }))
     );
-  const { expire } = handler;
+  const { expire, submit } = handler;
 
   return {
     kind: handler.kind,
@@ -215,12 +269,19 @@ export const registerAutomationUnitHandler = <Subject, Fetched>(
         Effect.flatMap((decoded) =>
           handler.fetch(decoded).pipe(
             Effect.map(
-              (fetched): AutomationUnitCommit =>
-                (tx, at) =>
-                  handler.commit(tx, decoded, fetched, at)
+              (fetched): FetchedAutomationUnit => ({
+                commit: (tx, at) => handler.commit(tx, decoded, fetched, at),
+                ...(submit !== undefined && {
+                  submit: (persisted) =>
+                    submit(persisted, Option.some(fetched)),
+                }),
+              })
             )
           )
         )
       ),
+    ...(submit !== undefined && {
+      submit: (persisted) => submit(persisted, Option.none()),
+    }),
   };
 };
