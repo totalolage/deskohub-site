@@ -137,6 +137,61 @@ export const submitReservationForPayPage = ({
       submitReservationScript,
       timeouts,
     });
+    return yield* readPayPageOrderIdFrom({
+      onOrderId,
+      payPageUrl,
+      run,
+      session,
+    });
+  });
+
+/**
+ * Waits for a reservation page that continues to the checkout pay page on
+ * its own, without a submit from the runner, and reads the started order id.
+ * The reservation a signed-out customer verified the email for does this
+ * once the sign-in lands back on it.
+ */
+export const waitForReservationPayPage = ({
+  onOrderId,
+  run,
+  session,
+  timeouts,
+}: {
+  readonly onOrderId?: (orderId: WorkspaceReservationId) => void;
+  readonly run: Runner;
+  readonly session: string;
+  readonly timeouts: WorkspaceE2ETimeouts;
+}): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const result = yield* waitForReservationStart(
+      run,
+      session,
+      timeouts.checkoutStart
+    );
+    const payPageUrl = yield* requireReservationPayPage(result, {
+      onOrderId,
+      retryableErrorMessage: "Checkout reservation preparation failed",
+    });
+    return yield* readPayPageOrderIdFrom({
+      onOrderId,
+      payPageUrl,
+      run,
+      session,
+    });
+  });
+
+const readPayPageOrderIdFrom = ({
+  onOrderId,
+  payPageUrl,
+  run,
+  session,
+}: {
+  readonly onOrderId?: (orderId: WorkspaceReservationId) => void;
+  readonly payPageUrl: string;
+  readonly run: Runner;
+  readonly session: string;
+}): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
+  Effect.gen(function* () {
     const searchOrderId = yield* tryWorkspaceE2ESync(
       "decode checkout pay page order id",
       () => {
@@ -231,6 +286,29 @@ const submitReservationAndWaitForPayPage = ({
       });
 
     const result = yield* submitAttempt(1);
+    return yield* requireReservationPayPage(result, {
+      onOrderId,
+      retryableErrorMessage:
+        "Checkout reservation preparation failed after one retry",
+    });
+  });
+
+/**
+ * The pay page URL a reservation start reached. A start that did not reach
+ * it still reports any order id its URL carries, so cleanup releases the
+ * hold, and fails with the browser diagnostics.
+ */
+const requireReservationPayPage = (
+  result: ReservationStartResult,
+  {
+    onOrderId,
+    retryableErrorMessage,
+  }: {
+    readonly onOrderId?: (orderId: WorkspaceReservationId) => void;
+    readonly retryableErrorMessage: string;
+  }
+): Effect.Effect<string, WorkspaceE2EError> =>
+  Effect.gen(function* () {
     if (result.status === "ready") return result.url;
 
     const orderId = yield* tryWorkspaceE2ESync(
@@ -248,7 +326,7 @@ const submitReservationAndWaitForPayPage = ({
         throw new Error(
           [
             result.status === "retryable_error"
-              ? "Checkout reservation preparation failed after one retry"
+              ? retryableErrorMessage
               : "Timed out waiting for checkout pay page",
             result.diagnostics
               ? `Browser diagnostics:\n${result.diagnostics}`
