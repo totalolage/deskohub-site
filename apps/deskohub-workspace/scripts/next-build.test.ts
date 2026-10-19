@@ -9,32 +9,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { nextBuildRuns } from "./next-build";
-
-describe("nextBuildRuns", () => {
-  test("compiles and generates in separate runs by default", () => {
-    expect(nextBuildRuns([])).toEqual([
-      ["--experimental-build-mode=compile"],
-      ["--experimental-build-mode=generate"],
-    ]);
-  });
-
-  test("passes other arguments to both runs", () => {
-    expect(nextBuildRuns(["--debug"])).toEqual([
-      ["--experimental-build-mode=compile", "--debug"],
-      ["--experimental-build-mode=generate", "--debug"],
-    ]);
-  });
-
-  test("runs an explicit build mode once as given", () => {
-    expect(nextBuildRuns(["--experimental-build-mode=compile"])).toEqual([
-      ["--experimental-build-mode=compile"],
-    ]);
-    expect(nextBuildRuns(["--experimental-build-mode", "generate"])).toEqual([
-      ["--experimental-build-mode", "generate"],
-    ]);
-  });
-});
 
 const isRunning = (pid: number): boolean => {
   try {
@@ -46,7 +20,7 @@ const isRunning = (pid: number): boolean => {
 };
 
 const waitFor = async (condition: () => boolean): Promise<boolean> => {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 250; attempt += 1) {
     if (condition()) return true;
     await Bun.sleep(20);
   }
@@ -54,25 +28,58 @@ const waitFor = async (condition: () => boolean): Promise<boolean> => {
 };
 
 /**
- * A stand-in `next` on PATH: it records each invocation's arguments, exits
- * with `NEXT_FAIL_EXIT` in the `NEXT_FAIL_MODE` build mode, and in
- * `NEXT_HANG_MODE` starts a worker, records both pids, and waits.
+ * A stand-in `next` on PATH: it records each invocation's arguments and
+ * whether its after-compile hook is deferred, exits with `NEXT_FAIL_EXIT` in
+ * the `NEXT_FAIL_MODE` build mode, and in the `NEXT_HANG_MODE` build mode
+ * starts a worker, records both pids, and waits.
  */
 const fakeNext = `#!/usr/bin/env bash
-echo "$*" >> "$NEXT_CALLS"
+echo "next $*\${WORKSPACE_NEXT_BUILD_DEFERS_AFTER_COMPILE:+ (hook deferred)}" >> "$NEXT_CALLS"
 case "$*" in *"build-mode=\${NEXT_FAIL_MODE:-none}"*) exit "$NEXT_FAIL_EXIT" ;; esac
 case "$*" in *"build-mode=\${NEXT_HANG_MODE:-none}"*) sleep 30 & echo "$$ $!" > "$NEXT_PID"; wait ;; esac
 `;
 
+/**
+ * The project's Next config, whose after-compile hook records the metadata
+ * it gets and fails or hangs like the stand-in `next` when its mode is
+ * `after-compile`.
+ */
+const fixtureConfig = `import { spawn } from "node:child_process";
+import { appendFileSync, writeFileSync } from "node:fs";
+
+export default async () => ({
+  compiler: {
+    runAfterProductionCompile: async ({ distDir, projectDir }) => {
+      const ownDistDir = distDir === projectDir + "/.next";
+      appendFileSync(
+        process.env.NEXT_CALLS,
+        "hook " + (ownDistDir ? "with" : "without") + " the project's distDir\\n"
+      );
+      if (process.env.NEXT_FAIL_MODE === "after-compile") {
+        process.exit(Number(process.env.NEXT_FAIL_EXIT));
+      }
+      if (process.env.NEXT_HANG_MODE === "after-compile") {
+        const worker = spawn("sleep", ["30"], { stdio: "ignore" });
+        writeFileSync(process.env.NEXT_PID, \`\${process.pid} \${worker.pid}\`);
+        await new Promise(() => undefined);
+      }
+    },
+  },
+});
+`;
+
 const startBuild = (
   directory: string,
-  env: Readonly<Record<string, string>> = {}
+  env: Readonly<Record<string, string>> = {},
+  args: readonly string[] = []
 ) => {
   const bin = join(directory, "bin");
   mkdirSync(bin);
   writeFileSync(join(bin, "next"), fakeNext, { mode: 0o755 });
+  writeFileSync(join(directory, "next.config.mjs"), fixtureConfig);
   return Bun.spawn({
-    cmd: [process.execPath, join(import.meta.dir, "next-build.ts")],
+    cmd: [process.execPath, join(import.meta.dir, "next-build.ts"), ...args],
+    cwd: directory,
     env: {
       NEXT_CALLS: join(directory, "calls"),
       NEXT_PID: join(directory, "pid"),
@@ -90,6 +97,11 @@ const calls = (directory: string): readonly string[] =>
     ? readFileSync(join(directory, "calls"), "utf8").trim().split("\n")
     : [];
 
+const compile =
+  "next build --turbo --experimental-build-mode=compile (hook deferred)";
+const hook = "hook with the project's distDir";
+const generate = "next build --turbo --experimental-build-mode=generate";
+
 describe("next-build", () => {
   let directory = "";
   beforeEach(() => {
@@ -99,12 +111,30 @@ describe("next-build", () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
-  test("compiles, then generates", async () => {
+  test("compiles, runs the after-compile hook, then generates", async () => {
     const build = startBuild(directory);
     expect(await build.exited).toBe(0);
+    expect(calls(directory)).toEqual([compile, hook, generate]);
+  });
+
+  test("passes other arguments to both next builds", async () => {
+    const build = startBuild(directory, {}, ["--debug"]);
+    expect(await build.exited).toBe(0);
     expect(calls(directory)).toEqual([
-      "build --turbo --experimental-build-mode=compile",
-      "build --turbo --experimental-build-mode=generate",
+      "next build --turbo --experimental-build-mode=compile --debug (hook deferred)",
+      hook,
+      "next build --turbo --experimental-build-mode=generate --debug",
+    ]);
+  });
+
+  test("runs an explicit build mode once, with its own hook", async () => {
+    const build = startBuild(directory, {}, [
+      "--experimental-build-mode",
+      "compile",
+    ]);
+    expect(await build.exited).toBe(0);
+    expect(calls(directory)).toEqual([
+      "next build --turbo --experimental-build-mode compile",
     ]);
   });
 
@@ -117,9 +147,16 @@ describe("next-build", () => {
     expect(await new Response(build.stderr).text()).toContain(
       "--experimental-build-mode=compile` exited with 3"
     );
-    expect(calls(directory)).toEqual([
-      "build --turbo --experimental-build-mode=compile",
-    ]);
+    expect(calls(directory)).toEqual([compile]);
+  });
+
+  test("a failed after-compile hook fails the build without generating", async () => {
+    const build = startBuild(directory, {
+      NEXT_FAIL_EXIT: "5",
+      NEXT_FAIL_MODE: "after-compile",
+    });
+    expect(await build.exited).toBe(5);
+    expect(calls(directory)).toEqual([compile, hook]);
   });
 
   test("a failed generate fails the build", async () => {
@@ -128,7 +165,7 @@ describe("next-build", () => {
       NEXT_FAIL_MODE: "generate",
     });
     expect(await build.exited).toBe(4);
-    expect(calls(directory)).toHaveLength(2);
+    expect(calls(directory)).toEqual([compile, hook, generate]);
   });
 
   test("a phase ended by a signal exits with its shell status", async () => {
@@ -145,7 +182,7 @@ describe("next-build", () => {
   });
 
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
-    for (const mode of ["compile", "generate"] as const) {
+    for (const mode of ["compile", "after-compile", "generate"] as const) {
       test(`${signal} to the runner ends its ${mode} phase and its workers`, async () => {
         const build = startBuild(directory, { NEXT_HANG_MODE: mode });
         const pidFile = join(directory, "pid");

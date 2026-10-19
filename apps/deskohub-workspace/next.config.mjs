@@ -3,6 +3,7 @@ import inlangSettings from "./project.inlang/settings.json" with {
   type: "json",
 };
 import { withBotId } from "botid/next/config";
+import { withDeferrableAfterCompile } from "./scripts/next-build-after-compile.mjs";
 import { configureWorkspaceBotId } from "./shared/bot-protection/bot-protection.policy.js";
 
 const localeRedirectPattern = inlangSettings.locales.join("|");
@@ -148,6 +149,8 @@ const botIdConfig = configureWorkspaceBotId(
   withBotId
 );
 
-export default postHogSourceMapConfig
-  ? withPostHogConfig(botIdConfig, postHogSourceMapConfig)
-  : botIdConfig;
+export default withDeferrableAfterCompile(
+  postHogSourceMapConfig
+    ? withPostHogConfig(botIdConfig, postHogSourceMapConfig)
+    : botIdConfig
+);
