@@ -37,7 +37,7 @@ const selection = "/cs-CZ/reservation/cowork?selection=synthetic-1";
 const czechExpectation = {
   locale: "cs-CZ",
   returnTo: selection,
-  reviewTarget: "callback-signed-in-return-cs-desktop",
+  reviewTarget: "callback-signed-in-cs-desktop",
 } as const;
 const czechCallbackUrl = `${baseUrl}/cs-CZ/auth/callback?attempt=0f0a9c1e-7b62-4c8d-9e21-53ab2f0d4c7a&return=${encodeAuthCallbackReturn(selection)}`;
 const initialViewport = { height: 768, width: 1024 } as const;
@@ -470,7 +470,10 @@ describe("account callback handoff review", () => {
     expect(fakePage.screenshotCalls).toHaveLength(1);
     expect(writeFileSpy?.mock.calls).toEqual([
       [
-        resolve(accountReviewArtifactDirectory, "callback-loading-desktop.png"),
+        resolve(
+          accountReviewArtifactDirectory,
+          "callback-signed-in-desktop.png"
+        ),
         screenshotBuffer,
       ],
     ]);
@@ -485,7 +488,7 @@ describe("account callback handoff review", () => {
   test("defaults to the English callback leaving for the account", async () => {
     expect(accountCallbackHandoff).toEqual({
       locale: "en-US",
-      reviewTarget: "callback-loading-desktop",
+      reviewTarget: "callback-signed-in-desktop",
     });
     const fakePage = makeCallbackFakePage();
 
@@ -496,7 +499,10 @@ describe("account callback handoff review", () => {
     expect(documentReviewControl.preparedLanding).toBe(accountCallbackHandoff);
     expect(writeFileSpy?.mock.calls).toEqual([
       [
-        resolve(accountReviewArtifactDirectory, "callback-loading-desktop.png"),
+        resolve(
+          accountReviewArtifactDirectory,
+          "callback-signed-in-desktop.png"
+        ),
         screenshotBuffer,
       ],
     ]);
@@ -663,7 +669,10 @@ describe("account callback handoff review", () => {
     expect(fakePage.screenshotCalls).toHaveLength(0);
     expect(writeFileSpy?.mock.calls).toEqual([
       [
-        resolve(accountReviewArtifactDirectory, "callback-loading-desktop.png"),
+        resolve(
+          accountReviewArtifactDirectory,
+          "callback-signed-in-desktop.png"
+        ),
         documentReviewControl.pixels,
       ],
     ]);
@@ -840,7 +849,7 @@ describe("account callback handoff review", () => {
       [
         resolve(
           accountReviewArtifactDirectory,
-          "callback-signed-in-return-cs-desktop.png"
+          "callback-signed-in-cs-desktop.png"
         ),
         screenshotBuffer,
       ],
@@ -871,7 +880,7 @@ describe("account callback handoff review", () => {
       [
         resolve(
           accountReviewArtifactDirectory,
-          "callback-signed-in-return-cs-desktop.png"
+          "callback-signed-in-cs-desktop.png"
         ),
         documentReviewControl.pixels,
       ],

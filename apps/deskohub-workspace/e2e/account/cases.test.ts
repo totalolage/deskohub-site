@@ -287,6 +287,8 @@ class FakeAccountExternalState {
   readonly consumedLinks = new Set<string>();
   /** When the cross-browser sign-in opened and closed its second browser. */
   readonly assistantBrowserEvents: Array<"close" | "open"> = [];
+  /** Where each consumed link landed: path and query, in order. */
+  readonly linkLandings: string[] = [];
   /** The cross-browser sign-in's review moments, in capture order. */
   readonly signInHandoffReviews: Array<{
     readonly stage: string;
@@ -861,10 +863,9 @@ class FakeAccountExternalState {
           type: "consume",
           userId: "auth-original",
         });
-        return {
-          destination: "/en-US/account",
-          text: completionTitle,
-        };
+        return callback.returnTo === undefined
+          ? { destination: "/en-US/account", text: completionTitle }
+          : { destination: callback.returnTo, text: "" };
       }
       case "reauthentication": {
         const user = this.requireUser("auth-original");
@@ -922,10 +923,7 @@ class FakeAccountExternalState {
         this.localePreference = callback.locale;
         return callback.returnTo === undefined
           ? { destination: "/en-US/account", text: "Current and upcoming" }
-          : {
-              destination: callback.returnTo,
-              text: `Booking as ${message.recipient}`,
-            };
+          : { destination: callback.returnTo, text: "" };
       }
       case "accepted-b":
         throw new Error("the generic accepted-b message must not be consumed");
@@ -1400,6 +1398,11 @@ class FakeBrowser {
       // The callback lands through the proxy like any page request, and a
       // rejected link stays on the callback in the link's locale.
       const landing = `${this.external.config.baseUrl}${result.destination}`;
+      if (!result.failed) this.external.linkLandings.push(result.destination);
+      if (!result.failed && result.destination.includes("/reservation/")) {
+        this.navigate(landing);
+        return;
+      }
       const destinationLocale = (fakeLocalePath.exec(
         new URL(landing).pathname
       )?.[1] ?? "en-US") as FakeLocale;
@@ -1509,9 +1512,12 @@ class FakeBrowser {
         this.codeInputEmpty = true;
         return;
       }
+      // A typed code leaves for the request's return target, else the
+      // account.
+      const returnTo = this.storedRequest?.returnTo;
       this.storedRequest = undefined;
       this.navigate(
-        `${this.external.config.baseUrl}/${this.pageLocale()}/account`
+        `${this.external.config.baseUrl}${returnTo ?? `/${this.pageLocale()}/account`}`
       );
       return;
     }
@@ -1739,6 +1745,17 @@ class FakeBrowser {
   }
 
   eval(input: string) {
+    if (input.includes("/api/auth/get-session")) {
+      const userId = this.external.currentAuthUserId;
+      const email =
+        this.signedIn() && userId !== undefined
+          ? this.external.usersById.get(userId)?.email
+          : undefined;
+      return JSON.stringify({
+        sessionMatches:
+          email !== undefined && input.includes(JSON.stringify(email)),
+      });
+    }
     if (input.includes("validationMessage")) {
       return JSON.stringify({ blocked: this.nativeValidationBlocked });
     }
@@ -2445,7 +2462,7 @@ const executeCase = async (
 ) =>
   Effect.runPromise(makeCaseExecution(testCase, scenario, stepIds, verifyPage));
 
-const { makeWorkspaceE2ESignInHandoff } = await import("./cases");
+const { makeWorkspaceE2ESignInReturns } = await import("./cases");
 
 const buildCase = async (
   makeCases: typeof import("./cases").makeWorkspaceE2EAccountCases,
@@ -2475,7 +2492,7 @@ const buildCase = async (
     rateBudget: scenario.rateBudget,
     run: scenario.run,
     session,
-    signInHandoff: makeWorkspaceE2ESignInHandoff(fixedNowMs),
+    signInReturns: makeWorkspaceE2ESignInReturns(fixedNowMs),
   });
   const selected = cases.find(({ id }) => id === caseId);
   if (!selected) throw new Error(`case ${caseId} was not built`);
@@ -2598,7 +2615,15 @@ test("executes every account lane case within the magic-link ledger", async () =
   // The assistant's browser requested the reactivation link from the Czech
   // cowork selection, replayed it after the lane browser consumed it, kept
   // its return target on the new-link sign-in, and closed with the case.
-  const handoff = makeWorkspaceE2ESignInHandoff(fixedNowMs);
+  const signInReturns = makeWorkspaceE2ESignInReturns(fixedNowMs);
+  // The main recipient's first link returned the lane browser to its
+  // English selection, and the reactivation link to the assistant's Czech
+  // one; the reauthentication link kept its account landing.
+  expect(scenario.external.linkLandings).toEqual([
+    signInReturns.sameBrowser.returnTo,
+    "/en-US/account",
+    signInReturns.assistant.returnTo,
+  ]);
   expect(scenario.external.assistantBrowserEvents).toEqual(["open", "close"]);
   expect(
     scenario.external.signInHandoffReviews.map(({ stage, url }) => {
@@ -2613,7 +2638,7 @@ test("executes every account lane case within the magic-link ledger", async () =
     new URL(
       scenario.external.signInHandoffReviews[0]?.url ?? ""
     ).searchParams.get("returnTo")
-  ).toBe(handoff.returnTo);
+  ).toBe(signInReturns.assistant.returnTo);
   expect(scenario.external.languageSaves).toEqual(["cs-CZ", "en-US"]);
   expect(scenario.external.localePreference).toBe("en-US");
   expect(stepIds).toContain(

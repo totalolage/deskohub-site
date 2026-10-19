@@ -32,7 +32,7 @@ export type CallbackHandoffExpectation = {
 /** The English callback of a sign-in without a return target, leaving for the account. */
 export const accountCallbackHandoff: CallbackHandoffExpectation = {
   locale: "en-US",
-  reviewTarget: "callback-loading-desktop",
+  reviewTarget: "callback-signed-in-desktop",
 };
 
 const callbackLoadingSelector =

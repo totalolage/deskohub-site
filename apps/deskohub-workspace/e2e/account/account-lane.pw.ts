@@ -68,6 +68,7 @@ import {
   type SignInHandoffReviewStage,
   signInHandoffReviewTargetByStage,
 } from "./review-targets";
+import type { WorkspaceE2ESignInReturns } from "./cases";
 import type { WorkspaceE2EAccountLifecycleHandoff } from "./types";
 import {
   resolveWorkspaceE2EPreviewLogs,
@@ -135,6 +136,11 @@ type WorkspaceE2EAccountLane = {
   readonly runPlan: Awaited<ReturnType<typeof readWorkspaceE2ERunPlan>>;
   readonly run: Runner;
   readonly session: string;
+  /**
+   * The selections the lane's sign-ins return to, built once per worker so
+   * the case that requests a link and the case that consumes it agree.
+   */
+  readonly signInReturns: WorkspaceE2ESignInReturns;
 };
 
 type WorkspaceE2EAccountWorkerFixtures = {
@@ -157,6 +163,8 @@ const accountTest = runtimeTest.extend<
       const runPlan = await readWorkspaceE2ERunPlan();
       const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
       const lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff = {};
+      const { makeWorkspaceE2ESignInReturns } = await import("./cases");
+      const signInReturns = makeWorkspaceE2ESignInReturns();
       const passkeys = makeWorkspaceE2EAccountPasskeys({
         baseUrl: config.baseUrl,
         getPage: () => {
@@ -214,6 +222,7 @@ const accountTest = runtimeTest.extend<
                   runPlan,
                   run,
                   session: `workspace-account-e2e-${runContext.runId}`,
+                  signInReturns,
                 })
               );
             })
@@ -236,8 +245,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
   accountTest(
     caseId,
     async ({ accountLane, browser, environment, runEffect }) => {
-      const { makeWorkspaceE2EAccountCases, makeWorkspaceE2ESignInHandoff } =
-        await import("./cases");
+      const { makeWorkspaceE2EAccountCases } = await import("./cases");
       const { getDatasourceConfig } = await import("../config");
       const { runWorkspaceE2EAccountCase } = await import("./runner");
       const datasourceConfig = getDatasourceConfig(environment);
@@ -246,7 +254,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
       let captureLanguagePreferenceReview:
         | LanguagePreferenceReviewCapture
         | undefined;
-      const signInHandoff = makeWorkspaceE2ESignInHandoff();
+      const { signInReturns } = accountLane;
       const cases = makeWorkspaceE2EAccountCases({
         captureLanguagePreferenceReview: async (stage) => {
           await captureLanguagePreferenceReview?.(stage);
@@ -255,7 +263,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
           captureSignInHandoffReview(
             browser,
             accountLane.config.review,
-            signInHandoff.locale,
+            signInReturns.assistant.locale,
             stage
           ),
         config: accountLane.config,
@@ -266,7 +274,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         rateBudget: accountLane.rateBudget,
         run: accountLane.run,
         session: accountLane.session,
-        signInHandoff,
+        signInReturns,
       });
       const selected = cases.find((testCase) => testCase.id === caseId);
       if (!selected) {
@@ -532,10 +540,17 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         if (!page) throw new Error(accountReviewCaptureFailureMessage);
         await withSignInPendingReview(page, accountLane.config.review, runCase);
       } else if (caseId === "account-magic-link-delivery") {
+        // The link the lane tab requested from its cowork selection returns
+        // there, so its callback shows the returning signed-in copy first.
         await withCallbackHandoffReview(
           getOwnedPage(),
           accountLane.config.review,
-          runCase
+          runCase,
+          {
+            locale: signInReturns.sameBrowser.locale,
+            returnTo: signInReturns.sameBrowser.returnTo,
+            reviewTarget: "callback-signed-in-desktop",
+          }
         );
       } else if (caseId === "account-deletion-and-reactivation") {
         // The lane browser opens the link the assistant's browser requested,
@@ -546,9 +561,9 @@ for (const caseId of workspaceE2EAccountCaseIds) {
           accountLane.config.review,
           runCase,
           {
-            locale: signInHandoff.locale,
-            returnTo: signInHandoff.returnTo,
-            reviewTarget: "callback-signed-in-return-cs-desktop",
+            locale: signInReturns.assistant.locale,
+            returnTo: signInReturns.assistant.returnTo,
+            reviewTarget: "callback-signed-in-cs-desktop",
           }
         );
       } else if (caseId === "account-locale-preference") {

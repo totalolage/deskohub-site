@@ -78,8 +78,8 @@ export type AccountReviewTarget =
  * callback returning to where the sign-in started.
  */
 export type CallbackHandoffReviewTarget =
-  | "callback-loading-desktop"
-  | "callback-signed-in-return-cs-desktop";
+  | "callback-signed-in-desktop"
+  | "callback-signed-in-cs-desktop";
 
 export type ReservationStatusReviewTarget =
   | "reservation-status-modal-desktop"
@@ -116,13 +116,13 @@ const accountReviewTargetMetadata = {
     path: enAccountPath,
     viewport: { height: 1000, width: 1440 },
   },
-  "callback-loading-desktop": {
-    filename: "callback-loading-desktop.png",
+  "callback-signed-in-desktop": {
+    filename: "callback-signed-in-desktop.png",
     path: "/en-US/auth/callback",
     viewport: { height: 1000, width: 1440 },
   },
-  "callback-signed-in-return-cs-desktop": {
-    filename: "callback-signed-in-return-cs-desktop.png",
+  "callback-signed-in-cs-desktop": {
+    filename: "callback-signed-in-cs-desktop.png",
     path: "/cs-CZ/auth/callback",
     viewport: { height: 1000, width: 1440 },
   },
@@ -455,8 +455,18 @@ const waitForAccountReviewOperation = async <A>(
 const isCallbackHandoffReviewTarget = (
   target: ReviewTarget
 ): target is CallbackHandoffReviewTarget =>
-  target === "callback-loading-desktop" ||
-  target === "callback-signed-in-return-cs-desktop";
+  target === "callback-signed-in-desktop" ||
+  target === "callback-signed-in-cs-desktop";
+
+/**
+ * The sign-in pages the lane photographs after opening them from a cowork
+ * selection, so their URL carries its return target.
+ */
+const signInReturnReviewTargets = new Set<ReviewTarget>([
+  "sign-in-accepted-desktop",
+  "sign-in-accepted-cs-desktop",
+  "sign-in-pending-desktop",
+]);
 
 /** A sign-in query: exactly one `returnTo` naming a same-origin path. */
 const isSignInReturnQuery = (search: string): boolean => {
@@ -496,7 +506,7 @@ const validateAccountReviewPage = (
     : pageUrl.search === "" ||
       (target === "callback-failed-cs-desktop" &&
         isCallbackFailureQuery(pageUrl.search)) ||
-      (target === "sign-in-accepted-cs-desktop" &&
+      (signInReturnReviewTargets.has(target) &&
         isSignInReturnQuery(pageUrl.search));
   const allowedPaths =
     typeof metadata.path === "string" ? [metadata.path] : metadata.path;
@@ -862,7 +872,7 @@ export const captureAccountReview = async (
     target,
     metadata,
     options,
-    target === "callback-loading-desktop"
+    target === "callback-signed-in-desktop"
       ? locatorHeldCallbackReview({ locale: "en-US" })
       : undefined
   );

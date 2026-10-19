@@ -196,27 +196,33 @@ const invalidEmailSettleMs = 2_000;
 
 const coworkSelectionTier = "open-space";
 
-/**
- * The cross-browser sign-in: the Czech page the assistant's browser requests
- * the link from, and the cowork selection it returns to.
- */
-export type WorkspaceE2ESignInHandoff = {
+/** A cowork selection a sign-in returns to, with the locale it is in. */
+export type WorkspaceE2ESignInReturn = {
   readonly locale: Locale;
   readonly returnTo: string;
 };
 
 /**
- * Open space with no coffee on a day 120 days out, like the lane's other
- * reservation dates, outside the checkout date range. The lane builds it
- * once per run of the case, because its callback handoff hold expects the
- * same return target the case requests.
+ * The selections the lane's sign-ins return to: the lane browser's first
+ * link for the main recipient, and the link the assistant's browser requests
+ * in Czech for the reactivation.
  */
-export const makeWorkspaceE2ESignInHandoff = (
-  now = Date.now()
-): WorkspaceE2ESignInHandoff => ({
-  locale: "cs-CZ",
+export type WorkspaceE2ESignInReturns = {
+  readonly assistant: WorkspaceE2ESignInReturn;
+  readonly sameBrowser: WorkspaceE2ESignInReturn;
+};
+
+/**
+ * Open space with no coffee on a day 120 days out, like the lane's other
+ * reservation dates, outside the checkout date range.
+ */
+const makeCoworkSelection = (
+  locale: Locale,
+  now: number
+): WorkspaceE2ESignInReturn => ({
+  locale,
   returnTo: getReservationStartPath(
-    "cs-CZ",
+    locale,
     "cowork",
     new URLSearchParams({
       entryTier: coworkSelectionTier,
@@ -224,6 +230,18 @@ export const makeWorkspaceE2ESignInHandoff = (
       coffee: "false",
     })
   ),
+});
+
+/**
+ * The lane builds the selections once per worker: the sign-in form case
+ * requests a link the delivery case consumes, and the callback handoff holds
+ * expect the same return targets the cases request.
+ */
+export const makeWorkspaceE2ESignInReturns = (
+  now = Date.now()
+): WorkspaceE2ESignInReturns => ({
+  assistant: makeCoworkSelection("cs-CZ", now),
+  sameBrowser: makeCoworkSelection("en-US", now),
 });
 
 export type WorkspaceE2EAccountCaseInputs = {
@@ -255,7 +273,7 @@ export type WorkspaceE2EAccountCaseInputs = {
   readonly rateBudget: MagicLinkRateBudget;
   readonly run: Runner;
   readonly session: string;
-  readonly signInHandoff: WorkspaceE2ESignInHandoff;
+  readonly signInReturns: WorkspaceE2ESignInReturns;
 };
 
 /**
@@ -275,7 +293,7 @@ export const makeWorkspaceE2EAccountCases = ({
   rateBudget,
   run,
   session,
-  signInHandoff,
+  signInReturns,
 }: WorkspaceE2EAccountCaseInputs): readonly WorkspaceE2EAccountCase[] => {
   const recipient = makeWorkspaceE2EAccountRecipient(
     config,
@@ -668,6 +686,58 @@ export const makeWorkspaceE2EAccountCases = ({
           try: () => captureSignInHandoffReview(stage),
         });
 
+  /**
+   * Waits until a sign-in leaves the browser on exactly the path and query it
+   * returns to, so a selection carried in the query survived the callback.
+   */
+  const waitReturnLanding = (
+    browserSession: string,
+    description: string,
+    returnTo: string
+  ) =>
+    waitForBrowserUrl({
+      description,
+      matches: (url) => {
+        const parsed = parseUrl(url);
+        return (
+          parsed?.origin === previewOrigin &&
+          `${parsed.pathname}${parsed.search}` === returnTo
+        );
+      },
+      run,
+      session: browserSession,
+      timeoutMs: navigationTimeout,
+    });
+
+  /**
+   * Whether the browser's session belongs to the email, read from the page
+   * it is on through Better Auth's session endpoint. Only the match leaves
+   * the page, never the session.
+   */
+  const readSessionMatches = (browserSession: string, email: string) =>
+    evalBrowserScript(
+      "read the browser session's account",
+      run,
+      browserSession,
+      `(async () => {
+        const response = await fetch("/api/auth/get-session", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        const body = response.ok ? await response.json() : null;
+        return JSON.stringify({
+          sessionMatches: body?.user?.email === ${JSON.stringify(email)},
+        });
+      })()`,
+      { timeoutMs: browserTimeout }
+    ).pipe(
+      Effect.map(
+        (command) =>
+          (JSON.parse(command.stdout) as { sessionMatches: boolean })
+            .sessionMatches
+      )
+    );
+
   /** Waits until a cowork page shows the selection its URL carries. */
   const waitCoworkSelection = (browserSession: string, description: string) =>
     waitForBrowserCondition(
@@ -838,13 +908,37 @@ export const makeWorkspaceE2EAccountCases = ({
             })
           )
         );
+        // The main recipient's link returns to a cowork selection, the way
+        // a sign-in started from a reservation does; the referral cookie
+        // carries the shared code alongside.
+        const { returnTo: selection } = signInReturns.sameBrowser;
+        yield* runStep(
+          step(
+            "opens the sign-in from a cowork selection",
+            Effect.gen(function* () {
+              yield* openPage(`${config.baseUrl}${selection}`);
+              yield* waitCoworkSelection(
+                session,
+                "cowork selection before the sign-in"
+              );
+              yield* openPage(
+                `${config.baseUrl}${getAccountSignInPath(config.locale, selection)}`
+              );
+              yield* waitForRememberedReferralCode(
+                { config, run, session },
+                invitation.code
+              );
+              yield* waitSignInForm();
+            }),
+            accountPageLoadTimeout
+          )
+        );
         const firstAccepted = yield* rateBudget.run(
           "send",
           runStep(
             step(
-              "accepts a first unknown email generically from the share-link form",
+              "accepts a first unknown email generically from the selection's sign-in",
               Effect.gen(function* () {
-                yield* waitShareLinkSignIn(invitation.code);
                 const startedAt = new Date();
                 lifecycleHandoff.firstAcceptedRequestedAt = startedAt;
                 yield* fillAndSubmitEmail(recipient);
@@ -985,8 +1079,16 @@ export const makeWorkspaceE2EAccountCases = ({
               yield* fillBrowserField(run, session, signInCodeSelector, code, {
                 timeoutMs: browserTimeout,
               });
+              // The code signs in from the selection's sign-in, so it returns
+              // there; the completion state is on the account page.
+              yield* waitReturnLanding(
+                session,
+                "cowork selection after the code sign-in",
+                signInReturns.sameBrowser.returnTo
+              );
+              yield* openPage(localized(accountSuffix));
               yield* waitPathname(
-                "account landing after the code sign-in",
+                "account after the code sign-in",
                 (pathname) => pathname === `/${config.locale}${accountSuffix}`
               );
               yield* waitText(
@@ -1051,9 +1153,28 @@ export const makeWorkspaceE2EAccountCases = ({
           "verify",
           runStep(
             step(
-              "consumes the link into the completion state with the share code",
+              "consumes the link back onto the selection, then completes with the share code",
               Effect.gen(function* () {
+                // The lane wraps this case in the callback handoff hold,
+                // which proves the signed-in callback's returning copy
+                // before the callback leaves for the selection.
                 yield* openPage(link);
+                yield* waitReturnLanding(
+                  session,
+                  "cowork selection after the link",
+                  signInReturns.sameBrowser.returnTo
+                );
+                yield* waitCoworkSelection(
+                  session,
+                  "cowork selection kept after the link"
+                );
+                assert(
+                  yield* readSessionMatches(session, recipient),
+                  "the selection is not signed in as the main recipient"
+                );
+                // The completion state and every later case continue on the
+                // account page.
+                yield* openPage(localized(accountSuffix));
                 yield* waitText(
                   "completion state after verification",
                   completionTitle
@@ -1755,7 +1876,7 @@ export const makeWorkspaceE2EAccountCases = ({
         // the link in the lane browser. The link signs in only the browser
         // that opens it, which must finish on the same selection.
         const assistant = makeBrowserSteps(assistantSession);
-        const { locale: handoffLocale, returnTo } = signInHandoff;
+        const { locale: handoffLocale, returnTo } = signInReturns.assistant;
         const reactivatedUserId = yield* Effect.gen(function* () {
           yield* runStep(
             step(
@@ -1826,19 +1947,11 @@ export const makeWorkspaceE2EAccountCases = ({
                   // which proves the signed-in callback copy before the
                   // callback leaves for the selection.
                   yield* openPage(link);
-                  yield* waitForBrowserUrl({
-                    description: "cowork selection after the sign-in",
-                    matches: (url) => {
-                      const parsed = parseUrl(url);
-                      return (
-                        parsed?.origin === previewOrigin &&
-                        `${parsed.pathname}${parsed.search}` === returnTo
-                      );
-                    },
-                    run,
+                  yield* waitReturnLanding(
                     session,
-                    timeoutMs: navigationTimeout,
-                  });
+                    "cowork selection after the sign-in",
+                    returnTo
+                  );
                   yield* waitCoworkSelection(
                     session,
                     "cowork selection kept after the sign-in"

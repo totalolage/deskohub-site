@@ -45,6 +45,7 @@ const czechCard = {
   title: "Jste přihlášeni",
 } as const;
 const selection = "/cs-CZ/reservation/cowork?selection=synthetic-1";
+const enSelection = "/en-US/reservation/cowork?selection=synthetic-1";
 const czechLanding = { locale: "cs-CZ", returnTo: selection } as const;
 const czechCallbackUrl = `${baseUrl}/cs-CZ/auth/callback?attempt=${attemptUuid}&return=${encodeAuthCallbackReturn(selection)}`;
 const reservationCustomerReviewTargets = [
@@ -555,6 +556,11 @@ describe("account review screenshot capture", () => {
       url: `${baseUrl}/cs-CZ/auth/sign-in?returnTo=${encodeURIComponent("https://evil.example/")}`,
     },
     {
+      name: "the English accepted sign-in with an extra parameter",
+      target: "sign-in-accepted-desktop",
+      url: `${baseUrl}/en-US/auth/sign-in?returnTo=%2Fen-US&token=synthetic-secret-token`,
+    },
+    {
       name: "the Czech accepted sign-in with two returns",
       target: "sign-in-accepted-cs-desktop",
       url: `${baseUrl}/cs-CZ/auth/sign-in?returnTo=%2Fcs-CZ&returnTo=%2Fcs-CZ`,
@@ -571,32 +577,32 @@ describe("account review screenshot capture", () => {
     },
     {
       name: "the Czech returning callback without its exact return target",
-      target: "callback-signed-in-return-cs-desktop",
+      target: "callback-signed-in-cs-desktop",
       url: czechCallbackUrl,
     },
     {
       name: "a callback query",
-      target: "callback-loading-desktop",
+      target: "callback-signed-in-desktop",
       url: `${baseUrl}/en-US/auth/callback?_rsc=synthetic-cache-key`,
     },
     {
       name: "a callback loading attempt UUID that is not canonical",
-      target: "callback-loading-desktop",
+      target: "callback-signed-in-desktop",
       url: `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid.toUpperCase()}`,
     },
     {
       name: "a callback loading attempt UUID with an extra parameter",
-      target: "callback-loading-desktop",
+      target: "callback-signed-in-desktop",
       url: `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid}&extra=1`,
     },
     {
       name: "a callback loading token parameter",
-      target: "callback-loading-desktop",
+      target: "callback-signed-in-desktop",
       url: `${baseUrl}/en-US/auth/callback?token=synthetic-secret-token`,
     },
     {
       name: "a callback loading duplicated attempt parameter",
-      target: "callback-loading-desktop",
+      target: "callback-signed-in-desktop",
       url: `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid}&attempt=${attemptUuid}`,
     },
     {
@@ -636,7 +642,7 @@ describe("account review screenshot capture", () => {
       await captureAccountReview(
         fakePage.page,
         review,
-        "callback-loading-desktop"
+        "callback-signed-in-desktop"
       );
     } catch (cause) {
       failure = cause;
@@ -682,12 +688,12 @@ describe("account review screenshot capture", () => {
     ],
     [
       "a bare callback loading page",
-      "callback-loading-desktop",
+      "callback-signed-in-desktop",
       "/en-US/auth/callback",
     ],
     [
       "a canonical callback attempt",
-      "callback-loading-desktop",
+      "callback-signed-in-desktop",
       `/en-US/auth/callback?attempt=${attemptUuid}`,
     ],
     [
@@ -709,6 +715,16 @@ describe("account review screenshot capture", () => {
       "the Czech accepted sign-in returning to a selection",
       "sign-in-accepted-cs-desktop",
       `/cs-CZ/auth/sign-in?${new URLSearchParams({ returnTo: selection })}`,
+    ],
+    [
+      "the English accepted sign-in returning to a selection",
+      "sign-in-accepted-desktop",
+      `/en-US/auth/sign-in?${new URLSearchParams({ returnTo: enSelection })}`,
+    ],
+    [
+      "the English pending sign-in returning to a selection",
+      "sign-in-pending-desktop",
+      `/en-US/auth/sign-in?${new URLSearchParams({ returnTo: enSelection })}`,
     ],
     [
       "the Czech callback failure",
@@ -855,7 +871,11 @@ describe("account review screenshot capture", () => {
       const fakePage = makeFakePage(`${baseUrl}/en-US/auth/callback`, options);
 
       await expect(
-        captureAccountReview(fakePage.page, review, "callback-loading-desktop")
+        captureAccountReview(
+          fakePage.page,
+          review,
+          "callback-signed-in-desktop"
+        )
       ).rejects.toThrow(captureFailureMessage);
 
       expect(writeFileSpy?.mock.calls).toHaveLength(0);
@@ -868,7 +888,7 @@ describe("account review screenshot capture", () => {
     await captureCallbackHandoffReview(
       fakePage.page,
       review,
-      "callback-signed-in-return-cs-desktop",
+      "callback-signed-in-cs-desktop",
       czechLanding
     );
 
@@ -877,7 +897,7 @@ describe("account review screenshot capture", () => {
       [
         resolve(
           accountReviewArtifactDirectory,
-          "callback-signed-in-return-cs-desktop.png"
+          "callback-signed-in-cs-desktop.png"
         ),
         screenshotBuffer,
       ],
@@ -914,7 +934,7 @@ describe("account review screenshot capture", () => {
         captureCallbackHandoffReview(
           fakePage.page,
           review,
-          "callback-signed-in-return-cs-desktop",
+          "callback-signed-in-cs-desktop",
           czechLanding
         )
       ).rejects.toThrow(captureFailureMessage);
@@ -930,7 +950,7 @@ describe("account review screenshot capture", () => {
       captureCallbackHandoffReview(
         fakePage.page,
         review,
-        "callback-loading-desktop",
+        "callback-signed-in-desktop",
         czechLanding
       )
     ).rejects.toThrow(captureFailureMessage);
@@ -1092,7 +1112,7 @@ describe("account review screenshot capture", () => {
     await persistCallbackDocumentReview(
       fakePage.page,
       review,
-      "callback-loading-desktop",
+      "callback-signed-in-desktop",
       { locale: "en-US" },
       pixels,
       () => {
@@ -1106,7 +1126,10 @@ describe("account review screenshot capture", () => {
     expect(fakePage.fontReadyCalls()).toBe(0);
     expect(writeFileSpy?.mock.calls).toEqual([
       [
-        resolve(accountReviewArtifactDirectory, "callback-loading-desktop.png"),
+        resolve(
+          accountReviewArtifactDirectory,
+          "callback-signed-in-desktop.png"
+        ),
         pixels,
       ],
     ]);
@@ -1119,7 +1142,7 @@ describe("account review screenshot capture", () => {
     await persistCallbackDocumentReview(
       fakePage.page,
       review,
-      "callback-signed-in-return-cs-desktop",
+      "callback-signed-in-cs-desktop",
       czechLanding,
       pixels,
       () => undefined
@@ -1129,7 +1152,7 @@ describe("account review screenshot capture", () => {
       [
         resolve(
           accountReviewArtifactDirectory,
-          "callback-signed-in-return-cs-desktop.png"
+          "callback-signed-in-cs-desktop.png"
         ),
         pixels,
       ],
@@ -1154,7 +1177,7 @@ describe("account review screenshot capture", () => {
         persistCallbackDocumentReview(
           fakePage.page,
           review,
-          "callback-signed-in-return-cs-desktop",
+          "callback-signed-in-cs-desktop",
           czechLanding,
           screenshotBuffer,
           () => undefined
@@ -1174,7 +1197,7 @@ describe("account review screenshot capture", () => {
       persistCallbackDocumentReview(
         fakePage.page,
         review,
-        "callback-loading-desktop",
+        "callback-signed-in-desktop",
         { locale: "en-US" },
         screenshotBuffer,
         () => {
@@ -1196,7 +1219,7 @@ describe("account review screenshot capture", () => {
       persistCallbackDocumentReview(
         fakePage.page,
         review,
-        "callback-loading-desktop",
+        "callback-signed-in-desktop",
         { locale: "en-US" },
         screenshotBuffer,
         () => undefined
@@ -1217,7 +1240,7 @@ describe("account review screenshot capture", () => {
       persistCallbackDocumentReview(
         fakePage.page,
         review,
-        "callback-loading-desktop",
+        "callback-signed-in-desktop",
         { locale: "en-US" },
         screenshotBuffer,
         () => undefined,
@@ -1238,7 +1261,7 @@ describe("account review screenshot capture", () => {
       persistCallbackDocumentReview(
         fakePage.page,
         review,
-        "callback-loading-desktop",
+        "callback-signed-in-desktop",
         { locale: "en-US" },
         screenshotBuffer,
         () => {
@@ -1265,7 +1288,7 @@ describe("account review screenshot capture", () => {
     });
 
     await expect(
-      captureAccountReview(fakePage.page, review, "callback-loading-desktop")
+      captureAccountReview(fakePage.page, review, "callback-signed-in-desktop")
     ).rejects.toThrow(captureFailureMessage);
 
     expect(fakePage.screenshotCalls).toHaveLength(1);
