@@ -2,15 +2,12 @@ import { instant } from "@next/playwright";
 import { expect, test } from "@playwright/test";
 import { m } from "@/features/administration/i18n";
 import { m as customerMessages } from "@/features/i18n";
+import { enablePreviewAccess } from "../preview-access";
 import {
   instantNavigationAdministratorSkipReason,
   signInInstantNavigationAdministrator,
 } from "./administrator-session";
-import {
-  enablePreviewAccess,
-  requireBaseUrl,
-  reviewScreenshots,
-} from "./navigation-test-helpers";
+import { requireBaseUrl, reviewScreenshots } from "./navigation-test-helpers";
 import { preparePublicLegalBrowser } from "./public-account-legal-assertions";
 
 test.skip(

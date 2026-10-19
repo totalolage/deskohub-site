@@ -503,6 +503,7 @@ export function ProfileForm({
       readonly label: string;
       readonly maxLength: number;
       readonly required?: boolean;
+      readonly type?: "tel";
     }
   ) => (
     <FormField
@@ -539,14 +540,13 @@ export function ProfileForm({
                 maxLength={options.maxLength}
                 name={options.domName ?? name}
                 required={options.required}
+                type={options.type}
               />
             </FormControl>
-            {fieldState.error ? (
-              <FormMessage
-                className="text-sm font-normal text-red-700"
-                id={`${options.id}-error`}
-              />
-            ) : null}
+            <FormMessage
+              className="text-sm font-normal text-red-700"
+              id={`${options.id}-error`}
+            />
           </FormItem>
         );
       }}
@@ -573,6 +573,7 @@ export function ProfileForm({
         id: "account-profile-phone",
         label: m.accountProfilePhoneLabel({}, { locale }),
         maxLength: 32,
+        type: "tel",
       })}
     </>
   );
@@ -667,12 +668,10 @@ export function ProfileForm({
                 </option>
               </select>
             </FormControl>
-            {fieldState.error ? (
-              <FormMessage
-                className="text-sm font-normal text-red-700"
-                id="account-profile-billing-error"
-              />
-            ) : null}
+            <FormMessage
+              className="text-sm font-normal text-red-700"
+              id="account-profile-billing-error"
+            />
           </FormItem>
         )}
       />
@@ -682,6 +681,7 @@ export function ProfileForm({
             <>
               {renderTextField("companyName", {
                 domName: "billingCompanyName",
+                autoComplete: "organization",
                 id: "account-profile-billing-company-name",
                 label: m.accountProfileCompanyNameLabel({}, { locale }),
                 maxLength: 200,
@@ -730,12 +730,10 @@ export function ProfileForm({
                             }}
                           />
                         </FormControl>
-                        {fieldState.error ? (
-                          <FormMessage
-                            className="text-sm font-normal text-red-700"
-                            id="account-profile-billing-company-id-error"
-                          />
-                        ) : null}
+                        <FormMessage
+                          className="text-sm font-normal text-red-700"
+                          id="account-profile-billing-company-id-error"
+                        />
                       </>
                     );
                   }}
@@ -787,18 +785,21 @@ export function ProfileForm({
           ) : null}
           {renderTextField("addressLine1", {
             domName: "billingAddressLine1",
+            autoComplete: "address-line1",
             id: "account-profile-billing-address-line1",
             label: m.accountProfileAddressLine1Label({}, { locale }),
             maxLength: 200,
           })}
           {renderTextField("addressLine2", {
             domName: "billingAddressLine2",
+            autoComplete: "address-line2",
             id: "account-profile-billing-address-line2",
             label: m.accountProfileAddressLine2Label({}, { locale }),
             maxLength: 200,
           })}
           {renderTextField("city", {
             domName: "billingCity",
+            autoComplete: "address-level2",
             id: "account-profile-billing-city",
             label: m.accountProfileCityLabel({}, { locale }),
             maxLength: 100,
@@ -806,6 +807,7 @@ export function ProfileForm({
           <div className="min-w-0 grid gap-5 @xl:grid-cols-2">
             {renderTextField("zip", {
               domName: "billingZip",
+              autoComplete: "postal-code",
               id: "account-profile-billing-zip",
               label: m.accountProfileZipLabel({}, { locale }),
               maxLength: 20,
@@ -947,12 +949,10 @@ export function ProfileForm({
                           { locale }
                         )}
                       </p>
-                      {fieldState.error ? (
-                        <FormMessage
-                          className="text-sm font-normal text-red-700"
-                          id="profile-referral-code-error"
-                        />
-                      ) : null}
+                      <FormMessage
+                        className="text-sm font-normal text-red-700"
+                        id="profile-referral-code-error"
+                      />
                     </FormItem>
                   )}
                 />

@@ -4,7 +4,7 @@ import {
   calendarWeekdays,
   canonicalCalendarExpression,
 } from "@deskohub/workspace-admin-api";
-import { Cron, Data, DateTime, Effect } from "effect";
+import { Cron, Data, DateTime, Effect, Option } from "effect";
 import { workspaceSiteConstants } from "./site-constants";
 import { currentInstant } from "./temporal";
 
@@ -59,7 +59,10 @@ const isoWeekday = (weekday: CalendarWeekday) =>
  * or weekday sets only when they alone constrain the day, so its OR rule for
  * both never applies; `dayMatches` checks every day field anyway.
  */
-const toCron = (expression: CalendarExpression) => {
+const toCron = (
+  expression: CalendarExpression,
+  tz: DateTime.TimeZone = cronTimeZone
+) => {
   const { daysOfMonth, weekdays, weekdayOccurrences } = expression;
   const numberedDays =
     daysOfMonth?.every((day) => day !== "last") &&
@@ -76,7 +79,7 @@ const toCron = (expression: CalendarExpression) => {
     days: numberedDays,
     months: expression.months ?? [],
     weekdays: cronWeekdays,
-    tz: cronTimeZone,
+    tz,
   });
 };
 
@@ -137,10 +140,76 @@ const isFireDay = (
 const startOfPragueDay = (date: Temporal.PlainDate) =>
   date.toZonedDateTime({ timeZone }).toInstant();
 
+/** `Cron.next` on instants. */
+const nextCronTime = (
+  cron: Cron.Cron,
+  after: Temporal.Instant,
+  neverOccurs: (cause: unknown) => CalendarExpressionNeverOccurs
+) =>
+  Effect.try({
+    try: () => Cron.next(cron, after.epochMilliseconds),
+    catch: neverOccurs,
+  }).pipe(
+    Effect.map((next) => Temporal.Instant.fromEpochMilliseconds(next.getTime()))
+  );
+
 /**
- * The first period start strictly after `after`, in Prague time. A repeated
- * autumn wall time starts a period on its first occurrence only. Fails with
- * `CalendarExpressionNeverOccurs` when none falls within eight years.
+ * The first start after `after` that the spring gap moved, when `after` lies
+ * within one gap length past the gap. A wall time the gap skips fires shifted
+ * forward by the gap length, which is that wall time read at the offset before
+ * the gap. Prague `Cron` steps by wall time and passes them over, since they
+ * read earlier than `after`'s wall time; a `Cron` fixed at the offset before
+ * the gap steps them in time order.
+ */
+const nextShiftedGapStart = (
+  expression: CalendarExpression,
+  grain: Grain,
+  after: Temporal.Instant,
+  neverOccurs: (cause: unknown) => CalendarExpressionNeverOccurs
+): Effect.Effect<
+  Option.Option<Temporal.Instant>,
+  CalendarExpressionNeverOccurs
+> =>
+  Effect.gen(function* () {
+    const transition = after
+      .add({ nanoseconds: 1 })
+      .toZonedDateTimeISO(timeZone)
+      .getTimeZoneTransition("previous");
+    if (!transition) {
+      return Option.none();
+    }
+    const before = transition.subtract({ nanoseconds: 1 });
+    // An autumn transition has a negative gap, which ends before `after`.
+    const gapEnd = transition.toInstant().add({
+      nanoseconds: transition.offsetNanoseconds - before.offsetNanoseconds,
+    });
+    if (Temporal.Instant.compare(after, gapEnd) >= 0) {
+      return Option.none();
+    }
+    const candidate = yield* nextCronTime(
+      toCron(
+        expression,
+        DateTime.zoneMakeOffset(before.offsetNanoseconds / 1_000_000)
+      ),
+      after,
+      neverOccurs
+    );
+    return Temporal.Instant.compare(candidate, gapEnd) < 0 &&
+      isFireDay(
+        expression,
+        grain,
+        candidate.toZonedDateTimeISO(before.offset).toPlainDate()
+      )
+      ? Option.some(candidate)
+      : Option.none();
+  });
+
+/**
+ * The first period start strictly after `after`, in Prague time. A wall time
+ * the spring gap skips starts its period shifted forward by the gap length; a
+ * repeated autumn wall time starts a period on its first occurrence only.
+ * Fails with `CalendarExpressionNeverOccurs` when none falls within eight
+ * years.
  */
 export const nextStart = (
   expression: CalendarExpression,
@@ -151,19 +220,23 @@ export const nextStart = (
       new CalendarExpressionNeverOccurs({ expression, after, cause });
     const cron = toCron(expression);
     const grain = grainOf(expression);
-    const limit = after
-      .toZonedDateTimeISO(timeZone)
-      .add({ years: horizonYears })
-      .toInstant();
+    const shifted = yield* nextShiftedGapStart(
+      expression,
+      grain,
+      after,
+      neverOccurs
+    );
+    // A shifted gap start bounds the search: any later candidate loses to it.
+    const limit = Option.getOrElse(shifted, () =>
+      after
+        .toZonedDateTimeISO(timeZone)
+        .add({ years: horizonYears })
+        .toInstant()
+    );
     let cursor = after;
     while (Temporal.Instant.compare(cursor, limit) < 0) {
       const from = cursor;
-      const candidate = Temporal.Instant.fromEpochMilliseconds(
-        (yield* Effect.try({
-          try: () => Cron.next(cron, from.epochMilliseconds),
-          catch: neverOccurs,
-        })).getTime()
-      );
+      const candidate = yield* nextCronTime(cron, from, neverOccurs);
       if (Temporal.Instant.compare(candidate, limit) > 0) {
         break;
       }
@@ -189,7 +262,10 @@ export const nextStart = (
         milliseconds: 1,
       });
     }
-    return yield* Effect.fail(neverOccurs());
+    return yield* Option.match(shifted, {
+      onNone: () => Effect.fail(neverOccurs()),
+      onSome: Effect.succeed,
+    });
   });
 
 /**

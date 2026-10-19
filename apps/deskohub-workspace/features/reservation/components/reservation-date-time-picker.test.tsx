@@ -67,7 +67,7 @@ describe("ReservationDateTimePicker", () => {
     );
 
     expect(
-      view.getByRole("button", { name: "Meeting room start date" })
+      view.getByRole("combobox", { name: "Meeting room start date" })
     ).toBeDefined();
     const timeInput = view.getByLabelText("Meeting room start time");
     expect(timeInput.getAttribute("step")).toBe("3600");

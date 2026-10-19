@@ -3,11 +3,9 @@
 import { Option, Predicate, Schema } from "effect";
 import { Clock } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
-import { isLocale, m } from "@/features/i18n";
 import { useFormField } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/utils";
-import { formatPlainDate } from "@/shared/utils/date-time-format";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { localDateTimeSchema, localTimeSchema } from "@/shared/utils/temporal";
 import { ReservationDatePicker } from "./reservation-date-picker";
@@ -15,6 +13,8 @@ import { ReservationDatePicker } from "./reservation-date-picker";
 export type ReservationDateTimePickerProps = {
   readonly ariaDescribedBy?: string;
   readonly ariaInvalid?: boolean;
+  /** The visible label that names the date field. */
+  readonly ariaLabelledBy?: string;
   readonly ariaRequired?: boolean;
   readonly dateLabel: string;
   readonly className?: string;
@@ -24,7 +24,6 @@ export type ReservationDateTimePickerProps = {
   readonly name?: string;
   readonly onBlur?: () => void;
   readonly onChange?: (value: string) => void;
-  readonly placeholder?: string;
   readonly showTime?: boolean;
   readonly timeStepMinutes?: number;
   readonly timeLabel: string;
@@ -85,6 +84,7 @@ const getAcceptedTime = ({
 export function ReservationDateTimePicker({
   ariaDescribedBy,
   ariaInvalid,
+  ariaLabelledBy,
   ariaRequired,
   className,
   dateLabel,
@@ -94,7 +94,6 @@ export function ReservationDateTimePicker({
   name,
   onBlur,
   onChange,
-  placeholder = "Pick date and time",
   showTime = true,
   timeStepMinutes = 1,
   timeLabel,
@@ -102,12 +101,6 @@ export function ReservationDateTimePicker({
   variant = "default",
 }: ReservationDateTimePickerProps) {
   const dateTime = useMemo(() => parsePlainDateTime(value), [value]);
-  const accessibleTimeLabel = ariaRequired
-    ? `${timeLabel}, ${m.requiredFieldLabel(
-        {},
-        isLocale(locale) ? { locale } : undefined
-      )}`
-    : timeLabel;
   const [pendingTime, setPendingTime] = useState(
     () =>
       dateTime?.toPlainTime().toString({ smallestUnit: "minute" }) ??
@@ -122,11 +115,13 @@ export function ReservationDateTimePicker({
     selectedDate,
     minimumDateTime
   );
-  const displayValue = selectedDate
-    ? formatPlainDate({ date: selectedDate, dateStyle: "long", locale })
-    : placeholder;
-
   const handleDateChange = (date: string) => {
+    // Typed text that is no usable date clears the date and time together.
+    if (!date) {
+      onChange?.("");
+      return;
+    }
+
     const nextDate = Temporal.PlainDate.from(date);
     const minimumTime = showTime
       ? getMinimumTimeForDate(nextDate, resolveMinimumDateTime(minimum))
@@ -167,14 +162,13 @@ export function ReservationDateTimePicker({
         ariaDescribedBy={ariaDescribedBy}
         ariaInvalid={ariaInvalid}
         ariaLabel={dateLabel}
+        ariaLabelledBy={ariaLabelledBy}
         ariaRequired={ariaRequired}
-        displayValue={displayValue}
         locale={locale}
         minimum={minimumDateTime?.toPlainDate().toString()}
         name={name}
         onBlur={onBlur}
         onChange={handleDateChange}
-        placeholder={placeholder}
         value={selectedDate?.toString()}
         variant={variant}
       />
@@ -185,7 +179,7 @@ export function ReservationDateTimePicker({
             id={id ? `${id}-time` : undefined}
             aria-describedby={ariaDescribedBy}
             aria-invalid={ariaInvalid}
-            aria-label={accessibleTimeLabel}
+            aria-label={timeLabel}
             className="pl-11"
             min={selectedDateMinimumTime}
             onBlur={onBlur}
@@ -205,7 +199,7 @@ export function ReservationDateTimePicker({
 export function ReservationFormDateTimePicker(
   props: ReservationDateTimePickerProps
 ) {
-  const { error, formItemId, formMessageId } = useFormField();
+  const { error, formItemId, formLabelId, formMessageId } = useFormField();
 
   return (
     <ReservationDateTimePicker
@@ -213,6 +207,7 @@ export function ReservationFormDateTimePicker(
       id={formItemId}
       ariaDescribedBy={error ? formMessageId : undefined}
       ariaInvalid={Boolean(error)}
+      ariaLabelledBy={formLabelId}
       ariaRequired
     />
   );
