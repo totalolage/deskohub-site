@@ -1,5 +1,8 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import type { AutomationTriggerType as AutomationTrigger } from "@deskohub/workspace-admin-api";
+import type {
+  AutomationFlowType as AutomationFlow,
+  AutomationTriggerType as AutomationTrigger,
+} from "@deskohub/workspace-admin-api";
 import { inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
@@ -250,6 +253,7 @@ export const seedAutomation = async (
   input: {
     readonly campaignId: CampaignId;
     readonly activeVersionId: AutomationVersionId;
+    readonly flow?: AutomationFlow;
     readonly acceptingSince?: Temporal.Instant | null;
     readonly pausedAt?: Temporal.Instant | null;
     readonly resumedAt?: Temporal.Instant | null;

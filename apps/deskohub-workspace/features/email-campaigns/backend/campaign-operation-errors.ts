@@ -6,10 +6,10 @@ import {
   OperationUnavailable,
 } from "@deskohub/workspace-admin-api";
 import { Match } from "effect";
-import type { AutomationConditionAudienceMissing } from "../automation/backend/automation-evaluation-facts.service";
 import type { AutomationUnitFetchFailure } from "../automation/backend/automation-unit-handler";
 import {
   AutomationCalendarNeverOccurs,
+  type AutomationConditionAudienceMissing,
   type AutomationFlowInvalid,
   type AutomationFlowLocation,
 } from "../automation/errors";

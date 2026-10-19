@@ -53,9 +53,9 @@ import {
 } from "../automation-identifiers";
 import type { AutomationTriggerKind } from "../automation-states";
 import { automationTriggerKind } from "../automation-triggers";
+import type { AutomationConditionAudienceMissing } from "../errors";
 import { AutomationConditionEvaluation } from "./automation-condition-evaluation.service";
 import {
-  type AutomationConditionAudienceMissing,
   AutomationEvaluationFacts,
   type AutomationEvaluationPlan,
 } from "./automation-evaluation-facts.service";
