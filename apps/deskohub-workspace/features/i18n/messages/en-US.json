@@ -1018,7 +1018,7 @@
   "accountDeletedTitle": "Your account was deleted",
   "accountDeletedSignInAgain": "Sign in again",
   "accountSupportTitle": "We need to verify your profile",
-  "accountSupportContact": "We could not safely choose one customer profile for this email, so no profile details or reservations are shown. <contact>Contact us</contact> and we will connect the correct history.",
+  "accountSupportContact": "We could not safely choose one customer profile for this email, so we don't show its profile details or reservations. <contact>Contact us</contact> and we will connect the correct history.",
   "emailCampaignMarketingFooter": "You are receiving this email because you agreed to receive marketing messages from Deskohub Workspace.",
   "emailCampaignMarketingFooterLink": "Unsubscribe or change your preferences",
   "emailCampaignOperationalFooter": "We are sending you this service message because you use Deskohub Workspace. It is not a marketing message.",
