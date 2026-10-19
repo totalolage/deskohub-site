@@ -149,9 +149,9 @@ export class AutomationEvaluationFacts extends Context.Service<
 
       /** A fresh `ReservationVisits` per call, so no visit outlives it. */
       const withVisits = <A, E>(
-        use: (visits: ReservationVisits["Service"]) => Effect.Effect<A, E>
+        read: (visits: ReservationVisits["Service"]) => Effect.Effect<A, E>
       ) =>
-        ReservationVisits.use(use).pipe(
+        Effect.flatMap(ReservationVisits, read).pipe(
           Effect.provide(ReservationVisits.Default),
           Effect.provideContext(context)
         );
