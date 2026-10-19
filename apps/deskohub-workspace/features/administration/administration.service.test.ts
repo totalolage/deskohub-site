@@ -1,9 +1,24 @@
 import "@/shared/testing/workspace-test-env";
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
-import { ExternalAPIError, NetworkError } from "@deskohub/dotypos";
+import {
+  DotyposCustomerIdSchema,
+  ExternalAPIError,
+  NetworkError,
+} from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Cause, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  type ReservationAuthor,
+  ReservationAuthorDirectory,
+  ReservationAuthorReadError,
+} from "@/features/account";
+import {
+  type CustomerAccountId,
+  customerAccountIdSchema,
+} from "@/features/account/customer-account";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
   AdministrationService,
@@ -31,6 +46,15 @@ const makeQuery = <A>(rows: readonly A[]) => {
   query.where = () => query;
   return query;
 };
+
+const reservationAuthorsMock = (
+  describe: ReservationAuthorDirectory["Service"]["describe"] = () =>
+    Effect.succeed(new Map())
+) =>
+  Layer.succeed(
+    ReservationAuthorDirectory,
+    ReservationAuthorDirectory.of({ describe })
+  );
 
 afterEach(() => setSystemTime());
 
@@ -77,6 +101,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
+              reservationAuthorsMock(),
               PaymentAdministrationServiceMock({})
             )
           )
@@ -125,6 +150,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
+              reservationAuthorsMock(),
               PaymentAdministrationServiceMock({})
             )
           )
@@ -177,6 +203,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
+              reservationAuthorsMock(),
               PaymentAdministrationServiceMock({})
             )
           )
@@ -257,6 +284,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
+              reservationAuthorsMock(),
               PaymentAdministrationServiceMock({})
             )
           )
@@ -361,6 +389,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
+              reservationAuthorsMock(),
               PaymentAdministrationServiceMock({})
             )
           )
@@ -449,6 +478,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
+              reservationAuthorsMock(),
               PaymentAdministrationServiceMock({})
             )
           )
@@ -522,6 +552,7 @@ describe("AdministrationService", () => {
                       Effect.succeed({ kind: "unavailable" } as const),
                   })
                 ),
+                reservationAuthorsMock(),
                 PaymentAdministrationServiceMock({})
               )
             )
@@ -581,6 +612,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
+              reservationAuthorsMock(),
               PaymentAdministrationServiceMock({})
             )
           )
@@ -648,6 +680,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
+              reservationAuthorsMock(),
               PaymentAdministrationServiceMock({})
             )
           )
@@ -879,6 +912,7 @@ describe("AdministrationService", () => {
                       Effect.succeed({ kind: "unavailable" } as const),
                   })
                 ),
+                reservationAuthorsMock(),
                 PaymentAdministrationServiceMock({})
               )
             )
@@ -1061,6 +1095,7 @@ describe("AdministrationService", () => {
               load: () => Effect.succeed({ kind: "unavailable" } as const),
             })
           ),
+          reservationAuthorsMock(),
           PaymentAdministrationServiceMock({})
         )
       )
@@ -1121,6 +1156,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
+              reservationAuthorsMock(),
               PaymentAdministrationServiceMock({})
             )
           )
@@ -1172,6 +1208,7 @@ describe("AdministrationService", () => {
                       Effect.succeed({ kind: "unavailable" } as const),
                   })
                 ),
+                reservationAuthorsMock(),
                 PaymentAdministrationServiceMock({})
               )
             )
@@ -1211,6 +1248,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
+              reservationAuthorsMock(),
               PaymentAdministrationServiceMock({})
             )
           )
@@ -1265,6 +1303,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
+              reservationAuthorsMock(),
               PaymentAdministrationServiceMock({})
             )
           )
@@ -1419,6 +1458,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
+              reservationAuthorsMock(),
               PaymentAdministrationServiceMock({})
             )
           )
@@ -1491,6 +1531,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
+              reservationAuthorsMock(),
               PaymentAdministrationServiceMock({})
             )
           )
@@ -1682,6 +1723,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
+              reservationAuthorsMock(),
               PaymentAdministrationServiceMock({})
             )
           )
@@ -1759,6 +1801,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
+              reservationAuthorsMock(),
               PaymentAdministrationServiceMock({})
             )
           )
@@ -1775,5 +1818,200 @@ describe("AdministrationService", () => {
       locale: "en-US",
       withdrawnAt: withdrawnAt.toString(),
     });
+  });
+});
+
+describe("AdministrationService reservation author", () => {
+  const customerId = DotyposCustomerIdSchema.make("booked-for-customer");
+  const authorCustomerId = DotyposCustomerIdSchema.make("author-customer");
+  const authorAccountId = customerAccountIdSchema.make("author-account");
+  const authorEmail = testEmailAddress("administration-author");
+  const now = Temporal.Instant.from("2026-10-17T08:00:00Z");
+
+  const loadAuthor = async ({
+    accountId,
+    describe,
+  }: {
+    readonly accountId: CustomerAccountId | null;
+    readonly describe: ReservationAuthorDirectory["Service"]["describe"];
+  }) => {
+    let selectCall = 0;
+    const row = {
+      id: workspaceReservationIdSchema.make("authored-reservation"),
+      authorAccountId: accountId,
+      dotyposCustomerId: customerId,
+      dotyposReservationId: null,
+      reservationState: "draft",
+      paymentState: "not_started",
+      fulfillmentState: "not_started",
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "open-space",
+        coffee: false,
+      },
+      reservationPurpose: null,
+      reservationCreatedAt: null,
+      reservationConfirmedAt: null,
+      reservationCancelledAt: null,
+      reservationHoldExpiredAt: null,
+      paidAt: null,
+      fulfilledAt: null,
+      fulfillmentFailedAt: null,
+      failureCode: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const detail = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadReservation(row.id);
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({
+                  // The reservation is the first read; its related rows are empty.
+                  db: {
+                    select: () => makeQuery(selectCall++ === 0 ? [row] : []),
+                  } as never,
+                })
+              ),
+              DotyposServiceMock({
+                getCustomer: (id) =>
+                  Effect.succeed({ id, firstName: "Bea", lastName: "Booked" }),
+                getCustomers: ({ ids }) =>
+                  Effect.succeed(
+                    ids?.includes(authorCustomerId)
+                      ? [
+                          {
+                            id: authorCustomerId,
+                            firstName: "Ada",
+                            lastName: "Author",
+                          },
+                        ]
+                      : []
+                  ),
+                getTables: () => Effect.succeed([]),
+                listReservations: () => Effect.succeed([]),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              reservationAuthorsMock(describe),
+              PaymentAdministrationServiceMock({
+                loadReservationOrders: () => Effect.succeed([]),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+    expect(detail?.reservation.customer?.displayName).toBe("Bea Booked");
+    return detail?.author;
+  };
+
+  const describing =
+    (
+      author: ReservationAuthor
+    ): ReservationAuthorDirectory["Service"]["describe"] =>
+    () =>
+      Effect.succeed(new Map([[author.accountId, author]]));
+
+  test("shows no author for an authorless reservation", async () => {
+    let described = false;
+    const author = await loadAuthor({
+      accountId: null,
+      describe: () => {
+        described = true;
+        return Effect.succeed(new Map());
+      },
+    });
+
+    expect(author).toBeNull();
+    expect(described).toBe(false);
+  });
+
+  test("shows no author when the customer booked for themselves", async () => {
+    const author = await loadAuthor({
+      accountId: authorAccountId,
+      describe: describing({
+        kind: "active",
+        accountId: authorAccountId,
+        dotyposCustomerId: customerId,
+        email: authorEmail,
+        locale: null,
+      }),
+    });
+
+    expect(author).toBeNull();
+  });
+
+  test("names the account that booked for someone else by its own customer and login email", async () => {
+    const author = await loadAuthor({
+      accountId: authorAccountId,
+      describe: describing({
+        kind: "active",
+        accountId: authorAccountId,
+        dotyposCustomerId: authorCustomerId,
+        email: authorEmail,
+        locale: "cs-CZ",
+      }),
+    });
+
+    expect(author).toEqual({
+      kind: "account",
+      customerId: authorCustomerId,
+      displayName: "Ada Author",
+      hasName: true,
+      email: authorEmail,
+    });
+  });
+
+  test("names an author without a linked customer as unnamed", async () => {
+    const author = await loadAuthor({
+      accountId: authorAccountId,
+      describe: describing({
+        kind: "active",
+        accountId: authorAccountId,
+        dotyposCustomerId: null,
+        email: authorEmail,
+        locale: null,
+      }),
+    });
+
+    expect(author).toEqual({
+      kind: "account",
+      customerId: null,
+      displayName: "Unnamed customer",
+      hasName: false,
+      email: authorEmail,
+    });
+  });
+
+  test("shows only that a deleted author was deleted", async () => {
+    const author = await loadAuthor({
+      accountId: authorAccountId,
+      describe: describing({ kind: "deleted", accountId: authorAccountId }),
+    });
+
+    expect(author).toEqual({ kind: "deleted" });
+  });
+
+  test("keeps the reservation available when its author can't be read", async () => {
+    const author = await loadAuthor({
+      accountId: authorAccountId,
+      describe: () =>
+        Effect.fail(
+          new ReservationAuthorReadError({ code: "reservation-author.read" })
+        ),
+    });
+
+    expect(author).toEqual({ kind: "unavailable" });
   });
 });

@@ -679,6 +679,76 @@ describe("ReservationHistory", () => {
     ).toBeTruthy();
   });
 
+  for (const locale of ["en-US", "cs-CZ"] as const) {
+    test(`labels the other party of each reservation in ${locale}`, () => {
+      const view = renderHistory(locale, {
+        kind: "available",
+        groups: {
+          current: [
+            reservation({
+              id: "featured-for",
+              party: { kind: "booked-for", customerName: "Jana Testová" },
+            }),
+            reservation({
+              id: "compact-by",
+              party: { kind: "booked-by", authorName: "Petr Ukázka" },
+            }),
+          ],
+          past: [
+            reservation({
+              id: "past-deleted",
+              endsAt: "2026-08-21T10:00:00Z",
+              party: { kind: "booked-by-deleted-account" },
+            }),
+            reservation({
+              id: "past-for-unnamed",
+              endsAt: "2026-08-20T10:00:00Z",
+              party: { kind: "booked-for", customerName: null },
+            }),
+            reservation({
+              id: "past-by-unnamed",
+              endsAt: "2026-08-19T10:00:00Z",
+              party: { kind: "booked-by", authorName: null },
+            }),
+            reservation({ id: "past-own", endsAt: "2026-08-18T10:00:00Z" }),
+          ],
+          unavailable: [],
+        },
+      });
+      const current = view.container.querySelector(
+        '[data-account-reservation-group="current"]'
+      )!;
+      const pastRows = view.container.querySelectorAll(
+        '[data-account-reservation-group="past"] tbody tr'
+      );
+      const partyText = (element: Element | undefined) =>
+        [
+          ...(element?.querySelectorAll("[data-account-reservation-party]") ??
+            []),
+        ].map((party) => party.textContent);
+
+      expect(partyText(current.querySelector("ul > li") ?? undefined)).toEqual([
+        m.accountReservationBookedFor({ name: "Jana Testová" }, { locale }),
+      ]);
+      expect(partyText(current)).toEqual([
+        m.accountReservationBookedFor({ name: "Jana Testová" }, { locale }),
+        m.accountReservationBookedBy({ name: "Petr Ukázka" }, { locale }),
+      ]);
+      expect([...pastRows].map((row) => partyText(row))).toEqual([
+        [m.accountReservationBookedByDeletedAccount({}, { locale })],
+        [m.accountReservationBookedForSomeoneElse({}, { locale })],
+        [m.accountReservationBookedByAnotherAccount({}, { locale })],
+        [],
+      ]);
+      expect(view.container.textContent).toContain(
+        {
+          "en-US": "For Jana Testová",
+          "cs-CZ": "Pro Jana Testová",
+        }[locale]
+      );
+    });
+  }
+
   test("keeps the profile page usable when the reservation provider is unavailable", () => {
     const locale = "en-US";
     const view = renderHistory(locale, {
