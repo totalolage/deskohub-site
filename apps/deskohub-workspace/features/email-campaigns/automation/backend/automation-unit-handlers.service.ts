@@ -1,6 +1,10 @@
 import { Context, Effect, Layer } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { ReservationActivitySweep } from "@/features/reservation/backend/reservation-activity-sweep.service";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type { AutomationWorkUnitKind } from "../automation-work-units";
 import type { RegisteredAutomationUnitHandler } from "./automation-unit-handler";
+import { makeSweepPageHandler } from "./sweep-page";
 
 interface IAutomationUnitHandlers {
   readonly byKind: ReadonlyMap<
@@ -34,5 +38,14 @@ export class AutomationUnitHandlers extends Context.Service<
       }))
     );
 
-  static Live = this.layer(Effect.succeed([]));
+  /** PR C runs sweep pages only. */
+  static Live = this.layer(Effect.all([makeSweepPageHandler])).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        ReservationActivitySweep.Default,
+        WorkspaceDatabase.Default,
+        WorkspaceDotyposLayer
+      )
+    )
+  );
 }
