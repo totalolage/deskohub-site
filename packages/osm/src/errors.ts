@@ -15,6 +15,7 @@ export class OsmTileRequestError extends Data.TaggedError(
 export type ImageRenderingOperation =
   | "compose-map-tiles"
   | "encode-static-map"
+  | "render-map-attribution"
   | "render-svg"
   | "render-text-overlay";
 

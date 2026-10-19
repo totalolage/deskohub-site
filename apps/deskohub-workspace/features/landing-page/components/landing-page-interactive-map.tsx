@@ -34,6 +34,9 @@ export function LandingPageInteractiveMap() {
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      // OpenStreetMap blocks browser tile requests without a Referer. The
+      // site-wide no-referrer policy would strip it, so tiles send the origin.
+      referrerPolicy: "strict-origin",
     }).addTo(map);
     L.marker([workspaceCoordinates.lat, workspaceCoordinates.lng], {
       icon: workspaceMarkerIcon,
