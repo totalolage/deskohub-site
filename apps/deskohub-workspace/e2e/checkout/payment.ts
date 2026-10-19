@@ -5,6 +5,7 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import {
   activateHydratedBrowserElement,
+  evalBrowserScript,
   focusBrowserElement,
   openBrowserPage,
   pressBrowserKey,
@@ -44,7 +45,11 @@ const reservationStartRetryableErrorMessages = [
   "Platbu se nepodařilo spustit.",
 ] as const;
 const reservationSubmitAttemptCount = 2;
+const reservationContinueSelector = "#reservation-continue";
 const reservationSubmitSelector = "#reservation-submit";
+// The form's one action button: Continue on the selection step, submit on
+// the contact step.
+const reservationActionSelector = `${reservationContinueSelector}, ${reservationSubmitSelector}`;
 const reservationPreparationStateKey = "__deskohubWorkspaceE2EPreparation";
 const decodeWorkspaceReservationId = Schema.decodeUnknownSync(
   workspaceReservationIdSchema
@@ -193,6 +198,17 @@ const submitReservationAndWaitForPayPage = ({
           timeoutMs,
           timeouts,
         });
+        // The same script fills the contact step once Continue opens it.
+        if (yield* isReservationSelectionStep(run, session, timeouts)) {
+          yield* continueToReservationContactStep({ run, session, timeouts });
+          yield* prepareReservationSelection({
+            prepareScript: submitReservationScript,
+            run,
+            session,
+            timeoutMs,
+            timeouts,
+          });
+        }
         yield* activateHydratedBrowserElement(
           run,
           session,
@@ -245,6 +261,48 @@ const submitReservationAndWaitForPayPage = ({
     );
   });
 
+const isReservationSelectionStep = (
+  run: Runner,
+  session: string,
+  timeouts: WorkspaceE2ETimeouts
+): Effect.Effect<boolean, WorkspaceE2EError> =>
+  evalBrowserScript(
+    "read reservation checkout step",
+    run,
+    session,
+    `document.querySelector(${JSON.stringify(reservationContinueSelector)}) !== null`,
+    { logOutput: false, timeoutMs: timeouts.browserAction }
+  ).pipe(Effect.map((result) => result.stdout.trim() === "true"));
+
+/**
+ * Activates the selection step's Continue natively and waits for the
+ * hydrated contact step. Continue changes only the URL's `step`, so the
+ * page keeps its selection and nothing is submitted.
+ */
+export const continueToReservationContactStep = ({
+  run,
+  session,
+  timeouts,
+}: {
+  readonly run: Runner;
+  readonly session: string;
+  readonly timeouts: WorkspaceE2ETimeouts;
+}): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    yield* activateHydratedBrowserElement(
+      run,
+      session,
+      reservationContinueSelector,
+      { timeoutMs: timeouts.browserAction }
+    );
+    yield* waitForBrowserReactHydration(
+      run,
+      session,
+      reservationSubmitSelector,
+      { timeoutMs: timeouts.browserAction }
+    );
+  });
+
 /**
  * Runs a side-effect-free reservation preparation script on the hydrated
  * form: a short evaluation starts it and keeps its status in the page, and
@@ -267,7 +325,7 @@ export const prepareReservationSelection = ({
     yield* waitForBrowserReactHydration(
       run,
       session,
-      reservationSubmitSelector,
+      reservationActionSelector,
       { timeoutMs: timeouts.browserAction }
     );
     yield* startReservationPreparation(

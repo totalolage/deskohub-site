@@ -23,6 +23,7 @@ import {
   getOfficeReservationMaximumEndsOn,
   officeReservationDetailsSchema,
 } from "@/features/reservation/office-reservation";
+import { reservationCustomerQueryParam } from "@/features/reservation/reservation-checkout-query";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import {
@@ -79,6 +80,14 @@ export type CoworkAvailabilitySelection = {
   readonly entryTier?: WorkspaceCoworkCurrentTier;
   readonly monitorOption?: WorkspaceProductMonitorOption;
 };
+
+// A planned checkout books for its own contact. A signed-in account with a
+// profile otherwise books as itself, so the meeting-room and office links,
+// whose contact is typed on the contact step, ask for the contact mode;
+// cowork links carry the contact, which asks for it.
+const someoneElseCustomerQuery = new URLSearchParams({
+  [reservationCustomerQueryParam]: "contact",
+}).toString();
 
 let checkoutContactSequence = 0;
 const emailLocalPartLimit = 64;
@@ -179,7 +188,7 @@ export const makeOfficeCheckoutData = (
   const locale: CheckoutData["locale"] = "en-US";
 
   return {
-    checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/office`,
+    checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/office?${someoneElseCustomerQuery}`,
     date: slot.startsOn,
     email: contact.email,
     expectedReservationDetails: {
@@ -214,7 +223,7 @@ const makeMeetingRoomCheckoutDataWithContact = (
 ): CheckoutData => {
   const locale: CheckoutData["locale"] = "en-US";
   return {
-    checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/meeting-room`,
+    checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/meeting-room?${someoneElseCustomerQuery}`,
     date: slot.date,
     email: contact.email,
     expectedReservationDetails: {

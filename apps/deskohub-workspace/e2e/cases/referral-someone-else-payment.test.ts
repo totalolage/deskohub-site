@@ -11,11 +11,11 @@ import {
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutFlowState } from "../types";
 import {
-  assertGuestReferralPayment,
-  getGuestReferralDiscounts,
-  guestReferralPaymentCaseId,
-  planGuestReferralPaymentCase,
-} from "./guest-referral-payment";
+  assertReferralSomeoneElsePayment,
+  getReferralSomeoneElseDiscounts,
+  planReferralSomeoneElsePaymentCase,
+  referralSomeoneElsePaymentCaseId,
+} from "./referral-someone-else-payment";
 
 const config: WorkspaceE2EConfig = {
   baseUrl: "https://workspace.example.test",
@@ -58,7 +58,7 @@ const paidRecord = (
 });
 
 const expected = {
-  guestCustomerId: "guest",
+  bookedCustomerId: "guest",
   invitationLabel,
   referrerCustomerId: "referrer",
 };
@@ -115,12 +115,16 @@ test("expects the Calendar sale before the invitation on the paid guest order", 
   ];
 
   expect(() =>
-    assertDiscountApplications(rows, getGuestReferralDiscounts("en-US"), "CZK")
+    assertDiscountApplications(
+      rows,
+      getReferralSomeoneElseDiscounts("en-US"),
+      "CZK"
+    )
   ).not.toThrow();
   expect(() =>
     assertDiscountApplications(
       rows.slice(1).map((row) => ({ ...row, sequence: 0 })),
-      getGuestReferralDiscounts("en-US"),
+      getReferralSomeoneElseDiscounts("en-US"),
       "CZK"
     )
   ).toThrow("expected 2 discount applications");
@@ -128,7 +132,7 @@ test("expects the Calendar sale before the invitation on the paid guest order", 
 
 test("accepts a paid guest order attributed to the seeded referrer", () => {
   expect(() =>
-    assertGuestReferralPayment(paidRecord(), expected)
+    assertReferralSomeoneElsePayment(paidRecord(), expected)
   ).not.toThrow();
 });
 
@@ -209,7 +213,9 @@ test.each([
 ] as const)(
   "rejects a guest referral payment when %s",
   (_description, record, message) => {
-    expect(() => assertGuestReferralPayment(record, expected)).toThrow(message);
+    expect(() => assertReferralSomeoneElsePayment(record, expected)).toThrow(
+      message
+    );
   }
 );
 
@@ -219,7 +225,7 @@ test("plans the guest referral payment on its own date and requires binding", as
     { data: makeCoworkCheckoutData(config.baseUrl, "2099-08-02") },
   ];
   const planned = await Effect.runPromise(
-    planGuestReferralPaymentCase({
+    planReferralSomeoneElsePaymentCase({
       allocation: {
         fromOffsetDays: 0,
         shardCount: 1,
@@ -232,7 +238,7 @@ test("plans the guest referral payment on its own date and requires binding", as
     })
   );
 
-  expect(planned.id).toBe(guestReferralPaymentCaseId);
+  expect(planned.id).toBe(referralSomeoneElsePaymentCaseId);
   expect(planned.checkoutStates.map(({ data }) => data.date)).toEqual([
     "2099-08-03",
   ]);

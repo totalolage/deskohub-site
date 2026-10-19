@@ -14,10 +14,7 @@ import {
   selectCoworkDates,
 } from "../checkout/data";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
-import {
-  toWorkspaceE2EError,
-  type WorkspaceE2EError,
-} from "../errors";
+import { toWorkspaceE2EError, type WorkspaceE2EError } from "../errors";
 import { discountCodeFixtures } from "../integrations/discount-fixtures";
 import type { E2EDotyposDiscountGroup } from "../integrations/dotypos";
 import { planWorkspaceE2EReferralCases } from "../referrals/plan";
@@ -36,7 +33,6 @@ import {
   type DiscountAvailabilityE2EPreparation,
   makeDiscountE2ECases,
 } from "./discounts";
-import { planGuestReferralPaymentCase } from "./guest-referral-payment";
 import {
   executeLatePaymentRecovery,
   latePaymentRecoveryScenarios,
@@ -51,9 +47,11 @@ import {
   assertPaymentTerminalPath,
   getPaymentTerminalScenarios,
 } from "./payment-terminal";
+import { planReferralSomeoneElsePaymentCase } from "./referral-someone-else-payment";
 import { makeReservationLinkE2ECases } from "./reservation-links";
 import { assertReservationReplacement } from "./reservation-reuse";
 import { makeReservationUrlStateE2ECases } from "./reservation-url-state";
+import { planSignedOutVerificationCase } from "./signed-out-verification";
 
 export type WorkspaceE2EPreparation = {
   readonly customerDiscountGroup: E2EDotyposDiscountGroup;
@@ -384,7 +382,16 @@ export const makeWorkspaceE2ECases = ({
       );
 
       cases.push(
-        yield* planGuestReferralPaymentCase({
+        yield* planReferralSomeoneElsePaymentCase({
+          allocation,
+          availableBasicDates: discountPreparation.availableBasicDates,
+          config,
+          flowStates,
+        })
+      );
+
+      cases.push(
+        yield* planSignedOutVerificationCase({
           allocation,
           availableBasicDates: discountPreparation.availableBasicDates,
           config,
