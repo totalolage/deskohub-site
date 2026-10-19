@@ -190,8 +190,11 @@ export const makeDeliverHandler = Effect.gen(function* () {
       Effect.mapError(AutomationUnitFetchFailure.fromReservationVisits)
     );
 
+  // One page at a time: a unit's requests are sequential (§5.3).
   const readProfiles = (customerIds: readonly DotyposCustomerId[]) =>
-    readInIdFilterBatches(customerIds, dotypos.getCustomersPage).pipe(
+    readInIdFilterBatches(customerIds, dotypos.getCustomersPage, {
+      concurrency: 1,
+    }).pipe(
       Effect.map(
         (pages) =>
           new Map(

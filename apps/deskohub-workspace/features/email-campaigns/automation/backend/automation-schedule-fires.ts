@@ -201,6 +201,9 @@ export const planNextFire = Effect.fn("automationSchedules.planNextFire")(
           versionId: version.id,
           status: chunks.length === 0 ? "entered" : "entering",
           chunksTotal: chunks.length,
+          // The engine's instant, as `settled_at`, so health's fire duration
+          // compares one clock.
+          createdAt: at,
           settledAt: chunks.length === 0 ? at : null,
         })
         .onConflictDoNothing()
