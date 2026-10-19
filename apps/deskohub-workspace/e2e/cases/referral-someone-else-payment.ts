@@ -382,9 +382,13 @@ const executeReferralSomeoneElsePayment = Effect.fn(
   });
 
   yield* runStep({
-    // The paid status page uses the remembered code up.
-    execute: waitForNoRememberedReferralCode({ config, run, session }),
-    id: "forget-referral-code-after-paid-status",
+    // Booking for someone else never settles the booker's own referral, so
+    // the paid status page leaves the booker's remembered code in place.
+    execute: waitForRememberedReferralCode(
+      { config, run, session },
+      referrer.code
+    ),
+    id: "keep-booker-referral-code-after-paid-status",
     timeoutMs: config.timeouts.uiTransition,
   });
   const orderId = state.orderId;
