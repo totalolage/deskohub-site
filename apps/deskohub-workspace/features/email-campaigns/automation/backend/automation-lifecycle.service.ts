@@ -8,17 +8,7 @@ import {
   type AutomationVersionSummaryType as AutomationVersionSummary,
   AutomationFlow as automationFlowContractSchema,
 } from "@deskohub/workspace-admin-api";
-import {
-  and,
-  asc,
-  count,
-  desc,
-  eq,
-  inArray,
-  isNull,
-  ne,
-  sql,
-} from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { toStoredInstant } from "@/db/instant";
@@ -66,7 +56,6 @@ import {
 import type {
   AutomationPreviewId,
   AutomationVersionId,
-  AutomationWorkUnitId,
 } from "../automation-identifiers";
 import { automationTriggerSummary } from "../automation-triggers";
 import { nextFireAfter } from "../automation-versions";
@@ -83,6 +72,7 @@ import { lockAutomationForLifecycle } from "./automation-lifecycle-lock";
 import { closePreview } from "./automation-previews";
 import { AutomationRunTransitions } from "./automation-run-transitions";
 import type { AutomationEngineTransaction } from "./automation-unit-handler";
+import { releaseAutomationUnitSubjects } from "./automation-unit-planning";
 import { loadAutomationVersionActivations } from "./automation-version-activations";
 import {
   type AutomationWorkingCopy,
@@ -857,7 +847,7 @@ const dropEnteringFire = (
 
 /**
  * Drops the automation's planned units, which hold no slot, after
- * releasing their runs for replanning; marks its enqueued and claimed
+ * releasing their subjects for replanning; marks its enqueued and claimed
  * units for cancellation, which frees no slot until their claimant or the
  * reaper settles them and releases their subjects (§5.10). A deliver unit
  * with a persisted batch is never touched: it's the batch's only recovery
@@ -882,14 +872,16 @@ const stopUnits = (
   return Effect.Do.pipe(
     Effect.bind("planned", () =>
       tx
-        .select({ id: emailCampaignAutomationWorkUnits.id })
+        .select({
+          id: emailCampaignAutomationWorkUnits.id,
+          subject: emailCampaignAutomationWorkUnits.subject,
+        })
         .from(emailCampaignAutomationWorkUnits)
         .where(
           and(owned, eq(emailCampaignAutomationWorkUnits.status, "planned"))
         )
-        .pipe(Effect.map((rows) => rows.map(({ id }) => id)))
     ),
-    Effect.tap(({ planned }) => releasePlannedRuns(tx, planned)),
+    Effect.tap(({ planned }) => releaseAutomationUnitSubjects(tx, planned)),
     Effect.tap(({ planned }) =>
       planned.length === 0
         ? Effect.void
@@ -898,7 +890,10 @@ const stopUnits = (
             .set({ status: "dropped", settledAt: input.now })
             .where(
               and(
-                inArray(emailCampaignAutomationWorkUnits.id, planned),
+                inArray(
+                  emailCampaignAutomationWorkUnits.id,
+                  planned.map(({ id }) => id)
+                ),
                 eq(emailCampaignAutomationWorkUnits.status, "planned")
               )
             )
@@ -921,45 +916,6 @@ const stopUnits = (
     ),
     Effect.asVoid
   );
-};
-
-/**
- * Returns the runs of units about to be dropped to the planner, locking
- * them in id order (§5.4) before clearing their unit by compare-and-set.
- */
-const releasePlannedRuns = (
-  tx: AutomationEngineTransaction,
-  unitIds: readonly AutomationWorkUnitId[]
-): Effect.Effect<void, DatabaseQueryError> => {
-  return unitIds.length === 0
-    ? Effect.void
-    : tx
-        .select({ id: emailCampaignAutomationRuns.id })
-        .from(emailCampaignAutomationRuns)
-        .where(inArray(emailCampaignAutomationRuns.workUnitId, [...unitIds]))
-        .orderBy(asc(emailCampaignAutomationRuns.id))
-        .for("update")
-        .pipe(
-          Effect.flatMap((locked) =>
-            locked.length === 0
-              ? Effect.void
-              : tx
-                  .update(emailCampaignAutomationRuns)
-                  .set({ workUnitId: null, updatedAt: sql`now()` })
-                  .where(
-                    and(
-                      inArray(
-                        emailCampaignAutomationRuns.id,
-                        locked.map(({ id }) => id)
-                      ),
-                      inArray(emailCampaignAutomationRuns.workUnitId, [
-                        ...unitIds,
-                      ])
-                    )
-                  )
-                  .pipe(Effect.asVoid)
-          )
-        );
 };
 
 /** Archive ends every active run; sending runs settle with their batch. */
