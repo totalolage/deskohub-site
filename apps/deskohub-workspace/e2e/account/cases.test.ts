@@ -352,6 +352,12 @@ class FakeAccountExternalState {
   passkeyName: string | undefined;
   /** How many links were consumed when the authenticator was added. */
   private authenticatorAddedAfterLinks: number | undefined;
+  /**
+   * The tab's email sign-in note: the next account page takes it and offers
+   * the passkey prompt once, like `shouldOfferPasskeyPrompt`.
+   */
+  private emailSignInNoted = false;
+  private passkeyPromptOffered = false;
   private authenticatorCredentials = 0;
   private messageSequence = 0;
   private duplicateProfileSequence = 0;
@@ -408,7 +414,8 @@ class FakeAccountExternalState {
     if (
       this.authenticatorAddedAfterLinks === undefined ||
       this.consumedLinks.size <= this.authenticatorAddedAfterLinks ||
-      !this.linksByUserId.has(user.id)
+      !this.linksByUserId.has(user.id) ||
+      !this.passkeyPromptOffered
     ) {
       throw new Error("no post-sign-in passkey prompt is shown");
     }
@@ -846,6 +853,7 @@ class FakeAccountExternalState {
 
     message.consumed = true;
     this.consumedLinks.add(link);
+    this.emailSignInNoted = true;
     switch (message.kind) {
       case "initial-main": {
         // A magic-link sign-in for an existing verified account signs into
@@ -924,6 +932,8 @@ class FakeAccountExternalState {
   }
 
   openAccount(): OpenAccountResult {
+    this.passkeyPromptOffered = this.emailSignInNoted;
+    this.emailSignInNoted = false;
     if (
       !this.currentAuthUserId ||
       !this.usersById.has(this.currentAuthUserId)

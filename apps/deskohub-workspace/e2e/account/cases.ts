@@ -1960,26 +1960,10 @@ export const makeWorkspaceE2EAccountCases = ({
                     yield* readSessionMatches(session, recipient),
                     "the selection is not signed in as the reactivated recipient"
                   );
-                  // Reservation pages only read an existing link; the account
-                  // page claims the retained profile for the new identity.
-                  yield* openPage(localized(accountSuffix, handoffLocale));
-                  yield* waitDefaultReservations(
-                    "reactivated linked account reservations"
-                  );
                   const newUserId = yield* requireAuthUserId(recipient);
                   assert(
                     newUserId !== lifecycleHandoff.deletedUserId,
                     "the reactivated identity reused the deleted Better Auth id"
-                  );
-                  const linked = yield* requireLinkedCustomerId(newUserId);
-                  assert(
-                    linked === lifecycleHandoff.retainedCustomerId,
-                    "the reactivated identity claimed a different Dotypos customer"
-                  );
-                  const customer = yield* readProviderProfile(linked);
-                  assert(
-                    customer.expireDate == null,
-                    "the retained Dotypos profile was not reactivated"
                   );
                   yield* recordFixtureIds(journalRef, {
                     authUserIds: [newUserId],
@@ -2102,6 +2086,19 @@ export const makeWorkspaceE2EAccountCases = ({
               );
               yield* waitDefaultReservations(
                 "reactivated linked account reservations"
+              );
+              // Reservation pages only read an existing link, so this first
+              // account page claims the retained profile. It also takes the
+              // one post-sign-in passkey offer the next step accepts.
+              const linked = yield* requireLinkedCustomerId(reactivatedUserId);
+              assert(
+                linked === lifecycleHandoff.retainedCustomerId,
+                "the reactivated identity claimed a different Dotypos customer"
+              );
+              const customer = yield* readProviderProfile(linked);
+              assert(
+                customer.expireDate == null,
+                "the retained Dotypos profile was not reactivated"
               );
             }),
             accountPageLoadTimeout
