@@ -371,6 +371,8 @@ const packCustomers = (
   for (const id of customers) {
     const booked = reads.visits ? (bookings.get(id) ?? 0) : 0;
     if (requestCost(reads, booked) > maxUnitRequestCost) {
+      // Units follow id order, so the open unit closes before a solo one.
+      close();
       chunks.push({ customers: [id], requestCost: requestCost(reads, booked) });
       continue;
     }
