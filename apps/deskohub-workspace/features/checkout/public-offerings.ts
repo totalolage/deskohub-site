@@ -1,3 +1,4 @@
+import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
 import { workspaceMeetingRoomCatalog } from "@/features/checkout/meeting-room-product-catalog";
 import {
   getCoworkTierCoffeeAddon,
@@ -23,9 +24,13 @@ import {
 } from "@/features/checkout/product-catalog.i18n";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
+import { getCoworkAdvertisedPriceReservation } from "@/features/reservation/cowork-reservation";
+import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import type { MeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
+import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
 import { officeReservationMaximumDurationHours } from "@/features/reservation/office-reservation";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { plainDateStringSchema } from "@/shared/utils/temporal";
 
 /** An optional or included extra of a cowork offer. */
 type PublicOfferingAddOn = {
@@ -78,8 +83,32 @@ export type PublicCatalogOffering = PublicOfferingCopy &
       }
   );
 
+/** A catalog offering with the request that prices its smallest booking. */
+export type PublicOfferingListing = {
+  readonly offering: PublicCatalogOffering;
+  /**
+   * One day of the cowork tier without paid add-ons, one booking of the
+   * meeting-room duration, or one office day with one seat, all starting on
+   * the listing date.
+   */
+  readonly advertisedPriceRequest: AdvertisedPriceRequest;
+};
+
+/** The anonymous price a reservation page advertises for a smallest booking. */
+type PublicOfferingAdvertisedPrice = {
+  /** Includes any public sale running now. */
+  readonly price: WorkspaceMoney;
+  /** The sale discount included in `price`; zero without one. */
+  readonly discount: WorkspaceMoney;
+};
+
+/** One bookable product at its regular and its advertised price. */
+export type PublicOffering = PublicCatalogOffering & {
+  readonly advertisedPrice: PublicOfferingAdvertisedPrice;
+};
+
 /** The office offer, when office reservations are open. */
-type PublicOfficeOffer = {
+export type PublicOfficeOffer = {
   readonly maximumSeats?: number;
 };
 
@@ -97,6 +126,67 @@ export const getPublicCatalogOfferings = ({
   ),
   ...(office ? [getOfficeOffering(office, locale)] : []),
 ];
+
+/**
+ * Every product customers can book anonymously, in catalog order, with the
+ * request that prices its smallest booking on `date`.
+ */
+export const getPublicOfferingListings = ({
+  date,
+  locale,
+  office,
+}: {
+  /** The Prague date the advertised prices are for. */
+  readonly date: Temporal.PlainDate;
+  readonly locale: Locale;
+  readonly office?: PublicOfficeOffer;
+}): ReadonlyArray<PublicOfferingListing> => [
+  ...workspaceCoworkCurrentTiers.map(
+    (tier): PublicOfferingListing => ({
+      offering: getCoworkOffering(tier, locale),
+      advertisedPriceRequest: {
+        locale,
+        reservation: getCoworkAdvertisedPriceReservation({
+          entryTier: tier,
+          coffee: getCoworkTierCoffeeAddon(tier) === "included",
+          date: date.toString(),
+        }),
+      },
+    })
+  ),
+  ...getMeetingRoomDurationAdvertisedPriceRequests({
+    locale,
+    startDateTime: date.toPlainDateTime().toString({ smallestUnit: "minute" }),
+  }).map(
+    (advertisedPriceRequest): PublicOfferingListing => ({
+      offering: getMeetingRoomOffering(
+        advertisedPriceRequest.reservation.details.duration,
+        locale
+      ),
+      advertisedPriceRequest,
+    })
+  ),
+  ...(office
+    ? [
+        {
+          offering: getOfficeOffering(office, locale),
+          advertisedPriceRequest: getOfficeAdvertisedPriceRequest({
+            locale,
+            startsOn: plainDateStringSchema.make(date.toString()),
+            endsOn: plainDateStringSchema.make(date.toString()),
+            seats: 1,
+          }),
+        },
+      ]
+    : []),
+];
+
+/** The opening hours sentence shown with the offerings. */
+export const getPublicOpeningHours = (locale: Locale) =>
+  m.publicOfferingOpeningHours(
+    { until: workspaceSiteConstants.openingHours.openSpaceUsableUntil },
+    { locale }
+  );
 
 const getCoworkOffering = (
   tier: WorkspaceCoworkCurrentTier,

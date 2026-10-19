@@ -5,6 +5,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Schema } from "effect";
 import { normalizedCoworkReservationOrderSchema } from "./cowork-reservation";
 import {
+  getCoworkOfferSearchParams,
   getCoworkReservationSelectionSearchParams,
   getReservationDefaultValuesFromPayState,
   getReservationDefaultValuesFromSearchParams,
@@ -187,5 +188,43 @@ describe("getCoworkReservationSelectionSearchParams", () => {
         }).monitorOption
       ).toBeUndefined();
     }
+  });
+});
+
+describe("getCoworkOfferSearchParams", () => {
+  test("names the tier and date and leaves the add-ons to the last reservation", () => {
+    const lastReservation = {
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+    } as const;
+    const searchParams = new URLSearchParams();
+    setReservationSelectionSearchParams(
+      searchParams,
+      getCoworkOfferSearchParams({
+        entryTier: "reserved-desk",
+        date: "2099-06-12",
+      })
+    );
+
+    expect(searchParams.toString()).toBe(
+      "entryTier=reserved-desk&date=2099-06-12"
+    );
+    expect(
+      getReservationDefaultValuesFromSearchParams(searchParams, lastReservation)
+    ).toMatchObject({
+      entryTier: "reserved-desk",
+      date: "2099-06-12",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+    });
+  });
+
+  test("writes no date when the offer has none", () => {
+    expect(getCoworkOfferSearchParams({ entryTier: "open-space" })).toEqual({
+      entryTier: "open-space",
+      date: undefined,
+    });
   });
 });

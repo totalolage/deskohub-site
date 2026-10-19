@@ -4,6 +4,7 @@ import { Option, Schema } from "effect";
 import {
   ceilToWholeHour,
   floorToWholeHour,
+  getPlainDatesBetween,
   instantStringSchema,
   isFuturePlainDateTime,
   isPlainDateString,
@@ -206,5 +207,42 @@ describe("parsePlainDate", () => {
   test("returns none for invalid dates", () => {
     expect(parsePlainDate("2026-02-30")).toEqual(Option.none());
     expect(parsePlainDate("not-a-date")).toEqual(Option.none());
+  });
+});
+
+describe("getPlainDatesBetween", () => {
+  test("returns inclusive dates across a month boundary", () => {
+    const dates = getPlainDatesBetween(
+      Temporal.PlainDate.from("2026-01-30"),
+      Temporal.PlainDate.from("2026-02-02")
+    );
+
+    expect(dates.map(String)).toEqual([
+      "2026-01-30",
+      "2026-01-31",
+      "2026-02-01",
+      "2026-02-02",
+    ]);
+    expect(dates.every((date) => date instanceof Temporal.PlainDate)).toBe(
+      true
+    );
+  });
+
+  test("returns an empty list when the start follows the end", () => {
+    expect(
+      getPlainDatesBetween(
+        Temporal.PlainDate.from("2026-02-02"),
+        Temporal.PlainDate.from("2026-02-01")
+      )
+    ).toEqual([]);
+  });
+
+  test("returns one date when the start equals the end", () => {
+    expect(
+      getPlainDatesBetween(
+        Temporal.PlainDate.from("2026-02-01"),
+        Temporal.PlainDate.from("2026-02-01")
+      ).map(String)
+    ).toEqual(["2026-02-01"]);
   });
 });
