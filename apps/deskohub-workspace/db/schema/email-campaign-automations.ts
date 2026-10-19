@@ -1,4 +1,5 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
+import type { AutomationRunEventDetail } from "@deskohub/workspace-admin-api";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -24,12 +25,12 @@ import type {
 import {
   type AutomationPreviewKind,
   type AutomationPreviewOutcome,
-  type AutomationPreviewStatus,
+  type AutomationPreviewState,
   type AutomationRunEventKind,
   type AutomationRunFailureReason,
   type AutomationRunOutcome,
   type AutomationRunPhase,
-  type AutomationRunStatus,
+  type AutomationRunState,
   type AutomationScheduleFireStatus,
   type AutomationTriggerDisposition,
   type AutomationTriggerKind,
@@ -302,7 +303,7 @@ export const emailCampaignAutomationRuns = pgTable(
     triggerReservationId: text("trigger_reservation_id")
       .references(() => workspaceReservations.id)
       .$type<WorkspaceReservationId>(),
-    status: text("status").notNull().$type<AutomationRunStatus>(),
+    status: text("status").notNull().$type<AutomationRunState>(),
     /** The current step; the last step once ended. */
     stepId: text("step_id").notNull().$type<AutomationStepId>(),
     /** Active runs only; `waiting` at a send step means a deferred trigger. */
@@ -403,7 +404,10 @@ export const emailCampaignAutomationRunEvents = pgTable(
     kind: text("kind").notNull().$type<AutomationRunEventKind>(),
     stepId: text("step_id").$type<AutomationStepId>(),
     at: instant("at").notNull(),
-    detail: jsonb("detail").notNull().default(sql`'{}'::jsonb`),
+    detail: jsonb("detail")
+      .notNull()
+      .default(sql`'{}'::jsonb`)
+      .$type<AutomationRunEventDetail>(),
   },
   (t) => [
     primaryKey({ columns: [t.runId, t.sequence] }),
@@ -539,7 +543,7 @@ export const emailCampaignAutomationPreviews = pgTable(
     /** The working copy it evaluates. */
     draftHash: text("draft_hash").notNull(),
     kind: text("kind").notNull().$type<AutomationPreviewKind>(),
-    status: text("status").notNull().$type<AutomationPreviewStatus>(),
+    status: text("status").notNull().$type<AutomationPreviewState>(),
     /** Replay: events in [as_of − 30 days, as_of). Schedule: the next fire. */
     asOf: instant("as_of").notNull(),
     unitsTotal: integer("units_total").notNull(),
