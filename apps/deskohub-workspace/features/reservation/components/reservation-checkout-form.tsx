@@ -263,12 +263,14 @@ export function ReservationCheckoutForm<
             {children}
           </div>
           <div className="space-y-7" hidden={!isContactStep}>
-            <ReservationSelectionSummary
-              locale={locale}
-              onChange={() => checkoutStep.goTo("selection")}
-              summary={selectionSummary}
-              total={advertisedPrice.total}
-            />
+            {isContactStep && (
+              <ReservationSelectionSummary
+                locale={locale}
+                onChange={() => checkoutStep.goTo("selection")}
+                summary={selectionSummary}
+                total={advertisedPrice.total}
+              />
+            )}
             <ReservationCustomerSection
               checkoutCustomer={checkoutCustomer}
               customer={customer}
