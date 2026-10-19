@@ -18,6 +18,7 @@ import {
   type AutomationConditionFilter,
   AutomationFlow,
   type AutomationFlowType,
+  type DatePeriodType,
 } from "@deskohub/workspace-admin-api";
 import { and, asc, eq, inArray, like } from "drizzle-orm";
 import { Effect, Exit, Layer, Schema } from "effect";
@@ -28,6 +29,7 @@ import {
   emailCampaignAutomationPreviews,
   emailCampaignAutomations,
   emailCampaignAutomationWorkUnits,
+  emailCampaignRecipients,
   emailCampaigns,
   workspaceReservations,
 } from "@/db/schema";
@@ -42,6 +44,7 @@ import {
   deleteAutomatedCampaigns,
   everyoneFilter,
   seedAutomatedCampaign,
+  seedCampaignSend,
 } from "../../backend/email-campaigns.test-utils";
 import type {
   CampaignAudienceId,
@@ -666,6 +669,157 @@ describe.skipIf(!testDatabase)(
       expect(dryRun.nextFires).toEqual([]);
       expect(dryRun.frequency).toBeNull();
       expect(dryRun.truncated).toBe(false);
+    });
+
+    describe("campaign emails as of the replayed moment", () => {
+      const triggerAt = ago({ hours: 24 * 10 });
+
+      const noEmailIn = (
+        period: DatePeriodType,
+        campaignId?: CampaignId
+      ): AudienceCondition => ({
+        attribute: "campaignEmailCount",
+        _tag: "Condition",
+        params: {
+          purpose: "any",
+          period,
+          ...(campaignId && {
+            campaign: { _tag: "Specific", campaignId },
+          }),
+        },
+        operator: "eq",
+        value: 0,
+      });
+
+      /**
+       * Two customers who finished a visit at `triggerAt`: one got another
+       * campaign's email two days before it, the other five days after it.
+       */
+      const seedCustomers = async (label: string) => {
+        const [before, after] = [`${label}-before`, `${label}-after`].map(
+          customerId
+        ) as [DotyposCustomerId, DotyposCustomerId];
+        await seedReservations(
+          [before, after].map((customer, index) => ({
+            label: `${label}-${index}`,
+            customer,
+            startsAt: triggerAt.subtract({ hours: 2 }),
+            endsAt: triggerAt,
+          }))
+        );
+        const [beforeEvent, afterEvent] = await seedEvents(
+          [before, after].map((customer, index) => ({
+            kind: "reservation-finished" as const,
+            reservation: `${label}-${index}`,
+            customer,
+            occurredAt: triggerAt,
+          }))
+        );
+        const { campaignId: other, sendId } = await seedCampaignSend(db, {
+          purpose: "marketing",
+          recipients: [before, after].map((dotyposCustomerId) => ({
+            dotyposCustomerId,
+            status: "sent" as const,
+          })),
+        });
+        campaignIds.push(other);
+        for (const [customer, dispatchedAt] of [
+          [before, triggerAt.subtract({ hours: 24 * 2 })],
+          [after, triggerAt.add({ hours: 24 * 5 })],
+        ] as const) {
+          await query(
+            db
+              .update(emailCampaignRecipients)
+              .set({ statusUpdatedAt: dispatchedAt })
+              .where(
+                and(
+                  eq(emailCampaignRecipients.sendId, sendId),
+                  eq(emailCampaignRecipients.dotyposCustomerId, customer)
+                )
+              )
+          );
+        }
+        return { other, before: beforeEvent!, after: afterEvent! };
+      };
+
+      /** Each event's outcome in a completed dry run of the flow. */
+      const outcomesOf = async (input: {
+        readonly steps: readonly unknown[];
+        readonly filter?: AudienceFilter;
+      }) => {
+        const campaignId = await seedAutomation({
+          flow: decodeFlow({
+            trigger: { _tag: "ReservationFinished" },
+            steps: input.steps,
+          }),
+          ...(input.filter && { filter: input.filter }),
+        });
+        const started = await start(campaignId);
+        await processAll(started.previewId);
+        expect((await previewRow(started.previewId)).status).toBe("completed");
+        return new Map(
+          (await rowsOf(started.previewId)).map((row) => [
+            row.customerEventId,
+            row.outcome,
+          ])
+        );
+      };
+
+      const sources = [
+        { label: "any", campaign: () => undefined },
+        { label: "specific", campaign: (other: CampaignId) => other },
+      ] as const;
+
+      for (const source of sources) {
+        test(`an entry gate counts ${source.label} campaign emails dispatched by the event`, async () => {
+          const seeded = await seedCustomers(`gate-${source.label}`);
+          const periods: readonly DatePeriodType[] = [
+            { _tag: "AnyTime" },
+            {
+              _tag: "Onward",
+              date: pragueOf(triggerAt.subtract({ hours: 24 * 7 }))
+                .toPlainDate()
+                .toString(),
+            },
+          ];
+          for (const period of periods) {
+            const outcomes = await outcomesOf({
+              steps: [send],
+              filter: {
+                _tag: "Group",
+                operator: "and",
+                filters: [noEmailIn(period, source.campaign(seeded.other))],
+              },
+            });
+            expect(outcomes.get(seeded.before)).toBe("not-in-audience");
+            expect(outcomes.get(seeded.after)).toBe("would-send");
+          }
+        });
+
+        test(`a condition counts ${source.label} campaign emails dispatched by its step`, async () => {
+          const seeded = await seedCustomers(`step-${source.label}`);
+          const afterTrigger = noEmailIn(
+            { _tag: "TriggerWindow", side: "after", count: 30, unit: "day" },
+            source.campaign(seeded.other)
+          );
+          const waitingDays = (days: number) =>
+            outcomesOf({
+              steps: [
+                waitHours("wait", 24 * days),
+                condition("check", afterTrigger),
+                send,
+              ],
+            });
+
+          const beforeTheEmail = await waitingDays(2);
+          expect(beforeTheEmail.get(seeded.before)).toBe("would-send");
+          expect(beforeTheEmail.get(seeded.after)).toBe("would-send");
+
+          const afterTheEmail = await waitingDays(7);
+          expect(afterTheEmail.get(seeded.before)).toBe("would-send");
+          expect(afterTheEmail.get(seeded.after)).toBe("condition-failed");
+        });
+      }
     });
 
     test("replays only the latest 1,000 events and counts the rest", async () => {

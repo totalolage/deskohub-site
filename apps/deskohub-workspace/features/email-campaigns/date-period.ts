@@ -104,6 +104,22 @@ export const isUnboundedPeriod = (bounds: DatePeriodBounds): boolean =>
   bounds.startsBefore === undefined &&
   bounds.startsAtOrBefore === undefined;
 
+/** The bounds without anything after `instant`, which they include. */
+export const datePeriodBoundsEndingBy = (
+  bounds: DatePeriodBounds,
+  instant: Temporal.Instant
+): DatePeriodBounds => {
+  const end = bounds.startsBefore ?? bounds.startsAtOrBefore;
+  return end !== undefined && Temporal.Instant.compare(end, instant) <= 0
+    ? bounds
+    : {
+        ...(bounds.startsAtOrAfter && {
+          startsAtOrAfter: bounds.startsAtOrAfter,
+        }),
+        startsAtOrBefore: instant,
+      };
+};
+
 /** Whether an instant lies in the bounds. */
 export const isWithinDatePeriodBounds = (
   bounds: DatePeriodBounds,

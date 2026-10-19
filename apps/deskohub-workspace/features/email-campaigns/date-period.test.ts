@@ -4,6 +4,7 @@ import { audienceEvaluationAt } from "./backend/audience-evaluation-context";
 import {
   type DatePeriod,
   datePeriodBounds,
+  datePeriodBoundsEndingBy,
   isWithinDatePeriodBounds,
 } from "./date-period";
 
@@ -157,5 +158,29 @@ describe("datePeriodBounds", () => {
         audienceEvaluationAt(now)
       )
     );
+  });
+});
+
+describe("datePeriodBoundsEndingBy", () => {
+  const start = now.subtract({ hours: 24 });
+
+  test("keeps bounds that end by the instant", () => {
+    const bounds = { startsAtOrAfter: start, startsBefore: now };
+    expect(datePeriodBoundsEndingBy(bounds, now)).toBe(bounds);
+    expect(datePeriodBoundsEndingBy({ startsAtOrBefore: start }, now)).toEqual({
+      startsAtOrBefore: start,
+    });
+  });
+
+  test("ends later or open bounds at the instant, inclusive", () => {
+    expect(datePeriodBoundsEndingBy({}, now)).toEqual({
+      startsAtOrBefore: now,
+    });
+    expect(
+      datePeriodBoundsEndingBy(
+        { startsAtOrAfter: start, startsBefore: now.add(millisecond) },
+        now
+      )
+    ).toEqual({ startsAtOrAfter: start, startsAtOrBefore: now });
   });
 });

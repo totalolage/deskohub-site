@@ -31,6 +31,7 @@ import {
   type DatePeriod,
   type DatePeriodBounds,
   datePeriodBounds,
+  datePeriodBoundsEndingBy,
 } from "./date-period";
 
 /**
@@ -188,11 +189,27 @@ type CountParamValue =
   | CampaignEmailSourceType
   | ReservationProductFilterType;
 
+/**
+ * When the emails a campaign-email count counts were dispatched. A replayed
+ * moment counts only emails dispatched by then, whatever the period: the
+ * customer hadn't received the later ones yet.
+ */
+export const campaignEmailDispatchBounds = (
+  period: DatePeriod,
+  context: AudienceEvaluationContext
+): DatePeriodBounds => {
+  const bounds = datePeriodBounds(period, context);
+  return context.replayed
+    ? datePeriodBoundsEndingBy(bounds, context.now)
+    : bounds;
+};
+
 /** One param value fixed by the context, by its param's part. */
 const concreteParam = (
   param: AudienceParam | undefined,
   value: CountParamValue,
-  context: AudienceEvaluationContext
+  context: AudienceEvaluationContext,
+  periodBounds: typeof datePeriodBounds
 ) =>
   param === undefined
     ? // The product filter isn't a catalogued param; it needs no context.
@@ -202,7 +219,7 @@ const concreteParam = (
           choice: () => value,
           // The condition decoded with the param's schema, so the value is
           // of its part.
-          period: () => datePeriodBounds(value as DatePeriod, context),
+          period: () => periodBounds(value as DatePeriod, context),
           campaign: () =>
             concreteCampaignSource(value as CampaignEmailSourceType, context),
         })
@@ -216,8 +233,12 @@ export const countFactRequest = <Condition extends AudienceCountCondition>(
   entry: Pick<AudienceCountAttributeDefinition, "params">,
   { attribute, params }: Condition,
   context: AudienceEvaluationContext
-): CountRequestOf<Condition> =>
-  ({
+): CountRequestOf<Condition> => {
+  const periodBounds =
+    attribute === "campaignEmailCount"
+      ? campaignEmailDispatchBounds
+      : datePeriodBounds;
+  return {
     attribute,
     params: Object.fromEntries(
       // A decoded condition's params hold only its entry's param values and
@@ -225,11 +246,12 @@ export const countFactRequest = <Condition extends AudienceCountCondition>(
       (Object.entries(params) as [string, CountParamValue][]).map(
         ([key, value]) => [
           key,
-          concreteParam(entry.params[key], value, context),
+          concreteParam(entry.params[key], value, context, periodBounds),
         ]
       )
     ),
-  }) as CountRequestOf<Condition>;
+  } as CountRequestOf<Condition>;
+};
 
 /** "Has no value" needs only the customers with one, so it asks for any time. */
 export const dateFactRequest = <Condition extends AudienceDateCondition>(
