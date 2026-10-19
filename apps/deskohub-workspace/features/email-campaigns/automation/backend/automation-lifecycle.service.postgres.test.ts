@@ -752,6 +752,9 @@ describe.skipIf(!testDatabase)(
 
       test("archive ends active runs and every unit but a persisted batch", async () => {
         const { campaignId, units, runs } = await seedBusy();
+        const runningPreview = await seedPreview(campaignId, {
+          status: "running",
+        });
         const archivedAt = now.add({ minutes: 10 });
 
         const detail = await run(
@@ -785,6 +788,14 @@ describe.skipIf(!testDatabase)(
           outcome: "archived",
           last_kind: "archived",
         });
+        // An archived automation can't activate, so its dry run ends.
+        const { rows: previews } = await pool.query(
+          "select status, error_code from email_campaign_automation_previews where id = $1",
+          [runningPreview]
+        );
+        expect(previews).toEqual([
+          { status: "failed", error_code: "automation-archived" },
+        ]);
         // A queued batch's recipients are the only emails that still go out.
         expect(states[runs.sending]).toMatchObject({
           status: "sending",

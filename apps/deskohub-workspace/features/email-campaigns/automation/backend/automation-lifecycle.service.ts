@@ -80,6 +80,7 @@ import {
   AutomationVersionNotFound,
 } from "../errors";
 import { lockAutomationForLifecycle } from "./automation-lifecycle-lock";
+import { closePreview } from "./automation-previews";
 import { AutomationRunTransitions } from "./automation-run-transitions";
 import type { AutomationEngineTransaction } from "./automation-unit-handler";
 import { loadAutomationVersionActivations } from "./automation-version-activations";
@@ -805,10 +806,39 @@ const archiveIn = (
           // Runs before units, in the lock order of §5.4.
           endActiveRuns(tx, { campaignId, now }),
           stopUnits(tx, { campaignId, now, exceptPreviews: false }),
+          closeRunningPreview(tx, { campaignId, now }),
         ],
         { discard: true }
       );
 };
+
+/** An archived automation can't activate, so its running dry run ends. */
+const closeRunningPreview = (
+  tx: AutomationEngineTransaction,
+  input: { readonly campaignId: CampaignId; readonly now: Temporal.Instant }
+): Effect.Effect<void, DatabaseQueryError> =>
+  tx
+    .select({ id: emailCampaignAutomationPreviews.id })
+    .from(emailCampaignAutomationPreviews)
+    .where(
+      and(
+        eq(emailCampaignAutomationPreviews.campaignId, input.campaignId),
+        eq(emailCampaignAutomationPreviews.status, "running")
+      )
+    )
+    .pipe(
+      Effect.flatMap((running) =>
+        Effect.forEach(running, ({ id }) =>
+          closePreview(tx, {
+            previewId: id,
+            status: "failed",
+            errorCode: AutomationArchived.code,
+            at: input.now,
+          })
+        )
+      ),
+      Effect.asVoid
+    );
 
 /** Pause and archive close the fire being entered; runs it started keep going. */
 const dropEnteringFire = (
