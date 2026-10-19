@@ -60,27 +60,24 @@ const pageLink = (pathname: PublicPagePathname): ListItem => {
   );
 };
 
-/** What a section lists besides its pages. */
+/** What a section lists after its pages. */
+const sectionItems = (topic: PublicPageTopic): ListItem[] => {
+  if (topic !== "contact") return [];
+  const { infoEmail } = workspaceSiteConstants.contact;
+  return [
+    markdownListItem(
+      `${m.contactEmailLabel({}, { locale: llmsTxtLocale })}: `,
+      markdownLink(`mailto:${infoEmail}`, infoEmail)
+    ),
+  ];
+};
+
+/** What a section shows after its list. */
 const sectionFacts = (
   topic: PublicPageTopic,
   offerings: ReadonlyArray<PublicOffering>
-): BlockContent[] => {
-  if (topic === "prices") {
-    return [publicOfferingsMarkdown(offerings, llmsTxtLocale)];
-  }
-  if (topic === "contact") {
-    const { infoEmail } = workspaceSiteConstants.contact;
-    return [
-      markdownList([
-        markdownListItem(
-          `${m.contactEmailLabel({}, { locale: llmsTxtLocale })}: `,
-          markdownLink(`mailto:${infoEmail}`, infoEmail)
-        ),
-      ]),
-    ];
-  }
-  return [];
-};
+): BlockContent[] =>
+  topic === "prices" ? [publicOfferingsMarkdown(offerings, llmsTxtLocale)] : [];
 
 /**
  * `llms.txt` (https://llmstxt.org/): the business, a summary, the opening
@@ -102,9 +99,12 @@ export const llmsTxtMarkdown = ({
   ),
   markdownParagraph(getPublicOpeningHours(llmsTxtLocale)),
   ...topicSections.flatMap(([topic, heading]) => {
-    const links = pages
-      .filter((pathname) => publicPageMarkdown[pathname].topic === topic)
-      .map(pageLink);
+    const links = [
+      ...pages
+        .filter((pathname) => publicPageMarkdown[pathname].topic === topic)
+        .map(pageLink),
+      ...sectionItems(topic),
+    ];
     const blocks = [
       ...(links.length > 0 ? [markdownList(links)] : []),
       ...sectionFacts(topic, offerings),

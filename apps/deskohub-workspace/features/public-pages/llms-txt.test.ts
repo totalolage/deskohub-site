@@ -49,7 +49,11 @@ describe("llmsTxtMarkdown", () => {
   });
 
   test("lists pages by topic in English section order", () => {
-    expect(headings(renderLlmsTxt(), 2)).toEqual([
+    const markdown = renderLlmsTxt();
+
+    // One list per section keeps every bullet a `-`, as llms.txt shows them.
+    expect(markdown).not.toMatch(/^\* /m);
+    expect(headings(markdown, 2)).toEqual([
       m.publicPageTopicOffer({}, { locale }),
       m.publicPageTopicBooking({}, { locale }),
       m.landingNavPricing({}, { locale }),
