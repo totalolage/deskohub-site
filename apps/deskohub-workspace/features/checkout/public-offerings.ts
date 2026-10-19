@@ -107,6 +107,13 @@ export type PublicOffering = PublicCatalogOffering & {
   readonly advertisedPrice: PublicOfferingAdvertisedPrice;
 };
 
+/**
+ * One bookable product on a page that renders without its quote: the
+ * advertised price is absent when it could not be quoted.
+ */
+export type PublicPriceListOffering = PublicCatalogOffering &
+  Partial<Pick<PublicOffering, "advertisedPrice">>;
+
 /** The office offer, when office reservations are open. */
 export type PublicOfficeOffer = {
   readonly maximumSeats?: number;
