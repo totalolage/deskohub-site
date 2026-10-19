@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { m } from "@/features/i18n";
-import { enablePreviewAccess } from "../instant-navigation/navigation-test-helpers";
+import { enablePreviewAccess } from "../preview-access";
 import { auditedLocales, expectAxeClean } from "./accessibility-audit";
 import { seededAccountSkipReason } from "./audit-target";
 import { withPayPage } from "./pay-page";

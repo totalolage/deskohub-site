@@ -1,5 +1,5 @@
 import { test } from "@playwright/test";
-import { enablePreviewAccess } from "../instant-navigation/navigation-test-helpers";
+import { enablePreviewAccess } from "../preview-access";
 import {
   auditedLocales,
   expectAxeClean,

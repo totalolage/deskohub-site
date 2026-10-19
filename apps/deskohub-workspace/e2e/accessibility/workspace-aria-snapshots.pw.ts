@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { enablePreviewAccess } from "../instant-navigation/navigation-test-helpers";
+import { enablePreviewAccess } from "../preview-access";
 import { auditedLocales, openSettledPage } from "./accessibility-audit";
 import { localFixtureSkipReason, sandboxSkipReason } from "./audit-target";
 import {

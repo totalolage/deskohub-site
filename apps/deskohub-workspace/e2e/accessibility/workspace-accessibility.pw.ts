@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { m } from "@/features/i18n";
-import { enablePreviewAccess } from "../instant-navigation/navigation-test-helpers";
+import { enablePreviewAccess } from "../preview-access";
 import {
   expectAxeClean,
   auditedLocales as locales,

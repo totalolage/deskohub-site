@@ -1,9 +1,4 @@
-import {
-  type BrowserContext,
-  expect,
-  type Page,
-  type Request,
-} from "@playwright/test";
+import { expect, type Page, type Request } from "@playwright/test";
 import type { AccountReviewDestination } from "../account/review-screenshots";
 import {
   makeReviewScreenshotEnvironment,
@@ -21,26 +16,6 @@ export const reviewDestination = (
   baseUrl: requireBaseUrl(baseURL),
   screenshots: reviewScreenshots,
 });
-
-export async function enablePreviewAccess(
-  context: BrowserContext,
-  baseURL: string | undefined
-) {
-  const previewBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (!previewBypassSecret) return;
-
-  const response = await context.request.get(
-    new URL("/favicon.svg", requireBaseUrl(baseURL)).toString(),
-    {
-      headers: {
-        "x-vercel-protection-bypass": previewBypassSecret,
-        "x-vercel-set-bypass-cookie": "true",
-      },
-    }
-  );
-  expect(response.ok()).toBe(true);
-  await response.dispose();
-}
 
 export async function expectPublicSiteShell(page: Page) {
   await expect(page.getByRole("banner")).toBeVisible();

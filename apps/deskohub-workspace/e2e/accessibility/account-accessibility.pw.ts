@@ -9,7 +9,7 @@ import {
   defaultAccountSection,
 } from "@/features/account/sections";
 import { accountSectionLandmarks } from "../account/account-sections";
-import { enablePreviewAccess } from "../instant-navigation/navigation-test-helpers";
+import { enablePreviewAccess } from "../preview-access";
 import {
   auditedLocales,
   expectAxeClean,

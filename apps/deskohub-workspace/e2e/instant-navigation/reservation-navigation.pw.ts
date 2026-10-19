@@ -1,11 +1,8 @@
 import { instant } from "@next/playwright";
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 import { isNotFoundPage } from "../not-found-page";
-import {
-  enablePreviewAccess,
-  hasLoadedResource,
-  requireBaseUrl,
-} from "./navigation-test-helpers";
+import { enablePreviewAccess } from "../preview-access";
+import { hasLoadedResource, requireBaseUrl } from "./navigation-test-helpers";
 
 const reservationStepsName = "Reservation steps";
 // The date field's calendar button carries the date label in every family;
