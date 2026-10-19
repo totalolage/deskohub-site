@@ -270,7 +270,7 @@ export const makeEngineDotypos = () => {
 export type EngineDotypos = ReturnType<typeof makeEngineDotypos>;
 
 /** A Dotypos profile reachable at a test-domain address. */
-const engineProfile = (
+export const engineProfile = (
   id: DotyposCustomerId,
   overrides: Partial<DotyposCustomer> = {}
 ) =>
@@ -1342,3 +1342,8 @@ export const makeAutomationEngineScenario = async (input: {
     cleanup,
   };
 };
+
+/** A running scenario, as `makeAutomationEngineScenario` returns it. */
+export type AutomationEngineScenario = Awaited<
+  ReturnType<typeof makeAutomationEngineScenario>
+>;
