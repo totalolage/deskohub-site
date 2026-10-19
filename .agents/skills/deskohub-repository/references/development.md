@@ -28,16 +28,18 @@ bun turbo build --filter=<package-name>
 
 ## Workspace builds
 
-- Vercel Workspace builds use the standard 4-core, 8 GB machine. Vercel drops build caches over 1.5 GB; a cold build without cache previously ran out of memory during Next's `Running TypeScript` step.
-- Keep these two settings together: `experimental.turbopackFileSystemCacheForBuild: false` in `apps/deskohub-workspace/next.config.mjs` disables Turbopack's build filesystem cache, which is on by default in Next 16.4 and held about 5 GB in the main process during type-checking; `NODE_OPTIONS=--max-old-space-size=4096` in the Workspace `build` script raises the heap limit for Next's TypeScript worker, which uses about 2.6 GB on a cold build versus Node's roughly 2.2 GB default.
-- This combination passed a cold Vercel build in about 3m46s with a 623 MB build cache. The `build` script's `NODE_OPTIONS` assignment replaces any `NODE_OPTIONS` set in Vercel, so add extra flags in the script. The heap limit does not cap total RSS.
-- Don't re-enable Turbopack's build cache or remove the heap flag without re-measuring a cold build on the 8 GB machine.
+- Vercel Workspace builds use the standard 4-core, 8 GB machine. Vercel drops build caches over 1.5 GB.
+- `next build` holds 4–5 GB of Turbopack state until a few seconds after compiling, then drops to about 0.5 GB. Whatever starts at that boundary stacks on top of it. A probe that logs per-process RSS from the `build` script, on a throwaway branch, shows where memory goes.
+- The Workspace `build` script runs `next typegen`, then the native `tsc --noEmit`, then `next build`, and `next.config.mjs` sets `typescript.ignoreBuildErrors: true`. Next's own check runs the TS6 compiler in a worker that needs about 3–3.5 GB beside `next build`. In October 2026 it hung until Vercel's 45-minute timeout or got OOM-killed (exit 137) on main and many branches. The native check takes about 15 s on Vercel and exits before `next build` starts. Running `next typegen` first lets the check cover the generated route types, which CI's `bun turbo typecheck` skips. Keep the check in the `build` script so a type error still fails the deployment.
+- `experimental.cpus: 1` runs page-data collection and static generation in one worker, which starts at up to 1 GB. At the compile boundary three workers left 0.8 GB free and two left 0.2 GB; one leaves about 2 GB. Static generation takes about 47 s either way, because a worker prerenders up to 8 pages at once.
+- `experimental.turbopackFileSystemCacheForBuild: false` disables Turbopack's build filesystem cache, which is on by default in Next 16.4. It held about 5 GB more and pushed Vercel's build cache past 1.5 GB.
+- Don't re-enable Next's build-time type check or the Turbopack build cache, or raise `experimental.cpus`, without re-measuring a cold build on the 8 GB machine.
 
 ## Toolchain
 
 - Bun is pinned to 1.4.2 in `packageManager`, `@types/bun`, and every workflow's `bun-version`. Change them together and never go below 1.4.0. Bun 1.3 writes a self-referential `@typescript/old` record into `bun.lock`, and `bun install --force` keeps a bad record, so regenerate the lock only with Bun 1.4 or later.
 - `@typescript/native` (`npm:typescript@7.x`) provides `tsc`. The root `prepare` script patches it with `effect-tsgo`. `typescript` (`npm:@typescript/typescript6`) provides the TS6 API for typescript-eslint and Next.js and the `tsc6` CLI. Never add a plain `typescript` dependency or another package that provides a `tsc` bin.
-- Next apps set `experimental.useTypeScriptCli: false` because the TS6 wrapper has no `tsc` bin. Next type-checks builds through its TS6 API, and `bun turbo typecheck` runs the patched native compiler.
+- Next apps set `experimental.useTypeScriptCli: false` because the TS6 wrapper has no `tsc` bin. Next type-checks Boardgame Bar builds through its TS6 API. The Workspace build script and `bun turbo typecheck` run the patched native compiler.
 - Workspace test files aren't type-checked by design: `apps/deskohub-workspace/tsconfig.json` excludes `**/*.test.ts` and `**/*.test.tsx`. Don't add a test tsconfig or test typecheck task, and don't report this as a finding.
 
 ## Next.js
