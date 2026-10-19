@@ -268,7 +268,10 @@ test("reopens the contact details sealed into a sign-in's return path", async ()
   const token = await Effect.runPromise(
     checkoutContactReturnState.seal(contact)
   );
-  const render = mock((_context: unknown): ReactNode => "contact form");
+  const render = mock(
+    (_context: { readonly checkoutContact?: unknown }): ReactNode =>
+      "contact form"
+  );
   const pageDefinition = createReservationPage({
     fallback: () => "loading reservation form",
     kind: "cowork",
