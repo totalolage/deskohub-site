@@ -8,6 +8,12 @@ export type DatePeriodUnit = typeof DatePeriodUnit.Type;
 const anyTime = Schema.TaggedStruct("AnyTime", {});
 
 /**
+ * Any time up to and including the evaluation time. Unlike any time, a
+ * visit-date count over it counts only visits that have started.
+ */
+const past = Schema.TaggedStruct("Past", {});
+
+/**
  * The last `count` units up to the evaluation time (a real send's send time).
  * Units step through the Prague calendar, so months and years keep their real
  * lengths across DST.
@@ -43,19 +49,32 @@ const until = Schema.TaggedStruct("Until", {
 });
 
 /**
+ * Within `count` units before or after the trigger event (a schedule's fire
+ * time), stepping through the Prague calendar. Only automation conditions
+ * have a trigger, so only they accept it.
+ */
+const triggerWindow = Schema.TaggedStruct("TriggerWindow", {
+  side: Schema.Literals(["before", "after"]),
+  count: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 9999 })),
+  unit: DatePeriodUnit,
+});
+
+/**
  * A span of time an audience condition looks at. Every dated condition uses
  * it, so the Admin UI, summaries, and `dhw` name periods the same way.
  */
 export const DatePeriod = Schema.Union([
   anyTime,
+  past,
   last,
   range,
   since,
   onward,
   until,
+  triggerWindow,
 ]).annotate({
   identifier: "DatePeriod",
   description:
-    "Any time, the last N days/weeks/months/years, an inclusive date range, since a date (through now), from a date onward (future included), or until a date (Prague calendar days).",
+    "Any time, any time up to now, the last N days/weeks/months/years, an inclusive date range, since a date (through now), from a date onward (future included), until a date (Prague calendar days), or within N units before or after the trigger event (automation conditions only).",
 });
 export type DatePeriod = typeof DatePeriod.Type;

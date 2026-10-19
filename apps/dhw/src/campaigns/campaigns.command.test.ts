@@ -927,6 +927,132 @@ describe("dhw campaigns audiences", () => {
     expect(output).toEqual(["Created audience Czech visitors (audience-1)."]);
   });
 
+  // Shapes the Workspace can store before the builder writes them, so dhw
+  // must read and pass them through whichever side rejects them.
+  const upcomingFilter = {
+    _tag: "Group",
+    operator: "or",
+    filters: [
+      {
+        attribute: "firstVisit",
+        _tag: "Condition",
+        params: { product: { family: "cowork", properties: [] } },
+        operator: "in",
+        value: { _tag: "Past" },
+      },
+      {
+        attribute: "reservationCount",
+        _tag: "Condition",
+        params: {
+          dateBasis: "visit",
+          period: {
+            _tag: "TriggerWindow",
+            side: "before",
+            count: 1,
+            unit: "month",
+          },
+        },
+        operator: "gt",
+        value: 0,
+      },
+      {
+        attribute: "campaignEmailCount",
+        _tag: "Condition",
+        params: {
+          purpose: "any",
+          period: { _tag: "Last", count: 30, unit: "day" },
+          campaign: { _tag: "Specific", campaignId: "campaign-1" },
+        },
+        operator: "eq",
+        value: 0,
+      },
+      {
+        attribute: "campaignEmailCount",
+        _tag: "Condition",
+        params: {
+          purpose: "any",
+          period: {
+            _tag: "TriggerWindow",
+            side: "after",
+            count: 2,
+            unit: "week",
+          },
+          campaign: { _tag: "This" },
+        },
+        operator: "gte",
+        value: 1,
+      },
+    ],
+  };
+
+  test("decodes upcoming audience shapes from a filter file and inline", async () => {
+    const directory = await makeTemporaryDirectory();
+    const filterPath = join(directory, "filter.json");
+    await writeFile(filterPath, JSON.stringify(upcomingFilter));
+    const { calls, layer } = makeCampaignLayer();
+
+    await run(
+      [
+        "--json",
+        "campaigns",
+        "audiences",
+        "create",
+        "--title",
+        "Upcoming",
+        "--filter-file",
+        filterPath,
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+    await run(
+      [
+        "--json",
+        "campaigns",
+        "audiences",
+        "update",
+        "audience-1",
+        "--filter",
+        JSON.stringify(upcomingFilter),
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(calls).toEqual([
+      [
+        "createCampaignAudience",
+        anyRequestId,
+        { title: "Upcoming", filter: upcomingFilter },
+      ],
+      ["updateCampaignAudience", "audience-1", { filter: upcomingFilter }],
+    ]);
+  });
+
+  test("shows a returned filter with upcoming shapes unchanged", async () => {
+    const audience = Schema.decodeUnknownSync(AdministrationCampaignAudience)({
+      ...activeAudience,
+      filter: upcomingFilter,
+    });
+    const human = makeCampaignLayer({
+      getCampaignAudience: () => Effect.succeed(audience),
+    });
+    await run(
+      ["campaigns", "audiences", "show", "audience-1"],
+      human.layer
+    ).pipe(Effect.runPromise);
+    expect(human.output.join("\n")).toContain(
+      `Filter\n${JSON.stringify(upcomingFilter, null, 2)}`
+    );
+
+    const json = makeCampaignLayer({
+      getCampaignAudience: () => Effect.succeed(audience),
+    });
+    await run(
+      ["--json", "campaigns", "audiences", "show", "audience-1"],
+      json.layer
+    ).pipe(Effect.runPromise);
+    expect(JSON.parse(json.output.join("")).filter).toEqual(upcomingFilter);
+  });
+
   test("unarchives an audience", async () => {
     const human = makeCampaignLayer();
     await run(

@@ -47,6 +47,7 @@ import {
   renderCampaignEmail,
 } from "@/features/email-campaigns/body/render-campaign-email";
 import type {
+  AudienceFilterContextInvalid,
   CampaignAudienceArchived,
   CampaignAudienceInUse,
   CampaignAudienceMissing,
@@ -54,6 +55,7 @@ import type {
   CampaignConfirmationRejected,
   CampaignContentInvalid,
   CampaignContentMissing,
+  CampaignDeliveryMismatch,
   CampaignDeliveryQueueFailed,
   CampaignEmailDeliveryFailed,
   CampaignEmailNotConfigured,
@@ -82,6 +84,7 @@ import {
 type CampaignApiCause =
   | CliInputInvalid
   | CliMutationRejected
+  | AudienceFilterContextInvalid
   | CampaignAudienceArchived
   | CampaignAudienceInUse
   | CampaignAudienceMissing
@@ -89,6 +92,7 @@ type CampaignApiCause =
   | CampaignConfirmationRejected
   | CampaignContentInvalid
   | CampaignContentMissing
+  | CampaignDeliveryMismatch
   | CampaignDeliveryQueueFailed
   | CampaignEmailDeliveryFailed
   | CampaignEmailNotConfigured
@@ -153,6 +157,14 @@ const toCampaignApiFailure = (cause: CampaignApiCause) =>
         })
     ),
     Match.tag(
+      "CampaignDeliveryMismatch",
+      () =>
+        new CliMutationRejected({
+          message:
+            "This campaign sends automatically, so it can't be edited, deleted, test sent, sent, retried, or duplicated like a one-off campaign.",
+        })
+    ),
+    Match.tag(
       "CampaignAudienceInUse",
       ({ draftCampaignIds }) =>
         new CliMutationRejected({
@@ -166,6 +178,25 @@ const toCampaignApiFailure = (cause: CampaignApiCause) =>
           message: "The audience is archived. Choose another audience.",
         })
     ),
+    Match.tag(
+      "AudienceFilterContextInvalid",
+      ({ uses }) =>
+        new CliInputInvalid({
+          message: `The audience filter uses ${[
+            ...uses.attributes.map((attribute) => `the ${attribute} attribute`),
+            ...uses.periods.map((period) => `${period} periods`),
+            ...uses.campaignSources.map(
+              (source) => `${source} campaign sources`
+            ),
+          ].join(", ")}, which saved audiences and campaigns can't use yet.`,
+        })
+    ),
+    Match.orElse(toCampaignSendFailure)
+  );
+
+/** Failures of a test send, a confirmed send, or a retry. */
+const toCampaignSendFailure = (cause: CampaignApiCause) =>
+  Match.value(cause).pipe(
     Match.tag(
       "CampaignConfirmationRejected",
       ({ reason }) =>
@@ -428,6 +459,7 @@ const toCliCampaignSummary = (
   title: campaign.title,
   purpose: campaign.purpose,
   templateKey: campaign.templateKey,
+  delivery: campaign.delivery,
   status: campaign.status,
   audienceId: campaign.audienceId,
   locales: campaignLocales(campaign.content),

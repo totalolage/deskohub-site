@@ -1,4 +1,3 @@
-import type { CampaignRow } from "@/db/schema";
 import {
   AdministrationAlert,
   AdministrationDetailSection,
@@ -10,6 +9,7 @@ import {
 import { m } from "@/features/administration/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { formatCount } from "@/shared/utils/number";
+import type { OnceCampaign } from "../../backend/campaign.service";
 import { campaignRecipientStatuses } from "../../campaign-states";
 import {
   describeAudienceFilter,
@@ -31,7 +31,7 @@ import { SentRecipientTable } from "./sent-recipient-table";
 export async function SentCampaignPage({
   campaign,
 }: {
-  readonly campaign: CampaignRow;
+  readonly campaign: OnceCampaign;
 }) {
   const [{ send, audienceTitle }, discountGroups, emails, locale] =
     await Promise.all([

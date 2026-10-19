@@ -77,6 +77,10 @@ import {
 import { AdminCliAdministratorsApiHandlers } from "./administrators-api.server";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
+import {
+  CliClientCompatibilityLive,
+  minimumDhwVersions,
+} from "./cli-client-version";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
 import {
   AdminCliCampaignsApiHandlers,
@@ -94,6 +98,7 @@ export const AdminCliApiHandlers = HttpApiBuilder.group(
         Effect.succeed({
           apiVersion: "v1" as const,
           service: "deskohub-workspace" as const,
+          minimumDhwVersions,
         })
       )
       .handle(
@@ -929,6 +934,7 @@ const WorkspaceAdminApiLive = Layer.mergeAll(
     Layer.provide(AdminCliCampaignsApiHandlers),
     Layer.provide(AdminCliAdministratorsApiHandlers),
     Layer.provide(CliBearerAuthenticationLive),
+    Layer.provide(CliClientCompatibilityLive),
     Layer.provide(AdministrationService.Live),
     Layer.provide(ReservationAdministrationService.Live),
     Layer.provide(ReservationProductDetailsBackfill.Live),

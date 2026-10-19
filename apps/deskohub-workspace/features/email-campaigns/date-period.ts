@@ -1,6 +1,7 @@
 import type { DatePeriodType } from "@deskohub/workspace-admin-api";
-import { Match } from "effect";
+import { Match, Option } from "effect";
 import { workspaceSiteConstants } from "@/shared/utils";
+import type { AudienceEvaluationContext } from "./backend/audience-evaluation-context";
 
 export type DatePeriod = DatePeriodType;
 
@@ -39,25 +40,31 @@ const unitDurations = {
   year: (count: number) => ({ years: count }),
 } as const;
 
+const stepped = (
+  instant: Temporal.Instant,
+  direction: "subtract" | "add",
+  duration: Temporal.DurationLike
+) => instant.toZonedDateTimeISO(timeZone)[direction](duration).toInstant();
+
 /**
- * The instants a period covers when evaluated at `now`. Day bounds are Prague
- * midnights; "last N units" steps back through the Prague calendar, so a month
- * keeps its length and a DST change shifts no day. "Last N" and "since" end
- * at `now`, inclusive; "from … to" and "until" end before the next Prague
- * midnight; any time and "onward" leave the end open.
+ * The instants a period covers in an evaluation context. Day bounds are
+ * Prague midnights; "last N units" and trigger windows step through the
+ * Prague calendar, so a month keeps its length and a DST change shifts no
+ * day. "Last N", "since" and "any time so far" end at `now`, inclusive;
+ * "from … to" and "until" end before the next Prague midnight; any time and
+ * "onward" leave the end open. A trigger window runs from or to the trigger
+ * instant, inclusive; without a trigger, the evaluation time stands in for it.
  */
 export const datePeriodBounds = (
   period: DatePeriod,
-  now: Temporal.Instant
+  { now, trigger }: AudienceEvaluationContext
 ): DatePeriodBounds =>
   Match.value(period).pipe(
     Match.tagsExhaustive({
       AnyTime: () => ({}),
+      Past: () => ({ startsAtOrBefore: now }),
       Last: ({ count, unit }) => ({
-        startsAtOrAfter: now
-          .toZonedDateTimeISO(timeZone)
-          .subtract(unitDurations[unit](count))
-          .toInstant(),
+        startsAtOrAfter: stepped(now, "subtract", unitDurations[unit](count)),
         startsAtOrBefore: now,
       }),
       Range: ({ from, to }) => ({
@@ -70,8 +77,32 @@ export const datePeriodBounds = (
       }),
       Onward: ({ date }) => ({ startsAtOrAfter: startOfDay(date) }),
       Until: ({ date }) => ({ startsBefore: startOfNextDay(date) }),
+      TriggerWindow: ({ side, count, unit }) => {
+        const at = trigger.pipe(
+          Option.map((event) => event.at),
+          Option.getOrElse(() => now)
+        );
+        const duration = unitDurations[unit](count);
+        return Match.value(side).pipe(
+          Match.when("before", () => ({
+            startsAtOrAfter: stepped(at, "subtract", duration),
+            startsAtOrBefore: at,
+          })),
+          Match.when("after", () => ({
+            startsAtOrAfter: at,
+            startsAtOrBefore: stepped(at, "add", duration),
+          })),
+          Match.exhaustive
+        );
+      },
     })
   );
+
+/** Whether the bounds leave both ends open, as any time does. */
+export const isUnboundedPeriod = (bounds: DatePeriodBounds): boolean =>
+  bounds.startsAtOrAfter === undefined &&
+  bounds.startsBefore === undefined &&
+  bounds.startsAtOrBefore === undefined;
 
 /** Whether an instant lies in the bounds. */
 export const isWithinDatePeriodBounds = (

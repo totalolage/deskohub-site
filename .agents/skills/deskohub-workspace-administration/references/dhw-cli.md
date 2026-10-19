@@ -7,6 +7,7 @@
 - Treat `workspace-admin-api.ts` as the single contract for the Admin UI, the API, and `dhw`. Extend the generic mutation endpoint and client unless the transport itself changes.
 - Give each new response field a decoding default so a newer `dhw` still decodes an older server's response. `CliSession.expiresAt` and the payment-attempt `refundedAmount` and `refundedAt` fields use `Schema.withDecodingDefaultTypeKey` to decode a missing value as `null`.
 - Bounded filters use schema-typed GET query parameters. Keep service operations and shared schemas transport-independent.
+- `dhw` sends its version in `x-dhw-version` on every request. In a group that uses the `CliClientCompatibility` middleware (today only `campaigns`), an endpoint or group annotated with `MinimumDhwVersion` (`dhw-version.ts`) rejects a missing, malformed, or older version with `CliInputInvalid` before its handler runs (`features/admin-cli/cli-client-version.ts`). `getInfo` lists every minimum, and a test fails if an endpoint with a minimum lacks the middleware. When a response gains a field that older binaries would drop and then write back, raise the minimum on the affected endpoints in the same PR as the writer. A group that adds the middleware must already declare `CliInputInvalid` on every endpoint; otherwise released binaries can't decode the rejection.
 
 ## Authentication and sessions
 

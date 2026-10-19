@@ -356,5 +356,56 @@ describe.skipIf(!testDatabase)(
         status: "sending",
       });
     });
+
+    test("refuses codes for an automated campaign", async () => {
+      // Nothing writes automated campaigns yet, so the test inserts them by SQL.
+      const campaign = await createDraft();
+      for (const status of ["draft", "active", "paused", "archived"] as const) {
+        const { rows } = await testDatabase.pool.query<{ id: CampaignId }>(
+          `insert into email_campaigns (title, purpose, template_key, delivery, status)
+           values ('Weekly come-back', 'marketing', 'workspace', 'automated', $1)
+           returning id`,
+          [status]
+        );
+        const campaignId = rows[0]!.id;
+        campaignIds.push(campaignId);
+        const mismatch = {
+          _tag: "CampaignDeliveryMismatch",
+          campaignId,
+          delivery: "automated",
+        };
+
+        const issued = await runAt(
+          { seconds: 0 },
+          CampaignConfirmationCodeService.pipe(
+            Effect.flatMap((codes) =>
+              codes.issue({
+                campaignId,
+                contentHash: hashCampaignContent({
+                  purpose: campaign.purpose,
+                  templateKey: campaign.templateKey,
+                  locales: campaign.content,
+                }),
+              })
+            )
+          )
+        );
+        expect(failure(issued)).toMatchObject(mismatch);
+        expect(failure(await confirm(campaignId, "AAAAAAAA"))).toMatchObject(
+          mismatch
+        );
+
+        const { rows: state } = await testDatabase.pool.query(
+          `select c.status,
+             (select count(*)::int from email_campaign_confirmation_codes k
+              where k.campaign_id = c.id) as codes,
+             (select count(*)::int from email_campaign_sends s
+              where s.campaign_id = c.id) as sends
+           from email_campaigns c where c.id = $1`,
+          [campaignId]
+        );
+        expect(state).toEqual([{ status, codes: 0, sends: 0 }]);
+      }
+    });
   }
 );

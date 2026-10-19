@@ -1,3 +1,4 @@
+import { dhwVersionHeader } from "@deskohub/workspace-admin-api";
 import {
   Config,
   Context,
@@ -16,6 +17,7 @@ const managedRequestHeaders = new Set([
   "content-length",
   "content-type",
   "host",
+  dhwVersionHeader,
 ]);
 
 const RequestHeaders = Schema.fromJsonString(

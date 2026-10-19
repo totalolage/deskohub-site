@@ -8,6 +8,7 @@ import {
   type AudienceFilter,
   audienceFilterSchema,
 } from "../../audience-filter";
+import { isSavedAudienceAttribute } from "../../audience-filter-usage";
 import type { DatePeriod } from "../../date-period";
 import { audienceAttributeMenu } from "./audience-attribute-menu";
 import {
@@ -139,6 +140,33 @@ describe("switchDatePeriod", () => {
       to: today,
     });
   });
+
+  test("switches stored periods the builder doesn't offer yet", () => {
+    const triggerWindow: DatePeriod = {
+      _tag: "TriggerWindow",
+      side: "after",
+      count: 2,
+      unit: "week",
+    };
+    expect(switchDatePeriod({ _tag: "Past" }, "Since", today)).toEqual({
+      _tag: "Since",
+      date: today,
+    });
+    expect(switchDatePeriod(triggerWindow, "Until", today)).toEqual({
+      _tag: "Until",
+      date: today,
+    });
+    expect(switchDatePeriod(range, "Past", today)).toEqual({ _tag: "Past" });
+    expect(switchDatePeriod(range, "TriggerWindow", today)).toEqual({
+      _tag: "TriggerWindow",
+      side: "before",
+      count: 1,
+      unit: "month",
+    });
+    expect(switchDatePeriod(triggerWindow, "TriggerWindow", today)).toBe(
+      triggerWindow
+    );
+  });
 });
 
 describe("the attribute catalogue in the builder", () => {
@@ -146,7 +174,11 @@ describe("the attribute catalogue in the builder", () => {
     const listed = audienceAttributeMenu.flatMap(
       ({ attributes: sectionAttributes }) => sectionAttributes
     );
-    expect(listed.toSorted()).toEqual(attributes.toSorted());
+    expect(listed.toSorted()).toEqual(
+      attributes.filter(isSavedAudienceAttribute).toSorted()
+    );
+    // The first visit can't be saved yet, so the menu doesn't offer it.
+    expect(listed).not.toContain("firstVisit");
     for (const attribute of attributes) {
       expect(audienceAttributeCatalogue[attribute].label).not.toBe("");
       expect(newCondition(attribute).attribute).toBe(attribute);

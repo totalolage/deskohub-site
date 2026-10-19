@@ -54,6 +54,7 @@ import {
   CampaignTestRecipientInvalid,
 } from "@/features/email-campaigns/errors";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { CliClientCompatibilityLive } from "./cli-client-version";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
 import { AdminCliCampaignsApiHandlers } from "./email-campaigns-api.server";
 
@@ -77,6 +78,7 @@ const campaignRow = (overrides: Partial<CampaignRow> = {}): CampaignRow => ({
   templateKey: "workspace",
   content: {},
   audienceId,
+  delivery: "once",
   status: "draft",
   createdAt,
   updatedAt: createdAt,
@@ -186,6 +188,7 @@ const callCampaignsApi = <A, E>(
     Effect.provide(bearer),
     Effect.provide(campaignServices(overrides)),
     Effect.provide(ClaimEveryCliMutation),
+    Effect.provide(CliClientCompatibilityLive),
     Effect.provide(NodeHttpServer.layerHttpServices),
     Effect.scoped,
     Effect.runPromise
@@ -1010,9 +1013,20 @@ describe.skipIf(!testDatabase)(
               CampaignRecipientService,
               {} as CampaignRecipientService["Service"]
             ),
-            Layer.succeed(
-              CampaignSendService,
-              {} as CampaignSendService["Service"]
+            // The one-off guards refuse before sending touches its other
+            // capabilities, so they are unimplemented mocks.
+            CampaignSendService.Default.pipe(
+              Layer.provide(
+                Layer.mergeAll(
+                  CampaignService.Default,
+                  Layer.mock(CampaignAudienceService, {}),
+                  Layer.mock(CampaignRecipientService, {}),
+                  Layer.mock(CampaignConfirmationCodeService, {}),
+                  Layer.mock(CampaignEmailConfig, {}),
+                  Layer.mock(EmailServiceTag, {}),
+                  Layer.mock(CampaignSendQueueService, {})
+                )
+              )
             ),
             Layer.succeed(
               CampaignSendStatusService,
@@ -1020,6 +1034,7 @@ describe.skipIf(!testDatabase)(
             )
           ).pipe(Layer.provide(testDatabase.layer))
         ),
+        Effect.provide(CliClientCompatibilityLive),
         Effect.provide(NodeHttpServer.layerHttpServices),
         Effect.scoped,
         Effect.runPromise
@@ -1135,6 +1150,80 @@ describe.skipIf(!testDatabase)(
       expect(await countRows("email_campaigns", title)).toBe(3);
     });
 
+    test("refuses one-off operations on an automated campaign with a conflict", async () => {
+      // Nothing writes automated campaigns yet, so the test inserts them by SQL.
+      const title = `${titlePrefix} automated`;
+      for (const status of ["draft", "active", "paused", "archived"] as const) {
+        const { rows } = await testDatabase.pool.query<{
+          id: AdministrationCampaignId;
+        }>(
+          `insert into email_campaigns (title, purpose, template_key, delivery, status)
+           values ($1, 'marketing', 'workspace', 'automated', $2)
+           returning id`,
+          [title, status]
+        );
+        const params = { campaignId: rows[0]!.id };
+        const operations = [
+          (client: CampaignsClient) =>
+            client.updateCampaign({
+              params,
+              payload: { title: `${title} edited` },
+            }),
+          (client: CampaignsClient) =>
+            client.updateCampaign({
+              params,
+              payload: {
+                content: {
+                  "cs-CZ": {
+                    subject: "Novinky",
+                    preheader: "",
+                    bodyMarkdown: "# Ahoj",
+                  },
+                },
+              },
+            }),
+          (client: CampaignsClient) => client.deleteCampaign({ params }),
+          (client: CampaignsClient) =>
+            client.duplicateCampaign({
+              params,
+              payload: {
+                requestId: CliMutationRequestId.make(crypto.randomUUID()),
+              },
+            }),
+          (client: CampaignsClient) =>
+            client.testSendCampaign({ params, payload: { recipients: [] } }),
+          (client: CampaignsClient) =>
+            client.sendCampaign({
+              params,
+              payload: { confirmationCode: "ABCD-EFGH" },
+            }),
+          (client: CampaignsClient) =>
+            client.retryCampaign({
+              params,
+              payload: { includeUnconfirmed: false },
+            }),
+        ];
+        for (const operation of operations) {
+          const failure = await callWithLedger((client) =>
+            operation(client).pipe(Effect.flip)
+          );
+          expect(failure).toBeInstanceOf(CliMutationRejected);
+          expect(failure.message).toContain("sends automatically");
+        }
+      }
+
+      const { rows } = await testDatabase.pool.query(
+        "select title, status from email_campaigns where title like $1 order by status",
+        [`${title}%`]
+      );
+      expect(rows).toEqual(
+        ["active", "archived", "draft", "paused"].map((status) => ({
+          title,
+          status,
+        }))
+      );
+    });
+
     test("replays a retried audience creation without another audience", async () => {
       const title = `${titlePrefix} audience`;
       const requestId = CliMutationRequestId.make(crypto.randomUUID());
@@ -1161,6 +1250,34 @@ describe.skipIf(!testDatabase)(
 
       expect(retried).toEqual(first);
       expect(await countRows("email_campaign_audiences", title)).toBe(1);
+    });
+
+    test("rejects an audience filter saved audiences can't hold yet as invalid input", async () => {
+      const title = `${titlePrefix} first visitors`;
+      const rejected = await callWithLedger((client) =>
+        client
+          .createCampaignAudience({
+            payload: {
+              requestId: CliMutationRequestId.make(crypto.randomUUID()),
+              audience: {
+                title,
+                filter: {
+                  attribute: "firstVisit",
+                  _tag: "Condition",
+                  operator: "in",
+                  value: { _tag: "Last", count: 30, unit: "day" },
+                },
+              },
+            },
+          })
+          .pipe(Effect.flip)
+      );
+
+      expect(rejected).toBeInstanceOf(CliInputInvalid);
+      expect(rejected.message).toBe(
+        "The audience filter uses the firstVisit attribute, which saved audiences and campaigns can't use yet."
+      );
+      expect(await countRows("email_campaign_audiences", title)).toBe(0);
     });
   }
 );
