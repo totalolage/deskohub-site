@@ -24,11 +24,17 @@ export interface WorkflowJob {
   readonly name?: string;
   readonly if?: string;
   readonly needs?: string | readonly string[];
+  readonly concurrency?: {
+    readonly group: string;
+    readonly "cancel-in-progress"?: boolean | string;
+  };
+  readonly outputs?: Record<string, string>;
   readonly steps?: readonly WorkflowStep[];
   readonly permissions?: Record<string, string>;
 }
 
 export interface WorkflowDoc {
+  readonly concurrency?: WorkflowJob["concurrency"];
   readonly jobs: Readonly<Record<string, WorkflowJob>>;
   readonly permissions?: Record<string, string>;
 }

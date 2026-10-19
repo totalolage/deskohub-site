@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -20,6 +21,10 @@ const targetStep = findStepByName(
   "Resolve eligible PR and immutable preview"
 );
 const statusStep = findStepByName(workflow, "Decide status without an E2E run");
+const publishStep = findStepByName(
+  workflow,
+  "Publish status without an E2E run"
+);
 
 const repository = "owner/repo";
 const prNumber = 7;
@@ -29,8 +34,10 @@ const previewUrl = "https://deskohub-workspace-site-abc123-team.vercel.app";
 
 // Stands in for the GitHub CLI: each API path answers from a fixture file and
 // any other call fails, so a test also proves which requests the step makes.
+// Every call is logged for assertions on what the step published.
 const fakeGh = `#!/usr/bin/env bash
 set -euo pipefail
+printf '%s\\n' "$*" >> "$GH_FIXTURES/calls.log"
 path=""
 for arg in "$@"; do
   case "$arg" in
@@ -104,6 +111,8 @@ const runStep = async (
       GH_FIXTURES: fixtureDir,
       GITHUB_OUTPUT: output,
       GITHUB_REPOSITORY: repository,
+      GITHUB_RUN_ID: "99",
+      GITHUB_SERVER_URL: "https://github.com",
       GITHUB_STEP_SUMMARY: summary,
       HOME: dir,
       PATH: `${bin}:${process.env.PATH}`,
@@ -119,7 +128,11 @@ const runStep = async (
         line.slice(line.indexOf("=") + 1),
       ])
   );
-  return { outputs, result };
+  const callLog = join(fixtureDir, "calls.log");
+  const calls = existsSync(callLog)
+    ? readFileSync(callLog, "utf8").split("\n").filter(Boolean)
+    : [];
+  return { calls, outputs, result };
 };
 
 const decideStatus = (deployment: string, scenario: Scenario) =>
@@ -145,6 +158,8 @@ const decideStatus = (deployment: string, scenario: Scenario) =>
     {
       DEPLOYMENT: deployment,
       PR_NUMBER: String(prNumber),
+      RESOLUTION_ERROR: "",
+      TARGET_OUTCOME: "success",
       TARGET_SHA: targetSha,
     }
   );
@@ -253,12 +268,14 @@ describe("Workspace E2E status without a run", () => {
     expect(outputs.description).toContain("rerun this check");
   });
 
-  test("fails when the target is missing from the PR history", async () => {
-    const { result } = await decideStatus("skipped", {
+  test("fails with a published description when the target is missing from the PR history", async () => {
+    const { outputs, result } = await decideStatus("skipped", {
       commits: [{ sha: sha("b"), tree: "tree-same" }],
     });
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("missing from the matching PR history");
+    expect(outputs.state).toBe("failure");
+    expect(outputs.description).toContain("missing from this PR's commit list");
   });
 
   test("fails a failed deployment with an actionable description", async () => {
@@ -272,10 +289,17 @@ describe("Workspace E2E status without a run", () => {
   });
 
   test("keeps every published status description within GitHub's limit", () => {
-    const run = statusStep?.run ?? "";
-    for (const [, description] of run.matchAll(
-      /decide \w+ ["']([^"']+)["']/g
-    )) {
+    const descriptions = [
+      ...(statusStep?.run ?? "").matchAll(/decide \w+ ["']([^"']+)["']/g),
+      ...(targetStep?.run ?? "").matchAll(
+        /fail ["'][^"']+["'] \\\n\s+["']([^"']+)["']/g
+      ),
+      ...String(publishStep?.env?.STATUS_DESCRIPTION).matchAll(
+        /\|\| '([^']+)'/g
+      ),
+    ].map(([, description]) => description ?? "");
+    expect(descriptions.length).toBeGreaterThanOrEqual(10);
+    for (const description of descriptions) {
       expect(
         description.replace(/\$\{sha:0:7\}/, "0000000").length
       ).toBeLessThanOrEqual(140);
@@ -299,40 +323,47 @@ describe("Workspace E2E status without a run", () => {
   });
 });
 
-describe("Workspace E2E target resolution", () => {
-  const resolveTarget = (
-    deployment: string,
-    deploymentStatus: { readonly description: string; readonly state: string }
-  ) =>
-    runStep(
-      targetStep,
-      {
-        deployments: [{ creator: { login: "vercel[bot]" }, id: 11 }],
-        "deployments/11/statuses": [
-          { ...deploymentStatus, environment_url: `${previewUrl}/` },
-        ],
-        [`commits/${targetSha}/pulls`]: [
-          {
-            draft: false,
-            head: {
-              ref: "feature/x",
-              repo: { full_name: repository },
-              sha: targetSha,
-            },
-            number: prNumber,
-            state: "open",
-            user: { login: "author" },
-          },
-        ],
-      },
-      {
-        TARGET_DEPLOYMENT: deployment,
-        TARGET_REF: "feature/x",
-        TARGET_SHA: targetSha,
-        TARGET_URL: previewUrl,
-      }
-    );
+type DeploymentStatus = {
+  readonly description: string;
+  readonly state: string;
+};
 
+const pullRequest = {
+  draft: false,
+  head: { ref: "feature/x", repo: { full_name: repository }, sha: targetSha },
+  number: prNumber,
+  state: "open",
+  user: { login: "author" },
+};
+
+const resolveTarget = (
+  deployment: string,
+  deploymentStatus: DeploymentStatus | null,
+  pulls: readonly object[] = [pullRequest]
+) =>
+  runStep(
+    targetStep,
+    {
+      deployments: [{ creator: { login: "vercel[bot]" }, id: 11 }],
+      "deployments/11/statuses": deploymentStatus
+        ? [{ ...deploymentStatus, environment_url: `${previewUrl}/` }]
+        : [],
+      [`commits/${targetSha}/pulls`]: pulls,
+    },
+    {
+      TARGET_DEPLOYMENT: deployment,
+      TARGET_REF: "feature/x",
+      TARGET_SHA: targetSha,
+      TARGET_URL: previewUrl,
+    }
+  );
+
+const deploymentSucceeded = {
+  description: "Deployment has completed",
+  state: "success",
+} as const;
+
+describe("Workspace E2E target resolution", () => {
   test("accepts a failed deployment only with a failed exact-SHA status", async () => {
     const accepted = await resolveTarget("failed", {
       description: "Deployment has failed",
@@ -345,11 +376,9 @@ describe("Workspace E2E target resolution", () => {
       pr_number: String(prNumber),
     });
 
-    const rejected = await resolveTarget("failed", {
-      description: "Deployment has completed",
-      state: "success",
-    });
+    const rejected = await resolveTarget("failed", deploymentSucceeded);
     expect(rejected.result.exitCode).not.toBe(0);
+    expect(rejected.outputs.url).toBeUndefined();
   });
 
   test("accepts a skip only with Vercel's skipped status", async () => {
@@ -364,14 +393,130 @@ describe("Workspace E2E target resolution", () => {
       state: "failure",
     });
     expect(rejected.result.exitCode).not.toBe(0);
+    expect(rejected.outputs.url).toBeUndefined();
   });
 
   test("rejects deployment states it does not handle", async () => {
-    const { result } = await resolveTarget("canceled", {
+    const { outputs, result } = await resolveTarget("canceled", {
       description: "Deployment has been canceled",
       state: "inactive",
     });
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("Unsupported Vercel deployment state");
+    expect(outputs.eligible).toBeUndefined();
+  });
+
+  test("leaves an event for a superseded head ineligible before reading its preview", async () => {
+    // A late event for an older head: the PR has moved on, so the run never
+    // reaches the E2E job and its concurrency group, which alone cancels.
+    const { calls, outputs, result } = await resolveTarget(
+      "success",
+      deploymentSucceeded,
+      [{ ...pullRequest, head: { ...pullRequest.head, sha: sha("f") } }]
+    );
+    expect(result.exitCode).toBe(0);
+    expect(outputs).toEqual({ eligible: "false" });
+    expect(calls.some((call) => call.includes("/deployments"))).toBe(false);
+  });
+
+  test("keeps the eligible head and a recovery description when its preview record is missing", async () => {
+    const { outputs, result } = await resolveTarget("success", null);
+    expect(result.exitCode).not.toBe(0);
+    expect(outputs).toMatchObject({
+      eligible: "true",
+      pr_number: String(prNumber),
+      sha: targetSha,
+    });
+    expect(outputs.resolution_error).toContain("re-run the failed jobs");
+    expect(outputs.url).toBeUndefined();
+  });
+
+  test("records a failure when more than one eligible PR has the head", async () => {
+    const { outputs, result } = await resolveTarget(
+      "success",
+      deploymentSucceeded,
+      [pullRequest, { ...pullRequest, number: prNumber + 1 }]
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(outputs.eligible).toBe("true");
+    expect(outputs.resolution_error).toContain("More than one open PR");
+    expect(outputs.pr_number).toBeUndefined();
+  });
+});
+
+describe("Workspace E2E status after a failed resolution", () => {
+  // The publishing job's expression falls back to this generic failure.
+  const [, fallbackDescription = ""] =
+    /\|\| '([^']+)'/.exec(String(publishStep?.env?.STATUS_DESCRIPTION)) ?? [];
+
+  const publishedStatus = async (
+    target: Awaited<ReturnType<typeof resolveTarget>>
+  ) => {
+    const decided = await runStep(
+      statusStep,
+      {},
+      {
+        DEPLOYMENT: target.outputs.deployment ?? "",
+        PR_NUMBER: target.outputs.pr_number ?? "",
+        RESOLUTION_ERROR: target.outputs.resolution_error ?? "",
+        TARGET_OUTCOME: target.result.exitCode === 0 ? "success" : "failure",
+        TARGET_SHA: target.outputs.sha ?? "",
+      }
+    );
+    expect(decided.result.exitCode).toBe(0);
+    const published = await runStep(
+      publishStep,
+      { [`statuses/${targetSha}`]: [] },
+      {
+        STATUS_DESCRIPTION: decided.outputs.description ?? fallbackDescription,
+        STATUS_STATE: decided.outputs.state ?? "failure",
+        TARGET_SHA: target.outputs.sha ?? "",
+      }
+    );
+    expect(published.result.exitCode).toBe(0);
+    return published.calls;
+  };
+
+  test("publishes the recovery description for a missing preview record", async () => {
+    const calls = await publishedStatus(await resolveTarget("success", null));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain(`repos/${repository}/statuses/${targetSha}`);
+    expect(calls[0]).toContain("state=failure");
+    expect(calls[0]).toContain("context=Workspace E2E");
+    expect(calls[0]).toContain(
+      "No Vercel deployment record matches this preview yet"
+    );
+  });
+
+  test("publishes a failure when the target step failed without a description", async () => {
+    const target = await resolveTarget("success", deploymentSucceeded);
+    const calls = await publishedStatus({
+      ...target,
+      outputs: { eligible: "true", sha: targetSha },
+      result: { ...target.result, exitCode: 1 },
+    });
+    expect(calls[0]).toContain("state=failure");
+    expect(fallbackDescription).toContain("re-run the failed jobs");
+    expect(calls[0]).toContain(`description=${fallbackDescription}`);
+  });
+
+  test("routes every eligible head without an E2E run to the status publisher", () => {
+    const resolveJob = workflow.jobs["resolve-target"];
+    expect(resolveJob?.outputs?.eligible).toContain("steps.target.outputs");
+    expect(resolveJob?.outputs?.status_description).toContain(
+      "steps.status-without-run.outputs.description"
+    );
+    expect(resolveJob?.outputs?.status_state).toContain(
+      "steps.status-without-run.outputs.state"
+    );
+    expect(statusStep?.if).toContain("!cancelled()");
+    expect(statusStep?.if).toContain("steps.target.outcome != 'success'");
+    const withoutRun = workflow.jobs["publish-status-without-run"]?.if ?? "";
+    expect(withoutRun).toContain("!cancelled()");
+    expect(withoutRun).toContain("needs.resolve-target.result != 'success'");
+    // The final-status job owns only heads whose resolution succeeded.
+    expect(workflow.jobs["publish-final-status"]?.if).toContain(
+      "needs.resolve-target.result == 'success'"
+    );
   });
 });

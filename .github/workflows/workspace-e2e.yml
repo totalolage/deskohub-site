@@ -26,12 +26,6 @@ permissions:
   pull-requests: read
   statuses: read
 
-concurrency:
-  group: workspace-e2e-${{ github.event_name == 'workflow_dispatch' && 'prj_7FliQBcbBiBwGaO2JLrigicnXCRd' || github.event.client_payload.project.id }}-pr-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}
-  # Only a run that tests a newer head may cancel one in progress. A late
-  # event for an older head never tests anything and must not cancel it.
-  cancel-in-progress: ${{ github.event_name != 'repository_dispatch' || github.event.client_payload.state.type == 'success' }}
-
 jobs:
   resolve-target:
     if: >-
@@ -77,6 +71,54 @@ jobs:
             exit 1
           fi
 
+          pulls="$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/commits/$TARGET_SHA/pulls")"
+          eligible_pulls="$(jq \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg ref "$TARGET_REF" \
+            --arg sha "$TARGET_SHA" \
+            '[.[] | select(
+              .state == "open" and
+              .draft == false and
+              .head.repo.full_name == $repo and
+              .head.ref == $ref and
+              .head.sha == $sha and
+              .user.login != "dependabot[bot]" and
+              (.head.ref | startswith("dependabot/") | not)
+            )]' <<<"$pulls")"
+          eligible_count="$(jq 'length' <<<"$eligible_pulls")"
+
+          if [[ "$eligible_count" == "0" ]]; then
+            echo "No eligible open internal PR matches the exact deployment SHA"
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The target is now the head of an eligible PR. A failure below
+          # must leave its required status failed with a way to recover, so
+          # it records a status description before the step fails.
+          {
+            echo "deployment=$TARGET_DEPLOYMENT"
+            echo "eligible=true"
+            echo "sha=$TARGET_SHA"
+          } >> "$GITHUB_OUTPUT"
+          fail() {
+            echo "$1" >&2
+            echo "resolution_error=$2" >> "$GITHUB_OUTPUT"
+            exit 1
+          }
+
+          if [[ "$eligible_count" != "1" ]]; then
+            fail 'More than one eligible PR matches the exact deployment SHA' \
+              'More than one open PR has this head; E2E needs exactly one'
+          fi
+          pr_number="$(jq -r '.[0].number' <<<"$eligible_pulls")"
+          {
+            echo "head_ref=$TARGET_REF"
+            echo "pr_number=$pr_number"
+          } >> "$GITHUB_OUTPUT"
+
           normalized_url="$({ TARGET_URL="$TARGET_URL" node <<'NODE'
           const url = new URL(process.env.TARGET_URL);
           const host = url.hostname.toLowerCase();
@@ -95,10 +137,9 @@ jobs:
           }
           process.stdout.write(`https://${host}`);
           NODE
-          } 2>/dev/null)" || {
-            echo "Target must be an immutable HTTPS Vercel deployment origin" >&2
-            exit 1
-          }
+          } 2>/dev/null)" ||
+            fail 'Target must be an immutable HTTPS Vercel deployment origin' \
+              'The event named no immutable Vercel preview URL; redeploy the Workspace preview to run E2E'
 
           deployments="$(gh api \
             --method GET \
@@ -135,58 +176,29 @@ jobs:
             fi
           done < <(jq -r '.[] | select(.creator.login == "vercel[bot]") | .id' <<<"$deployments")
           if [[ "$deployment_matches_target" != "true" ]]; then
-            echo "No $TARGET_DEPLOYMENT exact-SHA Workspace deployment matches the target URL" >&2
-            exit 1
+            fail "No $TARGET_DEPLOYMENT exact-SHA Workspace deployment matches the target URL" \
+              'No Vercel deployment record matches this preview yet; re-run the failed jobs of this Workspace E2E run'
           fi
 
-          pulls="$(gh api \
-            -H "Accept: application/vnd.github+json" \
-            "repos/$GITHUB_REPOSITORY/commits/$TARGET_SHA/pulls")"
-          eligible_pulls="$(jq \
-            --arg repo "$GITHUB_REPOSITORY" \
-            --arg ref "$TARGET_REF" \
-            --arg sha "$TARGET_SHA" \
-            '[.[] | select(
-              .state == "open" and
-              .draft == false and
-              .head.repo.full_name == $repo and
-              .head.ref == $ref and
-              .head.sha == $sha and
-              .user.login != "dependabot[bot]" and
-              (.head.ref | startswith("dependabot/") | not)
-            )]' <<<"$pulls")"
-          eligible_count="$(jq 'length' <<<"$eligible_pulls")"
-
-          if [[ "$eligible_count" == "0" ]]; then
-            echo "No eligible open internal PR matches the exact deployment SHA"
-            echo "eligible=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [[ "$eligible_count" != "1" ]]; then
-            echo "More than one eligible PR matches the exact deployment SHA" >&2
-            exit 1
-          fi
-
-          pr_number="$(jq -r '.[0].number' <<<"$eligible_pulls")"
-
-          {
-            echo "deployment=$TARGET_DEPLOYMENT"
-            echo "eligible=true"
-            echo "head_ref=$TARGET_REF"
-            echo "pr_number=$pr_number"
-            echo "sha=$TARGET_SHA"
-            echo "url=$normalized_url"
-          } >> "$GITHUB_OUTPUT"
+          echo "url=$normalized_url" >> "$GITHUB_OUTPUT"
 
       - name: Decide status without an E2E run
         id: status-without-run
-        if: steps.target.outputs.eligible == 'true' && steps.target.outputs.deployment != 'success'
+        if: >-
+          !cancelled() && steps.target.outputs.eligible == 'true' &&
+          (steps.target.outcome != 'success' || steps.target.outputs.deployment != 'success')
         env:
           DEPLOYMENT: ${{ steps.target.outputs.deployment }}
-          # Descriptions only a run that tested its own commit publishes.
+          # Descriptions only a run that tested its own commit publishes, as
+          # github-actions[bot]. Any workflow whose token can write statuses
+          # could post them too, but it could as well post a passing
+          # Workspace E2E on its own head, so this trusts exactly what the
+          # required status itself trusts.
           E2E_RUN_DESCRIPTIONS: '["Protected preview E2E is running","Protected preview E2E passed","Protected preview E2E failed"]'
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.target.outputs.pr_number }}
+          RESOLUTION_ERROR: ${{ steps.target.outputs.resolution_error }}
+          TARGET_OUTCOME: ${{ steps.target.outcome }}
           TARGET_SHA: ${{ steps.target.outputs.sha }}
         run: |
           set -euo pipefail
@@ -198,6 +210,15 @@ jobs:
             } >> "$GITHUB_OUTPUT"
             echo "Workspace E2E for \`$TARGET_SHA\`: **$1**. $2" >> "$GITHUB_STEP_SUMMARY"
           }
+
+          # Without a recorded description, the publishing job falls back to
+          # a generic one.
+          if [[ "$TARGET_OUTCOME" != "success" ]]; then
+            if [[ -n "$RESOLUTION_ERROR" ]]; then
+              decide failure "$RESOLUTION_ERROR"
+            fi
+            exit 0
+          fi
 
           if [[ "$DEPLOYMENT" == "failed" ]]; then
             decide failure 'Vercel preview deployment failed; fix or redeploy it to run E2E'
@@ -217,6 +238,7 @@ jobs:
             <<<"$pr_commits")"
           if [[ -z "$target_tree" ]]; then
             echo "Target SHA is missing from the matching PR history" >&2
+            decide failure "Head missing from this PR's commit list (GitHub lists 250 at most); deploy its Workspace preview to run E2E"
             exit 1
           fi
           mapfile -t same_tree_shas < <(jq -r \
@@ -255,6 +277,15 @@ jobs:
   test-e2e:
     needs: resolve-target
     if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
+    # Only a run that resolve-target found testing its PR's current head
+    # enters this group, so only such a run cancels the PR's E2E in progress.
+    # A late event for an older head, or a skip or failed deployment, never
+    # gets here and can't cancel a newer head's E2E. An older head stops
+    # being eligible once a newer one is pushed, and the newer head's event
+    # follows its own Vercel build, so an older run always enters first.
+    concurrency:
+      group: workspace-e2e-pr-${{ needs.resolve-target.outputs.pr_number }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 50
     environment: workspace-checkout-e2e
@@ -596,7 +627,7 @@ jobs:
 
   publish-final-status:
     needs: [resolve-target, test-e2e]
-    if: always() && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
+    if: always() && needs.resolve-target.result == 'success' && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -636,9 +667,13 @@ jobs:
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             >/dev/null
 
+  # Publishes for every eligible head E2E doesn't run against, including one
+  # whose resolution failed, so its required status never stays absent.
   publish-status-without-run:
     needs: resolve-target
-    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment != 'success'
+    if: >-
+      !cancelled() && needs.resolve-target.outputs.eligible == 'true' &&
+      (needs.resolve-target.result != 'success' || needs.resolve-target.outputs.deployment != 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -648,8 +683,8 @@ jobs:
       - name: Publish status without an E2E run
         env:
           GH_TOKEN: ${{ github.token }}
-          STATUS_DESCRIPTION: ${{ needs.resolve-target.outputs.status_description }}
-          STATUS_STATE: ${{ needs.resolve-target.outputs.status_state }}
+          STATUS_DESCRIPTION: ${{ needs.resolve-target.outputs.status_description || 'Workspace E2E could not resolve this preview; re-run the failed jobs of this Workspace E2E run' }}
+          STATUS_STATE: ${{ needs.resolve-target.outputs.status_state || 'failure' }}
           TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
         run: |
           set -euo pipefail

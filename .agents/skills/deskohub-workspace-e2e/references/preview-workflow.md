@@ -15,7 +15,7 @@
 `.github/workflows/workspace-e2e.yml` runs on the Vercel `repository_dispatch` events for the Workspace project's Preview environment:
 
 1. Vercel builds the protected Git preview, and the Neon integration creates its database branch.
-2. On `vercel.deployment.success`, the `resolve-target` job checks the project, environment, SHA, PR, and URL. It accepts only an open, internal, non-draft, non-Dependabot PR whose head is the target SHA.
+2. On `vercel.deployment.success`, the `resolve-target` job checks the project, environment, SHA, PR, and URL. It accepts only an open, internal, non-draft, non-Dependabot PR whose head is the target SHA, and resolves that PR before it checks the preview.
 3. The `test-e2e` job leases a date shard, installs dependencies, resolves and migrates the preview's Neon branch, validates Dotypos capacity, and runs `bun turbo test:e2e --filter=deskohub-workspace`.
 4. `publish-final-status` publishes the commit status.
 
@@ -24,7 +24,9 @@ A `Workspace E2E` success means E2E ran against that commit's code. For a deploy
 - `vercel.deployment.failed`: failure, asking for a fix or redeploy.
 - `vercel.deployment.skipped`: Vercel compares a commit only with its parent, so a skip after a failed, unreported, or multi-commit push says nothing about tested code. The step reuses the result of the nearest other PR commit with the identical Git tree whose status a real run published (running, passed, or failed). A status an earlier skip carried forward doesn't count. A passed run becomes success, a failed run failure, and a run still in progress a failure that asks for a rerun of this check. With no such commit, the status is failure until a Workspace preview of that exact SHA builds in Vercel; its success event then runs E2E.
 
-Only `vercel.deployment.success` events cancel a run in progress for the same PR, so a late event for an older head can't cancel a newer head's E2E. Never infer a skip from changed paths or reuse an older preview.
+Once the target SHA is an eligible PR head, every outcome publishes a `Workspace E2E` status. When `resolve-target` fails after that, for example because GitHub has no deployment record matching the preview yet or the head is missing from the PR's commit list (GitHub lists at most 250), `publish-status-without-run` publishes a failure whose description says how to recover, usually by re-running the failed jobs. Statuses for skipped commits trust a run's description from `github-actions[bot]`. Any workflow allowed to write statuses could forge one, but it could as well post a passing `Workspace E2E` directly, so this trusts no more than the required status does.
+
+Only `test-e2e` has a concurrency group, keyed by PR with `cancel-in-progress`, and only a run that resolved its PR's current head reaches it. A late event for an older head resolves ineligible, and skip and failed-deployment events never enter the group, so neither cancels a newer head's E2E. Never add a workflow-level group: it would cancel at scheduling time, before eligibility is known. Never infer a skip from changed paths or reuse an older preview.
 
 The target is always the immutable `.vercel.app` deployment origin for the exact SHA, taken from the dispatch payload. Never scrape the Vercel PR comment or use a branch alias or custom domain.
 

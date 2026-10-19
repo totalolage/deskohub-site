@@ -6,7 +6,6 @@ import { runCommand } from "./shared/command";
 import {
   findStepByName,
   parseWorkflow,
-  type WorkflowJob,
   type WorkflowStep,
   workflowStepNames,
 } from "./shared/workflow-contract";
@@ -157,10 +156,6 @@ const projectByName = (config: PlaywrightCheckoutConfig, name: string) =>
 // Checkout case projects.
 const checkoutCaseProjectNames = ["checkout-cases"];
 
-const jobHasConcurrencyLock = (
-  job: WorkflowJob & { readonly concurrency?: unknown }
-): boolean => job.concurrency !== undefined;
-
 describe("workspace E2E workflow", () => {
   test("keeps the atomic allocator isolated from exact-SHA test code", () => {
     const tokenCheckouts = allSteps.filter((step) =>
@@ -294,10 +289,36 @@ describe("workspace E2E workflow", () => {
     ).toBe(false);
   });
 
+  test("cancels a PR's E2E only from a run that tests its current head", () => {
+    // A late event for an older head or a skip resolves ineligible or never
+    // reaches the E2E job, so cancellation lives on that job alone, after
+    // eligibility. Assert on parsed objects so a workflow-level group or a
+    // cancelling group on another job is caught however it is spelled.
+    expect(doc.concurrency).toBeUndefined();
+    expect(testJob.if).toContain(
+      "needs.resolve-target.outputs.eligible == 'true'"
+    );
+    expect(testJob.if).toContain(
+      "needs.resolve-target.outputs.deployment == 'success'"
+    );
+    const testConcurrency = testJob.concurrency;
+    expect(testConcurrency?.["cancel-in-progress"]).toBe(true);
+    expect(testConcurrency?.group).toStartWith("workspace-e2e-pr-");
+    expect(testConcurrency?.group).toContain(
+      "needs.resolve-target.outputs.pr_number"
+    );
+    for (const [name, job] of Object.entries(doc.jobs)) {
+      if (name !== "test-e2e") {
+        expect(job.concurrency).toBeUndefined();
+      }
+    }
+  });
+
   test("uses the allocator without a global provider lock", () => {
-    // Assert on the parsed job object so a reintroduced job-level
-    // concurrency lock is caught regardless of its YAML spelling or position.
-    expect(jobHasConcurrencyLock(testJob)).toBe(false);
+    // The only E2E concurrency group is per PR, never across PRs.
+    expect(JSON.stringify(testJob.concurrency)).toContain(
+      "needs.resolve-target.outputs.pr_number"
+    );
 
     const targetCheckoutIndex = stepNames.indexOf("Checkout exact target");
     const coordinatorCheckoutIndex = stepNames.indexOf(
