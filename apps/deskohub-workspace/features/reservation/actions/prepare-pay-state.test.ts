@@ -43,7 +43,7 @@ import {
 } from "@/features/referrals/referral.service.mock";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
-import type { ReservationBillingSelection } from "@/features/reservation/reservation-billing";
+import type { ReservationBillingSelectionInput } from "@/features/reservation/reservation-billing";
 import { getSlowestSuccessfulCalendarLoad } from "@/shared/backend/config/google-calendar.config.test-utils";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
@@ -349,7 +349,7 @@ const runReusableReservationScenario = async (input: {
   readonly grantInitialMarketingConsent?: ReturnType<typeof mock>;
   readonly findOrCreateCustomer?: ReturnType<typeof mock>;
   readonly reservation?: Omit<typeof reservation, "billing"> & {
-    readonly billing: ReservationBillingSelection;
+    readonly billing: ReservationBillingSelectionInput;
   };
   readonly accountAuthority?: Parameters<typeof accountAuthorityFixture>[0];
   readonly customer?: "account";
