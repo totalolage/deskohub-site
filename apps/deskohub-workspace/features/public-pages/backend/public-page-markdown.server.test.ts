@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { GoogleCalendarEventIdSchema } from "@deskohub/google-calendar";
 import { GoogleCalendarServiceMock } from "@deskohub/google-calendar/backend/service.mock";
 import { Effect, Layer } from "effect";
+import { getPublicCatalogOfferings } from "@/features/checkout/public-offerings";
 import { DiscountDefinitionRepositoryMock } from "@/features/discounts/discount-definition.repository.mock";
 import type { DiscountReleaseGates } from "@/features/discounts/discount-release-gate.service";
 import { storedDiscountIdSchema } from "@/features/discounts/persistence-contracts";
@@ -90,6 +91,35 @@ mock.module("@/features/discounts/calendar-discount-source.server", () => ({
       ),
 }));
 
+// Markdown shows no seat maximum, so it must never read the availability
+// inventory. Count the reads a source would make.
+let inventoryReads = 0;
+const countInventoryRead = <A>(value: A) =>
+  Effect.sync(() => {
+    inventoryReads += 1;
+    return value;
+  });
+const { AdvisoryAvailabilityInventory } = await import(
+  "@/features/reservation/backend/availability-inventory"
+);
+const inventoryCache = await import(
+  "@/features/reservation/backend/availability-inventory-cache.server"
+);
+mock.module(
+  "@/features/reservation/backend/availability-inventory-cache.server",
+  () => ({
+    ...inventoryCache,
+    SharedAvailabilityInventoryLive: Layer.succeed(
+      AdvisoryAvailabilityInventory,
+      {
+        tables: countInventoryRead([]),
+        listActiveReservationsOverlapping: () => countInventoryRead([]),
+        listLimitations: () => countInventoryRead([]),
+      }
+    ),
+  })
+);
+
 const { renderPublicPageMarkdown } = await import(
   "./public-page-markdown.server"
 );
@@ -101,7 +131,7 @@ const allGatesReleased: DiscountReleaseGates = {
   discountCodes: true,
 };
 
-// The office stays closed, so no seat capacity is read.
+// The office stays closed unless a test opens it.
 const releases = (discountReleaseGates = allGatesReleased) => ({
   publishedPathnames: publicPages
     .map(({ pathname }) => pathname)
@@ -114,6 +144,7 @@ const sharedRenders = () =>
 
 beforeEach(() => {
   calendarAnswers = true;
+  inventoryReads = 0;
   cacheLife.mockClear();
   headers.mockClear();
 });
@@ -193,6 +224,36 @@ describe("renderPublicPageMarkdown", () => {
       expect(failedMarkdown).not.toContain(saleText);
       expect(withheldMarkdown).toBe(failedMarkdown);
       expect(sharedRenders()).toEqual([false, true, true]);
+      expect(headers).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each(["en-US", "cs-CZ"] as const)(
+    "lists the open office and the sale on the %s price page without reading the availability inventory",
+    async (locale) => {
+      const office = getPublicCatalogOfferings({ locale, office: {} }).find(
+        ({ kind }) => kind === "office"
+      );
+      const officeOpen = (discountReleaseGates = allGatesReleased) => ({
+        ...releases(discountReleaseGates),
+        publishedPathnames: publicPages.map(({ pathname }) => pathname),
+      });
+      const saleMarkdown = await renderPublicPageMarkdown(
+        locale,
+        "/pricing",
+        officeOpen()
+      );
+      const catalogMarkdown = await renderPublicPageMarkdown(
+        locale,
+        "/pricing",
+        officeOpen({ ...allGatesReleased, calendarSales: false })
+      );
+
+      expect(office).toBeDefined();
+      expect(saleMarkdown).toContain(office?.name ?? "");
+      expect(saleMarkdown).not.toBe(catalogMarkdown);
+      expect(inventoryReads).toBe(0);
+      expect(sharedRenders()).toEqual([true, true]);
       expect(headers).not.toHaveBeenCalled();
     }
   );

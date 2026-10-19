@@ -254,16 +254,24 @@ describe.skipIf(!testDatabase)("CampaignService on disposable Postgres", () => {
         CampaignService.pipe(
           Effect.flatMap((campaigns) => campaigns.duplicate(campaignId))
         ),
+        CampaignService.pipe(
+          Effect.flatMap((campaigns) =>
+            campaigns.update({ campaignId, title: "Edited" })
+          )
+        ),
+        CampaignService.pipe(
+          Effect.flatMap((campaigns) => campaigns.delete(campaignId))
+        ),
       ];
       for (const operation of operations) {
         expect(failure(await run(operation))).toMatchObject(mismatch);
       }
 
       const { rows } = await testDatabase.pool.query(
-        "select status from email_campaigns where id = $1",
+        "select title, status from email_campaigns where id = $1",
         [campaignId]
       );
-      expect(rows).toEqual([{ status }]);
+      expect(rows).toEqual([{ title: "Weekly come-back", status }]);
     }
     const { rows: copies } = await testDatabase.pool.query(
       "select id from email_campaigns where title = 'Copy of Weekly come-back'"

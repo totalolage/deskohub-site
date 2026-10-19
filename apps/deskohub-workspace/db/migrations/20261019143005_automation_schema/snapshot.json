@@ -10348,7 +10348,7 @@
         "id"
       ],
       "onUpdate": "NO ACTION",
-      "onDelete": "NO ACTION",
+      "onDelete": "CASCADE",
       "name": "customer_events_ZVYweWsHwecd_fkey",
       "entityType": "fks",
       "schema": "public",
@@ -10365,7 +10365,7 @@
         "id"
       ],
       "onUpdate": "NO ACTION",
-      "onDelete": "NO ACTION",
+      "onDelete": "CASCADE",
       "name": "customer_events_customer_account_id_customer_accounts_id_fkey",
       "entityType": "fks",
       "schema": "public",

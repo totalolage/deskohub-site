@@ -129,6 +129,12 @@ export async function PublicSiteFooter() {
                 {m.footerContactLink({}, { locale })}
               </Link>
               <Link
+                href={`${localePath}/pricing`}
+                className="transition-colors hover:text-sunset-yellow"
+              >
+                {m.footerPricingLink({}, { locale })}
+              </Link>
+              <Link
                 href={reservationPath}
                 className="transition-colors hover:text-sunset-yellow"
               >

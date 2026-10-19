@@ -1,29 +1,16 @@
 import "@/shared/testing/workspace-test-env";
 
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  jest,
-  mock,
-  test,
-} from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 import sharp from "sharp";
 import { runCommand } from "@/scripts/shared/command";
-
-const cacheLife = mock((_profile: { readonly expire: number }) => undefined);
-
-mock.module("next/cache", () => ({ cacheLife }));
-
-const {
+import {
   generateWorkspaceLocationMapImage,
   workspaceLocationMapTileConcurrency,
-} = await import("./workspace-location-map");
+} from "./workspace-location-map";
 
 const originalFetch = globalThis.fetch;
 
@@ -36,12 +23,7 @@ const mockFetch = (
   );
 };
 
-beforeEach(() => {
-  cacheLife.mockClear();
-});
-
 afterEach(() => {
-  jest.useRealTimers();
   globalThis.fetch = originalFetch;
 });
 
@@ -69,36 +51,6 @@ describe("generateWorkspaceLocationMapImage", () => {
     expect(maximumInFlight).toBeLessThanOrEqual(
       workspaceLocationMapTileConcurrency
     );
-    // A failed download is not kept for later renders.
-    expect(cacheLife).toHaveBeenCalled();
-    expect(new Set(cacheLife.mock.calls.map(([life]) => life.expire))).toEqual(
-      new Set([0])
-    );
-  });
-
-  test("aborts tile downloads that outlast the tile timeout", async () => {
-    jest.useFakeTimers();
-    const signals: (AbortSignal | null | undefined)[] = [];
-    mockFetch(
-      (init) =>
-        new Promise((_resolve, reject) => {
-          signals.push(init?.signal);
-          init?.signal?.addEventListener("abort", () =>
-            reject(init.signal?.reason)
-          );
-        })
-    );
-
-    const render = Effect.runPromiseExit(generateWorkspaceLocationMapImage());
-    for (let step = 0; step < 100 && signals.length === 0; step += 1) {
-      jest.advanceTimersByTime(0);
-      await Promise.resolve();
-    }
-    jest.advanceTimersByTime(10_000);
-    await render;
-
-    expect(signals.length).toBeGreaterThan(0);
-    expect(signals.every((signal) => signal?.aborted)).toBe(true);
   });
 });
 

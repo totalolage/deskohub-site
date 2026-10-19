@@ -138,7 +138,8 @@ const startOfPragueDay = (date: Temporal.PlainDate) =>
   date.toZonedDateTime({ timeZone }).toInstant();
 
 /**
- * The first period start strictly after `after`, in Prague time. Fails with
+ * The first period start strictly after `after`, in Prague time. A repeated
+ * autumn wall time starts a period on its first occurrence only. Fails with
  * `CalendarExpressionNeverOccurs` when none falls within eight years.
  */
 export const nextStart = (
@@ -165,6 +166,18 @@ export const nextStart = (
       );
       if (Temporal.Instant.compare(candidate, limit) > 0) {
         break;
+      }
+      if (Temporal.Instant.compare(candidate, from) <= 0) {
+        // Inside a repeated autumn hour Cron.next resolves a later wall time
+        // to its first occurrence, which already passed. Only first
+        // occurrences start periods, so resume from that wall time's second
+        // occurrence, which lies strictly after `from`.
+        cursor = candidate
+          .toZonedDateTimeISO(timeZone)
+          .toPlainDateTime()
+          .toZonedDateTime(timeZone, { disambiguation: "later" })
+          .toInstant();
+        continue;
       }
       const date = candidate.toZonedDateTimeISO(timeZone).toPlainDate();
       if (isFireDay(expression, grain, date)) {

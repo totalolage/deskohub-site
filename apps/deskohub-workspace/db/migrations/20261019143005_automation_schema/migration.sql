@@ -221,8 +221,8 @@ CREATE INDEX "email_campaign_automation_work_units_settled_idx" ON "email_campai
 CREATE INDEX "email_campaign_automations_next_fire_idx" ON "email_campaign_automations" ("next_fire_at") WHERE "next_fire_at" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "email_campaign_sends_once_campaign_unique_idx" ON "email_campaign_sends" ("campaign_id") WHERE "automation_version_id" is null;--> statement-breakpoint
 CREATE INDEX "email_campaign_sends_campaign_idx" ON "email_campaign_sends" ("campaign_id");--> statement-breakpoint
-ALTER TABLE "customer_events" ADD CONSTRAINT "customer_events_ZVYweWsHwecd_fkey" FOREIGN KEY ("workspace_reservation_id") REFERENCES "workspace_reservations"("id");--> statement-breakpoint
-ALTER TABLE "customer_events" ADD CONSTRAINT "customer_events_customer_account_id_customer_accounts_id_fkey" FOREIGN KEY ("customer_account_id") REFERENCES "customer_accounts"("id");--> statement-breakpoint
+ALTER TABLE "customer_events" ADD CONSTRAINT "customer_events_ZVYweWsHwecd_fkey" FOREIGN KEY ("workspace_reservation_id") REFERENCES "workspace_reservations"("id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "customer_events" ADD CONSTRAINT "customer_events_customer_account_id_customer_accounts_id_fkey" FOREIGN KEY ("customer_account_id") REFERENCES "customer_accounts"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "email_campaign_automation_preview_rows" ADD CONSTRAINT "email_campaign_automation_preview_rows_A1HNaSaD1f7p_fkey" FOREIGN KEY ("preview_id") REFERENCES "email_campaign_automation_previews"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "email_campaign_automation_previews" ADD CONSTRAINT "email_campaign_automation_previews_QygPUQjko5ul_fkey" FOREIGN KEY ("campaign_id") REFERENCES "email_campaigns"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "email_campaign_automation_run_events" ADD CONSTRAINT "email_campaign_automation_run_events_11Xh4crxBZCO_fkey" FOREIGN KEY ("run_id") REFERENCES "email_campaign_automation_runs"("id") ON DELETE CASCADE;--> statement-breakpoint

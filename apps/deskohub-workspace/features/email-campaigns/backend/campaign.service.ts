@@ -72,7 +72,7 @@ export interface ICampaignService {
     input: CampaignDraftInput
   ) => Effect.Effect<Campaign, CampaignWriteError | CampaignTransactionError>;
   /**
-   * Edits a Draft; a campaign that left Draft is read-only. The edit's row
+   * Edits a one-off Draft; a campaign that left Draft is read-only. The edit's row
    * update waits on a confirmation's campaign row lock and then rechecks the
    * status, so content can't change between a confirmation's content check
    * and its move to Sending.
@@ -83,15 +83,19 @@ export interface ICampaignService {
     Campaign,
     | CampaignNotFound
     | CampaignReadOnly
+    | CampaignDeliveryMismatch
     | CampaignWriteError
     | CampaignTransactionError
   >;
-  /** Deletes a Draft; a campaign that left Draft keeps its history. */
+  /** Deletes a one-off Draft; a campaign that left Draft keeps its history. */
   readonly delete: (
     campaignId: CampaignId
   ) => Effect.Effect<
     void,
-    CampaignNotFound | CampaignReadOnly | EffectDrizzleQueryError
+    | CampaignNotFound
+    | CampaignReadOnly
+    | CampaignDeliveryMismatch
+    | EffectDrizzleQueryError
   >;
   /**
    * Copies a one-off campaign of any status into a new Draft titled "Copy
@@ -143,11 +147,11 @@ export class CampaignService extends Context.Service<
           )
         );
 
-      /** Explains why a Draft-only write matched no row. */
+      /** Explains why a one-off Draft write matched no row. */
       const draftWriteRejection = Effect.fn(
         "CampaignService.draftWriteRejection"
       )(function* (campaignId: CampaignId) {
-        const { status } = yield* get(campaignId);
+        const { status } = yield* getOnce(campaignId);
         if (status === "draft") {
           return yield* new CampaignNotFound({ campaignId });
         }
@@ -263,6 +267,7 @@ export class CampaignService extends Context.Service<
                 .where(
                   and(
                     eq(emailCampaigns.id, campaignId),
+                    eq(emailCampaigns.delivery, "once"),
                     eq(emailCampaigns.status, "draft")
                   )
                 )
@@ -277,6 +282,7 @@ export class CampaignService extends Context.Service<
             .where(
               and(
                 eq(emailCampaigns.id, campaignId),
+                eq(emailCampaigns.delivery, "once"),
                 eq(emailCampaigns.status, "draft")
               )
             )
