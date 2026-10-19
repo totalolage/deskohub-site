@@ -352,8 +352,11 @@ type BookedReservation = {
   readonly dotyposReservationId: DotyposReservationId;
 };
 
-/** Booked through Workspace and linked to a Dotypos reservation (D31.6). */
-const countedReservationCondition = and(
+/**
+ * Booked through Workspace and linked to a Dotypos reservation (D31.6): the
+ * reservations `bookings` counts and `ofCustomers` reads.
+ */
+export const countedReservationCondition = and(
   bookedReservationCondition,
   isNotNull(workspaceReservations.dotyposReservationId)
 )!;
