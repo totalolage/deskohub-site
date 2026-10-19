@@ -1,6 +1,7 @@
 import { Effect, Option } from "effect";
 import sharp, { type OverlayOptions } from "sharp";
 import { ImageRenderingError } from "./errors";
+import { renderTextImage } from "./text-image";
 
 export interface SvgPngTextOverlay {
   readonly text: string;
@@ -122,20 +123,10 @@ const renderSvg = (svg: string | Buffer) =>
 const renderTextOverlay = (overlay: SvgPngTextOverlay) =>
   Effect.tryPromise({
     try: async (): Promise<OverlayOptions> => {
-      const renderedText = await sharp({
-        text: {
-          text: overlay.color
-            ? `<span foreground="${overlay.color}">${escapePangoText(overlay.text)}</span>`
-            : escapePangoText(overlay.text),
-          font: overlay.font,
-          fontfile: overlay.fontfile,
-          width: overlay.width,
-          align: "center",
-          rgba: true,
-        },
-      })
-        .png()
-        .toBuffer({ resolveWithObject: true });
+      const renderedText = await renderTextImage({
+        ...overlay,
+        align: "center",
+      });
 
       return {
         input: renderedText.data,
@@ -168,6 +159,3 @@ const compositeTextOverlays = (
         operation: "render-text-overlay",
       }),
   });
-
-const escapePangoText = (text: string) =>
-  text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
