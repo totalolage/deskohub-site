@@ -9,7 +9,7 @@ import {
   test,
 } from "bun:test";
 import { type DotyposCustomerId, ExternalAPIError } from "@deskohub/dotypos";
-import { testEmailAddress } from "@deskohub/test-email";
+import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import type { AutomationFlowType } from "@deskohub/workspace-admin-api";
 import { Effect } from "effect";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -1231,7 +1231,10 @@ describe.skipIf(!database)(
           "d25-outside",
           start.add({ minutes: 1 }),
           {
-            email: "automation-engine-outsider@example.com",
+            email: resendSimulatorAddress(
+              "delivered",
+              "automation-engine-outsider"
+            ),
           }
         );
 

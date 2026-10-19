@@ -660,7 +660,7 @@ describe.skipIf(!testDatabase)(
       const outside = customerId("unit-outside");
       profiles = [
         profile(inside),
-        profile(outside, { email: "customer@example.com" }),
+        profile(outside, { email: resendSimulatorAddress("delivered") }),
       ];
       await grantConsent([inside, outside]);
       const campaignId = await seedAutomatedCampaign(db, {

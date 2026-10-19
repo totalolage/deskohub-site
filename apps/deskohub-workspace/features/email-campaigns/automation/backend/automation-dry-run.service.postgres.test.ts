@@ -14,6 +14,7 @@ import {
   seededCustomerReads,
   seededReservationReads,
 } from "@deskohub/dotypos/backend/service.mock";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
   type AutomationConditionFilter,
   AutomationFlow,
@@ -95,7 +96,7 @@ const profile = (
     _cloudId: "dry-run-cloud",
     firstName: "Test",
     lastName: id.slice(-4),
-    email: options.email ?? `${id}@deskohub.test`,
+    email: options.email ?? testEmailAddress(id),
     points: "0",
     flags: "0",
     display: true,
@@ -1378,7 +1379,7 @@ describe.skipIf(!testDatabase)(
         const named = page.customers.find(
           ({ customerId }) => customerId === customers[0]
         );
-        expect(named?.email).toBe(`${customers[0]}@deskohub.test`);
+        expect(named?.email).toBe(testEmailAddress(customers[0]!));
         expect(page.nextCursor).not.toBeNull();
 
         const next = await read(started.previewId, {

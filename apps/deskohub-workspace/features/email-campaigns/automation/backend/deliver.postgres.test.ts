@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
-import { testEmailAddress } from "@deskohub/test-email";
+import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { deleteAutomatedCampaigns } from "../../backend/email-campaigns.test-utils";
 import type { CampaignId } from "../../campaign-identifiers";
@@ -168,7 +168,11 @@ describe.skipIf(!database)("deliver units on disposable Postgres", () => {
         account,
       ]
         .map((id) => deliverProfile(id))
-        .concat(deliverProfile(outside, { email: "customer@example.com" })),
+        .concat(
+          deliverProfile(outside, {
+            email: resendSimulatorAddress("delivered"),
+          })
+        ),
     });
     engine.dotypos.setReservations(visits.dotypos);
     const seeded = await seedAutomation({ text: "Verze doručení" });

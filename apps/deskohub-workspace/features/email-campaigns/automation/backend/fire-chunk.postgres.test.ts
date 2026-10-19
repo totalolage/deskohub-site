@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
+import { testEmailAddress } from "@deskohub/test-email";
 import type {
   AutomationFlow,
   CalendarExpression,
@@ -216,7 +217,7 @@ describe.skipIf(!database)("fire-chunk units on Postgres", () => {
   });
 
   test("deduplicates emails within a chunk", async () => {
-    const shared = `${prefix.slice(-24)}-shared@example.test`;
+    const shared = testEmailAddress(`${prefix.slice(-24)}-shared`);
     const alice = await fixtures.addCustomer("dedup-alice", { email: shared });
     const bob = await fixtures.addCustomer("dedup-bob", { email: shared });
     const { campaignId, unitIds } = await enteringFire({
