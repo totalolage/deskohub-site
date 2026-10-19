@@ -6,6 +6,13 @@ import {
   OperationUnavailable,
 } from "@deskohub/workspace-admin-api";
 import { Match } from "effect";
+import type { AutomationConditionAudienceMissing } from "../automation/backend/automation-evaluation-facts.service";
+import type { AutomationUnitFetchFailure } from "../automation/backend/automation-unit-handler";
+import {
+  AutomationCalendarNeverOccurs,
+  type AutomationFlowInvalid,
+  type AutomationFlowLocation,
+} from "../automation/errors";
 import type {
   AudienceFilterContextInvalid,
   CampaignAudienceArchived,
@@ -36,6 +43,10 @@ import type {
  */
 export type CampaignOperationCause =
   | CampaignOperationError
+  | AutomationCalendarNeverOccurs
+  | AutomationConditionAudienceMissing
+  | AutomationFlowInvalid
+  | AutomationUnitFetchFailure
   | AudienceFilterContextInvalid
   | CampaignAudienceArchived
   | CampaignAudienceInUse
@@ -177,6 +188,60 @@ export const toOperationError = (
           cause,
         })
     ),
+    Match.orElse(toAutomationOperationError)
+  );
+
+/** Where in a flow a problem is, as the message names it. */
+const describeFlowLocation = (location: AutomationFlowLocation) =>
+  Match.value(location).pipe(
+    Match.tagsExhaustive({
+      Trigger: () => "the schedule trigger",
+      Step: ({ stepId }) => `step "${stepId}"`,
+    })
+  );
+
+/** Failures of an automation's flow, its conditions and its Dotypos reads. */
+const toAutomationOperationError = (
+  cause: CampaignOperationCause
+): CampaignOperationError =>
+  Match.value(cause).pipe(
+    Match.tag(
+      "AutomationFlowInvalid",
+      ({ message }) =>
+        new OperationInputInvalid({
+          code: "flow-invalid",
+          message,
+          cause,
+        })
+    ),
+    Match.tag(
+      "AutomationCalendarNeverOccurs",
+      ({ location }) =>
+        new OperationInputInvalid({
+          code: AutomationCalendarNeverOccurs.code,
+          message: `The calendar of ${describeFlowLocation(location)} never happens in the next 8 years. Choose another combination.`,
+          cause,
+        })
+    ),
+    Match.tag(
+      "AutomationConditionAudienceMissing",
+      ({ audienceId }) =>
+        new OperationNotFound({
+          code: "audience-missing",
+          message: `A condition refers to the saved audience ${audienceId}, which no longer exists. Choose another audience.`,
+          cause,
+        })
+    ),
+    Match.tag(
+      "AutomationUnitFetchFailure",
+      ({ code }) =>
+        new OperationUnavailable({
+          code,
+          message:
+            "The Dotypos API is unavailable, so customers couldn't be read. Try again shortly.",
+          cause,
+        })
+    ),
     Match.orElse(toSendOperationError)
   );
 
@@ -226,7 +291,7 @@ const toSendOperationError = (
       "CampaignAudienceMissing",
       () =>
         new OperationConflict({
-          code: "audience-missing",
+          code: "campaign-audience-missing",
           message: "The campaign has no audience. Set one first.",
           cause,
         })

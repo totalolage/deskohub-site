@@ -249,7 +249,7 @@ const makeCampaignOperationHandlers = Effect.gen(function* () {
     const campaign = yield* campaigns.get(campaignId);
     if (campaign.audienceId === null) {
       return yield* new OperationConflict({
-        code: "audience-missing",
+        code: "campaign-audience-missing",
         message: "The campaign has no audience. Set one first.",
       });
     }

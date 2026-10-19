@@ -285,7 +285,7 @@ const cases: AdapterContractCases<Registry> = {
       input: ({ draftWithoutAudienceId }) => ({
         campaignId: draftWithoutAudienceId,
       }),
-      expect: failure("OperationConflict", "audience-missing"),
+      expect: failure("OperationConflict", "campaign-audience-missing"),
     },
   ],
   testSendCampaign: [
