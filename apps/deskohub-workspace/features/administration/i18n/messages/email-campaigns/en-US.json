@@ -28,6 +28,16 @@
       }
     }
   ],
+  "emailCampaignsAudienceCampaignEmailCountNounDeleted": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "email from a deleted campaign",
+        "countPlural=other": "emails from a deleted campaign"
+      }
+    }
+  ],
   "emailCampaignsAudienceCampaignEmailCountNounMarketing": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
@@ -48,6 +58,26 @@
       }
     }
   ],
+  "emailCampaignsAudienceCampaignEmailCountNounSpecific": [
+    {
+      "declarations": ["input count", "input campaign", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "email from campaign {campaign}",
+        "countPlural=other": "emails from campaign {campaign}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounThis": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "email from this campaign",
+        "countPlural=other": "emails from this campaign"
+      }
+    }
+  ],
   "emailCampaignsAudienceCampaignEmailCountPeriodLabel": "Emails received",
   "emailCampaignsAudienceCampaignEmailCountPurposeAny": "any",
   "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "Campaign purpose",
@@ -57,8 +87,6 @@
   "emailCampaignsAudienceCampaignEmailCountSourceEmpty": "No campaign matches.",
   "emailCampaignsAudienceCampaignEmailCountSourceLabel": "Campaign",
   "emailCampaignsAudienceCampaignEmailCountSourceSearch": "Search campaigns",
-  "emailCampaignsAudienceCampaignEmailCountSourceSpecific": "from campaign {campaign}",
-  "emailCampaignsAudienceCampaignEmailCountSourceThis": "from this campaign",
   "emailCampaignsAudienceCampaignEmailCountSourceUnknown": "Deleted campaign",
   "emailCampaignsAudienceConditionAttributeLabel": "Customer attribute",
   "emailCampaignsAudienceConditionRemove": "Remove condition",

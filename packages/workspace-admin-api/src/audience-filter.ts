@@ -126,9 +126,11 @@ export const audienceAttributeCatalogue = defineAudienceAttributeCatalogue({
   }),
   /**
    * Campaign emails Resend accepted for the customer (sent, delivered,
-   * complained, or unconfirmed), dated by dispatch, of one campaign when
-   * `params.campaign` names one. Transactional emails have no per-customer
-   * record and never count.
+   * complained, or unconfirmed), dated by dispatch within `params.period`
+   * (`Past` is any time so far). They come from any campaign of
+   * `params.purpose`, or only from the campaign `params.campaign` names, with
+   * the purpose `any`. A named campaign deleted later counts no emails.
+   * Transactional emails have no per-customer record and never count.
    */
   campaignEmailCount: countAttribute("campaignEmailCount", {
     label: "Campaign emails received",

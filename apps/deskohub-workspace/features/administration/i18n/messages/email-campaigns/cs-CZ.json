@@ -29,6 +29,17 @@
       }
     }
   ],
+  "emailCampaignsAudienceCampaignEmailCountNounDeleted": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "e-mail ze smazané kampaně",
+        "countPlural=few": "e-maily ze smazané kampaně",
+        "countPlural=other": "e-mailů ze smazané kampaně"
+      }
+    }
+  ],
   "emailCampaignsAudienceCampaignEmailCountNounMarketing": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
@@ -51,6 +62,28 @@
       }
     }
   ],
+  "emailCampaignsAudienceCampaignEmailCountNounSpecific": [
+    {
+      "declarations": ["input count", "input campaign", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "e-mail z kampaně {campaign}",
+        "countPlural=few": "e-maily z kampaně {campaign}",
+        "countPlural=other": "e-mailů z kampaně {campaign}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounThis": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "e-mail z této kampaně",
+        "countPlural=few": "e-maily z této kampaně",
+        "countPlural=other": "e-mailů z této kampaně"
+      }
+    }
+  ],
   "emailCampaignsAudienceCampaignEmailCountPeriodLabel": "Přijaté e-maily",
   "emailCampaignsAudienceCampaignEmailCountPurposeAny": "libovolných",
   "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "Účel kampaně",
@@ -60,8 +93,6 @@
   "emailCampaignsAudienceCampaignEmailCountSourceEmpty": "Žádná kampaň neodpovídá.",
   "emailCampaignsAudienceCampaignEmailCountSourceLabel": "Kampaň",
   "emailCampaignsAudienceCampaignEmailCountSourceSearch": "Hledat kampaně",
-  "emailCampaignsAudienceCampaignEmailCountSourceSpecific": "(kampaň {campaign})",
-  "emailCampaignsAudienceCampaignEmailCountSourceThis": "(tato kampaň)",
   "emailCampaignsAudienceCampaignEmailCountSourceUnknown": "Smazaná kampaň",
   "emailCampaignsAudienceConditionAttributeLabel": "Vlastnost zákazníka",
   "emailCampaignsAudienceConditionRemove": "Odebrat podmínku",

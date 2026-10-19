@@ -23,6 +23,7 @@ import {
 import type { CampaignDelivery, CampaignStatus } from "../campaign-states";
 import type { DatePeriod } from "../date-period";
 import {
+  type AudienceCampaignSourceSummary,
   type AudienceCountWording,
   type AudienceDateWording,
   type AudienceSetWording,
@@ -196,31 +197,26 @@ const describeProduct = (
 const isCampaignEmailSource = Schema.is(CampaignEmailSource);
 
 /**
- * Whose emails a count counts, with a leading space: " from this campaign" or
- * " from campaign “Spring sale”". A campaign missing from `campaigns` shows
- * by ID.
+ * Whose emails a count counts. A campaign missing from the looked-up
+ * `campaigns` was deleted; without the lookup it shows by ID.
  */
-const describeCampaignSource = (
+const summarizeCampaignSource = (
   source: CampaignEmailSourceType,
   campaigns: readonly AudienceValueOption[] | undefined,
   locale: Locale
-): string => {
-  const options = { locale };
-  const phrase = Match.value(source).pipe(
+): AudienceCampaignSourceSummary =>
+  Match.value(source).pipe(
     Match.tagsExhaustive({
-      This: () =>
-        m.emailCampaignsAudienceCampaignEmailCountSourceThis({}, options),
-      Specific: ({ campaignId }) => {
-        const campaign = campaigns?.find(({ id }) => id === campaignId);
-        return m.emailCampaignsAudienceCampaignEmailCountSourceSpecific(
-          { campaign: campaign ? quoted(campaign.name, locale) : campaignId },
-          options
-        );
+      This: () => ({ _tag: "This" }) as const,
+      Specific: ({ campaignId }): AudienceCampaignSourceSummary => {
+        if (!campaigns) return { _tag: "Specific", campaign: campaignId };
+        const campaign = campaigns.find(({ id }) => id === campaignId);
+        return campaign
+          ? { _tag: "Specific", campaign: quoted(campaign.name, locale) }
+          : { _tag: "Deleted" };
       },
     })
   );
-  return ` ${phrase}`;
-};
 
 /** Context for a count summary beyond the condition and its wording. */
 type CountSummaryContext = {
@@ -241,17 +237,15 @@ export const describeCountCondition = (
   { entry, lookups = {} }: CountSummaryContext = {}
 ): string => {
   const product = describeProduct(params.product, locale);
-  // An unset campaign param counts every campaign and adds nothing.
-  const source = Object.entries(entry?.params ?? {})
-    .map(([name, param]) => {
-      const campaign = params[name];
-      return param.part === "campaign" && isCampaignEmailSource(campaign)
-        ? describeCampaignSource(campaign, lookups.campaigns, locale)
-        : "";
-    })
-    .join("");
+  // An unset campaign param counts every campaign.
+  const campaign = Object.entries(entry?.params ?? {})
+    .filter(([, param]) => param.part === "campaign")
+    .map(([name]) => params[name])
+    .find(isCampaignEmailSource);
+  const source =
+    campaign && summarizeCampaignSource(campaign, lookups.campaigns, locale);
   const noun = (count: number) =>
-    `${wording.summary.noun(params, count, product)}${source}`;
+    wording.summary.noun(params, count, product, source);
   const period =
     params.period._tag === "AnyTime"
       ? ""

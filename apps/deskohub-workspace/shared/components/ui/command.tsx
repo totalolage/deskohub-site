@@ -1,6 +1,6 @@
 "use client";
 
-import { Command as CommandPrimitive } from "cmdk";
+import { Command as CommandPrimitive, useCommandState } from "cmdk";
 import { Check, Search } from "lucide-react";
 import type * as React from "react";
 import { cn } from "@/shared/utils";
@@ -77,19 +77,29 @@ function CommandList({
   );
 }
 
+/**
+ * The no-results message. Its status region stays mounted while the list is
+ * open, so screen readers announce the message when a search empties the
+ * list. Place it after `CommandList`: a listbox holds only options.
+ */
 function CommandEmpty({
   className,
+  children,
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Empty>) {
+}: React.ComponentProps<"div">) {
+  const empty = useCommandState((state) => state.filtered.count === 0);
   return (
-    <CommandPrimitive.Empty
+    <div
       data-slot="command-empty"
+      role="status"
       className={cn(
-        "px-3 py-4 text-center text-navy-blue/65 text-sm",
+        empty && "px-3 py-4 text-center text-navy-blue/65 text-sm",
         className
       )}
       {...props}
-    />
+    >
+      {empty && children}
+    </div>
   );
 }
 

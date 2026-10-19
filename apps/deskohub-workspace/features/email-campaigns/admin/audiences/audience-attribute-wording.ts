@@ -6,6 +6,7 @@ import type {
   AudienceEditorToken,
   AudienceSetOperatorType,
 } from "@deskohub/workspace-admin-api";
+import { Match } from "effect";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 
@@ -50,6 +51,16 @@ type AudienceCountPhrase = {
 
 type CountParams = AudienceCountCondition["params"];
 
+/**
+ * Whose emails a count summary counts, once its campaign is looked up: the
+ * evaluating campaign, one campaign by name (or ID when campaigns weren't
+ * looked up), or a chosen campaign that no longer exists.
+ */
+export type AudienceCampaignSourceSummary =
+  | { readonly _tag: "This" }
+  | { readonly _tag: "Specific"; readonly campaign: string }
+  | { readonly _tag: "Deleted" };
+
 export type AudienceCountWording = {
   readonly kind: "count";
   readonly label: string;
@@ -65,11 +76,15 @@ export type AudienceCountWording = {
   /** What is counted, for screen readers. */
   readonly count: string;
   readonly summary: {
-    /** The counted noun for `count`, with the product phrase. */
+    /**
+     * The counted noun for `count`, with the product phrase and, for a
+     * campaign parameter that names one, whose emails count.
+     */
     readonly noun: (
       params: CountParams,
       count: number,
-      product: string
+      product: string,
+      source: AudienceCampaignSourceSummary | undefined
     ) => string;
     /** The period as the chosen parameters introduce it. */
     readonly period: (params: CountParams, period: string) => string;
@@ -388,11 +403,32 @@ const audienceAttributeWordings = (
       ),
       count: m.emailCampaignsAudienceCampaignEmailCountCountLabel({}, options),
       summary: {
-        noun: (params, count) =>
-          (
-            optionOf(campaignEmailNouns, params, "purpose") ??
-            m.emailCampaignsAudienceCampaignEmailCountNounAny
-          )({ count }, options),
+        // One campaign's emails count whatever their purpose.
+        noun: (params, count, _product, source) =>
+          source
+            ? Match.value(source).pipe(
+                Match.tagsExhaustive({
+                  This: () =>
+                    m.emailCampaignsAudienceCampaignEmailCountNounThis(
+                      { count },
+                      options
+                    ),
+                  Specific: ({ campaign }) =>
+                    m.emailCampaignsAudienceCampaignEmailCountNounSpecific(
+                      { count, campaign },
+                      options
+                    ),
+                  Deleted: () =>
+                    m.emailCampaignsAudienceCampaignEmailCountNounDeleted(
+                      { count },
+                      options
+                    ),
+                })
+              )
+            : (
+                optionOf(campaignEmailNouns, params, "purpose") ??
+                m.emailCampaignsAudienceCampaignEmailCountNounAny
+              )({ count }, options),
         period: (_params, period) => period,
         none: (phrase) =>
           m.emailCampaignsAudienceCampaignEmailCountNone(phrase, options),

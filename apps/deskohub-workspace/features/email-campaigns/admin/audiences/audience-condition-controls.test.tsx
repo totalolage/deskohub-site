@@ -179,16 +179,37 @@ describe("campaign picker", () => {
       "Jarní výprodejDraft",
       "Welcome seriesAutomated",
     ]);
-    fireEvent.change(view.getByPlaceholderText("Search campaigns"), {
-      target: { value: "VYPRODEJ" },
-    });
+    fireEvent.change(
+      view.getByRole("combobox", { name: "Search campaigns" }),
+      { target: { value: "VYPRODEJ" } }
+    );
     expect(options()).toEqual(["Jarní výprodejDraft"]);
-    fireEvent.change(view.getByPlaceholderText("Search campaigns"), {
-      target: { value: "autumn" },
-    });
-    expect(view.queryAllByRole("option")).toEqual([]);
-    expect(view.getByText("No campaign matches.")).toBeTruthy();
   });
+
+  test.each([
+    ["en-US", "Campaign", "Search campaigns", "No campaign matches."],
+    ["cs-CZ", "Kampaň", "Hledat kampaně", "Žádná kampaň neodpovídá."],
+  ] as const)(
+    "names the search and announces no matches in %s",
+    async (locale, pickerName, searchName, emptyMessage) => {
+      const view = renderCampaignEmailCount(
+        newCondition("campaignEmailCount"),
+        undefined,
+        locale
+      );
+      await openCampaignPicker(
+        view.getByRole("combobox", { name: pickerName })
+      );
+      const status = view.getByRole("status");
+      expect(status.textContent).toBe("");
+      fireEvent.change(view.getByRole("combobox", { name: searchName }), {
+        target: { value: "autumn" },
+      });
+      expect(view.queryAllByRole("option")).toEqual([]);
+      expect(view.getByRole("status")).toBe(status);
+      expect(status.textContent).toBe(emptyMessage);
+    }
+  );
 
   test("picking a campaign counts its emails whatever their purpose", async () => {
     const onChange = mock((_condition: AudienceCondition) => undefined);

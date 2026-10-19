@@ -406,10 +406,9 @@ function CampaignSourceControl({
         align="start"
         className="w-[min(22rem,calc(100vw-2rem))] overflow-hidden p-0"
       >
-        <Command>
+        <Command label={wording.search}>
           <CommandInput placeholder={wording.search} />
           <CommandList>
-            <CommandEmpty>{wording.empty}</CommandEmpty>
             <CommandGroup>
               <CommandItem
                 value={absentValue}
@@ -450,6 +449,7 @@ function CampaignSourceControl({
               ))}
             </CommandGroup>
           </CommandList>
+          <CommandEmpty>{wording.empty}</CommandEmpty>
         </Command>
       </PopoverContent>
     </Popover>

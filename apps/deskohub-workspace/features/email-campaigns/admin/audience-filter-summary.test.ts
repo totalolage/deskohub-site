@@ -237,22 +237,73 @@ describe("describeAudienceFilter", () => {
         campaign: { _tag: "This" },
       });
       expect(describe_(fromThis)).toBe(
-        "Customers who received no campaign emails from this campaign in the last 10 days"
+        "Customers who received no emails from this campaign in the last 10 days"
       );
       expect(describe_(fromThis, "cs-CZ")).toBe(
-        "Zákazníci, kteří neobdrželi žádný e-mail z kampaně (tato kampaň) za posledních 10 dní"
+        "Zákazníci, kteří neobdrželi žádný e-mail z této kampaně za posledních 10 dní"
       );
     });
 
     test("names a looked-up campaign, otherwise shows its ID", () => {
       expect(describeAudienceFilter(fromSpring, "en-US", { campaigns })).toBe(
-        "Customers who received at least 2 campaign emails from campaign “Spring sale” in the last 10 days"
+        "Customers who received at least 2 emails from campaign “Spring sale” in the last 10 days"
       );
       expect(describeAudienceFilter(fromSpring, "cs-CZ", { campaigns })).toBe(
-        "Zákazníci, kteří obdrželi alespoň 2 e-maily z kampaní (kampaň „Spring sale“) za posledních 10 dní"
+        "Zákazníci, kteří obdrželi alespoň 2 e-maily z kampaně „Spring sale“ za posledních 10 dní"
       );
       expect(describe_(fromSpring)).toBe(
-        "Customers who received at least 2 campaign emails from campaign campaign-spring in the last 10 days"
+        "Customers who received at least 2 emails from campaign campaign-spring in the last 10 days"
+      );
+    });
+
+    test.each([
+      [
+        "eq",
+        0,
+        "Zákazníci, kteří neobdrželi žádný e-mail z kampaně „Spring sale“ za posledních 10 dní",
+      ],
+      [
+        "gte",
+        1,
+        "Zákazníci, kteří obdrželi alespoň jeden e-mail z kampaně „Spring sale“ za posledních 10 dní",
+      ],
+      [
+        "eq",
+        2,
+        "Zákazníci, kteří obdrželi přesně 2 e-maily z kampaně „Spring sale“ za posledních 10 dní",
+      ],
+      [
+        "gte",
+        5,
+        "Zákazníci, kteří obdrželi alespoň 5 e-mailů z kampaně „Spring sale“ za posledních 10 dní",
+      ],
+    ] as const)(
+      "names one campaign once in Czech for %s %d",
+      (operator, value, expected) => {
+        const filter = campaignEmails(operator, value, {
+          period: lastTenDays,
+          campaign: { _tag: "Specific", campaignId: "campaign-spring" },
+        });
+        expect(describeAudienceFilter(filter, "cs-CZ", { campaigns })).toBe(
+          expected
+        );
+      }
+    );
+
+    test("calls a campaign missing from the lookup deleted", () => {
+      const fromDeleted = campaignEmails("eq", 0, {
+        period: lastTenDays,
+        campaign: { _tag: "Specific", campaignId: "campaign-deleted" },
+      });
+      expect(
+        describeAudienceFilter(fromDeleted, "en-US", { campaigns })
+      ).toBe(
+        "Customers who received no emails from a deleted campaign in the last 10 days"
+      );
+      expect(
+        describeAudienceFilter(fromDeleted, "cs-CZ", { campaigns })
+      ).toBe(
+        "Zákazníci, kteří neobdrželi žádný e-mail ze smazané kampaně za posledních 10 dní"
       );
     });
   });
