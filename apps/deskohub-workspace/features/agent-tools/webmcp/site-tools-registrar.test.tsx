@@ -19,6 +19,7 @@ import {
   agentToolEventStream,
   installFakeModelContext,
   mockAgentToolEndpoint,
+  pendingBodyResponse,
   publishedAgentTools,
   recordUnhandledRejections,
 } from "./webmcp.test-utils";
@@ -169,6 +170,28 @@ describe("SiteToolsRegistrar", () => {
 
       view.unmount();
       toolsList.release();
+      await settle();
+
+      expect(endpoint.requests[0]?.signal?.aborted).toBe(true);
+      expect(modelContext.registerTool).not.toHaveBeenCalled();
+      expect(unhandled.rejections).toEqual([]);
+    } finally {
+      unhandled.stop();
+      endpoint.restore();
+      modelContext.uninstall();
+    }
+  });
+
+  test("an unmount while the tools/list body is arriving aborts the request and leaves no rejection", async () => {
+    const unhandled = recordUnhandledRejections();
+    const modelContext = installFakeModelContext();
+    const toolsList = pendingBodyResponse();
+    const endpoint = mockAgentToolEndpoint(undefined, () => toolsList.response);
+    try {
+      const view = render(<SiteToolsRegistrar locale="en-US" />);
+      await toolsList.reading;
+
+      view.unmount();
       await settle();
 
       expect(endpoint.requests[0]?.signal?.aborted).toBe(true);

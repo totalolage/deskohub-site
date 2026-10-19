@@ -121,6 +121,28 @@ export const agentToolEventStream = (result: Schema.JsonObject) =>
   );
 
 /**
+ * A response whose headers have arrived and whose body never finishes.
+ * `reading` resolves once the client starts reading the body.
+ */
+export const pendingBodyResponse = () => {
+  const { promise: reading, resolve: startReading } =
+    Promise.withResolvers<void>();
+  const response = new Response(
+    new ReadableStream(
+      {
+        pull: () => {
+          startReading();
+          return new Promise<void>(() => undefined);
+        },
+      },
+      { highWaterMark: 0 }
+    ),
+    { headers: { "Content-Type": "text/event-stream" } }
+  );
+  return { response, reading };
+};
+
+/**
  * Replaces `fetch` with a fake `/api/mcp` that lists the published tools, or
  * answers `tools/list` through `list`, and answers `tools/call` through `call`.
  */

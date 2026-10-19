@@ -18,7 +18,9 @@ import {
   agentToolEventStream,
   installFakeModelContext,
   mockAgentToolEndpoint,
+  pendingBodyResponse,
   publishedAgentTools,
+  recordUnhandledRejections,
 } from "./webmcp.test-utils";
 
 let modelContext: ReturnType<typeof installFakeModelContext>;
@@ -194,6 +196,30 @@ describe("registerReadSiteTools", () => {
 
       await expect(result).rejects.toBeDefined();
       expect(requestSignal?.aborted).toBe(true);
+    });
+
+    test("forwards the agent's cancellation while the response body is arriving, without a rejection", async () => {
+      const unhandled = recordUnhandledRejections();
+      const answer = pendingBodyResponse();
+      endpoint.restore();
+      endpoint = mockAgentToolEndpoint(() => answer.response);
+      try {
+        await register();
+        const call = new AbortController();
+
+        const result = modelContext
+          .getTool("list_offerings")
+          .execute({}, { signal: call.signal });
+        await answer.reading;
+        call.abort();
+
+        await expect(result).rejects.toBeDefined();
+        expect(endpoint.requests.at(-1)?.signal?.aborted).toBe(true);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(unhandled.rejections).toEqual([]);
+      } finally {
+        unhandled.stop();
+      }
     });
 
     test("returns a tool error as its typed error object", async () => {

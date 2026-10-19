@@ -1,4 +1,4 @@
-import { Data, Effect, Schema } from "effect";
+import { Data, Effect, Exit, Schema } from "effect";
 
 const agentToolEndpoint = "/api/mcp";
 
@@ -69,20 +69,29 @@ function postAgentToolRequest<S extends Schema.Top>(
   method: string,
   params: Schema.JsonObject
 ) {
-  return Effect.tryPromise({
-    try: (signal) =>
-      fetch(agentToolEndpoint, {
-        method: "POST",
-        headers: {
-          Accept: "application/json, text/event-stream",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-        credentials: "same-origin",
-        signal,
-      }),
-    catch: (cause) => new AgentToolRequestError({ cause }),
-  }).pipe(
+  // One controller spans the headers and the body, so an interruption or
+  // failure before the body is read aborts the request.
+  return Effect.acquireRelease(
+    Effect.sync(() => new AbortController()),
+    (request, exit) =>
+      Exit.isSuccess(exit) ? Effect.void : Effect.sync(() => request.abort())
+  ).pipe(
+    Effect.flatMap((request) =>
+      Effect.tryPromise({
+        try: () =>
+          fetch(agentToolEndpoint, {
+            method: "POST",
+            headers: {
+              Accept: "application/json, text/event-stream",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+            credentials: "same-origin",
+            signal: request.signal,
+          }),
+        catch: (cause) => new AgentToolRequestError({ cause }),
+      })
+    ),
     Effect.filterOrFail(
       (response) => response.ok,
       (response) => new AgentToolRequestError({ status: response.status })
@@ -93,6 +102,7 @@ function postAgentToolRequest<S extends Schema.Top>(
         catch: (cause) => new AgentToolRequestError({ cause }),
       })
     ),
+    Effect.scoped,
     Effect.map(getJsonRpcMessage),
     Effect.flatMap((message) =>
       Schema.decodeUnknownEffect(Schema.fromJsonString(responseSchema), {
