@@ -86,6 +86,15 @@ const dotyposFailureCode = (
   }
 };
 
+/**
+ * After this many deadline misses a solo unit's subjects count as
+ * unavailable (§5.3); its handler's `expire` settles them.
+ */
+export const automationUnitDeadlineMissLimit = 3;
+
+/** What `expire` left for the fetch. */
+export type AutomationUnitExpiry = "remaining" | "settled";
+
 /** A unit that can never succeed, such as a subject that no longer decodes. It settles `failed`. */
 export class AutomationUnitDefect extends Data.TaggedError(
   "AutomationUnitDefect"
@@ -105,6 +114,23 @@ export class AutomationUnitDefect extends Data.TaggedError(
 export interface AutomationUnitHandler<Subject, Fetched> {
   readonly kind: AutomationWorkUnitKind;
   readonly subject: Schema.Codec<Subject, Schema.Json>;
+  /**
+   * §5.2 step 2: settles, locally and before any fetch, the subjects past
+   * their limit (24 hours, or `automationUnitDeadlineMissLimit` misses for a
+   * solo unit), and reports whether any subject is left to fetch. It reads
+   * the subjects' current rows, so a repeated call is a no-op. The processor
+   * runs it in a transaction guarded by the claim, and settles the unit
+   * `done` without fetching when it returns `settled`. Kinds without a limit
+   * omit it.
+   */
+  readonly expire?: (
+    tx: AutomationEngineTransaction,
+    unit: ClaimedAutomationUnit<Subject>,
+    at: Temporal.Instant
+  ) => Effect.Effect<
+    AutomationUnitExpiry,
+    AutomationUnitDefect | DatabaseQueryError
+  >;
   /** At most `requestCost` sequential requests; returns in-memory facts only. */
   readonly fetch: (
     unit: ClaimedAutomationUnit<Subject>
@@ -136,6 +162,14 @@ export type AutomationUnitCommit = (
 /** A handler with its subject and fetched types closed over, so a registry can hold every kind. */
 export interface RegisteredAutomationUnitHandler {
   readonly kind: AutomationWorkUnitKind;
+  readonly expire?: (
+    tx: AutomationEngineTransaction,
+    unit: ClaimedAutomationUnit<unknown>,
+    at: Temporal.Instant
+  ) => Effect.Effect<
+    AutomationUnitExpiry,
+    AutomationUnitDefect | DatabaseQueryError
+  >;
   readonly fetch: (
     unit: ClaimedAutomationUnit<unknown>
   ) => Effect.Effect<
@@ -146,23 +180,34 @@ export interface RegisteredAutomationUnitHandler {
 
 export const registerAutomationUnitHandler = <Subject, Fetched>(
   handler: AutomationUnitHandler<Subject, Fetched>
-): RegisteredAutomationUnitHandler => ({
-  kind: handler.kind,
-  fetch: (unit) =>
+): RegisteredAutomationUnitHandler => {
+  const decode = (unit: ClaimedAutomationUnit<unknown>) =>
     Schema.decodeUnknownEffect(handler.subject)(unit.subject).pipe(
       Effect.mapError(
         (cause) =>
           new AutomationUnitDefect({ code: "subject-undecodable", cause })
       ),
-      Effect.map((subject) => ({ ...unit, subject })),
-      Effect.flatMap((decoded) =>
-        handler.fetch(decoded).pipe(
-          Effect.map(
-            (fetched): AutomationUnitCommit =>
-              (tx, at) =>
-                handler.commit(tx, decoded, fetched, at)
+      Effect.map((subject) => ({ ...unit, subject }))
+    );
+  const { expire } = handler;
+
+  return {
+    kind: handler.kind,
+    ...(expire !== undefined && {
+      expire: (tx, unit, at) =>
+        decode(unit).pipe(Effect.flatMap((decoded) => expire(tx, decoded, at))),
+    }),
+    fetch: (unit) =>
+      decode(unit).pipe(
+        Effect.flatMap((decoded) =>
+          handler.fetch(decoded).pipe(
+            Effect.map(
+              (fetched): AutomationUnitCommit =>
+                (tx, at) =>
+                  handler.commit(tx, decoded, fetched, at)
+            )
           )
         )
-      )
-    ),
-});
+      ),
+  };
+};

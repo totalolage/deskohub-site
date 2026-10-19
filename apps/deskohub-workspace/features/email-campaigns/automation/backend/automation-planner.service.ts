@@ -22,7 +22,27 @@ import {
 } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import { currentInstant } from "@/shared/utils/temporal";
+import {
+  type AutomationConditionPlan,
+  AutomationConditionPlanning,
+} from "./automation-condition-planning.service";
+import {
+  type AutomationIntakePlan,
+  AutomationIntakePlanning,
+} from "./automation-intake-planning.service";
+import {
+  type AutomationSchedulePlan,
+  AutomationSchedulePlanning,
+} from "./automation-schedule-planning.service";
+import {
+  type AutomationSendPlan,
+  AutomationSendPlanning,
+} from "./automation-send-planning.service";
 import { AutomationSweepPlanning } from "./automation-sweep-planning.service";
+import {
+  type AutomationTimerPlan,
+  AutomationTimerPlanning,
+} from "./automation-timer-planning.service";
 import { AutomationUnitHandlers } from "./automation-unit-handlers.service";
 import { AutomationUnitQueue } from "./automation-unit-queue.service";
 import { AutomationUnitSlots } from "./automation-unit-slots";
@@ -42,6 +62,11 @@ type AutomationPlanSummary = {
   /** Failed sweep pages planned again after their backoff. */
   readonly sweepPagesReplanned: number;
   readonly eventsReconciled: number;
+  readonly intake: AutomationIntakePlan;
+  readonly timers: AutomationTimerPlan;
+  readonly conditions: AutomationConditionPlan;
+  readonly sends: AutomationSendPlan;
+  readonly schedules: AutomationSchedulePlan;
   readonly pruned: {
     readonly units: number;
     readonly previews: number;
@@ -79,6 +104,11 @@ export class AutomationPlanner extends Context.Service<
       const { db } = yield* WorkspaceDatabase;
       const { supportedKinds } = yield* AutomationUnitHandlers;
       const sweepPlanning = yield* AutomationSweepPlanning;
+      const intakePlanning = yield* AutomationIntakePlanning;
+      const timerPlanning = yield* AutomationTimerPlanning;
+      const conditionPlanning = yield* AutomationConditionPlanning;
+      const sendPlanning = yield* AutomationSendPlanning;
+      const schedulePlanning = yield* AutomationSchedulePlanning;
       const slots = yield* AutomationUnitSlots;
 
       const heartbeat = (at: Temporal.Instant) =>
@@ -291,6 +321,31 @@ export class AutomationPlanner extends Context.Service<
               .plan(at)
               .pipe(Effect.withSpan("automationPlanner.sweep"))
           ),
+          Effect.bind("intake", ({ at }) =>
+            intakePlanning
+              .plan(at)
+              .pipe(Effect.withSpan("automationPlanner.intake"))
+          ),
+          Effect.bind("timers", ({ at }) =>
+            timerPlanning
+              .plan(at)
+              .pipe(Effect.withSpan("automationPlanner.timers"))
+          ),
+          Effect.bind("conditions", ({ at }) =>
+            conditionPlanning
+              .plan(at)
+              .pipe(Effect.withSpan("automationPlanner.conditions"))
+          ),
+          Effect.bind("sends", ({ at }) =>
+            sendPlanning
+              .plan(at)
+              .pipe(Effect.withSpan("automationPlanner.sends"))
+          ),
+          Effect.bind("schedules", ({ at }) =>
+            schedulePlanning
+              .plan(at)
+              .pipe(Effect.withSpan("automationPlanner.schedules"))
+          ),
           Effect.bind("pruned", ({ at }) => housekeeping(at)),
           Effect.bind("promoted", () =>
             slots.topUp.pipe(Effect.withSpan("automationPlanner.topUp"))
@@ -302,6 +357,11 @@ export class AutomationPlanner extends Context.Service<
               at,
               reaped,
               sweep,
+              intake,
+              timers,
+              conditions,
+              sends,
+              schedules,
               pruned,
               promoted,
               inFlightByKind,
@@ -312,6 +372,11 @@ export class AutomationPlanner extends Context.Service<
               sweepPagesPlanned: sweep.sweepPagesPlanned,
               sweepPagesReplanned: sweep.sweepPagesReplanned,
               eventsReconciled: sweep.eventsReconciled,
+              intake,
+              timers,
+              conditions,
+              sends,
+              schedules,
               pruned,
               promoted: promoted.length,
               inFlightByKind,
@@ -333,7 +398,12 @@ export class AutomationPlanner extends Context.Service<
         WorkspaceDatabaseAdvisoryLock.Default,
         AutomationUnitHandlers.Live,
         AutomationUnitQueue.Default,
-        AutomationSweepPlanning.Live
+        AutomationSweepPlanning.Live,
+        AutomationIntakePlanning.Live,
+        AutomationTimerPlanning.Live,
+        AutomationConditionPlanning.Live,
+        AutomationSendPlanning.Live,
+        AutomationSchedulePlanning.Live
       )
     )
   );

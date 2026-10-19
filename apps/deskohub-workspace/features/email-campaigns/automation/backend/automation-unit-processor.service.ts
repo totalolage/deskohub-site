@@ -10,7 +10,9 @@ import {
   type AutomationEngineTransaction,
   type AutomationUnitCommit,
   AutomationUnitDefect,
+  type AutomationUnitExpiry,
   type ClaimedAutomationUnit,
+  type RegisteredAutomationUnitHandler,
 } from "./automation-unit-handler";
 import { AutomationUnitHandlers } from "./automation-unit-handlers.service";
 import { planAutomationUnits } from "./automation-unit-planning";
@@ -250,15 +252,69 @@ export class AutomationUnitProcessor extends Context.Service<
             )
           );
 
+      /**
+       * §5.2 step 2: the handler settles subjects past their limit in a
+       * transaction that commits only while this claim holds and the unit
+       * is unmarked (the unit row locks last, §5.4).
+       */
+      const expire = (
+        unit: ClaimedUnit,
+        { expire: expireSubjects }: RegisteredAutomationUnitHandler
+      ) =>
+        expireSubjects === undefined
+          ? Effect.succeed<AutomationUnitExpiry>("remaining")
+          : Effect.flatMap(currentInstant, (at) =>
+              db.transaction((tx) =>
+                expireSubjects(tx, unit, at).pipe(
+                  Effect.tap(() =>
+                    tx
+                      .select({ id: units.id })
+                      .from(units)
+                      .where(
+                        and(
+                          eq(units.id, unit.id),
+                          eq(units.claimId, unit.claimId),
+                          isNull(units.cancelRequestedAt)
+                        )
+                      )
+                      .for("update")
+                      .pipe(
+                        Effect.filterOrFail(
+                          (held) => held.length > 0,
+                          () => new AutomationUnitClaimLost()
+                        )
+                      )
+                  )
+                )
+              )
+            );
+
+      const fetchAndCommit = (
+        unit: ClaimedUnit,
+        handler: RegisteredAutomationUnitHandler
+      ) =>
+        handler.fetch(unit).pipe(
+          Effect.timeout(unitDeadline),
+          Effect.flatMap((commitUnit) => commit(unit, commitUnit))
+        );
+
       const run = (unit: ClaimedUnit) =>
         Effect.fromNullishOr(byKind.get(unit.kind)).pipe(
           Effect.mapError(
             () => new AutomationUnitDefect({ code: "kind-unsupported" })
           ),
-          Effect.flatMap((handler) => handler.fetch(unit)),
-          Effect.timeout(unitDeadline),
-          Effect.flatMap((commitUnit) => commit(unit, commitUnit)),
+          Effect.flatMap((handler) =>
+            expire(unit, handler).pipe(
+              Effect.flatMap((expiry) =>
+                expiry === "settled"
+                  ? commit(unit, () => Effect.succeed([]))
+                  : fetchAndCommit(unit, handler)
+              )
+            )
+          ),
           Effect.catchTags({
+            // Marked meanwhile: settle `dropped`. Taken over: write nothing.
+            AutomationUnitClaimLost: () => settle(unit, { status: "dropped" }),
             AutomationUnitFetchFailure: (failure) =>
               requeue(unit, {
                 code: failure.code,
@@ -269,7 +325,10 @@ export class AutomationUnitProcessor extends Context.Service<
               requeue(unit, { code: "deadline", deadlineMissed: true }),
             AutomationUnitDefect: (defect) =>
               settle(unit, { status: "failed", code: defect.code }),
-          })
+          }),
+          Effect.catchIf(isDatabaseQueryError, (cause) =>
+            requeue(unit, { code: "database", deadlineMissed: false, cause })
+          )
         );
 
       return {

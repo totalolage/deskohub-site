@@ -266,6 +266,68 @@ describe.skipIf(!database)("automation unit processor", () => {
     });
   });
 
+  test("a unit whose subjects all expired settles done without fetching", async () => {
+    let fetches = 0;
+    const queue = makeAutomationUnitQueueFake();
+    const layer = automationEngineTestLayer({
+      database: postgres,
+      queue,
+      handlers: [
+        testUnitHandler("condition", {
+          expire: (unit) =>
+            Effect.succeed(
+              unit.subject.label === "expired" ? "settled" : "remaining"
+            ),
+          fetch: () =>
+            Effect.sync(() => {
+              fetches += 1;
+            }),
+        }),
+      ],
+    });
+    const expired = await seed({
+      kind: "condition",
+      status: "enqueued",
+      key: "expired",
+    });
+    const remaining = await seed({ kind: "condition", status: "enqueued" });
+
+    expect(await run(processUnit(expired.id), layer)).toBe("done");
+    expect(fetches).toBe(0);
+    expect(await run(processUnit(remaining.id), layer)).toBe("done");
+    expect(fetches).toBe(1);
+  });
+
+  test("an expiry that loses its claim to a mark settles dropped", async () => {
+    let fetches = 0;
+    const queue = makeAutomationUnitQueueFake();
+    const layer = automationEngineTestLayer({
+      database: postgres,
+      queue,
+      handlers: [
+        testUnitHandler("condition", {
+          // Pause marks the unit, on its own connection, while its subjects expire.
+          expire: (unit) =>
+            Effect.promise(() =>
+              postgres.pool.query(
+                "update email_campaign_automation_work_units set cancel_requested_at = now() where id = $1",
+                [unit.id]
+              )
+            ).pipe(Effect.as("settled" as const)),
+          fetch: () =>
+            Effect.sync(() => {
+              fetches += 1;
+            }),
+        }),
+      ],
+    });
+    const unit = await seed({ kind: "condition", status: "enqueued" });
+
+    expect(await run(processUnit(unit.id), layer)).toBe("dropped");
+    expect(fetches).toBe(0);
+    expect((await readUnit(unit.id)).status).toBe("dropped");
+  });
+
   test("a defect settles the unit failed and hands off its slot", async () => {
     const queue = makeAutomationUnitQueueFake();
     const layer = automationEngineTestLayer({
