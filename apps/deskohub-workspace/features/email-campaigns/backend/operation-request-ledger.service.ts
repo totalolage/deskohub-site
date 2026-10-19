@@ -19,7 +19,7 @@ export type OperationLedgerRequest = {
   };
 }[CampaignLedgerOperationName];
 
-export type OperationLedgerEntry<
+type OperationLedgerEntry<
   Name extends CampaignLedgerOperationName,
   E,
   R,

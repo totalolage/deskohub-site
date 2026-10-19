@@ -21,7 +21,7 @@ import { CampaignBodyMarkdownInvalid } from "../errors";
 import type { ICampaignSendStatusService } from "./campaign-send-status.service";
 
 /** The locales a per-locale record has a value for, in locale order. */
-export const localeEntries = <Value>(
+const localeEntries = <Value>(
   record: Partial<Record<Locale, Value>>
 ): ReadonlyArray<readonly [Locale, Value]> =>
   locales.flatMap((locale) => {
