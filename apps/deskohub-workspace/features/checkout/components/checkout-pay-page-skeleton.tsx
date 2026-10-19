@@ -5,6 +5,7 @@ import { Skeleton } from "@/shared/components/ui/skeleton";
 import {
   CheckoutPayCard,
   CheckoutPayConsent,
+  CheckoutPayProviderHandoff,
   CheckoutPaySubmitButton,
 } from "./checkout-pay-page-card";
 import {
@@ -26,6 +27,7 @@ export function CheckoutPayPageSkeleton({
       title={m.checkoutPayTitle({}, { locale })}
     >
       <CheckoutPaySummarySkeleton locale={locale} />
+      <CheckoutPayProviderHandoff locale={locale} />
       <CheckoutPayConsent
         disabled
         id="checkout-pay-skeleton-legal-consent"

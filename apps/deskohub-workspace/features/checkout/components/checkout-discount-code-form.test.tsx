@@ -517,7 +517,10 @@ describe("CheckoutDiscountCodeForm", () => {
     fireEvent.click(view.getByRole("checkbox"));
     expect(
       view.getByRole("button", {
-        name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),
+        name: (name) =>
+          name.startsWith(
+            m.checkoutPayOrderAndPayButton({}, { locale: "en-US" })
+          ),
       })
     ).toHaveProperty("disabled", false);
 

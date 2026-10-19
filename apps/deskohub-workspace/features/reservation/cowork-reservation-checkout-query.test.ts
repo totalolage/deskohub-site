@@ -9,6 +9,7 @@ import {
   getCoworkReservationSelectionSearchParams,
   getReservationDefaultValuesFromPayState,
   getReservationDefaultValuesFromSearchParams,
+  getStoredCoworkReservationSelectionSearchParams,
 } from "./cowork-reservation-checkout-query";
 import { setReservationSelectionSearchParams } from "./reservation-checkout-query";
 
@@ -226,5 +227,56 @@ describe("getCoworkOfferSearchParams", () => {
       entryTier: "open-space",
       date: undefined,
     });
+  });
+});
+
+describe("getStoredCoworkReservationSelectionSearchParams", () => {
+  // Shortly after midnight in Prague, still the previous day in UTC.
+  const reservedFrom = Temporal.Instant.from("2099-06-11T22:30:00Z");
+
+  test.each([
+    { kind: "cowork", entryTier: "open-space", coffee: false },
+    { kind: "cowork", entryTier: "open-space", coffee: true },
+    {
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      coffee: true,
+      monitorOption: "2x32-4k",
+    },
+    { kind: "cowork", entryTier: "reserved-desk", coffee: true },
+  ] as const)(
+    "the parser reads back the stored reservation %o on its workspace date",
+    (details) => {
+      const selection = getStoredCoworkReservationSelectionSearchParams({
+        ...details,
+        reservedFrom,
+      });
+      const searchParams = new URLSearchParams();
+      setReservationSelectionSearchParams(searchParams, selection ?? {});
+
+      expect(getReservationDefaultValuesFromSearchParams(searchParams)).toEqual(
+        expect.objectContaining({
+          entryTier: details.entryTier,
+          date: "2099-06-12",
+          coffee: details.coffee,
+          monitorOption:
+            "monitorOption" in details ? details.monitorOption : undefined,
+        })
+      );
+      for (const contactKey of ["name", "email", "phone", "customer"]) {
+        expect(searchParams.has(contactKey)).toBe(false);
+      }
+    }
+  );
+
+  test("gives no selection for a historical tier", () => {
+    expect(
+      getStoredCoworkReservationSelectionSearchParams({
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+        reservedFrom,
+      })
+    ).toBeUndefined();
   });
 });

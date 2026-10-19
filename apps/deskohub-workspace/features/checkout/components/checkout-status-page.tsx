@@ -16,13 +16,18 @@ import type {
   CheckoutStatusKind,
   CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout";
-import { shouldOfferNewReservation } from "@/features/checkout/checkout-status-new-reservation-policy";
+import {
+  shouldOfferNewReservation,
+  shouldOfferReservationRetry,
+  shouldPromiseReservationDetailsEmail,
+} from "@/features/checkout/checkout-status-policy";
 import type { CheckoutStatusSummaryPresentation } from "@/features/checkout/checkout-status-summary-presentation";
 import { getCoworkCheckoutStatusSummary } from "@/features/cowork/components/cowork-checkout-status-summary";
 import { type Locale, m } from "@/features/i18n";
 import { getMeetingRoomCheckoutStatusSummary } from "@/features/meeting-room/components/meeting-room-checkout-status-summary";
 import { getOfficeCheckoutStatusSummary } from "@/features/office/components/office-checkout-status-summary";
 import { getOfficeReservationSelection } from "@/features/reservation/office-reservation";
+import { setReservationSelectionSearchParams } from "@/features/reservation/reservation-checkout-query";
 import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
 import {
   getCoworkReservationPath,
@@ -244,19 +249,34 @@ const getSupportContactMessage = (
   summaryPresentation: CheckoutStatusSummaryPresentation | undefined,
   topic: NonNullable<ReturnType<typeof getSupportTopic>>
 ) => {
-  const reservation =
-    summaryPresentation?.reservationTitle ??
-    m.checkoutStatusMissingSummary({}, { locale });
-  const date = status.summary
-    ? formatReservationDisplayDate(status.summary.reservedFrom, locale)
-    : m.checkoutStatusMissingSummary({}, { locale });
+  // Without reconstructed details the order reference alone identifies it.
+  const reservationDetails = [
+    m.checkoutStatusContactOrderReference(
+      { orderId: status.orderId },
+      { locale }
+    ),
+    ...(status.summary && summaryPresentation
+      ? [
+          m.checkoutStatusContactReservation(
+            {
+              reservation: summaryPresentation.reservationTitle,
+              date: formatReservationDisplayDate(
+                status.summary.reservedFrom,
+                locale
+              ),
+            },
+            { locale }
+          ),
+        ]
+      : []),
+  ].join("\n");
 
   const message = {
     fulfillment_failed: m.checkoutStatusFulfillmentFailedContactMessage,
     late_payment_review: m.checkoutStatusLatePaymentReviewContactMessage,
     payment_pending: m.checkoutStatusPaymentPendingContactMessage,
   }[topic];
-  return message({ orderId: status.orderId, reservation, date }, { locale });
+  return message({ reservationDetails }, { locale });
 };
 
 const getRepeatReservationSearchParams = (
@@ -290,6 +310,19 @@ const getRepeatReservationSearchParams = (
   );
 };
 
+/** The booked selection a failed, cancelled, or expired payment retries. */
+const getRetryReservationSearchParams = (
+  status: CheckoutStatusViewModel
+): URLSearchParams | undefined => {
+  if (status.status === "not_found" || !status.retrySearchParams) {
+    return undefined;
+  }
+
+  const searchParams = new URLSearchParams();
+  setReservationSelectionSearchParams(searchParams, status.retrySearchParams);
+  return searchParams;
+};
+
 const getReserveAgainPath = (
   status: CheckoutStatusViewModel,
   locale: Locale,
@@ -297,6 +330,17 @@ const getReserveAgainPath = (
 ) => {
   if (status.status === "not_found") return getCoworkReservationPath(locale);
   return getReservationStartPath(locale, status.kind, searchParams);
+};
+
+const getReserveAgainLabel = (
+  offersRetry: boolean,
+  repeatsReservation: boolean,
+  locale: Locale
+) => {
+  if (offersRetry) return m.checkoutStatusTryAgain({}, { locale });
+  return repeatsReservation
+    ? m.checkoutStatusBookAgain({}, { locale })
+    : m.checkoutStatusReserveAgain({}, { locale });
 };
 
 /** An undelivered confirmation shares the failed-delivery support request. */
@@ -350,12 +394,15 @@ export function CheckoutStatusPage({
     locale,
     summaryPresentation
   );
+  const offersRetry = shouldOfferReservationRetry(status.status);
   const repeatReservationSearchParams =
     getRepeatReservationSearchParams(status);
   const reserveAgainPath = getReserveAgainPath(
     status,
     locale,
-    repeatReservationSearchParams
+    offersRetry
+      ? getRetryReservationSearchParams(status)
+      : repeatReservationSearchParams
   );
   const showSupportButton = !!supportContactHref;
   const offersNewReservation = shouldOfferNewReservation(status.status);
@@ -458,11 +505,12 @@ export function CheckoutStatusPage({
             ))}
           </dl>
 
-          {summaryRows.length === 0 && (
-            <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink">
-              {m.checkoutStatusMissingSummary({}, { locale })}
-            </p>
-          )}
+          {summaryRows.length === 0 &&
+            shouldPromiseReservationDetailsEmail(status.status) && (
+              <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink">
+                {m.checkoutStatusMissingSummary({}, { locale })}
+              </p>
+            )}
         </div>
       )}
 
@@ -501,9 +549,11 @@ export function CheckoutStatusPage({
               {offersNewReservation && (
                 <Button asChild size="lg">
                   <a href={reserveAgainPath} id="checkout-status-reserve-again">
-                    {repeatReservationSearchParams
-                      ? m.checkoutStatusBookAgain({}, { locale })
-                      : m.checkoutStatusReserveAgain({}, { locale })}
+                    {getReserveAgainLabel(
+                      offersRetry,
+                      !!repeatReservationSearchParams,
+                      locale
+                    )}
                   </a>
                 </Button>
               )}

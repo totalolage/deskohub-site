@@ -129,6 +129,20 @@ test("matches Nexi controls by role and accessible name, not substrings", () => 
       "return"
     )
   ).toEqual({ enabled: true, ref: "@e9" });
+  const challenge = parseNexiSnapshot(
+    [
+      '- button "AUTENTICAZIONE FALLITA" [ref=e10]',
+      '- button "AUTENTICAZIONE RIUSCITA" [ref=e11]',
+    ].join("\n")
+  );
+  expect(findNexiControl(challenge, "challenge")).toEqual({
+    enabled: true,
+    ref: "@e11",
+  });
+  expect(findNexiControl(challenge, "challenge_failure")).toEqual({
+    enabled: true,
+    ref: "@e10",
+  });
 });
 
 test("keeps only Nexi hosted-field API statuses from the session log", () => {

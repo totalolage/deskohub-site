@@ -8,7 +8,9 @@ import {
   getMeetingRoomReservationDefaultValuesFromSearchParams,
   getMeetingRoomReservationSelectionSearchParams,
   getMeetingRoomRestoredReservationValues,
+  getStoredMeetingRoomReservationSelectionSearchParams,
 } from "./meeting-room-reservation-checkout-query";
+import { getMeetingRoomReservationDuration } from "./meeting-room-reservation-duration";
 import {
   getEarliestMeetingRoomStartDateTime,
   getMeetingRoomReservationInterval,
@@ -326,6 +328,66 @@ describe("getMeetingRoomReservationSelectionSearchParams", () => {
         ...ongoingSelection,
         name: "Ada Lovelace",
         email: adaEmail,
+      })
+    );
+  });
+});
+
+describe("getStoredMeetingRoomReservationSelectionSearchParams", () => {
+  const readBack = (
+    reservation: Parameters<
+      typeof getStoredMeetingRoomReservationSelectionSearchParams
+    >[0]
+  ) => {
+    const searchParams = new URLSearchParams();
+    setReservationSelectionSearchParams(
+      searchParams,
+      getStoredMeetingRoomReservationSelectionSearchParams(reservation) ?? {}
+    );
+    for (const contactKey of ["name", "email", "phone", "customer"]) {
+      expect(searchParams.has(contactKey)).toBe(false);
+    }
+    return getMeetingRoomReservationDefaultValuesFromSearchParams(
+      searchParams,
+      deterministicNow()
+    );
+  };
+
+  test.each([
+    { startDateTime: "2099-08-12T09:00", duration: "hour:1" },
+    { startDateTime: "2099-08-13T14:00", duration: "hour:4" },
+    { startDateTime: "2099-08-14T00:00", duration: "day:1" },
+  ] as const)(
+    "the parser reads back the stored reservation %o",
+    (selection) => {
+      const interval = getMeetingRoomReservationInterval(
+        selection.startDateTime,
+        getMeetingRoomReservationDuration(selection.duration)
+      );
+      if (!interval) throw new Error("Expected a meeting-room interval.");
+
+      expect(
+        readBack({
+          kind: "meeting-room",
+          duration: getMeetingRoomReservationDuration(selection.duration),
+          reservedFrom: Temporal.Instant.from(interval.startsAt),
+          reservedUntil: Temporal.Instant.from(interval.endsAt),
+        })
+      ).toEqual(expect.objectContaining(selection));
+    }
+  );
+
+  test("takes the duration from the interval when the row has none", () => {
+    expect(
+      readBack({
+        kind: "meeting-room",
+        reservedFrom: workspaceInstant("2099-08-13T14:00"),
+        reservedUntil: workspaceInstant("2099-08-13T18:00"),
+      })
+    ).toEqual(
+      expect.objectContaining({
+        startDateTime: "2099-08-13T14:00",
+        duration: "hour:4",
       })
     );
   });
