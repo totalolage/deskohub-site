@@ -7,7 +7,7 @@ import type { CampaignId } from "../campaign-identifiers";
  * the customer event that started the run. Trigger-relative periods count
  * from `at`.
  */
-export type AudienceTrigger = {
+type AudienceTrigger = {
   readonly at: Temporal.Instant;
 };
 
