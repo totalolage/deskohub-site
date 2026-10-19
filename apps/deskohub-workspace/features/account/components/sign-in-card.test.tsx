@@ -158,14 +158,14 @@ describe("account components", () => {
     const { SignInCard } = await import("./sign-in-card");
 
     expect(
-      render(<SignInCard locale="cs-CZ" noLongerWaiting />).getByText(
+      await render(<SignInCard locale="cs-CZ" noLongerWaiting />).findByText(
         m.accountSignInNoLongerWaitingNotice({}, { locale: "cs-CZ" })
       )
     ).toBeTruthy();
     cleanup();
 
     const view = render(<SignInCard locale={locale} noLongerWaiting />);
-    const notice = view.getByText(
+    const notice = await view.findByText(
       m.accountSignInNoLongerWaitingNotice({}, { locale })
     );
     expect(
@@ -214,6 +214,7 @@ describe("account components", () => {
     observer.observe(document.body, { childList: true, subtree: true });
 
     const view = render(<SignInCard locale={locale} noLongerWaiting />);
+    await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
     insertions.push(...observer.takeRecords());
     observer.disconnect();
     const text = m.accountSignInNoLongerWaitingNotice({}, { locale });

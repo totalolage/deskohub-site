@@ -84,11 +84,17 @@ export function SignInCard({
     useState(noLongerWaiting);
   const clientReady = useClientReady();
   // A server-rendered page shows the notice from the start. A client
-  // navigation, such as the verify modal handing over, mounts the notice's
-  // live region empty first, since screen readers often skip a region
-  // inserted together with its text.
-  const [noticeRegionMounted, setNoticeRegionMounted] = useState(!clientReady);
-  useEffect(() => setNoticeRegionMounted(true), []);
+  // navigation, such as the verify modal handing over, paints the notice's
+  // live region empty for a frame first, since screen readers often skip a
+  // region inserted together with its text.
+  const [noticeRegionMounted, setNoticeRegionMounted] = useState(
+    !clientReady || !noLongerWaiting
+  );
+  useEffect(() => {
+    if (noticeRegionMounted) return;
+    const frame = requestAnimationFrame(() => setNoticeRegionMounted(true));
+    return () => cancelAnimationFrame(frame);
+  }, [noticeRegionMounted]);
   const [storedRequest, setRequest] = useEmailSignInRequest();
   // The pending request continues only to its own destination: its link
   // already lands there. A card opened without one takes the request's; a
