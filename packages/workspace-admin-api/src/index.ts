@@ -85,6 +85,12 @@ export {
   type DatePeriodUnit as DatePeriodUnitType,
 } from "./date-period";
 export {
+  DhwVersion,
+  type DhwVersion as DhwVersionType,
+  dhwVersionHeader,
+  MinimumDhwVersion,
+} from "./dhw-version";
+export {
   AdminCliCampaignsApi,
   AdministrationCampaignAudience,
   type AdministrationCampaignAudience as AdministrationCampaignAudienceType,
@@ -439,6 +445,7 @@ export {
   CliBearerAuthentication,
   CliBuildTarget,
   type CliBuildTarget as CliBuildTargetType,
+  CliClientCompatibility,
   CliClientName,
   type CliClientName as CliClientNameType,
   CliGrantRejected,

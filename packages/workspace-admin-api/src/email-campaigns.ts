@@ -8,6 +8,7 @@ import {
 import {
   AdministrationDotyposCustomerId,
   CliBearerAuthentication,
+  CliClientCompatibility,
   CliInputInvalid,
   CliMutationInProgress,
   CliMutationRejected,
@@ -599,4 +600,8 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
     )
   )
   .middleware(CliBearerAuthentication)
+  // Added last, so it runs first: an outdated `dhw` is refused before its
+  // session is read. Every campaign endpoint already declares the
+  // `CliInputInvalid` it fails with, so released binaries print it.
+  .middleware(CliClientCompatibility)
   .prefix("/api/v1/cli");

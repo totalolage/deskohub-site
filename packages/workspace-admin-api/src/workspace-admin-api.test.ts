@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect";
 import { AdministrationCampaignDetail } from "./email-campaigns";
 import {
   AdminCliAdministrationApi,
+  AdminCliInfo,
   AdministrationActorEmail,
   AdministrationCustomerProfile,
   AdministrationCustomerQuery,
@@ -375,6 +376,19 @@ describe("administration contract", () => {
         releaseReason: null,
       }).appliedAmount
     ).toBeNull();
+  });
+
+  test("decodes info from a server without minimum dhw versions", () => {
+    expect(
+      Schema.decodeUnknownSync(AdminCliInfo)({
+        apiVersion: "v1",
+        service: "deskohub-workspace",
+      })
+    ).toEqual({
+      apiVersion: "v1",
+      service: "deskohub-workspace",
+      minimumDhwVersions: {},
+    });
   });
 
   test("decodes a campaign from before delivery modes as one-off", () => {

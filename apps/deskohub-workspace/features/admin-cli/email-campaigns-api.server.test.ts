@@ -54,6 +54,7 @@ import {
   CampaignTestRecipientInvalid,
 } from "@/features/email-campaigns/errors";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { CliClientCompatibilityLive } from "./cli-client-version";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
 import { AdminCliCampaignsApiHandlers } from "./email-campaigns-api.server";
 
@@ -187,6 +188,7 @@ const callCampaignsApi = <A, E>(
     Effect.provide(bearer),
     Effect.provide(campaignServices(overrides)),
     Effect.provide(ClaimEveryCliMutation),
+    Effect.provide(CliClientCompatibilityLive),
     Effect.provide(NodeHttpServer.layerHttpServices),
     Effect.scoped,
     Effect.runPromise
@@ -1021,6 +1023,7 @@ describe.skipIf(!testDatabase)(
             )
           ).pipe(Layer.provide(testDatabase.layer))
         ),
+        Effect.provide(CliClientCompatibilityLive),
         Effect.provide(NodeHttpServer.layerHttpServices),
         Effect.scoped,
         Effect.runPromise
