@@ -1,5 +1,8 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import type { AutomationTriggerType as AutomationTrigger } from "@deskohub/workspace-admin-api";
+import type {
+  AutomationFlowType as AutomationFlow,
+  AutomationTriggerType as AutomationTrigger,
+} from "@deskohub/workspace-admin-api";
 import { inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
@@ -166,7 +169,9 @@ export const seedAutomatedCampaign = async (
 /**
  * Publishes version `versionNumber` of `campaignId` with `purpose` and the
  * content `text`, as activation will. `trigger` and `activatedAt` default to
- * a placeholder trigger and an activation ordered by version number.
+ * a placeholder trigger and an activation ordered by version number. Pass
+ * `flow` where the engine decodes the version's flow: the placeholder flow
+ * built from `trigger` doesn't decode.
  */
 export const seedAutomationVersion = async (
   db: WorkspaceDatabaseClient,
@@ -176,6 +181,7 @@ export const seedAutomationVersion = async (
     readonly versionNumber?: number;
     readonly text?: string;
     readonly trigger?: AutomationTrigger;
+    readonly flow?: AutomationFlow;
     readonly activatedAt?: Temporal.Instant;
   }
 ) => {
@@ -186,7 +192,7 @@ export const seedAutomationVersion = async (
       .values({
         campaignId: input.campaignId,
         versionNumber: input.versionNumber ?? 1,
-        flow: {
+        flow: input.flow ?? {
           trigger: input.trigger ?? { _tag: "reservation-booked" },
           steps: [],
         },
@@ -207,6 +213,38 @@ export const seedAutomationVersion = async (
       .returning({ id: emailCampaignAutomationVersions.id })
   );
   return version!.id;
+};
+
+/**
+ * Inserts the automation row of `campaignId` with `activeVersionId` in
+ * force, as activation and the lifecycle operations leave it. `flow`, the
+ * working copy, defaults to the active version's flow.
+ */
+export const seedAutomation = async (
+  db: WorkspaceDatabaseClient,
+  input: {
+    readonly campaignId: CampaignId;
+    readonly activeVersionId: AutomationVersionId;
+    readonly flow?: AutomationFlow;
+    readonly acceptingSince?: Temporal.Instant | null;
+    readonly pausedAt?: Temporal.Instant | null;
+    readonly resumedAt?: Temporal.Instant | null;
+    readonly nextFireAt?: Temporal.Instant | null;
+  }
+) => {
+  await Effect.runPromise(
+    db.insert(emailCampaignAutomations).values({
+      campaignId: input.campaignId,
+      flow:
+        input.flow ??
+        sql`(select ${emailCampaignAutomationVersions.flow} from ${emailCampaignAutomationVersions} where ${emailCampaignAutomationVersions.id} = ${input.activeVersionId})`,
+      activeVersionId: input.activeVersionId,
+      acceptingSince: input.acceptingSince ?? null,
+      pausedAt: input.pausedAt ?? null,
+      resumedAt: input.resumedAt ?? null,
+      nextFireAt: input.nextFireAt ?? null,
+    })
+  );
 };
 
 /**

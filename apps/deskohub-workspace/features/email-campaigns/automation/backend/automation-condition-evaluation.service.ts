@@ -23,10 +23,10 @@ import { CampaignCandidateRepository } from "../../backend/campaign-candidate.re
 import type { CampaignAudienceId } from "../../campaign-identifiers";
 import { CampaignRecipientResolutionError } from "../../errors";
 import { resolveRecipientLocale } from "../../recipient-locale";
-import {
-  AutomationConditionAudienceMissing,
-  type AutomationEvaluationPlan,
-  type SavedAudienceDefinition,
+import { AutomationConditionAudienceMissing } from "../errors";
+import type {
+  AutomationEvaluationPlan,
+  SavedAudienceDefinition,
 } from "./automation-evaluation-facts.service";
 
 /**
