@@ -20,6 +20,7 @@ import { CurrentAdministrator } from "@/features/administrators/backend/current-
 import { getRuntimeMarketingPreferencesAccessUrl } from "@/features/legal/marketing-preferences-access-url";
 import { type AudienceFilter, audienceFilterSchema } from "../audience-filter";
 import { previewCalendarExpression } from "../automation/automation-calendar-preview";
+import { AutomationDryRun } from "../automation/backend/automation-dry-run.service";
 import { AutomationEngineHealth } from "../automation/backend/automation-engine-health.service";
 import { AutomationLifecycle } from "../automation/backend/automation-lifecycle.service";
 import { AutomationRunLog } from "../automation/backend/automation-run-log.service";
@@ -161,6 +162,7 @@ export class CampaignOperations extends Context.Service<
         CampaignSendService.Live,
         CampaignSendStatusService.Live,
         AutomationLifecycle.Live,
+        AutomationDryRun.Live,
         Layer.merge(
           AutomationRunLog.Default,
           AutomationEngineHealth.Default
@@ -233,6 +235,7 @@ const makeCampaignOperationHandlers = Effect.gen(function* () {
   const sending = yield* CampaignSendService;
   const sendStatus = yield* CampaignSendStatusService;
   const automations = yield* AutomationLifecycle;
+  const dryRuns = yield* AutomationDryRun;
   const runLog = yield* AutomationRunLog;
   const engineHealth = yield* AutomationEngineHealth;
 
@@ -400,6 +403,8 @@ const makeCampaignOperationHandlers = Effect.gen(function* () {
         .pipe(Effect.map(toAdministrationSendStatus)),
     getAutomation: ({ campaignId }) => automations.get(campaignId),
     updateAutomationFlow: (input) => automations.updateFlow(input),
+    dryRunAutomation: ({ campaignId }) => dryRuns.start(campaignId),
+    getAutomationDryRun: (input) => dryRuns.get(input),
     activateAutomation: (input) =>
       CurrentAdministrator.pipe(
         Effect.flatMap(({ accountId }) =>

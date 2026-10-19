@@ -396,6 +396,36 @@ const cases: AdapterContractCases<Registry> = {
       expect: failure("OperationInputInvalid", "calendar-never-occurs"),
     },
   ],
+  dryRunAutomation: [
+    {
+      title: "returns the completed dry run of the current draft",
+      input: ({ automatedDraftId }) => ({ campaignId: automatedDraftId }),
+      expect: { _tag: "Success", output: { status: "completed" } },
+    },
+    {
+      title: "refuses a one-off campaign",
+      input: ({ draftId }) => ({ campaignId: draftId }),
+      expect: failure("OperationConflict", "campaign-delivery-mismatch"),
+    },
+  ],
+  getAutomationDryRun: [
+    {
+      title: "returns a completed dry run with the schedule's frequency",
+      input: ({ readyPreviewId }) => ({ previewId: readyPreviewId, limit: 50 }),
+      expect: {
+        _tag: "Success",
+        output: {
+          status: "completed",
+          frequency: { maxFiresPerHour: 2, firesMoreThanHourly: true },
+        },
+      },
+    },
+    {
+      title: "reports a missing dry run",
+      input: () => ({ previewId: missingId }),
+      expect: failure("OperationNotFound", "automation-preview-not-found"),
+    },
+  ],
   activateAutomation: [
     {
       title: "activates with a completed dry run of the current draft",
@@ -521,6 +551,7 @@ const volatileKeys = [
   "archivedAt",
   "activatedAt",
   "acceptingSince",
+  "asOf",
   "completedAt",
   "nextFireAt",
 ];

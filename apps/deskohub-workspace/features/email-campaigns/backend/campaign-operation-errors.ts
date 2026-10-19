@@ -16,6 +16,7 @@ import {
   type AutomationFlowInvalid,
   type AutomationFlowLocation,
   AutomationPageCursorInvalid,
+  AutomationPreviewNotFound,
   AutomationPreviewRequired,
   AutomationRunNotFound,
   AutomationStatusConflict,
@@ -60,6 +61,7 @@ export type CampaignOperationCause =
   | AutomationCalendarNeverOccurs
   | AutomationDraftChanged
   | AutomationPageCursorInvalid
+  | AutomationPreviewNotFound
   | AutomationPreviewRequired
   | AutomationRunNotFound
   | AutomationStatusConflict
@@ -381,6 +383,16 @@ const toAutomationLifecycleOperationError = (
         new OperationNotFound({
           code: "automation-version-not-found",
           message: `The automation has no version ${versionNumber}.`,
+          cause,
+        })
+    ),
+    Match.tag(
+      "AutomationPreviewNotFound",
+      () =>
+        new OperationNotFound({
+          code: AutomationPreviewNotFound.code,
+          message:
+            "The dry run was not found. Dry runs are kept for 24 hours; start a new one.",
           cause,
         })
     ),
