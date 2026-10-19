@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import {
   emailCampaignAutomationRuns,
+  emailCampaignAutomations,
   emailCampaignAutomationVersions,
   emailCampaignRecipients,
   emailCampaignSends,
@@ -16,7 +17,11 @@ import type {
   CampaignPurpose,
 } from "../body/campaign-content";
 import { hashCampaignContent } from "../body/campaign-content-hash";
-import type { CampaignId, CampaignSendId } from "../campaign-identifiers";
+import type {
+  CampaignAudienceId,
+  CampaignId,
+  CampaignSendId,
+} from "../campaign-identifiers";
 import type {
   automatedCampaignStatuses,
   CampaignRecipientStatus,
@@ -44,6 +49,28 @@ export const campaignContentFixture = (
       },
     },
   },
+});
+
+/**
+ * A flow whose condition step requires customers to be in the saved
+ * audience `audienceId`, nested in a group as the builder stores it.
+ */
+export const audienceConditionFlowFixture = (
+  audienceId: CampaignAudienceId
+) => ({
+  trigger: { _tag: "reservation-booked" },
+  steps: [
+    {
+      _tag: "Condition",
+      id: "step-regulars",
+      filter: {
+        _tag: "Group",
+        operator: "and",
+        filters: [{ _tag: "InAudience", audienceId }],
+      },
+    },
+    { _tag: "Send", id: "step-send" },
+  ],
 });
 
 type SeededRecipient = {
@@ -169,6 +196,7 @@ export const seedAutomationVersion = async (
     readonly purpose: CampaignPurpose;
     readonly versionNumber?: number;
     readonly text?: string;
+    readonly flow?: unknown;
   }
 ) => {
   const content = campaignContentFixture(input.text ?? "Verze");
@@ -178,7 +206,10 @@ export const seedAutomationVersion = async (
       .values({
         campaignId: input.campaignId,
         versionNumber: input.versionNumber ?? 1,
-        flow: { trigger: { _tag: "reservation-booked" }, steps: [] },
+        flow: input.flow ?? {
+          trigger: { _tag: "reservation-booked" },
+          steps: [],
+        },
         purpose: input.purpose,
         templateKey: "workspace",
         content,
@@ -217,8 +248,8 @@ export const seedAutomatedSend = (
   });
 
 /**
- * Deletes campaigns with their automation runs, sends, recipients and
- * versions. Versions are immutable, so removing them takes the same
+ * Deletes campaigns with their automation runs, sends, recipients,
+ * automation rows and versions. Versions are immutable, so removing them takes the same
  * exclusive lock and trigger toggle an operator would need.
  */
 export const deleteAutomatedCampaigns = (
@@ -234,6 +265,10 @@ export const deleteAutomatedCampaigns = (
         yield* tx
           .delete(emailCampaignSends)
           .where(inArray(emailCampaignSends.campaignId, campaignIds));
+        // The automation row references its active version.
+        yield* tx
+          .delete(emailCampaignAutomations)
+          .where(inArray(emailCampaignAutomations.campaignId, campaignIds));
         yield* tx.execute(
           sql`lock table ${emailCampaignAutomationVersions} in access exclusive mode`
         );
