@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 import sharp from "sharp";
+import { runCommand } from "@/scripts/shared/command";
 
 const cacheLife = mock((_profile: { readonly expire: number }) => undefined);
 
@@ -120,7 +121,7 @@ ${fontDirectories.map((fontDirectory) => `<dir>${fontDirectory}</dir>`).join("\n
 </fontconfig>
 `
     );
-    const render = Bun.spawn(
+    const { exitCode, stderr } = await runCommand(
       [
         process.execPath,
         join(import.meta.dir, "workspace-location-map.render-fixture.ts"),
@@ -128,16 +129,10 @@ ${fontDirectories.map((fontDirectory) => `<dir>${fontDirectory}</dir>`).join("\n
       ],
       {
         env: { ...process.env, FONTCONFIG_FILE: configFile },
-        stderr: "pipe",
-        stdin: "ignore",
-        stdout: "ignore",
+        timeoutMs: 60_000,
       }
     );
-    const [errors, exitCode] = await Promise.all([
-      new Response(render.stderr).text(),
-      render.exited,
-    ]);
-    expect({ exitCode, errors: exitCode === 0 ? "" : errors }).toEqual({
+    expect({ exitCode, errors: exitCode === 0 ? "" : stderr }).toEqual({
       exitCode: 0,
       errors: "",
     });
