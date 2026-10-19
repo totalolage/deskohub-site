@@ -39,6 +39,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/shared/components/ui/sheet";
+import { cn } from "@/shared/utils";
 import { AdministrationLink as Link } from "./admin-link";
 import { m } from "./i18n";
 import { AdministrationBreadcrumbLoading } from "./loading";
@@ -297,17 +298,23 @@ export function AdministrationBreadcrumbs({
   );
 }
 
-function Brand({ locale }: { readonly locale: Locale }) {
+function Brand({
+  labelClassName,
+  locale,
+}: {
+  readonly labelClassName?: string;
+  readonly locale: Locale;
+}) {
   return (
-    <Link className="flex items-center gap-3" href="/admin">
-      <span className="grid size-9 place-items-center rounded-lg bg-burned-orange text-sm font-semibold text-white">
+    <Link className="flex min-w-0 items-center gap-3" href="/admin">
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-burned-orange text-sm font-semibold text-white">
         D
       </span>
-      <span>
-        <span className="block text-sm font-semibold leading-none">
+      <span className={cn("min-w-0", labelClassName)}>
+        <span className="block truncate text-sm font-semibold leading-none">
           Deskohub
         </span>
-        <span className="mt-1 block text-xs text-navy-blue/65">
+        <span className="mt-1 block truncate text-xs text-navy-blue/65">
           {m.shellBrandSubtitle({}, { locale })}
         </span>
       </span>
@@ -347,7 +354,7 @@ export function AdminShell({
               <SheetTrigger asChild>
                 <Button
                   aria-label={m.shellOpenNavigation({}, { locale })}
-                  className="lg:hidden"
+                  className="shrink-0 lg:hidden"
                   size="icon"
                   variant="ghost"
                 >
@@ -375,15 +382,15 @@ export function AdminShell({
                 </div>
               </SheetContent>
             </Sheet>
-            <div className="lg:hidden">
-              <Brand locale={locale} />
+            <div className="min-w-0 lg:hidden">
+              <Brand labelClassName="max-[379px]:sr-only" locale={locale} />
             </div>
             <div className="hidden min-w-0 lg:block">
               <Suspense fallback={<AdministrationBreadcrumbLoading />}>
                 {breadcrumb}
               </Suspense>
             </div>
-            <div className="ml-auto">{localeSwitcher}</div>
+            <div className="ml-auto shrink-0">{localeSwitcher}</div>
           </div>
         </header>
         <div className="border-b border-navy-blue/10 bg-white px-4 py-3 lg:hidden">
