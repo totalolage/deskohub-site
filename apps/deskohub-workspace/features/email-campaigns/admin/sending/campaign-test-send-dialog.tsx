@@ -5,6 +5,7 @@ import Interpolate from "@doist/react-interpolate";
 import { FlaskConical, Lock, Plus, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
+import { formatAdministrationDateTime } from "@/features/administration/formatters";
 import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
 import type { Locale } from "@/features/i18n";
@@ -29,11 +30,10 @@ import {
   FormMessage,
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
-import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import type { CampaignId } from "../../campaign-identifiers";
-import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
-import { sendCampaignTest } from "./actions";
+import { useCampaignOperation } from "../use-campaign-operation";
 import { describeCampaignLocales } from "./campaign-locale-names";
+import { campaignSendingFailureCopy } from "./campaign-sending-failure";
 import {
   createTestRecipientFieldSchema,
   type TestRecipientFieldSchema,
@@ -42,11 +42,15 @@ import {
 type TestSendReceipt = {
   readonly recipients: readonly string[];
   readonly locales: readonly Locale[];
-  /** When the confirmation code expires, formatted by the action. */
+  /** When the confirmation code expires, in the admin's locale. */
   readonly codeExpiry: string;
 };
 
 const emptyRecipientField = { email: "" };
+
+const testSendFailureCopy = campaignSendingFailureCopy((locale) =>
+  m.emailCampaignsTestSendFailed({}, { locale })
+);
 
 export function CampaignTestSendDialog({
   adminInbox,
@@ -78,18 +82,15 @@ export function CampaignTestSendDialog({
     reValidateMode: "onChange",
     resolver: effectSchemaResolver(recipientFieldSchema),
   });
-  const { execute, isExecuting } = useWorkspaceAction(sendCampaignTest, {
-    actionName: "sendCampaignTest",
-    onSuccess: ({ data }) => {
-      if (data) setReceipt(data);
-    },
-    onError: ({ error: actionError }) =>
-      setError(
-        getEmailCampaignAdminActionFailureMessage(actionError.serverError, {
-          fallback: m.emailCampaignsTestSendFailed({}, { locale }),
-          locale,
-        })
-      ),
+  const { execute, isExecuting } = useCampaignOperation("testSendCampaign", {
+    failureCopy: testSendFailureCopy,
+    onSuccess: ({ recipients, locales, codeExpiresAt }) =>
+      setReceipt({
+        recipients,
+        locales,
+        codeExpiry: formatAdministrationDateTime(codeExpiresAt, locale),
+      }),
+    onFailure: setError,
   });
 
   const addRecipient = (email: string) => {
@@ -304,7 +305,7 @@ export function CampaignTestSendDialog({
               disabled={blocked || isExecuting}
               onClick={() => {
                 setError(null);
-                execute({ campaignId, extraRecipients });
+                execute({ campaignId, recipients: extraRecipients });
               }}
               type="button"
             >

@@ -8,7 +8,13 @@ import {
   type OperationInput,
   type OperationOutput,
 } from "@deskohub/workspace-admin-api";
-import { Effect, Match, Schema } from "effect";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { Effect, Layer, Match, Schema } from "effect";
+import type {
+  FlattenedValidationErrors,
+  SafeActionResult,
+  ValidationErrors,
+} from "next-safe-action";
 import { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
 import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
@@ -55,6 +61,28 @@ export type CampaignOperationResult<
       readonly message: string;
     };
 
+export type CampaignOperationRequestSchema<
+  Name extends CampaignOperationName = CampaignOperationName,
+> = StandardSchemaV1<CampaignOperationRequest<Name>>;
+
+export type CampaignOperationValidationErrors<
+  Name extends CampaignOperationName = CampaignOperationName,
+> = FlattenedValidationErrors<
+  ValidationErrors<CampaignOperationRequestSchema<Name>>
+>;
+
+/**
+ * What the client receives for one operation: the action envelope, whose
+ * `data` is the operation's result.
+ */
+type CampaignOperationActionResult<Name extends CampaignOperationName> =
+  SafeActionResult<
+    string,
+    CampaignOperationRequestSchema<Name>,
+    CampaignOperationValidationErrors<Name>,
+    CampaignOperationResult<Name>
+  >;
+
 const toFailure = (error: CampaignOperationError): CampaignOperationResult => ({
   _tag: "Failure",
   category: error._tag,
@@ -100,8 +128,12 @@ const campaignOperationAction = defineWorkspaceAction(
               }),
             }),
             Effect.provideService(CurrentAdministrator, administrator),
-            Effect.provide(OperationRequestLedger.unscoped),
-            Effect.provide(CampaignOperations.Live)
+            Effect.provide(
+              Layer.mergeAll(
+                OperationRequestLedger.unscoped,
+                CampaignOperations.Live
+              )
+            )
           ),
       })
     )
@@ -114,6 +146,9 @@ const revalidateCampaignPages = (request: CampaignOperationRequest) => {
   Match.value(request.input).pipe(
     Match.when({ campaignId: Match.string }, ({ campaignId }) =>
       revalidateLocalizedPath(`/admin/email-campaigns/${campaignId}`)
+    ),
+    Match.when({ audienceId: Match.string }, ({ audienceId }) =>
+      revalidateLocalizedPath(`/admin/email-audiences/${audienceId}`)
     ),
     Match.orElse(() => undefined)
   );
@@ -134,9 +169,5 @@ export async function runCampaignOperation<Name extends CampaignOperationName>(
   ) {
     revalidateCampaignPages(request);
   }
-  return result as
-    | (Omit<NonNullable<typeof result>, "data"> & {
-        readonly data?: CampaignOperationResult<Name>;
-      })
-    | undefined;
+  return result as CampaignOperationActionResult<Name>;
 }

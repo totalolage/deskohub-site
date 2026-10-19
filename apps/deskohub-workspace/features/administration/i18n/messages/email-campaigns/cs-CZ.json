@@ -8,7 +8,6 @@
   "emailCampaignsAudienceArchive": "Archivovat",
   "emailCampaignsAudienceArchiveConfirm": "Archivovat okruh příjemců",
   "emailCampaignsAudienceArchiveDescription": "Nové kampaně ho už nebudou moci vybrat. Koncepty kampaní, které ho už používají, si ho ponechají, a odeslaných kampaní se to nedotkne.",
-  "emailCampaignsAudienceArchiveFailed": "Okruh příjemců se nepodařilo archivovat.",
   "emailCampaignsAudienceArchiveFailedRetry": "Okruh příjemců se nepodařilo archivovat. Zkuste to znovu.",
   "emailCampaignsAudienceArchiveTitle": "Archivovat tento okruh příjemců?",
   "emailCampaignsAudienceArchiving": "Archivace…",
@@ -86,7 +85,6 @@
   "emailCampaignsAudienceDelete": "Smazat",
   "emailCampaignsAudienceDeleteConfirm": "Smazat okruh příjemců",
   "emailCampaignsAudienceDeleteDescription": "Tuto akci nelze vrátit. Odeslané kampaně si ponechají vlastní kopii filtrů. Okruh příjemců, který používají koncepty kampaní, lze jen archivovat.",
-  "emailCampaignsAudienceDeleteFailed": "Okruh příjemců se nepodařilo smazat.",
   "emailCampaignsAudienceDeleteFailedRetry": "Okruh příjemců se nepodařilo smazat. Zkuste to znovu.",
   "emailCampaignsAudienceDeleteTitle": "Smazat tento okruh příjemců?",
   "emailCampaignsAudienceDeleting": "Mazání…",
@@ -146,21 +144,6 @@
   "emailCampaignsAudienceHasAccountSummaryFalse": "nemají účet ve Workspace",
   "emailCampaignsAudienceHasAccountSummaryTrue": "mají účet ve Workspace",
   "emailCampaignsAudienceHasAccountTrue": "Má",
-  "emailCampaignsAudienceInUse": [
-    {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural",
-        "local formattedCount = count: number"
-      ],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "Tento okruh příjemců používá koncept kampaně, takže ho lze jen archivovat. Než okruh smažete, přesuňte koncept na jiný okruh příjemců.",
-        "countPlural=few": "Tento okruh příjemců používají {formattedCount} koncepty kampaní, takže ho lze jen archivovat. Než okruh smažete, přesuňte koncepty na jiný okruh příjemců.",
-        "countPlural=other": "Tento okruh příjemců používá {formattedCount} konceptů kampaní, takže ho lze jen archivovat. Než okruh smažete, přesuňte koncepty na jiný okruh příjemců."
-      }
-    }
-  ],
   "emailCampaignsAudienceFirstVisitEver": "nás navštívili{product}",
   "emailCampaignsAudienceFirstVisitInPeriod": "nás poprvé navštívili{product} {period}",
   "emailCampaignsAudienceFirstVisitLabel": "První návštěva",
@@ -625,7 +608,6 @@
   "emailCampaignsAudienceTitleRequired": "Zadejte název okruhu příjemců.",
   "emailCampaignsAudienceTitleTooLong": "Použijte nejvýše {max} znaků.",
   "emailCampaignsAudienceUnarchive": "Obnovit z archivu",
-  "emailCampaignsAudienceUnarchiveFailed": "Okruh příjemců se nepodařilo obnovit z archivu.",
   "emailCampaignsAudienceUnarchiveFailedRetry": "Okruh příjemců se nepodařilo obnovit z archivu. Zkuste to znovu.",
   "emailCampaignsAudienceUnarchiving": "Obnovování…",
   "emailCampaignsCalendarDayOfMonth": "{day}.",
@@ -1055,34 +1037,13 @@
   "emailCampaignsSendingFailureCodeSuperseded": "Tento kód nahradil novější testovací e-mail. Použijte kód z posledního testovacího e-mailu.",
   "emailCampaignsSendingFailureCodeTooManyAttempts": "Bylo zadáno příliš mnoho chybných kódů, proto tento kód už nefunguje. Pro nový kód pošlete nový testovací e-mail.",
   "emailCampaignsSendingFailureCodeUnknown": "Tento kód neodpovídá poslednímu testovacímu e-mailu. Zkontrolujte, zda v něm není překlep, a zkuste to znovu.",
-  "emailCampaignsSendingFailureConfigError": "Odesílání kampaní není v tomto nasazení správně nastavené. Požádejte vývojáře, aby zkontroloval proměnné prostředí.",
   "emailCampaignsSendingFailureContentMissing": "Nejprve doplňte předmět a text alespoň v jednom jazyce.",
-  "emailCampaignsSendingFailureDatabaseUnavailable": "Příjemce se nepodařilo určit, protože databáze není dostupná. Nic nebylo odesláno a kód stále platí; zkuste to za chvíli znovu.",
   "emailCampaignsSendingFailureDeliveryQueueFailed": "Doručení se nepodařilo zařadit do fronty, proto je kampaň označená jako Selhala. Za chvíli ji znovu odešlete nedoručeným příjemcům.",
-  "emailCampaignsSendingFailureDotyposUnavailable": "Příjemce se nepodařilo určit, protože Dotypos není dostupný. Nic nebylo odesláno a kód stále platí; zkuste to za chvíli znovu.",
   "emailCampaignsSendingFailureEmailDeliveryFailed": "Poskytovatel e-mailů testovací e-mail nepřijal. Zkuste to za chvíli znovu.",
-  "emailCampaignsSendingFailureEmailNotConfigured": "E-maily kampaní nejsou v tomto nasazení nastavené. Požádejte vývojáře, aby nastavil {variables}.",
   "emailCampaignsSendingFailureFallbackContentMissing": "Zákazníci bez obsahu ve svém jazyce dostanou českou verzi, proto doplňte český obsah, nebo omezte okruh příjemců na jeden z jazyků, které kampaň má. Nic nebylo odesláno.",
   "emailCampaignsSendingFailureNoRecipients": "Okruh příjemců teď nemá žádné dosažitelné příjemce, proto nebylo nic odesláno.",
   "emailCampaignsSendingFailureNotRetryable": "Znovu odeslat nedoručeným příjemcům lze jen u kampaně, která selhala.",
-  "emailCampaignsSendingFailureOutsideTestDomain": [
-    {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural",
-        "local formattedCount = count: number"
-      ],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "Mimo produkci lze e-maily kampaní posílat jen na adresy @{domain} a {formattedCount} adresa mezi ně nepatří. Nic nebylo odesláno.",
-        "countPlural=few": "Mimo produkci lze e-maily kampaní posílat jen na adresy @{domain} a {formattedCount} adresy mezi ně nepatří. Nic nebylo odesláno.",
-        "countPlural=other": "Mimo produkci lze e-maily kampaní posílat jen na adresy @{domain} a {formattedCount} adres mezi ně nepatří. Nic nebylo odesláno."
-      }
-    }
-  ],
   "emailCampaignsSendingFailureSigningKeyInvalid": "Potvrzovací kódy nelze vydat, protože podpisový klíč je špatně nastavený. Požádejte vývojáře, aby zkontroloval BETTER_AUTH_SECRETS.",
-  "emailCampaignsSendingFailureSiteUrlNotConfigured": "Testovací e-mail se nepodařilo sestavit, protože není nastavená adresa webu. Požádejte vývojáře, aby zkontroloval nastavení URL nasazení.",
-  "emailCampaignsSendingFailureTestRecipientInvalid": "{email} není platná e-mailová adresa.",
   "emailCampaignsSendingFailureUnauthorized": "Vaše přihlášení do administrace už neplatí. Načtěte stránku znovu a přihlaste se.",
   "emailCampaignsSendingFailureUnexpected": "Něco se pokazilo. Zkuste to za chvíli znovu.",
   "emailCampaignsSentAudience": "Okruh příjemců",
@@ -1198,5 +1159,10 @@
   "emailCampaignsTestSendUnsavedChanges": "Nejprve uložte změny. Test použije uloženou kampaň, takže jeho kód by vaše neuložené úpravy nepotvrdil.",
   "emailCampaignsActionTimedOut": "Server neodpověděl včas. Zkuste to znovu.",
   "emailCampaignsDeliveryMismatch": "Tato akce funguje jen u jednorázových kampaní a tato kampaň se odesílá automaticky.",
-  "emailCampaignsActionFailedUnexpectedly": "Na serveru se něco pokazilo. Zkuste to znovu."
+  "emailCampaignsActionFailedUnexpectedly": "Na serveru se něco pokazilo. Zkuste to znovu.",
+  "emailCampaignsAudienceInUseByDrafts": "Tento okruh příjemců používají koncepty kampaní, takže ho lze jen archivovat. Než okruh smažete, přesuňte koncepty na jiný okruh příjemců.",
+  "emailCampaignsSendingFailureTestRecipientsInvalid": "Jedna z adres není platná e-mailová adresa. Zkontrolujte je a zkuste to znovu.",
+  "emailCampaignsSendingFailureRecipientsOutsideTestDomain": "Mimo produkci lze e-maily kampaní posílat jen na adresy @{domain} a někteří příjemci mezi ně nepatří. Nic nebylo odesláno.",
+  "emailCampaignsSendingFailureRecipientsUnavailable": "Příjemce se nepodařilo určit, protože Dotypos nebo databáze není dostupná. Nic nebylo odesláno a kód stále platí; zkuste to za chvíli znovu.",
+  "emailCampaignsSendingFailureEmailSetupMissing": "E-maily kampaní nejsou v tomto nasazení nastavené. Požádejte vývojáře, aby zkontroloval proměnné prostředí pro e-maily kampaní."
 }
