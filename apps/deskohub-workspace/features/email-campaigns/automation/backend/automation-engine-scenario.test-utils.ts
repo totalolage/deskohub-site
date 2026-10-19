@@ -1105,11 +1105,17 @@ export const makeAutomationEngineScenario = async (input: {
     const candidates = [
       databaseInstant(rows[0]?.next),
       ...delayed.map((entry) => entry.availableAt),
-      // The sweep records a started or finished event once its time passes.
+      // The sweep records a started or finished event once its time
+      // passes, at the minute cron's next whole minute.
       ...[...dotypos.reservations.values()].flatMap((visit) =>
         [visit.startDate, visit.endDate]
           .filter((time): time is string => time !== undefined)
-          .map((time) => Temporal.Instant.from(time))
+          .map((time) =>
+            Temporal.Instant.from(time).round({
+              smallestUnit: "minute",
+              roundingMode: "ceil",
+            })
+          )
       ),
     ].filter(
       (time): time is Temporal.Instant =>
