@@ -93,7 +93,10 @@ export const AutomationRunTransitions = {
       })
       .where(
         and(
-          inArray(emailCampaignAutomationRuns.id, [...input.runIds]),
+          inArray(
+            emailCampaignAutomationRuns.id,
+            lockedInIdOrder(tx, input.runIds, input.expect)
+          ),
           expectationCondition(input.expect)
         )
       )
@@ -181,6 +184,28 @@ const endingRecord = (
       }),
     })
   );
+
+/**
+ * The runs still in `expect`, row-locked in id order (§5.4) within the
+ * ending statement, so two transactions ending overlapping runs can't
+ * deadlock. The outer statement rechecks `expect` after any lock wait.
+ */
+const lockedInIdOrder = (
+  tx: AutomationEngineTransaction,
+  runIds: readonly AutomationRunId[],
+  expect: AutomationRunExpectation
+) =>
+  tx
+    .select({ id: emailCampaignAutomationRuns.id })
+    .from(emailCampaignAutomationRuns)
+    .where(
+      and(
+        inArray(emailCampaignAutomationRuns.id, [...runIds]),
+        expectationCondition(expect)
+      )
+    )
+    .orderBy(emailCampaignAutomationRuns.id)
+    .for("update");
 
 const expectationCondition = (expect: AutomationRunExpectation) =>
   and(
