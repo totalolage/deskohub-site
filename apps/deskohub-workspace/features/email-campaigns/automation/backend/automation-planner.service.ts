@@ -44,6 +44,7 @@ import {
   AutomationTimerPlanning,
 } from "./automation-timer-planning.service";
 import { AutomationUnitHandlers } from "./automation-unit-handlers.service";
+import { releaseAutomationUnitSubjects } from "./automation-unit-planning";
 import { AutomationUnitQueue } from "./automation-unit-queue.service";
 import { AutomationUnitSlots } from "./automation-unit-slots";
 
@@ -118,6 +119,17 @@ export class AutomationPlanner extends Context.Service<
           .where(eq(emailCampaignAutomationEngine.id, 1))
           .pipe(Effect.withSpan("automationPlanner.heartbeat"));
 
+      /** Marked units no live claimant holds. */
+      const droppable = (at: Temporal.Instant) =>
+        and(
+          inArray(units.kind, supportedKinds),
+          isNotNull(units.cancelRequestedAt),
+          or(
+            eq(units.status, "enqueued"),
+            and(eq(units.status, "claimed"), lte(units.claimExpiresAt, at))
+          )
+        );
+
       /**
        * Recovers units whose consumer died or whose message was lost. Only
        * supported kinds, and never by campaign status, so a persisted
@@ -127,28 +139,37 @@ export class AutomationPlanner extends Context.Service<
         db
           .transaction((tx) =>
             Effect.all({
+              // Marked units only ever settle `dropped`, so their subjects
+              // are freed first, in lock order, before the unit rows.
               dropped: tx
-                .update(units)
-                .set({
-                  status: "dropped",
-                  claimId: null,
-                  claimExpiresAt: null,
-                  settledAt: at,
-                })
-                .where(
-                  and(
-                    inArray(units.kind, supportedKinds),
-                    isNotNull(units.cancelRequestedAt),
-                    or(
-                      eq(units.status, "enqueued"),
-                      and(
-                        eq(units.status, "claimed"),
-                        lte(units.claimExpiresAt, at)
+                .select({ id: units.id, subject: units.subject })
+                .from(units)
+                .where(droppable(at))
+                .pipe(
+                  Effect.tap((marked) =>
+                    releaseAutomationUnitSubjects(tx, marked)
+                  ),
+                  Effect.flatMap((marked) =>
+                    tx
+                      .update(units)
+                      .set({
+                        status: "dropped",
+                        claimId: null,
+                        claimExpiresAt: null,
+                        settledAt: at,
+                      })
+                      .where(
+                        and(
+                          inArray(
+                            units.id,
+                            marked.map((unit) => unit.id)
+                          ),
+                          droppable(at)
+                        )
                       )
-                    )
+                      .returning({ unitId: units.id })
                   )
-                )
-                .returning({ unitId: units.id }),
+                ),
               requeued: tx
                 .update(units)
                 .set({

@@ -138,7 +138,7 @@ export const testUnitHandler = (
   } = {}
 ) => {
   const { expire } = options;
-  return registerAutomationUnitHandler({
+  return registerAutomationUnitHandler<TestSubject, void>({
     kind,
     subject: testSubjectSchema,
     ...(expire !== undefined && { expire: (_tx, unit) => expire(unit) }),

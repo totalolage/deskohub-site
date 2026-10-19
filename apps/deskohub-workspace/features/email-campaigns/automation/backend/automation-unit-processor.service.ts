@@ -15,7 +15,10 @@ import {
   type RegisteredAutomationUnitHandler,
 } from "./automation-unit-handler";
 import { AutomationUnitHandlers } from "./automation-unit-handlers.service";
-import { planAutomationUnits } from "./automation-unit-planning";
+import {
+  planAutomationUnits,
+  releaseAutomationUnitSubjects,
+} from "./automation-unit-planning";
 import { AutomationUnitQueue } from "./automation-unit-queue.service";
 import { AutomationUnitSlots } from "./automation-unit-slots";
 
@@ -135,8 +138,10 @@ export class AutomationUnitProcessor extends Context.Service<
             )
           )
           .pipe(
-            Effect.map((settled) =>
-              settled ? settlement.status : ("acknowledged" as const)
+            Effect.as<AutomationUnitOutcome>(settlement.status),
+            // Taken over meanwhile: the new claimant settles it.
+            Effect.catchTag("AutomationUnitClaimLost", () =>
+              Effect.succeed<AutomationUnitOutcome>("acknowledged")
             ),
             Effect.mapError(
               (cause) =>
@@ -186,15 +191,16 @@ export class AutomationUnitProcessor extends Context.Service<
                 Effect.flatMap(([requeued]) =>
                   requeued === undefined
                     ? settleClaimed(tx, unit, "dropped", at).pipe(
-                        Effect.map((dropped) =>
-                          dropped ? ("dropped" as const) : "acknowledged"
-                        )
+                        Effect.as("dropped" as const)
                       )
                     : Effect.succeed("requeued" as const)
                 )
               )
           )
           .pipe(
+            Effect.catchTag("AutomationUnitClaimLost", () =>
+              Effect.succeed("acknowledged" as const)
+            ),
             Effect.mapError(
               (cause) =>
                 new AutomationUnitRedelivery({
@@ -225,14 +231,7 @@ export class AutomationUnitProcessor extends Context.Service<
         slots
           .handOff((tx, at) =>
             commitUnit(tx, at).pipe(
-              Effect.tap(() =>
-                settleClaimed(tx, unit, "done", at).pipe(
-                  Effect.filterOrFail(
-                    (settled) => settled,
-                    () => new AutomationUnitClaimLost()
-                  )
-                )
-              ),
+              Effect.tap(() => settleClaimed(tx, unit, "done", at)),
               Effect.flatMap((followUps) =>
                 planAutomationUnits(tx, followUps, at)
               )
@@ -379,9 +378,11 @@ const settlementMarkCondition = {
 };
 
 /**
- * Settles a unit by CAS on the caller's claim. `dropped` also requires the
- * cancellation mark, and `done` its absence, so a unit marked during its
- * fetch never commits pre-pause decisions.
+ * Settles a unit by CAS on the caller's claim, first freeing the subjects
+ * it still owns. `dropped` also requires the cancellation mark, and `done`
+ * its absence, so a unit marked during its fetch never commits pre-pause
+ * decisions. A missed CAS fails with `AutomationUnitClaimLost`, rolling the
+ * release back with the rest of the transaction.
  */
 const settleClaimed = (
   tx: AutomationEngineTransaction,
@@ -390,22 +391,30 @@ const settleClaimed = (
   at: Temporal.Instant,
   lastErrorCode?: string
 ) =>
-  tx
-    .update(units)
-    .set({
-      status,
-      claimId: null,
-      claimExpiresAt: null,
-      settledAt: at,
-      ...(lastErrorCode !== undefined && { lastErrorCode }),
-      ...(status === "failed" && { failures: sql`${units.failures} + 1` }),
-    })
-    .where(
-      and(
-        eq(units.id, unit.id),
-        eq(units.claimId, unit.claimId),
-        settlementMarkCondition[status]
-      )
-    )
-    .returning({ id: units.id })
-    .pipe(Effect.map((settled) => settled.length > 0));
+  releaseAutomationUnitSubjects(tx, [unit]).pipe(
+    Effect.andThen(
+      tx
+        .update(units)
+        .set({
+          status,
+          claimId: null,
+          claimExpiresAt: null,
+          settledAt: at,
+          ...(lastErrorCode !== undefined && { lastErrorCode }),
+          ...(status === "failed" && { failures: sql`${units.failures} + 1` }),
+        })
+        .where(
+          and(
+            eq(units.id, unit.id),
+            eq(units.claimId, unit.claimId),
+            settlementMarkCondition[status]
+          )
+        )
+        .returning({ id: units.id })
+    ),
+    Effect.filterOrFail(
+      (settled) => settled.length > 0,
+      () => new AutomationUnitClaimLost()
+    ),
+    Effect.asVoid
+  );
