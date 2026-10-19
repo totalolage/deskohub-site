@@ -13,10 +13,10 @@ import { getMeetingRoomReservationDetails } from "@/features/reservation/meeting
 import { getOfficeReservationDetails } from "@/features/reservation/office-reservation";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import {
-  type CheckoutStateKey,
-  CheckoutStateTokenError,
-  parseCheckoutStateKeys,
-} from "./checkout-state-token";
+  parseSealedStateKeys,
+  type SealedStateKey,
+  SealedStateTokenError,
+} from "@/shared/backend/sealed-state";
 
 /**
  * Persisted one-way lookup keys for one checkout identifier.
@@ -125,7 +125,7 @@ const deriveCheckoutLookupKeys = <Payload, Key extends string>(
 ) =>
   loadCheckoutLookupKeyRing.pipe(
     Effect.map(({ configuredKeyRing, keys: [activeKey, ...otherKeys] }) => {
-      const deriveKeyIdPrefixed = (key: CheckoutStateKey) =>
+      const deriveKeyIdPrefixed = (key: SealedStateKey) =>
         toKey(`${key.kid}:${signLookupKey(deriveLookupSecret(key), payload)}`);
       const activeKeyIdPrefixed = deriveKeyIdPrefixed(activeKey);
       const ringKeyed = toKey(signLookupKey(configuredKeyRing, payload));
@@ -154,20 +154,20 @@ const loadCheckoutLookupKeyRing = Effect.gen(function* () {
   ).pipe(
     Effect.mapError(
       (cause) =>
-        new CheckoutStateTokenError({
+        new SealedStateTokenError({
           code: "invalid-secret",
           message: "Workspace checkout state configuration is invalid.",
           cause,
         })
     )
   );
-  const keys = yield* parseCheckoutStateKeys(configuredKeyRing);
+  const keys = yield* parseSealedStateKeys(configuredKeyRing);
 
   return { configuredKeyRing, keys };
 });
 
 // Separates lookup-key HMACs from the same key's Pay-state encryption use.
-const deriveLookupSecret = (key: CheckoutStateKey) =>
+const deriveLookupSecret = (key: SealedStateKey) =>
   Buffer.from(
     hkdfSync(
       "sha256",

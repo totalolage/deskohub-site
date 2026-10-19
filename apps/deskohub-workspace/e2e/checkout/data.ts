@@ -558,15 +558,21 @@ export const selectAvailableMeetingRoomSlots = (
     );
   });
 
-export const selectAvailableOfficeSlot = (
+/**
+ * Selects `count` available, non-overlapping office ranges from the
+ * allocation's own blocks, earliest first, within the office booking horizon.
+ */
+export const selectAvailableOfficeSlots = (
   config: WorkspaceE2EConfig,
+  count: number,
   allocation: WorkspaceE2EDateAllocation = workspaceE2EFullDateAllocation
 ): Effect.Effect<
-  OfficeCheckoutSlot,
+  readonly OfficeCheckoutSlot[],
   WorkspaceE2EError,
   HttpClient.HttpClient
 > =>
   Effect.gen(function* () {
+    const slots: OfficeCheckoutSlot[] = [];
     const allocationLastCandidateDate = getWorkspaceE2ECandidateDate(
       allocation.toOffsetDays
     );
@@ -608,12 +614,13 @@ export const selectAvailableOfficeSlot = (
       log(
         `Selected available office range ${slot.startsOn} through ${slot.endsOn}`
       );
-      return slot;
+      slots.push(slot);
+      if (slots.length === count) return slots;
     }
 
     return yield* workspaceE2EError(
-      `No available reservation:office ${workspaceE2EOfficeReservationDayCount}-day range with ${workspaceE2EOfficeReservationSeats} seats found in ${formatWorkspaceE2EAllocation(allocation)} for supported concurrency ${workspaceE2EConcurrentRunTarget}`,
-      { operation: "select available office checkout range" }
+      `Only found ${slots.length} available reservation:office ${workspaceE2EOfficeReservationDayCount}-day ranges with ${workspaceE2EOfficeReservationSeats} seats in ${formatWorkspaceE2EAllocation(allocation)} for supported concurrency ${workspaceE2EConcurrentRunTarget}, need ${count}`,
+      { operation: "select available office checkout ranges" }
     );
   });
 

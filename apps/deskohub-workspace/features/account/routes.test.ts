@@ -3,6 +3,8 @@ import {
   findAccountSectionOfPathname,
   findLegacyAccountSectionRedirect,
   getAccountSectionPath,
+  getAccountSignInPath,
+  getAuthVerifyPath,
 } from "./routes";
 import { accountSections } from "./sections";
 
@@ -101,5 +103,27 @@ describe("legacy account section links", () => {
     "https://workspace.example/cs-CZ/account?section=profile",
   ])("leaves %s alone", (url) => {
     expect(redirect(url)).toBeUndefined();
+  });
+});
+
+describe("auth page paths", () => {
+  test("keeps the plain sign-in path without a return path", () => {
+    expect(getAccountSignInPath("cs-CZ")).toBe("/cs-CZ/auth/sign-in");
+  });
+
+  test("carries a return path in the sign-in path's query", () => {
+    const url = new URL(
+      getAccountSignInPath("en-US", "/en-US/reservation?date=2026-10-20"),
+      "https://site.invalid"
+    );
+
+    expect(url.pathname).toBe("/en-US/auth/sign-in");
+    expect(url.searchParams.get("returnTo")).toBe(
+      "/en-US/reservation?date=2026-10-20"
+    );
+  });
+
+  test("builds the verify path for the locale", () => {
+    expect(getAuthVerifyPath("en-US")).toBe("/en-US/auth/verify");
   });
 });

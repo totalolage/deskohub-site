@@ -1944,9 +1944,30 @@ export const makeWorkspaceE2EAccountCases = ({
                 })()`,
               { timeoutMs: uiTransition }
             );
-            yield* pressBrowserKey(run, session, "Escape", {
-              timeoutMs: browserTimeout,
-            });
+            // An Escape can land before the listbox listens for it, and an
+            // open listbox swallows the next step's header click.
+            yield* pollUntil(
+              Effect.gen(function* () {
+                yield* pressBrowserKey(run, session, "Escape", {
+                  timeoutMs: browserTimeout,
+                });
+                const open = yield* evalBrowserScript(
+                  "check whether the language list is still open",
+                  run,
+                  session,
+                  `JSON.stringify(document.querySelector('[role="listbox"]') !== null)`,
+                  { logOutput: false, timeoutMs: browserTimeout }
+                ).pipe(
+                  Effect.map((command) => JSON.parse(command.stdout) as boolean)
+                );
+                return open ? undefined : true;
+              }),
+              {
+                intervalMs: workspaceE2EPollIntervalMs.browser,
+                label: "language list to close",
+                timeoutMs: uiTransition,
+              }
+            );
           });
 
         /**

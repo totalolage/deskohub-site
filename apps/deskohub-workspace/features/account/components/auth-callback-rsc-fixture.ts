@@ -11,6 +11,10 @@ import {
 } from "next/dist/compiled/react-server-dom-webpack/server.edge";
 import React, { Suspense } from "react";
 import type { CustomerAccountId } from "@/features/account/customer-account";
+import {
+  encodeAuthCallbackReturn,
+  signInCallbackReturnParam,
+} from "@/features/account/routes";
 
 type Locale = "en-US" | "cs-CZ";
 type CustomerSession = {
@@ -446,14 +450,16 @@ describe("auth callback RSC regression", () => {
 
   test("keeps only a same-origin return target on the failure link", async () => {
     const kept = await settledOutput("en-US", Effect.succeed(null), {
-      returnTo: "/en-US/admin/invoices?page=2",
+      [signInCallbackReturnParam]:
+        encodeAuthCallbackReturn("/en-US/admin/invoices?page=2") ?? "",
     });
     expect(kept).toContain(
       "/en-US/auth/sign-in?returnTo=%2Fen-US%2Fadmin%2Finvoices%3Fpage%3D2"
     );
 
     const dropped = await settledOutput("en-US", Effect.succeed(null), {
-      returnTo: "//evil.example/admin",
+      [signInCallbackReturnParam]:
+        encodeAuthCallbackReturn("//evil.example/admin") ?? "",
     });
     expect(dropped).toContain('"href":"/en-US/auth/sign-in"');
     expect(dropped).not.toContain("/en-US/auth/sign-in?");

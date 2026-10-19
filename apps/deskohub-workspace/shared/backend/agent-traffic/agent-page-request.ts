@@ -31,6 +31,7 @@ const agentPageRoutes = {
   "/[locale]/account/legal": true,
   "/[locale]/auth/callback": true,
   "/[locale]/auth/sign-in": true,
+  "/[locale]/auth/verify": true,
   "/[locale]/checkout-status-preview": true,
   "/[locale]/checkout/pay": true,
   "/[locale]/contact": true,

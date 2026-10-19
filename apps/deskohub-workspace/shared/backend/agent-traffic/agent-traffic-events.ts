@@ -19,7 +19,10 @@ import {
 } from "@/shared/backend/workspace-effect";
 
 export interface AgentTrafficEvent {
-  readonly event: "agent page request" | "bot protection rejection";
+  readonly event:
+    | "agent page request"
+    | "agent tool call"
+    | "bot protection rejection";
   readonly traffic: AgentTraffic;
   /** Low-cardinality context; never a user agent, header value, or IP. */
   readonly properties: PostHogEventProperties;

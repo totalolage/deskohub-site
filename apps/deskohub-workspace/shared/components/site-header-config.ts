@@ -5,6 +5,7 @@ import {
 } from "@/features/account/routes";
 import { isCustomerSignedIn } from "@/features/account/server/customer-session.server";
 import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
+import { isCurrentAccountAdministrator } from "@/features/administrators/server/current-account-administrator.server";
 import { type Locale, m } from "@/features/i18n";
 import { getLanguageLabels } from "@/features/i18n/language-labels";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
@@ -42,6 +43,15 @@ export type SiteHeaderAccountEntry = {
   readonly href: Promise<string>;
   /** Shown while the session check is still pending. */
   readonly signInHref: string;
+};
+
+export type SiteHeaderAdministratorEntry = {
+  /** True only for a signed-in administrator; customers never see the entry. */
+  readonly visible: Promise<boolean>;
+  readonly href: string;
+  readonly label: string;
+  readonly ribbonLabel: string;
+  readonly ribbonActionLabel: string;
 };
 
 type DisabledSiteHeaderMenuItems = Partial<
@@ -121,6 +131,7 @@ const createSiteHeaderConfig = (
   return {
     ...getSiteHeaderAccessibilityLabels(locale),
     account: createSiteHeaderAccountEntry(locale),
+    administrator: createSiteHeaderAdministratorEntry(locale),
     localePreference: createLocalePreferenceSaving(),
     languageLabels: getLanguageLabels(locale),
     links: links.filter(({ id }) => disabledMenuItems[id] !== true),
@@ -141,6 +152,18 @@ const createSiteHeaderAccountEntry = (
     () => getAccountSignInPath(locale)
   ),
   signInHref: getAccountSignInPath(locale),
+});
+
+// Not awaited, like the account entry: the static shell renders without it and
+// a failed check hides it.
+const createSiteHeaderAdministratorEntry = (
+  locale: Locale
+): SiteHeaderAdministratorEntry => ({
+  visible: isCurrentAccountAdministrator().catch(() => false),
+  href: `/${locale}/admin`,
+  label: m.siteHeaderAdminLabel({}, { locale }),
+  ribbonLabel: m.siteHeaderAdminRibbonLabel({}, { locale }),
+  ribbonActionLabel: m.siteHeaderAdminRibbonAction({}, { locale }),
 });
 
 // Not awaited, like the account entry: the switcher learns after the shell

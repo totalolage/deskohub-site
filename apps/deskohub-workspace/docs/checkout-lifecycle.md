@@ -53,15 +53,38 @@ The meeting-room reservation page accepts prefill parameters in its URL in every
 
 Browsers percent-encode query values, so a leading `+` in a phone number must be sent as `%2B`; a literal `+` decodes as a space.
 
-Each field is decoded on its own. An empty, malformed, past, or daylight-saving-invalid start, or an unsupported duration, falls back to the fresh default for that field alone; valid sibling parameters still apply. When no start is given, the page chooses the earliest whole-hour start for the chosen duration, which may be an interval that has already begun. This choice is not an availability guarantee; only submission checks availability.
+Each field is decoded on its own. An empty, malformed, or daylight-saving-invalid start, a start whose interval has already ended, or an unsupported duration falls back to the fresh default for that field alone; valid sibling parameters still apply. When no start is given, the page chooses the earliest whole-hour start for the chosen duration, which may be an interval that has already begun. A linked start that has already begun stays selected while its interval has not ended. This choice is not an availability guarantee; only submission checks availability.
 
-A signed checkout-restoration link takes precedence over the public parameters. When the restored checkout has ended, the page uses its fresh defaults and does not carry the public parameters forward. A reservation link never opts the customer into marketing consent or legal acceptance.
+A signed checkout-restoration link takes precedence over the public contact and `discountCode` parameters. Selection parameters beside it are the customer's own edits after returning from the order summary (the order summary links back with the restoration alone), so they replace the restored selection; the restored checkout, its hold replacement, contact details, and discount still apply. When the restored checkout has ended, the page uses its fresh defaults and does not carry the public parameters forward. A reservation link never opts the customer into marketing consent or legal acceptance.
 
 Example with synthetic, deliberately non-working values (`example.invalid`, `EXAMPLE_CODE`):
 
 ```
 /{locale}/reservation/meeting-room?name=Guest&email=guest%40example.invalid&phone=%2B420123456789&startDateTime=2099-08-12T10%3A00&duration=hour%3A1&discountCode=EXAMPLE_CODE
 ```
+
+The office reservation page accepts these parameters:
+
+- `startsOn` is the first reserved day in `YYYY-MM-DD` form, in the Workspace timezone. It must fall inside the office booking window, from today through the last bookable day one month ahead. A malformed date, or one outside the window, opens the page on today.
+- `dayCount` is the number of whole days. A count that doesn't fit the booking window from the start date falls back to the default.
+- `seats` is the number of seats. A count above the office capacity falls back to the default.
+- `discountCode` carries an ordinary discount code.
+
+The page shows the price and availability for the linked start date. A linked date that is fully booked stays selected and is marked unavailable, so the customer can pick another day. Office links never prefill contact details.
+
+```
+/{locale}/reservation/office?startsOn=2099-08-12&dayCount=3&seats=2&discountCode=EXAMPLE_CODE
+```
+
+### The page keeps the selection in its URL
+
+As the customer changes a selection, each reservation page writes it back to its URL with the same parameters a link uses:
+
+- cowork: `entryTier`, `date`, `coffee`, `monitorOption` (`none` when the customer turns an optional workstation off, so the customer's last reservation doesn't turn it back on)
+- meeting room: `startDateTime`, `duration`
+- office: `startsOn`, `dayCount`, `seats` (the day count only once it's a valid count)
+
+Reloading the page, or opening a copy of its URL, restores the same selection, including after returning from the order summary to edit it. The update replaces the current browser history entry, so Back still leaves the page in one step. The page never writes `name`, `email`, `phone`, or `customer` to the URL, so contact details don't reach browser history or analytics; these parameters in an incoming link are still read and left as they arrived. Every other parameter, such as `discountCode`, also stays as it arrived.
 
 ## Reservation holds and edits
 
@@ -107,7 +130,7 @@ Marketing consent is optional and belongs to the customer rather than one reserv
 
 Payment uses one affirmative checkout choice to accept the current terms and operating rules. When the service begins inside the statutory withdrawal period, that same visible choice also includes the customer's express request to begin at the reserved time and acknowledgement that the withdrawal right ends after full performance. The terms explain that a proportionate amount may be due after partial performance.
 
-The paths and hashes of the terms and operating rules accepted for payment are preserved as immutable evidence without storing rendered legal-document copies or customer contact details alongside that evidence. When applicable, one early-performance consent fact records the combined request and acknowledgement behind the single checkout choice, without adding a new database document store.
+The paths and hashes of the terms and operating rules accepted for payment are preserved as immutable evidence without storing rendered legal-document copies or customer contact details alongside that evidence. When applicable, one early-performance consent fact records the combined request and acknowledgement behind the single checkout choice, without adding a new database document store. Each accepted document's evidence states which acknowledgements came with it, including none. Evidence recorded before acknowledgements were preserved leaves them unknown; Workspace never infers or backfills a consent that was not recorded.
 
 Every new reservation declares personal or business purpose. A business reservation always includes an invoice; a personal reservation includes one only when requested. Purpose remains fixed with the reservation so later customer-profile changes cannot reclassify the transaction.
 

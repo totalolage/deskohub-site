@@ -54,10 +54,8 @@ test("reconcile workspace checkout reservations", async ({
             prepared: checkoutCleanup,
             workflowError: undefined,
           }),
-          reconcileAccountJournals: reconcileWorkspaceE2EAccountJournals(
-            datasourceConfig,
-            accountJournals
-          ),
+          reconcileAccountJournals:
+            reconcileWorkspaceE2EAccountJournals(accountJournals),
         })
       ),
   });

@@ -11,7 +11,7 @@ import {
   makeCoworkCheckoutData,
   selectAvailableCoworkDates,
   selectAvailableMeetingRoomSlots,
-  selectAvailableOfficeSlot,
+  selectAvailableOfficeSlots,
   selectCoworkDates,
 } from "./data";
 
@@ -345,11 +345,12 @@ test("selects disjoint multi-day office ranges across allocation shards", async 
     )
   );
 
-  const slots = await Promise.all(
+  const slotsByShard = await Promise.all(
     Array.from({ length: 3 }, (_, shardIndex) =>
       Effect.runPromise(
-        selectAvailableOfficeSlot(
+        selectAvailableOfficeSlots(
           makeConfig(),
+          2,
           makeWorkspaceE2EDateAllocation({
             runId: `office-${shardIndex}`,
             shardIndex,
@@ -358,6 +359,7 @@ test("selects disjoint multi-day office ranges across allocation shards", async 
       )
     )
   );
+  const slots = slotsByShard.flat();
   const touchedDates = slots.flatMap(({ endsOn, startsOn }) => [
     startsOn,
     endsOn,
@@ -371,7 +373,10 @@ test("selects disjoint multi-day office ranges across allocation shards", async 
           endsOn && endsOn <= "2099-08-17"
     )
   ).toBe(true);
-  expect(requests).toHaveLength(3);
+  expect(slotsByShard.map((shardSlots) => shardSlots.length)).toEqual([
+    2, 2, 2,
+  ]);
+  expect(requests).toHaveLength(6);
   expect(requests[0]?.url).toContain("kind=office");
   expect(requests[0]?.url).toContain("seats=2");
   expect(requests[0]?.headers.get("x-vercel-protection-bypass")).toBe(
@@ -397,12 +402,13 @@ test("skips an unavailable office range before selecting the next owned range", 
     )
   );
 
-  const slot = await Effect.runPromise(
-    selectAvailableOfficeSlot(makeConfig()).pipe(
+  const [slot] = await Effect.runPromise(
+    selectAvailableOfficeSlots(makeConfig(), 1).pipe(
       Effect.provide(httpClientLayer)
     )
   );
 
+  if (!slot) throw new Error("office slot was not selected");
   expect(requestCount).toBe(2);
   expect(slot.endsOn).toBe(
     Temporal.PlainDate.from(slot.startsOn).add({ days: 1 }).toString()

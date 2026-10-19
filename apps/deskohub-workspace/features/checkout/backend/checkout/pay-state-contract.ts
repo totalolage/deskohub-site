@@ -15,15 +15,15 @@ import {
 import type { Locale } from "@/features/i18n";
 import { locales } from "@/features/i18n";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { sealedStateKeyIdSchema } from "@/shared/backend/sealed-state";
 import {
   type Instant,
   instantStringSchema,
   unixTimestampSecondsSchema,
 } from "@/shared/utils/temporal";
-import { checkoutStateKeyIdSchema } from "./checkout-state-token";
 
 export const signedPayStateEnvelopeSchema = Schema.Struct({
-  kid: checkoutStateKeyIdSchema,
+  kid: sealedStateKeyIdSchema,
   iat: unixTimestampSecondsSchema,
   exp: unixTimestampSecondsSchema,
   locale: Schema.Literals(locales),

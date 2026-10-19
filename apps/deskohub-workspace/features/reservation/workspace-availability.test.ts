@@ -1,27 +1,35 @@
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
+import { Option } from "effect";
 import { getCurrentWorkspaceDate } from "./reservation-date";
 import {
   getCoworkAvailabilityQueries,
   getMeetingRoomAvailabilityQuery,
   getMeetingRoomSelectionAvailabilityQuery,
+  getMeetingRoomStartTimesQuery,
   getOfficeAvailabilityQuery,
   getWorkspaceAvailabilityRange,
   isCoworkOfferAvailable,
   isMeetingRoomAvailable,
+  isMeetingRoomStartTimesRequest,
+  parseMeetingRoomStartTimesQuery,
+  parseMeetingRoomStartTimesResponse,
   parseWorkspaceAvailabilityQuery,
 } from "./workspace-availability";
 
+const parseQuery = (params: Record<string, string>) =>
+  Option.getOrThrow(
+    parseWorkspaceAvailabilityQuery(new URLSearchParams(params))
+  );
+
 describe("parseWorkspaceAvailabilityQuery", () => {
   test("keeps the public kind query param as the domain discriminator", () => {
-    const query = parseWorkspaceAvailabilityQuery(
-      new URLSearchParams({
-        kind: "meeting-room",
-        from: "2099-06-10",
-        to: "2099-06-10",
-      })
-    );
+    const query = parseQuery({
+      kind: "meeting-room",
+      from: "2099-06-10",
+      to: "2099-06-10",
+    });
 
     expect(query).toMatchObject({
       kind: "meeting-room",
@@ -33,16 +41,14 @@ describe("parseWorkspaceAvailabilityQuery", () => {
 
   test("parses office interval and seat availability fields", () => {
     expect(
-      parseWorkspaceAvailabilityQuery(
-        new URLSearchParams({
-          kind: "office",
-          from: "2099-06-10",
-          to: "2099-06-12",
-          startsAt: "2099-06-09T22:00:00Z",
-          endsAt: "2099-06-12T22:00:00Z",
-          seats: "3",
-        })
-      )
+      parseQuery({
+        kind: "office",
+        from: "2099-06-10",
+        to: "2099-06-12",
+        startsAt: "2099-06-09T22:00:00Z",
+        endsAt: "2099-06-12T22:00:00Z",
+        seats: "3",
+      })
     ).toEqual({
       kind: "office",
       from: "2099-06-10",
@@ -56,30 +62,26 @@ describe("parseWorkspaceAvailabilityQuery", () => {
   test.each(["0", "-1", "1.5", "invalid"])(
     "drops an invalid office seat count of %s",
     (seats) => {
-      const query = parseWorkspaceAvailabilityQuery(
-        new URLSearchParams({
-          kind: "office",
-          from: "2099-06-10",
-          to: "2099-06-12",
-          seats,
-        })
-      );
+      const query = parseQuery({
+        kind: "office",
+        from: "2099-06-10",
+        to: "2099-06-12",
+        seats,
+      });
 
       expect(query).not.toHaveProperty("seats");
     }
   );
 
   test("drops interval fields from cowork availability queries", () => {
-    const query = parseWorkspaceAvailabilityQuery(
-      new URLSearchParams({
-        kind: "cowork",
-        date: "2099-06-10",
-        from: "2099-06-10",
-        to: "2099-06-10",
-        startsAt: "10:00",
-        endsAt: "11:00",
-      })
-    );
+    const query = parseQuery({
+      kind: "cowork",
+      date: "2099-06-10",
+      from: "2099-06-10",
+      to: "2099-06-10",
+      startsAt: "10:00",
+      endsAt: "11:00",
+    });
 
     expect(query).toEqual({
       kind: "cowork",
@@ -88,6 +90,57 @@ describe("parseWorkspaceAvailabilityQuery", () => {
       to: "2099-06-10",
     });
   });
+
+  test.each([
+    // 10:00-11:00 in Prague.
+    ["hour:1", "2099-06-10T08:00:00Z", "2099-06-10T09:00:00Z", "2099-06-10"],
+    // 23:00-03:00 in Prague, ending on the next date.
+    ["hour:4", "2099-06-10T21:00:00Z", "2099-06-11T01:00:00Z", "2099-06-11"],
+    ["day:1", "2099-06-09T22:00:00Z", "2099-06-10T22:00:00Z", "2099-06-10"],
+  ])(
+    "bounds a %s meeting-room interval check by the dates it touches, whatever range it names",
+    (_duration, startsAt, endsAt, lastDate) => {
+      for (const range of [
+        {},
+        { from: "2099-06-10", to: "2099-06-12" },
+        { from: "2099-06-01", to: "2099-06-30" },
+      ]) {
+        expect(
+          parseQuery({ kind: "meeting-room", ...range, startsAt, endsAt })
+        ).toEqual({
+          kind: "meeting-room",
+          from: "2099-06-10",
+          to: lastDate,
+          startsAt,
+          endsAt,
+        });
+      }
+    }
+  );
+
+  test.each([
+    { startsAt: "2099-06-10T08:00:00Z" },
+    { endsAt: "2099-06-10T09:00:00Z" },
+    { startsAt: "invalid", endsAt: "2099-06-10T09:00:00Z" },
+    // Two hours, no meeting-room duration.
+    { startsAt: "2099-06-10T08:00:00Z", endsAt: "2099-06-10T10:00:00Z" },
+    // Three whole days.
+    { startsAt: "2099-06-09T22:00:00Z", endsAt: "2099-06-12T22:00:00Z" },
+  ])(
+    "rejects a meeting-room interval no meeting-room duration books: %o",
+    (interval) => {
+      expect(
+        parseWorkspaceAvailabilityQuery(
+          new URLSearchParams({
+            kind: "meeting-room",
+            from: "2099-06-10",
+            to: "2099-06-12",
+            ...interval,
+          })
+        )
+      ).toEqual(Option.none());
+    }
+  );
 });
 
 describe("isCoworkOfferAvailable", () => {
@@ -217,9 +270,11 @@ describe("workspace availability ranges", () => {
 
   test("matches the default range the availability route parses", () => {
     const today = getCurrentWorkspaceDate(beforeUtcMidnight).toString();
-    const parsed = parseWorkspaceAvailabilityQuery(
-      new URLSearchParams({ entryTier: "reserved-desk" }),
-      new Date(beforeUtcMidnight.epochMilliseconds)
+    const parsed = Option.getOrThrow(
+      parseWorkspaceAvailabilityQuery(
+        new URLSearchParams({ entryTier: "reserved-desk" }),
+        new Date(beforeUtcMidnight.epochMilliseconds)
+      )
     );
 
     expect(
@@ -283,5 +338,91 @@ describe("getOfficeAvailabilityQuery", () => {
       from: "2099-07-31",
       to: "2099-08-31",
     });
+  });
+});
+
+describe("meeting-room start times", () => {
+  const startTimesParams = {
+    kind: "meeting-room",
+    mode: "start-times",
+    date: "2099-06-10",
+    duration: "hour:4",
+  };
+
+  test("recognizes the start-times mode", () => {
+    expect(
+      isMeetingRoomStartTimesRequest(new URLSearchParams(startTimesParams))
+    ).toBe(true);
+    expect(
+      isMeetingRoomStartTimesRequest(
+        new URLSearchParams({ kind: "meeting-room", from: "2099-06-10" })
+      )
+    ).toBe(false);
+  });
+
+  test("parses the date and duration", () => {
+    expect(
+      Option.getOrUndefined(
+        parseMeetingRoomStartTimesQuery(new URLSearchParams(startTimesParams))
+      )
+    ).toEqual({
+      kind: "meeting-room",
+      mode: "start-times",
+      date: "2099-06-10",
+      duration: "hour:4",
+    });
+  });
+
+  test.each([
+    { date: undefined },
+    { date: "2099-02-30" },
+    { date: "10.06.2099" },
+    { duration: undefined },
+    { duration: "hour:2" },
+    { kind: "cowork" },
+  ])("rejects a missing or invalid parameter: %o", (override) => {
+    const params = new URLSearchParams(startTimesParams);
+    for (const [key, value] of Object.entries(override)) {
+      if (value === undefined) params.delete(key);
+      else params.set(key, value);
+    }
+
+    expect(Option.isNone(parseMeetingRoomStartTimesQuery(params))).toBe(true);
+  });
+
+  test("queries the date of the selected start", () => {
+    expect(
+      getMeetingRoomStartTimesQuery({
+        duration: "hour:1",
+        startDateTime: "2099-06-10T15:00",
+      })
+    ).toEqual({
+      kind: "meeting-room",
+      mode: "start-times",
+      date: "2099-06-10",
+      duration: "hour:1",
+    });
+    expect(
+      getMeetingRoomStartTimesQuery({ duration: "hour:1", startDateTime: "" })
+    ).toBeUndefined();
+  });
+
+  test("parses the start-times response", () => {
+    const response = {
+      date: "2099-06-10",
+      duration: "hour:1",
+      startTimes: [
+        {
+          startDateTime: "2099-06-10T09:00",
+          startsAt: "2099-06-10T07:00:00Z",
+          endsAt: "2099-06-10T08:00:00Z",
+        },
+      ],
+    };
+
+    expect(parseMeetingRoomStartTimesResponse(response)).toEqual(response);
+    expect(() =>
+      parseMeetingRoomStartTimesResponse({ ...response, duration: "hour:2" })
+    ).toThrow();
   });
 });

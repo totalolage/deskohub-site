@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
 import { WorkspaceE2ECaseService } from "../services/cases";
+import { isWorkspaceE2EOfficeCaseId } from "./case-catalog";
 import { readWorkspaceE2ERunPlan } from "./run-plan";
 import { runtimeTest } from "./runtime-fixtures";
 
@@ -79,8 +80,8 @@ export const registerWorkspaceE2ECases = (
         );
         if (!planned) {
           test.skip(
-            caseId === "checkout-office-paid-multi-day",
-            "Office checkout is disabled in this preview"
+            isWorkspaceE2EOfficeCaseId(caseId),
+            "The office page is disabled in this preview"
           );
           throw new Error(`Workspace E2E case ${caseId} was not constructed`);
         }

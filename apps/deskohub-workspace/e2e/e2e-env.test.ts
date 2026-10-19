@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  makeAgentEvalEnvironment,
   makeE2EEnvironment,
   makeWorkspaceE2EEnvironment,
   toPlaywrightEnvironment,
@@ -73,5 +74,29 @@ describe("Workspace E2E environment", () => {
         ...runtimeEnvironment,
       })
     ).toThrow("Invalid workspace E2E environment variables.");
+  });
+});
+
+describe("agent eval environment", () => {
+  const agentEvalEnvironment = {
+    TARGET_SHA: "a".repeat(40),
+    WORKSPACE_AGENT_EVAL_HARNESSES: "/devbox/harnesses.json",
+    WORKSPACE_E2E_VERCEL_PROJECT: "prj_workspace",
+    WORKSPACE_E2E_VERCEL_TOKEN: "synthetic-token",
+  };
+
+  test("reads the pinned preview commit", () => {
+    expect(makeAgentEvalEnvironment(agentEvalEnvironment).TARGET_SHA).toBe(
+      "a".repeat(40)
+    );
+  });
+
+  test.each([
+    ["without TARGET_SHA", { TARGET_SHA: undefined }],
+    ["with a short TARGET_SHA", { TARGET_SHA: "abc1234" }],
+  ])("refuses to run %s", (_label, override) => {
+    expect(() =>
+      makeAgentEvalEnvironment({ ...agentEvalEnvironment, ...override })
+    ).toThrow("TARGET_SHA");
   });
 });

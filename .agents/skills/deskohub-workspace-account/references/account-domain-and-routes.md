@@ -130,10 +130,54 @@ glossary defines the customer account, reservation author, and tombstone.
   `isCustomerSignedIn` promise that the header resolves with `use()` inside
   `Suspense`, with the sign-in href as fallback. Keep the static shell
   independent of the session; a failed session check reads as signed out.
-- Keep sign-in and sign-out as document navigations so the header re-reads the
-  session. The `/account` client redirect stays only for direct or stale
-  navigations.
+- The header's Admin entry (button, mobile-menu button, and ribbon) follows
+  the same pattern: an uncached `isCurrentAccountAdministrator` promise
+  (`features/administrators/server`) checks the verified session's account
+  against `AccountRoleGrants` on every request, renders nothing while pending,
+  and reads any failure as not an administrator. The ribbon raises
+  `--site-header-height` through `:root:has([data-site-header-admin-ribbon])`
+  in `app/globals.css`; size header offsets with that variable, and the bar
+  itself with `--site-header-bar-height`.
+- Keep sign-in completion and sign-out as document navigations so the header
+  re-reads the session. The `/account` redirect for signed-out visitors stays
+  only for direct or stale navigations, and it is a document navigation too,
+  so it loads the sign-in page instead of opening its modal.
 - Use one magic-link form for sign-in and implicit sign-up.
+- The site layout's `@modal` slot intercepts `/auth/sign-in` and
+  `/auth/verify`: a client navigation, such as the header's sign-in link,
+  opens the page as a modal over the current page, and a document load
+  renders the full page. `@modal/default.tsx` renders nothing everywhere
+  else; don't add a catch-all slot page (see the account slot above). A modal
+  closes with `router.back()`.
+- The magic-link callback carries the return target base64url-encoded as
+  `return` (`getAuthCallbackPath`, read back with `readAuthCallbackReturnTo`),
+  not as a plain `returnTo`: Better Auth decodes a magic link's `callbackURL`
+  a second time before it redirects, which would split a query nested in the
+  target. Checkout return targets carry queries.
+- A page that sends the sign-in email itself, such as a checkout form, calls
+  `startEmailSignIn({ locale, email, returnTo })` and moves to
+  `getAuthVerifyPath`. It fails with `invalid-return-path` rather than send
+  an email whose `returnTo` would be dropped. The tab's pending
+  request (`email-sign-in-request.ts`) is one external store shared by the
+  sign-in card and the verify page and mirrored to sessionStorage; never put
+  the email in the URL. The request records whether the email carries a code
+  (`login_email_code`), so the verify page shows the code entry or the
+  link-only instructions. It also records its return target: the sign-in
+  card resumes it when opened without one or for the same one, and starts
+  a fresh request when opened for another, since the sent link already
+  lands on the stored target.
+- State that must survive the round trip through the email, such as checkout
+  contact details, rides in the return target's query as a token from
+  `makeAuthReturnState(purpose, schema)`
+  (`features/account/backend/auth-return-state.ts`): sealed with the shared
+  sealed-state helper, purpose-bound, compressed, and usable for 30 minutes.
+- Return targets have a size contract. `parseSameOriginPath` accepts paths up
+  to `maxSameOriginPathLength` (8 KiB), so the magic link that carries one
+  base64url-encoded stays under Vercel's 14 KB URL limit. An auth return
+  token is at most `maxAuthReturnStateLength` (6 KiB) and fails to seal with
+  `SealedStateTooLargeError` beyond it, leaving 2 KiB for the page and its other
+  parameters. A new sealed schema must fit its largest accepted value;
+  extend the boundary test in `auth-return-state.test.ts` with it.
 - Section navigation items are links to the section paths, marked with
   `aria-current="page"`; disabled items stay buttons. A plain click on the
   signed-in account page switches the already rendered section in place and

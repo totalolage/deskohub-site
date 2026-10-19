@@ -54,7 +54,7 @@ Dotypos owns customer and reservation facts. Nexi owns external payment facts. T
 
 Discount and voucher tables (`discounts`, `discount_targets`, `promotion_codes`, `discount_codes`, `vouchers`, `discount_applications`, the redemption ledgers, and their customer-audience tables) hold only source-neutral configuration, Dotypos customer IDs, application snapshots, and claim state. `promotion_codes` is the one submitted-code namespace; discount codes and vouchers keep separate aggregates and claim ledgers. Operator mutations are in the administration skill's [discount reference](../../deskohub-workspace-administration/references/discounts.md).
 
-Customer marketing consent lives in `customer_marketing_consents`, one row per Dotypos customer. A checked box grants or reactivates it; an unchecked box is a no-op, never a withdrawal. Reservation terms acceptance is append-only in `legal_evidence_events` with source `payment_submit`. When one control captures both the early-performance request and the withdrawal-right acknowledgement, persist one consent fact, not one boolean per legal label.
+Customer marketing consent lives in `customer_marketing_consents`, one row per Dotypos customer. A checked box grants or reactivates it; an unchecked box is a no-op, never a withdrawal. Reservation terms acceptance is append-only in `legal_evidence_events` with source `payment_submit`. When one control captures both the early-performance request and the withdrawal-right acknowledgement, persist one consent fact, not one boolean per legal label. Acknowledgements live in the typed `legal_evidence_events.acknowledgements` jsonb (`legalEvidenceAcknowledgementsSchema`): `{"earlyPerformanceConsent": true}` on the terms event when consent was required, `{}` when an event carries none, and NULL only on events recorded before the column existed, which means unknown. Never backfill NULL rows from inference, such as re-running `isEarlyPerformanceRequestRequired` on stored dates; no durable source recorded the historical choice.
 
 ## State machines
 
@@ -106,7 +106,7 @@ Lookup keys survive `CHECKOUT_PAY_STATE_KEYS` rotation. Each configured key deri
 
 ### Rotating `CHECKOUT_PAY_STATE_KEYS`
 
-The value is an ordered `kid:base64url-32-byte-key` list. The first entry is active: it seals new Pay-state tokens and derives new lookup keys. Every entry opens its tokens and is accepted for lookups.
+The value is an ordered `kid:base64url-32-byte-key` list. The first entry is active: it seals new Pay-state tokens and derives new lookup keys. Every entry opens its tokens and is accepted for lookups. The shared sealed-state helper (`shared/backend/sealed-state.ts`) uses the same ring for every sealed state, including purpose-bound auth return state, whose tokens live 30 minutes; wait out the longest token lifetime before retiring a key.
 
 Before any change to the value, including the one-step replace below, confirm with a read-only query that no `held` row or row with `pending` payment stores an unprefixed (ring-keyed) `checkout_session_key` or `checkout_attempt_key`. Any edit to the string stops those digests matching, which breaks lookup and late-payment recovery and lets a resubmission create a duplicate hold. The same check gates removing the ring-keyed derivation from lookups.
 

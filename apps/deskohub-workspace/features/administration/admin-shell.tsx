@@ -23,6 +23,7 @@ import {
   type ReactNode,
   Suspense,
   type SVGProps,
+  useId,
 } from "react";
 import { type Locale, locales } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -38,6 +39,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/shared/components/ui/sheet";
+import { cn } from "@/shared/utils";
 import { AdministrationLink as Link } from "./admin-link";
 import { m } from "./i18n";
 import { AdministrationBreadcrumbLoading } from "./loading";
@@ -66,32 +68,17 @@ const navigation = [
         icon: Users,
         label: m.shellNavigationCustomers,
       },
-      {
-        href: "/admin/invoices",
-        icon: FileText,
-        label: m.shellNavigationInvoices,
-      },
+    ],
+  },
+  {
+    label: m.shellNavigationSectionDiscounts,
+    items: [
       { href: "/admin/codes", icon: Ticket, label: m.shellNavigationCodes },
-      {
-        href: "/admin/access-codes",
-        icon: KeyRound,
-        label: m.shellNavigationAccessCodes,
-      },
       { href: "/admin/vouchers", icon: Gift, label: m.shellNavigationVouchers },
       {
         href: "/admin/sales",
         icon: BadgePercent,
         label: m.shellNavigationSales,
-      },
-      {
-        href: "/admin/cli/sessions",
-        icon: SquareTerminal,
-        label: m.shellNavigationCliSessions,
-      },
-      {
-        href: "/admin/administrators",
-        icon: ShieldCheck,
-        label: m.administratorsNavigation,
       },
     ],
   },
@@ -107,6 +94,31 @@ const navigation = [
         href: "/admin/email-audiences",
         icon: ListFilter,
         label: m.shellNavigationAudiences,
+      },
+    ],
+  },
+  {
+    label: m.shellNavigationSectionAdministration,
+    items: [
+      {
+        href: "/admin/invoices",
+        icon: FileText,
+        label: m.shellNavigationInvoices,
+      },
+      {
+        href: "/admin/access-codes",
+        icon: KeyRound,
+        label: m.shellNavigationAccessCodes,
+      },
+      {
+        href: "/admin/administrators",
+        icon: ShieldCheck,
+        label: m.administratorsNavigation,
+      },
+      {
+        href: "/admin/cli/sessions",
+        icon: SquareTerminal,
+        label: m.shellNavigationCliSessions,
       },
     ],
   },
@@ -136,17 +148,23 @@ function Navigation({
   readonly pathname?: string;
 }) {
   const locale = useRouteLocale();
+  // The desktop and mobile navigation render together, so headings need ids
+  // unique to each instance.
+  const id = useId();
   return (
     <nav
       aria-label={m.shellNavigationLabel({}, { locale })}
       className="space-y-7"
     >
-      {navigation.map((section) => (
+      {navigation.map((section, index) => (
         <div key={section.items[0].href}>
-          <p className="mb-2 px-3 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-navy-blue/65">
+          <p
+            className="mb-2 px-3 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-navy-blue/65"
+            id={`${id}-${index}`}
+          >
             {section.label({}, { locale })}
           </p>
-          <ul className="space-y-1">
+          <ul aria-labelledby={`${id}-${index}`} className="space-y-1">
             {section.items.map((item) => {
               return (
                 <li key={item.href}>
@@ -280,17 +298,23 @@ export function AdministrationBreadcrumbs({
   );
 }
 
-function Brand({ locale }: { readonly locale: Locale }) {
+function Brand({
+  labelClassName,
+  locale,
+}: {
+  readonly labelClassName?: string;
+  readonly locale: Locale;
+}) {
   return (
-    <Link className="flex items-center gap-3" href="/admin">
-      <span className="grid size-9 place-items-center rounded-lg bg-burned-orange text-sm font-semibold text-white">
+    <Link className="flex min-w-0 items-center gap-3" href="/admin">
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-burned-orange text-sm font-semibold text-white">
         D
       </span>
-      <span>
-        <span className="block text-sm font-semibold leading-none">
+      <span className={cn("min-w-0", labelClassName)}>
+        <span className="block truncate text-sm font-semibold leading-none">
           Deskohub
         </span>
-        <span className="mt-1 block text-xs text-navy-blue/65">
+        <span className="mt-1 block overflow-hidden text-ellipsis text-xs text-navy-blue/65">
           {m.shellBrandSubtitle({}, { locale })}
         </span>
       </span>
@@ -330,14 +354,18 @@ export function AdminShell({
               <SheetTrigger asChild>
                 <Button
                   aria-label={m.shellOpenNavigation({}, { locale })}
-                  className="lg:hidden"
+                  className="shrink-0 lg:hidden"
                   size="icon"
                   variant="ghost"
                 >
                   <Menu aria-hidden className="size-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent className="px-4 py-5" locale={locale} side="left">
+              <SheetContent
+                className="overflow-y-auto px-4 py-5"
+                locale={locale}
+                side="left"
+              >
                 <SheetHeader className="sr-only">
                   <SheetTitle>
                     {m.shellMobileNavigationTitle({}, { locale })}
@@ -354,15 +382,15 @@ export function AdminShell({
                 </div>
               </SheetContent>
             </Sheet>
-            <div className="lg:hidden">
-              <Brand locale={locale} />
+            <div className="min-w-0 lg:hidden">
+              <Brand labelClassName="max-[379px]:sr-only" locale={locale} />
             </div>
             <div className="hidden min-w-0 lg:block">
               <Suspense fallback={<AdministrationBreadcrumbLoading />}>
                 {breadcrumb}
               </Suspense>
             </div>
-            <div className="ml-auto">{localeSwitcher}</div>
+            <div className="ml-auto shrink-0">{localeSwitcher}</div>
           </div>
         </header>
         <div className="border-b border-navy-blue/10 bg-white px-4 py-3 lg:hidden">

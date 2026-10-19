@@ -1,5 +1,6 @@
 import { test as base } from "@playwright/test";
 import { Effect, Layer, ManagedRuntime } from "effect";
+import { WorkspaceE2EAccountResourceService } from "../account/resources.service";
 import { getDatasourceConfig } from "../config";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
 import { E2EDatabase } from "../integrations/database.service";
@@ -17,7 +18,11 @@ type CleanupRuntimeFixtures = {
   readonly environment: ReturnType<typeof makeWorkspaceE2EEnvironment>;
   readonly runContext: E2ERunContext;
   readonly runEffect: <A, E>(
-    effect: Effect.Effect<A, E, E2EDatabase | E2ETelemetryService>
+    effect: Effect.Effect<
+      A,
+      E,
+      E2EDatabase | E2ETelemetryService | WorkspaceE2EAccountResourceService
+    >
   ) => Promise<A>;
 };
 
@@ -41,7 +46,9 @@ export const cleanupTest = base.extend<
       addDatabaseUrlRedactions(datasourceConfig.databaseUrlUnpooled);
       const telemetry = makeE2ETelemetryRuntime(environment);
       const layer = Layer.mergeAll(
-        E2EDatabase.layer(datasourceConfig),
+        WorkspaceE2EAccountResourceService.layer(datasourceConfig).pipe(
+          Layer.provideMerge(E2EDatabase.layer(datasourceConfig))
+        ),
         E2ETelemetryService.Default.pipe(
           Layer.provideMerge(E2ERunContextService.layerValue(runContext))
         )
@@ -51,7 +58,11 @@ export const cleanupTest = base.extend<
         environment.WORKSPACE_E2E_TRACE_PARENT
       );
       const runEffect = <A, E>(
-        effect: Effect.Effect<A, E, E2EDatabase | E2ETelemetryService>
+        effect: Effect.Effect<
+          A,
+          E,
+          E2EDatabase | E2ETelemetryService | WorkspaceE2EAccountResourceService
+        >
       ) =>
         runtime.runPromise(
           parentSpan ? effect.pipe(Effect.withParentSpan(parentSpan)) : effect

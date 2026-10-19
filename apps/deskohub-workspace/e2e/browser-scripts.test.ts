@@ -384,6 +384,89 @@ test("selects a monitor over a page-loaded Reserved Desk price", async () => {
   }
 });
 
+test("turns the workstation on before choosing a monitor", async () => {
+  const data = makeCoworkCheckoutData(
+    "https://workspace.example.test",
+    "2099-09-01",
+    "url-state-cowork",
+    { entryTier: "reserved-desk", monitorOption: "2x32-qhd" }
+  );
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/en-US/reservation/cowork",
+  });
+  try {
+    // Monitor options render only after the workstation switch is on.
+    document.body.innerHTML = `
+    <input name="date" value="2099-09-01" />
+    <button data-reservation-type-price="reserved-desk" data-reservation-type-price-ready="true"></button>
+    <input id="reservation-entry-tier-reserved-desk" type="radio" checked />
+    <div data-cowork-optional-addon-toggle="workstation">
+      <button role="switch" aria-checked="false"></button>
+    </div>
+  `;
+
+    const workstationSwitch =
+      document.querySelector<HTMLElement>('[role="switch"]')!;
+    workstationSwitch.addEventListener("click", () => {
+      workstationSwitch.setAttribute("aria-checked", "true");
+      document.body.insertAdjacentHTML(
+        "beforeend",
+        `<div data-cowork-monitor-options>
+          <label><input type="radio" value="2x27-qhd" checked /></label>
+          <label><input type="radio" value="2x32-qhd" /></label>
+        </div>`
+      );
+      const monitorInput = document.querySelector<HTMLInputElement>(
+        'input[value="2x32-qhd"]'
+      )!;
+      monitorInput.closest("label")!.addEventListener("click", () => {
+        monitorInput.checked = true;
+      });
+    });
+
+    let now = 0;
+    class FastDate extends Date {
+      static override now() {
+        now += 1_000;
+        return now;
+      }
+    }
+    const run = new Function(
+      "document",
+      "HTMLElement",
+      "HTMLInputElement",
+      "MutationObserver",
+      "Date",
+      "setTimeout",
+      "location",
+      `return (${getPrepareCoworkAdvertisedPriceScript(data).trim()})`
+    );
+
+    await expect(
+      run(
+        document,
+        HTMLElement,
+        HTMLInputElement,
+        MutationObserver,
+        FastDate,
+        (callback: () => void) => {
+          queueMicrotask(callback);
+          return 0;
+        },
+        location
+      )
+    ).resolves.toBe(location.href);
+    expect(workstationSwitch.getAttribute("aria-checked")).toBe("true");
+    expect(
+      document.querySelector<HTMLInputElement>('input[value="2x32-qhd"]')
+        ?.checked
+    ).toBe(true);
+  } finally {
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
+});
+
 test("accepts an already-prepared prefilled Reserved Desk price", async () => {
   const data = makeCoworkCheckoutData(
     "https://workspace.example.test",
@@ -591,6 +674,100 @@ test("waits through delayed meeting-room availability readiness", async () => {
         location
       )
     ).resolves.toBe(location.href);
+  } finally {
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
+});
+
+test("picks a listed meeting-room start time instead of typing it", async () => {
+  const interval = getTestMeetingRoomInterval(
+    "2099-09-02T14:00",
+    oneHourMeetingRoomDuration
+  );
+  expect(interval).toBeDefined();
+  const data = makeMeetingRoomCheckoutData(
+    "https://workspace.example.test",
+    {
+      date: "2099-09-02",
+      duration: oneHourMeetingRoomDuration,
+      startDateTime: "2099-09-02T14:00",
+      ...interval!,
+    },
+    "meeting-room-listed-start"
+  );
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/en-US/reservation/meeting-room",
+  });
+  try {
+    document.body.innerHTML = `
+      <button aria-label="Meeting room start date"></button>
+      <div data-day="2099-09-02"><button type="button"></button></div>
+      <input aria-label="Meeting room start time" value="10:00" />
+      <div id="start-times"></div>
+      <input id="meeting-room-duration-hour:1" type="radio" value="hour:1" checked />
+      <input name="email" />
+      <input name="phone" />
+      <input name="name" />
+      <textarea name="message"></textarea>
+      <input name="startDateTime" value="2099-09-02" />
+      <button type="submit"></button>
+    `;
+    const time = document.querySelector<HTMLInputElement>(
+      'input[aria-label="Meeting room start time"]'
+    )!;
+    const typedTimes: string[] = [];
+    time.addEventListener("input", () => typedTimes.push(time.value));
+
+    let pollCount = 0;
+    const run = new Function(
+      "document",
+      "HTMLElement",
+      "HTMLButtonElement",
+      "HTMLInputElement",
+      "HTMLTextAreaElement",
+      "Event",
+      "Date",
+      "setTimeout",
+      "location",
+      `return (${getPrepareMeetingRoomAdvertisedPriceScript(data, {
+        startTimeEntry: "listed",
+      }).trim()})`
+    );
+
+    await expect(
+      run(
+        document,
+        HTMLElement,
+        HTMLButtonElement,
+        HTMLInputElement,
+        HTMLTextAreaElement,
+        Event,
+        Date,
+        (callback: () => void) => {
+          pollCount += 1;
+          // The free start times arrive after the date and duration are set.
+          if (pollCount === 3) {
+            document.querySelector("#start-times")!.innerHTML = `
+              <div role="radiogroup">
+                <label><input type="radio" value="2099-09-02T13:00" /></label>
+                <label id="listed-start"><input type="radio" value="2099-09-02T14:00" /></label>
+              </div>
+            `;
+            document
+              .querySelector("#listed-start")!
+              .addEventListener("click", () => {
+                time.value = "14:00";
+              });
+          }
+          queueMicrotask(callback);
+          return 0;
+        },
+        location
+      )
+    ).resolves.toBe(location.href);
+    expect(time.value).toBe("14:00");
+    expect(typedTimes).toEqual([]);
   } finally {
     await GlobalRegistrator.unregister();
     globalThis.Temporal = workspaceTemporal;
