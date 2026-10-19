@@ -67,6 +67,16 @@ export {
   makeAudienceFilterSchemas,
 } from "./audience-filter";
 export {
+  type CalendarDayOfMonth,
+  CalendarExpression,
+  type CalendarExpression as CalendarExpressionType,
+  CalendarWeekday,
+  type CalendarWeekday as CalendarWeekdayType,
+  type CalendarWeekdayOccurrence,
+  calendarWeekdays,
+  canonicalCalendarExpression,
+} from "./calendar-expression";
+export {
   AdministrationCampaignLocale,
   type AdministrationCampaignLocale as AdministrationCampaignLocaleType,
   AdministrationCampaignPurpose,
