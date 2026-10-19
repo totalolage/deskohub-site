@@ -1221,7 +1221,10 @@ export class CampaignDeliveryService extends Context.Service<
           .where(eq(emailCampaignSends.id, input.context.sendId))
           .pipe(
             Effect.andThen(
-              runSettlement.settle(tx, { sendId: input.context.sendId })
+              runSettlement.settle(tx, {
+                sendId: input.context.sendId,
+                at: input.now,
+              })
             )
           );
 
