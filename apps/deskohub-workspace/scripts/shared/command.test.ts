@@ -209,6 +209,7 @@ const shutdownScenarios = [
   { mode: "timeout", target: "caller", ended: [0, 1] },
   { mode: "no-timeout", target: "caller", ended: [0] },
   { mode: "no-timeout", target: "caller group", ended: [0, 1] },
+  { mode: "own-group", target: "caller", ended: [0, 1] },
 ] as const;
 
 describe("caller shutdown", () => {

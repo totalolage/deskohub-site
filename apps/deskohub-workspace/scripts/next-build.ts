@@ -20,10 +20,13 @@ export const nextBuildRuns = (args: readonly string[]) =>
 if (import.meta.main) {
   for (const runArgs of nextBuildRuns(Bun.argv.slice(2))) {
     const command = ["next", "build", "--turbo", ...runArgs];
-    // The command stays in this process group, so a terminal's or
-    // supervisor's signal reaches it, and a signal to this runner alone ends
-    // it before the runner exits.
-    const result = await runCommand(command, { output: "inherit" });
+    // `next build` leads its own process group, so when this runner gets
+    // SIGINT or SIGTERM it ends the build's worker processes with it; killing
+    // only `next` would leave them running.
+    const result = await runCommand(command, {
+      output: "inherit",
+      ownProcessGroup: true,
+    });
     const failure = describeTermination(result);
     if (failure !== undefined) {
       console.error(`\`${command.join(" ")}\` ${failure}`);

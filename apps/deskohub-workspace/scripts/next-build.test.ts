@@ -56,12 +56,12 @@ const waitFor = async (condition: () => boolean): Promise<boolean> => {
 /**
  * A stand-in `next` on PATH: it records each invocation's arguments, exits
  * with `NEXT_FAIL_EXIT` in the `NEXT_FAIL_MODE` build mode, and in
- * `NEXT_HANG_MODE` records its pid and waits for a signal.
+ * `NEXT_HANG_MODE` starts a worker, records both pids, and waits.
  */
 const fakeNext = `#!/usr/bin/env bash
 echo "$*" >> "$NEXT_CALLS"
 case "$*" in *"build-mode=\${NEXT_FAIL_MODE:-none}"*) exit "$NEXT_FAIL_EXIT" ;; esac
-case "$*" in *"build-mode=\${NEXT_HANG_MODE:-none}"*) echo $$ > "$NEXT_PID"; exec sleep 30 ;; esac
+case "$*" in *"build-mode=\${NEXT_HANG_MODE:-none}"*) sleep 30 & echo "$$ $!" > "$NEXT_PID"; wait ;; esac
 `;
 
 const startBuild = (
@@ -136,7 +136,8 @@ describe("next-build", () => {
     const pidFile = join(directory, "pid");
     try {
       expect(await waitFor(() => existsSync(pidFile))).toBe(true);
-      process.kill(Number(readFileSync(pidFile, "utf8")), "SIGKILL");
+      const [nextPid] = readFileSync(pidFile, "utf8").trim().split(" ");
+      process.kill(Number(nextPid), "SIGKILL");
       expect(await build.exited).toBe(137);
     } finally {
       build.kill("SIGKILL");
@@ -145,21 +146,29 @@ describe("next-build", () => {
 
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
     for (const mode of ["compile", "generate"] as const) {
-      test(`${signal} to the runner ends its ${mode} phase`, async () => {
+      test(`${signal} to the runner ends its ${mode} phase and its workers`, async () => {
         const build = startBuild(directory, { NEXT_HANG_MODE: mode });
         const pidFile = join(directory, "pid");
-        let nextPid = 0;
+        let pids: readonly number[] = [];
         try {
-          expect(await waitFor(() => existsSync(pidFile))).toBe(true);
-          nextPid = Number(readFileSync(pidFile, "utf8"));
+          expect(
+            await waitFor(
+              () =>
+                existsSync(pidFile) &&
+                readFileSync(pidFile, "utf8").trim().split(" ").length === 2
+            )
+          ).toBe(true);
+          pids = readFileSync(pidFile, "utf8").trim().split(" ").map(Number);
           build.kill(signal);
           await build.exited;
           expect(build.signalCode).toBe(signal);
-          expect(await waitFor(() => !isRunning(nextPid))).toBe(true);
+          for (const pid of pids) {
+            expect(await waitFor(() => !isRunning(pid))).toBe(true);
+          }
         } finally {
           build.kill("SIGKILL");
-          if (nextPid !== 0 && isRunning(nextPid)) {
-            process.kill(nextPid, "SIGKILL");
+          for (const pid of pids) {
+            if (isRunning(pid)) process.kill(pid, "SIGKILL");
           }
         }
       }, 20_000);

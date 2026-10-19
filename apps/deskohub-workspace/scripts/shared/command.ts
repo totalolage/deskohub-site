@@ -31,6 +31,12 @@ export interface CommandOptions {
    */
   readonly output?: "capture" | "inherit";
   /**
+   * Runs the command as the leader of its own process group, so caller
+   * shutdown ends its descendants too, such as worker processes that would
+   * outlive a killed parent. A timeout implies it.
+   */
+  readonly ownProcessGroup?: boolean;
+  /**
    * Kills the command's process group with SIGKILL once it runs longer than
    * this, and stops waiting for output shortly after.
    */
@@ -288,8 +294,10 @@ export const runCommand = async (
 ): Promise<CommandResult> => {
   // A timed command leads its own process group so the timeout reaches the
   // descendants that inherited its output pipes. An untimed one stays in the
-  // caller's group, where terminal and supervisor signals still reach it.
-  const ownsGroup = options.timeoutMs !== undefined;
+  // caller's group, where terminal and supervisor signals still reach it,
+  // unless it asks for its own.
+  const ownsGroup =
+    options.timeoutMs !== undefined || options.ownProcessGroup === true;
   const spawned = spawnCommand({
     command,
     cwd: options.cwd,
