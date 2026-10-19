@@ -4,6 +4,7 @@ import { Option, Schema } from "effect";
 import { getSignInDestination } from "@/features/account/routes";
 import type { Locale } from "@/features/i18n";
 import { authClient } from "./auth.client";
+import { forgetEmailSignInRequest } from "./email-sign-in-request";
 import { rememberPasskeyOnThisBrowser } from "./passkey-prompt";
 import type {
   AccountPasskey,
@@ -13,7 +14,6 @@ import type {
   PasskeySignInResult,
 } from "./passkeys";
 import { recordSignInCompletion } from "./sign-in-analytics";
-import { forgetSignInCodeRequest } from "./sign-in-code-request";
 
 /*
  * Maps Better Auth passkey responses onto the screens' outcome unions. The
@@ -134,7 +134,7 @@ export const signInWithPasskey = async ({
   if (accountId !== undefined) rememberPasskeyOnThisBrowser(accountId);
   recordSignInCompletion("passkey");
   // A signed-in tab must not show a pending code step after a sign-out.
-  forgetSignInCodeRequest();
+  forgetEmailSignInRequest();
   try {
     window.location.replace(getSignInDestination(locale, returnTo));
   } catch {

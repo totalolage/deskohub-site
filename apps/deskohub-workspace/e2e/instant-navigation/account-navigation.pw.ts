@@ -2,7 +2,6 @@ import { instant } from "@next/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { m } from "@/features/i18n";
 import { captureAccountReview } from "../account/review-screenshots";
-import { workspaceE2ETimeouts } from "../timeouts";
 import {
   enablePreviewAccess,
   expectPublicSiteShell,
@@ -33,7 +32,7 @@ test.beforeEach(async ({ baseURL, context }) => {
 });
 
 test.describe("client navigation", () => {
-  test("links the anonymous header account button straight to sign-in", async ({
+  test("opens sign-in over the page from the anonymous header account button", async ({
     page,
   }) => {
     await page.goto(homePath);
@@ -52,6 +51,7 @@ test.describe("client navigation", () => {
     await accountLink.click();
 
     await expectAnonymousSignIn(page);
+    await expect(page.getByRole("dialog")).toBeVisible();
     await expect(
       page.getByRole("status", { name: accountStatusName })
     ).toHaveCount(0);
@@ -67,6 +67,8 @@ test.describe("client navigation", () => {
 
     await navigateToAccount(page, baseURL, { verifySignInHandoff: true });
     await expectAnonymousSignIn(page);
+    // The redirect loads the sign-in page itself, not the modal.
+    await expect(page.getByRole("dialog")).toHaveCount(0);
 
     await page
       .getByRole("banner")
@@ -126,107 +128,52 @@ async function navigateToAccount(
   };
 
   if (options.verifySignInHandoff) {
-    await withSignInHandoffEvidence(
-      page,
-      requireBaseUrl(baseURL),
-      runAccountInstantFallback
-    );
+    await withSignInHandoffEvidence(page, runAccountInstantFallback);
     return;
   }
 
   await runAccountInstantFallback();
 }
 
+const signInLoadingSeenKey = "deskohub:e2e:sign-in-loading-seen";
+
+// The redirect is a document navigation, and Playwright waits for a pending
+// navigation before it reads the page, so the loading shell can't be
+// inspected while the sign-in request is held. Instead the browser records
+// it in sessionStorage, which the same tab keeps across the navigation.
 async function withSignInHandoffEvidence(
   page: Page,
-  baseUrl: string,
   runAccountInstantFallback: () => Promise<void>
 ) {
-  const baseOrigin = new URL(baseUrl).origin;
-  const signInHandoffRouteMatcher = (url: URL) =>
-    url.origin === baseOrigin && url.pathname === signInPath;
-
-  let resolveHandoffStarted!: () => void;
-  const handoffStarted = new Promise<void>((resolve) => {
-    resolveHandoffStarted = resolve;
-  });
-  let resolveOriginalRequest!: () => void;
-  const originalRequestHold = new Promise<void>((resolve) => {
-    resolveOriginalRequest = resolve;
-  });
-  let originalRequestReleased = false;
-  const releaseOriginalRequest = () => {
-    if (originalRequestReleased) return;
-    originalRequestReleased = true;
-    resolveOriginalRequest();
-  };
-  let handoffClaimed = false;
-  let fullHandlerPromise: Promise<void> | undefined;
-  const handleSignInHandoffRoute: Parameters<Page["route"]>[1] = (
-    route,
-    request
-  ) => {
-    const headers = request.headers();
-    const isSignInHandoffRequest =
-      request.method() === "GET" &&
-      headers.rsc === "1" &&
-      headers["next-router-prefetch"] !== "1" &&
-      headers.purpose !== "prefetch";
-    if (handoffClaimed || !isSignInHandoffRequest) {
-      return route.continue();
-    }
-
-    handoffClaimed = true;
-    fullHandlerPromise = (async () => {
-      await originalRequestHold;
-      await route.continue();
-    })();
-    resolveHandoffStarted();
-    return fullHandlerPromise;
-  };
-
-  await page.route(signInHandoffRouteMatcher, handleSignInHandoffRoute);
-  try {
-    await runAccountInstantFallback();
-    await waitForBoundedPromise(handoffStarted);
-
-    const signInLoading = page.getByRole("status", {
-      name: signInLoadingName,
+  const recordSignInLoading = ({
+    key,
+    name,
+  }: {
+    readonly key: string;
+    readonly name: string;
+  }) => {
+    sessionStorage.removeItem(key);
+    const record = () => {
+      if (document.querySelector(`[role="status"][aria-label="${name}"]`)) {
+        sessionStorage.setItem(key, "1");
+      }
+    };
+    new MutationObserver(record).observe(document, {
+      childList: true,
+      subtree: true,
     });
-    await expect(signInLoading).toBeVisible({
-      timeout: workspaceE2ETimeouts.browserAction,
-    });
-
-    await captureAccountReview(
-      page,
-      reviewDestination(baseUrl),
-      "sign-in-handoff-desktop"
-    );
-  } finally {
-    releaseOriginalRequest();
-    try {
-      if (fullHandlerPromise) await waitForBoundedPromise(fullHandlerPromise);
-    } finally {
-      await page.unroute(signInHandoffRouteMatcher, handleSignInHandoffRoute);
-    }
-  }
-}
-
-async function waitForBoundedPromise<T>(promise: Promise<T>): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(
-          () => reject(new Error("Sign-in handoff did not settle in time")),
-          workspaceE2ETimeouts.browserAction
-        );
-      }),
-    ]);
-  } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
-  }
+  };
+  const recorder = { key: signInLoadingSeenKey, name: signInLoadingName };
+  // The client navigation to the account stays in this document.
+  await page.evaluate(recordSignInLoading, recorder);
+  await runAccountInstantFallback();
+  await expectAnonymousSignIn(page);
+  expect(
+    await page.evaluate(
+      (key) => sessionStorage.getItem(key),
+      signInLoadingSeenKey
+    )
+  ).toBe("1");
 }
 
 async function expectAnonymousSignIn(page: Page) {

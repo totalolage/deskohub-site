@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import type { DiscountCodeRejection } from "@/features/checkout/discount-code-rejection";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import type { CheckoutStateCryptoOptions } from "./checkout-state-token";
+import type { SealedStateCryptoOptions } from "@/shared/backend/sealed-state";
 import {
   type BuildSignedPayStateInput,
   buildSignedPayState,
@@ -54,7 +54,7 @@ export const buildCheckoutPayPath = (
 export const buildFreshCheckoutPayPath = Effect.fn("buildFreshCheckoutPayPath")(
   function* (
     input: BuildSignedPayStateInput,
-    options: CheckoutStateCryptoOptions = {},
+    options: SealedStateCryptoOptions = {},
     pathOptions: CheckoutPayPathOptions = {}
   ) {
     const freshState = yield* buildSignedPayState(input, options);
@@ -65,6 +65,6 @@ export const buildFreshCheckoutPayPath = Effect.fn("buildFreshCheckoutPayPath")(
 
 export const buildCheckoutPayContinuationPath = Effect.fn(
   "buildCheckoutPayContinuationPath"
-)((state: SignedPayState, options: CheckoutStateCryptoOptions = {}) =>
+)((state: SignedPayState, options: SealedStateCryptoOptions = {}) =>
   buildFreshCheckoutPayPath({ ...state, changedKeys: undefined }, options)
 );
