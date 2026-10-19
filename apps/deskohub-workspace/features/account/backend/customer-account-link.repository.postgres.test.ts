@@ -8,6 +8,7 @@ import {
   WorkspaceDatabaseAdvisoryLock,
   withPostgresAdvisoryLock,
 } from "@/db/postgres-advisory-lock";
+import { rejectCustomerEventInserts } from "@/shared/backend/customer-events/customer-event-outbox.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { customerAccountIdSchema } from "../customer-account";
 import { CustomerAccountRepository } from "./customer-account.repository";
@@ -258,6 +259,42 @@ describe.skipIf(!testDatabase)(
       ]);
 
       expect(await accountCreatedEvents(account)).toEqual(recorded);
+    });
+
+    test("rolls the first account-link claim back with a failed event write", async () => {
+      const account = customerAccountIdSchema.make(uniqueId());
+      const dotyposCustomerId = uniqueDotyposId();
+      await insertAuthUser(account, testEmailAddress(`r-${account}`));
+      const cleanup = await rejectCustomerEventInserts(
+        testDatabase!.pool,
+        `new.dotypos_customer_id = '${dotyposCustomerId}'`
+      );
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          return yield* Effect.result(links.claim(account, dotyposCustomerId));
+        }).pipe(Effect.provide(makeRepositoryLayer()))
+      ).finally(cleanup);
+
+      expect(result._tag).toBe("Failure");
+      const claimRows = await testDatabase!.pool.query(
+        "select dotypos_customer_id from customer_account_links where customer_account_id = $1",
+        [account]
+      );
+      expect(claimRows.rows).toEqual([]);
+      expect(await accountCreatedEvents(account)).toEqual([]);
+
+      const retry = await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          return yield* links.claim(account, dotyposCustomerId);
+        }).pipe(Effect.provide(makeRepositoryLayer()))
+      );
+      expect(retry).toEqual({
+        kind: "linked",
+        customerId: dotyposCustomerId,
+        created: true,
+      });
     });
   }
 );

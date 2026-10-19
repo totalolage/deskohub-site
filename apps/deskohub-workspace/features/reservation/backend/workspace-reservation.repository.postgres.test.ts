@@ -32,6 +32,7 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
+import { rejectCustomerEventInserts } from "@/shared/backend/customer-events/customer-event-outbox.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   fulfillmentEmailFailureCode,
@@ -871,28 +872,13 @@ describe.skipIf(!testDatabase)(
 
       test("rolls the confirmation back with a failed event write", async () => {
         const id = await insertReservation(processingPaid);
-        const rejection = `reject_customer_event_${crypto.randomUUID().replaceAll("-", "")}`;
-        await testDatabase.pool.query(
-          `create function ${rejection}() returns trigger language plpgsql as $$
-           begin
-             if new.workspace_reservation_id = '${id}' then
-               raise exception 'forced customer event failure';
-             end if;
-             return new;
-           end $$`
-        );
-        await testDatabase.pool.query(
-          `create trigger ${rejection} before insert on customer_events
-           for each row execute function ${rejection}()`
+        const cleanup = await rejectCustomerEventInserts(
+          testDatabase.pool,
+          `new.workspace_reservation_id = '${id}'`
         );
         const failure = await runFailure((repository) =>
           repository.markReservationConfirmed({ id, confirmedAt: at(3) })
-        ).finally(async () => {
-          await testDatabase.pool.query(
-            `drop trigger ${rejection} on customer_events`
-          );
-          await testDatabase.pool.query(`drop function ${rejection}()`);
-        });
+        ).finally(cleanup);
 
         expect(failure).not.toBeInstanceOf(WorkspaceReservationStateError);
         expect(await readReservation(id)).toMatchObject({
@@ -938,6 +924,37 @@ describe.skipIf(!testDatabase)(
           },
         ]);
         expect(await readEvents(unconfirmed)).toEqual([]);
+      });
+
+      test("rolls the administration cancellation back with a failed event write", async () => {
+        const claimedAt = at(5);
+        const id = await insertReservation({
+          ...paid,
+          reservationState: "cancelling",
+          fulfillmentState: "fulfilled",
+          fulfilledAt: at(1),
+          updatedAt: claimedAt,
+          reservationConfirmedAt: at(1),
+        });
+        const cleanup = await rejectCustomerEventInserts(
+          testDatabase.pool,
+          `new.workspace_reservation_id = '${id}'`
+        );
+        const failure = await runFailure((repository) =>
+          repository.markAdministrationCancelled({
+            id,
+            cancelledAt: at(6),
+            claimedAt,
+            failureCode: "operator_cancelled",
+          })
+        ).finally(cleanup);
+
+        expect(failure).not.toBeInstanceOf(WorkspaceReservationStateError);
+        expect(await readReservation(id)).toMatchObject({
+          reservationState: "cancelling",
+          reservationCancelledAt: null,
+        });
+        expect(await readEvents(id)).toEqual([]);
       });
 
       test("records nothing for an unpaid cancellation or a supersession", async () => {
