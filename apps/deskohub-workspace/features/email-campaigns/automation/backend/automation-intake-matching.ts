@@ -70,7 +70,7 @@ type AcceptingAutomation = {
  * The receipt key of an event: one per reservation and kind, or per
  * account, across versions (§1.2.7).
  */
-export const intakeDedupKey = (event: IntakeEvent) =>
+const intakeDedupKey = (event: IntakeEvent) =>
   `${event.kind}:${event.workspaceReservationId ?? event.customerAccountId ?? event.id}`;
 
 /**

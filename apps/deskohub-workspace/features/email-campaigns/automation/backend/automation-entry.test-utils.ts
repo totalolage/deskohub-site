@@ -81,7 +81,7 @@ export const makeEntryDotypos = () => {
     }),
   };
 };
-export type EntryDotypos = ReturnType<typeof makeEntryDotypos>;
+type EntryDotypos = ReturnType<typeof makeEntryDotypos>;
 
 /**
  * The engine with the real intake and fire-chunk handlers and planner
@@ -131,7 +131,7 @@ export const entryEngineLayer = async (input: {
  * A profile Dotypos returns, reachable at a test-domain address; the local
  * part keeps the id's end, within the 64 characters an address allows.
  */
-export const entryCustomer = (
+const entryCustomer = (
   id: DotyposCustomerId,
   email = `${id.slice(-48)}@example.test`
 ): DotyposCustomer =>

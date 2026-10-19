@@ -42,7 +42,7 @@ export type AutomationTriggerOccurrence = {
 };
 
 /** An occurrence that starts no run, with the receipt that records why. */
-export type AutomationTriggerRejection = AutomationTriggerOccurrence & {
+type AutomationTriggerRejection = AutomationTriggerOccurrence & {
   readonly disposition: Exclude<
     AutomationTriggerDisposition,
     "started" | "already-active"
@@ -50,7 +50,7 @@ export type AutomationTriggerRejection = AutomationTriggerOccurrence & {
 };
 
 /** What one automation's entry recorded. */
-export type AutomationRunEntry = {
+type AutomationRunEntry = {
   readonly started: number;
   readonly alreadyActive: number;
   readonly rejected: number;
@@ -229,7 +229,7 @@ const receiptRow = (
 });
 
 /** What entering a version needs: its entry audience, purpose and first step. */
-export type AutomationEntryVersion = {
+type AutomationEntryVersion = {
   readonly id: AutomationVersionId;
   readonly campaignId: CampaignId;
   readonly purpose: CampaignPurpose;
