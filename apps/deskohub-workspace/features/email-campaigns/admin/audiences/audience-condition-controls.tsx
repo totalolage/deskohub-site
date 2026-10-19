@@ -1,15 +1,17 @@
 "use client";
 
-import type {
-  AudienceBooleanCondition,
-  AudienceChoiceParam,
-  AudienceCountAttributeDefinition,
-  AudienceCountCondition,
-  AudienceDateAttributeDefinition,
-  AudienceDateCondition,
-  AudienceSetAttributeDefinition,
-  AudienceSetCondition,
-  DatePeriodUnitType,
+import {
+  AdministrationCampaignId,
+  type AudienceBooleanCondition,
+  type AudienceChoiceParam,
+  type AudienceCountAttributeDefinition,
+  type AudienceCountCondition,
+  type AudienceDateAttributeDefinition,
+  type AudienceDateCondition,
+  type AudienceSetAttributeDefinition,
+  type AudienceSetCondition,
+  type CampaignEmailSourceType,
+  type DatePeriodUnitType,
 } from "@deskohub/workspace-admin-api";
 import { Match } from "effect";
 import { ChevronDown } from "lucide-react";
@@ -43,6 +45,7 @@ import type {
 } from "../audience-filter-summary";
 import type {
   AudienceBooleanWording,
+  AudienceCampaignSourceWording,
   AudienceChoiceWording,
   AudienceCountWording,
   AudienceDateWording,
@@ -74,8 +77,10 @@ import {
 } from "./audience-filter-editing";
 import { ProductFilterControl } from "./reservation-product-filter-control";
 
+/** The periods a saved audience can hold; trigger windows are flow-only. */
 const datePeriodKinds: readonly DatePeriodKind[] = [
   "AnyTime",
+  "Past",
   "Last",
   "Range",
   "Since",
@@ -105,8 +110,9 @@ const datePeriodUnit = (
 const today = () => getCurrentWorkspaceDate().toString();
 
 /**
- * Any time, the last N days/weeks/months/years, from–to, since, or until. The
- * same control picks every period an audience condition uses.
+ * Any time, any time so far, the last N days/weeks/months/years, from–to,
+ * since, or until. The same control picks every period an audience
+ * condition uses.
  */
 function DatePeriodControl({
   value,
@@ -275,11 +281,13 @@ function ChoiceParamControl({
   wording,
   value,
   onChange,
+  disabled = false,
 }: {
   readonly param: AudienceChoiceParam;
   readonly wording: AudienceChoiceWording | undefined;
   readonly value: unknown;
   readonly onChange: (value: string | undefined) => void;
+  readonly disabled?: boolean;
 }) {
   const options = Object.keys(param.options).map((option) => ({
     option,
@@ -304,10 +312,15 @@ function ChoiceParamControl({
         }))}
         size="sm"
         value={chosen ?? ""}
+        disabled={disabled}
       />
     )),
     Match.when("select", () => (
-      <Select value={chosen ?? absentValue} onValueChange={pick}>
+      <Select
+        value={chosen ?? absentValue}
+        onValueChange={pick}
+        disabled={disabled}
+      >
         <SelectTrigger aria-label={label} className={compactSelectClassName}>
           <SelectValue />
         </SelectTrigger>
@@ -331,6 +344,65 @@ function ChoiceParamControl({
 const absentValue = "absent";
 
 /**
+ * Whose emails count: any campaign, or one picked by name. A chosen campaign
+ * missing from the list, such as a deleted one, stays chosen under the
+ * wording's label for it. "This campaign" is for automation conditions only,
+ * so saved audiences don't offer it.
+ */
+function CampaignSourceControl({
+  wording,
+  campaigns = [],
+  value,
+  onChange,
+}: {
+  readonly wording: AudienceCampaignSourceWording;
+  readonly campaigns: readonly AudienceValueOption[] | undefined;
+  readonly value: CampaignEmailSourceType | undefined;
+  readonly onChange: (value: CampaignEmailSourceType | undefined) => void;
+}) {
+  const chosen = value?._tag === "Specific" ? value.campaignId : undefined;
+  const lost =
+    chosen !== undefined && !campaigns.some(({ id }) => id === chosen);
+  return (
+    <Select
+      value={chosen ?? absentValue}
+      onValueChange={(next) =>
+        onChange(
+          next === absentValue
+            ? undefined
+            : {
+                _tag: "Specific",
+                campaignId: AdministrationCampaignId.make(next),
+              }
+        )
+      }
+    >
+      <SelectTrigger
+        aria-label={wording.label}
+        className={cn(compactSelectClassName, "max-w-72")}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={absentValue}>{wording.absent}</SelectItem>
+        {lost && <SelectItem value={chosen}>{wording.unknown}</SelectItem>}
+        {campaigns.map(({ id, name }) => (
+          <SelectItem key={id} value={id}>
+            {name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/**
+ * One campaign's emails count whatever their purpose, so while a campaign
+ * param is set, a choice offering "any" holds it and can't change.
+ */
+const pinnedChoice = "any";
+
+/**
  * "Number of <lead>", the reservation product for reservation-based
  * attributes, then "<period> is <comparison>". Every count attribute edits
  * through it: its catalogue entry gives the parameters, its wording the words.
@@ -343,15 +415,22 @@ export function CountConditionControls<
   value: condition,
   onChange,
   errorAt,
+  lookups,
 }: ControlProps<Condition> & {
   readonly entry: AudienceCountAttributeDefinition;
   readonly wording: AudienceCountWording;
+  readonly lookups: AudienceValueLookups;
 }) {
   const locale = useRouteLocale();
   const { params } = condition;
   const changeParams = (next: AudienceCountCondition["params"]) =>
     // The entry's params keep the condition's own shape.
     onChange({ ...condition, params: next } as Condition);
+  const campaignChosen = Object.entries(entry.params).some(
+    ([name, param]) => param.part === "campaign" && params[name] !== undefined
+  );
+  const pinsChoice = (param: AudienceChoiceParam) =>
+    campaignChosen && Object.hasOwn(param.options, pinnedChoice);
   const periodErrorAt = withPath(errorAt, "params.period");
   return (
     <div className="space-y-2">
@@ -364,6 +443,37 @@ export function CountConditionControls<
             return <ConditionText key={token.text}>{token.text}</ConditionText>;
           }
           const param = entry.params[token.param];
+          const sourceWording = wording.campaignSources?.[token.param];
+          if (param?.part === "campaign" && sourceWording) {
+            return (
+              <CampaignSourceControl
+                key={token.param}
+                wording={sourceWording}
+                campaigns={lookups.campaigns}
+                value={params[token.param] as CampaignEmailSourceType}
+                onChange={(source) => {
+                  const { [token.param]: _, ...rest } = params;
+                  if (source === undefined) {
+                    changeParams({ ...rest, period: params.period });
+                    return;
+                  }
+                  const pinned = Object.fromEntries(
+                    Object.entries(entry.params).flatMap(([name, other]) =>
+                      other.part === "choice" &&
+                      Object.hasOwn(other.options, pinnedChoice)
+                        ? [[name, pinnedChoice]]
+                        : []
+                    )
+                  );
+                  changeParams({
+                    ...params,
+                    ...pinned,
+                    [token.param]: source,
+                  });
+                }}
+              />
+            );
+          }
           return (
             param?.part === "choice" && (
               <ChoiceParamControl
@@ -371,6 +481,7 @@ export function CountConditionControls<
                 param={param}
                 wording={wording.choices[token.param]}
                 value={params[token.param]}
+                disabled={pinsChoice(param)}
                 onChange={(value) => {
                   const { [token.param]: _, ...rest } = params;
                   changeParams(

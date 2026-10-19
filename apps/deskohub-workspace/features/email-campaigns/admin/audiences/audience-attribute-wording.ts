@@ -24,6 +24,16 @@ export type AudienceChoiceWording = {
   readonly absent?: string;
 };
 
+/** A campaign parameter's picker: its name, "any campaign", and a lost one. */
+export type AudienceCampaignSourceWording = {
+  /** Names the control for screen readers. */
+  readonly label: string;
+  /** The label of the param left unset, which counts every campaign. */
+  readonly absent: string;
+  /** A chosen campaign missing from the list, such as a deleted one. */
+  readonly unknown: string;
+};
+
 /** The counted noun with its forms around a count, for a count summary. */
 type AudienceCountPhrase = {
   /** The noun as counted for one ("booked reservation"). */
@@ -42,6 +52,10 @@ export type AudienceCountWording = {
   /** The editor line after "Number of": words between parameter controls. */
   readonly lead: readonly AudienceEditorToken[];
   readonly choices: Readonly<Record<string, AudienceChoiceWording>>;
+  /** Each campaign parameter's picker, by parameter name. */
+  readonly campaignSources?: Readonly<
+    Record<string, AudienceCampaignSourceWording>
+  >;
   /** What the period applies to, for screen readers. */
   readonly period: string;
   /** What is counted, for screen readers. */
@@ -314,7 +328,27 @@ const audienceAttributeWordings = (
         {
           text: m.emailCampaignsAudienceCampaignEmailCountLeadText({}, options),
         },
+        {
+          text: m.emailCampaignsAudienceCampaignEmailCountFromText({}, options),
+        },
+        { param: "campaign" },
       ],
+      campaignSources: {
+        campaign: {
+          label: m.emailCampaignsAudienceCampaignEmailCountSourceLabel(
+            {},
+            options
+          ),
+          absent: m.emailCampaignsAudienceCampaignEmailCountSourceAny(
+            {},
+            options
+          ),
+          unknown: m.emailCampaignsAudienceCampaignEmailCountSourceUnknown(
+            {},
+            options
+          ),
+        },
+      },
       choices: {
         purpose: {
           label: m.emailCampaignsAudienceCampaignEmailCountPurposeLabel(

@@ -1,6 +1,7 @@
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import { AudienceFilter } from "./audience-filter";
+import { DhwVersion, MinimumDhwVersion } from "./dhw-version";
 import {
   AdministrationCampaignAudienceId,
   AdministrationCampaignId,
@@ -399,6 +400,14 @@ const campaignErrors = [
   CliServiceUnavailable.schema,
 ];
 
+/**
+ * The first `dhw` release that decodes the first visit, "any time so far",
+ * and one campaign's emails. An older binary drops a stored filter's
+ * `campaign` and would write "any campaign" back, so every campaign and
+ * audience operation, reads included, requires it.
+ */
+const campaignsMinimumDhwVersion = DhwVersion.make("1.20.0");
+
 const campaignParams = { campaignId: AdministrationCampaignId };
 const audienceParams = { audienceId: AdministrationCampaignAudienceId };
 
@@ -586,6 +595,7 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
       }
     )
   )
+  .annotate(MinimumDhwVersion, Option.some(campaignsMinimumDhwVersion))
   .middleware(CliBearerAuthentication)
   // Added last, so it runs first: an outdated `dhw` is refused before its
   // session is read. Every campaign endpoint already declares the

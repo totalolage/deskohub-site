@@ -47,6 +47,7 @@ import {
   renderCampaignEmail,
 } from "@/features/email-campaigns/body/render-campaign-email";
 import type {
+  AudienceFilterCampaignNotFound,
   AudienceFilterContextInvalid,
   CampaignAudienceArchived,
   CampaignAudienceInUse,
@@ -84,6 +85,7 @@ import {
 type CampaignApiCause =
   | CliInputInvalid
   | CliMutationRejected
+  | AudienceFilterCampaignNotFound
   | AudienceFilterContextInvalid
   | CampaignAudienceArchived
   | CampaignAudienceInUse
@@ -188,7 +190,14 @@ const toCampaignApiFailure = (cause: CampaignApiCause) =>
             ...uses.campaignSources.map(
               (source) => `${source} campaign sources`
             ),
-          ].join(", ")}, which saved audiences and campaigns can't use yet.`,
+          ].join(", ")}, which only automation conditions can use.`,
+        })
+    ),
+    Match.tag(
+      "AudienceFilterCampaignNotFound",
+      ({ campaignIds }) =>
+        new CliInputInvalid({
+          message: `The audience filter counts emails of campaigns that don't exist (${campaignIds.join(", ")}).`,
         })
     ),
     Match.orElse(toCampaignSendFailure)
