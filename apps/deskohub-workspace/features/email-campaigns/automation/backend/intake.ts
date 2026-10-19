@@ -1,16 +1,511 @@
-import { Effect, Schema } from "effect";
+import type { DotyposCustomerId, DotyposService } from "@deskohub/dotypos";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { Effect, Option, Schema } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { customerEvents } from "@/db/schema";
 import {
-  AutomationUnitDefect,
+  type ReservationVisit,
+  ReservationVisits,
+} from "@/features/reservation/backend/reservation-visits.service";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import type { CustomerEventId } from "@/shared/backend/customer-events/customer-event";
+import {
+  currentInstant,
+  temporalInstantToIsoString,
+} from "@/shared/utils/temporal";
+import {
+  AudienceFactSource,
+  AudienceScope,
+  audienceEvaluationAt,
+} from "../../backend/audience-evaluation-context";
+import type { AudienceDotyposReads } from "../../backend/audience-facts.service";
+import { CampaignRecipientService } from "../../backend/campaign-recipient.service";
+import type {
+  AutomationStepId,
+  AutomationWorkUnitId,
+} from "../automation-identifiers";
+import { versionInForce } from "../automation-versions";
+import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
+import {
+  type IntakeEvent,
+  type IntakeMatch,
+  intakeEventColumns,
+  matchIntakeEvents,
+} from "./automation-intake-matching";
+import { lockAutomationForEngine } from "./automation-lifecycle-lock";
+import {
+  type AutomationTriggerOccurrence,
+  enterAutomationRuns,
+  loadAutomationEntryVersions,
+  takenReceiptKeys,
+} from "./automation-run-entry";
+import {
+  type AutomationEngineTransaction,
+  AutomationUnitFetchFailure,
+  type AutomationUnitHandler,
+  automationUnitDeadlineMissLimit,
+  type ClaimedAutomationUnit,
+  type PlannedAutomationUnit,
   registerAutomationUnitHandler,
 } from "./automation-unit-handler";
+import { loadAutomationVersionActivations } from "./automation-version-activations";
+
+const intakeSubjectSchema = Schema.Struct({
+  eventIds: Schema.Array(Schema.String),
+});
+type IntakeSubject = typeof intakeSubjectSchema.Type;
+
+/** Events older than this get `failed` receipts instead of a fetch (§5.2). */
+const intakeEventLimit = Temporal.Duration.from({ hours: 24 });
+
+/**
+ * The intake unit owning `eventIds`. The key includes the planner instant,
+ * so events a dropped unit released are planned again under a new key.
+ */
+export const plannedIntakeUnit = (
+  unit: {
+    readonly eventIds: readonly CustomerEventId[];
+    readonly requestCost: number;
+  },
+  at: Temporal.Instant
+): PlannedAutomationUnit => ({
+  kind: "intake",
+  key: `intake:${temporalInstantToIsoString(at)}:${unit.eventIds[0]}`,
+  subject: Schema.encodeSync(intakeSubjectSchema)({
+    eventIds: [...unit.eventIds],
+  }),
+  requestCost: unit.requestCost,
+});
+
+/** Kinds whose visit intake re-checks live before entering (D35). */
+const revisitedKinds = new Set([
+  "reservation-booked",
+  "reservation-started",
+  "reservation-finished",
+]);
+
+/** The triggering reservations whose visits intake re-checks, each once. */
+export const revisitedReservations = (
+  events: readonly IntakeEvent[]
+): readonly WorkspaceReservationId[] => [
+  ...new Set(
+    events.flatMap(({ kind, workspaceReservationId }) =>
+      revisitedKinds.has(kind) && workspaceReservationId !== null
+        ? [workspaceReservationId]
+        : []
+    )
+  ),
+];
+
+/** What intake decided for one event and one automation. */
+type IntakeDecision = IntakeMatch & {
+  /** None when the version's flow no longer decodes. */
+  readonly firstStepId: Option.Option<AutomationStepId>;
+  readonly outcome:
+    | "member"
+    | "not-in-audience"
+    | "withdrawn"
+    | "superseded"
+    | "failed";
+};
+
+/**
+ * The live re-check (§5.6, D35). A visit Dotypos no longer returns, or
+ * returns cancelled, withdraws the event (D28). A started or finished
+ * visit Dotypos moved past `now` supersedes it: the sweep records a new
+ * event at the new time. Booked needs only an active visit.
+ */
+const recheckVisit = (
+  event: IntakeEvent,
+  visit: Option.Option<ReservationVisit>,
+  now: Temporal.Instant
+): "withdrawn" | "superseded" | "current" => {
+  if (!revisitedKinds.has(event.kind)) return "current";
+  if (Option.isNone(visit) || visit.value.status === "cancelled") {
+    return "withdrawn";
+  }
+  const reached = triggeringInstant(event, visit.value);
+  return reached !== undefined && Temporal.Instant.compare(reached, now) > 0
+    ? "superseded"
+    : "current";
+};
+
+/** When a started or finished event's visit reaches its trigger. */
+const triggeringInstant = (event: IntakeEvent, visit: ReservationVisit) => {
+  switch (event.kind) {
+    case "reservation-started":
+      return visit.startsAt;
+    case "reservation-finished":
+      return visit.endsAt;
+    default:
+      return undefined;
+  }
+};
+
+const ownedEvents = (
+  tx: AutomationEngineTransaction,
+  unitId: AutomationWorkUnitId,
+  eventIds: readonly string[]
+) =>
+  tx
+    .select(intakeEventColumns)
+    .from(customerEvents)
+    .where(
+      and(
+        inArray(customerEvents.id, eventIds as CustomerEventId[]),
+        eq(customerEvents.automationUnitId, unitId),
+        isNull(customerEvents.automationProcessedAt)
+      )
+    )
+    .orderBy(asc(customerEvents.occurredAt), asc(customerEvents.id));
+
+/** A superseded event gets no receipt, so its key stays free (§5.6). */
+const isReceipted = (
+  decision: IntakeDecision
+): decision is IntakeDecision & {
+  readonly outcome: Exclude<IntakeDecision["outcome"], "superseded">;
+} => decision.outcome !== "superseded";
+
+const occurrenceOf = ({
+  event,
+  dedupKey,
+}: IntakeDecision): AutomationTriggerOccurrence => ({
+  dotyposCustomerId: event.dotyposCustomerId,
+  dedupKey,
+  kind: event.kind,
+  at: event.occurredAt,
+  eventId: event.id,
+  reservationId: event.workspaceReservationId,
+});
+
+const isAfterOrAt = (left: Temporal.Instant, right: Temporal.Instant) =>
+  Temporal.Instant.compare(left, right) >= 0;
+
+/**
+ * Writes intake decisions in the caller's transaction, one automation at a
+ * time under its lifecycle lock (§5.4): a paused or archived automation, or
+ * an event before `accepting_since`, processes the event with no receipt;
+ * an event whose version in force changed is released for replanning.
+ * Otherwise each receipt key records once, from its earliest event, and
+ * members enter. Finally the unit's other events are processed.
+ */
+const commitIntakeDecisions = Effect.fn("automationIntake.commit")(function* (
+  tx: AutomationEngineTransaction,
+  input: {
+    readonly unitId: AutomationWorkUnitId;
+    readonly eventIds: readonly CustomerEventId[];
+    readonly decisions: readonly IntakeDecision[];
+    readonly at: Temporal.Instant;
+  }
+) {
+  const released = new Set<CustomerEventId>();
+  const byCampaign = [
+    ...Map.groupBy(input.decisions, ({ campaignId }) => campaignId),
+  ].sort(([left], [right]) => left.localeCompare(right));
+
+  for (const [campaignId, decisions] of byCampaign) {
+    const state = yield* lockAutomationForEngine(tx, campaignId);
+    const acceptingSince = state.acceptingSince;
+    if (state.status !== "active" || acceptingSince === null) continue;
+    const versions = yield* loadAutomationVersionActivations(tx, campaignId);
+    const accepted = decisions.filter((decision) => {
+      if (!isAfterOrAt(decision.event.occurredAt, acceptingSince)) {
+        return false;
+      }
+      const inForce = versionInForce(versions, decision.event.occurredAt);
+      if (Option.isSome(inForce) && inForce.value.id === decision.versionId) {
+        return true;
+      }
+      released.add(decision.event.id);
+      return false;
+    });
+    const taken = yield* takenReceiptKeys(
+      tx,
+      campaignId,
+      accepted.map(({ dedupKey }) => dedupKey)
+    );
+    const recorded = new Set(taken);
+    const receipted = accepted
+      .filter(isReceipted)
+      .toSorted(
+        (left, right) =>
+          Temporal.Instant.compare(
+            left.event.occurredAt,
+            right.event.occurredAt
+          ) || left.event.id.localeCompare(right.event.id)
+      )
+      .filter(({ dedupKey }) => {
+        if (recorded.has(dedupKey)) return false;
+        recorded.add(dedupKey);
+        return true;
+      });
+
+    // Versions enter in activation order, so D4 holds across them.
+    const byVersion = Map.groupBy(receipted, ({ versionId }) => versionId);
+    for (const version of versions) {
+      const ofVersion = byVersion.get(version.id) ?? [];
+      if (ofVersion.length === 0) continue;
+      const members = ofVersion.filter(({ outcome }) => outcome === "member");
+      const firstStepId = Option.flatMap(
+        Option.fromUndefinedOr(members[0]),
+        ({ firstStepId }) => firstStepId
+      );
+      yield* enterAutomationRuns(tx, {
+        campaignId,
+        versionId: version.id,
+        ...(Option.isSome(firstStepId) && {
+          admitted: {
+            firstStepId: firstStepId.value,
+            occurrences: members.map(occurrenceOf),
+          },
+        }),
+        rejected: ofVersion.flatMap((decision) =>
+          decision.outcome === "member"
+            ? []
+            : [{ ...occurrenceOf(decision), disposition: decision.outcome }]
+        ),
+        at: input.at,
+      });
+    }
+  }
+
+  const processed = input.eventIds.filter((id) => !released.has(id));
+  if (processed.length > 0) {
+    yield* tx
+      .update(customerEvents)
+      .set({ automationProcessedAt: input.at, automationUnitId: null })
+      .where(
+        and(
+          inArray(customerEvents.id, processed),
+          eq(customerEvents.automationUnitId, input.unitId),
+          isNull(customerEvents.automationProcessedAt)
+        )
+      );
+  }
+  if (released.size > 0) {
+    yield* tx
+      .update(customerEvents)
+      .set({ automationUnitId: null })
+      .where(
+        and(
+          inArray(customerEvents.id, [...released]),
+          eq(customerEvents.automationUnitId, input.unitId)
+        )
+      );
+  }
+});
 
 /** The `intake` unit: re-checks triggering visits live and starts runs for matched events (§5.6). */
-export const makeIntakeHandler = Effect.succeed(
-  registerAutomationUnitHandler({
+export const makeIntakeHandler = Effect.gen(function* () {
+  const { db } = yield* WorkspaceDatabase;
+  const facts = yield* AutomationEvaluationFacts;
+  const recipients = yield* CampaignRecipientService;
+  const context = yield* Effect.context<WorkspaceDatabase | DotyposService>();
+
+  const databaseFailure = (cause: unknown) =>
+    new AutomationUnitFetchFailure({ code: "database", cause });
+
+  /** Each triggering visit, from the gates' visits when they read them. */
+  const triggeringVisits = (
+    events: readonly IntakeEvent[],
+    fetched: AudienceFactSource
+  ) => {
+    const reservations = revisitedReservations(events);
+    const gateVisits = AudienceFactSource.$is("Fetched")(fetched)
+      ? fetched.visits
+      : Option.none();
+    return Option.match(gateVisits, {
+      onSome: (byCustomer) => {
+        const visits = new Map(
+          [...byCustomer.values()]
+            .flat()
+            .map((visit) => [visit.workspaceReservationId, visit] as const)
+        );
+        return Effect.succeed(
+          new Map(
+            reservations.map((id) => [
+              id,
+              Option.fromUndefinedOr(visits.get(id)),
+            ])
+          ) as ReadonlyMap<
+            WorkspaceReservationId,
+            Option.Option<ReservationVisit>
+          >
+        );
+      },
+      onNone: () =>
+        Effect.flatMap(ReservationVisits, (visits) =>
+          visits.ofReservations(reservations)
+        ).pipe(
+          Effect.provide(ReservationVisits.Default),
+          Effect.provideContext(context),
+          Effect.mapError(AutomationUnitFetchFailure.fromReservationVisits)
+        ),
+    });
+  };
+
+  const handler: AutomationUnitHandler<
+    IntakeSubject,
+    readonly IntakeDecision[]
+  > = {
     kind: "intake",
-    subject: Schema.Struct({}),
-    fetch: () =>
-      Effect.fail(new AutomationUnitDefect({ code: "kind-unimplemented" })),
-    commit: () => Effect.succeed([]),
-  })
-);
+    subject: intakeSubjectSchema,
+    expire: Effect.fn("intake.expire")(function* (
+      tx: AutomationEngineTransaction,
+      unit: ClaimedAutomationUnit<IntakeSubject>,
+      at: Temporal.Instant
+    ) {
+      const events = yield* ownedEvents(tx, unit.id, unit.subject.eventIds);
+      const solo =
+        new Set(events.map(({ dotyposCustomerId }) => dotyposCustomerId))
+          .size === 1 && unit.deadlineMisses >= automationUnitDeadlineMissLimit;
+      const limit = at.subtract(intakeEventLimit);
+      const expired = solo
+        ? events
+        : events.filter(
+            ({ recordedAt }) => Temporal.Instant.compare(recordedAt, limit) <= 0
+          );
+      if (expired.length === 0) return "remaining" as const;
+      const matches = yield* matchIntakeEvents(tx, expired);
+      yield* commitIntakeDecisions(tx, {
+        unitId: unit.id,
+        eventIds: expired.map(({ id }) => id),
+        decisions: matches.map((match) => ({
+          ...match,
+          firstStepId: Option.none(),
+          outcome: "failed" as const,
+        })),
+        at,
+      }).pipe(Effect.catchTag("AutomationUnitRecheckFailed", Effect.die));
+      return expired.length === events.length
+        ? ("settled" as const)
+        : ("remaining" as const);
+    }),
+    fetch: Effect.fn("intake.fetch")(function* (
+      unit: ClaimedAutomationUnit<IntakeSubject>
+    ) {
+      const { matches, versions } = yield* db
+        .transaction((tx) =>
+          ownedEvents(tx, unit.id, unit.subject.eventIds).pipe(
+            Effect.flatMap((events) => matchIntakeEvents(tx, events)),
+            Effect.flatMap((matches) =>
+              loadAutomationEntryVersions(
+                tx,
+                matches.map(({ versionId }) => versionId)
+              ).pipe(Effect.map((versions) => ({ matches, versions })))
+            )
+          )
+        )
+        .pipe(Effect.mapError(databaseFailure));
+      if (matches.length === 0) return [];
+
+      const plannedAt = yield* currentInstant;
+      const plans = yield* Effect.forEach(versions.values(), (version) =>
+        facts
+          .plan({
+            filters: { entryAudience: version.audienceFilter },
+            context: audienceEvaluationAt(plannedAt),
+          })
+          .pipe(Effect.orDie)
+      );
+      const reads: AudienceDotyposReads = {
+        visits: plans.some(({ reads }) => reads.visits),
+        profiles: plans.some(({ reads }) => reads.profiles),
+      };
+      const customers: readonly DotyposCustomerId[] = [
+        ...new Set(matches.map(({ event }) => event.dotyposCustomerId)),
+      ].sort();
+      const fetched = yield* facts.fetch({ reads, customers });
+      const visits = yield* triggeringVisits(
+        matches.map(({ event }) => event),
+        fetched
+      );
+      const now = yield* currentInstant;
+
+      return yield* Effect.forEach(
+        matches,
+        (match): Effect.Effect<IntakeDecision, AutomationUnitFetchFailure> => {
+          const version = versions.get(match.versionId);
+          const firstStepId = Option.flatMap(
+            Option.fromUndefinedOr(version),
+            ({ firstStepId }) => firstStepId
+          );
+          if (version === undefined || Option.isNone(firstStepId)) {
+            return Effect.succeed({
+              ...match,
+              firstStepId,
+              outcome: "failed",
+            });
+          }
+          const visit = Option.flatten(
+            Option.fromUndefinedOr(
+              match.event.workspaceReservationId === null
+                ? undefined
+                : visits.get(match.event.workspaceReservationId)
+            )
+          );
+          const recheck = recheckVisit(match.event, visit, now);
+          if (recheck !== "current") {
+            return Effect.succeed({
+              ...match,
+              firstStepId,
+              outcome: recheck,
+            });
+          }
+          const customer = match.event.dotyposCustomerId;
+          return recipients
+            .resolve({
+              purpose: version.purpose,
+              filter: version.audienceFilter,
+              scope: AudienceScope.Customers({ ids: [customer] }),
+              context: {
+                now,
+                campaignId: Option.some(match.campaignId),
+                trigger: Option.some({
+                  kind: match.event.kind,
+                  at: match.event.occurredAt,
+                  reservationId: Option.fromNullishOr(
+                    match.event.workspaceReservationId
+                  ),
+                }),
+              },
+              facts: fetched,
+            })
+            .pipe(
+              Effect.mapError(databaseFailure),
+              Effect.map(
+                (resolution): IntakeDecision => ({
+                  ...match,
+                  firstStepId,
+                  // Unreachable customers still count as members;
+                  // reachability is checked at send time (§5.6).
+                  outcome: [
+                    ...resolution.recipients.map(
+                      ({ dotyposCustomerId }) => dotyposCustomerId
+                    ),
+                    ...resolution.exclusions.map(
+                      ({ dotyposCustomerId }) => dotyposCustomerId
+                    ),
+                    ...resolution.duplicates.flatMap(
+                      ({ duplicateCustomerIds }) => duplicateCustomerIds
+                    ),
+                  ].includes(customer)
+                    ? "member"
+                    : "not-in-audience",
+                })
+              )
+            );
+        }
+      );
+    }),
+    commit: (tx, unit, decisions, at) =>
+      commitIntakeDecisions(tx, {
+        unitId: unit.id,
+        eventIds: unit.subject.eventIds as CustomerEventId[],
+        decisions,
+        at,
+      }).pipe(Effect.as([])),
+  };
+
+  return registerAutomationUnitHandler(handler);
+});

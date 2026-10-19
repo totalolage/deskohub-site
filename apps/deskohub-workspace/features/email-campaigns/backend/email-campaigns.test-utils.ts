@@ -205,6 +205,7 @@ export const seedAutomationVersion = async (
     readonly versionNumber?: number;
     readonly text?: string;
     readonly trigger?: AutomationTrigger;
+    readonly audienceFilter?: AudienceFilter;
     readonly activatedAt?: Temporal.Instant;
     readonly flow?: unknown;
   }
@@ -228,7 +229,7 @@ export const seedAutomationVersion = async (
           templateKey: "workspace",
           locales: content,
         }),
-        audienceFilter: everyoneFilter,
+        audienceFilter: input.audienceFilter ?? everyoneFilter,
         draftHash: `draft-${input.versionNumber ?? 1}`,
         activatedAt:
           input.activatedAt ??
