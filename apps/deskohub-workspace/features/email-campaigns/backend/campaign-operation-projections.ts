@@ -1,11 +1,10 @@
-import {
-  type AdministrationCampaignAudienceType,
-  type AdministrationCampaignContentType,
-  type AdministrationCampaignDetailType,
-  type AdministrationCampaignLocaleContentType,
-  type AdministrationCampaignSendStatusResultType,
-  type AdministrationCampaignSummaryType,
-  OperationInputInvalid,
+import type {
+  AdministrationCampaignAudienceType,
+  AdministrationCampaignContentType,
+  AdministrationCampaignDetailType,
+  AdministrationCampaignLocaleContentType,
+  AdministrationCampaignSendStatusResultType,
+  AdministrationCampaignSummaryType,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Option } from "effect";
 import type { CampaignAudienceRow, CampaignRow } from "@/db/schema";
@@ -18,6 +17,7 @@ import type {
   CampaignLocaleContent,
   CampaignLocalizedContent,
 } from "../body/campaign-content";
+import { CampaignBodyMarkdownInvalid } from "../errors";
 import type { ICampaignSendStatusService } from "./campaign-send-status.service";
 
 /** The locales a per-locale record has a value for, in locale order. */
@@ -30,15 +30,10 @@ export const localeEntries = <Value>(
   });
 
 /** Parses one locale's Markdown body; its failure names the locale. */
-export const parseLocaleBody = (locale: Locale, markdown: string) =>
+const parseLocaleBody = (locale: Locale, markdown: string) =>
   parseCampaignBodyMarkdown(markdown).pipe(
     Effect.mapError(
-      (cause) =>
-        new OperationInputInvalid({
-          code: "content-invalid",
-          message: `The ${locale} body isn't valid campaign Markdown: ${cause.message}`,
-          cause,
-        })
+      (cause) => new CampaignBodyMarkdownInvalid({ locale, cause })
     )
   );
 

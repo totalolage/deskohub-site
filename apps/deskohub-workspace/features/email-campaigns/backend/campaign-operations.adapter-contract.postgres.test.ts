@@ -231,12 +231,6 @@ const cases: AdapterContractCases<Registry> = {
       expect: success,
     },
     {
-      title: "refuses an unknown input key",
-      input: ({ draftId }) =>
-        ({ campaignId: draftId, unexpected: true }) as never,
-      expect: failure("OperationInputInvalid", "input-invalid"),
-    },
-    {
       title: "reports a missing campaign",
       input: () => ({ campaignId: missingId }),
       expect: failure("OperationNotFound", "campaign-not-found"),
@@ -263,6 +257,12 @@ const cases: AdapterContractCases<Registry> = {
       title: "renames a draft",
       input: ({ draftId }) => ({ campaignId: draftId, title: "Renamed news" }),
       expect: success,
+    },
+    {
+      title: "refuses an unknown input key",
+      input: ({ draftId }) =>
+        ({ campaignId: draftId, title: "Renamed", unexpected: true }) as never,
+      expect: failure("OperationInputInvalid", "input-invalid"),
     },
   ],
   duplicateCampaign: [
@@ -439,22 +439,24 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
       "truncate email_campaigns, email_campaign_audiences, cli_mutation_requests cascade"
     );
 
+  const seedIds = (): Seeded => ({
+    audienceId: crypto.randomUUID(),
+    unusedAudienceId: crypto.randomUUID(),
+    archivedAudienceId: crypto.randomUUID(),
+    draftId: crypto.randomUUID(),
+    deletableDraftId: crypto.randomUUID(),
+    draftWithoutAudienceId: crypto.randomUUID(),
+    automatedDraftId: crypto.randomUUID(),
+  });
+
   /** Empties the campaign domain and seeds the same rows for every run. */
-  const seed = async (): Promise<Seeded> => {
+  const seed = async (seeded: Seeded) => {
     await emptyCampaignDomain();
-    const seeded: Seeded = {
-      audienceId: crypto.randomUUID(),
-      unusedAudienceId: crypto.randomUUID(),
-      archivedAudienceId: crypto.randomUUID(),
-      draftId: crypto.randomUUID(),
-      deletableDraftId: crypto.randomUUID(),
-      draftWithoutAudienceId: crypto.randomUUID(),
-      automatedDraftId: crypto.randomUUID(),
-    };
     await pool.query(
-      `insert into email_campaign_audiences (id, title, filter, archived_at) values
-         ($1, 'Everyone', $4, null), ($2, 'Nobody yet', $4, null),
-         ($3, 'Former regulars', $4, now())`,
+      `insert into email_campaign_audiences (id, title, filter, archived_at, created_at) values
+         ($1, 'Everyone', $4, null, now() - interval '3 minutes'),
+         ($2, 'Nobody yet', $4, null, now() - interval '2 minutes'),
+         ($3, 'Former regulars', $4, now(), now() - interval '1 minute')`,
       [
         seeded.audienceId,
         seeded.unusedAudienceId,
@@ -463,11 +465,11 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
       ]
     );
     await pool.query(
-      `insert into email_campaigns (id, title, purpose, template_key, content, audience_id, delivery, status) values
-         ($1, 'October news', 'operational', 'workspace', '{}', $5, 'once', 'draft'),
-         ($2, 'Scrapped news', 'operational', 'workspace', '{}', $5, 'once', 'draft'),
-         ($3, 'Untargeted news', 'operational', 'workspace', '{}', null, 'once', 'draft'),
-         ($4, 'Review request', 'marketing', 'workspace', '{}', $5, 'automated', 'draft')`,
+      `insert into email_campaigns (id, title, purpose, template_key, content, audience_id, delivery, status, created_at) values
+         ($1, 'October news', 'operational', 'workspace', '{}', $5, 'once', 'draft', now() - interval '4 minutes'),
+         ($2, 'Scrapped news', 'operational', 'workspace', '{}', $5, 'once', 'draft', now() - interval '3 minutes'),
+         ($3, 'Untargeted news', 'operational', 'workspace', '{}', null, 'once', 'draft', now() - interval '2 minutes'),
+         ($4, 'Review request', 'marketing', 'workspace', '{}', $5, 'automated', 'draft', now() - interval '1 minute')`,
       [
         seeded.draftId,
         seeded.deletableDraftId,
@@ -480,7 +482,6 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
       "insert into email_campaign_automations (campaign_id) values ($1)",
       [seeded.automatedDraftId]
     );
-    return seeded;
   };
 
   /** The campaign domain's rows, without generated ids and instants. */
@@ -575,7 +576,14 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
       const response = await (
         handleCliRequest as NonNullable<typeof handleCliRequest>
       )(cliRequest(name, input));
-      const body: CliErrorBody = await response.json();
+      const text = await response.text();
+      // HttpApi answers its own strict payload decoding with an empty 400.
+      if (text === "") {
+        return response.status === 400
+          ? failure("OperationInputInvalid", "input-invalid")
+          : failure("OperationUnavailable", `<empty ${response.status}>`);
+      }
+      const body: CliErrorBody = JSON.parse(text);
       return response.ok
         ? ({ _tag: "Success", output: body } satisfies Outcome)
         : cliFailure(response.status, body);
@@ -598,7 +606,7 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
       name === "previewCampaignTemplate"
         ? fields.get("preview")
         : Object.fromEntries(fields);
-    return new Request(`https://workspace.deskohub.test/api/v1/cli${path}`, {
+    return new Request(`https://workspace.deskohub.test${path}`, {
       method: endpoint.method,
       headers: {
         authorization: "Bearer contract",
@@ -649,8 +657,9 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
     for (const contractCase of operationCases) {
       test(`${name}: ${contractCase.title}`, async () => {
         const runs = [];
+        const seeded = seedIds();
         for (const [adapter, run] of Object.entries(harnesses)) {
-          const seeded = await seed();
+          await seed(seeded);
           const outcome = await withAdministrator(
             contractCase.revokeAdministrator === true,
             () => run(name, contractCase.input(seeded))

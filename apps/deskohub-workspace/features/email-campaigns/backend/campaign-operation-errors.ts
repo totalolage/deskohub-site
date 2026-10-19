@@ -13,28 +13,31 @@ import {
   type AutomationFlowInvalid,
   type AutomationFlowLocation,
 } from "../automation/errors";
-import type {
-  AudienceFilterContextInvalid,
-  CampaignAudienceArchived,
+import {
+  type AudienceFilterContextInvalid,
+  type CampaignAudienceArchived,
   CampaignAudienceInUse,
-  CampaignAudienceMissing,
-  CampaignAudienceNotFound,
-  CampaignConfirmationRejected,
-  CampaignContentInvalid,
-  CampaignContentMissing,
+  type CampaignAudienceMissing,
+  type CampaignAudienceNotFound,
+  CampaignBodyMarkdownInvalid,
+  type CampaignConfirmationRejected,
+  type CampaignContentInvalid,
+  type CampaignContentMissing,
   CampaignDeliveryMismatch,
-  CampaignDeliveryQueueFailed,
-  CampaignEmailDeliveryFailed,
-  CampaignEmailNotConfigured,
-  CampaignFallbackContentMissing,
-  CampaignNoRecipients,
-  CampaignNotFound,
-  CampaignNotRetryable,
+  type CampaignDeliveryQueueFailed,
+  type CampaignEmailDeliveryFailed,
+  type CampaignEmailNotConfigured,
+  type CampaignFallbackContentMissing,
+  CampaignLocaleContentMissing,
+  type CampaignNoRecipients,
+  type CampaignNotFound,
+  type CampaignNotRetryable,
+  CampaignPublished,
   CampaignReadOnly,
-  CampaignRecipientResolutionError,
-  CampaignRecipientsOutsideTestDomain,
-  CampaignSigningKeyInvalid,
-  CampaignTestRecipientInvalid,
+  type CampaignRecipientResolutionError,
+  type CampaignRecipientsOutsideTestDomain,
+  type CampaignSigningKeyInvalid,
+  type CampaignTestRecipientInvalid,
 } from "../errors";
 
 /**
@@ -52,6 +55,7 @@ export type CampaignOperationCause =
   | CampaignAudienceInUse
   | CampaignAudienceMissing
   | CampaignAudienceNotFound
+  | CampaignBodyMarkdownInvalid
   | CampaignConfirmationRejected
   | CampaignContentInvalid
   | CampaignContentMissing
@@ -60,9 +64,11 @@ export type CampaignOperationCause =
   | CampaignEmailDeliveryFailed
   | CampaignEmailNotConfigured
   | CampaignFallbackContentMissing
+  | CampaignLocaleContentMissing
   | CampaignNoRecipients
   | CampaignNotFound
   | CampaignNotRetryable
+  | CampaignPublished
   | CampaignReadOnly
   | CampaignRecipientResolutionError
   | CampaignRecipientsOutsideTestDomain
@@ -128,6 +134,24 @@ export const toOperationError = (
         })
     ),
     Match.tag(
+      "CampaignBodyMarkdownInvalid",
+      ({ locale, cause: invalid }) =>
+        new OperationInputInvalid({
+          code: CampaignBodyMarkdownInvalid.code,
+          message: `The ${locale} body isn't valid campaign Markdown: ${invalid.message}`,
+          cause,
+        })
+    ),
+    Match.tag(
+      "CampaignLocaleContentMissing",
+      ({ locale }) =>
+        new OperationInputInvalid({
+          code: CampaignLocaleContentMissing.code,
+          message: `The campaign has no ${locale} content yet, so it needs a subject and a body.`,
+          cause,
+        })
+    ),
+    Match.tag(
       "CampaignTestRecipientInvalid",
       ({ email }) =>
         new OperationInputInvalid({
@@ -155,7 +179,7 @@ export const toOperationError = (
       "CampaignReadOnly",
       ({ status }) =>
         new OperationConflict({
-          code: "campaign-read-only",
+          code: CampaignReadOnly.code,
           message: `The campaign is ${status}, so it can no longer be changed.`,
           cause,
         })
@@ -164,18 +188,38 @@ export const toOperationError = (
       "CampaignDeliveryMismatch",
       () =>
         new OperationConflict({
-          code: "campaign-delivery-mismatch",
+          code: CampaignDeliveryMismatch.code,
           message:
-            "This campaign sends automatically, so it can't be edited, deleted, test sent, sent, retried, or duplicated like a one-off campaign.",
+            "This campaign sends automatically, so it can't be test sent, sent, or retried like a one-off campaign.",
           cause,
         })
     ),
     Match.tag(
       "CampaignAudienceInUse",
-      ({ draftCampaignIds }) =>
+      ({ draftCampaignIds, automationCampaignIds = [] }) =>
         new OperationConflict({
-          code: "audience-in-use",
-          message: `Draft campaigns use this audience (${draftCampaignIds.join(", ")}). Archive it instead, or move those drafts to another audience.`,
+          code: CampaignAudienceInUse.code,
+          message: [
+            draftCampaignIds.length > 0
+              ? `Draft campaigns use this audience (${draftCampaignIds.join(", ")}).`
+              : undefined,
+            automationCampaignIds.length > 0
+              ? `Automation conditions refer to it (${automationCampaignIds.join(", ")}).`
+              : undefined,
+            "Archive it instead, or move those campaigns to another audience.",
+          ]
+            .filter((sentence) => sentence !== undefined)
+            .join(" "),
+          cause,
+        })
+    ),
+    Match.tag(
+      "CampaignPublished",
+      () =>
+        new OperationConflict({
+          code: CampaignPublished.code,
+          message:
+            "This automation has a published version, so it can't be deleted. Archive it instead.",
           cause,
         })
     ),
