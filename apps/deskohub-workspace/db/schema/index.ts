@@ -11,6 +11,7 @@ export {
 } from "./cli-authentication";
 export { customerAccountLinks } from "./customer-account-links";
 export { customerAccounts } from "./customer-accounts";
+export { customerEventSweeps, customerEvents } from "./customer-events";
 export { customerMarketingConsents } from "./customer-marketing-consents";
 export { customerMarketingManagementTokens } from "./customer-marketing-management-tokens";
 export {
@@ -38,6 +39,19 @@ export {
   type Voucher,
   vouchers,
 } from "./discounts";
+export {
+  emailCampaignAutomationEngine,
+  emailCampaignAutomationPreviewRows,
+  emailCampaignAutomationPreviews,
+  emailCampaignAutomationRunEvents,
+  emailCampaignAutomationRuns,
+  emailCampaignAutomationScheduleFires,
+  emailCampaignAutomations,
+  emailCampaignAutomationTriggerReceipts,
+  emailCampaignAutomationVersionProvenance,
+  emailCampaignAutomationVersions,
+  emailCampaignAutomationWorkUnits,
+} from "./email-campaign-automations";
 export {
   type CampaignAudienceRow,
   type CampaignRecipientRow,
