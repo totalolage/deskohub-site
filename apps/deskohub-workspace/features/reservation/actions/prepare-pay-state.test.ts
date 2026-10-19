@@ -1253,6 +1253,8 @@ describe("prepareWorkspacePayState", () => {
     expect(state.orderId).toBe("reservation-id");
     expect(state.checkoutSessionId).toBe("session-id");
     expect(state.submittedCode).toBeUndefined();
+    // A site tool reports when the prepared Pay URL stops working.
+    expect(result.expiresAt).toBe(new Date(state.exp * 1000).toISOString());
     expect(quoteForCustomer).toHaveBeenCalledWith(
       expect.objectContaining({
         dotyposCustomerId: "customer-id",

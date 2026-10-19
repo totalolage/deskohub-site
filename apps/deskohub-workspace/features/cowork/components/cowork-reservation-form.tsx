@@ -563,6 +563,14 @@ export function CoworkReservationForm({
       form={form}
       getReservation={getCoworkCurrentReservationOrder}
       locale={locale}
+      selection={{
+        kind: "cowork",
+        fromSearchParams: (searchParams) => {
+          const { entryTier, date, coffee, monitorOption } =
+            getReservationDefaultValuesFromSearchParams(searchParams);
+          return { entryTier, date, coffee, monitorOption };
+        },
+      }}
     >
       <FormField
         control={form.control}

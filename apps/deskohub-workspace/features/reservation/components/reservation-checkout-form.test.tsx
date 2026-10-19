@@ -31,6 +31,10 @@ const graceEmail = testEmailAddress("grace");
 
 const startCheckout = mock();
 
+mock.module("next/navigation", () => ({
+  useRouter: () => ({ push: mock() }),
+}));
+
 mock.module("./use-reservation-checkout", () => ({
   useReservationCheckout: () => ({
     capturePrePaymentOutcome: mock(),
@@ -38,6 +42,7 @@ mock.module("./use-reservation-checkout", () => ({
     hasPreparedPayRedirect: false,
     isPreparingCheckout: false,
     isSubmittingCheckout: false,
+    preparedCheckout: undefined,
     setSubmissionError: mock(),
     startCheckout,
     submissionError: undefined,
@@ -96,6 +101,7 @@ function Harness({
         ({ email, name, phone }) as never
       }
       locale="en-US"
+      selection={{ kind: "cowork", fromSearchParams: () => ({}) }}
     >
       {null}
     </ReservationCheckoutForm>

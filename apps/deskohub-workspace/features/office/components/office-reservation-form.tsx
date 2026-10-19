@@ -50,7 +50,10 @@ import {
   officeReservationDetailsSchema,
   officeReservationSchema,
 } from "@/features/reservation/office-reservation";
-import { getOfficeReservationSelectionSearchParams } from "@/features/reservation/office-reservation-checkout-query";
+import {
+  getOfficeReservationDefaultValuesFromSearchParams,
+  getOfficeReservationSelectionSearchParams,
+} from "@/features/reservation/office-reservation-checkout-query";
 import type { ReservationExistingCustomerForm } from "@/features/reservation/reservation-existing-customer";
 import {
   getOfficeAvailabilityQuery,
@@ -249,6 +252,17 @@ export function OfficeReservationForm({
       form={form}
       getReservation={getOfficeReservationOrder}
       locale={locale}
+      selection={{
+        kind: "office",
+        fromSearchParams: (searchParams) => {
+          const { startsOn, dayCount, seats } =
+            getOfficeReservationDefaultValuesFromSearchParams(searchParams, {
+              seatCapacity,
+              today,
+            });
+          return { startsOn, dayCount, seats };
+        },
+      }}
     >
       <fieldset className="flex flex-col gap-y-2">
         <legend className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72 after:content-['_*']">

@@ -79,3 +79,10 @@ The provider return route (`app/[locale]/(site)/(minimal-header)/checkout/pay/re
 - Start-over links from terminal status or invalid Pay state use document navigation. Cache Components can keep the previous reservation route, with its completed action result, in a hidden Activity boundary; client navigation can remount it and replay the stale Pay redirect.
 
 Customer-visible status wording and the support-request rules are in the [checkout specification](../../../../apps/deskohub-workspace/docs/checkout-lifecycle.md#payment-and-fulfillment).
+
+## Browser site tools
+
+- `features/agent-tools/webmcp/` registers the public agent tools as WebMCP site tools behind the `webmcp_site_tools` release gate (`SiteToolsWhenEnabled` in the site layout). Keep it a removable client-only leaf: feature detection of `document.modelContext` is the only browser branch, registration code loads with `import()` after it, and nothing outside the module depends on it. Never branch on a user agent.
+- Read tools come from `/api/mcp` `tools/list` and run through `tools/call`. Never redefine a tool's schema, copy, or logic in the browser.
+- `prepare_reservation` exists only while a reservation form is mounted. It quotes through `get_quote`, applies the quote link's selection with the family's link parser (`selection.fromSearchParams`), waits for the form's availability and price, then submits through `ReservationCheckoutForm`'s own `submit` path. Never give it a server path that skips the form's checks or `preparePayState`.
+- A site tool's marketing consent counts only for a literal `true`: it ticks the form's visible checkbox and labels the grant `site_tool`. It never unticks a box, withdraws consent, or touches the Pay page consents.

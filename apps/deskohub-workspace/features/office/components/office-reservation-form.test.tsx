@@ -35,7 +35,7 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 import { plainDateStringSchema } from "@/shared/utils/temporal";
 
-const execute = mock(() => undefined);
+const executeAsync = mock(() => Promise.resolve({}));
 const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
 const originalFetch = globalThis.fetch;
 
@@ -101,7 +101,7 @@ describe("OfficeReservationForm", () => {
   beforeEach(() => {
     workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
     workspaceUseAction.mockReturnValue({
-      execute,
+      executeAsync,
       isExecuting: false,
       result: {},
     });
@@ -110,7 +110,7 @@ describe("OfficeReservationForm", () => {
   afterEach(async () => {
     cleanup();
     await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
-    execute.mockClear();
+    executeAsync.mockClear();
     globalThis.fetch = originalFetch;
   });
 
@@ -589,6 +589,6 @@ describe("OfficeReservationForm", () => {
     await act(async () => {});
 
     expect(startDate.getAttribute("aria-invalid")).toBe("true");
-    expect(execute).not.toHaveBeenCalled();
+    expect(executeAsync).not.toHaveBeenCalled();
   });
 });
