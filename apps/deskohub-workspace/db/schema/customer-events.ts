@@ -45,11 +45,12 @@ export const customerEvents = pgTable(
       .notNull()
       .$type<DotyposCustomerId>(),
     workspaceReservationId: text("workspace_reservation_id")
-      .references(() => workspaceReservations.id)
+      .references(() => workspaceReservations.id, { onDelete: "cascade" })
       .$type<WorkspaceReservationId>(),
-    // Accounts survive deletion as tombstones, so the reference holds.
+    // Accounts survive deletion as tombstones, so production never cascades;
+    // only test cleanup hard-deletes reservations and accounts.
     customerAccountId: text("customer_account_id")
-      .references(() => customerAccounts.id)
+      .references(() => customerAccounts.id, { onDelete: "cascade" })
       .$type<CustomerAccountId>(),
     /** The intake unit that owns the event while it's processed. */
     automationUnitId: text("automation_unit_id").$type<AutomationWorkUnitId>(),

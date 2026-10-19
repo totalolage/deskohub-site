@@ -37,9 +37,11 @@ import {
   type CampaignSendId,
   campaignConfirmationCodeSchema,
 } from "../campaign-identifiers";
+import { isOnceCampaign } from "../campaign-states";
 import {
   CampaignConfirmationRejected,
   type CampaignConfirmationRejection,
+  CampaignDeliveryMismatch,
   CampaignNotFound,
   CampaignReadOnly,
 } from "../errors";
@@ -92,6 +94,7 @@ type ConfirmedCampaignSend = {
 type CampaignDraftError =
   | CampaignNotFound
   | CampaignReadOnly
+  | CampaignDeliveryMismatch
   | EffectDrizzleQueryError
   | SqlError.SqlError;
 
@@ -208,7 +211,7 @@ export class CampaignConfirmationCodeService extends Context.Service<
         );
 
       /**
-       * Locks the Draft's row for the rest of the transaction. Content edits
+       * Locks a one-off Draft's row for the rest of the transaction. Content edits
        * update the same row, so they wait for the lock and then see the
        * campaign's new status.
        */
@@ -220,6 +223,12 @@ export class CampaignConfirmationCodeService extends Context.Service<
             .where(eq(emailCampaigns.id, campaignId))
             .for("update");
           if (!campaign) return yield* new CampaignNotFound({ campaignId });
+          if (!isOnceCampaign(campaign)) {
+            return yield* new CampaignDeliveryMismatch({
+              campaignId,
+              delivery: campaign.delivery,
+            });
+          }
           if (campaign.status !== "draft") {
             return yield* new CampaignReadOnly({
               campaignId,
