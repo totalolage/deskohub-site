@@ -107,6 +107,32 @@ export const workspaceE2EAdministratorAccessPlaywrightTimeout =
   workspaceE2ETimeouts.administratorAccessCase +
   workspaceE2ETimeouts.browserAction;
 
+// Agent evals give each agent a task budget; the harness gets SIGTERM a grace
+// period after it and SIGKILL a kill grace later. Around that, a run seeds its account and picks its dates,
+// checks the status page after a payment, and reconciles its journal.
+export const workspaceAgentEvalTimeouts = {
+  bookingTask: 10 * MINUTE,
+  factsTask: 5 * MINUTE,
+  harnessExitGrace: 30 * SECOND,
+  harnessKillGrace: 10 * SECOND,
+  paymentTask: 15 * MINUTE,
+  runPreparation: 3 * MINUTE,
+  statusPage: workspaceE2ETimeouts.providerTransition,
+} as const;
+
+const workspaceAgentEvalCleanupTimeout =
+  workspaceE2ETimeouts.browserAction +
+  workspaceE2ETimeouts.cleanupAction * 2 +
+  workspaceE2ETimeouts.datasource;
+
+export const workspaceAgentEvalPlaywrightTimeout = (taskBudgetMs: number) =>
+  workspaceAgentEvalTimeouts.runPreparation +
+  taskBudgetMs +
+  workspaceAgentEvalTimeouts.harnessExitGrace +
+  workspaceAgentEvalTimeouts.harnessKillGrace +
+  workspaceAgentEvalTimeouts.statusPage +
+  workspaceAgentEvalCleanupTimeout;
+
 export type WorkspaceE2ETimeouts = Readonly<
   Record<keyof typeof workspaceE2ETimeouts, number>
 >;

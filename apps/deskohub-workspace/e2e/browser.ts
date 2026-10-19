@@ -18,7 +18,7 @@ import {
 } from "./errors";
 import { pollUntil } from "./polling";
 import type { Runner } from "./runtime";
-import { log, redact, redactJsonValue } from "./runtime";
+import { log, redact, redactDiagnosticText, redactJsonValue } from "./runtime";
 import { workspaceE2EPollIntervalMs } from "./timeouts";
 
 const isPlaywrightTimeout = (cause: unknown): boolean =>
@@ -869,18 +869,13 @@ export const summarizeHostedPaymentSnapshot = (snapshot: string) => {
       /\b(?:button|frame|heading|iframe|input|textbox|link)\b/i.test(line)
     )
     .slice(0, 80)
-    .map(sanitizeDiagnosticLine)
+    .map(redactDiagnosticText)
     .join("\n");
 
   return lines
     ? `Nexi HPP snapshot summary:\n${lines}`
     : "Nexi HPP snapshot summary unavailable";
 };
-
-const sanitizeDiagnosticLine = (line: string) =>
-  redact(line)
-    .replace(/https?:\/\/\S+/g, "[url]")
-    .replace(/[A-Za-z0-9_-]{32,}/g, "[token]");
 
 const sanitizeArtifactText = (text: string) =>
   sanitizeArtifactUrlText(redact(text))
