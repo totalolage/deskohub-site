@@ -20,7 +20,7 @@ export interface PublicPage {
  * the published subset from `PublishedPublicPagesService`, so a gated page
  * appears only while production serves it.
  */
-export const publicPages: ReadonlyArray<PublicPage> = [
+export const publicPages = [
   { pathname: "/" },
   { pathname: "/contact" },
   { pathname: "/faq" },
@@ -36,4 +36,14 @@ export const publicPages: ReadonlyArray<PublicPage> = [
   { pathname: "/reservation/cowork" },
   { pathname: "/reservation/meeting-room" },
   { pathname: "/reservation/office", releaseGate: "office-page" },
-];
+] as const satisfies ReadonlyArray<PublicPage>;
+
+export type PublicPagePathname = (typeof publicPages)[number]["pathname"];
+
+const publicPagePathnames: ReadonlySet<string> = new Set(
+  publicPages.map(({ pathname }) => pathname)
+);
+
+export const isPublicPagePathname = (
+  pathname: string
+): pathname is PublicPagePathname => publicPagePathnames.has(pathname);

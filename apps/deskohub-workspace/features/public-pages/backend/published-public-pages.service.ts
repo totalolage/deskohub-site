@@ -33,7 +33,7 @@ export class PublishedPublicPagesService extends Context.Service<
       return {
         list: Effect.filter(
           publicPages,
-          ({ releaseGate }) =>
+          ({ releaseGate }: PublicPage) =>
             releaseGate === undefined
               ? Effect.succeed(true)
               : releaseGates[releaseGate],
