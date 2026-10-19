@@ -488,7 +488,10 @@ const ensureReferencesExist = (
           : tx
               .select({ id: emailCampaignAudiences.id })
               .from(emailCampaignAudiences)
-              .where(inArray(emailCampaignAudiences.id, [...savedAudienceIds])),
+              .where(inArray(emailCampaignAudiences.id, [...savedAudienceIds]))
+              // Held until commit, so deleting a referenced audience waits
+              // for this write and then sees the reference (audience-in-use).
+              .for("share"),
       campaigns:
         campaignIds.length === 0
           ? Effect.succeed([])

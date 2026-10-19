@@ -297,10 +297,6 @@ export const deleteAutomatedCampaigns = (
         yield* tx
           .delete(emailCampaignSends)
           .where(inArray(emailCampaignSends.campaignId, campaignIds));
-        // The automation row references its active version.
-        yield* tx
-          .delete(emailCampaignAutomations)
-          .where(inArray(emailCampaignAutomations.campaignId, campaignIds));
         yield* tx.execute(
           sql`lock table ${emailCampaignAutomationVersions} in access exclusive mode`
         );
