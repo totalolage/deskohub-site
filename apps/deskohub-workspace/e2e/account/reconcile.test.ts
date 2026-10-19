@@ -7,7 +7,7 @@ import {
 import { validateWorkspaceE2EAccountLaneJournalOwnership } from "./reconcile";
 
 const recipient = testEmailAddress("delivered+agent-run-agent");
-const otherContact = "someone.else@example.test";
+const otherContact = testEmailAddress("someone.else");
 
 const journal: WorkspaceE2EAccountJournal = {
   ...emptyWorkspaceE2EAccountJournal("agent-run"),
