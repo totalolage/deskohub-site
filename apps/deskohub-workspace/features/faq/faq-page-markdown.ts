@@ -1,7 +1,23 @@
 import { Effect } from "effect";
 import { type Locale, m } from "@/features/i18n";
-import { type MarkdownBlocks, markdownHeading } from "@/shared/markdown/markdown";
+import {
+  type MarkdownBlocks,
+  markdownHeading,
+  markdownParagraph,
+} from "@/shared/markdown/markdown";
+import { loadFaqOccupancyStats } from "./backend/faq-occupancy.server";
+import { getFaqEntries } from "./faq-entries";
 
-/** TODO(stub): the FAQ page's facts as Markdown. */
-export const faqPageMarkdown = (locale: Locale): Effect.Effect<MarkdownBlocks> =>
-  Effect.succeed([markdownHeading(1, m.faqMetadataTitle({}, { locale }))]);
+/** The FAQ page's questions and answers as Markdown, each question a section. */
+export const faqPageMarkdown = (
+  locale: Locale
+): Effect.Effect<MarkdownBlocks> =>
+  Effect.promise(loadFaqOccupancyStats).pipe(
+    Effect.map((occupancy) => [
+      markdownHeading(1, m.faqPageTitle({}, { locale })),
+      ...getFaqEntries(locale, occupancy).flatMap((entry) => [
+        markdownHeading(2, entry.question),
+        markdownParagraph(entry.answer),
+      ]),
+    ])
+  );
