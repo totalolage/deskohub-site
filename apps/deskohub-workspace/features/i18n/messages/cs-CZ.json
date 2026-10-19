@@ -1121,5 +1121,8 @@
   "pricingReserveLabel": "Rezervovat: {product}",
   "pricingContactLink": "Kontakty a kontaktní formulář",
   "footerPricingLink": "Ceník a otevírací doba",
-  "contactOpeningHoursLabel": "Otevírací doba"
+  "contactOpeningHoursLabel": "Otevírací doba",
+  "publicOfferingAddOnIncluded": "{addOn} v ceně",
+  "publicPageTopicOffer": "Nabídka",
+  "publicPageTopicBooking": "Rezervace"
 }

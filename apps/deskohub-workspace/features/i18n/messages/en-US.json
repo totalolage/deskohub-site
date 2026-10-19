@@ -1112,5 +1112,8 @@
   "pricingReserveLabel": "Reserve {product}",
   "pricingContactLink": "Contact details and contact form",
   "footerPricingLink": "Prices and opening hours",
-  "contactOpeningHoursLabel": "Opening hours"
+  "contactOpeningHoursLabel": "Opening hours",
+  "publicOfferingAddOnIncluded": "{addOn} included",
+  "publicPageTopicOffer": "Offer",
+  "publicPageTopicBooking": "Booking"
 }

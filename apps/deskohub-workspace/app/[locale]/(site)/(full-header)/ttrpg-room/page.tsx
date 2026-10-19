@@ -7,7 +7,7 @@ import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-i
 import { RoomImageCarousel } from "@/features/gallery/components/room-image-carousel";
 import { getWorkspaceAlternates, type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { getMeetingRoomReservationPath } from "@/features/reservation/routes";
+import { getTtrpgRooms } from "@/features/ttrpg-room/ttrpg-rooms";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
 import { Skeleton } from "@/shared/components/ui/skeleton";
@@ -16,12 +16,6 @@ import { workspaceSiteConstants } from "@/shared/utils";
 const pathname = "/ttrpg-room";
 
 export const instant = true;
-
-const getContactHref = (href: string, message: string) => {
-  const searchParams = new URLSearchParams({ message });
-
-  return `${href}?${searchParams.toString()}#contact-form`;
-};
 
 const getRoomImages = (
   tags: readonly ["ttrpg-room", "ttrpg-room-bar" | "ttrpg-room-workspace"]
@@ -61,28 +55,6 @@ export function TtrpgRoomPage({
   barCarousel: ReactNode;
   workspaceCarousel: ReactNode;
 }) {
-  const rooms = [
-    {
-      eyebrow: m.ttrpgRoomBarRoomLabel({}, { locale }),
-      title: m.ttrpgRoomBarChoiceTitle({}, { locale }),
-      seats: m.ttrpgRoomBarCapacity({}, { locale }),
-      carousel: barCarousel,
-      href: getContactHref(
-        `https://bar.deskohub.cz/${locale}/contact`,
-        m.ttrpgRoomBarPrefillMessage({}, { locale })
-      ),
-      cta: m.ttrpgRoomBarCta({}, { locale }),
-    },
-    {
-      eyebrow: m.ttrpgRoomWorkspaceRoomLabel({}, { locale }),
-      title: m.ttrpgRoomWorkspaceChoiceTitle({}, { locale }),
-      seats: m.ttrpgRoomWorkspaceCapacity({}, { locale }),
-      carousel: workspaceCarousel,
-      href: getMeetingRoomReservationPath(locale),
-      cta: m.ttrpgRoomWorkspaceCta({}, { locale }),
-    },
-  ];
-
   return (
     <main className="min-h-[calc(100vh-var(--site-header-height))] overflow-x-clip bg-[#f4f1ea] pt-[calc(var(--site-header-height)+2.5rem)] text-navy-blue sm:pt-[calc(var(--site-header-height)+4rem)]">
       <Container className="pb-16 sm:pb-24">
@@ -91,9 +63,9 @@ export function TtrpgRoomPage({
         </h1>
 
         <section className="mt-14 grid border-y border-navy-blue/18 md:grid-cols-2 md:divide-x md:divide-navy-blue/18">
-          {rooms.map((room) => (
+          {getTtrpgRooms(locale).map((room) => (
             <article key={room.title} className="py-10 md:px-10 first:md:pl-0">
-              {room.carousel}
+              {{ bar: barCarousel, workspace: workspaceCarousel }[room.venue]}
               <p className="text-sm font-semibold tracking-[0.16em] text-burned-orange uppercase">
                 {room.eyebrow}
               </p>
