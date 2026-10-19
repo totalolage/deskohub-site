@@ -314,7 +314,7 @@ function Brand({
         <span className="block truncate text-sm font-semibold leading-none">
           Deskohub
         </span>
-        <span className="mt-1 block truncate text-xs text-navy-blue/65">
+        <span className="mt-1 block overflow-hidden text-ellipsis text-xs text-navy-blue/65">
           {m.shellBrandSubtitle({}, { locale })}
         </span>
       </span>
