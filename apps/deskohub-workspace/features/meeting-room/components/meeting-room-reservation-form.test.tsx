@@ -44,6 +44,10 @@ import {
   workspaceUseSearchParams,
 } from "@/shared/testing/workspace-component-module-mocks";
 import {
+  continueAndSubmitReservation,
+  mockReservationCheckoutStep,
+} from "@/features/reservation/components/reservation-checkout-step.test-utils";
+import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
@@ -63,6 +67,8 @@ mock.module("@/features/cookie-consent", () => ({
 mock.module("@/features/reservation/actions/get-advertised-price", () => ({
   getAdvertisedPrices,
 }));
+
+mockReservationCheckoutStep();
 
 const { MeetingRoomReservationForm } = await import(
   "./meeting-room-reservation-form"
@@ -233,6 +239,11 @@ const renderForm = (
   const renderElement = () => (
     <QueryClientProvider client={queryClient}>
       <MeetingRoomReservationForm
+        checkoutCustomer={{
+          status: "profile-missing",
+          email: testEmailAddressForAda,
+          continuesCheckout: false,
+        }}
         checkoutSessionId="restored-checkout-session"
         initialReservation={initialReservation}
         locale="en-US"
@@ -394,7 +405,7 @@ describe("MeetingRoomReservationForm", () => {
     ).toEqual(["1 hour", "4 hours", "whole day"]);
     expect(availabilityRequest?.signal).toBeInstanceOf(AbortSignal);
 
-    fireEvent.click(continueButton);
+    await continueAndSubmitReservation(continueButton);
 
     await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
     expect(execute.mock.calls[0]?.[0]).toMatchObject({
@@ -479,7 +490,9 @@ describe("MeetingRoomReservationForm", () => {
       ).toBe(false);
     });
 
-    fireEvent.click(view.getByRole("button", { name: "Continue" }));
+    await continueAndSubmitReservation(
+      view.getByRole("button", { name: "Continue" }) as HTMLButtonElement
+    );
 
     await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
     expect(execute.mock.calls[0]?.[0]).toMatchObject({
@@ -562,7 +575,7 @@ describe("MeetingRoomReservationForm", () => {
       await waitFor(() => {
         expect(continueButton.hasAttribute("disabled")).toBe(false);
       });
-      fireEvent.click(continueButton);
+      await continueAndSubmitReservation(continueButton as HTMLButtonElement);
 
       await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
       expect(execute.mock.calls[0]?.[0].reservation).toMatchObject({

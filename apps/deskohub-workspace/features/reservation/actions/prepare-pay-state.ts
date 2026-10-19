@@ -926,6 +926,9 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const bookedCustomer = yield* Ref.make<DotyposCustomerId | undefined>(
       undefined
     );
+    // Whether the account booking carries the remembered referral, which the
+    // guarded section evaluates once it knows the account's customer.
+    const carriesAccountReferral = yield* Ref.make(false);
 
     // The full state-creating section runs inside the account advisory
     // lock: authority is re-checked under the lock and the same lock is
@@ -952,6 +955,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           accountCustomer?.dotyposCustomerId,
           rememberedReferralCode
         );
+        yield* Ref.set(carriesAccountReferral, accountReferral !== undefined);
 
         // Submission locks the price: calendar sales are evaluated at this
         // booking moment here and at every later checkout re-check.
@@ -1340,7 +1344,12 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       yield* forgetSettledReferralCode(settlingCustomer);
     }
 
-    if (!accountReferral || result.status === "error") return result;
+    if (
+      !(yield* Ref.get(carriesAccountReferral)) ||
+      result.status === "error"
+    ) {
+      return result;
+    }
     return {
       ...result,
       redirectUrl:

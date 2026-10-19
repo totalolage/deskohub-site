@@ -178,15 +178,18 @@ function ReservationLinkedCustomerSection({
   if (mode === "account") {
     return (
       <div className="space-y-3">
-        {replacesTypedContact && (
-          <ReservationContactNotice>
-            {m.reservationExistingProfileNotice({}, { locale })}
-          </ReservationContactNotice>
-        )}
-        <ReservationExistingCustomerCard
-          contact={existingCustomer.contact}
-          locale={locale}
-        />
+        {/* The toggle keeps its place in both modes, so it keeps focus. */}
+        <div className="space-y-3">
+          {replacesTypedContact && (
+            <ReservationContactNotice>
+              {m.reservationExistingProfileNotice({}, { locale })}
+            </ReservationContactNotice>
+          )}
+          <ReservationExistingCustomerCard
+            contact={existingCustomer.contact}
+            locale={locale}
+          />
+        </div>
         <Button
           variant="link"
           onClick={() => {
