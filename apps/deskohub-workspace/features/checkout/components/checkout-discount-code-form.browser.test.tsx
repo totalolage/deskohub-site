@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { chromium, type Page, type Request } from "@playwright/test";
-import { withNextDevFixture } from "@/shared/testing/next-dev-fixture.test-utils";
+import { withNextAppFixture } from "@/shared/testing/next-app-fixture.test-utils";
 
 const fixtureBrowserTimeoutMs = 15_000;
 const firstSubmittedCode = "SYNTHETIC-ORDINARY-CODE";
@@ -125,7 +125,7 @@ const waitForReactHandler = async (
 test("clears the ordinary code after a fresh referral state in the compiled browser form", {
   timeout: 120_000,
 }, async () => {
-  await withNextDevFixture(
+  await withNextAppFixture(
     {
       files: fixtureFiles,
       name: "workspace-discount-code-reset",

@@ -12,21 +12,27 @@ const appRoot = resolve(import.meta.dir, "../..");
 const fixtureStartupTimeoutMs = 45_000;
 const fixtureShutdownTimeoutMs = 5_000;
 
-type NextDevFixtureOptions = {
+type NextAppFixtureOptions = {
   /**
    * Fixture files by path relative to the fixture root, such as
    * `next.config.mjs` and `app/**` routes. A `GET /fixture-ready` route is
    * added for readiness.
    */
   readonly files: Readonly<Record<string, string>>;
+  /**
+   * `development` serves the app with `next dev`; `production` builds it and
+   * serves it with `next start`, for behavior that differs between the two,
+   * such as cache lifetimes. Defaults to `development`.
+   */
+  readonly mode?: "development" | "production";
   /** Prefix for the temporary fixture directory. */
   readonly name: string;
   /** TypeScript path aliases checked before `@/*`, which maps to Workspace sources. */
   readonly paths?: Readonly<Record<string, readonly string[]>>;
 };
 
-type NextDevFixture = {
-  /** The exit code of the `next dev` process, once it has exited. */
+type NextAppFixture = {
+  /** The exit code of the Next server process, once it has exited. */
   readonly exitCode: () => number | undefined;
   readonly url: string;
 };
@@ -75,7 +81,7 @@ export async function GET() {
 const writeFixture = async (
   fixtureRoot: string,
   readinessMarker: string,
-  { files, paths }: NextDevFixtureOptions
+  { files, paths }: NextAppFixtureOptions
 ) => {
   const allFiles = {
     "app/fixture-ready/route.ts": readinessRoute(readinessMarker),
@@ -123,15 +129,43 @@ const waitForOwnedChildExit = async (
   return didExit;
 };
 
+const childEnv = () => ({
+  HOME: process.env.HOME ?? "/tmp",
+  BUN_OPTIONS: "--no-env-file",
+  NEXT_TELEMETRY_DISABLED: "1",
+  PATH: process.env.PATH ?? "/usr/bin:/bin",
+  TMPDIR: process.env.TMPDIR ?? tmpdir(),
+});
+
+const buildFixture = async (fixtureRoot: string, nextCli: string) => {
+  const build = Bun.spawn([process.execPath, nextCli, "build", "--webpack"], {
+    cwd: fixtureRoot,
+    env: childEnv(),
+    stderr: "pipe",
+    stdin: "ignore",
+    stdout: "pipe",
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    build.exited,
+    new Response(build.stdout).text(),
+    new Response(build.stderr).text(),
+  ]);
+  if (exitCode !== 0) {
+    throw new Error(
+      `next build of the fixture exited with ${exitCode}:\n${stdout}\n${stderr}`
+    );
+  }
+};
+
 /**
- * Runs `run` against a throwaway `next dev` app built from `files`, whose
+ * Runs `run` against a throwaway Next app built from `files`, whose
  * `@/*` imports resolve to the real Workspace `features` and `shared`
  * sources. The server and its directory are removed afterwards; a teardown
  * failure fails the caller only when `run` succeeded.
  */
-export const withNextDevFixture = async <A>(
-  options: NextDevFixtureOptions,
-  run: (fixture: NextDevFixture) => Promise<A>
+export const withNextAppFixture = async <A>(
+  options: NextAppFixtureOptions,
+  run: (fixture: NextAppFixture) => Promise<A>
 ): Promise<A> => {
   const port = await allocateLoopbackPort();
   const readinessMarker = randomUUID();
@@ -147,12 +181,13 @@ export const withNextDevFixture = async <A>(
   try {
     await writeFixture(fixtureRoot, readinessMarker, options);
     const nextCli = resolve(appRoot, "node_modules/next/dist/bin/next");
+    const production = options.mode === "production";
+    if (production) await buildFixture(fixtureRoot, nextCli);
     server = Bun.spawn(
       [
         process.execPath,
         nextCli,
-        "dev",
-        "--webpack",
+        ...(production ? ["start"] : ["dev", "--webpack"]),
         "--hostname",
         "127.0.0.1",
         "--port",
@@ -160,13 +195,7 @@ export const withNextDevFixture = async <A>(
       ],
       {
         cwd: fixtureRoot,
-        env: {
-          HOME: process.env.HOME ?? "/tmp",
-          BUN_OPTIONS: "--no-env-file",
-          NEXT_TELEMETRY_DISABLED: "1",
-          PATH: process.env.PATH ?? "/usr/bin:/bin",
-          TMPDIR: process.env.TMPDIR ?? tmpdir(),
-        },
+        env: childEnv(),
         stderr: "ignore",
         stdin: "ignore",
         stdout: "ignore",
