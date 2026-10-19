@@ -218,6 +218,24 @@ describe.skipIf(!testDatabase)(
       });
     });
 
+    test("rejects an active run without a phase", async () => {
+      const { campaignId, versionId } = await automatedCampaign();
+
+      await expect(
+        pool.query(
+          `insert into email_campaign_automation_runs
+             (campaign_id, version_id, dotypos_customer_id, trigger_kind, trigger_at,
+              status, step_id, phase, step_entered_at, due_at)
+           values ($1, $2, $3, 'account-created', now(),
+              'active', 'delay', null, now(), now() + interval '1 minute')`,
+          [campaignId, versionId, customerId("phaseless")]
+        )
+      ).rejects.toMatchObject({
+        code: "23514",
+        constraint: "email_campaign_automation_runs_status_check",
+      });
+    });
+
     test("rejects a claimed work unit without a claim", async () => {
       const key = `automation-schema-${run}-claimed`;
       workUnitKeys.push(key);

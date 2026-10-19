@@ -128,7 +128,7 @@ describe.skipIf(!testDatabase)(
         )
       );
 
-    test("reads 120 booked reservations in 3 requests, as their cost says", async () => {
+    test("reads 120 booked reservations in 3 sequential requests, as their cost says", async () => {
       const customers = ["a", "b", "c"].map((label) =>
         customerId(`cost-${label}`)
       );
@@ -156,6 +156,7 @@ describe.skipIf(!testDatabase)(
 
       expect(cost).toBe(3);
       expect(dotypos.requests()).toBe(3);
+      expect(dotypos.peakOpenRequests()).toBe(1);
       expect(customers.map((id) => visits.get(id)?.length)).toEqual([
         40, 40, 40,
       ]);

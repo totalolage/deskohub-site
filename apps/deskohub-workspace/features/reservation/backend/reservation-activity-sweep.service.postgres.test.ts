@@ -16,6 +16,10 @@ import { automationEngineTestLayer } from "@/features/email-campaigns/automation
 import { AutomationPlanner } from "@/features/email-campaigns/automation/backend/automation-planner.service";
 import { AutomationSweepPlanning } from "@/features/email-campaigns/automation/backend/automation-sweep-planning.service";
 import {
+  AutomationUnitDefect,
+  type RegisteredAutomationUnitHandler,
+} from "@/features/email-campaigns/automation/backend/automation-unit-handler";
+import {
   drainAutomationUnitQueue,
   makeAutomationUnitQueueFake,
 } from "@/features/email-campaigns/automation/backend/automation-unit-queue.test-utils";
@@ -280,13 +284,15 @@ describe.skipIf(!testDatabase)(
      * The real planner and processor at K = 1 over `dotypos`, with the queue
      * fake. `tick(at)` runs one planner pass at `at` on the test clock, then
      * delivers queued messages until none is left; a failed delivery is
-     * queued again, as the queue redelivers it.
+     * queued again, as the queue redelivers it. A page whose unit `defective`
+     * returns true for fails with a defect before it fetches.
      */
     const runEngine = async <A, E>(
       dotypos: ActivityDotypos,
       scenario: (
         tick: (at: Temporal.Instant) => Effect.Effect<void, unknown>
-      ) => Effect.Effect<A, E>
+      ) => Effect.Effect<A, E>,
+      options: { readonly defective?: (unitKey: string) => boolean } = {}
     ) => {
       const sweepCapabilities = Layer.mergeAll(
         testDatabase.layer,
@@ -297,11 +303,18 @@ describe.skipIf(!testDatabase)(
       const sweepPage = await Effect.runPromise(
         makeSweepPageHandler.pipe(Effect.provide(sweepCapabilities))
       );
+      const handler: RegisteredAutomationUnitHandler = {
+        kind: sweepPage.kind,
+        fetch: (unit) =>
+          options.defective?.(unit.key)
+            ? Effect.fail(new AutomationUnitDefect({ code: "test-defect" }))
+            : sweepPage.fetch(unit),
+      };
       const queue = makeAutomationUnitQueueFake();
       const engine = automationEngineTestLayer({
         database: testDatabase,
         queue,
-        handlers: [sweepPage],
+        handlers: [handler],
         limits: { total: 1, deliver: 1 },
         sweepPlanning: AutomationSweepPlanning.Default.pipe(
           Layer.provide(sweepCapabilities)
@@ -433,6 +446,96 @@ describe.skipIf(!testDatabase)(
         windowOpen: false,
         nextPage: null,
       });
+    });
+
+    test("replans a failed page after its backoff and resumes the window there", async () => {
+      const dotypos = activityDotypos(2);
+      const now = at("2027-01-20T09:01:00Z");
+      await resetSweeps({ activity: now.subtract({ minutes: 1 }) });
+      const visits = [0, 1, 2, 3].map((index) => ({
+        label: `replanned-${index}`,
+        startsAt: now.subtract({ minutes: 60 - index }),
+        endsAt: now.subtract({ seconds: 60 - index * 10 }),
+      }));
+      for (const visit of visits) await book(dotypos, visit);
+      let defective = true;
+      const failedPage = () =>
+        testDatabase.pool
+          .query<{ status: string; failures: number }>(
+            "select status, failures from email_campaign_automation_work_units where kind = 'sweep-page' and key like '%:2' order by created_at limit 1"
+          )
+          .then(({ rows }) => rows[0]);
+      const lastSummary = () =>
+        testDatabase.pool
+          .query<{
+            summary: { sweepPagesReplanned: number; failingByKind: object };
+          }>(
+            "select last_plan_summary as summary from email_campaign_automation_engine"
+          )
+          .then(({ rows }) => rows[0]?.summary);
+
+      const observed = await runEngine(
+        dotypos,
+        (tick) => {
+          const observe = (minutes: number) =>
+            tick(now.add({ seconds: minutes * 60 })).pipe(
+              Effect.andThen(
+                Effect.promise(async () => ({
+                  page: await failedPage(),
+                  cursor: await cursorOf("reservation-activity"),
+                  summary: await lastSummary(),
+                }))
+              )
+            );
+          return Effect.all([
+            observe(0),
+            // Within the first backoff (1 minute): still failed.
+            observe(0.5),
+            // Replanned, fails again; the next backoff is 2 minutes.
+            observe(1),
+            observe(2),
+            Effect.sync(() => {
+              defective = false;
+            }).pipe(Effect.andThen(observe(3))),
+          ]);
+        },
+        { defective: (key) => defective && key.endsWith(":2") }
+      );
+
+      const stuck = {
+        sweptUntil: "2027-01-20T09:00:00.000Z",
+        windowOpen: true,
+        nextPage: 2,
+      };
+      expect(observed.map(({ page }) => page)).toEqual([
+        { status: "failed", failures: 1 },
+        { status: "failed", failures: 1 },
+        { status: "failed", failures: 2 },
+        { status: "failed", failures: 2 },
+        { status: "done", failures: 2 },
+      ]);
+      expect(observed.slice(0, 4).map(({ cursor }) => cursor)).toEqual([
+        stuck,
+        stuck,
+        stuck,
+        stuck,
+      ]);
+      expect(
+        observed.map(({ summary }) => summary?.sweepPagesReplanned)
+      ).toEqual([0, 0, 1, 0, 1]);
+      expect(observed[3]?.summary?.failingByKind).toEqual({ "sweep-page": 1 });
+      // The window's pages were each fetched once, in order: none skipped.
+      const [firstWindow] = pagesByWindow(dotypos).values();
+      expect(firstWindow?.map((request) => request.page)).toEqual([1, 2]);
+      expect(await visitEvents(visits.map((visit) => visit.label))).toEqual([
+        ...visits.map((visit) =>
+          visitEvent("reservation-started", visit.label, visit.startsAt)
+        ),
+        ...visits.map((visit) =>
+          visitEvent("reservation-finished", visit.label, visit.endsAt)
+        ),
+      ]);
+      expect(observed[4]?.cursor.sweptUntil).not.toBe(stuck.sweptUntil);
     });
 
     test("catches up after a six-hour outage by chaining windows", async () => {

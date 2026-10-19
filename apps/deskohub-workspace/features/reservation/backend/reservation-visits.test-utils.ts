@@ -12,18 +12,26 @@ import {
 
 /**
  * A `DotyposService` mock answering reservation reads from `reservations`
- * that counts every request. Edit the array between reads to change what
- * Dotypos holds.
+ * that counts every request and the most open at once. Each request yields
+ * before answering, so concurrent requests overlap. Edit the array between
+ * reads to change what Dotypos holds.
  */
 export const countedDotyposReservationReads = (
   reservations: DotyposReservation[]
 ) => {
   let requests = 0;
+  let open = 0;
+  let peakOpen = 0;
   const reads = seededReservationReads(reservations);
   const counted = <A, E>(read: () => Effect.Effect<A, E>) =>
     Effect.suspend(() => {
       requests += 1;
-      return read();
+      open += 1;
+      peakOpen = Math.max(peakOpen, open);
+      return Effect.yieldNow.pipe(
+        Effect.andThen(read),
+        Effect.ensuring(Effect.sync(() => (open -= 1)))
+      );
     });
   return {
     layer: DotyposServiceMock({
@@ -35,6 +43,7 @@ export const countedDotyposReservationReads = (
         counted(() => reads.listActiveReservationsPage(interval, page)),
     }),
     requests: () => requests,
+    peakOpenRequests: () => peakOpen,
   };
 };
 

@@ -231,7 +231,9 @@ export class AutomationUnitProcessor extends Context.Service<
                   )
                 )
               ),
-              Effect.flatMap((followUps) => planAutomationUnits(tx, followUps))
+              Effect.flatMap((followUps) =>
+                planAutomationUnits(tx, followUps, at)
+              )
             )
           )
           .pipe(
@@ -337,6 +339,7 @@ const settleClaimed = (
       claimExpiresAt: null,
       settledAt: at,
       ...(lastErrorCode !== undefined && { lastErrorCode }),
+      ...(status === "failed" && { failures: sql`${units.failures} + 1` }),
     })
     .where(
       and(

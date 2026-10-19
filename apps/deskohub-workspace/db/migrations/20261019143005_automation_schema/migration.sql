@@ -95,7 +95,7 @@ CREATE TABLE "email_campaign_automation_runs" (
 	"ended_at" timestamp with time zone,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "email_campaign_automation_runs_trigger_kind_check" CHECK ("trigger_kind" in ('schedule', 'reservation-booked', 'reservation-cancelled', 'reservation-started', 'reservation-finished', 'account-created')),
-	CONSTRAINT "email_campaign_automation_runs_status_check" CHECK (("status" = 'active' and "phase" in ('ready', 'waiting') and "due_at" is not null and "outcome" is null and "ended_at" is null) or ("status" = 'sending' and "phase" is null and "due_at" is null and "send_id" is not null and "outcome" is null and "ended_at" is null) or ("status" = 'ended' and "phase" is null and "due_at" is null and "outcome" is not null and "ended_at" is not null)),
+	CONSTRAINT "email_campaign_automation_runs_status_check" CHECK (("status" = 'active' and "phase" is not null and "phase" in ('ready', 'waiting') and "due_at" is not null and "outcome" is null and "ended_at" is null) or ("status" = 'sending' and "phase" is null and "due_at" is null and "send_id" is not null and "outcome" is null and "ended_at" is null) or ("status" = 'ended' and "phase" is null and "due_at" is null and "outcome" is not null and "ended_at" is not null)),
 	CONSTRAINT "email_campaign_automation_runs_outcome_check" CHECK ("outcome" is null or "outcome" in ('sent', 'unconfirmed', 'condition-failed', 'skipped', 'failed', 'withdrawn', 'archived')),
 	CONSTRAINT "email_campaign_automation_runs_reason_check" CHECK (("outcome" is not null and "outcome" in ('skipped', 'failed')) = ("outcome_reason" is not null)),
 	CONSTRAINT "email_campaign_automation_runs_trigger_check" CHECK (("trigger_kind" like 'reservation-%') = ("trigger_reservation_id" is not null))
@@ -170,6 +170,7 @@ CREATE TABLE "email_campaign_automation_work_units" (
 	"enqueue_generation" integer DEFAULT 0 NOT NULL,
 	"attempts" integer DEFAULT 0 NOT NULL,
 	"deadline_misses" integer DEFAULT 0 NOT NULL,
+	"failures" integer DEFAULT 0 NOT NULL,
 	"last_error_code" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"first_attempt_at" timestamp with time zone,

@@ -24,7 +24,12 @@ import {
 } from "./automation-unit-slots";
 
 const idleSweepPlanning = Layer.succeed(AutomationSweepPlanning, {
-  plan: () => Effect.succeed({ sweepPagesPlanned: 0, eventsReconciled: 0 }),
+  plan: () =>
+    Effect.succeed({
+      sweepPagesPlanned: 0,
+      sweepPagesReplanned: 0,
+      eventsReconciled: 0,
+    }),
 });
 
 /**

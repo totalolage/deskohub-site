@@ -222,7 +222,10 @@ export class ReservationVisits extends Context.Service<
               Effect.orDie
             );
 
-        /** Fetches the visits not memoised yet, ≤ 50 Dotypos ids per request. */
+        /**
+         * Fetches the visits not memoised yet, ≤ 50 Dotypos ids per request,
+         * one request at a time.
+         */
         const lookUp = (booked: readonly BookedReservation[]) =>
           readInIdFilterBatches(
             booked
@@ -243,7 +246,9 @@ export class ReservationVisits extends Context.Service<
                     })
                 ),
                 Effect.mapError(ReservationVisitsUnavailable.fromDotypos)
-              )
+              ),
+            // A unit's requests are sequential, so in-flight units bound Dotypos load.
+            { concurrency: 1 }
           ).pipe(
             Effect.flatMap((pages) =>
               remember(

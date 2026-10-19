@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "fe572e41-c274-4385-bc7d-79ab1496c9d0",
+  "id": "d9495005-587d-48f2-af0f-74773702df90",
   "prevIds": [
     "c7bdda8a-93df-4c45-9a0e-4420ab34e8ed"
   ],
@@ -3430,6 +3430,19 @@
       "generated": null,
       "identity": null,
       "name": "deadline_misses",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "email_campaign_automation_work_units"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "failures",
       "entityType": "columns",
       "schema": "public",
       "table": "email_campaign_automation_work_units"
@@ -12598,7 +12611,7 @@
       "table": "email_campaign_automation_runs"
     },
     {
-      "value": "(\"status\" = 'active' and \"phase\" in ('ready', 'waiting') and \"due_at\" is not null and \"outcome\" is null and \"ended_at\" is null) or (\"status\" = 'sending' and \"phase\" is null and \"due_at\" is null and \"send_id\" is not null and \"outcome\" is null and \"ended_at\" is null) or (\"status\" = 'ended' and \"phase\" is null and \"due_at\" is null and \"outcome\" is not null and \"ended_at\" is not null)",
+      "value": "(\"status\" = 'active' and \"phase\" is not null and \"phase\" in ('ready', 'waiting') and \"due_at\" is not null and \"outcome\" is null and \"ended_at\" is null) or (\"status\" = 'sending' and \"phase\" is null and \"due_at\" is null and \"send_id\" is not null and \"outcome\" is null and \"ended_at\" is null) or (\"status\" = 'ended' and \"phase\" is null and \"due_at\" is null and \"outcome\" is not null and \"ended_at\" is not null)",
       "name": "email_campaign_automation_runs_status_check",
       "entityType": "checks",
       "schema": "public",

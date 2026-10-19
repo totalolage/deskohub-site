@@ -235,6 +235,8 @@ export const emailCampaignAutomationWorkUnits = pgTable(
     enqueueGeneration: integer("enqueue_generation").notNull().default(0),
     attempts: integer("attempts").notNull().default(0),
     deadlineMisses: integer("deadline_misses").notNull().default(0),
+    /** Times the unit settled `failed`; spaces out its replanning. */
+    failures: integer("failures").notNull().default(0),
     lastErrorCode: text("last_error_code"),
     createdAt: instant("created_at").notNull().default(sql`now()`),
     firstAttemptAt: instant("first_attempt_at"),
@@ -369,7 +371,7 @@ export const emailCampaignAutomationRuns = pgTable(
     ),
     check(
       "email_campaign_automation_runs_status_check",
-      sql`(${t.status} = 'active' and ${t.phase} in ('ready', 'waiting') and ${t.dueAt} is not null and ${t.outcome} is null and ${t.endedAt} is null) or (${t.status} = 'sending' and ${t.phase} is null and ${t.dueAt} is null and ${t.sendId} is not null and ${t.outcome} is null and ${t.endedAt} is null) or (${t.status} = 'ended' and ${t.phase} is null and ${t.dueAt} is null and ${t.outcome} is not null and ${t.endedAt} is not null)`
+      sql`(${t.status} = 'active' and ${t.phase} is not null and ${t.phase} in ('ready', 'waiting') and ${t.dueAt} is not null and ${t.outcome} is null and ${t.endedAt} is null) or (${t.status} = 'sending' and ${t.phase} is null and ${t.dueAt} is null and ${t.sendId} is not null and ${t.outcome} is null and ${t.endedAt} is null) or (${t.status} = 'ended' and ${t.phase} is null and ${t.dueAt} is null and ${t.outcome} is not null and ${t.endedAt} is not null)`
     ),
     check(
       "email_campaign_automation_runs_outcome_check",

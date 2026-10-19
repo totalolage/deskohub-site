@@ -1,11 +1,13 @@
 import {
   and,
   eq,
+  gt,
   inArray,
   isNotNull,
   isNull,
   lt,
   lte,
+  notInArray,
   or,
   sql,
 } from "drizzle-orm";
@@ -37,6 +39,8 @@ type AutomationPlanSummary = {
     readonly dropped: number;
   };
   readonly sweepPagesPlanned: number;
+  /** Failed sweep pages planned again after their backoff. */
+  readonly sweepPagesReplanned: number;
   readonly eventsReconciled: number;
   readonly pruned: {
     readonly units: number;
@@ -45,6 +49,8 @@ type AutomationPlanSummary = {
   };
   readonly promoted: number;
   readonly inFlightByKind: Readonly<Record<string, number>>;
+  /** Units not yet done or dropped that have failed at least once. */
+  readonly failingByKind: Readonly<Record<string, number>>;
 };
 
 interface IAutomationPlanner {
@@ -248,6 +254,22 @@ export class AutomationPlanner extends Context.Service<
           )
         );
 
+      const failingByKind = db
+        .select({ kind: units.kind, count: sql<number>`count(*)::int` })
+        .from(units)
+        .where(
+          and(
+            gt(units.failures, 0),
+            notInArray(units.status, ["done", "dropped"])
+          )
+        )
+        .groupBy(units.kind)
+        .pipe(
+          Effect.map((rows) =>
+            Object.fromEntries(rows.map((row) => [row.kind, row.count]))
+          )
+        );
+
       const recordSummary = (summary: AutomationPlanSummary) =>
         db
           .update(emailCampaignAutomationEngine)
@@ -274,6 +296,7 @@ export class AutomationPlanner extends Context.Service<
             slots.topUp.pipe(Effect.withSpan("automationPlanner.topUp"))
           ),
           Effect.bind("inFlightByKind", () => inFlightByKind),
+          Effect.bind("failingByKind", () => failingByKind),
           Effect.map(
             ({
               at,
@@ -282,14 +305,17 @@ export class AutomationPlanner extends Context.Service<
               pruned,
               promoted,
               inFlightByKind,
+              failingByKind,
             }): AutomationPlanSummary => ({
               plannedAt: at.toString(),
               reaped,
               sweepPagesPlanned: sweep.sweepPagesPlanned,
+              sweepPagesReplanned: sweep.sweepPagesReplanned,
               eventsReconciled: sweep.eventsReconciled,
               pruned,
               promoted: promoted.length,
               inFlightByKind,
+              failingByKind,
             })
           ),
           Effect.tap(recordSummary),

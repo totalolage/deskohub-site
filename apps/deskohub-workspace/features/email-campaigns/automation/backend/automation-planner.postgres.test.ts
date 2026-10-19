@@ -70,21 +70,26 @@ describe.skipIf(!database)("automation planner", () => {
   const repeatedSweepPage = Layer.effect(
     AutomationSweepPlanning,
     Effect.map(WorkspaceDatabase, ({ db }) => ({
-      plan: () =>
+      plan: (at) =>
         db
           .transaction((tx) =>
-            planAutomationUnits(tx, [
-              {
-                kind: "sweep-page",
-                key: "sweep-page:test:window:1",
-                subject: { label: "window" },
-                requestCost: 1,
-              },
-            ])
+            planAutomationUnits(
+              tx,
+              [
+                {
+                  kind: "sweep-page",
+                  key: "sweep-page:test:window:1",
+                  subject: { label: "window" },
+                  requestCost: 1,
+                },
+              ],
+              at
+            )
           )
           .pipe(
-            Effect.map((sweepPagesPlanned) => ({
-              sweepPagesPlanned,
+            Effect.map(({ planned, replanned }) => ({
+              sweepPagesPlanned: planned,
+              sweepPagesReplanned: replanned.length,
               eventsReconciled: 0,
             }))
           ),
