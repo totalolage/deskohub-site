@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { GoogleCalendarAPIError } from "@deskohub/google-calendar";
 import { Effect, Layer } from "effect";
 import type { PublicPriceListOffering } from "@/features/checkout/public-offerings";
-import type { DiscountReleaseGates } from "@/features/discounts/discount-release-gate.service";
 import { calendarSaleDiscountServiceLayer } from "@/features/discounts/calendar-sale.test-utils";
+import type { DiscountReleaseGates } from "@/features/discounts/discount-release-gate.service";
 import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 

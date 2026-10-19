@@ -125,7 +125,11 @@ export async function loadSharedPriceList(
       }),
     })
   );
-  cacheLife(priceList.complete ? "minutes" : incompletePriceListLife);
+  if (priceList.complete) {
+    cacheLife("minutes");
+  } else {
+    cacheLife(incompletePriceListLife);
+  }
 
   return priceList;
 }
