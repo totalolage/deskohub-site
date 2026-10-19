@@ -26,7 +26,11 @@ describe("audienceSaveFailureCopy", () => {
     ],
   ] as const)("words %s in %s", (code, locale, text) => {
     expect(
-      describeCampaignOperationFailure({ code }, audienceSaveFailureCopy, locale)
+      describeCampaignOperationFailure(
+        { code },
+        audienceSaveFailureCopy,
+        locale
+      )
     ).toBe(text);
   });
 });
