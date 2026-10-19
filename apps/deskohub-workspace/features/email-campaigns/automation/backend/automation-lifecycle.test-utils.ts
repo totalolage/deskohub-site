@@ -3,7 +3,7 @@ import {
   type AutomationFlowType,
   AutomationFlow as automationFlowContractSchema,
 } from "@deskohub/workspace-admin-api";
-import { Effect, Option, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { emailCampaignAudiences } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
@@ -61,9 +61,12 @@ export const automationLifecycleTestKit = (
     Effect.runPromise(
       TestClock.setTime(at.epochMilliseconds).pipe(
         Effect.andThen(effect),
-        Effect.provide(AutomationLifecycle.Default),
-        Effect.provide(databaseLayer),
-        Effect.provide(TestClock.layer())
+        Effect.provide(
+          Layer.mergeAll(
+            AutomationLifecycle.Default.pipe(Layer.provide(databaseLayer)),
+            TestClock.layer()
+          )
+        )
       )
     );
 
