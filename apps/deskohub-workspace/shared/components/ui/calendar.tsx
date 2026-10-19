@@ -50,13 +50,13 @@ export function Calendar({
         day: "h-9 w-9 p-0 text-center text-sm",
         day_button:
           "inline-flex size-9 cursor-pointer items-center justify-center rounded-xl text-sm text-navy-blue transition-colors hover:bg-sunset-yellow/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-        today:
-          "[&_.rdp-day_button]:border [&_.rdp-day_button]:border-sunset-yellow",
+        // Custom class names replace react-day-picker's own, so day states
+        // style the day button through its cell.
+        today: "[&>button]:border [&>button]:border-sunset-yellow",
         outside: "text-navy-blue/28",
         disabled: "text-navy-blue/22 opacity-50",
-        // react-day-picker marks the day cell, not its button, as selected.
         selected:
-          "[&_.rdp-day_button]:bg-burned-orange [&_.rdp-day_button]:text-white [&_.rdp-day_button]:hover:bg-burned-orange",
+          "[&>button]:bg-burned-orange [&>button]:text-white [&>button]:hover:bg-burned-orange",
         ...classNames,
       }}
       components={{
