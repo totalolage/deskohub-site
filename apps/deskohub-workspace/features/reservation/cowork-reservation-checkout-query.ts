@@ -3,6 +3,7 @@ import { Schema } from "effect";
 import {
   getWorkspaceProductByTier,
   isWorkspaceCoworkCurrentProductTier,
+  type WorkspaceCoworkCurrentTier,
   workspaceCoworkCurrentTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
@@ -143,6 +144,18 @@ export const getCoworkReservationSelectionSearchParams = (
     "optional"
       ? noMonitorQueryValue
       : undefined),
+});
+
+/**
+ * A link to a cowork tier, optionally on a date, that leaves the add-ons for
+ * the parser to fill from the customer's last reservation of the tier.
+ */
+export const getCoworkOfferSearchParams = (offer: {
+  readonly entryTier: WorkspaceCoworkCurrentTier;
+  readonly date?: string;
+}): ReservationSelectionSearchParams => ({
+  entryTier: offer.entryTier,
+  date: offer.date,
 });
 
 export const getReservationDefaultValuesFromPayState = (

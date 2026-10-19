@@ -15,6 +15,7 @@ import {
 } from "@/features/reservation/reservation-kind";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { getPlainDatesBetween } from "@/shared/utils/temporal";
 import {
   getReservationDate,
   normalizeReservationInterval,
@@ -404,16 +405,7 @@ const getDateRange = Effect.fn(function* (from: string, to: string) {
     });
   }
 
-  const dates: Temporal.PlainDate[] = [];
-  for (
-    let cursor = start;
-    Temporal.PlainDate.compare(cursor, end) <= 0;
-    cursor = cursor.add({ days: 1 })
-  ) {
-    dates.push(cursor);
-  }
-
-  return dates;
+  return getPlainDatesBetween(start, end);
 });
 
 const getDateRangeReservationInterval = (
