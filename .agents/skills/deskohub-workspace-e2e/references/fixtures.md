@@ -11,7 +11,7 @@
 - [Access-code idempotency](#access-code-idempotency)
 - [Email campaign recipient preview](#email-campaign-recipient-preview)
 
-Every case uses a unique synthetic customer. Never make an edge case mutate a fixture another case reads.
+Every case uses a unique synthetic customer. Submitting checkout cases use case-owned identities: the default booker is a verified account linked to its own synthetic Dotypos profile, while referral and signed-out-verification cases bind their own identities. Each has a journal owner that `checkout-cleanup` reconciles; non-submitting checkout cases stay signed out. Never make an edge case mutate a fixture another case reads.
 
 ## Synthetic recipients and email
 
