@@ -6,6 +6,7 @@ import {
   signInCallbackReturnParam,
 } from "@/features/account/routes";
 import { workspaceE2ETimeouts } from "../timeouts";
+import { holdsVirtualAuthenticator } from "../virtual-authenticator";
 import {
   type CallbackLanding,
   expectedCallbackReturnValue,
@@ -437,7 +438,9 @@ export const prepareCallbackDocumentReview = async (
           failed = true;
         }
       }
-      if (!sessionDetached) {
+      // Detaching would also drop a passkey authenticator the lane added to
+      // this page, so the session then ends with the page instead.
+      if (!sessionDetached && !holdsVirtualAuthenticator(page)) {
         sessionDetached = true;
         try {
           await runBounded(() => cdpSession!.detach(), cleanupDeadline());
