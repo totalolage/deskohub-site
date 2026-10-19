@@ -1,5 +1,17 @@
-import { Context, Effect, Layer } from "effect";
+import { and, asc, eq, inArray, isNull, type SQL, sql } from "drizzle-orm";
+import { Array as Arr, Context, Effect, Layer } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  emailCampaignAutomationRuns as runs,
+  emailCampaignAutomationVersions as versions,
+} from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
+import type { CampaignId } from "../../campaign-identifiers";
+import { verifiesTriggeringVisit } from "../automation-trigger-verification";
+import { lockAutomationForEngine } from "./automation-lifecycle-lock";
+import type { AutomationEngineTransaction } from "./automation-unit-handler";
+import { planAutomationUnits } from "./automation-unit-planning";
+import { deliverUnitRunLimit, plannedDeliverUnit } from "./deliver";
 
 /** What planner step 7 did, for the plan summary. */
 export type AutomationSendPlan = {
@@ -15,23 +27,160 @@ export const emptyAutomationSendPlan: AutomationSendPlan = {
   unitsPlanned: 0,
 };
 
+/** Runs one planning pass packs at most; the rest wait for the next minute. */
+const sendPlanningRunLimit = 1_000;
+
 interface IAutomationSendPlanning {
   /**
-   * Planner step 7 (§5.9): packs unplanned `ready` runs at Send steps into deliver units of at most 100 runs per version. Runs its own short idempotent transactions, so overlapping
-   * planners are harmless.
+   * Planner step 7 (§5.9): packs unplanned `ready` runs at Send steps of
+   * active automations into deliver units of at most 100 runs per version.
+   * Runs its own short idempotent transaction, so overlapping planners are
+   * harmless.
    */
   readonly plan: (
     at: Temporal.Instant
   ) => Effect.Effect<AutomationSendPlan, DatabaseQueryError>;
 }
 
+/** An unplanned `ready` run at its version's Send step. */
+const readyToSend: SQL = and(
+  eq(runs.status, "active"),
+  eq(runs.phase, "ready"),
+  isNull(runs.workUnitId),
+  sql`exists (
+    select 1 from jsonb_array_elements(${versions.flow} -> 'steps') as step
+    where step ->> '_tag' = 'Send' and step ->> 'id' = ${runs.stepId}
+  )`
+)!;
+
 export class AutomationSendPlanning extends Context.Service<
   AutomationSendPlanning,
   IAutomationSendPlanning
 >()("@deskohub-workspace/email-campaigns/AutomationSendPlanning") {
-  static Default = Layer.succeed(this, {
-    plan: () => Effect.succeed(emptyAutomationSendPlan),
-  });
+  static Default = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const { db } = yield* WorkspaceDatabase;
 
-  static Live = this.Default;
+      /**
+       * The automations with send-ready runs that are still active, under
+       * their lifecycle locks taken first (§5.4).
+       */
+      const lockActiveAutomations = (tx: AutomationEngineTransaction) =>
+        tx
+          .selectDistinct({ campaignId: runs.campaignId })
+          .from(runs)
+          .innerJoin(versions, eq(versions.id, runs.versionId))
+          .where(readyToSend)
+          .orderBy(asc(runs.campaignId))
+          .pipe(
+            Effect.flatMap((pending) =>
+              Effect.filter(pending, ({ campaignId }) =>
+                lockAutomationForEngine(tx, campaignId).pipe(
+                  Effect.map((lifecycle) => lifecycle.status === "active")
+                )
+              )
+            ),
+            Effect.map((active) => active.map(({ campaignId }) => campaignId))
+          );
+
+      /**
+       * Their send-ready runs in version and id order. Runs another planner
+       * holds are skipped, and the ownership CAS rechecks the rest.
+       */
+      const selectReadyRuns = (
+        tx: AutomationEngineTransaction,
+        campaignIds: readonly CampaignId[]
+      ) =>
+        tx
+          .select({
+            id: runs.id,
+            campaignId: runs.campaignId,
+            versionId: runs.versionId,
+            dotyposCustomerId: runs.dotyposCustomerId,
+            triggerKind: runs.triggerKind,
+          })
+          .from(runs)
+          .innerJoin(versions, eq(versions.id, runs.versionId))
+          .where(and(readyToSend, inArray(runs.campaignId, [...campaignIds])))
+          .orderBy(asc(runs.versionId), asc(runs.id))
+          .limit(sendPlanningRunLimit)
+          .for("update", { of: runs, skipLocked: true });
+
+      const plan = (tx: AutomationEngineTransaction, at: Temporal.Instant) =>
+        lockActiveAutomations(tx).pipe(
+          Effect.flatMap((campaignIds) =>
+            campaignIds.length === 0
+              ? Effect.succeed([])
+              : selectReadyRuns(tx, campaignIds)
+          ),
+          Effect.map((ready) =>
+            Object.values(Arr.groupBy(ready, (run) => run.versionId)).flatMap(
+              (ofVersion) => Arr.chunksOf(ofVersion, deliverUnitRunLimit)
+            )
+          ),
+          Effect.flatMap((chunks) => {
+            const planned = chunks.map((chunk) => ({
+              unit: plannedDeliverUnit({
+                campaignId: chunk[0].campaignId,
+                versionId: chunk[0].versionId,
+                runIds: chunk.map((run) => run.id),
+                reservations: chunk.filter((run) =>
+                  verifiesTriggeringVisit(run.triggerKind)
+                ).length,
+                customers: chunk.length,
+                at,
+              }),
+              chunk,
+            }));
+            const runsByKey = new Map(
+              planned.map(({ unit, chunk }) => [unit.key, chunk])
+            );
+            return planAutomationUnits(
+              tx,
+              planned.map(({ unit }) => unit),
+              at
+            ).pipe(
+              Effect.flatMap(({ written }) =>
+                Effect.forEach(written, ({ unitId, key }) =>
+                  tx
+                    .update(runs)
+                    .set({ workUnitId: unitId, updatedAt: at })
+                    .where(
+                      and(
+                        inArray(
+                          runs.id,
+                          (runsByKey.get(key) ?? []).map((run) => run.id)
+                        ),
+                        eq(runs.status, "active"),
+                        eq(runs.phase, "ready"),
+                        isNull(runs.workUnitId)
+                      )
+                    )
+                    .returning({ id: runs.id })
+                )
+              ),
+              Effect.map(
+                (owned): AutomationSendPlan => ({
+                  runsPlanned: owned.reduce(
+                    (total, ofUnit) => total + ofUnit.length,
+                    0
+                  ),
+                  unitsPlanned: owned.length,
+                })
+              )
+            );
+          })
+        );
+
+      return {
+        plan: (at) =>
+          db
+            .transaction((tx) => plan(tx, at))
+            .pipe(Effect.withSpan("AutomationSendPlanning.plan")),
+      };
+    })
+  );
+
+  static Live = this.Default.pipe(Layer.provide(WorkspaceDatabase.Default));
 }

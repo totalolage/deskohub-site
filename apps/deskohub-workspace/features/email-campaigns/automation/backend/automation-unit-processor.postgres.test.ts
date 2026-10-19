@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { eq, inArray } from "drizzle-orm";
-import { Cause, Effect, Exit, Fiber, Layer, Schema } from "effect";
+import { Cause, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import {
   emailCampaigns,
@@ -16,6 +16,9 @@ import {
   campaignContentFixture,
   deleteAutomatedCampaigns,
   deleteCampaigns,
+  seedAutomatedCampaign,
+  seedAutomatedSend,
+  seedAutomationVersion,
 } from "../../backend/email-campaigns.test-utils";
 import type { CampaignId } from "../../campaign-identifiers";
 import type {
@@ -156,7 +159,62 @@ describe.skipIf(!database)("automation unit processor", () => {
       "delete from email_campaign_automation_work_units"
     );
     await deleteCampaigns(postgres.pool, campaignIds);
+    await deleteAutomatedCampaigns(postgres.db, automatedCampaignIds);
   });
+
+  const automatedCampaignIds: Array<CampaignId> = [];
+
+  /** A deliver unit whose batch an earlier invocation persisted. */
+  const seedPersistedUnit = async (
+    input: Pick<
+      Parameters<typeof seedAutomationUnit>[1],
+      "status" | "cancelRequestedAt" | "claimId" | "claimExpiresAt"
+    >
+  ) => {
+    const campaignId = await seedAutomatedCampaign(postgres.db, {
+      purpose: "operational",
+    });
+    automatedCampaignIds.push(campaignId);
+    const versionId = await seedAutomationVersion(postgres.db, {
+      campaignId,
+      purpose: "operational",
+    });
+    const sendId = await seedAutomatedSend(postgres.db, {
+      campaignId,
+      versionId,
+      purpose: "operational",
+      recipients: [],
+    });
+    const unit = await seed({ kind: "deliver", campaignId, ...input });
+    await Effect.runPromise(
+      postgres.db.update(units).set({ sendId }).where(eq(units.id, unit.id))
+    );
+    return { unit, sendId };
+  };
+
+  /** A deliver handler whose submit `submit` scripts, recording its calls. */
+  const persistingHandler = (options: {
+    readonly submit?: () => Effect.Effect<void, AutomationUnitDefect>;
+  }) => {
+    const submitted: Array<{ sendId: string; fetched: boolean }> = [];
+    const handler = registerAutomationUnitHandler({
+      kind: "deliver",
+      subject: Schema.Struct({ label: Schema.String }),
+      fetch: () => Effect.die("a persisted unit is never fetched"),
+      commit: () => Effect.succeed([]),
+      submit: (unit, fetched) =>
+        Effect.sync(() =>
+          submitted.push({
+            sendId: unit.sendId,
+            fetched: Option.isSome(fetched),
+          })
+        ).pipe(
+          Effect.andThen(options.submit?.() ?? Effect.void),
+          Effect.as(() => Effect.void)
+        ),
+    });
+    return { handler, submitted };
+  };
 
   test("a duplicate delivery acknowledges without work", async () => {
     let fetches = 0;
@@ -400,6 +458,98 @@ describe.skipIf(!database)("automation unit processor", () => {
       claimId: null,
     });
     expect(await statuses([next.id])).toEqual(["enqueued"]);
+  });
+
+  test("a unit with a persisted send skips its mark and fetch, submits it and settles done with it", async () => {
+    const { handler, submitted } = persistingHandler({});
+    const layer = automationEngineTestLayer({
+      database: postgres,
+      queue: makeAutomationUnitQueueFake(),
+      handlers: [handler],
+    });
+    // Lifecycle never marks such a unit; a mark must not drop it anyway.
+    const { unit, sendId } = await seedPersistedUnit({
+      status: "enqueued",
+      cancelRequestedAt: startedAt,
+    });
+
+    expect(await run(processUnit(unit.id), layer)).toBe("done");
+    expect(submitted).toEqual([{ sendId, fetched: false }]);
+    expect(await readUnit(unit.id)).toMatchObject({ status: "done", sendId });
+  });
+
+  test("a persisted unit whose submit fails or is defective requeues, marked or not", async () => {
+    let failures = 2;
+    const { handler } = persistingHandler({
+      submit: () =>
+        failures-- > 0
+          ? Effect.fail(new AutomationUnitDefect({ code: "test-defect" }))
+          : Effect.void,
+    });
+    const layer = automationEngineTestLayer({
+      database: postgres,
+      queue: makeAutomationUnitQueueFake(),
+      handlers: [handler],
+    });
+    const { unit } = await seedPersistedUnit({
+      status: "enqueued",
+      cancelRequestedAt: startedAt,
+    });
+
+    const exit = await runExit(processUnit(unit.id), layer);
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(await readUnit(unit.id)).toMatchObject({
+      status: "enqueued",
+      lastErrorCode: "test-defect",
+      failures: 0,
+    });
+    expect(Exit.isFailure(await runExit(processUnit(unit.id), layer))).toBe(
+      true
+    );
+    expect(await run(processUnit(unit.id), layer)).toBe("done");
+  });
+
+  test("a commit that persists a send keeps the unit claimed and submits it with this invocation's facts", async () => {
+    const submitted: Array<{ sendId: string; fetched: boolean }> = [];
+    const { unit, sendId } = await seedPersistedUnit({ status: "enqueued" });
+    // Not yet persisted: the commit sets `send_id`, as a deliver commit does.
+    await Effect.runPromise(
+      postgres.db
+        .update(units)
+        .set({ sendId: null })
+        .where(eq(units.id, unit.id))
+    );
+    const persistingCommit = registerAutomationUnitHandler({
+      kind: "deliver",
+      subject: Schema.Struct({ label: Schema.String }),
+      fetch: () => Effect.succeed("fetched"),
+      commit: (tx, claimed) =>
+        tx
+          .update(units)
+          .set({ sendId })
+          .where(eq(units.id, claimed.id))
+          .pipe(Effect.as([])),
+      submit: (persisted, fetched) =>
+        Effect.sync(() =>
+          submitted.push({
+            sendId: persisted.sendId,
+            fetched: Option.contains(fetched, "fetched"),
+          })
+        ).pipe(Effect.as(() => Effect.void)),
+    });
+
+    expect(
+      await run(
+        processUnit(unit.id),
+        automationEngineTestLayer({
+          database: postgres,
+          queue: makeAutomationUnitQueueFake(),
+          handlers: [persistingCommit],
+        })
+      )
+    ).toBe("done");
+    expect(submitted).toEqual([{ sendId, fetched: true }]);
+    expect(await readUnit(unit.id)).toMatchObject({ status: "done", sendId });
   });
 
   test("a stale claimant writes nothing after a reap", async () => {
