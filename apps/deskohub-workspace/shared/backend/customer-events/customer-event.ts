@@ -23,7 +23,7 @@ export const reservationCustomerEventKinds = [
   "reservation-finished",
 ] as const satisfies ReadonlyArray<CustomerEventKind>;
 
-export const customerEventIdSchema = Schema.NonEmptyString.pipe(
+const customerEventIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("CustomerEventId")
 ).annotate({
   identifier: "CustomerEventId",
@@ -40,7 +40,7 @@ export const customerEventSweepSources = [
   "reservation-activity",
   "reservation-activity-reconcile",
 ] as const;
-export const customerEventSweepSourceSchema = Schema.Literals(
+const customerEventSweepSourceSchema = Schema.Literals(
   customerEventSweepSources
 );
 export type CustomerEventSweepSource =

@@ -19,7 +19,7 @@ export const customerEventReconcileBatchSize = 500;
  * late-payment queue retention and the gap between a migration and its
  * promotion, and stays under the 90-day event retention.
  */
-export const customerEventReconcileWindow = Temporal.Duration.from({
+const customerEventReconcileWindow = Temporal.Duration.from({
   hours: 35 * 24,
 });
 
