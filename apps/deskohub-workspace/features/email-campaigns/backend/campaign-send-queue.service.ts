@@ -1,6 +1,6 @@
-import { DuplicateMessageError, send } from "@vercel/queue";
+import type { send } from "@vercel/queue";
 import { Context, Data, Effect, Layer } from "effect";
-import { serializeErrorForLog } from "@/shared/utils/error-formatting";
+import { publishQueueMessage } from "@/shared/backend/queue/queue-message";
 import type { CampaignSendId } from "../campaign-identifiers";
 
 export const campaignSendQueueTopic = "workspace-email-campaign-send";
@@ -21,10 +21,6 @@ export class CampaignSendQueueError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-class DuplicateCampaignSendMessageError extends Data.TaggedError(
-  "DuplicateCampaignSendMessageError"
-) {}
-
 /** One delivery attempt of a frozen campaign send. */
 export type CampaignDeliveryAttempt = {
   readonly sendId: CampaignSendId;
@@ -43,31 +39,25 @@ interface ICampaignSendQueueService {
  * redelivers it until every batch of the attempt went out.
  */
 export const makeCampaignSendQueueService = (
-  sendMessage: typeof send = send
+  sendMessage?: typeof send
 ): ICampaignSendQueueService => ({
   enqueue: Effect.fn("campaignSendQueue.enqueue")(function* (attempt) {
-    yield* Effect.tryPromise({
-      try: () =>
-        sendMessage(
-          campaignSendQueueTopic,
-          {
-            sendId: attempt.sendId,
-            deliveryAttempt: attempt.deliveryAttempt,
-          },
-          {
-            retentionSeconds: campaignSendMessageRetentionSeconds,
-            idempotencyKey: `email-campaign-send:${attempt.sendId}:${attempt.deliveryAttempt}`,
-          }
-        ),
-      catch: (cause) =>
-        cause instanceof DuplicateMessageError
-          ? new DuplicateCampaignSendMessageError()
-          : new CampaignSendQueueError({
-              message: "Campaign delivery could not be enqueued.",
-              cause: serializeErrorForLog(cause),
-            }),
-    }).pipe(
-      Effect.catchTag("DuplicateCampaignSendMessageError", () => Effect.void)
+    yield* publishQueueMessage(
+      campaignSendQueueTopic,
+      { sendId: attempt.sendId, deliveryAttempt: attempt.deliveryAttempt },
+      {
+        retentionSeconds: campaignSendMessageRetentionSeconds,
+        idempotencyKey: `email-campaign-send:${attempt.sendId}:${attempt.deliveryAttempt}`,
+      },
+      sendMessage
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new CampaignSendQueueError({
+            message: "Campaign delivery could not be enqueued.",
+            cause,
+          })
+      )
     );
   }),
 });
