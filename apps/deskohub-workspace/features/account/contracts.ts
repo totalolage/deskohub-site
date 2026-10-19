@@ -131,9 +131,22 @@ export type CustomerReservationProduct =
   | { readonly kind: "office" }
   | { readonly kind: "other" };
 
+/**
+ * The other party of a reservation in the account history: the customer the
+ * account booked it for, or the account that booked it for the account's own
+ * customer. A name that could not be read is null, and a deleted author is
+ * never named.
+ */
+export type CustomerReservationParty =
+  | { readonly kind: "booked-for"; readonly customerName: string | null }
+  | { readonly kind: "booked-by"; readonly authorName: string | null }
+  | { readonly kind: "booked-by-deleted-account" };
+
 export type CustomerReservationSummary = {
   readonly id: string;
   readonly workspaceReservationId?: WorkspaceReservationId;
+  /** Absent when the account's own customer booked it for itself. */
+  readonly party?: CustomerReservationParty;
   readonly product: CustomerReservationProduct;
   readonly startsAt: string | null;
   readonly endsAt: string | null;

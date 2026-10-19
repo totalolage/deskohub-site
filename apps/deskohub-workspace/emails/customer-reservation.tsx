@@ -1,5 +1,10 @@
-import { Column, Img, Link, Row, Section, Text } from "react-email";
-import { workspaceLocationMapEmailWidth } from "@/shared/utils";
+import { Column, Img, Row, Section, Text } from "react-email";
+import {
+  ReservationEmailActionPanel,
+  type ReservationEmailLocation,
+  ReservationEmailLocationPanel,
+  type ReservationEmailTable,
+} from "./_components/reservation-email-sections";
 import {
   WorkspaceEmailHeading,
   WorkspaceEmailLabel,
@@ -38,15 +43,8 @@ export type CustomerReservationEmailProps = {
     readonly networkName: string;
     readonly networkPassword: string;
   };
-  readonly location: {
-    readonly address: string;
-    readonly directionsUrl: string;
-    readonly mapImageSrc?: string;
-  };
-  readonly table?: {
-    readonly mode: "assigned" | "shared";
-    readonly name: string;
-  };
+  readonly location: ReservationEmailLocation;
+  readonly table?: ReservationEmailTable;
   readonly network?: {
     readonly ssid: string;
     readonly password: string;
@@ -73,73 +71,12 @@ export function CustomerReservationEmail({
     <WorkspaceEmailLayout locale={locale} preview={preview}>
       <WorkspaceEmailHeading>{heading}</WorkspaceEmailHeading>
 
-      <Section className="mt-6 overflow-hidden rounded-[22px] border border-[#d8d9e4]">
-        <Section
-          bgcolor="#00024f"
-          className="bg-navy px-4 py-6 text-center sm:px-6"
-          style={{ backgroundColor: "#00024f" }}
-        >
-          <Link
-            className="inline-block rounded-full bg-aquamarine px-7 py-3 text-[14px] font-bold leading-[20px] text-navy no-underline"
-            href={access.url}
-            style={{ backgroundColor: "#00df99", color: "#00024f" }}
-          >
-            {access.button}
-          </Link>
-        </Section>
-        {table && (
-          <Section className="border-t-4 border-aquamarine bg-[#e9fff6] px-5 py-5 text-center">
-            <WorkspaceEmailLabel>
-              {{ assigned: labels.table, shared: labels.tables }[table.mode]}
-            </WorkspaceEmailLabel>
-            <Text
-              className={
-                {
-                  assigned:
-                    "m-0 mt-1 text-[48px] font-bold leading-[54px] text-navy",
-                  shared:
-                    "m-0 mt-1 break-words text-[18px] font-bold leading-[26px] text-navy",
-                }[table.mode]
-              }
-              style={
-                table.mode === "shared"
-                  ? { overflowWrap: "anywhere" }
-                  : undefined
-              }
-            >
-              {table.name}
-            </Text>
-          </Section>
-        )}
-      </Section>
-
-      <Section className="mt-6 overflow-hidden rounded-2xl border border-[#e6ded2] bg-cream">
-        <Section className="px-5 py-4">
-          <WorkspaceEmailLabel>{labels.location}</WorkspaceEmailLabel>
-          <Link
-            className="mt-2 inline-block text-[17px] font-bold leading-[25px] text-navy no-underline"
-            href={location.directionsUrl}
-          >
-            {location.address}
-          </Link>
-        </Section>
-        {location.mapImageSrc && (
-          <Img
-            alt={labels.location}
-            className="block h-auto w-full"
-            src={location.mapImageSrc}
-            width={workspaceLocationMapEmailWidth}
-          />
-        )}
-        <Section className="px-5 py-5 text-center">
-          <Link
-            className="inline-block rounded-full bg-navy px-7 py-3 text-[14px] font-bold leading-[20px] text-white no-underline"
-            href={location.directionsUrl}
-          >
-            {labels.directions}
-          </Link>
-        </Section>
-      </Section>
+      <ReservationEmailActionPanel
+        action={access}
+        labels={labels}
+        {...(table && { table })}
+      />
+      <ReservationEmailLocationPanel labels={labels} location={location} />
 
       {network && (
         <Section className="mt-6 rounded-2xl border border-[#cfe6f8] bg-sky px-5 py-5">

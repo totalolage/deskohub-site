@@ -5,6 +5,7 @@ Code: `features/reservation-access/`, table `reservation_access_grants` (`db/sch
 ## Disclosure
 
 - The confirmation email carries a protected access link, never the PIN.
+- Only the `view-access-code` permission discloses the PIN: capability links, the access cookie, and the account linked to the reservation's customer. A reservation's author booking for someone else sees the status page, not the PIN (see `checkout-pages.md`).
 - The access page resolves the PIN on every authorized request and shows it, with the exact programmed start and end, while the reservation is paid, locally confirmed, and live-confirmed in Dotypos.
 - Never time-gate disclosure or clear an issued PIN by the application clock. Igloohome's programmed AlgoPIN bounds alone decide when the lock accepts it. Local bounds exist only for issuance, customer explanation, and schedule-change recovery.
 - The signed access capability binds the reservation and locale, not a copied interval, so live Dotypos timing stays authoritative. Sign it with `RESERVATION_ACCESS_TOKEN_SECRET`, not the Pay-state keyring or provider credentials, and keep that secret for at least the longest future reservation lifetime.

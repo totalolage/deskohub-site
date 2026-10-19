@@ -1284,7 +1284,32 @@ export const AdministrationStandaloneAccessCodeCreationOutcome = Schema.Union([
 export type AdministrationStandaloneAccessCodeCreationOutcome =
   typeof AdministrationStandaloneAccessCodeCreationOutcome.Type;
 
+/**
+ * The customer account that made a reservation for someone else: its own
+ * customer's name and its login email, only that it was deleted, or that it
+ * could not be read.
+ */
+export const AdministrationReservationAuthor = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("account"),
+    customerId: Schema.NullOr(AdministrationDotyposCustomerId),
+    displayName: Schema.String,
+    email: Schema.String,
+  }),
+  Schema.Struct({ kind: Schema.Literal("deleted") }),
+  Schema.Struct({ kind: Schema.Literal("unavailable") }),
+]);
+export type AdministrationReservationAuthor =
+  typeof AdministrationReservationAuthor.Type;
+
 export const AdministrationReservationDetail = Schema.Struct({
+  /**
+   * Null when the reservation is authorless or its customer booked it, and
+   * from servers that predate reservation authors.
+   */
+  author: Schema.NullOr(AdministrationReservationAuthor).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
   reservation: AdministrationReservationSummary,
   booking: Schema.NullOr(AdministrationBookingSummary),
   lifecycle: AdministrationReservationLifecycle,
