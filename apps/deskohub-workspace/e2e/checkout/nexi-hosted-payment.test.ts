@@ -5,7 +5,10 @@ import type { WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutData } from "../types";
-import { completeNexiHostedPayment } from "./nexi-hosted-payment";
+import {
+  completeNexiHostedPayment,
+  type NexiChallengeOutcome,
+} from "./nexi-hosted-payment";
 
 const workspaceE2EEmail = testEmailAddress("workspace-e2e");
 
@@ -78,7 +81,10 @@ const makeHostedPage = ({
       case "pay":
         return '- button "Pay" [ref=e90]';
       case "challenge":
-        return '- button "Authentication successful" [ref=e43]';
+        return [
+          '- button "AUTENTICAZIONE FALLITA" [ref=e44]',
+          '- button "Authentication successful" [ref=e43]',
+        ].join("\n");
       case "result":
         return '- button "Back to the shop" [ref=e95]';
       case "error-page":
@@ -157,6 +163,8 @@ const makeHostedPage = ({
         }
       } else if (phase === "pay" && focused === "@e90") {
         phase = "challenge";
+      } else if (phase === "error-page" && focused === "@e94") {
+        phase = "status";
       } else if (phase === "result" && focused === "@e95") {
         if (onReturnPress !== "reject") phase = "status";
         if (onReturnPress !== "navigate")
@@ -169,6 +177,7 @@ const makeHostedPage = ({
     if (command === "click") {
       if (phase === "challenge" && rest[0] === "@e43")
         phase = returnAfterChallenge ? "status" : "result";
+      if (phase === "challenge" && rest[0] === "@e44") phase = "error-page";
       return "";
     }
     if (command === "--json" && rest[0] === "tab")
@@ -222,10 +231,12 @@ const checkoutData = {
 
 const completePayment = (
   page: ReturnType<typeof makeHostedPage>,
-  providerTransition = 60_000
+  providerTransition = 60_000,
+  challengeOutcome: NexiChallengeOutcome = "authenticated"
 ) =>
   Effect.runPromiseExit(
     completeNexiHostedPayment({
+      challengeOutcome,
       data: checkoutData,
       hostedPaymentPage: {
         checkoutTabId: "t1",
@@ -324,6 +335,30 @@ test("fails fast when Nexi renders its payment error page", async () => {
   // for a Pay control that the error page never renders.
   expect(error.diagnosticCode).toBe("nexi_hosted_continue_provider_error_page");
   expect(error.message).toContain("Nexi rendered its payment error page");
+  expect(activations(page)).toEqual([["focus", "@e77"]]);
+});
+
+test("fails the 3-D Secure challenge and returns from the Nexi payment error page", async () => {
+  const page = makeHostedPage();
+
+  const exit = await completePayment(page, 60_000, "failed");
+
+  expect(Exit.isSuccess(exit)).toBe(true);
+  expect(activations(page)).toEqual([
+    ["focus", "@e77"],
+    ["focus", "@e90"],
+    ["click", "@e44"],
+    ["focus", "@e94"],
+  ]);
+  expect(page.calls).toContainEqual({ args: ["tab", "t1"], frame: "main" });
+});
+
+test("still fails fast on a payment error page before a failed challenge is chosen", async () => {
+  const page = makeHostedPage({ onContinue: "error-page" });
+
+  const error = failureOf(await completePayment(page, 60_000, "failed"));
+
+  expect(error.diagnosticCode).toBe("nexi_hosted_continue_provider_error_page");
   expect(activations(page)).toEqual([["focus", "@e77"]]);
 });
 
