@@ -217,10 +217,7 @@ export class AutomationLifecycle extends Context.Service<
           readonly previewId: AutomationPreviewId;
           readonly activatedBy: CustomerAccountId | null;
         }) {
-          const now = toStoredInstant(yield* currentInstant);
-          return yield* db.transaction((tx) =>
-            activateIn(tx, { ...input, now })
-          );
+          return yield* db.transaction((tx) => activateIn(tx, input));
         }
       );
 
@@ -232,14 +229,16 @@ export class AutomationLifecycle extends Context.Service<
         ) => Effect.Effect<void, DatabaseQueryError | E>
       ) =>
         Effect.fn(name)(function* (campaignId: CampaignId) {
-          const now = toStoredInstant(yield* currentInstant);
           return yield* db.transaction((tx) =>
             Effect.Do.pipe(
               Effect.tap(() => lockAutomationForLifecycle(tx, campaignId)),
+              // Sampled under the lock, so no engine commit that held it
+              // first can postdate the operation (§5.4).
+              Effect.bind("now", () => lifecycleInstant),
               Effect.bind("copy", () =>
                 loadAutomationWorkingCopy(tx, campaignId)
               ),
-              Effect.tap(({ copy }) => apply(tx, { copy, now })),
+              Effect.tap(({ copy, now }) => apply(tx, { copy, now })),
               Effect.flatMap(() => readDetail(tx, campaignId))
             )
           );
@@ -301,6 +300,9 @@ export class AutomationLifecycle extends Context.Service<
   static Live = this.Default.pipe(Layer.provide(WorkspaceDatabase.Default));
 }
 
+/** The instant a lifecycle operation records, at microsecond precision. */
+const lifecycleInstant = Effect.map(currentInstant, toStoredInstant);
+
 // --- Activation (§7.5) ------------------------------------------------------
 
 const activateIn = (
@@ -309,12 +311,14 @@ const activateIn = (
     readonly campaignId: CampaignId;
     readonly previewId: AutomationPreviewId;
     readonly activatedBy: CustomerAccountId | null;
-    readonly now: Temporal.Instant;
   }
 ) =>
   Effect.Do.pipe(
-    // 1. The lifecycle lock, then the working copy as of its grant.
+    // 1. The lifecycle lock, then the instant and working copy as of its
+    // grant: an occurrence a unit committed under v1 while this waited
+    // precedes `activated_at` (§5.10).
     Effect.tap(() => lockAutomationForLifecycle(tx, input.campaignId)),
+    Effect.bind("now", () => lifecycleInstant),
     Effect.bind("copy", () => loadAutomationWorkingCopy(tx, input.campaignId)),
     Effect.tap(({ copy }) => ensureNotArchived(copy)),
     // 2. A completed dry run of this campaign.
@@ -341,7 +345,7 @@ const activateIn = (
     ),
     // 5. A retry returns the version it published.
     Effect.bind("latest", () => latestVersion(tx, input.campaignId)),
-    Effect.flatMap(({ copy, publishable, flow, latest }) =>
+    Effect.flatMap(({ copy, publishable, flow, latest, now }) =>
       latest.pipe(
         Option.filter(({ draftHash }) => draftHash === publishable.draftHash),
         Option.match({
@@ -353,7 +357,7 @@ const activateIn = (
               flow,
               latest,
               activatedBy: input.activatedBy,
-              now: input.now,
+              now,
             }),
         })
       )
