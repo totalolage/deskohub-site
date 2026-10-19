@@ -369,7 +369,7 @@
     "features/checkout/checkout-details.test.ts": 98,
     "features/checkout/checkout-quote.test.ts": 116,
     "features/checkout/checkout-referral-notice.test.ts": 266,
-    "features/checkout/checkout-status-new-reservation-policy.test.ts": 6,
+    "features/checkout/checkout-status-policy.test.ts": 6,
     "features/checkout/checkout-summary-schema.test.ts": 143,
     "features/checkout/components/checkout-discount-code-form.browser.test.tsx": 13246,
     "features/checkout/components/checkout-discount-code-form.test.tsx": 336,

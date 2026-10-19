@@ -4,17 +4,20 @@ import {
   getOfficeReservationDefaultValues,
   getOfficeReservationMaximumDayCount,
   getOfficeReservationMaximumEndsOn,
+  getOfficeReservationSelection,
   type NormalizedOfficeReservationOrder,
   type OfficeReservationInput,
   officeReservationDayCountSchema,
   officeReservationDefaultValues,
   officeSeatsSchema,
+  type StoredOfficeReservationDetails,
 } from "@/features/reservation/office-reservation";
 import {
   getTrimmedSearchParam,
   hasReservationSelectionSearchParams,
   type ReservationSelectionSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
+import { getWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { CustomerLastReservationForKind } from "@/features/reservation/reservation-existing-customer";
 import type { SupportedSearchParams } from "@/shared/utils";
 import { plainDateStringSchema } from "@/shared/utils/temporal";
@@ -95,6 +98,32 @@ export const getOfficeReservationSelectionSearchParams = (
   dayCount: String(selection.dayCount),
   seats: String(selection.seats),
 });
+
+/**
+ * A stored office reservation's selection as link parameters, so a retried
+ * checkout reopens the form on the same start date, day count, and seats. An
+ * interval that isn't whole workspace days gives no selection.
+ */
+export const getStoredOfficeReservationSelectionSearchParams = (
+  reservation: StoredOfficeReservationDetails & {
+    readonly reservedFrom: Temporal.Instant;
+    readonly reservedUntil: Temporal.Instant;
+    readonly seats: number;
+  }
+): ReservationSelectionSearchParams | undefined => {
+  const selection = getOfficeReservationSelection({
+    startsAt: reservation.reservedFrom,
+    endsAt: reservation.reservedUntil,
+    seats: reservation.seats,
+  });
+
+  if (!selection) return undefined;
+
+  return getOfficeReservationSelectionSearchParams({
+    startsOn: getWorkspaceDate(reservation.reservedFrom).toString(),
+    ...selection,
+  });
+};
 
 /**
  * The form values for a signed office restoration, with the selection the
