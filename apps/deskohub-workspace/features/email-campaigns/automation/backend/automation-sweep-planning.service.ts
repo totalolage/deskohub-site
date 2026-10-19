@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from "effect";
-import type { AutomationEngineDatabaseError } from "./automation-unit-handler";
+import type { DatabaseQueryError } from "@/db/sql-constraint";
 
 /** What planner step 3 did, for the plan summary. */
 export type AutomationSweepPlan = {
@@ -16,7 +16,7 @@ interface IAutomationSweepPlanning {
    */
   readonly plan: (
     at: Temporal.Instant
-  ) => Effect.Effect<AutomationSweepPlan, AutomationEngineDatabaseError>;
+  ) => Effect.Effect<AutomationSweepPlan, DatabaseQueryError>;
 }
 
 export class AutomationSweepPlanning extends Context.Service<
