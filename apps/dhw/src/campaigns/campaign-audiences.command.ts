@@ -22,7 +22,7 @@ const filterFlags = {
   filterFile: Flag.string("filter-file").pipe(
     Flag.optional,
     Flag.withDescription(
-      'JSON file with the audience filter tree: AND/OR groups of attribute conditions, e.g. {"_tag":"Group","operator":"and","filters":[{"attribute":"campaignEmailCount","_tag":"Condition","params":{"purpose":"marketing","period":{"_tag":"Last","count":10,"unit":"day"}},"operator":"eq","value":0}]}'
+      'JSON file with the audience filter tree: AND/OR groups of attribute conditions, e.g. {"_tag":"Group","operator":"and","filters":[{"attribute":"campaignEmailCount","_tag":"Condition","params":{"purpose":"marketing","period":{"_tag":"Last","count":10,"unit":"day"}},"operator":"eq","value":0}]}. To count emails of one campaign, set "purpose":"any" and "campaign":{"_tag":"Specific","campaignId":"<id>"}; {"_tag":"Past"} is any time so far.'
     )
   ),
   filter: Flag.string("filter").pipe(

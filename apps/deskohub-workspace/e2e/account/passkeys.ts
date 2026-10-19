@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { type Locale, m } from "@/features/i18n";
 import { escapeRegExp } from "@/shared/utils/escape-regexp";
 import {
+  describeBrowserFailure,
   type WorkspaceE2EAccountPasskeyDiagnosticCode,
   type WorkspaceE2EError,
   workspaceE2EError,
@@ -122,8 +123,9 @@ export const makeWorkspaceE2EAccountPasskeys = ({
     body: (page: Page) => Promise<A>
   ): Effect.Effect<A, WorkspaceE2EError> =>
     Effect.tryPromise({
-      // Playwright causes can carry the preview URL, so only fixed text and
-      // the closed diagnostic code leave this boundary.
+      // Playwright causes can carry the preview URL, so only fixed text, the
+      // closed diagnostic code, and a redacted first line leave this
+      // boundary.
       catch: (cause) =>
         cause instanceof errors.TimeoutError
           ? workspaceE2ETimeoutError(`${description} timed out`, {
@@ -131,12 +133,22 @@ export const makeWorkspaceE2EAccountPasskeys = ({
               operation: description,
             })
           : workspaceE2EError(
-              cause instanceof PasskeyJourneyFailure
-                ? `${description} failed: ${cause.message}`
-                : `${description} failed`,
+              `${description} failed: ${
+                cause instanceof PasskeyJourneyFailure
+                  ? cause.message
+                  : describeBrowserFailure(cause)
+              }`,
               { diagnosticCode, operation: description }
             ),
-      try: () => body(getPage()),
+      try: () => {
+        let page: Page;
+        try {
+          page = getPage();
+        } catch {
+          throw new PasskeyJourneyFailure("the lane has no single page");
+        }
+        return body(page);
+      },
     });
 
   const clickHydrated = async (

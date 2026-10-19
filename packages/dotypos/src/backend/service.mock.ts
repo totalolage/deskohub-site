@@ -1,5 +1,9 @@
 import { Effect, Layer, Option } from "effect";
-import type { DotyposReservation, DotyposReservationInterval } from "../types";
+import type {
+  DotyposCustomer,
+  DotyposReservation,
+  DotyposReservationInterval,
+} from "../types";
 import {
   DotyposService,
   dotyposMaximumPageSize,
@@ -8,6 +12,20 @@ import {
 } from "./service";
 
 export const DotyposServiceMock = Layer.mock(DotyposService);
+
+/** A mock customer ID read that selects matching seeded customers. */
+export const seededCustomerReads = (
+  customers: readonly DotyposCustomer[]
+): Pick<DotyposService["Service"], "getCustomersPage"> => ({
+  getCustomersPage: (ids) => {
+    const selectedIds = new Set<string>(ids);
+    return Effect.succeed(
+      customers.filter(
+        (customer) => customer.id !== undefined && selectedIds.has(customer.id)
+      )
+    );
+  },
+});
 
 /**
  * Reservation reads that answer from `reservations` with the filters, order,

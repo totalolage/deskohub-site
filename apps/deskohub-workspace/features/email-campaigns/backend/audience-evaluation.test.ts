@@ -31,7 +31,11 @@ const triggeredAt = (
 ): AudienceEvaluationContext => ({
   ...audienceEvaluationAt(now),
   campaignId: Option.some(campaignIdSchema.make(campaign)),
-  trigger: Option.some({ at: Temporal.Instant.from(at) }),
+  trigger: Option.some({
+    kind: "schedule",
+    at: Temporal.Instant.from(at),
+    reservationId: Option.none(),
+  }),
 });
 
 /** Visits in the week after the trigger. */

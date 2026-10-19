@@ -63,8 +63,8 @@ const resolution = {
 const port = stubCampaignPageQueries();
 
 mock.module(
-  "@/features/email-campaigns/admin/audiences/discount-group-options.server",
-  () => ({ loadDiscountGroupOptions: async () => undefined })
+  "@/features/email-campaigns/admin/audiences/audience-value-lookups.server",
+  () => ({ loadAudienceValueLookups: async () => ({}) })
 );
 
 mock.module("next/root-params", () => ({ locale: async () => "en-US" }));

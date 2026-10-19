@@ -12,7 +12,7 @@ import { localizeAdministrationHref } from "@/features/administration/administra
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import type { CampaignId } from "../../campaign-identifiers";
 import { describeAudienceFilter } from "../audience-filter-summary";
-import { loadDiscountGroupOptions } from "../audiences/discount-group-options.server";
+import { loadAudienceValueLookups } from "../audiences/audience-value-lookups.server";
 import {
   invokeCampaignOperation,
   runCampaignPageQuery,
@@ -119,19 +119,17 @@ const queryRecipientPreview = Effect.fn("loadRecipientPreview")(
 export const loadRecipientPreview = async (
   campaignId: CampaignId
 ): Promise<RecipientPreview> => {
-  const [query, discountGroups, locale] = await Promise.all([
+  const [query, lookups, locale] = await Promise.all([
     runCampaignPageQuery(
       "email-campaigns.admin.preview-recipients",
       queryRecipientPreview(campaignId)
     ),
-    loadDiscountGroupOptions(),
+    loadAudienceValueLookups(),
     getRequestLocale(),
   ]);
   const describe = (audience: AdministrationCampaignAudienceType) => ({
     audienceTitle: audience.title,
-    audienceSummary: describeAudienceFilter(audience.filter, locale, {
-      discountGroups,
-    }),
+    audienceSummary: describeAudienceFilter(audience.filter, locale, lookups),
   });
   return Match.value(query).pipe(
     Match.discriminatorsExhaustive("kind")({

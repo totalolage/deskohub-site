@@ -6,28 +6,39 @@ import {
   OperationUnavailable,
 } from "@deskohub/workspace-admin-api";
 import { Match } from "effect";
-import type {
-  AudienceFilterContextInvalid,
-  CampaignAudienceArchived,
+import type { AutomationConditionAudienceMissing } from "../automation/backend/automation-evaluation-facts.service";
+import type { AutomationUnitFetchFailure } from "../automation/backend/automation-unit-handler";
+import {
+  AutomationCalendarNeverOccurs,
+  type AutomationFlowInvalid,
+  type AutomationFlowLocation,
+} from "../automation/errors";
+import {
+  AudienceFilterCampaignNotFound,
+  type AudienceFilterContextInvalid,
+  type CampaignAudienceArchived,
   CampaignAudienceInUse,
-  CampaignAudienceMissing,
-  CampaignAudienceNotFound,
-  CampaignConfirmationRejected,
-  CampaignContentInvalid,
-  CampaignContentMissing,
+  type CampaignAudienceMissing,
+  type CampaignAudienceNotFound,
+  CampaignBodyMarkdownInvalid,
+  type CampaignConfirmationRejected,
+  type CampaignContentInvalid,
+  type CampaignContentMissing,
   CampaignDeliveryMismatch,
-  CampaignDeliveryQueueFailed,
-  CampaignEmailDeliveryFailed,
-  CampaignEmailNotConfigured,
-  CampaignFallbackContentMissing,
-  CampaignNoRecipients,
-  CampaignNotFound,
-  CampaignNotRetryable,
+  type CampaignDeliveryQueueFailed,
+  type CampaignEmailDeliveryFailed,
+  type CampaignEmailNotConfigured,
+  type CampaignFallbackContentMissing,
+  CampaignLocaleContentMissing,
+  type CampaignNoRecipients,
+  type CampaignNotFound,
+  type CampaignNotRetryable,
+  CampaignPublished,
   CampaignReadOnly,
-  CampaignRecipientResolutionError,
-  CampaignRecipientsOutsideTestDomain,
-  CampaignSigningKeyInvalid,
-  CampaignTestRecipientInvalid,
+  type CampaignRecipientResolutionError,
+  type CampaignRecipientsOutsideTestDomain,
+  type CampaignSigningKeyInvalid,
+  type CampaignTestRecipientInvalid,
 } from "../errors";
 
 /**
@@ -36,11 +47,17 @@ import type {
  */
 export type CampaignOperationCause =
   | CampaignOperationError
+  | AudienceFilterCampaignNotFound
+  | AutomationCalendarNeverOccurs
+  | AutomationConditionAudienceMissing
+  | AutomationFlowInvalid
+  | AutomationUnitFetchFailure
   | AudienceFilterContextInvalid
   | CampaignAudienceArchived
   | CampaignAudienceInUse
   | CampaignAudienceMissing
   | CampaignAudienceNotFound
+  | CampaignBodyMarkdownInvalid
   | CampaignConfirmationRejected
   | CampaignContentInvalid
   | CampaignContentMissing
@@ -49,9 +66,11 @@ export type CampaignOperationCause =
   | CampaignEmailDeliveryFailed
   | CampaignEmailNotConfigured
   | CampaignFallbackContentMissing
+  | CampaignLocaleContentMissing
   | CampaignNoRecipients
   | CampaignNotFound
   | CampaignNotRetryable
+  | CampaignPublished
   | CampaignReadOnly
   | CampaignRecipientResolutionError
   | CampaignRecipientsOutsideTestDomain
@@ -117,6 +136,24 @@ export const toOperationError = (
         })
     ),
     Match.tag(
+      "CampaignBodyMarkdownInvalid",
+      ({ locale, cause: invalid }) =>
+        new OperationInputInvalid({
+          code: CampaignBodyMarkdownInvalid.code,
+          message: `The ${locale} body isn't valid campaign Markdown: ${invalid.message}`,
+          cause,
+        })
+    ),
+    Match.tag(
+      "CampaignLocaleContentMissing",
+      ({ locale }) =>
+        new OperationInputInvalid({
+          code: CampaignLocaleContentMissing.code,
+          message: `The campaign has no ${locale} content yet, so it needs a subject and a body.`,
+          cause,
+        })
+    ),
+    Match.tag(
       "CampaignTestRecipientInvalid",
       ({ email }) =>
         new OperationInputInvalid({
@@ -136,7 +173,16 @@ export const toOperationError = (
             ...uses.campaignSources.map(
               (source) => `${source} campaign sources`
             ),
-          ].join(", ")}, which saved audiences and campaigns can't use yet.`,
+          ].join(", ")}, which only automation conditions can use.`,
+          cause,
+        })
+    ),
+    Match.tag(
+      "AudienceFilterCampaignNotFound",
+      ({ campaignIds }) =>
+        new OperationInputInvalid({
+          code: AudienceFilterCampaignNotFound.code,
+          message: `The audience filter counts emails of campaigns that don't exist (${campaignIds.join(", ")}).`,
           cause,
         })
     ),
@@ -144,7 +190,7 @@ export const toOperationError = (
       "CampaignReadOnly",
       ({ status }) =>
         new OperationConflict({
-          code: "campaign-read-only",
+          code: CampaignReadOnly.code,
           message: `The campaign is ${status}, so it can no longer be changed.`,
           cause,
         })
@@ -153,18 +199,38 @@ export const toOperationError = (
       "CampaignDeliveryMismatch",
       () =>
         new OperationConflict({
-          code: "campaign-delivery-mismatch",
+          code: CampaignDeliveryMismatch.code,
           message:
-            "This campaign sends automatically, so it can't be edited, deleted, test sent, sent, retried, or duplicated like a one-off campaign.",
+            "This campaign sends automatically, so it can't be test sent, sent, or retried like a one-off campaign.",
           cause,
         })
     ),
     Match.tag(
       "CampaignAudienceInUse",
-      ({ draftCampaignIds }) =>
+      ({ draftCampaignIds, automationCampaignIds = [] }) =>
         new OperationConflict({
-          code: "audience-in-use",
-          message: `Draft campaigns use this audience (${draftCampaignIds.join(", ")}). Archive it instead, or move those drafts to another audience.`,
+          code: CampaignAudienceInUse.code,
+          message: [
+            draftCampaignIds.length > 0
+              ? `Draft campaigns use this audience (${draftCampaignIds.join(", ")}).`
+              : undefined,
+            automationCampaignIds.length > 0
+              ? `Automation conditions refer to it (${automationCampaignIds.join(", ")}).`
+              : undefined,
+            "Archive it instead, or move those campaigns to another audience.",
+          ]
+            .filter((sentence) => sentence !== undefined)
+            .join(" "),
+          cause,
+        })
+    ),
+    Match.tag(
+      "CampaignPublished",
+      () =>
+        new OperationConflict({
+          code: CampaignPublished.code,
+          message:
+            "This automation has a published version, so it can't be deleted. Archive it instead.",
           cause,
         })
     ),
@@ -174,6 +240,60 @@ export const toOperationError = (
         new OperationConflict({
           code: "audience-archived",
           message: "The audience is archived. Choose another audience.",
+          cause,
+        })
+    ),
+    Match.orElse(toAutomationOperationError)
+  );
+
+/** Where in a flow a problem is, as the message names it. */
+const describeFlowLocation = (location: AutomationFlowLocation) =>
+  Match.value(location).pipe(
+    Match.tagsExhaustive({
+      Trigger: () => "the schedule trigger",
+      Step: ({ stepId }) => `step "${stepId}"`,
+    })
+  );
+
+/** Failures of an automation's flow, its conditions and its Dotypos reads. */
+const toAutomationOperationError = (
+  cause: CampaignOperationCause
+): CampaignOperationError =>
+  Match.value(cause).pipe(
+    Match.tag(
+      "AutomationFlowInvalid",
+      ({ message }) =>
+        new OperationInputInvalid({
+          code: "flow-invalid",
+          message,
+          cause,
+        })
+    ),
+    Match.tag(
+      "AutomationCalendarNeverOccurs",
+      ({ location }) =>
+        new OperationInputInvalid({
+          code: AutomationCalendarNeverOccurs.code,
+          message: `The calendar of ${describeFlowLocation(location)} never happens in the next 8 years. Choose another combination.`,
+          cause,
+        })
+    ),
+    Match.tag(
+      "AutomationConditionAudienceMissing",
+      ({ audienceId }) =>
+        new OperationNotFound({
+          code: "audience-missing",
+          message: `A condition refers to the saved audience ${audienceId}, which no longer exists. Choose another audience.`,
+          cause,
+        })
+    ),
+    Match.tag(
+      "AutomationUnitFetchFailure",
+      ({ code }) =>
+        new OperationUnavailable({
+          code,
+          message:
+            "The Dotypos API is unavailable, so customers couldn't be read. Try again shortly.",
           cause,
         })
     ),
@@ -226,7 +346,7 @@ const toSendOperationError = (
       "CampaignAudienceMissing",
       () =>
         new OperationConflict({
-          code: "audience-missing",
+          code: "campaign-audience-missing",
           message: "The campaign has no audience. Set one first.",
           cause,
         })

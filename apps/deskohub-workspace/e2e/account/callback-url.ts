@@ -1,12 +1,13 @@
 import type * as Playwright from "@playwright/test";
 import {
   encodeAuthCallbackReturn,
+  getAuthCallbackPath,
   readAuthCallbackReturnTo,
   signInAttemptParam,
   signInCallbackReturnParam,
 } from "@/features/account/routes";
+import { type Locale, m } from "@/features/i18n";
 
-const callbackPath = "/en-US/auth/callback";
 const failureParamName = "error";
 const invalidTokenFailureValue = "INVALID_TOKEN";
 // Canonical lowercase UUIDv4 shape only; production mints the handoff attempt
@@ -42,14 +43,35 @@ const isCallbackQuery = (entries: readonly [string, string][]): boolean => {
 };
 
 /**
- * The shared callback URL grammar: the exact expected origin and path, no
- * fragment, and a query of at most one canonical UUIDv4 `attempt` and one
- * encoded same-origin `return`. Any other parameter name, count, or shape fails
- * closed.
+ * The callback a magic link lands on: its locale and, when the sign-in
+ * started with one, the exact same-origin path and query it returns to.
+ */
+export type CallbackLanding = {
+  readonly locale?: Locale;
+  readonly returnTo?: string;
+};
+
+/**
+ * The exact `return` value the callback must carry for a landing, `null` when
+ * the landing names no return target, and `undefined` when the return target
+ * has no callback encoding.
+ */
+export const expectedCallbackReturnValue = ({
+  returnTo,
+}: CallbackLanding): string | null | undefined =>
+  returnTo === undefined ? null : encodeAuthCallbackReturn(returnTo);
+
+/**
+ * The shared callback URL grammar: the exact expected origin and the
+ * landing's localized callback path (en-US by default), no fragment, and a
+ * query of at most one canonical UUIDv4 `attempt` and one encoded same-origin
+ * `return`. A landing with a return target requires exactly its encoded
+ * `return`. Any other parameter name, count, or shape fails closed.
  */
 export const isExactCallbackUrlString = (
   rawUrl: string,
-  baseOrigin: string
+  baseOrigin: string,
+  landing: CallbackLanding = {}
 ): boolean => {
   let url: URL;
   try {
@@ -57,21 +79,49 @@ export const isExactCallbackUrlString = (
   } catch {
     return false;
   }
-  if (url.origin !== baseOrigin || url.pathname !== callbackPath) return false;
+  if (
+    url.origin !== baseOrigin ||
+    url.pathname !== getAuthCallbackPath(landing.locale ?? "en-US")
+  )
+    return false;
   if (url.hash !== "") return false;
-  return isCallbackQuery([...url.searchParams.entries()]);
+  if (!isCallbackQuery([...url.searchParams.entries()])) return false;
+  const expectedReturn = expectedCallbackReturnValue(landing);
+  return (
+    expectedReturn === null ||
+    (expectedReturn !== undefined &&
+      url.searchParams.get(signInCallbackReturnParam) === expectedReturn)
+  );
 };
 
 export const isExactCallbackUrl = (
   page: Playwright.Page,
-  baseOrigin: string
+  baseOrigin: string,
+  landing: CallbackLanding = {}
 ): boolean => {
   try {
-    return isExactCallbackUrlString(page.url(), baseOrigin);
+    return isExactCallbackUrlString(page.url(), baseOrigin, landing);
   } catch {
     return false;
   }
 };
+
+/**
+ * The text of the callback card once this browser is signed in: its status
+ * label, its heading, and the body saying where the tab goes next (back to
+ * the return target when the landing carries one, otherwise the account).
+ */
+export const signedInCallbackCopy = ({
+  locale = "en-US",
+  returnTo,
+}: CallbackLanding) => ({
+  label: m.accountSignInLoading({}, { locale }),
+  title: m.accountCallbackSignedInTitle({}, { locale }),
+  body:
+    returnTo === undefined
+      ? m.accountCallbackSignedInAccount({}, { locale })
+      : m.accountCallbackSignedInReturning({}, { locale }),
+});
 
 /**
  * The consumed-link failure grammar: the query of the URL Better Auth lands on

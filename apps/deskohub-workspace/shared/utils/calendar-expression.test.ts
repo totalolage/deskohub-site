@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { CalendarExpressionType as CalendarExpression } from "@deskohub/workspace-admin-api";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import {
   CalendarExpressionNeverOccurs,
   calendarFrequency,
   holds,
   nextStart,
+  nextStartWithinHorizon,
   validateCalendarExpression,
 } from "./calendar-expression";
 
@@ -250,6 +251,21 @@ describe("nextStart", () => {
     );
     expect(error).toBeInstanceOf(CalendarExpressionNeverOccurs);
     expect(error.expression).toEqual(expression);
+  });
+});
+
+describe("nextStartWithinHorizon", () => {
+  test("returns the start nextStart succeeds with", () => {
+    const expression: CalendarExpression = { weeksOfYear: [1] };
+    expect(nextStartWithinHorizon(expression, probeStart)).toEqual(
+      Option.some(Effect.runSync(nextStart(expression, probeStart)))
+    );
+  });
+
+  test("is none where nextStart fails", () => {
+    expect(
+      nextStartWithinHorizon({ daysOfMonth: [31], months: [2] }, probeStart)
+    ).toEqual(Option.none());
   });
 });
 

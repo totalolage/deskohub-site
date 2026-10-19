@@ -32,7 +32,9 @@ type PreparePayStateOptions = {
   readonly onTransportError: () => void;
 };
 
-const execute = mock((_input: PreparePayStateInput) => undefined);
+const executeAsync = mock((_input: PreparePayStateInput) =>
+  Promise.resolve({})
+);
 let preparePayStateOptions: PreparePayStateOptions | undefined;
 
 mock.module("@/features/cookie-consent", () => ({
@@ -61,7 +63,7 @@ const renderCheckout = () =>
   renderHook(() => useReservationCheckout({ locale: "en-US" }));
 
 const submittedAttemptIds = () =>
-  execute.mock.calls.map(([input]) => input.checkoutAttemptId);
+  executeAsync.mock.calls.map(([input]) => input.checkoutAttemptId);
 
 describe("useReservationCheckout", () => {
   beforeAll(() => {
@@ -71,13 +73,13 @@ describe("useReservationCheckout", () => {
   beforeEach(() => {
     workspaceUseAction.mockImplementation((_action, options) => {
       preparePayStateOptions = options as PreparePayStateOptions;
-      return { execute, isExecuting: false, result: {} };
+      return { executeAsync, isExecuting: false, result: {} };
     });
   });
 
   afterEach(() => {
     cleanup();
-    execute.mockClear();
+    executeAsync.mockClear();
     push.mockClear();
     workspaceUseAction.mockReset();
     workspaceUseSearchParams.mockReturnValue(new URLSearchParams());

@@ -10,6 +10,7 @@ import {
   AdministrationDotyposCustomerId,
   AdministrationLegacyUsername,
   CliBearerAuthentication,
+  CliClientCompatibility,
   CliInputInvalid,
   CliMutationRejected,
   CliMutationRequestId,
@@ -18,19 +19,23 @@ import {
   CliSessionId,
   CliSessionUnauthorized,
   CurrentCliSession,
+  dhwVersionHeader,
   digestCliAuthenticationSecret,
   makeCliAuthenticationSecret,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeCrypto, NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer, Option } from "effect";
-import { HttpApiTest } from "effect/unstable/httpapi";
+import { HttpClientRequest } from "effect/unstable/http";
+import { HttpApiMiddleware, HttpApiTest } from "effect/unstable/httpapi";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type CampaignAudienceRow,
   type CampaignRow,
   cliSessions,
 } from "@/db/schema";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { CampaignService } from "@/features/email-campaigns/backend/campaign.service";
 import { CampaignAudienceService } from "@/features/email-campaigns/backend/campaign-audience.service";
 import { CampaignConfirmationCodeService } from "@/features/email-campaigns/backend/campaign-confirmation-code.service";
@@ -38,6 +43,7 @@ import {
   CampaignEmailConfig,
   resolveCampaignEmailConfig,
 } from "@/features/email-campaigns/backend/campaign-email.config";
+import { CampaignOperations } from "@/features/email-campaigns/backend/campaign-operations.service";
 import { CampaignRecipientService } from "@/features/email-campaigns/backend/campaign-recipient.service";
 import { CampaignSendService } from "@/features/email-campaigns/backend/campaign-send.service";
 import { CampaignSendQueueService } from "@/features/email-campaigns/backend/campaign-send-queue.service";
@@ -49,11 +55,13 @@ import {
   CampaignAudienceNotFound,
   CampaignConfirmationRejected,
   CampaignFallbackContentMissing,
+  CampaignLocaleContentMissing,
   CampaignNotFound,
   CampaignRecipientResolutionError,
   CampaignTestRecipientInvalid,
 } from "@/features/email-campaigns/errors";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { CliAuthentication } from "./cli-authentication.service";
 import { CliClientCompatibilityLive } from "./cli-client-version";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
 import { AdminCliCampaignsApiHandlers } from "./email-campaigns-api.server";
@@ -67,6 +75,17 @@ const audienceId = AdministrationCampaignAudienceId.make(
 const customerId = AdministrationDotyposCustomerId.make("1001");
 const otherCustomerId = AdministrationDotyposCustomerId.make("1002");
 const createdAt = Temporal.Instant.from("2026-10-14T08:00:00Z");
+const testDhwVersion = "1.20.0";
+
+const TestDhwVersionHeader = HttpApiMiddleware.layerClient(
+  CliClientCompatibility,
+  ({ request, next }) =>
+    next(
+      request.pipe(
+        HttpClientRequest.setHeader(dhwVersionHeader, testDhwVersion)
+      )
+    )
+);
 
 const parseBody = (markdown: string) =>
   Effect.runPromise(parseCampaignBodyMarkdown(markdown));
@@ -157,12 +176,24 @@ const AuthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
       id: CliSessionId.make("01980000-0000-7000-8000-000000000000"),
       approvedBy: null,
       clientName: "test client",
-      cliVersion: "1.0.0",
+      cliVersion: testDhwVersion,
       buildTarget: "development",
       createdAt: "2026-10-14T08:00:00.000Z",
       lastUsedAt: "2026-10-14T08:00:00.000Z",
       expiresAt: null,
     }),
+});
+
+/** The session's approving administrator, whose grant the port re-reads. */
+const sessionAdministrator = {
+  accountId: customerAccountIdSchema.make("account-cli-administrator"),
+  email: testEmailAddress("cli-administrator"),
+};
+const SessionAdministrator = Layer.mock(CliAuthentication, {
+  sessionAdministrator: () => Effect.succeed(sessionAdministrator),
+});
+const GrantedAdministrator = Layer.mock(AccountRoleGrants, {
+  has: () => Effect.succeed(true),
 });
 
 const UnauthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
@@ -186,9 +217,17 @@ const callCampaignsApi = <A, E>(
     Effect.flatMap(call),
     Effect.provide(AdminCliCampaignsApiHandlers),
     Effect.provide(bearer),
-    Effect.provide(campaignServices(overrides)),
+    Effect.provide(SessionAdministrator),
+    Effect.provide(
+      CampaignOperations.Default.pipe(
+        Layer.provide(
+          Layer.mergeAll(campaignServices(overrides), GrantedAdministrator)
+        )
+      )
+    ),
     Effect.provide(ClaimEveryCliMutation),
     Effect.provide(CliClientCompatibilityLive),
+    Effect.provide(TestDhwVersionHeader),
     Effect.provide(NodeHttpServer.layerHttpServices),
     Effect.scoped,
     Effect.runPromise
@@ -318,63 +357,28 @@ describe("campaign admin API", () => {
     expect(calls).toEqual([]);
   });
 
-  test("applies per-locale changes on top of the stored content", async () => {
-    const czechBody = await parseBody("Původní text");
-    const englishBody = await parseBody("Original text");
-    const updates: unknown[] = [];
+  test("passes a campaign edit to the campaign service whole", async () => {
+    const patches: unknown[] = [];
+    const payload = {
+      title: "Renamed",
+      content: {
+        "cs-CZ": { subject: "Nový předmět", operationalReason: null },
+        "en-US": null,
+      },
+    };
     await callCampaignsApi(
-      (client) =>
-        client.updateCampaign({
-          params: { campaignId },
-          payload: {
-            title: "Renamed",
-            content: {
-              "cs-CZ": { subject: "Nový předmět", operationalReason: null },
-              "en-US": null,
-            },
-          },
-        }),
+      (client) => client.updateCampaign({ params: { campaignId }, payload }),
       {
         campaigns: {
-          get: () =>
-            Effect.succeed(
-              campaignRow({
-                content: {
-                  "cs-CZ": {
-                    subject: "Předmět",
-                    preheader: "Úvod",
-                    body: czechBody,
-                    operationalReason: "Máte u nás rezervaci.",
-                  },
-                  "en-US": {
-                    subject: "Subject",
-                    preheader: "Intro",
-                    body: englishBody,
-                  },
-                },
-              })
-            ),
-          update: (input) => {
-            updates.push(input);
-            return Effect.succeed(campaignRow({ content: input.content }));
+          patch: (input) => {
+            patches.push(input);
+            return Effect.succeed(campaignRow({ title: "Renamed" }));
           },
         },
       }
     );
 
-    expect(updates).toEqual([
-      {
-        campaignId,
-        title: "Renamed",
-        content: {
-          "cs-CZ": {
-            subject: "Nový předmět",
-            preheader: "Úvod",
-            body: czechBody,
-          },
-        },
-      },
-    ]);
+    expect(patches).toEqual([{ campaignId, ...payload }]);
   });
 
   test("requires a subject and a body for a locale the campaign lacks", async () => {
@@ -388,16 +392,20 @@ describe("campaign admin API", () => {
           .pipe(Effect.flip),
       {
         campaigns: {
-          get: () => Effect.succeed(campaignRow()),
-          update: () => Effect.die("not expected"),
+          patch: () =>
+            Effect.fail(
+              new CampaignLocaleContentMissing({ campaignId, locale: "en-US" })
+            ),
         },
       }
     );
 
     expect(error).toBeInstanceOf(CliInputInvalid);
-    expect(error.message).toBe(
-      "The campaign has no en-US content yet, so it needs a subject and a body."
-    );
+    expect(error).toMatchObject({
+      code: "content-locale-missing",
+      message:
+        "The campaign has no en-US content yet, so it needs a subject and a body.",
+    });
   });
 
   test("passes the confirmation code to the send and explains a rejected code", async () => {
@@ -973,7 +981,7 @@ describe.skipIf(!testDatabase)(
         approvedBy: AdministrationLegacyUsername.make("operator"),
         tokenHash,
         clientName: "ledger test client",
-        cliVersion: "1.0.0",
+        cliVersion: testDhwVersion,
         buildTarget: "development",
         createdAt: createdAt,
         lastUsedAt: createdAt,
@@ -989,7 +997,7 @@ describe.skipIf(!testDatabase)(
           id: sessionId,
           approvedBy: null,
           clientName: "ledger test client",
-          cliVersion: "1.0.0",
+          cliVersion: testDhwVersion,
           buildTarget: "development",
           createdAt: createdAt.toString(),
           lastUsedAt: createdAt.toString(),
@@ -1004,8 +1012,11 @@ describe.skipIf(!testDatabase)(
         Effect.flatMap(call),
         Effect.provide(AdminCliCampaignsApiHandlers),
         Effect.provide(SeededSessionRequest),
+        Effect.provide(SessionAdministrator),
+        Effect.provide(CampaignOperations.Default),
         Effect.provide(
           Layer.mergeAll(
+            GrantedAdministrator,
             CampaignService.Default,
             CampaignAudienceService.Default,
             CliMutationIdempotency.Default,
@@ -1035,6 +1046,7 @@ describe.skipIf(!testDatabase)(
           ).pipe(Layer.provide(testDatabase.layer))
         ),
         Effect.provide(CliClientCompatibilityLive),
+        Effect.provide(TestDhwVersionHeader),
         Effect.provide(NodeHttpServer.layerHttpServices),
         Effect.scoped,
         Effect.runPromise
@@ -1150,7 +1162,7 @@ describe.skipIf(!testDatabase)(
       expect(await countRows("email_campaigns", title)).toBe(3);
     });
 
-    test("refuses one-off operations on an automated campaign with a conflict", async () => {
+    test("refuses one-off sending operations on an automated campaign with a conflict", async () => {
       // Nothing writes automated campaigns yet, so the test inserts them by SQL.
       const title = `${titlePrefix} automated`;
       for (const status of ["draft", "active", "paused", "archived"] as const) {
@@ -1163,33 +1175,9 @@ describe.skipIf(!testDatabase)(
           [title, status]
         );
         const params = { campaignId: rows[0]!.id };
+        // Edits, deletion and duplication follow the automation lifecycle
+        // (campaign.service.postgres.test.ts); only sending is one-off.
         const operations = [
-          (client: CampaignsClient) =>
-            client.updateCampaign({
-              params,
-              payload: { title: `${title} edited` },
-            }),
-          (client: CampaignsClient) =>
-            client.updateCampaign({
-              params,
-              payload: {
-                content: {
-                  "cs-CZ": {
-                    subject: "Novinky",
-                    preheader: "",
-                    bodyMarkdown: "# Ahoj",
-                  },
-                },
-              },
-            }),
-          (client: CampaignsClient) => client.deleteCampaign({ params }),
-          (client: CampaignsClient) =>
-            client.duplicateCampaign({
-              params,
-              payload: {
-                requestId: CliMutationRequestId.make(crypto.randomUUID()),
-              },
-            }),
           (client: CampaignsClient) =>
             client.testSendCampaign({ params, payload: { recipients: [] } }),
           (client: CampaignsClient) =>
@@ -1208,6 +1196,7 @@ describe.skipIf(!testDatabase)(
             operation(client).pipe(Effect.flip)
           );
           expect(failure).toBeInstanceOf(CliMutationRejected);
+          expect(failure).toMatchObject({ code: "campaign-delivery-mismatch" });
           expect(failure.message).toContain("sends automatically");
         }
       }
@@ -1252,8 +1241,8 @@ describe.skipIf(!testDatabase)(
       expect(await countRows("email_campaign_audiences", title)).toBe(1);
     });
 
-    test("rejects an audience filter saved audiences can't hold yet as invalid input", async () => {
-      const title = `${titlePrefix} first visitors`;
+    test("rejects an automation-only audience filter as invalid input", async () => {
+      const title = `${titlePrefix} trigger window`;
       const rejected = await callWithLedger((client) =>
         client
           .createCampaignAudience({
@@ -1262,10 +1251,19 @@ describe.skipIf(!testDatabase)(
               audience: {
                 title,
                 filter: {
-                  attribute: "firstVisit",
+                  attribute: "reservationCount",
                   _tag: "Condition",
-                  operator: "in",
-                  value: { _tag: "Last", count: 30, unit: "day" },
+                  params: {
+                    dateBasis: "visit",
+                    period: {
+                      _tag: "TriggerWindow",
+                      side: "before",
+                      count: 7,
+                      unit: "day",
+                    },
+                  },
+                  operator: "gt",
+                  value: 0,
                 },
               },
             },
@@ -1275,7 +1273,92 @@ describe.skipIf(!testDatabase)(
 
       expect(rejected).toBeInstanceOf(CliInputInvalid);
       expect(rejected.message).toBe(
-        "The audience filter uses the firstVisit attribute, which saved audiences and campaigns can't use yet."
+        "The audience filter uses TriggerWindow periods, which only automation conditions can use."
+      );
+      expect(await countRows("email_campaign_audiences", title)).toBe(0);
+    });
+
+    test("creates an audience with first visit and a specific campaign filter", async () => {
+      const sourceTitle = `${titlePrefix} specific source`;
+      const source = await callWithLedger((client) =>
+        client.createCampaign({
+          payload: {
+            requestId: CliMutationRequestId.make(crypto.randomUUID()),
+            campaign: campaignInput(sourceTitle),
+          },
+        })
+      );
+      const title = `${titlePrefix} specific audience`;
+      const filter = {
+        _tag: "Group" as const,
+        operator: "and" as const,
+        filters: [
+          {
+            attribute: "firstVisit" as const,
+            _tag: "Condition" as const,
+            operator: "none" as const,
+          },
+          {
+            attribute: "campaignEmailCount" as const,
+            _tag: "Condition" as const,
+            params: {
+              purpose: "any" as const,
+              period: { _tag: "AnyTime" as const },
+              campaign: { _tag: "Specific" as const, campaignId: source.id },
+            },
+            operator: "eq" as const,
+            value: 0,
+          },
+        ],
+      };
+      const audience = await callWithLedger((client) =>
+        client.createCampaignAudience({
+          payload: {
+            requestId: CliMutationRequestId.make(crypto.randomUUID()),
+            audience: { title, filter },
+          },
+        })
+      );
+
+      expect(audience.filter).toEqual(filter);
+      expect(await countRows("email_campaign_audiences", title)).toBe(1);
+    });
+
+    test("rejects an audience filter that names an unknown campaign", async () => {
+      const unknownCampaignId = AdministrationCampaignId.make(
+        crypto.randomUUID()
+      );
+      const title = `${titlePrefix} unknown campaign`;
+      const rejected = await callWithLedger((client) =>
+        client
+          .createCampaignAudience({
+            payload: {
+              requestId: CliMutationRequestId.make(crypto.randomUUID()),
+              audience: {
+                title,
+                filter: {
+                  attribute: "campaignEmailCount",
+                  _tag: "Condition",
+                  params: {
+                    purpose: "any",
+                    period: { _tag: "AnyTime" },
+                    campaign: {
+                      _tag: "Specific",
+                      campaignId: unknownCampaignId,
+                    },
+                  },
+                  operator: "eq",
+                  value: 0,
+                },
+              },
+            },
+          })
+          .pipe(Effect.flip)
+      );
+
+      expect(rejected).toBeInstanceOf(CliInputInvalid);
+      expect(rejected.message).toBe(
+        `The audience filter counts emails of campaigns that don't exist (${unknownCampaignId}).`
       );
       expect(await countRows("email_campaign_audiences", title)).toBe(0);
     });

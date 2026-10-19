@@ -1,6 +1,12 @@
+import type {
+  ExternalAPIError,
+  NetworkError,
+  ValidationError,
+} from "@deskohub/dotypos";
 import { Data, Effect, Schema } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
+import type { ReservationVisitsUnavailable } from "@/features/reservation/backend/reservation-visits.service";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
 import type { AutomationWorkUnitKind } from "../automation-work-units";
@@ -49,7 +55,36 @@ export class AutomationUnitFetchFailure extends Data.TaggedError(
   /** Stored as `last_error_code`; stable and low-cardinality. */
   readonly code: string;
   readonly cause?: unknown;
-}> {}
+}> {
+  static readonly fromDotypos = (
+    cause: ValidationError | ExternalAPIError | NetworkError
+  ) =>
+    new AutomationUnitFetchFailure({ code: dotyposFailureCode(cause), cause });
+
+  static readonly fromReservationVisits = (
+    unavailable: ReservationVisitsUnavailable
+  ) =>
+    new AutomationUnitFetchFailure({
+      code: dotyposFailureCode(unavailable.cause),
+      cause: unavailable,
+    });
+}
+
+/** A low-cardinality `last_error_code` for a failed Dotypos read. */
+const dotyposFailureCode = (
+  cause: ValidationError | ExternalAPIError | NetworkError
+) => {
+  switch (cause._tag) {
+    case "ExternalAPIError":
+      return cause.statusCode === undefined
+        ? "dotypos-error"
+        : `dotypos-${cause.statusCode}`;
+    case "NetworkError":
+      return "dotypos-network";
+    case "ValidationError":
+      return "dotypos-invalid-response";
+  }
+};
 
 /** A unit that can never succeed, such as a subject that no longer decodes. It settles `failed`. */
 export class AutomationUnitDefect extends Data.TaggedError(

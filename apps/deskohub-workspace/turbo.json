@@ -49,7 +49,8 @@
         "POSTHOG_PROJECT_ID",
         "POSTHOG_SERVICE_NAME",
         "POSTHOG_SERVICE_NAMESPACE",
-        "VERCEL_PROJECT_PRODUCTION_URL"
+        "VERCEL_PROJECT_PRODUCTION_URL",
+        "WEBMCP_ORIGIN_TRIAL_TOKENS"
       ]
     },
     "i18n:compile": {

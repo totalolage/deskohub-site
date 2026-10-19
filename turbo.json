@@ -58,7 +58,8 @@
     "!VERCEL_ENV",
     "VERCEL_AUTOMATION_BYPASS_SECRET",
     "VERCEL_PROJECT_PRODUCTION_URL",
-    "VERCEL_URL"
+    "VERCEL_URL",
+    "WEBMCP_ORIGIN_TRIAL_TOKENS"
   ],
   "tasks": {
     "deskohub-workspace#i18n:compile": {

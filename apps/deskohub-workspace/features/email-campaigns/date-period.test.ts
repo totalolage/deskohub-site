@@ -28,7 +28,11 @@ const triggerWindowBounds = (
     { _tag: "TriggerWindow", side, count, unit },
     {
       ...audienceEvaluationAt(now),
-      trigger: Option.some({ at: Temporal.Instant.from(at) }),
+      trigger: Option.some({
+        kind: "schedule",
+        at: Temporal.Instant.from(at),
+        reservationId: Option.none(),
+      }),
     }
   );
 

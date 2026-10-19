@@ -17,7 +17,7 @@ import {
   invokeCampaignOperation,
   runCampaignPageQuery,
 } from "../campaign-operation-query.server";
-import { loadDiscountGroupOptions } from "./discount-group-options.server";
+import { loadAudienceValueLookups } from "./audience-value-lookups.server";
 
 /** An audience a campaign can select. */
 export type AudienceOption = {
@@ -64,9 +64,9 @@ export const loadAudienceList = async (): Promise<
   readonly AudienceListItem[]
 > => {
   await authorizeAdministratorPage();
-  const [audiences, discountGroups, locale] = await Promise.all([
+  const [audiences, lookups, locale] = await Promise.all([
     listAudiences(),
-    loadDiscountGroupOptions(),
+    loadAudienceValueLookups(),
     getRequestLocale(),
   ]);
   return audiences
@@ -78,9 +78,7 @@ export const loadAudienceList = async (): Promise<
     .map((audience) => ({
       id: audience.id,
       title: audience.title,
-      summary: describeAudienceFilter(audience.filter, locale, {
-        discountGroups,
-      }),
+      summary: describeAudienceFilter(audience.filter, locale, lookups),
       archived: isArchived(audience),
       updatedAt: audience.updatedAt,
       updatedAtText: formatAdministrationDateTime(audience.updatedAt, locale),
@@ -92,9 +90,9 @@ export const loadAudienceOptions = async (): Promise<
   readonly AudienceOption[]
 > => {
   await authorizeAdministratorPage();
-  const [audiences, discountGroups, locale] = await Promise.all([
+  const [audiences, lookups, locale] = await Promise.all([
     listAudiences(),
-    loadDiscountGroupOptions(),
+    loadAudienceValueLookups(),
     getRequestLocale(),
   ]);
   return audiences
@@ -102,7 +100,7 @@ export const loadAudienceOptions = async (): Promise<
     .map(({ id, title, filter }) => ({
       id,
       title,
-      summary: describeAudienceFilter(filter, locale, { discountGroups }),
+      summary: describeAudienceFilter(filter, locale, lookups),
       singleLocale: audienceSingleLocale(filter),
     }))
     .toSorted(byTitle);

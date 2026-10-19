@@ -15,7 +15,7 @@
   "emailCampaignsAudienceCampaignEmailCountAny": "received any {none}{period}",
   "emailCampaignsAudienceCampaignEmailCountCountLabel": "Campaign email count",
   "emailCampaignsAudienceCampaignEmailCountLabel": "Campaign emails received",
-  "emailCampaignsAudienceCampaignEmailCountLeadText": "campaign emails received",
+  "emailCampaignsAudienceCampaignEmailCountLeadText": "campaign emails received from",
   "emailCampaignsAudienceCampaignEmailCountNone": "received no {none}{period}",
   "emailCampaignsAudienceCampaignEmailCountNounAny": [
     {
@@ -24,6 +24,16 @@
       "match": {
         "countPlural=one": "campaign email",
         "countPlural=other": "campaign emails"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounDeleted": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "email from a deleted campaign",
+        "countPlural=other": "emails from a deleted campaign"
       }
     }
   ],
@@ -47,13 +57,40 @@
       }
     }
   ],
+  "emailCampaignsAudienceCampaignEmailCountNounSpecific": [
+    {
+      "declarations": [
+        "input count",
+        "input campaign",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "email from campaign {campaign}",
+        "countPlural=other": "emails from campaign {campaign}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounThis": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "email from this campaign",
+        "countPlural=other": "emails from this campaign"
+      }
+    }
+  ],
   "emailCampaignsAudienceCampaignEmailCountPeriodLabel": "Emails received",
   "emailCampaignsAudienceCampaignEmailCountPurposeAny": "any",
   "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "Campaign purpose",
   "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "marketing",
   "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "operational",
-  "emailCampaignsAudienceCampaignEmailCountSourceSpecific": "from campaign {campaign}",
-  "emailCampaignsAudienceCampaignEmailCountSourceThis": "from this campaign",
+  "emailCampaignsAudienceCampaignEmailCountSourceAny": "any campaign",
+  "emailCampaignsAudienceCampaignEmailCountSourceEmpty": "No campaign matches.",
+  "emailCampaignsAudienceCampaignEmailCountSourceLabel": "Campaign",
+  "emailCampaignsAudienceCampaignEmailCountSourceSearch": "Search campaigns",
+  "emailCampaignsAudienceCampaignEmailCountSourceUnknown": "Deleted campaign",
   "emailCampaignsAudienceConditionAttributeLabel": "Customer attribute",
   "emailCampaignsAudienceConditionRemove": "Remove condition",
   "emailCampaignsAudienceCountAlwaysMatchesError": "“≥ 0” always matches. Use “≥ 1” for any, or remove the condition.",
@@ -198,6 +235,7 @@
       "selectors": ["kind"],
       "match": {
         "kind=AnyTime": "any time",
+        "kind=Past": "any time so far",
         "kind=Last": "in the last",
         "kind=Range": "from … to …",
         "kind=Since": "since",
@@ -389,9 +427,10 @@
   "emailCampaignsAudienceReservationCountStatusLabel": "Reservation status",
   "emailCampaignsAudienceReservationCountStatusNeedsRefund": "needs refund",
   "emailCampaignsAudienceReservationCountVisitPeriod": "visiting {period}",
+  "emailCampaignsAudienceSaveCampaignNotFound": "The audience could not be saved. A campaign it counts emails from no longer exists. Choose another campaign.",
   "emailCampaignsAudienceSaveFailedCheckFilters": "The audience could not be saved. Check the filters and try again.",
   "emailCampaignsAudienceSaveFailedRetry": "The audience could not be saved. Try again.",
-  "emailCampaignsAudienceSaveFilterUnavailable": "The audience could not be saved. Trigger-relative periods, the first visit, “any time so far” and emails of one campaign can’t be saved in an audience yet.",
+  "emailCampaignsAudienceSaveFilterUnavailable": "The audience could not be saved. Trigger-relative periods and “this campaign” only work in automation conditions.",
   "emailCampaignsAudienceSectionAccount": "Account",
   "emailCampaignsAudienceSectionEmails": "Emails",
   "emailCampaignsAudienceSectionProfile": "Profile",
@@ -831,6 +870,7 @@
       }
     }
   ],
+  "emailCampaignsBadgeDeliveryAutomated": "Automated",
   "emailCampaignsBadgePurposeMarketing": "Marketing",
   "emailCampaignsBadgePurposeOperational": "Operational",
   "emailCampaignsBadgeRecipientStatusBounced": "Bounced",
@@ -885,7 +925,7 @@
   "emailCampaignsComposerPurposeOperational": "Operational",
   "emailCampaignsComposerPurposeOperationalDescription": "Service announcements for every matching customer. The footer says why they get it.",
   "emailCampaignsComposerSaveAudienceArchived": "The selected audience is archived. Choose another audience.",
-  "emailCampaignsComposerSaveAudienceFilterUnavailable": "The selected audience uses filters campaigns can’t use yet. Choose another audience.",
+  "emailCampaignsComposerSaveAudienceFilterUnavailable": "The selected audience uses filters only automation conditions can use. Choose another audience.",
   "emailCampaignsComposerSaveAudienceNotFound": "The selected audience no longer exists.",
   "emailCampaignsComposerSaveCheckFields": "The campaign could not be saved. Check the fields.",
   "emailCampaignsComposerSaveContentInvalid": "The content has problems. Fix the listed issues, then save.",

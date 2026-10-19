@@ -177,8 +177,8 @@ describe("the attribute catalogue in the builder", () => {
     expect(listed.toSorted()).toEqual(
       attributes.filter(isSavedAudienceAttribute).toSorted()
     );
-    // The first visit can't be saved yet, so the menu doesn't offer it.
-    expect(listed).not.toContain("firstVisit");
+    // Saved audiences hold the first visit, so the menu offers it.
+    expect(listed).toContain("firstVisit");
     for (const attribute of attributes) {
       expect(audienceAttributeCatalogue[attribute].label).not.toBe("");
       expect(newCondition(attribute).attribute).toBe(attribute);
