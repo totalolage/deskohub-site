@@ -952,7 +952,7 @@ export const markPaymentTerminalForE2E = (
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
-    const failureCode = `workspace_e2e_nexi_${scenario.state}`;
+    const { failureCode } = scenario;
     const providerOperationId = NexiOperationIdSchema.make(
       `workspace-e2e-${scenario.state}-${orderId}`
     );
@@ -1551,7 +1551,7 @@ export const assertPaymentTerminalRow = (
       `payment attempt state was not ${scenario.state}`
     );
     assert(
-      row.payment_failure_code === `workspace_e2e_nexi_${scenario.state}`,
+      row.payment_failure_code === scenario.failureCode,
       "terminal payment failure code mismatch"
     );
     assert(
