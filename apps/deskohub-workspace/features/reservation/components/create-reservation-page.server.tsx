@@ -18,8 +18,13 @@ import {
 } from "@/features/discounts";
 import { getWorkspaceAlternates, type Locale } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { loadReservationExistingCustomer } from "@/features/reservation/backend/reservation-existing-customer.server";
-import type { ReservationExistingCustomer } from "@/features/reservation/reservation-existing-customer";
+import { checkoutContactReturnState } from "@/features/reservation/backend/checkout-contact-return-state";
+import { loadReservationCheckoutAccount } from "@/features/reservation/backend/reservation-existing-customer.server";
+import {
+  checkoutContactQueryParam,
+  type ReservationCheckoutContact,
+} from "@/features/reservation/reservation-checkout-contact";
+import type { ReservationCheckoutAccount } from "@/features/reservation/reservation-existing-customer";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
@@ -37,9 +42,11 @@ type ReservationForKind<Kind extends ReservationKind> = Extract<
 >;
 
 type ReservationPageContext<Kind extends ReservationKind, PageData> = {
+  /** Who reaches the contact-details step. */
+  readonly checkoutAccount: ReservationCheckoutAccount<Kind>;
+  /** Contact details typed before an email verification that led here. */
+  readonly checkoutContact?: ReservationCheckoutContact;
   readonly checkoutSessionId?: CheckoutSessionId;
-  /** The signed-in, linked customer the page books for by default. */
-  readonly existingCustomer?: ReservationExistingCustomer<Kind>;
   readonly initialReservation?: ReservationForKind<Kind>;
   readonly locale: Locale;
   /** Customer-independent data from the definition's `loadPageData`. */
@@ -111,6 +118,18 @@ export const loadRestoredReservation = Effect.fn(
   };
 });
 
+/**
+ * Opens the contact details a signed-out customer typed before verifying the
+ * email. An expired or foreign token leaves the form as it would otherwise
+ * open.
+ */
+export const loadCheckoutContact = (token: string | undefined) =>
+  token
+    ? checkoutContactReturnState
+        .open(token)
+        .pipe(Effect.option, Effect.map(Option.getOrUndefined))
+    : Effect.succeed(undefined);
+
 export function createReservationPage<
   const Kind extends ReservationKind,
   PageData = undefined,
@@ -180,23 +199,29 @@ async function ReservationPageContent<Kind extends ReservationKind, PageData>({
       runWorkspaceEffect(`reservation.${definition.kind}.normalize-code`)
     );
     const submittedCode = Option.getOrUndefined(normalizedCode);
-    // None of these depends on another: the restored reservation reads only
-    // the signed token, the existing customer only the session, and the page
-    // data neither. Every step before render waits on the slowest of them.
-    const [restoredReservation, existingCustomer, pageData] = await Promise.all(
-      [
+    // None of these depends on another: the restored reservation and the
+    // checkout contact read only their sealed tokens, the checkout account
+    // only the session, and the page data neither. Every step before render
+    // waits on the slowest of them.
+    const [restoredReservation, checkoutContact, checkoutAccount, pageData] =
+      await Promise.all([
         loadRestoredReservation(
           getSearchParam(resolvedSearchParams, payStateTokenQueryParam),
           locale,
           definition.kind
         ).pipe(runWorkspaceEffect(`reservation.${definition.kind}.load-state`)),
-        loadReservationExistingCustomer(definition.kind),
+        loadCheckoutContact(
+          getSearchParam(resolvedSearchParams, checkoutContactQueryParam)
+        ).pipe(
+          runWorkspaceEffect(`reservation.${definition.kind}.load-contact`)
+        ),
+        loadReservationCheckoutAccount(definition.kind),
         definition.loadPageData?.(),
-      ]
-    );
+      ]);
 
     return definition.render({
-      existingCustomer,
+      checkoutAccount,
+      checkoutContact,
       locale,
       // A definition without a loader has `undefined` page data.
       pageData: pageData as PageData,

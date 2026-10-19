@@ -17,11 +17,13 @@ import {
   getOfficeReservationDefaultValuesFromSearchParams,
   getOfficeRestoredReservationValues,
 } from "@/features/reservation/office-reservation-checkout-query";
+import type { ReservationCheckoutContact } from "@/features/reservation/reservation-checkout-contact";
 import { getReservationCustomerQueryMode } from "@/features/reservation/reservation-checkout-query";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import {
-  getReservationExistingCustomerForm,
-  type ReservationExistingCustomer,
+  getCheckoutAccountLastReservation,
+  getReservationCheckoutCustomerForm,
+  type ReservationCheckoutAccount,
 } from "@/features/reservation/reservation-existing-customer";
 import { getOfficePageOfferings } from "@/features/reservation/reservation-page-offerings";
 import { officeReservationPath } from "@/features/reservation/routes";
@@ -51,7 +53,8 @@ export const officeReservationPage = createReservationPage({
 
 export async function renderOfficeReservationContent({
   checkoutSessionId,
-  existingCustomer,
+  checkoutAccount,
+  checkoutContact,
   initialReservation,
   locale,
   pageData: seatCapacity,
@@ -60,7 +63,8 @@ export async function renderOfficeReservationContent({
   submittedCode,
 }: {
   readonly checkoutSessionId?: CheckoutSessionId;
-  readonly existingCustomer?: ReservationExistingCustomer<"office">;
+  readonly checkoutAccount: ReservationCheckoutAccount<"office">;
+  readonly checkoutContact?: ReservationCheckoutContact;
   readonly initialReservation?: NormalizedOfficeReservationOrder;
   readonly locale: Locale;
   /** The office seat capacity, loaded alongside the existing customer. */
@@ -79,24 +83,22 @@ export async function renderOfficeReservationContent({
   const restoredOrQueryValues =
     restoredInitialValues ??
     getOfficeReservationDefaultValuesFromSearchParams(searchParams, {
-      lastReservation: existingCustomer?.lastReservation,
+      lastReservation: getCheckoutAccountLastReservation(checkoutAccount),
       seatCapacity,
       today,
     });
-  const { existingCustomer: existingCustomerForm, initialValues } =
-    existingCustomer
-      ? getReservationExistingCustomerForm({
-          contact: existingCustomer.contact,
-          hasMarketingConsent: existingCustomer.hasMarketingConsent,
-          // Office links never prefill a contact, so only an explicit
-          // `customer` parameter chooses the mode.
-          queryMode: getReservationCustomerQueryMode(searchParams, {
-            prefillsContact: false,
-          }),
-          restored: Boolean(restoredInitialValues),
-          values: restoredOrQueryValues,
-        })
-      : { existingCustomer: undefined, initialValues: restoredOrQueryValues };
+  const { checkoutCustomer, initialValues } =
+    getReservationCheckoutCustomerForm({
+      account: checkoutAccount,
+      checkoutContact,
+      // Office links never prefill a contact, so only an explicit
+      // `customer` parameter chooses the mode.
+      queryMode: getReservationCustomerQueryMode(searchParams, {
+        prefillsContact: false,
+      }),
+      restored: Boolean(restoredInitialValues),
+      values: restoredOrQueryValues,
+    });
   const initialEndsOn = decodePlainDate(
     getOfficeReservationEndsOn(initialValues)
   );
@@ -135,7 +137,7 @@ export async function renderOfficeReservationContent({
       />
       <OfficeReservationForm
         checkoutSessionId={checkoutSessionId}
-        existingCustomer={existingCustomerForm}
+        checkoutCustomer={checkoutCustomer}
         seatCapacity={seatCapacity}
         initialAdvertisedPrices={initialAdvertisedPrices}
         initialAvailability={initialAvailability}

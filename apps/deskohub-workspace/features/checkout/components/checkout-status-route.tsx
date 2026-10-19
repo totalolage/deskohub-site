@@ -1,8 +1,10 @@
 import { Effect, Layer, Option, Schema } from "effect";
 import { cookies, headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
+import { getAccountSignInPath } from "@/features/account/routes";
 import {
   CheckoutStatusService,
   loadCheckoutStatusPage,
@@ -18,6 +20,7 @@ import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { readReservationAccessCookie } from "@/features/reservation/backend/reservation-access-cookie";
 import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { reservationStatusPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { RouteAutoRefresh } from "@/shared/components/route-auto-refresh";
 import {
@@ -115,6 +118,19 @@ async function CheckoutStatusContent({
       ),
       runWorkspaceEffect("checkout.status.load")
     );
+    // A signed-out visitor, such as one following the link in the author's
+    // email, signs in and comes back instead of seeing "not found".
+    if (status.status === "not_found" && (await isSignedOut())) {
+      const statusPath = `/${locale}${reservationStatusPath}/${orderId}`;
+      redirect(
+        getAccountSignInPath(
+          locale,
+          decodedSearchParams.outcome
+            ? `${statusPath}?${new URLSearchParams({ outcome: decodedSearchParams.outcome })}`
+            : statusPath
+        )
+      );
+    }
     return (
       <>
         <RouteAutoRefresh
@@ -130,6 +146,15 @@ async function CheckoutStatusContent({
     );
   });
 }
+
+/** Whether no account is signed in; an unreadable session isn't signed out. */
+const isSignedOut = () =>
+  CustomerAccountContactService.use((contacts) => contacts.currentAccount).pipe(
+    Effect.map((account) => account.status === "signed-out"),
+    Effect.orElseSucceed(() => false),
+    Effect.provide(CustomerAccountContactService.Live),
+    runWorkspaceEffect("checkout.status.viewer")
+  );
 
 function CheckoutStatusFallback({
   locale,

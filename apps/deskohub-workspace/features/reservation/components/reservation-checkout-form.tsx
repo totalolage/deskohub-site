@@ -6,11 +6,17 @@ import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers
 import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-summary";
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page-skeleton";
 import { type Locale, m } from "@/features/i18n";
-import type { ReservationExistingCustomerForm } from "@/features/reservation/reservation-existing-customer";
+import type { ReservationBillingSelectionInput } from "@/features/reservation/reservation-billing";
+import type {
+  ReservationCheckoutCustomerForm,
+  ReservationContactValues,
+} from "@/features/reservation/reservation-existing-customer";
 import type { ReservationOrderIssuanceData } from "@/features/reservation/reservation-order";
 import { Form } from "@/shared/components/ui/form";
 import { ReservationBillingFields } from "./reservation-billing-fields";
 import {
+  confirmReservationContactEmail,
+  ReservationContactHint,
   ReservationCustomerSection,
   useReservationCustomer,
 } from "./reservation-customer-fields";
@@ -19,11 +25,14 @@ import { ReservationFormSale } from "./reservation-form-sale";
 import { ReservationMarketingConsentField } from "./reservation-marketing-consent-field";
 import { ReservationPrivacyNotice } from "./reservation-privacy-notice";
 import { ReservationSubmitSection } from "./reservation-submit-section";
+import { useCheckoutEmailVerification } from "./use-checkout-email-verification";
 import { useReservationCheckout } from "./use-reservation-checkout";
 
-type ReservationFormData = FieldValues & {
-  readonly marketingConsent: boolean;
-};
+type ReservationFormData = FieldValues &
+  ReservationContactValues & {
+    readonly billing: ReservationBillingSelectionInput;
+    readonly marketingConsent: boolean;
+  };
 
 type ReservationCheckoutFormProps<
   Input extends FieldValues,
@@ -48,10 +57,9 @@ type ReservationCheckoutFormProps<
     readonly isPending: boolean;
     readonly unavailableMessage?: string;
   };
+  readonly checkoutCustomer: ReservationCheckoutCustomerForm;
   readonly checkoutSessionId?: CheckoutSessionId;
   readonly children: ReactNode;
-  /** The signed-in customer the form can book as, if any. */
-  readonly existingCustomer?: ReservationExistingCustomerForm;
   readonly form: UseFormReturn<Input, unknown, Data>;
   readonly getReservation: (data: Data) => ReservationOrderIssuanceData;
   readonly locale: Locale;
@@ -63,19 +71,27 @@ export function ReservationCheckoutForm<
 >({
   advertisedPrice,
   availability,
+  checkoutCustomer,
   checkoutSessionId,
   children,
-  existingCustomer,
   form,
   getReservation,
   locale,
 }: ReservationCheckoutFormProps<Input, Data>) {
+  const existingCustomer =
+    checkoutCustomer.status === "linked"
+      ? checkoutCustomer.existingCustomer
+      : undefined;
   const customer = useReservationCustomer(existingCustomer);
-  // Consent belongs to the Dotypos customer being booked, so only the account
-  // card knows it is already given; another contact is always asked.
-  const asksMarketingConsent = !(
-    existingCustomer?.hasMarketingConsent && customer.mode === "account"
+  const booksForSomeoneElse = Boolean(
+    existingCustomer && customer.mode === "contact"
   );
+  // Consent belongs to the account's own Dotypos customer, so the account
+  // card asks only until it is given, and someone else's contact never.
+  const asksMarketingConsent = existingCustomer
+    ? customer.mode === "account" && !existingCustomer.hasMarketingConsent
+    : true;
+  const emailVerification = useCheckoutEmailVerification({ locale });
   const {
     capturePrePaymentOutcome,
     clearSubmissionError,
@@ -96,6 +112,14 @@ export function ReservationCheckoutForm<
         if (hasPreparedPayRedirect) return;
 
         clearSubmissionError();
+        emailVerification.clearError();
+        if (
+          booksForSomeoneElse &&
+          !confirmReservationContactEmail(form, locale)
+        ) {
+          capturePrePaymentOutcome("validation");
+          return;
+        }
         if (availability.unavailableMessage) {
           capturePrePaymentOutcome("availability_changed");
           setSubmissionError(availability.unavailableMessage);
@@ -107,15 +131,28 @@ export function ReservationCheckoutForm<
           return;
         }
 
+        if (checkoutCustomer.status === "signed-out") {
+          emailVerification.verify({
+            name: data.name,
+            email: data.email,
+            phone: data.phone,
+            billing: data.billing,
+            marketingConsent: data.marketingConsent,
+          });
+          return;
+        }
+
         startCheckout({
           advertisedPriceToken: advertisedPrice.token,
-          ...(existingCustomer &&
-            customer.mode === "account" && { customer: "account" }),
+          ...(!booksForSomeoneElse && { customer: "account" }),
           marketingConsent: asksMarketingConsent && data.marketingConsent,
           reservation: getReservation(data),
         });
       },
-      () => capturePrePaymentOutcome("validation")
+      () => {
+        if (booksForSomeoneElse) confirmReservationContactEmail(form, locale);
+        capturePrePaymentOutcome("validation");
+      }
     )(event);
   };
 
@@ -139,8 +176,8 @@ export function ReservationCheckoutForm<
         <form className="space-y-7" noValidate onSubmit={handleSubmit}>
           {children}
           <ReservationCustomerSection
+            checkoutCustomer={checkoutCustomer}
             customer={customer}
-            existingCustomer={existingCustomer}
             locale={locale}
           />
           <ReservationBillingFields locale={locale} />
@@ -148,10 +185,16 @@ export function ReservationCheckoutForm<
           {asksMarketingConsent && (
             <ReservationMarketingConsentField locale={locale} />
           )}
+          {checkoutCustomer.status === "signed-out" && (
+            <ReservationContactHint>
+              {m.reservationContactVerificationHint({}, { locale })}
+            </ReservationContactHint>
+          )}
           <ReservationSubmitSection
             disabled={
               form.formState.isSubmitting ||
               isSubmittingCheckout ||
+              emailVerification.isVerifying ||
               hasPreparedPayRedirect ||
               Boolean(availability.unavailableMessage) ||
               availability.isPending ||
@@ -168,7 +211,7 @@ export function ReservationCheckoutForm<
             onRetryPrice={advertisedPrice.retry}
             priceError={advertisedPrice.isError}
             retryingPrice={advertisedPrice.isFetching}
-            submissionError={submissionError}
+            submissionError={submissionError ?? emailVerification.error}
             unavailableMessage={availability.unavailableMessage}
           />
         </form>

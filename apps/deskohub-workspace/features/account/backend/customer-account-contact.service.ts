@@ -27,6 +27,20 @@ export type CurrentLinkedAccount = LinkedCustomerAccount & {
 };
 
 /**
+ * The current session's account before any profile is read: signed out,
+ * signed in without a Dotypos profile linked yet, or linked. A session with
+ * deletion pending reads as signed out, since it can't book or link.
+ */
+export type CurrentCustomerAccount =
+  | { readonly status: "signed-out" }
+  | {
+      readonly status: "unlinked";
+      readonly accountId: CustomerAccountId;
+      readonly email: CustomerAccountSession["email"];
+    }
+  | ({ readonly status: "linked" } & CurrentLinkedAccount);
+
+/**
  * The reservation contact a signed-in, already-linked customer books with.
  * The email is the immutable login email; the name and phone come from the
  * linked Dotypos profile and are only exposed when they satisfy the
@@ -46,6 +60,11 @@ const decodeContactField = <S extends Schema.Decoder<string>>(
 ) => Option.getOrNull(Schema.decodeUnknownOption(schema)(value));
 
 interface ICustomerAccountContactService {
+  /** Reads the current session's account without claiming a link. */
+  readonly currentAccount: Effect.Effect<
+    CurrentCustomerAccount,
+    CustomerAccountAccessError
+  >;
   /**
    * Reads the current session's existing link without claiming one.
    * Anonymous, deletion-pending, and unlinked sessions yield null.
@@ -85,23 +104,43 @@ export class CustomerAccountContactService extends Context.Service<
       const links = yield* CustomerAccountLinkRepository;
       const profiles = yield* CustomerProfileService;
 
-      const currentLinkedAccount = Effect.gen(function* () {
+      const currentAccount = Effect.gen(function* () {
         const session = yield* authentication.currentUser;
-        if (!session || session.deletionRequested) return null;
+        if (!session || session.deletionRequested) {
+          return { status: "signed-out" } satisfies CurrentCustomerAccount;
+        }
 
         const dotyposCustomerId = yield* links
           .find(session.accountId)
           .pipe(
             Effect.mapError(mapCustomerAccountFailure("account-link.read"))
           );
-        if (!dotyposCustomerId) return null;
+        if (!dotyposCustomerId) {
+          return {
+            status: "unlinked",
+            accountId: session.accountId,
+            email: session.email,
+          } satisfies CurrentCustomerAccount;
+        }
 
         return {
+          status: "linked",
           accountId: session.accountId,
           dotyposCustomerId,
           email: session.email,
-        } satisfies CurrentLinkedAccount;
-      }).pipe(
+        } satisfies CurrentCustomerAccount;
+      }).pipe(Effect.withSpan("CustomerAccountContactService.currentAccount"));
+
+      const currentLinkedAccount = currentAccount.pipe(
+        Effect.map((account): CurrentLinkedAccount | null =>
+          account.status === "linked"
+            ? {
+                accountId: account.accountId,
+                dotyposCustomerId: account.dotyposCustomerId,
+                email: account.email,
+              }
+            : null
+        ),
         Effect.withSpan("CustomerAccountContactService.currentLinkedAccount")
       );
 
@@ -140,6 +179,7 @@ export class CustomerAccountContactService extends Context.Service<
       );
 
       return {
+        currentAccount,
         currentLinkedAccount,
         linkedContact,
         current,
