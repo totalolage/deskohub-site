@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { Layer, ManagedRuntime } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import { WorkspaceE2EAccountResourceService } from "../account/resources.service";
 import {
   assertNexiSandbox,
   type DatasourceConfig,
@@ -51,7 +52,12 @@ export type AgentEvalSettings = ReturnType<typeof makeAgentEvalSettings>;
 /** One runtime per Playwright worker, with a two-connection database pool. */
 export const makeAgentEvalRuntime = (datasourceConfig: DatasourceConfig) =>
   ManagedRuntime.make(
-    Layer.mergeAll(E2EDatabase.layer(datasourceConfig), FetchHttpClient.layer)
+    Layer.mergeAll(
+      WorkspaceE2EAccountResourceService.layer(datasourceConfig).pipe(
+        Layer.provideMerge(E2EDatabase.layer(datasourceConfig))
+      ),
+      FetchHttpClient.layer
+    )
   );
 
 export type AgentEvalRuntime = ReturnType<typeof makeAgentEvalRuntime>;

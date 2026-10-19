@@ -1,9 +1,4 @@
-import {
-  type DotyposCustomerId,
-  type DotyposReservationId,
-  DotyposService,
-  ExternalAPIError,
-} from "@deskohub/dotypos";
+import { ExternalAPIError } from "@deskohub/dotypos";
 import { Cause, Effect, Exit } from "effect";
 import type { DatasourceConfig } from "../config";
 import {
@@ -12,28 +7,14 @@ import {
   workspaceE2EError,
 } from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
-import {
-  getDotyposLayer,
-  waitForCancelledDotyposReservations,
-} from "../integrations/dotypos";
-import { pollUntil } from "../polling";
 import type { WorkspaceE2ERunId } from "../run-identifiers";
-import { workspaceE2EPollIntervalMs } from "../timeouts";
-import { findAuthUserEmailById, removeSyntheticAuthUser } from "./auth-rows";
 import { makeWorkspaceE2EAccountRecipientForRunId } from "./config";
 import {
-  cancelSyntheticReservation,
-  expireSyntheticCustomerProfile,
-  readSyntheticCustomerProfile,
-} from "./fixtures";
-import {
-  readWorkspaceE2EAccountJournal,
   type WorkspaceE2EAccountJournal,
   type WorkspaceE2EAccountJournalOwnerId,
   workspaceE2EAccountLaneId,
-  writeWorkspaceE2EAccountJournal,
 } from "./journal";
-import { removeWorkspaceE2EReferralRows } from "./referral-fixture";
+import { WorkspaceE2EAccountResourceService } from "./resources.service";
 
 type WorkspaceE2EAccountCleanupIds = Pick<
   WorkspaceE2EAccountJournal,
@@ -57,24 +38,6 @@ const toWorkspaceE2EFailure = (cause: unknown): WorkspaceE2EError =>
   toWorkspaceE2EError("workspace account e2e finalizer step", cause);
 
 /**
- * The provider and database steps journal reconciliation runs, replaceable
- * so tests can make each one fail.
- */
-export type WorkspaceE2EAccountReconciliationSteps = {
-  readonly removeRows: typeof removeWorkspaceE2EReferralRows;
-  readonly cancelReservations: (
-    datasourceConfig: DatasourceConfig,
-    reservationIds: readonly string[]
-  ) => Effect.Effect<void, WorkspaceE2EError>;
-  readonly expireProfile: (
-    datasourceConfig: DatasourceConfig,
-    customerId: string
-  ) => Effect.Effect<void, WorkspaceE2EError>;
-  readonly removeAuthUser: typeof removeSyntheticAuthUser;
-  readonly writeJournal: typeof writeWorkspaceE2EAccountJournal;
-};
-
-/**
  * Interruption-safe finalizer for one account case journal. Cancels and
  * converges every journaled synthetic reservation, expires (never deletes)
  * every journaled synthetic Dotypos profile, then deletes the journaled
@@ -85,35 +48,31 @@ export type WorkspaceE2EAccountReconciliationSteps = {
  * because every step is idempotent for the exact owned IDs.
  */
 const reconcileWorkspaceE2EAccountJournal = ({
-  datasourceConfig,
   journal,
   journalDirectory,
   candidates = journal,
-  steps,
 }: {
-  readonly datasourceConfig: DatasourceConfig;
   readonly journal: WorkspaceE2EAccountJournal;
   readonly journalDirectory?: string;
   readonly candidates?: WorkspaceE2EAccountLaneCandidates;
-  readonly steps: WorkspaceE2EAccountReconciliationSteps;
-}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+}): Effect.Effect<
+  void,
+  WorkspaceE2EError,
+  WorkspaceE2EAccountResourceService
+> =>
   Effect.gen(function* () {
+    const resources = yield* WorkspaceE2EAccountResourceService;
     const failures: WorkspaceE2EError[] = [];
 
     const reservationExit = yield* Effect.exit(
-      steps.cancelReservations(
-        datasourceConfig,
-        candidates.dotyposReservationIds
-      )
+      resources.cancelReservations(candidates.dotyposReservationIds)
     );
     if (Exit.isFailure(reservationExit)) {
       failures.push(toWorkspaceE2EFailure(Cause.squash(reservationExit.cause)));
     }
 
     for (const customerId of candidates.dotyposCustomerIds) {
-      const exit = yield* Effect.exit(
-        steps.expireProfile(datasourceConfig, customerId)
-      );
+      const exit = yield* Effect.exit(resources.expireProfile(customerId));
       if (Exit.isFailure(exit)) {
         failures.push(toWorkspaceE2EFailure(Cause.squash(exit.cause)));
       }
@@ -124,11 +83,9 @@ const reconcileWorkspaceE2EAccountJournal = ({
     // failed or interrupted provider step leaves them for the next pass.
     if (failures.length === 0) {
       const referralRowsExit = yield* Effect.exit(
-        steps.removeRows({
-          syntheticDotyposCustomerIds:
-            journal.dotyposCustomerIds as DotyposCustomerId[],
-          syntheticDotyposReservationIds:
-            journal.dotyposReservationIds as DotyposReservationId[],
+        resources.removeRows({
+          syntheticDotyposCustomerIds: journal.dotyposCustomerIds,
+          syntheticDotyposReservationIds: journal.dotyposReservationIds,
         })
       );
       if (Exit.isFailure(referralRowsExit)) {
@@ -139,7 +96,7 @@ const reconcileWorkspaceE2EAccountJournal = ({
     }
 
     const authExit = yield* Effect.exit(
-      Effect.forEach(candidates.authUserIds, steps.removeAuthUser, {
+      Effect.forEach(candidates.authUserIds, resources.removeAuthUser, {
         discard: true,
       })
     );
@@ -160,15 +117,10 @@ const reconcileWorkspaceE2EAccountJournal = ({
       );
     }
 
-    yield* Effect.tryPromise({
-      catch: (cause) =>
-        workspaceE2EError("persist workspace account e2e journal", {
-          cause,
-          operation: "persist workspace account e2e journal",
-        }),
-      try: () =>
-        steps.writeJournal({ ...journal, completed: true }, journalDirectory),
-    });
+    yield* resources.writeJournal(
+      { ...journal, completed: true },
+      journalDirectory
+    );
   });
 
 /**
@@ -179,20 +131,16 @@ const reconcileWorkspaceE2EAccountJournal = ({
  * attempted before the first failure is reported.
  */
 export const reconcileWorkspaceE2EAccountJournals = (
-  datasourceConfig: DatasourceConfig,
-  prepared: readonly WorkspaceE2EAccountLaneReconciliation[],
-  steps: WorkspaceE2EAccountReconciliationSteps = defaultAccountReconciliationSteps
-): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  prepared: readonly WorkspaceE2EAccountLaneReconciliation[]
+): Effect.Effect<void, WorkspaceE2EError, WorkspaceE2EAccountResourceService> =>
   Effect.gen(function* () {
     const failures: WorkspaceE2EError[] = [];
     for (const candidates of prepared) {
       const exit = yield* Effect.exit(
         reconcileWorkspaceE2EAccountJournal({
-          datasourceConfig,
           candidates,
           journal: candidates.journal,
           journalDirectory: candidates.journalDirectory,
-          steps,
         })
       );
       if (Exit.isFailure(exit)) {
@@ -263,28 +211,6 @@ export const workspaceE2EAccountLaneJournalOwner: WorkspaceE2EAccountJournalOwne
     recipientLabels: accountLaneRecipientLabels,
   };
 
-type AccountLanePreparationDependencies = {
-  readonly readJournal: typeof readWorkspaceE2EAccountJournal;
-  readonly findAuthUserEmailById: typeof findAuthUserEmailById;
-  readonly readSyntheticCustomerProfile: typeof readSyntheticCustomerProfile;
-  readonly readReservationOwner: typeof readAccountReservationOwner;
-};
-
-const readAccountReservationOwner = Effect.fn(
-  "readWorkspaceE2EAccountReservationOwner"
-)(function* (datasourceConfig: DatasourceConfig, id: string) {
-  const { customer } = yield* Effect.gen(function* () {
-    const dotypos = yield* DotyposService;
-    return yield* dotypos.getReservation(id as DotyposReservationId);
-  }).pipe(
-    Effect.provide(getDotyposLayer(datasourceConfig)),
-    Effect.mapError((cause) =>
-      toWorkspaceE2EError("read synthetic account reservation owner", cause)
-    )
-  );
-  return customer.email ?? null;
-});
-
 export const validateWorkspaceE2EAccountLaneJournalOwnership = ({
   journal,
   recipientEmails,
@@ -341,34 +267,21 @@ export const validateWorkspaceE2EAccountLaneJournalOwnership = ({
   };
 };
 
-const defaultAccountLanePreparationDependencies: AccountLanePreparationDependencies =
-  {
-    readJournal: readWorkspaceE2EAccountJournal,
-    findAuthUserEmailById,
-    readSyntheticCustomerProfile,
-    readReservationOwner: readAccountReservationOwner,
-  };
-
 export const prepareWorkspaceE2EAccountLaneReconciliation = (
   datasourceConfig: DatasourceConfig,
   runId: WorkspaceE2ERunId,
-  dependencies: AccountLanePreparationDependencies = defaultAccountLanePreparationDependencies,
   owner: WorkspaceE2EAccountJournalOwner = workspaceE2EAccountLaneJournalOwner
 ): Effect.Effect<
   WorkspaceE2EAccountLaneReconciliation | undefined,
   WorkspaceE2EError,
-  E2EDatabase
+  E2EDatabase | WorkspaceE2EAccountResourceService
 > =>
   Effect.gen(function* () {
-    const journal = yield* Effect.tryPromise({
-      catch: (cause) =>
-        workspaceE2EError("read workspace account e2e lane journal", {
-          cause,
-          operation: "read workspace account e2e lane journal",
-        }),
-      try: () =>
-        dependencies.readJournal(owner.ownerId, owner.journalDirectory),
-    });
+    const resources = yield* WorkspaceE2EAccountResourceService;
+    const journal = yield* resources.readJournal(
+      owner.ownerId,
+      owner.journalDirectory
+    );
     if (!journal) return undefined;
 
     const recipientEmails = new Set(
@@ -378,29 +291,24 @@ export const prepareWorkspaceE2EAccountLaneReconciliation = (
     );
 
     const authUserOwners = yield* Effect.forEach(journal.authUserIds, (id) =>
-      dependencies
-        .findAuthUserEmailById(id)
+      resources
+        .readAuthUserEmail(id)
         .pipe(Effect.map((email) => [id, email] as const))
     );
     const customerOwners = yield* Effect.forEach(
       journal.dotyposCustomerIds,
       (id) =>
-        dependencies
-          .readSyntheticCustomerProfile(
-            datasourceConfig,
-            id as DotyposCustomerId
+        resources.readCustomerProfile(id).pipe(
+          Effect.map((customer) => [id, customer.email ?? null] as const),
+          Effect.catchIf(isNotFound("getCustomer"), () =>
+            Effect.succeed([id, undefined] as const)
           )
-          .pipe(
-            Effect.map((customer) => [id, customer.email ?? null] as const),
-            Effect.catchIf(isNotFound("getCustomer"), () =>
-              Effect.succeed([id, undefined] as const)
-            )
-          )
+        )
     );
     const reservationOwners = yield* Effect.forEach(
       journal.dotyposReservationIds,
       (id) =>
-        dependencies.readReservationOwner(datasourceConfig, id).pipe(
+        resources.readReservationOwner(id).pipe(
           Effect.map((email) => [id, email] as const),
           Effect.catchIf(isNotFound("getReservation"), () =>
             Effect.succeed([id, undefined] as const)
@@ -441,15 +349,10 @@ export const prepareWorkspaceE2EAccountJournalReconciliations = (
 ): Effect.Effect<
   readonly WorkspaceE2EAccountLaneReconciliation[],
   WorkspaceE2EError,
-  E2EDatabase
+  E2EDatabase | WorkspaceE2EAccountResourceService
 > =>
   Effect.forEach(owners, (owner) =>
-    prepareWorkspaceE2EAccountLaneReconciliation(
-      datasourceConfig,
-      runId,
-      defaultAccountLanePreparationDependencies,
-      owner
-    )
+    prepareWorkspaceE2EAccountLaneReconciliation(datasourceConfig, runId, owner)
   ).pipe(
     Effect.map((prepared) =>
       prepared.filter(
@@ -471,81 +374,4 @@ export const isNotFound =
       cause.operation === operation &&
       cause.statusCode === 404
     );
-  };
-
-const reconcileReservations = (
-  datasourceConfig: DatasourceConfig,
-  reservationIds: readonly string[]
-): Effect.Effect<void, WorkspaceE2EError> =>
-  Effect.gen(function* () {
-    if (reservationIds.length === 0) return;
-    const dotyposReservationIds = reservationIds.map(
-      (value) => value as DotyposReservationId
-    );
-    yield* Effect.forEach(
-      dotyposReservationIds,
-      (reservationId) =>
-        cancelSyntheticReservation(datasourceConfig, reservationId),
-      { concurrency: "unbounded", discard: true }
-    );
-    yield* waitForCancelledDotyposReservations(
-      datasourceConfig,
-      dotyposReservationIds,
-      {
-        endDate: new Date(Date.now() + 400 * 24 * 60 * 60 * 1000),
-        startDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
-      }
-    ).pipe(
-      Effect.mapError((cause) =>
-        workspaceE2EError("converge synthetic account reservations", {
-          cause,
-          operation: "converge synthetic account reservations",
-        })
-      )
-    );
-  });
-
-const expireAndConvergeProfile = (
-  datasourceConfig: DatasourceConfig,
-  customerId: string
-): Effect.Effect<void, WorkspaceE2EError> =>
-  Effect.gen(function* () {
-    yield* expireSyntheticCustomerProfile(
-      datasourceConfig,
-      customerId as DotyposCustomerId
-    );
-    yield* pollUntil(
-      readSyntheticCustomerProfile(
-        datasourceConfig,
-        customerId as DotyposCustomerId
-      ).pipe(
-        Effect.map((customer) =>
-          customer.expireDate != null &&
-          new Date(customer.expireDate).getTime() <= Date.now()
-            ? customer
-            : undefined
-        )
-      ),
-      {
-        intervalMs: workspaceE2EPollIntervalMs.datasource,
-        label: "expired synthetic Dotypos profile convergence",
-        timeoutMs: datasourceConfig.timeouts.datasource,
-      }
-    );
-  }).pipe(
-    Effect.mapError((cause) =>
-      workspaceE2EError("expire synthetic Dotypos profile", {
-        cause,
-        operation: "expire synthetic Dotypos profile",
-      })
-    )
-  );
-
-const defaultAccountReconciliationSteps: WorkspaceE2EAccountReconciliationSteps =
-  {
-    cancelReservations: reconcileReservations,
-    expireProfile: expireAndConvergeProfile,
-    removeAuthUser: removeSyntheticAuthUser,
-    removeRows: removeWorkspaceE2EReferralRows,
-    writeJournal: writeWorkspaceE2EAccountJournal,
   };

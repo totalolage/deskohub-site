@@ -16,8 +16,8 @@ import {
   reconcileWorkspaceE2EAccountJournals,
   validateWorkspaceE2EAccountLaneJournalOwnership,
   type WorkspaceE2EAccountJournalOwner,
-  type WorkspaceE2EAccountReconciliationSteps,
 } from "./reconcile";
+import { WorkspaceE2EAccountResourceServiceMock } from "./resources.service.mock";
 
 const recipient = testEmailAddress("delivered+agent-run-agent");
 const otherContact = testEmailAddress("someone.else");
@@ -176,41 +176,13 @@ const makeWorld = (unrelatedHold = false) => {
     recipientLabels: ["agent"],
   };
 
-  const prepare = () =>
-    prepareWorkspaceE2EAccountLaneReconciliation(
-      {} as DatasourceConfig,
-      runId,
-      {
-        findAuthUserEmailById: (id) => Effect.succeed(authUsers.get(id)),
-        readJournal: async () => journal,
-        readReservationOwner: (_config, id) =>
-          Effect.succeed(reservations.get(id)?.email ?? null),
-        readSyntheticCustomerProfile: (_config, id) =>
-          Effect.succeed({
-            _cloudId: "synthetic-cloud",
-            deleted: false,
-            display: true,
-            email: customers.get(id)?.email,
-            expireDate: customers.get(id)?.expired
-              ? new Date(0).toISOString()
-              : undefined,
-            flags: "",
-            id,
-            points: null,
-          } as Customer),
-      },
-      owner
-    );
-
-  const steps = (
-    failing?: ReconciliationStep
-  ): WorkspaceE2EAccountReconciliationSteps => {
+  const resources = (failing?: ReconciliationStep) => {
     const fail = (step: ReconciliationStep) =>
-      workspaceE2EError(`synthetic ${step} failure`);
-    return {
-      cancelReservations: (_config, ids) =>
+      Effect.fail(workspaceE2EError(`synthetic ${step} failure`));
+    return WorkspaceE2EAccountResourceServiceMock({
+      cancelReservations: (ids) =>
         failing === "cancel"
-          ? Effect.fail(fail("cancel"))
+          ? fail("cancel")
           : Effect.sync(() => {
               for (const id of ids) {
                 const reservation = reservations.get(id);
@@ -218,37 +190,56 @@ const makeWorld = (unrelatedHold = false) => {
                 cancelled.push(id);
               }
             }),
-      expireProfile: (_config, id) =>
+      expireProfile: (id) =>
         failing === "expire"
-          ? Effect.fail(fail("expire"))
+          ? fail("expire")
           : Effect.sync(() => {
               const customer = customers.get(id);
               if (customer) customer.expired = true;
             }),
+      readAuthUserEmail: (id) => Effect.succeed(authUsers.get(id)),
+      readCustomerProfile: (id) =>
+        Effect.succeed({
+          _cloudId: "synthetic-cloud",
+          deleted: false,
+          display: true,
+          email: customers.get(id)?.email,
+          expireDate: customers.get(id)?.expired
+            ? new Date(0).toISOString()
+            : undefined,
+          flags: "",
+          id,
+          points: null,
+        } as Customer),
+      readJournal: () => Effect.sync(() => journal),
+      readReservationOwner: (id) =>
+        Effect.succeed(reservations.get(id)?.email ?? null),
       removeAuthUser: (id) => Effect.sync(() => void authUsers.delete(id)),
       removeRows: ({ syntheticDotyposReservationIds }) =>
         failing === "remove rows"
-          ? Effect.fail(fail("remove rows"))
+          ? fail("remove rows")
           : Effect.sync(() => {
               for (const id of syntheticDotyposReservationIds) rows.delete(id);
             }),
-      writeJournal: async (completed) => {
-        journal = completed;
-      },
-    };
+      writeJournal: (completed) =>
+        Effect.sync(() => {
+          journal = completed;
+        }),
+    });
   };
 
   /* One suite-cleanup pass: prepare the journal, then reconcile it. */
   const reconcile = (failing?: ReconciliationStep) =>
     Effect.runPromiseExit(
-      prepare().pipe(
+      prepareWorkspaceE2EAccountLaneReconciliation(
+        {} as DatasourceConfig,
+        runId,
+        owner
+      ).pipe(
         Effect.flatMap((prepared) =>
-          reconcileWorkspaceE2EAccountJournals(
-            {} as DatasourceConfig,
-            prepared ? [prepared] : [],
-            steps(failing)
-          )
+          reconcileWorkspaceE2EAccountJournals(prepared ? [prepared] : [])
         ),
+        Effect.provide(resources(failing)),
         Effect.provideService(E2EDatabase, E2EDatabase.of({ db: {} as never }))
       )
     );

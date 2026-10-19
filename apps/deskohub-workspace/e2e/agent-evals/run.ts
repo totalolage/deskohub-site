@@ -133,7 +133,6 @@ export const reconcileAgentEvalRun = Effect.fn("reconcileAgentEvalRun")(
       prepared.flatMap((entry) => entry.journal.dotyposReservationIds)
     );
     yield* reconcileWorkspaceE2EAccountJournals(
-      datasourceConfig,
       prepared.map((entry) => ({
         ...entry,
         journal: {
