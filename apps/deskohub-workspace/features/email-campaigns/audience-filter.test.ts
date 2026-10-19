@@ -352,7 +352,11 @@ describe("collectAudienceFactRequests", () => {
   test("shares a request between contexts only where their bounds agree", () => {
     const triggeredAt = (at: string): AudienceEvaluationContext => ({
       ...context,
-      trigger: Option.some({ at: Temporal.Instant.from(at) }),
+      trigger: Option.some({
+        kind: "schedule",
+        at: Temporal.Instant.from(at),
+        reservationId: Option.none(),
+      }),
     });
     const afterTrigger = {
       attribute: "reservationCount",
