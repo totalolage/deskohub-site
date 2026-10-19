@@ -19,7 +19,8 @@ import type {
 import {
   shouldOfferNewReservation,
   shouldOfferReservationRetry,
-} from "@/features/checkout/checkout-status-new-reservation-policy";
+  shouldPromiseReservationDetailsEmail,
+} from "@/features/checkout/checkout-status-policy";
 import type { CheckoutStatusSummaryPresentation } from "@/features/checkout/checkout-status-summary-presentation";
 import { getCoworkCheckoutStatusSummary } from "@/features/cowork/components/cowork-checkout-status-summary";
 import { type Locale, m } from "@/features/i18n";
@@ -489,11 +490,12 @@ export function CheckoutStatusPage({
             ))}
           </dl>
 
-          {summaryRows.length === 0 && (
-            <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink">
-              {m.checkoutStatusMissingSummary({}, { locale })}
-            </p>
-          )}
+          {summaryRows.length === 0 &&
+            shouldPromiseReservationDetailsEmail(status.status) && (
+              <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink">
+                {m.checkoutStatusMissingSummary({}, { locale })}
+              </p>
+            )}
         </div>
       )}
 

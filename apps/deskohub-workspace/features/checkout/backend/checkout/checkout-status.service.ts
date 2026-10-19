@@ -17,7 +17,7 @@ import type {
   LatePaymentRecovery,
   PaymentState,
 } from "@/db/schema";
-import { shouldOfferReservationRetry } from "@/features/checkout/checkout-status-new-reservation-policy";
+import { shouldOfferReservationRetry } from "@/features/checkout/checkout-status-policy";
 import { getProviderOrderAbandonmentCutoff } from "@/features/checkout/provider-order-abandonment";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {

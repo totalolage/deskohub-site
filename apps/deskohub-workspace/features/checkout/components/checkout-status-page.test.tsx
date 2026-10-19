@@ -1028,36 +1028,42 @@ describe("CheckoutStatusPage outcome sentences", () => {
       paymentStatus: "paid",
       fulfillmentStatus: "fulfilled",
       lead: m.checkoutStatusFulfilledLead,
+      promisesDetailsEmail: true,
     },
     {
       status: "paid_awaiting_delivery",
       paymentStatus: "paid",
       fulfillmentStatus: "awaiting_delivery",
       lead: m.checkoutStatusPaidAwaitingDeliveryLeadWithoutEmail,
+      promisesDetailsEmail: true,
     },
     {
       status: "pending",
       paymentStatus: "pending",
       fulfillmentStatus: "not_started",
       lead: m.checkoutStatusPendingLead,
+      promisesDetailsEmail: true,
     },
     {
       status: "payment_failed",
       paymentStatus: "failed",
       fulfillmentStatus: "not_started",
       lead: m.checkoutStatusPaymentFailedLead,
+      promisesDetailsEmail: false,
     },
     {
       status: "cancelled",
       paymentStatus: "cancelled",
       fulfillmentStatus: "not_started",
       lead: m.checkoutStatusCancelledLead,
+      promisesDetailsEmail: false,
     },
     {
       status: "expired",
       paymentStatus: "expired",
       fulfillmentStatus: "not_started",
       lead: m.checkoutStatusExpiredLead,
+      promisesDetailsEmail: false,
     },
   ] as const;
 
@@ -1069,7 +1075,14 @@ describe("CheckoutStatusPage outcome sentences", () => {
     )
   )(
     "server-renders the $status sentence as plain text in $locale",
-    ({ fulfillmentStatus, lead, locale, paymentStatus, status }) => {
+    ({
+      fulfillmentStatus,
+      lead,
+      locale,
+      paymentStatus,
+      promisesDetailsEmail,
+      status,
+    }) => {
       const container = document.createElement("div");
       container.innerHTML = renderToStaticMarkup(
         <CheckoutStatusPage
@@ -1084,6 +1097,11 @@ describe("CheckoutStatusPage outcome sentences", () => {
           (paragraph) => paragraph.textContent === sentence
         )
       ).toBe(true);
+      expect(
+        container.textContent?.includes(
+          m.checkoutStatusMissingSummary({}, { locale })
+        )
+      ).toBe(promisesDetailsEmail);
     }
   );
 });

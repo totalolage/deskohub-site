@@ -3,7 +3,8 @@ import type { CheckoutStatusKind } from "@/features/checkout/backend/checkout";
 import {
   shouldOfferNewReservation,
   shouldOfferReservationRetry,
-} from "@/features/checkout/checkout-status-new-reservation-policy";
+  shouldPromiseReservationDetailsEmail,
+} from "@/features/checkout/checkout-status-policy";
 
 describe("shouldOfferNewReservation", () => {
   test("starts a new reservation only when the checkout holds no live paid reservation", () => {
@@ -44,11 +45,38 @@ describe("shouldOfferNewReservation", () => {
   });
 });
 
+const allStatuses: CheckoutStatusKind[] = [
+  "not_found",
+  "created",
+  "pending",
+  "payment_pending_delayed",
+  "paid_waiting_fulfillment",
+  "paid_fulfillment_delayed",
+  "paid_awaiting_delivery",
+  "paid_delivery_delayed",
+  "fulfilled",
+  "fulfillment_failed",
+  "payment_failed",
+  "cancelled",
+  "expired",
+  "late_payment_checking",
+  "late_payment_refund",
+  "late_payment_review",
+];
+
 describe("shouldOfferReservationRetry", () => {
   test("retries the same selection only after a payment ended without settling", () => {
-    const allStatuses: CheckoutStatusKind[] = [
-      "not_found",
-      "created",
+    expect(allStatuses.filter(shouldOfferReservationRetry)).toEqual([
+      "payment_failed",
+      "cancelled",
+      "expired",
+    ]);
+  });
+});
+
+describe("shouldPromiseReservationDetailsEmail", () => {
+  test("promises the details by email only for a reservation that is or will be confirmed", () => {
+    expect(allStatuses.filter(shouldPromiseReservationDetailsEmail)).toEqual([
       "pending",
       "payment_pending_delayed",
       "paid_waiting_fulfillment",
@@ -56,19 +84,6 @@ describe("shouldOfferReservationRetry", () => {
       "paid_awaiting_delivery",
       "paid_delivery_delayed",
       "fulfilled",
-      "fulfillment_failed",
-      "payment_failed",
-      "cancelled",
-      "expired",
-      "late_payment_checking",
-      "late_payment_refund",
-      "late_payment_review",
-    ];
-
-    expect(allStatuses.filter(shouldOfferReservationRetry)).toEqual([
-      "payment_failed",
-      "cancelled",
-      "expired",
     ]);
   });
 });
