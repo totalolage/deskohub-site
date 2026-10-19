@@ -111,21 +111,6 @@ describe("saved audience shapes", () => {
     readonly uses: AudienceFilterUses;
   }[] = [
     {
-      use: "the first visit",
-      filter: { attribute: "firstVisit", _tag: "Condition", operator: "none" },
-      uses: { ...noUses, attributes: ["firstVisit"] },
-    },
-    {
-      use: "any time so far",
-      filter: {
-        attribute: "lastVisit",
-        _tag: "Condition",
-        operator: "in",
-        value: { _tag: "Past" },
-      },
-      uses: { ...noUses, periods: ["Past"] },
-    },
-    {
       use: "a trigger window",
       filter: {
         attribute: "reservationCount",
@@ -145,11 +130,6 @@ describe("saved audience shapes", () => {
       uses: { ...noUses, periods: ["TriggerWindow"] },
     },
     {
-      use: "one campaign's emails",
-      filter: campaignEmails({ _tag: "Specific", campaignId: springCampaign }),
-      uses: { ...noUses, campaignSources: ["Specific"] },
-    },
-    {
       use: "this campaign's emails",
       filter: campaignEmails({ _tag: "This" }),
       uses: { ...noUses, campaignSources: ["This"] },
@@ -166,8 +146,9 @@ describe("saved audience shapes", () => {
     ).toMatchObject({ _tag: "AudienceFilterContextInvalid", uses });
   });
 
-  test("reports nothing for the uses saved audiences already hold", () => {
+  test("reports nothing for supported saved audience uses", () => {
     const filter = group("and", [
+      { attribute: "firstVisit", _tag: "Condition", operator: "none" },
       {
         attribute: "hasAccount",
         _tag: "Condition",
@@ -179,6 +160,12 @@ describe("saved audience shapes", () => {
         _tag: "Condition",
         operator: "in",
         value: { _tag: "Range", from: "2026-01-01", to: "2026-03-31" },
+      },
+      {
+        attribute: "lastVisit",
+        _tag: "Condition",
+        operator: "in",
+        value: { _tag: "Past" },
       },
       {
         attribute: "accountCreated",
@@ -197,6 +184,7 @@ describe("saved audience shapes", () => {
         value: 2,
       },
       anyCampaignEmails,
+      campaignEmails({ _tag: "Specific", campaignId: springCampaign }),
     ]);
 
     expect(savedAudienceUnavailableUsesIn(filter)).toEqual(noUses);
