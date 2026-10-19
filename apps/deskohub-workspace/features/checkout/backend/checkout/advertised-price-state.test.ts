@@ -7,10 +7,7 @@ import {
   canonicalPromotionCodeSchema,
   discountIdSchema,
 } from "@/features/discounts";
-import {
-  parseCheckoutStateKey,
-  sealCheckoutState,
-} from "./checkout-state-token";
+import { parseSealedStateKey, sealState } from "@/shared/backend/sealed-state";
 
 const testEmailAddressForAda = testEmailAddress("ada");
 
@@ -24,7 +21,7 @@ const {
 
 const fixedNow = new Date("2026-06-01T10:00:00.000Z");
 const fixedKey = Effect.runSync(
-  parseCheckoutStateKey("test-kid", Buffer.alloc(32, 1).toString("base64url"))
+  parseSealedStateKey("test-kid", Buffer.alloc(32, 1).toString("base64url"))
 );
 const fixedRandomBytes = (byteLength: number) => Buffer.alloc(byteLength, 7);
 const reservation = {
@@ -177,8 +174,8 @@ describe("advertised price state", () => {
     ).toMatchObject({
       _tag: "AdvertisedPriceStateTokenError",
       code: "expired",
-      message: "Checkout state token expired.",
-      cause: { _tag: "CheckoutStateTokenError", code: "expired" },
+      message: "Sealed state token expired.",
+      cause: { _tag: "SealedStateTokenError", code: "expired" },
     });
     expect(
       Effect.runSync(
@@ -198,7 +195,7 @@ describe("advertised price state", () => {
   test("strictly rejects extra snapshot fields", () => {
     const state = { ...buildState(), customerEmail: testEmailAddressForAda };
     const token = Effect.runSync(
-      sealCheckoutState(state, state.kid, {
+      sealState(state, state.kid, {
         keys: [fixedKey],
         randomBytes: fixedRandomBytes,
       })

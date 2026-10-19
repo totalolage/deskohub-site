@@ -1,9 +1,10 @@
 import type * as Playwright from "@playwright/test";
 import {
+  encodeAuthCallbackReturn,
+  readAuthCallbackReturnTo,
   signInAttemptParam,
-  signInReturnParam,
+  signInCallbackReturnParam,
 } from "@/features/account/routes";
-import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
 
 const callbackPath = "/en-US/auth/callback";
 const failureParamName = "error";
@@ -15,7 +16,8 @@ const canonicalUuidV4Pattern =
 
 /**
  * The callback query production mints: at most one canonical UUIDv4
- * `attempt` and at most one canonical same-origin `returnTo`, nothing else.
+ * `attempt` and at most one canonical encoded same-origin `return`, nothing
+ * else.
  */
 const isCallbackQuery = (entries: readonly [string, string][]): boolean => {
   const parameters = new Map(entries);
@@ -23,11 +25,17 @@ const isCallbackQuery = (entries: readonly [string, string][]): boolean => {
   for (const [name, value] of parameters) {
     if (name === signInAttemptParam) {
       if (!canonicalUuidV4Pattern.test(value)) return false;
-    } else if (
-      name !== signInReturnParam ||
-      parseSameOriginPath(value) !== value
-    ) {
-      return false;
+    } else {
+      const returnTo =
+        name === signInCallbackReturnParam
+          ? readAuthCallbackReturnTo(value)
+          : undefined;
+      if (
+        returnTo === undefined ||
+        encodeAuthCallbackReturn(returnTo) !== value
+      ) {
+        return false;
+      }
     }
   }
   return true;
@@ -36,7 +44,7 @@ const isCallbackQuery = (entries: readonly [string, string][]): boolean => {
 /**
  * The shared callback URL grammar: the exact expected origin and path, no
  * fragment, and a query of at most one canonical UUIDv4 `attempt` and one
- * same-origin `returnTo`. Any other parameter name, count, or shape fails
+ * encoded same-origin `return`. Any other parameter name, count, or shape fails
  * closed.
  */
 export const isExactCallbackUrlString = (

@@ -1,7 +1,13 @@
 import { Option } from "effect";
 
 const sentinelOrigin = "https://same-origin-path.invalid";
-const maxPathLength = 2048;
+/**
+ * The longest path a same-origin destination may have. It fits a sign-in
+ * return path carrying sealed checkout state, which a magic link carries
+ * base64url-encoded, a third longer, under the 14 KB URL limit of Vercel's
+ * CDN.
+ */
+export const maxSameOriginPathLength = 8 * 1024;
 
 const parseAgainstSentinel = Option.liftThrowable(
   (path: string) => new URL(path, sentinelOrigin)
@@ -27,7 +33,7 @@ export const parseSameOriginPath = (
   if (
     value === null ||
     value === undefined ||
-    value.length > maxPathLength ||
+    value.length > maxSameOriginPathLength ||
     !isRootRelative(value)
   ) {
     return undefined;
