@@ -29,7 +29,7 @@ type CliMutationClaim =
   | { readonly kind: "in-progress" }
   | { readonly kind: "mismatch" };
 
-export type CliMutationRequest = {
+type CliMutationRequest = {
   readonly sessionId: CliSessionIdType;
   readonly requestId: CliMutationRequestIdType;
   readonly mutation: CliStoredMutation;

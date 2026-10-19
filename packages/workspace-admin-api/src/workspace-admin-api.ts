@@ -279,16 +279,22 @@ export class CliSessionUnauthorized extends Schema.TaggedErrorClass<CliSessionUn
   static schema = this.pipe(HttpApiSchema.status("Unauthorized"));
 }
 
+/**
+ * The campaign port's stable error code, when the failure came from it.
+ * Older servers omit it.
+ */
+const cliErrorCode = Schema.optionalKey(Schema.String);
+
 export class CliServiceUnavailable extends Schema.TaggedErrorClass<CliServiceUnavailable>()(
   "CliServiceUnavailable",
-  { message: Schema.String }
+  { message: Schema.String, code: cliErrorCode }
 ) {
   static schema = this.pipe(HttpApiSchema.status("ServiceUnavailable"));
 }
 
 export class CliResourceNotFound extends Schema.TaggedErrorClass<CliResourceNotFound>()(
   "CliResourceNotFound",
-  { message: Schema.String }
+  { message: Schema.String, code: cliErrorCode }
 ) {
   static schema = this.pipe(HttpApiSchema.status("NotFound"));
 }
@@ -296,14 +302,14 @@ export class CliResourceNotFound extends Schema.TaggedErrorClass<CliResourceNotF
 /** Request content the server can't accept, such as an unparsable body. */
 export class CliInputInvalid extends Schema.TaggedErrorClass<CliInputInvalid>()(
   "CliInputInvalid",
-  { message: Schema.String }
+  { message: Schema.String, code: cliErrorCode }
 ) {
   static schema = this.pipe(HttpApiSchema.status("BadRequest"));
 }
 
 export class CliMutationRejected extends Schema.TaggedErrorClass<CliMutationRejected>()(
   "CliMutationRejected",
-  { message: Schema.String }
+  { message: Schema.String, code: cliErrorCode }
 ) {
   static schema = this.pipe(HttpApiSchema.status("Conflict"));
 }
