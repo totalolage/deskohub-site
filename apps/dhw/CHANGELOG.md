@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.20.0...dhw-v1.21.0) (2026-10-19)
+
+
+### Features
+
+* **workspace:** let saved audiences count one campaign's emails, first visits and "any time so far" ([194a13f](https://github.com/totalolage/deskohub-site/commit/194a13fc965b65485e807a1d01f7ff37f76bb0f0))
+
 ## [1.20.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.19.0...dhw-v1.20.0) (2026-10-19)
 
 
