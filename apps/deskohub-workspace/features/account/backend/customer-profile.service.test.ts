@@ -215,6 +215,71 @@ describe("CustomerProfileService", () => {
     expect(layers.readCustomerIds).toEqual([]);
   });
 
+  test("creates the profile under the account lock", async () => {
+    const layers = makeLayers({ createdCustomerId: "60999" });
+
+    await runProfile(layers, (service) =>
+      service.create(account.accountId, verifiedEmail, { firstName: "Nova" })
+    );
+
+    expect(layers.calls[0]).toBe("lock-acquire");
+    expect(layers.calls).toContain("create-profile");
+    expect(layers.calls[layers.calls.length - 1]).toBe("lock-release");
+  });
+
+  test("creates the profile under a held lock without taking the account lock", async () => {
+    const layers = makeLayers({ createdCustomerId: "60999" });
+
+    const creation = await runProfile(layers, (service) =>
+      service.createUnderHeldLock(account.accountId, verifiedEmail, {
+        firstName: "Nova",
+        phone: "+420601111222",
+      })
+    );
+
+    expect(creation).toEqual({
+      account: { accountId: account.accountId, dotyposCustomerId: "60999" },
+      profile: createdProfile,
+      created: true,
+    });
+    expect(layers.createInputs).toEqual([
+      {
+        email: verifiedEmail,
+        profile: { firstName: "Nova", phone: "+420601111222" },
+      },
+    ]);
+    expect(layers.calls).toEqual([
+      "deletion-state",
+      "find-link",
+      "create-profile",
+      "claim",
+    ]);
+  });
+
+  test("stops creating under a held lock once the account has requested deletion", async () => {
+    const layers = makeLayers({
+      accountState: { kind: "active", deletionRequestedAt: new Date() },
+    });
+
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* CustomerProfileService;
+        return yield* service.createUnderHeldLock(
+          account.accountId,
+          verifiedEmail,
+          { firstName: "Nova" }
+        );
+      }).pipe(Effect.provide(layers.service), Effect.result)
+    );
+
+    expect(outcome).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "link-required", linkReason: "deletion-requested" },
+    });
+    expect(layers.calls).not.toContain("create-profile");
+    expect(layers.calls).not.toContain("lock-acquire");
+  });
+
   test("returns the support state when another account claimed the new profile", async () => {
     const layers = makeLayers({
       createdCustomerId: "60999",
