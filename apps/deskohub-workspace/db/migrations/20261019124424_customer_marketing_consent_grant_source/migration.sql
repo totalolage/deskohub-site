@@ -1,0 +1,2 @@
+ALTER TABLE "customer_marketing_consents" ADD COLUMN "grant_source" text;--> statement-breakpoint
+ALTER TABLE "customer_marketing_consents" ADD CONSTRAINT "customer_marketing_consents_grant_source_check" CHECK ("grant_source" is null or "grant_source" in ('reservation_form', 'site_tool', 'account', 'link'));

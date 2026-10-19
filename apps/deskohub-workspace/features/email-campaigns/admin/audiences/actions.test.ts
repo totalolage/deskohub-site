@@ -9,6 +9,7 @@ import {
   campaignIdSchema,
 } from "../../campaign-identifiers";
 import {
+  AudienceFilterCampaignNotFound,
   AudienceFilterContextInvalid,
   CampaignAudienceInUse,
 } from "../../errors";
@@ -184,7 +185,23 @@ describe("email campaign audience actions", () => {
     const result = await saveAudience(validInput);
 
     expect(result?.serverError).toBe(
-      "The audience could not be saved. Trigger-relative periods, the first visit, “any time so far” and emails of one campaign can’t be saved in an audience yet."
+      "The audience could not be saved. Trigger-relative periods and “this campaign” only work in automation conditions."
+    );
+    expect(result?.data).toBeUndefined();
+  });
+
+  test("explains when a counted campaign no longer exists", async () => {
+    createResult = Effect.fail(
+      new AudienceFilterCampaignNotFound({
+        campaignIds: [campaignIdSchema.make("synthetic-missing-campaign")],
+      })
+    );
+    const { saveAudience } = await import("./actions");
+
+    const result = await saveAudience(validInput);
+
+    expect(result?.serverError).toBe(
+      "The audience could not be saved. A campaign it counts emails from no longer exists. Choose another campaign."
     );
     expect(result?.data).toBeUndefined();
   });

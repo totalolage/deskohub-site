@@ -11,6 +11,7 @@ import {
 } from "@/shared/utils/safe-action-client";
 import { CampaignAudienceService } from "../../backend/campaign-audience.service";
 import {
+  AudienceFilterCampaignNotFound,
   AudienceFilterContextInvalid,
   CampaignAudienceInUse,
   CampaignAudienceNotFound,
@@ -37,6 +38,9 @@ const audienceErrorMessage = (
   }
   if (cause instanceof AudienceFilterContextInvalid) {
     return m.emailCampaignsAudienceSaveFilterUnavailable({}, { locale });
+  }
+  if (cause instanceof AudienceFilterCampaignNotFound) {
+    return m.emailCampaignsAudienceSaveCampaignNotFound({}, { locale });
   }
   return fallback({}, { locale });
 };

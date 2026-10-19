@@ -4,7 +4,9 @@ import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
+import type { Browser } from "@playwright/test";
 import { Effect } from "effect";
+import type { Locale } from "@/features/i18n";
 import { WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import type { E2EDatabase } from "../integrations/database.service";
@@ -51,6 +53,7 @@ import {
   verifyWorkspaceE2EReservationHistoryNavigation,
 } from "./reservation-navigation";
 import {
+  type AccountReviewDestination,
   captureAccountReview,
   captureReservationStatusReview,
   type LanguagePreferenceReviewCapture,
@@ -62,7 +65,10 @@ import {
   accountReviewTargetBySection,
   mobileAccountReviewTargetBySection,
   reservationCustomerReviewTargetByMode,
+  type SignInHandoffReviewStage,
+  signInHandoffReviewTargetByStage,
 } from "./review-targets";
+import type { WorkspaceE2ESignInReturns } from "./cases";
 import type { WorkspaceE2EAccountLifecycleHandoff } from "./types";
 import {
   resolveWorkspaceE2EPreviewLogs,
@@ -71,6 +77,38 @@ import {
 
 const accountReviewCaptureFailureMessage =
   "Account review screenshot capture failed";
+
+/**
+ * Captures a review moment of the cross-browser sign-in in the assistant's
+ * browser. It runs beside the lane page, so the one page on the handoff
+ * locale's auth routes is the assistant's: the lane page is then on an
+ * English page or the cowork selection.
+ */
+const captureSignInHandoffReview = async (
+  browser: Browser,
+  destination: AccountReviewDestination,
+  locale: Locale,
+  stage: SignInHandoffReviewStage
+): Promise<void> => {
+  if (!destination.screenshots) return;
+  const pages = browser
+    .contexts()
+    .flatMap((context) => context.pages())
+    .filter((page) => {
+      try {
+        return new URL(page.url()).pathname.startsWith(`/${locale}/auth/`);
+      } catch {
+        return false;
+      }
+    });
+  const page = pages.length === 1 ? pages[0] : undefined;
+  if (!page) throw new Error(accountReviewCaptureFailureMessage);
+  await captureAccountReview(
+    page,
+    destination,
+    signInHandoffReviewTargetByStage[stage]
+  );
+};
 
 type WorkspaceE2EAccountLane = {
   readonly config: ReturnType<typeof getAccountE2EConfig>;
@@ -98,6 +136,11 @@ type WorkspaceE2EAccountLane = {
   readonly runPlan: Awaited<ReturnType<typeof readWorkspaceE2ERunPlan>>;
   readonly run: Runner;
   readonly session: string;
+  /**
+   * The selections the lane's sign-ins return to, built once per worker so
+   * the case that requests a link and the case that consumes it agree.
+   */
+  readonly signInReturns: WorkspaceE2ESignInReturns;
 };
 
 type WorkspaceE2EAccountWorkerFixtures = {
@@ -120,6 +163,8 @@ const accountTest = runtimeTest.extend<
       const runPlan = await readWorkspaceE2ERunPlan();
       const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
       const lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff = {};
+      const { makeWorkspaceE2ESignInReturns } = await import("./cases");
+      const signInReturns = makeWorkspaceE2ESignInReturns();
       const passkeys = makeWorkspaceE2EAccountPasskeys({
         baseUrl: config.baseUrl,
         getPage: () => {
@@ -177,6 +222,7 @@ const accountTest = runtimeTest.extend<
                   runPlan,
                   run,
                   session: `workspace-account-e2e-${runContext.runId}`,
+                  signInReturns,
                 })
               );
             })
@@ -208,10 +254,18 @@ for (const caseId of workspaceE2EAccountCaseIds) {
       let captureLanguagePreferenceReview:
         | LanguagePreferenceReviewCapture
         | undefined;
+      const { signInReturns } = accountLane;
       const cases = makeWorkspaceE2EAccountCases({
         captureLanguagePreferenceReview: async (stage) => {
           await captureLanguagePreferenceReview?.(stage);
         },
+        captureSignInHandoffReview: (stage) =>
+          captureSignInHandoffReview(
+            browser,
+            accountLane.config.review,
+            signInReturns.assistant.locale,
+            stage
+          ),
         config: accountLane.config,
         datasourceConfig,
         lifecycleHandoff: accountLane.lifecycleHandoff,
@@ -220,6 +274,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         rateBudget: accountLane.rateBudget,
         run: accountLane.run,
         session: accountLane.session,
+        signInReturns,
       });
       const selected = cases.find((testCase) => testCase.id === caseId);
       if (!selected) {
@@ -485,10 +540,31 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         if (!page) throw new Error(accountReviewCaptureFailureMessage);
         await withSignInPendingReview(page, accountLane.config.review, runCase);
       } else if (caseId === "account-magic-link-delivery") {
+        // The link the lane tab requested from its cowork selection returns
+        // there, so its callback shows the returning signed-in copy first.
         await withCallbackHandoffReview(
           getOwnedPage(),
           accountLane.config.review,
-          runCase
+          runCase,
+          {
+            locale: signInReturns.sameBrowser.locale,
+            returnTo: signInReturns.sameBrowser.returnTo,
+            reviewTarget: "callback-signed-in-desktop",
+          }
+        );
+      } else if (caseId === "account-deletion-and-reactivation") {
+        // The lane browser opens the link the assistant's browser requested,
+        // so its callback shows the signed-in copy before it leaves for the
+        // selection; the hold proves that on every pass.
+        await withCallbackHandoffReview(
+          getOwnedPage(),
+          accountLane.config.review,
+          runCase,
+          {
+            locale: signInReturns.assistant.locale,
+            returnTo: signInReturns.assistant.returnTo,
+            reviewTarget: "callback-signed-in-cs-desktop",
+          }
         );
       } else if (caseId === "account-locale-preference") {
         await withLanguagePreferenceReview(

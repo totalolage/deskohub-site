@@ -110,7 +110,7 @@ const saveMarketingPreferences = Effect.fn(function* (
 
   if (input.granted) {
     yield* consents
-      .grant(consentInput)
+      .grant({ ...consentInput, source: input.source })
       .pipe(Effect.mapError(() => mutationError("unavailable")));
   } else {
     yield* consents

@@ -20,8 +20,10 @@ import {
   audienceConditionsOf,
   viewAudienceCondition,
 } from "../audience-filter";
+import type { CampaignDelivery, CampaignStatus } from "../campaign-states";
 import type { DatePeriod } from "../date-period";
 import {
+  AudienceCampaignSourceSummary,
   type AudienceCountWording,
   type AudienceDateWording,
   type AudienceSetWording,
@@ -43,6 +45,12 @@ export type AudienceValueOption = {
 /** A Dotypos discount group an audience can filter by. */
 export type DiscountGroupOption = AudienceValueOption;
 
+/** A campaign an audience can count the emails of, with its state for badges. */
+export type AudienceCampaignOption = AudienceValueOption & {
+  readonly delivery: CampaignDelivery;
+  readonly status: CampaignStatus;
+};
+
 /** The value lists Workspace looked up; a missing one shows raw values. */
 export type AudienceValueLookups = {
   readonly [Lookup in AudienceValueLookup]?:
@@ -50,7 +58,7 @@ export type AudienceValueLookups = {
     | undefined;
 } & {
   /** Campaign names for counts of one campaign's emails. */
-  readonly campaigns?: readonly AudienceValueOption[] | undefined;
+  readonly campaigns?: readonly AudienceCampaignOption[] | undefined;
 };
 
 type ListType = "conjunction" | "disjunction";
@@ -189,31 +197,31 @@ const describeProduct = (
 const isCampaignEmailSource = Schema.is(CampaignEmailSource);
 
 /**
- * Whose emails a count counts, with a leading space: " from this campaign" or
- * " from campaign “Spring sale”". A campaign missing from `campaigns` shows
- * by ID.
+ * Whose emails a count counts. A campaign missing from the looked-up
+ * `campaigns` was deleted; without the lookup it shows by ID.
  */
-const describeCampaignSource = (
+const summarizeCampaignSource = (
   source: CampaignEmailSourceType,
   campaigns: readonly AudienceValueOption[] | undefined,
   locale: Locale
-): string => {
-  const options = { locale };
-  const phrase = Match.value(source).pipe(
+): AudienceCampaignSourceSummary =>
+  Match.value(source).pipe(
     Match.tagsExhaustive({
-      This: () =>
-        m.emailCampaignsAudienceCampaignEmailCountSourceThis({}, options),
+      This: () => AudienceCampaignSourceSummary.This(),
       Specific: ({ campaignId }) => {
-        const campaign = campaigns?.find(({ id }) => id === campaignId);
-        return m.emailCampaignsAudienceCampaignEmailCountSourceSpecific(
-          { campaign: campaign ? quoted(campaign.name, locale) : campaignId },
-          options
-        );
+        if (!campaigns)
+          return AudienceCampaignSourceSummary.Specific({
+            campaign: campaignId,
+          });
+        const campaign = campaigns.find(({ id }) => id === campaignId);
+        return campaign
+          ? AudienceCampaignSourceSummary.Specific({
+              campaign: quoted(campaign.name, locale),
+            })
+          : AudienceCampaignSourceSummary.Deleted();
       },
     })
   );
-  return ` ${phrase}`;
-};
 
 /** Context for a count summary beyond the condition and its wording. */
 type CountSummaryContext = {
@@ -234,17 +242,15 @@ export const describeCountCondition = (
   { entry, lookups = {} }: CountSummaryContext = {}
 ): string => {
   const product = describeProduct(params.product, locale);
-  // An unset campaign param counts every campaign and adds nothing.
-  const source = Object.entries(entry?.params ?? {})
-    .map(([name, param]) => {
-      const campaign = params[name];
-      return param.part === "campaign" && isCampaignEmailSource(campaign)
-        ? describeCampaignSource(campaign, lookups.campaigns, locale)
-        : "";
-    })
-    .join("");
+  // An unset campaign param counts every campaign.
+  const campaign = Object.entries(entry?.params ?? {})
+    .filter(([, param]) => param.part === "campaign")
+    .map(([name]) => params[name])
+    .find(isCampaignEmailSource);
+  const source =
+    campaign && summarizeCampaignSource(campaign, lookups.campaigns, locale);
   const noun = (count: number) =>
-    `${wording.summary.noun(params, count, product)}${source}`;
+    wording.summary.noun(params, count, product, source);
   const period =
     params.period._tag === "AnyTime"
       ? ""

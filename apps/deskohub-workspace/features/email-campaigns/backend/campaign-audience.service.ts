@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql";
@@ -12,9 +12,13 @@ import {
 } from "@/db/schema";
 import { currentInstant } from "@/shared/utils/temporal";
 import type { AudienceFilter } from "../audience-filter";
-import { ensureSavedAudienceFilter } from "../audience-filter-usage";
+import {
+  audienceFilterUsage,
+  ensureSavedAudienceFilter,
+} from "../audience-filter-usage";
 import type { CampaignAudienceId } from "../campaign-identifiers";
 import {
+  AudienceFilterCampaignNotFound,
   type AudienceFilterContextInvalid,
   CampaignAudienceInUse,
   CampaignAudienceNotFound,
@@ -41,7 +45,9 @@ export interface ICampaignAudienceService {
     input: CampaignAudienceInput
   ) => Effect.Effect<
     CampaignAudience,
-    AudienceFilterContextInvalid | EffectDrizzleQueryError
+    | AudienceFilterContextInvalid
+    | AudienceFilterCampaignNotFound
+    | EffectDrizzleQueryError
   >;
   /** Draft campaigns follow the change; sent campaigns keep their snapshot. */
   readonly update: (
@@ -52,6 +58,7 @@ export interface ICampaignAudienceService {
     CampaignAudience,
     | CampaignAudienceNotFound
     | AudienceFilterContextInvalid
+    | AudienceFilterCampaignNotFound
     | EffectDrizzleQueryError
   >;
   readonly archive: (
@@ -95,6 +102,31 @@ export class CampaignAudienceService extends Context.Service<
           rows[0]
             ? Effect.succeed(rows[0])
             : Effect.fail(new CampaignAudienceNotFound({ audienceId }));
+
+      /**
+       * A saved audience holds what saved audiences can, and every campaign
+       * whose emails it counts exists when it's saved. One deleted later
+       * counts no emails.
+       */
+      const ensureWritableFilter = Effect.fn(
+        "CampaignAudienceService.ensureWritableFilter"
+      )(function* (filter: AudienceFilter) {
+        yield* ensureSavedAudienceFilter(filter);
+        const { specificCampaignIds } = audienceFilterUsage(filter);
+        if (specificCampaignIds.length === 0) return;
+        const found = yield* db
+          .select({ id: emailCampaigns.id })
+          .from(emailCampaigns)
+          .where(inArray(emailCampaigns.id, [...specificCampaignIds]));
+        const missing = specificCampaignIds.filter(
+          (campaignId) => !found.some(({ id }) => id === campaignId)
+        );
+        if (missing.length > 0) {
+          return yield* new AudienceFilterCampaignNotFound({
+            campaignIds: missing,
+          });
+        }
+      });
 
       type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -163,7 +195,7 @@ export class CampaignAudienceService extends Context.Service<
             .pipe(Effect.flatMap(requireUpdated(audienceId)));
         }),
         create: Effect.fn("CampaignAudienceService.create")(function* (input) {
-          yield* ensureSavedAudienceFilter(input.filter);
+          yield* ensureWritableFilter(input.filter);
           const [audience] = yield* db
             .insert(emailCampaignAudiences)
             .values({ title: input.title, filter: input.filter })
@@ -175,7 +207,7 @@ export class CampaignAudienceService extends Context.Service<
           title,
           filter,
         }) {
-          if (filter !== undefined) yield* ensureSavedAudienceFilter(filter);
+          if (filter !== undefined) yield* ensureWritableFilter(filter);
           const updatedAt = yield* currentInstant;
           return yield* db
             .update(emailCampaignAudiences)
