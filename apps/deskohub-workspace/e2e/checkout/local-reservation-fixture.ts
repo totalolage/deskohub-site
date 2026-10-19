@@ -6,7 +6,7 @@ import {
 } from "@deskohub/dotypos";
 import { eq } from "drizzle-orm";
 import { Effect } from "effect";
-import { workspaceReservations } from "@/db/schema";
+import { type PaymentState, workspaceReservations } from "@/db/schema";
 import {
   type CheckoutAttemptKey,
   type CheckoutSessionKey,
@@ -63,6 +63,16 @@ export type WorkspaceE2ELocalReservationTransaction = {
   ) => Effect.Effect<unknown, unknown>;
 };
 
+/**
+ * The payment outcome of the seeded checkout. Each leaves an expired hold
+ * without a Dotypos reservation or payment attempt, so the status page shows
+ * it from the persisted row alone.
+ */
+export type WorkspaceE2ELocalReservationPaymentState = Extract<
+  PaymentState,
+  "cancelled" | "expired" | "failed"
+>;
+
 type WorkspaceE2ELocalReservationFixtureDependencies = {
   readonly database?: WorkspaceE2ELocalReservationDatabase;
 };
@@ -118,7 +128,8 @@ const resolveDatabase = (
     : Effect.map(E2EDatabase, ({ db }) => makeDatabase(db));
 
 const makeReservationRow = (
-  fixture: WorkspaceE2ELocalReservationFixture
+  fixture: WorkspaceE2ELocalReservationFixture,
+  paymentState: WorkspaceE2ELocalReservationPaymentState
 ): typeof workspaceReservations.$inferInsert => {
   const now = Temporal.Now.instant();
   return {
@@ -131,7 +142,7 @@ const makeReservationRow = (
     fulfillmentState: "not_started",
     id: fixture.reservationId,
     locale: "en-US",
-    paymentState: "expired",
+    paymentState,
     reservationCreatedAt: now,
     reservationDetails: {
       coffee: false,
@@ -145,17 +156,20 @@ const makeReservationRow = (
 };
 
 export function seedWorkspaceE2ELocalReservation(
-  dependencies: WorkspaceE2ELocalReservationFixtureTestDependencies
+  dependencies: WorkspaceE2ELocalReservationFixtureTestDependencies,
+  paymentState?: WorkspaceE2ELocalReservationPaymentState
 ): Effect.Effect<WorkspaceE2ELocalReservationFixture, WorkspaceE2EError>;
 export function seedWorkspaceE2ELocalReservation(
-  dependencies?: WorkspaceE2ELocalReservationFixtureDependencies
+  dependencies?: WorkspaceE2ELocalReservationFixtureDependencies,
+  paymentState?: WorkspaceE2ELocalReservationPaymentState
 ): Effect.Effect<
   WorkspaceE2ELocalReservationFixture,
   WorkspaceE2EError,
   E2EDatabase
 >;
 export function seedWorkspaceE2ELocalReservation(
-  dependencies: WorkspaceE2ELocalReservationFixtureDependencies = {}
+  dependencies: WorkspaceE2ELocalReservationFixtureDependencies = {},
+  paymentState: WorkspaceE2ELocalReservationPaymentState = "expired"
 ): Effect.Effect<
   WorkspaceE2ELocalReservationFixture,
   WorkspaceE2EError,
@@ -168,7 +182,9 @@ export function seedWorkspaceE2ELocalReservation(
       "seed and verify local reservation fixture",
       database.transaction((transaction) =>
         Effect.gen(function* () {
-          yield* transaction.insertReservation(makeReservationRow(fixture));
+          yield* transaction.insertReservation(
+            makeReservationRow(fixture, paymentState)
+          );
           const rows = yield* transaction.findReservation(
             fixture.reservationId
           );
@@ -189,15 +205,15 @@ export function seedWorkspaceE2ELocalReservation(
   });
 }
 
-function cleanupWorkspaceE2ELocalReservation(
+export function cleanupWorkspaceE2ELocalReservation(
   fixture: WorkspaceE2ELocalReservationFixture,
   dependencies: WorkspaceE2ELocalReservationFixtureTestDependencies
 ): Effect.Effect<void, WorkspaceE2EError>;
-function cleanupWorkspaceE2ELocalReservation(
+export function cleanupWorkspaceE2ELocalReservation(
   fixture: WorkspaceE2ELocalReservationFixture,
   dependencies?: WorkspaceE2ELocalReservationFixtureDependencies
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase>;
-function cleanupWorkspaceE2ELocalReservation(
+export function cleanupWorkspaceE2ELocalReservation(
   fixture: WorkspaceE2ELocalReservationFixture,
   dependencies: WorkspaceE2ELocalReservationFixtureDependencies = {}
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> {
