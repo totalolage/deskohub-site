@@ -1,4 +1,12 @@
-import { describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
 import type { ComponentProps } from "react";
 import { prerender } from "react-dom/static";
 import {
@@ -10,6 +18,10 @@ import {
   formatWorkspaceMoney,
 } from "@/features/checkout/workspace-money";
 import { type Locale, locales, m } from "@/features/i18n";
+import {
+  registerWorkspaceComponentTestEnv,
+  unregisterWorkspaceComponentTestEnv,
+} from "@/shared/testing/workspace-component-test-env";
 
 const nextServer = await import("next/server");
 
@@ -34,13 +46,24 @@ mock.module("@/shared/components/guarded-link", () => ({
   ),
 }));
 
-let priceList: (
+type PriceListLoad = (
   locale: Locale
 ) =>
   | ReadonlyArray<PublicPriceListOffering>
   | Promise<ReadonlyArray<PublicPriceListOffering>>;
+
+let sharedPriceList: PriceListLoad;
+let variesByVisitor = false;
+let visitorPriceList: PriceListLoad;
+const loadVisitorPriceList = mock((locale: Locale) =>
+  Promise.resolve(visitorPriceList(locale))
+);
 mock.module("@/features/pricing/backend/price-list.server", () => ({
-  loadPriceList: (locale: Locale) => Promise.resolve(priceList(locale)),
+  loadSharedPriceList: async (locale: Locale) => ({
+    offerings: await sharedPriceList(locale),
+    variesByVisitor,
+  }),
+  loadVisitorPriceList,
 }));
 
 const { PricingPage } = await import("./pricing-page");
@@ -72,15 +95,45 @@ const renderPage = async (locale: Locale, signal?: AbortSignal) => {
   return new Response(prelude).text();
 };
 
+/**
+ * The page as an agent that drops hidden elements reads it: React puts a
+ * streamed Suspense segment in a hidden container until script reveals it.
+ */
+const visibleDocument = (html: string) => {
+  const document = new DOMParser().parseFromString(html, "text/html");
+  for (const element of document.querySelectorAll("[hidden], script")) {
+    element.remove();
+  }
+  return document;
+};
+
+const visibleText = (html: string) =>
+  visibleDocument(html).body.textContent ?? "";
+
+const visibleLinks = (html: string) =>
+  [...visibleDocument(html).querySelectorAll("a")].map((link) =>
+    link.getAttribute("href")
+  );
+
+beforeAll(registerWorkspaceComponentTestEnv);
+afterAll(unregisterWorkspaceComponentTestEnv);
+
+beforeEach(() => {
+  sharedPriceList = saleOnOpenSpace;
+  variesByVisitor = false;
+  visitorPriceList = saleOnOpenSpace;
+  loadVisitorPriceList.mockClear();
+});
+
 describe("PricingPage", () => {
   for (const locale of locales) {
-    test(`renders every price and the opening hours in the server HTML in ${locale}`, async () => {
-      priceList = saleOnOpenSpace;
+    test(`shows every price, the office, the sale, and the opening hours in the visible server HTML in ${locale}`, async () => {
       const html = await renderPage(locale);
+      const text = visibleText(html);
       const price = (value: number) =>
         formatWorkspaceMoney(currencyCZK(value), locale);
 
-      for (const text of [
+      for (const expected of [
         m.pricingPageTitle({}, { locale }),
         m.pricingOpeningHoursSpace({}, { locale }),
         m.pricingOpeningHoursOpenSpace({ until: "17:00" }, { locale }),
@@ -111,71 +164,75 @@ describe("PricingPage", () => {
         m.pricingPerDay({ price: price(53_000) }, { locale }),
         m.pricingOfficeSeatPrice({ price: price(31_500) }, { locale }),
       ]) {
-        expect(html).toContain(text);
+        expect(text).toContain(expected);
       }
-      expect(html).toContain("17:00");
-      // The meeting-room durations share one usage sentence, shown once in
-      // the streamed list that replaces the catalog prices.
-      const streamed = html.slice(html.indexOf("<div hidden"));
+      // Nothing waits in a hidden container, and the request is never read.
+      expect(html).not.toContain("hidden");
+      expect(loadVisitorPriceList).not.toHaveBeenCalled();
+      // The meeting-room durations share one usage sentence, shown once.
       expect(
-        streamed.split(m.publicOfferingMeetingRoomUsage({}, { locale })).length
+        text.split(m.publicOfferingMeetingRoomUsage({}, { locale })).length
       ).toBe(2);
 
+      const links = visibleLinks(html);
       for (const href of [
         `/${locale}/reservation/cowork?entryTier=open-space`,
         `/${locale}/reservation/cowork?entryTier=reserved-desk`,
         `/${locale}/reservation/meeting-room?duration=hour%3A1`,
         `/${locale}/reservation/meeting-room?duration=hour%3A4`,
         `/${locale}/reservation/meeting-room?duration=day%3A1`,
-        `/${locale}/reservation/office"`,
-        `/${locale}/contact"`,
+        `/${locale}/reservation/office`,
+        `/${locale}/contact`,
       ]) {
-        expect(html).toContain(`href="${href}`);
+        expect(links).toContain(href);
       }
     });
   }
 
   test("says the space is open 24/7 and Open Space closes at 17:00", async () => {
-    priceList = saleOnOpenSpace;
-    const html = await renderPage("en-US");
+    const text = visibleText(await renderPage("en-US"));
 
-    expect(html).toContain("The space is open 24/7");
-    expect(html).toContain("until 17:00");
-    expect(html).toContain("24/7 code access");
+    expect(text).toContain("The space is open 24/7");
+    expect(text).toContain("until 17:00");
+    expect(text).toContain("24/7 code access");
   });
 
-  test("lists the catalog prices in the static shell while the advertised prices load", async () => {
-    priceList = () => new Promise(() => {});
+  test("keeps the shared prices visible while a gate decided per visitor streams the visitor's list", async () => {
+    // A gate decided per visitor stays closed in the shared list.
+    sharedPriceList = (locale) => getPublicCatalogOfferings({ locale });
+    variesByVisitor = true;
+    visitorPriceList = () => new Promise(() => {});
     // Aborting keeps the shell that Next.js prerenders, without the stream.
     const html = await renderPage("en-US", AbortSignal.timeout(100));
+    const text = visibleText(html);
     const price = (value: number) =>
       formatWorkspaceMoney(currencyCZK(value), "en-US");
 
-    for (const text of [
+    for (const expected of [
       m.pricingPerDay({ price: price(29_000) }, { locale: "en-US" }),
       m.pricingPerDay({ price: price(41_000) }, { locale: "en-US" }),
       price(35_000),
       price(98_000),
       price(182_000),
     ]) {
-      expect(html).toContain(text);
+      expect(text).toContain(expected);
     }
-    expect(html).not.toContain("hidden");
-    // The office waits for its release gate.
+    expect(loadVisitorPriceList).toHaveBeenCalledTimes(1);
     expect(html).not.toContain('id="pricing-office-title"');
   });
 
   test("lists catalog prices without a sale line when no quote answered", async () => {
-    priceList = (locale) => getPublicCatalogOfferings({ locale });
+    sharedPriceList = (locale) => getPublicCatalogOfferings({ locale });
     const html = await renderPage("en-US");
+    const text = visibleText(html);
 
-    expect(html).toContain(
+    expect(text).toContain(
       m.pricingPerDay(
         { price: formatWorkspaceMoney(currencyCZK(29_000), "en-US") },
         { locale: "en-US" }
       )
     );
-    expect(html).not.toContain("On sale today");
+    expect(text).not.toContain("On sale today");
     // The office is listed only while its release gate is on.
     expect(html).not.toContain('id="pricing-office-title"');
     expect(html).not.toContain("/en-US/reservation/office");

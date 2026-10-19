@@ -1,10 +1,7 @@
 import { Match } from "effect";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import {
-  getPublicCatalogOfferings,
-  type PublicPriceListOffering,
-} from "@/features/checkout/public-offerings";
+import type { PublicPriceListOffering } from "@/features/checkout/public-offerings";
 import {
   formatWorkspaceMoney,
   type WorkspaceMoney,
@@ -19,7 +16,10 @@ import { Container } from "@/shared/components/container";
 import { GuardedLink as Link } from "@/shared/components/guarded-link";
 import { Button } from "@/shared/components/ui/button";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import { loadPriceList } from "../backend/price-list.server";
+import {
+  loadSharedPriceList,
+  loadVisitorPriceList,
+} from "../backend/price-list.server";
 import { getPriceFamilies } from "../price-family";
 
 type PricingPageProps = {
@@ -27,11 +27,8 @@ type PricingPageProps = {
 };
 
 /**
- * Prices and opening hours. The hours, the address, and the catalog prices
- * render in the static shell, so agents that read only the visible initial
- * HTML still find every price. The advertised prices and the office stream
- * in place of the catalog prices, because the office release gate reads the
- * request.
+ * Prices and opening hours, all in the static shell, so agents that read
+ * only the visible initial HTML find every price.
  */
 export function PricingPage({ locale }: PricingPageProps) {
   const { address } = workspaceSiteConstants.location;
@@ -63,16 +60,7 @@ export function PricingPage({ locale }: PricingPageProps) {
           </ul>
         </section>
 
-        <Suspense
-          fallback={
-            <PriceList
-              locale={locale}
-              offerings={getPublicCatalogOfferings({ locale })}
-            />
-          }
-        >
-          <LoadedPriceList locale={locale} />
-        </Suspense>
+        <PriceLists locale={locale} />
 
         <section aria-labelledby="pricing-address-title" className="mt-14">
           <h2 id="pricing-address-title" className="text-2xl sm:text-3xl">
@@ -94,9 +82,28 @@ export function PricingPage({ locale }: PricingPageProps) {
   );
 }
 
-async function LoadedPriceList({ locale }: PricingPageProps) {
+/**
+ * The price list every visitor shares, prerendered outside any Suspense
+ * boundary: React would put a resolved boundary's content in a hidden
+ * container, which text extraction drops. Only while a release gate is
+ * decided per visitor does the visitor's own list stream in its place.
+ */
+async function PriceLists({ locale }: PricingPageProps) {
+  const { offerings, variesByVisitor } = await loadSharedPriceList(locale);
+  const shared = <PriceList locale={locale} offerings={offerings} />;
+
+  return variesByVisitor ? (
+    <Suspense fallback={shared}>
+      <VisitorPriceList locale={locale} />
+    </Suspense>
+  ) : (
+    shared
+  );
+}
+
+async function VisitorPriceList({ locale }: PricingPageProps) {
   await connection();
-  const offerings = await loadPriceList(locale);
+  const offerings = await loadVisitorPriceList(locale);
 
   return <PriceList locale={locale} offerings={offerings} />;
 }

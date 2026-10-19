@@ -41,9 +41,9 @@ export const loadPublicOfferings = Effect.fn("publicOfferings.load")(
 /**
  * The public offerings for a page that must render without its quotes, such
  * as the price list. An offering whose advertised price fails or misses the
- * reservation pages' preload deadline keeps only its catalog price. The
- * office keeps its release gate but not its seat maximum, so the list never
- * reads the availability inventory.
+ * reservation pages' preload deadline keeps only its catalog price, and
+ * `complete` turns false. The office keeps its release gate but not its seat
+ * maximum, so the list never reads the availability inventory.
  */
 export const loadPublicPriceList = Effect.fn("publicOfferings.loadPriceList")(
   (locale: Locale) =>
@@ -51,6 +51,12 @@ export const loadPublicPriceList = Effect.fn("publicOfferings.loadPriceList")(
       locale,
       whenOfficeOpen(Effect.succeed<PublicOfficeOffer>({})),
       advertiseOrKeepCatalogPrice
+    ).pipe(
+      Effect.map(({ advertisedOn, offerings: advertised }) => ({
+        advertisedOn,
+        offerings: advertised.map(({ offering }) => offering),
+        complete: advertised.every(({ complete }) => complete),
+      }))
     )
 );
 
@@ -122,12 +128,20 @@ const advertisePublicOffering = ({
 
 const advertiseOrKeepCatalogPrice = (listing: PublicOfferingListing) =>
   advertisePublicOffering(listing).pipe(
-    Effect.map(({ offering }): PublicPriceListOffering => offering),
+    Effect.map(
+      ({
+        offering,
+        complete,
+      }): { offering: PublicPriceListOffering; complete: boolean } => ({
+        offering,
+        complete,
+      })
+    ),
     Effect.timeout(pagePreloadDeadline),
     Effect.catchCause((cause) =>
       Effect.logWarning(
         "Advertised price is unavailable; the price list keeps the catalog price",
         { cause, kind: listing.offering.kind }
-      ).pipe(Effect.as<PublicPriceListOffering>(listing.offering))
+      ).pipe(Effect.as({ offering: listing.offering, complete: false }))
     )
   );
