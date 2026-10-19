@@ -155,7 +155,7 @@ test("accepts only the canonical fulfilled checkout status page", async () => {
   });
   try {
     const statusCopy =
-      "<p>Your reservation is confirmed. The secure access link has been sent by email.</p>";
+      "<p>Your reservation is confirmed. Your payment is complete and we've emailed you the secure access link.</p>";
 
     expect(
       runFulfilledStatusAssertion(
