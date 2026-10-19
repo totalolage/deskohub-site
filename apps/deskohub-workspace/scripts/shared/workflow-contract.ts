@@ -20,7 +20,7 @@ export interface WorkflowStep {
   readonly outputs?: Record<string, string>;
 }
 
-export interface WorkflowJob {
+interface WorkflowJob {
   readonly name?: string;
   readonly if?: string;
   readonly needs?: string | readonly string[];
