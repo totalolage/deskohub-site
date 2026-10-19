@@ -49,8 +49,11 @@ export type VirtualAuthenticator = {
 export type PageVirtualAuthenticator = VirtualAuthenticator & {
   /**
    * Waits until the current document has started a conditional (autofill)
-   * request; a timeout that elapses shows that none started. Only documents
-   * loaded after the authenticator was added are watched.
+   * request. Presence answers a request that starts during a ceremony but
+   * not one already pending, so a test that drives another ceremony waits
+   * for the form's request first; a timeout that elapses shows that none
+   * started. Only documents loaded after the authenticator was added are
+   * watched.
    */
   readonly waitForConditionalRequest: (timeout: number) => Promise<void>;
   /**
