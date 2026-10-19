@@ -142,7 +142,7 @@ test("starts a new reservation with a fresh document", async () => {
 
   expect(
     view
-      .getByRole("link", { name: "Start a new reservation" })
+      .getByRole("link", { name: "Try again" })
       .getAttribute("href")
   ).toBe("/en-US/reservation/cowork");
   expect(
