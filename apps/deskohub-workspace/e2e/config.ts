@@ -24,6 +24,22 @@ export const getConfig = (environment: E2EEnvironment) => {
   };
 };
 
+/**
+ * Whether `value` is an immutable Workspace deployment origin, the only
+ * target that may receive the Vercel protection bypass secret.
+ */
+export const isWorkspaceDeploymentOrigin = (value: string) => {
+  const url = parseUrl(value);
+  return (
+    url !== undefined &&
+    url.protocol === "https:" &&
+    immutableWorkspaceDeploymentHost.test(url.hostname) &&
+    !url.username &&
+    !url.password &&
+    !url.port
+  );
+};
+
 export const parseWorkspaceE2EBaseUrl = (value: string | undefined) => {
   assert(value, "WORKSPACE_E2E_BASE_URL is required for workspace e2e");
   const url = parseUrl(value);

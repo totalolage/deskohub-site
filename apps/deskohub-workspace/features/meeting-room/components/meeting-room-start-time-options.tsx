@@ -83,7 +83,7 @@ export function MeetingRoomStartTimeOptions({
                 className={cn(
                   "cursor-pointer rounded-full px-4 py-2 text-sm font-medium tabular-nums outline outline-1 -outline-offset-1 transition focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-burned-orange",
                   isSelected
-                    ? "bg-burned-orange/8 text-burned-orange outline-burned-orange ring-4 ring-burned-orange/10"
+                    ? "bg-burned-orange/8 text-burned-orange-ink outline-burned-orange ring-4 ring-burned-orange/10"
                     : "bg-white text-navy-blue outline-navy-blue/10 hover:outline-burned-orange/45"
                 )}
               >

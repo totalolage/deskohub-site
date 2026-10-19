@@ -1,8 +1,8 @@
 import { instant } from "@next/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { m } from "@/features/i18n";
+import { enablePreviewAccess } from "../preview-access";
 import {
-  enablePreviewAccess,
   expectPublicSiteShell,
   hasLoadedResource,
 } from "./navigation-test-helpers";
