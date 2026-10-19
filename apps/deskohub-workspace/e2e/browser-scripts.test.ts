@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import type { MeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
@@ -1592,13 +1593,13 @@ test("fills only the contact step's rendered, editable contact inputs", async ()
     document.body.innerHTML = `
       <form>
         <input name="name" />
-        <input name="email" readonly value="account@example.test" />
+        <input name="email" readonly value="${testEmailAddress("account")}" />
         <input name="phone" />
         <button id="reservation-submit" type="submit"></button>
       </form>
     `;
     await expect(run()).resolves.toBe(location.href);
-    expect(value("email")).toBe("account@example.test");
+    expect(value("email")).toBe(testEmailAddress("account"));
     expect(value("name")).toBe(data.name);
 
     // Booking as a linked account renders no contact inputs.

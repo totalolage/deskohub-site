@@ -1235,7 +1235,7 @@ describe("CheckoutStatusPage payment retry", () => {
       expect(tryAgain.getAttribute("href")).toBe(href);
       expect(
         view.container
-          .querySelector("main ol > li:nth-child(2) > a")
+          .querySelector("main ol > li:nth-child(1) > a")
           ?.getAttribute("href")
       ).toBe(href);
     }

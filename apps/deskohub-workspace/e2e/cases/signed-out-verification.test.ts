@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Exit } from "effect";
 import {
   makeCoworkCheckoutData,
@@ -22,7 +23,7 @@ const config: WorkspaceE2EConfig = {
   timeouts: workspaceE2ETimeouts,
 };
 
-const recipient = "delivered+run-sov-account@deskohub.test";
+const recipient = testEmailAddress("delivered+run-sov-account");
 
 test("plans the signed-out checkout on its own date and requires binding", async () => {
   const flowStates: CheckoutFlowState[] = [
@@ -146,7 +147,7 @@ test("rejects a booked profile the verified account is not linked to or that dif
     },
     {
       linkedCustomerId: "customer",
-      profile: { ...savedProfile, email: "someone@deskohub.test" },
+      profile: { ...savedProfile, email: testEmailAddress("someone") },
     },
   ];
   for (const { linkedCustomerId, profile } of cases) {

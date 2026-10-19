@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Result, Schema } from "effect";
 import {
   getAuthCallbackPath,
@@ -128,7 +129,7 @@ describe("auth return state", () => {
       // 255, and phones up to 20.
       const contact = {
         name: text(100, 7),
-        email: `${text(240, 8)}@example.cz`,
+        email: testEmailAddress(text(241, 8)),
         phone: "+420 777 060 478 123",
         billing,
       };
