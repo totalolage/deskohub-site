@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Deferred, Effect, Layer } from "effect";
@@ -7,7 +7,11 @@ import {
   type CurrentLinkedAccount,
   CustomerAccountContactService,
 } from "@/features/account/backend/customer-account-contact.service";
-import { customerAccountIdSchema } from "@/features/account/customer-account";
+import {
+  CustomerAccountAccessError,
+  customerAccountIdSchema,
+  customerAccountUnavailable,
+} from "@/features/account/customer-account";
 import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import type { CustomerLastReservation } from "@/features/reservation/reservation-existing-customer";
@@ -17,9 +21,8 @@ const testEmailAddressForAda = testEmailAddress("ada");
 
 mock.module("server-only", () => ({}));
 
-const { loadLinkedExistingCustomer } = await import(
-  "./reservation-existing-customer.server"
-);
+const { loadLinkedExistingCustomer, loadReservationCheckoutAccount } =
+  await import("./reservation-existing-customer.server");
 
 const account: CurrentLinkedAccount = {
   accountId: customerAccountIdSchema.make("auth-user-1"),
@@ -51,21 +54,15 @@ const marketingConsent = (
   }) as CustomerMarketingConsent;
 
 const runLoad = (options: {
-  readonly currentLinkedAccount?: CurrentLinkedAccount | null;
   readonly getMarketingConsent?: CustomerMarketingConsentRepository["Service"]["get"];
   readonly linkedContact: CustomerAccountContactService["Service"]["linkedContact"];
   readonly load: CustomerLastReservationService["Service"]["load"];
 }) =>
-  loadLinkedExistingCustomer("cowork").pipe(
+  loadLinkedExistingCustomer(account, "cowork").pipe(
     Effect.timeout("1 second"),
     Effect.provide(
       Layer.mergeAll(
         Layer.mock(CustomerAccountContactService, {
-          currentLinkedAccount: Effect.succeed(
-            options.currentLinkedAccount === undefined
-              ? account
-              : options.currentLinkedAccount
-          ),
           linkedContact: options.linkedContact,
         }),
         Layer.mock(CustomerLastReservationService, { load: options.load }),
@@ -176,6 +173,121 @@ describe("loadLinkedExistingCustomer", () => {
     expect(outcome).toMatchObject({
       _tag: "Success",
       success: { hasMarketingConsent: false },
+    });
+  });
+});
+
+describe("loadReservationCheckoutAccount", () => {
+  // The page loader provides the services' live layers itself, so the test
+  // swaps them for fakes that read the current scenario.
+  let currentAccount: CustomerAccountContactService["Service"]["currentAccount"];
+  let linkedContact: CustomerAccountContactService["Service"]["linkedContact"];
+
+  const originalContactsLive = CustomerAccountContactService.Live;
+  const originalLastReservationsLive = CustomerLastReservationService.Live;
+  const originalMarketingConsentsLive = CustomerMarketingConsentRepository.Live;
+
+  CustomerAccountContactService.Live = Layer.mock(
+    CustomerAccountContactService,
+    {
+      currentAccount: Effect.suspend(() => currentAccount),
+      linkedContact: (linked) => linkedContact(linked),
+    }
+  );
+  CustomerLastReservationService.Live = Layer.mock(
+    CustomerLastReservationService,
+    { load: () => Effect.succeed(null) }
+  );
+  CustomerMarketingConsentRepository.Live = Layer.mock(
+    CustomerMarketingConsentRepository,
+    { get: () => Effect.succeed(null) }
+  );
+
+  beforeEach(() => {
+    currentAccount = Effect.succeed({ status: "linked", ...account });
+    linkedContact = mock(() => Effect.succeed(contact));
+  });
+
+  afterAll(() => {
+    CustomerAccountContactService.Live = originalContactsLive;
+    CustomerLastReservationService.Live = originalLastReservationsLive;
+    CustomerMarketingConsentRepository.Live = originalMarketingConsentsLive;
+  });
+
+  test("reads a signed-out visitor without loading a profile", async () => {
+    currentAccount = Effect.succeed({ status: "signed-out" });
+
+    expect(await loadReservationCheckoutAccount("cowork")).toEqual({
+      status: "signed-out",
+    });
+    expect(linkedContact).not.toHaveBeenCalled();
+  });
+
+  test("asks an unlinked account for its profile under its login email", async () => {
+    currentAccount = Effect.succeed({
+      status: "unlinked",
+      accountId: account.accountId,
+      email: account.email,
+    });
+
+    expect(await loadReservationCheckoutAccount("cowork")).toEqual({
+      status: "profile-missing",
+      email: testEmailAddressForAda,
+    });
+    expect(linkedContact).not.toHaveBeenCalled();
+  });
+
+  test("books a linked account as its customer by default", async () => {
+    expect(await loadReservationCheckoutAccount("cowork")).toEqual({
+      status: "linked",
+      customer: {
+        contact: {
+          name: "Ada Lovelace",
+          email: testEmailAddressForAda,
+          phone: "+420 777 777 777",
+        },
+        hasMarketingConsent: false,
+      },
+    });
+    expect(linkedContact).toHaveBeenCalledWith(
+      expect.objectContaining(account)
+    );
+  });
+
+  test("asks a linked account whose profile cannot book for its profile", async () => {
+    linkedContact = () => Effect.succeed(null);
+
+    expect(await loadReservationCheckoutAccount("cowork")).toEqual({
+      status: "profile-missing",
+      email: testEmailAddressForAda,
+    });
+  });
+
+  test.each([
+    ["the account", "currentAccount"],
+    ["the linked profile", "linkedContact"],
+  ] as const)(
+    "reads the account as unavailable when %s cannot be read",
+    async (_label, failing) => {
+      const failure = Effect.fail(
+        customerAccountUnavailable("account-link.read")
+      );
+      if (failing === "currentAccount") currentAccount = failure;
+      else linkedContact = () => failure;
+
+      expect(await loadReservationCheckoutAccount("cowork")).toEqual({
+        status: "unavailable",
+      });
+    }
+  );
+
+  test("reads every visitor as signed out without account configuration", async () => {
+    currentAccount = Effect.fail(
+      new CustomerAccountAccessError({ reason: "not-configured" })
+    );
+
+    expect(await loadReservationCheckoutAccount("cowork")).toEqual({
+      status: "signed-out",
     });
   });
 });

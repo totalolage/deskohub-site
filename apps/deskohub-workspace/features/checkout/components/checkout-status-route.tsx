@@ -4,11 +4,14 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
-import { getAccountSignInPath } from "@/features/account/routes";
 import {
   CheckoutStatusService,
   loadCheckoutStatusPage,
 } from "@/features/checkout/backend/checkout";
+import {
+  getReservationStatusSignInPath,
+  isStatusViewerSignedOut,
+} from "@/features/checkout/backend/checkout/checkout-status-sign-in";
 import { shouldAutoRefreshCheckoutStatus } from "@/features/checkout/checkout-status-refresh-policy";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import { CheckoutPaymentWindowCoordinator } from "@/features/checkout/components/checkout-payment-window";
@@ -20,7 +23,6 @@ import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { readReservationAccessCookie } from "@/features/reservation/backend/reservation-access-cookie";
 import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { reservationStatusPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { RouteAutoRefresh } from "@/shared/components/route-auto-refresh";
 import {
@@ -121,14 +123,11 @@ async function CheckoutStatusContent({
     // A signed-out visitor, such as one following the link in the author's
     // email, signs in and comes back instead of seeing "not found".
     if (status.status === "not_found" && (await isSignedOut())) {
-      const statusPath = `/${locale}${reservationStatusPath}/${orderId}`;
       redirect(
-        getAccountSignInPath(
+        getReservationStatusSignInPath(
           locale,
+          orderId,
           decodedSearchParams.outcome
-            ? `${statusPath}?${new URLSearchParams({ outcome: decodedSearchParams.outcome })}`
-            : statusPath,
-          "reservation"
         )
       );
     }
@@ -148,16 +147,8 @@ async function CheckoutStatusContent({
   });
 }
 
-/** Whether no account is signed in; an unreadable session isn't signed out. */
-const readSignedOut = Effect.fn("checkout.status.readSignedOut")(function* () {
-  const contacts = yield* CustomerAccountContactService;
-  const account = yield* contacts.currentAccount;
-  return account.status === "signed-out";
-});
-
 const isSignedOut = () =>
-  readSignedOut().pipe(
-    Effect.orElseSucceed(() => false),
+  isStatusViewerSignedOut().pipe(
     Effect.provide(CustomerAccountContactService.Live),
     runWorkspaceEffect("checkout.status.viewer")
   );
