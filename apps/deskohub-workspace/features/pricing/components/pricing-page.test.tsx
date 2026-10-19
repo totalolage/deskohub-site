@@ -108,6 +108,10 @@ describe("PricingPage", () => {
         expect(html).toContain(text);
       }
       expect(html).toContain("17:00");
+      // The meeting-room durations share one usage sentence, shown once.
+      expect(
+        html.split(m.publicOfferingMeetingRoomUsage({}, { locale })).length
+      ).toBe(2);
 
       for (const href of [
         `/${locale}/reservation/cowork?entryTier=open-space`,

@@ -113,6 +113,11 @@ function PriceList({
 }) {
   return workspaceReservationKindSchema.literals.map((kind) => {
     const rows = offerings.filter((offering) => offering.kind === kind);
+    // Usage every row shares, such as the meeting-room durations', shows once.
+    const sharedUsage =
+      rows.length > 1 && new Set(rows.map(({ usage }) => usage)).size === 1
+        ? rows[0]?.usage
+        : undefined;
 
     return (
       rows.length > 0 && (
@@ -128,6 +133,11 @@ function PriceList({
               office: () => getWorkspaceOfficeProductTitle(locale),
             }[kind]()}
           </h2>
+          {sharedUsage && (
+            <p className="mt-3 text-base leading-7 text-white/76">
+              {sharedUsage}
+            </p>
+          )}
           <ul className="mt-5 divide-y divide-white/14 border-y border-white/14">
             {rows.map((offering) => {
               const row = getPriceRow(offering, locale);
@@ -141,9 +151,11 @@ function PriceList({
                     <h3 className="text-xl font-semibold first-letter:uppercase">
                       {row.name}
                     </h3>
-                    <p className="mt-2 text-base leading-7 text-white/76">
-                      {offering.usage}
-                    </p>
+                    {!sharedUsage && (
+                      <p className="mt-2 text-base leading-7 text-white/76">
+                        {offering.usage}
+                      </p>
+                    )}
                     {row.extras.length > 0 && (
                       <ul className="mt-3 grid gap-1 text-base leading-7 text-white/86">
                         {row.extras.map((extra) => (
