@@ -154,6 +154,41 @@ describe("account components", () => {
     expect(signInMagicLink).not.toHaveBeenCalled();
   });
 
+  test("sign-in card shows the no-longer-waiting notice above the email field until a new email is sent", async () => {
+    const { SignInCard } = await import("./sign-in-card");
+
+    expect(
+      render(<SignInCard locale="cs-CZ" noLongerWaiting />).getByText(
+        m.accountSignInNoLongerWaitingNotice({}, { locale: "cs-CZ" })
+      )
+    ).toBeTruthy();
+    cleanup();
+
+    const view = render(<SignInCard locale={locale} noLongerWaiting />);
+    const notice = view.getByText(
+      m.accountSignInNoLongerWaitingNotice({}, { locale })
+    );
+    expect(
+      notice.compareDocumentPosition(
+        view.getByLabelText(m.accountSignInEmailLabel({}, { locale }))
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    await submitEmail(view);
+    fireEvent.click(
+      view.getByRole("button", {
+        name: m.accountSignInAcceptedAgain({}, { locale }),
+      })
+    );
+
+    expect(
+      view.queryByText(m.accountSignInNoLongerWaitingNotice({}, { locale }))
+    ).toBeNull();
+    expect(
+      render(<SignInCard locale={locale} />).container.textContent
+    ).not.toContain(m.accountSignInNoLongerWaitingNotice({}, { locale }));
+  });
+
   test("sign-in card validates invalid email with localized copy before requesting a link", async () => {
     const { SignInCard } = await import("./sign-in-card");
 

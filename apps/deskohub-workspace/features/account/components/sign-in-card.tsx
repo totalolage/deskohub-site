@@ -42,6 +42,11 @@ type SignInCardProps = {
    * on the email field. Off while `login_passkeys` is off.
    */
   readonly passkeysEnabled?: boolean;
+  /**
+   * Explains above the form that the sign-in a verify page waited for is
+   * gone, until the visitor sends a new email.
+   */
+  readonly noLongerWaiting?: boolean;
 };
 
 const signInEmailMaximumLength = 255;
@@ -72,8 +77,11 @@ export function SignInCard({
   locale,
   returnTo,
   passkeysEnabled = false,
+  noLongerWaiting = false,
 }: SignInCardProps) {
   const [failure, setFailure] = useState<SignInEmailFailure | null>(null);
+  const [showNoLongerWaiting, setShowNoLongerWaiting] =
+    useState(noLongerWaiting);
   const [storedRequest, setRequest] = useEmailSignInRequest();
   // The pending request continues only to its own destination: its link
   // already lands there. A card opened without one takes the request's; a
@@ -119,6 +127,7 @@ export function SignInCard({
       return;
     }
     if (!result.signInCode) focusAfterViewChange.current = "accepted";
+    setShowNoLongerWaiting(false);
     setRequest({
       email,
       requestedAt: Date.now(),
@@ -177,6 +186,11 @@ export function SignInCard({
       <p className="mt-3 text-sm leading-6 text-navy-blue/68">
         {m.accountSignInDescription({}, { locale })}
       </p>
+      {showNoLongerWaiting && (
+        <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+          {m.accountSignInNoLongerWaitingNotice({}, { locale })}
+        </p>
+      )}
       <Form {...form}>
         <form
           id="account-sign-in-form"

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef } from "react";
 import { createAuthReturnLifecycle } from "@/features/account/auth-return";
@@ -11,9 +10,12 @@ import {
   rememberEmailSignInRequest,
   useEmailSignInRequest,
 } from "@/features/account/email-sign-in-request";
-import { getAccountSignInPath } from "@/features/account/routes";
+import {
+  getAccountSignInPath,
+  getNoLongerWaitingSignInPath,
+} from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
-import { Button } from "@/shared/components/ui/button";
+import { leaveDocument } from "@/shared/browser/document-navigation";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
 
@@ -30,7 +32,8 @@ type SignInVerifyCardProps = {
  * Continues the sign-in email this tab requested last, such as one sent by a
  * checkout form through `startEmailSignIn`: it takes over the link's
  * hand-off and, while sign-in codes are on, the code entry, and lands on the
- * request's return path.
+ * request's return path. With nothing waiting, a signed-in tab continues to
+ * the account and a signed-out one goes back to sign-in with a notice.
  */
 export function SignInVerifyCard({
   locale,
@@ -41,6 +44,7 @@ export function SignInVerifyCard({
   // Storage belongs to this origin, but its return path is checked again.
   const returnTo = parseSameOriginPath(request?.returnTo);
   const attemptId = request?.attemptId;
+  const waiting = request !== null;
   const authReturn = useMemo(
     () => createAuthReturnLifecycle({ locale, returnTo }),
     [locale, returnTo]
@@ -60,13 +64,26 @@ export function SignInVerifyCard({
 
   useEffect(() => {
     if (!restored) return;
+    let active = true;
     authReturn.resumeSignInEmail({ attemptId });
-    // The link may already have signed this browser in from another tab.
-    void authReturn.continueIfSignedIn();
-    return authReturn.cancel;
-  }, [authReturn, attemptId, restored]);
+    // The link may already have signed this browser in from another tab, or
+    // a finished sign-in came back here; either continues on.
+    void authReturn.continueIfSignedIn().then((signedIn) => {
+      if (!active || signedIn || waiting) return;
+      // The modal hands over to the sign-in modal; the page reloads as the
+      // sign-in page rather than open that modal over this one.
+      const signInPath = getNoLongerWaitingSignInPath(locale);
+      if (presentation === "modal") router.replace(signInPath);
+      else leaveDocument(signInPath, { replace: true });
+    });
+    return () => {
+      active = false;
+      authReturn.cancel();
+    };
+  }, [authReturn, attemptId, locale, presentation, restored, router, waiting]);
 
-  if (!restored) {
+  // With nothing waiting, the card stays loading until it has left.
+  if (!restored || request === null) {
     return (
       <AuthCard>
         <div
@@ -79,24 +96,6 @@ export function SignInVerifyCard({
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-13 w-full rounded-xl" />
         </div>
-      </AuthCard>
-    );
-  }
-
-  if (request === null) {
-    return (
-      <AuthCard>
-        <h2 className="text-3xl text-navy-blue">
-          {m.accountVerifyMissingTitle({}, { locale })}
-        </h2>
-        <p className="mt-4 leading-7 text-navy-blue/68">
-          {m.accountVerifyMissingBody({}, { locale })}
-        </p>
-        <Button asChild className="mt-8">
-          <Link href={getAccountSignInPath(locale)} replace>
-            {m.accountVerifyMissingAction({}, { locale })}
-          </Link>
-        </Button>
       </AuthCard>
     );
   }
