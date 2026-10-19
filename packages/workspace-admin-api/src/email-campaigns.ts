@@ -1,7 +1,6 @@
 import { Effect, Option, Schema } from "effect";
 import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import { AudienceFilter } from "./audience-filter";
-import { DhwVersion, MinimumDhwVersion } from "./dhw-version";
 import {
   AdministrationCampaignAudienceId,
   AdministrationCampaignId,
@@ -10,6 +9,7 @@ import {
   AdministrationCampaignLocale,
   AdministrationCampaignPurpose,
 } from "./campaign-locale-and-purpose";
+import { DhwVersion, MinimumDhwVersion } from "./dhw-version";
 import {
   AdministrationDotyposCustomerId,
   CliBearerAuthentication,
