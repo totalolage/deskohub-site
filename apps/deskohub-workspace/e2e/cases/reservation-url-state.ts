@@ -804,7 +804,7 @@ type OfficeSelectionDisplay = {
 
 /**
  * Waits for the office access and selected-seat prices to be ready, then
- * reads them with the start date field's visible text.
+ * reads them with the start date field's committed value.
  */
 const readOfficeSelectionDisplay = (
   { config, run, session }: UrlStateCaseContext,
@@ -814,7 +814,7 @@ const readOfficeSelectionDisplay = (
     const elements = `
   const basePrice = document.querySelector('[data-office-base-price]');
   const seatPrice = document.querySelector(${JSON.stringify(officeSeatPriceSelector(seats))});
-  const startDate = document.querySelector('button[aria-label^="Office reservation start date"]');
+  const startDate = document.querySelector('input[name="startsOn"]');
   const submit = document.querySelector('#reservation-continue');
   const text = (element) => (element?.textContent ?? '').replace(/\\s+/g, ' ').trim();
 `;
@@ -829,7 +829,7 @@ const readOfficeSelectionDisplay = (
     basePrice.querySelector('[data-slot="skeleton"]') === null &&
     seatPrice instanceof HTMLElement &&
     seatPrice.dataset.reservationTypePriceReady === 'true' &&
-    startDate instanceof HTMLButtonElement &&
+    startDate instanceof HTMLInputElement &&
     submit instanceof HTMLButtonElement &&
     submit.dataset.reservationPriceLoading === 'false' &&
     submit.dataset.reservationPriceError !== 'true';
@@ -847,7 +847,7 @@ const readOfficeSelectionDisplay = (
   return {
     basePrice: text(basePrice),
     seatPrice: text(seatPrice),
-    startDate: text(startDate),
+    startDate: startDate.value,
   };
 })()
 `,

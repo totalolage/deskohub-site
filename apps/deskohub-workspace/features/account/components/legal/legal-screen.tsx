@@ -12,6 +12,8 @@ export interface LegalScreenProps {
   readonly marketingPreferences?: MarketingPreferencesState;
 }
 
+const legalScreenTitleId = "account-legal-title";
+
 export function LegalScreen({
   locale,
   marketingPreferences,
@@ -22,9 +24,11 @@ export function LegalScreen({
     <AccountSectionPanel
       className="min-w-0"
       title={m.legalScreenTitle({}, { locale })}
+      titleId={legalScreenTitleId}
     >
+      {/* Named by the section title: the footer already owns the "Legal" navigation landmark. */}
       <nav
-        aria-label={m.footerLegalLabel({}, { locale })}
+        aria-labelledby={legalScreenTitleId}
         className="flex min-w-0 flex-wrap gap-x-4 gap-y-2 text-sm leading-5"
       >
         <PolicyLink

@@ -8,8 +8,9 @@ import {
 } from "@modelcontextprotocol/client";
 import { type BrowserContext, expect, test } from "@playwright/test";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import { enablePreviewAccess } from "../preview-access";
 import { workspaceE2ETimeouts } from "../timeouts";
-import { enablePreviewAccess, requireBaseUrl } from "./navigation-test-helpers";
+import { requireBaseUrl } from "./navigation-test-helpers";
 
 const toolNames = ["list_offerings", "check_availability", "get_quote"];
 

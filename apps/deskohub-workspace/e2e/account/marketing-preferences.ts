@@ -14,6 +14,7 @@ import { E2EDatabase } from "../integrations/database.service";
 import { runDatabaseOperation } from "../integrations/database-operation";
 import { dismissLegalCookieConsent } from "../legal-cookie-consent";
 import { pollUntil } from "../polling";
+import { primePreviewAccess } from "../preview-access";
 import { addRedaction, assert } from "../runtime";
 import {
   workspaceE2EPollInitialIntervalMs,
@@ -1056,30 +1057,6 @@ const assertNoMarketingManagementCookies = async (
     ),
     "Marketing preferences context retains a management cookie after clear"
   );
-};
-
-const primePreviewAccess = async (
-  context: BrowserContext,
-  baseUrl: string,
-  bypassSecret: string | undefined
-): Promise<void> => {
-  if (!bypassSecret) return;
-
-  const response = await context.request.get(
-    new URL("/favicon.svg", baseUrl).toString(),
-    {
-      headers: {
-        "x-vercel-protection-bypass": bypassSecret,
-        "x-vercel-set-bypass-cookie": "true",
-      },
-      maxRedirects: 3,
-    }
-  );
-  try {
-    assert(response.ok(), "Preview access could not be primed");
-  } finally {
-    await response.dispose();
-  }
 };
 
 const withAnonymousMarketingContext = <A>(

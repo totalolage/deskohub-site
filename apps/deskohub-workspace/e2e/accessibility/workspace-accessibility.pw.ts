@@ -1,25 +1,12 @@
-import AxeBuilder from "@axe-core/playwright";
-import {
-  expect,
-  type Locator,
-  type Page,
-  type TestInfo,
-  test,
-} from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { m } from "@/features/i18n";
-import { enablePreviewAccess } from "../instant-navigation/navigation-test-helpers";
+import { enablePreviewAccess } from "../preview-access";
+import {
+  expectAxeClean,
+  auditedLocales as locales,
+  openSettledPage,
+} from "./accessibility-audit";
 
-const axeTags = [
-  "wcag2a",
-  "wcag2aa",
-  "wcag21a",
-  "wcag21aa",
-  "wcag22a",
-  "wcag22aa",
-  "best-practice",
-];
-
-const locales = ["en-US", "cs-CZ"] as const;
 const auditedPaths = [
   "",
   "/contact",
@@ -95,8 +82,9 @@ test("reservation validation is associated with its controls", async ({
 }, testInfo) => {
   await openSettledPage(page, "/en-US/reservation/cowork");
 
+  // The calendar button beside the typed date field.
   const dateButton = page.getByRole("button", {
-    name: "Reservation date, required",
+    name: "Reservation date: choose from the calendar",
   });
   await dateButton.click();
   await expect(page.getByRole("dialog")).toBeVisible();
@@ -203,15 +191,6 @@ for (const locale of locales) {
   }
 }
 
-async function openSettledPage(page: Page, path: string) {
-  await page.goto(path, { waitUntil: "load" });
-  await expect(page.locator("html")).toHaveAttribute("lang", /^(en-US|cs-CZ)$/);
-  await expect(page.locator("main")).toBeVisible();
-  await expect(page.locator('[aria-busy="true"]')).toHaveCount(0, {
-    timeout: 20_000,
-  });
-}
-
 async function expectCheckoutProgressLabelsFit(
   page: Page,
   stepsList: Locator,
@@ -308,25 +287,4 @@ async function expectCheckoutProgressLabelsFit(
   }, labels);
 
   expect(issues, issues.join("\n")).toEqual([]);
-}
-
-async function expectAxeClean(page: Page, testInfo: TestInfo) {
-  const results = await new AxeBuilder({ page }).withTags(axeTags).analyze();
-
-  if (results.violations.length > 0) {
-    await testInfo.attach("axe-results", {
-      body: JSON.stringify(results.violations, null, 2),
-      contentType: "application/json",
-    });
-  }
-
-  expect(
-    results.violations,
-    results.violations
-      .map(
-        (violation) =>
-          `${violation.id}: ${violation.help} (${violation.nodes.length} nodes)`
-      )
-      .join("\n")
-  ).toEqual([]);
 }

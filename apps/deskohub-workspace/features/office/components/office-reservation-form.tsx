@@ -283,7 +283,6 @@ export function OfficeReservationForm({
                   name={field.name}
                   onBlur={field.onBlur}
                   onChange={field.onChange}
-                  placeholder={m.reservationDatePlaceholder({}, { locale })}
                   value={field.value}
                   variant={fieldState.error ? "error" : "default"}
                 />

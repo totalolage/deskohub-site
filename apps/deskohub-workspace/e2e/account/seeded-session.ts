@@ -25,6 +25,32 @@ export const workspaceE2ESessionCookieName =
   "__Secure-better-auth.session_token";
 
 /**
+ * Local `next dev` serves plain HTTP with HTTPS-only cookies off, so Better
+ * Auth names its session cookie without the `__Secure-` prefix there.
+ */
+const developmentSessionCookieName = "better-auth.session_token";
+const developmentHosts = new Set(["127.0.0.1", "localhost"]);
+
+/**
+ * The session cookie the deployment at `origin` reads: the `__Secure-`
+ * cookie on HTTPS, the unprefixed one on a local development server. Any
+ * other plain-HTTP origin is refused.
+ */
+export const workspaceE2ESessionCookieFor = (origin: string) => {
+  const url = new URL(origin);
+  if (url.protocol === "https:") {
+    return { name: workspaceE2ESessionCookieName, secure: true } as const;
+  }
+  if (url.protocol === "http:" && developmentHosts.has(url.hostname)) {
+    return { name: developmentSessionCookieName, secure: false } as const;
+  }
+  throw workspaceE2EError(
+    "Seeded sessions need an HTTPS deployment or a local development server",
+    { operation: "resolve synthetic account session cookie" }
+  );
+};
+
+/**
  * Seeded sessions only need to outlive one case; a short expiry bounds the
  * value of a leaked preview cookie even before cleanup deletes the user.
  */
@@ -201,8 +227,8 @@ export const signInWorkspaceE2ESyntheticAccount = ({
 
 /**
  * Signs a Playwright browser context in as one journaled synthetic account:
- * the seeded session's HTTP-only, Secure, Lax cookie is added for the preview
- * origin only.
+ * the seeded session's HTTP-only, Lax cookie is added for the target origin
+ * only, Secure on a preview.
  */
 export const signInWorkspaceE2ESyntheticBrowserContext = ({
   accountId,
@@ -216,6 +242,7 @@ export const signInWorkspaceE2ESyntheticBrowserContext = ({
   readonly secret: WorkspaceE2ESessionSigningSecret;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
+    const cookie = workspaceE2ESessionCookieFor(origin);
     const value = yield* issueWorkspaceE2ESyntheticSession({
       accountId,
       secret,
@@ -230,9 +257,9 @@ export const signInWorkspaceE2ESyntheticBrowserContext = ({
         context.addCookies([
           {
             httpOnly: true,
-            name: workspaceE2ESessionCookieName,
+            name: cookie.name,
             sameSite: "Lax",
-            secure: true,
+            secure: cookie.secure,
             url: origin,
             value,
           },

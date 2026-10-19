@@ -2,8 +2,8 @@ import { instant } from "@next/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { m } from "@/features/i18n";
 import { captureAccountReview } from "../account/review-screenshots";
+import { enablePreviewAccess } from "../preview-access";
 import {
-  enablePreviewAccess,
   expectPublicSiteShell,
   prefetchRoute,
   requireBaseUrl,

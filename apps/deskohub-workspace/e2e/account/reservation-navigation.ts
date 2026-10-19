@@ -1,5 +1,5 @@
 import { equal } from "node:assert/strict";
-import type { Browser, BrowserContext, Page } from "@playwright/test";
+import type { Browser, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { Data } from "effect";
 import { type Locale, m } from "@/features/i18n";
@@ -9,6 +9,7 @@ import {
   reservationStatusPath,
 } from "@/features/reservation/routes";
 import { workspaceE2EError } from "../errors";
+import { primePreviewAccess } from "../preview-access";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { WorkspaceE2EReservationHistoryFixture } from "./reservation-history-fixture";
 
@@ -342,30 +343,6 @@ const expectInvalidAccess = async (
     page.getByText(fixture.reservationId, { exact: true })
   ).toHaveCount(0);
   await expect(page.locator("[data-reservation-access-code]")).toHaveCount(0);
-};
-
-const primePreviewAccess = async (
-  context: BrowserContext,
-  baseUrl: string,
-  bypassSecret: string | undefined
-) => {
-  if (!bypassSecret) return;
-
-  const response = await context.request.get(
-    new URL("/favicon.svg", baseUrl).toString(),
-    {
-      headers: {
-        "x-vercel-protection-bypass": bypassSecret,
-        "x-vercel-set-bypass-cookie": "true",
-      },
-      maxRedirects: 3,
-    }
-  );
-  try {
-    equal(response.ok(), true, "preview access could not be primed");
-  } finally {
-    await response.dispose();
-  }
 };
 
 const runReservationHistoryNavigationPair = async ({

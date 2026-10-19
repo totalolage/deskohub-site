@@ -566,9 +566,10 @@ describe("MeetingRoomReservationForm", () => {
             .value
         ).toBe("16:00");
         expect(
-          view.getByRole("button", { name: /^Meeting room start date/ })
-            .textContent
-        ).toContain("July 30, 2099");
+          view.getByRole<HTMLInputElement>("combobox", {
+            name: "Start date and time",
+          }).value
+        ).toBe("7/30/2099");
       });
 
       const continueButton = view.getByRole("button", { name: "Continue" });
@@ -611,18 +612,20 @@ describe("MeetingRoomReservationForm", () => {
         initialReservation: restoredWholeDayReservation,
       });
       expect(
-        view.getByRole("button", { name: /^Meeting room start date/ })
-          .textContent
-      ).toContain("July 31, 2099");
+        view.getByRole<HTMLInputElement>("combobox", {
+          name: "Reservation date",
+        }).value
+      ).toBe("7/31/2099");
 
       now = Temporal.Instant.from("2099-07-30T22:37:00Z");
       view.rerenderForm();
 
       await waitFor(() => {
         expect(
-          view.getByRole("button", { name: /^Meeting room start date/ })
-            .textContent
-        ).toContain("July 31, 2099");
+          view.getByRole<HTMLInputElement>("combobox", {
+            name: "Reservation date",
+          }).value
+        ).toBe("7/31/2099");
       });
     } finally {
       Temporal.Now.instant = originalNow;
