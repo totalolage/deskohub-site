@@ -120,10 +120,20 @@ export class AutomationPlanner extends Context.Service<
           .pipe(Effect.withSpan("automationPlanner.heartbeat"));
 
       /** Marked units no live claimant holds. */
+      /**
+       * A unit with `send_id` owns a persisted batch, its only recovery path
+       * (§5.9), so a mark never drops it: the reaper requeues it instead.
+       */
+      const recoverable = or(
+        isNull(units.cancelRequestedAt),
+        isNotNull(units.sendId)
+      );
+
       const droppable = (at: Temporal.Instant) =>
         and(
           inArray(units.kind, supportedKinds),
           isNotNull(units.cancelRequestedAt),
+          isNull(units.sendId),
           or(
             eq(units.status, "enqueued"),
             and(eq(units.status, "claimed"), lte(units.claimExpiresAt, at))
@@ -183,7 +193,7 @@ export class AutomationPlanner extends Context.Service<
                 .where(
                   and(
                     inArray(units.kind, supportedKinds),
-                    isNull(units.cancelRequestedAt),
+                    recoverable,
                     eq(units.status, "claimed"),
                     lte(units.claimExpiresAt, at)
                   )
@@ -201,7 +211,7 @@ export class AutomationPlanner extends Context.Service<
                 .where(
                   and(
                     inArray(units.kind, supportedKinds),
-                    isNull(units.cancelRequestedAt),
+                    recoverable,
                     eq(units.status, "enqueued"),
                     lt(units.enqueuedAt, at.subtract(unclaimedResendAfter))
                   )

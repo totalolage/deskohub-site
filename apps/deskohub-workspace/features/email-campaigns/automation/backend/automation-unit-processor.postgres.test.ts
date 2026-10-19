@@ -478,6 +478,44 @@ describe.skipIf(!database)("automation unit processor", () => {
     expect(await readUnit(unit.id)).toMatchObject({ status: "done", sendId });
   });
 
+  test("the reaper requeues a marked unit with a persisted send instead of dropping it", async () => {
+    const { handler } = persistingHandler({});
+    const queue = makeAutomationUnitQueueFake();
+    const layer = automationEngineTestLayer({
+      database: postgres,
+      queue,
+      handlers: [handler],
+    });
+    const crashed = await seedPersistedUnit({
+      status: "claimed",
+      claimId: "dead-consumer",
+      claimExpiresAt: startedAt.subtract({ seconds: 1 }),
+      cancelRequestedAt: startedAt,
+    });
+    const lost = await seedPersistedUnit({
+      status: "enqueued",
+      cancelRequestedAt: startedAt,
+    });
+    await Effect.runPromise(
+      postgres.db
+        .update(units)
+        .set({ enqueuedAt: startedAt.subtract({ minutes: 11 }) })
+        .where(eq(units.id, lost.unit.id))
+    );
+
+    const summary = await run(plan, layer);
+    expect(summary.reaped).toMatchObject({
+      dropped: 0,
+      requeued: 1,
+      resent: 1,
+    });
+    expect(await statuses([crashed.unit.id, lost.unit.id])).toEqual([
+      "enqueued",
+      "enqueued",
+    ]);
+    expect(await run(processUnit(crashed.unit.id), layer)).toBe("done");
+  });
+
   test("a persisted unit whose submit fails or is defective requeues, marked or not", async () => {
     let failures = 2;
     const { handler } = persistingHandler({
