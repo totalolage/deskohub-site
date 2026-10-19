@@ -4,7 +4,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Duration, Effect, Layer } from "effect";
+import { Duration, Effect, Fiber, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
@@ -979,7 +979,7 @@ describe("CheckoutStatusService", () => {
     });
   });
 
-  test("omits summary when only a failed payment attempt is available", async () => {
+  test("omits summary but keeps the retry selection when only a failed payment attempt is available", async () => {
     const { CheckoutStatusService } = await import("./checkout-status.service");
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
@@ -996,6 +996,12 @@ describe("CheckoutStatusService", () => {
         Effect.succeed(
           makeReservation({
             paymentState: "failed",
+            reservationDetails: {
+              kind: "cowork",
+              entryTier: "reserved-desk",
+              coffee: true,
+              monitorOption: "2x27-qhd",
+            },
           })
         )
       ),
@@ -1017,7 +1023,8 @@ describe("CheckoutStatusService", () => {
     const finalization: ProviderPaymentFinalizationServiceType = {
       finalizePendingProviderPayment: mock(() => Effect.die("not used")),
     };
-    const getReservationWithoutCustomer = mock(() => Effect.die("not used"));
+    const getReservationWithoutCustomer =
+      makeDotypos().getReservationWithoutCustomer;
 
     const status = await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
@@ -1047,7 +1054,12 @@ describe("CheckoutStatusService", () => {
 
     expect(status.status).toBe("payment_failed");
     expect(status.summary).toBeUndefined();
-    expect(getReservationWithoutCustomer).not.toHaveBeenCalled();
+    // Only the retry selection reads the reservation; the failed attempt's
+    // amount never reaches the page.
+    expect(getReservationWithoutCustomer).toHaveBeenCalledTimes(1);
+    expect(status).toMatchObject({
+      retrySearchParams: { entryTier: "reserved-desk", date: "2026-06-20" },
+    });
   });
 
   test("keeps status renderable when Dotypos summary lookup fails", async () => {
@@ -1115,5 +1127,240 @@ describe("CheckoutStatusService", () => {
 
     expect(status.status).toBe("fulfilled");
     expect(status.summary).toBeUndefined();
+  });
+});
+
+describe("CheckoutStatusService retry selection", () => {
+  const getStatusFor = async ({
+    dotypos = makeDotypos(),
+    elapsed,
+    latePaymentRecovery = null,
+    reservation,
+  }: {
+    readonly dotypos?: ReturnType<typeof makeDotypos>;
+    /** Runs on a test clock advanced by this much while the status loads. */
+    readonly elapsed?: Duration.Input;
+    readonly latePaymentRecovery?: object | null;
+    readonly reservation: ReturnType<typeof makeReservation>;
+  }) => {
+    const { CheckoutStatusService } = await import("./checkout-status.service");
+    const { ProviderPaymentFinalizationService } = await import(
+      "../payment/provider-payment-finalization.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+
+    const getStatus = Effect.gen(function* () {
+      const service = yield* CheckoutStatusService;
+      return yield* service.getStatus({
+        orderId: "reservation-provider-return",
+        returnOutcome: "cancelled",
+      });
+    });
+
+    return (
+      elapsed === undefined
+        ? getStatus
+        : Effect.gen(function* () {
+            const fiber = yield* Effect.forkChild(getStatus);
+            yield* TestClock.adjust(elapsed);
+            return yield* Fiber.join(fiber);
+          }).pipe(Effect.provide(TestClock.layer()))
+    ).pipe(
+      Effect.provide(
+        CheckoutStatusService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ProviderPaymentFinalizationService, {
+                finalizePendingProviderPayment: mock(() =>
+                  Effect.die("not used")
+                ),
+              }),
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(reservation)),
+              }),
+              Layer.mock(PaymentAttemptRepository, {
+                findDisplayableForReservation: mock(() =>
+                  Effect.succeed(makePaymentAttempt({ state: "failed" }))
+                ),
+                findById: mock(() =>
+                  Effect.succeed(makePaymentAttempt({ state: "failed" }))
+                ),
+              }),
+              dotyposLayer(dotypos),
+              Layer.mock(LatePaymentRecoveryRepository, {
+                findLatestByWorkspaceReservationId: mock(() =>
+                  Effect.succeed(latePaymentRecovery)
+                ),
+              }),
+              Layer.mock(LatePaymentVerificationService, {
+                startRecoveryIfSettled: mock(() =>
+                  Effect.succeed("not_applicable" as const)
+                ),
+              }),
+              SeatingMapFeatureFlagServiceMock({
+                isEnabled: Effect.succeed(false),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+  };
+
+  test.each([
+    { paymentState: "failed", status: "payment_failed" },
+    { paymentState: "cancelled", status: "cancelled" },
+    { paymentState: "expired", status: "expired" },
+  ])(
+    "rebuilds the booked cowork selection after a $paymentState payment",
+    async ({ paymentState, status }) => {
+      const result = await getStatusFor({
+        reservation: makeReservation({
+          paymentState,
+          reservationState: "cancelled",
+          reservationDetails: {
+            kind: "cowork",
+            entryTier: "reserved-desk",
+            coffee: true,
+            monitorOption: "2x27-qhd",
+          },
+        }),
+        dotypos: makeDotypos({
+          getReservationWithoutCustomer: mock(() =>
+            Effect.succeed({
+              id: "dotypos-reservation-id",
+              _customerId: "customer-id",
+              startDate: "2099-06-12T00:00:00.000+02:00",
+              endDate: "2099-06-13T00:00:00.000+02:00",
+              seats: "1",
+              status: "CANCELLED",
+            })
+          ),
+        }),
+      });
+
+      expect(result.status).toBe(status);
+      expect(result).toMatchObject({
+        retrySearchParams: {
+          entryTier: "reserved-desk",
+          date: "2099-06-12",
+          coffee: "true",
+          monitorOption: "2x27-qhd",
+        },
+      });
+    }
+  );
+
+  test("rebuilds the booked meeting-room start and duration", async () => {
+    const result = await getStatusFor({
+      reservation: makeReservation({
+        paymentState: "failed",
+        reservationDetails: {
+          kind: "meeting-room",
+          duration: { unit: "hour", amount: 4 },
+        },
+      }),
+      dotypos: makeDotypos({
+        getReservationWithoutCustomer: mock(() =>
+          Effect.succeed({
+            id: "dotypos-reservation-id",
+            _customerId: "customer-id",
+            startDate: "2099-08-13T14:00:00.000+02:00",
+            endDate: "2099-08-13T18:00:00.000+02:00",
+            seats: "1",
+            status: "NEW",
+          })
+        ),
+      }),
+    });
+
+    expect(result).toMatchObject({
+      retrySearchParams: {
+        startDateTime: "2099-08-13T14:00",
+        duration: "hour:4",
+      },
+    });
+  });
+
+  test("rebuilds the booked office start date, day count, and seats", async () => {
+    const result = await getStatusFor({
+      reservation: makeReservation({
+        paymentState: "expired",
+        reservationDetails: { kind: "office", dayCount: 3, seats: 2 },
+      }),
+      dotypos: makeDotypos({
+        getReservationWithoutCustomer: mock(() =>
+          Effect.succeed({
+            id: "dotypos-reservation-id",
+            _customerId: "customer-id",
+            startDate: "2099-06-20T00:00:00.000+02:00",
+            endDate: "2099-06-23T00:00:00.000+02:00",
+            seats: "3",
+            status: "CANCELLED",
+          })
+        ),
+      }),
+    });
+
+    expect(result).toMatchObject({
+      retrySearchParams: { startsOn: "2099-06-20", dayCount: "3", seats: "3" },
+    });
+  });
+
+  test("renders a retry status without a selection when Dotypos can't load the reservation", async () => {
+    const result = await getStatusFor({
+      reservation: makeReservation({ paymentState: "failed" }),
+      dotypos: makeDotypos({
+        getReservationWithoutCustomer: mock(() => Effect.fail("down")),
+      }),
+    });
+
+    expect(result.status).toBe("payment_failed");
+    expect(result).not.toHaveProperty("retrySearchParams");
+  });
+
+  test("renders a retry status without a selection when Dotypos doesn't answer in time", async () => {
+    const result = await getStatusFor({
+      reservation: makeReservation({ paymentState: "cancelled" }),
+      dotypos: makeDotypos({
+        getReservationWithoutCustomer: mock(() => Effect.never),
+      }),
+      elapsed: "8 seconds",
+    });
+
+    expect(result.status).toBe("cancelled");
+    expect(result).not.toHaveProperty("retrySearchParams");
+  });
+
+  test("offers no retry once a late payment for the expired checkout takes over", async () => {
+    const result = await getStatusFor({
+      reservation: makeReservation({ paymentState: "expired" }),
+      latePaymentRecovery: {
+        id: "late-payment-recovery",
+        paymentAttemptId: "attempt-provider-return",
+        state: "refund_required",
+      },
+    });
+
+    expect(result.status).toBe("late_payment_refund");
+    expect(result).not.toHaveProperty("retrySearchParams");
+  });
+
+  test("never reads the reservation for a payment that is still pending", async () => {
+    const dotypos = makeDotypos();
+    const result = await getStatusFor({
+      reservation: makeReservation({ paymentState: "pending" }),
+      dotypos,
+    });
+
+    expect(result).not.toHaveProperty("retrySearchParams");
+    // Only the summary reconstruction reads it.
+    expect(dotypos.getReservationWithoutCustomer).toHaveBeenCalledTimes(1);
   });
 });

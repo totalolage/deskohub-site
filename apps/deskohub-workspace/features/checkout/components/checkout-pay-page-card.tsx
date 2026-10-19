@@ -1,9 +1,13 @@
 "use client";
 
 import Interpolate from "@doist/react-interpolate";
-import { CreditCard, RotateCcw } from "lucide-react";
+import { CreditCard, RotateCcw, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import {
+  formatWorkspaceMoney,
+  type WorkspaceMoney,
+} from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -107,17 +111,37 @@ export function CheckoutPayConsent({
   );
 }
 
+/** Tells the customer, and any agent acting for them, who takes the payment. */
+export function CheckoutPayProviderHandoff({
+  locale,
+}: {
+  readonly locale: Locale;
+}) {
+  return (
+    <p className="flex items-start gap-2 text-sm leading-6 text-navy-blue/66">
+      <ShieldCheck
+        aria-hidden="true"
+        className="mt-1 h-4 w-4 shrink-0 text-aquamarine-ink"
+      />
+      <span>{m.checkoutPayProviderHandoff({}, { locale })}</span>
+    </p>
+  );
+}
+
 export function CheckoutPaySubmitButton({
   disabled,
   locale,
   onClick,
   pending,
+  total,
   variant,
 }: {
   readonly disabled?: boolean;
   readonly locale: Locale;
   readonly onClick?: () => void;
   readonly pending?: boolean;
+  /** The amount the provider charges; a free order omits it. */
+  readonly total?: WorkspaceMoney;
   readonly variant: CheckoutPayActionVariant;
 }) {
   return (
@@ -140,7 +164,12 @@ export function CheckoutPaySubmitButton({
               retry: <RotateCcw className="h-4 w-4" />,
             }[variant]
           }
-          {m.checkoutPayOrderAndPayButton({}, { locale })}
+          {total
+            ? m.checkoutPayOrderAndPayAmountButton(
+                { amount: formatWorkspaceMoney(total, locale) },
+                { locale }
+              )
+            : m.checkoutPayOrderAndPayButton({}, { locale })}
         </>
       )}
     </Button>

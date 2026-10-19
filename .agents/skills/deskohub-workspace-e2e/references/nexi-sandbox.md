@@ -26,6 +26,12 @@ The sandbox fails on its own side. Known signs:
 
 Fail fast with the `nexi_hosted_<step>_<state>` diagnostic code instead of waiting out the step timeout. Never reload the rejected page or resubmit card data into it.
 
+## Failed and cancelled payments
+
+The hosted page has no cancel control that Nexi records. The card step offers only Continue, and the Pay step's Back stays on Nexi. Browser Back to the cancel URL leaves the order with no operations, so the Workspace payment stays `pending` until hold cleanup. The cancelled cases therefore inject their terminal state after Nexi opens.
+
+A real failure comes from the 3-D Secure stub. Its "Autenticazione fallita" (`challenge_failure`) choice records an `AUTHORIZATION` with result `THREEDS_FAILED` and ends on the `/hpp/nexi/error` "Payment error" page. That page's Back to the shop goes to the result URL. Accept the error page only after the driver has chosen that failure (`challengeOutcome: "failed"`); before that it is still a sandbox rejection. The `payment-authentication-failed` case returns through the real result URL. The status page then reconciles the order with Nexi to `failed` (`nexi_payment_failed`), with no webhook replay, and the case follows Try again.
+
 For failed `/fe/build/` responses, the failure `network.har` keeps only provider error codes (`errors[].code`), workflow enums (`event`, `state`, `workflowState`), and `fieldStatus` events with known field IDs; everything else is redacted. Read those codes before you blame the sandbox. If one case is rejected repeatedly while other paid cases pass, reproduce its order values (amount, currency override, customer info) directly against the sandbox before rerunning.
 
 ## Sandbox restart
