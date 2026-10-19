@@ -38,7 +38,10 @@ export const publicPages = [
   { pathname: "/reservation/office", releaseGate: "office-page" },
 ] as const satisfies ReadonlyArray<PublicPage>;
 
-export type PublicPagePathname = (typeof publicPages)[number]["pathname"];
+/** A page of the registry, with its exact pathname. */
+export type RegisteredPublicPage = (typeof publicPages)[number];
+
+export type PublicPagePathname = RegisteredPublicPage["pathname"];
 
 const publicPagePathnames: ReadonlySet<string> = new Set(
   publicPages.map(({ pathname }) => pathname)

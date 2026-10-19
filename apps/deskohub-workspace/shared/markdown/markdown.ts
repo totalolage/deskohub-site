@@ -1,5 +1,6 @@
 import type {
   BlockContent,
+  Blockquote,
   Heading,
   Link,
   List,
@@ -45,6 +46,10 @@ export const markdownLink = (
   url: string,
   ...content: ReadonlyArray<Phrasing>
 ): Link => ({ type: "link", url, children: toPhrasing(content) });
+
+export const markdownBlockquote = (
+  ...children: ReadonlyArray<BlockContent>
+): Blockquote => ({ type: "blockquote", children: [...children] });
 
 /** A bulleted list. */
 export const markdownList = (items: ReadonlyArray<ListItem>): List => ({

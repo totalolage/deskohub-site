@@ -11,7 +11,7 @@ import {
 import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
-import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
+import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
 import { SharedAvailabilityInventoryLive } from "@/features/reservation/backend/availability-inventory-cache.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { serializeMarkdown } from "@/shared/markdown/markdown";
@@ -19,13 +19,22 @@ import {
   type PublicPageMarkdownSources,
   publicPageMarkdown,
 } from "../public-page-markdown";
-import type { PublicPagePathname } from "../public-pages";
+import type { PublicPage, PublicPagePathname } from "../public-pages";
 
 /** Release decisions the request already made, which a cached render reuses. */
 export interface PublicPageMarkdownReleases {
   /** Whether office reservations are open, so the office offer is listed. */
   readonly officeOpen: boolean;
 }
+
+/** The release decisions the published pages imply. */
+export const getMarkdownReleases = (
+  publishedPages: ReadonlyArray<PublicPage>
+): PublicPageMarkdownReleases => ({
+  officeOpen: publishedPages.some(
+    ({ releaseGate }) => releaseGate === "office-page"
+  ),
+});
 
 /**
  * The offerings at their advertised prices, as the reservation pages show
@@ -42,8 +51,11 @@ const loadMarkdownOfferings = (
     Effect.map(({ offerings }) => offerings),
     Effect.provide(
       Layer.mergeAll(
+        // Referral discounts belong to a signed-in customer, never to an
+        // anonymous advertised price, and the cached render has no request
+        // to evaluate the referral flag for.
         CheckoutPricingService.Live.pipe(
-          Layer.provideMerge(ReferralFeatureFlagRequest)
+          Layer.provideMerge(ReferralFeatureFlagService.fromDecision(false))
         ),
         SharedAvailabilityInventoryLive,
         Layer.succeed(OfficeReservationFeatureFlagService, {
@@ -76,6 +88,25 @@ const loadMarkdownOfferings = (
   );
 
 /**
+ * The sources a cached Markdown render reads. `isComplete` turns false when
+ * a source had to fall back, so the render that used it isn't shared.
+ */
+export const createMarkdownSources = (
+  locale: Locale,
+  releases: PublicPageMarkdownReleases
+) => {
+  let complete = true;
+  const sources: PublicPageMarkdownSources = {
+    offerings: Effect.suspend(() =>
+      loadMarkdownOfferings(locale, releases, () => {
+        complete = false;
+      })
+    ),
+  };
+  return { sources, isComplete: () => complete };
+};
+
+/**
  * A public page's Markdown in `locale`. It reads no per-request data, so it
  * is shared like other public content; a render that had to fall back to
  * catalog prices is not shared.
@@ -88,18 +119,11 @@ export async function renderPublicPageMarkdown(
   "use cache";
   cacheLife("publicContent");
 
-  let complete = true;
-  const sources: PublicPageMarkdownSources = {
-    offerings: Effect.suspend(() =>
-      loadMarkdownOfferings(locale, releases, () => {
-        complete = false;
-      })
-    ),
-  };
+  const { sources, isComplete } = createMarkdownSources(locale, releases);
   const blocks = await publicPageMarkdown[pathname]
     .render(locale, sources)
     .pipe(runWorkspaceEffect("publicPageMarkdown.render", { boundary: "route" }));
 
-  if (!complete) cacheLife({ expire: 0 });
+  if (!isComplete()) cacheLife({ expire: 0 });
   return serializeMarkdown(blocks);
 }

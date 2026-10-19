@@ -1079,3 +1079,128 @@ describe("agent traffic", () => {
     expect(scheduledAgentPageRequests).toEqual([]);
   });
 });
+
+describe("page Markdown negotiation", () => {
+  const markdownAccept = "text/markdown, text/html;q=0.9, */*;q=0.8";
+  const browserAccept =
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
+  const varyOf = (response: Response) =>
+    (response.headers.get("vary") ?? "")
+      .split(",")
+      .map((value) => value.trim().toLowerCase());
+
+  test.each([
+    ["/en-US", "/page-markdown/en-US"],
+    ["/cs-CZ/contact", "/page-markdown/cs-CZ/contact"],
+    ["/en-US/terms-and-conditions", "/page-markdown/en-US/terms-and-conditions"],
+    ["/cs-CZ/reservation/cowork", "/page-markdown/cs-CZ/reservation/cowork"],
+  ])("rewrites a public page %s that prefers Markdown to %s", async (pathname, routePath) => {
+    for (const method of ["GET", "HEAD"]) {
+      const response = await proxy(
+        new NextRequest(`https://workspace.example${pathname}`, {
+          method,
+          headers: { accept: markdownAccept },
+        })
+      );
+
+      expect(response.headers.get("x-middleware-rewrite")).toBe(
+        `https://workspace.example${routePath}`
+      );
+      expect(response.headers.get("location")).toBeNull();
+    }
+  });
+
+  test.each([
+    ["a browser", browserAccept],
+    ["any type", "*/*"],
+    ["no preference", undefined],
+    ["HTML first at equal quality", "text/html, text/markdown"],
+    ["Markdown at a lower quality", "text/markdown;q=0.5, text/html"],
+  ])("serves the HTML page to %s, varying on Accept", async (_, accept) => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/en-US/faq", {
+        headers: accept === undefined ? {} : { accept },
+      })
+    );
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(varyOf(response)).toContain("accept");
+  });
+
+  test("redirects an unprefixed page to its locale before negotiating", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/contact", {
+        headers: { accept: markdownAccept, "accept-language": "cs" },
+      })
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://workspace.example/cs-CZ/contact"
+    );
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+  });
+
+  test.each([
+    "/en-US/account",
+    "/en-US/checkout/pay?state=synthetic",
+    "/en-US/reservation/status/019edbcf-5026-7ecc-821b-eda46998eaaa",
+    "/en-US/gallery",
+    "/en-US/cookie-settings",
+    "/en-US/testing",
+    "/en-US/unknown-page",
+  ])("never rewrites %s, which is not a public page", async (path) => {
+    const response = await proxy(
+      new NextRequest(`https://workspace.example${path}`, {
+        headers: { accept: "text/markdown" },
+      })
+    );
+
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(varyOf(response)).not.toContain("accept");
+  });
+
+  test("never rewrites the administration", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/en-US/admin", {
+        headers: { accept: "text/markdown" },
+      })
+    );
+
+    expect(response.headers.get("x-middleware-rewrite") ?? "").not.toContain(
+      "/page-markdown"
+    );
+  });
+
+  test("passes a Server Action on a public page through", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/en-US/contact", {
+        method: "POST",
+        headers: { accept: "text/markdown", "next-action": "action-id" },
+      })
+    );
+
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+  });
+
+  test("records an agent's Markdown page load", async () => {
+    await proxy(
+      new NextRequest("https://workspace.example/en-US/faq", {
+        headers: {
+          accept: "text/markdown",
+          "user-agent":
+            "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot",
+        },
+      })
+    );
+
+    expect(scheduledAgentPageRequests).toEqual([
+      {
+        traffic: { category: "ai_user_agent", name: "chatgpt" },
+        locale: "en-US",
+        pathname: "/en-US/faq",
+      },
+    ]);
+  });
+});

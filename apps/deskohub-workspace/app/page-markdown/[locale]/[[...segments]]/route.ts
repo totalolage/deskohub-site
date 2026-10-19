@@ -1,7 +1,10 @@
 import { Effect } from "effect";
 import { NextResponse } from "next/server";
 import { PublishedPublicPagesService } from "@/features/public-pages/backend";
-import { renderPublicPageMarkdown } from "@/features/public-pages/backend/public-page-markdown.server";
+import {
+  getMarkdownReleases,
+  renderPublicPageMarkdown,
+} from "@/features/public-pages/backend/public-page-markdown.server";
 import { getWorkspaceAlternates, type Locale } from "@/features/i18n";
 import { findLocalizedPublicPage } from "@/features/public-pages/page-markdown-negotiation";
 import type { PublicPagePathname } from "@/features/public-pages/public-pages";
@@ -63,11 +66,11 @@ export const GET = defineWorkspaceRoute(
       }
 
       const markdown = yield* Effect.tryPromise(() =>
-        renderPublicPageMarkdown(page.locale, page.pathname, {
-          officeOpen: publishedPages.some(
-            ({ releaseGate }) => releaseGate === "office-page"
-          ),
-        })
+        renderPublicPageMarkdown(
+          page.locale,
+          page.pathname,
+          getMarkdownReleases(publishedPages)
+        )
       );
       return new NextResponse(markdown, {
         headers: markdownHeaders(page.locale, page.pathname),
