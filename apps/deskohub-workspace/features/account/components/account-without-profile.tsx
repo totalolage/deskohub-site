@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { useAccountLayout } from "@/features/account/components/account-layout-shell";
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
 import { SignInSecuritySection } from "@/features/account/components/passkeys/sign-in-security-section";
@@ -17,6 +17,13 @@ type AccountWithoutProfileProps = {
   readonly passkeys?: AccountPasskeySettings;
   /** The card explaining why the profile isn't shown. */
   readonly children?: ReactNode;
+  /**
+   * The reservations the account booked without a profile, shown in the
+   * Reservations section before the card.
+   */
+  readonly reservations?: ReactNode;
+  /** The current reservations, counted in the navigation. */
+  readonly reservationCount?: number;
 };
 
 /**
@@ -30,16 +37,26 @@ export function AccountWithoutProfile({
   email,
   locale,
   passkeys,
+  reservationCount,
+  reservations,
 }: AccountWithoutProfileProps) {
-  const { activeSection } = useAccountLayout();
+  const { activeSection, setReservationCount } = useAccountLayout();
   const accountPasskeys = useAccountPasskeys(passkeys);
   const signInSecurity = accountPasskeys && !deletionPending;
   const securityActive = signInSecurity && activeSection === "security";
+
+  useEffect(() => {
+    setReservationCount(reservationCount);
+    return () => setReservationCount(undefined);
+  }, [reservationCount, setReservationCount]);
 
   return (
     <>
       <div hidden={securityActive}>
         <div className="grid items-start gap-6">
+          {reservations && (
+            <div hidden={activeSection !== "reservations"}>{reservations}</div>
+          )}
           {children}
           <DeleteAccountCard
             deletionPending={deletionPending}

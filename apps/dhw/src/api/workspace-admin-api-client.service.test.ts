@@ -682,6 +682,8 @@ describe("WorkspaceAdminApiClient", () => {
           reservation.id
         );
         expect(reservationDetail.reservation.purpose).toBe("business");
+        // A server that predates reservation authors omits the author.
+        expect(reservationDetail.author).toBeNull();
         yield* client.mutateReservationAccess(
           Redacted.make(accessToken),
           mutationRequestId,

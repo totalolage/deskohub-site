@@ -341,6 +341,8 @@ export {
   type AdministrationReservationAccessGrant as AdministrationReservationAccessGrantType,
   AdministrationReservationAccessMutation,
   type AdministrationReservationAccessMutation as AdministrationReservationAccessMutationType,
+  AdministrationReservationAuthor,
+  type AdministrationReservationAuthor as AdministrationReservationAuthorType,
   AdministrationReservationCancellationInput,
   type AdministrationReservationCancellationInput as AdministrationReservationCancellationInputType,
   AdministrationReservationCancellationResult,

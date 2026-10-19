@@ -5,6 +5,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { CustomerAccountAccessError } from "@/features/account";
 import { CustomerAccountReservationOwnership } from "@/features/account/backend/customer-account-reservation-ownership";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
 import {
@@ -26,16 +27,21 @@ const orderId = workspaceReservationIdSchema.make("reservation-1");
 const otherOrderId = workspaceReservationIdSchema.make("reservation-2");
 const accountCustomerId = "customer-owner";
 
+type AuthorizedReservation = Pick<
+  WorkspaceReservation,
+  "dotyposCustomerId" | "authorAccountId"
+>;
+
 const makeReservation = (
-  dotyposCustomerId = accountCustomerId
-): Pick<WorkspaceReservation, "dotyposCustomerId"> => ({
-  dotyposCustomerId,
-});
+  dotyposCustomerId = accountCustomerId,
+  authorAccountId: string | null = null
+): AuthorizedReservation =>
+  ({ dotyposCustomerId, authorAccountId }) as AuthorizedReservation;
 
 const runAuthorization = async (options: {
   readonly input?: Partial<ReservationAuthorizationInput>;
-  readonly owner?: "matches" | "different" | "unavailable";
-  readonly reservation?: Pick<WorkspaceReservation, "dotyposCustomerId"> | null;
+  readonly owner?: "matches" | "different" | "unlinked" | "unavailable";
+  readonly reservation?: AuthorizedReservation | null;
 }) => {
   const findById = mock(() =>
     Effect.succeed(
@@ -44,21 +50,33 @@ const runAuthorization = async (options: {
         : options.reservation
     )
   );
-  const resolve =
+  const activeAccountId =
     options.owner === "unavailable"
-      ? () =>
-          Effect.fail(new CustomerAccountAccessError({ reason: "unavailable" }))
-      : () =>
+      ? Effect.fail(new CustomerAccountAccessError({ reason: "unavailable" }))
+      : Effect.succeed(customerAccountIdSchema.make("account-id"));
+  const resolve =
+    options.owner === "unavailable" || options.owner === "unlinked"
+      ? mock(() =>
+          Effect.fail(
+            new CustomerAccountAccessError({
+              reason: "link-required",
+              linkReason: "not-found",
+            })
+          )
+        )
+      : mock(() =>
           Effect.succeed({
-            accountId: "account-id",
+            accountId: customerAccountIdSchema.make("account-id"),
             dotyposCustomerId:
               options.owner === "different"
                 ? "another-customer"
                 : accountCustomerId,
-          });
+          })
+        );
   const input: ReservationAuthorizationInput = {
     locale: "en-US",
     orderId,
+    permission: "view-status",
     ...options.input,
   };
 
@@ -70,7 +88,8 @@ const runAuthorization = async (options: {
     Effect.provide(
       Layer.mergeAll(
         Layer.succeed(CustomerAccountReservationOwnership, {
-          resolve: resolve(),
+          activeAccountId,
+          resolve: Effect.suspend(resolve),
         }),
         Layer.mock(WorkspaceReservationRepository, { findById })
       )
@@ -175,6 +194,22 @@ describe("ReservationAuthorizationService", () => {
     ["wrong customer", { owner: "different" as const }, false],
     ["missing reservation", { reservation: null }, false],
     ["matching owner", { owner: "matches" as const }, true],
+    [
+      "the author booking for another customer",
+      {
+        owner: "different" as const,
+        reservation: makeReservation("booked-for-customer", "account-id"),
+      },
+      true,
+    ],
+    [
+      "another account's authored reservation",
+      {
+        owner: "different" as const,
+        reservation: makeReservation("booked-for-customer", "other-account"),
+      },
+      false,
+    ],
   ] as const)(
     "checks exact local reservation ownership for %s",
     async (_label, options, expected) => {
@@ -182,6 +217,66 @@ describe("ReservationAuthorizationService", () => {
 
       expect(result.authorized).toBe(expected);
       expect(result.findById).toHaveBeenCalledWith(orderId);
+    }
+  );
+
+  test("allows the status to an author whose account has no linked customer", async () => {
+    const result = await runAuthorization({
+      owner: "unlinked",
+      reservation: makeReservation("booked-for-customer", "account-id"),
+    });
+
+    expect(result.authorized).toBe(true);
+    expect(result.resolve).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [
+      "the author booking for another customer",
+      {
+        owner: "different" as const,
+        reservation: makeReservation("booked-for-customer", "account-id"),
+      },
+      false,
+    ],
+    [
+      "an unlinked author",
+      {
+        owner: "unlinked" as const,
+        reservation: makeReservation("booked-for-customer", "account-id"),
+      },
+      false,
+    ],
+    ["the customer's linked account", { owner: "matches" as const }, true],
+    [
+      "the customer's linked account that also authored it",
+      {
+        owner: "matches" as const,
+        reservation: makeReservation(accountCustomerId, "account-id"),
+      },
+      true,
+    ],
+  ] as const)(
+    "decides the access code for %s by customer ownership only",
+    async (_label, options, expected) => {
+      const result = await runAuthorization({
+        ...options,
+        input: { permission: "view-access-code" },
+      });
+
+      expect(result.authorized).toBe(expected);
+    }
+  );
+
+  test.each(["view-status", "view-access-code"] as const)(
+    "accepts a valid capability for %s without an account",
+    async (permission) => {
+      const result = await runAuthorization({
+        input: { accessToken: await makeAccessToken(), permission },
+        owner: "unavailable",
+      });
+
+      expect(result.authorized).toBe(true);
     }
   );
 });
