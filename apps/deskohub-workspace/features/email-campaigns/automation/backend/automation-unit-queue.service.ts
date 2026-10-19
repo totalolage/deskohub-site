@@ -12,7 +12,7 @@ export const automationUnitQueueTopic = "workspace-email-automation-unit";
 export const automationUnitMessageSchema = Schema.Struct({
   unitId: automationWorkUnitIdSchema,
 });
-export type AutomationUnitMessage = typeof automationUnitMessageSchema.Type;
+type AutomationUnitMessage = typeof automationUnitMessageSchema.Type;
 
 interface IAutomationUnitQueue {
   /** Publishes one message per promoted unit, after its transaction commits. */

@@ -2,7 +2,7 @@ import { Context, Effect, Layer } from "effect";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 
 /** What planner step 3 did, for the plan summary. */
-export type AutomationSweepPlan = {
+type AutomationSweepPlan = {
   readonly sweepPagesPlanned: number;
   readonly eventsReconciled: number;
 };

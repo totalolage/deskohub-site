@@ -30,7 +30,7 @@ const unitDeadline = Duration.seconds(270);
  * The unit went back to `enqueued`, keeping its slot. The consumer fails so
  * the queue redelivers the message; there is no other retry loop.
  */
-export class AutomationUnitRedelivery extends Data.TaggedError(
+class AutomationUnitRedelivery extends Data.TaggedError(
   "AutomationUnitRedelivery"
 )<{
   readonly unitId: AutomationWorkUnitId;
@@ -119,7 +119,7 @@ export class AutomationUnitProcessor extends Context.Service<
       const settle = (
         unit: ClaimedUnit,
         settlement:
-          | { readonly status: "done" | "failed"; readonly code?: string }
+          | { readonly status: "failed"; readonly code: string }
           | { readonly status: "dropped" }
       ): Effect.Effect<AutomationUnitOutcome, AutomationUnitRedelivery> =>
         slots
