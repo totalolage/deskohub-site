@@ -47,14 +47,14 @@ describe.skipIf(!testDatabase)(
       return { campaignId, versionId };
     };
 
-    /** Runs `use` in a transaction on one connection, then commits. */
+    /** Runs `write` in a transaction on one connection, then commits. */
     const inTransaction = async (
-      use: (client: PoolClient) => Promise<void>
+      write: (client: PoolClient) => Promise<void>
     ) => {
       const client = await pool.connect();
       try {
         await client.query("begin");
-        await use(client);
+        await write(client);
         await client.query("commit");
       } catch (cause) {
         await client.query("rollback");
