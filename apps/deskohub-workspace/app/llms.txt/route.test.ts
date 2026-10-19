@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { advertisedCatalogOfferings } from "@/features/checkout/public-offerings.test-utils";
+import { DiscountReleaseGateService } from "@/features/discounts/discount-release-gate.service";
 import type { Locale } from "@/features/i18n";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { type PublicPage, publicPages } from "@/features/public-pages";
@@ -27,6 +28,7 @@ mock.module("@/features/checkout/backend/checkout/public-offerings", () => ({
           locale,
           ...(officeOpen && { office: {} }),
         }),
+        complete: true,
       };
     }),
 }));
@@ -40,8 +42,19 @@ Object.assign(PublishedPublicPagesService, {
     list: Effect.sync(() => publishedPages),
   }),
 });
+// The gate service's own tests cover evaluation; here no discount is
+// released, so no sale is looked up.
+const originalGatesLive = DiscountReleaseGateService.Live;
+Object.assign(DiscountReleaseGateService, {
+  Live: DiscountReleaseGateService.fromDecisions({
+    calendarSales: false,
+    customerDiscounts: false,
+    discountCodes: false,
+  }),
+});
 afterAll(() => {
   Object.assign(PublishedPublicPagesService, { Live: originalLive });
+  Object.assign(DiscountReleaseGateService, { Live: originalGatesLive });
 });
 
 const { GET } = await import("./route");

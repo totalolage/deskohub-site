@@ -1,11 +1,14 @@
 import "server-only";
 
+import { Effect } from "effect";
 import { cacheLife } from "next/cache";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { serializeMarkdown } from "@/shared/markdown/markdown";
 import { llmsTxtLocale, llmsTxtMarkdown } from "../llms-txt";
-import type { PublicPagePathname } from "../public-pages";
-import { createMarkdownSources } from "./public-page-markdown.server";
+import {
+  type PublicPageMarkdownReleases,
+  renderFromMarkdownSources,
+} from "./public-page-markdown.server";
 
 /**
  * `llms.txt` for the published pages. It reads no per-request data, so it is
@@ -13,16 +16,23 @@ import { createMarkdownSources } from "./public-page-markdown.server";
  * catalog prices is not shared.
  */
 export async function renderLlmsTxt(
-  pages: ReadonlyArray<PublicPagePathname>
+  releases: PublicPageMarkdownReleases
 ): Promise<string> {
   "use cache";
-  cacheLife("publicContent");
 
-  const { sources, isComplete } = createMarkdownSources(llmsTxtLocale, pages);
-  const offerings = await sources.offerings.pipe(
-    runWorkspaceEffect("llmsTxt.render", { boundary: "route" })
-  );
+  const { value: blocks, complete } = await renderFromMarkdownSources(
+    llmsTxtLocale,
+    releases,
+    ({ offerings }) =>
+      Effect.map(offerings, (loaded) =>
+        llmsTxtMarkdown({
+          pages: releases.publishedPathnames,
+          offerings: loaded,
+        })
+      )
+  ).pipe(runWorkspaceEffect("llmsTxt.render", { boundary: "route" }));
 
-  if (!isComplete()) cacheLife({ expire: 0 });
-  return serializeMarkdown(llmsTxtMarkdown({ pages, offerings }));
+  if (complete) cacheLife("publicContent");
+  else cacheLife({ expire: 0 });
+  return serializeMarkdown(blocks);
 }

@@ -75,6 +75,28 @@ export const markdownBlockListItem = (
 ): ListItem => ({ type: "listItem", spread: false, children: [...children] });
 
 /**
+ * Fills a translated template as `@doist/react-interpolate` fills it on the
+ * HTML page: `{name}` takes its value as literal text, and `<name>…</name>`
+ * wraps its filled content. A name without a value stays as written.
+ */
+export const markdownInterpolate = (
+  template: string,
+  mapping: Readonly<
+    Record<string, string | ((content: PhrasingContent[]) => PhrasingContent)>
+  >
+): PhrasingContent[] =>
+  [...template.matchAll(/<(\w+)>(.*?)<\/\1>|\{(\w+)\}|[^<{]+|[<{]/gs)].map(
+    ([match, tag, tagContent = "", placeholder]) => {
+      const value = mapping[tag ?? placeholder ?? ""];
+      if (Predicate.isString(value)) return markdownText(value);
+      if (Predicate.isFunction(value)) {
+        return value(markdownInterpolate(tagContent, mapping));
+      }
+      return markdownText(match);
+    }
+  );
+
+/**
  * Serializes Markdown blocks to text. Text values are escaped, so copy and
  * data never turn into Markdown syntax.
  */

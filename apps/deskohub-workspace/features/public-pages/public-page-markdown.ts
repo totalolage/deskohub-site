@@ -4,6 +4,7 @@ import { contactPageMarkdown } from "@/features/contact/contact-page-markdown";
 import { coworkReservationPageMarkdown } from "@/features/cowork/cowork-reservation-page-markdown";
 import { faqPageMarkdown } from "@/features/faq/faq-page-markdown";
 import { type Locale, m } from "@/features/i18n";
+import type { LandingPageSaleBannerContent } from "@/features/landing-page/components/landing-page-sale-banner";
 import { landingPageMarkdown } from "@/features/landing-page/landing-page-markdown";
 import {
   getLegalDocument,
@@ -39,6 +40,8 @@ export interface PublicPageMarkdownSources {
   readonly isPublished: (pathname: PublicPagePathname) => boolean;
   /** Every bookable product with its advertised price, in catalog order. */
   readonly offerings: Effect.Effect<ReadonlyArray<PublicOffering>>;
+  /** The home page's sale banner while a sale runs. */
+  readonly saleBanner: Effect.Effect<LandingPageSaleBannerContent | undefined>;
 }
 
 export interface PublicPageMarkdown {

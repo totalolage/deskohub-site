@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   markdownBlockListItem,
   markdownHeading,
+  markdownInterpolate,
   markdownLink,
   markdownList,
   markdownListItem,
@@ -53,6 +54,32 @@ describe("serializeMarkdown", () => {
         "  - Nested",
         "",
       ].join("\n")
+    );
+  });
+});
+
+describe("markdownInterpolate", () => {
+  const fill = (template: string) =>
+    serializeMarkdown([
+      markdownParagraph(
+        ...markdownInterpolate(template, {
+          title: "*Summer* [sale]",
+          adjustment: "20 %",
+          discount: (content) => markdownStrong(...content),
+        })
+      ),
+    ]);
+
+  test("fills values as literal text and wraps tagged content", () => {
+    const markdown = fill("{title}: <discount>{adjustment}</discount> off!");
+
+    expect(markdown).toBe("\\*Summer\\* \\[sale]: **20 %** off!\n");
+    expect(markdownPlainText(markdown)).toBe("*Summer* [sale]: 20 % off!");
+  });
+
+  test("keeps names without a value as written", () => {
+    expect(markdownPlainText(fill("{unknown} <b>x</b> {title"))).toBe(
+      "{unknown} <b>x</b> {title"
     );
   });
 });

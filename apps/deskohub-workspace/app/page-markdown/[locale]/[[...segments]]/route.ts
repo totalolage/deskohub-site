@@ -2,7 +2,10 @@ import { Effect } from "effect";
 import { NextResponse } from "next/server";
 import { getWorkspaceAlternates, type Locale } from "@/features/i18n";
 import { PublishedPublicPagesService } from "@/features/public-pages/backend";
-import { renderPublicPageMarkdown } from "@/features/public-pages/backend/public-page-markdown.server";
+import {
+  decidePublicPageMarkdownReleases,
+  renderPublicPageMarkdown,
+} from "@/features/public-pages/backend/public-page-markdown.server";
 import { findLocalizedPublicPage } from "@/features/public-pages/page-markdown-negotiation";
 import type { PublicPagePathname } from "@/features/public-pages/public-pages";
 import {
@@ -39,7 +42,8 @@ const notFound = () =>
  * A public page as Markdown. The proxy rewrites a page request whose `Accept`
  * header prefers Markdown here; the URL is never linked. Release gates are
  * read per request, as the HTML pages read them, so a gated page has no
- * Markdown while it is not served.
+ * Markdown while it is not served, and the render reads the decisions made
+ * here.
  */
 export const GET = defineWorkspaceRoute(
   {
@@ -53,19 +57,13 @@ export const GET = defineWorkspaceRoute(
       const page = findLocalizedPublicPage(["", locale, ...segments].join("/"));
       if (!page) return notFound();
 
-      const publishedPages = yield* PublishedPublicPagesService.pipe(
-        Effect.flatMap((published) => published.list)
-      );
-      if (!publishedPages.some(({ pathname }) => pathname === page.pathname)) {
+      const releases = yield* decidePublicPageMarkdownReleases;
+      if (!releases.publishedPathnames.includes(page.pathname)) {
         return notFound();
       }
 
       const markdown = yield* Effect.tryPromise(() =>
-        renderPublicPageMarkdown(
-          page.locale,
-          page.pathname,
-          publishedPages.map(({ pathname }) => pathname)
-        )
+        renderPublicPageMarkdown(page.locale, page.pathname, releases)
       );
       return new NextResponse(markdown, {
         headers: markdownHeaders(page.locale, page.pathname),
