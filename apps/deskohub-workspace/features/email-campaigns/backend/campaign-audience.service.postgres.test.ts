@@ -17,8 +17,11 @@ import {
 import { CampaignService } from "./campaign.service";
 import { CampaignAudienceService } from "./campaign-audience.service";
 import {
+  audienceConditionFlowFixture,
   campaignContentFixture,
+  deleteAutomatedCampaigns,
   everyoneFilter,
+  seedAutomationVersion,
 } from "./email-campaigns.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -31,10 +34,7 @@ describe.skipIf(!testDatabase)(
     const campaignIds: CampaignId[] = [];
 
     afterAll(async () => {
-      await testDatabase.pool.query(
-        "delete from email_campaigns where id = any($1)",
-        [campaignIds]
-      );
+      await deleteAutomatedCampaigns(testDatabase.db, campaignIds);
       await testDatabase.pool.query(
         "delete from email_campaign_audiences where id = any($1)",
         [audienceIds]
@@ -102,6 +102,7 @@ describe.skipIf(!testDatabase)(
       expect(failure(deletion)).toMatchObject({
         _tag: "CampaignAudienceInUse",
         draftCampaignIds: [draft.id],
+        automationCampaignIds: [],
       });
 
       const archived = await run(
@@ -318,6 +319,106 @@ describe.skipIf(!testDatabase)(
         draftCampaignIds: [draft.id],
       });
       expect(await storedAudienceId(draft.id)).toBe(audience.id);
+    });
+
+    const createAutomation = async () => {
+      const exit = await run(
+        CampaignService.pipe(
+          Effect.flatMap((campaigns) =>
+            campaigns.create({
+              title: "Come back soon",
+              purpose: "marketing",
+              templateKey: "workspace",
+              content: campaignContentFixture(),
+              audienceId: null,
+              delivery: "automated",
+            })
+          )
+        )
+      );
+      if (Exit.isFailure(exit)) throw Cause.squash(exit.cause);
+      campaignIds.push(exit.value.id);
+      return exit.value.id;
+    };
+
+    const setWorkingFlow = (
+      campaignId: CampaignId,
+      flow: ReturnType<typeof audienceConditionFlowFixture>
+    ) =>
+      testDatabase.pool.query(
+        "update email_campaign_automations set flow = $2 where campaign_id = $1",
+        [campaignId, flow]
+      );
+
+    /** Publishes version `versionNumber` with `flow` and makes it active. */
+    const activateVersion = async (
+      campaignId: CampaignId,
+      input: { readonly versionNumber: number; readonly flow?: unknown }
+    ) => {
+      const versionId = await seedAutomationVersion(testDatabase.db, {
+        campaignId,
+        purpose: "marketing",
+        ...input,
+      });
+      await testDatabase.pool.query(
+        "update email_campaign_automations set active_version_id = $2 where campaign_id = $1",
+        [campaignId, versionId]
+      );
+    };
+
+    const setStatus = (campaignId: CampaignId, status: string) =>
+      testDatabase.pool.query(
+        "update email_campaigns set status = $2 where id = $1",
+        [campaignId, status]
+      );
+
+    test("blocks deleting an audience an automation's working copy references", async () => {
+      const audience = await createAudience("Loyal guests");
+      const campaignId = await createAutomation();
+      await setWorkingFlow(
+        campaignId,
+        audienceConditionFlowFixture(audience.id)
+      );
+
+      expect(failure(await deleteAudience(audience.id))).toMatchObject({
+        _tag: "CampaignAudienceInUse",
+        draftCampaignIds: [],
+        automationCampaignIds: [campaignId],
+      });
+    });
+
+    test("blocks deleting an audience an automation's active version references", async () => {
+      const audience = await createAudience("Weekend guests");
+      const campaignId = await createAutomation();
+      await activateVersion(campaignId, {
+        versionNumber: 1,
+        flow: audienceConditionFlowFixture(audience.id),
+      });
+      await setStatus(campaignId, "paused");
+
+      expect(failure(await deleteAudience(audience.id))).toMatchObject({
+        _tag: "CampaignAudienceInUse",
+        draftCampaignIds: [],
+        automationCampaignIds: [campaignId],
+      });
+    });
+
+    test("deletes an audience only archived automations and superseded versions reference", async () => {
+      const audience = await createAudience("Former regulars");
+      const flow = audienceConditionFlowFixture(audience.id);
+
+      const archivedId = await createAutomation();
+      await setWorkingFlow(archivedId, flow);
+      await activateVersion(archivedId, { versionNumber: 1, flow });
+      await setStatus(archivedId, "archived");
+
+      // Runs pinned to version 1 fail its condition once the audience is gone.
+      const supersededId = await createAutomation();
+      await activateVersion(supersededId, { versionNumber: 1, flow });
+      await activateVersion(supersededId, { versionNumber: 2 });
+      await setStatus(supersededId, "active");
+
+      expect(Exit.isSuccess(await deleteAudience(audience.id))).toBe(true);
     });
 
     test("unarchives after waiting on an archive that holds the audience row", async () => {
