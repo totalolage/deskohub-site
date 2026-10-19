@@ -25,7 +25,7 @@ export async function ReservationActivity({
   const { ranges } = data;
 
   return (
-    <dl className="grid gap-3 lg:grid-cols-3">
+    <dl className="grid gap-3 @xl:grid-cols-3">
       <OverviewMetric
         href={getReservationRangeHref(ranges.today)}
         label={m.administrationOverviewTodayLabel({}, { locale })}
@@ -61,7 +61,7 @@ export async function CustomerActivity({
   const { newCustomers, uniqueCustomers } = await overview;
 
   return (
-    <dl className="grid gap-3 lg:grid-cols-2">
+    <dl className="grid gap-3 @xl:grid-cols-2">
       <CustomerActivityMetric
         label={m.administrationOverviewUniqueCustomersLabel({}, { locale })}
         locale={locale}
