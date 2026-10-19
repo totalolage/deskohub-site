@@ -7,11 +7,12 @@ import { Effect, Match, Option } from "effect";
 import {
   type AudienceCondition,
   type AudienceFilterOutcome,
+  campaignEmailDispatchBounds,
   mapAudienceLeaves,
 } from "../audience-filter";
 import type { AudienceEvaluationContext } from "../backend/audience-evaluation-context";
 import type { CampaignPurpose } from "../body/campaign-content";
-import { datePeriodBounds, isWithinDatePeriodBounds } from "../date-period";
+import { isWithinDatePeriodBounds } from "../date-period";
 import type { AutomationStepId } from "./automation-identifiers";
 import type { AutomationPreviewOutcome } from "./automation-states";
 import {
@@ -265,12 +266,12 @@ const isCampaignEmailCount = (
   leaf._tag === "Condition" && leaf.attribute === "campaignEmailCount";
 
 /**
- * A filter as the replay evaluates it in `context` (design §8.2). "Campaign
- * emails received" counts only emails dispatched by the evaluation time, so
- * "any time" stops there, and each send simulated before it counts toward
- * the conditions that would count this campaign's email: shifting the
- * compared value by the simulated sends in the period gives the same outcome
- * as adding them to the stored count, for every count operator.
+ * A filter as the replay evaluates it in its replayed `context` (design
+ * §8.2), which counts only campaign emails dispatched by the evaluation
+ * time. Each send simulated by then counts toward the conditions that would
+ * count this campaign's email: shifting the compared value by the simulated
+ * sends in the period gives the same outcome as adding them to the stored
+ * count, for every count operator.
  */
 export const replayedFilter = <Leaf extends AutomationConditionLeaf>(
   filter: AudienceFilterOf<Leaf>,
@@ -292,20 +293,15 @@ const replayedEmailCount = <Condition extends CampaignEmailCount>(
     readonly simulatedSends: readonly Temporal.Instant[];
   }
 ): Condition => {
-  const period =
-    condition.params.period._tag === "AnyTime"
-      ? ({ _tag: "Past" } as const)
-      : condition.params.period;
-  const bounds = datePeriodBounds(period, input.context);
+  const bounds = campaignEmailDispatchBounds(
+    condition.params.period,
+    input.context
+  );
   const simulated = countsSimulatedSends(condition.params, input)
     ? input.simulatedSends.filter((at) => isWithinDatePeriodBounds(bounds, at))
         .length
     : 0;
-  return {
-    ...condition,
-    params: { ...condition.params, period },
-    value: condition.value - simulated,
-  };
+  return { ...condition, value: condition.value - simulated };
 };
 
 /**

@@ -451,6 +451,7 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
         at: event.occurredAt,
         reservationId: Option.fromNullishOr(event.workspaceReservationId),
       }),
+      replayed: true,
     });
 
     return Effect.Do.pipe(

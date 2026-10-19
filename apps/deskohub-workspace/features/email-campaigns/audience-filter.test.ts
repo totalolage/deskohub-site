@@ -430,6 +430,35 @@ describe("collectAudienceFactRequests", () => {
       ).params.campaign
     ).toBe(campaignIdSchema.make("campaign-2"));
   });
+
+  test("counts campaign emails dispatched by a replayed moment", () => {
+    const replayed = { ...context, replayed: true };
+    const sinceMarch = { _tag: "Onward", date: "2026-03-01" } as const;
+    const emailsSinceMarch = {
+      ...marketingEmailsLastTenDays,
+      params: { purpose: "marketing", period: sinceMarch },
+    } as const satisfies AudienceCondition;
+    const visitsSinceMarch = {
+      ...reservationsVisitedInMarch,
+      params: { dateBasis: "visit", period: sinceMarch },
+    } as const satisfies AudienceCondition;
+    const march = Temporal.Instant.from("2026-02-28T23:00:00Z");
+    const { campaignEmailCount, reservationCount } = audienceAttributeCatalogue;
+
+    expect(
+      countFactRequest(campaignEmailCount, emailsSinceMarch, replayed).params
+        .period
+    ).toEqual({ startsAtOrAfter: march, startsAtOrBefore: now });
+    // The present has no later emails; visits may lie ahead either way.
+    expect(
+      countFactRequest(campaignEmailCount, emailsSinceMarch, context).params
+        .period
+    ).toEqual({ startsAtOrAfter: march });
+    expect(
+      countFactRequest(reservationCount, visitsSinceMarch, replayed).params
+        .period
+    ).toEqual({ startsAtOrAfter: march });
+  });
 });
 
 describe("audienceFilterSchema", () => {

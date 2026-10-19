@@ -26,6 +26,12 @@ export type AudienceEvaluationContext = {
   readonly now: Temporal.Instant;
   readonly campaignId: Option.Option<CampaignId>;
   readonly trigger: Option.Option<AudienceTrigger>;
+  /**
+   * `now` is a past moment a dry run replays, so Workspace has since
+   * recorded what came after it. Live evaluations run at the present and
+   * leave it unset.
+   */
+  readonly replayed?: boolean;
 };
 
 /** The context of a one-off evaluation at `now`: no campaign, no trigger. */
