@@ -1930,6 +1930,216 @@ describe("DotyposService reservation page", () => {
   });
 });
 
+describe("DotyposService active reservation page", () => {
+  const interval = {
+    startDate: new Date("2026-08-04T08:00:00Z"),
+    endDate: new Date("2026-08-04T14:00:00Z"),
+  };
+  const reservationListRequests = (fetchMock: {
+    mock: { calls: unknown[][] };
+  }) =>
+    fetchMock.mock.calls
+      .map((call) => new URL(getUrl(call as FetchCall)))
+      .filter((url) => url.pathname === "/clouds/cloud-id/reservations");
+
+  test.each([
+    { providerNextPage: "3", nextPage: Option.some(3) },
+    { providerNextPage: null, nextPage: Option.none() },
+  ])(
+    "reads one overlap page with one request and reports next page $providerNextPage",
+    async ({ providerNextPage, nextPage }) => {
+      const reservations = [reservation({ id: "reservation-1" })];
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        return Response.json({
+          currentPage: "2",
+          data: reservations,
+          nextPage: providerNextPage,
+        });
+      });
+
+      const page = await runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.listActiveReservationsPage(interval, 2);
+        }),
+        fetchMock
+      );
+
+      const requests = reservationListRequests(fetchMock);
+      expect(requests).toHaveLength(1);
+      expect(Object.fromEntries(requests[0]?.searchParams ?? [])).toEqual({
+        filter: `status|in|NEW,CONFIRMED;startDate|lt|${interval.endDate.getTime()};endDate|gt|${interval.startDate.getTime()}`,
+        limit: "100",
+        page: "2",
+      });
+      expect(page).toEqual({ reservations, nextPage });
+    }
+  );
+
+  test.each([
+    {
+      failure: "a rate limit",
+      respond: () =>
+        Response.json(
+          { error: "rate_limited", error_description: "Too many requests" },
+          { status: 429 }
+        ),
+      error: { _tag: "ExternalAPIError", statusCode: 429 },
+    },
+    {
+      failure: "a server error",
+      respond: () =>
+        Response.json(
+          { error: "unavailable", error_description: "Unavailable" },
+          { status: 503 }
+        ),
+      error: { _tag: "ExternalAPIError", statusCode: 503 },
+    },
+    {
+      failure: "a network error",
+      respond: () => {
+        throw new TypeError("fetch failed");
+      },
+      error: { _tag: "NetworkError" },
+    },
+  ])(
+    "leaves $failure to the caller instead of retrying it",
+    async ({ respond, error }) => {
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        return respond();
+      });
+
+      const result = await runWithServiceRetryingInstantly(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .listActiveReservationsPage(interval, 1)
+            .pipe(Effect.result);
+        }),
+        fetchMock
+      );
+
+      expect(result).toMatchObject({ _tag: "Failure", failure: error });
+      expect(reservationListRequests(fetchMock)).toHaveLength(1);
+    }
+  );
+
+  test("fails a silent request after the per-request timeout without retrying it", async () => {
+    let reservationRequests = 0;
+    let markRequestStarted!: () => void;
+    const requestStarted = new Promise<void>((resolve) => {
+      markRequestStarted = resolve;
+    });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      reservationRequests += 1;
+      markRequestStarted();
+      return new Promise<Response>((_, reject) => {
+        request.signal.addEventListener("abort", () =>
+          reject(request.signal.reason)
+        );
+      });
+    });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .listActiveReservationsPage(interval, 1)
+            .pipe(Effect.result);
+        }).pipe(
+          Effect.provide(
+            makeServiceLayer(fetchMock, {
+              ...config,
+              apiTimeout: dotyposApiTimeoutDefaultMilliseconds,
+            })
+          ),
+          Effect.forkChild
+        );
+        yield* Effect.promise(() => requestStarted);
+        yield* TestClock.adjust(dotyposApiTimeoutDefaultMilliseconds - 1);
+        expect(fiber.pollUnsafe()).toBeUndefined();
+        yield* TestClock.adjust(1);
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "NetworkError" },
+    });
+    expect(reservationRequests).toBe(1);
+  });
+
+  test.each(["1", "2", "page-3"])(
+    "rejects a reported next page %s that isn't ahead of page 2 without reading it",
+    async (providerNextPage) => {
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        return Response.json({
+          data: [reservation()],
+          nextPage: providerNextPage,
+        });
+      });
+
+      const result = await runWithServiceRetryingInstantly(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .listActiveReservationsPage(interval, 2)
+            .pipe(Effect.result);
+        }),
+        fetchMock
+      );
+
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "ExternalAPIError", statusCode: 502 },
+      });
+      expect(reservationListRequests(fetchMock)).toHaveLength(1);
+    }
+  );
+
+  test("reads nothing for an invalid page or interval", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      return Response.json({ data: [reservation()] });
+    });
+
+    const results = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* Effect.all(
+          [
+            dotypos.listActiveReservationsPage(interval, 0),
+            dotypos.listActiveReservationsPage(
+              { startDate: interval.endDate, endDate: interval.startDate },
+              1
+            ),
+          ].map(Effect.result)
+        );
+      }),
+      fetchMock
+    );
+
+    for (const result of results) {
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "ValidationError" },
+      });
+    }
+    expect(reservationListRequests(fetchMock)).toHaveLength(0);
+  });
+});
+
 describe("DotyposService reservations", () => {
   test("preserves a not-found status when the error body is undocumented", async () => {
     const fetchMock = mockDotyposFetch((request) => {

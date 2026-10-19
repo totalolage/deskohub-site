@@ -77,3 +77,46 @@ describe("seededReservationReads", () => {
     expect(page).toEqual({ reservations: listing, nextPage: Option.none() });
   });
 });
+
+describe("seededReservationReads active reservations", () => {
+  const at = (hour: number) =>
+    new Date(Date.UTC(2026, 0, 1, hour)).toISOString();
+  const interval = {
+    startDate: new Date(at(10)),
+    endDate: new Date(at(12)),
+  };
+
+  test("pages the NEW and CONFIRMED reservations overlapping the interval", async () => {
+    const overlapping = Array.from({ length: 150 }, (_, index) =>
+      reservation({
+        id: `overlapping-${index}`,
+        status: index % 2 === 0 ? "NEW" : "CONFIRMED",
+        startDate: at(9),
+        endDate: at(11),
+      })
+    );
+    const reads = seededReservationReads([
+      ...overlapping,
+      reservation({
+        id: "cancelled",
+        status: "CANCELLED",
+        startDate: at(10),
+        endDate: at(11),
+      }),
+      reservation({ id: "ends-at-start", startDate: at(8), endDate: at(10) }),
+      reservation({ id: "starts-at-end", startDate: at(12), endDate: at(13) }),
+    ]);
+
+    const pages = await Effect.runPromise(
+      Effect.all(
+        [1, 2].map((page) => reads.listActiveReservationsPage(interval, page))
+      )
+    );
+
+    expect(pages.map((page) => page.nextPage)).toEqual([
+      Option.some(2),
+      Option.none(),
+    ]);
+    expect(pages.flatMap((page) => page.reservations)).toEqual(overlapping);
+  });
+});

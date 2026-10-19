@@ -24,6 +24,7 @@ import {
   audienceFactKey,
   countFactRequest,
 } from "../audience-filter";
+import type { CampaignId } from "../campaign-identifiers";
 import type { DatePeriodBounds } from "../date-period";
 import { evaluateAudienceFilter } from "./audience-evaluation";
 import { audienceEvaluationAt } from "./audience-evaluation-context";
@@ -31,6 +32,12 @@ import {
   CampaignCandidateRepository,
   type CampaignReservationSelection,
 } from "./campaign-candidate.repository";
+import {
+  deleteAutomatedCampaigns,
+  seedAutomatedCampaign,
+  seedAutomatedSend,
+  seedAutomationVersion,
+} from "./email-campaigns.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 const context = audienceEvaluationAt(Temporal.Now.instant());
@@ -238,7 +245,10 @@ describe.skipIf(!testDatabase)(
       );
     };
 
+    const automatedCampaignIds: CampaignId[] = [];
+
     afterAll(async () => {
+      await deleteAutomatedCampaigns(db, automatedCampaignIds);
       await testDatabase.pool.query(
         "delete from email_campaign_sends where id = any($1)",
         [[marketingSend, operationalSend]]
@@ -497,6 +507,48 @@ describe.skipIf(!testDatabase)(
       expect(
         await receivedEmails({ purpose: "operational", dispatched: {} })
       ).toEqual({ [reserved]: 1 });
+    });
+
+    test("counts an automated send's recipients under its version's purpose", async () => {
+      const recipient = customerId("automated-recipient");
+      // The campaign's own draft is operational; its published version is
+      // marketing, and that is what its sends were mailed as.
+      const campaignId = await seedAutomatedCampaign(db, {
+        purpose: "operational",
+      });
+      automatedCampaignIds.push(campaignId);
+      const versionId = await seedAutomationVersion(db, {
+        campaignId,
+        purpose: "marketing",
+      });
+      for (const status of ["delivered", "unconfirmed", "failed"] as const) {
+        await seedAutomatedSend(db, {
+          campaignId,
+          versionId,
+          purpose: "marketing",
+          recipients: [{ dotyposCustomerId: recipient, status }],
+        });
+      }
+      const received = async (query: {
+        readonly purpose?: "marketing" | "operational";
+        readonly campaignId?: CampaignId;
+      }) =>
+        Object.fromEntries(
+          await repository((candidates) =>
+            candidates.countReceivedCampaignEmails({
+              ...query,
+              dispatched: {},
+              customers: [recipient],
+            })
+          )
+        );
+
+      expect(await received({ purpose: "marketing" })).toEqual({
+        [recipient]: 2,
+      });
+      expect(await received({ purpose: "operational" })).toEqual({});
+      expect(await received({})).toEqual({ [recipient]: 2 });
+      expect(await received({ campaignId })).toEqual({ [recipient]: 2 });
     });
 
     test("dates an email by the current attempt's batch, or by its status without one", async () => {

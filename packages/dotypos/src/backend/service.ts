@@ -301,6 +301,17 @@ const reservationListQuery = (
   );
 };
 
+const validateReservationPageNumber = (
+  page: number
+): Effect.Effect<void, ValidationError> =>
+  Number.isSafeInteger(page) && page >= 1
+    ? Effect.void
+    : Effect.fail(
+        new ValidationError({
+          message: "Reservation page must be a positive integer",
+        })
+      );
+
 const getNextDotyposPageNumber = (input: {
   readonly currentPage: number;
   readonly nextPage: string | null | undefined;
@@ -1863,11 +1874,7 @@ const makeDotyposService = Effect.gen(function* () {
   const listReservationsPage = Effect.fn("listReservationsPage")(function* (
     options: ReservationListOptions & { readonly page: number }
   ) {
-    if (!Number.isSafeInteger(options.page) || options.page < 1) {
-      return yield* new ValidationError({
-        message: "Reservation page must be a positive integer",
-      });
-    }
+    yield* validateReservationPageNumber(options.page);
     const query = yield* reservationListQuery(options);
     if (Option.isNone(query)) {
       const empty: ReservationPage = {
@@ -1876,22 +1883,52 @@ const makeDotyposService = Effect.gen(function* () {
       };
       return empty;
     }
-    const result = yield* readReservationPage({
+    return yield* readSingleReservationPage({
       query: query.value,
       page: options.page,
       operation: "listReservationsPage",
-    }).pipe(catchUnexpectedDotyposError("listReservationsPage"));
-    const nextPage = yield* getNextDotyposPageNumber({
-      currentPage: options.page,
-      nextPage: result.nextPage,
-      operation: "listReservationsPage",
     });
-    const page: ReservationPage = {
-      reservations: result.data ?? [],
-      nextPage: Option.fromUndefinedOr(nextPage),
-    };
-    return page;
   });
+
+  /**
+   * Reads one page of the reservations still `NEW` or `CONFIRMED` that
+   * overlap the interval. Like {@link listReservationsPage}, it sends exactly
+   * one list request and never retries it.
+   */
+  const listActiveReservationsPage = Effect.fn("listActiveReservationsPage")(
+    function* (interval: DotyposReservationInterval, page: number) {
+      yield* validateReservationPageNumber(page);
+      const filter = yield* getActiveReservationOverlapFilter(interval);
+      return yield* readSingleReservationPage({
+        query: { filter },
+        page,
+        operation: "listActiveReservationsPage",
+      });
+    }
+  );
+
+  const readSingleReservationPage = (input: {
+    readonly query: ReservationListQuery;
+    readonly page: number;
+    readonly operation: string;
+  }) =>
+    readReservationPage(input).pipe(
+      catchUnexpectedDotyposError(input.operation),
+      Effect.flatMap((result) =>
+        getNextDotyposPageNumber({
+          currentPage: input.page,
+          nextPage: result.nextPage,
+          operation: input.operation,
+        }).pipe(
+          Effect.map(
+            (nextPage): ReservationPage => ({
+              reservations: result.data ?? [],
+              nextPage: Option.fromUndefinedOr(nextPage),
+            })
+          )
+        )
+      )
+    );
 
   const listActiveReservationsOverlapping = Effect.fn(
     "listActiveReservationsOverlapping"
@@ -1996,6 +2033,7 @@ const makeDotyposService = Effect.gen(function* () {
     getTables,
     listReservations,
     listReservationsPage,
+    listActiveReservationsPage,
     listActiveReservationsOverlapping,
     getProducts,
     getCategories,
