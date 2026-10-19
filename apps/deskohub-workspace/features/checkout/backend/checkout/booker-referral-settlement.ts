@@ -20,12 +20,14 @@ export const isBookerReferralSettled = Effect.fn(
   }) {
     const contacts = yield* CustomerAccountContactService;
     const referrals = yield* ReferralService;
-    const account = yield* contacts.currentLinkedAccount;
-    if (account) {
+    const account = yield* contacts.currentAccount;
+    if (account.status === "linked") {
       return yield* referrals.hasSettledReferral({
         dotyposCustomerId: account.dotyposCustomerId,
       });
     }
+    // An account without a profile yet has no referral of its own to settle.
+    if (account.status === "unlinked") return false;
     if (booking.paid) return true;
     if (booking.bookedCustomerId === undefined) return false;
     return yield* referrals.hasSettledReferral({
