@@ -18,7 +18,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Schema } from "effect";
-import { useEffect, useState } from "react";
+import { StrictMode, useEffect, useState } from "react";
 import { type Resolver, useForm, useWatch } from "react-hook-form";
 import { m } from "@/features/i18n";
 import type { PreparePayStateInput } from "@/features/reservation/actions/prepare-pay-state.schema";
@@ -524,6 +524,30 @@ describe("prepare_reservation site tool", () => {
     view.unmount();
 
     expect(modelContext.registered.has(toolName)).toBe(false);
+  });
+
+  test("a Strict Mode double mount leaves one registration and no rejection", async () => {
+    render(
+      <StrictMode>
+        <Harness />
+      </StrictMode>
+    );
+    act(() => publishQuoteTool(publishedQuoteTool));
+
+    await waitFor(() =>
+      expect(modelContext.registered.has(toolName)).toBe(true)
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const registrations = modelContext.registerTool.mock.calls.filter(
+      ([tool]) => tool.name === toolName
+    );
+    expect(registrations.length).toBeGreaterThanOrEqual(1);
+    expect(
+      registrations.filter(([, options]) => !options?.signal?.aborted)
+    ).toHaveLength(1);
+    await Promise.all(
+      modelContext.registerTool.mock.results.map(({ value }) => value)
+    );
   });
 
   test("is not registered while the site tools are not", async () => {
