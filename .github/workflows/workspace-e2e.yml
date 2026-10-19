@@ -195,6 +195,9 @@ jobs:
           # Workspace E2E on its own head, so this trusts exactly what the
           # required status itself trusts.
           E2E_RUN_DESCRIPTIONS: '["Protected preview E2E is running","Protected preview E2E passed","Protected preview E2E failed"]'
+          # A run a newer head superseded publishes this over its own
+          # "running" status. It tested nothing, so its commit is passed over.
+          E2E_SUPERSEDED_DESCRIPTION: Superseded by a newer PR head before E2E finished
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.target.outputs.pr_number }}
           RESOLUTION_ERROR: ${{ steps.target.outputs.resolution_error }}
@@ -250,12 +253,14 @@ jobs:
           for sha in "${same_tree_shas[@]}"; do
             run_state="$(gh api --paginate --slurp \
               "repos/$GITHUB_REPOSITORY/commits/$sha/statuses?per_page=100" | \
-              jq -r --argjson descriptions "$E2E_RUN_DESCRIPTIONS" \
+              jq -r \
+                --argjson descriptions "$E2E_RUN_DESCRIPTIONS" \
+                --arg superseded "$E2E_SUPERSEDED_DESCRIPTION" \
                 'add | first(.[] | select(
                   .context == "Workspace E2E" and
                   .creator.login == "github-actions[bot]" and
-                  (.description | IN($descriptions[]))
-                )) | .state')"
+                  (.description | IN($descriptions[], $superseded))
+                )) | if .description == $superseded then "superseded" else .state end')"
             case "$run_state" in
               success)
                 decide success "Same tree as ${sha:0:7}, which passed E2E"
@@ -277,14 +282,13 @@ jobs:
   test-e2e:
     needs: resolve-target
     if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
-    # Only a run that resolve-target found testing its PR's current head
-    # enters this group, so only such a run cancels the PR's E2E in progress.
-    # A late event for an older head, or a skip or failed deployment, never
-    # gets here and can't cancel a newer head's E2E. An older head stops
-    # being eligible once a newer one is pushed, and the newer head's event
-    # follows its own Vercel build, so an older run always enters first.
+    # Keyed by PR and SHA, so only a duplicate run for the same SHA cancels
+    # this one. Runs for different SHAs never cancel each other: a run can
+    # resolve its head as current, stall, and reach this job after a newer
+    # head's run started, in either order. A superseded run stops itself
+    # instead, through the first step below and cancel-superseded-run.
     concurrency:
-      group: workspace-e2e-pr-${{ needs.resolve-target.outputs.pr_number }}
+      group: workspace-e2e-pr-${{ needs.resolve-target.outputs.pr_number }}-${{ needs.resolve-target.outputs.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 50
@@ -292,6 +296,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      pull-requests: read
       statuses: write
     outputs:
       release_outcome: ${{ steps.release.outcome }}
@@ -306,6 +311,28 @@ jobs:
       WORKSPACE_E2E_PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
 
     steps:
+      # Runs for every SHA of a PR share its Neon preview branch, so a run
+      # whose head was superseded before this job started must not lease a
+      # shard or migrate. cancel-superseded-run cancels it; this step holds
+      # the job until then.
+      - name: Stop unless this SHA is still the PR head
+        env:
+          CANCEL_WAIT_SECONDS: 300
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          head_sha="$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/pulls/$WORKSPACE_E2E_PR_NUMBER" | \
+            jq -r '.head.sha')"
+          if [[ "$head_sha" == "$TARGET_SHA" ]]; then
+            echo "Target SHA is still the head of PR #$WORKSPACE_E2E_PR_NUMBER"
+            exit 0
+          fi
+          echo "PR #$WORKSPACE_E2E_PR_NUMBER moved to ${head_sha:0:7}; waiting for cancel-superseded-run to cancel this run" >&2
+          sleep "$CANCEL_WAIT_SECONDS"
+          exit 1
+
       - name: Checkout exact target
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -625,6 +652,53 @@ jobs:
           token: ${{ github.token }}
           database-url: ${{ secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL }}
 
+  # Cancels this run once a newer head of its PR is pushed, so the run stops
+  # itself instead of a newer run cancelling it. It runs beside test-e2e,
+  # which runs exact-SHA code, so that job never holds actions: write.
+  cancel-superseded-run:
+    needs: resolve-target
+    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    permissions:
+      actions: write
+      pull-requests: read
+    steps:
+      - name: Cancel this run once a newer PR head supersedes it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          POLL_SECONDS: 15
+          PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
+          TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
+        run: |
+          set -euo pipefail
+          while true; do
+            # A failed lookup is retried; only a real other SHA cancels.
+            head_sha="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" | \
+              jq -r '.head.sha')" || head_sha=""
+            if [[ "$head_sha" =~ ^[0-9a-f]{40}$ && "$head_sha" != "$TARGET_SHA" ]]; then
+              echo "PR #$PR_NUMBER moved to ${head_sha:0:7}; cancelling this run for ${TARGET_SHA:0:7}"
+              if gh api \
+                --method POST \
+                -H "Accept: application/vnd.github+json" \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/cancel" \
+                >/dev/null; then
+                exit 0
+              fi
+            fi
+            test_status="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs" | \
+              jq -r '.jobs[] | select(.name == "test-e2e") | .status')" || test_status=""
+            if [[ "$test_status" == "completed" ]]; then
+              echo "test-e2e finished while ${TARGET_SHA:0:7} was the PR head"
+              exit 0
+            fi
+            sleep "$POLL_SECONDS"
+          done
+
   publish-final-status:
     needs: [resolve-target, test-e2e]
     if: always() && needs.resolve-target.result == 'success' && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
@@ -632,6 +706,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      pull-requests: read
       statuses: write
     steps:
       - name: Publish final commit status
@@ -640,13 +715,27 @@ jobs:
           ALLOCATION_SHARD: ${{ needs.test-e2e.outputs.shard }}
           ALLOCATION_DESCRIPTION: ${{ needs.test-e2e.outputs.shard == '' && 'Workspace E2E shard allocation failed' || needs.test-e2e.outputs.release_outcome == 'success' && 'Workspace E2E shard released' || 'Workspace E2E shard release failed' }}
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
           STATUS_STATE: ${{ needs.test-e2e.result == 'success' && 'success' || 'failure' }}
+          SUPERSEDED_DESCRIPTION: Superseded by a newer PR head before E2E finished
           TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
         run: |
+          set -euo pipefail
           if [[ "$STATUS_STATE" == "success" ]]; then
             description='Protected preview E2E passed'
           else
             description='Protected preview E2E failed'
+            # A superseded run stopped itself, so its failure says nothing
+            # about this code. Statuses are per SHA, so this never touches
+            # the newer head's status.
+            head_sha="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" | \
+              jq -r '.head.sha')" || head_sha=""
+            if [[ "$head_sha" =~ ^[0-9a-f]{40}$ && "$head_sha" != "$TARGET_SHA" ]]; then
+              description="$SUPERSEDED_DESCRIPTION"
+              ALLOCATION_DESCRIPTION="$SUPERSEDED_DESCRIPTION"
+            fi
           fi
           gh api \
             --method POST \

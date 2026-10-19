@@ -225,8 +225,19 @@ describe("workspace E2E workflow", () => {
       )
     ).toEqual({
       "resolve-target": undefined,
-      "test-e2e": { actions: "read", contents: "read", statuses: "write" },
-      "publish-final-status": { contents: "read", statuses: "write" },
+      "test-e2e": {
+        actions: "read",
+        contents: "read",
+        "pull-requests": "read",
+        statuses: "write",
+      },
+      // Cancels only its own run, and runs no exact-SHA code.
+      "cancel-superseded-run": { actions: "write", "pull-requests": "read" },
+      "publish-final-status": {
+        contents: "read",
+        "pull-requests": "read",
+        statuses: "write",
+      },
       "publish-status-without-run": { contents: "read", statuses: "write" },
     });
   });
@@ -289,11 +300,12 @@ describe("workspace E2E workflow", () => {
     ).toBe(false);
   });
 
-  test("cancels a PR's E2E only from a run that tests its current head", () => {
+  test("cancels E2E only for a duplicate run of the same SHA", () => {
     // A late event for an older head or a skip resolves ineligible or never
     // reaches the E2E job, so cancellation lives on that job alone, after
-    // eligibility. Assert on parsed objects so a workflow-level group or a
-    // cancelling group on another job is caught however it is spelled.
+    // eligibility, and runs for different SHAs never share its group. Assert
+    // on parsed objects so a workflow-level group or a cancelling group on
+    // another job is caught however it is spelled.
     expect(doc.concurrency).toBeUndefined();
     expect(testJob.if).toContain(
       "needs.resolve-target.outputs.eligible == 'true'"
@@ -306,6 +318,9 @@ describe("workspace E2E workflow", () => {
     expect(testConcurrency?.group).toStartWith("workspace-e2e-pr-");
     expect(testConcurrency?.group).toContain(
       "needs.resolve-target.outputs.pr_number"
+    );
+    expect(testConcurrency?.group).toContain(
+      "needs.resolve-target.outputs.sha"
     );
     for (const [name, job] of Object.entries(doc.jobs)) {
       if (name !== "test-e2e") {

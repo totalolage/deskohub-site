@@ -1,17 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { runCommand } from "./shared/command";
+import { resolve } from "node:path";
 import { findStepByName, parseWorkflow } from "./shared/workflow-contract";
+import {
+  createWorkflowStepRunner,
+  workflowStepRepository as repository,
+} from "./shared/workflow-step-runner";
 
 const workflow = parseWorkflow(
   resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
@@ -26,38 +19,10 @@ const publishStep = findStepByName(
   "Publish status without an E2E run"
 );
 
-const repository = "owner/repo";
 const prNumber = 7;
 const sha = (digit: string) => digit.repeat(40);
 const targetSha = sha("a");
 const previewUrl = "https://deskohub-workspace-site-abc123-team.vercel.app";
-
-// Stands in for the GitHub CLI: each API path answers from a fixture file and
-// any other call fails, so a test also proves which requests the step makes.
-// Every call is logged for assertions on what the step published.
-const fakeGh = `#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\\n' "$*" >> "$GH_FIXTURES/calls.log"
-path=""
-for arg in "$@"; do
-  case "$arg" in
-    repos/*) path="\${arg#repos/*/*/}" ;;
-  esac
-done
-path="\${path%%\\?*}"
-file="$GH_FIXTURES/\${path//\\//_}.json"
-if [[ ! -f "$file" ]]; then
-  echo "unexpected gh call: $*" >&2
-  exit 1
-fi
-if [[ " $* " == *" --slurp "* ]]; then
-  printf '['
-  cat "$file"
-  printf ']'
-else
-  cat "$file"
-fi
-`;
 
 type Status = {
   readonly context?: string;
@@ -71,69 +36,8 @@ type Scenario = {
   readonly statuses?: Readonly<Record<string, readonly Status[]>>;
 };
 
-const root = mkdtempSync(join(tmpdir(), "workspace-e2e-status-"));
-afterAll(() => rmSync(root, { force: true, recursive: true }));
-
-let runIndex = 0;
-
-const runStep = async (
-  step: typeof statusStep,
-  fixtures: Readonly<Record<string, readonly object[]>>,
-  env: Readonly<Record<string, string>>
-) => {
-  const dir = join(root, `run-${runIndex++}`);
-  const bin = join(dir, "bin");
-  const fixtureDir = join(dir, "fixtures");
-  mkdirSync(bin, { recursive: true });
-  mkdirSync(fixtureDir);
-  writeFileSync(join(bin, "gh"), fakeGh);
-  chmodSync(join(bin, "gh"), 0o755);
-  for (const [path, body] of Object.entries(fixtures)) {
-    writeFileSync(
-      join(fixtureDir, `${path.replaceAll("/", "_")}.json`),
-      JSON.stringify(body)
-    );
-  }
-  const output = join(dir, "output");
-  const summary = join(dir, "summary");
-  writeFileSync(output, "");
-  writeFileSync(summary, "");
-  const stepEnv = Object.fromEntries(
-    Object.entries(step?.env ?? {}).filter(
-      ([, value]) => !String(value).includes("${{")
-    )
-  );
-  const result = await runCommand(["bash", "-c", step?.run ?? ""], {
-    cwd: dir,
-    env: {
-      ...stepEnv,
-      ...env,
-      GH_FIXTURES: fixtureDir,
-      GITHUB_OUTPUT: output,
-      GITHUB_REPOSITORY: repository,
-      GITHUB_RUN_ID: "99",
-      GITHUB_SERVER_URL: "https://github.com",
-      GITHUB_STEP_SUMMARY: summary,
-      HOME: dir,
-      PATH: `${bin}:${process.env.PATH}`,
-    },
-    timeoutMs: 15_000,
-  });
-  const outputs = Object.fromEntries(
-    readFileSync(output, "utf8")
-      .split("\n")
-      .filter((line) => line.includes("="))
-      .map((line) => [
-        line.slice(0, line.indexOf("=")),
-        line.slice(line.indexOf("=") + 1),
-      ])
-  );
-  const callLog = join(fixtureDir, "calls.log");
-  const calls = existsSync(callLog)
-    ? readFileSync(callLog, "utf8").split("\n").filter(Boolean)
-    : [];
-  return { calls, outputs, result };
-};
+const { cleanup, runStep } = createWorkflowStepRunner("workspace-e2e-status-");
+afterAll(cleanup);
 
 const decideStatus = (deployment: string, scenario: Scenario) =>
   runStep(
@@ -175,6 +79,10 @@ const failed = {
 const running = {
   description: "Protected preview E2E is running",
   state: "pending",
+} as const;
+const superseded = {
+  description: String(statusStep?.env?.E2E_SUPERSEDED_DESCRIPTION),
+  state: "failure",
 } as const;
 
 describe("Workspace E2E status without a run", () => {
@@ -268,6 +176,23 @@ describe("Workspace E2E status without a run", () => {
     expect(outputs.description).toContain("rerun this check");
   });
 
+  test("passes over a run a newer head superseded", async () => {
+    // The superseded run published "running", then stopped without a result.
+    const { outputs, result } = await decideStatus("skipped", {
+      commits: [
+        { sha: sha("b"), tree: "tree-same" },
+        { sha: sha("c"), tree: "tree-same" },
+        { sha: targetSha, tree: "tree-same" },
+      ],
+      statuses: { [sha("b")]: [passed], [sha("c")]: [superseded, running] },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(outputs).toMatchObject({
+      description: "Same tree as bbbbbbb, which passed E2E",
+      state: "success",
+    });
+  });
+
   test("fails with a published description when the target is missing from the PR history", async () => {
     const { outputs, result } = await decideStatus("skipped", {
       commits: [{ sha: sha("b"), tree: "tree-same" }],
@@ -297,6 +222,7 @@ describe("Workspace E2E status without a run", () => {
       ...String(publishStep?.env?.STATUS_DESCRIPTION).matchAll(
         /\|\| '([^']+)'/g
       ),
+      ["", superseded.description],
     ].map(([, description]) => description ?? "");
     expect(descriptions.length).toBeGreaterThanOrEqual(10);
     for (const description of descriptions) {
@@ -320,6 +246,12 @@ describe("Workspace E2E status without a run", () => {
       expect(publishers).toContain(description);
     }
     expect(descriptions).toHaveLength(3);
+    expect(superseded.description).toBe(
+      String(
+        findStepByName(workflow, "Publish final commit status")?.env
+          ?.SUPERSEDED_DESCRIPTION
+      )
+    );
   });
 });
 

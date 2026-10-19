@@ -26,7 +26,13 @@ A `Workspace E2E` success means E2E ran against that commit's code. For a deploy
 
 Once the target SHA is an eligible PR head, every outcome publishes a `Workspace E2E` status. When `resolve-target` fails after that, for example because GitHub has no deployment record matching the preview yet or the head is missing from the PR's commit list (GitHub lists at most 250), `publish-status-without-run` publishes a failure whose description says how to recover, usually by re-running the failed jobs. Statuses for skipped commits trust a run's description from `github-actions[bot]`. Any workflow allowed to write statuses could forge one, but it could as well post a passing `Workspace E2E` directly, so this trusts no more than the required status does.
 
-Only `test-e2e` has a concurrency group, keyed by PR with `cancel-in-progress`, and only a run that resolved its PR's current head reaches it. A late event for an older head resolves ineligible, and skip and failed-deployment events never enter the group, so neither cancels a newer head's E2E. Never add a workflow-level group: it would cancel at scheduling time, before eligibility is known. Never infer a skip from changed paths or reuse an older preview.
+Only `test-e2e` has a concurrency group, keyed by PR and SHA with `cancel-in-progress`, so only a duplicate run for the same SHA cancels another. Runs for different SHAs never cancel each other: a run can resolve its SHA as the head, stall, and reach `test-e2e` after a newer head's run started, and a group keyed by PR alone would then let it cancel the newer run. A superseded run stops itself instead, since every SHA of a PR shares its Neon preview branch:
+
+- Before it leases a shard or migrates, `test-e2e` checks that its SHA is still the PR head. If it isn't, the job waits for the run to be cancelled.
+- `cancel-superseded-run` runs beside `test-e2e`, polls the PR head, and cancels its own run once the head moves. It holds `actions: write`, so `test-e2e`, which runs exact-SHA code, doesn't. It doesn't rerun with "Re-run failed jobs", so a rerun attempt stops only at the start check.
+- `publish-final-status` publishes a failed run's status as `Superseded by a newer PR head before E2E finished` when its SHA is no longer the head. Statuses are per SHA, so this never touches the newer head's status. A skip reusing a same-tree commit's result passes over such a run.
+
+Never add a workflow-level group: it would cancel at scheduling time, before eligibility is known. Never infer a skip from changed paths or reuse an older preview.
 
 The target is always the immutable `.vercel.app` deployment origin for the exact SHA, taken from the dispatch payload. Never scrape the Vercel PR comment or use a branch alias or custom domain.
 
