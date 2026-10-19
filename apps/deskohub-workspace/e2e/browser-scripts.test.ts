@@ -6,6 +6,7 @@ import {
   assertFulfilledStatusScript,
   getAssertPrefilledReservationScript,
   getAssertRepeatReservationScript,
+  getFillReservationContactScript,
   getPrepareCoworkAdvertisedPriceScript,
   getPrepareMeetingRoomAdvertisedPriceScript,
   getPrepareOfficeAdvertisedPriceScript,
@@ -628,7 +629,7 @@ test("waits through delayed meeting-room availability readiness", async () => {
       <input name="name" />
       <textarea name="message"></textarea>
       <input name="startDateTime" value="2099-09-02" />
-      <button type="submit" disabled></button>
+      <button id="reservation-continue" type="button" disabled></button>
     `;
 
     let now = 0;
@@ -665,7 +666,7 @@ test("waits through delayed meeting-room availability readiness", async () => {
           pollCount += 1;
           if (pollCount === 30) {
             document.querySelector<HTMLButtonElement>(
-              'button[type="submit"]'
+              "#reservation-continue"
             )!.disabled = false;
           }
           queueMicrotask(callback);
@@ -711,7 +712,7 @@ test("picks a listed meeting-room start time instead of typing it", async () => 
       <input name="name" />
       <textarea name="message"></textarea>
       <input name="startDateTime" value="2099-09-02" />
-      <button type="submit"></button>
+      <button id="reservation-continue" type="button"></button>
     `;
     const time = document.querySelector<HTMLInputElement>(
       'input[aria-label="Meeting room start time"]'
@@ -804,7 +805,7 @@ test("checks meeting-room readiness once at the existing deadline", async () => 
       <input name="name" />
       <textarea name="message"></textarea>
       <input name="startDateTime" value="2099-09-03" />
-      <button type="submit" disabled></button>
+      <button id="reservation-continue" type="button" disabled></button>
     `;
 
     let now = 0;
@@ -841,7 +842,7 @@ test("checks meeting-room readiness once at the existing deadline", async () => 
           waits += 1;
           if (waits === 2) {
             document.querySelector<HTMLButtonElement>(
-              'button[type="submit"]'
+              "#reservation-continue"
             )!.disabled = false;
           }
           queueMicrotask(callback);
@@ -891,7 +892,8 @@ test("retries the selected meeting-room price at most once", async () => {
         data-reservation-price-error="true"
         data-reservation-price-loading="false"
         data-reservation-unavailable="false"
-        type="submit"
+        id="reservation-continue"
+        type="button"
         disabled
       ></button>
       <button id="reservation-advertised-price-retry" type="button"></button>
@@ -981,7 +983,7 @@ test("waits for the meeting-room calendar to render the next month", async () =>
       <input name="name" />
       <textarea name="message"></textarea>
       <input name="startDateTime" value="2099-10-01" />
-      <button type="submit"></button>
+      <button id="reservation-continue" type="button"></button>
     `;
 
     document
@@ -1061,7 +1063,7 @@ test("waits for the date-only meeting-room state before editing time", async () 
       <input name="name" />
       <textarea name="message"></textarea>
       <input name="startDateTime" value="2099-10-01" />
-      <button type="submit"></button>
+      <button id="reservation-continue" type="button"></button>
     `;
 
     const hiddenStart = document.querySelector<HTMLInputElement>(
@@ -1158,7 +1160,7 @@ test("follows the current meeting-room duration control after rerender", async (
       <input name="name" />
       <textarea name="message"></textarea>
       <input name="startDateTime" value="2099-10-03" />
-      <button type="submit"></button>
+      <button id="reservation-continue" type="button"></button>
     `;
     document
       .querySelector("#duration-label")!
@@ -1338,7 +1340,8 @@ test("prepares a multi-day office reservation with selected seats", async () => 
       <button
         data-reservation-availability-loading="false"
         data-reservation-price-loading="false"
-        type="submit"
+        id="reservation-continue"
+        type="button"
       ></button>
     `;
     for (const dateButton of document.querySelectorAll<HTMLButtonElement>(
@@ -1353,7 +1356,7 @@ test("prepares a multi-day office reservation with selected seats", async () => 
         if (!input) return;
         input.value = selectedDate;
         const submit = document.querySelector<HTMLButtonElement>(
-          'button[type="submit"]'
+          "#reservation-continue"
         );
         if (submit) submit.dataset.reservationPriceLoading = "true";
         setTimeout(() => {
@@ -1394,9 +1397,10 @@ test("prepares a multi-day office reservation with selected seats", async () => 
       document.querySelector<HTMLInputElement>('input[name="seats"]:checked')
         ?.value
     ).toBe("2");
+    // The contact is filled on the contact step, not with the selection.
     expect(
       document.querySelector<HTMLInputElement>('input[name="email"]')?.value
-    ).toBe(data.email);
+    ).toBe("");
   } finally {
     await GlobalRegistrator.unregister();
     globalThis.Temporal = workspaceTemporal;
@@ -1536,6 +1540,86 @@ test("asserts restored office range, seats, and reset marketing consent", async 
     expect(
       run(document, HTMLButtonElement, HTMLInputElement, HTMLTextAreaElement)
     ).toBe(true);
+  } finally {
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
+});
+
+test("fills only the contact step's rendered, editable contact inputs", async () => {
+  const data = makeOfficeCheckoutData(
+    "https://workspace.example.test",
+    officeSlot
+  );
+  const fill = getFillReservationContactScript(data);
+
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/en-US/reservation/office?step=contact",
+  });
+  try {
+    const run = () =>
+      new Function(
+        "document",
+        "HTMLInputElement",
+        "HTMLFormElement",
+        "Event",
+        "location",
+        `return (${fill.trim()})`
+      )(document, HTMLInputElement, HTMLFormElement, Event, location);
+    const value = (name: string) =>
+      document.querySelector<HTMLInputElement>(`input[name="${name}"]`)?.value;
+
+    // Booking for someone else: every contact input, the email repeated.
+    document.body.innerHTML = `
+      <form>
+        <div hidden><input name="date" /></div>
+        <div>
+          <input name="name" />
+          <input name="email" />
+          <input name="emailConfirmation" />
+          <input name="phone" />
+        </div>
+        <button id="reservation-submit" type="submit"></button>
+      </form>
+    `;
+    await expect(run()).resolves.toBe(location.href);
+    expect(value("name")).toBe(data.name);
+    expect(value("email")).toBe(data.email);
+    expect(value("emailConfirmation")).toBe(data.email);
+    expect(value("phone")).toBe(data.phone);
+
+    // A profile-missing account's email is its read-only login email.
+    document.body.innerHTML = `
+      <form>
+        <input name="name" />
+        <input name="email" readonly value="account@example.test" />
+        <input name="phone" />
+        <button id="reservation-submit" type="submit"></button>
+      </form>
+    `;
+    await expect(run()).resolves.toBe(location.href);
+    expect(value("email")).toBe("account@example.test");
+    expect(value("name")).toBe(data.name);
+
+    // Booking as a linked account renders no contact inputs.
+    document.body.innerHTML = `
+      <form>
+        <section aria-labelledby="reservation-existing-customer-heading"></section>
+        <button id="reservation-submit" type="submit"></button>
+      </form>
+    `;
+    await expect(run()).resolves.toBe(location.href);
+
+    // The selection step keeps the contact step hidden.
+    document.body.innerHTML = `
+      <form>
+        <div hidden><input name="name" /></div>
+        <button id="reservation-continue" type="button"></button>
+      </form>
+    `;
+    await expect(run()).rejects.toThrow(
+      "reservation contact step is not shown"
+    );
   } finally {
     await GlobalRegistrator.unregister();
     globalThis.Temporal = workspaceTemporal;

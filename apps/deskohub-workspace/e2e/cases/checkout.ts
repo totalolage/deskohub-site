@@ -47,8 +47,8 @@ import {
   submitPaymentAndWaitForHostedPage,
   submitReservationForPayPage,
 } from "../checkout/payment";
-import { reservationCookieIsolationStep } from "../checkout/reservation-cookie-isolation";
 import { matchesExpectedReservationDetails } from "../checkout/reservation-details";
+import { reservationStatusIsolationStep } from "../checkout/reservation-status-isolation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { WorkspaceE2EHostedPaymentPermitService } from "../coordination/hosted-payment-permit.service";
 import { tryWorkspaceE2ESync, type WorkspaceE2EError } from "../errors";
@@ -107,7 +107,7 @@ export const executeCheckoutFlow = ({
   beforeReservationSubmit?: Effect.Effect<void, WorkspaceE2EError>;
   expectedDiscounts?: readonly ExpectedDiscountApplication[];
   // The reserve-again restart, the fulfillment-failed support path, and the
-  // reservation cookie isolation that starts from that support path do not
+  // reservation status isolation that starts from that support path do not
   // depend on the product, so one paid case opts in instead of every case.
   // The support path marks fulfillment failed, so it runs after every other
   // assertion on the fulfilled reservation.
@@ -241,7 +241,7 @@ export const executeCheckoutFlow = ({
         session,
       });
       const customerId = yield* tryWorkspaceE2ESync(
-        "read paid customer for reservation cookie isolation",
+        "read paid customer for reservation status isolation",
         () => {
           assert(
             checkoutRow.dotypos_customer_id,
@@ -251,7 +251,7 @@ export const executeCheckoutFlow = ({
         }
       );
       yield* runStep(
-        reservationCookieIsolationStep({
+        reservationStatusIsolationStep({
           config,
           customerId,
           data,

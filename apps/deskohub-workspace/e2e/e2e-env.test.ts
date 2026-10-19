@@ -65,7 +65,7 @@ describe("Workspace E2E environment", () => {
     { WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: "https://example.test" },
     {
       WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL:
-        "postgresql://permit:test@ep-coordinator-pooler.eu.neon.tech/neondb",
+        "postgresql://permit:synthetic-password@ep-coordinator-pooler.eu.neon.tech/neondb",
     },
   ])("rejects invalid E2E configuration", (runtimeEnvironment) => {
     expect(() =>

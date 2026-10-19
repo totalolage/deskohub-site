@@ -52,7 +52,7 @@ export const resolveWorkspaceE2ESessionSigningSecret = (
   const parsed = parseBetterAuthSecrets(raw);
   if (parsed.kind === "invalid") {
     throw workspaceE2EError(
-      "WORKSPACE_E2E_BETTER_AUTH_SECRETS must hold the Preview deployment's versioned BETTER_AUTH_SECRETS value. Provision it as a secret of the protected workspace-checkout-e2e GitHub Actions environment, copied from the deskohub-workspace Vercel project's Preview-only BETTER_AUTH_SECRETS (never the Production value), before running seeded-session cases (referral and administrator coverage). They fail closed instead of skipping",
+      "WORKSPACE_E2E_BETTER_AUTH_SECRETS must hold the Preview deployment's versioned BETTER_AUTH_SECRETS value. Provision it as a secret of the protected workspace-checkout-e2e GitHub Actions environment, copied from the deskohub-workspace Vercel project's Preview-only BETTER_AUTH_SECRETS (never the Production value), before running seeded-session cases (checkout, referral, and administrator coverage). They fail closed instead of skipping",
       { operation: "configure workspace e2e session seeding" }
     );
   }

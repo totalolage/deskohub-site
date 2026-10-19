@@ -6,6 +6,14 @@ import {
 import { workspaceE2ETimeouts } from "./timeouts";
 import type { CheckoutData, CheckoutRow } from "./types";
 
+// The reservation form's one action button: Continue on the selection step,
+// the submit button on the contact step. Both report availability and price
+// loading through the same data attributes.
+const reservationActionSelector = "#reservation-continue, #reservation-submit";
+const reservationActionSelectorLiteral = JSON.stringify(
+  reservationActionSelector
+);
+
 // The real cowork form renders the coffee switch only for Open Space and the
 // workstation (monitor) switch only for Reserved Desk. Both are FormControl
 // switches whose accessible name comes from aria-labelledby pointing at their
@@ -110,9 +118,15 @@ export const getAssertRepeatReservationScript = (data: CheckoutData) => {
 
   const query = [...new URLSearchParams(location.search).entries()];
   if (JSON.stringify(query) !== JSON.stringify(expected.query)) fail('query allowlist');
-  if (value('input[name="email"]', 'email') !== '') fail('email reset');
-  if (value('input[name="phone"]', 'phone') !== '') fail('phone reset');
-  if (value('input[name="name"]', 'name') !== '') fail('name reset');
+  // A signed-in account books as itself by default, so its contact inputs
+  // may be absent; any rendered input must start empty.
+  const contactValue = (name) => {
+    const element = document.querySelector('input[name="' + name + '"]');
+    return element instanceof HTMLInputElement ? element.value : '';
+  };
+  if (contactValue('email') !== '') fail('email reset');
+  if (contactValue('phone') !== '') fail('phone reset');
+  if (contactValue('name') !== '') fail('name reset');
 
   if (expected.kind === 'cowork') {
     if (value('input[name="date"]', 'date') === expected.oldDate) fail('fresh date');
@@ -152,8 +166,9 @@ export const getAssertRepeatReservationScript = (data: CheckoutData) => {
     fail('fresh meeting-room date');
   }
 
+  // The consent renders only for someone booking as themselves.
   const marketingConsent = document.querySelector('#reservation-marketing-consent');
-  if (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false') fail('marketing consent reset');
+  if (marketingConsent !== null && (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false')) fail('marketing consent reset');
   return true;
 })()
 `;
@@ -237,6 +252,10 @@ export const getAssertPrefilledReservationScript = (
     if (value('input[name="email"]', 'email') !== expected.email) fail('email');
     if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
     if (value('input[name="name"]', 'name') !== expected.name) fail('name');
+    // Booking for someone else repeats the email; a carried-in contact
+    // arrives with it already repeated.
+    const emailConfirmation = document.querySelector('input[name="emailConfirmation"]');
+    if (emailConfirmation !== null && (!(emailConfirmation instanceof HTMLInputElement) || emailConfirmation.value !== expected.email)) fail('repeated email');
   }
 
   const monitorInputs = [...document.querySelectorAll('input[type="radio"]')]
@@ -249,7 +268,8 @@ export const getAssertPrefilledReservationScript = (
   }
 
   const marketingConsent = document.querySelector('#reservation-marketing-consent');
-  if (expected.includeContact && (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false')) fail('marketing consent reset');
+  // The consent renders only for someone booking as themselves.
+  if (expected.includeContact && marketingConsent !== null && (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false')) fail('marketing consent reset');
   return true;
 })()
 `;
@@ -303,10 +323,15 @@ const getAssertPrefilledMeetingRoomReservationScript = (
     if (value('input[name="email"]', 'email') !== expected.email) fail('email');
     if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
     if (value('input[name="name"]', 'name') !== expected.name) fail('name');
+    // Booking for someone else repeats the email; a carried-in contact
+    // arrives with it already repeated.
+    const emailConfirmation = document.querySelector('input[name="emailConfirmation"]');
+    if (emailConfirmation !== null && (!(emailConfirmation instanceof HTMLInputElement) || emailConfirmation.value !== expected.email)) fail('repeated email');
   }
 
   const marketingConsent = document.querySelector('#reservation-marketing-consent');
-  if (expected.includeContact && (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false')) fail('marketing consent reset');
+  // The consent renders only for someone booking as themselves.
+  if (expected.includeContact && marketingConsent !== null && (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false')) fail('marketing consent reset');
   return true;
 })()
 `;
@@ -348,10 +373,15 @@ const getAssertPrefilledOfficeReservationScript = (
     if (value('input[name="email"]', 'email') !== expected.email) fail('email');
     if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
     if (value('input[name="name"]', 'name') !== expected.name) fail('name');
+    // Booking for someone else repeats the email; a carried-in contact
+    // arrives with it already repeated.
+    const emailConfirmation = document.querySelector('input[name="emailConfirmation"]');
+    if (emailConfirmation !== null && (!(emailConfirmation instanceof HTMLInputElement) || emailConfirmation.value !== expected.email)) fail('repeated email');
   }
 
   const marketingConsent = document.querySelector('#reservation-marketing-consent');
-  if (expected.includeContact && (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false')) fail('marketing consent reset');
+  // The consent renders only for someone booking as themselves.
+  if (expected.includeContact && marketingConsent !== null && (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false')) fail('marketing consent reset');
   return true;
 })()
 `;
@@ -374,44 +404,74 @@ export const getPrefilledReservationConditionScript = (
 `;
 };
 
-export const getSubmitCoworkReservationScript = (data: CheckoutData) => {
-  const prepare = getPrepareCoworkAdvertisedPriceScript(data).trim();
-
-  return `
+/**
+ * Prepares one step of the reservation form for its native activation. On the
+ * selection step it makes `prepare`'s selection and waits for Continue; on the
+ * contact step it fills `data`'s contact and waits for the submit button. The
+ * runner activates each button natively and runs the script again after
+ * Continue.
+ */
+const getReservationStepScript = (prepare: string, data: CheckoutData) => `
 (async () => {
-  await (${prepare});
-  return await (${submitPreparedCoworkReservationScript.trim()});
+  if (document.querySelector('#reservation-continue') !== null) {
+    await (${prepare.trim()});
+  } else {
+    await (${getFillReservationContactScript(data).trim()});
+  }
+  return await (${getSubmitPreparedReservationScript().trim()});
 })()
 `;
-};
+
+export const getSubmitCoworkReservationScript = (data: CheckoutData) =>
+  getReservationStepScript(getPrepareCoworkAdvertisedPriceScript(data), data);
 
 export const getSubmitMeetingRoomReservationScript = (
   data: CheckoutData,
   options?: MeetingRoomStartTimeEntryOptions
-) => {
-  const prepare = getPrepareMeetingRoomAdvertisedPriceScript(
-    data,
-    options
-  ).trim();
+) =>
+  getReservationStepScript(
+    getPrepareMeetingRoomAdvertisedPriceScript(data, options),
+    data
+  );
 
-  return `
+export const getSubmitOfficeReservationScript = (data: CheckoutData) =>
+  getReservationStepScript(getPrepareOfficeAdvertisedPriceScript(data), data);
+
+/**
+ * Fills the contact step's editable inputs with `data`'s contact. Booking as
+ * a linked account renders no contact inputs, and a profile-missing account's
+ * email is read-only, so only rendered, editable inputs are filled; booking
+ * for someone else also repeats the email.
+ */
+export const getFillReservationContactScript = (data: CheckoutData) => `
 (async () => {
-  await (${prepare});
-  return await (${submitPreparedMeetingRoomReservationScript.trim()});
+  const contact = ${JSON.stringify({
+    email: data.email,
+    emailConfirmation: data.email,
+    name: data.name,
+    phone: data.phone,
+  })};
+  const form = document.querySelector('#reservation-submit')?.closest('form');
+  if (!(form instanceof HTMLFormElement)) {
+    throw new Error('reservation contact step is not shown');
+  }
+  for (const [name, value] of Object.entries(contact)) {
+    const field = form.querySelector('input[name="' + name + '"]');
+    if (!(field instanceof HTMLInputElement) || field.readOnly) continue;
+    if (field.closest('[hidden]') !== null) {
+      throw new Error('reservation contact step is not shown');
+    }
+    if (field.value === value) continue;
+    field.focus();
+    const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value');
+    descriptor?.set?.call(field, value);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+    field.blur();
+  }
+  return location.href;
 })()
 `;
-};
-
-export const getSubmitOfficeReservationScript = (data: CheckoutData) => {
-  const prepare = getPrepareOfficeAdvertisedPriceScript(data).trim();
-
-  return `
-(async () => {
-  await (${prepare});
-  return await (${submitPreparedOfficeReservationScript.trim()});
-})()
-`;
-};
 
 export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
   if (data.expectedReservationDetails.kind !== "cowork") {
@@ -728,9 +788,6 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
   } else if (!expected.wholeDay) {
     setField('input[aria-label^="Meeting room start time"]', expected.time);
   }
-  setField('input[name="email"]', expected.email);
-  setField('input[name="phone"]', expected.phone);
-  setField('input[name="name"]', expected.name);
 
   let priceRetryAttempted = false;
   await waitUntil(() => {
@@ -739,7 +796,7 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     const selectedDuration = document.querySelector(
       '[id="meeting-room-duration-' + expected.durationKey + '"]'
     );
-    const submit = document.querySelector('button[type="submit"]');
+    const submit = document.querySelector(${reservationActionSelectorLiteral});
     const priceRetry = document.querySelector('#reservation-advertised-price-retry');
     if (
       !priceRetryAttempted &&
@@ -761,7 +818,7 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
       !submit.disabled
     );
   }, () => {
-    const submit = document.querySelector('button[type="submit"]');
+    const submit = document.querySelector(${reservationActionSelectorLiteral});
     const priceRetry = document.querySelector('#reservation-advertised-price-retry');
     const value = (name) =>
       submit instanceof HTMLButtonElement ? submit.dataset[name] ?? 'unknown' : 'missing';
@@ -887,7 +944,7 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
     label
   ) => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const submit = document.querySelector('button[type="submit"]');
+      const submit = document.querySelector(${reservationActionSelectorLiteral});
       if (!(submit instanceof HTMLButtonElement)) {
         throw new Error('office reservation submit control not found');
       }
@@ -920,7 +977,7 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
         await selectDate(ariaLabel, inputName, desiredDate, label);
         await waitUntil(() => {
           const hidden = document.querySelector('input[name="' + inputName + '"]');
-          const currentSubmit = document.querySelector('button[type="submit"]');
+          const currentSubmit = document.querySelector(${reservationActionSelectorLiteral});
           if (!(hidden instanceof HTMLInputElement)) return false;
           if (hidden.value !== desiredDate) {
             dateRegressed = true;
@@ -957,16 +1014,13 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
     throw new Error('office seat option not found');
   }
   seatsOption.click();
-  setField('input[name="email"]', expected.email);
-  setField('input[name="phone"]', expected.phone);
-  setField('input[name="name"]', expected.name);
 
   let priceRetryAttempted = false;
   await waitUntil(() => {
     const startsOn = document.querySelector('input[name="startsOn"]');
     const dayCount = document.querySelector('input[name="dayCount"]');
     const seats = document.querySelector('input[name="seats"]:checked');
-    const submit = document.querySelector('button[type="submit"]');
+    const submit = document.querySelector(${reservationActionSelectorLiteral});
     const priceRetry = document.querySelector('#reservation-advertised-price-retry');
     if (
       !priceRetryAttempted &&
@@ -987,7 +1041,7 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
       !submit.disabled
     );
   }, () => {
-    const submit = document.querySelector('button[type="submit"]');
+    const submit = document.querySelector(${reservationActionSelectorLiteral});
     const priceRetry = document.querySelector('#reservation-advertised-price-retry');
     const value = (name) =>
       submit instanceof HTMLButtonElement ? submit.dataset[name] ?? 'unknown' : 'missing';
@@ -1021,16 +1075,16 @@ const getSubmitPreparedReservationScript = () => `
   };
   let button;
   await waitUntil(() => {
-    const candidate = document.querySelector('#reservation-submit');
+    const candidate = document.querySelector(${reservationActionSelectorLiteral});
     if (candidate instanceof HTMLButtonElement) {
       button = candidate;
       return true;
     }
     return false;
-  }, 'reservation submit button not found');
+  }, 'reservation continue or submit button not found');
   const form = button.closest('form') ?? document.querySelector('form');
   if (!(form instanceof HTMLFormElement)) throw new Error('reservation form not found');
-  await waitUntil(() => !button.disabled, 'reservation submit button stayed disabled');
+  await waitUntil(() => !button.disabled, 'reservation ' + button.id + ' button stayed disabled');
   return location.href;
 })()
 `;
@@ -1082,7 +1136,7 @@ export const browserDiagnosticsScript = String.raw`
   const cleanUrl = (value) => {
     try {
       const url = new URL(value);
-      for (const key of ['payState', 'checkoutToken', 'accessToken', '_vercel_share', 'x-vercel-protection-bypass']) {
+      for (const key of ['payState', 'contact', 'checkoutToken', 'accessToken', '_vercel_share', 'x-vercel-protection-bypass']) {
         if (url.searchParams.has(key)) url.searchParams.set(key, '[redacted]');
       }
       return url.toString();
@@ -1090,7 +1144,7 @@ export const browserDiagnosticsScript = String.raw`
       return '[unavailable]';
     }
   };
-  const submit = document.querySelector('button[type="submit"]');
+  const submit = document.querySelector(${reservationActionSelectorLiteral});
   const alerts = [...document.querySelectorAll('[role="alert"]')]
     .map((element) => element.textContent?.replace(/\s+/g, ' ').trim())
     .filter(Boolean);

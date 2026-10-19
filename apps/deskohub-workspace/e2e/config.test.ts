@@ -47,17 +47,18 @@ test("rejects missing or unsafe preview targets", () => {
 });
 
 test("rejects a datasource outside the explicit preview allowlist", () => {
-  const allowlist = "postgresql://owner:test@ep-preview.eu.neon.tech/neondb";
+  const allowlist =
+    "postgresql://synthetic-owner:synthetic-password@ep-preview.eu.neon.tech/neondb";
   expect(() =>
     assertSafeDatabaseUrl(
-      "postgresql://owner:test@ep-preview-pooler.eu.neon.tech/neondb",
+      "postgresql://synthetic-owner:synthetic-password@ep-preview-pooler.eu.neon.tech/neondb",
       "DATABASE_URL",
       allowlist
     )
   ).not.toThrow();
   expect(() =>
     assertSafeDatabaseUrl(
-      "postgresql://owner:test@ep-other-pooler.eu.neon.tech/neondb",
+      "postgresql://synthetic-owner:synthetic-password@ep-other-pooler.eu.neon.tech/neondb",
       "DATABASE_URL",
       allowlist
     )
