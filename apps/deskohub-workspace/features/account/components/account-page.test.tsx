@@ -9,7 +9,10 @@ import {
 } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { useState } from "react";
-import type { CustomerProfileInput } from "@/features/account/contracts";
+import type {
+  CustomerProfileInput,
+  CustomerReservationHistory,
+} from "@/features/account/contracts";
 import { type Locale, m } from "@/features/i18n";
 import {
   formatReferralInvitationDiscount,
@@ -299,30 +302,32 @@ describe("AccountPage states", () => {
     ).toBeTruthy();
   });
 
+  const authoredHistory: CustomerReservationHistory = {
+    kind: "available",
+    groups: {
+      current: [
+        {
+          id: "workspace-reservation-1",
+          workspaceReservationId: "workspace-reservation-1",
+          party: { kind: "booked-for", customerName: "Karla Ukázková" },
+          product: { kind: "meeting-room" },
+          startsAt: "2999-01-01T10:00:00.000Z",
+          endsAt: "2999-01-01T11:00:00.000Z",
+          seats: 4,
+          status: "confirmed",
+        },
+      ],
+      past: [],
+      unavailable: [],
+    },
+  };
+
   test("shows the reservation an account booked for someone else beside profile completion", async () => {
     const view = await renderState({
       kind: "completion-required",
       referralsEnabled: true,
       email: adaAddress,
-      history: {
-        kind: "available",
-        groups: {
-          current: [
-            {
-              id: "workspace-reservation-1",
-              workspaceReservationId: "workspace-reservation-1",
-              party: { kind: "booked-for", customerName: "Karla Ukázková" },
-              product: { kind: "meeting-room" },
-              startsAt: "2999-01-01T10:00:00.000Z",
-              endsAt: "2999-01-01T11:00:00.000Z",
-              seats: 4,
-              status: "confirmed",
-            },
-          ],
-          past: [],
-          unavailable: [],
-        },
-      },
+      history: authoredHistory,
     });
 
     expect(
@@ -336,6 +341,27 @@ describe("AccountPage states", () => {
         name: m.accountCompletionTitle({}, en),
       })
     ).toBeTruthy();
+  });
+
+  test("shows the reservation an account booked for someone else beside the support notice", async () => {
+    const view = await renderState({
+      kind: "support-required",
+      email: adaAddress,
+      history: authoredHistory,
+    });
+
+    expect(
+      view.getByText(
+        m.accountReservationBookedFor({ name: "Karla Ukázková" }, en)
+      )
+    ).toBeTruthy();
+    expect(
+      view.getByRole("heading", {
+        level: 2,
+        name: m.accountSupportTitle({}, en),
+      })
+    ).toBeTruthy();
+    expect(view.queryByText(m.accountProfileSave({}, en))).toBeNull();
   });
 
   test("renders the linked account with profile, reservations, sign out, and deletion", async () => {

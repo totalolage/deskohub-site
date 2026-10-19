@@ -11,7 +11,7 @@ import {
 } from "@deskohub/dotypos";
 import { desc, eq, or } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { workspaceReservations } from "@/db/schema";
@@ -350,13 +350,17 @@ export class CustomerReservationHistoryService extends Context.Service<
       }): Effect.Effect<ReservationSources, CustomerReservationHistoryError> =>
         Effect.all(
           {
-            own:
-              account.dotyposCustomerId === undefined
-                ? Effect.succeed([])
-                : dotypos.listReservations({
-                    customerId: account.dotyposCustomerId,
+            own: Option.match(
+              Option.fromUndefinedOr(account.dotyposCustomerId),
+              {
+                onNone: () => Effect.succeed([]),
+                onSome: (customerId) =>
+                  dotypos.listReservations({
+                    customerId,
                     order: "startDateDescending",
                   }),
+              }
+            ),
             bookedForOthers: listBookedForOthers(
               rows.filter((row) => isBookedForOtherCustomer(account, row))
             ),

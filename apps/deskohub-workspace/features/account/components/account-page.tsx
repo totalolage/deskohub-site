@@ -92,18 +92,7 @@ function renderState(
           email={state.email}
           locale={locale}
           passkeys={state.passkeys}
-          reservationCount={
-            state.history && countCurrentReservations(state.history)
-          }
-          reservations={
-            state.history && (
-              <ReservationHistory
-                copy={getAccountScreenCopy(locale).reservations}
-                history={state.history}
-                locale={locale}
-              />
-            )
-          }
+          {...authoredReservations(locale, state.history)}
         >
           <CompletionCard
             email={state.email}
@@ -119,6 +108,7 @@ function renderState(
           email={state.email}
           locale={locale}
           passkeys={state.passkeys}
+          {...authoredReservations(locale, state.history)}
         >
           <SupportRequiredCard locale={locale} />
         </AccountWithoutProfile>
@@ -134,6 +124,25 @@ function renderState(
       );
   }
 }
+
+/**
+ * The Reservations section and navigation count of an account without a
+ * usable profile; absent when it authored nothing.
+ */
+const authoredReservations = (
+  locale: Locale,
+  history: CustomerReservationHistory | undefined
+) =>
+  history && {
+    reservationCount: countCurrentReservations(history),
+    reservations: (
+      <ReservationHistory
+        copy={getAccountScreenCopy(locale).reservations}
+        history={history}
+        locale={locale}
+      />
+    ),
+  };
 
 function UnavailableCard({ locale }: { readonly locale: Locale }) {
   return (

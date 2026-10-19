@@ -45,7 +45,10 @@ import {
   formatReservationDisplayDateRange,
 } from "@/features/reservation/reservation-date";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
-import { renderWorkspaceEmail } from "@/shared/backend/email/render-react-email";
+import {
+  type RenderedWorkspaceEmail,
+  renderWorkspaceEmail,
+} from "@/shared/backend/email/render-react-email";
 import {
   internalWorkspaceEmailRecipientFor,
   internalWorkspaceEmailSubject,
@@ -588,6 +591,41 @@ const createPreviewNetworkQrPng = () =>
       ),
   });
 
+/**
+ * The author's status page link. The author's own session authorizes the
+ * page, so the link carries no reservation capability.
+ */
+const createAuthorStatusUrl = (input: {
+  readonly reservation: WorkspaceReservationDetails;
+  readonly locale: Locale;
+}) =>
+  getWorkspaceRuntimeCallbackOrigin.pipe(
+    Effect.map((origin) =>
+      new URL(
+        getReservationStatusPath({
+          locale: input.locale,
+          orderId: input.reservation.id,
+          setBypassCookie: true,
+        }),
+        origin
+      ).toString()
+    )
+  );
+
+const renderAuthorConfirmation = (input: {
+  readonly reservation: WorkspaceReservationDetails;
+  readonly locale: Locale;
+  readonly statusUrl: string;
+}) =>
+  renderWorkspaceEmail(
+    createReservationAuthorEmail({
+      reservation: input.reservation,
+      locale: input.locale,
+      statusUrl: input.statusUrl,
+      locationMapImageSrc: workspaceLocationMapUrl,
+    })
+  );
+
 export const createReservationAuthorEmailPreviewHtml = Effect.fn(
   "WorkspaceReservationEmailService.renderAuthorPreview"
 )(
@@ -595,14 +633,10 @@ export const createReservationAuthorEmailPreviewHtml = Effect.fn(
     readonly statusUrl: string;
     readonly reservation: WorkspaceReservationDetails;
   }) =>
-    renderWorkspaceEmail(
-      createReservationAuthorEmail({
-        reservation: input.reservation,
-        locale: getReservationLocale(input.reservation.locale),
-        statusUrl: input.statusUrl,
-        locationMapImageSrc: workspaceLocationMapUrl,
-      })
-    ).pipe(Effect.map(({ html }) => html))
+    renderAuthorConfirmation({
+      ...input,
+      locale: getReservationLocale(input.reservation.locale),
+    }).pipe(Effect.map(({ html }) => html))
 );
 
 export const createWorkspaceReservationNotificationEmailPreviewHtml = Effect.fn(
@@ -671,51 +705,51 @@ export class WorkspaceReservationEmailService extends Context.Service<
         };
       });
 
-      const sendAuthorConfirmation = Effect.fn(
-        "WorkspaceReservationEmailService.sendAuthorConfirmation"
-      )(function* (
-        reservation: WorkspaceReservationDetails,
-        author: ActiveReservationAuthor
-      ) {
-        const locale =
-          author.locale ?? getReservationLocale(reservation.locale);
-        const origin = yield* getWorkspaceRuntimeCallbackOrigin;
-        // The author's own session authorizes the status page, so the link
-        // carries no reservation capability.
-        const statusUrl = new URL(
-          getReservationStatusPath({
-            locale,
-            orderId: reservation.id,
-            setBypassCookie: true,
-          }),
-          origin
-        ).toString();
-        const rendered = yield* renderWorkspaceEmail(
-          createReservationAuthorEmail({
-            reservation,
-            locale,
-            statusUrl,
-            locationMapImageSrc: workspaceLocationMapUrl,
-          })
-        );
-        yield* emailService.send({
+      const sendAuthorEmail = (input: {
+        readonly reservation: WorkspaceReservationDetails;
+        readonly author: ActiveReservationAuthor;
+        readonly locale: Locale;
+        readonly rendered: RenderedWorkspaceEmail;
+      }) =>
+        emailService.send({
           from: emailConfig.defaultFrom,
-          to: { email: author.email },
+          to: { email: input.author.email },
           replyTo: workspaceEmailRecipient,
-          subject: createAuthorConfirmationSubject(reservation, locale),
-          html: rendered.html,
-          text: rendered.text,
+          subject: createAuthorConfirmationSubject(
+            input.reservation,
+            input.locale
+          ),
+          html: input.rendered.html,
+          text: input.rendered.text,
           tags: [authorConfirmationCategory],
           idempotencyKey: createAuthorConfirmationIdempotencyKey(
-            reservation.id
+            input.reservation.id
           ),
           metadata: {
             deploymentEnvironment: env.VERCEL_ENV,
             source: "workspace-paid-fulfillment",
-            workspaceReservationId: reservation.id,
+            workspaceReservationId: input.reservation.id,
           },
         });
-      });
+
+      const sendAuthorConfirmation = Effect.fn(
+        "WorkspaceReservationEmailService.sendAuthorConfirmation"
+      )(
+        (input: {
+          readonly reservation: WorkspaceReservationDetails;
+          readonly author: ActiveReservationAuthor;
+        }) =>
+          Effect.succeed(input).pipe(
+            Effect.let(
+              "locale",
+              ({ reservation, author }) =>
+                author.locale ?? getReservationLocale(reservation.locale)
+            ),
+            Effect.bind("statusUrl", createAuthorStatusUrl),
+            Effect.bind("rendered", renderAuthorConfirmation),
+            Effect.flatMap(sendAuthorEmail)
+          )
+      );
 
       return {
         sendCancellationEmail: Effect.fn(
@@ -864,7 +898,10 @@ export class WorkspaceReservationEmailService extends Context.Service<
           if (confirmableAuthor) {
             // Best effort: the customer confirmation alone decides the
             // fulfillment outcome.
-            yield* sendAuthorConfirmation(reservation, confirmableAuthor).pipe(
+            yield* sendAuthorConfirmation({
+              reservation,
+              author: confirmableAuthor,
+            }).pipe(
               Effect.catchCause(() =>
                 Effect.logError(
                   "Workspace reservation author confirmation failed",

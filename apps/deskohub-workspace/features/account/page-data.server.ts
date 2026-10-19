@@ -24,6 +24,7 @@ import type {
   ProfileCompletionReferralOutcome,
 } from "@/features/account/contracts";
 import type {
+  CustomerAccountAccessError,
   CustomerAccountId,
   LinkedCustomerAccount,
 } from "@/features/account/customer-account";
@@ -101,7 +102,15 @@ type SignedInAccountPageState = SignInMethods &
          */
         readonly rememberedReferralCodeUsed?: true;
       }
-    | { readonly kind: "support-required"; readonly email: string }
+    | {
+        readonly kind: "support-required";
+        readonly email: string;
+        /**
+         * The reservations the account booked while its profile needs
+         * support, present only when it has any or they can't be read.
+         */
+        readonly history?: CustomerReservationHistory;
+      }
     | { readonly kind: "deletion-pending"; readonly email: string }
   );
 
@@ -270,6 +279,27 @@ const mayHaveReservations = (history: CustomerReservationHistory) =>
   Object.values(history.groups).some((group) => group.length > 0);
 
 /**
+ * The reservations an account without a usable profile authored for others,
+ * attached only when it has any or they can't be read.
+ */
+const loadAuthoredHistory = (user: CustomerAccountSession) =>
+  loadReservationHistory({ accountId: user.accountId }).pipe(
+    Effect.map((history) => (mayHaveReservations(history) ? { history } : {}))
+  );
+
+/**
+ * Link outcomes of an active, verified account that support must resolve.
+ * The account may still have booked for others meanwhile.
+ */
+const supportResolvedLinkReasons: ReadonlySet<
+  CustomerAccountAccessError["linkReason"]
+> = new Set<CustomerAccountAccessError["linkReason"]>([
+  "ambiguous",
+  "unusable",
+  "claimed",
+]);
+
+/**
  * The customer's referral summary and share link. An unavailable summary
  * degrades to the referral screen's unavailable state.
  */
@@ -373,17 +403,27 @@ const loadSignedInAccount = Effect.fn(function* (user: CustomerAccountSession) {
         : yield* findAvailableReferralCode(rememberedReferralCode);
     // An account may book for someone else before it completes its own
     // profile; the history then holds only what it authored.
-    const history = yield* loadReservationHistory({
-      accountId: user.accountId,
-    });
+    const authoredHistory = yield* loadAuthoredHistory(user);
     return {
       kind: "completion-required",
       email: user.email,
       referralsEnabled,
       ...(availableReferralCode && { referralCode: availableReferralCode }),
-      ...(mayHaveReservations(history) && { history }),
+      ...authoredHistory,
     } satisfies CustomerAccountPageState;
   }
+  if (
+    failure.reason === "link-required" &&
+    supportResolvedLinkReasons.has(failure.linkReason)
+  ) {
+    const authoredHistory = yield* loadAuthoredHistory(user);
+    return {
+      kind: "support-required",
+      email: user.email,
+      ...authoredHistory,
+    } satisfies CustomerAccountPageState;
+  }
+  // An unverified email or a pending deletion shows no reservations.
   if (
     failure.reason === "link-required" ||
     failure.reason === "unverified-email"

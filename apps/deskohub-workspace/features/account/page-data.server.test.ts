@@ -782,7 +782,7 @@ describe("loadCustomerAccountPage", () => {
     expect(settledReferralCalls).toEqual([]);
   });
 
-  test("renders the support state for ambiguous, unusable, claimed, and unverified outcomes", async () => {
+  test("renders the support state without a Reservations section for ambiguous, unusable, claimed, and unverified outcomes that authored nothing", async () => {
     resolveEffect = resolverOutcome({
       kind: "failure",
       reason: "link-required",
@@ -821,6 +821,84 @@ describe("loadCustomerAccountPage", () => {
       kind: "support-required",
       email: customerEmail,
     });
+  });
+
+  test("shows the reservations an account authored while support resolves its profile", async () => {
+    const authored = {
+      id: "workspace-reservation-1",
+      party: { kind: "booked-for", customerName: "Karla Ukázková" },
+    };
+    historyEffect = Effect.succeed({
+      kind: "available",
+      groups: { current: [authored], past: [], unavailable: [] },
+    });
+
+    for (const linkReason of ["ambiguous", "unusable", "claimed"]) {
+      resolveEffect = resolverOutcome({
+        kind: "failure",
+        reason: "link-required",
+        linkReason,
+      });
+      await expect(loadPageState()).resolves.toEqual({
+        kind: "support-required",
+        email: customerEmail,
+        history: {
+          kind: "available",
+          groups: { current: [authored], past: [], unavailable: [] },
+        },
+      });
+    }
+    expect(historyLoadAccounts).toEqual([
+      { accountId },
+      { accountId },
+      { accountId },
+    ]);
+  });
+
+  test("keeps an unreadable authored history as a notice on the support state", async () => {
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "link-required",
+      linkReason: "claimed",
+    });
+    historyEffect = Effect.fail(new Error("dotypos down"));
+
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "support-required",
+      email: customerEmail,
+      history: { kind: "unavailable", reason: "provider-unavailable" },
+    });
+  });
+
+  test("reads no reservations for an unverified or deletion-requested support state", async () => {
+    historyEffect = Effect.succeed({
+      kind: "available",
+      groups: {
+        current: [{ id: "workspace-reservation-1" }],
+        past: [],
+        unavailable: [],
+      },
+    });
+
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "unverified-email",
+    });
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "support-required",
+      email: customerEmail,
+    });
+
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "link-required",
+      linkReason: "deletion-requested",
+    });
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "support-required",
+      email: customerEmail,
+    });
+    expect(historyLoadCalls).toBe(0);
   });
 
   test("renders the retryable deletion state when the durable marker is set", async () => {
