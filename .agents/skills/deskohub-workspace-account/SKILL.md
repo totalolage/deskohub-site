@@ -49,6 +49,11 @@ Paths are relative to `apps/deskohub-workspace` unless they start with
   equivalents. For example, use Better Auth `getSessionCookie` for the
   optimistic cookie check and `CustomerAuthentication` for session reads;
   never parse the session cookie or query `auth.session` yourself.
+- Passkey sign-in is the exception: start it through `signInWithPasskey`,
+  which runs `requestPasskeySignIn` (`features/account/passkey-sign-in.ts`),
+  never `authClient.signIn.passkey`. The plugin call can't be cancelled, so
+  a late autofill attempt aborts the button's ceremony or replaces its
+  challenge cookie. Reauthentication keeps the plugin call.
 - Preview databases follow the Neon preview-branch PII rule in the root
   `AGENTS.md`. Keep every fixture, E2E identity, and Dotypos record synthetic.
 

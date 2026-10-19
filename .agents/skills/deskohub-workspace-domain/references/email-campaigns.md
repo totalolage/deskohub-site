@@ -5,6 +5,7 @@ Admin email campaigns live in `apps/deskohub-workspace/features/email-campaigns/
 ## Glossary
 
 - **Campaign**: one email an admin composes and sends once. Its status moves Draft → Sending → Sent; a Failed send retries only undelivered recipients. Only a Draft can change or be deleted. **Duplicate** copies any campaign into a new Draft.
+- **Delivery**: `once` (above) or `automated` (statuses Draft, Active, Paused, Archived). Every one-off operation (edit, delete, test send, code issue and confirmation, send, retry, duplicate) checks `delivery = 'once'` inside the shared service, not the adapters, and refuses an automated campaign with `CampaignDeliveryMismatch` (`campaign-delivery-mismatch`; `dhw` gets a 409).
 - **Purpose**: `marketing` or `operational`. Marketing campaigns reach only customers with active marketing consent (`customer_marketing_consents.withdrawn_at is null`) and carry unsubscribe links. Operational campaigns skip consent and carry a reason line: fixed localized copy unless the locale content sets `operationalReason` (trimmed, non-empty; part of the content hash).
 - **Template**: a code-defined React Email layout the campaign selects by key. Admins can't edit templates.
 - **Audience**: a saved, named filter tree (`AudienceFilter`): nested AND/OR groups of attribute conditions. Drafts follow the audience live. An audience a Draft uses can be archived but not deleted. Unrelated to discount-code audiences.

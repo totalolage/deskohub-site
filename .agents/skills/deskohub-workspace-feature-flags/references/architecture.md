@@ -22,7 +22,7 @@ The task needs `POSTHOG_API_KEY`, `POSTHOG_API_HOST`, and `POSTHOG_PROJECT_ID`; 
 
 `getConstantEnabledValue` in `packages/posthog/src/feature-flags/definitions.ts` holds these rules.
 
-`isEnabled` returns a constant directly. `evaluateFlags` returns constants locally only when every requested flag is constant. Otherwise the service evaluates remotely with the consented PostHog visitor identity, or the fixed `deskohub-workspace:global-release` subject (with `sendFeatureFlagEvents: false`) before consent. Avoid needless remote calls: the Node SDK turns failed, timed-out, or quota-limited evaluations into missing flags, not errors. Never infer constancy from an evaluated value.
+`isEnabled` returns a constant directly. `constantValue` returns only a constant, as an `Option`, and never reads the request or calls PostHog. `evaluateFlags` returns constants locally only when every requested flag is constant. Otherwise the service evaluates remotely with the consented PostHog visitor identity, or the fixed `deskohub-workspace:global-release` subject (with `sendFeatureFlagEvents: false`) before consent. Avoid needless remote calls: the Node SDK turns failed, timed-out, or quota-limited evaluations into missing flags, not errors. Never infer constancy from an evaluated value.
 
 Public pages use this one adaptive path. Cache request-independent provider reads, such as calendar or media data, at their own boundaries. Don't build a parallel global page or separate global and request service layers; when a flag becomes targeted, the same service reads the request subject and Next.js makes the route dynamic.
 
