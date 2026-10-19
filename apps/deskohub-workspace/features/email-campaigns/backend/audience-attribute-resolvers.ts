@@ -1,6 +1,7 @@
 import type {
   DotyposCustomer,
   DotyposCustomerId,
+  DotyposReservation,
   DotyposReservationId,
 } from "@deskohub/dotypos";
 import type {
@@ -28,28 +29,23 @@ import {
 } from "./audience-evaluation-context";
 import type { ICampaignCandidateRepository } from "./campaign-candidate.repository";
 
-/** The Dotypos visits a resolution derives visit facts from. */
-export type AudienceVisits = {
-  /**
-   * Dotypos reservations, any status, starting in the bounds. Without a
-   * start of its own the set starts just before the earliest Workspace
-   * reservation, so it never reads unbounded history.
-   */
-  readonly startingIn: (
-    bounds: DatePeriodBounds
-  ) => Resolved<readonly DotyposReservationId[]>;
-  /** Every Dotypos reservation that has begun by `asOf`, with its start. */
-  readonly begunBy: (
-    asOf: Temporal.Instant
-  ) => Resolved<ReadonlyMap<DotyposReservationId, Temporal.Instant>>;
-};
-
 /** What a resolver can query while resolving one audience. */
 export type AudienceResolution = {
   readonly candidates: ICampaignCandidateRepository;
   /** Facts outside the scope may be missing, never wrong. */
   readonly scope: AudienceScope;
-  readonly visits: AudienceVisits;
+  /**
+   * Dotypos reservations, any status, starting in the bounds. Without a
+   * start of its own the query starts just before the earliest Workspace
+   * reservation, so it never reads unbounded history.
+   */
+  readonly visitsIn: (
+    bounds: DatePeriodBounds
+  ) => Resolved<readonly DotyposReservation[]>;
+  /** Every Dotypos reservation that has begun by `asOf`, with its start. */
+  readonly pastVisits: (
+    asOf: Temporal.Instant
+  ) => Resolved<ReadonlyMap<DotyposReservationId, Temporal.Instant>>;
 };
 
 type Resolved<Value> = Effect.Effect<Value, CampaignRecipientResolutionError>;
@@ -147,6 +143,9 @@ export type AudienceAttributeResolvers<
 
 const database = CampaignRecipientResolutionError.database;
 
+const reservationIds = (reservations: readonly DotyposReservation[]) =>
+  reservations.flatMap(({ id }) => (id === undefined ? [] : [id]));
+
 /**
  * Booked reservations by booking date count from local data; by visit date
  * in a bounded period they count among the Dotypos reservations starting in
@@ -160,7 +159,7 @@ const countReservations = (
       AudienceConditionOf<"reservationCount">["params"]
     >;
   },
-  { candidates, scope, visits }: AudienceResolution
+  { candidates, scope, visitsIn }: AudienceResolution
 ) => {
   const selection = {
     ...(status && { status }),
@@ -181,13 +180,11 @@ const countReservations = (
     Match.when("visit", () =>
       isUnboundedPeriod(period)
         ? countSelected({})
-        : visits
-            .startingIn(period)
-            .pipe(
-              Effect.flatMap((dotyposReservationIds) =>
-                countSelected({ dotyposReservationIds })
-              )
+        : visitsIn(period).pipe(
+            Effect.flatMap((visits) =>
+              countSelected({ dotyposReservationIds: reservationIds(visits) })
             )
+          )
     ),
     Match.exhaustive
   );
@@ -199,8 +196,8 @@ const countReservations = (
  */
 const visitDates =
   (pick: "earliest" | "latest"): AudienceDateResolver["dates"] =>
-  ({ bounds, asOf, product }, { candidates, scope, visits }) =>
-    visits.begunBy(asOf).pipe(
+  ({ bounds, asOf, product }, { candidates, scope, pastVisits }) =>
+    pastVisits(asOf).pipe(
       Effect.flatMap((startById) =>
         candidates
           .listBookedReservations([...startById.keys()], {
@@ -249,7 +246,7 @@ const visitDates =
 
 /**
  * How Workspace resolves each catalogued attribute. Count and date
- * attributes query local data and the resolution's visits once per distinct
+ * attributes query local data and bounded Dotypos ranges once per distinct
  * request; set and boolean attributes read each candidate.
  */
 export const audienceAttributeResolvers: AudienceAttributeResolvers = {

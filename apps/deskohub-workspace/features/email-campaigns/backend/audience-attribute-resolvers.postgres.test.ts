@@ -25,22 +25,15 @@ import type {
   AudienceFacts,
   AudienceFilter,
 } from "../audience-filter";
-import {
-  type AudienceVisitSnapshotId,
-  audienceVisitSnapshotIdSchema,
-  campaignIdSchema,
-} from "../campaign-identifiers";
+import { campaignIdSchema } from "../campaign-identifiers";
 import type { DatePeriod } from "../date-period";
 import { evaluateAudienceFilter } from "./audience-evaluation";
 import {
   type AudienceEvaluationContext,
   AudienceScope,
   audienceEvaluationAt,
-  VisitSource,
 } from "./audience-evaluation-context";
 import { AudienceFactsService } from "./audience-facts.service";
-import type { AudienceVisitSnapshotRow } from "./audience-visit-snapshots";
-import { audienceVisitSnapshotsLayer } from "./audience-visit-snapshots.test-utils";
 import { CampaignCandidateRepository } from "./campaign-candidate.repository";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -149,32 +142,7 @@ const visits: readonly DotyposReservation[] = bookings.map(
     }) as DotyposReservation
 );
 
-const snapshotRows = (
-  customers: readonly DotyposCustomerId[]
-): readonly AudienceVisitSnapshotRow[] =>
-  bookings
-    .filter(({ customer }) => customers.includes(customer))
-    .map(({ name, customer, startsAt }) => ({
-      dotyposReservationId: reservationId(name),
-      dotyposCustomerId: customer,
-      startsAt: Temporal.Instant.from(startsAt),
-      endsAt: Temporal.Instant.from(startsAt).add({ hours: 2 }),
-      cancelled: false,
-    }));
-
 const scoped = [firstVisitor, counterexample, mailed];
-const allSnapshot = audienceVisitSnapshotIdSchema.make(`all-${run}`);
-const customersSnapshot = audienceVisitSnapshotIdSchema.make(
-  `customers-${run}`
-);
-const snapshots = new Map<
-  AudienceVisitSnapshotId,
-  readonly AudienceVisitSnapshotRow[]
->([
-  [allSnapshot, snapshotRows(seeded)],
-  [customersSnapshot, snapshotRows(scoped)],
-]);
-
 const campaignA = campaignIdSchema.make(`resolver-campaign-a-${run}`);
 const campaignB = campaignIdSchema.make(`resolver-campaign-b-${run}`);
 const sendA = `resolver-send-a-${run}`;
@@ -322,7 +290,6 @@ describe.skipIf(!testDatabase)(
       readonly filter: AudienceFilter;
       readonly contexts?: readonly AudienceEvaluationContext[];
       readonly scope?: AudienceScope;
-      readonly visits?: VisitSource;
     }) =>
       Effect.runPromise(
         AudienceFactsService.pipe(
@@ -331,7 +298,6 @@ describe.skipIf(!testDatabase)(
               filter: input.filter,
               contexts: input.contexts ?? [context],
               ...(input.scope && { scope: input.scope }),
-              ...(input.visits && { visits: input.visits }),
             })
           )
         ).pipe(
@@ -346,8 +312,7 @@ describe.skipIf(!testDatabase)(
                 )
               )
             )
-          ),
-          Effect.provide(audienceVisitSnapshotsLayer(snapshots))
+          )
         )
       );
 
@@ -463,33 +428,6 @@ describe.skipIf(!testDatabase)(
       expect(factsOf(everyone, scoped)).not.toEqual(
         factsOf({ counts: new Map(), dates: new Map() }, scoped)
       );
-    });
-
-    test("gives live and snapshot visits the same facts", async () => {
-      const live = await resolve({ filter: everyFact });
-      expect(
-        factsOf(
-          await resolve({
-            filter: everyFact,
-            visits: VisitSource.Snapshot({ id: allSnapshot }),
-          }),
-          seeded
-        )
-      ).toEqual(factsOf(live, seeded));
-      const liveScoped = await resolve({
-        filter: everyFact,
-        scope: AudienceScope.Customers({ ids: scoped }),
-      });
-      expect(
-        factsOf(
-          await resolve({
-            filter: everyFact,
-            scope: AudienceScope.Customers({ ids: scoped }),
-            visits: VisitSource.Snapshot({ id: customersSnapshot }),
-          }),
-          scoped
-        )
-      ).toEqual(factsOf(liveScoped, scoped));
     });
   }
 );

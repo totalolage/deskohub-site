@@ -32,14 +32,9 @@ import {
   type AudienceEvaluationContext,
   AudienceScope,
   audienceEvaluationAt,
-  type LiveVisits,
   scopedCustomers,
-  type VisitSource,
 } from "./audience-evaluation-context";
-import {
-  AudienceFactsService,
-  type VisitSourceRequirement,
-} from "./audience-facts.service";
+import { AudienceFactsService } from "./audience-facts.service";
 import {
   type CampaignCandidateFacts,
   CampaignCandidateRepository,
@@ -85,16 +80,14 @@ type CampaignRecipientResolution = {
 
 /**
  * What to resolve recipients for. A one-off send passes only the purpose
- * and filter: everyone, evaluated now, with live visits. An automation
- * narrows the scope to its subjects, evaluates in its own context and reads
- * a visit snapshot.
+ * and filter: everyone, evaluated now. An automation narrows the scope to
+ * its subjects and evaluates in its own context.
  */
-type CampaignRecipientQuery<Visits extends VisitSource> = {
+type CampaignRecipientQuery = {
   readonly purpose: CampaignPurpose;
   readonly filter: AudienceFilter;
   readonly scope?: AudienceScope;
   readonly context?: AudienceEvaluationContext;
-  readonly visits?: Visits;
 };
 
 export interface ICampaignRecipientService {
@@ -102,12 +95,11 @@ export interface ICampaignRecipientService {
    * Resolves an audience filter to campaign recipients. It never returns a
    * partial list: an unavailable source fails the whole resolution.
    */
-  readonly resolve: <Visits extends VisitSource = LiveVisits>(
-    input: CampaignRecipientQuery<Visits>
+  readonly resolve: (
+    input: CampaignRecipientQuery
   ) => Effect.Effect<
     CampaignRecipientResolution,
-    CampaignRecipientResolutionError,
-    VisitSourceRequirement<Visits>
+    CampaignRecipientResolutionError
   >;
 }
 
@@ -148,13 +140,12 @@ export class CampaignRecipientService extends Context.Service<
         );
 
       return {
-        resolve: <Visits extends VisitSource = LiveVisits>({
+        resolve: ({
           purpose,
           filter,
           scope = AudienceScope.All(),
           context,
-          visits,
-        }: CampaignRecipientQuery<Visits>) =>
+        }: CampaignRecipientQuery) =>
           Effect.Do.pipe(
             Effect.bind("candidates", () =>
               candidates
@@ -182,7 +173,6 @@ export class CampaignRecipientService extends Context.Service<
                 filter,
                 contexts: [context],
                 scope,
-                ...(visits && { visits }),
               })
             ),
             Effect.let("localMatches", ({ candidates, context, facts }) =>

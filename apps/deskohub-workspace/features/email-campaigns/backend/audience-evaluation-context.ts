@@ -1,9 +1,6 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { Data, Option } from "effect";
-import type {
-  AudienceVisitSnapshotId,
-  CampaignId,
-} from "../campaign-identifiers";
+import type { CampaignId } from "../campaign-identifiers";
 
 /**
  * The event an automation evaluates a condition for: a schedule's fire or
@@ -45,21 +42,6 @@ export type AudienceScope = Data.TaggedEnum<{
 }>;
 
 export const AudienceScope = Data.taggedEnum<AudienceScope>();
-
-/**
- * Where visit facts come from. `Live` queries Dotypos while resolving, as
- * one-off sends and previews do. `Snapshot` reads a completed visit load,
- * so an automation evaluates without calling Dotypos; reading one needs
- * `AudienceVisitSnapshots`.
- */
-export type VisitSource = Data.TaggedEnum<{
-  Live: Record<never, never>;
-  Snapshot: { readonly id: AudienceVisitSnapshotId };
-}>;
-
-export const VisitSource = Data.taggedEnum<VisitSource>();
-
-export type LiveVisits = Data.TaggedEnum.Value<VisitSource, "Live">;
 
 /** The customers a scoped query is limited to; none for everyone. */
 export const scopedCustomers = (
