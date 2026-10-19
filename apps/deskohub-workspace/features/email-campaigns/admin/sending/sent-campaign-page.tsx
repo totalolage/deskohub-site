@@ -40,8 +40,7 @@ export async function SentCampaignPage({
       loadSentCampaignEmails(campaign),
       getRequestLocale(),
     ]);
-  const sentAt =
-    send && formatAdministrationDateTime(send.createdAt.toString(), locale);
+  const sentAt = send && formatAdministrationDateTime(send.createdAt, locale);
   return (
     <AdministrationPage>
       <AdministrationPageHeader
@@ -101,10 +100,7 @@ export async function SentCampaignPage({
               label={m.emailCampaignsSentCompletedAt({}, { locale })}
               value={
                 send?.completedAt
-                  ? formatAdministrationDateTime(
-                      send.completedAt.toString(),
-                      locale
-                    )
+                  ? formatAdministrationDateTime(send.completedAt, locale)
                   : m.emailCampaignsSentCompletedAtPending({}, { locale })
               }
             />
@@ -199,13 +195,13 @@ export async function SentCampaignPage({
             >
               <SentRecipientTable
                 recipients={send.recipients.map((recipient) => ({
-                  dotyposCustomerId: recipient.dotyposCustomerId,
+                  dotyposCustomerId: recipient.customerId,
                   locale: recipient.locale,
                   status: recipient.status,
                   skipReason: recipient.skipReason,
-                  statusUpdatedAt: recipient.statusUpdatedAt.toString(),
+                  statusUpdatedAt: recipient.statusUpdatedAt,
                   statusSince: formatAdministrationDateTime(
-                    recipient.statusUpdatedAt.toString(),
+                    recipient.statusUpdatedAt,
                     locale
                   ),
                 }))}

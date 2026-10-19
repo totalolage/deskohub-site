@@ -1,40 +1,116 @@
 import "server-only";
 
-import { Effect, Layer } from "effect";
-import { redirect } from "next/navigation";
-import type { CampaignRow } from "@/db/schema";
+import type {
+  AdministrationCampaignAudienceType,
+  AdministrationCampaignDetailType,
+  AdministrationCampaignRecipientPreviewType,
+  CampaignOperationError,
+} from "@deskohub/workspace-admin-api";
+import { Effect, Match, Option } from "effect";
+import { notFound, redirect } from "next/navigation";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import { CampaignAudienceService } from "../../backend/campaign-audience.service";
-import {
-  CampaignRecipientService,
-  type ICampaignRecipientService,
-} from "../../backend/campaign-recipient.service";
 import type { CampaignId } from "../../campaign-identifiers";
 import { describeAudienceFilter } from "../audience-filter-summary";
 import { loadDiscountGroupOptions } from "../audiences/discount-group-options.server";
-import { loadAdminCampaign } from "../campaign-page-data.server";
+import {
+  invokeCampaignOperation,
+  runCampaignPageQuery,
+} from "../campaign-operation-query.server";
 
-export type CampaignRecipientResolution = Effect.Success<
-  ReturnType<ICampaignRecipientService["resolve"]>
->;
+type Campaign = AdministrationCampaignDetailType;
 
 export type RecipientPreview =
-  | { readonly kind: "no-audience"; readonly campaign: CampaignRow }
+  | { readonly kind: "no-audience"; readonly campaign: Campaign }
   | {
       readonly kind: "unavailable";
-      readonly campaign: CampaignRow;
+      readonly campaign: Campaign;
       readonly audienceTitle: string;
       readonly audienceSummary: string;
     }
   | {
       readonly kind: "resolved";
-      readonly campaign: CampaignRow;
+      readonly campaign: Campaign;
       readonly audienceTitle: string;
       readonly audienceSummary: string;
-      readonly resolution: CampaignRecipientResolution;
+      readonly resolution: AdministrationCampaignRecipientPreviewType;
     };
+
+/** What the port says about a campaign's recipients, before the summary. */
+type RecipientPreviewQuery =
+  | { readonly kind: "not-found" }
+  | { readonly kind: "not-draft" }
+  | { readonly kind: "no-audience"; readonly campaign: Campaign }
+  | {
+      readonly kind: "unavailable";
+      readonly campaign: Campaign;
+      readonly audience: AdministrationCampaignAudienceType;
+    }
+  | {
+      readonly kind: "resolved";
+      readonly campaign: Campaign;
+      readonly audience: AdministrationCampaignAudienceType;
+      readonly resolution: AdministrationCampaignRecipientPreviewType;
+    };
+
+/**
+ * The Draft lost its audience after it was read: someone cleared it, or the
+ * audience was deleted.
+ */
+const isAudienceGone = (error: CampaignOperationError) =>
+  error._tag === "OperationConflict" ||
+  (error._tag === "OperationNotFound" && error.code === "audience-not-found");
+
+const isResolutionUnavailable = (error: CampaignOperationError) =>
+  error._tag === "OperationUnavailable" &&
+  error.code === "recipient-resolution-unavailable";
+
+const queryRecipientPreview = Effect.fn("loadRecipientPreview")(
+  function* (campaignId: CampaignId) {
+    const campaign = yield* invokeCampaignOperation("getCampaign", {
+      campaignId,
+    });
+    // Automated campaigns have no admin pages yet.
+    if (campaign.delivery !== "once") return { kind: "not-found" } as const;
+    if (campaign.status !== "draft") return { kind: "not-draft" } as const;
+    if (campaign.audienceId === null) {
+      return { kind: "no-audience", campaign } as const;
+    }
+    const found = yield* invokeCampaignOperation("getCampaignAudience", {
+      audienceId: campaign.audienceId,
+    }).pipe(
+      Effect.map(Option.some),
+      Effect.catchTag("OperationNotFound", () => Effect.succeedNone)
+    );
+    if (Option.isNone(found)) return { kind: "no-audience", campaign } as const;
+    const audience = found.value;
+    return yield* invokeCampaignOperation("previewCampaignRecipients", {
+      campaignId,
+    }).pipe(
+      Effect.map(
+        (resolution): RecipientPreviewQuery => ({
+          kind: "resolved",
+          campaign,
+          audience,
+          resolution,
+        })
+      ),
+      Effect.catchIf(isResolutionUnavailable, () =>
+        Effect.succeed<RecipientPreviewQuery>({
+          kind: "unavailable",
+          campaign,
+          audience,
+        })
+      ),
+      Effect.catchIf(isAudienceGone, () =>
+        Effect.succeed<RecipientPreviewQuery>({ kind: "no-audience", campaign })
+      )
+    );
+  },
+  Effect.catchTag("OperationNotFound", () =>
+    Effect.succeed<RecipientPreviewQuery>({ kind: "not-found" })
+  )
+);
 
 /**
  * Resolves a Draft's audience as the real send would right now. A campaign
@@ -43,57 +119,45 @@ export type RecipientPreview =
 export const loadRecipientPreview = async (
   campaignId: CampaignId
 ): Promise<RecipientPreview> => {
-  const campaign = await loadAdminCampaign(campaignId);
-  const locale = await getRequestLocale();
-  if (campaign.status !== "draft") {
-    redirect(
-      localizeAdministrationHref(`/admin/email-campaigns/${campaignId}`, locale)
-    );
-  }
-  const { audienceId } = campaign;
-  if (audienceId === null) return { kind: "no-audience", campaign };
-  const discountGroups = await loadDiscountGroupOptions();
-  return Effect.gen(function* () {
-    const audiences = yield* CampaignAudienceService;
-    const recipients = yield* CampaignRecipientService;
-    const audience = yield* audiences.get(audienceId);
-    const described = {
-      campaign,
-      audienceTitle: audience.title,
-      audienceSummary: describeAudienceFilter(audience.filter, locale, {
-        discountGroups,
-      }),
-    };
-    return yield* recipients
-      .resolve({ purpose: campaign.purpose, filter: audience.filter })
-      .pipe(
-        Effect.map(
-          (resolution): RecipientPreview => ({
-            kind: "resolved",
-            ...described,
-            resolution,
-          })
+  const [query, discountGroups, locale] = await Promise.all([
+    runCampaignPageQuery(
+      "email-campaigns.admin.preview-recipients",
+      queryRecipientPreview(campaignId)
+    ),
+    loadDiscountGroupOptions(),
+    getRequestLocale(),
+  ]);
+  const describe = (audience: AdministrationCampaignAudienceType) => ({
+    audienceTitle: audience.title,
+    audienceSummary: describeAudienceFilter(audience.filter, locale, {
+      discountGroups,
+    }),
+  });
+  return Match.value(query).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      "not-found": () => notFound(),
+      "not-draft": () =>
+        redirect(
+          localizeAdministrationHref(
+            `/admin/email-campaigns/${campaignId}`,
+            locale
+          )
         ),
-        Effect.catchTag(
-          "CampaignRecipientResolutionError",
-          (): Effect.Effect<RecipientPreview> =>
-            Effect.succeed({ kind: "unavailable", ...described })
-        )
-      );
-  }).pipe(
-    Effect.catchTag(
-      "CampaignAudienceNotFound",
-      (): Effect.Effect<RecipientPreview> =>
-        Effect.succeed({ kind: "no-audience", campaign })
-    ),
-    Effect.provide(
-      Layer.mergeAll(
-        CampaignAudienceService.Live,
-        CampaignRecipientService.Live
-      )
-    ),
-    runWorkspaceEffect("email-campaigns.admin.preview-recipients", {
-      boundary: "route",
+      "no-audience": ({ campaign }): RecipientPreview => ({
+        kind: "no-audience",
+        campaign,
+      }),
+      unavailable: ({ campaign, audience }): RecipientPreview => ({
+        kind: "unavailable",
+        campaign,
+        ...describe(audience),
+      }),
+      resolved: ({ campaign, audience, resolution }): RecipientPreview => ({
+        kind: "resolved",
+        campaign,
+        ...describe(audience),
+        resolution,
+      }),
     })
   );
 };
