@@ -5,8 +5,11 @@ import { Effect } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import {
   emailCampaignAutomationRuns,
+  emailCampaignAutomationScheduleFires,
   emailCampaignAutomations,
+  emailCampaignAutomationTriggerReceipts,
   emailCampaignAutomationVersions,
+  emailCampaignAutomationWorkUnits,
   emailCampaignRecipients,
   emailCampaignSends,
   emailCampaigns,
@@ -255,9 +258,10 @@ export const seedAutomatedSend = (
   });
 
 /**
- * Deletes campaigns with their automation runs, sends, recipients,
- * automation rows and versions. Versions are immutable, so removing them takes the same
- * exclusive lock and trigger toggle an operator would need.
+ * Deletes campaigns with their automation rows, receipts, runs, units,
+ * fires, sends, recipients and versions. Versions are immutable, so
+ * removing them takes the same exclusive lock and trigger toggle an
+ * operator would need.
  */
 export const deleteAutomatedCampaigns = (
   db: WorkspaceDatabaseClient,
@@ -267,8 +271,29 @@ export const deleteAutomatedCampaigns = (
     db.transaction((tx) =>
       Effect.gen(function* () {
         yield* tx
+          .delete(emailCampaignAutomationTriggerReceipts)
+          .where(
+            inArray(
+              emailCampaignAutomationTriggerReceipts.campaignId,
+              campaignIds
+            )
+          );
+        yield* tx
           .delete(emailCampaignAutomationRuns)
           .where(inArray(emailCampaignAutomationRuns.campaignId, campaignIds));
+        yield* tx
+          .delete(emailCampaignAutomationWorkUnits)
+          .where(
+            inArray(emailCampaignAutomationWorkUnits.campaignId, campaignIds)
+          );
+        yield* tx
+          .delete(emailCampaignAutomationScheduleFires)
+          .where(
+            inArray(
+              emailCampaignAutomationScheduleFires.campaignId,
+              campaignIds
+            )
+          );
         yield* tx
           .delete(emailCampaignSends)
           .where(inArray(emailCampaignSends.campaignId, campaignIds));

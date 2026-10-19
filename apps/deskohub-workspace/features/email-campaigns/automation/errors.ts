@@ -1,6 +1,11 @@
 import { Data, type Schema } from "effect";
 import type { CalendarExpressionNeverOccurs } from "@/shared/utils/calendar-expression";
-import type { AutomationStepId } from "./automation-identifiers";
+import type { CampaignId } from "../campaign-identifiers";
+import type { AutomatedCampaignStatus } from "../campaign-states";
+import type {
+  AutomationPreviewId,
+  AutomationStepId,
+} from "./automation-identifiers";
 
 /**
  * Where in a flow a rule failed: the trigger, or a step by its id. Messages
@@ -39,3 +44,63 @@ export class AutomationCalendarNeverOccurs extends Data.TaggedError(
   /** Stable across transports, so clients can tell this rejection apart. */
   static readonly code = "calendar-never-occurs";
 }
+
+/**
+ * Activation needs a completed dry run of this campaign's current draft:
+ * the named dry run is missing, belongs to another campaign, or hasn't
+ * completed (D6, D20).
+ */
+export class AutomationPreviewRequired extends Data.TaggedError(
+  "AutomationPreviewRequired"
+)<{
+  readonly campaignId: CampaignId;
+  readonly previewId: AutomationPreviewId;
+}> {
+  /** Stable across transports, so clients can tell this conflict apart. */
+  static readonly code = "automation-preview-required";
+}
+
+/**
+ * The working copy or the campaign audience changed after the dry run, so
+ * the dry run no longer describes what activation would publish.
+ */
+export class AutomationDraftChanged extends Data.TaggedError(
+  "AutomationDraftChanged"
+)<{
+  readonly campaignId: CampaignId;
+  readonly previewId: AutomationPreviewId;
+}> {
+  /** Stable across transports, so clients can tell this conflict apart. */
+  static readonly code = "automation-draft-changed";
+}
+
+/** An archived automation has ended for good; duplicate it to start again. */
+export class AutomationArchived extends Data.TaggedError("AutomationArchived")<{
+  readonly campaignId: CampaignId;
+}> {
+  /** Stable across transports, so clients can tell this conflict apart. */
+  static readonly code = "automation-archived";
+}
+
+/**
+ * A lifecycle transition the automation's status doesn't allow, such as
+ * pausing a draft or resuming an active automation.
+ */
+export class AutomationStatusConflict extends Data.TaggedError(
+  "AutomationStatusConflict"
+)<{
+  readonly campaignId: CampaignId;
+  readonly operation: "pause" | "resume";
+  readonly status: AutomatedCampaignStatus;
+}> {
+  /** Stable across transports, so clients can tell this conflict apart. */
+  static readonly code = "automation-status-conflict";
+}
+
+/** The automation has no published version with this number. */
+export class AutomationVersionNotFound extends Data.TaggedError(
+  "AutomationVersionNotFound"
+)<{
+  readonly campaignId: CampaignId;
+  readonly versionNumber: number;
+}> {}
