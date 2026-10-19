@@ -111,6 +111,27 @@ export {
   MinimumDhwVersion,
 } from "./dhw-version";
 export {
+  AutomationConditionFilter,
+  type AutomationConditionFilter as AutomationConditionFilterType,
+  type AutomationConditionLeaf,
+  AutomationDurationUnit,
+  type AutomationDurationUnit as AutomationDurationUnitType,
+  AutomationFlow,
+  type AutomationFlow as AutomationFlowType,
+  AutomationStep,
+  type AutomationStep as AutomationStepType,
+  AutomationStepId,
+  type AutomationStepId as AutomationStepIdType,
+  AutomationTrigger,
+  type AutomationTrigger as AutomationTriggerType,
+  AutomationWait,
+  type AutomationWait as AutomationWaitType,
+  automationDurationUnits,
+  automationFlowMaxSteps,
+  InSavedAudience,
+  type InSavedAudience as InSavedAudienceType,
+} from "./email-automations";
+export {
   AdminCliCampaignsApi,
   AdministrationCampaignAudience,
   type AdministrationCampaignAudience as AdministrationCampaignAudienceType,
