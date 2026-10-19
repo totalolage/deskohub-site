@@ -542,6 +542,221 @@
   "emailCampaignsAudienceUnarchiveFailed": "Okruh příjemců se nepodařilo obnovit z archivu.",
   "emailCampaignsAudienceUnarchiveFailedRetry": "Okruh příjemců se nepodařilo obnovit z archivu. Zkuste to znovu.",
   "emailCampaignsAudienceUnarchiving": "Obnovování…",
+  "emailCampaignsCalendarDayOfMonth": "{day}.",
+  "emailCampaignsCalendarDaysOfMonth": "{days} den",
+  "emailCampaignsCalendarEveryDay": "každý den",
+  "emailCampaignsCalendarEveryHour": "každou hodinu",
+  "emailCampaignsCalendarHourRange": "mezi {start} a {end}",
+  "emailCampaignsCalendarInMonths": "v {months}",
+  "emailCampaignsCalendarInWeeks": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "v {weeks} kalendářním týdnu",
+        "countPlural=few": "v {weeks} kalendářních týdnech",
+        "countPlural=*": "v {weeks} kalendářních týdnech"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastDayOfMonth": "poslední",
+  "emailCampaignsCalendarLastOccurrence": "poslední {weekday}",
+  "emailCampaignsCalendarMinute": "xx:{minute}",
+  "emailCampaignsCalendarMonthInName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "lednu",
+        "month=2": "únoru",
+        "month=3": "březnu",
+        "month=4": "dubnu",
+        "month=5": "květnu",
+        "month=6": "červnu",
+        "month=7": "červenci",
+        "month=8": "srpnu",
+        "month=9": "září",
+        "month=10": "říjnu",
+        "month=11": "listopadu",
+        "month=*": "prosinci"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMonthName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "leden",
+        "month=2": "únor",
+        "month=3": "březen",
+        "month=4": "duben",
+        "month=5": "květen",
+        "month=6": "červen",
+        "month=7": "červenec",
+        "month=8": "srpen",
+        "month=9": "září",
+        "month=10": "říjen",
+        "month=11": "listopad",
+        "month=*": "prosinec"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMonthOfName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "ledna",
+        "month=2": "února",
+        "month=3": "března",
+        "month=4": "dubna",
+        "month=5": "května",
+        "month=6": "června",
+        "month=7": "července",
+        "month=8": "srpna",
+        "month=9": "září",
+        "month=10": "října",
+        "month=11": "listopadu",
+        "month=*": "prosince"
+      }
+    }
+  ],
+  "emailCampaignsCalendarOccurrence": "{occurrence}. {weekday}",
+  "emailCampaignsCalendarOccurrences": "{occurrences}",
+  "emailCampaignsCalendarSchedule": "{description} (pražský čas)",
+  "emailCampaignsCalendarScheduleDate": "každý rok {day}. {month}",
+  "emailCampaignsCalendarScheduleMonthStart": "každý rok první den {months}",
+  "emailCampaignsCalendarScheduleOn": "{subject}",
+  "emailCampaignsCalendarScheduleQualified": "{subject} připadající na {qualifier}",
+  "emailCampaignsCalendarScheduleWeekMonthStart": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "input months",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "každý rok první den {weeks} kalendářního týdne připadající na {months}",
+        "countPlural=few": "každý rok první den {weeks} kalendářních týdnů připadající na {months}",
+        "countPlural=*": "každý rok první den {weeks} kalendářních týdnů připadající na {months}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarScheduleWeekStart": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "každý rok na začátku {weeks} kalendářního týdne (v pondělí)",
+        "countPlural=few": "každý rok na začátku {weeks} kalendářních týdnů (v pondělí)",
+        "countPlural=*": "každý rok na začátku {weeks} kalendářních týdnů (v pondělí)"
+      }
+    }
+  ],
+  "emailCampaignsCalendarScopeAnyMonth": "{phrase} v měsíci",
+  "emailCampaignsCalendarScopeEveryMonth": "{phrase} v měsíci",
+  "emailCampaignsCalendarScopeMonths": "{phrase} v {months}",
+  "emailCampaignsCalendarScopeQualifier": "{phrase} v měsíci",
+  "emailCampaignsCalendarTimeAt": "v {times}",
+  "emailCampaignsCalendarTimeEveryHourAt": "každou hodinu v {minutes}",
+  "emailCampaignsCalendarTimeMinutesPastHours": "v hodinách {hours} vždy v {minutes}",
+  "emailCampaignsCalendarWait": "Počká na {target} (pražský čas); pokud ten čas už nastal, pokračuje hned",
+  "emailCampaignsCalendarWaitDay": "den",
+  "emailCampaignsCalendarWaitMonthDay": "den v {months}",
+  "emailCampaignsCalendarWaitNextMinute": "nejbližší {minutes}",
+  "emailCampaignsCalendarWaitQualified": "{subject} připadající na {qualifier}",
+  "emailCampaignsCalendarWaitTime": "dobu {time}",
+  "emailCampaignsCalendarWaitWeeks": "{weeks} kalendářní týden",
+  "emailCampaignsCalendarWeekNumber": "{week}.",
+  "emailCampaignsCalendarWeekdayEveryName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "každé pondělí",
+        "weekday=tuesday": "každé úterý",
+        "weekday=wednesday": "každou středu",
+        "weekday=thursday": "každý čtvrtek",
+        "weekday=friday": "každý pátek",
+        "weekday=saturday": "každou sobotu",
+        "weekday=*": "každou neděli"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "pondělí",
+        "weekday=tuesday": "úterý",
+        "weekday=wednesday": "středa",
+        "weekday=thursday": "čtvrtek",
+        "weekday=friday": "pátek",
+        "weekday=saturday": "sobota",
+        "weekday=*": "neděle"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayWaitName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "pondělí",
+        "weekday=tuesday": "úterý",
+        "weekday=wednesday": "středu",
+        "weekday=thursday": "čtvrtek",
+        "weekday=friday": "pátek",
+        "weekday=saturday": "sobotu",
+        "weekday=*": "neděli"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysEvery": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "každý pracovní den",
+        "set=weekend": "každý víkendový den",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysWait": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "pracovní den",
+        "set=weekend": "víkendový den",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysWaitQualified": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "pracovní den",
+        "set=weekend": "víkendový den",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
   "emailCampaignsBadgePurposeMarketing": "Marketingová",
   "emailCampaignsBadgePurposeOperational": "Provozní",
   "emailCampaignsBadgeRecipientStatusBounced": "Vráceno",
