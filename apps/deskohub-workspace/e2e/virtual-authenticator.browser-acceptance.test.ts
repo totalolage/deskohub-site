@@ -3,6 +3,7 @@ import { type Browser, chromium, type Page } from "@playwright/test";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import {
   addVirtualAuthenticator,
+  holdsVirtualAuthenticator,
   ModalCeremonyNotAlone,
   type PageVirtualAuthenticator,
 } from "./virtual-authenticator";
@@ -199,6 +200,27 @@ test.skipIf(!chromiumAvailable)(
         authenticator.answerModalCeremony(() => pressButtonUntilAccount(page))
       ).rejects.toThrow(ModalCeremonyNotAlone);
       expect(new URL(page.url()).pathname).toBe("/account");
+    });
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "marks its page while another CDP session's detach would drop its passkey",
+  async () => {
+    await withPasskeyPage(async (page, authenticator) => {
+      expect(holdsVirtualAuthenticator(page)).toBe(true);
+      expect(await authenticator.readCredentials()).toHaveLength(1);
+
+      // Why other CDP users must not detach on a marked page: any detach
+      // resets the page's virtual authenticator environment.
+      const other = await page.context().newCDPSession(page);
+      await other.detach();
+      await expect(authenticator.readCredentials()).rejects.toThrow(
+        "Virtual Authenticator Environment has not been enabled"
+      );
+
+      await authenticator.remove().catch(() => undefined);
+      expect(holdsVirtualAuthenticator(page)).toBe(false);
     });
   }
 );

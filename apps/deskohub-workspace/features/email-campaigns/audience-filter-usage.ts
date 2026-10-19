@@ -95,16 +95,14 @@ export const audienceFilterUsage = (
 };
 
 /**
- * What saved audiences, and so one-off campaigns, can't hold yet. The
- * first visit, "any time so far", and one campaign's emails open once the
- * Admin UI and `dhw` can write them. Trigger windows and "this campaign"
- * need an automation's trigger and campaign, so they stay automation
- * condition only.
+ * What saved audiences, and so one-off campaigns, can't hold. Trigger
+ * windows and "this campaign" need an automation's trigger and campaign, so
+ * only automation conditions use them.
  */
 const savedAudienceUnavailableUses = {
-  attributes: ["firstVisit"],
-  periods: ["Past", "TriggerWindow"],
-  campaignSources: ["Specific", "This"],
+  attributes: [],
+  periods: ["TriggerWindow"],
+  campaignSources: ["This"],
 } as const satisfies AudienceFilterUses;
 
 /** Whether a saved audience can hold conditions on `attribute`. */

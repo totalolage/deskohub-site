@@ -16,7 +16,7 @@
   "emailCampaignsAudienceCampaignEmailCountAny": "obdrželi alespoň jeden {single}{period}",
   "emailCampaignsAudienceCampaignEmailCountCountLabel": "Počet e-mailů z kampaní",
   "emailCampaignsAudienceCampaignEmailCountLabel": "Přijaté e-maily z kampaní",
-  "emailCampaignsAudienceCampaignEmailCountLeadText": "e-mailů z kampaní, které zákazník obdržel",
+  "emailCampaignsAudienceCampaignEmailCountLeadText": "e-mailů, které zákazník obdržel z",
   "emailCampaignsAudienceCampaignEmailCountNone": "neobdrželi žádný {single}{period}",
   "emailCampaignsAudienceCampaignEmailCountNounAny": [
     {
@@ -26,6 +26,17 @@
         "countPlural=one": "e-mail z kampaně",
         "countPlural=few": "e-maily z kampaní",
         "countPlural=other": "e-mailů z kampaní"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounDeleted": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "e-mail ze smazané kampaně",
+        "countPlural=few": "e-maily ze smazané kampaně",
+        "countPlural=other": "e-mailů ze smazané kampaně"
       }
     }
   ],
@@ -51,13 +62,42 @@
       }
     }
   ],
+  "emailCampaignsAudienceCampaignEmailCountNounSpecific": [
+    {
+      "declarations": [
+        "input count",
+        "input campaign",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "e-mail z kampaně {campaign}",
+        "countPlural=few": "e-maily z kampaně {campaign}",
+        "countPlural=other": "e-mailů z kampaně {campaign}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounThis": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "e-mail z této kampaně",
+        "countPlural=few": "e-maily z této kampaně",
+        "countPlural=other": "e-mailů z této kampaně"
+      }
+    }
+  ],
   "emailCampaignsAudienceCampaignEmailCountPeriodLabel": "Přijaté e-maily",
   "emailCampaignsAudienceCampaignEmailCountPurposeAny": "libovolných",
   "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "Účel kampaně",
   "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "marketingových",
   "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "provozních",
-  "emailCampaignsAudienceCampaignEmailCountSourceSpecific": "(kampaň {campaign})",
-  "emailCampaignsAudienceCampaignEmailCountSourceThis": "(tato kampaň)",
+  "emailCampaignsAudienceCampaignEmailCountSourceAny": "libovolné kampaně",
+  "emailCampaignsAudienceCampaignEmailCountSourceEmpty": "Žádná kampaň neodpovídá.",
+  "emailCampaignsAudienceCampaignEmailCountSourceLabel": "Kampaň",
+  "emailCampaignsAudienceCampaignEmailCountSourceSearch": "Hledat kampaně",
+  "emailCampaignsAudienceCampaignEmailCountSourceUnknown": "Smazaná kampaň",
   "emailCampaignsAudienceConditionAttributeLabel": "Vlastnost zákazníka",
   "emailCampaignsAudienceConditionRemove": "Odebrat podmínku",
   "emailCampaignsAudienceCountAlwaysMatchesError": "„≥ 0“ vyhovuje vždy. Pro alespoň jeden použijte „≥ 1“, nebo podmínku odeberte.",
@@ -219,6 +259,7 @@
       "selectors": ["kind"],
       "match": {
         "kind=AnyTime": "kdykoli",
+        "kind=Past": "kdykoli dosud",
         "kind=Last": "za posledních",
         "kind=Range": "od … do …",
         "kind=Since": "od",
@@ -422,9 +463,10 @@
   "emailCampaignsAudienceReservationCountStatusLabel": "Stav rezervace",
   "emailCampaignsAudienceReservationCountStatusNeedsRefund": "čekajících na vrácení peněz",
   "emailCampaignsAudienceReservationCountVisitPeriod": "s návštěvou {period}",
+  "emailCampaignsAudienceSaveCampaignNotFound": "Okruh příjemců se nepodařilo uložit. Kampaň, jejíž e-maily počítá, už neexistuje. Vyberte jinou kampaň.",
   "emailCampaignsAudienceSaveFailedCheckFilters": "Okruh příjemců se nepodařilo uložit. Zkontrolujte filtry a zkuste to znovu.",
   "emailCampaignsAudienceSaveFailedRetry": "Okruh příjemců se nepodařilo uložit. Zkuste to znovu.",
-  "emailCampaignsAudienceSaveFilterUnavailable": "Okruh příjemců se nepodařilo uložit. Období vztažená ke spouštěči, první návštěvu, „kdykoli dosud“ ani e-maily z jedné kampaně zatím do okruhu příjemců uložit nelze.",
+  "emailCampaignsAudienceSaveFilterUnavailable": "Okruh příjemců se nepodařilo uložit. Období vztažená ke spouštěči a „tato kampaň“ fungují jen v podmínkách automatizací.",
   "emailCampaignsAudienceSectionAccount": "Účet",
   "emailCampaignsAudienceSectionEmails": "E-maily",
   "emailCampaignsAudienceSectionProfile": "Profil",
@@ -843,6 +885,7 @@
       }
     }
   ],
+  "emailCampaignsBadgeDeliveryAutomated": "Automatická",
   "emailCampaignsBadgePurposeMarketing": "Marketingová",
   "emailCampaignsBadgePurposeOperational": "Provozní",
   "emailCampaignsBadgeRecipientStatusBounced": "Vráceno",
@@ -897,7 +940,7 @@
   "emailCampaignsComposerPurposeOperational": "Provozní",
   "emailCampaignsComposerPurposeOperationalDescription": "Provozní oznámení pro všechny odpovídající zákazníky. Patička uvádí, proč e-mail dostávají.",
   "emailCampaignsComposerSaveAudienceArchived": "Vybraný okruh příjemců je archivovaný. Vyberte jiný.",
-  "emailCampaignsComposerSaveAudienceFilterUnavailable": "Vybraný okruh příjemců používá filtry, které kampaně zatím použít nemohou. Vyberte jiný.",
+  "emailCampaignsComposerSaveAudienceFilterUnavailable": "Vybraný okruh příjemců používá filtry, které lze použít jen v podmínkách automatizací. Vyberte jiný.",
   "emailCampaignsComposerSaveAudienceNotFound": "Vybraný okruh příjemců už neexistuje.",
   "emailCampaignsComposerSaveCheckFields": "Kampaň se nepodařilo uložit. Zkontrolujte vyplněné údaje.",
   "emailCampaignsComposerSaveContentInvalid": "Obsah obsahuje chyby. Opravte uvedené problémy a pak kampaň uložte.",

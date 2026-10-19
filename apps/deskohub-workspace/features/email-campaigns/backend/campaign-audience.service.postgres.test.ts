@@ -58,12 +58,13 @@ describe.skipIf(!testDatabase)(
     const failure = (exit: Exit.Exit<unknown, unknown>) =>
       Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
 
-    const createAudience = async (title: string) => {
+    const createAudience = async (
+      title: string,
+      filter: AudienceFilter = everyoneFilter
+    ) => {
       const exit = await run(
         CampaignAudienceService.pipe(
-          Effect.flatMap((audiences) =>
-            audiences.create({ title, filter: everyoneFilter })
-          )
+          Effect.flatMap((audiences) => audiences.create({ title, filter }))
         )
       );
       if (Exit.isFailure(exit)) throw Cause.squash(exit.cause);
@@ -581,33 +582,11 @@ describe.skipIf(!testDatabase)(
       periods: [],
       campaignSources: [],
     };
-    const otherCampaignId = campaignIdSchema.make(
-      "01990000-0000-7000-8000-0000000000aa"
-    );
-    const upcomingUses: readonly {
+    const automationOnlyUses: readonly {
       readonly use: string;
       readonly filter: AudienceFilter;
       readonly uses: AudienceFilterUses;
     }[] = [
-      {
-        use: "the first visit",
-        filter: {
-          attribute: "firstVisit",
-          _tag: "Condition",
-          operator: "none",
-        },
-        uses: { ...noUses, attributes: ["firstVisit"] },
-      },
-      {
-        use: "any time so far",
-        filter: {
-          attribute: "lastVisit",
-          _tag: "Condition",
-          operator: "in",
-          value: { _tag: "Past" },
-        },
-        uses: { ...noUses, periods: ["Past"] },
-      },
       {
         use: "a trigger window",
         filter: {
@@ -628,21 +607,6 @@ describe.skipIf(!testDatabase)(
         uses: { ...noUses, periods: ["TriggerWindow"] },
       },
       {
-        use: "one campaign's emails",
-        filter: {
-          attribute: "campaignEmailCount",
-          _tag: "Condition",
-          params: {
-            purpose: "any",
-            period: { _tag: "AnyTime" },
-            campaign: { _tag: "Specific", campaignId: otherCampaignId },
-          },
-          operator: "eq",
-          value: 0,
-        },
-        uses: { ...noUses, campaignSources: ["Specific"] },
-      },
-      {
         use: "this campaign's emails",
         filter: {
           attribute: "campaignEmailCount",
@@ -658,11 +622,38 @@ describe.skipIf(!testDatabase)(
         uses: { ...noUses, campaignSources: ["This"] },
       },
     ];
-    const everyUpcomingUse: AudienceFilter = {
+    const everyAutomationOnlyUse: AudienceFilter = {
       _tag: "Group",
       operator: "or",
-      filters: upcomingUses.map(({ filter }) => filter),
+      filters: automationOnlyUses.map(({ filter }) => filter),
     };
+
+    const firstVisitPastAndSpecificCampaignFilter = (
+      campaignId: CampaignId
+    ): AudienceFilter => ({
+      _tag: "Group",
+      operator: "and",
+      filters: [
+        { attribute: "firstVisit", _tag: "Condition", operator: "none" },
+        {
+          attribute: "lastVisit",
+          _tag: "Condition",
+          operator: "in",
+          value: { _tag: "Past" },
+        },
+        {
+          attribute: "campaignEmailCount",
+          _tag: "Condition",
+          params: {
+            purpose: "any",
+            period: { _tag: "AnyTime" },
+            campaign: { _tag: "Specific", campaignId },
+          },
+          operator: "eq",
+          value: 0,
+        },
+      ],
+    });
 
     const countAudiencesTitled = async (title: string) => {
       const result = (await testDatabase.pool.query(
@@ -686,7 +677,7 @@ describe.skipIf(!testDatabase)(
       return id;
     };
 
-    test.each(upcomingUses)(
+    test.each(automationOnlyUses)(
       "refuses to create an audience with $use and stores nothing",
       async ({ use, filter, uses }) => {
         const title = `Upcoming ${use} ${crypto.randomUUID()}`;
@@ -705,7 +696,7 @@ describe.skipIf(!testDatabase)(
       }
     );
 
-    test.each(upcomingUses)(
+    test.each(automationOnlyUses)(
       "refuses to change an audience's filter to $use and keeps the stored one",
       async ({ filter, uses }) => {
         const audience = await createAudience("Upcoming shape update");
@@ -737,10 +728,125 @@ describe.skipIf(!testDatabase)(
       }
     );
 
-    test("reads, decodes, and renames an audience that already holds upcoming shapes", async () => {
+    test("creates and updates an audience with first visit, Past, and a specific campaign", async () => {
+      const sourceCampaign = await createCampaign(
+        (await createAudience("Specific campaign filter source")).id
+      );
+      const filter = firstVisitPastAndSpecificCampaignFilter(sourceCampaign.id);
+      const created = await createAudience("Supported audience filter", filter);
+
+      const storedAfterCreate = await run(
+        CampaignAudienceService.pipe(
+          Effect.flatMap((audiences) => audiences.get(created.id))
+        )
+      );
+      expect(
+        Exit.isSuccess(storedAfterCreate) && storedAfterCreate.value.filter
+      ).toEqual(filter);
+
+      const updated = await run(
+        CampaignAudienceService.pipe(
+          Effect.flatMap((audiences) =>
+            audiences.update({
+              audienceId: created.id,
+              title: "Updated supported audience filter",
+              filter,
+            })
+          )
+        )
+      );
+      expect(Exit.isSuccess(updated) && updated.value.filter).toEqual(filter);
+
+      const storedAfterUpdate = await run(
+        CampaignAudienceService.pipe(
+          Effect.flatMap((audiences) => audiences.get(created.id))
+        )
+      );
+      expect(
+        Exit.isSuccess(storedAfterUpdate) && storedAfterUpdate.value
+      ).toMatchObject({
+        title: "Updated supported audience filter",
+        filter,
+      });
+    });
+
+    test("rejects a missing specific campaign when creating or updating an audience", async () => {
+      const missingCampaignId = campaignIdSchema.make(crypto.randomUUID());
+      const filter = firstVisitPastAndSpecificCampaignFilter(missingCampaignId);
+      const title = `Missing campaign ${crypto.randomUUID()}`;
+      const creation = await run(
+        CampaignAudienceService.pipe(
+          Effect.flatMap((audiences) => audiences.create({ title, filter }))
+        )
+      );
+      if (Exit.isSuccess(creation)) audienceIds.push(creation.value.id);
+      expect(failure(creation)).toMatchObject({
+        _tag: "AudienceFilterCampaignNotFound",
+        campaignIds: [missingCampaignId],
+      });
+      expect(await countAudiencesTitled(title)).toBe(0);
+
+      const audience = await createAudience("Missing campaign filter update");
+      const update = await run(
+        CampaignAudienceService.pipe(
+          Effect.flatMap((audiences) =>
+            audiences.update({
+              audienceId: audience.id,
+              title: "Renamed by a refused update",
+              filter,
+            })
+          )
+        )
+      );
+      expect(failure(update)).toMatchObject({
+        _tag: "AudienceFilterCampaignNotFound",
+        campaignIds: [missingCampaignId],
+      });
+
+      const stored = await run(
+        CampaignAudienceService.pipe(
+          Effect.flatMap((audiences) => audiences.get(audience.id))
+        )
+      );
+      expect(Exit.isSuccess(stored) && stored.value).toMatchObject({
+        title: "Missing campaign filter update",
+        filter: everyoneFilter,
+      });
+    });
+
+    test("assigns an audience with a specific campaign filter to a campaign", async () => {
+      const sourceCampaign = await createCampaign(
+        (await createAudience("Specific assignment source")).id
+      );
+      const audience = await createAudience(
+        "Specific assignment target",
+        firstVisitPastAndSpecificCampaignFilter(sourceCampaign.id)
+      );
+
+      const createdDraft = await createCampaign(audience.id);
+      expect(createdDraft.audienceId).toBe(audience.id);
+
+      const draftToMove = await createCampaign(
+        (await createAudience("Specific assignment before move")).id
+      );
+      const moved = await run(
+        CampaignService.pipe(
+          Effect.flatMap((campaigns) =>
+            campaigns.update({
+              campaignId: draftToMove.id,
+              audienceId: audience.id,
+            })
+          )
+        )
+      );
+      expect(Exit.isSuccess(moved) && moved.value.audienceId).toBe(audience.id);
+      expect(await storedAudienceId(draftToMove.id)).toBe(audience.id);
+    });
+
+    test("reads, decodes, and renames an audience that already holds automation-only shapes", async () => {
       const audienceId = await insertAudienceBySql(
         "Stored upcoming shapes",
-        everyUpcomingUse
+        everyAutomationOnlyUse
       );
 
       const read = await run(
@@ -758,7 +864,7 @@ describe.skipIf(!testDatabase)(
       expect(listed.some(({ id }) => id === audienceId)).toBe(true);
       expect(
         Schema.decodeUnknownSync(audienceFilterSchema)(audience.filter)
-      ).toEqual(everyUpcomingUse);
+      ).toEqual(everyAutomationOnlyUse);
 
       const renamed = await run(
         CampaignAudienceService.pipe(
@@ -769,19 +875,19 @@ describe.skipIf(!testDatabase)(
       );
       expect(Exit.isSuccess(renamed) && renamed.value).toMatchObject({
         title: "Renamed upcoming shapes",
-        filter: everyUpcomingUse,
+        filter: everyAutomationOnlyUse,
       });
     });
 
     test("refuses to assign an audience holding upcoming uses to a campaign", async () => {
       const audienceId = await insertAudienceBySql(
         "Stored upcoming uses for campaigns",
-        everyUpcomingUse
+        everyAutomationOnlyUse
       );
       const allUses = {
-        attributes: ["firstVisit"],
-        periods: ["Past", "TriggerWindow"],
-        campaignSources: ["Specific", "This"],
+        attributes: [],
+        periods: ["TriggerWindow"],
+        campaignSources: ["This"],
       };
 
       const creation = await run(
@@ -821,11 +927,13 @@ describe.skipIf(!testDatabase)(
     });
 
     test("duplicates a draft without an audience that came to hold upcoming shapes", async () => {
-      const audience = await createAudience("Upcoming uses after assignment");
+      const audience = await createAudience(
+        "Automation-only uses after assignment"
+      );
       const draft = await createCampaign(audience.id);
       await testDatabase.pool.query(
         "update email_campaign_audiences set filter = $2::jsonb where id = $1",
-        [audience.id, JSON.stringify(everyUpcomingUse)]
+        [audience.id, JSON.stringify(everyAutomationOnlyUse)]
       );
 
       const copy = await duplicate(draft.id);

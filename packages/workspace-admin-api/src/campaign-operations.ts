@@ -30,6 +30,7 @@ import {
   AdministrationCampaignTestSendInput,
   AdministrationCampaignTestSendResult,
   AdministrationCampaignUpdateInput,
+  campaignsMinimumDhwVersion,
 } from "./email-campaigns";
 import { CliMutationRequestId } from "./workspace-admin-api";
 
@@ -319,85 +320,105 @@ export type CampaignRetryInput = typeof CampaignRetryInput.Type;
  */
 export const campaignOperations = defineOperations({
   listCampaignAudiences: query({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: NoInput,
     output: AdministrationCampaignAudiences,
   }),
   getCampaignAudience: query({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignAudienceRef,
     output: AdministrationCampaignAudience,
   }),
   createCampaignAudience: mutation({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: AdministrationCampaignAudienceCreateRequest,
     output: AdministrationCampaignAudience,
     ledger: true,
   }),
   updateCampaignAudience: mutation({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignAudiencePatchInput,
     output: AdministrationCampaignAudience,
   }),
   archiveCampaignAudience: mutation({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignAudienceRef,
     output: AdministrationCampaignAudience,
   }),
   unarchiveCampaignAudience: mutation({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignAudienceRef,
     output: AdministrationCampaignAudience,
   }),
   deleteCampaignAudience: mutation({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignAudienceRef,
     output: AdministrationCampaignAudienceDeleted,
   }),
   listCampaignTemplates: query({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: NoInput,
     output: AdministrationCampaignTemplates,
   }),
   previewCampaignTemplate: query({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignTemplatePreviewInput,
     output: AdministrationCampaignEmailPreview,
   }),
   listCampaigns: query({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: NoInput,
     output: AdministrationCampaignSummaries,
   }),
   getCampaign: query({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignRef,
     output: AdministrationCampaignDetail,
   }),
   createCampaign: mutation({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: AdministrationCampaignCreateRequest,
     output: AdministrationCampaignDetail,
     ledger: true,
   }),
   updateCampaign: mutation({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignPatchInput,
     output: AdministrationCampaignDetail,
   }),
   duplicateCampaign: mutation({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignDuplicateInput,
     output: AdministrationCampaignDetail,
     ledger: true,
   }),
   deleteCampaign: mutation({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignRef,
     output: AdministrationCampaignDeleted,
   }),
   previewCampaignRecipients: query({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignRef,
     output: AdministrationCampaignRecipientPreview,
   }),
   testSendCampaign: mutation({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignTestSendInput,
     output: AdministrationCampaignTestSendResult,
   }),
   sendCampaign: mutation({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignSendInput,
     output: AdministrationCampaignSendResult,
   }),
   retryCampaign: mutation({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignRetryInput,
     output: AdministrationCampaignRetryResult,
   }),
   getCampaignSendStatus: query({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignRef,
     output: AdministrationCampaignSendStatusResult,
   }),

@@ -14,6 +14,7 @@ import {
   type AutomationFlowLocation,
 } from "../automation/errors";
 import {
+  AudienceFilterCampaignNotFound,
   type AudienceFilterContextInvalid,
   type CampaignAudienceArchived,
   CampaignAudienceInUse,
@@ -46,6 +47,7 @@ import {
  */
 export type CampaignOperationCause =
   | CampaignOperationError
+  | AudienceFilterCampaignNotFound
   | AutomationCalendarNeverOccurs
   | AutomationConditionAudienceMissing
   | AutomationFlowInvalid
@@ -171,7 +173,16 @@ export const toOperationError = (
             ...uses.campaignSources.map(
               (source) => `${source} campaign sources`
             ),
-          ].join(", ")}, which saved audiences and campaigns can't use yet.`,
+          ].join(", ")}, which only automation conditions can use.`,
+          cause,
+        })
+    ),
+    Match.tag(
+      "AudienceFilterCampaignNotFound",
+      ({ campaignIds }) =>
+        new OperationInputInvalid({
+          code: AudienceFilterCampaignNotFound.code,
+          message: `The audience filter counts emails of campaigns that don't exist (${campaignIds.join(", ")}).`,
           cause,
         })
     ),

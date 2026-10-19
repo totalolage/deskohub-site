@@ -5,12 +5,17 @@ import {
 } from "@deskohub/dotypos";
 import { Effect } from "effect";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
-import { getAccountSectionPath } from "@/features/account/routes";
+import {
+  getAccountSectionPath,
+  getAccountSignInPath,
+} from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
 import { localeCookieName } from "@/features/i18n/routing";
+import { getReservationStartPath } from "@/features/reservation/routes";
 import { maskEmailAddress } from "@/shared/utils";
 import {
   clickBrowserElement,
+  closeBrowserSession,
   evalBrowserScript,
   fillBrowserField,
   focusBrowserElement,
@@ -82,7 +87,11 @@ import {
   seedWorkspaceE2EReferralOwner,
 } from "./referral-fixture";
 import type { LanguagePreferenceReviewCapture } from "./review-screenshots";
-import type { LanguagePreferenceReviewStage } from "./review-targets";
+import type {
+  LanguagePreferenceReviewStage,
+  SignInHandoffReviewCapture,
+  SignInHandoffReviewStage,
+} from "./review-targets";
 import type {
   WorkspaceE2EAccountCase,
   WorkspaceE2EAccountCaseCompletion,
@@ -104,7 +113,6 @@ const useDifferentEmailLabel = m.accountSignInCodeChangeEmail(
 );
 /** The resend countdown ticks every second, so text comparisons drop it. */
 const signInCodeResendCooldownPattern = /Send a new email in \d+ s/g;
-const callbackFailedTitle = "This link cannot be used";
 const completionTitle = "Complete your profile";
 const profileSaved = "Profile updated.";
 const linkedEditSubmitLabel = "Save profile";
@@ -186,12 +194,67 @@ const staleSessionAgeMs = 11 * 60_000;
  */
 const invalidEmailSettleMs = 2_000;
 
+const coworkSelectionTier = "open-space";
+
+/** A cowork selection a sign-in returns to, with the locale it is in. */
+export type WorkspaceE2ESignInReturn = {
+  readonly locale: Locale;
+  readonly returnTo: string;
+};
+
+/**
+ * The selections the lane's sign-ins return to: the lane browser's first
+ * link for the main recipient, and the link the assistant's browser requests
+ * in Czech for the reactivation.
+ */
+export type WorkspaceE2ESignInReturns = {
+  readonly assistant: WorkspaceE2ESignInReturn;
+  readonly sameBrowser: WorkspaceE2ESignInReturn;
+};
+
+/**
+ * Open space with no coffee on a day 120 days out, like the lane's other
+ * reservation dates, outside the checkout date range.
+ */
+const makeCoworkSelection = (
+  locale: Locale,
+  now: number
+): WorkspaceE2ESignInReturn => ({
+  locale,
+  returnTo: getReservationStartPath(
+    locale,
+    "cowork",
+    new URLSearchParams({
+      entryTier: coworkSelectionTier,
+      date: new Date(now + 120 * 24 * 60 * 60_000).toISOString().slice(0, 10),
+      coffee: "false",
+    })
+  ),
+});
+
+/**
+ * The lane builds the selections once per worker: the sign-in form case
+ * requests a link the delivery case consumes, and the callback handoff holds
+ * expect the same return targets the cases request.
+ */
+export const makeWorkspaceE2ESignInReturns = (
+  now = Date.now()
+): WorkspaceE2ESignInReturns => ({
+  assistant: makeCoworkSelection("cs-CZ", now),
+  sameBrowser: makeCoworkSelection("en-US", now),
+});
+
 export type WorkspaceE2EAccountCaseInputs = {
   /**
    * Review capture for the language case's mid-case moments. The lane
    * supplies the review wrapper's hook; without one nothing is captured.
    */
   readonly captureLanguagePreferenceReview?: LanguagePreferenceReviewCapture;
+  /**
+   * Review capture for the assistant's browser in the cross-browser sign-in.
+   * The lane supplies it; without one nothing is captured.
+   */
+  readonly captureSignInHandoffReview?: SignInHandoffReviewCapture;
   readonly config: WorkspaceE2EAccountConfig;
   readonly datasourceConfig: DatasourceConfig;
   /**
@@ -210,6 +273,7 @@ export type WorkspaceE2EAccountCaseInputs = {
   readonly rateBudget: MagicLinkRateBudget;
   readonly run: Runner;
   readonly session: string;
+  readonly signInReturns: WorkspaceE2ESignInReturns;
 };
 
 /**
@@ -220,6 +284,7 @@ export type WorkspaceE2EAccountCaseInputs = {
  */
 export const makeWorkspaceE2EAccountCases = ({
   captureLanguagePreferenceReview,
+  captureSignInHandoffReview,
   config,
   datasourceConfig,
   lifecycleHandoff,
@@ -228,6 +293,7 @@ export const makeWorkspaceE2EAccountCases = ({
   rateBudget,
   run,
   session,
+  signInReturns,
 }: WorkspaceE2EAccountCaseInputs): readonly WorkspaceE2EAccountCase[] => {
   const recipient = makeWorkspaceE2EAccountRecipient(
     config,
@@ -240,51 +306,151 @@ export const makeWorkspaceE2EAccountCases = ({
   const localized = (suffix: string, locale: Locale = config.locale) =>
     `${config.baseUrl}/${locale}${suffix}`;
 
-  const openPage = (url: string) =>
-    openBrowserPage(config, run, session, url, { timeoutMs: browserTimeout });
-
-  const waitText = (
-    description: string,
-    text: string,
-    timeoutMs = uiTransition
-  ) =>
-    waitForBrowserText({
-      description,
-      matches: (pageText) => pageText.includes(text),
-      run,
-      session,
-      timeoutMs,
-    });
-
-  const waitUrlContains = (description: string, expected: string) =>
-    pollUntil(
-      readBrowserUrl(run, session).pipe(
-        Effect.map((url) => (url?.includes(expected) ? url : undefined))
-      ),
-      {
-        intervalMs: workspaceE2EPollIntervalMs.browser,
-        label: description,
-        timeoutMs: uiTransition,
-      }
-    );
-
   const previewOrigin = new URL(config.baseUrl).origin;
   /** Passkeys bind to the preview's own host as their relying party. */
   const previewRpId = new URL(config.baseUrl).hostname;
-  const waitPathname = (
-    description: string,
-    matches: (pathname: string) => boolean
-  ) =>
-    waitForBrowserUrl({
-      description,
-      matches: (url) => {
-        const parsed = parseUrl(url);
-        return parsed?.origin === previewOrigin && matches(parsed.pathname);
-      },
-      run,
-      session,
-      timeoutMs: navigationTimeout,
+
+  /**
+   * The page steps of one browser session. The lane drives its own session
+   * through them, and the reactivation case also drives a second, anonymous
+   * browser: the one a customer's assistant books in.
+   */
+  const makeBrowserSteps = (browserSession: string) => {
+    const openPage = (url: string) =>
+      openBrowserPage(config, run, browserSession, url, {
+        timeoutMs: browserTimeout,
+      });
+
+    const waitText = (
+      description: string,
+      text: string,
+      timeoutMs = uiTransition
+    ) =>
+      waitForBrowserText({
+        description,
+        matches: (pageText) => pageText.includes(text),
+        run,
+        session: browserSession,
+        timeoutMs,
+      });
+
+    const waitUrlContains = (description: string, expected: string) =>
+      pollUntil(
+        readBrowserUrl(run, browserSession).pipe(
+          Effect.map((url) => (url?.includes(expected) ? url : undefined))
+        ),
+        {
+          intervalMs: workspaceE2EPollIntervalMs.browser,
+          label: description,
+          timeoutMs: uiTransition,
+        }
+      );
+
+    const waitPathname = (
+      description: string,
+      matches: (pathname: string) => boolean
+    ) =>
+      waitForBrowserUrl({
+        description,
+        matches: (url) => {
+          const parsed = parseUrl(url);
+          return parsed?.origin === previewOrigin && matches(parsed.pathname);
+        },
+        run,
+        session: browserSession,
+        timeoutMs: navigationTimeout,
+      });
+
+    const readNormalizedText = () =>
+      readBrowserText(run, browserSession).pipe(
+        Effect.map(normalizeBrowserText)
+      );
+
+    const waitSignInForm = () =>
+      waitForBrowserReactFormSubmit(
+        run,
+        browserSession,
+        signInFormSelector,
+        [signInEmailSelector],
+        { timeoutMs: browserTimeout }
+      );
+
+    const fillAndSubmitEmail = (email: string) =>
+      Effect.gen(function* () {
+        yield* fillBrowserField(
+          run,
+          browserSession,
+          signInEmailSelector,
+          email,
+          {
+            timeoutMs: browserTimeout,
+          }
+        );
+        yield* clickBrowserElement(run, browserSession, signInSubmitSelector, {
+          timeoutMs: browserTimeout,
+        });
+      });
+
+    /** Waits until the code input of a sign-in code step takes typed digits. */
+    const waitSignInCodeInput = () =>
+      waitForBrowserReactHandler(
+        run,
+        browserSession,
+        signInCodeSelector,
+        "onChange",
+        { timeoutMs: browserTimeout }
+      );
+
+    /**
+     * Waits for the card an accepted sign-in email leaves and reports which
+     * one it is. With `login_email_code` off it is the inbox notice; with the
+     * flag on the same accepted request opens the code step instead.
+     */
+    const waitSignInAccepted = Effect.fn("waitSignInAccepted")(function* (
+      description: string,
+      locale: Locale = config.locale
+    ) {
+      const inboxTitle = m.accountSignInAcceptedTitle({}, { locale });
+      const codeTitle = m.accountSignInCodeTitle({}, { locale });
+      const pageText = yield* waitForBrowserText({
+        description,
+        matches: (text) =>
+          text.includes(inboxTitle) || text.includes(codeTitle),
+        run,
+        session: browserSession,
+        timeoutMs: uiTransition,
+      });
+      if (!pageText.includes(codeTitle)) {
+        return "inbox" as const;
+      }
+      yield* waitSignInCodeInput();
+      return "code" as const;
     });
+
+    return {
+      fillAndSubmitEmail,
+      openPage,
+      readNormalizedText,
+      waitPathname,
+      waitSignInAccepted,
+      waitSignInCodeInput,
+      waitSignInForm,
+      waitText,
+      waitUrlContains,
+    };
+  };
+
+  const {
+    fillAndSubmitEmail,
+    openPage,
+    readNormalizedText,
+    waitPathname,
+    waitSignInAccepted,
+    waitSignInCodeInput,
+    waitSignInForm,
+    waitText,
+    waitUrlContains,
+  } = makeBrowserSteps(session);
 
   const captureLanguageReview = (stage: LanguagePreferenceReviewStage) =>
     captureLanguagePreferenceReview === undefined
@@ -350,18 +516,6 @@ export const makeWorkspaceE2EAccountCases = ({
       yield* waitSignInForm();
     });
 
-  const readNormalizedText = () =>
-    readBrowserText(run, session).pipe(Effect.map(normalizeBrowserText));
-
-  const waitSignInForm = () =>
-    waitForBrowserReactFormSubmit(
-      run,
-      session,
-      signInFormSelector,
-      [signInEmailSelector],
-      { timeoutMs: browserTimeout }
-    );
-
   /**
    * The share-link sign-in page: the anonymous account redirect lands on the
    * plain localized sign-in form, and the browser remembers the shared code
@@ -419,63 +573,36 @@ export const makeWorkspaceE2EAccountCases = ({
       return invitation;
     });
 
-  const fillAndSubmitEmail = (email: string) =>
-    Effect.gen(function* () {
-      yield* fillBrowserField(run, session, signInEmailSelector, email, {
-        timeoutMs: browserTimeout,
-      });
-      yield* clickBrowserElement(run, session, signInSubmitSelector, {
-        timeoutMs: browserTimeout,
-      });
-    });
-
-  /** Waits until the code input of a sign-in code step takes typed digits. */
-  const waitSignInCodeInput = () =>
-    waitForBrowserReactHandler(run, session, signInCodeSelector, "onChange", {
-      timeoutMs: browserTimeout,
-    });
-
   /**
-   * Waits for the card an accepted sign-in email leaves and reports which
-   * one it is. With `login_email_code` off it is the inbox notice; with the
-   * flag on the same accepted request opens the code step instead.
+   * The accepted card says which browser the sign-in continues in, because a
+   * link signs in only the browser that opens it. The inbox notice keeps the
+   * selection in this browser and tells an assistant's customer to take over
+   * the assistant's browser; the code step offers typing or reading out the
+   * code instead of the same-browser line.
    */
-  const waitSignInAccepted = Effect.fn("waitSignInAccepted")(function* (
-    description: string
-  ) {
-    const pageText = yield* waitForBrowserText({
-      description,
-      matches: (text) =>
-        text.includes(acceptedTitle) || text.includes(signInCodeTitle),
-      run,
-      session,
-      timeoutMs: uiTransition,
-    });
-    if (!pageText.includes(signInCodeTitle)) {
-      return "inbox" as const;
-    }
-    yield* waitSignInCodeInput();
-    return "code" as const;
-  });
-
-  /**
-   * Submits the sign-in form for one synthetic recipient. The serial lane
-   * reserves every magic-link operation at case level, so this step never
-   * waits on the operation budget. The emailed link signs in either way, so
-   * a code step is left untouched.
-   */
-  const requestSignInLink = (email: string) =>
-    Effect.gen(function* () {
-      yield* openPage(localized(signInSuffix));
-      yield* waitSignInForm();
-      yield* fillAndSubmitEmail(email);
-      const confirmation = yield* waitSignInAccepted(
-        "generic accepted sign-in response"
+  const assertSignInHandoffCopy = (
+    text: string,
+    confirmation: "code" | "inbox",
+    locale: Locale
+  ) => {
+    const sameBrowser = m.accountSignInAcceptedSameBrowser({}, { locale });
+    const codeAssistant = m.accountSignInCodeAssistantHint({}, { locale });
+    assert(
+      text.includes(m.accountSignInAssistantBrowserHint({}, { locale })),
+      "the accepted sign-in card lost its assistant browser hint"
+    );
+    if (confirmation === "inbox") {
+      assert(
+        text.includes(sameBrowser) && !text.includes(codeAssistant),
+        "the inbox notice does not keep the sign-in in this browser"
       );
-      if (confirmation === "inbox") {
-        yield* waitText("generic accepted sign-in body", acceptedBody);
-      }
-    });
+    } else {
+      assert(
+        text.includes(codeAssistant) && !text.includes(sameBrowser),
+        "the code step does not offer the code to the booking browser"
+      );
+    }
+  };
 
   /**
    * The baseline IDs prevent repeated sign-ins from matching a stale link.
@@ -539,6 +666,91 @@ export const makeWorkspaceE2EAccountCases = ({
           dotyposReservationIds: update.dotyposReservationIds ?? [],
         }),
     });
+
+  /**
+   * The second browser of the cross-browser sign-in: the one a customer's
+   * assistant books in. The reactivation case opens and closes it, so the
+   * lane keeps one page between cases.
+   */
+  const assistantSession = `${session}-assistant`;
+
+  const captureHandoffReview = (stage: SignInHandoffReviewStage) =>
+    captureSignInHandoffReview === undefined
+      ? Effect.void
+      : Effect.tryPromise({
+          catch: (cause) =>
+            workspaceE2EError("capture sign-in handoff review", {
+              cause,
+              operation: "capture sign-in handoff review",
+            }),
+          try: () => captureSignInHandoffReview(stage),
+        });
+
+  /**
+   * Waits until a sign-in leaves the browser on exactly the path and query it
+   * returns to, so a selection carried in the query survived the callback.
+   */
+  const waitReturnLanding = (
+    browserSession: string,
+    description: string,
+    returnTo: string
+  ) =>
+    waitForBrowserUrl({
+      description,
+      matches: (url) => {
+        const parsed = parseUrl(url);
+        return (
+          parsed?.origin === previewOrigin &&
+          `${parsed.pathname}${parsed.search}` === returnTo
+        );
+      },
+      run,
+      session: browserSession,
+      timeoutMs: navigationTimeout,
+    });
+
+  /**
+   * Whether the browser's session belongs to the email, read from the page
+   * it is on through Better Auth's session endpoint. Only the match leaves
+   * the page, never the session.
+   */
+  const readSessionMatches = (browserSession: string, email: string) =>
+    evalBrowserScript(
+      "read the browser session's account",
+      run,
+      browserSession,
+      `(async () => {
+        const response = await fetch("/api/auth/get-session", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        const body = response.ok ? await response.json() : null;
+        return JSON.stringify({
+          sessionMatches: body?.user?.email === ${JSON.stringify(email)},
+        });
+      })()`,
+      { timeoutMs: browserTimeout }
+    ).pipe(
+      Effect.map(
+        (command) =>
+          (JSON.parse(command.stdout) as { sessionMatches: boolean })
+            .sessionMatches
+      )
+    );
+
+  /** Waits until a cowork page shows the selection its URL carries. */
+  const waitCoworkSelection = (browserSession: string, description: string) =>
+    waitForBrowserCondition(
+      run,
+      browserSession,
+      description,
+      `(() => {
+        const tier = document.querySelector('input[name="entryTier"]:checked');
+        return tier instanceof HTMLInputElement &&
+          tier.value === ${JSON.stringify(coworkSelectionTier)};
+      })()`,
+      { timeoutMs: uiTransition }
+    );
 
   const passkeysOffered = () => lifecycleHandoff.passkeySignIn === "offered";
 
@@ -696,13 +908,37 @@ export const makeWorkspaceE2EAccountCases = ({
             })
           )
         );
+        // The main recipient's link returns to a cowork selection, the way
+        // a sign-in started from a reservation does; the referral cookie
+        // carries the shared code alongside.
+        const { returnTo: selection } = signInReturns.sameBrowser;
+        yield* runStep(
+          step(
+            "opens the sign-in from a cowork selection",
+            Effect.gen(function* () {
+              yield* openPage(`${config.baseUrl}${selection}`);
+              yield* waitCoworkSelection(
+                session,
+                "cowork selection before the sign-in"
+              );
+              yield* openPage(
+                `${config.baseUrl}${getAccountSignInPath(config.locale, selection)}`
+              );
+              yield* waitForRememberedReferralCode(
+                { config, run, session },
+                invitation.code
+              );
+              yield* waitSignInForm();
+            }),
+            accountPageLoadTimeout
+          )
+        );
         const firstAccepted = yield* rateBudget.run(
           "send",
           runStep(
             step(
-              "accepts a first unknown email generically from the share-link form",
+              "accepts a first unknown email generically from the selection's sign-in",
               Effect.gen(function* () {
-                yield* waitShareLinkSignIn(invitation.code);
                 const startedAt = new Date();
                 lifecycleHandoff.firstAcceptedRequestedAt = startedAt;
                 yield* fillAndSubmitEmail(recipient);
@@ -766,6 +1002,11 @@ export const makeWorkspaceE2EAccountCases = ({
               assert(
                 firstAccepted.text.includes(genericBody),
                 "the accepted response lost its generic body"
+              );
+              assertSignInHandoffCopy(
+                firstAccepted.text,
+                firstAccepted.confirmation,
+                config.locale
               );
             })
           )
@@ -838,8 +1079,16 @@ export const makeWorkspaceE2EAccountCases = ({
               yield* fillBrowserField(run, session, signInCodeSelector, code, {
                 timeoutMs: browserTimeout,
               });
+              // The code signs in from the selection's sign-in, so it returns
+              // there; the completion state is on the account page.
+              yield* waitReturnLanding(
+                session,
+                "cowork selection after the code sign-in",
+                signInReturns.sameBrowser.returnTo
+              );
+              yield* openPage(localized(accountSuffix));
               yield* waitPathname(
-                "account landing after the code sign-in",
+                "account after the code sign-in",
                 (pathname) => pathname === `/${config.locale}${accountSuffix}`
               );
               yield* waitText(
@@ -904,9 +1153,28 @@ export const makeWorkspaceE2EAccountCases = ({
           "verify",
           runStep(
             step(
-              "consumes the link into the completion state with the share code",
+              "consumes the link back onto the selection, then completes with the share code",
               Effect.gen(function* () {
+                // The lane wraps this case in the callback handoff hold,
+                // which proves the signed-in callback's returning copy
+                // before the callback leaves for the selection.
                 yield* openPage(link);
+                yield* waitReturnLanding(
+                  session,
+                  "cowork selection after the link",
+                  signInReturns.sameBrowser.returnTo
+                );
+                yield* waitCoworkSelection(
+                  session,
+                  "cowork selection kept after the link"
+                );
+                assert(
+                  yield* readSessionMatches(session, recipient),
+                  "the selection is not signed in as the main recipient"
+                );
+                // The completion state and every later case continue on the
+                // account page.
+                yield* openPage(localized(accountSuffix));
                 yield* waitText(
                   "completion state after verification",
                   completionTitle
@@ -1405,7 +1673,7 @@ export const makeWorkspaceE2EAccountCases = ({
         };
       })
     ),
-    makeCase("account-session-lifecycle", ({ journalRef, runStep }) =>
+    makeCase("account-session-lifecycle", ({ runStep }) =>
       Effect.gen(function* () {
         const reauthentication = yield* runStep(
           step(
@@ -1574,28 +1842,6 @@ export const makeWorkspaceE2EAccountCases = ({
             })
           )
         );
-        yield* rateBudget.run(
-          "verify",
-          runStep(
-            step(
-              "rejects the already-consumed reauthentication link",
-              Effect.gen(function* () {
-                yield* openPage(reauthentication.link);
-                const replayedUserId = yield* findAuthUserIdByEmail(recipient);
-                if (replayedUserId) {
-                  yield* recordFixtureIds(journalRef, {
-                    authUserIds: [replayedUserId],
-                  });
-                }
-                yield* waitText(
-                  "replayed reauthentication failure state",
-                  callbackFailedTitle
-                );
-              }),
-              providerTransition
-            )
-          )
-        );
       })
     ),
     makeCase("account-deletion-and-reactivation", ({ journalRef, runStep }) =>
@@ -1612,34 +1858,10 @@ export const makeWorkspaceE2EAccountCases = ({
             })
           )
         );
-        const startedAt = new Date();
-        const observedLogEntryIds = yield* runStep(
-          step(
-            "records the delivered log baseline",
-            observeDeliveredLogEntryIds(recipient, startedAt),
-            providerTransition
-          )
-        );
-        yield* rateBudget.run(
-          "send",
-          runStep(
-            step(
-              "requests the reactivation sign-in link",
-              requestSignInLink(recipient),
-              navigationTimeout
-            )
-          )
-        );
-        const link = yield* runStep(
-          step(
-            "retrieves the reactivation link",
-            retrieveSignInLink(recipient, observedLogEntryIds, startedAt),
-            authDeliveryTimeout
-          )
-        );
         // With passkeys on, the authenticator is present when the sign-in
         // lands, so the account page offers its post-sign-in prompt the way it
-        // does on a passkey-capable browser.
+        // does on a passkey-capable browser. It joins the lane page before
+        // the requesting browser opens a second one.
         if (passkeysOffered()) {
           yield* runStep(
             step(
@@ -1649,37 +1871,237 @@ export const makeWorkspaceE2EAccountCases = ({
             )
           );
         }
-        yield* rateBudget.run(
-          "verify",
-          runStep(
+        // The customer's assistant books in its own browser and requests the
+        // link there, in Czech, from a cowork selection; the customer opens
+        // the link in the lane browser. The link signs in only the browser
+        // that opens it, which must finish on the same selection.
+        const assistant = makeBrowserSteps(assistantSession);
+        const { locale: handoffLocale, returnTo } = signInReturns.assistant;
+        const reactivatedUserId = yield* Effect.gen(function* () {
+          yield* runStep(
             step(
-              "reactivates the retained profile under a new Better Auth identity",
+              "opens a Czech cowork selection in the assistant's browser",
               Effect.gen(function* () {
-                yield* openPage(link);
-                yield* waitDefaultReservations(
-                  "reactivated linked account reservations"
+                yield* assistant.openPage(`${config.baseUrl}${returnTo}`);
+                yield* waitCoworkSelection(
+                  assistantSession,
+                  "cowork selection before the sign-in"
                 );
-                const newUserId = yield* requireAuthUserId(recipient);
-                assert(
-                  newUserId !== lifecycleHandoff.deletedUserId,
-                  "the reactivated identity reused the deleted Better Auth id"
-                );
-                const linked = yield* requireLinkedCustomerId(newUserId);
-                assert(
-                  linked === lifecycleHandoff.retainedCustomerId,
-                  "the reactivated identity claimed a different Dotypos customer"
-                );
-                const customer = yield* readProviderProfile(linked);
-                assert(
-                  customer.expireDate == null,
-                  "the retained Dotypos profile was not reactivated"
-                );
-                yield* recordFixtureIds(journalRef, {
-                  authUserIds: [newUserId],
-                });
               }),
+              accountPageLoadTimeout
+            )
+          );
+          const startedAt = new Date();
+          const observedLogEntryIds = yield* runStep(
+            step(
+              "records the delivered log baseline",
+              observeDeliveredLogEntryIds(recipient, startedAt),
               providerTransition
             )
+          );
+          yield* rateBudget.run(
+            "send",
+            runStep(
+              step(
+                "requests the reactivation link from the selection's sign-in",
+                Effect.gen(function* () {
+                  yield* assistant.openPage(
+                    `${config.baseUrl}${getAccountSignInPath(handoffLocale, returnTo)}`
+                  );
+                  yield* assistant.waitSignInForm();
+                  yield* assistant.fillAndSubmitEmail(recipient);
+                  const confirmation = yield* assistant.waitSignInAccepted(
+                    "Czech accepted sign-in response",
+                    handoffLocale
+                  );
+                  assertSignInHandoffCopy(
+                    yield* assistant.readNormalizedText(),
+                    confirmation,
+                    handoffLocale
+                  );
+                  yield* captureHandoffReview("sign-in-accepted");
+                }),
+                navigationTimeout
+              )
+            )
+          );
+          const link = yield* runStep(
+            step(
+              "retrieves the reactivation link",
+              previewLogs.retrieveMagicLink({
+                callbackPath: `/${handoffLocale}${callbackSuffix}`,
+                excludeLogEntryIds: observedLogEntryIds,
+                recipient,
+                startedAt,
+              }),
+              authDeliveryTimeout
+            )
+          );
+          const userId = yield* rateBudget.run(
+            "verify",
+            runStep(
+              step(
+                "reactivates the retained profile in the browser that opens the link",
+                Effect.gen(function* () {
+                  // The lane wraps this case in the callback handoff hold,
+                  // which proves the signed-in callback copy before the
+                  // callback leaves for the selection.
+                  yield* openPage(link);
+                  yield* waitReturnLanding(
+                    session,
+                    "cowork selection after the sign-in",
+                    returnTo
+                  );
+                  yield* waitCoworkSelection(
+                    session,
+                    "cowork selection kept after the sign-in"
+                  );
+                  assert(
+                    yield* readSessionMatches(session, recipient),
+                    "the selection is not signed in as the reactivated recipient"
+                  );
+                  const newUserId = yield* requireAuthUserId(recipient);
+                  assert(
+                    newUserId !== lifecycleHandoff.deletedUserId,
+                    "the reactivated identity reused the deleted Better Auth id"
+                  );
+                  yield* recordFixtureIds(journalRef, {
+                    authUserIds: [newUserId],
+                  });
+                  return newUserId;
+                }),
+                providerTransition
+              )
+            )
+          );
+          // The assistant's tab still holds its pending request, so the
+          // sign-in page the anonymous account redirect lands on shows it
+          // again instead of the email form.
+          yield* runStep(
+            step(
+              "keeps the assistant's browser signed out",
+              Effect.gen(function* () {
+                yield* assistant.openPage(
+                  localized(accountSuffix, handoffLocale)
+                );
+                yield* assistant.waitUrlContains(
+                  "anonymous account redirect in the assistant's browser",
+                  signInSuffix
+                );
+                yield* assistant.waitSignInAccepted(
+                  "pending request after the anonymous account redirect",
+                  handoffLocale
+                );
+              })
+            )
+          );
+          yield* rateBudget.run(
+            "verify",
+            runStep(
+              step(
+                "rejects the consumed link in the assistant's browser",
+                Effect.gen(function* () {
+                  yield* assistant.openPage(link);
+                  yield* assistant.waitText(
+                    "replayed link failure state",
+                    m.accountCallbackFailedTitle({}, { locale: handoffLocale })
+                  );
+                  yield* assistant.waitText(
+                    "replayed link failure body",
+                    m.accountCallbackFailedBody({}, { locale: handoffLocale })
+                  );
+                  const replayedUserId =
+                    yield* findAuthUserIdByEmail(recipient);
+                  assert(
+                    replayedUserId === userId,
+                    "the replayed link changed the reactivated identity"
+                  );
+                  yield* captureHandoffReview("callback-failed");
+                }),
+                providerTransition
+              )
+            )
+          );
+          yield* runStep(
+            step(
+              "requests a new link that keeps the selection as its return",
+              Effect.gen(function* () {
+                yield* clickBrowserElement(
+                  run,
+                  assistantSession,
+                  `a:has-text("${m.accountCallbackFailedAction({}, { locale: handoffLocale })}")`,
+                  { timeoutMs: browserTimeout }
+                );
+                yield* assistant.waitPathname(
+                  "sign-in after the failed link",
+                  (pathname) => pathname === `/${handoffLocale}${signInSuffix}`
+                );
+                yield* pollUntil(
+                  readBrowserUrl(run, assistantSession).pipe(
+                    Effect.map((url) =>
+                      url !== undefined &&
+                      new URL(url).searchParams.get("returnTo") === returnTo
+                        ? url
+                        : undefined
+                    )
+                  ),
+                  {
+                    intervalMs: workspaceE2EPollIntervalMs.browser,
+                    label: "sign-in return target after the failed link",
+                    timeoutMs: uiTransition,
+                  }
+                );
+                // The same return target restores the pending request.
+                yield* assistant.waitSignInAccepted(
+                  "pending request on the sign-in for the selection",
+                  handoffLocale
+                );
+              })
+            )
+          );
+          return userId;
+        }).pipe(
+          Effect.ensuring(
+            Effect.ignore(closeBrowserSession(run, assistantSession))
+          )
+        );
+        // The Czech callback saved Czech as the new account's preference;
+        // the later cases read the account in English, as an English
+        // reactivation would have saved it.
+        yield* runStep(
+          step(
+            "restores English (US) as the reactivated account's preference",
+            setAccountLocalePreference(reactivatedUserId, "en-US"),
+            datasourceTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "opens the reactivated account in English",
+            Effect.gen(function* () {
+              yield* openPage(localized(accountSuffix));
+              yield* waitPathname(
+                "English account after the reactivation",
+                (pathname) => pathname === `/${config.locale}${accountSuffix}`
+              );
+              yield* waitDefaultReservations(
+                "reactivated linked account reservations"
+              );
+              // Reservation pages only read an existing link, so this first
+              // account page claims the retained profile. It also takes the
+              // one post-sign-in passkey offer the next step accepts.
+              const linked = yield* requireLinkedCustomerId(reactivatedUserId);
+              assert(
+                linked === lifecycleHandoff.retainedCustomerId,
+                "the reactivated identity claimed a different Dotypos customer"
+              );
+              const customer = yield* readProviderProfile(linked);
+              assert(
+                customer.expireDate == null,
+                "the retained Dotypos profile was not reactivated"
+              );
+            }),
+            accountPageLoadTimeout
           )
         );
         if (passkeysOffered()) {

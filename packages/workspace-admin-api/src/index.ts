@@ -342,6 +342,7 @@ export {
   AdministrationCampaignUpdateInput,
   type AdministrationCampaignUpdateInput as AdministrationCampaignUpdateInputType,
   administrationCampaignAudienceTitleMaxLength,
+  campaignsMinimumDhwVersion,
 } from "./email-campaigns";
 export {
   WORKSPACE_SITE_TIME_ZONE,

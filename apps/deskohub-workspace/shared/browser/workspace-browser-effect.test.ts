@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Data, Effect } from "effect";
-import { runWorkspaceBrowserEffect } from "./workspace-browser-effect";
+import {
+  runWorkspaceBrowserEffect,
+  runWorkspaceBrowserEffectUntilAbort,
+} from "./workspace-browser-effect";
 import {
   deliverWorkspaceBrowserLogs,
   discardWorkspaceBrowserLogs,
@@ -108,5 +111,50 @@ describe("runWorkspaceBrowserEffect", () => {
       )
     ).rejects.toBe(failure);
     expect(attempts).toBe(2);
+  });
+});
+
+describe("runWorkspaceBrowserEffectUntilAbort", () => {
+  test("settles without rejecting when the lifetime ends mid-run, interrupting the Effect", async () => {
+    const lifetime = new AbortController();
+    let interrupted = false;
+    const run = Effect.never.pipe(
+      Effect.onInterrupt(() =>
+        Effect.sync(() => {
+          interrupted = true;
+        })
+      ),
+      runWorkspaceBrowserEffectUntilAbort("test.lifetime", lifetime.signal)
+    );
+
+    lifetime.abort();
+
+    await expect(run).resolves.toBeUndefined();
+    expect(interrupted).toBe(true);
+  });
+
+  test("ends at once for a lifetime that already ended", async () => {
+    let started = false;
+
+    await expect(
+      Effect.sync(() => {
+        started = true;
+      }).pipe(
+        Effect.delay("1 millis"),
+        runWorkspaceBrowserEffectUntilAbort("test.ended", AbortSignal.abort())
+      )
+    ).resolves.toBeUndefined();
+    expect(started).toBe(false);
+  });
+
+  test("still rejects with a failure", async () => {
+    await expect(
+      Effect.fail(new SyntheticFailure({ message: "synthetic" })).pipe(
+        runWorkspaceBrowserEffectUntilAbort(
+          "test.failure",
+          new AbortController().signal
+        )
+      )
+    ).rejects.toMatchObject({ message: "synthetic" });
   });
 });

@@ -389,6 +389,66 @@ describe("CheckoutPayPage provider handoff", () => {
     }
   );
 
+  test("renders the terms and early-performance consents unticked, for the customer to give", async () => {
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const amount = formatWorkspaceMoney(quote.summary.total, "en-US");
+    const payButtonName = m.checkoutPayOrderAndPayAmountButton(
+      { amount },
+      { locale: "en-US" }
+    );
+    const earlyPerformanceView = render(
+      <CheckoutPayPage
+        earlyPerformanceRequestRequired
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+    const earlyPerformanceCheckbox = earlyPerformanceView.getByRole(
+      "checkbox",
+      { name: /general terms and conditions/i }
+    );
+
+    expect(
+      earlyPerformanceView.getByRole("checkbox", {
+        name: /statutory withdrawal period/i,
+      })
+    ).toBe(earlyPerformanceCheckbox);
+    expect(earlyPerformanceCheckbox.getAttribute("aria-checked")).toBe("false");
+    expect(
+      earlyPerformanceView.getByRole("button", { name: payButtonName })
+    ).toHaveProperty("disabled", true);
+    earlyPerformanceView.unmount();
+
+    const legalOnlyView = render(
+      <CheckoutPayPage
+        earlyPerformanceRequestRequired={false}
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+    const legalConsentCheckbox = legalOnlyView.getByRole("checkbox", {
+      name: /general terms and conditions/i,
+    });
+
+    expect(legalConsentCheckbox.getAttribute("aria-checked")).toBe("false");
+    expect(
+      legalOnlyView.queryByRole("checkbox", {
+        name: /statutory withdrawal period/i,
+      })
+    ).toBeNull();
+    expect(
+      legalOnlyView.getByRole("button", { name: payButtonName })
+    ).toHaveProperty("disabled", true);
+  });
+
   test("updates the pay button total when a discount changes it", async () => {
     const { CheckoutPayPage } = await import("./checkout-pay-page");
     const fullPrice = buildCoworkCheckoutSummary({

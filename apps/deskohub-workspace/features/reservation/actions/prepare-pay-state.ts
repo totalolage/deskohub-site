@@ -318,11 +318,16 @@ const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
     const redirectUrl = buildCheckoutPayPath(input.locale, sealedState, {
       orderId: input.reservationId,
     });
+    // The Pay page accepts its sealed state until this instant.
+    const expiresAt = temporalInstantToIsoString(
+      Temporal.Instant.fromEpochMilliseconds(state.exp * 1000)
+    );
 
     if (input.changedKeys) {
       return {
         status: "pricing_changed" as const,
         redirectUrl,
+        expiresAt,
         affectedProductKeys: input.changedKeys.itemKeys.flatMap((key) =>
           key.startsWith("product:") ? [key] : []
         ),
@@ -332,6 +337,7 @@ const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
     return {
       status: "ready" as const,
       redirectUrl,
+      expiresAt,
     };
   }
 );
@@ -1019,6 +1025,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
               documentHash: documents.marketingCommunications.hash,
               locale: input.locale,
               grantedAt: Temporal.Now.instant(),
+              source: input.marketingConsentSource ?? "reservation_form",
             });
           }).pipe(
             Effect.tapError((cause) =>

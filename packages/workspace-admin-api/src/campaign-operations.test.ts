@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
+import { Context, Option, Result, Schema } from "effect";
 import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import {
   CampaignRef,
@@ -11,6 +11,8 @@ import {
   operationEndpoints,
   query,
 } from "./campaign-operations";
+import { MinimumDhwVersion } from "./dhw-version";
+import { AdminCliCampaignsApi } from "./email-campaigns";
 
 describe("campaign operations", () => {
   // test.each clones its cases, so the cases are names. The endpoint holds
@@ -31,6 +33,25 @@ describe("campaign operations", () => {
           Schema.toJsonSchemaDocument(schema)
         )
       ).toEqual([Schema.toJsonSchemaDocument(output)]);
+    }
+  );
+
+  test.each(names)(
+    "%s requires the same dhw version as its endpoint",
+    (name) => {
+      const endpoint = campaignOperationEndpoints[name];
+
+      expect(
+        Option.getOrUndefined(
+          Context.get(
+            Context.merge(
+              AdminCliCampaignsApi.annotations,
+              endpoint.annotations
+            ),
+            MinimumDhwVersion
+          )
+        )
+      ).toBe(campaignOperations[name].minimumDhwVersion);
     }
   );
 
