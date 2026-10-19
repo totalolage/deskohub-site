@@ -34,7 +34,7 @@ import {
  * timeline records: the top-level clauses that evaluated `noMatch`, by
  * index, and each referenced saved audience's definition as evaluated.
  */
-export type AutomationConditionDecision = {
+type AutomationConditionDecision = {
   readonly outcome: AudienceFilterOutcome;
   readonly failedConditions: readonly number[];
   readonly savedAudiences: readonly {

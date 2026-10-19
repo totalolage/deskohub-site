@@ -56,7 +56,7 @@ export class AutomationConditionAudienceMissing extends Data.TaggedError(
  * Recipient resolution also reads every customer's profile to check
  * reachability and deduplicate emails.
  */
-export type AutomationEvaluationFilters = {
+type AutomationEvaluationFilters = {
   readonly entryAudience?: AudienceFilter;
   readonly condition?: AutomationConditionFilter;
   readonly reachability?: boolean;
@@ -89,7 +89,7 @@ export type AutomationEvaluationPlan = {
 };
 
 /** Customers one unit evaluates and the Dotypos requests it plans for them. */
-export type AutomationFactsChunk = {
+type AutomationFactsChunk = {
   readonly customers: readonly DotyposCustomerId[];
   readonly requestCost: number;
 };
