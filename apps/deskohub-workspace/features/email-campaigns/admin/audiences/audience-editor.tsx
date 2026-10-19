@@ -25,24 +25,23 @@ import {
   FormMessage,
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
-import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { audienceSingleLocale } from "../../audience-filter";
 import type { CampaignAudienceId } from "../../campaign-identifiers";
-import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
 import {
   type AudienceValueLookups,
   describeAudienceFilter,
 } from "../audience-filter-summary";
-import {
-  archiveAudience,
-  deleteAudience,
-  saveAudience,
-  unarchiveAudience,
-} from "./actions";
+import { useCampaignOperation } from "../use-campaign-operation";
 import {
   type AudienceFormValues,
   createAudienceFormSchema,
 } from "./audience-contracts";
+import {
+  audienceArchiveFailureCopy,
+  audienceDeleteFailureCopy,
+  audienceSaveFailureCopy,
+  audienceUnarchiveFailureCopy,
+} from "./audience-failure-copy";
 import { AudienceFilterBuilder } from "./audience-filter-builder";
 import { asRootGroup } from "./audience-filter-editing";
 import { AudienceStatusBadge, audienceHref } from "./audience-list";
@@ -127,39 +126,27 @@ function AudienceForm({
   const filter = useWatch({ control: form.control, name: "filter" });
   const singleLocale = audienceSingleLocale(filter);
 
-  const { execute, isExecuting } = useWorkspaceAction(saveAudience, {
-    actionName: "email-campaigns.admin.save-audience",
-    onSuccess: ({ data, input }) => {
-      if (!data) return;
-      if (!audience) {
-        router.push(
-          localizeAdministrationHref(audienceHref(data.audienceId), locale)
-        );
-        return;
-      }
-      form.reset({ title: input.title, filter: input.filter });
+  const showSaveFailure = (message: string) =>
+    setFeedback({ kind: "error", message });
+  const create = useCampaignOperation("createCampaignAudience", {
+    failureCopy: audienceSaveFailureCopy,
+    onSuccess: (created) =>
+      router.push(localizeAdministrationHref(audienceHref(created.id), locale)),
+    onFailure: showSaveFailure,
+  });
+  const update = useCampaignOperation("updateCampaignAudience", {
+    failureCopy: audienceSaveFailureCopy,
+    onSuccess: (_updated, { title, filter }) => {
+      form.reset({ title, filter });
       setFeedback({
         kind: "success",
         message: m.emailCampaignsAudienceEditorSaved({}, { locale }),
       });
       router.refresh();
     },
-    onError: ({ error }) => {
-      setFeedback({
-        kind: "error",
-        message: getEmailCampaignAdminActionFailureMessage(error.serverError, {
-          fallback: m.emailCampaignsAudienceEditorSaveFailed({}, { locale }),
-          locale,
-        }),
-      });
-    },
-    onTransportError: () => {
-      setFeedback({
-        kind: "error",
-        message: m.emailCampaignsAudienceSaveFailedRetry({}, { locale }),
-      });
-    },
+    onFailure: showSaveFailure,
   });
+  const isExecuting = create.isExecuting || update.isExecuting;
 
   const submitLabel = audience
     ? m.emailCampaignsAudienceEditorSave({}, { locale })
@@ -174,9 +161,13 @@ function AudienceForm({
         className="space-y-6"
         onSubmit={form.handleSubmit((values) => {
           setFeedback(null);
-          execute(
-            audience ? { audienceId: audience.id, ...values } : { ...values }
-          );
+          if (audience) update.execute({ audienceId: audience.id, ...values });
+          else {
+            create.execute({
+              requestId: crypto.randomUUID(),
+              audience: values,
+            });
+          }
         })}
       >
         <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
@@ -287,23 +278,17 @@ function ArchiveAudienceControl({
   const locale = useRouteLocale();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { execute, isExecuting } = useWorkspaceAction(archiveAudience, {
-    actionName: "email-campaigns.admin.archive-audience",
-    onSuccess: ({ data }) => {
-      if (!data) return;
-      setOpen(false);
-      router.refresh();
-    },
-    onError: ({ error }) =>
-      setError(
-        getEmailCampaignAdminActionFailureMessage(error.serverError, {
-          fallback: m.emailCampaignsAudienceArchiveFailed({}, { locale }),
-          locale,
-        })
-      ),
-    onTransportError: () =>
-      setError(m.emailCampaignsAudienceArchiveFailedRetry({}, { locale })),
-  });
+  const { execute, isExecuting } = useCampaignOperation(
+    "archiveCampaignAudience",
+    {
+      failureCopy: audienceArchiveFailureCopy,
+      onSuccess: () => {
+        setOpen(false);
+        router.refresh();
+      },
+      onFailure: setError,
+    }
+  );
 
   return (
     <ConfirmDialog
@@ -340,22 +325,14 @@ function UnarchiveAudienceControl({
   const router = useRouter();
   const locale = useRouteLocale();
   const [error, setError] = useState<string | null>(null);
-  const { execute, isExecuting } = useWorkspaceAction(unarchiveAudience, {
-    actionName: "email-campaigns.admin.unarchive-audience",
-    onSuccess: ({ data }) => {
-      if (!data) return;
-      router.refresh();
-    },
-    onError: ({ error }) =>
-      setError(
-        getEmailCampaignAdminActionFailureMessage(error.serverError, {
-          fallback: m.emailCampaignsAudienceUnarchiveFailed({}, { locale }),
-          locale,
-        })
-      ),
-    onTransportError: () =>
-      setError(m.emailCampaignsAudienceUnarchiveFailedRetry({}, { locale })),
-  });
+  const { execute, isExecuting } = useCampaignOperation(
+    "unarchiveCampaignAudience",
+    {
+      failureCopy: audienceUnarchiveFailureCopy,
+      onSuccess: () => router.refresh(),
+      onFailure: setError,
+    }
+  );
 
   return (
     <>
@@ -393,22 +370,15 @@ function DeleteAudienceControl({
   const locale = useRouteLocale();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { execute, isExecuting } = useWorkspaceAction(deleteAudience, {
-    actionName: "email-campaigns.admin.delete-audience",
-    onSuccess: ({ data }) => {
-      if (!data) return;
-      router.push(localizeAdministrationHref(audienceListHref, locale));
-    },
-    onError: ({ error }) =>
-      setError(
-        getEmailCampaignAdminActionFailureMessage(error.serverError, {
-          fallback: m.emailCampaignsAudienceDeleteFailed({}, { locale }),
-          locale,
-        })
-      ),
-    onTransportError: () =>
-      setError(m.emailCampaignsAudienceDeleteFailedRetry({}, { locale })),
-  });
+  const { execute, isExecuting } = useCampaignOperation(
+    "deleteCampaignAudience",
+    {
+      failureCopy: audienceDeleteFailureCopy,
+      onSuccess: () =>
+        router.push(localizeAdministrationHref(audienceListHref, locale)),
+      onFailure: setError,
+    }
+  );
 
   return (
     <ConfirmDialog

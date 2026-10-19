@@ -9,11 +9,8 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 import { campaignIdSchema } from "../../campaign-identifiers";
 
-mock.module("./actions", () => ({
-  duplicateCampaign: mock(),
-  retryUndeliveredCampaignRecipients: mock(),
-  sendCampaign: mock(),
-  sendCampaignTest: mock(),
+mock.module("../campaign-operations.actions", () => ({
+  runCampaignOperation: mock(),
 }));
 
 beforeAll(() => {

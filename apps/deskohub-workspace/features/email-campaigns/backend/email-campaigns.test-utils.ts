@@ -21,7 +21,11 @@ import type {
   CampaignPurpose,
 } from "../body/campaign-content";
 import { hashCampaignContent } from "../body/campaign-content-hash";
-import type { CampaignId, CampaignSendId } from "../campaign-identifiers";
+import type {
+  CampaignAudienceId,
+  CampaignId,
+  CampaignSendId,
+} from "../campaign-identifiers";
 import type {
   automatedCampaignStatuses,
   CampaignRecipientStatus,
@@ -49,6 +53,28 @@ export const campaignContentFixture = (
       },
     },
   },
+});
+
+/**
+ * A flow whose condition step requires customers to be in the saved
+ * audience `audienceId`, nested in a group as the builder stores it.
+ */
+export const audienceConditionFlowFixture = (
+  audienceId: CampaignAudienceId
+) => ({
+  trigger: { _tag: "reservation-booked" },
+  steps: [
+    {
+      _tag: "Condition",
+      id: "step-regulars",
+      filter: {
+        _tag: "Group",
+        operator: "and",
+        filters: [{ _tag: "InAudience", audienceId }],
+      },
+    },
+    { _tag: "Send", id: "step-send" },
+  ],
 });
 
 type SeededRecipient = {
@@ -166,7 +192,8 @@ export const seedAutomatedCampaign = async (
 /**
  * Publishes version `versionNumber` of `campaignId` with `purpose` and the
  * content `text`, as activation will. `trigger` and `activatedAt` default to
- * a placeholder trigger and an activation ordered by version number.
+ * a placeholder trigger and an activation ordered by version number; `flow`
+ * replaces the whole stored flow, including its trigger.
  */
 export const seedAutomationVersion = async (
   db: WorkspaceDatabaseClient,
@@ -177,6 +204,7 @@ export const seedAutomationVersion = async (
     readonly text?: string;
     readonly trigger?: AutomationTrigger;
     readonly activatedAt?: Temporal.Instant;
+    readonly flow?: unknown;
   }
 ) => {
   const content = campaignContentFixture(input.text ?? "Verze");
@@ -186,7 +214,7 @@ export const seedAutomationVersion = async (
       .values({
         campaignId: input.campaignId,
         versionNumber: input.versionNumber ?? 1,
-        flow: {
+        flow: input.flow ?? {
           trigger: input.trigger ?? { _tag: "reservation-booked" },
           steps: [],
         },

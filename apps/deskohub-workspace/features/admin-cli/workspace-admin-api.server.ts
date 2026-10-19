@@ -59,6 +59,7 @@ import {
   DiscountAdministration,
 } from "@/features/discounts/admin/discount-administration.service";
 import { executeDiscountAdminMutation } from "@/features/discounts/admin/execute-discount-admin-mutation";
+import { CampaignOperations } from "@/features/email-campaigns/backend/campaign-operations.service";
 import { ReservationProductDetailsBackfill } from "@/features/reservation/backend/reservation-product-details-backfill.service";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import {
@@ -82,10 +83,7 @@ import {
   minimumDhwVersions,
 } from "./cli-client-version";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
-import {
-  AdminCliCampaignsApiHandlers,
-  EmailCampaignsApiServicesLive,
-} from "./email-campaigns-api.server";
+import { AdminCliCampaignsApiHandlers } from "./email-campaigns-api.server";
 
 export const AdminCliApiHandlers = HttpApiBuilder.group(
   WorkspaceAdminApi,
@@ -944,7 +942,7 @@ const WorkspaceAdminApiLive = Layer.mergeAll(
     Layer.provide(InvoiceAdministrationService.Live),
     Layer.provide(StandaloneAccessCodeAdministration.Live),
     Layer.provide(CliMutationIdempotency.Live),
-    Layer.provide(EmailCampaignsApiServicesLive),
+    Layer.provide(CampaignOperations.Live),
     Layer.provide(CliAuthenticationAdmission.Default),
     Layer.provide(CliAuthentication.Live)
   ),

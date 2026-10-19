@@ -1,13 +1,13 @@
 import "server-only";
 
-import { Effect, Layer } from "effect";
-import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import { CampaignService } from "../../backend/campaign.service";
-import { CampaignAudienceService } from "../../backend/campaign-audience.service";
+import { Effect } from "effect";
 import type { CampaignPurpose } from "../../body/campaign-content";
 import type { CampaignId } from "../../campaign-identifiers";
 import { isOnceCampaign, type OnceCampaignStatus } from "../../campaign-states";
+import {
+  invokeCampaignOperation,
+  runCampaignPageQuery,
+} from "../campaign-operation-query.server";
 
 export type CampaignListItem = {
   readonly id: CampaignId;
@@ -24,36 +24,33 @@ export type CampaignListItem = {
  * Every one-off campaign, newest first, with its audience title. Automated
  * campaigns have no admin pages yet.
  */
-export const loadCampaignList = async (): Promise<
-  readonly CampaignListItem[]
-> => {
-  await authorizeAdministratorPage();
-  return Effect.gen(function* () {
-    const campaigns = yield* CampaignService;
-    const audiences = yield* CampaignAudienceService;
-    const [campaignRows, audienceRows] = yield* Effect.all(
-      [campaigns.list, audiences.list({ includeArchived: true })],
+export const loadCampaignList = (): Promise<readonly CampaignListItem[]> =>
+  runCampaignPageQuery(
+    "email-campaigns.admin.load-campaigns",
+    Effect.all(
+      [
+        invokeCampaignOperation("listCampaigns", {}),
+        invokeCampaignOperation("listCampaignAudiences", {}),
+      ],
       { concurrency: "unbounded" }
-    );
-    const audienceTitles = new Map(
-      audienceRows.map((audience) => [audience.id, audience.title])
-    );
-    return campaignRows.filter(isOnceCampaign).map((campaign) => ({
-      id: campaign.id,
-      title: campaign.title,
-      purpose: campaign.purpose,
-      status: campaign.status,
-      audienceTitle:
-        (campaign.audienceId && audienceTitles.get(campaign.audienceId)) ??
-        null,
-      updatedAt: campaign.updatedAt.toString(),
-    }));
-  }).pipe(
-    Effect.provide(
-      Layer.mergeAll(CampaignService.Live, CampaignAudienceService.Live)
-    ),
-    runWorkspaceEffect("email-campaigns.admin.load-campaigns", {
-      boundary: "route",
-    })
+    ).pipe(
+      Effect.map(([campaigns, audiences]) => {
+        const audienceTitles = new Map(
+          audiences.map((audience) => [audience.id, audience.title])
+        );
+        return campaigns.filter(isOnceCampaign).map(
+          (campaign): CampaignListItem => ({
+            id: campaign.id,
+            title: campaign.title,
+            purpose: campaign.purpose,
+            status: campaign.status,
+            audienceTitle:
+              (campaign.audienceId &&
+                audienceTitles.get(campaign.audienceId)) ??
+              null,
+            updatedAt: campaign.updatedAt,
+          })
+        );
+      })
+    )
   );
-};
