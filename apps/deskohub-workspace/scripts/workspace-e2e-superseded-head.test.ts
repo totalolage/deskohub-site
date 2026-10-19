@@ -17,6 +17,12 @@ const headCheckStep = findStepByName(
   workflow,
   "Stop unless this SHA is still the PR head"
 );
+const leaseStep = findStepByName(workflow, "Lease an available date shard");
+const leasedHeadCheckStep = findStepByName(
+  workflow,
+  "Release the lease unless this SHA is still the PR head"
+);
+const releaseStep = findStepByName(workflow, "Release date shard");
 const guardStep = findStepByName(
   workflow,
   "Cancel this run once a newer PR head supersedes it"
@@ -55,6 +61,15 @@ const checkHead = (targetSha: string) =>
     TARGET_SHA: targetSha,
     WORKSPACE_E2E_PR_NUMBER: prNumber,
   });
+
+const checkLeasedHead = (targetSha: string) =>
+  runStep(leasedHeadCheckStep, headIsB, {
+    TARGET_SHA: targetSha,
+    WORKSPACE_E2E_PR_NUMBER: prNumber,
+  });
+
+const testStepIndex = (name: string) =>
+  (testJob?.steps ?? []).findIndex((step) => step.name === name);
 
 const guard = (targetSha: string, fixtures: GhFixtures = headIsB) =>
   runStep(
@@ -169,5 +184,43 @@ describe("Workspace E2E run superseded before its test job", () => {
     expect(guardStep?.run).toContain('select(.name == "test-e2e")');
     expect(testJob?.name).toBeUndefined();
     expect(testJob?.permissions?.actions).toBe("read");
+  });
+});
+
+// Run A passed its start check while shaA was the head, so cancellation, not
+// the start check, has to stop it, and cancellation is asynchronous. Run B
+// for shaB must not touch the preview database while A still runs.
+describe("Workspace E2E runs sharing a preview database", () => {
+  test("leases the branch's preview database before the migration and frees it last", () => {
+    expect(String(leaseStep?.with?.["preview-branch"])).toContain(
+      "needs.resolve-target.outputs.head_ref"
+    );
+    const leaseIndex = testStepIndex("Lease an available date shard");
+    expect(leaseIndex).toBeGreaterThan(0);
+    expect(leaseIndex).toBeLessThan(
+      testStepIndex("Resolve Neon branch backing the preview")
+    );
+    expect(leaseIndex).toBeLessThan(testStepIndex("Migrate preview database"));
+    // The release runs after a cancellation too, and after every step that
+    // touches the database.
+    expect(releaseStep?.if).toBe("always() && steps.lease.outputs.shard != ''");
+    expect(testJob?.steps?.at(-1)).toBe(releaseStep);
+  });
+
+  test("fails run A at once when it got the lease after the head moved", async () => {
+    const { calls, result } = await checkLeasedHead(shaA);
+    expect(result.exitCode).not.toBe(0);
+    expect(calls).toEqual([expect.stringContaining(`pulls/${prNumber}`)]);
+    const index = testStepIndex(
+      "Release the lease unless this SHA is still the PR head"
+    );
+    expect(index).toBe(testStepIndex("Lease an available date shard") + 1);
+    expect(leasedHeadCheckStep?.if).toBeUndefined();
+  });
+
+  test("lets run B use the database once it holds the lease", async () => {
+    const { calls, result } = await checkLeasedHead(shaB);
+    expect(result.exitCode).toBe(0);
+    expect(calls).toHaveLength(1);
   });
 });

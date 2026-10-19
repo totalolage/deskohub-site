@@ -285,8 +285,13 @@ jobs:
     # Keyed by PR and SHA, so only a duplicate run for the same SHA cancels
     # this one. Runs for different SHAs never cancel each other: a run can
     # resolve its head as current, stall, and reach this job after a newer
-    # head's run started, in either order. A superseded run stops itself
-    # instead, through the first step below and cancel-superseded-run.
+    # head's run started, in either order, and a PR-keyed group would let it
+    # cancel or replace that newer run. A superseded run stops itself
+    # instead, through the head checks below and cancel-superseded-run.
+    # Every SHA of a PR shares its branch's Neon preview database, so the
+    # date shard lease also holds that branch exclusively from before the
+    # migration until the release step. A newer head's run waits for the
+    # older run to release it, or for its attempt to complete.
     concurrency:
       group: workspace-e2e-pr-${{ needs.resolve-target.outputs.pr_number }}-${{ needs.resolve-target.outputs.sha }}
       cancel-in-progress: true
@@ -364,14 +369,36 @@ jobs:
           PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
         run: echo "shard=$((PR_NUMBER % 3 + 1))" >> "$GITHUB_OUTPUT"
 
+      # Waits while another run of this branch holds its preview database,
+      # including a superseded run whose cancellation is still pending.
       - name: Lease an available date shard
         id: lease
         uses: ./.workspace-e2e-coordinator/.github/actions/workspace-e2e-allocation
         with:
           mode: acquire
           preferred-shard: ${{ steps.preferred-shard.outputs.shard }}
+          preview-branch: ${{ needs.resolve-target.outputs.head_ref }}
           token: ${{ github.token }}
           database-url: ${{ secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL }}
+
+      # The head can move while this run waits for the lease. A superseded
+      # run fails here instead of waiting to be cancelled, so the release
+      # step frees the preview database for the newer head's run at once.
+      - name: Release the lease unless this SHA is still the PR head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          head_sha="$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/pulls/$WORKSPACE_E2E_PR_NUMBER" | \
+            jq -r '.head.sha')"
+          if [[ "$head_sha" == "$TARGET_SHA" ]]; then
+            echo "Target SHA is still the head of PR #$WORKSPACE_E2E_PR_NUMBER"
+            exit 0
+          fi
+          echo "PR #$WORKSPACE_E2E_PR_NUMBER moved to ${head_sha:0:7} while this run waited for its lease; releasing it" >&2
+          exit 1
 
       - name: Publish allocation status
         env:
@@ -643,6 +670,9 @@ jobs:
           DOTYPOS_BRANCH_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_BRANCH_ID }}
           DOTYPOS_EMPLOYEE_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_EMPLOYEE_ID }}
         run: bun --cwd apps/deskohub-workspace e2e:account-state
+      # Also frees the branch's preview database. It runs after a
+      # cancellation too; if it can't, the next acquisition reclaims the
+      # lease once GitHub reports this attempt completed.
       - name: Release date shard
         id: release
         if: always() && steps.lease.outputs.shard != ''
@@ -653,8 +683,10 @@ jobs:
           database-url: ${{ secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL }}
 
   # Cancels this run once a newer head of its PR is pushed, so the run stops
-  # itself instead of a newer run cancelling it. It runs beside test-e2e,
-  # which runs exact-SHA code, so that job never holds actions: write.
+  # itself instead of a newer run cancelling it. Cancellation is not
+  # exclusion: the newer head's run waits on the preview branch lease until
+  # this run releases it. It runs beside test-e2e, which runs exact-SHA
+  # code, so that job never holds actions: write.
   cancel-superseded-run:
     needs: resolve-target
     if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'

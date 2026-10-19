@@ -91,6 +91,7 @@ Supported concurrency is three simultaneous exact-SHA runs (`workspaceE2EConcurr
   - Each transition locks the fixed pool row in a serializable transaction. PostgreSQL needs `SELECT` and `UPDATE` on the pool for `SELECT ... FOR UPDATE`.
   - A partial unique index is the one-owner-per-shard backstop. A generated identity is the FIFO ticket.
   - The owner is repository, run ID, and attempt. Keep an existing assignment for the same owner and prefer the PR-derived shard.
+  - Every SHA of a PR shares its branch's Neon preview database, so a lease also holds its `preview_branch` exclusively, with a partial unique index as the backstop. A request whose branch is held keeps its FIFO ticket and doesn't hold back requests for other branches. Requests without a branch, from an allocator that predates the column, take no branch.
   - Retry only classified serialization failures.
   - Reclaim an owner only when `/actions/runs/{run_id}/attempts/{attempt}` reports `completed`. Fail closed on missing or failed lookups.
   - Never use a TTL as lease authority, because Dotypos has no fencing token. Release only your own owner; later acquisitions reconcile owners left by interruption.
