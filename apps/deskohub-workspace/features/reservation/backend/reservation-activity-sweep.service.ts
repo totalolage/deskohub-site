@@ -101,12 +101,12 @@ export class ReservationActivitySweep extends Context.Service<
               {
                 onNone: () => Effect.succeedNone,
                 onSome: (window) =>
-                  openWindow(
-                    executor,
-                    cursor.source,
-                    cursor.sweptUntil,
-                    window
-                  ),
+                  openWindow(executor, {
+                    source: cursor.source,
+                    sweptUntil: cursor.sweptUntil,
+                    window,
+                    at,
+                  }),
               }
             )
       );
@@ -153,11 +153,20 @@ export class ReservationActivitySweep extends Context.Service<
   });
 }
 
+/** Opens `window` by CAS, so overlapping planners open it once. */
 const openWindow = (
   executor: WorkspaceDatabaseClient,
-  source: ReservationActivityPage["source"],
-  sweptUntil: Temporal.Instant,
-  window: ReservationActivityWindow
+  {
+    source,
+    sweptUntil,
+    window,
+    at,
+  }: {
+    readonly source: ReservationActivityPage["source"];
+    readonly sweptUntil: Temporal.Instant;
+    readonly window: ReservationActivityWindow;
+    readonly at: Temporal.Instant;
+  }
 ) =>
   executor
     .update(customerEventSweeps)
@@ -165,6 +174,7 @@ const openWindow = (
       windowStartsAt: window.startsAt,
       windowEndsAt: window.endsAt,
       nextPage: 1,
+      updatedAt: at,
     })
     .where(
       and(
