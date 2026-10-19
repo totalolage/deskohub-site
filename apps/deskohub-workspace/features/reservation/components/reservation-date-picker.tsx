@@ -346,6 +346,7 @@ export function ReservationDatePicker({
               defaultMonth={
                 selectedDate ? getCalendarDate(selectedDate) : undefined
               }
+              locale={locale}
               disabled={(date) =>
                 getUnavailability(getPlainDateFromCalendar(date)) !== undefined
               }

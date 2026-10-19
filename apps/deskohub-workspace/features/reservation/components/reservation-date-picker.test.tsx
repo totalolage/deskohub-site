@@ -321,4 +321,26 @@ describe("ReservationDatePicker typed date", () => {
       expect(document.activeElement).toBe(selectedDay.querySelector("button"));
     });
   });
+
+  test("names the calendar's months and weekdays in the visitor's language", async () => {
+    const { view } = renderPicker({
+      ariaLabel: "Datum rezervace",
+      initialValue: "2099-06-10",
+      locale: "cs-CZ",
+    });
+
+    fireEvent.click(
+      view.getByRole("button", {
+        name: "Datum rezervace: vybrat v kalendáři",
+      })
+    );
+    const grid = await waitFor(() => view.getByRole("grid"));
+
+    expect(grid.getAttribute("aria-label")).toBe("červen 2099");
+    expect(
+      document.querySelector('[data-day="2099-06-10"]')?.getAttribute(
+        "data-selected"
+      )
+    ).toBe("true");
+  });
 });
