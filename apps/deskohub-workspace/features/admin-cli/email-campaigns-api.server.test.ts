@@ -1166,5 +1166,33 @@ describe.skipIf(!testDatabase)(
       expect(retried).toEqual(first);
       expect(await countRows("email_campaign_audiences", title)).toBe(1);
     });
+
+    test("rejects an audience filter saved audiences can't hold yet as invalid input", async () => {
+      const title = `${titlePrefix} first visitors`;
+      const rejected = await callWithLedger((client) =>
+        client
+          .createCampaignAudience({
+            payload: {
+              requestId: CliMutationRequestId.make(crypto.randomUUID()),
+              audience: {
+                title,
+                filter: {
+                  attribute: "firstVisit",
+                  _tag: "Condition",
+                  operator: "in",
+                  value: { _tag: "Last", count: 30, unit: "day" },
+                },
+              },
+            },
+          })
+          .pipe(Effect.flip)
+      );
+
+      expect(rejected).toBeInstanceOf(CliInputInvalid);
+      expect(rejected.message).toBe(
+        "The audience filter uses the firstVisit attribute, which saved audiences and campaigns can't use yet."
+      );
+      expect(await countRows("email_campaign_audiences", title)).toBe(0);
+    });
   }
 );

@@ -12,6 +12,10 @@ import {
 } from "@/db/schema";
 import { currentInstant } from "@/shared/utils/temporal";
 import {
+  ensureSavedAudienceFilter,
+  isSavedAudienceFilter,
+} from "../audience-filter-usage";
+import {
   CampaignLocalizedContent,
   type CampaignPurpose,
   type CampaignTemplateKey,
@@ -19,6 +23,7 @@ import {
 import type { CampaignAudienceId, CampaignId } from "../campaign-identifiers";
 import { isOnceCampaign, type OnceCampaignStatus } from "../campaign-states";
 import {
+  type AudienceFilterContextInvalid,
   CampaignAudienceArchived,
   CampaignAudienceNotFound,
   CampaignContentInvalid,
@@ -46,6 +51,7 @@ type CampaignDraftInput = {
 type CampaignWriteError =
   | CampaignAudienceNotFound
   | CampaignAudienceArchived
+  | AudienceFilterContextInvalid
   | CampaignContentInvalid;
 
 type CampaignTransactionError = EffectDrizzleQueryError | SqlError.SqlError;
@@ -89,8 +95,9 @@ export interface ICampaignService {
   >;
   /**
    * Copies a one-off campaign of any status into a new Draft titled "Copy
-   * of …". The copy keeps the source's audience only while it exists and
-   * isn't archived; otherwise the admin picks one.
+   * of …". The copy keeps the source's audience only while it exists, isn't
+   * archived, and holds a filter a campaign can use; otherwise the admin
+   * picks one.
    */
   readonly duplicate: (
     campaignId: CampaignId
@@ -156,7 +163,10 @@ export class CampaignService extends Context.Service<
        */
       const lockAudience = (tx: Transaction, audienceId: CampaignAudienceId) =>
         tx
-          .select({ archivedAt: emailCampaignAudiences.archivedAt })
+          .select({
+            archivedAt: emailCampaignAudiences.archivedAt,
+            filter: emailCampaignAudiences.filter,
+          })
           .from(emailCampaignAudiences)
           .where(eq(emailCampaignAudiences.id, audienceId))
           .for("share")
@@ -173,6 +183,7 @@ export class CampaignService extends Context.Service<
         if (audience.value.archivedAt !== null) {
           return yield* new CampaignAudienceArchived({ audienceId });
         }
+        yield* ensureSavedAudienceFilter(audience.value.filter);
       });
 
       /** Keeps the source's audience only if it's still assignable. */
@@ -186,7 +197,8 @@ export class CampaignService extends Context.Service<
             : yield* lockAudience(tx, source.audienceId);
         const assignable = Option.exists(
           audience,
-          ({ archivedAt }) => archivedAt === null
+          ({ archivedAt, filter }) =>
+            archivedAt === null && isSavedAudienceFilter(filter)
         );
         const [campaign] = yield* tx
           .insert(emailCampaigns)

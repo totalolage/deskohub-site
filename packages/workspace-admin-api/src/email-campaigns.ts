@@ -2,6 +2,10 @@ import { Effect, Schema } from "effect";
 import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import { AudienceFilter } from "./audience-filter";
 import {
+  AdministrationCampaignAudienceId,
+  AdministrationCampaignId,
+} from "./campaign-identifiers";
+import {
   AdministrationCampaignLocale,
   AdministrationCampaignPurpose,
 } from "./campaign-locale-and-purpose";
@@ -20,23 +24,6 @@ import {
 const strictParseOptions = {
   parseOptions: { errors: "all", onExcessProperty: "error" },
 } as const;
-
-export const AdministrationCampaignId = Schema.NonEmptyString.pipe(
-  Schema.brand("CampaignId")
-).annotate({
-  identifier: "CampaignId",
-  description: "Database-generated identifier of one email campaign.",
-});
-export type AdministrationCampaignId = typeof AdministrationCampaignId.Type;
-
-export const AdministrationCampaignAudienceId = Schema.NonEmptyString.pipe(
-  Schema.brand("CampaignAudienceId")
-).annotate({
-  identifier: "CampaignAudienceId",
-  description: "Database-generated identifier of one saved campaign audience.",
-});
-export type AdministrationCampaignAudienceId =
-  typeof AdministrationCampaignAudienceId.Type;
 
 export const AdministrationCampaignSendId = Schema.NonEmptyString.pipe(
   Schema.brand("CampaignSendId")

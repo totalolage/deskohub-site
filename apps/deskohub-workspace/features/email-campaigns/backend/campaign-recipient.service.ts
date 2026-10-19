@@ -28,6 +28,12 @@ import type { CampaignPurpose } from "../body/campaign-content";
 import { CampaignRecipientResolutionError } from "../errors";
 import { resolveRecipientLocale } from "../recipient-locale";
 import { evaluateAudienceFilter } from "./audience-evaluation";
+import {
+  type AudienceEvaluationContext,
+  AudienceScope,
+  audienceEvaluationAt,
+  scopedCustomers,
+} from "./audience-evaluation-context";
 import { AudienceFactsService } from "./audience-facts.service";
 import {
   type CampaignCandidateFacts,
@@ -72,15 +78,26 @@ type CampaignRecipientResolution = {
   readonly duplicates: readonly CampaignRecipientDuplicate[];
 };
 
+/**
+ * What to resolve recipients for. A one-off send passes only the purpose
+ * and filter: everyone, evaluated now. An automation narrows the scope to
+ * its subjects and evaluates in its own context.
+ */
+type CampaignRecipientQuery = {
+  readonly purpose: CampaignPurpose;
+  readonly filter: AudienceFilter;
+  readonly scope?: AudienceScope;
+  readonly context?: AudienceEvaluationContext;
+};
+
 export interface ICampaignRecipientService {
   /**
    * Resolves an audience filter to campaign recipients. It never returns a
    * partial list: an unavailable source fails the whole resolution.
    */
-  readonly resolve: (input: {
-    readonly purpose: CampaignPurpose;
-    readonly filter: AudienceFilter;
-  }) => Effect.Effect<
+  readonly resolve: (
+    input: CampaignRecipientQuery
+  ) => Effect.Effect<
     CampaignRecipientResolution,
     CampaignRecipientResolutionError
   >;
@@ -123,32 +140,60 @@ export class CampaignRecipientService extends Context.Service<
         );
 
       return {
-        resolve: Effect.fn("CampaignRecipientService.resolve")(
-          (input: {
-            readonly purpose: CampaignPurpose;
-            readonly filter: AudienceFilter;
-          }) =>
-            Effect.succeed(input).pipe(
-              Effect.bind("candidates", ({ purpose }) =>
-                candidates
-                  .listCandidates({ purpose })
-                  .pipe(
-                    Effect.mapError(CampaignRecipientResolutionError.database)
-                  )
-              ),
-              Effect.bind("now", () => currentInstant),
-              Effect.bind("facts", ({ filter, now }) =>
-                audienceFacts.resolve({ filter, now })
-              ),
-              Effect.let("localMatches", selectLocalMatches),
-              Effect.bind("profiles", ({ localMatches }) =>
-                hydrate(
-                  localMatches.map(({ dotyposCustomerId }) => dotyposCustomerId)
+        resolve: ({
+          purpose,
+          filter,
+          scope = AudienceScope.All(),
+          context,
+        }: CampaignRecipientQuery) =>
+          Effect.Do.pipe(
+            Effect.bind("candidates", () =>
+              candidates
+                .listCandidates({
+                  purpose,
+                  ...Option.match(
+                    Option.fromNullishOr(scopedCustomers(scope)),
+                    {
+                      onNone: () => ({}),
+                      onSome: (ids) => ({ ids }),
+                    }
+                  ),
+                })
+                .pipe(
+                  Effect.mapError(CampaignRecipientResolutionError.database)
                 )
-              ),
-              Effect.map(classifyRecipients)
-            )
-        ),
+            ),
+            Effect.bind("context", () =>
+              context === undefined
+                ? currentInstant.pipe(Effect.map(audienceEvaluationAt))
+                : Effect.succeed(context)
+            ),
+            Effect.bind("facts", ({ context }) =>
+              audienceFacts.resolve({
+                filter,
+                contexts: [context],
+                scope,
+              })
+            ),
+            Effect.let("localMatches", ({ candidates, context, facts }) =>
+              selectLocalMatches({ candidates, filter, context, facts })
+            ),
+            Effect.bind("profiles", ({ localMatches }) =>
+              hydrate(
+                localMatches.map(({ dotyposCustomerId }) => dotyposCustomerId)
+              )
+            ),
+            Effect.map(({ localMatches, profiles, context, facts }) =>
+              classifyRecipients({
+                localMatches,
+                profiles,
+                filter,
+                context,
+                facts,
+              })
+            ),
+            Effect.withSpan("CampaignRecipientService.resolve")
+          ),
       } satisfies ICampaignRecipientService;
     })
   );
@@ -173,6 +218,7 @@ const toCandidate = (facts: CampaignCandidateFacts): Candidate => ({
 
 type Evaluation = {
   readonly filter: AudienceFilter;
+  readonly context: AudienceEvaluationContext;
   readonly facts: AudienceFacts;
 };
 
@@ -180,12 +226,14 @@ type Evaluation = {
 const selectLocalMatches = ({
   candidates,
   filter,
+  context,
   facts,
 }: Evaluation & { readonly candidates: readonly CampaignCandidateFacts[] }) =>
   candidates.map(toCandidate).filter(
     (candidate) =>
       evaluateAudienceFilter({
         filter,
+        context,
         facts,
         candidate,
         profile: Option.none(),
@@ -196,6 +244,7 @@ const classifyRecipients = ({
   localMatches,
   profiles,
   filter,
+  context,
   facts,
 }: Evaluation & {
   readonly localMatches: readonly Candidate[];
@@ -205,8 +254,13 @@ const classifyRecipients = ({
     const profile = Option.fromNullishOr(
       profiles.get(candidate.dotyposCustomerId)
     );
-    return evaluateAudienceFilter({ filter, facts, candidate, profile }) ===
-      "noMatch"
+    return evaluateAudienceFilter({
+      filter,
+      context,
+      facts,
+      candidate,
+      profile,
+    }) === "noMatch"
       ? []
       : [classify(candidate, profile)];
   });

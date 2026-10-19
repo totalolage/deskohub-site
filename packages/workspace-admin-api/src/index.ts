@@ -15,6 +15,7 @@ export {
   type AudienceAttributeSection,
   type AudienceBooleanAttributeDefinition,
   type AudienceBooleanCondition,
+  type AudienceCampaignParam,
   type AudienceChoiceOption,
   type AudienceChoiceParam,
   type AudienceConditionIn,
@@ -37,6 +38,9 @@ export {
   type AudienceValueLookup,
   audienceAttributeSections,
   booleanAttribute,
+  CampaignEmailSource,
+  type CampaignEmailSource as CampaignEmailSourceType,
+  campaignSourceParam,
   choiceParam,
   countAttribute,
   dateAttribute,
@@ -77,6 +81,12 @@ export {
   canonicalCalendarExpression,
 } from "./calendar-expression";
 export {
+  AdministrationCampaignAudienceId,
+  type AdministrationCampaignAudienceId as AdministrationCampaignAudienceIdType,
+  AdministrationCampaignId,
+  type AdministrationCampaignId as AdministrationCampaignIdType,
+} from "./campaign-identifiers";
+export {
   AdministrationCampaignLocale,
   type AdministrationCampaignLocale as AdministrationCampaignLocaleType,
   AdministrationCampaignPurpose,
@@ -106,8 +116,6 @@ export {
   type AdministrationCampaignAudience as AdministrationCampaignAudienceType,
   AdministrationCampaignAudienceCreateRequest,
   type AdministrationCampaignAudienceCreateRequest as AdministrationCampaignAudienceCreateRequestType,
-  AdministrationCampaignAudienceId,
-  type AdministrationCampaignAudienceId as AdministrationCampaignAudienceIdType,
   AdministrationCampaignAudienceInput,
   type AdministrationCampaignAudienceInput as AdministrationCampaignAudienceInputType,
   AdministrationCampaignAudienceUpdate,
@@ -126,8 +134,6 @@ export {
   type AdministrationCampaignDuplicateRequest as AdministrationCampaignDuplicateRequestType,
   AdministrationCampaignEmailPreview,
   type AdministrationCampaignEmailPreview as AdministrationCampaignEmailPreviewType,
-  AdministrationCampaignId,
-  type AdministrationCampaignId as AdministrationCampaignIdType,
   AdministrationCampaignLocaleContent,
   type AdministrationCampaignLocaleContent as AdministrationCampaignLocaleContentType,
   AdministrationCampaignLocaleContentChange,

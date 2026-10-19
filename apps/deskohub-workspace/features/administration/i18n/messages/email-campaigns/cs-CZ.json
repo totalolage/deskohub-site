@@ -56,6 +56,8 @@
   "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "Účel kampaně",
   "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "marketingových",
   "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "provozních",
+  "emailCampaignsAudienceCampaignEmailCountSourceSpecific": "(kampaň {campaign})",
+  "emailCampaignsAudienceCampaignEmailCountSourceThis": "(tato kampaň)",
   "emailCampaignsAudienceConditionAttributeLabel": "Vlastnost zákazníka",
   "emailCampaignsAudienceConditionRemove": "Odebrat podmínku",
   "emailCampaignsAudienceCountAlwaysMatchesError": "„≥ 0“ vyhovuje vždy. Pro alespoň jeden použijte „≥ 1“, nebo podmínku odeberte.",
@@ -159,6 +161,12 @@
       }
     }
   ],
+  "emailCampaignsAudienceFirstVisitEver": "nás navštívili{product}",
+  "emailCampaignsAudienceFirstVisitInPeriod": "nás poprvé navštívili{product} {period}",
+  "emailCampaignsAudienceFirstVisitLabel": "První návštěva",
+  "emailCampaignsAudienceFirstVisitNever": "nás nikdy nenavštívili{product}",
+  "emailCampaignsAudienceFirstVisitNoValue": "neproběhla",
+  "emailCampaignsAudienceFirstVisitNotInPeriod": "nás navštívili{product}, ale poprvé ne {period}",
   "emailCampaignsAudienceLastVisitEver": "nás navštívili{product}",
   "emailCampaignsAudienceLastVisitInPeriod": "nás naposledy navštívili{product} {period}",
   "emailCampaignsAudienceLastVisitLabel": "Poslední návštěva",
@@ -416,6 +424,7 @@
   "emailCampaignsAudienceReservationCountVisitPeriod": "s návštěvou {period}",
   "emailCampaignsAudienceSaveFailedCheckFilters": "Okruh příjemců se nepodařilo uložit. Zkontrolujte filtry a zkuste to znovu.",
   "emailCampaignsAudienceSaveFailedRetry": "Okruh příjemců se nepodařilo uložit. Zkuste to znovu.",
+  "emailCampaignsAudienceSaveFilterUnavailable": "Okruh příjemců se nepodařilo uložit. Období vztažená ke spouštěči, první návštěvu, „kdykoli dosud“ ani e-maily z jedné kampaně zatím do okruhu příjemců uložit nelze.",
   "emailCampaignsAudienceSectionAccount": "Účet",
   "emailCampaignsAudienceSectionEmails": "E-maily",
   "emailCampaignsAudienceSectionProfile": "Profil",
@@ -526,8 +535,85 @@
     }
   ],
   "emailCampaignsAudienceSummaryPeriodOnward": "od {date} dál",
+  "emailCampaignsAudienceSummaryPeriodPast": "kdykoli dosud",
   "emailCampaignsAudienceSummaryPeriodRange": "od {from} do {to}",
   "emailCampaignsAudienceSummaryPeriodSince": "od {date} do současnosti",
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowDay": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "během {formattedCount} dne před spouštěcí událostí",
+        "side=before, countPlural=few": "během {formattedCount} dní před spouštěcí událostí",
+        "side=before, countPlural=other": "během {formattedCount} dní před spouštěcí událostí",
+        "side=after, countPlural=one": "během {formattedCount} dne po spouštěcí události",
+        "side=after, countPlural=few": "během {formattedCount} dní po spouštěcí události",
+        "side=after, countPlural=other": "během {formattedCount} dní po spouštěcí události"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowMonth": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "během {formattedCount} měsíce před spouštěcí událostí",
+        "side=before, countPlural=few": "během {formattedCount} měsíců před spouštěcí událostí",
+        "side=before, countPlural=other": "během {formattedCount} měsíců před spouštěcí událostí",
+        "side=after, countPlural=one": "během {formattedCount} měsíce po spouštěcí události",
+        "side=after, countPlural=few": "během {formattedCount} měsíců po spouštěcí události",
+        "side=after, countPlural=other": "během {formattedCount} měsíců po spouštěcí události"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowWeek": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "během {formattedCount} týdne před spouštěcí událostí",
+        "side=before, countPlural=few": "během {formattedCount} týdnů před spouštěcí událostí",
+        "side=before, countPlural=other": "během {formattedCount} týdnů před spouštěcí událostí",
+        "side=after, countPlural=one": "během {formattedCount} týdne po spouštěcí události",
+        "side=after, countPlural=few": "během {formattedCount} týdnů po spouštěcí události",
+        "side=after, countPlural=other": "během {formattedCount} týdnů po spouštěcí události"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowYear": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "během {formattedCount} roku před spouštěcí událostí",
+        "side=before, countPlural=few": "během {formattedCount} let před spouštěcí událostí",
+        "side=before, countPlural=other": "během {formattedCount} let před spouštěcí událostí",
+        "side=after, countPlural=one": "během {formattedCount} roku po spouštěcí události",
+        "side=after, countPlural=few": "během {formattedCount} let po spouštěcí události",
+        "side=after, countPlural=other": "během {formattedCount} let po spouštěcí události"
+      }
+    }
+  ],
   "emailCampaignsAudienceSummaryPeriodUntil": "do {date}",
   "emailCampaignsAudienceSummaryProduct": "({family})",
   "emailCampaignsAudienceSummaryProductAnyOf": "{property} {values}",
@@ -811,6 +897,7 @@
   "emailCampaignsComposerPurposeOperational": "Provozní",
   "emailCampaignsComposerPurposeOperationalDescription": "Provozní oznámení pro všechny odpovídající zákazníky. Patička uvádí, proč e-mail dostávají.",
   "emailCampaignsComposerSaveAudienceArchived": "Vybraný okruh příjemců je archivovaný. Vyberte jiný.",
+  "emailCampaignsComposerSaveAudienceFilterUnavailable": "Vybraný okruh příjemců používá filtry, které kampaně zatím použít nemohou. Vyberte jiný.",
   "emailCampaignsComposerSaveAudienceNotFound": "Vybraný okruh příjemců už neexistuje.",
   "emailCampaignsComposerSaveCheckFields": "Kampaň se nepodařilo uložit. Zkontrolujte vyplněné údaje.",
   "emailCampaignsComposerSaveContentInvalid": "Obsah obsahuje chyby. Opravte uvedené problémy a pak kampaň uložte.",

@@ -264,6 +264,27 @@ const audienceAttributeWordings = (
           ),
       },
     },
+    firstVisit: {
+      kind: "date",
+      label: m.emailCampaignsAudienceFirstVisitLabel({}, options),
+      noValue: m.emailCampaignsAudienceFirstVisitNoValue({}, options),
+      summary: {
+        ever: (product) =>
+          m.emailCampaignsAudienceFirstVisitEver({ product }, options),
+        inPeriod: (product, period) =>
+          m.emailCampaignsAudienceFirstVisitInPeriod(
+            { product, period },
+            options
+          ),
+        notInPeriod: (product, period) =>
+          m.emailCampaignsAudienceFirstVisitNotInPeriod(
+            { product, period },
+            options
+          ),
+        never: (product) =>
+          m.emailCampaignsAudienceFirstVisitNever({ product }, options),
+      },
+    },
     lastVisit: {
       kind: "date",
       label: m.emailCampaignsAudienceLastVisitLabel({}, options),
