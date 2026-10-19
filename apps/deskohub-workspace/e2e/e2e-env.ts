@@ -220,3 +220,37 @@ export const makeReviewScreenshotEnvironment = (
 export const reviewScreenshotsEnabled = (
   environment: Pick<E2EEnvironment, "WORKSPACE_E2E_REVIEW_SCREENSHOTS">
 ): boolean => environment.WORKSPACE_E2E_REVIEW_SCREENSHOTS === "true";
+
+/**
+ * Agent evals run on the devbox only. Their harness list is local wiring
+ * (agent runtimes, models, paths), so the repository reads only its path.
+ * The preview guard needs Vercel deployment read access and the exact commit
+ * the preview must be built from.
+ */
+export const makeAgentEvalEnvironment = (
+  runtimeEnvironment: RuntimeEnvironment = process.env
+) =>
+  createEnv({
+    emptyStringAsUndefined: true,
+    onValidationError: () => {
+      throw new Error(
+        "Agent evals need WORKSPACE_AGENT_EVAL_HARNESSES, WORKSPACE_E2E_VERCEL_TOKEN, WORKSPACE_E2E_VERCEL_PROJECT, and TARGET_SHA (the preview's full commit SHA)."
+      );
+    },
+    runtimeEnv: {
+      TARGET_SHA: runtimeEnvironment.TARGET_SHA,
+      WORKSPACE_AGENT_EVAL_HARNESSES:
+        runtimeEnvironment.WORKSPACE_AGENT_EVAL_HARNESSES,
+      WORKSPACE_E2E_VERCEL_PROJECT:
+        runtimeEnvironment.WORKSPACE_E2E_VERCEL_PROJECT,
+      WORKSPACE_E2E_VERCEL_TOKEN: runtimeEnvironment.WORKSPACE_E2E_VERCEL_TOKEN,
+    },
+    server: {
+      TARGET_SHA: toEnvironmentSchema(
+        Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/))
+      ),
+      WORKSPACE_AGENT_EVAL_HARNESSES: nonEmptyString,
+      WORKSPACE_E2E_VERCEL_PROJECT: nonEmptyString,
+      WORKSPACE_E2E_VERCEL_TOKEN: nonEmptyString,
+    },
+  });

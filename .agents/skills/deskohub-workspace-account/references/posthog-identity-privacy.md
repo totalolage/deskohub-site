@@ -156,11 +156,13 @@ non-production traffic apart:
   (`CurrentAgentTraffic`). Nothing forwards a category between boundaries,
   and the proxy matcher skips dotted paths, so never read a category from a
   request header.
-- `agent page request` (proxy, document navigations that reach a render) and
-  `bot protection rejection` (BotID) events go out after the response,
+- `agent page request` (proxy, document navigations that reach a render),
+  `agent tool call` (each MCP tool call, from `agent-tool-mcp-handler.ts`),
+  and `bot protection rejection` (BotID) events go out after the response,
   regardless of consent, from `shared/backend/agent-traffic/agent-traffic-events.ts`
   with a random per-event distinct ID and `$process_person_profile: false`.
-  They carry only the agent fields, route template, locale, call site, and
+  They carry only the agent fields, route template, locale, tool name,
+  outcome (`success` or the tool's error code), call site, and
   `verified_bot`. The page route is a template Next generated from the app
   directory (`AppRoutes`) without its locale segment; a path no page matches
   is `unknown`, so a requested path value never reaches PostHog. The privacy

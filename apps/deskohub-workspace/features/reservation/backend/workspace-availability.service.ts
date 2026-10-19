@@ -22,6 +22,7 @@ import {
 } from "@/features/reservation/reservation-kind";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { getPlainDatesBetween } from "@/shared/utils/temporal";
 import {
   currentInstant,
   type PlainDate,
@@ -554,21 +555,8 @@ const getDateRange = Effect.fn(function* (from: string, to: string) {
     });
   }
 
-  return listDates(start, end);
+  return getPlainDatesBetween(start, end);
 });
-
-const listDates = (start: Temporal.PlainDate, end: Temporal.PlainDate) => {
-  const dates: Temporal.PlainDate[] = [];
-  for (
-    let cursor = start;
-    Temporal.PlainDate.compare(cursor, end) <= 0;
-    cursor = cursor.add({ days: 1 })
-  ) {
-    dates.push(cursor);
-  }
-
-  return dates;
-};
 
 /**
  * Every date a meeting-room booking starting on `date` can occupy. All
@@ -577,7 +565,7 @@ const listDates = (start: Temporal.PlainDate, end: Temporal.PlainDate) => {
  * snapshot entries whatever their duration.
  */
 const getMeetingRoomInventoryDates = (date: Temporal.PlainDate) =>
-  listDates(
+  getPlainDatesBetween(
     date,
     Temporal.PlainDate.from(
       getMeetingRoomDayLastServiceDate(

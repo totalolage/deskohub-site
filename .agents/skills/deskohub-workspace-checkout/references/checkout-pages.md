@@ -42,6 +42,7 @@ Each reservation form mirrors its selection into the page URL through `useReserv
 - The server-rendered `searchParams` prop goes stale after an edit. Build anything that must carry the current selection, such as a sign-in or verify return path from a reservation page, from `useSearchParams` and `usePathname` or from `window.location` when the link is followed.
 - The office parser takes `startsOn` only inside the booking window from the server's `today`; the page preloads that start date's prices.
 - An absent parameter means "unspecified", which the parser may fill from the customer's last reservation. Encode a deliberate empty choice as an explicit value instead, as cowork writes `monitorOption=none` for an optional workstation turned off.
+- Links shared outside the app, such as agent-tool links, pass the same writers to `getShareableReservationUrl`. A quote link passes the whole quoted selection so the last reservation fills nothing; an offer link that leaves add-ons open uses `getCoworkOfferSearchParams`.
 - After a Pay return the URL carries `payState` plus the edited selection. Each family's `get*RestoredReservationValues` lets selection parameters beside the token replace the restored selection (`hasReservationSelectionSearchParams`), keeping the token's checkout session, replacement token, contact, and discount intent. The Pay page's edit link carries the token alone, so it still restores the signed selection.
 
 ## Customer mode

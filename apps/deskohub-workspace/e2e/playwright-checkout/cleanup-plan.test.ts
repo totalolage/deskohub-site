@@ -15,6 +15,7 @@ import {
   prepareWorkspaceE2EAccountLaneReconciliation,
   validateWorkspaceE2EAccountLaneJournalOwnership,
 } from "../account/reconcile";
+import { WorkspaceE2EAccountResourceServiceMock } from "../account/resources.service.mock";
 import {
   type PreparedCheckoutFlowCleanup,
   prepareCheckoutFlowCleanup,
@@ -133,24 +134,25 @@ test("rejects a present account profile without email before either cleanup scop
 
   const accountPreparation = prepareWorkspaceE2EAccountLaneReconciliation(
     {} as DatasourceConfig,
-    "source-run" as WorkspaceE2ERunId,
-    {
-      readJournal: async () => journal,
-      findAuthUserEmailById: () => Effect.succeed(undefined),
-      readSyntheticCustomerProfile: (_config, customerId) => {
-        readCustomerIds.push(customerId);
-        return Effect.succeed({
-          _cloudId: "synthetic-cloud",
-          deleted: false,
-          display: true,
-          id: customerId,
-          flags: "",
-          points: null,
-        } satisfies Customer);
-      },
-      readReservationOwner: () =>
-        Effect.succeed({ customerId: undefined, email: undefined }),
-    }
+    "source-run" as WorkspaceE2ERunId
+  ).pipe(
+    Effect.provide(
+      WorkspaceE2EAccountResourceServiceMock({
+        readAuthUserEmail: () => Effect.succeed(undefined),
+        readCustomerProfile: (customerId) => {
+          readCustomerIds.push(customerId);
+          return Effect.succeed({
+            _cloudId: "synthetic-cloud",
+            deleted: false,
+            display: true,
+            id: customerId,
+            flags: "",
+            points: null,
+          } satisfies Customer);
+        },
+        readJournal: () => Effect.succeed(journal),
+      })
+    )
   );
 
   await expect(
@@ -201,20 +203,23 @@ test("does not treat a present account reservation with a missing customer as ab
   let mutationCount = 0;
   const accountPreparation = prepareWorkspaceE2EAccountLaneReconciliation(
     {} as DatasourceConfig,
-    "source-run" as WorkspaceE2ERunId,
-    {
-      readJournal: async () => journal,
-      findAuthUserEmailById: () => Effect.succeed(undefined),
-      readSyntheticCustomerProfile: () =>
-        Effect.succeed({
-          _cloudId: "unused-cloud",
-          deleted: false,
-          display: true,
-          flags: "",
-          points: null,
-        } satisfies Customer),
-      readReservationOwner: () => Effect.fail(customerReadError),
-    }
+    "source-run" as WorkspaceE2ERunId
+  ).pipe(
+    Effect.provide(
+      WorkspaceE2EAccountResourceServiceMock({
+        readAuthUserEmail: () => Effect.succeed(undefined),
+        readCustomerProfile: () =>
+          Effect.succeed({
+            _cloudId: "unused-cloud",
+            deleted: false,
+            display: true,
+            flags: "",
+            points: null,
+          } satisfies Customer),
+        readJournal: () => Effect.succeed(journal),
+        readReservationOwner: () => Effect.fail(customerReadError),
+      })
+    )
   );
 
   await expect(

@@ -1,8 +1,11 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { authPasskey, authSession, authUser } from "@/db/schema/auth";
 import { customerAccountLinks } from "@/db/schema/customer-account-links";
+import { CustomerAccountRepository } from "@/features/account/backend/customer-account.repository";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import type { WorkspaceE2EError } from "../errors";
@@ -102,14 +105,29 @@ export const removeSyntheticAccountLink = (
   });
 
 /**
- * Deletes exactly one journaled synthetic Better Auth user. Cascades remove
- * the account's sessions, OAuth accounts, and the customer-account link row.
+ * Deletes exactly one journaled synthetic account the way account deletion
+ * does: leaves the customer account's tombstone, so the reservations it
+ * authored that cleanup keeps name a deleted account, then deletes the
+ * Better Auth user. Cascades remove the account's sessions, OAuth accounts,
+ * and the customer-account link row. Repeats keep the first deletion instant.
  */
 export const removeSyntheticAuthUser = (
   accountId: string
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
+    yield* runDatabaseOperation(
+      "tombstone synthetic customer account",
+      CustomerAccountRepository.use((accounts) =>
+        accounts.tombstone(
+          customerAccountIdSchema.make(accountId),
+          Temporal.Now.instant()
+        )
+      ).pipe(
+        Effect.provide(CustomerAccountRepository.Default),
+        Effect.provideService(WorkspaceDatabase, WorkspaceDatabase.of({ db }))
+      )
+    );
     yield* runDatabaseOperation(
       "delete synthetic auth user",
       db.delete(authUser).where(eq(authUser.id, accountId))
