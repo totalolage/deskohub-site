@@ -1,3 +1,8 @@
+import type {
+  AdministrationCampaignContent,
+  AdministrationCampaignLocaleContent,
+  AdministrationCampaignUpdateInput,
+} from "@deskohub/workspace-admin-api";
 import { Schema } from "effect";
 import type { CampaignRow } from "@/db/schema";
 import { m } from "@/features/administration/i18n";
@@ -7,13 +12,13 @@ import {
   CampaignBodyNode as CampaignBodyNodeSchema,
   campaignBodyFormatVersion,
 } from "../../body/campaign-body-document";
+import { campaignBodyToMarkdown } from "../../body/campaign-body-markdown";
 import {
   type CampaignBodyIssue,
   campaignBodyIssues,
 } from "../../body/campaign-body-rules";
 import {
   type CampaignLocaleContent,
-  type CampaignLocalizedContent,
   CampaignPurpose,
   CampaignTemplateKey,
 } from "../../body/campaign-content";
@@ -148,19 +153,53 @@ export const toCampaignLocaleContent = (
   };
 };
 
-/** The saved content: each editable locale that has any text. */
-export const toCampaignLocalizedContent = (
+/**
+ * One locale's texts as the campaign port takes them: the body crosses as
+ * Markdown.
+ */
+const toAdministrationLocaleContent = (
+  fields: CampaignComposerLocaleFields,
+  purpose: CampaignPurpose
+): AdministrationCampaignLocaleContent => {
+  const { body, ...texts } = toCampaignLocaleContent(fields, purpose);
+  return { ...texts, bodyMarkdown: campaignBodyToMarkdown(body) };
+};
+
+/** A new campaign's content: each editable locale that has any text. */
+export const toAdministrationCampaignContent = (
   fields: CampaignComposerFields,
   editableLocales: readonly Locale[]
-): CampaignLocalizedContent =>
+): AdministrationCampaignContent =>
   Object.fromEntries(
     editableLocales
       .filter((locale) => hasLocaleContent(fields.locales[locale]))
       .map((locale) => [
         locale,
-        toCampaignLocaleContent(fields.locales[locale], fields.purpose),
+        toAdministrationLocaleContent(fields.locales[locale], fields.purpose),
       ])
   );
+
+/**
+ * A draft edit that replaces the saved content: each editable locale with
+ * text is rewritten, without a reason line unless one is set, and every other
+ * saved locale loses its content.
+ */
+export const toAdministrationCampaignContentChange = (
+  fields: CampaignComposerFields,
+  editableLocales: readonly Locale[],
+  savedLocales: readonly Locale[]
+): NonNullable<AdministrationCampaignUpdateInput["content"]> => {
+  const content = toAdministrationCampaignContent(fields, editableLocales);
+  return Object.fromEntries([
+    ...savedLocales
+      .filter((locale) => content[locale] === undefined)
+      .map((locale) => [locale, null]),
+    ...Object.entries(content).map(([locale, localeContent]) => [
+      locale,
+      { operationalReason: null, ...localeContent },
+    ]),
+  ]);
+};
 
 /**
  * Problems in one locale's content that a send would trip over, described in

@@ -1,20 +1,22 @@
 import "server-only";
 
+import type { AdministrationCampaignAudienceType } from "@deskohub/workspace-admin-api";
 import { Effect, Option } from "effect";
 import { notFound } from "next/navigation";
-import type { CampaignAudienceRow } from "@/db/schema";
 import { formatAdministrationDateTime } from "@/features/administration/formatters";
 import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   type AudienceFilter,
   audienceSingleLocale,
 } from "../../audience-filter";
-import { CampaignAudienceService } from "../../backend/campaign-audience.service";
 import type { CampaignAudienceId } from "../../campaign-identifiers";
 import { describeAudienceFilter } from "../audience-filter-summary";
+import {
+  invokeCampaignOperation,
+  runCampaignPageQuery,
+} from "../campaign-operation-query.server";
 import { loadAudienceValueLookups } from "./audience-value-lookups.server";
 
 /** An audience a campaign can select. */
@@ -44,25 +46,17 @@ export type AudienceEditorData = {
   readonly archived: boolean;
 };
 
-const listAudiences = Effect.fn("loadAudienceList")(function* (
-  includeArchived: boolean
-) {
-  const audiences = yield* CampaignAudienceService;
-  return yield* audiences.list({ includeArchived });
-});
-
-const runAudienceListing = (includeArchived: boolean) =>
-  listAudiences(includeArchived).pipe(
-    Effect.provide(CampaignAudienceService.Live),
-    runWorkspaceEffect("email-campaigns.admin.list-audiences", {
-      boundary: "route",
-    })
+/** Every audience, archived ones included. */
+const listAudiences = () =>
+  runCampaignPageQuery(
+    "email-campaigns.admin.list-audiences",
+    invokeCampaignOperation("listCampaignAudiences", {})
   );
 
 const byTitle = (left: { title: string }, right: { title: string }) =>
   left.title.localeCompare(right.title);
 
-const isArchived = (audience: CampaignAudienceRow) =>
+const isArchived = (audience: AdministrationCampaignAudienceType) =>
   audience.archivedAt !== null;
 
 /** Every audience, active ones first, for the audience list. */
@@ -71,7 +65,7 @@ export const loadAudienceList = async (): Promise<
 > => {
   await authorizeAdministratorPage();
   const [audiences, lookups, locale] = await Promise.all([
-    runAudienceListing(true),
+    listAudiences(),
     loadAudienceValueLookups(),
     getRequestLocale(),
   ]);
@@ -86,11 +80,8 @@ export const loadAudienceList = async (): Promise<
       title: audience.title,
       summary: describeAudienceFilter(audience.filter, locale, lookups),
       archived: isArchived(audience),
-      updatedAt: audience.updatedAt.toString(),
-      updatedAtText: formatAdministrationDateTime(
-        audience.updatedAt.toString(),
-        locale
-      ),
+      updatedAt: audience.updatedAt,
+      updatedAtText: formatAdministrationDateTime(audience.updatedAt, locale),
     }));
 };
 
@@ -100,11 +91,12 @@ export const loadAudienceOptions = async (): Promise<
 > => {
   await authorizeAdministratorPage();
   const [audiences, lookups, locale] = await Promise.all([
-    runAudienceListing(false),
+    listAudiences(),
     loadAudienceValueLookups(),
     getRequestLocale(),
   ]);
   return audiences
+    .filter((audience) => !isArchived(audience))
     .map(({ id, title, filter }) => ({
       id,
       title,
@@ -119,14 +111,12 @@ export const loadAudienceEditor = async (
   audienceId: CampaignAudienceId
 ): Promise<AudienceEditorData> => {
   await authorizeAdministratorPage();
-  const audience = await Effect.gen(function* () {
-    const audiences = yield* CampaignAudienceService;
-    return yield* audiences.get(audienceId).pipe(Effect.option);
-  }).pipe(
-    Effect.provide(CampaignAudienceService.Live),
-    runWorkspaceEffect("email-campaigns.admin.load-audience", {
-      boundary: "route",
-    })
+  const audience = await runCampaignPageQuery(
+    "email-campaigns.admin.load-audience",
+    invokeCampaignOperation("getCampaignAudience", { audienceId }).pipe(
+      Effect.map(Option.some),
+      Effect.catchTag("OperationNotFound", () => Effect.succeedNone)
+    )
   );
   const { id, title, filter, archivedAt } = Option.getOrElse(audience, () =>
     notFound()

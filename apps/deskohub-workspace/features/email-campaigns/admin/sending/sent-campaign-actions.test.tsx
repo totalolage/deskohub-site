@@ -29,12 +29,10 @@ mock.module("next/navigation", () => ({
   }),
 }));
 
-const duplicateCampaign = mock();
-const retryUndeliveredCampaignRecipients = mock();
+const runCampaignOperation = mock();
 
-mock.module("./actions", () => ({
-  duplicateCampaign,
-  retryUndeliveredCampaignRecipients,
+mock.module("../campaign-operations.actions", () => ({
+  runCampaignOperation,
 }));
 
 const { SentCampaignActions } = await import("./sent-campaign-actions");
@@ -43,13 +41,14 @@ const campaignId = campaignIdSchema.make("synthetic-campaign");
 const includeUnconfirmedLabel =
   "Also resend to unconfirmed recipients (they may receive it twice)";
 const retryExecute = mock();
-let retryOptions:
-  | {
-      readonly onSuccess: (result: {
-        readonly data: { readonly retriedCount: number };
-      }) => void;
-    }
-  | undefined;
+type ActionOptions = {
+  readonly actionName: string;
+  readonly onSuccess: (result: {
+    readonly data: unknown;
+    readonly input: unknown;
+  }) => void;
+};
+let retryOptions: ActionOptions | undefined;
 
 describe("SentCampaignActions", () => {
   beforeAll(() => registerWorkspaceComponentTestEnv());
@@ -57,15 +56,12 @@ describe("SentCampaignActions", () => {
     retryExecute.mockClear();
     workspaceUseAction.mockReset();
     workspaceUseAction.mockImplementation(((
-      action: typeof duplicateCampaign,
-      options: typeof retryOptions
+      _action: typeof runCampaignOperation,
+      options: ActionOptions
     ) => {
-      if (action === retryUndeliveredCampaignRecipients) retryOptions = options;
-      return {
-        execute:
-          action === retryUndeliveredCampaignRecipients ? retryExecute : mock(),
-        isExecuting: false,
-      };
+      const retry = options.actionName === "email-campaigns.retryCampaign";
+      if (retry) retryOptions = options;
+      return { execute: retry ? retryExecute : mock(), isExecuting: false };
     }) as never);
   });
   afterEach(() => cleanup());
@@ -88,7 +84,12 @@ describe("SentCampaignActions", () => {
     fireEvent.click(view.getByRole("button", { name: "Retry undelivered" }));
 
     expect(retryExecute.mock.calls).toEqual([
-      [{ campaignId, includeUnconfirmed: false }],
+      [
+        {
+          operation: "retryCampaign",
+          input: { campaignId, includeUnconfirmed: false },
+        },
+      ],
     ]);
   });
 
@@ -107,7 +108,12 @@ describe("SentCampaignActions", () => {
     fireEvent.click(view.getByRole("button", { name: "Retry undelivered" }));
 
     expect(retryExecute.mock.calls).toEqual([
-      [{ campaignId, includeUnconfirmed: true }],
+      [
+        {
+          operation: "retryCampaign",
+          input: { campaignId, includeUnconfirmed: true },
+        },
+      ],
     ]);
   });
 
@@ -154,11 +160,48 @@ describe("SentCampaignActions", () => {
         </RouteLocaleProvider>
       );
 
-      act(() => retryOptions?.onSuccess({ data: { retriedCount: 1000 } }));
+      act(() =>
+        retryOptions?.onSuccess({
+          data: { _tag: "Success", output: { retriedCount: 1000 } },
+          input: { operation: "retryCampaign", input: {} },
+        })
+      );
 
       expect(view.container.textContent).toContain(message);
     }
   );
+
+  test.each([
+    [
+      "campaign-not-retryable",
+      "Only a failed campaign can retry undelivered recipients.",
+    ],
+    ["service-unavailable", "Something went wrong. Try again in a moment."],
+    ["a-code-without-copy", "Undelivered recipients could not be retried."],
+  ] as const)("reports a %s failure in admin copy", (code, message) => {
+    const view = render(
+      <SentCampaignActions
+        campaignId={campaignId}
+        retryable
+        unconfirmedCount={0}
+      />
+    );
+
+    act(() =>
+      retryOptions?.onSuccess({
+        data: {
+          _tag: "Failure",
+          category: "OperationConflict",
+          code,
+          message: "English port message",
+        },
+        input: { operation: "retryCampaign", input: {} },
+      })
+    );
+
+    expect(view.container.textContent).toContain(message);
+    expect(view.container.textContent).not.toContain("English port message");
+  });
 
   test("labels the actions in the Czech admin locale", () => {
     const view = render(
