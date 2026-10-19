@@ -49,6 +49,7 @@ import {
   ReservationFormFallback as SharedReservationFormFallback,
 } from "@/features/reservation/components/reservation-form-fallback";
 import { ReservationFormLabel } from "@/features/reservation/components/reservation-form-label";
+import { getReservationAdvertisedTotal } from "@/features/reservation/components/reservation-selection-summary";
 import {
   illustratedReservationTypeOptionLayout,
   ReservationTypeInput,
@@ -93,6 +94,7 @@ import {
 import { Label } from "@/shared/components/ui/label";
 import { cn } from "@/shared/utils";
 import { CoworkOptionalAddonToggle } from "./cowork-optional-addon-toggle";
+import { getCoworkReservationSelectionSummary } from "./cowork-reservation-selection-summary";
 
 type CoworkReservationFormProps = {
   initialReservation?: NormalizedCoworkReservationOrder;
@@ -550,6 +552,9 @@ export function CoworkReservationForm({
               productLabel: getWorkspaceProductTierTitle(selectedTier, locale),
             }
           : undefined,
+        total: advertisedPrice
+          ? getReservationAdvertisedTotal(advertisedPrice.quote.payment)
+          : undefined,
       }}
       availability={{
         isPending:
@@ -563,6 +568,15 @@ export function CoworkReservationForm({
       form={form}
       getReservation={getCoworkCurrentReservationOrder}
       locale={locale}
+      selectionSummary={getCoworkReservationSelectionSummary(
+        {
+          entryTier: selectedTier,
+          date: selectedDate,
+          coffee: selectedCoffee,
+          monitorOption: selectedMonitorOption,
+        },
+        locale
+      )}
     >
       <FormField
         control={form.control}

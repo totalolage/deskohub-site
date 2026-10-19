@@ -1,6 +1,10 @@
 import { connection } from "next/server";
 import { SignInCard } from "@/features/account/components/sign-in-card";
-import { signInReturnParam } from "@/features/account/routes";
+import {
+  parseSignInPurpose,
+  signInPurposeParam,
+  signInReturnParam,
+} from "@/features/account/routes";
 import { arePasskeysEnabled } from "@/features/account/server/account-feature-flag.server";
 import type { Locale } from "@/features/i18n";
 import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
@@ -36,6 +40,7 @@ export async function SignInRouteCard({
     <SignInCard
       locale={locale}
       passkeysEnabled={passkeysEnabled}
+      purpose={parseSignInPurpose(getSearchParam(query, signInPurposeParam))}
       returnTo={returnTo}
     />
   );

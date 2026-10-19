@@ -1,10 +1,10 @@
 "use client";
 
 import Interpolate from "@doist/react-interpolate";
-import { Info } from "lucide-react";
+import { AlertTriangle, Info, RotateCw } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { type ReactNode, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { type ReactNode, useState, useTransition } from "react";
 import {
   type FieldPath,
   type FieldValues,
@@ -118,6 +118,10 @@ export function ReservationCustomerSection({
         <ReservationCustomerFields locale={locale} />
       </div>
     );
+  }
+
+  if (checkoutCustomer.status === "unavailable") {
+    return <ReservationAccountUnavailable locale={locale} />;
   }
 
   if (checkoutCustomer.status === "profile-missing") {
@@ -313,6 +317,51 @@ export function ReservationCustomerFields({
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * The signed-in account couldn't be read, so the form can't tell whom it
+ * books for. Retrying reloads the page's account with the selection kept.
+ */
+function ReservationAccountUnavailable({
+  locale,
+}: {
+  readonly locale: Locale;
+}) {
+  const router = useRouter();
+  const [isRetrying, startRetry] = useTransition();
+
+  return (
+    <section
+      aria-labelledby="reservation-account-unavailable-heading"
+      className="space-y-3 rounded-[1.4rem] border border-burned-orange/20 bg-burned-orange/8 p-4 sm:p-5"
+      role="alert"
+    >
+      <h3
+        className="flex items-center gap-2 text-base font-semibold text-burned-orange-ink"
+        id="reservation-account-unavailable-heading"
+      >
+        <AlertTriangle
+          aria-hidden="true"
+          className="size-4 shrink-0 text-burned-orange"
+        />
+        {m.reservationAccountUnavailableTitle({}, { locale })}
+      </h3>
+      <p className="text-sm leading-6 text-navy-blue/72">
+        {m.reservationAccountUnavailableBody({}, { locale })}
+      </p>
+      <Button
+        disabled={isRetrying}
+        onClick={() => startRetry(() => router.refresh())}
+        size="sm"
+        type="button"
+        variant="secondary"
+      >
+        <RotateCw aria-hidden="true" className="size-4" />
+        {m.reservationAccountUnavailableRetry({}, { locale })}
+      </Button>
+    </section>
   );
 }
 

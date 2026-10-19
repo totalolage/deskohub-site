@@ -65,16 +65,36 @@ export const getSignInDestination = (
   returnTo: string | null | undefined
 ) => parseSameOriginPath(returnTo) ?? getAccountPath(locale);
 
+/** The sign-in page query parameter naming why the visitor signs in. */
+export const signInPurposeParam = "for";
+
+/**
+ * Why a visitor signs in, when a page sends them: `reservation` to see a
+ * reservation they were linked to.
+ */
+export type SignInPurpose = "reservation";
+
+export const parseSignInPurpose = (
+  value: string | null | undefined
+): SignInPurpose | undefined => (value === "reservation" ? value : undefined);
+
 /**
  * The sign-in page, continuing to `returnTo` after sign-in when it is a
- * same-origin path. Any other value is left out.
+ * same-origin path. Any other value is left out. A `purpose` tells the
+ * visitor why they sign in.
  */
-export const getAccountSignInPath = (locale: Locale, returnTo?: string) => {
+export const getAccountSignInPath = (
+  locale: Locale,
+  returnTo?: string,
+  purpose?: SignInPurpose
+) => {
   const path = getLocalizedPagePath(locale, "/[locale]/auth/sign-in");
   const returnPath = parseSameOriginPath(returnTo);
-  return returnPath === undefined
-    ? path
-    : `${path}?${new URLSearchParams({ [signInReturnParam]: returnPath })}`;
+  const query = new URLSearchParams({
+    ...(returnPath !== undefined && { [signInReturnParam]: returnPath }),
+    ...(purpose && { [signInPurposeParam]: purpose }),
+  });
+  return query.size ? `${path}?${query}` : path;
 };
 
 /**

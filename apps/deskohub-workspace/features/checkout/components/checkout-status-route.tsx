@@ -127,7 +127,8 @@ async function CheckoutStatusContent({
           locale,
           decodedSearchParams.outcome
             ? `${statusPath}?${new URLSearchParams({ outcome: decodedSearchParams.outcome })}`
-            : statusPath
+            : statusPath,
+          "reservation"
         )
       );
     }
@@ -170,7 +171,7 @@ function CheckoutStatusFallback({
   if (presentation === "modal") return skeleton;
 
   return (
-    <CheckoutFlowLayout activeStepKey="access" locale={locale}>
+    <CheckoutFlowLayout activeStepKey="complete" locale={locale}>
       {skeleton}
     </CheckoutFlowLayout>
   );

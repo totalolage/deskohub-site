@@ -8,14 +8,16 @@ import { NavItem } from "@/shared/components/ui/nav-item";
 import { cn } from "@/shared/utils";
 
 type CheckoutFlowLayoutProps = {
-  readonly activeStepKey: CheckoutStepKey;
+  readonly activeStepKey: CheckoutFlowStage;
   readonly children: ReactNode;
   readonly locale: Locale;
   readonly stepLinks?: Partial<Record<CheckoutStepKey, CheckoutStepLink>>;
+  /** Replaces the steps, for a page whose current step changes in place. */
+  readonly steps?: ReactNode;
 };
 
 type CheckoutStepsProps = {
-  readonly activeStepKey: CheckoutStepKey;
+  readonly activeStepKey: CheckoutFlowStage;
   readonly locale: Locale;
   readonly stepLinks?: Partial<Record<CheckoutStepKey, CheckoutStepLink>>;
 };
@@ -28,39 +30,42 @@ type CheckoutStepLink =
   | {
       readonly href: string;
       readonly navigation: "document";
+    }
+  | {
+      /** Changes the step in place, without navigating. */
+      readonly onSelect: () => void;
     };
 
 const checkoutFlowSteps = [
   { key: "chooseSpace", getLabel: m.checkoutOrderStepChooseSpace },
-  { key: "order", getLabel: m.checkoutOrderStepReservation },
+  { key: "contact", getLabel: m.checkoutOrderStepContact },
   { key: "pay", getLabel: m.checkoutOrderStepPayment },
-  { key: "access", getLabel: m.checkoutOrderStepAccess },
 ] as const;
 
-type CheckoutStepKey = Exclude<
-  (typeof checkoutFlowSteps)[number]["key"],
-  "chooseSpace"
->;
+export type CheckoutStepKey = (typeof checkoutFlowSteps)[number]["key"];
+
+/** The current step, or `complete` once every step is done. */
+export type CheckoutFlowStage = CheckoutStepKey | "complete";
 
 export function CheckoutSteps({
   activeStepKey,
   locale,
   stepLinks,
 }: CheckoutStepsProps) {
-  const activeStepIndex = checkoutFlowSteps.findIndex(
-    (step) => step.key === activeStepKey
-  );
+  const activeStepIndex =
+    activeStepKey === "complete"
+      ? checkoutFlowSteps.length
+      : checkoutFlowSteps.findIndex((step) => step.key === activeStepKey);
 
   return (
     <ol
-      className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4"
+      className="grid gap-2 sm:grid-cols-3"
       aria-label={m.checkoutOrderStepsLabel({}, { locale })}
     >
       {checkoutFlowSteps.map((step, index) => {
         const isCompleted = index < activeStepIndex;
         const isCurrentStep = step.key === activeStepKey;
-        const link =
-          step.key === "chooseSpace" ? undefined : stepLinks?.[step.key];
+        const link = isCurrentStep ? undefined : stepLinks?.[step.key];
         const content = (
           <>
             <span
@@ -95,7 +100,15 @@ export function CheckoutSteps({
           </div>
         );
 
-        if (link?.navigation === "document") {
+        if (link && "onSelect" in link) {
+          stepContent = (
+            <NavItem asChild layout="step" tone="translucent">
+              <button className="w-full" onClick={link.onSelect} type="button">
+                {content}
+              </button>
+            </NavItem>
+          );
+        } else if (link?.navigation === "document") {
           stepContent = (
             <NavItem asChild layout="step" tone="translucent">
               <a href={link.href}>{content}</a>
@@ -130,6 +143,7 @@ export function CheckoutFlowLayout({
   children,
   locale,
   stepLinks,
+  steps,
 }: CheckoutFlowLayoutProps) {
   return (
     <main className="min-h-screen overflow-x-clip bg-navy-blue text-white">
@@ -138,11 +152,13 @@ export function CheckoutFlowLayout({
         <div className="absolute -right-28 bottom-24 -z-10 h-72 w-72 rounded-full bg-aquamarine-green/14 blur-3xl" />
 
         <Container className="flex flex-col gap-6">
-          <CheckoutSteps
-            activeStepKey={activeStepKey}
-            locale={locale}
-            stepLinks={stepLinks}
-          />
+          {steps ?? (
+            <CheckoutSteps
+              activeStepKey={activeStepKey}
+              locale={locale}
+              stepLinks={stepLinks}
+            />
+          )}
           {children}
         </Container>
       </section>

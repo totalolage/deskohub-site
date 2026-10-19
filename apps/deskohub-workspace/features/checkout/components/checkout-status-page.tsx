@@ -540,11 +540,11 @@ export function CheckoutStatusPage({
     content
   ) : (
     <CheckoutFlowLayout
-      activeStepKey="access"
+      activeStepKey="complete"
       locale={locale}
       stepLinks={
         offersNewReservation
-          ? { order: { href: reserveAgainPath, navigation: "document" } }
+          ? { chooseSpace: { href: reserveAgainPath, navigation: "document" } }
           : undefined
       }
     >

@@ -30,6 +30,7 @@ import {
   getEarlyPerformanceRequestRequiredAt,
   isEarlyPerformanceRequestRequired,
 } from "@/features/legal/early-performance";
+import { reservationCheckoutStepQueryParam } from "@/features/reservation/reservation-checkout-step";
 import {
   getCoworkReservationPath,
   getReservationStartPath,
@@ -223,6 +224,14 @@ async function CheckoutPayContent({
     state.reservation.kind,
     new URLSearchParams({ [payStateTokenQueryParam]: payStateToken })
   );
+  const contactPath = getReservationStartPath(
+    locale,
+    state.reservation.kind,
+    new URLSearchParams({
+      [payStateTokenQueryParam]: payStateToken,
+      [reservationCheckoutStepQueryParam]: "contact",
+    })
+  );
   const earlyPerformanceRequestRequired = isEarlyPerformanceRequestRequired({
     reservation: state.reservation,
     contractAt: Temporal.Now.instant(),
@@ -233,10 +242,8 @@ async function CheckoutPayContent({
       activeStepKey="pay"
       locale={locale}
       stepLinks={{
-        order: {
-          href: orderPath,
-          navigation: "document",
-        },
+        chooseSpace: { href: orderPath, navigation: "document" },
+        contact: { href: contactPath, navigation: "document" },
       }}
     >
       {!earlyPerformanceRequestRequired && (

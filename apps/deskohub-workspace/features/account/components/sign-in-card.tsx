@@ -19,6 +19,7 @@ import {
   hasSignInCode,
   useEmailSignInRequest,
 } from "@/features/account/email-sign-in-request";
+import type { SignInPurpose } from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
 import { useClientReady } from "@/shared/browser/use-client-ready";
 import { Button } from "@/shared/components/ui/button";
@@ -42,6 +43,8 @@ type SignInCardProps = {
    * on the email field. Off while `login_passkeys` is off.
    */
   readonly passkeysEnabled?: boolean;
+  /** Why the visitor signs in, when a page sent them here. */
+  readonly purpose?: SignInPurpose;
 };
 
 const signInEmailMaximumLength = 255;
@@ -72,6 +75,7 @@ export function SignInCard({
   locale,
   returnTo,
   passkeysEnabled = false,
+  purpose,
 }: SignInCardProps) {
   const [failure, setFailure] = useState<SignInEmailFailure | null>(null);
   const [storedRequest, setRequest] = useEmailSignInRequest();
@@ -172,10 +176,14 @@ export function SignInCard({
         {m.accountSignInEyebrow({}, { locale })}
       </p>
       <h1 className="mt-3 text-3xl text-navy-blue">
-        {m.accountSignInTitle({}, { locale })}
+        {purpose === "reservation"
+          ? m.accountSignInReservationTitle({}, { locale })
+          : m.accountSignInTitle({}, { locale })}
       </h1>
       <p className="mt-3 text-sm leading-6 text-navy-blue/68">
-        {m.accountSignInDescription({}, { locale })}
+        {purpose === "reservation"
+          ? m.accountSignInReservationDescription({}, { locale })
+          : m.accountSignInDescription({}, { locale })}
       </p>
       <Form {...form}>
         <form

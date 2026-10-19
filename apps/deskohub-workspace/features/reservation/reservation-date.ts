@@ -3,6 +3,8 @@ import type { Locale } from "@/features/i18n";
 import {
   formatInstantDate,
   formatInstantDateRange,
+  formatPlainDate,
+  formatPlainDateRange,
 } from "@/shared/utils/date-time-format";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
@@ -76,6 +78,30 @@ export const formatReservationDisplayDateRange = (
     timeZone: workspaceSiteConstants.location.timeZone,
   });
 };
+
+/** A reservation's calendar date, written out as reservation summaries show it. */
+export const formatReservationDisplayPlainDate = (
+  date: Temporal.PlainDate,
+  locale: Locale
+) =>
+  formatPlainDate({
+    date,
+    locale,
+    dateStyle: reservationDisplayDateFormatOptions.dateStyle,
+  });
+
+/** An inclusive range of reservation calendar dates. */
+export const formatReservationDisplayPlainDateRange = (
+  start: Temporal.PlainDate,
+  end: Temporal.PlainDate,
+  locale: Locale
+) =>
+  formatPlainDateRange({
+    start,
+    end,
+    locale,
+    dateStyle: reservationDisplayDateFormatOptions.dateStyle,
+  });
 
 export const formatReservationInputDate = (
   date: string,

@@ -28,6 +28,7 @@ import {
   ReservationSubmitFallback,
 } from "@/features/reservation/components/reservation-form-fallback";
 import { ReservationFormLabel } from "@/features/reservation/components/reservation-form-label";
+import { getReservationAdvertisedTotal } from "@/features/reservation/components/reservation-selection-summary";
 import {
   ReservationTypeInput,
   ReservationTypeOption,
@@ -72,6 +73,7 @@ import {
   FormMessage,
 } from "@/shared/components/ui/form";
 import { cn } from "@/shared/utils";
+import { getMeetingRoomReservationSelectionSummary } from "./meeting-room-reservation-selection-summary";
 
 type MeetingRoomReservationFormProps = {
   readonly checkoutSessionId?: CheckoutSessionId;
@@ -232,6 +234,9 @@ export function MeetingRoomReservationForm({
               ),
             }
           : undefined,
+        total: advertisedPrice
+          ? getReservationAdvertisedTotal(advertisedPrice.quote.payment)
+          : undefined,
       }}
       availability={{
         isPending: availabilityQueryResult.isPending,
@@ -241,6 +246,14 @@ export function MeetingRoomReservationForm({
       form={form}
       getReservation={getMeetingRoomReservationOrder}
       locale={locale}
+      selectionSummary={getMeetingRoomReservationSelectionSummary(
+        {
+          duration: selectedDuration,
+          interval: selectedInterval,
+          isWholeDay: isWholeDaySelected,
+        },
+        locale
+      )}
     >
       <FormField
         control={form.control}

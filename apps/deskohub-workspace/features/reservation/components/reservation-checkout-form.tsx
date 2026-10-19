@@ -1,10 +1,12 @@
 "use client";
 
 import type { FormEvent, ReactNode } from "react";
-import type { FieldValues, UseFormReturn } from "react-hook-form";
+import type { FieldPath, FieldValues, UseFormReturn } from "react-hook-form";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
+import type { CheckoutStatusSummaryPresentation } from "@/features/checkout/checkout-status-summary-presentation";
 import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-summary";
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page-skeleton";
+import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import type { ReservationBillingSelectionInput } from "@/features/reservation/reservation-billing";
 import type {
@@ -24,9 +26,11 @@ import { ReservationFormCard } from "./reservation-form-card";
 import { ReservationFormSale } from "./reservation-form-sale";
 import { ReservationMarketingConsentField } from "./reservation-marketing-consent-field";
 import { ReservationPrivacyNotice } from "./reservation-privacy-notice";
+import { ReservationSelectionSummary } from "./reservation-selection-summary";
 import { ReservationSubmitSection } from "./reservation-submit-section";
 import { useCheckoutEmailVerification } from "./use-checkout-email-verification";
 import { useReservationCheckout } from "./use-reservation-checkout";
+import { useReservationCheckoutStep } from "./use-reservation-checkout-step";
 
 type ReservationFormData = FieldValues &
   ReservationContactValues & {
@@ -47,6 +51,11 @@ type ReservationCheckoutFormProps<
       readonly discounts: readonly CheckoutSummaryDiscount[];
       readonly productLabel: string;
     };
+    /** The selection's advertised total, with the price before discounts. */
+    readonly total?: {
+      readonly amount: WorkspaceMoney;
+      readonly originalAmount?: WorkspaceMoney;
+    };
   };
   readonly availability: {
     /**
@@ -63,7 +72,23 @@ type ReservationCheckoutFormProps<
   readonly form: UseFormReturn<Input, unknown, Data>;
   readonly getReservation: (data: Data) => ReservationOrderIssuanceData;
   readonly locale: Locale;
+  /** The space picked at the first step, summarized at the contact step. */
+  readonly selectionSummary: CheckoutStatusSummaryPresentation;
 };
+
+/**
+ * The fields of the contact-details step. Every other field belongs to the
+ * space picked at the first step.
+ */
+const contactStepFieldNames: ReadonlySet<string> = new Set([
+  "address",
+  "billing",
+  "email",
+  "emailConfirmation",
+  "marketingConsent",
+  "name",
+  "phone",
+]);
 
 export function ReservationCheckoutForm<
   Input extends FieldValues,
@@ -77,7 +102,9 @@ export function ReservationCheckoutForm<
   form,
   getReservation,
   locale,
+  selectionSummary,
 }: ReservationCheckoutFormProps<Input, Data>) {
+  const checkoutStep = useReservationCheckoutStep();
   const existingCustomer =
     checkoutCustomer.status === "linked"
       ? checkoutCustomer.existingCustomer
@@ -149,12 +176,36 @@ export function ReservationCheckoutForm<
           reservation: getReservation(data),
         });
       },
-      () => {
+      (errors) => {
         if (booksForSomeoneElse) confirmReservationContactEmail(form, locale);
         capturePrePaymentOutcome("validation");
+        // A selection that went stale since the first step is fixed there.
+        if (
+          Object.keys(errors).some((name) => !contactStepFieldNames.has(name))
+        ) {
+          checkoutStep.goTo("selection");
+        }
       }
     )(event);
   };
+
+  const continueToContact = async () => {
+    clearSubmissionError();
+    const selectionFieldNames = Object.keys(form.getValues()).filter(
+      (name) => !contactStepFieldNames.has(name)
+    ) as FieldPath<Input>[];
+    if (!(await form.trigger(selectionFieldNames, { shouldFocus: true }))) {
+      capturePrePaymentOutcome("validation");
+      return;
+    }
+    if (availability.unavailableMessage) {
+      capturePrePaymentOutcome("availability_changed");
+      setSubmissionError(availability.unavailableMessage);
+      return;
+    }
+    checkoutStep.goTo("contact");
+  };
+  const isContactStep = checkoutStep.step === "contact";
 
   if (isPreparingCheckout) {
     return <CheckoutPayPageSkeleton locale={locale} />;
@@ -174,25 +225,37 @@ export function ReservationCheckoutForm<
     >
       <Form {...form}>
         <form className="space-y-7" noValidate onSubmit={handleSubmit}>
-          {children}
-          <ReservationCustomerSection
-            checkoutCustomer={checkoutCustomer}
-            customer={customer}
-            locale={locale}
-          />
-          <ReservationBillingFields locale={locale} />
-          <ReservationPrivacyNotice locale={locale} />
-          {asksMarketingConsent && (
-            <ReservationMarketingConsentField locale={locale} />
-          )}
-          {checkoutCustomer.status === "signed-out" && (
-            <ReservationContactHint>
-              {m.reservationContactVerificationHint({}, { locale })}
-            </ReservationContactHint>
-          )}
+          {/* Both steps stay mounted, so going back keeps what was typed. */}
+          <div className="space-y-7" hidden={isContactStep}>
+            {children}
+          </div>
+          <div className="space-y-7" hidden={!isContactStep}>
+            <ReservationSelectionSummary
+              locale={locale}
+              onChange={() => checkoutStep.goTo("selection")}
+              summary={selectionSummary}
+              total={advertisedPrice.total}
+            />
+            <ReservationCustomerSection
+              checkoutCustomer={checkoutCustomer}
+              customer={customer}
+              locale={locale}
+            />
+            <ReservationBillingFields locale={locale} />
+            <ReservationPrivacyNotice locale={locale} />
+            {asksMarketingConsent && (
+              <ReservationMarketingConsentField locale={locale} />
+            )}
+            {checkoutCustomer.status === "signed-out" && (
+              <ReservationContactHint>
+                {m.reservationContactVerificationHint({}, { locale })}
+              </ReservationContactHint>
+            )}
+          </div>
           <ReservationSubmitSection
             disabled={
               form.formState.isSubmitting ||
+              (isContactStep && checkoutCustomer.status === "unavailable") ||
               isSubmittingCheckout ||
               emailVerification.isVerifying ||
               hasPreparedPayRedirect ||
@@ -208,6 +271,9 @@ export function ReservationCheckoutForm<
               advertisedPrice.isFetching && !advertisedPrice.token
             }
             locale={locale}
+            onContinue={
+              isContactStep ? undefined : () => void continueToContact()
+            }
             onRetryPrice={advertisedPrice.retry}
             priceError={advertisedPrice.isError}
             retryingPrice={advertisedPrice.isFetching}

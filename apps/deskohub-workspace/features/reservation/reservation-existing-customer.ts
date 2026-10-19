@@ -61,7 +61,9 @@ export type ReservationCheckoutAccount<
   | {
       readonly status: "linked";
       readonly customer: ReservationExistingCustomer<Kind>;
-    };
+    }
+  /** The session or its profile couldn't be read. */
+  | { readonly status: "unavailable" };
 
 /**
  * Whether the reservation form opens on the account card or on the contact
@@ -164,6 +166,7 @@ export const getReservationExistingCustomerForm = <
 /** What the reservation form needs for its contact-details step. */
 export type ReservationCheckoutCustomerForm =
   | { readonly status: "signed-out" }
+  | { readonly status: "unavailable" }
   | {
       readonly status: "profile-missing";
       /** The account's login email, which the profile books with. */
@@ -230,9 +233,9 @@ export const getReservationCheckoutCustomerForm = <
       }
     : values;
 
-  if (account.status === "signed-out") {
+  if (account.status === "signed-out" || account.status === "unavailable") {
     return {
-      checkoutCustomer: { status: "signed-out" },
+      checkoutCustomer: { status: account.status },
       initialValues: typedValues,
     };
   }

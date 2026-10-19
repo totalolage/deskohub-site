@@ -30,9 +30,10 @@ import { WorkspaceAvailabilityService } from "./workspace-availability.service";
 /**
  * Who reaches a reservation page's contact-details step: signed out, signed
  * in without a usable profile, or the linked customer the page books for by
- * default, with their latest reservation of the page's family. Any account
- * failure renders the signed-out form, whose email verification signs in
- * again.
+ * default, with their latest reservation of the page's family. An account
+ * that can't be read is `unavailable`, so the page offers a retry instead of
+ * booking as someone it doesn't know; without account configuration, every
+ * visitor is signed out.
  */
 export const loadReservationCheckoutAccount = cache(
   async <Kind extends WorkspaceReservationKind>(
@@ -58,9 +59,11 @@ export const loadReservationCheckoutAccount = cache(
       runWorkspaceEffect("reservation.existing-customer", { boundary: "page" })
     );
 
-    return Result.isSuccess(account)
-      ? account.success
-      : { status: "signed-out" };
+    if (Result.isSuccess(account)) return account.success;
+    return account.failure._tag === "CustomerAccountAccessError" &&
+      account.failure.reason === "not-configured"
+      ? { status: "signed-out" }
+      : { status: "unavailable" };
   }
 );
 

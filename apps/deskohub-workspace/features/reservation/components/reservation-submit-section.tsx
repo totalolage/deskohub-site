@@ -9,6 +9,8 @@ type ReservationSubmitSectionProps = {
   readonly isAvailabilityLoading: boolean;
   readonly isPriceLoading: boolean;
   readonly locale: Locale;
+  /** Continues to the next step instead of submitting the form. */
+  readonly onContinue?: () => void;
   readonly onRetryPrice: () => void;
   readonly priceError: boolean;
   readonly retryingPrice: boolean;
@@ -21,6 +23,7 @@ export function ReservationSubmitSection({
   isAvailabilityLoading,
   isPriceLoading,
   locale,
+  onContinue,
   onRetryPrice,
   priceError,
   retryingPrice,
@@ -38,8 +41,9 @@ export function ReservationSubmitSection({
         data-reservation-price-loading={isPriceLoading}
         data-reservation-unavailable={Boolean(unavailableMessage)}
         disabled={disabled}
-        id="reservation-submit"
-        type="submit"
+        id={onContinue ? "reservation-continue" : "reservation-submit"}
+        onClick={onContinue}
+        type={onContinue ? "button" : "submit"}
       >
         <ArrowRight className="h-4 w-4" />
         {m.checkoutContinueButton({}, { locale })}
