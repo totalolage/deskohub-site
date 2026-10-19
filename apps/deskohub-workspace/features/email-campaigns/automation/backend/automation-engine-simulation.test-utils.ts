@@ -1,4 +1,12 @@
-import { Context, Deferred, Duration, Effect, Exit, Fiber, Latch } from "effect";
+import {
+  Context,
+  Deferred,
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  Latch,
+} from "effect";
 import { TestClock } from "effect/testing";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
 import { AutomationPlanner } from "./automation-planner.service";
@@ -46,13 +54,17 @@ type SimulatedConsumer = {
 };
 
 /** One delivery of a unit message to a consumer, as the simulation saw it. */
-export type SimulatedDelivery = {
+type SimulatedDelivery = {
   readonly unitId: AutomationWorkUnitId;
   readonly deliveredAt: Temporal.Instant;
   /** When the consumer finished; undefined while it runs. */
   readonly settledAt: Temporal.Instant | undefined;
   readonly requests: number;
-  readonly outcome: AutomationUnitOutcome | "redelivered" | "killed" | undefined;
+  readonly outcome:
+    | AutomationUnitOutcome
+    | "redelivered"
+    | "killed"
+    | undefined;
 };
 
 type SimulationEvent =
@@ -81,7 +93,7 @@ const instantOf = (millis: number) =>
  * published unit message reaches a consumer `overhead` later (claim,
  * commit, hand-off and queue delivery, the model's o); a consumer that
  * fails is redelivered 60 s later; and each Dotypos request a fake routes
- * through `dotyposRequest` holds its consumer for the current `latency`
+ * through `dotyposRequest` holds its consumer for `latency`
  * (the model's L). Time advances only once every consumer is parked in a
  * request or finished, one event at a time in (time, sequence) order, so
  * same-instant commits never race. The processor's 270 s fetch deadline is
@@ -94,13 +106,13 @@ export const makeAutomationEngineSimulation = (input: {
   readonly overhead: Duration.Input;
 }) => {
   let now = input.start.epochMilliseconds;
-  let latency = Duration.toMillis(Duration.fromInputUnsafe(input.latency));
+  const latency = Duration.toMillis(Duration.fromInputUnsafe(input.latency));
   const overhead = Duration.toMillis(Duration.fromInputUnsafe(input.overhead));
   let sequence = 0;
   const events: ScheduledEvent[] = [];
   const consumers: SimulatedConsumer[] = [];
   const pendingKills: Array<{
-    readonly unitId: AutomationWorkUnitId;
+    readonly unitId: AutomationWorkUnitId | undefined;
     readonly onRequest: number;
   }> = [];
   let running = 0;
@@ -133,7 +145,7 @@ export const makeAutomationEngineSimulation = (input: {
   schedule(firstPlanAt, { kind: "plan" });
 
   /**
-   * Holds the calling consumer for the current latency. Fakes call it
+   * Holds the calling consumer for the latency. Fakes call it
    * before answering each Dotypos request; it returns the request's
    * consumer and its 1-based number within the delivery, or undefined
    * outside a simulated consumer (setup reads).
@@ -141,6 +153,15 @@ export const makeAutomationEngineSimulation = (input: {
   const dotyposRequest = Effect.gen(function* () {
     const consumer = yield* SimulatedConsumer;
     if (consumer === undefined) return undefined;
+    if (consumer.park !== undefined) {
+      // A unit's requests are sequential (§5.3); a second one in flight
+      // would also stall the driver, which waits for the first.
+      return yield* Effect.die(
+        new Error(
+          `Unit ${consumer.unitId} made concurrent Dotypos requests (§5.3)`
+        )
+      );
+    }
     consumer.requests += 1;
     const request = {
       unitId: consumer.unitId,
@@ -168,7 +189,7 @@ export const makeAutomationEngineSimulation = (input: {
   ) {
     const processor = yield* AutomationUnitProcessor;
     const killIndex = pendingKills.findIndex(
-      (kill) => kill.unitId === message.unitId
+      (kill) => kill.unitId === undefined || kill.unitId === message.unitId
     );
     const kill = killIndex === -1 ? undefined : pendingKills[killIndex];
     if (killIndex !== -1) pendingKills.splice(killIndex, 1);
@@ -192,6 +213,9 @@ export const makeAutomationEngineSimulation = (input: {
       Effect.flatMap((exit) =>
         Effect.sync(() => {
           if (consumer.outcome === "killed") return;
+          // A request the fiber abandoned (an interrupted sibling) never wakes it.
+          if (consumer.park !== undefined) consumer.park.cancelled = true;
+          consumer.park = undefined;
           consumer.settledAt = now;
           if (Exit.isSuccess(exit)) {
             consumer.outcome = exit.value;
@@ -230,7 +254,7 @@ export const makeAutomationEngineSimulation = (input: {
           return yield* consume(event.message);
         case "wake": {
           const { park } = event;
-          if (park.cancelled) return;
+          if (park.cancelled || park.consumer.state === "done") return;
           park.consumer.park = undefined;
           setState(park.consumer, "running");
           Deferred.doneUnsafe(park.deferred, Exit.void);
@@ -262,7 +286,9 @@ export const makeAutomationEngineSimulation = (input: {
       }
     });
 
-  const settle = quiescent.await.pipe(Effect.andThen(Effect.sync(collectPublished)));
+  const settle = quiescent.await.pipe(
+    Effect.andThen(Effect.sync(collectPublished))
+  );
 
   /**
    * Runs events up to `until` (inclusive), or until `stopWhen` holds; it is
@@ -279,11 +305,13 @@ export const makeAutomationEngineSimulation = (input: {
       const until = options.until.epochMilliseconds;
       yield* TestClock.setTime(now);
       yield* settle;
+      let stopped = false;
       for (;;) {
         const next = events[0];
         if (next === undefined || next.at > until) break;
         if (next.at > now) {
-          if (options.stopWhen && (yield* options.stopWhen)) break;
+          stopped = options.stopWhen !== undefined && (yield* options.stopWhen);
+          if (stopped) break;
           now = next.at;
         }
         events.shift();
@@ -295,8 +323,8 @@ export const makeAutomationEngineSimulation = (input: {
         yield* settle;
         if (options.afterEvent) yield* options.afterEvent;
       }
-      if (!(options.stopWhen && (yield* options.stopWhen))) {
-        now = Math.max(now, Math.min(until, events[0]?.at ?? until));
+      if (!stopped) {
+        now = Math.max(now, until);
         yield* TestClock.setTime(now);
       }
       return instantOf(now);
@@ -307,16 +335,21 @@ export const makeAutomationEngineSimulation = (input: {
     run,
     /** Simulated now. */
     now: () => instantOf(now),
-    setLatency: (next: Duration.Input) => {
-      latency = Duration.toMillis(Duration.fromInputUnsafe(next));
-    },
     /**
-     * Interrupts the next consumer of `unitId` at its `onRequest`-th
-     * Dotypos request, as a crashed invocation: its claim stays until the
-     * reaper takes it over.
+     * Interrupts the next consumer (of `unitId`, if given) at its
+     * `onRequest`-th Dotypos request, as a crashed invocation: its claim
+     * stays until the reaper takes it over.
      */
-    killDuringRequest: (unitId: AutomationWorkUnitId, onRequest = 1) => {
-      pendingKills.push({ unitId, onRequest });
+    killNextConsumer: (
+      options: {
+        readonly unitId?: AutomationWorkUnitId;
+        readonly onRequest?: number;
+      } = {}
+    ) => {
+      pendingKills.push({
+        unitId: options.unitId,
+        onRequest: options.onRequest ?? 1,
+      });
     },
     deliveries: (): readonly SimulatedDelivery[] =>
       consumers.map((consumer) => ({
@@ -329,8 +362,6 @@ export const makeAutomationEngineSimulation = (input: {
         requests: consumer.requests,
         outcome: consumer.outcome,
       })),
-    /** Consumers currently inside a delivery. */
-    inFlight: () => consumers.filter((consumer) => consumer.state !== "done").length,
   };
 };
 
