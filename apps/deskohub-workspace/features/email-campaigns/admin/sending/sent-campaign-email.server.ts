@@ -3,8 +3,8 @@ import "server-only";
 import { Effect } from "effect";
 import type { CampaignRow } from "@/db/schema";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { renderCampaignEmailPreview } from "../../body/render-campaign-email-preview";
 import { campaignLocales } from "../../recipient-locale";
-import { renderCampaignEmailPreview } from "../email-preview/render-campaign-email-preview";
 
 /**
  * Each locale the campaign has content for, Czech first, rendered as the

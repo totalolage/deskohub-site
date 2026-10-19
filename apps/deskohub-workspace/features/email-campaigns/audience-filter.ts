@@ -362,6 +362,18 @@ export const audienceTopLevelClauses = <Leaf extends { readonly _tag: string }>(
 ): readonly AudienceFilterOf<Leaf>[] =>
   isAudienceFilterGroup(filter) ? filter.filters : [filter];
 
+/** The tree with each leaf replaced by `mapLeaf`, its groups kept as they are. */
+export const mapAudienceLeaves = <Leaf extends { readonly _tag: string }>(
+  filter: AudienceFilterOf<Leaf>,
+  mapLeaf: (leaf: Leaf) => Leaf
+): AudienceFilterOf<Leaf> =>
+  isAudienceFilterGroup(filter)
+    ? {
+        ...filter,
+        filters: filter.filters.map((node) => mapAudienceLeaves(node, mapLeaf)),
+      }
+    : mapLeaf(filter);
+
 /** Every leaf of the tree, in order. */
 export const audienceLeavesOf = <Leaf extends { readonly _tag: string }>(
   filter: AudienceFilterOf<Leaf>

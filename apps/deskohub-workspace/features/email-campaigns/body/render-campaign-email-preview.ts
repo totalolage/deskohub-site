@@ -5,11 +5,11 @@ import type {
   CampaignLocaleContent,
   CampaignPurpose,
   CampaignTemplateKey,
-} from "../../body/campaign-content";
+} from "./campaign-content";
 import {
   CampaignEmailFooter,
   renderCampaignEmail,
-} from "../../body/render-campaign-email";
+} from "./render-campaign-email";
 
 /**
  * Renders one locale of a campaign for an admin preview, with the purpose's

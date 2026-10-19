@@ -17,11 +17,11 @@ import {
   CampaignPurpose,
   CampaignTemplateKey,
 } from "../../body/campaign-content";
+import { renderCampaignEmailPreview } from "../../body/render-campaign-email-preview";
 import {
   campaignAudienceIdSchema,
   campaignIdSchema,
 } from "../../campaign-identifiers";
-import { renderCampaignEmailPreview } from "../email-preview/render-campaign-email-preview";
 import { campaignReferenceStandardSchema } from "../sending/contracts";
 
 const parseOptions = {

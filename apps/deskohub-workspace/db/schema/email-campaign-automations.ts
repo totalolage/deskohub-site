@@ -548,7 +548,11 @@ export const emailCampaignAutomationPreviews = pgTable(
     asOf: instant("as_of").notNull(),
     unitsTotal: integer("units_total").notNull(),
     unitsDone: integer("units_done").notNull().default(0),
-    counts: jsonb("counts").notNull().default(sql`'{}'::jsonb`),
+    /** Rows written per outcome; an outcome without rows may be absent. */
+    counts: jsonb("counts")
+      .notNull()
+      .default(sql`'{}'::jsonb`)
+      .$type<Partial<Record<AutomationPreviewOutcome, number>>>(),
     eventsTotal: integer("events_total"),
     errorCode: text("error_code"),
     createdAt: instant("created_at").notNull().default(sql`now()`),

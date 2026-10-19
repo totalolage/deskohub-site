@@ -61,6 +61,16 @@ export class AutomationPreviewRequired extends Data.TaggedError(
   static readonly code = "automation-preview-required";
 }
 
+/** No dry run has this id, or housekeeping removed it a day after it started. */
+export class AutomationPreviewNotFound extends Data.TaggedError(
+  "AutomationPreviewNotFound"
+)<{
+  readonly previewId: AutomationPreviewId;
+}> {
+  /** Stable across transports, so clients can tell this rejection apart. */
+  static readonly code = "automation-preview-not-found";
+}
+
 /**
  * The working copy or the campaign audience changed after the dry run, so
  * the dry run no longer describes what activation would publish.
