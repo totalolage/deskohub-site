@@ -2,7 +2,14 @@ import { afterEach, expect, mock, setSystemTime, test } from "bun:test";
 import type { Customer } from "@deskohub/dotypos/generated";
 import { Effect, Exit, Layer, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import { getAccountSectionPath } from "@/features/account/routes";
+import {
+  encodeAuthCallbackReturn,
+  getAccountSectionPath,
+  getAccountSignInPath,
+  readAuthCallbackReturnTo,
+  signInCallbackReturnParam,
+} from "@/features/account/routes";
+import { m } from "@/features/i18n";
 import { referralCodeCookieName } from "@/features/referrals/referral-code-cookie";
 import type { DatasourceConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -199,8 +206,52 @@ type OpenAccountResult = {
 
 type ConsumeResult = {
   readonly destination: string;
+  /** Whether the link landed on the rejected-link card. */
+  readonly failed?: boolean;
   readonly text: string;
 };
+
+/** The page a sign-in email was requested from, which its link returns to. */
+type FakeSignInOrigin = {
+  readonly locale: FakeLocale;
+  readonly returnTo?: string;
+};
+
+/** The callback a synthetic link carries: its locale and return target. */
+const readFakeCallback = (link: string) => {
+  const callback = new URL(
+    new URL(link).searchParams.get("callbackURL") ?? "",
+    "https://callback.invalid"
+  );
+  const locale = fakeLocalePath.exec(callback.pathname)?.[1] as
+    | FakeLocale
+    | undefined;
+  if (locale === undefined) throw new Error("the synthetic link has no locale");
+  return {
+    locale,
+    path: callback.pathname,
+    returnTo: readAuthCallbackReturnTo(
+      callback.searchParams.get(signInCallbackReturnParam)
+    ),
+  };
+};
+
+/** The accepted inbox notice as the sign-in card renders it. */
+const fakeAcceptedInboxText = (locale: FakeLocale) =>
+  [
+    m.accountSignInAcceptedTitle({}, { locale }),
+    m.accountSignInAcceptedBody({}, { locale }),
+    m.accountSignInAcceptedSameBrowser({}, { locale }),
+    m.accountSignInAssistantBrowserHint({}, { locale }),
+  ].join(" ");
+
+/** The rejected-link card, with its request-a-new-link action. */
+const fakeCallbackFailedText = (locale: FakeLocale) =>
+  [
+    m.accountCallbackFailedTitle({}, { locale }),
+    m.accountCallbackFailedBody({}, { locale }),
+    m.accountCallbackFailedAction({}, { locale }),
+  ].join(" ");
 
 /**
  * A stateful, provider-shaped boundary for the account case factory. The
@@ -239,6 +290,13 @@ class FakeAccountExternalState {
   readonly usersById = new Map<string, FakeUser>();
   readonly linksByUserId = new Map<string, string>();
   readonly consumedLinks = new Set<string>();
+  /** When the cross-browser sign-in opened and closed its second browser. */
+  readonly assistantBrowserEvents: Array<"close" | "open"> = [];
+  /** The cross-browser sign-in's review moments, in capture order. */
+  readonly signInHandoffReviews: Array<{
+    readonly stage: string;
+    readonly url: string;
+  }> = [];
   readonly languageSaves: Array<"cs-CZ" | "en-US"> = [];
   readonly switcherSaves: Array<"cs-CZ" | "en-US"> = [];
   readonly languageReviews: Array<{
@@ -677,7 +735,11 @@ class FakeAccountExternalState {
     this.localePreference = locale;
   }
 
-  sendMessage(email: string, kind: "sign-in" | "reauthentication") {
+  sendMessage(
+    email: string,
+    kind: "sign-in" | "reauthentication",
+    origin?: FakeSignInOrigin
+  ) {
     let messageKind: FakeMessageKind;
     if (kind === "reauthentication") {
       messageKind = "reauthentication";
@@ -688,7 +750,7 @@ class FakeAccountExternalState {
     } else {
       messageKind = "initial-main";
     }
-    const message = this.makeMessage(email, messageKind);
+    const message = this.makeMessage(email, messageKind, origin);
     this.events.push({
       id: message.id,
       kind: message.kind,
@@ -758,17 +820,30 @@ class FakeAccountExternalState {
     return "verified";
   }
 
+  isConsumedLink(link: string) {
+    return this.consumedLinks.has(link);
+  }
+
   consumeLink(link: string): ConsumeResult {
     const message = [...this.messagesByRecipient.values()]
       .flat()
       .find((candidate) => candidate.link === link);
     if (!message) throw new Error("unknown synthetic magic link");
 
+    const callback = readFakeCallback(link);
     if (message.consumed) {
       this.events.push({ id: message.id, type: "replay" });
+      const failure = new URLSearchParams({ error: "INVALID_TOKEN" });
+      if (callback.returnTo !== undefined) {
+        failure.set(
+          signInCallbackReturnParam,
+          encodeAuthCallbackReturn(callback.returnTo)
+        );
+      }
       return {
-        destination: "/en-US/auth/callback",
-        text: callbackFailedTitle,
+        destination: `${callback.path}?${failure}`,
+        failed: true,
+        text: fakeCallbackFailedText(callback.locale),
       };
     }
 
@@ -847,10 +922,15 @@ class FakeAccountExternalState {
           historyPresent: this.historyReady,
           userId: newUserId,
         });
-        return {
-          destination: "/en-US/account",
-          text: "Current and upcoming",
-        };
+        // The new account has no preference, so the sign-in saves the
+        // callback's locale as it.
+        this.localePreference = callback.locale;
+        return callback.returnTo === undefined
+          ? { destination: "/en-US/account", text: "Current and upcoming" }
+          : {
+              destination: callback.returnTo,
+              text: `Booking as ${message.recipient}`,
+            };
       }
       case "accepted-b":
         throw new Error("the generic accepted-b message must not be consumed");
@@ -974,11 +1054,18 @@ class FakeAccountExternalState {
     };
   }
 
-  private makeMessage(email: string, kind: FakeMessageKind): FakeMessage {
+  private makeMessage(
+    email: string,
+    kind: FakeMessageKind,
+    origin: FakeSignInOrigin = { locale: this.config.locale }
+  ): FakeMessage {
     this.messageSequence += 1;
     const id = `message-${this.messageSequence}`;
     const token = `synthetic-token-${this.messageSequence}`;
-    const callbackURL = `/${this.config.locale}/auth/callback`;
+    const callbackURL =
+      origin.returnTo === undefined
+        ? `/${origin.locale}/auth/callback`
+        : `/${origin.locale}/auth/callback?${signInCallbackReturnParam}=${encodeAuthCallbackReturn(origin.returnTo)}`;
     const link = `${this.config.baseUrl}/api/auth/magic-link/verify?token=${token}&callbackURL=${encodeURIComponent(callbackURL)}`;
     const message = {
       code: String(100_000 + this.messageSequence),
@@ -1053,13 +1140,22 @@ class FakeBrowser {
   private codeInputEmpty = false;
   private codeStepsShown = 0;
   /**
-   * The sign-in card's sessionStorage code request, which a later sign-in
-   * page in the same tab restores until a code signs in or the customer
-   * switches email.
+   * The sign-in card's sessionStorage request, which a later sign-in page in
+   * the same tab restores, when it has no return target or the request's,
+   * until a link or code signs this tab in or the customer switches email.
    */
-  private storedCodeRecipient: string | undefined;
+  private storedRequest:
+    | { readonly recipient: string; readonly returnTo: string | undefined }
+    | undefined;
 
-  constructor(readonly external: FakeAccountExternalState) {}
+  /**
+   * `anonymous` is the assistant's browser of the cross-browser sign-in: a
+   * second browser context, which no link the lane consumes signs in.
+   */
+  constructor(
+    readonly external: FakeAccountExternalState,
+    private readonly anonymous = false
+  ) {}
 
   /**
    * The select value is the page locale. Re-picking it fires no
@@ -1070,6 +1166,7 @@ class FakeBrowser {
   }
 
   private signedIn(): boolean {
+    if (this.anonymous) return false;
     const userId = this.external.currentAuthUserId;
     return userId !== undefined && this.external.usersById.has(userId);
   }
@@ -1149,13 +1246,42 @@ class FakeBrowser {
     this.formReady = false;
     this.codeStepsShown += 1;
     const masked = `${recipient.slice(0, 1)}•••${recipient.slice(recipient.lastIndexOf("@"))}`;
+    if (dialog) {
+      this.pageText = [
+        deletionReauthCodeTitle,
+        `We emailed a 6-digit code to ${masked}. It expires in 10 minutes.`,
+        "6-digit code",
+        `Send a new email in ${61 - this.codeStepsShown} s`,
+      ].join("\n");
+      return;
+    }
+    const locale = this.pageLocale();
     this.pageText = [
-      dialog ? deletionReauthCodeTitle : signInCodeTitle,
-      `We emailed a 6-digit code to ${masked}. It expires in 10 minutes.`,
-      "6-digit code",
+      m.accountSignInCodeTitle({}, { locale }),
+      m.accountSignInCodeBody({ email: masked }, { locale }),
+      m.accountSignInCodeLabel({}, { locale }),
       `Send a new email in ${61 - this.codeStepsShown} s`,
-      ...(dialog ? [] : [useDifferentEmailLabel]),
+      m.accountSignInCodeChangeEmail({}, { locale }),
+      m.accountSignInCodeAssistantHint({}, { locale }),
+      m.accountSignInAssistantBrowserHint({}, { locale }),
     ].join("\n");
+  }
+
+  /** The sent step a sign-in page restores from this tab's request. */
+  private restoreStoredRequest(requestedReturnTo: string | undefined) {
+    const request = this.storedRequest;
+    if (
+      request === undefined ||
+      (requestedReturnTo !== undefined && request.returnTo !== requestedReturnTo)
+    ) {
+      return;
+    }
+    if (this.external.signInCodes) {
+      this.showCodeStep(request.recipient, false);
+      return;
+    }
+    this.pageText = fakeAcceptedInboxText(this.pageLocale());
+    this.formReady = false;
   }
 
   /** A document navigation through the proxy. */
@@ -1182,9 +1308,30 @@ class FakeBrowser {
       this.formReady = true;
       this.emailValue = "";
       this.nativeValidationBlocked = false;
-      if (this.storedCodeRecipient !== undefined) {
-        this.showCodeStep(this.storedCodeRecipient, false);
-      }
+      this.restoreStoredRequest(
+        parsed.searchParams.get("returnTo") ?? undefined
+      );
+      return;
+    }
+    if (
+      this.anonymous &&
+      locale !== undefined &&
+      (suffix === "/account" || suffix === "/account/profile")
+    ) {
+      this.navigate(
+        `${this.external.config.baseUrl}${getAccountSignInPath(locale)}`
+      );
+      return;
+    }
+    if (locale !== undefined && suffix === "/reservation/cowork") {
+      this.currentUrl = url;
+      const userId = this.external.currentAuthUserId;
+      const email =
+        this.signedIn() && userId !== undefined
+          ? this.external.usersById.get(userId)?.email
+          : undefined;
+      this.pageText = email === undefined ? "Cowork" : `Booking as ${email}`;
+      this.formReady = false;
       return;
     }
     if (
@@ -1221,11 +1368,8 @@ class FakeBrowser {
       if (result.text === completionTitle) {
         this.referralFieldValue = this.referralCookie;
       }
-      if (
-        result.destination.endsWith("/auth/sign-in") &&
-        this.storedCodeRecipient !== undefined
-      ) {
-        this.showCodeStep(this.storedCodeRecipient, false);
+      if (result.destination.endsWith("/auth/sign-in")) {
+        this.restoreStoredRequest(undefined);
       }
       return;
     }
@@ -1249,16 +1393,27 @@ class FakeBrowser {
       return;
     }
     if (parsed.pathname === "/api/auth/magic-link/verify") {
+      if (this.anonymous && !this.external.isConsumedLink(url)) {
+        throw new Error("the assistant's browser consumed an unused link");
+      }
       const result = this.external.consumeLink(url);
       // A completed link sign-in forgets the tab's stored code request.
-      if (result.text !== callbackFailedTitle) {
-        this.storedCodeRecipient = undefined;
+      if (!result.failed) {
+        this.storedRequest = undefined;
       }
-      // The callback lands through the proxy like any page request.
+      // The callback lands through the proxy like any page request, and a
+      // rejected link stays on the callback in the link's locale.
       const landing = `${this.external.config.baseUrl}${result.destination}`;
-      const landingLocale = this.resolveLocale("en-US");
+      const destinationLocale = (fakeLocalePath.exec(
+        new URL(landing).pathname
+      )?.[1] ?? "en-US") as FakeLocale;
+      const landingLocale = result.failed
+        ? destinationLocale
+        : this.resolveLocale(destinationLocale);
       this.currentUrl = this.withLocale(landing, landingLocale);
-      this.pageText = this.localizedText(result.text, landingLocale);
+      this.pageText = result.failed
+        ? result.text
+        : this.localizedText(result.text, landingLocale);
       this.formReady = false;
       this.referralFieldValue =
         result.text === completionTitle ? this.referralCookie : undefined;
@@ -1358,7 +1513,7 @@ class FakeBrowser {
         this.codeInputEmpty = true;
         return;
       }
-      this.storedCodeRecipient = undefined;
+      this.storedRequest = undefined;
       this.navigate(
         `${this.external.config.baseUrl}/${this.pageLocale()}/account`
       );
@@ -1381,13 +1536,22 @@ class FakeBrowser {
         this.pageText = "Sign in";
         return;
       }
-      const message = this.external.sendMessage(this.emailValue, "sign-in");
+      const page = new URL(this.currentUrl);
+      const message = this.external.sendMessage(this.emailValue, "sign-in", {
+        locale: this.pageLocale(),
+        returnTo: page.searchParams.get("returnTo") ?? undefined,
+      });
+      if (message.kind !== "reauthentication") {
+        this.storedRequest = {
+          recipient: this.emailValue,
+          returnTo: page.searchParams.get("returnTo") ?? undefined,
+        };
+      }
       if (this.external.signInCodes) {
-        this.storedCodeRecipient = this.emailValue;
         this.showCodeStep(this.emailValue, false);
         return;
       }
-      const response = `${acceptedTitle} ${acceptedBody}`;
+      const response = fakeAcceptedInboxText(this.pageLocale());
       this.pageText =
         message.kind === "reauthentication" ? deletionReauthLinkSent : response;
       this.formReady = false;
@@ -1398,7 +1562,7 @@ class FakeBrowser {
         throw new Error("a different email was chosen outside the code step");
       }
       // The form returns with the address prefilled for editing.
-      this.storedCodeRecipient = undefined;
+      this.storedRequest = undefined;
       this.emailValue = this.codeStep.recipient;
       this.codeStep = undefined;
       this.pageText = "Sign in";
@@ -1410,11 +1574,33 @@ class FakeBrowser {
       if (this.codeStep !== undefined) {
         throw new Error("the code step offers no Send another link control");
       }
-      // The accepted card resets the form in place; the URL keeps its query.
+      // The accepted card drops its request and resets the form in place;
+      // the URL keeps its query.
+      this.storedRequest = undefined;
       this.pageText = "Sign in";
       this.formReady = true;
       this.emailValue = "";
       this.nativeValidationBlocked = false;
+      return;
+    }
+    const failedAction = /^a:has-text\("(.+)"\)$/.exec(selector)?.[1];
+    if (
+      failedAction !== undefined &&
+      failedAction ===
+        m.accountCallbackFailedAction({}, { locale: this.pageLocale() })
+    ) {
+      const callback = new URL(this.currentUrl);
+      if (callback.searchParams.get("error") === null) {
+        throw new Error("the request-a-new-link action is off the failure card");
+      }
+      this.navigate(
+        `${this.external.config.baseUrl}${getAccountSignInPath(
+          this.pageLocale(),
+          readAuthCallbackReturnTo(
+            callback.searchParams.get(signInCallbackReturnParam)
+          )
+        )}`
+      );
       return;
     }
     if (selector === signOutSelector) {
@@ -1621,6 +1807,17 @@ class FakeBrowser {
   }
 
   waitForCondition(description: string, condition: string) {
+    if (description.startsWith("cowork selection ")) {
+      const page = new URL(this.currentUrl);
+      if (
+        !page.pathname.endsWith("/reservation/cowork") ||
+        page.searchParams.get("entryTier") !== "open-space" ||
+        !condition.includes('input[name="entryTier"]:checked')
+      ) {
+        throw new Error("the cowork page does not show the selection");
+      }
+      return;
+    }
     if (description.endsWith(" language control label")) {
       if (
         this.languageControlLabel === null ||
@@ -1813,9 +2010,21 @@ const requireExternal = () => {
   return activeExternal;
 };
 
-const requireBrowser = () => {
+/** The cross-browser sign-in's second browser, open only inside its case. */
+let assistantBrowser: FakeBrowser | undefined;
+const assistantSession = `${session}-assistant`;
+
+const requireBrowser = (browserSession = session) => {
   if (!activeBrowser) throw new Error("synthetic browser is not installed");
-  return activeBrowser;
+  if (browserSession === session) return activeBrowser;
+  if (browserSession !== assistantSession) {
+    throw new Error("the account case drove an unknown browser session");
+  }
+  if (!assistantBrowser) {
+    assistantBrowser = new FakeBrowser(requireExternal(), true);
+    requireExternal().assistantBrowserEvents.push("open");
+  }
+  return assistantBrowser;
 };
 
 const realBrowserModule = await import("../browser");
@@ -1833,45 +2042,55 @@ const browserResult = (stdout = ""): BrowserCommandResult => ({
  */
 mock.module("../browser", () => ({
   ...realBrowserModule,
+  closeBrowserSession: (_run: Runner, browserSession: string) =>
+    Effect.sync(() => {
+      if (browserSession !== assistantSession) {
+        throw new Error("the account case closed the lane browser");
+      }
+      if (assistantBrowser) {
+        assistantBrowser = undefined;
+        requireExternal().assistantBrowserEvents.push("close");
+      }
+    }),
   activateHydratedBrowserElement: (
     _run: Runner,
-    _session: string,
+    browserSession: string,
     selector: string
-  ) => Effect.sync(() => requireBrowser().activate(selector)),
-  clickBrowserElement: (_run: Runner, _session: string, selector: string) =>
-    Effect.sync(() => requireBrowser().click(selector)),
+  ) => Effect.sync(() => requireBrowser(browserSession).activate(selector)),
+  clickBrowserElement: (_run: Runner, browserSession: string, selector: string) =>
+    Effect.sync(() => requireBrowser(browserSession).click(selector)),
   evalBrowserScript: (
     _operation: string,
     _run: Runner,
-    _session: string,
+    browserSession: string,
     input: string
-  ) => Effect.sync(() => browserResult(requireBrowser().eval(input))),
+  ) => Effect.sync(() => browserResult(requireBrowser(browserSession).eval(input))),
   fillBrowserField: (
     _run: Runner,
-    _session: string,
+    browserSession: string,
     selector: string,
     value: string
-  ) => Effect.sync(() => requireBrowser().fill(selector, value)),
-  focusBrowserElement: (_run: Runner, _session: string, selector: string) =>
-    Effect.sync(() => requireBrowser().focus(selector)),
+  ) => Effect.sync(() => requireBrowser(browserSession).fill(selector, value)),
+  focusBrowserElement: (_run: Runner, browserSession: string, selector: string) =>
+    Effect.sync(() => requireBrowser(browserSession).focus(selector)),
   normalizeBrowserText: (text: string) => text.replaceAll(/\s+/g, " ").trim(),
   openBrowserPage: (
     _config: WorkspaceE2EAccountConfig,
     _run: Runner,
-    _session: string,
+    browserSession: string,
     url: string
-  ) => Effect.sync(() => requireBrowser().open(url)),
-  pressBrowserKey: (_run: Runner, _session: string, key: string) =>
-    Effect.sync(() => requireBrowser().press(key)),
-  readBrowserText: (_run: Runner, _session: string) =>
-    Effect.sync(() => requireBrowser().text()),
+  ) => Effect.sync(() => requireBrowser(browserSession).open(url)),
+  pressBrowserKey: (_run: Runner, browserSession: string, key: string) =>
+    Effect.sync(() => requireBrowser(browserSession).press(key)),
+  readBrowserText: (_run: Runner, browserSession: string) =>
+    Effect.sync(() => requireBrowser(browserSession).text()),
   readBrowserCookie: (
     _run: Runner,
-    _session: string,
+    browserSession: string,
     query: { readonly name: string; readonly value?: string }
   ) =>
     Effect.sync(() => {
-      const value = requireBrowser().referralCookie;
+      const value = requireBrowser(browserSession).referralCookie;
       return query.name !== referralCodeCookieName || value === undefined
         ? { present: false as const }
         : {
@@ -1884,47 +2103,54 @@ mock.module("../browser", () => ({
             secure: true,
           };
     }),
-  readBrowserUrl: (_run: Runner, _session: string) =>
-    Effect.sync(() => requireBrowser().url()),
+  readBrowserUrl: (_run: Runner, browserSession: string) =>
+    Effect.sync(() => requireBrowser(browserSession).url()),
   waitForBrowserCondition: (
     _run: Runner,
-    _session: string,
+    browserSession: string,
     description: string,
     condition: string
   ) =>
     Effect.sync(() =>
-      requireBrowser().waitForCondition(description, condition)
+      requireBrowser(browserSession).waitForCondition(description, condition)
     ),
   waitForBrowserReactFormSubmit: (
     _run: Runner,
-    _session: string,
+    browserSession: string,
     selector: string,
     fieldSelectors: readonly string[]
   ) =>
     Effect.sync(() =>
-      requireBrowser().waitForFormSubmitHandler(selector, fieldSelectors)
+      requireBrowser(browserSession).waitForFormSubmitHandler(selector, fieldSelectors)
     ),
   waitForBrowserReactHandler: (
     _run: Runner,
-    _session: string,
+    browserSession: string,
     selector: string,
     handler: string
-  ) => Effect.sync(() => requireBrowser().waitForHandler(selector, handler)),
+  ) => Effect.sync(() => requireBrowser(browserSession).waitForHandler(selector, handler)),
   waitForBrowserText: ({
     matches,
+    session: browserSession,
   }: {
     readonly matches: (text: string) => boolean;
-  }) => Effect.sync(() => requireBrowser().waitForText(matches)),
+    readonly session: string;
+  }) => Effect.sync(() => requireBrowser(browserSession).waitForText(matches)),
   waitForBrowserUrl: ({
     matches,
+    session: browserSession,
   }: {
     readonly matches: (url: string) => boolean;
-  }) => Effect.sync(() => requireBrowser().waitForUrl(matches)),
+    readonly session: string;
+  }) => Effect.sync(() => requireBrowser(browserSession).waitForUrl(matches)),
   waitForInteractiveSnapshot: ({
     matches,
+    session: browserSession,
   }: {
     readonly matches: (snapshot: string) => boolean;
-  }) => Effect.sync(() => requireBrowser().waitForSnapshot(matches)),
+    readonly session: string;
+  }) =>
+    Effect.sync(() => requireBrowser(browserSession).waitForSnapshot(matches)),
 }));
 
 mock.module("./auth-rows", () => ({
@@ -2206,6 +2432,8 @@ const executeCase = async (
 ) =>
   Effect.runPromise(makeCaseExecution(testCase, scenario, stepIds, verifyPage));
 
+const { makeWorkspaceE2ESignInHandoff } = await import("./cases");
+
 const buildCase = async (
   makeCases: typeof import("./cases").makeWorkspaceE2EAccountCases,
   caseId: WorkspaceE2EAccountCaseId,
@@ -2225,9 +2453,16 @@ const buildCase = async (
     lifecycleHandoff: scenario.lifecycleHandoff,
     passkeys: scenario.passkeys,
     previewLogs: scenario.previewLogs,
+    captureSignInHandoffReview: async (stage) => {
+      scenario.external.signInHandoffReviews.push({
+        stage,
+        url: requireBrowser(assistantSession).url(),
+      });
+    },
     rateBudget: scenario.rateBudget,
     run: scenario.run,
     session,
+    signInHandoff: makeWorkspaceE2ESignInHandoff(fixedNowMs),
   });
   const selected = cases.find(({ id }) => id === caseId);
   if (!selected) throw new Error(`case ${caseId} was not built`);
@@ -2237,6 +2472,7 @@ const buildCase = async (
 afterEach(() => {
   activeExternal = undefined;
   activeBrowser = undefined;
+  assistantBrowser = undefined;
   setSystemTime();
 });
 
@@ -2337,9 +2573,34 @@ test("executes every account lane case within the magic-link ledger", async () =
   ]);
   expect(operationsByCase).toEqual(workspaceE2EAccountMagicLinkLedger);
   // The reauthentication sign-in landed on the fixture-saved Czech site, and
-  // English (US) was restored before the deletion; the locale case then saved
-  // Čeština and switched back to English (US) for the linking case.
-  expect(scenario.external.fixtureLocaleWrites).toEqual(["cs-CZ", "en-US"]);
+  // English (US) was restored before the deletion; the Czech cross-browser
+  // sign-in saved Čeština, which the fixture restored to English (US); the
+  // locale case then saved Čeština and switched back to English (US) for the
+  // linking case.
+  expect(scenario.external.fixtureLocaleWrites).toEqual([
+    "cs-CZ",
+    "en-US",
+    "en-US",
+  ]);
+  // The assistant's browser requested the reactivation link from the Czech
+  // cowork selection, replayed it after the lane browser consumed it, kept
+  // its return target on the new-link sign-in, and closed with the case.
+  const handoff = makeWorkspaceE2ESignInHandoff(fixedNowMs);
+  expect(scenario.external.assistantBrowserEvents).toEqual(["open", "close"]);
+  expect(
+    scenario.external.signInHandoffReviews.map(({ stage, url }) => {
+      const parsed = new URL(url);
+      return [stage, parsed.pathname, parsed.searchParams.get("error")];
+    })
+  ).toEqual([
+    ["sign-in-accepted", "/cs-CZ/auth/sign-in", null],
+    ["callback-failed", "/cs-CZ/auth/callback", "INVALID_TOKEN"],
+  ]);
+  expect(
+    new URL(scenario.external.signInHandoffReviews[0]?.url ?? "").searchParams.get(
+      "returnTo"
+    )
+  ).toBe(handoff.returnTo);
   expect(scenario.external.languageSaves).toEqual(["cs-CZ", "en-US"]);
   expect(scenario.external.localePreference).toBe("en-US");
   expect(stepIds).toContain(
@@ -2363,10 +2624,10 @@ test("executes every account lane case within the magic-link ledger", async () =
     "logout:",
     "consume:reauthentication",
     "deletion:",
-    "replay:",
     "send:reactivation",
     "receive:reactivation",
     "consume:reactivation",
+    "replay:",
   ]);
 
   const mainMessages =
@@ -2559,10 +2820,10 @@ test("signs in with an emailed code and keeps every link journey when sign-in co
     "logout:",
     "consume:reauthentication",
     "deletion:",
-    "replay:",
     "send:reactivation",
     "receive:reactivation",
     "consume:reactivation",
+    "replay:",
   ]);
   // The second request switched email from the main recipient's code step.
   expect(
@@ -2628,7 +2889,7 @@ test("creates, signs in with, manages, and reauthenticates with a passkey when p
     )
   ).toBeLessThan(
     stepIds.indexOf(
-      "reactivates the retained profile under a new Better Auth identity"
+      "reactivates the retained profile in the browser that opens the link"
     )
   );
   expect(stepIds).toContain("creates a passkey from the post-sign-in prompt");
