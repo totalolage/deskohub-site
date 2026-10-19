@@ -266,7 +266,6 @@ export function MeetingRoomReservationForm({
               name={field.name}
               onBlur={field.onBlur}
               onChange={field.onChange}
-              placeholder={m.reservationDatePlaceholder({}, { locale })}
               timeLabel={m.reservationMeetingRoomTimeLabel({}, { locale })}
               showTime={!isWholeDaySelected}
               timeStepMinutes={60}

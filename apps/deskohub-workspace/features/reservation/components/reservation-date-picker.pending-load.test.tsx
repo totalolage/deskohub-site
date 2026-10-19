@@ -48,7 +48,9 @@ const renderPickerWithPendingCalendar = async (moduleKey: string) => {
       <p>Outside text</p>
     </div>
   );
-  const trigger = view.getByRole("button", { name: "Reservation date" });
+  const trigger = view.getByRole("button", {
+    name: "Reservation date: choose from the calendar",
+  });
   const elsewhere = view.getByRole("button", { name: "Elsewhere" });
 
   trigger.focus();

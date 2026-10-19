@@ -3,9 +3,9 @@ import type { Browser, BrowserContext, Page, Request } from "@playwright/test";
 import { Cause, Effect, Exit, Option } from "effect";
 import { WorkspaceE2EError, workspaceE2EError } from "./errors";
 import { withinWorkspaceE2EDeadline } from "./polling";
+import { primePreviewAccess } from "./preview-access";
 import { toE2EResult } from "./services/telemetry";
 import type { WorkspaceE2EFailureReporter } from "./suite";
-import { workspaceE2ETimeouts } from "./timeouts";
 
 /**
  * Maps any browser-driver failure onto a fixed code-owned error. Raw Playwright
@@ -80,34 +80,10 @@ export const primePreviewBypass = (input: {
   readonly bypassSecret: string | undefined;
   readonly context: BrowserContext;
   readonly origin: string;
-}) => {
-  const bypassSecret = input.bypassSecret;
-  if (!bypassSecret) return Effect.void;
-  return sanitizedBrowserOperation(
-    "prime the Vercel protection bypass cookie",
-    async () => {
-      const response = await input.context.request.get(
-        new URL("/favicon.svg", input.origin).toString(),
-        {
-          headers: {
-            "x-vercel-protection-bypass": bypassSecret,
-            "x-vercel-set-bypass-cookie": "true",
-          },
-          timeout: workspaceE2ETimeouts.browserAction,
-        }
-      );
-      try {
-        if (!response.ok()) {
-          throw new Error(
-            `The Vercel protection bypass probe failed with ${response.status()}`
-          );
-        }
-      } finally {
-        await response.dispose();
-      }
-    }
+}) =>
+  sanitizedBrowserOperation("prime the Vercel protection bypass cookie", () =>
+    primePreviewAccess(input.context, input.origin, input.bypassSecret)
   );
-};
 
 /**
  * Runs the timed case body with the interruption-safe cleanup finalizer

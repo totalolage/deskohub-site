@@ -55,7 +55,16 @@ describe("purpose-bound sealed state", () => {
       contactState.seal(contact, { keys: [activeKey], now: at(0) })
     );
 
-    expect(token).not.toContain("Ada");
+    // Whole field values: random ciphertext can't hold them by chance, the
+    // way it can hold a short substring.
+    const tokenSegments = token
+      .split(".")
+      .map((segment) => Buffer.from(segment, "base64url"));
+    for (const plaintext of [contact.name, contact.phone]) {
+      expect(tokenSegments.some((segment) => segment.includes(plaintext))).toBe(
+        false
+      );
+    }
     expect(
       runSync(
         contactState.open(token, {

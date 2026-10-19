@@ -1,0 +1,20 @@
+- combobox "Start date and time *": /\d{1,2}\/\d{1,2}\/\d{4}/
+- 'button "Meeting room start date: choose from the calendar"'
+- textbox "Meeting room start time": /\d{1,2}:\d{2}/
+- radiogroup "Free start times":
+  - radio [checked]
+- radiogroup "Duration *":
+  - radio /^1 hour / [checked]
+- textbox "Email *"
+- textbox "Phone *"
+- textbox "Name *"
+- group "Reservation purpose":
+  - switch "Business use"
+  - button
+  - checkbox "Create invoice"
+- link "Privacy Policy":
+  - /url: /en-US/privacy-policy
+- checkbox /^I agree that Desktechub s\.r\.o\. may use my email/
+- link "Marketing Communications Consent":
+  - /url: /en-US/marketing-communications
+- button "Continue"
