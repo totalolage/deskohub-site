@@ -1,18 +1,26 @@
-import { Data, Effect, Result, Stream } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import { Effect, Result } from "effect";
+import { HttpClient } from "effect/unstable/http";
 import {
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
   workspaceE2EError,
 } from "../errors";
+import {
+  readVercelJson,
+  requestVercel,
+  resolveVercelDeployment,
+  type TransientVercelRequestFailure,
+  transientVercelRequestFailure,
+  type VercelApiAccess,
+  type VercelDeployment,
+  vercelRequestTimeoutMs,
+} from "../integrations/vercel";
 import { addRedaction } from "../runtime";
 import type { WorkspaceE2EAccountConfig } from "./config";
 
 const workspaceE2EPreviewE2ELogCode = "account.magic-link.preview-e2e";
 
 const logLimit = 100;
-const maxVercelResponseBytes = 2 * 1024 * 1024;
-const vercelRequestTimeoutMs = 30_000;
 const defaultPollIntervalMs = 5_000;
 
 type WorkspaceE2EVercelLogEntry = {
@@ -20,12 +28,6 @@ type WorkspaceE2EVercelLogEntry = {
   readonly message: string;
   readonly timestampInMs: number;
   readonly truncated: boolean;
-};
-
-type VercelDeployment = {
-  readonly id: string;
-  readonly ownerId: string;
-  readonly projectId: string;
 };
 
 type VercelLogPage = {
@@ -78,207 +80,22 @@ export type WorkspaceE2EPreviewLogs = {
   >;
 };
 
+const accountVercelFailures = {
+  diagnosticCode: "auth_delivery_message_retrieve_failed",
+} as const satisfies Pick<VercelApiAccess, "diagnosticCode">;
+
+const accountVercelAccess = (config: WorkspaceE2EAccountConfig) => ({
+  ...accountVercelFailures,
+  expectedHost: config.expectedHost,
+  vercelProjectId: config.vercelProjectId,
+  vercelToken: config.vercelToken,
+});
+
 const invalidVercelLogPayload = () =>
   workspaceE2EError("Vercel runtime log payload was invalid", {
     diagnosticCode: "auth_delivery_message_invalid",
     operation: "decode Vercel runtime log entries",
   });
-
-const vercelRequestFailure = (
-  operation: string,
-  reason: string,
-  status?: number
-) =>
-  workspaceE2EError(
-    `${operation} failed (${status === undefined ? reason : `HTTP ${status}`})`,
-    {
-      diagnosticCode: "auth_delivery_message_retrieve_failed",
-      operation,
-    }
-  );
-
-// Read-only history requests may be repeated within the caller's retrieval
-// deadline when the provider reports a transient failure. Permission,
-// not-found, and payload failures stay terminal.
-class TransientVercelRequestFailure extends Data.TaggedError(
-  "TransientVercelRequestFailure"
-)<{
-  readonly failure: WorkspaceE2EError;
-  readonly timedOut: boolean;
-}> {}
-
-const transientVercelStatuses: ReadonlySet<number> = new Set([
-  408, 429, 500, 502, 503, 504,
-]);
-
-const transientVercelRequestFailure = (
-  operation: string,
-  reason: string,
-  status?: number
-) =>
-  new TransientVercelRequestFailure({
-    failure: vercelRequestFailure(operation, reason, status),
-    timedOut: reason === "timeout",
-  });
-
-const requestVercel = Effect.fn("vercelLogRetrieval.request")(function* (
-  config: WorkspaceE2EAccountConfig,
-  url: URL,
-  operation: string,
-  timeoutMs: number
-) {
-  const httpClient = yield* HttpClient.HttpClient;
-  const request = HttpClientRequest.get(url).pipe(
-    HttpClientRequest.setHeaders({
-      Accept: "application/json",
-      Authorization: `Bearer ${config.vercelToken}`,
-    })
-  );
-  const response = yield* httpClient.execute(request).pipe(
-    Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
-    Effect.mapError(() =>
-      transientVercelRequestFailure(operation, "request-failed")
-    ),
-    Effect.timeoutOrElse({
-      duration: `${timeoutMs} millis`,
-      orElse: () =>
-        Effect.fail(transientVercelRequestFailure(operation, "timeout")),
-    })
-  );
-  yield* Effect.annotateCurrentSpan("vercel.http.status_code", response.status);
-  if (transientVercelStatuses.has(response.status)) {
-    return yield* transientVercelRequestFailure(
-      operation,
-      "request-failed",
-      response.status
-    );
-  }
-  if (response.status < 200 || response.status >= 300) {
-    return yield* vercelRequestFailure(
-      operation,
-      "request-failed",
-      response.status
-    );
-  }
-  return response;
-});
-
-const readVercelJson = Effect.fn("vercelLogRetrieval.readJson")(function* (
-  response: Effect.Success<ReturnType<typeof requestVercel>>,
-  invalidPayload: () => WorkspaceE2EError
-) {
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  yield* Stream.runForEach(response.stream, (chunk) => {
-    if (size + chunk.byteLength > maxVercelResponseBytes) {
-      return Effect.fail(invalidPayload());
-    }
-    size += chunk.byteLength;
-    chunks.push(chunk);
-    return Effect.void;
-  }).pipe(Effect.mapError(invalidPayload));
-
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return yield* Effect.try({
-    catch: invalidPayload,
-    try: () => JSON.parse(new TextDecoder().decode(bytes)),
-  });
-});
-
-const invalidVercelDeploymentPayload = () =>
-  workspaceE2EError("Vercel preview deployment metadata was invalid", {
-    diagnosticCode: "auth_delivery_message_retrieve_failed",
-    operation: "resolve Vercel preview deployment",
-  });
-
-const vercelDeploymentProjectMismatch = () =>
-  workspaceE2EError(
-    "Vercel preview deployment did not match the configured project",
-    {
-      diagnosticCode: "auth_delivery_message_retrieve_failed",
-      operation: "resolve Vercel preview deployment",
-    }
-  );
-
-const decodeVercelDeployment = (
-  payload: unknown,
-  expectedProjectId: string
-):
-  | { readonly kind: "match"; readonly deployment: VercelDeployment }
-  | { readonly kind: "invalid" }
-  | { readonly kind: "project-mismatch" } => {
-  const candidate = payload as {
-    id?: unknown;
-    ownerId?: unknown;
-    projectId?: unknown;
-  } | null;
-  if (
-    typeof candidate?.id !== "string" ||
-    candidate.id.length === 0 ||
-    typeof candidate.ownerId !== "string" ||
-    candidate.ownerId.length === 0
-  ) {
-    return { kind: "invalid" };
-  }
-  if (candidate.projectId !== expectedProjectId) {
-    return { kind: "project-mismatch" };
-  }
-  return {
-    deployment: {
-      id: candidate.id,
-      ownerId: candidate.ownerId,
-      projectId: candidate.projectId,
-    },
-    kind: "match",
-  };
-};
-
-const resolveVercelDeployment = (
-  config: WorkspaceE2EAccountConfig,
-  timeoutMs = vercelRequestTimeoutMs
-): Effect.Effect<
-  VercelDeployment,
-  WorkspaceE2EError | TransientVercelRequestFailure,
-  HttpClient.HttpClient
-> =>
-  Effect.gen(function* () {
-    const url = new URL(
-      `https://api.vercel.com/v13/deployments/${encodeURIComponent(config.expectedHost)}`
-    );
-    const response = yield* requestVercel(
-      config,
-      url,
-      "resolve Vercel preview deployment",
-      timeoutMs
-    );
-    const payload = yield* readVercelJson(
-      response,
-      invalidVercelDeploymentPayload
-    );
-    const decoded = decodeVercelDeployment(payload, config.vercelProjectId);
-    if (decoded.kind === "invalid")
-      return yield* invalidVercelDeploymentPayload();
-    if (decoded.kind === "project-mismatch") {
-      return yield* vercelDeploymentProjectMismatch();
-    }
-    return decoded.deployment;
-  }).pipe(
-    Effect.timeoutOrElse({
-      duration: `${timeoutMs} millis`,
-      orElse: () =>
-        Effect.fail(
-          transientVercelRequestFailure(
-            "resolve Vercel preview deployment",
-            "timeout"
-          )
-        ),
-    })
-  );
 
 const decodeVercelLogPage = (
   payload: unknown,
@@ -385,7 +202,7 @@ const requestVercelLogPage = (
     url.searchParams.set("search", workspaceE2EPreviewE2ELogCode);
 
     const response = yield* requestVercel(
-      config,
+      accountVercelAccess(config),
       url,
       "query Vercel preview runtime logs",
       timeoutMs
@@ -401,6 +218,7 @@ const requestVercelLogPage = (
       orElse: () =>
         Effect.fail(
           transientVercelRequestFailure(
+            accountVercelFailures,
             "query Vercel preview runtime logs",
             "timeout"
           )
@@ -465,6 +283,7 @@ const runLogQuery = (
       orElse: () =>
         Effect.fail(
           transientVercelRequestFailure(
+            accountVercelFailures,
             "query Vercel preview runtime logs",
             "timeout"
           )
@@ -619,7 +438,8 @@ const retrieveWorkspaceE2EPreviewAuthBodyEffect = Effect.fn(
     Date.now() + (request.deadlineAfterMs ?? config.timeouts.authDelivery);
   const pollIntervalMs = request.pollIntervalMs ?? defaultPollIntervalMs;
   const deployment = yield* retryTransientVercelRequest(
-    (timeoutMs) => resolveVercelDeployment(config, timeoutMs),
+    (timeoutMs) =>
+      resolveVercelDeployment(accountVercelAccess(config), timeoutMs),
     {
       deadline,
       operation: "resolve Vercel preview deployment",
@@ -652,7 +472,8 @@ const listSyntheticLogEntryIds = (
       pollIntervalMs: defaultPollIntervalMs,
     };
     const deployment = yield* retryTransientVercelRequest(
-      (timeoutMs) => resolveVercelDeployment(config, timeoutMs),
+      (timeoutMs) =>
+        resolveVercelDeployment(accountVercelAccess(config), timeoutMs),
       { ...bounds, operation: "resolve Vercel preview deployment" }
     ).pipe(
       Effect.catchTag("TransientVercelRequestFailure", ({ failure }) =>
@@ -784,6 +605,7 @@ const retryTransientVercelRequest = <A, R>(
 ): Effect.Effect<A, WorkspaceE2EError | TransientVercelRequestFailure, R> =>
   Effect.gen(function* () {
     let lastFailure = transientVercelRequestFailure(
+      accountVercelFailures,
       bounds.operation,
       "timeout"
     );

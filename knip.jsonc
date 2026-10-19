@@ -24,8 +24,9 @@
         "scripts/account-sticky/run.ts",
         // Loaded by path: bundled renderer entries and child-process fixtures.
         "scripts/account-sticky/browser-entry.tsx",
-        "scripts/shared/command.*-fixture.ts",
+        "scripts/shared/command.*-fixture.{ts,mjs}",
         "e2e/coordination/hosted-payment-permit.holder-fixture.ts",
+        "e2e/agent-evals/harness.stub-fixture.ts",
         // Bundled by path for browser-rendered test fixtures.
         "shared/testing/posthog-identity-browser-fixture.tsx",
         "types/*.d.ts"
