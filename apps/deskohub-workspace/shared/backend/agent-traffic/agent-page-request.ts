@@ -51,6 +51,7 @@ const agentPageRoutes = {
   "/[locale]/meeting-room": true,
   "/[locale]/operating-rules": true,
   "/[locale]/post-order-invoice-preview": true,
+  "/[locale]/pricing": true,
   "/[locale]/privacy-policy": true,
   "/[locale]/reservation-access-preview": true,
   "/[locale]/reservation/access/[orderId]": true,
