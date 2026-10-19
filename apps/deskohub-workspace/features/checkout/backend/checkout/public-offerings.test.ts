@@ -2,6 +2,7 @@ import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { GoogleCalendarAPIError } from "@deskohub/google-calendar";
 import { Effect, Layer } from "effect";
 import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
 import { currencyCZK } from "@/features/checkout/workspace-money";
@@ -97,6 +98,7 @@ describe("public offerings", () => {
     );
 
     expect(listing.advertisedOn.toString()).toBe(today.toString());
+    expect(listing.complete).toBeTrue();
     expect(
       listing.offerings.map(({ kind, price, advertisedPrice }) => ({
         kind,
@@ -151,5 +153,41 @@ describe("public offerings", () => {
     expect(
       listing.offerings.map(({ advertisedPrice }) => advertisedPrice.price)
     ).toEqual(pagePrices);
+  });
+
+  test("uses catalog prices when Calendar fails, then recovers the sale", async () => {
+    let calendarFails = true;
+    const layer = saleLayer({
+      calendarId: "public-offerings-calendar-recovery",
+      firstDay: today,
+      lastDay: today,
+      listEvents: (events) =>
+        calendarFails
+          ? Effect.fail(
+              new GoogleCalendarAPIError({
+                operation: "listEvents",
+                message: "Calendar is unavailable.",
+              })
+            )
+          : Effect.succeed(events),
+    });
+    const { failed, recovered } = await Effect.gen(function* () {
+      const failed = yield* loadPublicOfferings(locale);
+      calendarFails = false;
+      const recovered = yield* loadPublicOfferings(locale);
+      return { failed, recovered };
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(failed.complete).toBeFalse();
+    expect(
+      failed.offerings.map(({ advertisedPrice }) => advertisedPrice.discount)
+    ).toEqual(failed.offerings.map(() => currencyCZK(0)));
+    expect(failed.offerings[0]?.advertisedPrice.price).toEqual(
+      currencyCZK(29_000)
+    );
+    expect(recovered.complete).toBeTrue();
+    expect(recovered.offerings[0]?.advertisedPrice.price).toEqual(
+      currencyCZK(23_200)
+    );
   });
 });

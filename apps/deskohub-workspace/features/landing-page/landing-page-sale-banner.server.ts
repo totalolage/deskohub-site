@@ -19,8 +19,7 @@ export const getActiveLandingPageSaleBanner = Effect.fn(
     Effect.bind("activeSales", ({ locale }) =>
       getActivePublicSales({ locale })
     ),
-    Effect.tap(logAmbiguousActiveSales),
-    Effect.flatMap(getEligibleLandingPageSaleBanner),
+    Effect.flatMap(getLandingPageSaleBanner),
     Effect.tapError((cause) =>
       Effect.logWarning("Landing sale banner lookup failed").pipe(
         Effect.annotateLogs({
@@ -32,6 +31,20 @@ export const getActiveLandingPageSaleBanner = Effect.fn(
     ),
     Effect.orElseSucceed(() => undefined)
   )
+);
+
+/**
+ * The home page's sale banner for the sales running now: one sale on a
+ * product visitors can book, or none.
+ */
+export const getLandingPageSaleBanner = Effect.fn("LandingPage.getSaleBanner")(
+  (input: {
+    readonly activeSales: readonly ActiveSale[];
+    readonly locale: Locale;
+  }) =>
+    logAmbiguousActiveSales(input).pipe(
+      Effect.andThen(getEligibleLandingPageSaleBanner(input))
+    )
 );
 
 const getEligibleLandingPageSaleBanner = Effect.fn(
