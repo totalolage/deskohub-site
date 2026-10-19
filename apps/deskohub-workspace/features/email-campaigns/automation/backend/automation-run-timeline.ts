@@ -19,7 +19,7 @@ import type { AutomationEngineTransaction } from "./automation-unit-handler";
  * Kinds a run records while it is open. An ended run's entry, whose kind is
  * its outcome, is written only by `AutomationRunTransitions.end`.
  */
-export type AutomationRunProgressKind = Exclude<
+type AutomationRunProgressKind = Exclude<
   AutomationRunEventKind,
   AutomationRunOutcome
 >;
