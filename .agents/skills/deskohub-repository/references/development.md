@@ -29,9 +29,11 @@ bun turbo build --filter=<package-name>
 ## Workspace builds
 
 - Vercel Workspace builds use the standard 4-core, 8 GB machine. Vercel drops build caches over 1.5 GB.
-- The Workspace `build` script runs `next typegen`, then the native `tsc --noEmit`, then `next build`, and `next.config.mjs` sets `typescript.ignoreBuildErrors: true`. Next's own check runs the TS6 compiler in a worker that needs about 3–3.5 GB of heap. Under the former 4 GB heap limit it hung until Vercel's 45-minute timeout or got OOM-killed (exit 137) on main and many branches in October 2026. The native check takes about 30 s and peaks near 5 GB RSS, in a separate process that exits before `next build` starts. Running `next typegen` first lets the check cover the generated route types, which CI's `bun turbo typecheck` skips.
-- Keep the type check in the `build` script so a type error still fails the deployment. Don't re-enable Next's build-time check without re-measuring on the 8 GB machine.
-- `experimental.turbopackFileSystemCacheForBuild: false` disables Turbopack's build filesystem cache, which is on by default in Next 16.4. It held about 5 GB in the main process and pushed Vercel's build cache past 1.5 GB. Don't re-enable it without re-measuring a cold build on the 8 GB machine.
+- After compiling, the `next build` process keeps 4–5 GB resident on that machine, so every later build phase shares the remaining 3–4 GB. A probe that logs per-process RSS from the `build` script, on a throwaway branch, shows where memory goes.
+- The Workspace `build` script runs `next typegen`, then the native `tsc --noEmit`, then `next build`, and `next.config.mjs` sets `typescript.ignoreBuildErrors: true`. Next's own check runs the TS6 compiler in a worker that needs about 3–3.5 GB beside `next build`. In October 2026 it hung until Vercel's 45-minute timeout or got OOM-killed (exit 137) on main and many branches. The native check takes about 15 s on Vercel and exits before `next build` starts. Running `next typegen` first lets the check cover the generated route types, which CI's `bun turbo typecheck` skips. Keep the check in the `build` script so a type error still fails the deployment.
+- `experimental.cpus: 2` caps the page-data and static-generation workers, about 750 MB each. With the default of three workers, the build peaked at 7.6 GB.
+- `experimental.turbopackFileSystemCacheForBuild: false` disables Turbopack's build filesystem cache, which is on by default in Next 16.4. It held about 5 GB more and pushed Vercel's build cache past 1.5 GB.
+- Don't re-enable Next's build-time type check or the Turbopack build cache, or raise `cpus`, without re-measuring a cold build on the 8 GB machine.
 
 ## Toolchain
 
