@@ -1,12 +1,17 @@
+import { algoPinLength } from "@deskohub/igloohome";
 import { escapeRegExp } from "@/shared/utils/escape-regexp";
 import { redactDiagnosticText } from "../runtime";
 
 const emailPattern = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
 const uuidPattern =
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
-// Provider IDs (Dotypos reservations and customers, payment orders) are long
-// digit runs; prices, seat counts, and street numbers are short.
-const longNumberPattern = /(?<![\w.,])\d{8,}(?![\w])/g;
+// Door access PINs and provider IDs (Dotypos reservations and customers,
+// payment orders) are long digit runs; prices, seat counts, and street
+// numbers are short.
+const longNumberPattern = new RegExp(
+  `(?<![\\w.,])\\d{${algoPinLength.minimum},}(?![\\w])`,
+  "g"
+);
 // Same-origin paths to reservation, checkout, and account pages carry
 // reservation identifiers and access tokens just as full URLs do.
 const sitePathPattern =
@@ -17,7 +22,8 @@ const sitePathPattern =
  * run's artifacts: the run's own identifiers (account, profiles,
  * reservations, payment orders), registered secrets such as the bypass,
  * URLs and site paths (preview, status, and payment links carry access
- * tokens), token-like runs, email addresses, UUIDs, and long numbers.
+ * tokens), token-like runs, email addresses, UUIDs, and long numbers such
+ * as access PINs.
  */
 export const redactAgentEvalOutput = (
   text: string,

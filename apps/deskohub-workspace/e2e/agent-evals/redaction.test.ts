@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { addRedaction } from "../runtime";
 import { judgeAgentEvalFacts } from "./judges";
 import { redactAgentEvalOutput, redactAgentEvalValue } from "./redaction";
@@ -33,9 +34,10 @@ describe("redactAgentEvalOutput", () => {
       "Rezervace 7777777777777 je potvrzena",
       "7777777777777",
     ],
+    ["a door access PIN", "Your door PIN is 1234567.", "1234567"],
     [
       "a contact's email",
-      "Booked for jana.novakova@example.test",
+      `Booked for ${testEmailAddress("jana.novakova")}`,
       "jana.novakova",
     ],
     ["a token-like run", `token ${"A1b2".repeat(10)}`, "A1b2A1b2"],
