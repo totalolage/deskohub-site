@@ -1096,6 +1096,7 @@
   "publicOfferingOfficeDescription": "Soukromá kancelář jen pro tebe na celé dny, s tolika místy, kolik potřebuješ.",
   "publicOfferingOfficeUsage": "Rezervuj celé dny se začátkem nejvýše měsíc dopředu. Jedna rezervace může trvat nejvýše {hours} hodin, obvykle 28 dní.",
   "publicOfferingOfficeSeatPrice": "Každé rezervované místo, za den",
+  "publicOfferingAddOnIncluded": "{addOn} v ceně",
   "publicPageTopicOffer": "Nabídka",
   "publicPageTopicBooking": "Rezervace"
 }
