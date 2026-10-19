@@ -17,7 +17,11 @@ export const audienceSaveFailureCopy: CampaignOperationFailureCopy = {
   },
 };
 
-/** Archiving, unarchiving and deleting fail only for a reason worth a retry. */
+/**
+ * Archiving, unarchiving and deleting have no wording of their own: the
+ * shared copy covers a delete that drafts block, and anything else is worth
+ * a retry.
+ */
 export const audienceArchiveFailureCopy: CampaignOperationFailureCopy = {
   fallback: (locale) =>
     m.emailCampaignsAudienceArchiveFailedRetry({}, { locale }),
