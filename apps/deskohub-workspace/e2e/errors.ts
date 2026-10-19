@@ -151,6 +151,7 @@ const nexiHostedPaymentSteps = [
   "continue",
   "pay",
   "challenge",
+  "challenge_failure",
   "return",
 ] as const;
 
@@ -167,6 +168,8 @@ const nexiHostedPaymentPageStates = [
   "pay_disabled",
   "challenge_enabled",
   "challenge_disabled",
+  "challenge_failure_enabled",
+  "challenge_failure_disabled",
   "return_enabled",
   "return_disabled",
   "unknown",

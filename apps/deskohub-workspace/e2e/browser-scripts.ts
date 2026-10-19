@@ -1116,7 +1116,7 @@ export const assertFulfilledStatusScript = String.raw`
       throw new Error('checkout status rendered in a reservation dialog');
     }
   }
-  if (/Your reservation is confirmed\./i.test(text) && /secure access link has been sent by email/i.test(text)) {
+  if (/Your reservation is confirmed\./i.test(text) && /emailed you the secure access link/i.test(text)) {
     return location.href;
   }
   throw new Error('fulfilled checkout status copy not visible');
