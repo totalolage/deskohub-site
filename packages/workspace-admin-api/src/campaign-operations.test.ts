@@ -6,6 +6,7 @@ import {
   campaignOperationEndpoints,
   campaignOperations,
   defineOperations,
+  type LedgerOperationName,
   OperationInputInvalid,
   operationEndpoints,
   query,
@@ -70,6 +71,23 @@ describe("campaign operations", () => {
 
     expect(Result.isSuccess(decode(input))).toBe(true);
     expect(Result.isFailure(decode({ ...input, unexpected: true }))).toBe(true);
+  });
+
+  test("knows the ledger operations by type", () => {
+    const ledgerOperations: ReadonlyArray<
+      LedgerOperationName<typeof campaignOperations>
+    > = ["createCampaign", "createCampaignAudience", "duplicateCampaign"];
+    // @ts-expect-error a query never goes through the ledger
+    const notLedger: LedgerOperationName<typeof campaignOperations> =
+      "getCampaign";
+
+    expect(
+      Object.values(campaignOperations)
+        .filter(({ ledger }) => ledger)
+        .map(({ name }) => name)
+        .sort()
+    ).toEqual([...ledgerOperations]);
+    expect<string>(notLedger).toBe("getCampaign");
   });
 
   test("records name, kind and ledger", () => {

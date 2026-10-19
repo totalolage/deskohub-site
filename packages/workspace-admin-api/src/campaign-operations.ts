@@ -42,11 +42,12 @@ import { CliMutationRequestId } from "./workspace-admin-api";
 export interface OperationDefinition<
   Input extends Schema.Top = Schema.Top,
   Output extends Schema.Top = Schema.Top,
+  Ledger extends boolean = boolean,
 > {
   readonly kind: "query" | "mutation";
   readonly input: Input;
   readonly output: Output;
-  readonly ledger: boolean;
+  readonly ledger: Ledger;
   readonly minimumDhwVersion: DhwVersion | undefined;
 }
 
@@ -55,7 +56,8 @@ export interface Operation<
   Name extends string = string,
   Input extends Schema.Top = Schema.Top,
   Output extends Schema.Top = Schema.Top,
-> extends OperationDefinition<Input, Output> {
+  Ledger extends boolean = boolean,
+> extends OperationDefinition<Input, Output, Ledger> {
   readonly name: Name;
 }
 
@@ -74,7 +76,11 @@ export const query = <Input extends Schema.Top, Output extends Schema.Top>({
   input,
   output,
   minimumDhwVersion,
-}: OperationOptions<Input, Output>): OperationDefinition<Input, Output> => ({
+}: OperationOptions<Input, Output>): OperationDefinition<
+  Input,
+  Output,
+  false
+> => ({
   kind: "query",
   input,
   output,
@@ -86,20 +92,22 @@ export const query = <Input extends Schema.Top, Output extends Schema.Top>({
  * A write. With `ledger`, its input carries a `requestId` and a retried
  * request replays the first one's result.
  */
-export const mutation = <Input extends Schema.Top, Output extends Schema.Top>({
+export function mutation<Input extends Schema.Top, Output extends Schema.Top>(
+  options: OperationOptions<Input, Output> & { readonly ledger: true }
+): OperationDefinition<Input, Output, true>;
+export function mutation<Input extends Schema.Top, Output extends Schema.Top>(
+  options: OperationOptions<Input, Output>
+): OperationDefinition<Input, Output, false>;
+export function mutation<Input extends Schema.Top, Output extends Schema.Top>({
   input,
   output,
   ledger = false,
   minimumDhwVersion,
 }: OperationOptions<Input, Output> & {
   readonly ledger?: boolean;
-}): OperationDefinition<Input, Output> => ({
-  kind: "mutation",
-  input,
-  output,
-  ledger,
-  minimumDhwVersion,
-});
+}): OperationDefinition<Input, Output> {
+  return { kind: "mutation", input, output, ledger, minimumDhwVersion };
+}
 
 /** Names each definition after its key. */
 export const defineOperations = <
@@ -110,7 +118,8 @@ export const defineOperations = <
   readonly [Name in keyof Definitions & string]: Operation<
     Name,
     Definitions[Name]["input"],
-    Definitions[Name]["output"]
+    Definitions[Name]["output"],
+    Definitions[Name]["ledger"]
   >;
 } =>
   Object.fromEntries(
@@ -125,6 +134,11 @@ export type OperationInput<Op extends Operation> = Op["input"]["Encoded"];
 /** What the port's handler receives after decoding. */
 export type OperationDecodedInput<Op extends Operation> = Op["input"]["Type"];
 export type OperationOutput<Op extends Operation> = Op["output"]["Type"];
+
+/** Names of the operations whose retried requests replay the first result. */
+export type LedgerOperationName<Ops extends Operations> = {
+  readonly [Name in keyof Ops]: Ops[Name]["ledger"] extends true ? Name : never;
+}[keyof Ops];
 
 /** Names of operations that have no endpoint of the same name. */
 export type OperationsWithoutEndpoint<
@@ -219,6 +233,15 @@ export class OperationUnavailable extends Schema.TaggedErrorClass<OperationUnava
   operationErrorFields
 ) {}
 
+/**
+ * The caller isn't an administrator any more: the port re-reads the grant
+ * on every operation, after the adapter authenticated the caller.
+ */
+export class OperationUnauthorized extends Schema.TaggedErrorClass<OperationUnauthorized>()(
+  "OperationUnauthorized",
+  operationErrorFields
+) {}
+
 /** A request with the same ID is still being applied. */
 export class OperationInProgress extends Schema.TaggedErrorClass<OperationInProgress>()(
   "OperationInProgress",
@@ -226,6 +249,7 @@ export class OperationInProgress extends Schema.TaggedErrorClass<OperationInProg
 ) {}
 
 export type CampaignOperationError =
+  | OperationUnauthorized
   | OperationInputInvalid
   | OperationConflict
   | OperationNotFound

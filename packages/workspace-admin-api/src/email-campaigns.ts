@@ -509,6 +509,7 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
   .add(
     HttpApiEndpoint.get("listCampaignTemplates", "/campaign-templates", {
       success: AdministrationCampaignTemplates,
+      error: campaignErrors,
     })
   )
   .add(
