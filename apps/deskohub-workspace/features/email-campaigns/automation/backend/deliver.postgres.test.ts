@@ -7,10 +7,10 @@ import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace
 import { deleteAutomatedCampaigns } from "../../backend/email-campaigns.test-utils";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
+import type { ResendFakeResponse } from "./automation-engine-scenario.test-utils";
 import {
   deliverProfile,
   makeDeliverEngine,
-  type ResendFakeResponse,
   type SeedSendReadyRun,
   type SeedVisit,
   seedDeliverAutomation,

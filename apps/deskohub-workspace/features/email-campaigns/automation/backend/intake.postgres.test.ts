@@ -16,11 +16,11 @@ import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationStepId } from "../automation-identifiers";
 import {
   entryEngineLayer,
-  makeEntryDotypos,
-  makeEntryFixtures,
+  makeEngineDotypos,
+  makeEngineFixtures,
   planAndProcess,
   runEngineAt,
-} from "./automation-entry.test-utils";
+} from "./automation-engine-scenario.test-utils";
 import { AutomationPlanner } from "./automation-planner.service";
 import {
   drainAutomationUnitQueue,
@@ -39,8 +39,8 @@ const finishedFlow: AutomationFlow = {
 describe.skipIf(!database)("intake units on Postgres", () => {
   if (!database) return;
   const { db, pool } = database;
-  const dotypos = makeEntryDotypos();
-  const fixtures = makeEntryFixtures(database, dotypos, prefix);
+  const dotypos = makeEngineDotypos();
+  const fixtures = makeEngineFixtures(database, dotypos, prefix);
   const campaignIds: CampaignId[] = [];
 
   afterEach(async () => {

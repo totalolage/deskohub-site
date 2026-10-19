@@ -26,10 +26,10 @@ import type {
 import { automationWorkUnitPriorities } from "../automation-work-units";
 import {
   entryEngineLayer,
-  makeEntryDotypos,
-  makeEntryFixtures,
+  makeEngineDotypos,
+  makeEngineFixtures,
   runEngineAt,
-} from "./automation-entry.test-utils";
+} from "./automation-engine-scenario.test-utils";
 import {
   fireChunkSubjectSchema,
   scheduleDedupKey,
@@ -55,8 +55,8 @@ const scheduleFlow: AutomationFlow = {
 describe.skipIf(!database)("fire-chunk units on Postgres", () => {
   if (!database) return;
   const { db, pool } = database;
-  const dotypos = makeEntryDotypos();
-  const fixtures = makeEntryFixtures(database, dotypos, prefix);
+  const dotypos = makeEngineDotypos();
+  const fixtures = makeEngineFixtures(database, dotypos, prefix);
   const campaignIds: CampaignId[] = [];
 
   afterEach(async () => {

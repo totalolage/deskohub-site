@@ -25,11 +25,11 @@ import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationStepId } from "../automation-identifiers";
 import {
   entryEngineLayer,
-  makeEntryDotypos,
-  makeEntryFixtures,
+  makeEngineDotypos,
+  makeEngineFixtures,
   planAndProcess,
   runEngineAt,
-} from "./automation-entry.test-utils";
+} from "./automation-engine-scenario.test-utils";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import { AutomationPlanner } from "./automation-planner.service";
 import {
@@ -67,8 +67,8 @@ class RolledBack extends Data.TaggedError("RolledBack")<{
 describe.skipIf(!database)("schedule fires on Postgres", () => {
   if (!database) return;
   const { db, pool } = database;
-  const dotypos = makeEntryDotypos();
-  const fixtures = makeEntryFixtures(database, dotypos, prefix);
+  const dotypos = makeEngineDotypos();
+  const fixtures = makeEngineFixtures(database, dotypos, prefix);
   const campaignIds: CampaignId[] = [];
 
   afterEach(async () => {

@@ -18,10 +18,10 @@ import type {
 } from "../automation-identifiers";
 import {
   entryEngineLayer,
-  makeEntryDotypos,
-  makeEntryFixtures,
+  makeEngineDotypos,
+  makeEngineFixtures,
   runEngineAt,
-} from "./automation-entry.test-utils";
+} from "./automation-engine-scenario.test-utils";
 import { AutomationIntakePlanning } from "./automation-intake-planning.service";
 import { makeAutomationUnitQueueFake } from "./automation-unit-queue.test-utils";
 
@@ -37,8 +37,8 @@ const flowOf = (trigger: AutomationFlow["trigger"]): AutomationFlow => ({
 describe.skipIf(!database)("AutomationIntakePlanning on Postgres", () => {
   if (!database) return;
   const { db, pool } = database;
-  const dotypos = makeEntryDotypos();
-  const fixtures = makeEntryFixtures(database, dotypos, prefix);
+  const dotypos = makeEngineDotypos();
+  const fixtures = makeEngineFixtures(database, dotypos, prefix);
   const campaignIds: CampaignId[] = [];
 
   // Each test's automations would take the next test's events.
