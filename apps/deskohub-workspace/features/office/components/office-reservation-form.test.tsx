@@ -16,6 +16,7 @@ import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quo
 import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
 import { discountIdSchema } from "@/features/discounts";
 import { mockReservationCheckoutStep } from "@/features/reservation/components/reservation-checkout-step.test-utils";
+import { mockCheckoutEmailVerification } from "@/features/reservation/components/use-checkout-email-verification.test-utils";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
 import { officeReservationDefaultValues } from "@/features/reservation/office-reservation";
 import { getOfficeAvailabilityQuery } from "@/features/reservation/workspace-availability";
@@ -49,6 +50,7 @@ mock.module("@/features/reservation/actions/get-advertised-price", () => ({
   getAdvertisedPrices: () => Promise.resolve({ data: [] }),
 }));
 
+mockCheckoutEmailVerification();
 mockReservationCheckoutStep();
 
 const {

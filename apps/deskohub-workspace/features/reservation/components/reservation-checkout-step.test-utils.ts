@@ -1,5 +1,4 @@
 import { expect, mock } from "bun:test";
-import { fireEvent, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import type { ReservationCheckoutStep } from "@/features/reservation/reservation-checkout-step";
 
@@ -30,6 +29,9 @@ export const mockReservationCheckoutStep = () => {
 export const continueAndSubmitReservation = async (
   button: HTMLButtonElement
 ) => {
+  // React DOM must load after a test registers its DOM, so this helper module
+  // can't import Testing Library up front.
+  const { fireEvent, waitFor } = await import("@testing-library/react");
   fireEvent.click(button);
   await waitFor(() => expect(button.id).toBe("reservation-submit"));
   fireEvent.click(button);

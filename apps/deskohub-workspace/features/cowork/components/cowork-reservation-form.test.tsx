@@ -44,6 +44,7 @@ import {
   mockReservationCheckoutStep,
 } from "@/features/reservation/components/reservation-checkout-step.test-utils";
 import { ReservationOfferingsStructuredData } from "@/features/reservation/components/reservation-offerings-structured-data";
+import { mockCheckoutEmailVerification } from "@/features/reservation/components/use-checkout-email-verification.test-utils";
 import { getCoworkDateAdvertisedPriceRequests } from "@/features/reservation/cowork-advertised-price";
 import { coworkReservationDefaultValues } from "@/features/reservation/cowork-reservation";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
@@ -115,18 +116,7 @@ mock.module("@/features/reservation/actions/submit-reservation", () => ({
   submitReservation: mock(),
 }));
 
-// The email verification reaches the auth client, which needs a page origin.
-mock.module(
-  "@/features/reservation/components/use-checkout-email-verification",
-  () => ({
-    useCheckoutEmailVerification: () => ({
-      clearError: () => undefined,
-      error: undefined,
-      isVerifying: false,
-      verify: () => undefined,
-    }),
-  })
-);
+mockCheckoutEmailVerification();
 mockReservationCheckoutStep();
 
 const { CoworkReservationForm } = await import("./cowork-reservation-form");
