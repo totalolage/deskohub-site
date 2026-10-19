@@ -663,11 +663,14 @@ const runMeetingRoomNewHoldScenario = async (
   const discoverAdvertisedDiscounts = mock(
     ({ discountableSubtotal, product }) =>
       Effect.succeed({
-        product,
-        discountableSubtotal,
-        discounts: [],
-        totalDiscount: basicMoney(0),
-        discountedSubtotal: discountableSubtotal,
+        quote: {
+          product,
+          discountableSubtotal,
+          discounts: [],
+          totalDiscount: basicMoney(0),
+          discountedSubtotal: discountableSubtotal,
+        },
+        complete: true,
       })
   );
   const testLayer = Layer.mergeAll(

@@ -17,7 +17,9 @@ import { CheckoutPricingService } from "./checkout-pricing.service";
  * The public offerings with what only the server knows: whether office
  * reservations are open, how many seats the shared table snapshot gives the
  * office, and each offering's price as the reservation pages advertise it
- * today. Advertised prices read only the anonymous, cached Calendar sales.
+ * today. Advertised prices read only the anonymous, cached Calendar sales;
+ * `complete` is false when a sale source could not answer, so the prices are
+ * right for this request but not to share.
  */
 export const loadPublicOfferings = Effect.fn("publicOfferings.load")(
   (locale: Locale) =>
@@ -36,12 +38,16 @@ export const loadPublicOfferings = Effect.fn("publicOfferings.load")(
           }),
         })
       ),
-      Effect.bind("offerings", ({ listings }) =>
+      Effect.bind("advertised", ({ listings }) =>
         Effect.forEach(listings, advertisePublicOffering, {
           concurrency: "inherit",
         })
       ),
-      Effect.map(({ advertisedOn, offerings }) => ({ advertisedOn, offerings }))
+      Effect.map(({ advertisedOn, advertised }) => ({
+        advertisedOn,
+        offerings: advertised.map(({ offering }) => offering),
+        complete: advertised.every(({ complete }) => complete),
+      }))
     )
 );
 
@@ -71,13 +77,14 @@ const advertisePublicOffering = ({
     Effect.flatMap((pricing) =>
       pricing.quoteAdvertisement(advertisedPriceRequest)
     ),
-    Effect.map(
-      ({ quote: { payment } }): PublicOffering => ({
+    Effect.map(({ quote: { payment }, discountsComplete }) => ({
+      offering: {
         ...offering,
         advertisedPrice: {
           price: payment.expectedPrice,
           discount: getReservationQuoteDiscount(payment),
         },
-      })
-    )
+      } satisfies PublicOffering,
+      complete: discountsComplete,
+    }))
   );
