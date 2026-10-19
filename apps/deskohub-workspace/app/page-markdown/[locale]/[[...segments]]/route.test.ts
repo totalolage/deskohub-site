@@ -14,6 +14,12 @@ import { publicPageMarkdown } from "@/features/public-pages/public-page-markdown
 const nextCache = await import("next/cache");
 mock.module("next/cache", () => ({ ...nextCache, cacheLife: () => {} }));
 
+// The FAQ's occupancy loader has its own tests; keep this one off Dotypos.
+mock.module("@/features/faq/backend/faq-occupancy.server", () => ({
+  loadFaqOccupancyStats: () =>
+    Promise.resolve({ averageReservationsPerDay: 3, coworkSeatCapacity: 8 }),
+}));
+
 // Advertised pricing has its own tests; here every offering is at its
 // catalog price, and the office is listed only while its gate is open.
 mock.module("@/features/checkout/backend/checkout/public-offerings", () => ({
