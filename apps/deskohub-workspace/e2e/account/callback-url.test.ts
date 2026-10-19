@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { encodeAuthCallbackReturn } from "@/features/account/routes";
 import {
   isCallbackFailureQuery,
   isExactCallbackUrlString,
@@ -7,14 +8,15 @@ import {
 const origin = "https://workspace.example";
 const callback = `${origin}/en-US/auth/callback`;
 const attempt = "550e8400-e29b-41d4-a716-446655440000";
-const returnTo = "%2Fcs-CZ%2Fadmin%2Finvoices%3Fpage%3D2";
+const encoded = (path: string) => encodeAuthCallbackReturn(path) ?? "";
+const returnTo = encoded("/cs-CZ/admin/invoices?page=2");
 
 describe("callback URL grammar", () => {
   test.each([
     callback,
     `${callback}?attempt=${attempt}`,
-    `${callback}?attempt=${attempt}&returnTo=${returnTo}`,
-    `${callback}?returnTo=%2Fadmin`,
+    `${callback}?attempt=${attempt}&return=${returnTo}`,
+    `${callback}?return=${encoded("/admin")}`,
   ])("accepts %s", (url) => {
     expect(isExactCallbackUrlString(url, origin)).toBe(true);
   });
@@ -25,13 +27,16 @@ describe("callback URL grammar", () => {
     `${callback}#fragment`,
     `${callback}?attempt=${attempt.toUpperCase()}`,
     `${callback}?attempt=${attempt}&attempt=${attempt}`,
-    `${callback}?attempt=${attempt}&returnTo=%2Fadmin&returnTo=%2Fadmin`,
-    `${callback}?returnTo=https%3A%2F%2Fevil.example%2Fadmin`,
-    `${callback}?returnTo=%2F%2Fevil.example%2Fadmin`,
-    `${callback}?returnTo=%2F%5Cevil.example%2Fadmin`,
-    `${callback}?returnTo=javascript%3Aalert(1)`,
-    `${callback}?returnTo=%2Fadmin%23fragment`,
-    `${callback}?returnTo=`,
+    `${callback}?attempt=${attempt}&return=${returnTo}&return=${returnTo}`,
+    `${callback}?return=${encoded("https://evil.example/admin")}`,
+    `${callback}?return=${encoded("//evil.example/admin")}`,
+    `${callback}?return=${encoded("/\\evil.example/admin")}`,
+    `${callback}?return=${encoded("javascript:alert(1)")}`,
+    `${callback}?return=${encoded("/admin#fragment")}`,
+    `${callback}?return=${encoded("/x/../admin")}`,
+    `${callback}?return=%2Fadmin`,
+    `${callback}?returnTo=%2Fadmin`,
+    `${callback}?return=`,
     `${callback}?attempt=${attempt}&next=%2Fadmin`,
     "not a url",
   ])("rejects %s", (url) => {
@@ -41,7 +46,7 @@ describe("callback URL grammar", () => {
   test.each([
     "?error=INVALID_TOKEN",
     `?attempt=${attempt}&error=INVALID_TOKEN`,
-    `?attempt=${attempt}&returnTo=${returnTo}&error=INVALID_TOKEN`,
+    `?attempt=${attempt}&return=${returnTo}&error=INVALID_TOKEN`,
   ])("accepts the failure query %s", (search) => {
     expect(isCallbackFailureQuery(search)).toBe(true);
   });
@@ -51,7 +56,7 @@ describe("callback URL grammar", () => {
     `?attempt=${attempt}`,
     "?error=OTHER",
     "?error=INVALID_TOKEN&error=INVALID_TOKEN",
-    "?error=INVALID_TOKEN&returnTo=%2F%2Fevil.example",
+    `?error=INVALID_TOKEN&return=${encoded("//evil.example")}`,
     "?error=INVALID_TOKEN&next=%2Fadmin",
   ])("rejects the failure query %s", (search) => {
     expect(isCallbackFailureQuery(search)).toBe(false);

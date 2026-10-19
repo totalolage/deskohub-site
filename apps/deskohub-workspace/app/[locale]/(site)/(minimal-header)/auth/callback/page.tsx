@@ -8,7 +8,8 @@ import { AuthCallbackLoading } from "@/features/account/components/auth-callback
 import { AuthCallbackRedirect } from "@/features/account/components/auth-callback-redirect";
 import {
   getAccountSignInPath,
-  signInReturnParam,
+  readAuthCallbackReturnTo,
+  signInCallbackReturnParam,
 } from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
@@ -56,7 +57,9 @@ const CustomerAuthCallbackSession = async ({
   // Signing in again keeps the original return target.
   const signInPath = getAccountSignInPath(
     locale,
-    getSearchParam(await searchParams, signInReturnParam)
+    readAuthCallbackReturnTo(
+      getSearchParam(await searchParams, signInCallbackReturnParam)
+    )
   );
 
   return (
