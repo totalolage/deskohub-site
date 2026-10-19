@@ -1956,11 +1956,15 @@ export const makeWorkspaceE2EAccountCases = ({
                     session,
                     "cowork selection kept after the sign-in"
                   );
-                  // The signed-in reservation page books as the account.
-                  yield* waitText(
-                    "signed-in customer on the cowork selection",
-                    recipient,
-                    accountPageLoadTimeout
+                  assert(
+                    yield* readSessionMatches(session, recipient),
+                    "the selection is not signed in as the reactivated recipient"
+                  );
+                  // Reservation pages only read an existing link; the account
+                  // page claims the retained profile for the new identity.
+                  yield* openPage(localized(accountSuffix, handoffLocale));
+                  yield* waitDefaultReservations(
+                    "reactivated linked account reservations"
                   );
                   const newUserId = yield* requireAuthUserId(recipient);
                   assert(

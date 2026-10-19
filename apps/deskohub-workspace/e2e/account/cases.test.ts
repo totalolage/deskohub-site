@@ -899,18 +899,11 @@ class FakeAccountExternalState {
         const newUserId = "auth-reactivated";
         this.createAuthUser(newUserId, message.recipient);
         this.currentAuthUserId = newUserId;
-        this.linksByUserId.set(newUserId, retainedCustomerId);
-        const profile = this.requireProfile(retainedCustomerId);
-        profile.expireDate = null;
+        // The account page claims and reactivates the retained profile.
         this.events.push({
           id: message.id,
           kind: message.kind,
           type: "consume",
-          userId: newUserId,
-        });
-        this.events.push({
-          customerId: retainedCustomerId,
-          type: "provider-reactivate",
           userId: newUserId,
         });
         this.reactivationObservations.push({
@@ -1321,7 +1314,10 @@ class FakeBrowser {
       this.currentUrl = url;
       const userId = this.external.currentAuthUserId;
       const email =
-        this.signedIn() && userId !== undefined
+        this.signedIn() &&
+        userId !== undefined &&
+        // Reservation pages only read an existing link, never claim one.
+        this.external.linksByUserId.has(userId)
           ? this.external.usersById.get(userId)?.email
           : undefined;
       this.pageText = email === undefined ? "Cowork" : `Booking as ${email}`;
@@ -2775,11 +2771,13 @@ test("executes every account lane case within the magic-link ledger", async () =
       precedingDestination: "/contact",
     },
   ]);
+  // The reactivated account claims its retained profile when the account
+  // page opens after the selection, not when the link is consumed.
   expect(
     scenario.external.events
       .filter(({ type }) => type === "relink")
       .map(({ mode }) => mode)
-  ).toEqual(["active", "expired"]);
+  ).toEqual(["expired", "active", "expired"]);
   expect(
     scenario.external.events.filter(({ type }) => type === "ambiguity")
   ).toHaveLength(1);
