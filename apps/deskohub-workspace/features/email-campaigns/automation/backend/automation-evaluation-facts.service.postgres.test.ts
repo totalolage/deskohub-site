@@ -29,10 +29,8 @@ import {
   AudienceFactSource,
   audienceEvaluationAt,
 } from "../../backend/audience-evaluation-context";
-import {
-  type AutomationConditionAudienceMissing,
-  AutomationEvaluationFacts,
-} from "./automation-evaluation-facts.service";
+import type { AutomationConditionAudienceMissing } from "../errors";
+import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 const now = Temporal.Instant.from("2026-10-19T10:00:00Z");
