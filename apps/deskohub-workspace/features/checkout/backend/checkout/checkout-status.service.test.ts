@@ -4,7 +4,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Duration, Effect, Layer } from "effect";
+import { Duration, Effect, Fiber, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
@@ -1133,10 +1133,13 @@ describe("CheckoutStatusService", () => {
 describe("CheckoutStatusService retry selection", () => {
   const getStatusFor = async ({
     dotypos = makeDotypos(),
+    elapsed,
     latePaymentRecovery = null,
     reservation,
   }: {
     readonly dotypos?: ReturnType<typeof makeDotypos>;
+    /** Runs on a test clock advanced by this much while the status loads. */
+    readonly elapsed?: Duration.Input;
     readonly latePaymentRecovery?: object | null;
     readonly reservation: ReturnType<typeof makeReservation>;
   }) => {
@@ -1151,13 +1154,23 @@ describe("CheckoutStatusService retry selection", () => {
       "../repositories/payment-attempt.repository"
     );
 
-    return Effect.gen(function* () {
+    const getStatus = Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
       return yield* service.getStatus({
         orderId: "reservation-provider-return",
         returnOutcome: "cancelled",
       });
-    }).pipe(
+    });
+
+    return (
+      elapsed === undefined
+        ? getStatus
+        : Effect.gen(function* () {
+            const fiber = yield* Effect.forkChild(getStatus);
+            yield* TestClock.adjust(elapsed);
+            return yield* Fiber.join(fiber);
+          }).pipe(Effect.provide(TestClock.layer()))
+    ).pipe(
       Effect.provide(
         CheckoutStatusService.Default.pipe(
           Layer.provide(
@@ -1312,6 +1325,19 @@ describe("CheckoutStatusService retry selection", () => {
     expect(result).not.toHaveProperty("retrySearchParams");
   });
 
+  test("renders a retry status without a selection when Dotypos doesn't answer in time", async () => {
+    const result = await getStatusFor({
+      reservation: makeReservation({ paymentState: "cancelled" }),
+      dotypos: makeDotypos({
+        getReservationWithoutCustomer: mock(() => Effect.never),
+      }),
+      elapsed: "8 seconds",
+    });
+
+    expect(result.status).toBe("cancelled");
+    expect(result).not.toHaveProperty("retrySearchParams");
+  });
+
   test("offers no retry once a late payment for the expired checkout takes over", async () => {
     const result = await getStatusFor({
       reservation: makeReservation({ paymentState: "expired" }),
@@ -1334,5 +1360,7 @@ describe("CheckoutStatusService retry selection", () => {
     });
 
     expect(result).not.toHaveProperty("retrySearchParams");
+    // Only the summary reconstruction reads it.
+    expect(dotypos.getReservationWithoutCustomer).toHaveBeenCalledTimes(1);
   });
 });

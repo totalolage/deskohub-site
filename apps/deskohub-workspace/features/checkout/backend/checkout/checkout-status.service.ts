@@ -1,5 +1,5 @@
-import { DotyposService } from "@deskohub/dotypos";
-import type { Customer } from "@deskohub/dotypos/generated";
+import { type DotyposReservationId, DotyposService } from "@deskohub/dotypos";
+import type { Customer, Reservation } from "@deskohub/dotypos/generated";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import {
   Clock,
@@ -297,6 +297,55 @@ const isRetryablePaymentState = (paymentState: PaymentState) =>
   paymentState === "failed" ||
   paymentState === "cancelled" ||
   paymentState === "expired";
+
+/** The Dotypos reservation a retry reopens, for a payment that ended unpaid. */
+const getRetryDotyposReservationId = (reservation: WorkspaceReservation) =>
+  Option.fromNullishOr(reservation.dotyposReservationId).pipe(
+    Option.filter(() => isRetryablePaymentState(reservation.paymentState))
+  );
+
+/** Projects the booked selection onto the family's reservation-page link. */
+const getRetrySelectionSearchParams = ({
+  reservation,
+  dotyposReservation,
+  timing,
+}: {
+  readonly reservation: WorkspaceReservation;
+  readonly dotyposReservation: Pick<Reservation, "seats">;
+  readonly timing: Effect.Success<
+    ReturnType<typeof getDotyposReservationTiming>
+  >;
+}) =>
+  Match.value(reservation.reservationDetails).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: (details) =>
+        getStoredCoworkReservationSelectionSearchParams({
+          ...details,
+          ...timing,
+        }),
+      "meeting-room": (details) =>
+        getStoredMeetingRoomReservationSelectionSearchParams({
+          ...details,
+          ...timing,
+        }),
+      office: (details) => {
+        const seats =
+          Option.getOrUndefined(
+            Schema.decodeUnknownOption(dotyposReservationSeatsSchema)(
+              dotyposReservation.seats
+            )
+          ) ?? details.seats;
+
+        return seats === undefined
+          ? undefined
+          : getStoredOfficeReservationSelectionSearchParams({
+              ...details,
+              ...timing,
+              seats,
+            });
+      },
+    })
+  );
 
 /**
  * Payment states whose displayable attempt is normally usable, so the Dotypos
@@ -596,58 +645,24 @@ const implementation = Effect.gen(function* () {
    * the Dotypos reservation, which stays readable after hold cleanup cancels
    * it. Best effort: without it the page starts a plain new reservation.
    */
-  const loadRetrySearchParams = Effect.fn(
-    "CheckoutStatusService.loadRetrySearchParams"
+  const loadRetrySelection = Effect.fn(
+    "CheckoutStatusService.loadRetrySelection"
   )(
-    function* (reservation: WorkspaceReservation) {
-      if (
-        !isRetryablePaymentState(reservation.paymentState) ||
-        !reservation.dotyposReservationId
-      ) {
-        return undefined;
-      }
-
-      const dotyposReservation = yield* dotypos.getReservationWithoutCustomer(
-        reservation.dotyposReservationId
-      );
-      const timing = yield* getDotyposReservationTiming({
-        reservationId: reservation.id,
-        reservation: dotyposReservation,
-      });
-
-      return Match.value(reservation.reservationDetails).pipe(
-        Match.discriminatorsExhaustive("kind")({
-          cowork: (details) =>
-            getStoredCoworkReservationSelectionSearchParams({
-              ...details,
-              ...timing,
-            }),
-          "meeting-room": (details) =>
-            getStoredMeetingRoomReservationSelectionSearchParams({
-              ...details,
-              ...timing,
-            }),
-          office: (details) => {
-            const seats =
-              Option.getOrUndefined(
-                Schema.decodeUnknownOption(dotyposReservationSeatsSchema)(
-                  dotyposReservation.seats
-                )
-              ) ?? details.seats;
-
-            return seats === undefined
-              ? undefined
-              : getStoredOfficeReservationSelectionSearchParams({
-                  ...details,
-                  ...timing,
-                  seats,
-                });
-          },
-        })
-      );
-    },
-    (effect, reservation) =>
-      effect.pipe(
+    (input: {
+      readonly reservation: WorkspaceReservation;
+      readonly dotyposReservationId: DotyposReservationId;
+    }) =>
+      Effect.succeed(input).pipe(
+        Effect.bind("dotyposReservation", ({ dotyposReservationId }) =>
+          dotypos.getReservationWithoutCustomer(dotyposReservationId)
+        ),
+        Effect.bind("timing", ({ reservation, dotyposReservation }) =>
+          getDotyposReservationTiming({
+            reservationId: reservation.id,
+            reservation: dotyposReservation,
+          })
+        ),
+        Effect.map(getRetrySelectionSearchParams),
         Effect.timeoutOrElse({
           duration: summaryTimeout,
           orElse: () =>
@@ -660,7 +675,10 @@ const implementation = Effect.gen(function* () {
             cause,
           })
         ),
-        Effect.orElseSucceed(() => undefined),
+        Effect.orElseSucceed(() => undefined)
+      ),
+    (effect, { reservation }) =>
+      effect.pipe(
         Effect.annotateLogs({
           reservationId: reservation.id,
           dotyposReservationId: reservation.dotyposReservationId,
@@ -668,6 +686,14 @@ const implementation = Effect.gen(function* () {
         })
       )
   );
+
+  /** Loads the retry selection only for a payment the customer may retry. */
+  const loadRetrySearchParams = (reservation: WorkspaceReservation) =>
+    Option.match(getRetryDotyposReservationId(reservation), {
+      onNone: () => Effect.undefined,
+      onSome: (dotyposReservationId) =>
+        loadRetrySelection({ reservation, dotyposReservationId }),
+    });
 
   /**
    * A provider payment unsettled past the abandonment cutoff may never settle,
