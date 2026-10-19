@@ -359,9 +359,15 @@ export const makeWorkspaceE2EAccountCases = ({
 
     const fillAndSubmitEmail = (email: string) =>
       Effect.gen(function* () {
-        yield* fillBrowserField(run, browserSession, signInEmailSelector, email, {
-          timeoutMs: browserTimeout,
-        });
+        yield* fillBrowserField(
+          run,
+          browserSession,
+          signInEmailSelector,
+          email,
+          {
+            timeoutMs: browserTimeout,
+          }
+        );
         yield* clickBrowserElement(run, browserSession, signInSubmitSelector, {
           timeoutMs: browserTimeout,
         });
@@ -390,7 +396,8 @@ export const makeWorkspaceE2EAccountCases = ({
       const codeTitle = m.accountSignInCodeTitle({}, { locale });
       const pageText = yield* waitForBrowserText({
         description,
-        matches: (text) => text.includes(inboxTitle) || text.includes(codeTitle),
+        matches: (text) =>
+          text.includes(inboxTitle) || text.includes(codeTitle),
         run,
         session: browserSession,
         timeoutMs: uiTransition,
@@ -578,25 +585,6 @@ export const makeWorkspaceE2EAccountCases = ({
       );
     }
   };
-
-  /**
-   * Submits the sign-in form for one synthetic recipient. The serial lane
-   * reserves every magic-link operation at case level, so this step never
-   * waits on the operation budget. The emailed link signs in either way, so
-   * a code step is left untouched.
-   */
-  const requestSignInLink = (email: string) =>
-    Effect.gen(function* () {
-      yield* openPage(localized(signInSuffix));
-      yield* waitSignInForm();
-      yield* fillAndSubmitEmail(email);
-      const confirmation = yield* waitSignInAccepted(
-        "generic accepted sign-in response"
-      );
-      if (confirmation === "inbox") {
-        yield* waitText("generic accepted sign-in body", acceptedBody);
-      }
-    });
 
   /**
    * The baseline IDs prevent repeated sign-ins from matching a stale link.
@@ -1564,7 +1552,7 @@ export const makeWorkspaceE2EAccountCases = ({
         };
       })
     ),
-    makeCase("account-session-lifecycle", ({ journalRef, runStep }) =>
+    makeCase("account-session-lifecycle", ({ runStep }) =>
       Effect.gen(function* () {
         const reauthentication = yield* runStep(
           step(
@@ -1892,7 +1880,9 @@ export const makeWorkspaceE2EAccountCases = ({
             step(
               "keeps the assistant's browser signed out",
               Effect.gen(function* () {
-                yield* assistant.openPage(localized(accountSuffix, handoffLocale));
+                yield* assistant.openPage(
+                  localized(accountSuffix, handoffLocale)
+                );
                 yield* assistant.waitUrlContains(
                   "anonymous account redirect in the assistant's browser",
                   signInSuffix
@@ -1919,7 +1909,8 @@ export const makeWorkspaceE2EAccountCases = ({
                     "replayed link failure body",
                     m.accountCallbackFailedBody({}, { locale: handoffLocale })
                   );
-                  const replayedUserId = yield* findAuthUserIdByEmail(recipient);
+                  const replayedUserId =
+                    yield* findAuthUserIdByEmail(recipient);
                   assert(
                     replayedUserId === userId,
                     "the replayed link changed the reactivated identity"
@@ -1968,7 +1959,11 @@ export const makeWorkspaceE2EAccountCases = ({
             )
           );
           return userId;
-        }).pipe(Effect.ensuring(closeBrowserSession(run, assistantSession)));
+        }).pipe(
+          Effect.ensuring(
+            Effect.ignore(closeBrowserSession(run, assistantSession))
+          )
+        );
         // The Czech callback saved Czech as the new account's preference;
         // the later cases read the account in English, as an English
         // reactivation would have saved it.

@@ -51,9 +51,6 @@ const expectedHost = new URL(baseUrl).host;
 const syntheticRunId = "cases-test-run";
 const session = "workspace-account-cases-test";
 
-const acceptedTitle = "Check your inbox";
-const acceptedBody =
-  "If the address can receive mail, a single-use link will arrive shortly. The link works once and expires in 10 minutes.";
 const completionTitle = "Complete your profile";
 const completionReferralApplied =
   "Your referral code was applied. You’ll get 15% off your first paid booking.";
@@ -62,13 +59,11 @@ const czechDeletionPendingTitle = "Smazání účtu čeká na dokončení";
 const deletionReauthLinkSent =
   "If the address can receive mail, a new link is on its way.";
 const deletedTitle = "Your account was deleted";
-const signInCodeTitle = "Enter your sign-in code";
 const signInCodeInvalid =
   "That code does not match. Check the latest email and try again.";
 const useDifferentEmailLabel = "Use a different email";
 const deletionReauthCodeTitle = "Confirm it is you";
 const signInCodeSelector = "#account-sign-in-code";
-const callbackFailedTitle = "This link cannot be used";
 const supportTitle = "We need to verify your profile";
 const signInFormSelector = "#account-sign-in-form";
 const signInEmailSelector = "#account-sign-in-email";
@@ -1272,7 +1267,8 @@ class FakeBrowser {
     const request = this.storedRequest;
     if (
       request === undefined ||
-      (requestedReturnTo !== undefined && request.returnTo !== requestedReturnTo)
+      (requestedReturnTo !== undefined &&
+        request.returnTo !== requestedReturnTo)
     ) {
       return;
     }
@@ -1591,7 +1587,9 @@ class FakeBrowser {
     ) {
       const callback = new URL(this.currentUrl);
       if (callback.searchParams.get("error") === null) {
-        throw new Error("the request-a-new-link action is off the failure card");
+        throw new Error(
+          "the request-a-new-link action is off the failure card"
+        );
       }
       this.navigate(
         `${this.external.config.baseUrl}${getAccountSignInPath(
@@ -2057,22 +2055,31 @@ mock.module("../browser", () => ({
     browserSession: string,
     selector: string
   ) => Effect.sync(() => requireBrowser(browserSession).activate(selector)),
-  clickBrowserElement: (_run: Runner, browserSession: string, selector: string) =>
-    Effect.sync(() => requireBrowser(browserSession).click(selector)),
+  clickBrowserElement: (
+    _run: Runner,
+    browserSession: string,
+    selector: string
+  ) => Effect.sync(() => requireBrowser(browserSession).click(selector)),
   evalBrowserScript: (
     _operation: string,
     _run: Runner,
     browserSession: string,
     input: string
-  ) => Effect.sync(() => browserResult(requireBrowser(browserSession).eval(input))),
+  ) =>
+    Effect.sync(() =>
+      browserResult(requireBrowser(browserSession).eval(input))
+    ),
   fillBrowserField: (
     _run: Runner,
     browserSession: string,
     selector: string,
     value: string
   ) => Effect.sync(() => requireBrowser(browserSession).fill(selector, value)),
-  focusBrowserElement: (_run: Runner, browserSession: string, selector: string) =>
-    Effect.sync(() => requireBrowser(browserSession).focus(selector)),
+  focusBrowserElement: (
+    _run: Runner,
+    browserSession: string,
+    selector: string
+  ) => Effect.sync(() => requireBrowser(browserSession).focus(selector)),
   normalizeBrowserText: (text: string) => text.replaceAll(/\s+/g, " ").trim(),
   openBrowserPage: (
     _config: WorkspaceE2EAccountConfig,
@@ -2121,14 +2128,20 @@ mock.module("../browser", () => ({
     fieldSelectors: readonly string[]
   ) =>
     Effect.sync(() =>
-      requireBrowser(browserSession).waitForFormSubmitHandler(selector, fieldSelectors)
+      requireBrowser(browserSession).waitForFormSubmitHandler(
+        selector,
+        fieldSelectors
+      )
     ),
   waitForBrowserReactHandler: (
     _run: Runner,
     browserSession: string,
     selector: string,
     handler: string
-  ) => Effect.sync(() => requireBrowser(browserSession).waitForHandler(selector, handler)),
+  ) =>
+    Effect.sync(() =>
+      requireBrowser(browserSession).waitForHandler(selector, handler)
+    ),
   waitForBrowserText: ({
     matches,
     session: browserSession,
@@ -2597,9 +2610,9 @@ test("executes every account lane case within the magic-link ledger", async () =
     ["callback-failed", "/cs-CZ/auth/callback", "INVALID_TOKEN"],
   ]);
   expect(
-    new URL(scenario.external.signInHandoffReviews[0]?.url ?? "").searchParams.get(
-      "returnTo"
-    )
+    new URL(
+      scenario.external.signInHandoffReviews[0]?.url ?? ""
+    ).searchParams.get("returnTo")
   ).toBe(handoff.returnTo);
   expect(scenario.external.languageSaves).toEqual(["cs-CZ", "en-US"]);
   expect(scenario.external.localePreference).toBe("en-US");
