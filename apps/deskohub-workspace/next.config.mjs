@@ -130,13 +130,6 @@ const nextConfig = {
           },
         ],
       },
-      {
-        // Public pages answer with Markdown when `Accept` prefers it (the
-        // proxy rewrites those requests), so their HTML varies on `Accept`.
-        // Vercel drops a `Vary` the proxy sets on a passed-through response.
-        source: `/:locale(${localeRedirectPattern})/:path*`,
-        headers: [{ key: "Vary", value: "Accept" }],
-      },
     ];
   },
   images: {
