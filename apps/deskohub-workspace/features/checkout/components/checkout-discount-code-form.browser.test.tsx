@@ -1,18 +1,7 @@
 import { expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
 import { chromium, type Page, type Request } from "@playwright/test";
-import {
-  allocateLoopbackPort,
-  waitForOwnedLoopbackServer,
-  waitForOwnedLoopbackServerToStop,
-} from "@/shared/testing/loopback-server";
+import { withNextAppFixture } from "@/shared/testing/next-app-fixture.test-utils";
 
-const appRoot = resolve(import.meta.dir, "../../..");
-const fixtureStartupTimeoutMs = 45_000;
-const fixtureShutdownTimeoutMs = 5_000;
 const fixtureBrowserTimeoutMs = 15_000;
 const firstSubmittedCode = "SYNTHETIC-ORDINARY-CODE";
 const secondSubmittedCode = "SYNTHETIC-NEXT-CODE";
@@ -25,19 +14,7 @@ type WindowWithDiscountInput = Window & {
   __discountInput?: Element;
 };
 
-const fixtureFiles = (readinessMarker: string) => ({
-  "app/fixture-ready/route.ts": `
-const readinessMarker = ${JSON.stringify(readinessMarker)};
-
-export async function GET() {
-  return new Response(readinessMarker, {
-    headers: {
-      "cache-control": "no-store",
-      "content-type": "text/plain; charset=utf-8",
-    },
-  });
-}
-`,
+const fixtureFiles = {
   "app/layout.tsx": `
 import type { ReactNode } from "react";
 
@@ -86,11 +63,6 @@ export function CheckoutPayShell({ discountCodeForm }: { readonly discountCodeFo
 const nextConfig = { experimental: { externalDir: true }, reactCompiler: true };
 export default nextConfig;
 `,
-  "package.json": JSON.stringify(
-    { private: true, type: "module", scripts: { dev: "next dev" } },
-    null,
-    2
-  ),
   "test-action.ts": `
 "use server";
 
@@ -124,62 +96,6 @@ export const env = {
   NEXT_PUBLIC_POSTHOG_HOST: undefined,
 } as const;
 `,
-  "tsconfig.json": JSON.stringify(
-    {
-      compilerOptions: {
-        allowJs: true,
-        baseUrl: ".",
-        esModuleInterop: true,
-        isolatedModules: true,
-        jsx: "preserve",
-        lib: ["dom", "dom.iterable", "esnext"],
-        module: "esnext",
-        moduleResolution: "bundler",
-        noEmit: true,
-        paths: {
-          "@/env": ["./test-env.ts"],
-          "@/features/checkout/actions/apply-discount-code": [
-            "./test-action.ts",
-          ],
-          "@/*": ["./source/*"],
-        },
-        plugins: [{ name: "next" }],
-        skipLibCheck: true,
-        strict: true,
-        target: "ES2022",
-      },
-      include: ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-      exclude: ["node_modules"],
-    },
-    null,
-    2
-  ),
-});
-
-const writeFixture = async (fixtureRoot: string, readinessMarker: string) => {
-  const files = fixtureFiles(readinessMarker);
-  for (const [relativePath, contents] of Object.entries(files)) {
-    const filePath = join(fixtureRoot, relativePath);
-    await mkdir(resolve(filePath, ".."), { recursive: true });
-    await writeFile(filePath, contents);
-  }
-
-  await mkdir(join(fixtureRoot, "source"), { recursive: true });
-  await symlink(
-    resolve(appRoot, "features"),
-    join(fixtureRoot, "source/features"),
-    "dir"
-  );
-  await symlink(
-    resolve(appRoot, "shared"),
-    join(fixtureRoot, "source/shared"),
-    "dir"
-  );
-  await symlink(
-    resolve(appRoot, "node_modules"),
-    join(fixtureRoot, "node_modules"),
-    "dir"
-  );
 };
 
 const waitForReactHandler = async (
@@ -206,281 +122,189 @@ const waitForReactHandler = async (
   );
 };
 
-const waitForOwnedChildExit = async (
-  childExit: Promise<unknown>,
-  timeoutMs: number
-): Promise<boolean> => {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const didExit = await Promise.race([
-    childExit.then(() => true),
-    new Promise<boolean>((resolveExit) => {
-      timer = setTimeout(() => resolveExit(false), timeoutMs);
-    }),
-  ]);
-  if (timer) clearTimeout(timer);
-  return didExit;
-};
-
 test("clears the ordinary code after a fresh referral state in the compiled browser form", {
   timeout: 120_000,
 }, async () => {
-  const port = await allocateLoopbackPort();
-  const readinessMarker = randomUUID();
-  const fixtureRoot = await mkdtemp(
-    join(tmpdir(), "workspace-discount-code-reset-")
-  );
-  const fixtureUrl = `http://127.0.0.1:${port}`;
-  const readinessUrl = `${fixtureUrl}/fixture-ready`;
-  let server: ReturnType<typeof Bun.spawn> | undefined;
-  let serverExit: Promise<number> | undefined;
-  let serverExitCode: number | undefined;
-  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
-  let teardownError: Error | undefined;
-
-  try {
-    await writeFixture(fixtureRoot, readinessMarker);
-    const nextCli = resolve(appRoot, "node_modules/next/dist/bin/next");
-    server = Bun.spawn(
-      [
-        process.execPath,
-        nextCli,
-        "dev",
-        "--webpack",
-        "--hostname",
-        "127.0.0.1",
-        "--port",
-        String(port),
-      ],
-      {
-        cwd: fixtureRoot,
-        env: {
-          HOME: process.env.HOME ?? "/tmp",
-          BUN_OPTIONS: "--no-env-file",
-          NEXT_TELEMETRY_DISABLED: "1",
-          PATH: process.env.PATH ?? "/usr/bin:/bin",
-          TMPDIR: process.env.TMPDIR ?? tmpdir(),
-        },
-        stderr: "ignore",
-        stdin: "ignore",
-        stdout: "ignore",
-      }
-    );
-    serverExit = server.exited.then((code) => {
-      serverExitCode = code;
-      return code;
-    });
-
-    await waitForOwnedLoopbackServer({
-      exitCode: () => serverExitCode,
-      marker: readinessMarker,
-      readyUrl: readinessUrl,
-      timeoutMs: fixtureStartupTimeoutMs,
-    });
-
-    browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-    page.setDefaultTimeout(fixtureBrowserTimeoutMs);
-    page.setDefaultNavigationTimeout(fixtureBrowserTimeoutMs);
-
-    const resourceCounts = {
-      response: {
-        document: 0,
-        script: 0,
-        stylesheet: 0,
-        image: 0,
-        font: 0,
-        fetch: 0,
-        other: 0,
+  await withNextAppFixture(
+    {
+      files: fixtureFiles,
+      name: "workspace-discount-code-reset",
+      paths: {
+        "@/env": ["./test-env.ts"],
+        "@/features/checkout/actions/apply-discount-code": ["./test-action.ts"],
       },
-      finished: {
-        document: 0,
-        script: 0,
-        stylesheet: 0,
-        image: 0,
-        font: 0,
-        fetch: 0,
-        other: 0,
-      },
-      failed: {
-        document: 0,
-        script: 0,
-        stylesheet: 0,
-        image: 0,
-        font: 0,
-        fetch: 0,
-        other: 0,
-      },
-    };
-    let mainDocumentStatus = 0;
-    let pageErrorCount = 0;
-    const resourceClass = (request: Request) => {
-      switch (request.resourceType()) {
-        case "document":
-          return "document";
-        case "script":
-          return "script";
-        case "stylesheet":
-          return "stylesheet";
-        case "image":
-          return "image";
-        case "font":
-          return "font";
-        case "fetch":
-        case "xhr":
-          return "fetch";
-        default:
-          return "other";
-      }
-    };
-    page.on("response", (response) => {
-      const request = response.request();
-      resourceCounts.response[resourceClass(request)] += 1;
-      if (request.isNavigationRequest()) {
-        try {
-          if (request.frame() === page.mainFrame()) {
-            mainDocumentStatus = response.status();
+    },
+    async ({ exitCode, url: fixtureUrl }) => {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        page.setDefaultTimeout(fixtureBrowserTimeoutMs);
+        page.setDefaultNavigationTimeout(fixtureBrowserTimeoutMs);
+
+        const resourceCounts = {
+          response: {
+            document: 0,
+            script: 0,
+            stylesheet: 0,
+            image: 0,
+            font: 0,
+            fetch: 0,
+            other: 0,
+          },
+          finished: {
+            document: 0,
+            script: 0,
+            stylesheet: 0,
+            image: 0,
+            font: 0,
+            fetch: 0,
+            other: 0,
+          },
+          failed: {
+            document: 0,
+            script: 0,
+            stylesheet: 0,
+            image: 0,
+            font: 0,
+            fetch: 0,
+            other: 0,
+          },
+        };
+        let mainDocumentStatus = 0;
+        let pageErrorCount = 0;
+        const resourceClass = (request: Request) => {
+          switch (request.resourceType()) {
+            case "document":
+              return "document";
+            case "script":
+              return "script";
+            case "stylesheet":
+              return "stylesheet";
+            case "image":
+              return "image";
+            case "font":
+              return "font";
+            case "fetch":
+            case "xhr":
+              return "fetch";
+            default:
+              return "other";
           }
-        } catch {
-          // A diagnostic observer must not change the browser interaction.
+        };
+        page.on("response", (response) => {
+          const request = response.request();
+          resourceCounts.response[resourceClass(request)] += 1;
+          if (request.isNavigationRequest()) {
+            try {
+              if (request.frame() === page.mainFrame()) {
+                mainDocumentStatus = response.status();
+              }
+            } catch {
+              // A diagnostic observer must not change the browser interaction.
+            }
+          }
+        });
+        page.on("requestfinished", (request) => {
+          resourceCounts.finished[resourceClass(request)] += 1;
+        });
+        page.on("requestfailed", (request) => {
+          resourceCounts.failed[resourceClass(request)] += 1;
+        });
+        page.on("pageerror", () => {
+          pageErrorCount += 1;
+        });
+
+        try {
+          await page.goto(`${fixtureUrl}/pay?payState=before-referral`, {
+            waitUntil: "load",
+          });
+        } catch (error) {
+          process.stderr.write(
+            `e2e.checkout.initial_navigation ${JSON.stringify({
+              code: "navigation_failed",
+              mainDocumentStatus,
+              responseCounts: resourceCounts.response,
+              finishedCounts: resourceCounts.finished,
+              failedCounts: resourceCounts.failed,
+              pageErrorCount,
+              ownedServerExitCode: exitCode() ?? -1,
+            })}\n`
+          );
+          throw error;
         }
-      }
-    });
-    page.on("requestfinished", (request) => {
-      resourceCounts.finished[resourceClass(request)] += 1;
-    });
-    page.on("requestfailed", (request) => {
-      resourceCounts.failed[resourceClass(request)] += 1;
-    });
-    page.on("pageerror", () => {
-      pageErrorCount += 1;
-    });
+        await page
+          .locator('[data-checkout-pay-shell][data-hydrated="true"]')
+          .waitFor();
 
-    try {
-      await page.goto(`${fixtureUrl}/pay?payState=before-referral`, {
-        waitUntil: "load",
-      });
-    } catch (error) {
-      process.stderr.write(
-        `e2e.checkout.initial_navigation ${JSON.stringify({
-          code: "navigation_failed",
-          mainDocumentStatus,
-          responseCounts: resourceCounts.response,
-          finishedCounts: resourceCounts.finished,
-          failedCounts: resourceCounts.failed,
-          pageErrorCount,
-          ownedServerExitCode: serverExitCode ?? -1,
-        })}\n`
-      );
-      throw error;
-    }
-    await page
-      .locator('[data-checkout-pay-shell][data-hydrated="true"]')
-      .waitFor();
-
-    const input = page.locator(
-      '#checkout-discount-code-form input[name="submittedCode"]'
-    );
-    await input.waitFor({ state: "visible" });
-    await waitForReactHandler(
-      page,
-      '#checkout-discount-code-form input[name="submittedCode"]',
-      "onChange"
-    );
-    await waitForReactHandler(page, "#checkout-discount-code-form", "onSubmit");
-    await input.fill(firstSubmittedCode);
-    await input.evaluate((element) => {
-      (window as WindowWithDiscountInput).__discountInput = element;
-    });
-
-    await Promise.all([
-      page.waitForURL(
-        (url) => url.searchParams.get("payState") === "after-referral"
-      ),
-      input.press("Enter"),
-    ]);
-    await page.locator('main[data-page-state="after-referral"]').waitFor();
-    await page.waitForFunction(
-      () => {
-        const input = document.querySelector<HTMLInputElement>(
+        const input = page.locator(
           '#checkout-discount-code-form input[name="submittedCode"]'
         );
-        return input !== null && input.value === "";
-      },
-      undefined,
-      { timeout: fixtureBrowserTimeoutMs }
-    );
-
-    const sameInputNode = await input.evaluate((element) =>
-      Object.is(element, (window as WindowWithDiscountInput).__discountInput)
-    );
-    const inputIsEmpty = await input.evaluate(
-      (element) => (element as HTMLInputElement).value === ""
-    );
-    const referralNoticeIsPresent =
-      (await page.locator("[data-checkout-referral-applied]").count()) === 1;
-
-    expect(sameInputNode).toBe(true);
-    expect(inputIsEmpty).toBe(true);
-    expect(referralNoticeIsPresent).toBe(true);
-
-    await input.fill(secondSubmittedCode);
-    await Promise.all([
-      page.waitForURL((url) =>
-        url.searchParams.get("payState")?.startsWith("after-second-submit-")
-      ),
-      input.press("Enter"),
-    ]);
-
-    const freshTokenWasUsed =
-      new URL(page.url()).searchParams.get("payState") ===
-      "after-second-submit-fresh";
-    expect(freshTokenWasUsed).toBe(true);
-  } finally {
-    try {
-      await browser?.close();
-    } catch {
-      teardownError = new Error("owned browser fixture did not close cleanly");
-    }
-    try {
-      if (server && serverExit) {
-        if (serverExitCode === undefined) server.kill("SIGTERM");
-        let exited = await waitForOwnedChildExit(
-          serverExit,
-          fixtureShutdownTimeoutMs
+        await input.waitFor({ state: "visible" });
+        await waitForReactHandler(
+          page,
+          '#checkout-discount-code-form input[name="submittedCode"]',
+          "onChange"
         );
-        if (!exited) {
-          server.kill("SIGKILL");
-          exited = await waitForOwnedChildExit(
-            serverExit,
-            fixtureShutdownTimeoutMs
-          );
-        }
-        if (!exited)
-          teardownError ??= new Error(
-            "owned Next fixture child did not exit after SIGKILL"
-          );
+        await waitForReactHandler(
+          page,
+          "#checkout-discount-code-form",
+          "onSubmit"
+        );
+        await input.fill(firstSubmittedCode);
+        await input.evaluate((element) => {
+          (window as WindowWithDiscountInput).__discountInput = element;
+        });
+
+        await Promise.all([
+          page.waitForURL(
+            (url) => url.searchParams.get("payState") === "after-referral"
+          ),
+          input.press("Enter"),
+        ]);
+        await page.locator('main[data-page-state="after-referral"]').waitFor();
+        await page.waitForFunction(
+          () => {
+            const input = document.querySelector<HTMLInputElement>(
+              '#checkout-discount-code-form input[name="submittedCode"]'
+            );
+            return input !== null && input.value === "";
+          },
+          undefined,
+          { timeout: fixtureBrowserTimeoutMs }
+        );
+
+        const sameInputNode = await input.evaluate((element) =>
+          Object.is(
+            element,
+            (window as WindowWithDiscountInput).__discountInput
+          )
+        );
+        const inputIsEmpty = await input.evaluate(
+          (element) => (element as HTMLInputElement).value === ""
+        );
+        const referralNoticeIsPresent =
+          (await page.locator("[data-checkout-referral-applied]").count()) ===
+          1;
+
+        expect(sameInputNode).toBe(true);
+        expect(inputIsEmpty).toBe(true);
+        expect(referralNoticeIsPresent).toBe(true);
+
+        await input.fill(secondSubmittedCode);
+        await Promise.all([
+          page.waitForURL((url) =>
+            url.searchParams.get("payState")?.startsWith("after-second-submit-")
+          ),
+          input.press("Enter"),
+        ]);
+
+        const freshTokenWasUsed =
+          new URL(page.url()).searchParams.get("payState") ===
+          "after-second-submit-fresh";
+        expect(freshTokenWasUsed).toBe(true);
+      } finally {
+        await browser.close();
       }
-    } catch {
-      teardownError ??= new Error("owned Next fixture child did not stop");
     }
-    try {
-      await waitForOwnedLoopbackServerToStop({
-        marker: readinessMarker,
-        readyUrl: readinessUrl,
-        timeoutMs: fixtureShutdownTimeoutMs,
-      });
-    } catch {
-      teardownError ??= new Error(
-        "owned Next fixture marker did not disappear"
-      );
-    }
-    try {
-      await rm(fixtureRoot, { force: true, recursive: true });
-    } catch {
-      teardownError ??= new Error(
-        "owned Next fixture directory was not removed"
-      );
-    }
-  }
-  if (teardownError) throw teardownError;
+  );
 });
