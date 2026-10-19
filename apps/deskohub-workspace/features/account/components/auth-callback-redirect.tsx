@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
+import { forgetEmailSignInRequest } from "@/features/account/email-sign-in-request";
 import { noteEmailSignInForPasskeyPrompt } from "@/features/account/passkey-prompt";
 import {
   getSignInDestination,
+  readAuthCallbackReturnTo,
   signInAttemptParam,
-  signInReturnParam,
+  signInCallbackReturnParam,
 } from "@/features/account/routes";
 import { recordSignInCompletion } from "@/features/account/sign-in-analytics";
-import { forgetSignInCodeRequest } from "@/features/account/sign-in-code-request";
 import type { Locale } from "@/features/i18n";
 import { handOffReturn } from "@/shared/browser/return-window";
 import { AuthCallbackLoading } from "./auth-callback-loading";
@@ -18,12 +19,14 @@ export function AuthCallbackRedirect({ locale }: { readonly locale: Locale }) {
     let active = true;
     let attemptId = "";
     let hasError = false;
-    let returnTo: string | null = null;
+    let returnTo: string | undefined;
     try {
       const searchParams = new URLSearchParams(window.location.search);
       attemptId = searchParams.get(signInAttemptParam) ?? "";
       hasError = searchParams.has("error");
-      returnTo = searchParams.get(signInReturnParam);
+      returnTo = readAuthCallbackReturnTo(
+        searchParams.get(signInCallbackReturnParam)
+      );
     } catch {
       // A missing query is handled by the shared handoff validator.
     }
@@ -43,7 +46,7 @@ export function AuthCallbackRedirect({ locale }: { readonly locale: Locale }) {
       if (!active) return;
       recordSignInCompletion("link", { keepRecorded: true });
       noteEmailSignInForPasskeyPrompt();
-      forgetSignInCodeRequest();
+      forgetEmailSignInRequest();
       leaveForDestination();
     };
 
