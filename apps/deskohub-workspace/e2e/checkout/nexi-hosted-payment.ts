@@ -48,10 +48,8 @@ import {
   parseNexiSnapshot,
   toNexiHostedPageStateCode,
 } from "./nexi-hosted-page";
+import { nexiSandboxTestCard } from "./nexi-sandbox-test-card";
 
-const NEXI_TEST_CARD_NUMBER = "4509034543615006";
-const NEXI_TEST_CVV = "298";
-const NEXI_TEST_EXPIRY = "1028";
 const cardFieldFillAttemptCount = 3;
 const optionalCardFieldTimeoutMs = 10_000;
 const continueAbsentAfterMs = 15_000;
@@ -94,9 +92,9 @@ export const completeNexiHostedPayment = ({
   timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    addRedaction(NEXI_TEST_CARD_NUMBER);
-    addRedaction(NEXI_TEST_CVV, true);
-    addRedaction(NEXI_TEST_EXPIRY, true);
+    addRedaction(nexiSandboxTestCard.number);
+    addRedaction(nexiSandboxTestCard.cvv, true);
+    addRedaction(nexiSandboxTestCard.expiry, true);
 
     yield* requireMainFrame(run, session);
     const page: NexiHostedPaymentSession = {
@@ -112,16 +110,21 @@ export const completeNexiHostedPayment = ({
     yield* fillNexiCardField(
       page,
       "card_number",
-      NEXI_TEST_CARD_NUMBER,
+      nexiSandboxTestCard.number,
       required
     );
     yield* fillNexiCardField(
       page,
       "expiration_date",
-      NEXI_TEST_EXPIRY,
+      nexiSandboxTestCard.expiry,
       required
     );
-    yield* fillNexiCardField(page, "security_code", NEXI_TEST_CVV, required);
+    yield* fillNexiCardField(
+      page,
+      "security_code",
+      nexiSandboxTestCard.cvv,
+      required
+    );
     yield* fillNexiCardField(page, "cardholder_name", data.name, optional);
     yield* fillNexiCardField(page, "cardholder_email", data.email, optional);
 

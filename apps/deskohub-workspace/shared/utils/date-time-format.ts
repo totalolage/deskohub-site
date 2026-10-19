@@ -41,6 +41,24 @@ export const formatInstantDateTime = ({
     temporalInstantToDate(instant)
   );
 
+/**
+ * The instant's time of day. Format it on the server or only in content the
+ * client renders after hydration: Node and browsers separate the time with
+ * different spaces, so a value rendered on both sides fails hydration.
+ */
+export const formatInstantTime = ({
+  instant,
+  locale,
+  timeZone,
+}: {
+  readonly instant: Temporal.Instant;
+  readonly locale: Intl.LocalesArgument;
+  readonly timeZone: string;
+}) =>
+  new Intl.DateTimeFormat(locale, { timeStyle: "short", timeZone }).format(
+    temporalInstantToDate(instant)
+  );
+
 export const formatInstantDateRange = ({
   start,
   end,

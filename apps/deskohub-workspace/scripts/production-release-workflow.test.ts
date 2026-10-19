@@ -177,6 +177,21 @@ describe("deploy-workspace-production workflow", () => {
     expect(failStep.if).toBe("always() && (failure() || cancelled())");
   });
 
+  test("submits published pages to IndexNow only after a successful release, without gating it", () => {
+    const indexNowStep = stepByName("Submit published pages to IndexNow");
+
+    // Placed after the recovery steps, a failed or cancelled submission can
+    // neither trigger a rollback nor fail the release.
+    expect(stepIndexOfName("Submit published pages to IndexNow")).toBe(
+      stepNames.length - 1
+    );
+    expect(indexNowStep.if).toBe("steps.canonical-smoke.outcome == 'success'");
+    expect(indexNowStep["continue-on-error"]).toBe(true);
+    expect(indexNowStep["timeout-minutes"]).toBeGreaterThan(0);
+    expect(indexNowStep.run).toBe("bun scripts/submit-indexnow.ts");
+    expect(indexNowStep.env).toBeUndefined();
+  });
+
   test("budgets the job timeout for setup, the promotion poll, and both recovery attempts", () => {
     const jobTimeoutMinutes = Number(
       rawWorkflow.match(/timeout-minutes: (\d+)/)?.[1]

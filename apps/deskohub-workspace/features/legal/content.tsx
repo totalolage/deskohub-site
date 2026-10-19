@@ -675,12 +675,14 @@ const legalDocuments = {
               crawler, based on the User-Agent and similar request headers. We
               send our analytics provider only the category, the operator of a
               recognized automated client (for example ChatGPT), the page and
-              website language requested, and, for a request blocked as
-              automated, which form or sign-in step blocked it. We do not send
-              the IP address, the User-Agent or other header values, cookies, or
-              any identifier of a person, and this measurement does not depend
-              on analytics consent. Our server-side reservation and payment
-              measurement events also carry the category.
+              website language requested, for a call to our booking tools for AI
+              assistants which tool was called and whether it succeeded, and,
+              for a request blocked as automated, which form or sign-in step
+              blocked it. We do not send the IP address, the User-Agent or other
+              header values, cookies, or any identifier of a person, and this
+              measurement does not depend on analytics consent. Our server-side
+              reservation and payment measurement events also carry the
+              category.
             </>,
             <>
               If you consent to analytics cookies or similar technologies, we
@@ -1155,13 +1157,14 @@ const legalDocuments = {
               nebo robot vyhledávače, podle hlavičky User-Agent a obdobných
               hlaviček požadavku. Poskytovateli analytických služeb předáváme
               pouze tuto kategorii, provozovatele rozpoznaného automatizovaného
-              klienta (například ChatGPT), požadovanou stránku a jazyk webu a u
-              požadavku zablokovaného jako automatizovaný také to, který
-              formulář nebo krok přihlášení jej zablokoval. Nepředáváme IP
-              adresu, User-Agent ani jiné hodnoty hlaviček, cookies ani žádný
-              identifikátor osoby a toto měření nezávisí na souhlasu s
-              analytikou. Kategorii nesou také naše serverové události měření
-              rezervací a plateb.
+              klienta (například ChatGPT), požadovanou stránku a jazyk webu, u
+              volání našich rezervačních nástrojů pro AI asistenty to, který
+              nástroj byl volán a zda uspěl, a u požadavku zablokovaného jako
+              automatizovaný také to, který formulář nebo krok přihlášení jej
+              zablokoval. Nepředáváme IP adresu, User-Agent ani jiné hodnoty
+              hlaviček, cookies ani žádný identifikátor osoby a toto měření
+              nezávisí na souhlasu s analytikou. Kategorii nesou také naše
+              serverové události měření rezervací a plateb.
             </>,
             <>
               Pokud udělíte souhlas s analytickými cookies nebo obdobnými

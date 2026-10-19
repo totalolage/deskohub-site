@@ -28,6 +28,10 @@ const rejectionOf = (promise: Promise<unknown>): Promise<unknown> =>
     (cause: unknown) => cause
   );
 
+/** Prints a SIGTERM-ignoring descendant's pid, then exits on SIGTERM. */
+const orphaningCommand =
+  "(trap '' TERM; exec sleep 30) >/dev/null 2>&1 & echo $!; trap 'exit 0' TERM; wait";
+
 describe("runCommand", () => {
   test("captures stdout, stderr, stdin, and the exit code", async () => {
     const result = await runCommand(
@@ -57,6 +61,26 @@ describe("runCommand", () => {
     const descendant = Number(result.stdout.trim());
     expect(descendant).toBeGreaterThan(0);
     expect(await waitUntilStopped(descendant)).toBe(true);
+  }, 15_000);
+
+  test("a timeout ends the group when the command exits during the grace", async () => {
+    // The command exits on SIGTERM, leaving a descendant that ignores SIGTERM
+    // and holds none of the output pipes, so the run settles before the grace
+    // ends.
+    const result = await runCommand(["bash", "-c", orphaningCommand], {
+      terminateGraceMs: 5_000,
+      timeoutMs: 200,
+    });
+    const descendant = Number(result.stdout.trim());
+    try {
+      expect(result.timedOut).toBe(true);
+      expect(descendant).toBeGreaterThan(0);
+      expect(await waitUntilStopped(descendant)).toBe(true);
+    } finally {
+      if (descendant > 0 && isRunning(descendant)) {
+        process.kill(descendant, "SIGKILL");
+      }
+    }
   }, 15_000);
 
   test("a timeout still returns when a descendant outlives the process group", async () => {
@@ -96,6 +120,42 @@ describe("commandOutput", () => {
 
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("timed out");
+  });
+});
+
+describe.skipIf(Bun.which("node") === null)("runCommand under Node", () => {
+  test("captures output, ends a timed command gracefully, and rejects a missing one", async () => {
+    const { stdout } = await runCommand(
+      [
+        "node",
+        join(import.meta.dir, "command.node-fixture.mjs"),
+        orphaningCommand,
+      ],
+      { timeoutMs: 15_000 }
+    );
+    const results = JSON.parse(stdout);
+    expect(results.captured.result).toMatchObject({
+      exitCode: 3,
+      stderr: "err\n",
+      stdout: "hello",
+      timedOut: false,
+    });
+    expect(results.terminated.result).toMatchObject({
+      exitCode: 0,
+      stdout: "ready\nterm\n",
+      timedOut: true,
+    });
+    expect(results.missing.rejected).toContain("ENOENT");
+    expect(results.orphaning.result).toMatchObject({ timedOut: true });
+    const descendant = Number(results.orphaning.result.stdout.trim());
+    try {
+      expect(descendant).toBeGreaterThan(0);
+      expect(await waitUntilStopped(descendant)).toBe(true);
+    } finally {
+      if (descendant > 0 && isRunning(descendant)) {
+        process.kill(descendant, "SIGKILL");
+      }
+    }
   });
 });
 

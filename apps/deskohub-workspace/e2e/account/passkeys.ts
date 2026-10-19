@@ -12,7 +12,7 @@ import { waitForReactClickHandler } from "../react-handlers";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   addVirtualAuthenticator,
-  type VirtualAuthenticator,
+  type PageVirtualAuthenticator,
   type VirtualAuthenticatorCredential,
 } from "../virtual-authenticator";
 import { selectAccountSection } from "./account-sections";
@@ -113,7 +113,7 @@ export const makeWorkspaceE2EAccountPasskeys = ({
   const renameLabelPattern = new RegExp(
     `^${escapeRegExp(renameLabelStart)}.+${escapeRegExp(renameLabelEnd)}$`
   );
-  let authenticator: VirtualAuthenticator | undefined;
+  let authenticator: PageVirtualAuthenticator | undefined;
 
   const operation = <A>(
     diagnosticCode: WorkspaceE2EAccountPasskeyDiagnosticCode,
@@ -234,6 +234,9 @@ export const makeWorkspaceE2EAccountPasskeys = ({
       "account_passkey_sign_in_failed",
       "sign in with the passkey button",
       async (page) => {
+        // The ceremony would also answer an autofill request the form arms
+        // meanwhile, and the customer would be signed in without the button.
+        await requireAuthenticator().waitForConditionalRequest(uiTransition);
         await answerCeremony(async () => {
           await clickHydrated(page, signInPasskeySelector, uiTransition);
           await page.waitForURL(

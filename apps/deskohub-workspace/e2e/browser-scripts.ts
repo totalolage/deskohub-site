@@ -44,6 +44,10 @@ const getCoworkSwitchSelectionScript = () => `
     );
 `;
 
+type PrefilledReservationOptions = {
+  readonly includeContact?: boolean;
+};
+
 const getOfficeDayCount = (office: NonNullable<CheckoutData["office"]>) =>
   Temporal.PlainDate.from(office.startsOn).until(
     Temporal.PlainDate.from(office.endsOn),
@@ -155,12 +159,19 @@ export const getAssertRepeatReservationScript = (data: CheckoutData) => {
 `;
 };
 
-export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
+/**
+ * Asserts the reservation form shows `data`'s selection and, unless
+ * `includeContact` is false, its contact with marketing consent reset.
+ */
+export const getAssertPrefilledReservationScript = (
+  data: CheckoutData,
+  { includeContact = true }: PrefilledReservationOptions = {}
+) => {
   if (data.expectedReservationDetails.kind === "meeting-room") {
-    return getAssertPrefilledMeetingRoomReservationScript(data);
+    return getAssertPrefilledMeetingRoomReservationScript(data, includeContact);
   }
   if (data.expectedReservationDetails.kind === "office") {
-    return getAssertPrefilledOfficeReservationScript(data);
+    return getAssertPrefilledOfficeReservationScript(data, includeContact);
   }
 
   const expectedReservation = data.expectedReservationDetails;
@@ -172,6 +183,7 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
     ...getCoworkSwitchExpectations(expectedReservation.entryTier, data.locale),
     date: data.date,
     email: data.email,
+    includeContact,
     entryTier: expectedReservation.entryTier,
     monitorOption: expectedReservation.monitorOption ?? null,
     name: data.name,
@@ -221,9 +233,11 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
       fail('workstation switch');
     }
   }
-  if (value('input[name="email"]', 'email') !== expected.email) fail('email');
-  if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
-  if (value('input[name="name"]', 'name') !== expected.name) fail('name');
+  if (expected.includeContact) {
+    if (value('input[name="email"]', 'email') !== expected.email) fail('email');
+    if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
+    if (value('input[name="name"]', 'name') !== expected.name) fail('name');
+  }
 
   const monitorInputs = [...document.querySelectorAll('input[type="radio"]')]
     .filter((input) => input instanceof HTMLInputElement && input.name !== 'entryTier');
@@ -235,13 +249,16 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
   }
 
   const marketingConsent = document.querySelector('#reservation-marketing-consent');
-  if (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false') fail('marketing consent reset');
+  if (expected.includeContact && (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false')) fail('marketing consent reset');
   return true;
 })()
 `;
 };
 
-const getAssertPrefilledMeetingRoomReservationScript = (data: CheckoutData) => {
+const getAssertPrefilledMeetingRoomReservationScript = (
+  data: CheckoutData,
+  includeContact: boolean
+) => {
   if (!data.meetingRoom) {
     throw new Error("Meeting-room backfill assertions require interval data");
   }
@@ -254,6 +271,7 @@ const getAssertPrefilledMeetingRoomReservationScript = (data: CheckoutData) => {
       data.meetingRoom.duration
     ),
     email: data.email,
+    includeContact,
     name: data.name,
     phone: data.phone,
     time: data.meetingRoom.startDateTime.slice(11),
@@ -281,18 +299,23 @@ const getAssertPrefilledMeetingRoomReservationScript = (data: CheckoutData) => {
   }
   const duration = document.querySelector('input[id^="meeting-room-duration-"]:checked');
   if (!(duration instanceof HTMLInputElement) || duration.value !== expected.durationKey) fail('duration');
-  if (value('input[name="email"]', 'email') !== expected.email) fail('email');
-  if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
-  if (value('input[name="name"]', 'name') !== expected.name) fail('name');
+  if (expected.includeContact) {
+    if (value('input[name="email"]', 'email') !== expected.email) fail('email');
+    if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
+    if (value('input[name="name"]', 'name') !== expected.name) fail('name');
+  }
 
   const marketingConsent = document.querySelector('#reservation-marketing-consent');
-  if (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false') fail('marketing consent reset');
+  if (expected.includeContact && (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false')) fail('marketing consent reset');
   return true;
 })()
 `;
 };
 
-const getAssertPrefilledOfficeReservationScript = (data: CheckoutData) => {
+const getAssertPrefilledOfficeReservationScript = (
+  data: CheckoutData,
+  includeContact: boolean
+) => {
   if (!data.office) {
     throw new Error("Office backfill assertions require range data");
   }
@@ -301,6 +324,7 @@ const getAssertPrefilledOfficeReservationScript = (data: CheckoutData) => {
 (() => {
   const expected = ${JSON.stringify({
     email: data.email,
+    includeContact,
     dayCount: getOfficeDayCount(data.office),
     name: data.name,
     phone: data.phone,
@@ -320,19 +344,24 @@ const getAssertPrefilledOfficeReservationScript = (data: CheckoutData) => {
   if (value('input[name="dayCount"]', 'day count') !== String(expected.dayCount)) fail('day count');
   const seats = document.querySelector('input[name="seats"]:checked');
   if (!(seats instanceof HTMLInputElement) || seats.value !== String(expected.seats)) fail('seats');
-  if (value('input[name="email"]', 'email') !== expected.email) fail('email');
-  if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
-  if (value('input[name="name"]', 'name') !== expected.name) fail('name');
+  if (expected.includeContact) {
+    if (value('input[name="email"]', 'email') !== expected.email) fail('email');
+    if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
+    if (value('input[name="name"]', 'name') !== expected.name) fail('name');
+  }
 
   const marketingConsent = document.querySelector('#reservation-marketing-consent');
-  if (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false') fail('marketing consent reset');
+  if (expected.includeContact && (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false')) fail('marketing consent reset');
   return true;
 })()
 `;
 };
 
-export const getPrefilledReservationConditionScript = (data: CheckoutData) => {
-  const assertion = getAssertPrefilledReservationScript(data).trim();
+export const getPrefilledReservationConditionScript = (
+  data: CheckoutData,
+  options: PrefilledReservationOptions = {}
+) => {
+  const assertion = getAssertPrefilledReservationScript(data, options).trim();
 
   return `
 (() => {
@@ -356,8 +385,14 @@ export const getSubmitCoworkReservationScript = (data: CheckoutData) => {
 `;
 };
 
-export const getSubmitMeetingRoomReservationScript = (data: CheckoutData) => {
-  const prepare = getPrepareMeetingRoomAdvertisedPriceScript(data).trim();
+export const getSubmitMeetingRoomReservationScript = (
+  data: CheckoutData,
+  options?: MeetingRoomStartTimeEntryOptions
+) => {
+  const prepare = getPrepareMeetingRoomAdvertisedPriceScript(
+    data,
+    options
+  ).trim();
 
   return `
 (async () => {
@@ -499,13 +534,28 @@ export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
     }
   }
   if (desiredMonitorOption !== null) {
-    let monitorInput;
-    await waitUntil(() => {
-      monitorInput = [...document.querySelectorAll('input[type="radio"]')]
-        .find((candidate) =>
+    const findMonitorInput = () =>
+      [...document.querySelectorAll('input[type="radio"]')].find(
+        (candidate) =>
           candidate instanceof HTMLInputElement &&
           candidate.value === desiredMonitorOption
-        );
+      );
+    // Monitor options render only once the workstation add-on is on; a date
+    // that requires the workstation turns it on by itself.
+    if (!findMonitorInput()) {
+      const workstationSwitch = document.querySelector(
+        '[data-cowork-optional-addon-toggle="workstation"] [role="switch"]'
+      );
+      if (!(workstationSwitch instanceof HTMLElement)) {
+        throw new Error('workstation add-on switch not found');
+      }
+      if (workstationSwitch.getAttribute('aria-checked') !== 'true') {
+        workstationSwitch.click();
+      }
+    }
+    let monitorInput;
+    await waitUntil(() => {
+      monitorInput = findMonitorInput();
       return monitorInput instanceof HTMLInputElement && !monitorInput.disabled;
     }, desiredMonitorOption + ' monitor option was not available');
     const price = document.querySelector(
@@ -534,8 +584,17 @@ export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
 `;
 };
 
+type MeetingRoomStartTimeEntryOptions = {
+  /**
+   * How an hourly start is entered: typed into the time input, or picked from
+   * the listed free start times.
+   */
+  readonly startTimeEntry?: "listed" | "typed";
+};
+
 export const getPrepareMeetingRoomAdvertisedPriceScript = (
-  data: CheckoutData
+  data: CheckoutData,
+  { startTimeEntry = "typed" }: MeetingRoomStartTimeEntryOptions = {}
 ) => {
   if (
     data.expectedReservationDetails.kind !== "meeting-room" ||
@@ -554,6 +613,7 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     email: data.email,
     name: data.name,
     phone: data.phone,
+    startTimeEntry,
     time: data.meetingRoom.startDateTime.slice(11),
     wholeDay: isMeetingRoomWholeDayReservationDuration(
       data.meetingRoom.duration
@@ -648,7 +708,24 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     throw new Error('meeting-room duration control not found');
   }
   if (!duration.checked) (duration.closest('label') ?? duration).click();
-  if (!expected.wholeDay) {
+  if (!expected.wholeDay && expected.startTimeEntry === 'listed') {
+    const listedStartSelector =
+      '[role="radiogroup"] input[type="radio"][value="' +
+      expected.date + 'T' + expected.time + '"]';
+    await waitUntil(
+      () => document.querySelector(listedStartSelector) instanceof HTMLInputElement,
+      () =>
+        'meeting-room start ' + expected.time +
+        ' is not among the listed free start times: ' +
+        [...document.querySelectorAll('[role="radiogroup"] input[type="radio"]')]
+          .map((option) => option.value)
+          .filter((value) => value.includes('T'))
+          .map((value) => value.slice(11))
+          .join(',')
+    );
+    const listedStart = document.querySelector(listedStartSelector);
+    (listedStart.closest('label') ?? listedStart).click();
+  } else if (!expected.wholeDay) {
     setField('input[aria-label^="Meeting room start time"]', expected.time);
   }
   setField('input[name="email"]', expected.email);

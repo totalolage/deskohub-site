@@ -814,6 +814,15 @@ export const redact = (text: string) => {
   return output;
 };
 
+/**
+ * Redacts registered secrets, whole URLs, and token-like runs from free text
+ * bound for a diagnostic or artifact.
+ */
+export const redactDiagnosticText = (text: string) =>
+  redact(text)
+    .replace(/https?:\/\/\S+/g, "[url]")
+    .replace(/[A-Za-z0-9_-]{32,}/g, "[token]");
+
 export const redactJsonValue = (
   value: unknown,
   sanitizeText: (text: string) => string = redact
