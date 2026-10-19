@@ -2,7 +2,11 @@ import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { ReservationActivitySweep } from "@/features/reservation/backend/reservation-activity-sweep.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { CampaignRecipientService } from "../../backend/campaign-recipient.service";
 import type { AutomationWorkUnitKind } from "../automation-work-units";
+import { AutomationConditionEvaluation } from "./automation-condition-evaluation.service";
+import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
+import { makePreviewUnitHandler } from "./automation-preview-unit";
 import type { RegisteredAutomationUnitHandler } from "./automation-unit-handler";
 import { makeSweepPageHandler } from "./sweep-page";
 
@@ -38,13 +42,18 @@ export class AutomationUnitHandlers extends Context.Service<
       }))
     );
 
-  /** PR C runs sweep pages only. */
-  static Live = this.layer(Effect.all([makeSweepPageHandler])).pipe(
+  /** Sweep pages and dry-run previews. */
+  static Live = this.layer(
+    Effect.all([makeSweepPageHandler, makePreviewUnitHandler])
+  ).pipe(
     Layer.provide(
       Layer.mergeAll(
         ReservationActivitySweep.Default,
         WorkspaceDatabase.Default,
-        WorkspaceDotyposLayer
+        WorkspaceDotyposLayer,
+        AutomationEvaluationFacts.Live,
+        CampaignRecipientService.Live,
+        AutomationConditionEvaluation.Live
       )
     )
   );

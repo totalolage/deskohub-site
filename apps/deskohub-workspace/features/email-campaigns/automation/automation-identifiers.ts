@@ -35,7 +35,7 @@ export const automationWorkUnitIdSchema = Schema.NonEmptyString.pipe(
 });
 export type AutomationWorkUnitId = typeof automationWorkUnitIdSchema.Type;
 
-const automationPreviewIdSchema = Schema.NonEmptyString.pipe(
+export const automationPreviewIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("AutomationPreviewId")
 ).annotate({
   identifier: "AutomationPreviewId",

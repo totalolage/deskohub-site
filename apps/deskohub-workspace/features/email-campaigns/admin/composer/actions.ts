@@ -14,7 +14,7 @@ import {
   CampaignPurpose,
   CampaignTemplateKey,
 } from "../../body/campaign-content";
-import { renderCampaignEmailPreview } from "../email-preview/render-campaign-email-preview";
+import { renderCampaignEmailPreview } from "../../body/render-campaign-email-preview";
 
 const parseOptions = {
   errors: "all",
