@@ -1,4 +1,5 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
+import type { AutomationTriggerType as AutomationTrigger } from "@deskohub/workspace-admin-api";
 import { inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
@@ -160,7 +161,8 @@ export const seedAutomatedCampaign = async (
 
 /**
  * Publishes version `versionNumber` of `campaignId` with `purpose` and the
- * content `text`, as activation will.
+ * content `text`, as activation will. `trigger` and `activatedAt` default to
+ * a placeholder trigger and an activation ordered by version number.
  */
 export const seedAutomationVersion = async (
   db: WorkspaceDatabaseClient,
@@ -169,6 +171,8 @@ export const seedAutomationVersion = async (
     readonly purpose: CampaignPurpose;
     readonly versionNumber?: number;
     readonly text?: string;
+    readonly trigger?: AutomationTrigger;
+    readonly activatedAt?: Temporal.Instant;
   }
 ) => {
   const content = campaignContentFixture(input.text ?? "Verze");
@@ -178,7 +182,10 @@ export const seedAutomationVersion = async (
       .values({
         campaignId: input.campaignId,
         versionNumber: input.versionNumber ?? 1,
-        flow: { trigger: { _tag: "reservation-booked" }, steps: [] },
+        flow: {
+          trigger: input.trigger ?? { _tag: "reservation-booked" },
+          steps: [],
+        },
         purpose: input.purpose,
         templateKey: "workspace",
         content,
@@ -189,7 +196,9 @@ export const seedAutomationVersion = async (
         }),
         audienceFilter: everyoneFilter,
         draftHash: `draft-${input.versionNumber ?? 1}`,
-        activatedAt: sql`now() + make_interval(secs => ${input.versionNumber ?? 1})`,
+        activatedAt:
+          input.activatedAt ??
+          sql`now() + make_interval(secs => ${input.versionNumber ?? 1})`,
       })
       .returning({ id: emailCampaignAutomationVersions.id })
   );

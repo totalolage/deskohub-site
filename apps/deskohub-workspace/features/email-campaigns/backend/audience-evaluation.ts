@@ -50,6 +50,14 @@ const factKeyOf = (
   return key;
 };
 
+/** One customer evaluated in their own context, with resolved facts. */
+type AudienceSubject = {
+  readonly candidate: AudienceCandidate;
+  readonly context: AudienceEvaluationContext;
+  readonly facts: AudienceFacts;
+  readonly profile: Option.Option<DotyposCustomer>;
+};
+
 /**
  * Evaluates the filter for one candidate in its own context, which fixes the
  * periods and campaign sources its facts were resolved for. Pass
@@ -58,17 +66,21 @@ const factKeyOf = (
  */
 export const evaluateAudienceFilter = ({
   filter,
+  ...subject
+}: AudienceSubject & {
+  readonly filter: AudienceFilter;
+}): AudienceFilterOutcome =>
+  evaluateAudienceTree(filter, audienceConditionOutcome(subject));
+
+/** Each catalogue condition's outcome for the subject. */
+export const audienceConditionOutcome = ({
   candidate,
   context,
   facts,
   profile,
-}: {
-  readonly filter: AudienceFilter;
-  readonly candidate: AudienceCandidate;
-  readonly context: AudienceEvaluationContext;
-  readonly facts: AudienceFacts;
-  readonly profile: Option.Option<DotyposCustomer>;
-}): AudienceFilterOutcome => {
+}: AudienceSubject): ((
+  condition: AudienceCondition
+) => AudienceFilterOutcome) => {
   const id = candidate.dotyposCustomerId;
   const readValue = <Value>(
     resolver: AudienceValueResolver<Value>
@@ -88,7 +100,7 @@ export const evaluateAudienceFilter = ({
       onSome: (actual) => outcomeOf(predicate(actual)),
     });
 
-  return evaluateAudienceTree(filter, (condition) =>
+  return (condition) =>
     Match.value(viewAudienceCondition(condition)).pipe(
       Match.discriminatorsExhaustive("kind")({
         // A candidate without records has no entry, so it counts zero.
@@ -134,6 +146,5 @@ export const evaluateAudienceFilter = ({
             (value) => value === boolean.value
           ),
       })
-    )
-  );
+    );
 };

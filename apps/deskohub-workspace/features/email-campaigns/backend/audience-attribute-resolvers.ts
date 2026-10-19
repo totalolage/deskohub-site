@@ -1,7 +1,6 @@
 import type {
   DotyposCustomer,
   DotyposCustomerId,
-  DotyposReservation,
   DotyposReservationId,
 } from "@deskohub/dotypos";
 import type {
@@ -35,13 +34,13 @@ export type AudienceResolution = {
   /** Facts outside the scope may be missing, never wrong. */
   readonly scope: AudienceScope;
   /**
-   * Dotypos reservations, any status, starting in the bounds. Without a
-   * start of its own the query starts just before the earliest Workspace
-   * reservation, so it never reads unbounded history.
+   * The Dotypos reservations, any status, starting in the bounds. A live
+   * query without a start of its own starts just before the earliest
+   * Workspace reservation, so it never reads unbounded history.
    */
   readonly visitsIn: (
     bounds: DatePeriodBounds
-  ) => Resolved<readonly DotyposReservation[]>;
+  ) => Resolved<readonly DotyposReservationId[]>;
   /** Every Dotypos reservation that has begun by `asOf`, with its start. */
   readonly pastVisits: (
     asOf: Temporal.Instant
@@ -50,7 +49,11 @@ export type AudienceResolution = {
 
 type Resolved<Value> = Effect.Effect<Value, CampaignRecipientResolutionError>;
 
-/** Counts each customer's records for a count condition's request. */
+/**
+ * Counts each customer's records for a count condition's request.
+ * `readsVisits` says whether the request reads Dotypos visits
+ * (`visitsIn` or `pastVisits`), so a unit fetches them only when needed.
+ */
 export type AudienceCountResolver<Params> = {
   readonly count: (
     request: {
@@ -59,14 +62,21 @@ export type AudienceCountResolver<Params> = {
     },
     resolution: AudienceResolution
   ) => Resolved<ReadonlyMap<DotyposCustomerId, number>>;
+  readonly readsVisits: (request: {
+    readonly params: ConcreteCountParams<Params>;
+  }) => boolean;
 };
 
-/** Customers with a date value, and those whose value lies in the bounds. */
+/**
+ * Customers with a date value, and those whose value lies in the bounds.
+ * `readsVisits` says whether it reads Dotypos visits.
+ */
 type AudienceDateResolver = {
   readonly dates: (
     request: AudienceDateRequest<string>,
     resolution: AudienceResolution
   ) => Resolved<AudienceDateFacts>;
+  readonly readsVisits: boolean;
 };
 
 /**
@@ -143,9 +153,6 @@ export type AudienceAttributeResolvers<
 
 const database = CampaignRecipientResolutionError.database;
 
-const reservationIds = (reservations: readonly DotyposReservation[]) =>
-  reservations.flatMap(({ id }) => (id === undefined ? [] : [id]));
-
 /**
  * Booked reservations by booking date count from local data; by visit date
  * in a bounded period they count among the Dotypos reservations starting in
@@ -181,8 +188,8 @@ const countReservations = (
       isUnboundedPeriod(period)
         ? countSelected({})
         : visitsIn(period).pipe(
-            Effect.flatMap((visits) =>
-              countSelected({ dotyposReservationIds: reservationIds(visits) })
+            Effect.flatMap((dotyposReservationIds) =>
+              countSelected({ dotyposReservationIds })
             )
           )
     ),
@@ -250,7 +257,11 @@ const visitDates =
  * request; set and boolean attributes read each candidate.
  */
 export const audienceAttributeResolvers: AudienceAttributeResolvers = {
-  reservationCount: { count: countReservations },
+  reservationCount: {
+    count: countReservations,
+    readsVisits: ({ params: { dateBasis, period } }) =>
+      dateBasis === "visit" && !isUnboundedPeriod(period),
+  },
   campaignEmailCount: {
     // The evaluating campaign without one (`null`) has sent nobody anything.
     count: (
@@ -267,14 +278,16 @@ export const audienceAttributeResolvers: AudienceAttributeResolvers = {
               customers: scopedCustomers(scope),
             })
             .pipe(Effect.mapError(database)),
+    readsVisits: () => false,
   },
-  firstVisit: { dates: visitDates("earliest") },
-  lastVisit: { dates: visitDates("latest") },
+  firstVisit: { dates: visitDates("earliest"), readsVisits: true },
+  lastVisit: { dates: visitDates("latest"), readsVisits: true },
   accountCreated: {
     dates: ({ bounds }, { candidates, scope }) =>
       candidates
         .accountCreations(bounds, scopedCustomers(scope))
         .pipe(Effect.mapError(database)),
+    readsVisits: false,
   },
   locale: { from: "candidate", read: ({ locale }) => [locale] },
   dotyposTags: { from: "profile", read: ({ tags }) => tags ?? [] },

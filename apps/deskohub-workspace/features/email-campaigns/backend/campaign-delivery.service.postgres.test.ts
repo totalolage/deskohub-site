@@ -567,7 +567,7 @@ describe.skipIf(!testDatabase)(
       expect(batchSend.mock.calls).toHaveLength(1);
     });
 
-    test("settles an automated send whatever its campaign's status and leaves its runs to the run transitions", async () => {
+    test("settles an automated send whatever its campaign's status and ends its runs from their recipients", async () => {
       batchSend = mock(async () => ({
         data: null,
         error: { message: "Invalid batch", statusCode: 422 },
@@ -594,10 +594,16 @@ describe.skipIf(!testDatabase)(
       expect(campaign.status).toBe("paused");
       expect(campaign.completed_at).not.toBeNull();
       const { rows: runs } = await testDatabase.pool.query(
-        "select status, outcome from email_campaign_automation_runs where send_id = $1",
+        "select status, outcome, outcome_reason from email_campaign_automation_runs where send_id = $1",
         [sendId]
       );
-      expect(runs).toEqual([{ status: "sending", outcome: null }]);
+      expect(runs).toEqual([
+        {
+          status: "ended",
+          outcome: "failed",
+          outcome_reason: "delivery-refused",
+        },
+      ]);
     });
 
     test("skips a recipient outside the test domain before any provider request outside production", async () => {

@@ -35,6 +35,7 @@ import {
   DotyposTableIdSchema,
   DotyposTableSchema,
 } from "../types";
+import { dotyposIdFilterBatchSize } from "../utils/id-filter-batches";
 import { DotyposAccessToken, DotyposGeneratedClient } from "./api";
 import { CustomerVersionSelection, DotyposService } from "./service";
 
@@ -1720,6 +1721,206 @@ describe("DotyposService customer changes", () => {
       });
       expect(customerListRequests(fetchMock)).toHaveLength(1);
     }
+  });
+});
+
+describe("DotyposService customer page", () => {
+  const customerListRequests = (fetchMock: { mock: { calls: unknown[][] } }) =>
+    fetchMock.mock.calls
+      .map((call) => new URL(getUrl(call as FetchCall)))
+      .filter((url) => url.pathname === "/clouds/cloud-id/customers");
+
+  test("reads up to 50 selected customers with one request", async () => {
+    const ids = Array.from({ length: dotyposIdFilterBatchSize }, (_, index) =>
+      dotyposCustomerId(`customer-${index + 1}`)
+    );
+    const customers = [
+      customer({ id: "customer-1" }),
+      customer({ id: `customer-${dotyposIdFilterBatchSize}` }),
+    ];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      return Response.json({ data: customers, nextPage: null, lastPage: "1" });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getCustomersPage(ids);
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual(customers);
+    const requests = customerListRequests(fetchMock);
+    expect(requests).toHaveLength(1);
+    expect(Object.fromEntries(requests[0]?.searchParams ?? [])).toEqual({
+      filter: `id|in|${ids.join(",")};deleted|in|0,1`,
+      limit: "100",
+      page: "1",
+    });
+  });
+
+  test("returns empty ids without a request and rejects more than 50 ids", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      return Response.json({ data: [] });
+    });
+    const tooManyIds = Array.from(
+      { length: dotyposIdFilterBatchSize + 1 },
+      (_, index) => dotyposCustomerId(`customer-${index + 1}`)
+    );
+
+    const [empty, tooMany] = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* Effect.all([
+          dotypos.getCustomersPage([]),
+          dotypos.getCustomersPage(tooManyIds).pipe(Effect.result),
+        ]);
+      }),
+      fetchMock
+    );
+
+    expect(empty).toEqual([]);
+    expect(tooMany).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ValidationError" },
+    });
+    expect(customerListRequests(fetchMock)).toHaveLength(0);
+  });
+
+  test.each([
+    {
+      failure: "a rate limit",
+      respond: () =>
+        Response.json(
+          { error: "rate_limited", error_description: "Too many requests" },
+          { status: 429 }
+        ),
+      error: { _tag: "ExternalAPIError", statusCode: 429 },
+    },
+    {
+      failure: "a server error",
+      respond: () =>
+        Response.json(
+          { error: "unavailable", error_description: "Unavailable" },
+          { status: 503 }
+        ),
+      error: { _tag: "ExternalAPIError", statusCode: 503 },
+    },
+    {
+      failure: "a network error",
+      respond: () => {
+        throw new TypeError("fetch failed");
+      },
+      error: { _tag: "NetworkError" },
+    },
+  ])(
+    "leaves $failure to the caller instead of retrying it",
+    async ({ respond, error }) => {
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        return respond();
+      });
+
+      const result = await runWithServiceRetryingInstantly(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .getCustomersPage([dotyposCustomerId("customer-1")])
+            .pipe(Effect.result);
+        }),
+        fetchMock
+      );
+
+      expect(result).toMatchObject({ _tag: "Failure", failure: error });
+      expect(customerListRequests(fetchMock)).toHaveLength(1);
+    }
+  );
+
+  test("fails a silent request after the 30 second timeout without retrying", async () => {
+    let customerRequests = 0;
+    let markRequestStarted!: () => void;
+    const requestStarted = new Promise<void>((resolve) => {
+      markRequestStarted = resolve;
+    });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      customerRequests += 1;
+      markRequestStarted();
+      return new Promise<Response>((_, reject) => {
+        request.signal.addEventListener("abort", () =>
+          reject(request.signal.reason)
+        );
+      });
+    });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .getCustomersPage([dotyposCustomerId("customer-1")])
+            .pipe(Effect.result);
+        }).pipe(
+          Effect.provide(
+            makeServiceLayer(fetchMock, {
+              ...config,
+              apiTimeout: dotyposApiTimeoutDefaultMilliseconds,
+            })
+          ),
+          Effect.forkChild
+        );
+        yield* Effect.promise(() => requestStarted);
+        yield* TestClock.adjust(dotyposApiTimeoutDefaultMilliseconds - 1);
+        expect(fiber.pollUnsafe()).toBeUndefined();
+        yield* TestClock.adjust(1);
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "NetworkError" },
+    });
+    expect(customerRequests).toBe(1);
+  });
+
+  test.each([
+    { report: "nextPage", page: { data: [customer()], nextPage: "2" } },
+    { report: "lastPage", page: { data: [customer()], lastPage: "2" } },
+  ])("rejects another page reported through $report", async ({ page }) => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      return Response.json(page);
+    });
+
+    const result = await runWithServiceRetryingInstantly(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .getCustomersPage([dotyposCustomerId("customer-1")])
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ExternalAPIError",
+        operation: "getCustomersPage",
+        message: "Dotypos paged an id-filtered customer read",
+        statusCode: 502,
+      },
+    });
+    expect(customerListRequests(fetchMock)).toHaveLength(1);
   });
 });
 

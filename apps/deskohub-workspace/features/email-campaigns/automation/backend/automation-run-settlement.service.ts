@@ -1,27 +1,37 @@
 import "server-only";
 
-import { and, count, eq } from "drizzle-orm";
-import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Effect, Layer } from "effect";
-import type { WorkspaceDatabaseClient } from "@/db/database.service";
-import { emailCampaignAutomationRuns } from "@/db/schema";
+import { and, asc, eq } from "drizzle-orm";
+import { Array as Arr, Context, Effect, Layer, Match, Option } from "effect";
+import {
+  emailCampaignAutomationRuns,
+  emailCampaignRecipients,
+} from "@/db/schema";
+import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type { CampaignSendId } from "../../campaign-identifiers";
-
-type Transaction = Parameters<
-  Parameters<WorkspaceDatabaseClient["transaction"]>[0]
->[0];
+import type {
+  CampaignRecipientSkipReason,
+  CampaignRecipientStatus,
+} from "../../campaign-states";
+import type { AutomationRunId } from "../automation-identifiers";
+import {
+  type AutomationRunEnding,
+  AutomationRunTransitions,
+} from "./automation-run-transitions";
+import type { AutomationEngineTransaction } from "./automation-unit-handler";
 
 export interface IAutomationRunSettlement {
   /**
    * Ends the `sending` runs an automated send carried, from their
-   * recipients' settled statuses, in the transaction that settles the send.
-   * Runs end only through the run transitions; until those exist no run
-   * reaches `sending`, so this ends nothing and only reports a run it finds.
+   * recipients' settled statuses, in the transaction that settles the send:
+   * an accepted email ends `sent`, `unconfirmed` stays `unconfirmed`,
+   * `skipped` ends with the recipient's skip reason and `failed` ends
+   * `failed / delivery-refused`. A run whose recipient is still `pending`
+   * stays `sending` and is logged.
    */
   readonly settle: (
-    tx: Transaction,
-    send: { readonly sendId: CampaignSendId }
-  ) => Effect.Effect<void, EffectDrizzleQueryError>;
+    tx: AutomationEngineTransaction,
+    send: { readonly sendId: CampaignSendId; readonly at: Temporal.Instant }
+  ) => Effect.Effect<void, DatabaseQueryError>;
 }
 
 /** Settles the automation runs behind a delivered automated send. */
@@ -31,23 +41,114 @@ export class AutomationRunSettlement extends Context.Service<
 >()("@deskohub-workspace/email-campaigns/AutomationRunSettlement") {
   static Default = Layer.succeed(this, {
     settle: Effect.fn("AutomationRunSettlement.settle")(function* (
-      tx: Transaction,
-      { sendId }: { readonly sendId: CampaignSendId }
+      tx: AutomationEngineTransaction,
+      send: { readonly sendId: CampaignSendId; readonly at: Temporal.Instant }
     ) {
-      const [sending] = yield* tx
-        .select({ runs: count() })
-        .from(emailCampaignAutomationRuns)
-        .where(
-          and(
-            eq(emailCampaignAutomationRuns.sendId, sendId),
-            eq(emailCampaignAutomationRuns.status, "sending")
+      yield* sendingRuns(tx, send.sendId).pipe(
+        Effect.map(settlementOf),
+        Effect.tap(({ endings }) =>
+          Effect.forEach(endings, ({ ending, runIds }) =>
+            AutomationRunTransitions.end(tx, {
+              ...ending,
+              runIds,
+              expect: { status: "sending" },
+              at: send.at,
+            })
           )
-        );
-      if (sending && sending.runs > 0) {
-        yield* Effect.logWarning(
-          "Automated send settled with runs left sending"
-        ).pipe(Effect.annotateLogs({ sendId, runs: sending.runs }));
-      }
+        ),
+        Effect.tap(({ unsettled }) =>
+          Effect.logWarning(
+            "Automated send settled with runs left sending"
+          ).pipe(
+            Effect.annotateLogs({ sendId: send.sendId, runs: unsettled }),
+            Effect.when(Effect.succeed(unsettled > 0))
+          )
+        )
+      );
     }),
   });
 }
+
+type SendingRun = {
+  readonly runId: AutomationRunId;
+  readonly recipientStatus: CampaignRecipientStatus;
+  readonly skipReason: CampaignRecipientSkipReason | null;
+};
+
+/** The send's `sending` runs with their recipients, in id order. */
+const sendingRuns = (tx: AutomationEngineTransaction, sendId: CampaignSendId) =>
+  tx
+    .select({
+      runId: emailCampaignAutomationRuns.id,
+      recipientStatus: emailCampaignRecipients.status,
+      skipReason: emailCampaignRecipients.skipReason,
+    })
+    .from(emailCampaignAutomationRuns)
+    .innerJoin(
+      emailCampaignRecipients,
+      and(
+        eq(emailCampaignRecipients.sendId, emailCampaignAutomationRuns.sendId),
+        eq(
+          emailCampaignRecipients.dotyposCustomerId,
+          emailCampaignAutomationRuns.dotyposCustomerId
+        )
+      )
+    )
+    .where(
+      and(
+        eq(emailCampaignAutomationRuns.sendId, sendId),
+        eq(emailCampaignAutomationRuns.status, "sending")
+      )
+    )
+    .orderBy(asc(emailCampaignAutomationRuns.id));
+
+/**
+ * Groups the runs by the ending their recipient settles them with, keeping
+ * id order within each group, and counts the runs left unsettled.
+ */
+const settlementOf = (runs: readonly SendingRun[]) => {
+  const ended = runs.flatMap((run) =>
+    Option.match(recipientEnding(run), {
+      onNone: () => [],
+      onSome: (ending) => [{ ending, runId: run.runId }],
+    })
+  );
+  const endings = Object.values(
+    Arr.groupBy(ended, ({ ending }) =>
+      "reason" in ending ? `${ending.outcome}:${ending.reason}` : ending.outcome
+    )
+  ).map((group) => ({
+    ending: group[0].ending,
+    runIds: group.map(({ runId }) => runId),
+  }));
+  return { endings, unsettled: runs.length - ended.length };
+};
+
+/**
+ * How a recipient's settled status ends its run; none while `pending`, or
+ * for a `skipped` recipient without a reason, which the recipient CHECK
+ * rules out.
+ */
+const recipientEnding = (run: SendingRun): Option.Option<AutomationRunEnding> =>
+  Match.value(run.recipientStatus).pipe(
+    Match.when(Match.is("sent", "delivered", "complained", "bounced"), () =>
+      Option.some<AutomationRunEnding>({ outcome: "sent" })
+    ),
+    Match.when("unconfirmed", () =>
+      Option.some<AutomationRunEnding>({ outcome: "unconfirmed" })
+    ),
+    Match.when("skipped", () =>
+      Option.map(
+        Option.fromNullishOr(run.skipReason),
+        (reason): AutomationRunEnding => ({ outcome: "skipped", reason })
+      )
+    ),
+    Match.when("failed", () =>
+      Option.some<AutomationRunEnding>({
+        outcome: "failed",
+        reason: "delivery-refused",
+      })
+    ),
+    Match.when("pending", () => Option.none()),
+    Match.exhaustive
+  );

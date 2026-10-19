@@ -11,6 +11,8 @@ import {
   type AudienceDateAttributeDefinition,
   type AudienceDateCondition,
   type AudienceFilterGroup,
+  type AudienceFilterGroupOf,
+  type AudienceFilterOf,
   type AudienceFilterType,
   type AudienceParam,
   type AudienceSetAttributeDefinition,
@@ -245,10 +247,7 @@ export const dateFactRequest = <Condition extends AudienceDateCondition>(
 
 export const audienceConditionsOf = (
   filter: AudienceFilter
-): readonly AudienceCondition[] =>
-  filter._tag === "Group"
-    ? filter.filters.flatMap(audienceConditionsOf)
-    : [filter];
+): readonly AudienceCondition[] => audienceLeavesOf(filter);
 
 /**
  * Every count and date lookup the tree needs in any of the contexts,
@@ -334,20 +333,42 @@ const combineAudienceOutcomes = (
   return operator === "and" ? "match" : "noMatch";
 };
 
+const isAudienceFilterGroup = <Leaf extends { readonly _tag: string }>(
+  node: AudienceFilterOf<Leaf>
+): node is AudienceFilterGroupOf<Leaf> => node._tag === "Group";
+
 /**
- * The tree's outcome from its conditions' outcomes. An empty AND group
- * matches and an empty OR group doesn't.
+ * The tree's outcome from its leaves' outcomes. An empty AND group matches
+ * and an empty OR group doesn't. Trees with leaves beyond catalogue
+ * conditions, such as saved-audience membership, combine the same way.
  */
-export const evaluateAudienceTree = (
-  filter: AudienceFilter,
-  conditionOutcome: (condition: AudienceCondition) => AudienceFilterOutcome
+export const evaluateAudienceTree = <Leaf extends { readonly _tag: string }>(
+  filter: AudienceFilterOf<Leaf>,
+  leafOutcome: (leaf: Leaf) => AudienceFilterOutcome
 ): AudienceFilterOutcome => {
-  const evaluate = (node: AudienceFilter): AudienceFilterOutcome =>
-    node._tag === "Group"
+  const evaluate = (node: AudienceFilterOf<Leaf>): AudienceFilterOutcome =>
+    isAudienceFilterGroup(node)
       ? combineAudienceOutcomes(node.operator, node.filters.map(evaluate))
-      : conditionOutcome(node);
+      : leafOutcome(node);
   return evaluate(filter);
 };
+
+/**
+ * The tree's top-level clauses: a root group's members, or the root leaf
+ * alone. Condition timelines name failed clauses by their index here.
+ */
+export const audienceTopLevelClauses = <Leaf extends { readonly _tag: string }>(
+  filter: AudienceFilterOf<Leaf>
+): readonly AudienceFilterOf<Leaf>[] =>
+  isAudienceFilterGroup(filter) ? filter.filters : [filter];
+
+/** Every leaf of the tree, in order. */
+export const audienceLeavesOf = <Leaf extends { readonly _tag: string }>(
+  filter: AudienceFilterOf<Leaf>
+): readonly Leaf[] =>
+  isAudienceFilterGroup(filter)
+    ? filter.filters.flatMap(audienceLeavesOf)
+    : [filter];
 
 const outcomeOf = (value: boolean): AudienceFilterOutcome =>
   value ? "match" : "noMatch";
