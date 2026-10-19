@@ -275,6 +275,33 @@ describe("public price list", () => {
     });
   });
 
+  test("never reads the availability inventory, even with the office open", async () => {
+    let inventoryReads = 0;
+    const countingInventory = Layer.succeed(AdvisoryAvailabilityInventory, {
+      tables: Effect.sync(() => {
+        inventoryReads += 1;
+        return [];
+      }),
+      listActiveReservationsOverlapping: () => Effect.succeed([]),
+      listLimitations: () => Effect.succeed([]),
+    });
+    const services = Layer.merge(todaysSale(), countingInventory);
+
+    const { offerings } = await loadPublicPriceList(locale).pipe(
+      Effect.provide(services),
+      Effect.runPromise
+    );
+    expect(offerings.map(describeProduct)).toEqual(catalogProducts);
+    expect(inventoryReads).toBe(0);
+
+    // The strict offerings still read the office seat maximum.
+    await loadPublicOfferings(locale).pipe(
+      Effect.provide(services),
+      Effect.runPromise
+    );
+    expect(inventoryReads).toBe(1);
+  });
+
   test("still fails the strict offerings read when a quote fails", async () => {
     const exit = await loadPublicOfferings(locale).pipe(
       Effect.provide(

@@ -10,20 +10,18 @@ import {
 import type { Locale } from "@/features/i18n";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
-import { SharedAvailabilityInventoryLive } from "@/features/reservation/backend/availability-inventory-cache.server";
 import { runWorkspaceEffectOrElse } from "@/shared/backend/workspace-effect";
 
 /**
  * Advertised prices read only the anonymous Calendar sales, cached under the
- * `advertisedPricingSources` profile, and office capacity reads the shared
- * table snapshot. No Dotypos customer is resolved.
+ * `advertisedPricingSources` profile. No Dotypos customer is resolved and no
+ * availability is read.
  */
 const PriceListLive = Layer.mergeAll(
   CheckoutPricingService.Live.pipe(
     Layer.provideMerge(ReferralFeatureFlagRequest)
   ),
-  OfficeReservationFeatureFlagService.Live,
-  SharedAvailabilityInventoryLive
+  OfficeReservationFeatureFlagService.Live
 );
 
 /**

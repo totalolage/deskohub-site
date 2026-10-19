@@ -1100,7 +1100,6 @@
   "pricingOpeningHoursSpace": "The space is open 24/7, every day.",
   "pricingOpeningHoursOpenSpace": "Open Space desks are usable from midnight until {until} on the reserved day.",
   "pricingOpeningHoursCodeAccess": "Reserved Desk and the private office have 24/7 code access.",
-  "pricingLoading": "Loading prices",
   "pricingCoworkTitle": "Coworking",
   "pricingPerDay": "{price} per day",
   "pricingAddOnPrice": "{name}: +{price} per day",

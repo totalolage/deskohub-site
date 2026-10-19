@@ -22,27 +22,40 @@ import { CheckoutPricingService } from "./checkout-pricing.service";
  * today. Advertised prices read only the anonymous, cached Calendar sales.
  */
 export const loadPublicOfferings = Effect.fn("publicOfferings.load")(
-  (locale: Locale) => loadOfferings(locale, advertisePublicOffering)
+  (locale: Locale) =>
+    loadOfferings(
+      locale,
+      whenOfficeOpen(loadPublicOfficeOffer),
+      advertisePublicOffering
+    )
 );
 
 /**
  * The public offerings for a page that must render without its quotes, such
  * as the price list. An offering whose advertised price fails or misses the
- * reservation pages' preload deadline keeps only its catalog price.
+ * reservation pages' preload deadline keeps only its catalog price. The
+ * office keeps its release gate but not its seat maximum, so the list never
+ * reads the availability inventory.
  */
 export const loadPublicPriceList = Effect.fn("publicOfferings.loadPriceList")(
-  (locale: Locale) => loadOfferings(locale, advertiseOrKeepCatalogPrice)
+  (locale: Locale) =>
+    loadOfferings(
+      locale,
+      whenOfficeOpen(Effect.succeed<PublicOfficeOffer>({})),
+      advertiseOrKeepCatalogPrice
+    )
 );
 
-const loadOfferings = <A, E, R>(
+const loadOfferings = <A, E, R, OE, OR>(
   locale: Locale,
+  loadOffice: Effect.Effect<Option.Option<PublicOfficeOffer>, OE, OR>,
   advertise: (listing: PublicOfferingListing) => Effect.Effect<A, E, R>
 ) =>
   Effect.Do.pipe(
     Effect.bind("advertisedOn", () =>
       currentInstant.pipe(Effect.map(getCurrentWorkspaceDate))
     ),
-    Effect.bind("office", () => loadOpenPublicOfficeOffer),
+    Effect.bind("office", () => loadOffice),
     Effect.let("listings", ({ advertisedOn, office }) =>
       getPublicOfferingListings({
         date: advertisedOn,
@@ -71,11 +84,13 @@ const loadPublicOfficeOffer = loadAdvisoryOfficeSeatCapacity.pipe(
   Effect.orElseSucceed((): PublicOfficeOffer => ({}))
 );
 
-const loadOpenPublicOfficeOffer = OfficeReservationFeatureFlagService.pipe(
-  Effect.flatMap((officeFlag) =>
-    loadPublicOfficeOffer.pipe(Effect.when(officeFlag.isEnabled))
-  )
-);
+/** The office offer, loaded only while office reservations are open. */
+const whenOfficeOpen = <E, R>(offer: Effect.Effect<PublicOfficeOffer, E, R>) =>
+  OfficeReservationFeatureFlagService.pipe(
+    Effect.flatMap((officeFlag) =>
+      offer.pipe(Effect.when(officeFlag.isEnabled))
+    )
+  );
 
 const advertisePublicOffering = ({
   offering,

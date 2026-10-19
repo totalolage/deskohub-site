@@ -34,7 +34,11 @@ mock.module("@/shared/components/guarded-link", () => ({
   ),
 }));
 
-let priceList: (locale: Locale) => ReadonlyArray<PublicPriceListOffering>;
+let priceList: (
+  locale: Locale
+) =>
+  | ReadonlyArray<PublicPriceListOffering>
+  | Promise<ReadonlyArray<PublicPriceListOffering>>;
 mock.module("@/features/pricing/backend/price-list.server", () => ({
   loadPriceList: (locale: Locale) => Promise.resolve(priceList(locale)),
 }));
@@ -61,8 +65,10 @@ const saleOnOpenSpace = (locale: Locale) => {
   ];
 };
 
-const renderPage = async (locale: Locale) => {
-  const { prelude } = await prerender(<PricingPage locale={locale} />);
+const renderPage = async (locale: Locale, signal?: AbortSignal) => {
+  const { prelude } = await prerender(<PricingPage locale={locale} />, {
+    signal,
+  });
   return new Response(prelude).text();
 };
 
@@ -108,9 +114,11 @@ describe("PricingPage", () => {
         expect(html).toContain(text);
       }
       expect(html).toContain("17:00");
-      // The meeting-room durations share one usage sentence, shown once.
+      // The meeting-room durations share one usage sentence, shown once in
+      // the streamed list that replaces the catalog prices.
+      const streamed = html.slice(html.indexOf("<div hidden"));
       expect(
-        html.split(m.publicOfferingMeetingRoomUsage({}, { locale })).length
+        streamed.split(m.publicOfferingMeetingRoomUsage({}, { locale })).length
       ).toBe(2);
 
       for (const href of [
@@ -134,6 +142,27 @@ describe("PricingPage", () => {
     expect(html).toContain("The space is open 24/7");
     expect(html).toContain("until 17:00");
     expect(html).toContain("24/7 code access");
+  });
+
+  test("lists the catalog prices in the static shell while the advertised prices load", async () => {
+    priceList = () => new Promise(() => {});
+    // Aborting keeps the shell that Next.js prerenders, without the stream.
+    const html = await renderPage("en-US", AbortSignal.timeout(100));
+    const price = (value: number) =>
+      formatWorkspaceMoney(currencyCZK(value), "en-US");
+
+    for (const text of [
+      m.pricingPerDay({ price: price(29_000) }, { locale: "en-US" }),
+      m.pricingPerDay({ price: price(41_000) }, { locale: "en-US" }),
+      price(35_000),
+      price(98_000),
+      price(182_000),
+    ]) {
+      expect(html).toContain(text);
+    }
+    expect(html).not.toContain("hidden");
+    // The office waits for its release gate.
+    expect(html).not.toContain('id="pricing-office-title"');
   });
 
   test("lists catalog prices without a sale line when no quote answered", async () => {

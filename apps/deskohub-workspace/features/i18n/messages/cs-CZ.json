@@ -1109,7 +1109,6 @@
   "pricingOpeningHoursSpace": "Prostor je otevřený nonstop, každý den.",
   "pricingOpeningHoursOpenSpace": "Sdílené místo lze využívat od půlnoci do {until} v den rezervace.",
   "pricingOpeningHoursCodeAccess": "Vyhrazené místo a soukromá kancelář mají nonstop přístup na kód.",
-  "pricingLoading": "Načítáme ceny",
   "pricingCoworkTitle": "Coworking",
   "pricingPerDay": "{price} za den",
   "pricingAddOnPrice": "{name}: +{price} za den",

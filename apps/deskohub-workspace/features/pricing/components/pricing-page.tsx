@@ -5,7 +5,10 @@ import {
   getWorkspaceMeetingRoomProductTitle,
   getWorkspaceOfficeProductTitle,
 } from "@/features/checkout/product-catalog.i18n";
-import type { PublicPriceListOffering } from "@/features/checkout/public-offerings";
+import {
+  getPublicCatalogOfferings,
+  type PublicPriceListOffering,
+} from "@/features/checkout/public-offerings";
 import {
   formatWorkspaceMoney,
   type WorkspaceMoney,
@@ -20,7 +23,6 @@ import { workspaceReservationKindSchema } from "@/features/reservation/reservati
 import { Container } from "@/shared/components/container";
 import { GuardedLink as Link } from "@/shared/components/guarded-link";
 import { Button } from "@/shared/components/ui/button";
-import { Skeleton } from "@/shared/components/ui/skeleton";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { loadPriceList } from "../backend/price-list.server";
 
@@ -29,9 +31,11 @@ type PricingPageProps = {
 };
 
 /**
- * Prices and opening hours. The hours and address render in the static
- * shell; the prices stream with the response, because the office release
- * gate reads the request.
+ * Prices and opening hours. The hours, the address, and the catalog prices
+ * render in the static shell, so agents that read only the visible initial
+ * HTML still find every price. The advertised prices and the office stream
+ * in place of the catalog prices, because the office release gate reads the
+ * request.
  */
 export function PricingPage({ locale }: PricingPageProps) {
   const { address } = workspaceSiteConstants.location;
@@ -63,7 +67,14 @@ export function PricingPage({ locale }: PricingPageProps) {
           </ul>
         </section>
 
-        <Suspense fallback={<PriceListFallback locale={locale} />}>
+        <Suspense
+          fallback={
+            <PriceList
+              locale={locale}
+              offerings={getPublicCatalogOfferings({ locale })}
+            />
+          }
+        >
           <LoadedPriceList locale={locale} />
         </Suspense>
 
@@ -92,17 +103,6 @@ async function LoadedPriceList({ locale }: PricingPageProps) {
   const offerings = await loadPriceList(locale);
 
   return <PriceList locale={locale} offerings={offerings} />;
-}
-
-function PriceListFallback({ locale }: PricingPageProps) {
-  return (
-    <div role="status" className="mt-14 grid gap-4">
-      <span className="sr-only">{m.pricingLoading({}, { locale })}</span>
-      <Skeleton className="h-8 w-48 bg-white/10" />
-      <Skeleton className="h-36 bg-white/8" />
-      <Skeleton className="h-36 bg-white/8" />
-    </div>
-  );
 }
 
 function PriceList({
