@@ -7,8 +7,8 @@ import { Effect, Match, Option } from "effect";
 import {
   type AudienceCondition,
   type AudienceFilterOutcome,
-  campaignEmailDispatchBounds,
   mapAudienceLeaves,
+  occurrenceBounds,
 } from "../audience-filter";
 import type { AudienceEvaluationContext } from "../backend/audience-evaluation-context";
 import type { CampaignPurpose } from "../body/campaign-content";
@@ -293,10 +293,7 @@ const replayedEmailCount = <Condition extends CampaignEmailCount>(
     readonly simulatedSends: readonly Temporal.Instant[];
   }
 ): Condition => {
-  const bounds = campaignEmailDispatchBounds(
-    condition.params.period,
-    input.context
-  );
+  const bounds = occurrenceBounds(condition.params.period, input.context);
   const simulated = countsSimulatedSends(condition.params, input)
     ? input.simulatedSends.filter((at) => isWithinDatePeriodBounds(bounds, at))
         .length

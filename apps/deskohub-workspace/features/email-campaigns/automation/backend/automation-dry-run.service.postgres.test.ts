@@ -366,6 +366,8 @@ describe.skipIf(!testDatabase)(
       readonly dotyposCancelled?: boolean;
       /** Workspace cancelled it at this instant. */
       readonly workspaceCancelledAt?: Temporal.Instant;
+      /** When it was booked; sixty days ago by default. */
+      readonly bookedAt?: Temporal.Instant;
     };
 
     const reservationIdOf = (label: string) =>
@@ -374,8 +376,8 @@ describe.skipIf(!testDatabase)(
     const seedReservations = async (
       reservations: readonly SeedReservation[]
     ) => {
-      const confirmedAt = ago({ hours: 24 * 60 });
       const rows = reservations.map((reservation) => {
+        const confirmedAt = reservation.bookedAt ?? ago({ hours: 24 * 60 });
         const id = reservationIdOf(reservation.label);
         reservationIds.push(id);
         const cancelled = reservation.workspaceCancelledAt !== undefined;
@@ -684,7 +686,7 @@ describe.skipIf(!testDatabase)(
       expect(dryRun.truncated).toBe(false);
     });
 
-    describe("campaign emails as of the replayed moment", () => {
+    describe("counts as of the replayed moment", () => {
       const triggerAt = ago({ hours: 24 * 10 });
 
       const noEmailIn = (
@@ -833,6 +835,116 @@ describe.skipIf(!testDatabase)(
           expect(afterTheEmail.get(seeded.after)).toBe("condition-failed");
         });
       }
+
+      const bookingsIn = (
+        period: DatePeriodType,
+        value: number
+      ): AudienceCondition => ({
+        attribute: "reservationCount",
+        _tag: "Condition",
+        params: { dateBasis: "booking", period },
+        operator: "eq",
+        value,
+      });
+
+      /**
+       * Two customers who finished a visit at `triggerAt`, booked fifty days
+       * before it, and booked a later visit two days before it; the second
+       * booked another five days after it.
+       */
+      const seedBookers = async (label: string) => {
+        const [steady, later] = [`${label}-steady`, `${label}-later`].map(
+          customerId
+        ) as [DotyposCustomerId, DotyposCustomerId];
+        const upcoming = {
+          startsAt: triggerAt.add({ hours: 24 * 20 }),
+          endsAt: triggerAt.add({ hours: 24 * 20 + 2 }),
+        };
+        await seedReservations([
+          ...[steady, later].flatMap((customer, index) => [
+            {
+              label: `${label}-${index}`,
+              customer,
+              startsAt: triggerAt.subtract({ hours: 2 }),
+              endsAt: triggerAt,
+              bookedAt: triggerAt.subtract({ hours: 24 * 50 }),
+            },
+            {
+              label: `${label}-${index}-early`,
+              customer,
+              ...upcoming,
+              bookedAt: triggerAt.subtract({ hours: 24 * 2 }),
+            },
+          ]),
+          {
+            label: `${label}-1-late`,
+            customer: later,
+            ...upcoming,
+            bookedAt: triggerAt.add({ hours: 24 * 5 }),
+          },
+        ]);
+        const [steadyEvent, laterEvent] = await seedEvents(
+          [steady, later].map((customer, index) => ({
+            kind: "reservation-finished" as const,
+            reservation: `${label}-${index}`,
+            customer,
+            occurredAt: triggerAt,
+          }))
+        );
+        return { steady: steadyEvent!, later: laterEvent! };
+      };
+
+      test("an entry gate counts reservations booked by the event", async () => {
+        const seeded = await seedBookers("booked-gate");
+        const date = (instant: Temporal.Instant) =>
+          pragueOf(instant).toPlainDate().toString();
+        const weekBefore = date(triggerAt.subtract({ hours: 24 * 7 }));
+        const weekAfter = date(triggerAt.add({ hours: 24 * 7 }));
+        // What both customers had booked in each period at `triggerAt`.
+        const periods: readonly (readonly [DatePeriodType, number])[] = [
+          [{ _tag: "AnyTime" }, 2],
+          [{ _tag: "Onward", date: weekBefore }, 1],
+          [{ _tag: "Range", from: weekBefore, to: weekAfter }, 1],
+          [{ _tag: "Until", date: weekAfter }, 2],
+          [{ _tag: "TriggerWindow", side: "after", count: 7, unit: "day" }, 0],
+        ];
+        for (const [period, booked] of periods) {
+          const outcomes = await outcomesOf({
+            steps: [send],
+            filter: {
+              _tag: "Group",
+              operator: "and",
+              filters: [bookingsIn(period, booked)],
+            },
+          });
+          expect(outcomes.get(seeded.steady)).toBe("would-send");
+          expect(outcomes.get(seeded.later)).toBe("would-send");
+        }
+      });
+
+      test("a condition counts reservations booked by its step", async () => {
+        const seeded = await seedBookers("booked-step");
+        const noBookingAfterTrigger = bookingsIn(
+          { _tag: "TriggerWindow", side: "after", count: 30, unit: "day" },
+          0
+        );
+        const waitingDays = (days: number) =>
+          outcomesOf({
+            steps: [
+              waitHours("wait", 24 * days),
+              condition("check", noBookingAfterTrigger),
+              send,
+            ],
+          });
+
+        const beforeTheBooking = await waitingDays(2);
+        expect(beforeTheBooking.get(seeded.steady)).toBe("would-send");
+        expect(beforeTheBooking.get(seeded.later)).toBe("would-send");
+
+        const afterTheBooking = await waitingDays(7);
+        expect(afterTheBooking.get(seeded.steady)).toBe("would-send");
+        expect(afterTheBooking.get(seeded.later)).toBe("condition-failed");
+      });
     });
 
     test("replays only the latest 1,000 events and counts the rest", async () => {

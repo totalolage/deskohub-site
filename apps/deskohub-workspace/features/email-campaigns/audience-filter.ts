@@ -190,11 +190,12 @@ type CountParamValue =
   | ReservationProductFilterType;
 
 /**
- * When the emails a campaign-email count counts were dispatched. A replayed
- * moment counts only emails dispatched by then, whatever the period: the
- * customer hadn't received the later ones yet.
+ * When the things a count dates by their recorded moment happened, such as
+ * an email's dispatch or a reservation's booking. A replayed moment counts
+ * only what happened by then, whatever the period: the later ones hadn't
+ * happened yet.
  */
-export const campaignEmailDispatchBounds = (
+export const occurrenceBounds = (
   period: DatePeriod,
   context: AudienceEvaluationContext
 ): DatePeriodBounds => {
@@ -226,18 +227,26 @@ const concreteParam = (
       );
 
 /**
+ * Whether a count dates what it counts by when it happened, rather than by
+ * a visit, which may lie ahead of any moment.
+ */
+const datesOccurrences = ({ attribute, params }: AudienceCountCondition) =>
+  attribute === "campaignEmailCount" ||
+  (attribute === "reservationCount" && params.dateBasis === "booking");
+
+/**
  * The count condition's request in one evaluation context, with each param
  * fixed by its part in the condition's catalogue entry.
  */
 export const countFactRequest = <Condition extends AudienceCountCondition>(
   entry: Pick<AudienceCountAttributeDefinition, "params">,
-  { attribute, params }: Condition,
+  condition: Condition,
   context: AudienceEvaluationContext
 ): CountRequestOf<Condition> => {
-  const periodBounds =
-    attribute === "campaignEmailCount"
-      ? campaignEmailDispatchBounds
-      : datePeriodBounds;
+  const { attribute, params } = condition;
+  const periodBounds = datesOccurrences(condition)
+    ? occurrenceBounds
+    : datePeriodBounds;
   return {
     attribute,
     params: Object.fromEntries(
