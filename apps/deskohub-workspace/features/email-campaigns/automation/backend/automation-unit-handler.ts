@@ -1,7 +1,6 @@
-import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer, Schema } from "effect";
-import type { SqlError } from "effect/unstable/sql";
+import { Data, Effect, Schema } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
+import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
 import type { AutomationWorkUnitKind } from "../automation-work-units";
@@ -9,10 +8,6 @@ import type { AutomationWorkUnitKind } from "../automation-work-units";
 export type AutomationEngineTransaction = Parameters<
   Parameters<WorkspaceDatabaseClient["transaction"]>[0]
 >[0];
-
-export type AutomationEngineDatabaseError =
-  | EffectDrizzleQueryError
-  | SqlError.SqlError;
 
 /** A claimed unit as its handler sees it. */
 export type ClaimedAutomationUnit<Subject> = {
@@ -78,7 +73,10 @@ export interface AutomationUnitHandler<Subject, Fetched> {
   /** At most `requestCost` sequential requests; returns in-memory facts only. */
   readonly fetch: (
     unit: ClaimedAutomationUnit<Subject>
-  ) => Effect.Effect<Fetched, AutomationUnitFetchFailure | AutomationUnitDefect>;
+  ) => Effect.Effect<
+    Fetched,
+    AutomationUnitFetchFailure | AutomationUnitDefect
+  >;
   /** Writes the decisions and returns the follow-up units to plan. */
   readonly commit: (
     tx: AutomationEngineTransaction,
@@ -87,7 +85,7 @@ export interface AutomationUnitHandler<Subject, Fetched> {
     at: Temporal.Instant
   ) => Effect.Effect<
     ReadonlyArray<PlannedAutomationUnit>,
-    AutomationUnitDefect | AutomationEngineDatabaseError
+    AutomationUnitDefect | DatabaseQueryError
   >;
 }
 
@@ -97,7 +95,7 @@ export type AutomationUnitCommit = (
   at: Temporal.Instant
 ) => Effect.Effect<
   ReadonlyArray<PlannedAutomationUnit>,
-  AutomationUnitDefect | AutomationEngineDatabaseError
+  AutomationUnitDefect | DatabaseQueryError
 >;
 
 /** A handler with its subject and fetched types closed over, so a registry can hold every kind. */
@@ -123,50 +121,13 @@ export const registerAutomationUnitHandler = <Subject, Fetched>(
       ),
       Effect.map((subject) => ({ ...unit, subject })),
       Effect.flatMap((decoded) =>
-        handler
-          .fetch(decoded)
-          .pipe(
-            Effect.map(
-              (fetched): AutomationUnitCommit =>
-                (tx, at) =>
-                  handler.commit(tx, decoded, fetched, at)
-            )
+        handler.fetch(decoded).pipe(
+          Effect.map(
+            (fetched): AutomationUnitCommit =>
+              (tx, at) =>
+                handler.commit(tx, decoded, fetched, at)
           )
+        )
       )
     ),
 });
-
-interface IAutomationUnitHandlers {
-  readonly byKind: ReadonlyMap<
-    AutomationWorkUnitKind,
-    RegisteredAutomationUnitHandler
-  >;
-  /**
-   * The kinds this deployment claims, promotes and reaps. A unit of any
-   * other kind waits for a deployment that supports it (§9.1).
-   */
-  readonly supportedKinds: ReadonlyArray<AutomationWorkUnitKind>;
-}
-
-/** The unit kinds this deployment runs. */
-export class AutomationUnitHandlers extends Context.Service<
-  AutomationUnitHandlers,
-  IAutomationUnitHandlers
->()("@deskohub-workspace/email-campaigns/AutomationUnitHandlers") {
-  static layer = <R>(
-    handlers: Effect.Effect<
-      ReadonlyArray<RegisteredAutomationUnitHandler>,
-      never,
-      R
-    >
-  ) =>
-    Layer.effect(
-      this,
-      Effect.map(handlers, (registered) => ({
-        byKind: new Map(registered.map((handler) => [handler.kind, handler])),
-        supportedKinds: registered.map((handler) => handler.kind),
-      }))
-    );
-
-  static Live = this.layer(Effect.succeed([]));
-}
