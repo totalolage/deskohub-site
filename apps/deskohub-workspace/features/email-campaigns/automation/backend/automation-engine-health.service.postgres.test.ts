@@ -55,6 +55,7 @@ describe.skipIf(!testDatabase)(
     let saved: {
       readonly lastPlannedAt: unknown;
       readonly sweeps: readonly { source: string; swept_until: unknown }[];
+      readonly unprocessedEventIds: readonly string[];
     };
 
     const health = () =>
@@ -196,11 +197,19 @@ describe.skipIf(!testDatabase)(
       const sweeps = await pool.query(
         "select source, swept_until from customer_event_sweeps"
       );
+      // Events an earlier suite left unprocessed would skew the backlog.
+      const unprocessed = await pool.query(
+        "update customer_events set automation_processed_at = $1 where automation_processed_at is null returning id",
+        [now.toString()]
+      );
       saved = {
         lastPlannedAt: (engine as { rows: { last_planned_at: unknown }[] })
           .rows[0]?.last_planned_at,
         sweeps: (sweeps as { rows: { source: string; swept_until: unknown }[] })
           .rows,
+        unprocessedEventIds: (
+          unprocessed as { rows: { id: string }[] }
+        ).rows.map(({ id }) => id),
       };
     });
 
@@ -241,6 +250,10 @@ describe.skipIf(!testDatabase)(
           [sweep.source, sweep.swept_until]
         );
       }
+      await pool.query(
+        "update customer_events set automation_processed_at = null where id = any($1)",
+        [saved.unprocessedEventIds]
+      );
     });
 
     test("reports every field of a keeping-pace engine without warnings", async () => {
