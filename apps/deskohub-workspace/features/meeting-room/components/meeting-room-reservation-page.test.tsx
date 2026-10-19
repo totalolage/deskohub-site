@@ -77,11 +77,22 @@ const { renderMeetingRoomReservationContent } = await import(
 
 /** The form the page renders beside its structured data. */
 const renderMeetingRoomReservationForm = async (
-  input: Parameters<typeof renderMeetingRoomReservationContent>[0]
+  input: Omit<
+    Parameters<typeof renderMeetingRoomReservationContent>[0],
+    "checkoutAccount"
+  > &
+    Partial<
+      Pick<
+        Parameters<typeof renderMeetingRoomReservationContent>[0],
+        "checkoutAccount"
+      >
+    >
 ) => {
-  const page = (await renderMeetingRoomReservationContent(
-    input
-  )) as ReactElement<{
+  const page = (await renderMeetingRoomReservationContent({
+    checkoutAccount: { status: "signed-out" },
+    checkoutAccount: { status: "signed-out" },
+    ...input,
+  })) as ReactElement<{
     readonly children: ReactNode;
   }>;
   return Children.toArray(page.props.children)[1];
@@ -354,7 +365,7 @@ describe("remembered meeting-room duration", () => {
 
     try {
       const form = (await renderMeetingRoomReservationForm({
-        existingCustomer,
+        checkoutAccount: { status: "linked", customer: existingCustomer },
         locale: "en-US",
         searchParams,
       })) as ReactElement<Parameters<typeof MeetingRoomReservationForm>[0]>;

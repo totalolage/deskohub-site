@@ -82,9 +82,22 @@ const { renderOfficeReservationContent } = await import(
 
 /** The form the page renders beside its structured data. */
 const renderOfficeReservationForm = async (
-  input: Parameters<typeof renderOfficeReservationContent>[0]
+  input: Omit<
+    Parameters<typeof renderOfficeReservationContent>[0],
+    "checkoutAccount"
+  > &
+    Partial<
+      Pick<
+        Parameters<typeof renderOfficeReservationContent>[0],
+        "checkoutAccount"
+      >
+    >
 ) => {
-  const page = (await renderOfficeReservationContent(input)) as ReactElement<{
+  const page = (await renderOfficeReservationContent({
+    checkoutAccount: { status: "signed-out" },
+    checkoutAccount: { status: "signed-out" },
+    ...input,
+  })) as ReactElement<{
     readonly children: ReactNode;
   }>;
   return Children.toArray(page.props.children)[1];
@@ -186,6 +199,7 @@ test("prices the office offer at the amounts shown for the URL selection", async
 
   try {
     const page = (await renderOfficeReservationContent({
+      checkoutAccount: { status: "signed-out" },
       locale: "en-US",
       pageData: 5,
       searchParams: { dayCount: "2", seats: "3", startsOn: "2099-08-10" },

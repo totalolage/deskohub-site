@@ -93,7 +93,7 @@ const expectGuidanceWithoutAddress = (
     view.container.querySelector("#checkout-status-reserve-again")
   ).toBeNull();
   expect(
-    view.container.querySelector("main ol > li:nth-child(2) > a")
+    view.container.querySelector("main ol > li:nth-child(1) > a")
   ).toBeNull();
 };
 
@@ -482,7 +482,7 @@ describe("CheckoutStatusPage", () => {
       .querySelector("#checkout-status-reserve-again")
       ?.getAttribute("href");
     const completedOrderStep = view.container.querySelector(
-      "main ol > li:nth-child(2) > a"
+      "main ol > li:nth-child(1) > a"
     );
     expect(completedOrderStep).not.toBeNull();
     expect(completedOrderStep?.getAttribute("href")).toBe(ctaHref);
@@ -525,7 +525,7 @@ describe("CheckoutStatusPage", () => {
       ?.getAttribute("href");
     expect(ctaHref).toBe("/en-US/reservation/cowork");
     const completedOrderStep = view.container.querySelector(
-      "main ol > li:nth-child(2) > a"
+      "main ol > li:nth-child(1) > a"
     );
     expect(completedOrderStep).not.toBeNull();
     expect(completedOrderStep?.getAttribute("href")).toBe(ctaHref);
@@ -590,7 +590,7 @@ describe("CheckoutStatusPage", () => {
     expect(href).not.toContain("35000");
     expect(href).not.toContain("2026-06");
     const completedOrderStep = view.container.querySelector(
-      "main ol > li:nth-child(2) > a"
+      "main ol > li:nth-child(1) > a"
     );
     expect(completedOrderStep).not.toBeNull();
     expect(completedOrderStep?.getAttribute("href")).toBe(href);
@@ -799,7 +799,7 @@ describe("CheckoutStatusPage", () => {
       }) as CheckoutStatusViewModel;
     const queryRestartActions = (container: HTMLElement) => ({
       reserveAgain: container.querySelector("#checkout-status-reserve-again"),
-      orderStep: container.querySelector("main ol > li:nth-child(2) > a"),
+      orderStep: container.querySelector("main ol > li:nth-child(1) > a"),
     });
 
     test("points a bounced confirmation to support with its address instead of a rebook", () => {
