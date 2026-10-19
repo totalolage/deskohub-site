@@ -1,8 +1,8 @@
-import { CloudinaryPublicIdSchema } from "@deskohub/cloudinary/schema";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { GlassCard } from "@/shared/components/ui/glass-card";
+import { getTeamFounders } from "../team-founders";
 import { CensoredFounderName } from "./censored-founder-name";
 import { FounderProfileImage } from "./founder-profile-image";
 
@@ -11,26 +11,7 @@ type TeamPageProps = {
 };
 
 export function TeamPage({ locale }: TeamPageProps) {
-  const founders = [
-    {
-      imagePublicId: CloudinaryPublicIdSchema.make("founder-profile-danica"),
-      name: "Danica",
-      role: m.landingFounderDanicaRole({}, { locale }),
-      description: m.landingFounderDanicaDescription({}, { locale }),
-    },
-    {
-      imagePublicId: CloudinaryPublicIdSchema.make("founder-profile-filip"),
-      name: "Filip",
-      role: m.landingFounderFilipRole({}, { locale }),
-      description: m.landingFounderFilipDescription({}, { locale }),
-    },
-    {
-      imagePublicId: CloudinaryPublicIdSchema.make("founder-profile-carp"),
-      name: null,
-      role: m.landingFounderHardwareRole({}, { locale }),
-      description: m.landingFounderHardwareDescription({}, { locale }),
-    },
-  ];
+  const founders = getTeamFounders(locale);
 
   return (
     <main className="relative overflow-hidden bg-navy-blue pb-20 pt-[calc(var(--site-header-height)+4rem)] text-white sm:pb-24 sm:pt-[calc(var(--site-header-height)+5rem)]">
