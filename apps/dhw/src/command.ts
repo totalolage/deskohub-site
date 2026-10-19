@@ -75,6 +75,8 @@ import {
   reportAuthenticationStarted,
 } from "./authentication/authentication-output";
 import { ClientIdentity } from "./authentication/client-identity.service";
+import { automationsCommand } from "./automations/automations.command";
+import { calendarCommand } from "./automations/calendar.command";
 import { DHW_BUILD_TARGET, DHW_VERSION, isReleaseBuild } from "./build-info";
 import { campaignsCommand } from "./campaigns/campaigns.command";
 import {
@@ -91,6 +93,7 @@ import {
   runCommand,
 } from "./command-runtime";
 import { DhwConfig } from "./config/dhw-config.service";
+import { pollUntil } from "./polling";
 import { UpdateService } from "./update/update.service";
 
 const versionCommand = Command.make("version", {}, () =>
@@ -2334,7 +2337,9 @@ export const dhwCommand = rootCommand.pipe(
     administratorsCommand,
     apiCommand,
     authCommand,
+    automationsCommand,
     bookingsCommand,
+    calendarCommand,
     campaignsCommand,
     codesCommand,
     customersCommand,
@@ -2366,35 +2371,41 @@ const waitForCliAuthentication = Effect.fn(
   >[0];
   readonly verifier: Parameters<typeof makeCliAuthenticationChallenge>[0];
 }) {
-  while (true) {
-    const status = yield* api.getAuthenticationStatus(code);
-    switch (status.authStatus) {
-      case "pending":
-        yield* Effect.sleep("2 seconds");
-        break;
-      case "approved": {
-        const granted = yield* api.exchangeGrant({
-          code,
-          grantToken: status.grantToken,
-          verifier,
-        });
-        yield* authentication.save(granted.accessToken);
-        return granted.session;
-      }
-      case "expired":
-        return yield* new AuthenticationFlowError({
-          message: "The authentication request expired. Run dhw auth again.",
-        });
-      case "granted":
-        return yield* new AuthenticationFlowError({
-          message:
-            "The authentication grant was already exchanged. Run dhw auth again on this machine.",
-        });
-      case "revoked":
-        return yield* new AuthenticationFlowError({
-          message: "The CLI session was revoked. Run dhw auth again.",
-        });
+  const status = yield* pollUntil(api.getAuthenticationStatus(code), {
+    settled: (
+      status
+    ): status is Exclude<typeof status, { readonly authStatus: "pending" }> =>
+      status.authStatus !== "pending",
+    // The request itself expires after five minutes.
+    timeout: "10 minutes",
+    onTimeout: () =>
+      new AuthenticationFlowError({
+        message: "The authentication request expired. Run dhw auth again.",
+      }),
+  });
+  switch (status.authStatus) {
+    case "approved": {
+      const granted = yield* api.exchangeGrant({
+        code,
+        grantToken: status.grantToken,
+        verifier,
+      });
+      yield* authentication.save(granted.accessToken);
+      return granted.session;
     }
+    case "expired":
+      return yield* new AuthenticationFlowError({
+        message: "The authentication request expired. Run dhw auth again.",
+      });
+    case "granted":
+      return yield* new AuthenticationFlowError({
+        message:
+          "The authentication grant was already exchanged. Run dhw auth again on this machine.",
+      });
+    case "revoked":
+      return yield* new AuthenticationFlowError({
+        message: "The CLI session was revoked. Run dhw auth again.",
+      });
   }
 });
 
