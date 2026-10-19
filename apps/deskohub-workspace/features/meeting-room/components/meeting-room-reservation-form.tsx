@@ -17,6 +17,7 @@ import {
 } from "@/features/checkout/product-catalog.i18n";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
+import { MeetingRoomStartTimeOptions } from "@/features/meeting-room/components/meeting-room-start-time-options";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
 import { ReservationFormDateTimePicker } from "@/features/reservation/components/reservation-date-time-picker";
@@ -60,6 +61,7 @@ import {
 import type { ReservationExistingCustomerForm } from "@/features/reservation/reservation-existing-customer";
 import {
   getMeetingRoomSelectionAvailabilityQuery,
+  getMeetingRoomStartTimesQuery,
   isMeetingRoomAvailable,
   type PreloadedWorkspaceAvailability,
 } from "@/features/reservation/workspace-availability";
@@ -162,6 +164,12 @@ export function MeetingRoomReservationForm({
     !availabilityQueryResult.isPending
       ? m.reservationAvailabilityError({}, { locale })
       : undefined;
+  const startTimesQuery = isWholeDaySelected
+    ? undefined
+    : getMeetingRoomStartTimesQuery({
+        duration: selectedDurationKey,
+        startDateTime: selectedStartDateTime,
+      });
   const advertisedPriceRequests = useMemo(
     () =>
       getMeetingRoomDurationAdvertisedPriceRequests({
@@ -266,6 +274,15 @@ export function MeetingRoomReservationForm({
               variant={fieldState.error ? "error" : "default"}
             />
             <FormMessage />
+            {startTimesQuery && (
+              <MeetingRoomStartTimeOptions
+                locale={locale}
+                onSelect={field.onChange}
+                query={startTimesQuery}
+                replacementToken={replacementToken}
+                selectedStartDateTime={field.value}
+              />
+            )}
           </FormItem>
         )}
       />

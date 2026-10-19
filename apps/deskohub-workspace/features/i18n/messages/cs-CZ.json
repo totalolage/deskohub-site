@@ -416,6 +416,10 @@
   "reservationMeetingRoomTimeLabel": "Čas začátku rezervace zasedací místnosti",
   "reservationMeetingRoomDurationLabel": "Délka rezervace",
   "reservationMeetingRoomUnavailable": "Zasedací místnost není v tomto termínu dostupná. Zkus jiný začátek nebo délku rezervace.",
+  "reservationMeetingRoomStartTimesLabel": "Volné časy začátku",
+  "reservationMeetingRoomStartTimesLoading": "Načítáme volné časy začátku pro tento den.",
+  "reservationMeetingRoomStartTimesEmpty": "V tento den pro zvolenou délku nejsou volné žádné časy začátku. Zkus jiné datum nebo kratší délku rezervace.",
+  "reservationMeetingRoomStartTimesError": "Volné časy začátku se nepodařilo načíst. Čas začátku můžeš i tak zadat výše.",
   "reservationOfficeProductTitle": "Soukromá kancelář",
   "reservationOfficeBasePriceLabel": [
     {

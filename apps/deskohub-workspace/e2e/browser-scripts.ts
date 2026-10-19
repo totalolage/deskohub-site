@@ -385,8 +385,14 @@ export const getSubmitCoworkReservationScript = (data: CheckoutData) => {
 `;
 };
 
-export const getSubmitMeetingRoomReservationScript = (data: CheckoutData) => {
-  const prepare = getPrepareMeetingRoomAdvertisedPriceScript(data).trim();
+export const getSubmitMeetingRoomReservationScript = (
+  data: CheckoutData,
+  options?: MeetingRoomStartTimeEntryOptions
+) => {
+  const prepare = getPrepareMeetingRoomAdvertisedPriceScript(
+    data,
+    options
+  ).trim();
 
   return `
 (async () => {
@@ -578,8 +584,17 @@ export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
 `;
 };
 
+type MeetingRoomStartTimeEntryOptions = {
+  /**
+   * How an hourly start is entered: typed into the time input, or picked from
+   * the listed free start times.
+   */
+  readonly startTimeEntry?: "listed" | "typed";
+};
+
 export const getPrepareMeetingRoomAdvertisedPriceScript = (
-  data: CheckoutData
+  data: CheckoutData,
+  { startTimeEntry = "typed" }: MeetingRoomStartTimeEntryOptions = {}
 ) => {
   if (
     data.expectedReservationDetails.kind !== "meeting-room" ||
@@ -598,6 +613,7 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     email: data.email,
     name: data.name,
     phone: data.phone,
+    startTimeEntry,
     time: data.meetingRoom.startDateTime.slice(11),
     wholeDay: isMeetingRoomWholeDayReservationDuration(
       data.meetingRoom.duration
@@ -692,7 +708,24 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     throw new Error('meeting-room duration control not found');
   }
   if (!duration.checked) (duration.closest('label') ?? duration).click();
-  if (!expected.wholeDay) {
+  if (!expected.wholeDay && expected.startTimeEntry === 'listed') {
+    const listedStartSelector =
+      '[role="radiogroup"] input[type="radio"][value="' +
+      expected.date + 'T' + expected.time + '"]';
+    await waitUntil(
+      () => document.querySelector(listedStartSelector) instanceof HTMLInputElement,
+      () =>
+        'meeting-room start ' + expected.time +
+        ' is not among the listed free start times: ' +
+        [...document.querySelectorAll('[role="radiogroup"] input[type="radio"]')]
+          .map((option) => option.value)
+          .filter((value) => value.includes('T'))
+          .map((value) => value.slice(11))
+          .join(',')
+    );
+    const listedStart = document.querySelector(listedStartSelector);
+    (listedStart.closest('label') ?? listedStart).click();
+  } else if (!expected.wholeDay) {
     setField('input[aria-label^="Meeting room start time"]', expected.time);
   }
   setField('input[name="email"]', expected.email);
