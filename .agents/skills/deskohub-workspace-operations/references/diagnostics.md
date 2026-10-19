@@ -33,4 +33,6 @@ Batch workflows that issue concurrent database reads need a numeric concurrency 
 
 ## Attribute runtime timeouts carefully
 
-When successful responses keep running until the hosting timeout, check post-response logging and telemetry flushes as well as provider durations. Compare an isolated preview change against a stable baseline on equivalent traffic. Don't credit a caching change when database or provider behavior changed in the same window.
+When successful responses keep running until the hosting timeout, check post-response logging and telemetry flushes as well as provider durations.
+
+A provider timeout can be an instance that was suspended mid-run, not a slow provider. The signs: the run's start log carries an `observed_timestamp` minutes or hours after its `timestamp`, and the retry warning and the final timeout land milliseconds apart instead of one request timeout apart. Look for work that no response awaited. Compare an isolated preview change against a stable baseline on equivalent traffic. Don't credit a caching change when database or provider behavior changed in the same window.

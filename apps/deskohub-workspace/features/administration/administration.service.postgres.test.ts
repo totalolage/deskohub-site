@@ -8,6 +8,7 @@ import {
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { NexiOrderIdSchema } from "@deskohub/nexi";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import {
   type FulfillmentState,
@@ -15,6 +16,11 @@ import {
   type ReservationState,
   workspaceReservations,
 } from "@/db/schema";
+import { ReservationAuthorDirectory } from "@/features/account";
+import {
+  type CustomerAccountId,
+  customerAccountIdSchema,
+} from "@/features/account/customer-account";
 import {
   checkoutAttemptKeySchema,
   paymentAttemptIdSchema,
@@ -41,6 +47,8 @@ describe.skipIf(!testDatabase)(
     const runId = crypto.randomUUID();
     const makeCustomerId = (role: string) =>
       DotyposCustomerIdSchema.make(`${role}-customer-${runId}`);
+    const authorCustomerId = makeCustomerId("author");
+    const accountIds: CustomerAccountId[] = [];
 
     afterAll(async () => {
       await testDatabase.pool.query(
@@ -50,6 +58,18 @@ describe.skipIf(!testDatabase)(
       await testDatabase.pool.query(
         "delete from workspace_reservations where id = any($1)",
         [reservationIds]
+      );
+      await testDatabase.pool.query(
+        "delete from customer_account_links where customer_account_id = any($1)",
+        [accountIds]
+      );
+      await testDatabase.pool.query(
+        `delete from auth."user" where id = any($1)`,
+        [accountIds]
+      );
+      await testDatabase.pool.query(
+        "delete from customer_accounts where id = any($1)",
+        [accountIds]
       );
     });
 
@@ -69,7 +89,19 @@ describe.skipIf(!testDatabase)(
                   testDatabase.layer,
                   DotyposServiceMock({
                     getCustomer: () => Effect.succeed(null as never),
-                    getCustomers: () => Effect.succeed([]),
+                    getCustomers: ({ ids }) =>
+                      Effect.succeed(
+                        ids?.includes(authorCustomerId)
+                          ? [
+                              {
+                                id: authorCustomerId,
+                                firstName: "Ada",
+                                lastName: "Author",
+                              },
+                            ]
+                          : []
+                      ),
+                    getTables: () => Effect.succeed([]),
                     listReservations: () => Effect.succeed([]),
                   }),
                   Layer.succeed(
@@ -79,7 +111,12 @@ describe.skipIf(!testDatabase)(
                         Effect.succeed({ kind: "unavailable" } as const),
                     })
                   ),
-                  PaymentAdministrationServiceMock({})
+                  PaymentAdministrationServiceMock({
+                    loadReservationOrders: () => Effect.succeed([]),
+                  }),
+                  ReservationAuthorDirectory.Default.pipe(
+                    Layer.provide(testDatabase.layer)
+                  )
                 )
               )
             )
@@ -443,6 +480,88 @@ describe.skipIf(!testDatabase)(
         expect(
           cancelled.items.find(({ id }) => id === refunded)?.statusNote
         ).toBe("Refunded");
+      });
+    });
+
+    describe("reservation author", () => {
+      const insertAccount = async (linkedCustomer: DotyposCustomerId) => {
+        const accountId = customerAccountIdSchema.make(crypto.randomUUID());
+        accountIds.push(accountId);
+        await testDatabase.pool.query(
+          "insert into customer_accounts (id) values ($1)",
+          [accountId]
+        );
+        await testDatabase.pool.query(
+          `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, true)`,
+          [accountId, testEmailAddress(`admin-author-${accountId}`)]
+        );
+        await testDatabase.pool.query(
+          "insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2)",
+          [accountId, linkedCustomer]
+        );
+        return accountId;
+      };
+
+      const insertAuthoredReservation = async (
+        label: string,
+        customerId: DotyposCustomerId,
+        authorAccountId: CustomerAccountId
+      ) => {
+        const reservationId = workspaceReservationIdSchema.make(
+          `admin-${label}-${runId}`
+        );
+        reservationIds.push(reservationId);
+        await Effect.runPromise(
+          testDatabase.db.insert(workspaceReservations).values({
+            id: reservationId,
+            checkoutAttemptKey: checkoutAttemptKeySchema.make(
+              `attempt-${label}-${runId}`
+            ),
+            dotyposCustomerId: customerId,
+            authorAccountId,
+            reservationState: "draft",
+            paymentState: "not_started",
+            fulfillmentState: "not_started",
+            reservationDetails: {
+              kind: "cowork",
+              entryTier: "open-space",
+              coffee: false,
+            },
+            locale: "en-US",
+          })
+        );
+        return reservationId;
+      };
+
+      test("names an author who booked for someone else and omits the customer's own", async () => {
+        const customerId = makeCustomerId("booked-for");
+        const author = await insertAccount(authorCustomerId);
+        const own = await insertAccount(customerId);
+        const bookedForSomeoneElse = await insertAuthoredReservation(
+          "booked-for-someone-else",
+          customerId,
+          author
+        );
+        const bookedForThemselves = await insertAuthoredReservation(
+          "booked-for-themselves",
+          customerId,
+          own
+        );
+
+        const [other, self] = await Promise.all(
+          [bookedForSomeoneElse, bookedForThemselves].map((id) =>
+            run((administration) => administration.loadReservation(id))
+          )
+        );
+
+        expect(other?.author).toEqual({
+          kind: "account",
+          customerId: authorCustomerId,
+          displayName: "Ada Author",
+          hasName: true,
+          email: testEmailAddress(`admin-author-${author}`),
+        });
+        expect(self?.author).toBeNull();
       });
     });
   }

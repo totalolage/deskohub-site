@@ -17,6 +17,15 @@ import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
  */
 export const signInReturnParam = "returnTo";
 
+/**
+ * The sign-in search parameter naming a notice for the card to show above
+ * its form; the only notice is `signInNoLongerWaitingNotice`.
+ */
+export const signInNoticeParam = "notice";
+
+/** The notice for a visitor sent back from a verify page with no sign-in waiting. */
+export const signInNoLongerWaitingNotice = "no-longer-waiting";
+
 /** The magic-link search parameter correlating the callback tab with the tab that sent it. */
 export const signInAttemptParam = "attempt";
 
@@ -96,6 +105,16 @@ export const getAccountSignInPath = (
   });
   return query.size ? `${path}?${query}` : path;
 };
+
+/**
+ * The sign-in page telling the visitor that the sign-in their verify page
+ * waited for is gone. Nothing pending means no stored return path, so the
+ * new sign-in continues to the account.
+ */
+export const getNoLongerWaitingSignInPath = (locale: Locale) =>
+  `${getAccountSignInPath(locale)}?${new URLSearchParams({
+    [signInNoticeParam]: signInNoLongerWaitingNotice,
+  })}`;
 
 /**
  * The magic-link callback, carrying the hand-off attempt and a same-origin

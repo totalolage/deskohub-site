@@ -48,6 +48,7 @@ test("falls back to authoritative local status after a page refresh read fails",
     accessCookie: undefined,
     locale: input.locale,
     orderId: input.orderId,
+    permission: "view-status",
   });
 });
 

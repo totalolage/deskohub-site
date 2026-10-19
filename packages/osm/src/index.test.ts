@@ -112,6 +112,37 @@ describe("generateStaticMapImage", () => {
     });
   });
 
+  test("sends the same tile request on every traced render, without trace context", async () => {
+    const requests: Request[] = [];
+    const fetch = makeFetch(async (input, init) => {
+      requests.push(
+        input instanceof Request ? input : new Request(input, init)
+      );
+
+      return new Response(pngPixel, {
+        status: 200,
+        headers: { "Content-Type": "image/png" },
+      });
+    });
+    const render = generateStaticMapImage(staticMapOptions).pipe(
+      Effect.withSpan("render-map")
+    );
+
+    await runWithFetch(Effect.all([render, render]), fetch);
+
+    expect(
+      requests.map((request) => ({
+        headers: Object.fromEntries(request.headers),
+        url: request.url,
+      }))
+    ).toEqual(
+      Array.from({ length: 2 }, () => ({
+        headers: { "user-agent": "OSM Effect test" },
+        url: "https://tiles.example.test/0/0/0.png",
+      }))
+    );
+  });
+
   test("crops inside the tiles when the map centre falls on a sub-pixel", async () => {
     const tile = await sharp({
       create: {

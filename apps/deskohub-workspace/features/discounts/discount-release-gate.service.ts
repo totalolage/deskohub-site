@@ -93,6 +93,13 @@ export class DiscountReleaseGateService extends Context.Service<
   static Live = this.Default.pipe(
     Layer.provide(WorkspaceFeatureFlagService.Default)
   );
+
+  /**
+   * Gates the caller already decided for this request, for work that must
+   * not read the request itself, such as a cached render.
+   */
+  static fromDecisions = (gates: DiscountReleaseGates) =>
+    Layer.succeed(this, { evaluate: () => Effect.succeed(gates) });
 }
 
 const discountReleaseGatesDisabled: DiscountReleaseGates = {

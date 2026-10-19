@@ -19,6 +19,7 @@ const render = async (query: Record<string, string | string[] | undefined>) =>
     searchParams: Promise.resolve(query),
   })) as ReactElement<{
     readonly locale: string;
+    readonly noLongerWaiting: boolean;
     readonly passkeysEnabled: boolean;
     readonly returnTo?: string;
   }>;
@@ -50,6 +51,7 @@ describe("sign-in route card", () => {
 
       expect((await render({})).props).toEqual({
         locale: "en-US",
+        noLongerWaiting: false,
         passkeysEnabled,
         returnTo: undefined,
       });
@@ -67,6 +69,19 @@ describe("sign-in route card", () => {
       expect(
         (await render({ returnTo: unsafe })).props.returnTo
       ).toBeUndefined();
+    }
+  });
+
+  test("shows the no-longer-waiting notice only for its own notice value", async () => {
+    expect(
+      (await render({ notice: "no-longer-waiting" })).props.noLongerWaiting
+    ).toBe(true);
+    expect(
+      (await render({ notice: ["no-longer-waiting", "other"] })).props
+        .noLongerWaiting
+    ).toBe(true);
+    for (const notice of [undefined, "", "other", "NO-LONGER-WAITING"]) {
+      expect((await render({ notice })).props.noLongerWaiting).toBe(false);
     }
   });
 });

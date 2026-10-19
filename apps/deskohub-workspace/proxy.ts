@@ -18,6 +18,11 @@ import { administrationRequestPathHeader } from "@/features/administrators/admin
 import { resolveWorkspaceLocale } from "@/features/i18n/locale-resolution";
 import { localeCookieName, locales } from "@/features/i18n/routing";
 import {
+  findLocalizedPublicPage,
+  getPageMarkdownRoutePath,
+  prefersMarkdown,
+} from "@/features/public-pages/page-markdown-negotiation";
+import {
   findSharedReferralCodeToRemember,
   referralCodeCookieName,
 } from "@/features/referrals/referral-code-cookie";
@@ -210,6 +215,17 @@ async function localizedPageResponse(
       return response;
     }
 
+    const publicPage = findLocalizedPublicPage(request.nextUrl.pathname);
+    if (publicPage && requestsPageMarkdown(request)) {
+      recordAgentPageRequest(request, resolvedLocale);
+      return NextResponse.rewrite(
+        new URL(
+          getPageMarkdownRoutePath(publicPage.locale, publicPage.pathname),
+          request.url
+        )
+      );
+    }
+
     const sharedReferralCode = findSharedReferralCodeOfNavigation(request);
     if (sharedReferralCode) {
       request.cookies.set(referralCodeCookieName, sharedReferralCode);
@@ -218,6 +234,8 @@ async function localizedPageResponse(
     const response = continueRequest(request, {
       headersChanged: Boolean(sharedReferralCode) || forwardRequestHeaders,
     });
+    // The same URL answers with Markdown when `Accept` prefers it.
+    if (publicPage) response.headers.append("Vary", "Accept");
     if (
       isPrivateReservationPath(request.nextUrl.pathname) ||
       isPrivateAccountPath(request.nextUrl.pathname)
@@ -252,6 +270,12 @@ async function localizedPageResponse(
   setLocaleCookie(response, localeCookieName, resolvedLocale);
   return response;
 }
+
+// A public page load whose `Accept` header prefers Markdown gets the page's
+// Markdown variant instead of its HTML.
+const requestsPageMarkdown = (request: NextRequest) =>
+  (request.method === "GET" || request.method === "HEAD") &&
+  prefersMarkdown(request.headers);
 
 // One event per agent page load that reaches a render; humans and other
 // unclassified traffic send none. A path no page matches renders the

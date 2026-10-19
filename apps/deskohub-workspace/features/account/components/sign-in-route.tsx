@@ -2,6 +2,8 @@ import { connection } from "next/server";
 import { SignInCard } from "@/features/account/components/sign-in-card";
 import {
   parseSignInPurpose,
+  signInNoLongerWaitingNotice,
+  signInNoticeParam,
   signInPurposeParam,
   signInReturnParam,
 } from "@/features/account/routes";
@@ -16,7 +18,8 @@ import {
 /**
  * The sign-in card of the sign-in page and its modal. A same-origin
  * `returnTo` query makes the sign-in continue there; anything else is
- * ignored, so the sign-in returns to the account.
+ * ignored, so the sign-in returns to the account. A `notice` query naming
+ * `signInNoLongerWaitingNotice` shows that notice above the form.
  */
 export async function SignInRouteCard({
   locale,
@@ -39,6 +42,9 @@ export async function SignInRouteCard({
   return (
     <SignInCard
       locale={locale}
+      noLongerWaiting={
+        getSearchParam(query, signInNoticeParam) === signInNoLongerWaitingNotice
+      }
       passkeysEnabled={passkeysEnabled}
       purpose={parseSignInPurpose(getSearchParam(query, signInPurposeParam))}
       returnTo={returnTo}

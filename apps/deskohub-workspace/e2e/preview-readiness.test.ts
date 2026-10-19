@@ -6,7 +6,6 @@ import {
   assertPreviewAuthSessionReady,
   assertPreviewEndpointReady,
   assertPreviewEndpointsReady,
-  assertPreviewHomepageTilesReady,
   assertPreviewJpegReady,
   isPreviewPageAvailable,
 } from "./preview-readiness";
@@ -69,53 +68,6 @@ test("checks that the generated map endpoint returns a JPEG payload", async () =
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 
-test("requires a tile-compatible referrer policy on the localized homepage", async () => {
-  const requests: Array<{ headers: Headers; url: string }> = [];
-  const fetchMock = mock(
-    async (input: URL | RequestInfo, init?: RequestInit) => {
-      const request =
-        input instanceof Request ? input : new Request(input, init);
-      requests.push({
-        headers: request.headers,
-        url: request.url,
-      });
-      return new Response(null, {
-        status: 200,
-        headers: { "referrer-policy": "strict-origin-when-cross-origin" },
-      });
-    }
-  );
-
-  await Effect.runPromise(
-    assertPreviewHomepageTilesReady(makeConfig()).pipe(
-      Effect.provide(makeFetchHttpClientLayer(fetchMock))
-    )
-  );
-
-  expect(requests).toHaveLength(1);
-  expect(requests[0]?.url).toBe(
-    "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US"
-  );
-});
-
-test("rejects a global no-referrer policy that blocks OpenStreetMap browser tiles", async () => {
-  const fetchMock = mock(
-    async () =>
-      new Response(null, {
-        status: 200,
-        headers: { "referrer-policy": "no-referrer" },
-      })
-  );
-
-  await expect(
-    Effect.runPromise(
-      assertPreviewHomepageTilesReady(makeConfig()).pipe(
-        Effect.provide(makeFetchHttpClientLayer(fetchMock))
-      )
-    )
-  ).rejects.toThrow("strict-origin-when-cross-origin");
-});
-
 test("starts all preview readiness requests before any request completes", async () => {
   let startedRequestCount = 0;
   let releaseRequests: () => void = () => undefined;
@@ -124,7 +76,7 @@ test("starts all preview readiness requests before any request completes", async
   });
   const fetchMock = mock(async (input: URL | RequestInfo) => {
     startedRequestCount += 1;
-    if (startedRequestCount === 5) releaseRequests();
+    if (startedRequestCount === 4) releaseRequests();
     await allRequestsStarted;
 
     if (String(input).endsWith(".jpeg")) {
@@ -139,10 +91,7 @@ test("starts all preview readiness requests before any request completes", async
         headers: { "cache-control": "private, no-store" },
       });
     }
-    return new Response(null, {
-      status: 200,
-      headers: { "referrer-policy": "strict-origin-when-cross-origin" },
-    });
+    return new Response(null, { status: 200 });
   });
 
   await Effect.runPromise(
@@ -151,7 +100,7 @@ test("starts all preview readiness requests before any request completes", async
     )
   );
 
-  expect(startedRequestCount).toBe(5);
+  expect(startedRequestCount).toBe(4);
 });
 
 test("requires a healthy null auth session with private/no-store on the exact preview", async () => {

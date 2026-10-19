@@ -45,6 +45,11 @@ type SignInCardProps = {
   readonly passkeysEnabled?: boolean;
   /** Why the visitor signs in, when a page sent them here. */
   readonly purpose?: SignInPurpose;
+  /**
+   * Explains above the form that the sign-in a verify page waited for is
+   * gone, until the visitor sends a new email.
+   */
+  readonly noLongerWaiting?: boolean;
 };
 
 const signInEmailMaximumLength = 255;
@@ -76,8 +81,24 @@ export function SignInCard({
   returnTo,
   passkeysEnabled = false,
   purpose,
+  noLongerWaiting = false,
 }: SignInCardProps) {
   const [failure, setFailure] = useState<SignInEmailFailure | null>(null);
+  const [showNoLongerWaiting, setShowNoLongerWaiting] =
+    useState(noLongerWaiting);
+  const clientReady = useClientReady();
+  // A server-rendered page shows the notice from the start. A client
+  // navigation, such as the verify modal handing over, paints the notice's
+  // live region empty for a frame first, since screen readers often skip a
+  // region inserted together with its text.
+  const [noticeRegionMounted, setNoticeRegionMounted] = useState(
+    !clientReady || !noLongerWaiting
+  );
+  useEffect(() => {
+    if (noticeRegionMounted) return;
+    const frame = requestAnimationFrame(() => setNoticeRegionMounted(true));
+    return () => cancelAnimationFrame(frame);
+  }, [noticeRegionMounted]);
   const [storedRequest, setRequest] = useEmailSignInRequest();
   // The pending request continues only to its own destination: its link
   // already lands there. A card opened without one takes the request's; a
@@ -90,7 +111,6 @@ export function SignInCard({
       ? storedRequest
       : null;
   const destination = request ? request.returnTo : requestedReturnTo;
-  const clientReady = useClientReady();
   const submissionInProgress = useRef(false);
   // The control that switched the view unmounts with it, so the next view
   // takes focus once it mounts.
@@ -123,6 +143,7 @@ export function SignInCard({
       return;
     }
     if (!result.signInCode) focusAfterViewChange.current = "accepted";
+    setShowNoLongerWaiting(false);
     setRequest({
       email,
       requestedAt: Date.now(),
@@ -185,6 +206,13 @@ export function SignInCard({
           ? m.accountSignInReservationDescription({}, { locale })
           : m.accountSignInDescription({}, { locale })}
       </p>
+      <div id="account-sign-in-notice" role="status">
+        {showNoLongerWaiting && noticeRegionMounted && (
+          <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+            {m.accountSignInNoLongerWaitingNotice({}, { locale })}
+          </p>
+        )}
+      </div>
       <Form {...form}>
         <form
           id="account-sign-in-form"
@@ -203,7 +231,11 @@ export function SignInCard({
                 </FormLabel>
                 {/* The button joins the input's row once it fits beside it. */}
                 <div className="flex flex-col gap-3 sm:flex-row">
-                  <FormControl>
+                  <FormControl
+                    aria-describedby={
+                      showNoLongerWaiting ? "account-sign-in-notice" : undefined
+                    }
+                  >
                     <Input
                       className="min-w-0 sm:flex-1"
                       {...field}

@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.19.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.18.0...dhw-v1.19.0) (2026-10-19)
+
+
+### Features
+
+* **administration:** show who booked a reservation for someone else ([0b0a9f2](https://github.com/totalolage/deskohub-site/commit/0b0a9f2bc8d2535db00e4ecca872d7ba15a97320))
+* **dhw:** show who booked a reservation for someone else ([af2c28a](https://github.com/totalolage/deskohub-site/commit/af2c28ad4b388f967a096eb2c3643179705c203a))
+* **workspace:** author-aware status access, emails, history and admin ([6964543](https://github.com/totalolage/deskohub-site/commit/6964543aba1c661b63bc331b5df9916c876ccdd4))
+
 ## [1.18.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.17.0...dhw-v1.18.0) (2026-10-17)
 
 
