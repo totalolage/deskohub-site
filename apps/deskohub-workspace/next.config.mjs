@@ -50,6 +50,10 @@ const nextConfig = {
   },
   cacheComponents: true,
   experimental: {
+    // After compiling, `next build` keeps 4–5 GB resident on Vercel's 8 GB build
+    // machine, and each page-data and static-generation worker adds about
+    // 750 MB. The default of one worker per spare core (3) peaked at 7.6 GB.
+    cpus: 2,
     // Next's TS CLI integration needs bin tsc, which the official TS6 wrapper (tsc6-only) must not provide.
     useTypeScriptCli: false,
     // With the build cache on, Turbopack keeps about 5 GB resident while it
@@ -72,8 +76,8 @@ const nextConfig = {
   partialPrefetching: true,
   reactCompiler: true,
   // The build script type-checks with the native compiler before `next build`.
-  // Next's own check runs the TS6 compiler in a worker that peaks near its 4 GB
-  // heap limit and hangs or gets OOM-killed on Vercel's 8 GB build machine.
+  // Next's own check runs the TS6 compiler in a worker that needs 3–3.5 GB beside
+  // the `next build` process, so it hung or got OOM-killed on Vercel.
   typescript: {
     ignoreBuildErrors: true,
   },
