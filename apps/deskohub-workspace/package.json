@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "bash scripts/build-memory-probe.sh bash -c 'next typegen && tsc --noEmit && bun scripts/next-build.ts \"$@\"' build",
+    "build": "next typegen && tsc --noEmit && bun scripts/next-build.ts",
     "vercel-build": "turbo build",
     "dev": "bun --parallel dev:next dev:i18n dev:i18n:administration",
     "dev:next": "next dev --turbo",

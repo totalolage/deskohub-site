@@ -73,4 +73,3 @@ export default async function LocaleLayout({
     </html>
   );
 }
-// TEMPORARY Elastic warm-build probe 3, remove before merge
