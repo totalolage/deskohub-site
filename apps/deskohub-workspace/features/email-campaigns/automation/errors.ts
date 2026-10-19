@@ -96,3 +96,11 @@ export class AutomationStatusConflict extends Data.TaggedError(
   /** Stable across transports, so clients can tell this conflict apart. */
   static readonly code = "automation-status-conflict";
 }
+
+/** The automation has no published version with this number. */
+export class AutomationVersionNotFound extends Data.TaggedError(
+  "AutomationVersionNotFound"
+)<{
+  readonly campaignId: CampaignId;
+  readonly versionNumber: number;
+}> {}
