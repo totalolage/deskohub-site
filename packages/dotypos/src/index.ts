@@ -9,6 +9,8 @@ export type {
   DotyposCustomerDiscountGroup,
   DotyposCustomerLookupData,
   FindCustomerOptions,
+  ReservationListOptions,
+  ReservationPage,
 } from "./backend/service";
 export {
   CustomerVersionSelection,
