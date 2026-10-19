@@ -64,7 +64,11 @@
   ],
   "emailCampaignsAudienceCampaignEmailCountNounSpecific": [
     {
-      "declarations": ["input count", "input campaign", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "input campaign",
+        "local countPlural = count: plural"
+      ],
       "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "e-mail z kampaně {campaign}",

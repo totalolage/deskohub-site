@@ -179,10 +179,9 @@ describe("campaign picker", () => {
       "Jarní výprodejDraft",
       "Welcome seriesAutomated",
     ]);
-    fireEvent.change(
-      view.getByRole("combobox", { name: "Search campaigns" }),
-      { target: { value: "VYPRODEJ" } }
-    );
+    fireEvent.change(view.getByRole("combobox", { name: "Search campaigns" }), {
+      target: { value: "VYPRODEJ" },
+    });
     expect(options()).toEqual(["Jarní výprodejDraft"]);
   });
 

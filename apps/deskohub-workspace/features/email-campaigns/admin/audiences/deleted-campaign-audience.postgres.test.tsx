@@ -30,7 +30,10 @@ import {
   campaignContentFixture,
   everyoneFilter,
 } from "../../backend/email-campaigns.test-utils";
-import type { CampaignAudienceId, CampaignId } from "../../campaign-identifiers";
+import type {
+  CampaignAudienceId,
+  CampaignId,
+} from "../../campaign-identifiers";
 import {
   type AudienceValueLookups,
   describeAudienceFilter,
@@ -206,7 +209,10 @@ describe.skipIf(!testDatabase)(
     };
 
     test("keeps the audience, counts none, names the campaign deleted, and refuses a re-save", async () => {
-      const holder = await createAudience("Deleted source holder", everyoneFilter);
+      const holder = await createAudience(
+        "Deleted source holder",
+        everyoneFilter
+      );
       const source = await succeed(
         CampaignService.pipe(
           Effect.flatMap((campaigns) =>

@@ -295,14 +295,10 @@ describe("describeAudienceFilter", () => {
         period: lastTenDays,
         campaign: { _tag: "Specific", campaignId: "campaign-deleted" },
       });
-      expect(
-        describeAudienceFilter(fromDeleted, "en-US", { campaigns })
-      ).toBe(
+      expect(describeAudienceFilter(fromDeleted, "en-US", { campaigns })).toBe(
         "Customers who received no emails from a deleted campaign in the last 10 days"
       );
-      expect(
-        describeAudienceFilter(fromDeleted, "cs-CZ", { campaigns })
-      ).toBe(
+      expect(describeAudienceFilter(fromDeleted, "cs-CZ", { campaigns })).toBe(
         "Zákazníci, kteří neobdrželi žádný e-mail ze smazané kampaně za posledních 10 dní"
       );
     });
