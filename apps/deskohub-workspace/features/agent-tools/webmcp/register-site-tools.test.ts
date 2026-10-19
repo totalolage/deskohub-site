@@ -107,7 +107,7 @@ describe("registerReadSiteTools", () => {
     const second = new AbortController();
     const secondRun = register(second.signal);
 
-    await expect(firstRun).rejects.toBeDefined();
+    await expect(firstRun).resolves.toBeUndefined();
     await secondRun;
 
     expect([...modelContext.registered.keys()]).toEqual([

@@ -315,13 +315,13 @@ describe("ReservationCheckoutForm", () => {
     );
     expect(getMarketingConsentCheckbox(view)).toBeNull();
 
-    // The hidden checkbox submits no opt-in, which leaves the stored
-    // consent as it is.
+    // The hidden checkbox sends no consent fields, even after the other
+    // contact's box was ticked, which leaves the stored consent as it is.
     fireEvent.click(getSubmitButton(view));
     await waitFor(() => expect(startCheckout).toHaveBeenCalledTimes(1));
-    expect(startCheckout.mock.calls[0]?.[0]).toMatchObject({
-      customer: "account",
-      marketingConsent: false,
-    });
+    const submitted = startCheckout.mock.calls[0]?.[0];
+    expect(submitted).toMatchObject({ customer: "account" });
+    expect(submitted).not.toHaveProperty("marketingConsent");
+    expect(submitted).not.toHaveProperty("marketingConsentSource");
   });
 });

@@ -19,7 +19,12 @@ import {
 } from "@testing-library/react";
 import type { Schema } from "effect";
 import { StrictMode, useEffect, useState } from "react";
-import { type Resolver, useForm, useWatch } from "react-hook-form";
+import {
+  type Resolver,
+  type UseFormReturn,
+  useForm,
+  useWatch,
+} from "react-hook-form";
 import { m } from "@/features/i18n";
 import type { PreparePayStateInput } from "@/features/reservation/actions/prepare-pay-state.schema";
 import type { ReservationExistingCustomerForm } from "@/features/reservation/reservation-existing-customer";
@@ -37,6 +42,7 @@ import {
   installFakeModelContext,
   mockAgentToolEndpoint,
   publishedQuoteTool,
+  recordUnhandledRejections,
 } from "./webmcp.test-utils";
 
 const preparePayState = mock();
@@ -103,13 +109,20 @@ function useHarnessAvailability(date: string, unavailableDates: string[]) {
   };
 }
 
+type HarnessKind = "cowork" | "office";
+
+// The mounted harness form, for a test acting as the customer.
+let harnessForm: UseFormReturn<HarnessValues> | undefined;
+
 function Harness({
   existingCustomer,
   guest = {},
+  kind = "cowork",
   priceError = false,
   unavailableDates = [],
 }: {
   readonly existingCustomer?: ReservationExistingCustomerForm;
+  readonly kind?: HarnessKind;
   readonly guest?: Partial<Pick<HarnessValues, "name" | "email" | "phone">>;
   readonly priceError?: boolean;
   readonly unavailableDates?: string[];
@@ -125,6 +138,7 @@ function Harness({
     },
     resolver: contactResolver,
   });
+  harnessForm = form;
   const date = useWatch({ control: form.control, name: "date" });
 
   return (
@@ -139,20 +153,45 @@ function Harness({
       existingCustomer={existingCustomer}
       form={form}
       getReservation={({ date: reservationDate, email, name, phone }) =>
-        ({ kind: "cowork", reservationDate, email, name, phone }) as never
+        ({ kind, reservationDate, email, name, phone }) as never
       }
       locale="en-US"
       selection={{
-        kind: "cowork",
+        kind,
         fromSearchParams: (searchParams) => ({
           date: searchParams.get("date") ?? "",
         }),
       }}
     >
       <output data-testid="date">{date}</output>
+      <output data-testid="kind">{kind}</output>
     </ReservationCheckoutForm>
   );
 }
+
+/**
+ * The reservation pages as client navigation swaps them: pushing another
+ * family's page unmounts this form and mounts that family's form.
+ */
+function ReservationPages(props: Parameters<typeof Harness>[0]) {
+  const [kind, setKind] = useState<HarnessKind>("cowork");
+  useEffect(() => {
+    workspaceRouterPush.mockImplementation(((path: string) => {
+      const opened = path.match(/\/reservation\/(cowork|office)\b/)?.[1];
+      if (opened) setTimeout(() => act(() => setKind(opened as HarnessKind)));
+    }) as never);
+  }, []);
+  return <Harness key={kind} {...props} kind={kind} />;
+}
+
+/** The customer fills in a contact field the tool asked for. */
+const fillContactField = (name: "email" | "phone", value: string) =>
+  act(() =>
+    harnessForm?.setValue(name, value, {
+      shouldDirty: true,
+      shouldValidate: true,
+    })
+  );
 
 const accountCustomer = (
   hasMarketingConsent = false
@@ -204,8 +243,11 @@ const quoteEndpoint = (quote: Schema.JsonObject) =>
       : agentToolEventStream({ structuredContent: {} })
   );
 
-const renderForm = async (props: Parameters<typeof Harness>[0] = {}) => {
-  const view = render(<Harness {...props} />);
+const renderForm = async (
+  props: Parameters<typeof Harness>[0] = {},
+  Page: typeof Harness = Harness
+) => {
+  const view = render(<Page {...props} />);
   act(() => publishQuoteTool(publishedQuoteTool));
   await waitFor(() => expect(modelContext.registered.has(toolName)).toBe(true));
   return view;
@@ -409,19 +451,63 @@ describe("prepare_reservation site tool", () => {
     expect(executeAsync).not.toHaveBeenCalled();
   });
 
-  test("opens the matching reservation page for another family", async () => {
+  test("for another family, opens its reservation page and prepares the reservation on the form there", async () => {
     endpoint.restore();
     endpoint = quoteEndpoint(quoteFor("office", "2099-08-03"));
-    await renderForm({ guest: guestContact });
+    const view = await renderForm({ guest: guestContact }, ReservationPages);
+    const coworkRegistration = modelContext.registered.get(toolName);
+
+    const result = await runTool({
+      family: "office",
+      date: "2099-08-03",
+      marketingConsent: true,
+    });
+
+    expect(workspaceRouterPush.mock.calls).toEqual([
+      [
+        "/en-US/reservation/office?entryTier=open-space&date=2099-08-03&coffee=false",
+      ],
+      [payPath],
+    ]);
+    expect(view.getByTestId("kind").textContent).toBe("office");
+    expect(view.getByTestId("date").textContent).toBe("2099-08-03");
+    expect(coworkRegistration?.signal?.aborted).toBe(true);
+    expect(executeAsync).toHaveBeenCalledTimes(1);
+    expect(lastPrepareInput()).toMatchObject({
+      advertisedPriceToken: "signed-price-2099-08-03",
+      marketingConsent: true,
+      marketingConsentSource: "site_tool",
+      reservation: { kind: "office", reservationDate: "2099-08-03" },
+    });
+    await waitFor(() =>
+      expect(
+        getMarketingConsentCheckbox(view)?.getAttribute("aria-checked")
+      ).toBe("true")
+    );
+    expect(result).toMatchObject({
+      status: "ready",
+      pay_url: `https://deskohub.test${payPath}`,
+      summary: { family: "office" },
+      marketingConsent: "submitted",
+    });
+  });
+
+  test("for another family, asks for missing contact details on the form there", async () => {
+    endpoint.restore();
+    endpoint = quoteEndpoint(quoteFor("office", "2099-08-03"));
+    const view = await renderForm(
+      { guest: { name: "Grace Hopper" } },
+      ReservationPages
+    );
 
     expect(await runTool({ family: "office", date: "2099-08-03" })).toEqual({
-      status: "reservation_page_opened",
-      family: "office",
-      message: m.siteToolReservationPageOpened({}, { locale: "en-US" }),
+      error: {
+        code: "contact_details_required",
+        message: m.siteToolContactDetailsRequired({}, { locale: "en-US" }),
+        missing_fields: ["email", "phone"],
+      },
     });
-    expect(workspaceRouterPush).toHaveBeenCalledWith(
-      "/en-US/reservation/office?entryTier=open-space&date=2099-08-03&coffee=false"
-    );
+    expect(view.getByTestId("kind").textContent).toBe("office");
     expect(executeAsync).not.toHaveBeenCalled();
   });
 
@@ -466,6 +552,58 @@ describe("prepare_reservation site tool", () => {
       expect(result).toMatchObject({ marketingConsent: "submitted" });
     });
 
+    test("true on a box the customer already ticked labels the consent as the site tool's", async () => {
+      const view = await renderForm({ guest: guestContact });
+      const checkbox = getMarketingConsentCheckbox(view);
+      if (!checkbox) throw new Error("Missing marketing consent checkbox");
+      fireEvent.click(checkbox);
+
+      const result = await runTool({
+        family: "cowork",
+        date: "2099-07-31",
+        marketingConsent: true,
+      });
+
+      expect(checkbox.getAttribute("aria-checked")).toBe("true");
+      expect(lastPrepareInput()).toMatchObject({
+        marketingConsent: true,
+        marketingConsentSource: "site_tool",
+      });
+      expect(result).toMatchObject({ marketingConsent: "submitted" });
+    });
+
+    test("true keeps the site tool's label on a retry after missing contact details", async () => {
+      const view = await renderForm({ guest: { name: "Grace Hopper" } });
+      const input = {
+        family: "cowork",
+        date: "2099-07-31",
+        marketingConsent: true,
+      };
+
+      expect(await runTool(input)).toMatchObject({
+        error: { code: "contact_details_required" },
+      });
+      await waitFor(() =>
+        expect(
+          getMarketingConsentCheckbox(view)?.getAttribute("aria-checked")
+        ).toBe("true")
+      );
+      await fillContactField("email", guestContact.email);
+      await fillContactField("phone", guestContact.phone);
+
+      const result = await runTool(input);
+
+      expect(executeAsync).toHaveBeenCalledTimes(1);
+      expect(lastPrepareInput()).toMatchObject({
+        marketingConsent: true,
+        marketingConsentSource: "site_tool",
+      });
+      expect(result).toMatchObject({
+        status: "ready",
+        marketingConsent: "submitted",
+      });
+    });
+
     test("true ticks the visible checkbox and labels the consent as the site tool's", async () => {
       const view = await renderForm({ guest: guestContact });
 
@@ -487,7 +625,7 @@ describe("prepare_reservation site tool", () => {
       expect(result).toMatchObject({ marketingConsent: "submitted" });
     });
 
-    test("true is ignored for an account that already consented", async () => {
+    test("true for an account that already consented sends neither field", async () => {
       const view = await renderForm({
         existingCustomer: accountCustomer(true),
       });
@@ -499,7 +637,8 @@ describe("prepare_reservation site tool", () => {
       });
 
       expect(getMarketingConsentCheckbox(view)).toBeNull();
-      expect(lastPrepareInput()?.marketingConsent).toBe(false);
+      expect(executeAsync).toHaveBeenCalledTimes(1);
+      expect(lastPrepareInput()).not.toHaveProperty("marketingConsent");
       expect(lastPrepareInput()).not.toHaveProperty("marketingConsentSource");
       expect(result).toMatchObject({ marketingConsent: "already_granted" });
     });
@@ -527,27 +666,62 @@ describe("prepare_reservation site tool", () => {
   });
 
   test("a Strict Mode double mount leaves one registration and no rejection", async () => {
-    render(
-      <StrictMode>
-        <Harness />
-      </StrictMode>
-    );
-    act(() => publishQuoteTool(publishedQuoteTool));
+    const unhandled = recordUnhandledRejections();
+    try {
+      const view = render(
+        <StrictMode>
+          <Harness />
+        </StrictMode>
+      );
+      act(() => publishQuoteTool(publishedQuoteTool));
 
-    await waitFor(() =>
-      expect(modelContext.registered.has(toolName)).toBe(true)
+      await waitFor(() =>
+        expect(modelContext.registered.has(toolName)).toBe(true)
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const registrations = modelContext.registerTool.mock.calls.filter(
+        ([tool]) => tool.name === toolName
+      );
+      expect(
+        registrations.filter(([, options]) => !options?.signal?.aborted)
+      ).toHaveLength(1);
+
+      view.unmount();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(
+        registrations.every(([, options]) => options?.signal?.aborted)
+      ).toBe(true);
+      expect(unhandled.rejections).toEqual([]);
+    } finally {
+      unhandled.stop();
+    }
+  });
+
+  test("an unmount while the registration is pending leaves no rejection", async () => {
+    const unhandled = recordUnhandledRejections();
+    const pendingRegistration = Promise.withResolvers<undefined>();
+    modelContext.registerTool.mockImplementation(
+      () => pendingRegistration.promise
     );
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const registrations = modelContext.registerTool.mock.calls.filter(
-      ([tool]) => tool.name === toolName
-    );
-    expect(registrations.length).toBeGreaterThanOrEqual(1);
-    expect(
-      registrations.filter(([, options]) => !options?.signal?.aborted)
-    ).toHaveLength(1);
-    await Promise.all(
-      modelContext.registerTool.mock.results.map(({ value }) => value)
-    );
+    try {
+      const view = render(<Harness />);
+      act(() => publishQuoteTool(publishedQuoteTool));
+      await waitFor(() => expect(modelContext.registerTool).toHaveBeenCalled());
+
+      view.unmount();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(
+        modelContext.registerTool.mock.calls.every(
+          ([, options]) => options?.signal?.aborted
+        )
+      ).toBe(true);
+      expect(unhandled.rejections).toEqual([]);
+    } finally {
+      pendingRegistration.resolve(undefined);
+      unhandled.stop();
+    }
   });
 
   test("is not registered while the site tools are not", async () => {

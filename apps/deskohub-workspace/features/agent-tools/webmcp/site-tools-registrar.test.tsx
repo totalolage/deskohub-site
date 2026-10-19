@@ -4,31 +4,38 @@ import {
   beforeAll,
   describe,
   expect,
-  mock,
   spyOn,
   test,
 } from "bun:test";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
+import { m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { installFakeModelContext } from "./webmcp.test-utils";
+import { SiteToolsRegistrar } from "./site-tools-registrar";
+import {
+  agentToolEventStream,
+  installFakeModelContext,
+  mockAgentToolEndpoint,
+  publishedAgentTools,
+  recordUnhandledRejections,
+} from "./webmcp.test-utils";
 
-type Registration = {
-  readonly locale: string;
-  readonly modelContext: unknown;
-  readonly signal: AbortSignal;
+const toolNames = publishedAgentTools.map(({ name }) => name);
+
+/** A `tools/list` answer the test releases when it chooses. */
+const pendingToolsList = () => {
+  const { promise, resolve } = Promise.withResolvers<Response>();
+  return {
+    list: () => promise,
+    release: () =>
+      resolve(agentToolEventStream({ tools: [...publishedAgentTools] })),
+  };
 };
 
-const registerReadSiteTools = mock((_registration: Registration) =>
-  Promise.resolve()
-);
-
-mock.module("./register-site-tools", () => ({ registerReadSiteTools }));
-
-const { SiteToolsRegistrar } = await import("./site-tools-registrar");
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("SiteToolsRegistrar", () => {
   beforeAll(() => {
@@ -37,7 +44,6 @@ describe("SiteToolsRegistrar", () => {
 
   afterEach(() => {
     cleanup();
-    registerReadSiteTools.mockClear();
   });
 
   afterAll(async () => {
@@ -49,9 +55,8 @@ describe("SiteToolsRegistrar", () => {
     const windowKeys = Object.keys(window);
     try {
       const view = render(<SiteToolsRegistrar locale="en-US" />);
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await settle();
 
-      expect(registerReadSiteTools).not.toHaveBeenCalled();
       expect(fetchSpy).not.toHaveBeenCalled();
       expect("modelContext" in document).toBe(false);
       expect(Object.keys(window)).toEqual(windowKeys);
@@ -62,55 +67,116 @@ describe("SiteToolsRegistrar", () => {
   });
 
   test("ignores a modelContext without registerTool", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch");
     Object.defineProperty(document, "modelContext", {
       configurable: true,
       value: {},
     });
     try {
       render(<SiteToolsRegistrar locale="en-US" />);
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await settle();
 
-      expect(registerReadSiteTools).not.toHaveBeenCalled();
+      expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       Reflect.deleteProperty(document, "modelContext");
+      fetchSpy.mockRestore();
     }
   });
 
-  test("registers the site tools for the page locale and aborts them on unmount", async () => {
+  test("registers the listed tools for the page locale and aborts every registration on unmount", async () => {
     const modelContext = installFakeModelContext();
+    const endpoint = mockAgentToolEndpoint();
     try {
       const view = render(<SiteToolsRegistrar locale="cs-CZ" />);
       await waitFor(() =>
-        expect(registerReadSiteTools).toHaveBeenCalledTimes(1)
+        expect([...modelContext.registered.keys()].sort()).toEqual(
+          [...toolNames].sort()
+        )
       );
-      const [registration] = registerReadSiteTools.mock.calls[0] ?? [];
-      expect(registration?.locale).toBe("cs-CZ");
-      expect(registration?.signal.aborted).toBe(false);
+      expect(modelContext.getTool("list_offerings").title).toBe(
+        m.siteToolListOfferingsTitle({}, { locale: "cs-CZ" })
+      );
 
       view.unmount();
 
-      expect(registration?.signal.aborted).toBe(true);
+      expect(modelContext.registered.size).toBe(0);
+      expect(
+        modelContext.registerTool.mock.calls.every(
+          ([, options]) => options?.signal?.aborted
+        )
+      ).toBe(true);
     } finally {
+      endpoint.restore();
       modelContext.uninstall();
     }
   });
 
-  test("a Strict Mode double mount leaves one live registration", async () => {
+  test("a Strict Mode double mount leaves one live registration per tool and no rejection", async () => {
+    const unhandled = recordUnhandledRejections();
     const modelContext = installFakeModelContext();
+    const toolsList = pendingToolsList();
+    const endpoint = mockAgentToolEndpoint(undefined, toolsList.list);
     try {
-      render(
+      const view = render(
         <StrictMode>
           <SiteToolsRegistrar locale="en-US" />
         </StrictMode>
       );
-      await waitFor(() =>
-        expect(registerReadSiteTools).toHaveBeenCalledTimes(2)
-      );
+      await waitFor(() => expect(endpoint.requests).toHaveLength(2));
+      toolsList.release();
 
+      await waitFor(() =>
+        expect(modelContext.registered.size).toBe(toolNames.length)
+      );
+      await settle();
+      expect(endpoint.requests.map(({ signal }) => signal?.aborted)).toEqual([
+        true,
+        false,
+      ]);
+      for (const name of toolNames) {
+        expect(
+          modelContext.registerTool.mock.calls.filter(
+            ([tool, options]) => tool.name === name && !options?.signal?.aborted
+          )
+        ).toHaveLength(1);
+      }
+
+      view.unmount();
+      await settle();
+
+      expect(modelContext.registered.size).toBe(0);
       expect(
-        registerReadSiteTools.mock.calls.map(([{ signal }]) => signal.aborted)
-      ).toEqual([true, false]);
+        modelContext.registerTool.mock.calls.every(
+          ([, options]) => options?.signal?.aborted
+        )
+      ).toBe(true);
+      expect(unhandled.rejections).toEqual([]);
     } finally {
+      unhandled.stop();
+      endpoint.restore();
+      modelContext.uninstall();
+    }
+  });
+
+  test("an unmount while tools/list is pending aborts it, registers nothing, and leaves no rejection", async () => {
+    const unhandled = recordUnhandledRejections();
+    const modelContext = installFakeModelContext();
+    const toolsList = pendingToolsList();
+    const endpoint = mockAgentToolEndpoint(undefined, toolsList.list);
+    try {
+      const view = render(<SiteToolsRegistrar locale="en-US" />);
+      await waitFor(() => expect(endpoint.requests).toHaveLength(1));
+
+      view.unmount();
+      toolsList.release();
+      await settle();
+
+      expect(endpoint.requests[0]?.signal?.aborted).toBe(true);
+      expect(modelContext.registerTool).not.toHaveBeenCalled();
+      expect(unhandled.rejections).toEqual([]);
+    } finally {
+      unhandled.stop();
+      endpoint.restore();
       modelContext.uninstall();
     }
   });

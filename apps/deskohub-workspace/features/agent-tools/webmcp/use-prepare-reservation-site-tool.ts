@@ -6,7 +6,7 @@ import type { Locale } from "@/features/i18n";
 import type { ReservationFormSubmission } from "@/features/reservation/components/reservation-checkout-form";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { getReservationStartPath } from "@/features/reservation/routes";
-import { useQuoteTool } from "./site-tool-catalog";
+import { publishReservationForm, useQuoteTool } from "./site-tool-catalog";
 import { getModelContext } from "./webmcp-detection";
 
 /** The mounted reservation form as the `prepare_reservation` tool drives it. */
@@ -42,7 +42,8 @@ export type SiteToolReservationFormHandle = {
 
 /**
  * Registers `prepare_reservation` while the reservation form is mounted and
- * the site tools are registered. Without WebMCP or with the release gate off,
+ * the site tools are registered, and publishes the form for a preparation
+ * that opened this page from another one. Without WebMCP or with the release gate off,
  * the quote tool is never published and nothing more loads.
  */
 export function usePrepareReservationSiteTool(form: SiteToolReservationForm) {
@@ -83,6 +84,7 @@ export function usePrepareReservationSiteTool(form: SiteToolReservationForm) {
     const modelContext = quoteTool && getModelContext();
     if (!quoteTool || !modelContext) return;
 
+    const withdrawForm = publishReservationForm(handle);
     const registration = new AbortController();
     void import("./prepare-reservation-site-tool").then(
       ({ registerPrepareReservationSiteTool }) =>
@@ -93,6 +95,9 @@ export function usePrepareReservationSiteTool(form: SiteToolReservationForm) {
           signal: registration.signal,
         })
     );
-    return () => registration.abort();
+    return () => {
+      registration.abort();
+      withdrawForm();
+    };
   }, [handle, quoteTool]);
 }

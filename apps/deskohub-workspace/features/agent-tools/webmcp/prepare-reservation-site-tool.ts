@@ -1,8 +1,8 @@
-import { Duration, Effect, Option, Schema } from "effect";
+import { Data, Duration, Effect, Option, Schema } from "effect";
 import { type Locale, m } from "@/features/i18n";
 import type { ReservationFormSubmission } from "@/features/reservation/components/reservation-checkout-form";
 import { workspaceReservationKindSchema } from "@/features/reservation/reservation-kind";
-import { runWorkspaceBrowserEffect } from "@/shared/browser/workspace-browser-effect";
+import { runWorkspaceBrowserEffectUntilAbort } from "@/shared/browser/workspace-browser-effect";
 import type { InvalidFormField } from "@/shared/utils/form-field-errors";
 import {
   AgentToolRequestError,
@@ -14,6 +14,10 @@ import {
   runSiteToolCall,
   withPageLocale,
 } from "./register-site-tools";
+import {
+  getReservationForm,
+  subscribeReservationForm,
+} from "./site-tool-catalog";
 import type {
   SiteToolReservationForm,
   SiteToolReservationFormHandle,
@@ -23,7 +27,7 @@ import type { ModelContext } from "./webmcp";
 export const prepareReservationToolName = "prepare_reservation";
 
 export const prepareReservationToolDescription =
-  "Prepares a reservation in this browser tab up to the Pay page. It fills the reservation form on this page with a complete selection, the same input get_quote takes, waits for the live price and availability, and submits the form with the contact details the customer has already entered or the signed-in account. It never asks for or changes contact details: when some are missing, it says which, and the customer fills them in. For a selection in another reservation family, it opens that reservation page; run it again there. Set marketingConsent to true only when the customer has explicitly asked in this conversation to receive marketing communication; never infer or default it. The customer accepts the terms and operating rules and pays on the Pay page; this tool cannot do either.";
+  "Prepares a reservation in this browser tab up to the Pay page. It fills the reservation form on this page with a complete selection, the same input get_quote takes, waits for the live price and availability, and submits the form with the contact details the customer has already entered or the signed-in account. It never asks for or changes contact details: when some are missing, it says which, and the customer fills them in. For a selection in another reservation family, it opens that reservation page and continues there. Set marketingConsent to true only when the customer has explicitly asked in this conversation to receive marketing communication; never infer or default it. The customer accepts the terms and operating rules and pays on the Pay page; this tool cannot do either.";
 
 export const marketingConsentInputDescription =
   "Optional. Set to true only when the customer has explicitly asked, in this conversation, to receive Deskohub Workspace marketing communication (occasional news, event invitations and offers by email). Never infer it from other requests, never default it, and never set it on the customer's behalf. Otherwise omit it. Omitting it or sending false records no consent and never withdraws a consent the customer gave earlier.";
@@ -100,129 +104,237 @@ export const registerPrepareReservationSiteTool = ({
     },
     signal
   ).pipe(
-    runWorkspaceBrowserEffect(
+    runWorkspaceBrowserEffectUntilAbort(
       "agent-tools.site-tool.prepare_reservation.register",
-      { signal }
+      signal
     )
   );
 
 /**
  * Quotes the selection through `get_quote`, which validates it and returns
- * the reservation link, then drives the form on this page through its own
- * submit path. Only the literal `true` gives marketing consent.
+ * the reservation link, then drives the matching reservation form through its
+ * own submit path. Only the literal `true` gives marketing consent.
  */
 const prepareReservation = ({
   form,
-  input,
+  input: { marketingConsent, ...selection },
   quoteTool,
 }: {
   readonly form: SiteToolReservationFormHandle;
   readonly input: Schema.JsonObject;
   readonly quoteTool: PublishedAgentTool;
-}) => {
-  const { marketingConsent, ...selection } = input;
-  return callAgentTool(
+}) =>
+  callAgentTool(
     quoteTool.name,
     withPageLocale(quoteTool, selection, form.current().locale)
   ).pipe(
+    // A quote's typed error is the tool's result as it stands.
+    Effect.filterOrFail(
+      isQuoted,
+      ({ structuredContent }) =>
+        new PreparationStopped({ result: structuredContent })
+    ),
+    Effect.flatMap(({ structuredContent }) =>
+      decodeQuote(structuredContent).pipe(
+        Effect.mapError((cause) => new AgentToolRequestError({ cause }))
+      )
+    ),
     Effect.flatMap((quote) =>
-      quote.isError
-        ? Effect.succeed<object>(quote.structuredContent)
-        : Schema.decodeUnknownEffect(quoteSchema, {
-            onExcessProperty: "preserve",
-          })(quote.structuredContent).pipe(
-            Effect.mapError((cause) => new AgentToolRequestError({ cause })),
-            Effect.flatMap((decoded) =>
-              prepareQuotedReservation({
-                form,
-                quote: decoded,
-                requestsMarketingConsent: marketingConsent === true,
-              })
-            )
-          )
+      prepareQuotedReservation({
+        form,
+        quote,
+        requestsMarketingConsent: marketingConsent === true,
+      })
+    ),
+    Effect.catchTag("PreparationStopped", ({ result }) =>
+      Effect.succeed(result)
     )
   );
-};
 
-const prepareQuotedReservation = Effect.fnUntraced(function* ({
-  form,
-  quote: { reservation_url, ...summary },
-  requestsMarketingConsent,
-}: {
+type AgentToolCall = Effect.Success<ReturnType<typeof callAgentTool>>;
+
+const isQuoted = (
+  call: AgentToolCall
+): call is Exclude<AgentToolCall, { readonly isError: true }> =>
+  call.isError !== true;
+
+/** A stage ended the preparation early with the result the agent gets. */
+class PreparationStopped extends Data.TaggedError("PreparationStopped")<{
+  readonly result: unknown;
+}> {}
+
+const decodeQuote = Schema.decodeUnknownEffect(quoteSchema, {
+  onExcessProperty: "preserve",
+});
+
+type PreparationRequest = {
+  /** The form on the page the agent called the tool from. */
   readonly form: SiteToolReservationFormHandle;
   readonly quote: Quote;
   readonly requestsMarketingConsent: boolean;
-}) {
-  const link = new URL(reservation_url, window.location.origin);
+};
+
+const prepareQuotedReservation = (request: PreparationRequest) =>
+  Effect.succeed(request).pipe(
+    Effect.let("locale", ({ form }) => form.current().locale),
+    Effect.let(
+      "link",
+      ({ quote }) => new URL(quote.reservation_url, window.location.origin)
+    ),
+    Effect.bind("settled", awaitSettledReservationForm),
+    Effect.tap(stopUnlessBookable),
+    Effect.bind("marketingConsentSource", giveRequestedMarketingConsent),
+    Effect.let("marketingConsent", ({ settled }) =>
+      getMarketingConsentOutcome(settled)
+    ),
+    Effect.bind("submission", ({ marketingConsentSource, settled }) =>
+      Effect.promise(() => settled.submit(marketingConsentSource))
+    ),
+    Effect.map(toPrepareReservationResult)
+  );
+
+/**
+ * The matching reservation form once the link's selection is on it and its
+ * availability and price have settled. A selection in another family opens
+ * that family's page and continues on the form mounted there, all within one
+ * bounded wait.
+ */
+const awaitSettledReservationForm = ({
+  form,
+  link,
+  locale,
+  quote,
+}: PreparationRequest & { readonly link: URL; readonly locale: Locale }) =>
+  Effect.sync(() => openReservationPage({ form, link, quote })).pipe(
+    Effect.andThen(awaitReservationForm(quote.family)),
+    Effect.tap((matching) => settleSelection({ form: matching, link })),
+    Effect.map((matching) => matching.current()),
+    Effect.timeoutOrElse({
+      duration: formReadinessTimeout,
+      orElse: () =>
+        Effect.fail(
+          new PreparationStopped({
+            result: siteToolError(
+              "form_not_ready",
+              m.siteToolFormNotReady({}, { locale })
+            ),
+          })
+        ),
+    })
+  );
+
+const openReservationPage = ({
+  form,
+  link,
+  quote,
+}: Pick<PreparationRequest, "form" | "quote"> & { readonly link: URL }) => {
   const page = form.current();
+  if (page.kind !== quote.family) {
+    page.openReservationPage(quote.family, link.searchParams);
+  }
+};
 
-  if (summary.family !== page.kind) {
-    page.openReservationPage(summary.family, link.searchParams);
-    return {
-      status: "reservation_page_opened",
-      family: summary.family,
-      message: m.siteToolReservationPageOpened({}, { locale: page.locale }),
+/** The published reservation form for `kind`, waiting until one mounts. */
+const awaitReservationForm = (kind: SiteToolReservationForm["kind"]) =>
+  Effect.callback<SiteToolReservationFormHandle>((resume) => {
+    const resumeWithMatchingForm = () => {
+      const form = getReservationForm();
+      if (form?.current().kind !== kind) return false;
+      resume(Effect.succeed(form));
+      return true;
     };
-  }
-
-  const changed = page.applySelection(link.searchParams);
-  const isReady = yield* awaitFormReadiness(form, changed);
-  const settled = form.current();
-  if (!isReady) {
-    return siteToolError(
-      "form_not_ready",
-      m.siteToolFormNotReady({}, { locale: settled.locale })
+    if (resumeWithMatchingForm()) return;
+    const unsubscribe = subscribeReservationForm(() =>
+      // A form publishes itself while its page mounts. Drive it only once that
+      // commit's effects, including its form state's own mount, have run.
+      queueMicrotask(() => {
+        if (resumeWithMatchingForm()) unsubscribe();
+      })
     );
-  }
-  // The submit button stays disabled in both cases, so the tool stops too.
-  if (settled.readiness.unavailableMessage) {
-    return siteToolError(
-      "selection_unavailable",
-      settled.readiness.unavailableMessage
-    );
-  }
-  if (settled.readiness.priceError) {
-    return siteToolError(
-      "price_unavailable",
-      m.reservationAdvertisedPriceError({}, { locale: settled.locale })
-    );
-  }
-
-  const marketingConsentSource = giveRequestedMarketingConsent(
-    settled,
-    requestsMarketingConsent
-  );
-  const marketingConsent = getMarketingConsentOutcome(settled);
-  const submission = yield* Effect.promise(() =>
-    settled.submit(marketingConsentSource)
-  );
-  return toPrepareReservationResult({
-    locale: settled.locale,
-    marketingConsent,
-    submission,
-    summary,
+    return Effect.sync(unsubscribe);
   });
-});
+
+/** Puts the link's selection on the form and waits for it to settle. */
+const settleSelection = ({
+  form,
+  link,
+}: {
+  readonly form: SiteToolReservationFormHandle;
+  readonly link: URL;
+}) =>
+  Effect.sync(() => form.current().applySelection(link.searchParams)).pipe(
+    Effect.flatMap((changed) =>
+      awaitReadiness(form).pipe(
+        // A changed selection renders as pending before it settles.
+        Effect.when(
+          Effect.sync(() => changed || form.current().readiness.isPending)
+        )
+      )
+    )
+  );
+
+const awaitReadiness = (form: SiteToolReservationFormHandle) =>
+  nextCommit(form).pipe(
+    Effect.repeat({ while: () => form.current().readiness.isPending })
+  );
+
+const nextCommit = (form: SiteToolReservationFormHandle) =>
+  Effect.callback<void>((resume) => {
+    const stop = form.onNextCommit(() => resume(Effect.void));
+    return Effect.sync(stop);
+  });
+
+const stopUnlessBookable = ({
+  settled,
+}: {
+  readonly settled: SiteToolReservationForm;
+}) =>
+  Option.match(getUnbookableResult(settled), {
+    onNone: () => Effect.void,
+    onSome: (result) => Effect.fail(new PreparationStopped({ result })),
+  });
+
+// The submit button stays disabled in both cases, so the tool stops too.
+const getUnbookableResult = ({
+  locale,
+  readiness,
+}: SiteToolReservationForm) => {
+  if (readiness.unavailableMessage) {
+    return Option.some(
+      siteToolError("selection_unavailable", readiness.unavailableMessage)
+    );
+  }
+  if (readiness.priceError) {
+    return Option.some(
+      siteToolError(
+        "price_unavailable",
+        m.reservationAdvertisedPriceError({}, { locale })
+      )
+    );
+  }
+  return Option.none();
+};
 
 /**
  * Ticks the form's own checkbox when the customer asked for marketing
- * communication and the form asks for it. A box the customer ticked stays
- * theirs: the tool never unticks it and labels only its own consent.
+ * communication and the form asks for it, and labels that consent as the site
+ * tool's, even on a box that was already ticked: the request is the agent's.
+ * Without the request, a box the customer ticked stays theirs.
  */
-const giveRequestedMarketingConsent = (
-  form: SiteToolReservationForm,
-  requestsMarketingConsent: boolean
-) => {
-  if (
-    !requestsMarketingConsent ||
-    !form.asksMarketingConsent ||
-    form.hasMarketingConsent()
-  ) {
-    return undefined;
-  }
-  form.giveMarketingConsent();
-  return "site_tool" as const;
-};
+const giveRequestedMarketingConsent = ({
+  requestsMarketingConsent,
+  settled,
+}: {
+  readonly requestsMarketingConsent: boolean;
+  readonly settled: SiteToolReservationForm;
+}) =>
+  Effect.sync(() => {
+    if (!requestsMarketingConsent || !settled.asksMarketingConsent) {
+      return undefined;
+    }
+    settled.giveMarketingConsent();
+    return "site_tool" as const;
+  });
 
 /** What the submission says about marketing consent; `submitted` isn't a row change. */
 const getMarketingConsentOutcome = (
@@ -232,32 +344,16 @@ const getMarketingConsentOutcome = (
   return form.hasMarketingConsent() ? "submitted" : "not_submitted";
 };
 
-const awaitFormReadiness = Effect.fnUntraced(
-  function* (form: SiteToolReservationFormHandle, changed: boolean) {
-    // A changed selection renders as pending before it settles.
-    if (changed) yield* nextCommit(form);
-    while (form.current().readiness.isPending) yield* nextCommit(form);
-  },
-  Effect.timeoutOption(formReadinessTimeout),
-  Effect.map(Option.isSome)
-);
-
-const nextCommit = (form: SiteToolReservationFormHandle) =>
-  Effect.callback<void>((resume) => {
-    const stop = form.onNextCommit(() => resume(Effect.void));
-    return Effect.sync(stop);
-  });
-
 const toPrepareReservationResult = ({
   locale,
   marketingConsent,
+  quote: { reservation_url: _link, ...summary },
   submission,
-  summary,
 }: {
   readonly locale: Locale;
   readonly marketingConsent: MarketingConsentOutcome;
+  readonly quote: Quote;
   readonly submission: ReservationFormSubmission;
-  readonly summary: Omit<Quote, "reservation_url">;
 }) => {
   switch (submission.status) {
     case "ready":

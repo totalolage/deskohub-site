@@ -1143,6 +1143,5 @@
   "siteToolPrepareReservationTitle": "Prepare a DH Workspace reservation",
   "siteToolRequestFailed": "The site tool couldn’t reach DH Workspace. Try again in a moment.",
   "siteToolContactDetailsRequired": "Fill in the missing contact details in the reservation form, then try again.",
-  "siteToolReservationPageOpened": "The reservation page for this booking is opening. Run the tool again once it has loaded.",
   "siteToolFormNotReady": "The reservation form is still loading the price or availability. Try again in a moment."
 }

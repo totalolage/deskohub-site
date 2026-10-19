@@ -148,14 +148,16 @@ export function ReservationCheckoutForm<
       return { status: "error", message };
     }
 
-    const marketingConsent = asksMarketingConsent && data.marketingConsent;
     return startCheckout({
       advertisedPriceToken: advertisedPrice.token,
       ...(existingCustomer &&
         customer.mode === "account" && { customer: "account" }),
-      marketingConsent,
-      ...(marketingConsent &&
-        marketingConsentSource && { marketingConsentSource }),
+      // Without the checkbox the account already consented: send no consent.
+      ...(asksMarketingConsent && {
+        marketingConsent: data.marketingConsent,
+        ...(data.marketingConsent &&
+          marketingConsentSource && { marketingConsentSource }),
+      }),
       reservation: getReservation(data),
     });
   };

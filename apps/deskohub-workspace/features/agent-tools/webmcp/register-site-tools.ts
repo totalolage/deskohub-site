@@ -1,6 +1,9 @@
 import { Effect, type Schema, Semaphore } from "effect";
 import { type Locale, m } from "@/features/i18n";
-import { runWorkspaceBrowserEffect } from "@/shared/browser/workspace-browser-effect";
+import {
+  runWorkspaceBrowserEffect,
+  runWorkspaceBrowserEffectUntilAbort,
+} from "@/shared/browser/workspace-browser-effect";
 import { reportWorkspaceBrowserFailure } from "@/shared/browser/workspace-browser-logs";
 import {
   type AgentToolRequestError,
@@ -79,7 +82,10 @@ export const registerReadSiteTools = ({
       reportWorkspaceBrowserFailure("agent-tools.site-tools.list-failed", cause)
     ),
     Effect.ignore,
-    runWorkspaceBrowserEffect("agent-tools.site-tools.register", { signal })
+    runWorkspaceBrowserEffectUntilAbort(
+      "agent-tools.site-tools.register",
+      signal
+    )
   );
 
 const toReadSiteTool = (

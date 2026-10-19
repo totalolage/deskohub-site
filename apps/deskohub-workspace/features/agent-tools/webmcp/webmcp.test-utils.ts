@@ -121,12 +121,14 @@ export const agentToolEventStream = (result: Schema.JsonObject) =>
   );
 
 /**
- * Replaces `fetch` with a fake `/api/mcp` that lists the published tools and
- * answers `tools/call` through `call`.
+ * Replaces `fetch` with a fake `/api/mcp` that lists the published tools, or
+ * answers `tools/list` through `list`, and answers `tools/call` through `call`.
  */
 export const mockAgentToolEndpoint = (
   call: (request: AgentToolRequest) => Response | Promise<Response> = () =>
-    agentToolEventStream({ structuredContent: {} })
+    agentToolEventStream({ structuredContent: {} }),
+  list: () => Response | Promise<Response> = () =>
+    agentToolEventStream({ tools: publishedAgentTools })
 ) => {
   const requests: AgentToolRequest[] = [];
   const originalFetch = globalThis.fetch;
@@ -139,9 +141,7 @@ export const mockAgentToolEndpoint = (
     )(String(init?.body));
     const request = { ...body, signal: init?.signal };
     requests.push(request);
-    return body.method === "tools/list"
-      ? agentToolEventStream({ tools: publishedAgentTools })
-      : call(request);
+    return body.method === "tools/list" ? list() : call(request);
   });
   globalThis.fetch = Object.assign(fetchMock, {
     preconnect: originalFetch.preconnect,
@@ -153,5 +153,18 @@ export const mockAgentToolEndpoint = (
     restore: () => {
       globalThis.fetch = originalFetch;
     },
+  };
+};
+
+/** Collects unhandled rejections until `stop` is called. */
+export const recordUnhandledRejections = () => {
+  const rejections: Parameters<NodeJS.UnhandledRejectionListener>[0][] = [];
+  const record: NodeJS.UnhandledRejectionListener = (reason) => {
+    rejections.push(reason);
+  };
+  process.on("unhandledRejection", record);
+  return {
+    rejections,
+    stop: () => process.off("unhandledRejection", record),
   };
 };
