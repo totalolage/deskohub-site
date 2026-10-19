@@ -9,7 +9,7 @@ import type {
   SignInEmailFailure,
 } from "@/features/account/auth-return";
 import { signInEmailFailureMessage } from "@/features/account/components/sign-in-email-failure-message";
-import { SIGN_IN_CODE_LENGTH } from "@/features/account/sign-in-code-request";
+import { SIGN_IN_CODE_LENGTH } from "@/features/account/email-sign-in-request";
 import {
   resendCooldownSecondsAtom,
   SIGN_IN_CODE_RESEND_COOLDOWN_MS,

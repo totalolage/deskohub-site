@@ -11,14 +11,17 @@ import {
   createAuthReturnLifecycle,
   type SignInEmailFailure,
 } from "@/features/account/auth-return";
+import { AuthCard } from "@/features/account/components/auth-card";
 import { PasskeySignInOption } from "@/features/account/components/passkeys/passkey-sign-in-option";
-import { SignInCodeStep } from "@/features/account/components/sign-in-code-step";
 import { signInEmailFailureMessage } from "@/features/account/components/sign-in-email-failure-message";
-import { useSignInCodeRequest } from "@/features/account/sign-in-code-request";
+import { SignInEmailSentStep } from "@/features/account/components/sign-in-email-sent-step";
+import {
+  hasSignInCode,
+  useEmailSignInRequest,
+} from "@/features/account/email-sign-in-request";
 import { type Locale, m } from "@/features/i18n";
 import { useClientReady } from "@/shared/browser/use-client-ready";
 import { Button } from "@/shared/components/ui/button";
-import { Card, CardContent } from "@/shared/components/ui/card";
 import {
   Form,
   FormControl,
@@ -28,7 +31,7 @@ import {
   FormMessage,
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
-import { maskEmailAddress } from "@/shared/utils";
+import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
 
 type SignInCardProps = {
   readonly locale: Locale;
@@ -70,9 +73,19 @@ export function SignInCard({
   returnTo,
   passkeysEnabled = false,
 }: SignInCardProps) {
-  const [requested, setRequested] = useState(false);
   const [failure, setFailure] = useState<SignInEmailFailure | null>(null);
-  const [codeRequest, setCodeRequest] = useSignInCodeRequest();
+  const [storedRequest, setRequest] = useEmailSignInRequest();
+  // The pending request continues only to its own destination: its link
+  // already lands there. A card opened without one takes the request's; a
+  // card opened for another one starts a fresh request.
+  const requestedReturnTo = parseSameOriginPath(returnTo);
+  const request =
+    storedRequest &&
+    (requestedReturnTo === undefined ||
+      storedRequest.returnTo === requestedReturnTo)
+      ? storedRequest
+      : null;
+  const destination = request ? request.returnTo : requestedReturnTo;
   const clientReady = useClientReady();
   const submissionInProgress = useRef(false);
   // The control that switched the view unmounts with it, so the next view
@@ -85,8 +98,8 @@ export function SignInCard({
       element.focus();
     };
   const authReturn = useMemo(
-    () => createAuthReturnLifecycle({ locale, returnTo }),
-    [locale, returnTo]
+    () => createAuthReturnLifecycle({ locale, returnTo: destination }),
+    [locale, destination]
   );
   const signInFormSchema = createSignInFormSchema(locale);
   const form = useForm<SignInFormInput, unknown, SignInFormValues>({
@@ -98,22 +111,6 @@ export function SignInCard({
 
   useEffect(() => authReturn.cancel, [authReturn]);
 
-  // The link may be opened in another tab after this one reloaded and lost
-  // its hand-off listener; coming back to this tab then continues.
-  useEffect(() => {
-    if (!codeRequest) return;
-    const continueIfSignedIn = () => {
-      if (document.visibilityState !== "visible") return;
-      void authReturn.continueIfSignedIn();
-    };
-    window.addEventListener("focus", continueIfSignedIn);
-    document.addEventListener("visibilitychange", continueIfSignedIn);
-    return () => {
-      window.removeEventListener("focus", continueIfSignedIn);
-      document.removeEventListener("visibilitychange", continueIfSignedIn);
-    };
-  }, [authReturn, codeRequest]);
-
   const requestLink = async ({ email }: SignInFormValues) => {
     const result = await authReturn.sendSignInEmail(email);
     if (result.status === "cancelled") return;
@@ -121,12 +118,14 @@ export function SignInCard({
       setFailure(result.reason);
       return;
     }
-    if (result.signInCode) {
-      setCodeRequest({ email, requestedAt: Date.now() });
-      return;
-    }
-    focusAfterViewChange.current = "accepted";
-    setRequested(true);
+    if (!result.signInCode) focusAfterViewChange.current = "accepted";
+    setRequest({
+      email,
+      requestedAt: Date.now(),
+      signInCode: result.signInCode,
+      attemptId: result.attemptId,
+      returnTo: destination,
+    });
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -143,165 +142,103 @@ export function SignInCard({
       });
   };
 
-  if (codeRequest) {
-    const requestNewEmail = async () => {
-      const result = await authReturn.sendSignInEmail(codeRequest.email);
-      // "Use a different email" or a newer email replaced this request.
-      if (result.status === "cancelled") return result.status;
-      if (result.status === "failed") return result.reason;
-      if (result.signInCode) {
-        setCodeRequest({ email: codeRequest.email, requestedAt: Date.now() });
-      } else {
-        // Codes were switched off meanwhile: fall back to the link-only state.
-        focusAfterViewChange.current = "accepted";
-        setCodeRequest(null);
-        setRequested(true);
-      }
-      return "sent" as const;
-    };
-
+  if (request) {
     return (
-      <Card className="rounded-3xl border-white/70 bg-white/94 shadow-[0_32px_100px_-48px_rgba(0,2,79,0.55)]">
-        <CardContent className="p-8 sm:p-10">
-          <h2 className="text-3xl text-navy-blue">
-            {m.accountSignInCodeTitle({}, { locale })}
-          </h2>
-          <p className="mt-3 text-sm leading-6 text-navy-blue/68">
-            {m.accountSignInCodeBody(
-              { email: maskEmailAddress(codeRequest.email) },
-              { locale }
-            )}
-          </p>
-          <SignInCodeStep
-            locale={locale}
-            requestedAt={codeRequest.requestedAt}
-            verifiedMessage={m.accountSignInCodeVerified({}, { locale })}
-            verifyCode={(code) =>
-              authReturn.verifySignInCode(codeRequest.email, code)
-            }
-            onVerified={authReturn.continueWithVerifiedCode}
-            requestNewEmail={requestNewEmail}
-            onUseDifferentEmail={() => {
-              authReturn.cancel();
-              focusAfterViewChange.current = "email";
-              setCodeRequest(null);
-              form.reset({ email: codeRequest.email });
-              setFailure(null);
-            }}
-          />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (requested) {
-    return (
-      <Card className="rounded-3xl border-white/70 bg-white/94 shadow-[0_32px_100px_-48px_rgba(0,2,79,0.55)]">
-        <CardContent className="p-8 sm:p-10">
-          <h2
-            ref={focusOnMount("accepted")}
-            tabIndex={-1}
-            className="text-3xl text-navy-blue outline-none"
-          >
-            {m.accountSignInAcceptedTitle({}, { locale })}
-          </h2>
-          <p className="mt-4 leading-7 text-navy-blue/68">
-            {m.accountSignInAcceptedBody({}, { locale })}
-          </p>
-          <Button
-            type="button"
-            variant="secondary"
-            className="mt-8"
-            onClick={() => {
-              authReturn.cancel();
-              focusAfterViewChange.current = "email";
-              form.reset();
-              setFailure(null);
-              setRequested(false);
-            }}
-          >
-            {m.accountSignInAcceptedAgain({}, { locale })}
-          </Button>
-        </CardContent>
-      </Card>
+      <AuthCard>
+        <SignInEmailSentStep
+          locale={locale}
+          authReturn={authReturn}
+          request={request}
+          headingRef={focusOnMount("accepted")}
+          onRequestChange={(next) => {
+            if (!hasSignInCode(next)) focusAfterViewChange.current = "accepted";
+            setRequest(next);
+          }}
+          onUseDifferentEmail={() => {
+            authReturn.cancel();
+            focusAfterViewChange.current = "email";
+            setRequest(null);
+            form.reset({ email: hasSignInCode(request) ? request.email : "" });
+            setFailure(null);
+          }}
+        />
+      </AuthCard>
     );
   }
 
   return (
-    <Card className="rounded-3xl border-white/70 bg-white/94 shadow-[0_32px_100px_-48px_rgba(0,2,79,0.55)]">
-      <CardContent className="p-8 sm:p-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-burned-orange">
-          {m.accountSignInEyebrow({}, { locale })}
-        </p>
-        <h1 className="mt-3 text-3xl text-navy-blue">
-          {m.accountSignInTitle({}, { locale })}
-        </h1>
-        <p className="mt-3 text-sm leading-6 text-navy-blue/68">
-          {m.accountSignInDescription({}, { locale })}
-        </p>
-        <Form {...form}>
-          <form
-            id="account-sign-in-form"
-            className="mt-8 space-y-5"
-            method="post"
-            noValidate
-            onSubmit={handleSubmit}
-          >
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem className="space-y-2">
-                  <FormLabel htmlFor="account-sign-in-email">
-                    {m.accountSignInEmailLabel({}, { locale })}
-                  </FormLabel>
-                  {/* The button joins the input's row once it fits beside it. */}
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    <FormControl>
-                      <Input
-                        className="min-w-0 sm:flex-1"
-                        {...field}
-                        ref={(element) => {
-                          field.ref(element);
-                          focusOnMount("email")(element);
-                        }}
-                        disabled={!clientReady}
-                        id="account-sign-in-email"
-                        type="email"
-                        required
-                        autoComplete={
-                          passkeysEnabled ? "email webauthn" : "email"
-                        }
-                        placeholder={m.accountSignInEmailPlaceholder(
-                          {},
-                          { locale }
-                        )}
-                      />
-                    </FormControl>
-                    <SignInSubmitButton
-                      locale={locale}
-                      pending={form.formState.isSubmitting}
-                      ready={clientReady}
+    <AuthCard>
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-burned-orange">
+        {m.accountSignInEyebrow({}, { locale })}
+      </p>
+      <h1 className="mt-3 text-3xl text-navy-blue">
+        {m.accountSignInTitle({}, { locale })}
+      </h1>
+      <p className="mt-3 text-sm leading-6 text-navy-blue/68">
+        {m.accountSignInDescription({}, { locale })}
+      </p>
+      <Form {...form}>
+        <form
+          id="account-sign-in-form"
+          className="mt-8 space-y-5"
+          method="post"
+          noValidate
+          onSubmit={handleSubmit}
+        >
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem className="space-y-2">
+                <FormLabel htmlFor="account-sign-in-email">
+                  {m.accountSignInEmailLabel({}, { locale })}
+                </FormLabel>
+                {/* The button joins the input's row once it fits beside it. */}
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <FormControl>
+                    <Input
+                      className="min-w-0 sm:flex-1"
+                      {...field}
+                      ref={(element) => {
+                        field.ref(element);
+                        focusOnMount("email")(element);
+                      }}
+                      disabled={!clientReady}
+                      id="account-sign-in-email"
+                      type="email"
+                      required
+                      autoComplete={
+                        passkeysEnabled ? "email webauthn" : "email"
+                      }
+                      placeholder={m.accountSignInEmailPlaceholder(
+                        {},
+                        { locale }
+                      )}
                     />
-                  </div>
-                  <FormMessage className="text-sm font-normal text-red-700" />
-                </FormItem>
-              )}
-            />
-          </form>
-        </Form>
-        <div aria-live="polite" className="mt-4 min-h-5 text-sm text-red-700">
-          {failure && signInEmailFailureMessage(failure, locale)}
-        </div>
-        {passkeysEnabled && (
-          <PasskeySignInOption
-            locale={locale}
-            ready={clientReady}
-            returnTo={returnTo}
+                  </FormControl>
+                  <SignInSubmitButton
+                    locale={locale}
+                    pending={form.formState.isSubmitting}
+                    ready={clientReady}
+                  />
+                </div>
+                <FormMessage className="text-sm font-normal text-red-700" />
+              </FormItem>
+            )}
           />
-        )}
-      </CardContent>
-    </Card>
+        </form>
+      </Form>
+      <div aria-live="polite" className="mt-4 min-h-5 text-sm text-red-700">
+        {failure && signInEmailFailureMessage(failure, locale)}
+      </div>
+      {passkeysEnabled && (
+        <PasskeySignInOption
+          locale={locale}
+          ready={clientReady}
+          returnTo={returnTo}
+        />
+      )}
+    </AuthCard>
   );
 }
 

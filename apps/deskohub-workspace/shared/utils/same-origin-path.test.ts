@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { unsafeReturnTargets } from "@/shared/testing/unsafe-return-targets.test-utils";
-import { parseSameOriginPath } from "./same-origin-path";
+import {
+  maxSameOriginPathLength,
+  parseSameOriginPath,
+} from "./same-origin-path";
 
 const siteOrigin = "https://workspace.deskohub.test";
 
@@ -10,6 +13,12 @@ describe("parseSameOriginPath", () => {
       "/cs-CZ/admin/invoices?page=2"
     );
     expect(parseSameOriginPath("/admin")).toBe("/admin");
+  });
+
+  test("keeps a path as long as a destination may be", () => {
+    const path = `/${"a".repeat(maxSameOriginPathLength - 1)}`;
+
+    expect(parseSameOriginPath(path)).toBe(path);
   });
 
   test("resolves dot segments that stay on the site", () => {
@@ -39,7 +48,7 @@ describe("parseSameOriginPath", () => {
     "/admin\\..\\x",
     "/\tadmin",
     "/admin\n",
-    `/${"a".repeat(2048)}`,
+    `/${"a".repeat(maxSameOriginPathLength)}`,
   ])("rejects %p", (value) => {
     expect(parseSameOriginPath(value)).toBeUndefined();
   });
