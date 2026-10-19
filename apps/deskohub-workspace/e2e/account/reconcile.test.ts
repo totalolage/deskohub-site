@@ -1,10 +1,23 @@
 import { describe, expect, test } from "bun:test";
+import type { Customer } from "@deskohub/dotypos/generated";
 import { testEmailAddress } from "@deskohub/test-email";
+import { Effect, Exit } from "effect";
+import type { DatasourceConfig } from "../config";
+import { workspaceE2EError } from "../errors";
+import { E2EDatabase } from "../integrations/database.service";
+import type { WorkspaceE2ERunId } from "../run-identifiers";
+import { makeWorkspaceE2EAccountRecipientForRunId } from "./config";
 import {
   emptyWorkspaceE2EAccountJournal,
   type WorkspaceE2EAccountJournal,
 } from "./journal";
-import { validateWorkspaceE2EAccountLaneJournalOwnership } from "./reconcile";
+import {
+  prepareWorkspaceE2EAccountLaneReconciliation,
+  reconcileWorkspaceE2EAccountJournals,
+  validateWorkspaceE2EAccountLaneJournalOwnership,
+  type WorkspaceE2EAccountJournalOwner,
+  type WorkspaceE2EAccountReconciliationSteps,
+} from "./reconcile";
 
 const recipient = testEmailAddress("delivered+agent-run-agent");
 const otherContact = testEmailAddress("someone.else");
@@ -87,5 +100,216 @@ describe("validateWorkspaceE2EAccountLaneJournalOwnership", () => {
         evidence: evidence({ owned: ["other-contact-hold"] }),
       })
     ).toThrow("ownership mismatch");
+  });
+});
+
+/*
+ * A run's account booked a hold for another contact, whose profile Dotypos
+ * created during the run. Only the reservation row the account authored
+ * proves the run owns both, as `proveAgentEvalRunOwnership` reads it.
+ */
+const runId = "agent-run" as WorkspaceE2ERunId;
+const accountId = "run-account";
+const runRecipient = makeWorkspaceE2EAccountRecipientForRunId(runId, "agent");
+
+type ReconciliationStep = "cancel" | "expire" | "remove rows";
+
+const makeWorld = (unrelatedHold = false) => {
+  const reservations = new Map([
+    ["own-hold", { email: runRecipient, status: "CONFIRMED" }],
+    ["other-contact-hold", { email: otherContact, status: "CONFIRMED" }],
+    ...(unrelatedHold
+      ? ([
+          ["unrelated-hold", { email: otherContact, status: "CONFIRMED" }],
+        ] as const)
+      : []),
+  ]);
+  const customers = new Map([
+    ["seeded-customer", { email: runRecipient, expired: false }],
+    ["other-contact", { email: otherContact, expired: false }],
+  ]);
+  /* workspace_reservations rows the run's account authored, by hold. */
+  const rows = new Map([
+    ["own-hold", "seeded-customer"],
+    ["other-contact-hold", "other-contact"],
+  ]);
+  const authUsers = new Map([[accountId, runRecipient]]);
+  let journal: WorkspaceE2EAccountJournal = {
+    ...emptyWorkspaceE2EAccountJournal(runId),
+    authUserIds: [accountId],
+    dotyposCustomerIds: ["seeded-customer", "other-contact"],
+    dotyposReservationIds: [
+      "own-hold",
+      "other-contact-hold",
+      ...(unrelatedHold ? ["unrelated-hold"] : []),
+    ],
+  };
+  const cancelled: string[] = [];
+
+  const owner: WorkspaceE2EAccountJournalOwner = {
+    ownerId: runId,
+    proveOwnership: (_config, journaled) =>
+      Effect.sync(() => {
+        const ownedReservationIds = new Set(rows.keys());
+        const ownedCustomerIds = new Set(rows.values());
+        return {
+          dotyposCustomerIds: {
+            ownedIds: ownedCustomerIds,
+            settledIds: new Set(
+              journaled.dotyposCustomerIds.filter(
+                (id) => !ownedCustomerIds.has(id) && customers.get(id)?.expired
+              )
+            ),
+          },
+          dotyposReservationIds: {
+            ownedIds: ownedReservationIds,
+            settledIds: new Set(
+              journaled.dotyposReservationIds.filter(
+                (id) =>
+                  !ownedReservationIds.has(id) &&
+                  reservations.get(id)?.status === "CANCELLED"
+              )
+            ),
+          },
+        };
+      }),
+    recipientLabels: ["agent"],
+  };
+
+  const prepare = () =>
+    prepareWorkspaceE2EAccountLaneReconciliation(
+      {} as DatasourceConfig,
+      runId,
+      {
+        findAuthUserEmailById: (id) => Effect.succeed(authUsers.get(id)),
+        readJournal: async () => journal,
+        readReservationOwner: (_config, id) =>
+          Effect.succeed(reservations.get(id)?.email ?? null),
+        readSyntheticCustomerProfile: (_config, id) =>
+          Effect.succeed({
+            _cloudId: "synthetic-cloud",
+            deleted: false,
+            display: true,
+            email: customers.get(id)?.email,
+            expireDate: customers.get(id)?.expired
+              ? new Date(0).toISOString()
+              : undefined,
+            flags: "",
+            id,
+            points: null,
+          } as Customer),
+      },
+      owner
+    );
+
+  const steps = (
+    failing?: ReconciliationStep
+  ): WorkspaceE2EAccountReconciliationSteps => {
+    const fail = (step: ReconciliationStep) =>
+      workspaceE2EError(`synthetic ${step} failure`);
+    return {
+      cancelReservations: (_config, ids) =>
+        failing === "cancel"
+          ? Effect.fail(fail("cancel"))
+          : Effect.sync(() => {
+              for (const id of ids) {
+                const reservation = reservations.get(id);
+                if (reservation) reservation.status = "CANCELLED";
+                cancelled.push(id);
+              }
+            }),
+      expireProfile: (_config, id) =>
+        failing === "expire"
+          ? Effect.fail(fail("expire"))
+          : Effect.sync(() => {
+              const customer = customers.get(id);
+              if (customer) customer.expired = true;
+            }),
+      removeAuthUser: (id) => Effect.sync(() => void authUsers.delete(id)),
+      removeRows: ({ syntheticDotyposReservationIds }) =>
+        failing === "remove rows"
+          ? Effect.fail(fail("remove rows"))
+          : Effect.sync(() => {
+              for (const id of syntheticDotyposReservationIds) rows.delete(id);
+            }),
+      writeJournal: async (completed) => {
+        journal = completed;
+      },
+    };
+  };
+
+  /* One suite-cleanup pass: prepare the journal, then reconcile it. */
+  const reconcile = (failing?: ReconciliationStep) =>
+    Effect.runPromiseExit(
+      prepare().pipe(
+        Effect.flatMap((prepared) =>
+          reconcileWorkspaceE2EAccountJournals(
+            {} as DatasourceConfig,
+            prepared ? [prepared] : [],
+            steps(failing)
+          )
+        ),
+        Effect.provideService(E2EDatabase, E2EDatabase.of({ db: {} as never }))
+      )
+    );
+
+  return {
+    cancelled,
+    customers,
+    journal: () => journal,
+    reconcile,
+    reservations,
+    rows,
+  };
+};
+
+describe("reconcileWorkspaceE2EAccountJournals", () => {
+  for (const failing of ["cancel", "expire", "remove rows"] as const) {
+    test(`retries another contact's resources after a failed ${failing} step`, async () => {
+      const world = makeWorld();
+
+      expect(Exit.isFailure(await world.reconcile(failing))).toBe(true);
+      expect(world.journal().completed).toBe(false);
+
+      const retry = await world.reconcile();
+      expect(Exit.isFailure(retry) ? String(retry.cause) : "reconciled").toBe(
+        "reconciled"
+      );
+      expect(world.reservations.get("other-contact-hold")?.status).toBe(
+        "CANCELLED"
+      );
+      expect(world.reservations.get("own-hold")?.status).toBe("CANCELLED");
+      expect(world.customers.get("other-contact")?.expired).toBe(true);
+      expect(world.customers.get("seeded-customer")?.expired).toBe(true);
+      expect([...world.rows.keys()]).toEqual([]);
+      expect(world.journal().completed).toBe(true);
+
+      expect(Exit.isSuccess(await world.reconcile())).toBe(true);
+    });
+  }
+
+  test("keeps the authorship rows while a provider step fails", async () => {
+    const world = makeWorld();
+
+    await world.reconcile("cancel");
+
+    expect([...world.rows.keys()]).toEqual(["own-hold", "other-contact-hold"]);
+  });
+
+  test("still refuses an unrelated journaled hold, before and after a failed pass", async () => {
+    const world = makeWorld(true);
+
+    const first = await world.reconcile();
+    expect(String(Exit.isFailure(first) && first.cause)).toContain(
+      "ownership validation failed"
+    );
+
+    world.rows.delete("other-contact-hold");
+    const repeat = await world.reconcile();
+    expect(String(Exit.isFailure(repeat) && repeat.cause)).toContain(
+      "ownership validation failed"
+    );
+    expect(world.cancelled).toEqual([]);
+    expect(world.reservations.get("unrelated-hold")?.status).toBe("CONFIRMED");
   });
 });

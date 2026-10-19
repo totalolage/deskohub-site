@@ -57,10 +57,29 @@ const toWorkspaceE2EFailure = (cause: unknown): WorkspaceE2EError =>
   toWorkspaceE2EError("workspace account e2e finalizer step", cause);
 
 /**
+ * The provider and database steps journal reconciliation runs, replaceable
+ * so tests can make each one fail.
+ */
+export type WorkspaceE2EAccountReconciliationSteps = {
+  readonly removeRows: typeof removeWorkspaceE2EReferralRows;
+  readonly cancelReservations: (
+    datasourceConfig: DatasourceConfig,
+    reservationIds: readonly string[]
+  ) => Effect.Effect<void, WorkspaceE2EError>;
+  readonly expireProfile: (
+    datasourceConfig: DatasourceConfig,
+    customerId: string
+  ) => Effect.Effect<void, WorkspaceE2EError>;
+  readonly removeAuthUser: typeof removeSyntheticAuthUser;
+  readonly writeJournal: typeof writeWorkspaceE2EAccountJournal;
+};
+
+/**
  * Interruption-safe finalizer for one account case journal. Cancels and
  * converges every journaled synthetic reservation, expires (never deletes)
- * every journaled synthetic Dotypos profile, and deletes exactly the
- * journaled synthetic accounts as account deletion does: each customer
+ * every journaled synthetic Dotypos profile, then deletes the journaled
+ * referral and reservation rows, and deletes exactly the journaled
+ * synthetic accounts as account deletion does: each customer
  * account keeps its tombstone, and the Better Auth user rows' cascades remove
  * sessions, accounts, and the customer-account link. Runs for completed journals again
  * because every step is idempotent for the exact owned IDs.
@@ -70,31 +89,22 @@ const reconcileWorkspaceE2EAccountJournal = ({
   journal,
   journalDirectory,
   candidates = journal,
+  steps,
 }: {
   readonly datasourceConfig: DatasourceConfig;
   readonly journal: WorkspaceE2EAccountJournal;
   readonly journalDirectory?: string;
   readonly candidates?: WorkspaceE2EAccountLaneCandidates;
+  readonly steps: WorkspaceE2EAccountReconciliationSteps;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const failures: WorkspaceE2EError[] = [];
 
-    const referralRowsExit = yield* Effect.exit(
-      removeWorkspaceE2EReferralRows({
-        syntheticDotyposCustomerIds:
-          journal.dotyposCustomerIds as DotyposCustomerId[],
-        syntheticDotyposReservationIds:
-          journal.dotyposReservationIds as DotyposReservationId[],
-      })
-    );
-    if (Exit.isFailure(referralRowsExit)) {
-      failures.push(
-        toWorkspaceE2EFailure(Cause.squash(referralRowsExit.cause))
-      );
-    }
-
     const reservationExit = yield* Effect.exit(
-      reconcileReservations(datasourceConfig, candidates.dotyposReservationIds)
+      steps.cancelReservations(
+        datasourceConfig,
+        candidates.dotyposReservationIds
+      )
     );
     if (Exit.isFailure(reservationExit)) {
       failures.push(toWorkspaceE2EFailure(Cause.squash(reservationExit.cause)));
@@ -102,15 +112,34 @@ const reconcileWorkspaceE2EAccountJournal = ({
 
     for (const customerId of candidates.dotyposCustomerIds) {
       const exit = yield* Effect.exit(
-        expireAndConvergeProfile(datasourceConfig, customerId)
+        steps.expireProfile(datasourceConfig, customerId)
       );
       if (Exit.isFailure(exit)) {
         failures.push(toWorkspaceE2EFailure(Cause.squash(exit.cause)));
       }
     }
 
+    // The rows are the ownership evidence for resources no recipient email
+    // matches, so they go only once every resource they prove is settled; a
+    // failed or interrupted provider step leaves them for the next pass.
+    if (failures.length === 0) {
+      const referralRowsExit = yield* Effect.exit(
+        steps.removeRows({
+          syntheticDotyposCustomerIds:
+            journal.dotyposCustomerIds as DotyposCustomerId[],
+          syntheticDotyposReservationIds:
+            journal.dotyposReservationIds as DotyposReservationId[],
+        })
+      );
+      if (Exit.isFailure(referralRowsExit)) {
+        failures.push(
+          toWorkspaceE2EFailure(Cause.squash(referralRowsExit.cause))
+        );
+      }
+    }
+
     const authExit = yield* Effect.exit(
-      Effect.forEach(candidates.authUserIds, removeSyntheticAuthUser, {
+      Effect.forEach(candidates.authUserIds, steps.removeAuthUser, {
         discard: true,
       })
     );
@@ -138,10 +167,7 @@ const reconcileWorkspaceE2EAccountJournal = ({
           operation: "persist workspace account e2e journal",
         }),
       try: () =>
-        writeWorkspaceE2EAccountJournal(
-          { ...journal, completed: true },
-          journalDirectory
-        ),
+        steps.writeJournal({ ...journal, completed: true }, journalDirectory),
     });
   });
 
@@ -154,7 +180,8 @@ const reconcileWorkspaceE2EAccountJournal = ({
  */
 export const reconcileWorkspaceE2EAccountJournals = (
   datasourceConfig: DatasourceConfig,
-  prepared: readonly WorkspaceE2EAccountLaneReconciliation[]
+  prepared: readonly WorkspaceE2EAccountLaneReconciliation[],
+  steps: WorkspaceE2EAccountReconciliationSteps = defaultAccountReconciliationSteps
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const failures: WorkspaceE2EError[] = [];
@@ -165,6 +192,7 @@ export const reconcileWorkspaceE2EAccountJournals = (
           candidates,
           journal: candidates.journal,
           journalDirectory: candidates.journalDirectory,
+          steps,
         })
       );
       if (Exit.isFailure(exit)) {
@@ -512,3 +540,12 @@ const expireAndConvergeProfile = (
       })
     )
   );
+
+const defaultAccountReconciliationSteps: WorkspaceE2EAccountReconciliationSteps =
+  {
+    cancelReservations: reconcileReservations,
+    expireProfile: expireAndConvergeProfile,
+    removeAuthUser: removeSyntheticAuthUser,
+    removeRows: removeWorkspaceE2EReferralRows,
+    writeJournal: writeWorkspaceE2EAccountJournal,
+  };

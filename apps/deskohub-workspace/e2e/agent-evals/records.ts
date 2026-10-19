@@ -221,9 +221,10 @@ const settledCustomerIds = (
 /**
  * Proves the run created the journaled resources of another contact: the
  * run's account authored the hold, and Dotypos created the contact's profile
- * during the run. Cleanup deletes the reservation rows that prove
- * authorship, so on a repeat a resource that is already cancelled or expired
- * counts as settled; anything else unproven still fails validation.
+ * during the run. Cleanup deletes the reservation rows that prove authorship
+ * only after it cancelled and expired everything they prove, so on a repeat
+ * a resource they no longer prove is already cancelled or expired and counts
+ * as settled; anything else unproven still fails validation.
  */
 export const proveAgentEvalRunOwnership = Effect.fn(
   "proveAgentEvalRunOwnership"
