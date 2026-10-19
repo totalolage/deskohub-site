@@ -18,7 +18,7 @@ mock.module("next/cache", () => ({ ...nextCache, cacheLife: () => {} }));
 // Advertised pricing has its own tests; here every offering is at its
 // catalog price, and the office is listed only while its gate is open.
 mock.module("@/features/checkout/backend/checkout/public-offerings", () => ({
-  loadPublicOfferings: (locale: Locale) =>
+  loadPublicPriceList: (locale: Locale) =>
     Effect.gen(function* () {
       const officeFlag = yield* OfficeReservationFeatureFlagService;
       const officeOpen = yield* officeFlag.isEnabled;
