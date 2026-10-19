@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
-import { makeCoworkCheckoutData } from "../checkout/data";
+import {
+  makeCoworkCheckoutData,
+  withCheckoutContactEmail,
+} from "../checkout/data";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutFlowState } from "../types";
@@ -10,7 +13,6 @@ import {
   isVerifiedContactReturnUrl,
   planSignedOutVerificationCase,
   signedOutVerificationCaseId,
-  withContactEmail,
 } from "./signed-out-verification";
 
 const config: WorkspaceE2EConfig = {
@@ -61,7 +63,7 @@ test("types the run-scoped recipient at the contact step", () => {
     "2099-08-03",
     signedOutVerificationCaseId
   );
-  const bound = withContactEmail(planned, recipient);
+  const bound = withCheckoutContactEmail(planned, recipient);
   const url = new URL(bound.checkoutUrl);
 
   expect(bound.email).toBe(recipient);

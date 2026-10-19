@@ -168,6 +168,19 @@ export const reuseCoworkCheckoutContact = (
     product
   );
 
+/**
+ * The planned checkout booked for `email` instead of its generated one, with
+ * the reservation link carrying it as the contact to prefill.
+ */
+export const withCheckoutContactEmail = (
+  data: CheckoutData,
+  email: string
+): CheckoutData => {
+  const url = new URL(data.checkoutUrl);
+  url.searchParams.set("email", email);
+  return { ...data, checkoutUrl: url.toString(), email };
+};
+
 export const makeMeetingRoomCheckoutData = (
   checkoutBaseUrl: string,
   slot: MeetingRoomCheckoutSlot,

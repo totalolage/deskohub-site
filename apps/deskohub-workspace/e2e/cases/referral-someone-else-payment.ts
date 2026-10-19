@@ -19,6 +19,7 @@ import {
   makeCoworkCheckoutData,
   requireCheckoutDate,
   selectCoworkDates,
+  withCheckoutContactEmail,
 } from "../checkout/data";
 import {
   applyDiscountCode,
@@ -186,7 +187,7 @@ export const bindReferralSomeoneElsePaymentCase: WorkspaceE2ECaseBinder =
       secret: resolveWorkspaceE2ESessionSigningSecret(environment),
     });
     const boundState: CheckoutFlowState = {
-      data: withCustomerContact(
+      data: withCheckoutContactEmail(
         state.data,
         makeWorkspaceE2EAccountRecipientForRunId(runId, customerRecipientLabel)
       ),
@@ -222,15 +223,6 @@ const recipientDisplayNames: Record<RecipientLabel, string> = {
 };
 
 type Identities = WorkspaceE2ECaseIdentities<RecipientLabel>;
-
-const withCustomerContact = (
-  data: CheckoutData,
-  email: string
-): CheckoutData => {
-  const url = new URL(data.checkoutUrl);
-  url.searchParams.set("email", email);
-  return { ...data, checkoutUrl: url.toString(), email };
-};
 
 /** The reservation URL a booker opens from a shared referral link. */
 const withReferralCode = (data: CheckoutData, code: string): CheckoutData => {

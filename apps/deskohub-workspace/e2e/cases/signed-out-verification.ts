@@ -42,6 +42,7 @@ import {
   makeCoworkCheckoutData,
   requireCheckoutDate,
   selectCoworkDates,
+  withCheckoutContactEmail,
 } from "../checkout/data";
 import {
   continueToReservationContactStep,
@@ -129,7 +130,8 @@ export const planSignedOutVerificationCase = ({
           )
         ),
       id: signedOutVerificationCaseId,
-      timeoutMs: config.timeouts.checkoutCase,
+      // Checkout plus the wait for the emailed code or link.
+      timeoutMs: config.timeouts.checkoutCase + config.timeouts.authDelivery,
     };
   });
 
@@ -153,7 +155,7 @@ export const bindSignedOutVerificationCase: WorkspaceE2ECaseBinder = async ({
   const datasourceConfig = getDatasourceConfig(environment);
   const accountConfig = getAccountE2EConfig(environment, runId);
   const boundState: CheckoutFlowState = {
-    data: withContactEmail(
+    data: withCheckoutContactEmail(
       state.data,
       makeWorkspaceE2EAccountRecipientForRunId(runId, accountRecipientLabel)
     ),
@@ -187,16 +189,6 @@ export const bindSignedOutVerificationCase: WorkspaceE2ECaseBinder = async ({
         )
       ),
   };
-};
-
-/** The planned checkout with `email` typed at the contact step. */
-export const withContactEmail = (
-  data: CheckoutData,
-  email: string
-): CheckoutData => {
-  const url = new URL(data.checkoutUrl);
-  url.searchParams.set("email", email);
-  return { ...data, checkoutUrl: url.toString(), email };
 };
 
 /**
