@@ -131,7 +131,7 @@ describe("automation admin API", () => {
       (client) =>
         client.getAutomation({ params: { campaignId } }).pipe(Effect.flip),
       { lifecycle: { get: () => Effect.die("not expected") } },
-      { dhwVersion: "1.20.0" }
+      { dhwVersion: "1.21.0" }
     );
 
     expect(error).toBeInstanceOf(CliInputInvalid);

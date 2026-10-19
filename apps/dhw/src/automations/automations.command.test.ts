@@ -38,7 +38,7 @@ const session = {
   approvedBy: null,
   approvedByEmail: null,
   clientName: "test client",
-  cliVersion: "1.21.0",
+  cliVersion: "1.22.0",
   buildTarget: "development" as const,
   createdAt: "2026-10-19T10:00:00.000Z",
   lastUsedAt: "2026-10-19T10:00:00.000Z",
@@ -296,7 +296,7 @@ type AutomationLayer = ReturnType<typeof makeAutomationLayer>["layer"];
 /** Runs a command on a test clock that keeps advancing while it runs. */
 const runCommand = (args: ReadonlyArray<string>, layer: AutomationLayer) =>
   Effect.gen(function* () {
-    const command = yield* Command.runWith(dhwCommand, { version: "1.21.0" })(
+    const command = yield* Command.runWith(dhwCommand, { version: "1.22.0" })(
       args
     ).pipe(Effect.provide(layer), Effect.forkChild);
     yield* TestClock.adjust("1 second").pipe(Effect.forever, Effect.forkChild);
