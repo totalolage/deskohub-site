@@ -68,9 +68,7 @@ export function ReservationSelectionSummary({
             <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/55">
               {row.label}
             </dt>
-            {/* Times format with the runtime's ICU spacing, which differs
-                between the server and the browser. */}
-            <dd suppressHydrationWarning>{row.value}</dd>
+            <dd>{row.value}</dd>
           </div>
         ))}
         {total && (

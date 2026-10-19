@@ -7,6 +7,7 @@ import {
   formatReservationDisplayTimeRange,
 } from "@/features/reservation/reservation-date";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
+import { withPlainSpaces } from "@/shared/utils/date-time-format";
 
 /** The meeting-room selection as the contact-details step summarizes it. */
 export const getMeetingRoomReservationSelectionSummary = (
@@ -36,10 +37,13 @@ export const getMeetingRoomReservationSelectionSummary = (
             : [
                 {
                   label: m.checkoutStatusSummaryTimeLabel({}, { locale }),
-                  value: formatReservationDisplayTimeRange(
-                    Temporal.Instant.from(selection.interval.startsAt),
-                    Temporal.Instant.from(selection.interval.endsAt),
-                    locale
+                  // The summary renders on the server and in the browser.
+                  value: withPlainSpaces(
+                    formatReservationDisplayTimeRange(
+                      Temporal.Instant.from(selection.interval.startsAt),
+                      Temporal.Instant.from(selection.interval.endsAt),
+                      locale
+                    )
                   ),
                 },
               ]),

@@ -6,9 +6,16 @@ import {
   formatPlainDate,
   formatPlainDateRange,
   formatWeekday,
+  withPlainSpaces,
 } from "./date-time-format";
 
 describe("date-time formatting", () => {
+  test("writes times and ranges with the plain spaces browsers render", () => {
+    expect(withPlainSpaces("11:00\u202FAM\u2009–\u200912:00\u202FPM")).toBe(
+      "11:00 AM – 12:00 PM"
+    );
+  });
+
   test("formats an instant in the requested time zone", () => {
     const instant = Temporal.Instant.from("2099-02-03T23:30:00Z");
 
