@@ -204,8 +204,11 @@ const returnToPrefilledReservation = ({
   timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const reservationStepSelector = `a[href^="${reservationPath}?payState="]`;
-    const consentSelector = "#reservation-marketing-consent";
+    // The Pay page links back to both reservation steps; the selection step's
+    // link carries no `step`.
+    const reservationStepSelector = `a[href^="${reservationPath}?payState="]:not([href*="step="])`;
+    // Continue renders on the selection step whoever books.
+    const selectionStepSelector = "#reservation-continue";
     const browserActionTimeoutMs = timeouts.browserAction;
     yield* activateHydratedBrowserElement(
       run,
@@ -225,7 +228,7 @@ const returnToPrefilledReservation = ({
       session,
       timeoutMs: timeouts.uiTransition,
     });
-    yield* waitForBrowserReactHydration(run, session, consentSelector, {
+    yield* waitForBrowserReactHydration(run, session, selectionStepSelector, {
       timeoutMs: timeouts.uiTransition,
     });
     yield* waitForBrowserCondition(
@@ -285,12 +288,9 @@ const editAndReloadRestoredReservation = ({
     yield* openBrowserPage(config, run, session, editedUrl, {
       timeoutMs: config.timeouts.browserNavigation,
     });
-    yield* waitForBrowserReactHydration(
-      run,
-      session,
-      "#reservation-marketing-consent",
-      { timeoutMs: config.timeouts.uiTransition }
-    );
+    yield* waitForBrowserReactHydration(run, session, "#reservation-continue", {
+      timeoutMs: config.timeouts.uiTransition,
+    });
     yield* waitForBrowserCondition(
       run,
       session,

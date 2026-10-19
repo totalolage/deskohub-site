@@ -1,8 +1,10 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { Effect } from "effect";
+import { m } from "@/features/i18n";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { reservationStatusPath } from "@/features/reservation/routes";
 import {
+  closeBrowserSession,
   evalBrowserScript,
   normalizeBrowserText,
   openBrowserPage,
@@ -98,16 +100,16 @@ const assertPaidSupportReservationRow = ({
   readonly row: CheckoutRow | undefined;
 }) =>
   tryWorkspaceE2ESync(
-    "assert paid reservation cookie isolation database state",
+    "assert paid reservation status isolation database state",
     () => {
       assert(row, "paid reservation row is missing after checkout");
       assert(
         row.reservation_id === orderId,
-        "paid reservation row id changed before cookie isolation"
+        "paid reservation row id changed before status isolation"
       );
       assert(
         row.dotypos_customer_id === customerId,
-        "paid reservation customer changed before cookie isolation"
+        "paid reservation customer changed before status isolation"
       );
       assert(
         row.payment_state === "paid",
@@ -232,12 +234,82 @@ const assertOtherReservationDenied = ({
     yield* tryWorkspaceE2ESync("assert other reservation remains private", () =>
       assert(
         result.stdout.trim() === "true",
-        "other reservation details were exposed through the target cookie"
+        "other reservation details were exposed to the booking session"
       )
     );
   });
 
-export const assertReservationCookieIsolation = ({
+/**
+ * A signed-out visitor of the status link signs in first: the page redirects
+ * to the reservation sign-in with the status path to return to, and shows
+ * nothing of the order.
+ */
+const assertSignedOutStatusSignIn = Effect.fn(
+  "ReservationStatusIsolation.assertSignedOutStatusSignIn"
+)(function* ({
+  config,
+  locale,
+  orderId,
+  run,
+  session,
+  statusUrl,
+}: {
+  readonly config: WorkspaceE2EConfig;
+  readonly locale: CheckoutData["locale"];
+  readonly orderId: WorkspaceReservationId;
+  readonly run: Runner;
+  readonly session: string;
+  readonly statusUrl: string;
+}) {
+  const expectedPath = JSON.stringify(`/${locale}/auth/sign-in`);
+  const expectedReturnTo = JSON.stringify(new URL(statusUrl).pathname);
+  const expectedOrigin = JSON.stringify(new URL(config.baseUrl).origin);
+  const title = m.accountSignInReservationTitle({}, { locale });
+  yield* openBrowserPage(config, run, session, statusUrl);
+  yield* waitForBrowserCondition(
+    run,
+    session,
+    "signed-out reservation status sign-in URL",
+    `(() => {
+        const search = new URLSearchParams(location.search);
+        return location.origin === ${expectedOrigin} &&
+          location.pathname === ${expectedPath} &&
+          search.get("returnTo") === ${expectedReturnTo} &&
+          search.get("for") === "reservation";
+      })()`,
+    { timeoutMs: config.timeouts.browserNavigation }
+  );
+  yield* waitForBrowserText({
+    description: "signed-out reservation status sign-in title",
+    matches: (text) => normalizeBrowserText(text).includes(title),
+    run,
+    session,
+    timeoutMs: config.timeouts.uiTransition,
+  });
+  const result = yield* evalBrowserScript(
+    "assert signed-out reservation status stays private",
+    run,
+    session,
+    `(() => !(document.body?.innerText ?? "").includes(${JSON.stringify(orderId)}) &&
+        document.querySelector("#checkout-status-support-contact") === null)()`,
+    { logOutput: false, timeoutMs: config.timeouts.browserAction }
+  );
+  yield* tryWorkspaceE2ESync(
+    "assert signed-out reservation status stays private",
+    () =>
+      assert(
+        result.stdout.trim() === "true",
+        "reservation status details were exposed to a signed-out visitor"
+      )
+  );
+});
+
+/**
+ * Checks who can read the paid order's status. Checkout runs signed in, so
+ * the booking session reads its own order and nothing else, and a signed-out
+ * visitor of the same status link is sent to sign in.
+ */
+export const assertReservationStatusIsolation = ({
   config,
   customerId,
   data,
@@ -263,6 +335,7 @@ export const assertReservationCookieIsolation = ({
       orderId
     );
     addRedaction(targetStatusUrl);
+    const signedOutSession = `${session}-signed-out`;
     yield* waitForReservationContactUrl({
       config,
       description: "original reservation support contact URL",
@@ -299,6 +372,18 @@ export const assertReservationCookieIsolation = ({
             );
           }
         );
+        yield* assertSignedOutStatusSignIn({
+          config,
+          locale: data.locale,
+          orderId,
+          run,
+          session: signedOutSession,
+          statusUrl: targetStatusUrl,
+        }).pipe(
+          Effect.ensuring(
+            closeBrowserSession(run, signedOutSession).pipe(Effect.ignore)
+          )
+        );
         yield* assertAuthorizedPaidSupportStatus({
           config,
           orderId,
@@ -330,10 +415,10 @@ export const assertReservationCookieIsolation = ({
       )
     );
 
-    log("Reservation cookie isolation validated");
+    log("Reservation status isolation validated");
   });
 
-export const reservationCookieIsolationStep = ({
+export const reservationStatusIsolationStep = ({
   config,
   customerId,
   data,
@@ -348,7 +433,7 @@ export const reservationCookieIsolationStep = ({
   readonly run: Runner;
   readonly session: string;
 }): WorkspaceE2EStep<void, E2EDatabase> => ({
-  execute: assertReservationCookieIsolation({
+  execute: assertReservationStatusIsolation({
     config,
     customerId,
     data,
@@ -356,6 +441,6 @@ export const reservationCookieIsolationStep = ({
     run,
     session,
   }),
-  id: "assert-reservation-cookie-isolation",
+  id: "assert-reservation-status-isolation",
   timeoutMs: config.timeouts.datasource,
 });

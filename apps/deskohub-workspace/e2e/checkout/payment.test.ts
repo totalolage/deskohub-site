@@ -23,6 +23,8 @@ test("retries a transient reservation preparation failure without requiring non-
   const clickedRefs: string[] = [];
   const switchedTabs: string[] = [];
   let focusedRef: string | undefined;
+  let reservationStep: "contact" | "selection" = "selection";
+  let reservationSubmitPresses = 0;
   const submitReservationScript = "submit-reservation";
   const run = mock<Runner>(async (_command, args, options = {}) => {
     const browserArgs = args.slice(2);
@@ -76,6 +78,13 @@ test("retries a transient reservation preparation failure without requiring non-
 
     if (
       commandArgs[0] === "eval" &&
+      options.input?.includes('"#reservation-continue") !== null')
+    ) {
+      return success(String(reservationStep === "selection"));
+    }
+
+    if (
+      commandArgs[0] === "eval" &&
       options.input?.includes("__deskohubWorkspaceE2EPreparation")
     ) {
       return success(JSON.stringify({ status: "ready" }));
@@ -88,7 +97,7 @@ test("retries a transient reservation preparation failure without requiring non-
         return success(
           `https://workspace.example/en-US/reservation/status/${orderId}`
         );
-      if (reservationSubmitAttempts > 1)
+      if (reservationSubmitPresses > 1)
         return success(
           `${checkoutUrl.replace("/reservation/cowork", "/checkout/pay")}?orderId=${orderId}`
         );
@@ -137,6 +146,8 @@ test("retries a transient reservation preparation failure without requiring non-
 
     if (commandArgs[0] === "press") {
       activatedRefs.push(focusedRef ?? "");
+      if (focusedRef === "#reservation-continue") reservationStep = "contact";
+      if (focusedRef === "#reservation-submit") reservationSubmitPresses += 1;
       if (focusedRef === "@e5") {
         hostedPaymentStarted = true;
         activeTabId = "t2";
@@ -158,9 +169,12 @@ test("retries a transient reservation preparation failure without requiring non-
   );
 
   expect(result).toBe(orderId);
-  expect(reservationSubmitAttempts).toBe(2);
+  // The selection and contact steps prepare once each before the first
+  // submit; the retry stays on the contact step.
+  expect(reservationSubmitAttempts).toBe(3);
   expect(clickedRefs).toEqual([]);
   expect(activatedRefs).toEqual([
+    "#reservation-continue",
     "#reservation-submit",
     "#reservation-submit",
     "@e2",
@@ -183,6 +197,9 @@ test("detaches long reservation preparation from one Playwright evaluation", asy
     if (commandArgs[0] === "eval") {
       if (options.input === submitReservationScript) {
         throw new Error("Playwright evaluation timed out");
+      }
+      if (options.input?.includes('"#reservation-continue") !== null')) {
+        return success("false");
       }
       if (options.input?.includes(submitReservationScript)) {
         preparationKickoffs += 1;

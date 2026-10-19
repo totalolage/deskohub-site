@@ -977,7 +977,7 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
         await selectDate(ariaLabel, inputName, desiredDate, label);
         await waitUntil(() => {
           const hidden = document.querySelector('input[name="' + inputName + '"]');
-          const currentSubmit = document.querySelector('button[type="submit"]');
+          const currentSubmit = document.querySelector(${reservationActionSelectorLiteral});
           if (!(hidden instanceof HTMLInputElement)) return false;
           if (hidden.value !== desiredDate) {
             dateRegressed = true;

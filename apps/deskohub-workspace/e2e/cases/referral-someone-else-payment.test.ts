@@ -52,13 +52,13 @@ const paidRecord = (
       state: "redeemed",
     },
   ],
-  dotyposCustomerId: "guest",
+  dotyposCustomerId: "booked-customer",
   paymentState: "paid",
   ...overrides,
 });
 
 const expected = {
-  bookedCustomerId: "guest",
+  bookedCustomerId: "booked-customer",
   invitationLabel,
   referrerCustomerId: "referrer",
 };
@@ -89,9 +89,9 @@ const discountRow = (
   ...row,
 });
 
-test("expects the Calendar sale before the invitation on the paid guest order", () => {
+test("expects the Calendar sale before the invitation on the paid order", () => {
   // CZK 290 Open Space, less the 20% E2E Calendar sale, less the 15%
-  // invitation on what remains: the CZK 197.20 the guest pays.
+  // invitation on what remains: the CZK 197.20 the booked customer pays.
   const rows = [
     discountRow({
       adjustment: { kind: "percentage", basisPoints: 2000 },
@@ -130,7 +130,7 @@ test("expects the Calendar sale before the invitation on the paid guest order", 
   ).toThrow("expected 2 discount applications");
 });
 
-test("accepts a paid guest order attributed to the seeded referrer", () => {
+test("accepts a paid order attributed to the seeded referrer", () => {
   expect(() =>
     assertReferralSomeoneElsePayment(paidRecord(), expected)
   ).not.toThrow();
@@ -140,17 +140,17 @@ test.each([
   [
     "the order is unpaid",
     paidRecord({ paymentState: "pending" }),
-    "guest referral order is not paid",
+    "referral order is not paid",
   ],
   [
     "the order changed its booked customer",
     paidRecord({ dotyposCustomerId: "someone-else" }),
-    "guest referral order changed its booked customer",
+    "referral order changed its booked customer",
   ],
   [
     "another referrer is attributed",
     paidRecord({ attributions: [{ referrerDotyposCustomerId: "other" }] }),
-    "guest is not attributed to the seeded referrer",
+    "booked customer is not attributed to the seeded referrer",
   ],
   [
     "no claim is active",
@@ -163,7 +163,7 @@ test.each([
         },
       ],
     }),
-    "guest needs exactly one active referral invitation claim",
+    "booked customer needs exactly one active referral invitation claim",
   ],
   [
     "the claim is still reserved",
@@ -211,7 +211,7 @@ test.each([
     "referral invitation application is not 15%",
   ],
 ] as const)(
-  "rejects a guest referral payment when %s",
+  "rejects a someone-else referral payment when %s",
   (_description, record, message) => {
     expect(() => assertReferralSomeoneElsePayment(record, expected)).toThrow(
       message
@@ -219,7 +219,7 @@ test.each([
   }
 );
 
-test("plans the guest referral payment on its own date and requires binding", async () => {
+test("plans the someone-else referral payment on its own date and requires binding", async () => {
   const flowStates: CheckoutFlowState[] = [
     { data: makeCoworkCheckoutData(config.baseUrl, "2099-08-01") },
     { data: makeCoworkCheckoutData(config.baseUrl, "2099-08-02") },
