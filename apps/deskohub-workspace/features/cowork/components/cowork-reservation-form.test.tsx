@@ -89,7 +89,7 @@ mock.module("next/image", () => ({
   getImageProps,
 }));
 
-const execute = mock(() => undefined);
+const executeAsync = mock(() => Promise.resolve({}));
 const getAdvertisedPrices = mock(
   (requests: ReadonlyArray<AdvertisedPriceRequest>) =>
     Promise.resolve(advertisedPricesResult(requests))
@@ -401,7 +401,7 @@ describe("CoworkReservationForm advertised pricing", () => {
       )
     );
     workspaceUseAction.mockReturnValue({
-      execute,
+      executeAsync,
       isExecuting: false,
       result: {},
     });
@@ -415,7 +415,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     getAdvertisedPrices.mockClear();
     push.mockClear();
-    execute.mockClear();
+    executeAsync.mockClear();
   });
 
   afterAll(async () => {
@@ -562,7 +562,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     expect(await view.findByText("Email is required.")).toBeDefined();
     expect(view.getByText("Phone is required.")).toBeDefined();
     expect(view.getByText("Name must be at least 2 characters.")).toBeDefined();
-    expect(execute).not.toHaveBeenCalled();
+    expect(executeAsync).not.toHaveBeenCalled();
   });
 
   test("shows billing validation without errors for empty optional fields", async () => {
@@ -592,7 +592,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     expect(await view.findAllByText("This field is required.")).toHaveLength(3);
     expect(view.queryByText("undefined")).toBeNull();
     expect(view.queryByText("Expected string, got undefined")).toBeNull();
-    expect(execute).not.toHaveBeenCalled();
+    expect(executeAsync).not.toHaveBeenCalled();
   });
 
   test("does not render catalog prices before a backend quote is available", () => {
@@ -870,14 +870,14 @@ describe("CoworkReservationForm advertised pricing", () => {
         view.container.querySelector('input[value="2x32-4k"]') as HTMLElement
       );
     });
-    execute.mockClear();
+    executeAsync.mockClear();
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Continue" }));
     });
     await waitFor(() => {
-      expect(execute).toHaveBeenCalledTimes(1);
+      expect(executeAsync).toHaveBeenCalledTimes(1);
     });
-    const workstationSubmission = execute.mock.calls[0]?.[0] as {
+    const workstationSubmission = executeAsync.mock.calls[0]?.[0] as {
       advertisedPriceToken?: string;
       reservation?: { monitorOption?: string };
     };
@@ -898,14 +898,14 @@ describe("CoworkReservationForm advertised pricing", () => {
         view.container.querySelector('input[value="2x27-qhd"]')
       ).toBeNull();
     });
-    execute.mockClear();
+    executeAsync.mockClear();
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Continue" }));
     });
     await waitFor(() => {
-      expect(execute).toHaveBeenCalledTimes(1);
+      expect(executeAsync).toHaveBeenCalledTimes(1);
     });
-    const bareSubmission = execute.mock.calls[0]?.[0] as {
+    const bareSubmission = executeAsync.mock.calls[0]?.[0] as {
       advertisedPriceToken?: string;
       reservation?: { monitorOption?: string };
     };
@@ -1119,9 +1119,9 @@ describe("CoworkReservationForm advertised pricing", () => {
       fireEvent.click(view.getByRole("button", { name: "Continue" }));
     });
     await waitFor(() => {
-      expect(execute).toHaveBeenCalledTimes(1);
+      expect(executeAsync).toHaveBeenCalledTimes(1);
     });
-    const submission = execute.mock.calls[0]?.[0] as {
+    const submission = executeAsync.mock.calls[0]?.[0] as {
       readonly advertisedPriceToken?: string;
       readonly reservation?: {
         readonly date?: string;
@@ -1340,7 +1340,7 @@ describe("CoworkReservationForm advertised pricing", () => {
       expect(continueButton.hasAttribute("disabled")).toBe(true);
     });
     await act(async () => fireEvent.click(continueButton));
-    expect(execute).not.toHaveBeenCalled();
+    expect(executeAsync).not.toHaveBeenCalled();
     await act(async () => {
       view.unmount();
     });
@@ -1418,7 +1418,7 @@ describe("CoworkReservationForm advertised pricing", () => {
       view.getByText(m.reservationAvailabilityError({}, { locale: "en-US" }))
     ).toBeDefined();
     await act(async () => fireEvent.click(continueButton));
-    expect(execute).not.toHaveBeenCalled();
+    expect(executeAsync).not.toHaveBeenCalled();
     await act(async () => {
       view.unmount();
     });
@@ -1559,7 +1559,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     expect(queryClient.getQueryData(bareQueryKey)).toMatchObject({
       unavailableMonitorOptions: ["2x32-qhd"],
     });
-    expect(execute).not.toHaveBeenCalled();
+    expect(executeAsync).not.toHaveBeenCalled();
     await act(async () => {
       view.unmount();
     });
@@ -1677,7 +1677,7 @@ describe("CoworkReservationForm advertised pricing", () => {
       view.getByText("Nepodařilo se ověřit dostupnost. Zkus to prosím znovu.")
     ).toBeDefined();
     await act(async () => fireEvent.click(continueButton));
-    expect(execute).not.toHaveBeenCalled();
+    expect(executeAsync).not.toHaveBeenCalled();
     await act(async () => {
       view.unmount();
     });
@@ -2117,7 +2117,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     ).toBe("true");
 
     fireEvent.click(view.getByRole("button", { name: "Continue" }));
-    expect(execute).not.toHaveBeenCalled();
+    expect(executeAsync).not.toHaveBeenCalled();
 
     await act(async () => {
       resolveNewDateAvailability?.(

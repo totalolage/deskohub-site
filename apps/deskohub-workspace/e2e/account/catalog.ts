@@ -43,11 +43,14 @@ export const workspaceE2EAccountMagicLinkLedger = {
   "account-reservation-transitions": [],
   "account-deletion-marker-reauth": ["send"],
   // The reauthentication sign-in, which must land on the pending account's
-  // saved Czech site from its English callback, and the rejected replay.
-  "account-session-lifecycle": ["verify", "verify"],
-  // With passkeys on, the reactivation sign-in also creates the prompt
-  // passkey, so the passkey cases spend no link of their own.
-  "account-deletion-and-reactivation": ["send", "verify"],
+  // saved Czech site from its English callback.
+  "account-session-lifecycle": ["verify"],
+  // The cross-browser sign-in: the assistant's browser requests the link,
+  // the lane browser opens it, and the assistant's browser replays it into
+  // the rejected-link card. With passkeys on, the reactivation sign-in also
+  // creates the prompt passkey, so the passkey cases spend no link of their
+  // own.
+  "account-deletion-and-reactivation": ["send", "verify", "verify"],
   // Passkey sign-in and passkey reauthentication send no email.
   "account-passkey-sign-in": [],
   "account-passkey-management": [],

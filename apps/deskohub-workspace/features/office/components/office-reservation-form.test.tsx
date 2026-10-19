@@ -36,7 +36,7 @@ const { act, cleanup, fireEvent, render, waitFor } = await import(
   "@testing-library/react"
 );
 
-const execute = mock(() => undefined);
+const executeAsync = mock(() => Promise.resolve({}));
 const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
 const originalFetch = globalThis.fetch;
 
@@ -104,7 +104,7 @@ describe("OfficeReservationForm", () => {
   beforeEach(() => {
     workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
     workspaceUseAction.mockReturnValue({
-      execute,
+      executeAsync,
       isExecuting: false,
       result: {},
     });
@@ -113,7 +113,7 @@ describe("OfficeReservationForm", () => {
   afterEach(async () => {
     cleanup();
     await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
-    execute.mockClear();
+    executeAsync.mockClear();
     globalThis.fetch = originalFetch;
   });
 
@@ -595,7 +595,7 @@ describe("OfficeReservationForm", () => {
     await act(async () => {});
 
     expect(startDate.getAttribute("aria-invalid")).toBe("true");
-    expect(execute).not.toHaveBeenCalled();
+    expect(executeAsync).not.toHaveBeenCalled();
   });
 
   test("keeps a typed unavailable start date out of the form", async () => {
@@ -641,7 +641,7 @@ describe("OfficeReservationForm", () => {
     await act(async () => fireEvent.submit(form));
     await act(async () => {});
 
-    expect(execute).not.toHaveBeenCalled();
+    expect(executeAsync).not.toHaveBeenCalled();
     expect(startsOn()).toBe("");
 
     await act(async () => {

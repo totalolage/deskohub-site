@@ -117,13 +117,13 @@ const saveErrorCases = [
     serverError: "The selected audience is archived. Choose another audience.",
   },
   {
-    name: "audience with filters campaigns can't use yet",
+    name: "audience with filters only automation conditions can use",
     operation: "update",
     error: new AudienceFilterContextInvalid({
       uses: { attributes: [], periods: ["TriggerWindow"], campaignSources: [] },
     }),
     serverError:
-      "The selected audience uses filters campaigns can’t use yet. Choose another audience.",
+      "The selected audience uses filters only automation conditions can use. Choose another audience.",
   },
   {
     name: "missing audience",

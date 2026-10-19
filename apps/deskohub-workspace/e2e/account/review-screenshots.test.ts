@@ -3,12 +3,14 @@ import * as fsPromises from "node:fs/promises";
 import { resolve } from "node:path";
 import { testEmailAddress } from "@deskohub/test-email";
 import type * as Playwright from "@playwright/test";
+import { encodeAuthCallbackReturn } from "@/features/account/routes";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationStatusPath } from "@/features/reservation/routes";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   type AccountReviewTarget,
   captureAccountReview,
+  captureCallbackHandoffReview,
   captureReservationStatusReview,
   type LanguagePreferenceReviewCapture,
   persistCallbackDocumentReview,
@@ -32,6 +34,20 @@ const accountReviewArtifactDirectory = resolve(
 );
 const captureFailureMessage = "Account review screenshot capture failed";
 const attemptUuid = "0f0a9c1e-7b62-4c8d-9e21-53ab2f0d4c7a";
+const englishCard = {
+  body: "Taking you to your account…",
+  label: "Loading sign-in…",
+  title: "You are signed in",
+} as const;
+const czechCard = {
+  body: "Vracíme vás tam, kde jste skončili. Dokončit můžete přímo v tomto prohlížeči.",
+  label: "Načítání přihlášení…",
+  title: "Jste přihlášeni",
+} as const;
+const selection = "/cs-CZ/reservation/cowork?selection=synthetic-1";
+const enSelection = "/en-US/reservation/cowork?selection=synthetic-1";
+const czechLanding = { locale: "cs-CZ", returnTo: selection } as const;
+const czechCallbackUrl = `${baseUrl}/cs-CZ/auth/callback?attempt=${attemptUuid}&return=${encodeAuthCallbackReturn(selection)}`;
 const reservationCustomerReviewTargets = [
   "reservation-customer-account-desktop",
   "reservation-customer-contact-desktop",
@@ -52,8 +68,16 @@ type FakePage = {
 const makeFakePage = (
   url: string,
   options: {
+    /** The signed-in callback card; English account copy by default. */
+    readonly card?: {
+      readonly body: string;
+      readonly label: string;
+      readonly title: string;
+    };
     readonly callbackLoadingPresent?: boolean;
     readonly failScreenshot?: boolean;
+    readonly hiddenTitle?: boolean;
+    readonly titleCount?: number;
     readonly onFontsReady?: () => Promise<void> | void;
     readonly onScreenshot?: () => Promise<void> | void;
     readonly onViewportChange?: (
@@ -73,6 +97,7 @@ const makeFakePage = (
     resolveScreenshotStarted = resolve;
   });
 
+  const card = options.card ?? englishCard;
   const makeLocator = (kind: string): Playwright.Locator =>
     Object.assign({} as Playwright.Locator, {
       boundingBox: async () => {
@@ -80,18 +105,29 @@ const makeFakePage = (
         if (!callbackLoadingPresent) return null;
         return { height: 422, width: 512, x: 0, y: 0 };
       },
-      count: async () =>
-        kind === "loading-card" && !callbackLoadingPresent ? 0 : 1,
+      count: async () => {
+        if (kind === "loading-card" && !callbackLoadingPresent) return 0;
+        return kind === "card-title" ? (options.titleCount ?? 1) : 1;
+      },
       first: () => makeLocator(kind),
-      locator: () => makeLocator("loading-skeleton"),
+      locator: (selector: string) =>
+        makeLocator(selector === "h1" ? "card-title" : "card-body"),
+      // Surrounding whitespace is trimmed before comparison.
+      textContent: async () =>
+        ` ${kind === "card-title" ? card.title : card.body}\n`,
       waitFor: async () => {
         if (
           (kind === "loading-card" ||
             kind === "loading-status" ||
-            kind === "loading-skeleton") &&
+            kind === "card-title" ||
+            kind === "card-body") &&
           !callbackLoadingPresent
         )
           throw new Error("callback loading state is not visible");
+        if (kind === "card-title" && options.hiddenTitle)
+          throw new Error("callback heading is not visible");
+        if (kind === "other-status")
+          throw new Error("callback status is not visible");
       },
     });
 
@@ -113,8 +149,12 @@ const makeFakePage = (
       currentViewport = viewport;
       await options.onViewportChange?.(viewport);
     },
-    getByRole: (role: string) =>
-      makeLocator(role === "status" ? "loading-status" : "landmark"),
+    getByRole: (role: string, roleOptions?: { readonly name?: string }) => {
+      if (role !== "status") return makeLocator("landmark");
+      return makeLocator(
+        roleOptions?.name === card.label ? "loading-status" : "other-status"
+      );
+    },
     locator: (selector: string) => {
       locatorSelectors.push(selector);
       return makeLocator(selector === "main" ? "main" : "loading-card");
@@ -472,47 +512,97 @@ describe("account review screenshot capture", () => {
     },
     {
       name: "a callback failure query with a non-canonical attempt parameter",
-      target: "callback-failed-desktop",
-      url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid.toUpperCase()}`,
+      target: "callback-failed-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid.toUpperCase()}`,
     },
     {
       name: "a callback failure query with an extra parameter",
-      target: "callback-failed-desktop",
-      url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid}&extra=1`,
+      target: "callback-failed-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid}&extra=1`,
     },
     {
       name: "a callback failure query with a duplicated attempt parameter",
-      target: "callback-failed-desktop",
-      url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid}&attempt=${attemptUuid}`,
+      target: "callback-failed-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid}&attempt=${attemptUuid}`,
     },
     {
       name: "a callback query with another parameter",
-      target: "callback-failed-desktop",
-      url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN&token=synthetic-secret-token`,
+      target: "callback-failed-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/callback?error=INVALID_TOKEN&token=synthetic-secret-token`,
+    },
+    {
+      name: "the Czech callback failure at the English callback",
+      target: "callback-failed-cs-desktop",
+      url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN`,
+    },
+    {
+      name: "the Czech callback failure without its failure parameter",
+      target: "callback-failed-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/callback?attempt=${attemptUuid}`,
+    },
+    {
+      name: "the Czech accepted sign-in at the English sign-in",
+      target: "sign-in-accepted-cs-desktop",
+      url: `${baseUrl}/en-US/auth/sign-in`,
+    },
+    {
+      name: "the Czech accepted sign-in with a protocol-relative return",
+      target: "sign-in-accepted-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/sign-in?returnTo=${encodeURIComponent("//evil.example/cs-CZ")}`,
+    },
+    {
+      name: "the Czech accepted sign-in with an absolute return",
+      target: "sign-in-accepted-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/sign-in?returnTo=${encodeURIComponent("https://evil.example/")}`,
+    },
+    {
+      name: "the English accepted sign-in with an extra parameter",
+      target: "sign-in-accepted-desktop",
+      url: `${baseUrl}/en-US/auth/sign-in?returnTo=%2Fen-US&token=synthetic-secret-token`,
+    },
+    {
+      name: "the Czech accepted sign-in with two returns",
+      target: "sign-in-accepted-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/sign-in?returnTo=%2Fcs-CZ&returnTo=%2Fcs-CZ`,
+    },
+    {
+      name: "the Czech accepted sign-in with an extra parameter",
+      target: "sign-in-accepted-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/sign-in?returnTo=%2Fcs-CZ&token=synthetic-secret-token`,
+    },
+    {
+      name: "the Czech accepted sign-in with another parameter name",
+      target: "sign-in-accepted-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/sign-in?next=%2Fcs-CZ`,
+    },
+    {
+      name: "the Czech returning callback without its exact return target",
+      target: "callback-signed-in-cs-desktop",
+      url: czechCallbackUrl,
     },
     {
       name: "a callback query",
-      target: "callback-loading-desktop",
+      target: "callback-signed-in-desktop",
       url: `${baseUrl}/en-US/auth/callback?_rsc=synthetic-cache-key`,
     },
     {
       name: "a callback loading attempt UUID that is not canonical",
-      target: "callback-loading-desktop",
+      target: "callback-signed-in-desktop",
       url: `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid.toUpperCase()}`,
     },
     {
       name: "a callback loading attempt UUID with an extra parameter",
-      target: "callback-loading-desktop",
+      target: "callback-signed-in-desktop",
       url: `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid}&extra=1`,
     },
     {
       name: "a callback loading token parameter",
-      target: "callback-loading-desktop",
+      target: "callback-signed-in-desktop",
       url: `${baseUrl}/en-US/auth/callback?token=synthetic-secret-token`,
     },
     {
       name: "a callback loading duplicated attempt parameter",
-      target: "callback-loading-desktop",
+      target: "callback-signed-in-desktop",
       url: `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid}&attempt=${attemptUuid}`,
     },
     {
@@ -552,7 +642,7 @@ describe("account review screenshot capture", () => {
       await captureAccountReview(
         fakePage.page,
         review,
-        "callback-loading-desktop"
+        "callback-signed-in-desktop"
       );
     } catch (cause) {
       failure = cause;
@@ -598,12 +688,12 @@ describe("account review screenshot capture", () => {
     ],
     [
       "a bare callback loading page",
-      "callback-loading-desktop",
+      "callback-signed-in-desktop",
       "/en-US/auth/callback",
     ],
     [
       "a canonical callback attempt",
-      "callback-loading-desktop",
+      "callback-signed-in-desktop",
       `/en-US/auth/callback?attempt=${attemptUuid}`,
     ],
     [
@@ -615,6 +705,31 @@ describe("account review screenshot capture", () => {
       "the sign-in page handoff path",
       "sign-in-handoff-desktop",
       "/en-US/auth/sign-in",
+    ],
+    [
+      "the bare Czech accepted sign-in",
+      "sign-in-accepted-cs-desktop",
+      "/cs-CZ/auth/sign-in",
+    ],
+    [
+      "the Czech accepted sign-in returning to a selection",
+      "sign-in-accepted-cs-desktop",
+      `/cs-CZ/auth/sign-in?${new URLSearchParams({ returnTo: selection })}`,
+    ],
+    [
+      "the English accepted sign-in returning to a selection",
+      "sign-in-accepted-desktop",
+      `/en-US/auth/sign-in?${new URLSearchParams({ returnTo: enSelection })}`,
+    ],
+    [
+      "the English pending sign-in returning to a selection",
+      "sign-in-pending-desktop",
+      `/en-US/auth/sign-in?${new URLSearchParams({ returnTo: enSelection })}`,
+    ],
+    [
+      "the Czech callback failure",
+      "callback-failed-cs-desktop",
+      `/cs-CZ/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid}&return=${encodeAuthCallbackReturn(selection)}`,
     ],
   ] as const satisfies ReadonlyArray<
     readonly [string, AccountReviewTarget, string]
@@ -699,22 +814,149 @@ describe("account review screenshot capture", () => {
 
   test("allows the closed invalid-token callback query", async () => {
     const fakePage = makeFakePage(
-      `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN`
+      `${baseUrl}/cs-CZ/auth/callback?error=INVALID_TOKEN`
     );
 
     await captureAccountReview(
       fakePage.page,
       review,
-      "callback-failed-desktop"
+      "callback-failed-cs-desktop"
     );
 
     expect(fakePage.screenshotCalls).toHaveLength(1);
     expect(writeFileSpy?.mock.calls).toEqual([
       [
-        resolve(accountReviewArtifactDirectory, "callback-failed-desktop.png"),
+        resolve(
+          accountReviewArtifactDirectory,
+          "callback-failed-cs-desktop.png"
+        ),
         screenshotBuffer,
       ],
     ]);
+  });
+
+  test("persists the Czech accepted sign-in under its own file", async () => {
+    const fakePage = makeFakePage(`${baseUrl}/cs-CZ/auth/sign-in`);
+
+    await captureAccountReview(
+      fakePage.page,
+      review,
+      "sign-in-accepted-cs-desktop"
+    );
+
+    expect(fakePage.viewportChanges[0]).toEqual({ height: 1000, width: 1440 });
+    expect(writeFileSpy?.mock.calls).toEqual([
+      [
+        resolve(
+          accountReviewArtifactDirectory,
+          "sign-in-accepted-cs-desktop.png"
+        ),
+        screenshotBuffer,
+      ],
+    ]);
+  });
+
+  for (const [name, options] of [
+    ["no signed-in heading", { titleCount: 0 }],
+    ["two headings", { titleCount: 2 }],
+    ["a hidden heading", { hiddenTitle: true }],
+    ["the wrong title", { card: { ...englishCard, title: "Signing you in" } }],
+    [
+      "the returning body without a return target",
+      { card: { ...englishCard, body: czechCard.body } },
+    ],
+    ["the Czech card", { card: czechCard }],
+  ] as const) {
+    test(`does not write the English callback capture showing ${name}`, async () => {
+      const fakePage = makeFakePage(`${baseUrl}/en-US/auth/callback`, options);
+
+      await expect(
+        captureAccountReview(
+          fakePage.page,
+          review,
+          "callback-signed-in-desktop"
+        )
+      ).rejects.toThrow(captureFailureMessage);
+
+      expect(writeFileSpy?.mock.calls).toHaveLength(0);
+    });
+  }
+
+  test("captures the Czech returning callback against its exact landing", async () => {
+    const fakePage = makeFakePage(czechCallbackUrl, { card: czechCard });
+
+    await captureCallbackHandoffReview(
+      fakePage.page,
+      review,
+      "callback-signed-in-cs-desktop",
+      czechLanding
+    );
+
+    expect(fakePage.viewportChanges[0]).toEqual({ height: 1000, width: 1440 });
+    expect(writeFileSpy?.mock.calls).toEqual([
+      [
+        resolve(
+          accountReviewArtifactDirectory,
+          "callback-signed-in-cs-desktop.png"
+        ),
+        screenshotBuffer,
+      ],
+    ]);
+  });
+
+  for (const [name, url, options] of [
+    [
+      "another return",
+      `${baseUrl}/cs-CZ/auth/callback?return=${encodeAuthCallbackReturn("/cs-CZ/account")}`,
+      { card: czechCard },
+    ],
+    [
+      "no return",
+      `${baseUrl}/cs-CZ/auth/callback?attempt=${attemptUuid}`,
+      { card: czechCard },
+    ],
+    ["the English card", czechCallbackUrl, { card: englishCard }],
+    [
+      "the account body",
+      czechCallbackUrl,
+      { card: { ...czechCard, body: "Přesměrujeme vás na účet…" } },
+    ],
+    [
+      "a hidden heading",
+      czechCallbackUrl,
+      { card: czechCard, hiddenTitle: true },
+    ],
+  ] as const) {
+    test(`does not write the Czech returning callback with ${name}`, async () => {
+      const fakePage = makeFakePage(url, options);
+
+      await expect(
+        captureCallbackHandoffReview(
+          fakePage.page,
+          review,
+          "callback-signed-in-cs-desktop",
+          czechLanding
+        )
+      ).rejects.toThrow(captureFailureMessage);
+
+      expect(writeFileSpy?.mock.calls).toHaveLength(0);
+    });
+  }
+
+  test("does not capture a held callback target under another landing's locale", async () => {
+    const fakePage = makeFakePage(czechCallbackUrl, { card: czechCard });
+
+    await expect(
+      captureCallbackHandoffReview(
+        fakePage.page,
+        review,
+        "callback-signed-in-desktop",
+        czechLanding
+      )
+    ).rejects.toThrow(captureFailureMessage);
+
+    expect(fakePage.screenshotCalls).toHaveLength(0);
+    expect(writeFileSpy?.mock.calls).toHaveLength(0);
   });
 
   test("restores the previous viewport when screenshot capture fails", async () => {
@@ -867,9 +1109,16 @@ describe("account review screenshot capture", () => {
     let validatorCalls = 0;
     const pixels = Buffer.from("held-document-png");
 
-    await persistCallbackDocumentReview(fakePage.page, review, pixels, () => {
-      validatorCalls += 1;
-    });
+    await persistCallbackDocumentReview(
+      fakePage.page,
+      review,
+      "callback-signed-in-desktop",
+      { locale: "en-US" },
+      pixels,
+      () => {
+        validatorCalls += 1;
+      }
+    );
 
     expect(validatorCalls).toBe(2);
     expect(fakePage.screenshotCalls).toHaveLength(0);
@@ -877,11 +1126,67 @@ describe("account review screenshot capture", () => {
     expect(fakePage.fontReadyCalls()).toBe(0);
     expect(writeFileSpy?.mock.calls).toEqual([
       [
-        resolve(accountReviewArtifactDirectory, "callback-loading-desktop.png"),
+        resolve(
+          accountReviewArtifactDirectory,
+          "callback-signed-in-desktop.png"
+        ),
         pixels,
       ],
     ]);
   });
+
+  test("persists the Czech returning callback against its exact landing", async () => {
+    const fakePage = makeFakePage(czechCallbackUrl);
+    const pixels = Buffer.from("held-czech-document-png");
+
+    await persistCallbackDocumentReview(
+      fakePage.page,
+      review,
+      "callback-signed-in-cs-desktop",
+      czechLanding,
+      pixels,
+      () => undefined
+    );
+
+    expect(writeFileSpy?.mock.calls).toEqual([
+      [
+        resolve(
+          accountReviewArtifactDirectory,
+          "callback-signed-in-cs-desktop.png"
+        ),
+        pixels,
+      ],
+    ]);
+  });
+
+  for (const [name, url] of [
+    [
+      "another return",
+      `${baseUrl}/cs-CZ/auth/callback?return=${encodeAuthCallbackReturn("/cs-CZ/account")}`,
+    ],
+    ["no return", `${baseUrl}/cs-CZ/auth/callback`],
+    [
+      "the English callback",
+      `${baseUrl}/en-US/auth/callback?return=${encodeAuthCallbackReturn(selection)}`,
+    ],
+  ] as const) {
+    test(`does not persist the Czech returning callback with ${name}`, async () => {
+      const fakePage = makeFakePage(url);
+
+      await expect(
+        persistCallbackDocumentReview(
+          fakePage.page,
+          review,
+          "callback-signed-in-cs-desktop",
+          czechLanding,
+          screenshotBuffer,
+          () => undefined
+        )
+      ).rejects.toThrow(captureFailureMessage);
+
+      expect(writeFileSpy?.mock.calls).toHaveLength(0);
+    });
+  }
 
   test("does not write when the supplied held-document validator fails", async () => {
     const fakePage = makeFakePage(
@@ -892,6 +1197,8 @@ describe("account review screenshot capture", () => {
       persistCallbackDocumentReview(
         fakePage.page,
         review,
+        "callback-signed-in-desktop",
+        { locale: "en-US" },
         screenshotBuffer,
         () => {
           throw new Error("receipt is not valid");
@@ -912,6 +1219,8 @@ describe("account review screenshot capture", () => {
       persistCallbackDocumentReview(
         fakePage.page,
         review,
+        "callback-signed-in-desktop",
+        { locale: "en-US" },
         screenshotBuffer,
         () => undefined
       )
@@ -931,6 +1240,8 @@ describe("account review screenshot capture", () => {
       persistCallbackDocumentReview(
         fakePage.page,
         review,
+        "callback-signed-in-desktop",
+        { locale: "en-US" },
         screenshotBuffer,
         () => undefined,
         { signal: controller.signal }
@@ -950,6 +1261,8 @@ describe("account review screenshot capture", () => {
       persistCallbackDocumentReview(
         fakePage.page,
         review,
+        "callback-signed-in-desktop",
+        { locale: "en-US" },
         screenshotBuffer,
         () => {
           validatorCalls += 1;
@@ -975,7 +1288,7 @@ describe("account review screenshot capture", () => {
     });
 
     await expect(
-      captureAccountReview(fakePage.page, review, "callback-loading-desktop")
+      captureAccountReview(fakePage.page, review, "callback-signed-in-desktop")
     ).rejects.toThrow(captureFailureMessage);
 
     expect(fakePage.screenshotCalls).toHaveLength(1);

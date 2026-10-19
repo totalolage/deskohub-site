@@ -15,6 +15,7 @@ import {
 import type {
   GrantCustomerMarketingConsentInput,
   ICustomerMarketingConsentRepository,
+  WithdrawCustomerMarketingConsentInput,
 } from "@/features/legal/backend/customer-marketing-consent.repository";
 import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
 import type { IMarketingManagementService } from "@/features/legal/backend/marketing-management.service";
@@ -166,7 +167,7 @@ const makeScenario = (options?: {
     (_input: GrantCustomerMarketingConsentInput) => Effect.void
   );
   const withdraw = mock(
-    (_input: GrantCustomerMarketingConsentInput) => Effect.void
+    (_input: WithdrawCustomerMarketingConsentInput) => Effect.void
   );
 
   return {
@@ -303,7 +304,7 @@ describe("marketing preference actions", () => {
     expect(setMarketingManagementSessionCookie).not.toHaveBeenCalled();
   });
 
-  test("grants consent through the authoritative signed-in account", async () => {
+  test("grants consent through the authoritative signed-in account and records account settings as its source", async () => {
     await expect(
       saveMarketingPreferencesAction({
         confirmed: true,
@@ -318,8 +319,32 @@ describe("marketing preference actions", () => {
     expect(currentScenario.grant.mock.calls[0]?.[0]).toMatchObject({
       dotyposCustomerId: customerId,
       locale: "en-US",
+      source: "account",
     });
     expect(currentScenario.withdraw).not.toHaveBeenCalled();
+  });
+
+  test("grants consent through a valid management session and records the email link as its source", async () => {
+    currentScenario.cookies = { pending: undefined, session: sessionToken };
+
+    await expect(
+      saveMarketingPreferencesAction({
+        confirmed: true,
+        context: getLinkMarketingManagementContext(sessionToken, customerId),
+        granted: true,
+        locale: "cs-CZ",
+        source: "link",
+      })
+    ).resolves.toEqual({ data: { status: "saved" } });
+
+    expect(currentScenario.grant).toHaveBeenCalledTimes(1);
+    expect(currentScenario.grant.mock.calls[0]?.[0]).toMatchObject({
+      dotyposCustomerId: customerId,
+      locale: "cs-CZ",
+      source: "link",
+    });
+    expect(currentScenario.withdraw).not.toHaveBeenCalled();
+    expect(currentScenario.accountResolveCalls.value).toBe(0);
   });
 
   test("withdraws consent through a valid management session without account fallback", async () => {

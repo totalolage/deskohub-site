@@ -7,14 +7,20 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { customerMarketingConsents } from "@/db/schema";
 import type { CustomerMarketingConsent } from "@/db/schema/customer-marketing-consents";
 import type { Locale } from "@/features/i18n";
+import type { MarketingConsentGrantSource } from "@/features/legal/marketing-consent-grant-source";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 
-export type GrantCustomerMarketingConsentInput = {
+export type WithdrawCustomerMarketingConsentInput = {
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly documentHash: string;
   readonly locale: Locale;
   readonly grantedAt: Temporal.Instant;
 };
+
+export type GrantCustomerMarketingConsentInput =
+  WithdrawCustomerMarketingConsentInput & {
+    readonly source: MarketingConsentGrantSource;
+  };
 
 export interface ICustomerMarketingConsentRepository {
   readonly grantInitial: (
@@ -27,7 +33,7 @@ export interface ICustomerMarketingConsentRepository {
     customerId: DotyposCustomerId
   ) => Effect.Effect<CustomerMarketingConsent | null, EffectDrizzleQueryError>;
   readonly withdraw: (
-    input: GrantCustomerMarketingConsentInput
+    input: WithdrawCustomerMarketingConsentInput
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
   /**
    * Withdraws an active consent and reports whether it did. A withdrawn or
@@ -51,17 +57,17 @@ export class CustomerMarketingConsentRepository extends Context.Service<
       return {
         grantInitial: Effect.fn(
           "CustomerMarketingConsentRepository.grantInitial"
-        )(function* (input) {
+        )(function* ({ source, ...input }) {
           yield* db
             .insert(customerMarketingConsents)
-            .values(input)
+            .values({ ...input, grantSource: source })
             .onConflictDoNothing();
         }),
         grant: Effect.fn("CustomerMarketingConsentRepository.grant")(
-          function* (input) {
+          function* ({ source, ...input }) {
             yield* db
               .insert(customerMarketingConsents)
-              .values(input)
+              .values({ ...input, grantSource: source })
               .onConflictDoUpdate({
                 target: customerMarketingConsents.dotyposCustomerId,
                 set: {
@@ -69,6 +75,7 @@ export class CustomerMarketingConsentRepository extends Context.Service<
                   locale: input.locale,
                   grantedAt: input.grantedAt,
                   withdrawnAt: null,
+                  grantSource: source,
                 },
                 // A withdrawal wins over a grant that is not newer than it, so
                 // a delayed grant cannot undo the customer's latest withdrawal.

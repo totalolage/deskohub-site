@@ -31,6 +31,10 @@ const graceEmail = testEmailAddress("grace");
 
 const startCheckout = mock();
 
+mock.module("next/navigation", () => ({
+  useRouter: () => ({ push: mock() }),
+}));
+
 mock.module("./use-reservation-checkout", () => ({
   useReservationCheckout: () => ({
     capturePrePaymentOutcome: mock(),
@@ -38,6 +42,7 @@ mock.module("./use-reservation-checkout", () => ({
     hasPreparedPayRedirect: false,
     isPreparingCheckout: false,
     isSubmittingCheckout: false,
+    preparedCheckout: undefined,
     setSubmissionError: mock(),
     startCheckout,
     submissionError: undefined,
@@ -96,6 +101,7 @@ function Harness({
         ({ email, name, phone }) as never
       }
       locale="en-US"
+      selection={{ kind: "cowork", fromSearchParams: () => ({}) }}
     >
       {null}
     </ReservationCheckoutForm>
@@ -309,13 +315,13 @@ describe("ReservationCheckoutForm", () => {
     );
     expect(getMarketingConsentCheckbox(view)).toBeNull();
 
-    // The hidden checkbox submits no opt-in, which leaves the stored
-    // consent as it is.
+    // The hidden checkbox sends no consent fields, even after the other
+    // contact's box was ticked, which leaves the stored consent as it is.
     fireEvent.click(getSubmitButton(view));
     await waitFor(() => expect(startCheckout).toHaveBeenCalledTimes(1));
-    expect(startCheckout.mock.calls[0]?.[0]).toMatchObject({
-      customer: "account",
-      marketingConsent: false,
-    });
+    const submitted = startCheckout.mock.calls[0]?.[0];
+    expect(submitted).toMatchObject({ customer: "account" });
+    expect(submitted).not.toHaveProperty("marketingConsent");
+    expect(submitted).not.toHaveProperty("marketingConsentSource");
   });
 });

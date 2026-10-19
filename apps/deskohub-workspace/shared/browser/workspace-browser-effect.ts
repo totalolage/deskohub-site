@@ -24,6 +24,29 @@ export const runWorkspaceBrowserEffect =
       { signal: options.signal }
     );
 
+/**
+ * Runs a Workspace Effect in the browser for a lifetime that ends when
+ * `signal` aborts, such as a mounted component's. The abort interrupts the
+ * Effect and settles the promise: ending the lifetime is the expected way out,
+ * not a failure. Failures and defects reject as with `runWorkspaceBrowserEffect`.
+ */
+export const runWorkspaceBrowserEffectUntilAbort =
+  (operation: string, signal: AbortSignal) =>
+  <A, E>(effect: Effect.Effect<A, E, never>): Promise<void> =>
+    effect.pipe(
+      Effect.asVoid,
+      Effect.raceFirst(awaitAbort(signal)),
+      runWorkspaceBrowserEffect(operation)
+    );
+
+const awaitAbort = (signal: AbortSignal) =>
+  Effect.callback<void>((resume) => {
+    if (signal.aborted) return resume(Effect.void);
+    const onAbort = () => resume(Effect.void);
+    signal.addEventListener("abort", onAbort, { once: true });
+    return Effect.sync(() => signal.removeEventListener("abort", onAbort));
+  });
+
 const workspaceBrowserRuntime = NextEffect.make();
 
 // Effect's `Logger` module would add ~20 KB gzip to every page's first load.
