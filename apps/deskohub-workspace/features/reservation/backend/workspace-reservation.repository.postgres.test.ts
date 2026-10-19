@@ -15,6 +15,7 @@ import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import {
+  customerEvents,
   latePaymentRecoveries,
   paymentAttempts,
   reservationAccessGrants,
@@ -22,6 +23,7 @@ import {
 } from "@/db/schema";
 import {
   checkoutAttemptKeySchema,
+  checkoutSessionKeySchema,
   type PaymentAttemptId,
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
@@ -29,6 +31,7 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
+import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   fulfillmentEmailFailureCode,
@@ -813,6 +816,179 @@ describe.skipIf(!testDatabase)(
         expect((await readPaymentAttempt(attempt))?.refundState).toBe(
           "not_required"
         );
+      });
+    });
+
+    describe("customer events", () => {
+      const readEvents = (id: WorkspaceReservationId) =>
+        Effect.runPromise(
+          testDatabase.db
+            .select({
+              kind: customerEvents.kind,
+              occurredAt: customerEvents.occurredAt,
+              dotyposCustomerId: customerEvents.dotyposCustomerId,
+            })
+            .from(customerEvents)
+            .where(eq(customerEvents.workspaceReservationId, id))
+        );
+
+      const processingPaid = {
+        ...paid,
+        fulfillmentState: "processing",
+      } as const;
+
+      const confirm = (id: WorkspaceReservationId) =>
+        run((repository) =>
+          repository.markReservationConfirmed({ id, confirmedAt: at(3) })
+        );
+
+      test("records one booked event with the confirmation, even when retried", async () => {
+        const id = await insertReservation(processingPaid);
+        const customerId = (await readReservation(id))?.dotyposCustomerId;
+
+        await confirm(id);
+        const retry = await runFailure((repository) =>
+          repository.markReservationConfirmed({ id, confirmedAt: at(4) })
+        );
+        await Effect.runPromise(
+          recordCustomerEvent(testDatabase.db, {
+            kind: "reservation-booked",
+            occurredAt: at(4),
+            dotyposCustomerId: customerId!,
+            workspaceReservationId: id,
+          })
+        );
+
+        expect(retry).toBeInstanceOf(WorkspaceReservationStateError);
+        expect(await readEvents(id)).toEqual([
+          {
+            kind: "reservation-booked",
+            occurredAt: at(3),
+            dotyposCustomerId: customerId!,
+          },
+        ]);
+      });
+
+      test("rolls the confirmation back with a failed event write", async () => {
+        const id = await insertReservation(processingPaid);
+        const rejection = `reject_customer_event_${crypto.randomUUID().replaceAll("-", "")}`;
+        await testDatabase.pool.query(
+          `create function ${rejection}() returns trigger language plpgsql as $$
+           begin
+             if new.workspace_reservation_id = '${id}' then
+               raise exception 'forced customer event failure';
+             end if;
+             return new;
+           end $$`
+        );
+        await testDatabase.pool.query(
+          `create trigger ${rejection} before insert on customer_events
+           for each row execute function ${rejection}()`
+        );
+        const failure = await runFailure((repository) =>
+          repository.markReservationConfirmed({ id, confirmedAt: at(3) })
+        ).finally(async () => {
+          await testDatabase.pool.query(
+            `drop trigger ${rejection} on customer_events`
+          );
+          await testDatabase.pool.query(`drop function ${rejection}()`);
+        });
+
+        expect(failure).not.toBeInstanceOf(WorkspaceReservationStateError);
+        expect(await readReservation(id)).toMatchObject({
+          reservationState: "held",
+          reservationConfirmedAt: null,
+        });
+        expect(await readEvents(id)).toEqual([]);
+      });
+
+      test("records a cancelled event only for an administration cancellation of a confirmed booking", async () => {
+        const claimedAt = at(5);
+        const cancelling = {
+          ...paid,
+          reservationState: "cancelling",
+          fulfillmentState: "fulfilled",
+          fulfilledAt: at(1),
+          updatedAt: claimedAt,
+        } as const;
+        const confirmed = await insertReservation({
+          ...cancelling,
+          reservationConfirmedAt: at(1),
+        });
+        const unconfirmed = await insertReservation(cancelling);
+        const cancel = (id: WorkspaceReservationId) =>
+          run((repository) =>
+            repository.markAdministrationCancelled({
+              id,
+              cancelledAt: at(6),
+              claimedAt,
+              failureCode: "operator_cancelled",
+            })
+          );
+
+        await cancel(confirmed);
+        await cancel(unconfirmed);
+
+        expect(await readEvents(confirmed)).toEqual([
+          {
+            kind: "reservation-cancelled",
+            occurredAt: at(6),
+            dotyposCustomerId: (await readReservation(confirmed))!
+              .dotyposCustomerId,
+          },
+        ]);
+        expect(await readEvents(unconfirmed)).toEqual([]);
+      });
+
+      test("records nothing for an unpaid cancellation or a supersession", async () => {
+        const unpaid = await insertReservation({
+          reservationState: "cancelling",
+        });
+        const superseded = await insertReservation({
+          reservationState: "cancelling",
+          paymentState: "failed",
+        });
+        const replacementKey = crypto.randomUUID();
+
+        await run((repository) =>
+          repository.markCancelled({ id: unpaid, cancelledAt: at(2) })
+        );
+        const replacement = await run((repository) =>
+          repository.completeSupersessionAndCreateDraft({
+            cancelledReservationId: superseded,
+            cancelledAt: at(2),
+            replacement: {
+              checkoutSessionKey: checkoutSessionKeySchema.make(
+                `session-${replacementKey}`
+              ),
+              checkoutAttemptKey: checkoutAttemptKeySchema.make(
+                `attempt-${replacementKey}`
+              ),
+              dotyposCustomerId: DotyposCustomerIdSchema.make(
+                `customer-${replacementKey}`
+              ),
+              authorAccountId: null,
+              reservationPurpose: "personal",
+              reservationDetails: {
+                kind: "cowork",
+                entryTier: "basic",
+                coffee: false,
+              },
+              locale: "en-US",
+            },
+          })
+        );
+        reservationIds.push(replacement.id);
+
+        expect((await readReservation(unpaid))?.reservationState).toBe(
+          "cancelled"
+        );
+        expect((await readReservation(superseded))?.reservationState).toBe(
+          "cancelled"
+        );
+        for (const id of [unpaid, superseded, replacement.id]) {
+          expect(await readEvents(id)).toEqual([]);
+        }
       });
     });
   }
