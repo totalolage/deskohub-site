@@ -52,7 +52,9 @@ const ceremonyFailure = (cause: unknown) =>
  * cookie after the new one's. An autofill attempt never replaces one the
  * customer started; it resolves as cancelled instead. An attempt cancelled
  * by `signal` or a newer attempt resolves as cancelled and sends no further
- * request, whatever its pending requests resolve with.
+ * request, whatever its pending requests resolve with. Once the verification
+ * succeeds the session exists, so a later cancellation, even one the session
+ * signal triggers, still resolves the sign-in; the caller rechecks `signal`.
  */
 export const requestPasskeySignIn = async ({
   autoFill,

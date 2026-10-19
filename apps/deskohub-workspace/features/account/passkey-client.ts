@@ -117,6 +117,11 @@ const toPasskeyChangeResult = (
  * same-origin `returnTo`, otherwise the account. Anything but a sign-in leaves
  * the page as it is. Aborting `signal` cancels the attempt, and a newer
  * attempt on the page cancels it too.
+ *
+ * Cancelling after the server accepted the passkey can't undo the sign-in:
+ * the browser keeps the session and its bookkeeping, but the attempt resolves
+ * as cancelled and doesn't navigate to its stale destination. The customer
+ * stays, signed in, on the page that cancelled it.
  */
 export const signInWithPasskey = async ({
   locale,
@@ -139,6 +144,7 @@ export const signInWithPasskey = async ({
   recordSignInCompletion("passkey");
   // A signed-in tab must not show a pending code step after a sign-out.
   forgetEmailSignInRequest();
+  if (signal?.aborted) return "cancelled";
   try {
     window.location.replace(getSignInDestination(locale, returnTo));
   } catch {

@@ -257,6 +257,19 @@ describe("passkey sign-in attempts", () => {
     expect(notify).not.toHaveBeenCalled();
   });
 
+  test("reports the sign-in of an attempt cancelled once the session exists", async () => {
+    const card = new AbortController();
+    notify.mockImplementationOnce(() => card.abort());
+    const button = requestPasskeySignIn({
+      autoFill: false,
+      signal: card.signal,
+    });
+    await completeButton();
+
+    await expect(button).resolves.toEqual(signedIn);
+    expect(card.signal.aborted).toBe(true);
+  });
+
   test("returns a refused options or verification response unchanged", async () => {
     const refusedOptions = { data: null, error: { code: "RATE_LIMITED" } };
     const first = requestPasskeySignIn({ autoFill: false });

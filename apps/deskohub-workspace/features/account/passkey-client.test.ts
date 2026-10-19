@@ -180,6 +180,39 @@ describe("passkey client", () => {
     }
   );
 
+  test.each([
+    ["while the sign-in resolves", (owner: AbortController) => owner.abort()],
+    [
+      "right after the sign-in resolves",
+      (owner: AbortController) => queueMicrotask(() => owner.abort()),
+    ],
+  ])(
+    "keeps the session but leaves the page alone when the attempt is cancelled %s",
+    async (_timing, cancel) => {
+      const owner = new AbortController();
+      requestPasskeySignIn.mockImplementationOnce(() => {
+        cancel(owner);
+        return Promise.resolve({
+          data: { session: { userId: "account-1" }, user: { id: "account-1" } },
+          error: null,
+        });
+      });
+
+      await expect(
+        passkeyClient.signInWithPasskey({
+          locale: "cs-CZ",
+          returnTo: "/cs-CZ/admin/invoices?page=2",
+          signal: owner.signal,
+        })
+      ).resolves.toBe("cancelled");
+
+      expect(rememberPasskeyOnThisBrowser).toHaveBeenCalledWith("account-1");
+      expect(recordSignInCompletion).toHaveBeenCalledWith("passkey");
+      expect(forgetEmailSignInRequest).toHaveBeenCalledTimes(1);
+      expect(replace).not.toHaveBeenCalled();
+    }
+  );
+
   test("passes autofill through and stays on the page when it is cancelled", async () => {
     requestPasskeySignIn.mockResolvedValueOnce(failure("AUTH_CANCELLED"));
 
