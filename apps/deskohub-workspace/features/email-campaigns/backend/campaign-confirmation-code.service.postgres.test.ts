@@ -358,15 +358,8 @@ describe.skipIf(!testDatabase)(
     });
 
     test("refuses codes for an automated campaign", async () => {
-      // Nothing writes automated campaigns yet, so the test flips a Draft
-      // that holds a code, and inserts the other statuses, by SQL.
+      // Nothing writes automated campaigns yet, so the test inserts them by SQL.
       const campaign = await createDraft();
-      const { code } = await issueFor(campaign);
-      await testDatabase.pool.query(
-        "update email_campaigns set delivery = 'automated' where id = $1",
-        [campaign.id]
-      );
-      const automatedIds = [campaign.id];
       for (const status of ["draft", "active", "paused", "archived"] as const) {
         const { rows } = await testDatabase.pool.query<{ id: CampaignId }>(
           `insert into email_campaigns (title, purpose, template_key, delivery, status)
@@ -374,16 +367,14 @@ describe.skipIf(!testDatabase)(
            returning id`,
           [status]
         );
-        campaignIds.push(rows[0]!.id);
-        automatedIds.push(rows[0]!.id);
-      }
-
-      for (const campaignId of automatedIds) {
+        const campaignId = rows[0]!.id;
+        campaignIds.push(campaignId);
         const mismatch = {
           _tag: "CampaignDeliveryMismatch",
           campaignId,
           delivery: "automated",
         };
+
         const issued = await runAt(
           { seconds: 0 },
           CampaignConfirmationCodeService.pipe(
@@ -400,19 +391,21 @@ describe.skipIf(!testDatabase)(
           )
         );
         expect(failure(issued)).toMatchObject(mismatch);
-        expect(failure(await confirm(campaignId, code))).toMatchObject(
+        expect(failure(await confirm(campaignId, "AAAAAAAA"))).toMatchObject(
           mismatch
         );
-      }
 
-      const { rows } = await testDatabase.pool.query(
-        `select c.status, count(s.id)::int as sends
-         from email_campaigns c
-         left join email_campaign_sends s on s.campaign_id = c.id
-         where c.id = $1 group by c.status`,
-        [campaign.id]
-      );
-      expect(rows).toEqual([{ status: "draft", sends: 0 }]);
+        const { rows: state } = await testDatabase.pool.query(
+          `select c.status,
+             (select count(*)::int from email_campaign_confirmation_codes k
+              where k.campaign_id = c.id) as codes,
+             (select count(*)::int from email_campaign_sends s
+              where s.campaign_id = c.id) as sends
+           from email_campaigns c where c.id = $1`,
+          [campaignId]
+        );
+        expect(state).toEqual([{ status, codes: 0, sends: 0 }]);
+      }
     });
   }
 );

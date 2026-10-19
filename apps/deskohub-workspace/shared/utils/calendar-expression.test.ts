@@ -214,11 +214,14 @@ describe("nextStart", () => {
     ["an hourly", { minutes: [30] }, "2026-10-25T03:30+01:00"],
     ["a half-hourly", { minutes: [0, 30] }, "2026-10-25T03:00+01:00"],
     ["a daily", { hours: [2], minutes: [30] }, "2026-10-26T02:30+01:00"],
-  ])("skips %s time already started in the first repeated autumn hour", (_, expression, expected) => {
-    // 02:10 CET, in the second occurrence of 02:00–02:59.
-    const secondTwoTen = Temporal.Instant.from("2026-10-25T01:10:00Z");
-    expect(starts(expression, secondTwoTen, 1)).toEqual([expected]);
-  });
+  ])(
+    "skips %s time already started in the first repeated autumn hour",
+    (_, expression, expected) => {
+      // 02:10 CET, in the second occurrence of 02:00–02:59.
+      const secondTwoTen = Temporal.Instant.from("2026-10-25T01:10:00Z");
+      expect(starts(expression, secondTwoTen, 1)).toEqual([expected]);
+    }
+  );
 
   test("starts strictly after the given instant", () => {
     expect(starts({ months: [12] }, prague("2026-12-01T00:00"), 1)).toEqual([
@@ -301,38 +304,43 @@ describe("nextStart around 2026 DST transitions", () => {
     ["half-hourly", { minutes: [0, 30] }],
     ["daily", { hours: [2], minutes: [30] }],
     ["daily at hour grain", { hours: [2] }],
-  ])("%s starts lie strictly after their input and agree with holds", (_, expression) => {
-    const failures: string[] = [];
-    for (const day of ["2026-03-29", "2026-10-25"]) {
-      const from = Temporal.PlainDate.from(day)
-        .subtract({ days: 1 })
-        .toZonedDateTime({ timeZone, plainTime: "22:00" })
-        .toInstant();
-      const to = from.add({ hours: 8 });
-      const known = holdStarts(expression, from, to.add({ hours: 48 }));
-      for (
-        let after = from;
-        Temporal.Instant.compare(after, to) < 0;
-        after = after.add({ seconds: 30 })
-      ) {
-        const next = Effect.runSync(nextStart(expression, after));
-        const firstHeld = known.find(
-          (start) => Temporal.Instant.compare(start, after) > 0
-        );
-        const consistent =
-          Temporal.Instant.compare(next, after) > 0 &&
-          !isRepeat(next) &&
-          (followsGap(next)
-            ? firstHeld !== undefined &&
-              Temporal.Instant.compare(next, firstHeld) <= 0
-            : firstHeld?.equals(next) === true);
-        if (!consistent) {
-          failures.push(`after ${after}: ${next} (holds starts ${firstHeld})`);
+  ])(
+    "%s starts lie strictly after their input and agree with holds",
+    (_, expression) => {
+      const failures: string[] = [];
+      for (const day of ["2026-03-29", "2026-10-25"]) {
+        const from = Temporal.PlainDate.from(day)
+          .subtract({ days: 1 })
+          .toZonedDateTime({ timeZone, plainTime: "22:00" })
+          .toInstant();
+        const to = from.add({ hours: 8 });
+        const known = holdStarts(expression, from, to.add({ hours: 48 }));
+        for (
+          let after = from;
+          Temporal.Instant.compare(after, to) < 0;
+          after = after.add({ seconds: 30 })
+        ) {
+          const next = Effect.runSync(nextStart(expression, after));
+          const firstHeld = known.find(
+            (start) => Temporal.Instant.compare(start, after) > 0
+          );
+          const consistent =
+            Temporal.Instant.compare(next, after) > 0 &&
+            !isRepeat(next) &&
+            (followsGap(next)
+              ? firstHeld !== undefined &&
+                Temporal.Instant.compare(next, firstHeld) <= 0
+              : firstHeld?.equals(next) === true);
+          if (!consistent) {
+            failures.push(
+              `after ${after}: ${next} (holds starts ${firstHeld})`
+            );
+          }
         }
       }
+      expect(failures).toEqual([]);
     }
-    expect(failures).toEqual([]);
-  });
+  );
 });
 
 describe("holds", () => {
