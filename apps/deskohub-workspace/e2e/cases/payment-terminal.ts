@@ -4,6 +4,7 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
 import {
   activateHydratedBrowserElement,
   openBrowserPage,
+  readBrowserUrl,
   switchToBrowserTab,
   switchToMainFrame,
   waitForBrowserCondition,
@@ -17,15 +18,16 @@ import {
 } from "../checkout/payment";
 import type { WorkspaceE2EConfig } from "../config";
 import { WorkspaceE2EHostedPaymentPermitService } from "../coordination/hosted-payment-permit.service";
-import type { WorkspaceE2EError } from "../errors";
+import { tryWorkspaceE2ESync, type WorkspaceE2EError } from "../errors";
 import {
   assertPaymentTerminalRow,
   markPaymentTerminalForE2E,
+  readCheckoutRow,
   requireProviderSessionRowAfterRedirect,
 } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
-import { log, parseUrl } from "../runtime";
+import { assert, log, parseUrl } from "../runtime";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
 import type {
   CheckoutData,
@@ -34,18 +36,25 @@ import type {
   WorkspaceE2EStepRunner,
 } from "../types";
 import { makeUrl, setSearchParams } from "../urls";
+import { completeHostedCheckoutPayment } from "./checkout";
 
 export const getPaymentTerminalScenarios =
   (): readonly PaymentTerminalScenario[] => [
     {
-      providerStatus: "DECLINED",
+      failureCode: "nexi_payment_failed",
+      id: "payment-authentication-failed",
+      providerStatus: "THREEDS_FAILED",
       state: "failed",
       titlePattern: /Payment was not completed\./i,
+      trigger: "hosted_authentication_failure",
     },
     {
+      failureCode: "workspace_e2e_nexi_cancelled",
+      id: "payment-cancelled",
       providerStatus: "CANCELLED",
       state: "cancelled",
       titlePattern: /Payment was cancelled\./i,
+      trigger: "injected",
     },
   ];
 
@@ -75,7 +84,6 @@ export const assertPaymentTerminalPath = ({
   E2EDatabase | WorkspaceE2EHostedPaymentPermitService
 > =>
   Effect.gen(function* () {
-    const hostedPaymentPermit = yield* WorkspaceE2EHostedPaymentPermitService;
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: prepareCheckoutPaymentAttempt({
@@ -92,6 +100,96 @@ export const assertPaymentTerminalPath = ({
       timeoutMs: config.timeouts.checkoutStart,
     });
     state.orderId = orderId;
+    if (scenario.trigger === "hosted_authentication_failure") {
+      // The hosted-payment permit ends once Nexi returns to checkout status.
+      yield* completeHostedCheckoutPayment({
+        challengeOutcome: "failed",
+        config,
+        data,
+        orderId,
+        run,
+        runStep,
+        session,
+        state,
+      });
+      // The status page reconciles the order with Nexi; no webhook replay.
+      yield* runStep({
+        execute: assertReturnedTerminalStatusPage({
+          orderId,
+          run,
+          scenario,
+          session,
+          timeouts: config.timeouts,
+        }),
+        id: `assert-${scenario.state}-status-page`,
+        timeoutMs: config.timeouts.uiTransition,
+      });
+      yield* runStep({
+        execute: validateReconciledTerminalRow({ orderId, scenario, state }),
+        id: `validate-${scenario.state}-payment-state`,
+        timeoutMs: config.timeouts.datasource,
+      });
+    } else {
+      yield* injectPaymentTerminalState({
+        config,
+        orderId,
+        run,
+        runStep,
+        scenario,
+        session,
+        state,
+      });
+      yield* runStep({
+        execute: assertTerminalStatusPage({
+          config,
+          orderId,
+          run,
+          scenario,
+          session,
+        }),
+        id: `assert-${scenario.state}-status-page`,
+        timeoutMs: config.timeouts.uiTransition,
+      });
+    }
+    yield* runStep({
+      execute: retryReservation({
+        data,
+        reservationPath,
+        run,
+        scenario,
+        session,
+        timeouts: config.timeouts,
+      }),
+      id: "retry-reservation",
+      timeoutMs: config.timeouts.uiTransition,
+    });
+
+    log(`Payment ${scenario.state} status e2e passed for order ${orderId}`);
+  });
+
+const injectPaymentTerminalState = ({
+  config,
+  orderId,
+  run,
+  runStep,
+  scenario,
+  session,
+  state,
+}: {
+  config: WorkspaceE2EConfig;
+  orderId: WorkspaceReservationId;
+  run: Runner;
+  runStep: WorkspaceE2EStepRunner;
+  scenario: PaymentTerminalScenario;
+  session: string;
+  state: CheckoutFlowState;
+}): Effect.Effect<
+  void,
+  WorkspaceE2EError,
+  E2EDatabase | WorkspaceE2EHostedPaymentPermitService
+> =>
+  Effect.gen(function* () {
+    const hostedPaymentPermit = yield* WorkspaceE2EHostedPaymentPermitService;
     // The hosted session ends once the attempt reaches its terminal state.
     yield* hostedPaymentPermit.withPermit(
       session,
@@ -122,31 +220,6 @@ export const assertPaymentTerminalPath = ({
         });
       })
     );
-    yield* runStep({
-      execute: assertTerminalStatusPage({
-        config,
-        orderId,
-        run,
-        scenario,
-        session,
-      }),
-      id: `assert-${scenario.state}-status-page`,
-      timeoutMs: config.timeouts.uiTransition,
-    });
-    yield* runStep({
-      execute: retryReservation({
-        data,
-        reservationPath,
-        run,
-        scenario,
-        session,
-        timeouts: config.timeouts,
-      }),
-      id: "retry-reservation",
-      timeoutMs: config.timeouts.uiTransition,
-    });
-
-    log(`Payment ${scenario.state} status e2e passed for order ${orderId}`);
   });
 
 const preparePaymentTerminalState = ({
@@ -291,6 +364,67 @@ const assertTerminalStatusPage = ({
     });
 
     log(`Checkout ${scenario.state} status page validated`);
+  });
+
+const isOrderStatusUrl = (value: string, orderId: WorkspaceReservationId) =>
+  parseUrl(value)?.pathname.endsWith(`/reservation/status/${orderId}`) ===
+  true;
+
+// The customer stays on the status page Nexi returned to; it refreshes while
+// the payment is pending and reconciles the order with Nexi.
+const assertReturnedTerminalStatusPage = ({
+  orderId,
+  run,
+  scenario,
+  session,
+  timeouts,
+}: {
+  orderId: WorkspaceReservationId;
+  run: Runner;
+  scenario: PaymentTerminalScenario;
+  session: string;
+  timeouts: WorkspaceE2ETimeouts;
+}): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const url = yield* readBrowserUrl(run, session);
+    yield* tryWorkspaceE2ESync("assert returned checkout status order", () =>
+      assert(
+        url && isOrderStatusUrl(url, orderId),
+        "Nexi returned to a different checkout status page"
+      )
+    );
+    yield* waitForBrowserText({
+      description: `${scenario.state} checkout status copy after the Nexi return`,
+      matches: (text) =>
+        scenario.titlePattern.test(text) && /Try again/i.test(text),
+      run,
+      session,
+      timeoutMs: timeouts.uiTransition,
+    });
+
+    log(`Checkout ${scenario.state} status page validated after the Nexi return`);
+  });
+
+const validateReconciledTerminalRow = ({
+  orderId,
+  scenario,
+  state,
+}: {
+  orderId: WorkspaceReservationId;
+  scenario: PaymentTerminalScenario;
+  state: CheckoutFlowState;
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const row = yield* readCheckoutRow(orderId);
+    const checkoutRow = yield* tryWorkspaceE2ESync(
+      "read reconciled terminal checkout row",
+      () => {
+        assert(row, "checkout row missing after the Nexi return");
+        return row;
+      }
+    );
+    state.checkoutRow = checkoutRow;
+    yield* assertPaymentTerminalRow(checkoutRow, scenario);
   });
 
 const activateStatusRetry = (

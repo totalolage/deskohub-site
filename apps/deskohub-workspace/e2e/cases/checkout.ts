@@ -36,6 +36,7 @@ import {
 import {
   completeNexiHostedPayment,
   type HostedPaymentPage,
+  type NexiChallengeOutcome,
 } from "../checkout/nexi-hosted-payment";
 import {
   classifyNexiSandboxRejection,
@@ -265,7 +266,9 @@ export const executeCheckoutFlow = ({
     log(`${flow.id} checkout e2e passed for order ${orderId}`);
   });
 
-type HostedCheckoutPaymentOptions = {
+export type HostedCheckoutPaymentOptions = {
+  // Defaults to an authenticated payment.
+  readonly challengeOutcome?: NexiChallengeOutcome;
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
   readonly orderId: CheckoutRow["reservation_id"];
@@ -325,6 +328,7 @@ export const completeHostedCheckoutPayment = (
 
 const runHostedPaymentAttempt = (
   {
+    challengeOutcome,
     config,
     data,
     orderId,
@@ -369,6 +373,7 @@ const runHostedPaymentAttempt = (
     let authorizationRequested = false;
     const rejected = yield* runStep({
       execute: completeNexiHostedPayment({
+        ...(challengeOutcome ? { challengeOutcome } : {}),
         data,
         hostedPaymentPage,
         onPaymentAuthorizationRequested: () => {
