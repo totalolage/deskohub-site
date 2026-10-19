@@ -54,7 +54,7 @@ const runWithDiscounts = <A, E>(
 describe("office checkout pricing", () => {
   test("quotes with the exact seat and inclusive-day product identity", async () => {
     const discoverAdvertisedDiscounts = mock(() =>
-      Effect.succeed(advertisementQuote)
+      Effect.succeed({ quote: advertisementQuote, complete: true })
     );
 
     const result = await runWithDiscounts(
@@ -76,6 +76,7 @@ describe("office checkout pricing", () => {
       bookedAt: expect.any(Temporal.Instant),
     });
     expect(result.quote.payment.expectedPrice).toEqual(money);
+    expect(result.discountsComplete).toBeTrue();
   });
 
   test.each([
