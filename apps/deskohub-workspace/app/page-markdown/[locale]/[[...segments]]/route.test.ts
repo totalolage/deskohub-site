@@ -2,13 +2,13 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import { advertisedCatalogOfferings } from "@/features/checkout/public-offerings.test-utils";
 import type { Locale } from "@/features/i18n";
 import { getLegalDocument } from "@/features/legal/content";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { type PublicPage, publicPages } from "@/features/public-pages";
 import { PublishedPublicPagesService } from "@/features/public-pages/backend";
 import { publicPageMarkdown } from "@/features/public-pages/public-page-markdown";
-import { catalogPricedOfferings } from "@/features/public-pages/public-page-markdown.test-utils";
 
 // Outside a Next.js render there is no cache to configure.
 const nextCache = await import("next/cache");
@@ -23,7 +23,10 @@ mock.module("@/features/checkout/backend/checkout/public-offerings", () => ({
       const officeOpen = yield* officeFlag.isEnabled;
       return {
         advertisedOn: Temporal.Now.plainDateISO(),
-        offerings: catalogPricedOfferings(locale, { officeOpen }),
+        offerings: advertisedCatalogOfferings({
+          locale,
+          ...(officeOpen && { office: {} }),
+        }),
       };
     }),
 }));

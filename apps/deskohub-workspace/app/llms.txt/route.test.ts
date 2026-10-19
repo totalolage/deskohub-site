@@ -2,12 +2,12 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import { advertisedCatalogOfferings } from "@/features/checkout/public-offerings.test-utils";
 import type { Locale } from "@/features/i18n";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { type PublicPage, publicPages } from "@/features/public-pages";
 import { PublishedPublicPagesService } from "@/features/public-pages/backend";
 import { findLocalizedPublicPage } from "@/features/public-pages/page-markdown-negotiation";
-import { catalogPricedOfferings } from "@/features/public-pages/public-page-markdown.test-utils";
 import { markdownLinkUrls } from "@/shared/markdown/markdown.test-utils";
 
 // Outside a Next.js render there is no cache to configure.
@@ -23,7 +23,10 @@ mock.module("@/features/checkout/backend/checkout/public-offerings", () => ({
       const officeOpen = yield* officeFlag.isEnabled;
       return {
         advertisedOn: Temporal.Now.plainDateISO(),
-        offerings: catalogPricedOfferings(locale, { officeOpen }),
+        offerings: advertisedCatalogOfferings({
+          locale,
+          ...(officeOpen && { office: {} }),
+        }),
       };
     }),
 }));
@@ -68,9 +71,10 @@ describe("/llms.txt", () => {
     publishedPages = publicPages.filter(
       ({ releaseGate }: PublicPage) => releaseGate === undefined
     );
-    const office = catalogPricedOfferings("en-US", { officeOpen: true }).find(
-      ({ kind }) => kind === "office"
-    );
+    const office = advertisedCatalogOfferings({
+      locale: "en-US",
+      office: {},
+    }).find(({ kind }) => kind === "office");
 
     const body = await (await getLlmsTxt()).text();
     const listed = markdownLinkUrls(body)

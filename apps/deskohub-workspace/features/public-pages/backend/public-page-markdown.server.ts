@@ -58,15 +58,23 @@ const loadMarkdownOfferings = (
           getPublicCatalogOfferings({
             locale,
             ...(officeOpen && { office: {} }),
-          }).map(
-            (offering): PublicOffering => ({
+          }).map((offering): PublicOffering => {
+            // The office advertises one day with one seat.
+            const price =
+              offering.kind === "office"
+                ? workspaceMoneyWithValue(
+                    offering.price.value + offering.seatPrice.value,
+                    offering.price
+                  )
+                : offering.price;
+            return {
               ...offering,
               advertisedPrice: {
-                price: offering.price,
-                discount: workspaceMoneyWithValue(0, offering.price),
+                price,
+                discount: workspaceMoneyWithValue(0, price),
               },
-            })
-          )
+            };
+          })
         )
       )
     )

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { getPublicOpeningHours } from "@/features/checkout/public-offerings";
+import { advertisedCatalogOfferings } from "@/features/checkout/public-offerings.test-utils";
 import { locales, m } from "@/features/i18n";
 import { serializeMarkdown } from "@/shared/markdown/markdown";
 import {
@@ -10,7 +11,6 @@ import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { llmsTxtMarkdown } from "./llms-txt";
 import { findLocalizedPublicPage } from "./page-markdown-negotiation";
 import { publicPageMarkdown } from "./public-page-markdown";
-import { catalogPricedOfferings } from "./public-page-markdown.test-utils";
 import { type PublicPagePathname, publicPages } from "./public-pages";
 
 const allPages = publicPages.map(({ pathname }) => pathname);
@@ -23,7 +23,10 @@ const renderLlmsTxt = (
   serializeMarkdown(
     llmsTxtMarkdown({
       pages,
-      offerings: catalogPricedOfferings(locale, { officeOpen }),
+      offerings: advertisedCatalogOfferings({
+        locale,
+        ...(officeOpen && { office: {} }),
+      }),
     })
   );
 
@@ -108,9 +111,7 @@ describe("llmsTxtMarkdown", () => {
   test("lists every offering under the prices and the contact email", () => {
     const text = markdownPlainText(renderLlmsTxt());
 
-    for (const offering of catalogPricedOfferings(locale, {
-      officeOpen: true,
-    })) {
+    for (const offering of advertisedCatalogOfferings({ locale, office: {} })) {
       expect(text).toContain(offering.name);
     }
     expect(markdownLinkUrls(renderLlmsTxt())).toContain(
