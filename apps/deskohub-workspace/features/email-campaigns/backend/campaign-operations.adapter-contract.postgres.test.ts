@@ -719,7 +719,10 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
   };
 
   /** Saves the working copy as an administrator would; returns its hash. */
-  const saveAutomationFlow = async (campaignId: string, flow: unknown) => {
+  const saveAutomationFlow = async (
+    campaignId: string,
+    flow: typeof twiceHourlyFlow
+  ) => {
     const { AutomationLifecycle } = await import(
       "../automation/backend/automation-lifecycle.service"
     );

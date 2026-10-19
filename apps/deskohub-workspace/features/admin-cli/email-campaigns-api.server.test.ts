@@ -10,7 +10,6 @@ import {
   AdministrationDotyposCustomerId,
   AdministrationLegacyUsername,
   CliBearerAuthentication,
-  CliClientCompatibility,
   CliInputInvalid,
   CliMutationRejected,
   CliMutationRequestId,
@@ -19,23 +18,19 @@ import {
   CliSessionId,
   CliSessionUnauthorized,
   CurrentCliSession,
-  dhwVersionHeader,
   digestCliAuthenticationSecret,
   makeCliAuthenticationSecret,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeCrypto, NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer, Option } from "effect";
-import { HttpClientRequest } from "effect/unstable/http";
-import { HttpApiMiddleware, HttpApiTest } from "effect/unstable/httpapi";
+import { HttpApiTest } from "effect/unstable/httpapi";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type CampaignAudienceRow,
   type CampaignRow,
   cliSessions,
 } from "@/db/schema";
-import { customerAccountIdSchema } from "@/features/account/customer-account";
-import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { CampaignService } from "@/features/email-campaigns/backend/campaign.service";
 import { CampaignAudienceService } from "@/features/email-campaigns/backend/campaign-audience.service";
 import { CampaignConfirmationCodeService } from "@/features/email-campaigns/backend/campaign-confirmation-code.service";
@@ -44,6 +39,7 @@ import {
   resolveCampaignEmailConfig,
 } from "@/features/email-campaigns/backend/campaign-email.config";
 import { CampaignOperations } from "@/features/email-campaigns/backend/campaign-operations.service";
+import { automationServiceStubs } from "@/features/email-campaigns/backend/campaign-operations.test-utils";
 import { CampaignRecipientService } from "@/features/email-campaigns/backend/campaign-recipient.service";
 import { CampaignSendService } from "@/features/email-campaigns/backend/campaign-send.service";
 import { CampaignSendQueueService } from "@/features/email-campaigns/backend/campaign-send-queue.service";
@@ -61,7 +57,14 @@ import {
   CampaignTestRecipientInvalid,
 } from "@/features/email-campaigns/errors";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { CliAuthentication } from "./cli-authentication.service";
+import {
+  authorizedCliRequest,
+  ClaimEveryCliMutation,
+  CliSessionAdministrator,
+  cliClientVersion,
+  GrantedAdministrator,
+  UnauthorizedCliRequest,
+} from "./cli-api.test-utils";
 import { CliClientCompatibilityLive } from "./cli-client-version";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
 import { AdminCliCampaignsApiHandlers } from "./email-campaigns-api.server";
@@ -76,16 +79,8 @@ const customerId = AdministrationDotyposCustomerId.make("1001");
 const otherCustomerId = AdministrationDotyposCustomerId.make("1002");
 const createdAt = Temporal.Instant.from("2026-10-14T08:00:00Z");
 const testDhwVersion = "1.20.0";
-
-const TestDhwVersionHeader = HttpApiMiddleware.layerClient(
-  CliClientCompatibility,
-  ({ request, next }) =>
-    next(
-      request.pipe(
-        HttpClientRequest.setHeader(dhwVersionHeader, testDhwVersion)
-      )
-    )
-);
+const AuthorizedCliRequest = authorizedCliRequest(testDhwVersion);
+const TestDhwVersionHeader = cliClientVersion(testDhwVersion);
 
 const parseBody = (markdown: string) =>
   Effect.runPromise(parseCampaignBodyMarkdown(markdown));
@@ -153,55 +148,14 @@ const campaignServices = (overrides: CampaignServiceOverrides) =>
     Layer.succeed(CampaignSendStatusService, {
       ...({} as CampaignSendStatusService["Service"]),
       ...overrides.sendStatus,
-    })
+    }),
+    automationServiceStubs()
   );
 
 const mutationRequestId = (n: number) =>
   CliMutationRequestId.make(
     `01990000-0000-7000-8000-${n.toString().padStart(12, "0")}`
   );
-
-/** Every mutation is new; the Postgres suite below covers replays. */
-const ClaimEveryCliMutation = Layer.succeed(CliMutationIdempotency, {
-  applyOnce: ({ apply }) => apply,
-  claim: () => Effect.succeed({ kind: "claimed" as const }),
-  complete: () => Effect.void,
-  reclaimStale: () => Effect.succeed(false),
-  release: () => Effect.void,
-});
-
-const AuthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
-  bearer: (httpEffect) =>
-    Effect.provideService(httpEffect, CurrentCliSession, {
-      id: CliSessionId.make("01980000-0000-7000-8000-000000000000"),
-      approvedBy: null,
-      clientName: "test client",
-      cliVersion: testDhwVersion,
-      buildTarget: "development",
-      createdAt: "2026-10-14T08:00:00.000Z",
-      lastUsedAt: "2026-10-14T08:00:00.000Z",
-      expiresAt: null,
-    }),
-});
-
-/** The session's approving administrator, whose grant the port re-reads. */
-const sessionAdministrator = {
-  accountId: customerAccountIdSchema.make("account-cli-administrator"),
-  email: testEmailAddress("cli-administrator"),
-};
-const SessionAdministrator = Layer.mock(CliAuthentication, {
-  sessionAdministrator: () => Effect.succeed(sessionAdministrator),
-});
-const GrantedAdministrator = Layer.mock(AccountRoleGrants, {
-  has: () => Effect.succeed(true),
-});
-
-const UnauthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
-  bearer: () =>
-    Effect.fail(
-      new CliSessionUnauthorized({ message: "The CLI session is not valid." })
-    ),
-});
 
 const campaignsClient = HttpApiTest.groups(WorkspaceAdminApi, [
   "campaigns",
@@ -217,7 +171,7 @@ const callCampaignsApi = <A, E>(
     Effect.flatMap(call),
     Effect.provide(AdminCliCampaignsApiHandlers),
     Effect.provide(bearer),
-    Effect.provide(SessionAdministrator),
+    Effect.provide(CliSessionAdministrator),
     Effect.provide(
       CampaignOperations.Default.pipe(
         Layer.provide(
@@ -1012,11 +966,12 @@ describe.skipIf(!testDatabase)(
         Effect.flatMap(call),
         Effect.provide(AdminCliCampaignsApiHandlers),
         Effect.provide(SeededSessionRequest),
-        Effect.provide(SessionAdministrator),
+        Effect.provide(CliSessionAdministrator),
         Effect.provide(CampaignOperations.Default),
         Effect.provide(
           Layer.mergeAll(
             GrantedAdministrator,
+            automationServiceStubs(),
             CampaignService.Default,
             CampaignAudienceService.Default,
             CliMutationIdempotency.Default,

@@ -6,7 +6,6 @@ import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import {
   emailCampaignAutomationRuns,
   emailCampaignAutomationScheduleFires,
-  emailCampaignAutomations,
   emailCampaignAutomationTriggerReceipts,
   emailCampaignAutomationVersions,
   emailCampaignAutomationWorkUnits,

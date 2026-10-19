@@ -21,6 +21,7 @@ import {
 import { CampaignService } from "./campaign.service";
 import { CampaignAudienceService } from "./campaign-audience.service";
 import { CampaignOperations } from "./campaign-operations.service";
+import { automationServiceStubs } from "./campaign-operations.test-utils";
 import { CampaignRecipientService } from "./campaign-recipient.service";
 import { CampaignSendService } from "./campaign-send.service";
 import { CampaignSendStatusService } from "./campaign-send-status.service";
@@ -81,7 +82,8 @@ const runOperations = <A, E>(
             Layer.mock(CampaignAudienceService, {}),
             Layer.mock(CampaignRecipientService, {}),
             Layer.mock(CampaignSendService, overrides.sending ?? {}),
-            Layer.mock(CampaignSendStatusService, {})
+            Layer.mock(CampaignSendStatusService, {}),
+            automationServiceStubs()
           )
         )
       )

@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import { automationServiceStubs } from "../backend/campaign-operations.test-utils";
 import type { ICampaignSendService } from "../backend/campaign-send.service";
 import {
   campaignAudienceIdSchema,
@@ -114,7 +115,8 @@ const stubbedDomain = Layer.mergeAll(
   Layer.succeed(
     sendStatusModule.CampaignSendStatusService,
     sendStatusModule.CampaignSendStatusService.of({} as never)
-  )
+  ),
+  automationServiceStubs()
 );
 
 // The real port over stubbed domain services.
