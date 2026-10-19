@@ -5,6 +5,7 @@ import {
   markdownLinkUrls,
   markdownPlainText,
 } from "@/shared/markdown/markdown.test-utils";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { getCanonicalLegalDocument } from "./canonical-document";
 import { getLegalDocument, type LegalDocumentKey } from "./content";
 import { legalPageMarkdown } from "./legal-page-markdown";
@@ -63,7 +64,9 @@ describe.each(locales)("legalPageMarkdown in %s", (locale) => {
       )
     );
 
-    expect(urls).toContain("mailto:workspace@deskohub.cz");
+    expect(urls).toContain(
+      `mailto:${workspaceSiteConstants.contact.infoEmail}`
+    );
     expect(urls).toContain(
       `https://workspace.deskohub.cz/${locale}/privacy-policy`
     );
