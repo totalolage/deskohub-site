@@ -4,7 +4,10 @@ import { EmailServiceTag } from "@deskohub/email/backend/service";
 import { Context, Data, Effect, Layer, Match, Predicate } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { env } from "@/env";
-import { CustomerEmailLocaleService } from "@/features/account";
+import {
+  CustomerEmailLocaleService,
+  ReservationAuthorDirectory,
+} from "@/features/account";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/reservation/access-code.service";
 import {
@@ -81,6 +84,27 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
       const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
       const posthogEvents = yield* PostHogEventService;
       const reservationInvoices = yield* ReservationInvoiceService;
+      const reservationAuthors = yield* ReservationAuthorDirectory;
+
+      // The author only adds a secondary confirmation, so an author that
+      // can't be read skips it rather than failing fulfillment.
+      const describeReservationAuthor = Effect.fn(
+        "workspacePaidFulfillment.describeReservationAuthor"
+      )(function* (
+        reservation: Pick<WorkspaceReservation, "authorAccountId" | "id">
+      ) {
+        const { authorAccountId } = reservation;
+        if (!authorAccountId) return null;
+        return yield* reservationAuthors.describe([authorAccountId]).pipe(
+          Effect.map((authors) => authors.get(authorAccountId) ?? null),
+          Effect.catch((error) =>
+            Effect.logWarning(
+              "Paid reservation author could not be read; the author confirmation is skipped",
+              { code: error.code, workspaceReservationId: reservation.id }
+            ).pipe(Effect.as(null))
+          )
+        );
+      });
 
       const processReservationInvoice = Effect.fn(
         "workspacePaidFulfillment.processReservationInvoice"
@@ -455,10 +479,18 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
                   })
               )
             );
+            // The author confirmation goes out with the first customer
+            // delivery only; a recovery delivery after a bounce re-sends the
+            // customer's email alone, so the author never gets a duplicate
+            // once the provider's idempotency window has passed.
+            const author = claimed.activeCustomerEmailDeliveryId
+              ? null
+              : yield* describeReservationAuthor(claimed);
             const customerEmailDeliveryId = yield* reservationEmails
               .sendPaidReservationEmails({
                 reservation: reservationForDelivery,
                 customerEmailLocale,
+                author,
                 customerEmailIdempotencyKey:
                   claimed.activeCustomerEmailDeliveryId
                     ? createCustomerEmailRecoveryIdempotencyKey(
@@ -566,6 +598,7 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
     Layer.provide(WorkspaceReservationService.Default),
     Layer.provide(WorkspaceCheckoutAccessCodeService.Live),
     Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(ReservationAuthorDirectory.Default),
     Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer),
     Layer.provide(

@@ -48,7 +48,13 @@ const { WorkspaceReservationRepository } = await import(
 const { WorkspaceReservationService } = await import(
   "@/features/reservation/backend/workspace-reservation.service"
 );
-const { CustomerEmailLocaleService } = await import("@/features/account");
+const {
+  CustomerEmailLocaleService,
+  ReservationAuthorDirectory,
+  ReservationAuthorReadError,
+} = await import("@/features/account");
+// Reservations here are authorless unless a test provides its own authors.
+const noReservationAuthors = Layer.mock(ReservationAuthorDirectory, {});
 const { PostHogEventService } = await import(
   "@/shared/backend/analytics/posthog-event.service"
 );
@@ -119,6 +125,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
+              noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 retainActiveCustomerEmailDeliveryLocale: mock(
@@ -173,6 +180,7 @@ describe("WorkspacePaidFulfillmentService", () => {
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
       customerEmailLocale: "en-US",
+      author: null,
       customerEmailIdempotencyKey:
         "workspace-paid-reservation-access-reservation-id",
     });
@@ -189,6 +197,144 @@ describe("WorkspacePaidFulfillmentService", () => {
     expect(processInvoice).toHaveBeenCalledWith({
       paymentAttemptId: "payment-attempt-id",
     });
+  });
+
+  test("hands the reservation's author to the first paid emails only and still fulfills when the author can't be read", async () => {
+    const author = {
+      kind: "active",
+      accountId: "author-account-id",
+      dotyposCustomerId: "author-dotypos-customer-id",
+      email: testEmailAddress("author"),
+      locale: "cs-CZ",
+    } as const;
+    const fulfill = async (
+      describe: () => ReturnType<
+        (typeof ReservationAuthorDirectory)["Service"]["describe"]
+      >,
+      priorCustomerEmailDeliveryId: string | null = null
+    ) => {
+      const order = {
+        id: "reservation-id",
+        activePaymentAttemptId: "payment-attempt-id",
+        paymentState: "paid",
+        fulfillmentState: priorCustomerEmailDeliveryId
+          ? "failed"
+          : "not_started",
+        activeCustomerEmailDeliveryId: priorCustomerEmailDeliveryId,
+      };
+      const claimed = {
+        ...order,
+        authorAccountId: author.accountId,
+        reservationState: "confirmed",
+        fulfillmentState: "processing",
+        dotyposReservationId: "dotypos-reservation-id",
+        dotyposCustomerId: "dotypos-customer-id",
+        activeCustomerEmailDeliveryLocale: null,
+        locale: "en-US",
+      };
+      const emailReservation = {
+        ...claimed,
+        reservationDetails: {
+          kind: "cowork",
+          entryTier: "basic",
+          coffee: false,
+        },
+        customer: { email: testEmailAddressForCustomer },
+        reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
+        reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
+      };
+      const sendPaidReservationEmails = mock(() =>
+        Effect.succeed(
+          EmailDeliveryIdSchema.make("accepted-customer-email-delivery")
+        )
+      );
+      const markFulfilled = mock(() => Effect.void);
+      const describeAuthors = mock(describe);
+
+      await Effect.gen(function* () {
+        const service = yield* WorkspacePaidFulfillmentService;
+        yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
+      }).pipe(
+        Effect.provide(
+          WorkspacePaidFulfillmentService.Default.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.mock(ReservationAuthorDirectory, {
+                  describe: describeAuthors,
+                }),
+                Layer.mock(WorkspaceReservationRepository, {
+                  findById: mock(() => Effect.succeed(order as never)),
+                  retainActiveCustomerEmailDeliveryLocale: mock(
+                    (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+                      Effect.succeed(input.locale)
+                  ),
+                  claimPaidFulfillment: mock(() =>
+                    Effect.succeed(claimed as never)
+                  ),
+                  markFulfilled,
+                  markFulfillmentFailed: mock(() => Effect.void),
+                }),
+                Layer.mock(DotyposService, {}),
+                Layer.mock(CustomerEmailLocaleService, {
+                  byDotyposCustomer: mock(() =>
+                    Effect.succeed({ kind: "guest" })
+                  ),
+                }),
+                Layer.mock(WorkspaceReservationService, {
+                  getReservation: mock(() =>
+                    Effect.succeed(emailReservation as never)
+                  ),
+                } satisfies IWorkspaceReservationService),
+                Layer.mock(WorkspaceReservationEmailService, {
+                  sendPaidReservationEmails,
+                } satisfies IWorkspaceReservationEmailService),
+                Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                  resolveCustomerAccessCode: mock(() =>
+                    Effect.succeed("access-code")
+                  ),
+                }),
+                Layer.mock(PostHogEventService, {
+                  capture: mock(() => Effect.void),
+                }),
+                Layer.mock(ReservationInvoiceService, {
+                  processByPaymentAttemptId: mock(() => Effect.void),
+                })
+              )
+            )
+          )
+        ),
+        Effect.runPromise
+      );
+
+      return { sendPaidReservationEmails, markFulfilled, describeAuthors };
+    };
+
+    const described = await fulfill(() =>
+      Effect.succeed(new Map([[author.accountId, author]]) as never)
+    );
+    expect(described.sendPaidReservationEmails).toHaveBeenCalledWith(
+      expect.objectContaining({ author })
+    );
+    expect(described.markFulfilled).toHaveBeenCalled();
+
+    const unreadable = await fulfill(() =>
+      Effect.fail(
+        new ReservationAuthorReadError({ code: "reservation-author.read" })
+      )
+    );
+    expect(unreadable.sendPaidReservationEmails).toHaveBeenCalledWith(
+      expect.objectContaining({ author: null })
+    );
+    expect(unreadable.markFulfilled).toHaveBeenCalled();
+
+    const recovery = await fulfill(
+      () => Effect.succeed(new Map([[author.accountId, author]]) as never),
+      "bounced-customer-email-delivery"
+    );
+    expect(recovery.describeAuthors).not.toHaveBeenCalled();
+    expect(recovery.sendPaidReservationEmails).toHaveBeenCalledWith(
+      expect.objectContaining({ author: null })
+    );
   });
 
   test("confirms held paid orders, sends emails, and completes non-production fulfillment", async () => {
@@ -237,6 +383,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
+              noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 retainActiveCustomerEmailDeliveryLocale: mock(
@@ -291,6 +438,7 @@ describe("WorkspacePaidFulfillmentService", () => {
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
       customerEmailLocale: "en-US",
+      author: null,
       customerEmailIdempotencyKey:
         "workspace-paid-reservation-access-reservation-id",
     });
@@ -368,6 +516,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
+              noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 retainActiveCustomerEmailDeliveryLocale: mock(
@@ -428,6 +577,7 @@ describe("WorkspacePaidFulfillmentService", () => {
     expect(sendInputs[0]).toEqual({
       reservation: emailReservation,
       customerEmailLocale: "en-US",
+      author: null,
       customerEmailIdempotencyKey:
         createCustomerEmailRecoveryIdempotencyKey(priorDeliveryId),
     });
@@ -477,6 +627,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
+              noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 retainActiveCustomerEmailDeliveryLocale: mock(
@@ -548,6 +699,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
+              noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 retainActiveCustomerEmailDeliveryLocale: mock(
@@ -617,6 +769,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
+              noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 retainActiveCustomerEmailDeliveryLocale: mock(
@@ -750,6 +903,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
+              noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 claimPaidFulfillment: mock(() =>
@@ -859,6 +1013,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
+              noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 claimPaidFulfillment: mock(() =>
@@ -951,6 +1106,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
+              noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 claimPaidFulfillment: mock(() =>
@@ -1045,6 +1201,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
+              noReservationAuthors,
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 claimPaidFulfillment: mock(() =>

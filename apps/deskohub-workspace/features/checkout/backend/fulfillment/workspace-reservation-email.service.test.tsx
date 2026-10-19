@@ -18,6 +18,7 @@ import type { EmailService } from "@deskohub/email/backend/service";
 import { testEmailAddress } from "@deskohub/test-email";
 import { getQueriesForElement } from "@testing-library/react";
 import { Context, Effect, Layer, Logger } from "effect";
+import type { ReservationAuthor } from "@/features/account/backend/reservation-author-directory.service";
 import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import { type Locale, m } from "@/features/i18n";
 import {
@@ -80,8 +81,12 @@ Object.assign(TestCustomerEmailLocaleService, {
     byDotyposCustomer: () => Effect.succeed({ kind: "guest" }),
   }),
 });
+const { isCustomerOwnAuthor } = await import(
+  "@/features/account/backend/reservation-author-directory.service"
+);
 mock.module("@/features/account", () => ({
   CustomerEmailLocaleService: TestCustomerEmailLocaleService,
+  isCustomerOwnAuthor,
 }));
 
 // The paid-fulfillment send path must never fetch the location map: fresh
@@ -117,6 +122,7 @@ const makeReservation = (
 ): WorkspaceReservationDetails => ({
   id: "reservation-id",
   dotyposCustomerId: "dotypos-customer-id",
+  authorAccountId: null,
   dotyposReservationId: "dotypos-reservation-id",
   reservationDetails: {
     kind: "cowork",
@@ -914,6 +920,263 @@ describe("sendPaidReservationEmails internal notification failure", () => {
       expect(internalHtml).not.toContain(accessFragment);
       expect(internalText).not.toContain(accessFragment);
     }
+  });
+});
+
+describe("sendPaidReservationEmails author confirmation", () => {
+  const authorAddress = testEmailAddress("author");
+  const authorConfirmationTag = "workspace-reservation-author-confirmation";
+  const activeAuthor = (
+    overrides: Partial<Extract<ReservationAuthor, { kind: "active" }>> = {}
+  ): ReservationAuthor => ({
+    kind: "active",
+    accountId: "author-account-id",
+    dotyposCustomerId: "author-dotypos-customer-id",
+    email: authorAddress,
+    locale: "cs-CZ",
+    ...overrides,
+  });
+
+  const sendWithAuthor = async (input: {
+    readonly author: ReservationAuthor | null;
+    readonly reservation?: WorkspaceReservationDetails;
+    readonly failAuthorSend?: boolean;
+  }) => {
+    const { EmailConfigTag, EmailServiceError, EmailServiceTag } = await import(
+      "@deskohub/email/backend/service"
+    );
+    const { WorkspaceCheckoutNetworkDetailsService } = await import(
+      "./network-details.service"
+    );
+    const { WorkspaceReservationEmailService } = await import(
+      "./workspace-reservation-email.service"
+    );
+    const reservation = input.reservation ?? makeReservation({});
+    const sentMessages: EmailMessage[] = [];
+    const emailService: EmailService = {
+      send: mock((message: EmailMessage) => {
+        sentMessages.push(message);
+        return input.failAuthorSend &&
+          message.tags?.includes(authorConfirmationTag)
+          ? Effect.fail(new EmailServiceError("Author send failed."))
+          : Effect.succeed(sentResult(`email-${sentMessages.length}`));
+      }),
+      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
+      verify: Effect.succeed(true),
+    };
+    const emailConfig: EmailProviderConfig = {
+      provider: "console",
+      defaultFrom: {
+        email: workspaceDefaultFromAddress,
+        name: "Deskohub Workspace",
+      },
+    };
+    const errorMessages: string[] = [];
+    const logger = Logger.make((options) => {
+      if (options.logLevel === "Error") {
+        errorMessages.push(
+          String(
+            Array.isArray(options.message)
+              ? options.message[0]
+              : options.message
+          )
+        );
+      }
+    });
+
+    const customerDeliveryId = await Effect.gen(function* () {
+      const service = yield* WorkspaceReservationEmailService;
+      return yield* service.sendPaidReservationEmails({
+        reservation,
+        customerEmailLocale: "en-US",
+        author: input.author,
+      });
+    }).pipe(
+      Effect.provide(
+        WorkspaceReservationEmailService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(EmailServiceTag, emailService),
+              Layer.succeed(EmailConfigTag, emailConfig),
+              WorkspaceCheckoutNetworkDetailsService.Default,
+              TestCustomerEmailLocaleService.Default
+            )
+          )
+        )
+      ),
+      Effect.provide(Logger.layer([logger])),
+      Effect.runPromise
+    );
+
+    return {
+      customerDeliveryId,
+      errorMessages,
+      tags: sentMessages.map((message) => message.tags),
+      authorMessage: sentMessages.find((message) =>
+        message.tags?.includes(authorConfirmationTag)
+      ),
+    };
+  };
+
+  test("sends only the customer and staff emails for the customer's own booking", async () => {
+    const sent = await sendWithAuthor({
+      author: activeAuthor({ dotyposCustomerId: "dotypos-customer-id" }),
+    });
+
+    expect(sent.tags).toEqual([
+      ["workspace-paid-reservation-access"],
+      ["workspace-paid-reservation-internal"],
+    ]);
+  });
+
+  test("sends no author confirmation for a deleted author or an authorless reservation", async () => {
+    for (const author of [
+      { kind: "deleted", accountId: "author-account-id" } as const,
+      null,
+    ]) {
+      const sent = await sendWithAuthor({ author });
+
+      expect(sent.authorMessage).toBeUndefined();
+      expect(sent.tags).toHaveLength(2);
+    }
+  });
+
+  test("confirms a booking for someone else to the author's login email in the author's language, linking only the status page", async () => {
+    const sent = await sendWithAuthor({ author: activeAuthor() });
+    const message = sent.authorMessage;
+    if (!message) throw new Error("author confirmation was not sent");
+
+    expect(sent.tags).toEqual([
+      ["workspace-paid-reservation-access"],
+      [authorConfirmationTag],
+      ["workspace-paid-reservation-internal"],
+    ]);
+    expect(message.to).toEqual({ email: authorAddress });
+    expect(message.subject).toBe(
+      m.checkoutEmailAuthorSubject(
+        { customer: "Ada Lovelace" },
+        { locale: "cs-CZ" }
+      )
+    );
+    expect(message.idempotencyKey).toBe(
+      "workspace-reservation-author-confirmation-reservation-id"
+    );
+    expect(message.metadata).toEqual({
+      deploymentEnvironment: "development",
+      source: "workspace-paid-fulfillment",
+      workspaceReservationId: "reservation-id",
+    });
+
+    const html = message.html ?? "";
+    const text = message.text ?? "";
+    for (const content of [html, text]) {
+      expect(content).not.toContain("accessToken");
+      expect(content).not.toContain("/reservation/access/");
+      expect(content).not.toContain("/reservation/invoice/");
+    }
+
+    registerWorkspaceComponentTestEnv();
+    try {
+      const emailView = renderEmailHtml(html);
+      expect(
+        emailView.getByText(
+          m.checkoutEmailAuthorHeading(
+            {
+              customer: "Ada Lovelace",
+              product: m.reservationTierBasicTitle({}, { locale: "cs-CZ" }),
+            },
+            { locale: "cs-CZ" }
+          )
+        )
+      ).toBeDefined();
+      const statusLink = emailView.getByRole("link", {
+        name: m.checkoutEmailAuthorStatusButton({}, { locale: "cs-CZ" }),
+      });
+      const statusUrl = new URL(statusLink.getAttribute("href") ?? "");
+      expect(statusUrl.pathname).toBe(
+        "/cs-CZ/reservation/status/reservation-id"
+      );
+      expect(statusUrl.searchParams.has("accessToken")).toBe(false);
+      for (const link of emailView.getAllByRole("link")) {
+        const href = link.getAttribute("href") ?? "";
+        expect(href).not.toContain("/reservation/access/");
+        expect(href).not.toContain("/reservation/invoice/");
+      }
+    } finally {
+      await unregisterWorkspaceComponentTestEnv();
+    }
+  });
+
+  test("falls back to the reservation language and a neutral customer name", async () => {
+    const sent = await sendWithAuthor({
+      author: activeAuthor({ locale: null }),
+      reservation: makeReservation({
+        customer: { ...customer, firstName: null, lastName: null },
+      }),
+    });
+    const message = sent.authorMessage;
+    if (!message) throw new Error("author confirmation was not sent");
+
+    const someoneElse = m.checkoutEmailAuthorCustomerFallback(
+      {},
+      { locale: "en-US" }
+    );
+    expect(message.subject).toBe(
+      m.checkoutEmailAuthorSubject(
+        { customer: someoneElse },
+        { locale: "en-US" }
+      )
+    );
+    expect(message.html).toContain(
+      m.checkoutEmailAuthorHeading(
+        {
+          customer: someoneElse,
+          product: m.reservationTierBasicTitle({}, { locale: "en-US" }),
+        },
+        { locale: "en-US" }
+      )
+    );
+    expect(message.text).toContain("/en-US/reservation/status/reservation-id");
+  });
+
+  test("renders the author confirmation preview in each shipped locale", async () => {
+    const { createReservationAuthorEmailPreviewHtml } = await import(
+      "./workspace-reservation-email.service"
+    );
+
+    for (const locale of ["en-US", "cs-CZ"] as const) {
+      const statusUrl = `https://workspace.deskohub.test/${locale}/reservation/status/reservation-id`;
+      const html = await createReservationAuthorEmailPreviewHtml({
+        statusUrl,
+        reservation: makeReservation({ locale }),
+      }).pipe(Effect.runPromise);
+
+      expect(html).toContain(`lang="${locale}"`);
+      expect(html).toContain(
+        m.checkoutEmailAuthorHeading(
+          {
+            customer: "Ada Lovelace",
+            product: m.reservationTierBasicTitle({}, { locale }),
+          },
+          { locale }
+        )
+      );
+      expect(html).toContain(`href="${statusUrl}"`);
+      expect(html).toContain(m.checkoutEmailAuthorStatusButton({}, { locale }));
+    }
+  });
+
+  test("keeps the customer delivery and logs when the author confirmation fails", async () => {
+    const sent = await sendWithAuthor({
+      author: activeAuthor(),
+      failAuthorSend: true,
+    });
+
+    expect(sent.customerDeliveryId).toBe(EmailDeliveryIdSchema.make("email-1"));
+    expect(sent.errorMessages).toContain(
+      "Workspace reservation author confirmation failed"
+    );
+    expect(sent.tags).toContainEqual(["workspace-paid-reservation-internal"]);
   });
 });
 
