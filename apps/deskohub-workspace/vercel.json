@@ -37,6 +37,10 @@
     {
       "path": "/api/cron/workspace/paid-fulfillment",
       "schedule": "57 5 * * *"
+    },
+    {
+      "path": "/api/cron/workspace/email-automations",
+      "schedule": "* * * * *"
     }
   ],
   "functions": {
@@ -45,6 +49,16 @@
         {
           "type": "queue/v2beta",
           "topic": "workspace-email-campaign-send",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0
+        }
+      ]
+    },
+    "app/api/queues/workspace/email-automation-unit/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "workspace-email-automation-unit",
           "retryAfterSeconds": 60,
           "initialDelaySeconds": 0
         }

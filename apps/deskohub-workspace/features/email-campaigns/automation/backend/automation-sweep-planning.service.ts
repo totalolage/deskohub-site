@@ -8,7 +8,7 @@ import { planAutomationUnits } from "./automation-unit-planning";
 import { plannedSweepPage } from "./sweep-page";
 
 /** What planner step 3 did, for the plan summary. */
-export type AutomationSweepPlan = {
+type AutomationSweepPlan = {
   readonly sweepPagesPlanned: number;
   readonly eventsReconciled: number;
 };

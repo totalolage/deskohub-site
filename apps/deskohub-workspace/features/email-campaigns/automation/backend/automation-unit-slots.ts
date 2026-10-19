@@ -51,6 +51,18 @@ interface IAutomationUnitSlots {
       at: Temporal.Instant
     ) => Effect.Effect<A, E>
   ) => Effect.Effect<A, E | DatabaseQueryError>;
+  /** Fills every free slot and returns the units it promoted. */
+  readonly topUp: Effect.Effect<
+    ReadonlyArray<EnqueuedAutomationUnit>,
+    DatabaseQueryError
+  >;
+  /**
+   * Publishes units already `enqueued`. A lost message only delays its unit,
+   * because the reaper re-sends it, so a failure is logged, not raised.
+   */
+  readonly publish: (
+    units: ReadonlyArray<EnqueuedAutomationUnit>
+  ) => Effect.Effect<void>;
 }
 
 export class AutomationUnitSlots extends Context.Service<
@@ -66,38 +78,52 @@ export class AutomationUnitSlots extends Context.Service<
       const queue = yield* AutomationUnitQueue;
       const limits = yield* AutomationUnitSlotLimits;
 
-      return {
-        handOff: (write) =>
-          currentInstant.pipe(
-            Effect.flatMap((at) =>
-              advisoryLock.withTransactionPermit(
-                db.transaction((tx) =>
-                  write(tx, at).pipe(
-                    Effect.flatMap((result) =>
-                      fillAutomationUnitSlots(tx, {
-                        supportedKinds,
-                        limits,
-                        at,
-                      }).pipe(Effect.map((promoted) => ({ result, promoted })))
-                    )
+      const publish = (promoted: ReadonlyArray<EnqueuedAutomationUnit>) =>
+        queue.enqueue(promoted).pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning("Automation units could not be enqueued", {
+              cause,
+              unitIds: promoted.map((unit) => unit.unitId),
+            })
+          )
+        );
+
+      const transactWithHandOff = <A, E>(
+        write: (
+          tx: AutomationEngineTransaction,
+          at: Temporal.Instant
+        ) => Effect.Effect<A, E>
+      ) =>
+        currentInstant.pipe(
+          Effect.flatMap((at) =>
+            advisoryLock.withTransactionPermit(
+              db.transaction((tx) =>
+                write(tx, at).pipe(
+                  Effect.flatMap((result) =>
+                    fillAutomationUnitSlots(tx, {
+                      supportedKinds,
+                      limits,
+                      at,
+                    }).pipe(Effect.map((promoted) => ({ result, promoted })))
                   )
                 )
               )
-            ),
-            // A lost message only delays its unit: the reaper re-sends it.
-            Effect.tap(({ promoted }) =>
-              queue.enqueue(promoted).pipe(
-                Effect.catch((cause) =>
-                  Effect.logWarning("Automation units could not be enqueued", {
-                    cause,
-                    unitIds: promoted.map((unit) => unit.unitId),
-                  })
-                )
-              )
-            ),
+            )
+          ),
+          Effect.tap(({ promoted }) => publish(promoted))
+        );
+
+      return {
+        handOff: (write) =>
+          transactWithHandOff(write).pipe(
             Effect.map(({ result }) => result),
             Effect.withSpan("automationUnitSlots.handOff")
           ),
+        topUp: transactWithHandOff(() => Effect.void).pipe(
+          Effect.map(({ promoted }) => promoted),
+          Effect.withSpan("automationUnitSlots.topUp")
+        ),
+        publish,
       };
     })
   );
@@ -184,7 +210,7 @@ const nextPlannedUnit = (
     )
     .orderBy(
       asc(units.priority),
-      sql`(select count(*) from ${inFlightOfCampaign} where ${inArray(
+      sql`(select count(*) from ${units} as ${sql.identifier("in_flight_of_campaign")} where ${inArray(
         inFlightOfCampaign.status,
         inFlightStatuses
       )} and ${inFlightOfCampaign.campaignId} is not distinct from ${units.campaignId})`,
