@@ -22,6 +22,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import {
   customerAccountLinks,
   customerMarketingConsents,
+  emailCampaignAutomationVersions,
   emailCampaignDeliveryBatches,
   emailCampaignRecipients,
   emailCampaignSends,
@@ -39,6 +40,7 @@ import type { AudienceDateFacts } from "../audience-filter";
 import type { CampaignPurpose } from "../body/campaign-content";
 import type { CampaignId } from "../campaign-identifiers";
 import type { DatePeriodBounds } from "../date-period";
+import { sendAutomationVersion, sendPurpose } from "./campaign-send-selection";
 import { reservationProductCondition } from "./reservation-product-condition";
 
 /** What Workspace stores about one customer it knows. */
@@ -155,7 +157,10 @@ export interface ICampaignCandidateRepository {
    * of the batch that carried them. Customers without any are absent.
    */
   readonly countReceivedCampaignEmails: (query: {
-    /** Without a purpose every campaign counts. */
+    /**
+     * Without a purpose every campaign counts. An automated send counts under
+     * the purpose its version pinned.
+     */
     readonly purpose?: CampaignPurpose;
     /** Only this campaign's emails count. */
     readonly campaignId?: CampaignId;
@@ -320,6 +325,7 @@ export class CampaignCandidateRepository extends Context.Service<
               emailCampaigns,
               eq(emailCampaigns.id, emailCampaignSends.campaignId)
             )
+            .leftJoin(emailCampaignAutomationVersions, sendAutomationVersion)
             .leftJoin(
               emailCampaignDeliveryBatches,
               and(
@@ -339,7 +345,7 @@ export class CampaignCandidateRepository extends Context.Service<
                 inArray(emailCampaignRecipients.status, [
                   ...receivedCampaignEmailStatuses,
                 ]),
-                purpose && eq(emailCampaigns.purpose, purpose),
+                purpose && eq(sendPurpose, purpose),
                 campaignId && eq(emailCampaignSends.campaignId, campaignId),
                 ofCustomers(
                   emailCampaignRecipients.dotyposCustomerId,
