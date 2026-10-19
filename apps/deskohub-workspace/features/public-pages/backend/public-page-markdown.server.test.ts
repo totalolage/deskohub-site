@@ -13,8 +13,10 @@ import { salesCalendarIdSchema } from "@/shared/backend/config/calendar-resource
 
 // Outside a Next.js render there is no cache; record what each render asks
 // of it instead.
-const cacheLife = mock((_profile: unknown) => {});
 const nextCache = await import("next/cache");
+const cacheLife = mock(
+  (_profile: Parameters<typeof nextCache.cacheLife>[0]) => {}
+);
 mock.module("next/cache", () => ({ ...nextCache, cacheLife }));
 
 // Inside `"use cache"`, Next.js fails the render on any request read, even
