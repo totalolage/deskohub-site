@@ -1,3 +1,4 @@
+import { Predicate } from "effect";
 import type {
   BlockContent,
   Blockquote,
@@ -22,9 +23,7 @@ export const markdownContentType = "text/markdown; charset=utf-8";
 type Phrasing = PhrasingContent | string;
 
 const toPhrasing = (content: ReadonlyArray<Phrasing>): PhrasingContent[] =>
-  content.map((node) =>
-    typeof node === "string" ? markdownText(node) : node
-  );
+  content.map((node) => (Predicate.isString(node) ? markdownText(node) : node));
 
 export const markdownText = (value: string): Text => ({ type: "text", value });
 
@@ -37,7 +36,9 @@ export const markdownParagraph = (
   ...content: ReadonlyArray<Phrasing>
 ): Paragraph => ({ type: "paragraph", children: toPhrasing(content) });
 
-export const markdownStrong = (...content: ReadonlyArray<Phrasing>): Strong => ({
+export const markdownStrong = (
+  ...content: ReadonlyArray<Phrasing>
+): Strong => ({
   type: "strong",
   children: toPhrasing(content),
 });

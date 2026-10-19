@@ -39,9 +39,7 @@ describe("llmsTxtMarkdown", () => {
     const [title, summary, openingHours] = markdown.split("\n\n");
 
     expect(title).toBe(`# ${workspaceSiteConstants.brand.name}`);
-    expect(summary).toBe(
-      `> ${m.workspaceMetadataDescription({}, { locale })}`
-    );
+    expect(summary).toBe(`> ${m.workspaceMetadataDescription({}, { locale })}`);
     expect(markdownPlainText(openingHours ?? "")).toBe(
       getPublicOpeningHours(locale)
     );

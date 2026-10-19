@@ -1092,23 +1092,29 @@ describe("page Markdown negotiation", () => {
   test.each([
     ["/en-US", "/page-markdown/en-US"],
     ["/cs-CZ/contact", "/page-markdown/cs-CZ/contact"],
-    ["/en-US/terms-and-conditions", "/page-markdown/en-US/terms-and-conditions"],
+    [
+      "/en-US/terms-and-conditions",
+      "/page-markdown/en-US/terms-and-conditions",
+    ],
     ["/cs-CZ/reservation/cowork", "/page-markdown/cs-CZ/reservation/cowork"],
-  ])("rewrites a public page %s that prefers Markdown to %s", async (pathname, routePath) => {
-    for (const method of ["GET", "HEAD"]) {
-      const response = await proxy(
-        new NextRequest(`https://workspace.example${pathname}`, {
-          method,
-          headers: { accept: markdownAccept },
-        })
-      );
+  ])(
+    "rewrites a public page %s that prefers Markdown to %s",
+    async (pathname, routePath) => {
+      for (const method of ["GET", "HEAD"]) {
+        const response = await proxy(
+          new NextRequest(`https://workspace.example${pathname}`, {
+            method,
+            headers: { accept: markdownAccept },
+          })
+        );
 
-      expect(response.headers.get("x-middleware-rewrite")).toBe(
-        `https://workspace.example${routePath}`
-      );
-      expect(response.headers.get("location")).toBeNull();
+        expect(response.headers.get("x-middleware-rewrite")).toBe(
+          `https://workspace.example${routePath}`
+        );
+        expect(response.headers.get("location")).toBeNull();
+      }
     }
-  });
+  );
 
   test.each([
     ["a browser", browserAccept],

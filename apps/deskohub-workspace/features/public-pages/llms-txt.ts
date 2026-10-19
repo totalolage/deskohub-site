@@ -19,7 +19,10 @@ import {
   markdownParagraph,
 } from "@/shared/markdown/markdown";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import { type PublicPageTopic, publicPageMarkdown } from "./public-page-markdown";
+import {
+  type PublicPageTopic,
+  publicPageMarkdown,
+} from "./public-page-markdown";
 import type { PublicPagePathname } from "./public-pages";
 
 /** `llms.txt` is written in English and links every locale of each page. */

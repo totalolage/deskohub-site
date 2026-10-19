@@ -19,22 +19,7 @@ import {
   type PublicPageMarkdownSources,
   publicPageMarkdown,
 } from "../public-page-markdown";
-import type { PublicPage, PublicPagePathname } from "../public-pages";
-
-/** Release decisions the request already made, which a cached render reuses. */
-export interface PublicPageMarkdownReleases {
-  /** Whether office reservations are open, so the office offer is listed. */
-  readonly officeOpen: boolean;
-}
-
-/** The release decisions the published pages imply. */
-export const getMarkdownReleases = (
-  publishedPages: ReadonlyArray<PublicPage>
-): PublicPageMarkdownReleases => ({
-  officeOpen: publishedPages.some(
-    ({ releaseGate }) => releaseGate === "office-page"
-  ),
-});
+import type { PublicPagePathname } from "../public-pages";
 
 /**
  * The offerings at their advertised prices, as the reservation pages show
@@ -44,7 +29,7 @@ export const getMarkdownReleases = (
  */
 const loadMarkdownOfferings = (
   locale: Locale,
-  { officeOpen }: PublicPageMarkdownReleases,
+  officeOpen: boolean,
   onIncomplete: () => void
 ): Effect.Effect<ReadonlyArray<PublicOffering>> =>
   loadPublicOfferings(locale).pipe(
@@ -88,19 +73,28 @@ const loadMarkdownOfferings = (
   );
 
 /**
- * The sources a cached Markdown render reads. `isComplete` turns false when
- * a source had to fall back, so the render that used it isn't shared.
+ * The sources a cached Markdown render reads, given the pages the request
+ * found published; release gates are decided there, never in the cached
+ * render. `isComplete` turns false when a source had to fall back, so the
+ * render that used it isn't shared.
  */
 export const createMarkdownSources = (
   locale: Locale,
-  releases: PublicPageMarkdownReleases
+  publishedPathnames: ReadonlyArray<PublicPagePathname>
 ) => {
+  const published = new Set(publishedPathnames);
   let complete = true;
   const sources: PublicPageMarkdownSources = {
+    isPublished: (pathname) => published.has(pathname),
+    // The office page is published exactly while office reservations are open.
     offerings: Effect.suspend(() =>
-      loadMarkdownOfferings(locale, releases, () => {
-        complete = false;
-      })
+      loadMarkdownOfferings(
+        locale,
+        published.has("/reservation/office"),
+        () => {
+          complete = false;
+        }
+      )
     ),
   };
   return { sources, isComplete: () => complete };
@@ -114,15 +108,20 @@ export const createMarkdownSources = (
 export async function renderPublicPageMarkdown(
   locale: Locale,
   pathname: PublicPagePathname,
-  releases: PublicPageMarkdownReleases
+  publishedPathnames: ReadonlyArray<PublicPagePathname>
 ): Promise<string> {
   "use cache";
   cacheLife("publicContent");
 
-  const { sources, isComplete } = createMarkdownSources(locale, releases);
+  const { sources, isComplete } = createMarkdownSources(
+    locale,
+    publishedPathnames
+  );
   const blocks = await publicPageMarkdown[pathname]
     .render(locale, sources)
-    .pipe(runWorkspaceEffect("publicPageMarkdown.render", { boundary: "route" }));
+    .pipe(
+      runWorkspaceEffect("publicPageMarkdown.render", { boundary: "route" })
+    );
 
   if (!isComplete()) cacheLife({ expire: 0 });
   return serializeMarkdown(blocks);

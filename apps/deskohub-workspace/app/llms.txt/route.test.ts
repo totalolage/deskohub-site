@@ -47,8 +47,7 @@ beforeEach(() => {
   publishedPages = publicPages;
 });
 
-const getLlmsTxt = () =>
-  GET(new Request("https://workspace.example/llms.txt"));
+const getLlmsTxt = () => GET(new Request("https://workspace.example/llms.txt"));
 
 describe("/llms.txt", () => {
   test("serves the published pages as plain text", async () => {
@@ -66,8 +65,8 @@ describe("/llms.txt", () => {
   });
 
   test("leaves out gated pages production does not serve, and their offers", async () => {
-    publishedPages = publicPages.filter(({ releaseGate }: PublicPage) =>
-      releaseGate === undefined
+    publishedPages = publicPages.filter(
+      ({ releaseGate }: PublicPage) => releaseGate === undefined
     );
     const office = catalogPricedOfferings("en-US", { officeOpen: true }).find(
       ({ kind }) => kind === "office"

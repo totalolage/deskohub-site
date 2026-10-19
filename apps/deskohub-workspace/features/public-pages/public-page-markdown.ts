@@ -5,7 +5,10 @@ import { coworkReservationPageMarkdown } from "@/features/cowork/cowork-reservat
 import { faqPageMarkdown } from "@/features/faq/faq-page-markdown";
 import { type Locale, m } from "@/features/i18n";
 import { landingPageMarkdown } from "@/features/landing-page/landing-page-markdown";
-import { getLegalDocument, type LegalDocumentKey } from "@/features/legal/content";
+import {
+  getLegalDocument,
+  type LegalDocumentKey,
+} from "@/features/legal/content";
 import { legalPageMarkdown } from "@/features/legal/legal-page-markdown";
 import { meetingRoomPageMarkdown } from "@/features/meeting-room/meeting-room-page-markdown";
 import { meetingRoomReservationPageMarkdown } from "@/features/meeting-room/meeting-room-reservation-page-markdown";
@@ -29,6 +32,11 @@ export type PublicPageTopic =
 
 /** Data a page's Markdown reads beyond its copy, loaded only when read. */
 export interface PublicPageMarkdownSources {
+  /**
+   * Whether production serves a public page now. Content that only shows
+   * while a gated page is released, such as a link to it, checks its page.
+   */
+  readonly isPublished: (pathname: PublicPagePathname) => boolean;
   /** Every bookable product with its advertised price, in catalog order. */
   readonly offerings: Effect.Effect<ReadonlyArray<PublicOffering>>;
 }

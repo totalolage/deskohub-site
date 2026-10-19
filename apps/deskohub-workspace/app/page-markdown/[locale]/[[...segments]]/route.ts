@@ -1,11 +1,8 @@
 import { Effect } from "effect";
 import { NextResponse } from "next/server";
-import { PublishedPublicPagesService } from "@/features/public-pages/backend";
-import {
-  getMarkdownReleases,
-  renderPublicPageMarkdown,
-} from "@/features/public-pages/backend/public-page-markdown.server";
 import { getWorkspaceAlternates, type Locale } from "@/features/i18n";
+import { PublishedPublicPagesService } from "@/features/public-pages/backend";
+import { renderPublicPageMarkdown } from "@/features/public-pages/backend/public-page-markdown.server";
 import { findLocalizedPublicPage } from "@/features/public-pages/page-markdown-negotiation";
 import type { PublicPagePathname } from "@/features/public-pages/public-pages";
 import {
@@ -50,12 +47,10 @@ export const GET = defineWorkspaceRoute(
     cancellation: "interrupt-on-disconnect",
     caller: "client",
   },
-  (_request: Request, { params }: PageMarkdownRouteContext) =>
-    Effect.gen(function* () {
+  Effect.fn("publicPageMarkdown.respond")(
+    function* (_request: Request, { params }: PageMarkdownRouteContext) {
       const { locale, segments = [] } = yield* Effect.promise(() => params);
-      const page = findLocalizedPublicPage(
-        ["", locale, ...segments].join("/")
-      );
+      const page = findLocalizedPublicPage(["", locale, ...segments].join("/"));
       if (!page) return notFound();
 
       const publishedPages = yield* PublishedPublicPagesService.pipe(
@@ -69,16 +64,16 @@ export const GET = defineWorkspaceRoute(
         renderPublicPageMarkdown(
           page.locale,
           page.pathname,
-          getMarkdownReleases(publishedPages)
+          publishedPages.map(({ pathname }) => pathname)
         )
       );
       return new NextResponse(markdown, {
         headers: markdownHeaders(page.locale, page.pathname),
       });
-    }).pipe(
-      Effect.provide(PublishedPublicPagesService.Live),
-      Effect.mapError(
-        WorkspaceRouteFailure.internal("The page could not be rendered.")
-      )
+    },
+    Effect.provide(PublishedPublicPagesService.Live),
+    Effect.mapError(
+      WorkspaceRouteFailure.internal("The page could not be rendered.")
     )
+  )
 );

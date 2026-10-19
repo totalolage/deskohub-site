@@ -65,18 +65,23 @@ describe("public page Markdown route", () => {
       ["reservation", "cowork"],
       "https://workspace.deskohub.cz/en-US/reservation/cowork",
     ],
-  ])("serves %s %p as Markdown naming its HTML page", async (locale, segments, canonical) => {
-    const response = await getMarkdown(locale, segments);
+  ])(
+    "serves %s %p as Markdown naming its HTML page",
+    async (locale, segments, canonical) => {
+      const response = await getMarkdown(locale, segments);
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe(
-      "text/markdown; charset=utf-8"
-    );
-    expect(response.headers.get("vary")).toBe("Accept");
-    expect(response.headers.get("link")).toBe(`<${canonical}>; rel="canonical"`);
-    expect(response.headers.get("x-robots-tag")).toBe("noindex");
-    expect(await response.text()).toMatch(/^# /);
-  });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe(
+        "text/markdown; charset=utf-8"
+      );
+      expect(response.headers.get("vary")).toBe("Accept");
+      expect(response.headers.get("link")).toBe(
+        `<${canonical}>; rel="canonical"`
+      );
+      expect(response.headers.get("x-robots-tag")).toBe("noindex");
+      expect(await response.text()).toMatch(/^# /);
+    }
+  );
 
   test.each(["en-US", "cs-CZ"] as const)(
     "renders a legal page from its %s document",
@@ -118,15 +123,21 @@ describe("public page Markdown route", () => {
   test.each([
     ["en-US", ["account"]],
     ["en-US", ["checkout", "pay"]],
-    ["en-US", ["reservation", "status", "019edbcf-5026-7ecc-821b-eda46998eaaa"]],
+    [
+      "en-US",
+      ["reservation", "status", "019edbcf-5026-7ecc-821b-eda46998eaaa"],
+    ],
     ["en-US", ["admin"]],
     ["en-US", ["gallery"]],
     ["en-US", ["testing"]],
     ["de-DE", ["contact"]],
-  ])("has no Markdown for %s %p, which is not a public page", async (locale, segments) => {
-    const response = await getMarkdown(locale, segments);
+  ])(
+    "has no Markdown for %s %p, which is not a public page",
+    async (locale, segments) => {
+      const response = await getMarkdown(locale, segments);
 
-    expect(response.status).toBe(404);
-    expect(response.headers.get("x-robots-tag")).toBe("noindex");
-  });
+      expect(response.status).toBe(404);
+      expect(response.headers.get("x-robots-tag")).toBe("noindex");
+    }
+  );
 });
