@@ -235,13 +235,12 @@ export const makeWorkspaceE2EAccountPasskeys = ({
       "account_passkey_sign_in_failed",
       "sign in with the passkey button",
       async (page) => {
-        // The ceremony would also answer an autofill request the form arms
-        // meanwhile, and the customer would be signed in without the button.
-        // The form re-arms one after a failed button ceremony, so the
-        // authenticator also checks that only the button's request signed in.
-        const installed = requireAuthenticator();
-        await installed.waitForConditionalRequest(uiTransition);
-        await installed
+        // Clicks as soon as the button works, whatever the form's autofill
+        // request is waiting for; the click cancels it. The ceremony would
+        // also answer an autofill request the form starts meanwhile, as it
+        // does after a failed button ceremony, so the authenticator checks
+        // that only the button's request signed in.
+        await requireAuthenticator()
           .answerModalCeremony(async () => {
             await clickHydrated(page, signInPasskeySelector, uiTransition);
             await page.waitForURL(

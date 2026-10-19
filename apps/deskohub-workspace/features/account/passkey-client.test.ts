@@ -10,7 +10,6 @@ import {
 } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { unsafeReturnTargets } from "@/shared/testing/unsafe-return-targets.test-utils";
-import { reportPasskeySignInOptions } from "./passkey-sign-in-options";
 
 type PasskeyResponse = {
   readonly data?: unknown;
@@ -23,8 +22,13 @@ const failure = (code: string): PasskeyResponse => ({
 });
 
 const signInPasskey = mock(
-  (_options?: { readonly autoFill?: boolean }): Promise<PasskeyResponse> =>
-    Promise.resolve({ data: null, error: null })
+  (): Promise<PasskeyResponse> => Promise.resolve({ data: null, error: null })
+);
+const requestPasskeySignIn = mock(
+  (_request: {
+    readonly autoFill: boolean;
+    readonly signal?: AbortSignal;
+  }): Promise<PasskeyResponse> => Promise.resolve({ data: null, error: null })
 );
 const addPasskey = mock(
   (): Promise<PasskeyResponse> => Promise.resolve({ data: null, error: null })
@@ -46,15 +50,10 @@ mock.module("@/features/account/auth.client", () => ({
     passkey: { addPasskey, updatePasskey, deletePasskey },
   },
 }));
+mock.module("./passkey-sign-in", () => ({ requestPasskeySignIn }));
 mock.module("./sign-in-analytics", () => ({ recordSignInCompletion }));
 mock.module("./passkey-prompt", () => ({ rememberPasskeyOnThisBrowser }));
 mock.module("./email-sign-in-request", () => ({ forgetEmailSignInRequest }));
-
-const optionsResponse = {
-  request: {
-    url: "https://workspace.invalid/api/auth/passkey/generate-authenticate-options",
-  },
-};
 
 let passkeyClient: typeof import("./passkey-client");
 let originalReplace: typeof window.location.replace;
@@ -71,6 +70,7 @@ describe("passkey client", () => {
     window.location.replace = replace;
     for (const fn of [
       signInPasskey,
+      requestPasskeySignIn,
       addPasskey,
       updatePasskey,
       deletePasskey,
@@ -127,7 +127,7 @@ describe("passkey client", () => {
   });
 
   test("signs in, remembers the passkey for the account, and opens the account", async () => {
-    signInPasskey.mockResolvedValueOnce({
+    requestPasskeySignIn.mockResolvedValueOnce({
       data: { session: { userId: "account-1" }, user: { id: "account-1" } },
       error: null,
     });
@@ -136,7 +136,10 @@ describe("passkey client", () => {
       passkeyClient.signInWithPasskey({ locale: "cs-CZ" })
     ).resolves.toBe("signed-in");
 
-    expect(signInPasskey).toHaveBeenCalledWith({ autoFill: false });
+    expect(requestPasskeySignIn).toHaveBeenCalledWith({
+      autoFill: false,
+      signal: undefined,
+    });
     expect(rememberPasskeyOnThisBrowser).toHaveBeenCalledWith("account-1");
     expect(recordSignInCompletion).toHaveBeenCalledWith("passkey");
     expect(forgetEmailSignInRequest).toHaveBeenCalledTimes(1);
@@ -148,7 +151,7 @@ describe("passkey client", () => {
       data: { session: { userId: "account-1" }, user: { id: "account-1" } },
       error: null,
     };
-    signInPasskey.mockResolvedValueOnce(signedIn);
+    requestPasskeySignIn.mockResolvedValueOnce(signedIn);
 
     await expect(
       passkeyClient.signInWithPasskey({
@@ -163,7 +166,7 @@ describe("passkey client", () => {
   test.each(unsafeReturnTargets)(
     "ignores %p and opens the account after a passkey sign-in",
     async (unsafeReturnTo) => {
-      signInPasskey.mockResolvedValueOnce({
+      requestPasskeySignIn.mockResolvedValueOnce({
         data: { session: { userId: "account-1" }, user: { id: "account-1" } },
         error: null,
       });
@@ -178,54 +181,34 @@ describe("passkey client", () => {
   );
 
   test("passes autofill through and stays on the page when it is cancelled", async () => {
-    signInPasskey.mockResolvedValueOnce(failure("AUTH_CANCELLED"));
+    requestPasskeySignIn.mockResolvedValueOnce(failure("AUTH_CANCELLED"));
 
+    const card = new AbortController();
     await expect(
-      passkeyClient.signInWithPasskey({ locale: "en-US", autoFill: true })
+      passkeyClient.signInWithPasskey({
+        locale: "en-US",
+        autoFill: true,
+        signal: card.signal,
+      })
     ).resolves.toBe("cancelled");
 
-    expect(signInPasskey).toHaveBeenCalledWith({ autoFill: true });
+    expect(requestPasskeySignIn).toHaveBeenCalledWith({
+      autoFill: true,
+      signal: card.signal,
+    });
     expect(recordSignInCompletion).not.toHaveBeenCalled();
     expect(replace).not.toHaveBeenCalled();
   });
 
-  test("arms autofill when its options arrive, before the customer picks a passkey", async () => {
-    const { promise: picked, resolve: pick } =
-      Promise.withResolvers<PasskeyResponse>();
-    signInPasskey.mockReturnValueOnce(picked);
-    const onArmed = mock(() => undefined);
+  test("confirms with the plugin client's own ceremony, outside the sign-in attempts", async () => {
+    await expect(passkeyClient.confirmWithPasskey()).resolves.toBe("confirmed");
 
-    const attempt = passkeyClient.armPasskeyAutofill({
-      locale: "en-US",
-      onArmed,
-    });
-    expect(signInPasskey).toHaveBeenCalledWith({ autoFill: true });
-    expect(onArmed).not.toHaveBeenCalled();
-
-    reportPasskeySignInOptions(optionsResponse);
-    expect(onArmed).toHaveBeenCalledTimes(1);
-
-    pick(failure("ERROR_CEREMONY_ABORTED"));
-    await expect(attempt).resolves.toBe("cancelled");
-    expect(onArmed).toHaveBeenCalledTimes(1);
-  });
-
-  test("arms autofill once an attempt ends before its options arrive", async () => {
-    signInPasskey.mockResolvedValueOnce(failure("PASSKEY_NOT_FOUND"));
-    const onArmed = mock(() => undefined);
-
-    await expect(
-      passkeyClient.armPasskeyAutofill({ locale: "en-US", onArmed })
-    ).resolves.toBe("failed");
-    expect(onArmed).toHaveBeenCalledTimes(1);
-
-    // A later sign-in's options no longer reach the settled attempt.
-    reportPasskeySignInOptions(optionsResponse);
-    expect(onArmed).toHaveBeenCalledTimes(1);
+    expect(signInPasskey).toHaveBeenCalledTimes(1);
+    expect(requestPasskeySignIn).not.toHaveBeenCalled();
   });
 
   test("reads a throwing or malformed client response as a failure", async () => {
-    signInPasskey.mockRejectedValueOnce(new Error("synthetic network"));
+    requestPasskeySignIn.mockRejectedValueOnce(new Error("synthetic network"));
     await expect(
       passkeyClient.signInWithPasskey({ locale: "en-US" })
     ).resolves.toBe("failed");

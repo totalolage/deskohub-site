@@ -10,7 +10,7 @@
         "**/*.typecheck.ts",
         "**/*.rsc-fixture.ts",
         "**/*-rsc-fixture.ts",
-        "**/*.browser-harness.tsx",
+        "**/*.browser-harness.{ts,tsx}",
         "**/drizzle.config.ts",
         "playwright.*.config.ts",
         // drizzle.config.ts files load their schema by path, not by import,

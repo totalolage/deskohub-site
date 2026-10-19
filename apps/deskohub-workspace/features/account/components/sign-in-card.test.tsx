@@ -8,7 +8,7 @@ import {
   test,
 } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { reportPasskeySignInOptions } from "@/features/account/passkey-sign-in-options";
+import type { PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/browser";
 import { m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
@@ -48,14 +48,94 @@ const signInEmailOtp = mock(
   }): Promise<AuthResponse> =>
     Promise.resolve({ data: { token: "synthetic" }, error: null })
 );
-const signInWithAnyPasskey = (_options?: {
-  readonly autoFill?: boolean;
-}): Promise<AuthResponse> =>
-  Promise.resolve({
-    data: { session: { userId: "account-1" }, user: { id: "account-1" } },
-    error: null,
-  });
-const signInPasskey = mock(signInWithAnyPasskey);
+/**
+ * The passkey endpoints and the browser's ceremony, settled the way a
+ * customer who ignores the email field's autofill would: options arrive at
+ * once unless `holdsOptions`, the button's ceremony picks a passkey at once
+ * unless `modalRefusal`, and a conditional ceremony waits. Like `fetch` and
+ * `credentials.get`, a request rejects once its signal aborts, unless
+ * `ignoresAbort`: a response that still arrives afterwards.
+ */
+type PasskeyAnswer = AuthResponse | { readonly id: string };
+
+type PasskeyRequest = {
+  readonly name: string;
+  readonly signal: AbortSignal;
+  readonly resolve: (value: PasskeyAnswer) => void;
+  readonly reject: (cause: unknown) => void;
+};
+const passkeyRequests: PasskeyRequest[] = [];
+const passkeyOptions = { data: { challenge: "c2lnbi1pbg" }, error: null };
+const signedInResponse: AuthResponse = {
+  data: { session: { userId: "account-1" }, user: { id: "account-1" } },
+  error: null,
+};
+let holdsOptions = false;
+let ignoresAbort = false;
+let modalRefusal: DOMException | undefined;
+let verifyResponse = signedInResponse;
+
+const startPasskeyRequest = (
+  name: string,
+  signal: AbortSignal,
+  answer?: () => PasskeyAnswer
+) => {
+  const { promise, resolve, reject } = Promise.withResolvers<PasskeyAnswer>();
+  passkeyRequests.push({ name, signal, resolve, reject });
+  if (!ignoresAbort) {
+    signal.addEventListener("abort", () =>
+      reject(new DOMException("Aborted", "AbortError"))
+    );
+  }
+  if (answer) {
+    try {
+      resolve(answer());
+    } catch (cause) {
+      reject(cause);
+    }
+  }
+  return promise;
+};
+const passkeyFetch = mock(
+  (path: string, { signal }: { readonly signal: AbortSignal }) =>
+    path.endsWith("/verify-authentication")
+      ? startPasskeyRequest("verify", signal, () => verifyResponse)
+      : startPasskeyRequest(
+          "options",
+          signal,
+          holdsOptions ? undefined : () => passkeyOptions
+        )
+);
+const getPasskeyAssertion = mock(
+  (
+    _options: PublicKeyCredentialRequestOptionsJSON,
+    {
+      conditional,
+      signal,
+    }: { readonly conditional: boolean; readonly signal: AbortSignal }
+  ) =>
+    conditional
+      ? startPasskeyRequest("conditional", signal)
+      : startPasskeyRequest("modal", signal, () => {
+          if (modalRefusal) throw modalRefusal;
+          return { id: "credential" };
+        })
+);
+mock.module("@/shared/browser/webauthn-assertion", () => ({
+  getPasskeyAssertion,
+}));
+
+const passkeyRequestNames = () =>
+  passkeyRequests.map((request) => request.name);
+
+const passkeyRequest = (name: string, index = 0) => {
+  const request = passkeyRequests.filter(
+    (candidate) => candidate.name === name
+  )[index];
+  if (request === undefined) throw new Error(`No ${name} request ${index}.`);
+  return request;
+};
+
 const getSession = mock(
   (): Promise<{ readonly data: unknown; readonly error: null }> =>
     Promise.resolve({ data: null, error: null })
@@ -67,8 +147,9 @@ mock.module("@/features/account/auth.client", () => ({
     signIn: {
       emailOtp: signInEmailOtp,
       magicLink: signInMagicLink,
-      passkey: signInPasskey,
     },
+    $fetch: passkeyFetch,
+    $store: { notify: () => undefined },
   },
 }));
 
@@ -122,12 +203,6 @@ const supportPasskeyAutofill = () => {
   });
 };
 
-const passkeyOptionsResponse = {
-  request: {
-    url: "https://workspace.invalid/api/auth/passkey/generate-authenticate-options",
-  },
-};
-
 describe("account components", () => {
   beforeEach(() => {
     navigations.length = 0;
@@ -136,16 +211,26 @@ describe("account components", () => {
     }) as typeof window.location.replace;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     cleanup();
+    // Settle what a test left pending, so no attempt outlives it.
+    for (const request of passkeyRequests) {
+      request.reject(new DOMException("Aborted", "AbortError"));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    passkeyRequests.length = 0;
+    holdsOptions = false;
+    ignoresAbort = false;
+    modalRefusal = undefined;
+    verifyResponse = signedInResponse;
+    passkeyFetch.mockClear();
+    getPasskeyAssertion.mockClear();
     rememberEmailSignInRequest(null);
     sessionStorage.clear();
     window.location.replace = originalReplace;
     signInMagicLink.mockClear();
     signInMagicLink.mockImplementation(() => Promise.resolve({ error: null }));
     signInEmailOtp.mockClear();
-    signInPasskey.mockClear();
-    signInPasskey.mockImplementation(signInWithAnyPasskey);
     Reflect.deleteProperty(globalThis, "PublicKeyCredential");
     localStorage.clear();
     getSession.mockClear();
@@ -828,9 +913,10 @@ describe("account components", () => {
   });
 
   test("sign-in card offers no passkey while passkeys are off", async () => {
+    supportPasskeyAutofill();
     const { SignInCard } = await import("./sign-in-card");
 
-    const view = render(<SignInCard locale={locale} />);
+    const view = await renderSettled(<SignInCard locale={locale} />);
 
     expect(
       view
@@ -842,7 +928,7 @@ describe("account components", () => {
         name: m.accountSignInPasskey({}, { locale }),
       })
     ).toBeNull();
-    expect(signInPasskey).not.toHaveBeenCalled();
+    expect(passkeyFetch).not.toHaveBeenCalled();
   });
 
   test("sign-in card signs in with a passkey and opens the account", async () => {
@@ -865,7 +951,7 @@ describe("account components", () => {
       );
     });
 
-    expect(signInPasskey).toHaveBeenCalledWith({ autoFill: false });
+    expect(passkeyRequestNames()).toEqual(["options", "modal", "verify"]);
     expect(navigations).toEqual(["/en-US/account"]);
     expect(localStorage.getItem("deskohub:passkey-held:account-1")).toBe("1");
   });
@@ -901,10 +987,7 @@ describe("account components", () => {
         name: m.accountSignInPasskey({}, { locale }),
       });
 
-    signInPasskey.mockResolvedValueOnce({
-      data: null,
-      error: { code: "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY", status: 400 },
-    });
+    modalRefusal = new DOMException("Dismissed", "NotAllowedError");
     await act(async () => {
       fireEvent.click(passkeyButton());
     });
@@ -912,10 +995,11 @@ describe("account components", () => {
       view.queryByText(m.accountSignInPasskeyFailed({}, { locale }))
     ).toBeNull();
 
-    signInPasskey.mockResolvedValueOnce({
+    modalRefusal = undefined;
+    verifyResponse = {
       data: null,
       error: { code: "AUTHENTICATION_FAILED", status: 400 },
-    });
+    };
     await act(async () => {
       fireEvent.click(passkeyButton());
     });
@@ -927,43 +1011,11 @@ describe("account components", () => {
 
   test("sign-in card starts passkey autofill where the browser supports it", async () => {
     supportPasskeyAutofill();
-    signInPasskey.mockImplementation(() => new Promise(() => undefined));
     const { SignInCard } = await import("./sign-in-card");
 
-    try {
-      await act(async () => {
-        render(<SignInCard locale={locale} passkeysEnabled />);
-        await Promise.resolve();
-      });
+    await renderSettled(<SignInCard locale={locale} passkeysEnabled />);
 
-      expect(signInPasskey).toHaveBeenCalledWith({ autoFill: true });
-    } finally {
-      signInPasskey.mockReset();
-    }
-  });
-
-  test("sign-in card holds the passkey button until autofill has its options", async () => {
-    supportPasskeyAutofill();
-    signInPasskey.mockImplementation(() => new Promise(() => undefined));
-    const { SignInCard } = await import("./sign-in-card");
-
-    const view = await renderSettled(
-      <SignInCard locale={locale} passkeysEnabled />
-    );
-    const passkeyButton = view.getByRole("button", {
-      name: m.accountSignInPasskey({}, { locale }),
-    }) as HTMLButtonElement;
-
-    expect(signInPasskey).toHaveBeenCalledWith({ autoFill: true });
-    expect(passkeyButton.disabled).toBe(true);
-    expect(passkeyButton.getAttribute("aria-busy")).toBe("true");
-
-    await act(async () => {
-      reportPasskeySignInOptions(passkeyOptionsResponse);
-    });
-
-    expect(passkeyButton.disabled).toBe(false);
-    expect(passkeyButton.getAttribute("aria-busy")).toBe("false");
+    expect(passkeyRequestNames()).toEqual(["options", "conditional"]);
   });
 
   test("sign-in card offers the passkey button at once without passkey autofill", async () => {
@@ -977,7 +1029,7 @@ describe("account components", () => {
       <SignInCard locale={locale} passkeysEnabled />
     );
 
-    expect(signInPasskey).not.toHaveBeenCalled();
+    expect(passkeyFetch).not.toHaveBeenCalled();
     expect(
       (
         view.getByRole("button", {
@@ -987,41 +1039,26 @@ describe("account components", () => {
     ).toBe(false);
   });
 
-  test("sign-in card offers the passkey button when autofill cannot be armed", async () => {
+  test("sign-in card keeps quiet when autofill cannot be armed", async () => {
     supportPasskeyAutofill();
-    signInPasskey.mockResolvedValueOnce({
-      data: null,
-      error: { code: "ERROR_INVALID_DOMAIN", status: 400 },
-    });
+    getPasskeyAssertion.mockImplementationOnce(() =>
+      Promise.reject(new DOMException("Bad domain", "SecurityError"))
+    );
     const { SignInCard } = await import("./sign-in-card");
 
     const view = await renderSettled(
       <SignInCard locale={locale} passkeysEnabled />
     );
 
-    expect(signInPasskey).toHaveBeenCalledWith({ autoFill: true });
-    expect(
-      (
-        view.getByRole("button", {
-          name: m.accountSignInPasskey({}, { locale }),
-        }) as HTMLButtonElement
-      ).disabled
-    ).toBe(false);
+    expect(passkeyRequestNames()).toEqual(["options"]);
     expect(
       view.queryByText(m.accountSignInPasskeyFailed({}, { locale }))
     ).toBeNull();
   });
 
-  test("sign-in card holds the passkey button again while a failed attempt re-arms autofill", async () => {
+  test("sign-in card cancels a pending autofill when the passkey button is clicked", async () => {
     supportPasskeyAutofill();
-    signInPasskey.mockImplementation((options) =>
-      options?.autoFill
-        ? new Promise(() => undefined)
-        : Promise.resolve({
-            data: null,
-            error: { code: "AUTHENTICATION_FAILED", status: 400 },
-          })
-    );
+    holdsOptions = true;
     const { SignInCard } = await import("./sign-in-card");
 
     const view = await renderSettled(
@@ -1030,30 +1067,211 @@ describe("account components", () => {
     const passkeyButton = view.getByRole("button", {
       name: m.accountSignInPasskey({}, { locale }),
     }) as HTMLButtonElement;
-    await act(async () => {
-      reportPasskeySignInOptions(passkeyOptionsResponse);
-    });
+    // The autofill request is still waiting for its options.
+    expect(passkeyRequestNames()).toEqual(["options"]);
+    expect(passkeyButton.disabled).toBe(false);
+    expect(passkeyButton.getAttribute("aria-busy")).toBeNull();
+
     await act(async () => {
       fireEvent.click(passkeyButton);
+    });
+    expect(passkeyRequest("options", 0).signal.aborted).toBe(true);
+    await act(async () => {
+      passkeyRequest("options", 1).resolve(passkeyOptions);
+    });
+
+    expect(passkeyRequestNames()).toEqual([
+      "options",
+      "options",
+      "modal",
+      "verify",
+    ]);
+    expect(navigations).toEqual(["/en-US/account"]);
+  });
+
+  test("sign-in card starts no autofill after a click during the browser's autofill check", async () => {
+    const { promise: checked, resolve: answerCheck } =
+      Promise.withResolvers<boolean>();
+    Object.defineProperty(globalThis, "PublicKeyCredential", {
+      configurable: true,
+      value: { isConditionalMediationAvailable: () => checked },
+    });
+    holdsOptions = true;
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = await renderSettled(
+      <SignInCard locale={locale} passkeysEnabled />
+    );
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountSignInPasskey({}, { locale }),
+        })
+      );
+    });
+    await act(async () => {
+      answerCheck(true);
+    });
+    expect(passkeyRequestNames()).toEqual(["options"]);
+
+    await act(async () => {
+      passkeyRequest("options").resolve(passkeyOptions);
+    });
+    expect(passkeyRequestNames()).toEqual(["options", "modal", "verify"]);
+    expect(passkeyRequest("modal").signal.aborted).toBe(false);
+    expect(navigations).toEqual(["/en-US/account"]);
+  });
+
+  test("sign-in card starts autofill again after a failed passkey button attempt", async () => {
+    supportPasskeyAutofill();
+    verifyResponse = {
+      data: null,
+      error: { code: "AUTHENTICATION_FAILED", status: 400 },
+    };
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = await renderSettled(
+      <SignInCard locale={locale} passkeysEnabled />
+    );
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountSignInPasskey({}, { locale }),
+        })
+      );
     });
 
     expect(
       view.getByText(m.accountSignInPasskeyFailed({}, { locale }))
     ).toBeTruthy();
-    expect(
-      signInPasskey.mock.calls.map(([options]) => options?.autoFill)
-    ).toEqual([true, false, true]);
-    expect(passkeyButton.disabled).toBe(true);
+    expect(passkeyRequestNames()).toEqual([
+      "options",
+      "conditional",
+      "options",
+      "modal",
+      "verify",
+      "options",
+      "conditional",
+    ]);
+    expect(passkeyRequest("conditional", 0).signal.aborted).toBe(true);
+    expect(passkeyRequest("conditional", 1).signal.aborted).toBe(false);
+  });
 
-    // A click now would race the new autofill request.
+  test("sign-in card ignores the late autofill options of a card mounted before it", async () => {
+    supportPasskeyAutofill();
+    holdsOptions = true;
+    ignoresAbort = true;
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = await renderSettled(
+      <div>
+        <SignInCard
+          locale={locale}
+          passkeysEnabled
+          returnTo="/en-US/admin/invoices?page=1"
+        />
+      </div>
+    );
     await act(async () => {
-      fireEvent.click(passkeyButton);
+      view.rerender(
+        <div>
+          <SignInCard
+            locale={locale}
+            passkeysEnabled
+            returnTo="/en-US/admin/invoices?page=1"
+          />
+          <SignInCard
+            locale={locale}
+            passkeysEnabled
+            returnTo="/en-US/admin/invoices?page=2"
+          />
+        </div>
+      );
     });
-    expect(signInPasskey).toHaveBeenCalledTimes(3);
+    expect(passkeyRequest("options", 0).signal.aborted).toBe(true);
 
     await act(async () => {
-      reportPasskeySignInOptions(passkeyOptionsResponse);
+      passkeyRequest("options", 0).resolve(passkeyOptions);
     });
-    expect(passkeyButton.disabled).toBe(false);
+    expect(passkeyRequestNames()).toEqual(["options", "options"]);
+    await act(async () => {
+      passkeyRequest("options", 1).resolve(passkeyOptions);
+    });
+    await act(async () => {
+      passkeyRequest("conditional").resolve({ id: "credential" });
+    });
+
+    expect(navigations).toEqual(["/en-US/admin/invoices?page=2"]);
+  });
+
+  test("sign-in card opened for another destination drops its earlier autofill", async () => {
+    supportPasskeyAutofill();
+    holdsOptions = true;
+    ignoresAbort = true;
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = await renderSettled(
+      <SignInCard
+        locale={locale}
+        passkeysEnabled
+        returnTo="/en-US/admin/invoices?page=3"
+      />
+    );
+    await act(async () => {
+      view.rerender(
+        <SignInCard
+          locale={locale}
+          passkeysEnabled
+          returnTo="/en-US/admin/invoices?page=4"
+        />
+      );
+    });
+    await act(async () => {
+      passkeyRequest("options", 0).resolve(passkeyOptions);
+    });
+    expect(passkeyRequestNames()).toEqual(["options", "options"]);
+
+    await act(async () => {
+      passkeyRequest("options", 1).resolve(passkeyOptions);
+    });
+    await act(async () => {
+      passkeyRequest("conditional").resolve({ id: "credential" });
+    });
+
+    expect(passkeyRequestNames()).toEqual([
+      "options",
+      "options",
+      "conditional",
+      "verify",
+    ]);
+    expect(navigations).toEqual(["/en-US/admin/invoices?page=4"]);
+  });
+
+  test("sign-in card closed during a passkey ceremony cancels it", async () => {
+    getPasskeyAssertion.mockImplementationOnce((_options, { signal }) =>
+      startPasskeyRequest("modal", signal)
+    );
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = await renderSettled(
+      <SignInCard locale={locale} passkeysEnabled />
+    );
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountSignInPasskey({}, { locale }),
+        })
+      );
+    });
+    expect(passkeyRequestNames()).toEqual(["options", "modal"]);
+
+    view.unmount();
+
+    expect(passkeyRequest("modal").signal.aborted).toBe(true);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(passkeyRequestNames()).toEqual(["options", "modal"]);
+    expect(navigations).toEqual([]);
   });
 });

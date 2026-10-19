@@ -6,7 +6,7 @@ import type { Locale } from "@/features/i18n";
 import { authClient } from "./auth.client";
 import { forgetEmailSignInRequest } from "./email-sign-in-request";
 import { rememberPasskeyOnThisBrowser } from "./passkey-prompt";
-import { afterNextPasskeySignInOptions } from "./passkey-sign-in-options";
+import { requestPasskeySignIn } from "./passkey-sign-in";
 import type {
   AccountPasskey,
   PasskeyChangeResult,
@@ -115,19 +115,22 @@ const toPasskeyChangeResult = (
  * Signs in with a passkey, from the button or, with `autoFill`, from the
  * email field's autofill, and continues to the sign-in destination: a
  * same-origin `returnTo`, otherwise the account. Anything but a sign-in leaves
- * the page as it is.
+ * the page as it is. Aborting `signal` cancels the attempt, and a newer
+ * attempt on the page cancels it too.
  */
 export const signInWithPasskey = async ({
   locale,
   returnTo,
   autoFill = false,
+  signal,
 }: {
   readonly locale: Locale;
   readonly returnTo?: string;
   readonly autoFill?: boolean;
+  readonly signal?: AbortSignal;
 }): Promise<PasskeySignInResult> => {
   const response = await settle(
-    authClient.signIn.passkey({ autoFill }).then(decodeSignInResponse)
+    requestPasskeySignIn({ autoFill, signal }).then(decodeSignInResponse)
   );
   const result = toPasskeySignInResult(response);
   if (result !== "signed-in") return result;
@@ -141,35 +144,6 @@ export const signInWithPasskey = async ({
   } catch {
     // The document is already leaving or the browser blocked navigation.
   }
-  return result;
-};
-
-/**
- * Offers saved passkeys in the email field's autofill and signs in with the
- * one the customer picks. `onArmed` runs once: when the autofill request has
- * its options and starts waiting for the customer, or when the attempt ends
- * without a sign-in first. A ceremony started before then would race it for
- * the sign-in challenge, and the late autofill request would abort it.
- */
-export const armPasskeyAutofill = async ({
-  locale,
-  returnTo,
-  onArmed,
-}: {
-  readonly locale: Locale;
-  readonly returnTo?: string;
-  readonly onArmed: () => void;
-}): Promise<PasskeySignInResult> => {
-  let armed = false;
-  const arm = () => {
-    if (armed) return;
-    armed = true;
-    onArmed();
-  };
-  const stopWaiting = afterNextPasskeySignInOptions(arm);
-  const result = await signInWithPasskey({ locale, returnTo, autoFill: true });
-  stopWaiting();
-  if (result !== "signed-in") arm();
   return result;
 };
 

@@ -13,7 +13,8 @@ export const workspaceE2EAccountJournalDirectory = (
   suite: "checkout" | "instant-navigation"
 ) => resolve(workspaceDir, "e2e-artifacts", suite, "account-journals");
 
-const checkoutJournalDirectory = workspaceE2EAccountJournalDirectory("checkout");
+const checkoutJournalDirectory =
+  workspaceE2EAccountJournalDirectory("checkout");
 const formatVersion = 1;
 export const workspaceE2EAccountLaneId = "account-lane";
 
