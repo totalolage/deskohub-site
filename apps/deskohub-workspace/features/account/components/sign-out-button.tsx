@@ -9,6 +9,7 @@ import {
 } from "@/features/account/analytics-identity";
 import { authClient } from "@/features/account/auth.client";
 import { type Locale, m } from "@/features/i18n";
+import { leaveDocument } from "@/shared/browser/document-navigation";
 import { Button } from "@/shared/components/ui/button";
 import {
   useAllowNextUnload,
@@ -45,7 +46,7 @@ export function SignOutButton({ locale }: SignOutButtonProps) {
       }
       completeAnalyticsAccountSignOut();
       allowNextUnload();
-      window.location.assign(target);
+      leaveDocument(target);
     } catch {
       void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
         () => undefined

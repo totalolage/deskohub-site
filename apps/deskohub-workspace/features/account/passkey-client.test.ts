@@ -37,7 +37,7 @@ const deletePasskey = mock((_body: { readonly id: string }) =>
 );
 const recordSignInCompletion = mock((_method: string) => undefined);
 const rememberPasskeyOnThisBrowser = mock((_accountId: string) => undefined);
-const forgetSignInCodeRequest = mock(() => undefined);
+const forgetEmailSignInRequest = mock(() => undefined);
 
 mock.module("@/features/account/auth.client", () => ({
   authClient: {
@@ -47,7 +47,7 @@ mock.module("@/features/account/auth.client", () => ({
 }));
 mock.module("./sign-in-analytics", () => ({ recordSignInCompletion }));
 mock.module("./passkey-prompt", () => ({ rememberPasskeyOnThisBrowser }));
-mock.module("./sign-in-code-request", () => ({ forgetSignInCodeRequest }));
+mock.module("./email-sign-in-request", () => ({ forgetEmailSignInRequest }));
 
 let passkeyClient: typeof import("./passkey-client");
 let originalReplace: typeof window.location.replace;
@@ -69,7 +69,7 @@ describe("passkey client", () => {
       deletePasskey,
       recordSignInCompletion,
       rememberPasskeyOnThisBrowser,
-      forgetSignInCodeRequest,
+      forgetEmailSignInRequest,
       replace,
     ]) {
       fn.mockClear();
@@ -132,7 +132,7 @@ describe("passkey client", () => {
     expect(signInPasskey).toHaveBeenCalledWith({ autoFill: false });
     expect(rememberPasskeyOnThisBrowser).toHaveBeenCalledWith("account-1");
     expect(recordSignInCompletion).toHaveBeenCalledWith("passkey");
-    expect(forgetSignInCodeRequest).toHaveBeenCalledTimes(1);
+    expect(forgetEmailSignInRequest).toHaveBeenCalledTimes(1);
     expect(replace).toHaveBeenCalledWith("/cs-CZ/account");
   });
 

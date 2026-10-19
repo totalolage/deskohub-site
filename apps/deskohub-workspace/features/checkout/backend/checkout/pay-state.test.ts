@@ -31,7 +31,7 @@ const {
   signedPayStateSchema,
 } = await import("./pay-state");
 const { buildCheckoutPayContinuationPath } = await import("./checkout-pay-url");
-const { sealCheckoutState } = await import("./checkout-state-token");
+const { sealState } = await import("@/shared/backend/sealed-state");
 
 const runSync = <A, E>(effect: Effect.Effect<A, E>) => Effect.runSync(effect);
 
@@ -487,7 +487,7 @@ describe("legacy signed Pay state with a retired customer message", () => {
     };
     // Seal below the Pay-state schema so the retired key is already in the token.
     const token = runSync(
-      sealCheckoutState(legacyState, fixedKey.kid, {
+      sealState(legacyState, fixedKey.kid, {
         keys: [fixedKey],
         randomBytes: fixedRandomBytes,
       })
