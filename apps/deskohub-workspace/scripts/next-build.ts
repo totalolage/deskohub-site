@@ -36,10 +36,7 @@ export const nextBuildPhases = (
         },
         // Node, like `next build` itself, runs the hook.
         {
-          command: [
-            "node",
-            join(import.meta.dir, "next-after-compile.mjs"),
-          ],
+          command: ["node", join(import.meta.dir, "next-after-compile.mjs")],
         },
         { command: nextBuild([`${buildModeFlag}=generate`, ...args]) },
       ];
