@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { eq, inArray } from "drizzle-orm";
-import { Cause, Effect, Exit, Fiber, type Layer, Schema } from "effect";
+import { Cause, Effect, Exit, Fiber, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import {
   emailCampaigns,
@@ -13,17 +14,31 @@ import {
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   campaignContentFixture,
+  deleteAutomatedCampaigns,
   deleteCampaigns,
 } from "../../backend/email-campaigns.test-utils";
 import type { CampaignId } from "../../campaign-identifiers";
-import type { AutomationWorkUnitId } from "../automation-identifiers";
+import type {
+  AutomationRunId,
+  AutomationWorkUnitId,
+} from "../automation-identifiers";
 import { automationWorkUnitKinds } from "../automation-work-units";
+import { AutomationConditionPlanning } from "./automation-condition-planning.service";
 import {
   automationEngineTestLayer,
   seedAutomationUnit,
   testUnitHandler,
 } from "./automation-engine.test-utils";
+import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import { AutomationPlanner } from "./automation-planner.service";
+import {
+  automationFlowOf,
+  conditionStep,
+  readAutomationRun,
+  seedAutomationRun,
+  seedFlowAutomation,
+  testCustomerId,
+} from "./automation-steps.test-utils";
 import {
   AutomationUnitDefect,
   AutomationUnitFetchFailure,
@@ -732,3 +747,186 @@ describe.skipIf(!database)("automation unit processor", () => {
     ]);
   });
 });
+
+describe.skipIf(!database)(
+  "settling a unit releases its runs for replanning",
+  () => {
+    const postgres = database!;
+    const campaignIds: Array<CampaignId> = [];
+    const customer = testCustomerId(
+      `automation-release-${crypto.randomUUID()}`
+    );
+    /** A condition handler whose fetch or commit fails as the test says. */
+    const failingConditionHandler = (failure: {
+      readonly fetch?: AutomationUnitDefect;
+      readonly commit?: AutomationUnitRecheckFailed;
+    }) =>
+      registerAutomationUnitHandler({
+        kind: "condition",
+        subject: Schema.Struct({ runIds: Schema.Array(Schema.String) }),
+        fetch: () =>
+          failure.fetch === undefined
+            ? Effect.void
+            : Effect.fail(failure.fetch),
+        commit: () =>
+          failure.commit === undefined
+            ? Effect.succeed([])
+            : Effect.fail(failure.commit),
+      });
+
+    const engine = (handler: ReturnType<typeof failingConditionHandler>) =>
+      automationEngineTestLayer({
+        database: postgres,
+        queue: makeAutomationUnitQueueFake(),
+        handlers: [handler],
+        conditionPlanning: AutomationConditionPlanning.Default.pipe(
+          Layer.provide(
+            Layer.merge(
+              postgres.layer,
+              AutomationEvaluationFacts.Default.pipe(
+                Layer.provide(
+                  Layer.merge(postgres.layer, DotyposServiceMock({}))
+                )
+              )
+            )
+          )
+        ),
+      });
+
+    /** A ready run at a condition step, owned by a seeded condition unit. */
+    const ownedRun = async (
+      label: string,
+      unit: Omit<Parameters<typeof seedAutomationUnit>[1], "kind">
+    ) => {
+      const seeded = await seedFlowAutomation(postgres.db, {
+        flow: automationFlowOf(
+          conditionStep("check", {
+            _tag: "Group",
+            operator: "and",
+            filters: [],
+          })
+        ),
+        activatedAt: startedAt.subtract({ hours: 24 }),
+      });
+      campaignIds.push(seeded.campaignId);
+      const owner = await Effect.runPromise(
+        seedAutomationUnit(postgres.db, {
+          ...unit,
+          kind: "condition",
+          campaignId: seeded.campaignId,
+        })
+      );
+      const runId = await seedAutomationRun(postgres.db, {
+        ...seeded,
+        customerId: customer(label),
+        stepId: "check",
+        phase: "ready",
+        stepEnteredAt: startedAt,
+        dueAt: startedAt,
+        workUnitId: owner.id,
+      });
+      await Effect.runPromise(
+        postgres.db
+          .update(units)
+          .set({ subject: { label: owner.key, runIds: [runId] } })
+          .where(eq(units.id, owner.id))
+      );
+      return { owner, runId };
+    };
+
+    /** The run's owner after planning, which must be a new condition unit. */
+    const expectReplanned = async (
+      runId: AutomationRunId,
+      previous: AutomationWorkUnitId,
+      layer: ReturnType<typeof engine>,
+      at: Temporal.Instant
+    ) => {
+      const summary = await run(plan, layer, at);
+      expect(summary.conditions.runsPlanned).toBeGreaterThanOrEqual(1);
+      const { workUnitId } = await readAutomationRun(postgres.db, runId);
+      expect(workUnitId).not.toBeNull();
+      expect(workUnitId).not.toBe(previous);
+    };
+
+    beforeEach(async () => {
+      await postgres.pool.query(
+        "delete from email_campaign_automation_work_units"
+      );
+    });
+
+    afterAll(async () => {
+      await postgres.pool.query(
+        "delete from email_campaign_automation_work_units"
+      );
+      await deleteAutomatedCampaigns(postgres.db, campaignIds);
+    });
+
+    test("a unit that settles failed frees its runs", async () => {
+      const layer = engine(
+        failingConditionHandler({
+          fetch: new AutomationUnitDefect({ code: "test-defect" }),
+        })
+      );
+      const { owner, runId } = await ownedRun("failed", { status: "enqueued" });
+
+      expect(await run(processUnit(owner.id), layer)).toBe("failed");
+      expect(
+        (await readAutomationRun(postgres.db, runId)).workUnitId
+      ).toBeNull();
+      await expectReplanned(
+        runId,
+        owner.id,
+        layer,
+        startedAt.add({ minutes: 1 })
+      );
+    });
+
+    test("a unit dropped by a failed recheck frees its runs", async () => {
+      const layer = engine(
+        failingConditionHandler({
+          commit: new AutomationUnitRecheckFailed({
+            code: "automation-paused",
+          }),
+        })
+      );
+      const { owner, runId } = await ownedRun("dropped", {
+        status: "enqueued",
+      });
+
+      expect(await run(processUnit(owner.id), layer)).toBe("dropped");
+      expect(
+        (await readAutomationRun(postgres.db, runId)).workUnitId
+      ).toBeNull();
+      await expectReplanned(
+        runId,
+        owner.id,
+        layer,
+        startedAt.add({ minutes: 1 })
+      );
+    });
+
+    test("the reaper's drop of a marked unit frees its runs, and the same planner run replans them", async () => {
+      const layer = engine(failingConditionHandler({}));
+      const { owner, runId } = await ownedRun("reaped", {
+        status: "enqueued",
+        enqueuedAt: startedAt,
+        cancelRequestedAt: startedAt,
+      });
+
+      await expectReplanned(
+        runId,
+        owner.id,
+        layer,
+        startedAt.add({ minutes: 1 })
+      );
+      expect((await readUnit(owner.id)).status).toBe("dropped");
+    });
+
+    const readUnit = async (unitId: AutomationWorkUnitId) => {
+      const [unit] = await Effect.runPromise(
+        postgres.db.select().from(units).where(eq(units.id, unitId))
+      );
+      return unit!;
+    };
+  }
+);
