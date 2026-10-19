@@ -24,6 +24,7 @@ export const publicPages: ReadonlyArray<PublicPage> = [
   { pathname: "/" },
   { pathname: "/contact" },
   { pathname: "/faq" },
+  { pathname: "/pricing" },
   { pathname: "/meeting-room", releaseGate: "meeting-room-page" },
   { pathname: "/team" },
   { pathname: "/ttrpg-room" },
