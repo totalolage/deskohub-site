@@ -149,6 +149,36 @@ export const findMeetingRoomReservationDuration = (interval: {
   });
 };
 
+/** The form offers whole-hour starts up to this hour of each Prague date. */
+const lastMeetingRoomStartHour = 23;
+
+/**
+ * Last Prague date any meeting-room booking starting on a date can occupy:
+ * the date's last start booked for the longest duration. Every availability
+ * read for a start date loads inventory through this date, so single checks
+ * and the date's start-times list share one shared-snapshot entry.
+ */
+export const getMeetingRoomDayLastServiceDate = (
+  date: PlainDate
+): PlainDate => {
+  const lastStartDateTime = Temporal.PlainDate.from(date)
+    .toPlainDateTime({ hour: lastMeetingRoomStartHour })
+    .toString({ smallestUnit: "minute" });
+
+  return meetingRoomReservationDurations.reduce((lastServiceDate, duration) => {
+    const interval = getMeetingRoomReservationInterval(
+      lastStartDateTime,
+      duration
+    );
+    const durationLastServiceDate = interval
+      ? getMeetingRoomLastServiceDate(interval)
+      : lastServiceDate;
+    return durationLastServiceDate > lastServiceDate
+      ? durationLastServiceDate
+      : lastServiceDate;
+  }, date);
+};
+
 /** A start the meeting-room form accepts, with the interval it books. */
 export type MeetingRoomStartTime = {
   readonly startDateTime: LocalDateTime;
@@ -176,7 +206,9 @@ export const getMeetingRoomDayStartTimes = ({
   const midnight = Temporal.PlainDate.from(date).toPlainDateTime();
   const candidates = isMeetingRoomWholeDayReservationDuration(duration)
     ? [midnight]
-    : Array.from({ length: 24 }, (_, hour) => midnight.with({ hour }));
+    : Array.from({ length: lastMeetingRoomStartHour + 1 }, (_, hour) =>
+        midnight.with({ hour })
+      );
 
   return candidates.flatMap((candidate) => {
     if (Temporal.PlainDateTime.compare(candidate, earliestStart) < 0) return [];
