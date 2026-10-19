@@ -2,10 +2,6 @@ import { Match } from "effect";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import {
-  getWorkspaceMeetingRoomProductTitle,
-  getWorkspaceOfficeProductTitle,
-} from "@/features/checkout/product-catalog.i18n";
-import {
   getPublicCatalogOfferings,
   type PublicPriceListOffering,
 } from "@/features/checkout/public-offerings";
@@ -19,12 +15,12 @@ import { getCoworkOfferSearchParams } from "@/features/reservation/cowork-reserv
 import { getMeetingRoomReservationSelectionSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import { getReservationSelectionPath } from "@/features/reservation/reservation-checkout-query";
-import { workspaceReservationKindSchema } from "@/features/reservation/reservation-kind";
 import { Container } from "@/shared/components/container";
 import { GuardedLink as Link } from "@/shared/components/guarded-link";
 import { Button } from "@/shared/components/ui/button";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { loadPriceList } from "../backend/price-list.server";
+import { getPriceFamilies } from "../price-family";
 
 type PricingPageProps = {
   readonly locale: Locale;
@@ -111,27 +107,22 @@ function PriceList({
 }: PricingPageProps & {
   readonly offerings: ReadonlyArray<PublicPriceListOffering>;
 }) {
-  return workspaceReservationKindSchema.literals.map((kind) => {
-    const rows = offerings.filter((offering) => offering.kind === kind);
-    // Usage every row shares, such as the meeting-room durations', shows once.
-    const sharedUsage =
-      rows.length > 1 && new Set(rows.map(({ usage }) => usage)).size === 1
-        ? rows[0]?.usage
-        : undefined;
+  return getPriceFamilies(offerings, locale).map(
+    ({ kind, title, offerings: rows }) => {
+      // Usage every row shares, such as the meeting-room durations', shows once.
+      const sharedUsage =
+        rows.length > 1 && new Set(rows.map(({ usage }) => usage)).size === 1
+          ? rows[0]?.usage
+          : undefined;
 
-    return (
-      rows.length > 0 && (
+      return (
         <section
           key={kind}
           aria-labelledby={`pricing-${kind}-title`}
           className="mt-14"
         >
           <h2 id={`pricing-${kind}-title`} className="text-2xl sm:text-3xl">
-            {{
-              cowork: () => m.pricingCoworkTitle({}, { locale }),
-              "meeting-room": () => getWorkspaceMeetingRoomProductTitle(locale),
-              office: () => getWorkspaceOfficeProductTitle(locale),
-            }[kind]()}
+            {title}
           </h2>
           {sharedUsage && (
             <p className="mt-3 text-base leading-7 text-white/76">
@@ -187,9 +178,9 @@ function PriceList({
             })}
           </ul>
         </section>
-      )
-    );
-  });
+      );
+    }
+  );
 }
 
 type PriceRow = {
