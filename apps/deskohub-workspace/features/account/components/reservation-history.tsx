@@ -1,8 +1,9 @@
-import { CalendarDays, Users } from "lucide-react";
+import { CalendarDays, UserRound, Users } from "lucide-react";
 import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
 import type {
   CustomerReservationHistory,
+  CustomerReservationParty,
   CustomerReservationStatus,
   CustomerReservationSummary,
 } from "@/features/account/contracts";
@@ -69,6 +70,27 @@ const getStatusLabel = (status: CustomerReservationStatus, locale: Locale) => {
       return m.accountReservationStatusPending({}, { locale });
     case "requires-attention":
       return m.accountReservationStatusAttention({}, { locale });
+  }
+};
+
+const getReservationPartyLabel = (
+  party: CustomerReservationParty,
+  locale: Locale
+) => {
+  switch (party.kind) {
+    case "booked-for":
+      return party.customerName
+        ? m.accountReservationBookedFor(
+            { name: party.customerName },
+            { locale }
+          )
+        : m.accountReservationBookedForSomeoneElse({}, { locale });
+    case "booked-by":
+      return party.authorName
+        ? m.accountReservationBookedBy({ name: party.authorName }, { locale })
+        : m.accountReservationBookedByAnotherAccount({}, { locale });
+    case "booked-by-deleted-account":
+      return m.accountReservationBookedByDeletedAccount({}, { locale });
   }
 };
 
@@ -301,6 +323,14 @@ function FeaturedReservationItem({
                     )}
               </span>
             </p>
+            {reservation.party && (
+              <p className="mt-2 text-sm text-[#64748b]">
+                <ReservationPartyNote
+                  locale={locale}
+                  party={reservation.party}
+                />
+              </p>
+            )}
           </div>
 
           <div className="min-w-0">
@@ -472,6 +502,12 @@ function CompactReservationItem({
                       )}
                 </span>
               </span>
+              {reservation.party && (
+                <ReservationPartyNote
+                  locale={locale}
+                  party={reservation.party}
+                />
+              )}
             </div>
           </div>
 
@@ -590,8 +626,16 @@ function PastReservationTable({
                   <span className="block shrink-0 text-xs font-semibold uppercase tracking-[0.08em] text-[#64748b] @4xl:hidden">
                     {copy.product}
                   </span>
-                  <span className="break-words">
+                  <span className="min-w-0 break-words">
                     {getReservationTitle(reservation, locale)}
+                    {reservation.party && (
+                      <span className="mt-1 block text-xs font-normal text-[#64748b]">
+                        <ReservationPartyNote
+                          locale={locale}
+                          party={reservation.party}
+                        />
+                      </span>
+                    )}
                   </span>
                 </div>
               </td>
@@ -680,6 +724,24 @@ function UndatedReservationGroup({
         ))}
       </ul>
     </section>
+  );
+}
+
+function ReservationPartyNote({
+  locale,
+  party,
+}: {
+  readonly locale: Locale;
+  readonly party: CustomerReservationParty;
+}) {
+  return (
+    <span
+      className="inline-flex min-w-0 items-start gap-1.5 break-words"
+      data-account-reservation-party={party.kind}
+    >
+      <UserRound aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+      <span>{getReservationPartyLabel(party, locale)}</span>
+    </span>
   );
 }
 

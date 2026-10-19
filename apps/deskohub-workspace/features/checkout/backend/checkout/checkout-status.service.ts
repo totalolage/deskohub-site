@@ -1,4 +1,4 @@
-import { DotyposService } from "@deskohub/dotypos";
+import { DotyposService, getCustomerDisplayName } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import {
@@ -299,17 +299,11 @@ const toOptionalString = (value: string | null | undefined) => {
   return trimmed || undefined;
 };
 
-const getCustomerContactName = (customer: Customer) =>
-  [customer.firstName, customer.lastName]
-    .map(toOptionalString)
-    .filter((part): part is string => Boolean(part))
-    .join(" ") || toOptionalString(customer.companyName);
-
 const getSupportContactPrefill = (
   customer: Customer
 ): CheckoutStatusContactPrefill | undefined => {
   const prefill: CheckoutStatusContactPrefill = {
-    name: getCustomerContactName(customer),
+    name: getCustomerDisplayName(customer),
     email: toOptionalString(customer.email),
     phone: toOptionalString(customer.phone),
   };

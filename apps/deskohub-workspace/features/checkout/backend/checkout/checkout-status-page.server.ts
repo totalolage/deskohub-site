@@ -28,6 +28,7 @@ export const loadCheckoutStatusPage = Effect.fn("CheckoutStatusPage.load")(
       accessCookie: input.accessCookie,
       locale: input.locale,
       orderId: input.orderId,
+      permission: "view-status",
     });
     if (!authorized) {
       return {
