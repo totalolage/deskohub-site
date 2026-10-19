@@ -23,12 +23,19 @@ export const workspaceSiteConstants = {
       cityDistrict: "Libeň",
       city: "Praha 8",
       postalCode: "180 00",
+      country: "CZ",
     },
     coordinates: {
       lat: 50.103277,
       lng: 14.479023,
     },
     timeZone: WORKSPACE_SITE_TIME_ZONE,
+  },
+  openingHours: {
+    /** The space is open around the clock, every day. */
+    alwaysOpen: true,
+    /** Open Space desks are usable from midnight until this local time, exclusive. */
+    openSpaceUsableUntil: "17:00",
   },
   reservation: {
     defaultStartTime: "10:00",

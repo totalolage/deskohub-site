@@ -6,6 +6,7 @@ import { preloadPageAdvertisedPrices } from "@/features/reservation/backend/adve
 import { isRememberedCoworkOfferAvailable } from "@/features/reservation/backend/reservation-existing-customer.server";
 import { preloadPageAvailability } from "@/features/reservation/backend/workspace-availability-loader";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
+import { ReservationOfferingsStructuredData } from "@/features/reservation/components/reservation-offerings-structured-data";
 import { getCoworkDateAdvertisedPriceRequests } from "@/features/reservation/cowork-advertised-price";
 import type {
   CoworkReservationInput,
@@ -22,6 +23,7 @@ import {
   getReservationExistingCustomerForm,
   type ReservationExistingCustomer,
 } from "@/features/reservation/reservation-existing-customer";
+import { getCoworkPageOfferings } from "@/features/reservation/reservation-page-offerings";
 import {
   coworkReservationPath,
   getCoworkReservationPath,
@@ -170,17 +172,30 @@ export async function renderCoworkReservationContent({
   ]);
 
   return (
-    <CoworkReservationForm
-      checkoutSessionId={checkoutSessionId}
-      existingCustomer={existingCustomerForm}
-      initialAdvertisedPrices={initialAdvertisedPrices}
-      initialAvailability={initialAvailability}
-      initialReservation={initialReservation}
-      initialValues={initialValues}
-      locale={locale}
-      replacementToken={replacementToken}
-      submittedCode={submittedCode}
-      today={today}
-    />
+    <>
+      <ReservationOfferingsStructuredData
+        locale={locale}
+        offerings={getCoworkPageOfferings({
+          advertisedPrices: initialAdvertisedPrices,
+          coffee: Boolean(initialValues.coffee),
+          date: initialValues.date,
+          locale,
+          submittedCode,
+        })}
+        pathname={coworkReservationPath}
+      />
+      <CoworkReservationForm
+        checkoutSessionId={checkoutSessionId}
+        existingCustomer={existingCustomerForm}
+        initialAdvertisedPrices={initialAdvertisedPrices}
+        initialAvailability={initialAvailability}
+        initialReservation={initialReservation}
+        initialValues={initialValues}
+        locale={locale}
+        replacementToken={replacementToken}
+        submittedCode={submittedCode}
+        today={today}
+      />
+    </>
   );
 }

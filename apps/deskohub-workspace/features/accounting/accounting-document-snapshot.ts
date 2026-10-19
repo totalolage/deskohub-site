@@ -166,10 +166,7 @@ export const workspaceAccountingSupplier: typeof accountingSupplierSchema.Type =
       workspaceSiteConstants.company.identificationNumber
     ),
     vatStatus: workspaceSiteConstants.company.vatStatus,
-    address: {
-      ...workspaceSiteConstants.location.address,
-      country: "CZ",
-    },
+    address: workspaceSiteConstants.location.address,
     contactEmail: workspaceSiteConstants.contact.infoEmail,
   };
 

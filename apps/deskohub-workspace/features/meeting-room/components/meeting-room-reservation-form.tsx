@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
   type AdvertisedPrice,
+  getAdvertisedProductItem,
   isMeetingRoomAdvertisedPrice,
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
@@ -309,17 +310,14 @@ export function MeetingRoomReservationForm({
                   const durationKey = getMeetingRoomReservationDurationKey(
                     product.duration
                   );
-                  const advertisedProductItem = advertisedPricesByDuration
-                    .get(durationKey)
-                    ?.summary.sections.find(({ key }) => key === "order")
-                    ?.items.find(
-                      (item) =>
-                        "product" in item &&
-                        item.product.kind === "meeting-room" &&
-                        getMeetingRoomReservationDurationKey(
-                          item.product.duration
-                        ) === durationKey
-                    );
+                  const durationAdvertisedPrice =
+                    advertisedPricesByDuration.get(durationKey);
+                  const advertisedProductItem =
+                    durationAdvertisedPrice &&
+                    getAdvertisedProductItem(durationAdvertisedPrice, {
+                      kind: "meeting-room",
+                      duration: product.duration,
+                    });
                   const originalAmount =
                     advertisedProductItem &&
                     "originalAmount" in advertisedProductItem &&
