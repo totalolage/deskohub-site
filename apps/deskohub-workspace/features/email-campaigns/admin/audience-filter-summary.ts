@@ -23,7 +23,7 @@ import {
 import type { CampaignDelivery, CampaignStatus } from "../campaign-states";
 import type { DatePeriod } from "../date-period";
 import {
-  type AudienceCampaignSourceSummary,
+  AudienceCampaignSourceSummary,
   type AudienceCountWording,
   type AudienceDateWording,
   type AudienceSetWording,
@@ -207,13 +207,18 @@ const summarizeCampaignSource = (
 ): AudienceCampaignSourceSummary =>
   Match.value(source).pipe(
     Match.tagsExhaustive({
-      This: () => ({ _tag: "This" }) as const,
-      Specific: ({ campaignId }): AudienceCampaignSourceSummary => {
-        if (!campaigns) return { _tag: "Specific", campaign: campaignId };
+      This: () => AudienceCampaignSourceSummary.This(),
+      Specific: ({ campaignId }) => {
+        if (!campaigns)
+          return AudienceCampaignSourceSummary.Specific({
+            campaign: campaignId,
+          });
         const campaign = campaigns.find(({ id }) => id === campaignId);
         return campaign
-          ? { _tag: "Specific", campaign: quoted(campaign.name, locale) }
-          : { _tag: "Deleted" };
+          ? AudienceCampaignSourceSummary.Specific({
+              campaign: quoted(campaign.name, locale),
+            })
+          : AudienceCampaignSourceSummary.Deleted();
       },
     })
   );
