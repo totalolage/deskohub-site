@@ -47,6 +47,7 @@ import {
   renderCampaignEmail,
 } from "@/features/email-campaigns/body/render-campaign-email";
 import type {
+  AudienceFilterContextInvalid,
   CampaignAudienceArchived,
   CampaignAudienceInUse,
   CampaignAudienceMissing,
@@ -82,6 +83,7 @@ import {
 type CampaignApiCause =
   | CliInputInvalid
   | CliMutationRejected
+  | AudienceFilterContextInvalid
   | CampaignAudienceArchived
   | CampaignAudienceInUse
   | CampaignAudienceMissing
@@ -164,6 +166,19 @@ const toCampaignApiFailure = (cause: CampaignApiCause) =>
       () =>
         new CliMutationRejected({
           message: "The audience is archived. Choose another audience.",
+        })
+    ),
+    Match.tag(
+      "AudienceFilterContextInvalid",
+      ({ uses }) =>
+        new CliInputInvalid({
+          message: `The audience filter uses ${[
+            ...uses.attributes.map((attribute) => `the ${attribute} attribute`),
+            ...uses.periods.map((period) => `${period} periods`),
+            ...uses.campaignSources.map(
+              (source) => `${source} campaign sources`
+            ),
+          ].join(", ")}, which saved audiences and campaigns can't use yet.`,
         })
     ),
     Match.tag(

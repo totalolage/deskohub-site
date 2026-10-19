@@ -52,6 +52,9 @@ const campaignSaveError =
         Match.when("CampaignAudienceArchived", () =>
           m.emailCampaignsComposerSaveAudienceArchived({}, { locale })
         ),
+        Match.when("AudienceFilterContextInvalid", () =>
+          m.emailCampaignsComposerSaveAudienceFilterUnavailable({}, { locale })
+        ),
         Match.when("CampaignAudienceNotFound", () =>
           m.emailCampaignsComposerSaveAudienceNotFound({}, { locale })
         ),

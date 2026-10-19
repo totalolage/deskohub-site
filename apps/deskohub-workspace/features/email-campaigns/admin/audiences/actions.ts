@@ -10,7 +10,11 @@ import {
   type SafeActionFailure,
 } from "@/shared/utils/safe-action-client";
 import { CampaignAudienceService } from "../../backend/campaign-audience.service";
-import { CampaignAudienceInUse, CampaignAudienceNotFound } from "../../errors";
+import {
+  AudienceFilterContextInvalid,
+  CampaignAudienceInUse,
+  CampaignAudienceNotFound,
+} from "../../errors";
 import type { AudienceMessage } from "./audience-attribute-wording";
 import {
   audienceReferenceStandardSchema,
@@ -30,6 +34,9 @@ const audienceErrorMessage = (
       { count: cause.draftCampaignIds.length },
       { locale }
     );
+  }
+  if (cause instanceof AudienceFilterContextInvalid) {
+    return m.emailCampaignsAudienceSaveFilterUnavailable({}, { locale });
   }
   return fallback({}, { locale });
 };
