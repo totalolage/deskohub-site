@@ -1145,5 +1145,12 @@
   "contactOpeningHoursLabel": "Otevírací doba",
   "publicOfferingAddOnIncluded": "{addOn} v ceně",
   "publicPageTopicOffer": "Nabídka",
-  "publicPageTopicBooking": "Rezervace"
+  "publicPageTopicBooking": "Rezervace",
+  "siteToolListOfferingsTitle": "Zobrazit nabídku DH Workspace",
+  "siteToolCheckAvailabilityTitle": "Ověřit dostupnost v DH Workspace",
+  "siteToolGetQuoteTitle": "Spočítat cenu rezervace v DH Workspace",
+  "siteToolPrepareReservationTitle": "Připravit rezervaci v DH Workspace",
+  "siteToolRequestFailed": "Nástroj webu se nepodařilo spojit s DH Workspace. Zkus to prosím za chvíli znovu.",
+  "siteToolContactDetailsRequired": "Doplň prosím v rezervačním formuláři chybějící kontaktní údaje a zkus to znovu.",
+  "siteToolFormNotReady": "Rezervační formulář ještě načítá cenu nebo dostupnost. Zkus to prosím za chvíli znovu."
 }

@@ -1136,5 +1136,12 @@
   "contactOpeningHoursLabel": "Opening hours",
   "publicOfferingAddOnIncluded": "{addOn} included",
   "publicPageTopicOffer": "Offer",
-  "publicPageTopicBooking": "Booking"
+  "publicPageTopicBooking": "Booking",
+  "siteToolListOfferingsTitle": "See DH Workspace offerings",
+  "siteToolCheckAvailabilityTitle": "Check DH Workspace availability",
+  "siteToolGetQuoteTitle": "Quote a DH Workspace booking",
+  "siteToolPrepareReservationTitle": "Prepare a DH Workspace reservation",
+  "siteToolRequestFailed": "The site tool couldn’t reach DH Workspace. Try again in a moment.",
+  "siteToolContactDetailsRequired": "Fill in the missing contact details in the reservation form, then try again.",
+  "siteToolFormNotReady": "The reservation form is still loading the price or availability. Try again in a moment."
 }
