@@ -1156,17 +1156,30 @@ export const makeAutomationEngineScenario = async (input: {
     readonly until: Temporal.Instant;
     readonly settled?: () => Promise<boolean>;
     readonly maxTicks?: number;
+    /**
+     * Plans again at the same instant while work pends (up to 10 times),
+     * as overlapping planner runs within one minute would, so a chain of
+     * local steps completes at its own instant rather than a minute later.
+     */
+    readonly sameInstant?: boolean;
   }): Promise<AutomationScenarioProgress> => {
     const maxTicks = options.maxTicks ?? 500;
     let at = options.from;
+    let repeats = 0;
     for (let ticks = 0; ticks < maxTicks; ) {
       await engine.tick(at);
       ticks += 1;
       if (options.settled && (await options.settled())) {
         return { at, ticks, settled: true };
       }
+      const pending = await hasPendingWork(at);
+      if (options.sameInstant && pending && repeats < 10) {
+        repeats += 1;
+        continue;
+      }
+      repeats = 0;
       const nextMinute = at.add({ minutes: 1 });
-      const due = (await hasPendingWork(at)) ? nextMinute : await nextDue(at);
+      const due = pending ? nextMinute : await nextDue(at);
       if (due === undefined) return { at, ticks, settled: !options.settled };
       const next =
         Temporal.Instant.compare(due, nextMinute) < 0 ? nextMinute : due;
