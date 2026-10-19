@@ -22,7 +22,11 @@ export const workspaceE2ENonPaymentCaseIds = [
   "locale-switch",
   "discount-code-unknown",
   "discount-code-customer-ineligible",
+  "reservation-url-state-cowork",
+  "reservation-url-state-office-starts-on-link",
   "referral-profile-completion-unusable-link",
+  "reservation-url-state-office",
+  "reservation-url-state-meeting-room",
   "contact-form",
 ] as const;
 
@@ -67,6 +71,19 @@ export const isWorkspaceE2EReferralCaseId = (
   value: string
 ): value is WorkspaceE2EReferralCaseId =>
   (workspaceE2EReferralCaseIds as readonly string[]).includes(value);
+
+/**
+ * Cases that need the office page. A preview with the office page disabled
+ * plans none of them.
+ */
+const workspaceE2EOfficeCaseIds = [
+  "checkout-office-paid-multi-day",
+  "reservation-url-state-office",
+  "reservation-url-state-office-starts-on-link",
+] as const satisfies readonly WorkspaceE2ECaseId[];
+
+export const isWorkspaceE2EOfficeCaseId = (value: string) =>
+  (workspaceE2EOfficeCaseIds as readonly string[]).includes(value);
 
 export const workspaceE2ECaseIds = [
   ...workspaceE2ENonPaymentCaseIds,

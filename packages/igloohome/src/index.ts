@@ -19,6 +19,7 @@ export type {
 } from "./types";
 export {
   AlgoPinSchema,
+  algoPinLength,
   IgloohomeDeviceIdSchema,
   IgloohomePinIdSchema,
 } from "./types";

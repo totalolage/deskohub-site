@@ -70,9 +70,9 @@ import {
   assertHeldMeetingRoomSlotAvailability,
   type MeetingRoomE2EPreparation,
   meetingRoomE2ECoreSlotCount,
+  meetingRoomE2EReservationLinkSlotCount,
 } from "./meeting-room";
 
-const _reservationLinkSlotCount = 4;
 // Syntactically canonical but never seeded, so the checkout can only treat it
 // as customer intent and never as an applied discount.
 const unknownLinkCode = canonicalPromotionCodeSchema.make("E2E_LINK_UNKNOWN");
@@ -122,7 +122,10 @@ export const makeReservationLinkE2ECases = ({
 > =>
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
-    const linkSlots = preparation.slots.slice(meetingRoomE2ECoreSlotCount);
+    const linkSlots = preparation.slots.slice(
+      meetingRoomE2ECoreSlotCount,
+      meetingRoomE2ECoreSlotCount + meetingRoomE2EReservationLinkSlotCount
+    );
     const requireLinkSlot = (
       slot: MeetingRoomCheckoutSlot | undefined,
       id: string
@@ -1010,12 +1013,18 @@ const returnToReservationWithConflictingQuery = ({
         const url = parseUrl(restoredHref ?? "");
         assert(url, "restored reservation URL missing");
         url.searchParams.set(discountCodeQueryParam, unknownLinkCode);
-        url.searchParams.set("duration", "hour:4");
         url.searchParams.set("email", testEmailAddress("conflicting-link"));
         url.searchParams.set("name", "Conflicting Link Name");
         url.searchParams.set("phone", "+420999999999");
-        // A valid different start so the conflict is itself submittable and
-        // cannot be rejected as an invalid date before signed values win.
+        // The selection the page writes after an edit: it replaces the
+        // restored selection, while contact details and the link code stay
+        // signed.
+        url.searchParams.set(
+          "duration",
+          getMeetingRoomReservationDurationKey(
+            replacementData.meetingRoom.duration
+          )
+        );
         url.searchParams.set(
           "startDateTime",
           replacementData.meetingRoom.startDateTime
@@ -1029,15 +1038,15 @@ const returnToReservationWithConflictingQuery = ({
     yield* waitForBrowserCondition(
       run,
       session,
-      "signed reservation values win over conflicting public query",
-      getPrefilledReservationConditionScript(data),
+      "edited public selection with the signed contact details",
+      getPrefilledReservationConditionScript(replacementData),
       { timeoutMs: config.timeouts.uiTransition }
     );
     yield* waitForBrowserCondition(
       run,
       session,
-      "restored edit keeps the signed zero-price advertisement",
-      getSelectedDurationZeroPriceCondition(data),
+      "restored edit keeps the signed link code's zero price",
+      getSelectedDurationZeroPriceCondition(replacementData),
       { timeoutMs: config.timeouts.uiTransition }
     );
   });

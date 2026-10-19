@@ -29,7 +29,7 @@ Tests, fixtures, E2E code, and visual scripts never contain a literal email addr
 
 ## Subprocesses
 
-Run subprocesses in Workspace code only through `runCommand` or `commandOutput` in `apps/deskohub-workspace/scripts/shared/command.ts`. The `no-synchronous-subprocess` Grit rule rejects `Bun.spawnSync` and `node:child_process` `*Sync` calls because a Bun 1.4 bug can hang later synchronous spawns in the same test worker. Re-evaluate the rule after upgrading to a Bun release that includes oven-sh/bun#44581.
+Run subprocesses in Workspace code only through `runCommand` or `commandOutput` in `apps/deskohub-workspace/scripts/shared/command.ts`. They run under Bun (through `Bun.spawn`) and under Node, such as Playwright workers (through `node:child_process`); `command.node-fixture.mjs` covers the Node path. The `no-synchronous-subprocess` Grit rule rejects `Bun.spawnSync` and `node:child_process` `*Sync` calls because a Bun 1.4 bug can hang later synchronous spawns in the same test worker. Re-evaluate the rule after upgrading to a Bun release that includes oven-sh/bun#44581.
 
 Settle a subprocess promise before you assert on it. `expect(pending).rejects` and `.resolves` run a nested event-loop tick that can drop the child's pipe events.
 

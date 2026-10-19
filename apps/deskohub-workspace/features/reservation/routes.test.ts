@@ -3,6 +3,8 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   coworkReservationPath,
+  getReservationStartPath,
+  getShareableReservationStartPath,
   meetingRoomReservationPath,
   officeReservationPath,
   reservationAccessPath,
@@ -36,5 +38,27 @@ describe("reservation routes", () => {
     ]) {
       expect(appRouteExists(`${path}/[orderId]/page.tsx`)).toBe(true);
     }
+  });
+
+  test("builds shareable and locale-prefixed reservation start paths", () => {
+    const searchParams = new URLSearchParams({ entryTier: "open-space" });
+
+    expect(getShareableReservationStartPath("cowork", searchParams)).toBe(
+      "/reservation/cowork?entryTier=open-space"
+    );
+    expect(getReservationStartPath("cs-CZ", "cowork", searchParams)).toBe(
+      "/cs-CZ/reservation/cowork?entryTier=open-space"
+    );
+  });
+
+  test("leaves off the query delimiter when search params are empty", () => {
+    const emptySearchParams = new URLSearchParams();
+
+    expect(
+      getShareableReservationStartPath("meeting-room", emptySearchParams)
+    ).toBe("/reservation/meeting-room");
+    expect(
+      getReservationStartPath("cs-CZ", "meeting-room", emptySearchParams)
+    ).toBe("/cs-CZ/reservation/meeting-room");
   });
 });

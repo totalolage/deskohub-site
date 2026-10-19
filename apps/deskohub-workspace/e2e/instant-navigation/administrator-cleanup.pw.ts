@@ -30,7 +30,7 @@ test("remove the instant navigation administrator", async () => {
         runId,
         [instantNavigationAdministratorJournalOwner]
       );
-      yield* reconcileWorkspaceE2EAccountJournals(datasourceConfig, prepared);
+      yield* reconcileWorkspaceE2EAccountJournals(prepared);
     })
   );
 });

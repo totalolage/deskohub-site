@@ -23,7 +23,7 @@ import {
 const decodeInstant = Schema.decodeUnknownSync(instantStringSchema);
 const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
 
-const officeReservationMaximumDurationHours = 672;
+export const officeReservationMaximumDurationHours = 672;
 const millisecondsPerHour = 60 * 60 * 1000;
 
 export const officeSeatsSchema = Schema.Int.check(

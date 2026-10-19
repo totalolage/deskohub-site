@@ -33,13 +33,25 @@ Reservation pages (cowork, meeting room, office) stream every advertised price a
 - `useReservationAvailability` seeds `initialData` only for a query whose key hash matches a preloaded one. A fresh seed doesn't refetch on mount; focus, reconnect, `staleTime`, and price polling still apply.
 - Content fallbacks mirror the option cards through layout constants exported from `reservation-type-input.tsx`. The office fallback renders `officeSeatOptionsFallbackCount` seat cards because capacity comes from Dotypos inside the boundary. Preload the cowork LCP tier image from the fallback and render it eagerly with high fetch priority.
 
+## Selection in the URL
+
+Each reservation form mirrors its selection into the page URL through `useReservationSelectionUrl` (`features/reservation/components/use-reservation-selection-url.ts`).
+
+- Each family's writer sits beside its link parser in `features/reservation/*-reservation-checkout-query.ts` and returns `ReservationSelectionSearchParams` with the parameter names the parser reads. Keep the two inverse and cover the round trip in the parser's test. The type rejects contact parameters (`name`, `email`, `phone`, `customer`); never write them.
+- The hook writes only after the selection changes, never on first render: on mount it would run before the App Router patches `history.replaceState`, which drops Next's history state. It replaces the entry with `window.history.replaceState(null, "", url)`, which keeps `useSearchParams` in step without a navigation or server round trip.
+- The server-rendered `searchParams` prop goes stale after an edit. Build anything that must carry the current selection, such as a sign-in or verify return path from a reservation page, from `useSearchParams` and `usePathname` or from `window.location` when the link is followed.
+- The office parser takes `startsOn` only inside the booking window from the server's `today`; the page preloads that start date's prices.
+- An absent parameter means "unspecified", which the parser may fill from the customer's last reservation. Encode a deliberate empty choice as an explicit value instead, as cowork writes `monitorOption=none` for an optional workstation turned off.
+- Links shared outside the app, such as agent-tool links, pass the same writers to `getShareableReservationUrl`. A quote link passes the whole quoted selection so the last reservation fills nothing; an offer link that leaves add-ons open uses `getCoworkOfferSearchParams`.
+- After a Pay return the URL carries `payState` plus the edited selection. Each family's `get*RestoredReservationValues` lets selection parameters beside the token replace the restored selection (`hasReservationSelectionSearchParams`), keeping the token's checkout session, replacement token, contact, and discount intent. The Pay page's edit link carries the token alone, so it still restores the signed selection.
+
 ## Customer mode
 
 A signed-in, linked customer books with the account card by default.
 
 - `customer: "account"` makes the server replace the submitted name and email (and phone, when the profile has one) with the linked account contact and book for its Dotypos customer. The client can't pick another account.
 - "Book for someone else" submits the typed contact through the ordinary find-or-create path.
-- Prefill precedence: restored Pay state, explicit query values, the customer's last reservation of the family (cowork only when that offer is available on the form's date), then defaults.
+- Prefill precedence: restored Pay state (with any edited selection beside it), explicit query values, the customer's last reservation of the family (cowork only when that offer is available on the form's date), then defaults.
 - An explicit `customer=account|contact` query parameter selects the mode. Otherwise contact query fields select contact mode, except on office links, which never prefill a contact.
 - The marketing checkbox is omitted when the account card books for a customer whose consent is active, and shown in contact mode or when consent can't be read.
 
@@ -51,6 +63,8 @@ The customer's single Order and pay activation starts checkout (`features/checko
 2. If the browser blocks the tab or activation has expired, navigate the current tab to the provider.
 
 Never pre-open a placeholder tab or require a second activation. Zero-total completion, `pricing_changed`, validation failures, and any other non-provider result open or manage no tab. Keep the existing scoped Web Lock ownership (`shared/browser/return-window.ts`, `checkout-payment-window.tsx`): the owner holds an exclusive lock scoped to the status path and preempts a returned payment tab; an unmarked returned tab closes when the lock is unavailable or preempted, and stays open if the original tab is gone.
+
+Keep the new tab as the one handoff for every customer, people and agents alike; never branch on user agent or agent detection. #695 decided this from the 2026-10-18 agent eval run (#699). One model, Claude Sonnet, drove three harnesses (playwright-mcp, browser-use, screenshot-only) in en-US and cs-CZ against the preview of `697ad7cee`, 5 runs per task, harness, and locale. In the Nexi payment task the hosted page opened in a new tab in 30/30 runs, and every run switched to it, paid through 3-D Secure, and reached the confirmed status page (10/10 per harness, 15/15 per locale). The switch cost about 2 tool calls (list tabs, select). The new tab fails only for agents that can't see tabs, and none of the tested harnesses is one. Same-tab can't beat 30/30, so reopen the question only with evidence from agents that act in one tab, such as manual checks of commercial cloud-browser agents or production agent-traffic telemetry from #698. To rerun, see [agent evals](../../deskohub-workspace-e2e/references/agent-evals.md).
 
 The provider return route (`app/[locale]/(site)/(minimal-header)/checkout/pay/return/[orderId]/route.ts`) only redirects to the canonical status page. Provider returns may lack auth cookies, so authorization, verification, and reconciliation stay on the status page. The return route exposes no data and grants no access.
 

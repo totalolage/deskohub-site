@@ -5,8 +5,10 @@ import { CookieConsentProvider } from "@/features/cookie-consent/components/cook
 import { DeferredTagManager } from "@/features/cookie-consent/components/deferred-tag-manager";
 import { PostHogProvider } from "@/features/cookie-consent/components/posthog-analytics";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
+import heroImage from "@/features/landing-page/images/hero.jpeg";
 import { RememberSharedReferralCodeWhenEnabled } from "@/features/referrals/remember-shared-referral-code-when-enabled";
 import { postHogRuntimeConfig } from "@/shared/backend/config/posthog.config";
+import { LocalBusinessStructuredData } from "@/shared/components/structured-data";
 import { UnsavedChangesProvider } from "@/shared/components/unsaved-changes-guard";
 
 // Customer-only providers live here so the admin suite under [locale]/admin stays outside them.
@@ -20,6 +22,7 @@ export default async function SiteLayout({
 
   return (
     <>
+      <LocalBusinessStructuredData image={heroImage} locale={locale} />
       {gtmId && <DeferredTagManager gtmId={gtmId} />}
       <PostHogProvider>
         <CookieConsentProvider locale={locale} />

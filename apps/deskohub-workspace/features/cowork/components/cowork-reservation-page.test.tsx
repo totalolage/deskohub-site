@@ -1,8 +1,24 @@
 import { beforeEach, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Schema } from "effect";
-import { isValidElement, type ReactElement, type ReactNode } from "react";
+import {
+  Children,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { renderToString } from "react-dom/server";
+import { getAdvertisedProductItem } from "@/features/checkout/advertised-price";
+import {
+  buildCoworkCheckoutSummary,
+  buildCoworkReservationQuote,
+} from "@/features/checkout/checkout-quote.test-utils";
+import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
+import {
+  currencyCZK,
+  toWorkspaceMoneyMajorAmount,
+} from "@/features/checkout/workspace-money";
+import { discountIdSchema } from "@/features/discounts/contracts";
 import { m } from "@/features/i18n";
 import {
   type NormalizedCoworkReservationOrder,
@@ -24,8 +40,9 @@ mock.module("next/root-params", () => ({
   locale: () => Promise.resolve("en-US"),
 }));
 
+// Each request preloads, without a price the structured data could use.
 const loadAdvertisedPrices = mock((requests: ReadonlyArray<unknown>) =>
-  Effect.succeed(requests)
+  Effect.succeed(requests.map((request) => ({ request })))
 );
 
 mock.module("@/features/reservation/backend/advertised-prices.server", () => ({
@@ -69,6 +86,16 @@ mock.module(
 const { CoworkOfferReplaced, renderCoworkReservationContent } = await import(
   "./cowork-reservation-page"
 );
+
+/** The form the page renders beside its structured data. */
+const renderCoworkReservationForm = async (
+  input: Parameters<typeof renderCoworkReservationContent>[0]
+) => {
+  const page = (await renderCoworkReservationContent(input)) as ReactElement<{
+    readonly children: ReactNode;
+  }>;
+  return Children.toArray(page.props.children)[1];
+};
 
 beforeEach(() => mock.clearAllMocks());
 
@@ -181,7 +208,7 @@ const getRestartButtonDirectChildAnchorHref = (
 
 test("preloads every cowork price and the default selection's availability", async () =>
   stubWorkspaceInstant(async () => {
-    const form = (await renderCoworkReservationContent({
+    const form = (await renderCoworkReservationForm({
       locale: "en-US",
       searchParams: {},
     })) as CoworkFormElement;
@@ -216,9 +243,86 @@ test("preloads every cowork price and the default selection's availability", asy
     ]);
   }));
 
+test("offers the default selection's preloaded prices in structured data", async () =>
+  stubWorkspaceInstant(async () => {
+    const openSpacePrice = getWorkspaceProductByTier("open-space").price;
+    const sale = {
+      product: { kind: "cowork" as const, tier: "open-space" as const },
+      discountableSubtotal: openSpacePrice,
+      discounts: [
+        {
+          discount: {
+            id: Schema.decodeUnknownSync(discountIdSchema)("summer-sale"),
+            label: "Summer sale",
+            adjustment: { kind: "percentage" as const, basisPoints: 5000 },
+          },
+          subtotalBefore: openSpacePrice,
+          amount: currencyCZK(openSpacePrice.value / 2),
+          subtotalAfter: currencyCZK(openSpacePrice.value / 2),
+        },
+      ],
+      totalDiscount: currencyCZK(openSpacePrice.value / 2),
+      discountedSubtotal: currencyCZK(openSpacePrice.value / 2),
+    };
+    const openSpaceOrder = { entryTier: "open-space" as const, coffee: false };
+    loadAdvertisedPrices.mockImplementationOnce((requests) =>
+      Effect.succeed(
+        requests.map((request) => ({
+          request,
+          advertisedPrice: {
+            kind: "cowork",
+            quote: buildCoworkReservationQuote(openSpaceOrder, {
+              discountQuote: sale,
+            }),
+            summary: buildCoworkCheckoutSummary(openSpaceOrder, {
+              discountQuote: sale,
+            }),
+            advertisedPriceToken: "sealed",
+          },
+        }))
+      )
+    );
+
+    const page = (await renderCoworkReservationContent({
+      locale: "en-US",
+      searchParams: {},
+    })) as ReactElement<{ readonly children: ReactNode }>;
+    const [structuredData, form] = Children.toArray(page.props.children) as [
+      ReactElement,
+      CoworkFormElement,
+    ];
+    const markup = renderToString(structuredData);
+    const services = JSON.parse(
+      markup.slice(markup.indexOf(">") + 1, markup.lastIndexOf("</script>"))
+    )["@graph"];
+    const openSpaceAdvertisedPrice = form.props.initialAdvertisedPrices?.find(
+      ({ request }) =>
+        request.reservation.kind === "cowork" &&
+        request.reservation.details.entryTier === "open-space" &&
+        !request.reservation.details.coffee
+    )?.advertisedPrice;
+    const displayedAmount =
+      openSpaceAdvertisedPrice &&
+      getAdvertisedProductItem(openSpaceAdvertisedPrice, {
+        kind: "cowork",
+        tier: "open-space",
+      })?.amount;
+
+    expect(markup).toStartWith('<script type="application/ld+json">');
+    expect(displayedAmount).toEqual(currencyCZK(openSpacePrice.value / 2));
+    expect(services[0]).toMatchObject({
+      name: m.reservationOpenSpaceTitle({}, { locale: "en-US" }),
+      offers: {
+        url: "https://workspace.deskohub.cz/en-US/reservation/cowork",
+        price: toWorkspaceMoneyMajorAmount(displayedAmount ?? openSpacePrice),
+        priceCurrency: "CZK",
+      },
+    });
+  }));
+
 test("preloads the Prague workspace date's range just before UTC midnight", async () =>
   stubWorkspaceInstant(async () => {
-    const form = (await renderCoworkReservationContent({
+    const form = (await renderCoworkReservationForm({
       locale: "en-US",
       searchParams: {},
     })) as CoworkFormElement;
@@ -236,7 +340,7 @@ test("preloads the Prague workspace date's range just before UTC midnight", asyn
   }, "2099-07-30T22:30:00Z"));
 
 test("preloads the selection resolved from reservation query values", async () => {
-  const form = (await renderCoworkReservationContent({
+  const form = (await renderCoworkReservationForm({
     locale: "cs-CZ",
     searchParams: {
       entryTier: "reserved-desk",
@@ -323,7 +427,7 @@ test("restores a signed current-tier open-space reservation into the form", asyn
     date: "2099-08-01",
   }) as NormalizedCoworkReservationOrder;
 
-  const form = (await renderCoworkReservationContent({
+  const form = (await renderCoworkReservationForm({
     locale: "en-US",
     initialReservation: restoredOpenSpaceReservation,
     searchParams: {},
@@ -343,6 +447,47 @@ test("restores a signed current-tier open-space reservation into the form", asyn
   expectPreloadedFormAvailability(form);
 });
 
+test("reopens the cowork selection edited after returning from Pay with the restored checkout", async () => {
+  const restoredReservedDeskReservation = decodeReservedDeskReservation({
+    kind: "cowork",
+    name: "Jan Novák",
+    email: janEmail,
+    phone: "+420712345678",
+    billing: defaultReservationBillingSelection,
+    entryTier: "reserved-desk",
+    coffee: true,
+    monitorOption: "2x27-qhd",
+    date: "2099-08-01",
+  }) as NormalizedCoworkReservationOrder;
+
+  const form = (await renderCoworkReservationForm({
+    locale: "en-US",
+    initialReservation: restoredReservedDeskReservation,
+    replacementToken: "restored-pay-state",
+    searchParams: {
+      coffee: "true",
+      date: "2099-08-03",
+      entryTier: "reserved-desk",
+      monitorOption: "none",
+      name: "Query Override",
+      payState: "restored-pay-state",
+    },
+  })) as CoworkFormElement;
+
+  expect(form.props.initialValues).toMatchObject({
+    entryTier: "reserved-desk",
+    coffee: true,
+    monitorOption: undefined,
+    date: "2099-08-03",
+    name: "Jan Novák",
+    email: janEmail,
+  });
+  expect(form.props.replacementToken).toBe("restored-pay-state");
+  expect(loadAdvertisedPrices.mock.calls[0]?.[0]).toEqual(
+    everyCoworkPriceRequest("en-US", "2099-08-03")
+  );
+});
+
 test("restores a signed current-tier reserved-desk reservation into the form", async () => {
   const restoredReservedDeskReservation = decodeReservedDeskReservation({
     kind: "cowork",
@@ -356,7 +501,7 @@ test("restores a signed current-tier reserved-desk reservation into the form", a
     date: "2099-08-01",
   }) as NormalizedCoworkReservationOrder;
 
-  const form = (await renderCoworkReservationContent({
+  const form = (await renderCoworkReservationForm({
     locale: "en-US",
     initialReservation: restoredReservedDeskReservation,
     searchParams: {},

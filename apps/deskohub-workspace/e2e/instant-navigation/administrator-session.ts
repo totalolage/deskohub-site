@@ -1,13 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { BrowserContext } from "@playwright/test";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { env } from "../../env";
 import {
   readWorkspaceE2EAccountJournal,
   workspaceE2EAccountJournalDirectory,
 } from "../account/journal";
 import type { WorkspaceE2EAccountJournalOwner } from "../account/reconcile";
+import { WorkspaceE2EAccountResourceService } from "../account/resources.service";
 import {
   resolveWorkspaceE2ESessionSigningSecret,
   signInWorkspaceE2ESyntheticBrowserContext,
@@ -72,12 +73,16 @@ export const makeInstantNavigationAdministratorRuntime = () => {
     "WORKSPACE_E2E_DATABASE_URL_UNPOOLED",
     environment.WORKSPACE_E2E_DATABASE_ALLOWLIST
   );
+  const layer = WorkspaceE2EAccountResourceService.layer(datasourceConfig).pipe(
+    Layer.provideMerge(E2EDatabase.layer(datasourceConfig))
+  );
   const runPromise = <A>(
-    effect: Effect.Effect<A, WorkspaceE2EError, E2EDatabase>
-  ) =>
-    Effect.runPromise(
-      effect.pipe(Effect.provide(E2EDatabase.layer(datasourceConfig)))
-    );
+    effect: Effect.Effect<
+      A,
+      WorkspaceE2EError,
+      E2EDatabase | WorkspaceE2EAccountResourceService
+    >
+  ) => Effect.runPromise(effect.pipe(Effect.provide(layer)));
   return { datasourceConfig, environment, runPromise };
 };
 

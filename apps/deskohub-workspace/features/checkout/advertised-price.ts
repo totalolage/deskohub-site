@@ -1,5 +1,9 @@
 import { Schema } from "effect";
 import { checkoutSummarySchema } from "@/features/checkout/checkout-summary";
+import {
+  getWorkspaceProductKey,
+  type WorkspaceProductIdentity,
+} from "@/features/checkout/product-identity";
 import { coworkReservationQuoteSchema } from "@/features/checkout/reservation-quote-cowork";
 import { meetingRoomReservationQuoteSchema } from "@/features/checkout/reservation-quote-meeting-room";
 import { officeReservationQuoteSchema } from "@/features/checkout/reservation-quote-office";
@@ -99,6 +103,19 @@ export const isMeetingRoomAdvertisedPrice = Schema.is(
   meetingRoomAdvertisedPriceSchema
 );
 export const isOfficeAdvertisedPrice = Schema.is(officeAdvertisedPriceSchema);
+
+/** The order line that carries the product's advertised price. */
+export const getAdvertisedProductItem = (
+  { summary }: AdvertisedPrice,
+  product: WorkspaceProductIdentity
+) =>
+  summary.sections
+    .find(({ key }) => key === "order")
+    ?.items.find(
+      (item) =>
+        "product" in item &&
+        getWorkspaceProductKey(item.product) === getWorkspaceProductKey(product)
+    );
 
 export const advertisedPriceKeys = {
   all: ["advertised-price"] as const,

@@ -5,9 +5,12 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Schema } from "effect";
 import { normalizedCoworkReservationOrderSchema } from "./cowork-reservation";
 import {
+  getCoworkOfferSearchParams,
+  getCoworkReservationSelectionSearchParams,
   getReservationDefaultValuesFromPayState,
   getReservationDefaultValuesFromSearchParams,
 } from "./cowork-reservation-checkout-query";
+import { setReservationSelectionSearchParams } from "./reservation-checkout-query";
 
 const adaEmail = testEmailAddress("ada");
 
@@ -99,5 +102,129 @@ describe("customer last reservation defaults", () => {
     ).toEqual(
       getReservationDefaultValuesFromSearchParams({ tier: "open-space" })
     );
+  });
+});
+
+describe("getCoworkReservationSelectionSearchParams", () => {
+  test.each([
+    {
+      entryTier: "open-space",
+      date: "2099-06-10",
+      coffee: false,
+      monitorOption: undefined,
+    },
+    {
+      entryTier: "open-space",
+      date: "2099-06-11",
+      coffee: true,
+      monitorOption: undefined,
+    },
+    {
+      entryTier: "reserved-desk",
+      date: "2099-06-12",
+      coffee: true,
+      monitorOption: "2x32-4k",
+    },
+    {
+      entryTier: "reserved-desk",
+      date: "2099-06-12",
+      coffee: true,
+      monitorOption: undefined,
+    },
+  ] as const)("the parser reads back the written selection %o", (selection) => {
+    const searchParams = new URLSearchParams(
+      "entryTier=reserved-desk&monitorOption=2x27-qhd&discountCode=SPRING"
+    );
+    setReservationSelectionSearchParams(
+      searchParams,
+      getCoworkReservationSelectionSearchParams(selection)
+    );
+
+    expect(getReservationDefaultValuesFromSearchParams(searchParams)).toEqual(
+      expect.objectContaining({ ...selection })
+    );
+    expect(searchParams.get("discountCode")).toBe("SPRING");
+  });
+
+  test("an optional workstation turned off stays off over the last reservation", () => {
+    const lastReservation = {
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+    } as const;
+    const searchParams = new URLSearchParams();
+    setReservationSelectionSearchParams(
+      searchParams,
+      getCoworkReservationSelectionSearchParams({
+        entryTier: "reserved-desk",
+        date: "2099-06-12",
+        coffee: true,
+        monitorOption: undefined,
+      })
+    );
+
+    expect(searchParams.get("monitorOption")).toBe("none");
+    expect(
+      getReservationDefaultValuesFromSearchParams(searchParams, lastReservation)
+    ).toMatchObject({ entryTier: "reserved-desk", monitorOption: undefined });
+    // A link that leaves the option open still takes the remembered one.
+    expect(
+      getReservationDefaultValuesFromSearchParams(
+        { entryTier: "reserved-desk" },
+        lastReservation
+      )
+    ).toMatchObject({ monitorOption: "2x27-qhd" });
+  });
+
+  test("a tier without an optional workstation writes no monitor option", () => {
+    for (const entryTier of ["open-space", "profi"] as const) {
+      expect(
+        getCoworkReservationSelectionSearchParams({
+          entryTier,
+          date: "2099-06-12",
+          coffee: true,
+          monitorOption: undefined,
+        }).monitorOption
+      ).toBeUndefined();
+    }
+  });
+});
+
+describe("getCoworkOfferSearchParams", () => {
+  test("names the tier and date and leaves the add-ons to the last reservation", () => {
+    const lastReservation = {
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+    } as const;
+    const searchParams = new URLSearchParams();
+    setReservationSelectionSearchParams(
+      searchParams,
+      getCoworkOfferSearchParams({
+        entryTier: "reserved-desk",
+        date: "2099-06-12",
+      })
+    );
+
+    expect(searchParams.toString()).toBe(
+      "entryTier=reserved-desk&date=2099-06-12"
+    );
+    expect(
+      getReservationDefaultValuesFromSearchParams(searchParams, lastReservation)
+    ).toMatchObject({
+      entryTier: "reserved-desk",
+      date: "2099-06-12",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+    });
+  });
+
+  test("writes no date when the offer has none", () => {
+    expect(getCoworkOfferSearchParams({ entryTier: "open-space" })).toEqual({
+      entryTier: "open-space",
+      date: undefined,
+    });
   });
 });

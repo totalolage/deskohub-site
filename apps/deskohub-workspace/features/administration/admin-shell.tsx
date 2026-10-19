@@ -23,6 +23,7 @@ import {
   type ReactNode,
   Suspense,
   type SVGProps,
+  useId,
 } from "react";
 import { type Locale, locales } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -66,32 +67,17 @@ const navigation = [
         icon: Users,
         label: m.shellNavigationCustomers,
       },
-      {
-        href: "/admin/invoices",
-        icon: FileText,
-        label: m.shellNavigationInvoices,
-      },
+    ],
+  },
+  {
+    label: m.shellNavigationSectionDiscounts,
+    items: [
       { href: "/admin/codes", icon: Ticket, label: m.shellNavigationCodes },
-      {
-        href: "/admin/access-codes",
-        icon: KeyRound,
-        label: m.shellNavigationAccessCodes,
-      },
       { href: "/admin/vouchers", icon: Gift, label: m.shellNavigationVouchers },
       {
         href: "/admin/sales",
         icon: BadgePercent,
         label: m.shellNavigationSales,
-      },
-      {
-        href: "/admin/cli/sessions",
-        icon: SquareTerminal,
-        label: m.shellNavigationCliSessions,
-      },
-      {
-        href: "/admin/administrators",
-        icon: ShieldCheck,
-        label: m.administratorsNavigation,
       },
     ],
   },
@@ -107,6 +93,31 @@ const navigation = [
         href: "/admin/email-audiences",
         icon: ListFilter,
         label: m.shellNavigationAudiences,
+      },
+    ],
+  },
+  {
+    label: m.shellNavigationSectionAdministration,
+    items: [
+      {
+        href: "/admin/invoices",
+        icon: FileText,
+        label: m.shellNavigationInvoices,
+      },
+      {
+        href: "/admin/access-codes",
+        icon: KeyRound,
+        label: m.shellNavigationAccessCodes,
+      },
+      {
+        href: "/admin/administrators",
+        icon: ShieldCheck,
+        label: m.administratorsNavigation,
+      },
+      {
+        href: "/admin/cli/sessions",
+        icon: SquareTerminal,
+        label: m.shellNavigationCliSessions,
       },
     ],
   },
@@ -136,17 +147,23 @@ function Navigation({
   readonly pathname?: string;
 }) {
   const locale = useRouteLocale();
+  // The desktop and mobile navigation render together, so headings need ids
+  // unique to each instance.
+  const id = useId();
   return (
     <nav
       aria-label={m.shellNavigationLabel({}, { locale })}
       className="space-y-7"
     >
-      {navigation.map((section) => (
+      {navigation.map((section, index) => (
         <div key={section.items[0].href}>
-          <p className="mb-2 px-3 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-navy-blue/65">
+          <p
+            className="mb-2 px-3 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-navy-blue/65"
+            id={`${id}-${index}`}
+          >
             {section.label({}, { locale })}
           </p>
-          <ul className="space-y-1">
+          <ul aria-labelledby={`${id}-${index}`} className="space-y-1">
             {section.items.map((item) => {
               return (
                 <li key={item.href}>
@@ -337,7 +354,11 @@ export function AdminShell({
                   <Menu aria-hidden className="size-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent className="px-4 py-5" locale={locale} side="left">
+              <SheetContent
+                className="overflow-y-auto px-4 py-5"
+                locale={locale}
+                side="left"
+              >
                 <SheetHeader className="sr-only">
                   <SheetTitle>
                     {m.shellMobileNavigationTitle({}, { locale })}
