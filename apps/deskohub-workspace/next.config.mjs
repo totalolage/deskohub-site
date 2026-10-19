@@ -26,6 +26,18 @@ const postHogSourceMapConfig =
       }
     : undefined;
 
+/**
+ * WebMCP origin-trial tokens from a comma-separated list, for the production
+ * origin only.
+ *
+ * @param {string | undefined} value
+ */
+const parseOriginTrialTokens = (value) =>
+  (value ?? "")
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   cacheLife: {
@@ -120,6 +132,10 @@ const nextConfig = {
     ];
   },
   async headers() {
+    const originTrialTokens = parseOriginTrialTokens(
+      process.env.WEBMCP_ORIGIN_TRIAL_TOKENS
+    );
+
     return [
       {
         source: "/:path*",
@@ -130,6 +146,23 @@ const nextConfig = {
           },
         ],
       },
+      ...(originTrialTokens.length > 0
+        ? [
+            {
+              // Pages only: API routes and build assets never run site tools.
+              source: "/((?!api/|_next/).*)",
+              headers: [
+                {
+                  // One comma-separated header: Vercel and Next.js keep a single
+                  // value per header key, and Chromium accepts comma-separated
+                  // tokens in one `Origin-Trial` header.
+                  key: "Origin-Trial",
+                  value: originTrialTokens.join(", "),
+                },
+              ],
+            },
+          ]
+        : []),
     ];
   },
   images: {

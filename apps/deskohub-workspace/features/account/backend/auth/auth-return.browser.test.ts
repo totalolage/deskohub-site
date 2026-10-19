@@ -417,7 +417,7 @@ if (window.location.pathname === ${JSON.stringify(CALLBACK_PATH)}) {
   const root = document.getElementById("root");
   if (!root) throw new Error("callback fixture root is missing");
   createRoot(root).render(
-    createElement(AuthCallbackRedirect, { locale: "en-US" })
+    createElement(AuthCallbackRedirect, { locale: "en-US", returning: true })
   );
 } else {
   const button = document.createElement("button");

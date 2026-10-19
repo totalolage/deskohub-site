@@ -62,7 +62,7 @@ export class CampaignAudienceArchived extends Data.TaggedError(
 /**
  * The audience filter uses attributes, periods, or campaign sources its
  * context can't hold: a saved audience, and so a one-off campaign, can't
- * hold trigger-relative or not yet writable ones.
+ * hold trigger-relative periods or "this campaign".
  */
 export class AudienceFilterContextInvalid extends Data.TaggedError(
   "AudienceFilterContextInvalid"
@@ -72,6 +72,13 @@ export class AudienceFilterContextInvalid extends Data.TaggedError(
   /** Stable across transports, so clients can tell this rejection apart. */
   static readonly code = "audience-filter-context";
 }
+
+/** The audience filter counts emails of campaigns that don't exist. */
+export class AudienceFilterCampaignNotFound extends Data.TaggedError(
+  "AudienceFilterCampaignNotFound"
+)<{
+  readonly campaignIds: readonly CampaignId[];
+}> {}
 
 export type CampaignConfirmationRejection =
   | "unknown-code"
