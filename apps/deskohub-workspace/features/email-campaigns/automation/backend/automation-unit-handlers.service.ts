@@ -48,6 +48,10 @@ export class AutomationUnitHandlers extends Context.Service<
       }))
     );
 
+  /**
+   * Sweep pages, dry-run previews, intake, schedule fire chunks, conditions
+   * and deliveries, with one provider list for all of them.
+   */
   static Live = this.layer(
     Effect.all([
       makeSweepPageHandler,
