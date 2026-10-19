@@ -3,11 +3,11 @@ import "server-only";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, eq, sql } from "drizzle-orm";
 import { Effect, Option, Schema } from "effect";
+import { postgresAdvisoryTransactionLockStatement } from "@/db/postgres-advisory-lock";
 import {
   emailCampaignAutomations as automations,
   emailCampaignAutomationScheduleFires as fires,
 } from "@/db/schema";
-import { postgresAdvisoryTransactionLockStatement } from "@/db/postgres-advisory-lock";
 import {
   instantFromIsoStringSchema,
   temporalInstantToIsoString,
@@ -159,7 +159,9 @@ export const planNextFire = Effect.fn("automationSchedules.planNextFire")(
     const [entering] = yield* tx
       .select({ fireAt: fires.fireAt })
       .from(fires)
-      .where(and(eq(fires.campaignId, campaignId), eq(fires.status, "entering")));
+      .where(
+        and(eq(fires.campaignId, campaignId), eq(fires.status, "entering"))
+      );
     if (entering !== undefined) return noFires;
 
     let plan = noFires;
@@ -183,7 +185,10 @@ export const planNextFire = Effect.fn("automationSchedules.planNextFire")(
       const pool = yield* listCampaignCandidateIds(tx, version.purpose);
       const { reads } = yield* facts
         .plan({
-          filters: { entryAudience: version.audienceFilter, reachability: true },
+          filters: {
+            entryAudience: version.audienceFilter,
+            reachability: true,
+          },
           context: audienceEvaluationAt(at),
         })
         .pipe(Effect.orDie);

@@ -4,8 +4,8 @@ import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import { Effect, Option } from "effect";
 import {
-  customerEvents,
   emailCampaignAutomations as automations,
+  customerEvents,
   emailCampaigns,
   workspaceReservations,
 } from "@/db/schema";
@@ -80,83 +80,79 @@ export const intakeDedupKey = (event: IntakeEvent) =>
  * is free, and the trigger's product filter holds on the reservation.
  * Reads only; the caller's transaction gives it one snapshot.
  */
-export const matchIntakeEvents = Effect.fn("automationIntake.match")(
-  function* (
-    tx: AutomationEngineTransaction,
-    events: readonly IntakeEvent[]
-  ) {
-    if (events.length === 0) return [];
-    const accepting = yield* acceptingAutomations(tx);
+export const matchIntakeEvents = Effect.fn("automationIntake.match")(function* (
+  tx: AutomationEngineTransaction,
+  events: readonly IntakeEvent[]
+) {
+  if (events.length === 0) return [];
+  const accepting = yield* acceptingAutomations(tx);
 
-    const candidates = accepting.flatMap((automation) =>
-      events.flatMap((event) =>
-        Option.match(versionInForce(automation.versions, event.occurredAt), {
-          onNone: () => [],
-          onSome: (version) =>
-            automationTriggerKind(version.trigger) === event.kind &&
-            Temporal.Instant.compare(
-              event.occurredAt,
-              automation.acceptingSince
-            ) >= 0
-              ? [{ event, automation, version }]
-              : [],
-        })
-      )
-    );
-
-    const productMatches = yield* reservationsOfProducts(
-      tx,
-      candidates.flatMap(({ event, version }) =>
-        "product" in version.trigger &&
-        version.trigger.product !== undefined &&
-        event.workspaceReservationId !== null
-          ? [
-              {
-                product: version.trigger.product,
-                reservationId: event.workspaceReservationId,
-              },
-            ]
-          : []
-      )
-    );
-    const productHolds = (candidate: (typeof candidates)[number]) => {
-      const { trigger } = candidate.version;
-      if (!("product" in trigger) || trigger.product === undefined) {
-        return true;
-      }
-      const reservationId = candidate.event.workspaceReservationId;
-      return (
-        reservationId !== null &&
-        productMatches.has(productKey(trigger.product, reservationId))
-      );
-    };
-
-    const matches = candidates.filter(productHolds).map(
-      ({ event, automation, version }): IntakeMatch => ({
-        event,
-        campaignId: automation.campaignId,
-        versionId: version.id,
-        dedupKey: intakeDedupKey(event),
+  const candidates = accepting.flatMap((automation) =>
+    events.flatMap((event) =>
+      Option.match(versionInForce(automation.versions, event.occurredAt), {
+        onNone: () => [],
+        onSome: (version) =>
+          automationTriggerKind(version.trigger) === event.kind &&
+          Temporal.Instant.compare(
+            event.occurredAt,
+            automation.acceptingSince
+          ) >= 0
+            ? [{ event, automation, version }]
+            : [],
       })
+    )
+  );
+
+  const productMatches = yield* reservationsOfProducts(
+    tx,
+    candidates.flatMap(({ event, version }) =>
+      "product" in version.trigger &&
+      version.trigger.product !== undefined &&
+      event.workspaceReservationId !== null
+        ? [
+            {
+              product: version.trigger.product,
+              reservationId: event.workspaceReservationId,
+            },
+          ]
+        : []
+    )
+  );
+  const productHolds = (candidate: (typeof candidates)[number]) => {
+    const { trigger } = candidate.version;
+    if (!("product" in trigger) || trigger.product === undefined) {
+      return true;
+    }
+    const reservationId = candidate.event.workspaceReservationId;
+    return (
+      reservationId !== null &&
+      productMatches.has(productKey(trigger.product, reservationId))
     );
-    const taken = yield* Effect.forEach(
-      Map.groupBy(matches, ({ campaignId }) => campaignId),
-      ([campaignId, ofCampaign]) =>
-        takenReceiptKeys(
-          tx,
-          campaignId,
-          ofCampaign.map(({ dedupKey }) => dedupKey)
-        ).pipe(
-          Effect.map((keys) =>
-            [...keys].map((key) => receiptOf(campaignId, key))
-          )
-        )
-    ).pipe(Effect.map((keys) => new Set(keys.flat())));
-    return matches.filter(
-      ({ campaignId, dedupKey }) => !taken.has(receiptOf(campaignId, dedupKey))
-    );
-  }
-);
+  };
+
+  const matches = candidates.filter(productHolds).map(
+    ({ event, automation, version }): IntakeMatch => ({
+      event,
+      campaignId: automation.campaignId,
+      versionId: version.id,
+      dedupKey: intakeDedupKey(event),
+    })
+  );
+  const taken = yield* Effect.forEach(
+    Map.groupBy(matches, ({ campaignId }) => campaignId),
+    ([campaignId, ofCampaign]) =>
+      takenReceiptKeys(
+        tx,
+        campaignId,
+        ofCampaign.map(({ dedupKey }) => dedupKey)
+      ).pipe(
+        Effect.map((keys) => [...keys].map((key) => receiptOf(campaignId, key)))
+      )
+  ).pipe(Effect.map((keys) => new Set(keys.flat())));
+  return matches.filter(
+    ({ campaignId, dedupKey }) => !taken.has(receiptOf(campaignId, dedupKey))
+  );
+});
 
 const receiptOf = (campaignId: CampaignId, dedupKey: string) =>
   `${campaignId}\u0000${dedupKey}`;
@@ -178,8 +174,8 @@ const acceptingAutomations = (tx: AutomationEngineTransaction) =>
     )
     .orderBy(asc(automations.campaignId))
     .pipe(
-      Effect.flatMap(
-        Effect.forEach(({ campaignId, acceptingSince }) =>
+      Effect.flatMap((rows) =>
+        Effect.forEach(rows, ({ campaignId, acceptingSince }) =>
           loadAutomationVersionActivations(tx, campaignId).pipe(
             Effect.map(
               (versions): AcceptingAutomation => ({

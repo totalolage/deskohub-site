@@ -146,147 +146,155 @@ export const makeFireChunkHandler = Effect.gen(function* () {
       subject: fireChunkSubjectSchema,
       // Fire chunks never expire (D34); only a solo chunk that keeps missing
       // its deadline counts as unavailable, so it can't block the fire.
-      expire: (tx, unit, at) =>
-        Effect.gen(function* () {
-          const { fireAt, customerIds } = unit.subject;
-          if (
-            customerIds.length !== 1 ||
-            unit.deadlineMisses < automationUnitDeadlineMissLimit
-          ) {
-            return "remaining" as const;
-          }
-          const campaignId = yield* campaignOf(unit);
-          const fire = yield* recheckFire(tx, campaignId, fireAt);
-          if (Option.isNone(fire)) return "settled" as const;
-          yield* enterAutomationRuns(tx, {
-            campaignId,
-            versionId: fire.value.versionId,
-            rejected: customerIds.map((customerId) => ({
-              ...occurrenceOf(fireAt, customerId as DotyposCustomerId),
-              disposition: "failed" as const,
-            })),
-            at,
-          }).pipe(Effect.catchTag("AutomationUnitRecheckFailed", Effect.die));
-          yield* completeChunk(tx, {
-            campaignId,
-            fireAt,
-            entered: 0,
-            versions: fire.value.versions,
-            at,
-          });
-          return "settled" as const;
-        }),
-      fetch: (unit) =>
-        Effect.gen(function* () {
-          const campaignId = yield* campaignOf(unit);
-          const { fireAt } = unit.subject;
-          const customers = unit.subject.customerIds as DotyposCustomerId[];
-          const [fire] = yield* db
-            .select({ versionId: fires.versionId })
-            .from(fires)
-            .where(
-              and(
-                eq(fires.campaignId, campaignId),
-                eq(fires.fireAt, fireAt),
-                eq(fires.status, "entering")
-              )
+      expire: Effect.fn("fireChunk.expire")(function* (
+        tx: AutomationEngineTransaction,
+        unit: ClaimedAutomationUnit<FireChunkSubject>,
+        at: Temporal.Instant
+      ) {
+        const { fireAt, customerIds } = unit.subject;
+        if (
+          customerIds.length !== 1 ||
+          unit.deadlineMisses < automationUnitDeadlineMissLimit
+        ) {
+          return "remaining" as const;
+        }
+        const campaignId = yield* campaignOf(unit);
+        const fire = yield* recheckFire(tx, campaignId, fireAt);
+        if (Option.isNone(fire)) return "settled" as const;
+        yield* enterAutomationRuns(tx, {
+          campaignId,
+          versionId: fire.value.versionId,
+          rejected: customerIds.map((customerId) => ({
+            ...occurrenceOf(fireAt, customerId as DotyposCustomerId),
+            disposition: "failed" as const,
+          })),
+          at,
+        }).pipe(Effect.catchTag("AutomationUnitRecheckFailed", Effect.die));
+        yield* completeChunk(tx, {
+          campaignId,
+          fireAt,
+          entered: 0,
+          versions: fire.value.versions,
+          at,
+        });
+        return "settled" as const;
+      }),
+      fetch: Effect.fn("fireChunk.fetch")(function* (
+        unit: ClaimedAutomationUnit<FireChunkSubject>
+      ) {
+        const campaignId = yield* campaignOf(unit);
+        const { fireAt } = unit.subject;
+        const customers = unit.subject.customerIds as DotyposCustomerId[];
+        const [fire] = yield* db
+          .select({ versionId: fires.versionId })
+          .from(fires)
+          .where(
+            and(
+              eq(fires.campaignId, campaignId),
+              eq(fires.fireAt, fireAt),
+              eq(fires.status, "entering")
             )
-            .pipe(Effect.mapError(databaseFailure));
-          if (fire === undefined) return { _tag: "Stale" } as const;
-          const version = (yield* db
-            .transaction((tx) =>
-              loadAutomationEntryVersions(tx, [fire.versionId])
-            )
-            .pipe(Effect.mapError(databaseFailure))).get(fire.versionId);
-          if (version === undefined || Option.isNone(version.firstStepId)) {
-            return { _tag: "Undecodable" } as const;
-          }
+          )
+          .pipe(Effect.mapError(databaseFailure));
+        if (fire === undefined) return { _tag: "Stale" } as const;
+        const version = (yield* db
+          .transaction((tx) =>
+            loadAutomationEntryVersions(tx, [fire.versionId])
+          )
+          .pipe(Effect.mapError(databaseFailure))).get(fire.versionId);
+        if (version === undefined || Option.isNone(version.firstStepId)) {
+          return { _tag: "Undecodable" } as const;
+        }
 
-          // Profiles always: reachability and per-chunk email dedup.
-          const { reads } = yield* facts
-            .plan({
-              filters: {
-                entryAudience: version.audienceFilter,
-                reachability: true,
-              },
-              context: audienceEvaluationAt(fireAt),
-            })
-            .pipe(Effect.orDie);
-          const fetched = yield* facts.fetch({ reads, customers });
-          const now = yield* currentInstant;
-          const resolution = yield* recipients
-            .resolve({
-              purpose: version.purpose,
-              filter: version.audienceFilter,
-              scope: AudienceScope.Customers({ ids: customers }),
-              context: {
-                now,
-                campaignId: Option.some(campaignId),
-                trigger: Option.some({
-                  kind: "schedule" as const,
-                  at: fireAt,
-                  reservationId: Option.none(),
-                }),
-              },
-              facts: fetched,
-            })
-            .pipe(Effect.mapError(databaseFailure));
-          return {
-            _tag: "Evaluated",
-            versionId: version.id,
-            firstStepId: version.firstStepId.value,
-            entrants: resolution.recipients.map(
-              ({ dotyposCustomerId }) => dotyposCustomerId
-            ),
-          } as const;
-        }),
-      commit: (tx, unit, evaluation, at) =>
-        Effect.gen(function* () {
-          const campaignId = yield* campaignOf(unit);
-          const { fireAt } = unit.subject;
-          const fire = yield* recheckFire(tx, campaignId, fireAt);
-          if (Option.isNone(fire) || evaluation._tag === "Stale") {
-            return yield* new AutomationUnitRecheckFailed({
-              code: "fire-not-entering",
-            });
-          }
-          const { versions } = fire.value;
-          if (evaluation._tag === "Undecodable") {
-            // The next fire proceeds; the fire's other chunks drop at their
-            // recheck.
-            yield* enterScheduleFire(tx, {
-              campaignId,
-              fireAt,
-              status: "failed",
-              versions,
-              at,
-            });
-            yield* planNextFire(tx, campaignId, at).pipe(
-              Effect.provideService(AutomationEvaluationFacts, facts)
-            );
-            return [];
-          }
-          const entry = yield* enterAutomationRuns(tx, {
-            campaignId,
-            versionId: evaluation.versionId,
-            admitted: {
-              firstStepId: evaluation.firstStepId,
-              occurrences: evaluation.entrants.map((customerId) =>
-                occurrenceOf(fireAt, customerId)
-              ),
+        // Profiles always: reachability and per-chunk email dedup.
+        const { reads } = yield* facts
+          .plan({
+            filters: {
+              entryAudience: version.audienceFilter,
+              reachability: true,
             },
-            rejected: [],
-            at,
+            context: audienceEvaluationAt(fireAt),
+          })
+          .pipe(Effect.orDie);
+        const fetched = yield* facts.fetch({ reads, customers });
+        const now = yield* currentInstant;
+        const resolution = yield* recipients
+          .resolve({
+            purpose: version.purpose,
+            filter: version.audienceFilter,
+            scope: AudienceScope.Customers({ ids: customers }),
+            context: {
+              now,
+              campaignId: Option.some(campaignId),
+              trigger: Option.some({
+                kind: "schedule" as const,
+                at: fireAt,
+                reservationId: Option.none(),
+              }),
+            },
+            facts: fetched,
+          })
+          .pipe(Effect.mapError(databaseFailure));
+        return {
+          _tag: "Evaluated",
+          versionId: version.id,
+          firstStepId: version.firstStepId.value,
+          entrants: resolution.recipients.map(
+            ({ dotyposCustomerId }) => dotyposCustomerId
+          ),
+        } as const;
+      }),
+      commit: Effect.fn("fireChunk.commit")(function* (
+        tx: AutomationEngineTransaction,
+        unit: ClaimedAutomationUnit<FireChunkSubject>,
+        evaluation: FireChunkEvaluation,
+        at: Temporal.Instant
+      ) {
+        const campaignId = yield* campaignOf(unit);
+        const { fireAt } = unit.subject;
+        const fire = yield* recheckFire(tx, campaignId, fireAt);
+        if (Option.isNone(fire) || evaluation._tag === "Stale") {
+          return yield* new AutomationUnitRecheckFailed({
+            code: "fire-not-entering",
           });
-          yield* completeChunk(tx, {
+        }
+        const { versions } = fire.value;
+        if (evaluation._tag === "Undecodable") {
+          // The next fire proceeds; the fire's other chunks drop at their
+          // recheck.
+          yield* enterScheduleFire(tx, {
             campaignId,
             fireAt,
-            entered: entry.started + entry.alreadyActive,
+            status: "failed",
             versions,
             at,
           });
+          yield* planNextFire(tx, campaignId, at).pipe(
+            Effect.provideService(AutomationEvaluationFacts, facts)
+          );
           return [];
-        }),
+        }
+        const entry = yield* enterAutomationRuns(tx, {
+          campaignId,
+          versionId: evaluation.versionId,
+          admitted: {
+            firstStepId: evaluation.firstStepId,
+            occurrences: evaluation.entrants.map((customerId) =>
+              occurrenceOf(fireAt, customerId)
+            ),
+          },
+          rejected: [],
+          at,
+        });
+        yield* completeChunk(tx, {
+          campaignId,
+          fireAt,
+          entered: entry.started + entry.alreadyActive,
+          versions,
+          at,
+        });
+        return [];
+      }),
     };
 
   return registerAutomationUnitHandler(handler);

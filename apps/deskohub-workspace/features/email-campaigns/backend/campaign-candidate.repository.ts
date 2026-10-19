@@ -427,34 +427,36 @@ export class CampaignCandidateRepository extends Context.Service<
  * or transaction, so the pool is read in the transaction that creates the
  * fire.
  */
-export const listCampaignCandidateIds = Effect.fn(
-  "listCampaignCandidateIds"
-)(function* (
-  db: Pick<WorkspaceDatabaseClient, "select" | "selectDistinct">,
-  purpose: CampaignPurpose
-) {
-  const consents = db
-    .select({ dotyposCustomerId: customerMarketingConsents.dotyposCustomerId })
-    .from(customerMarketingConsents);
-  if (purpose === "marketing") {
-    const active = yield* consents.where(
-      isNull(customerMarketingConsents.withdrawnAt)
-    );
-    return sortedCustomerIds(active);
-  }
-  const [reservations, accounts, all] = yield* Effect.all([
-    db
-      .selectDistinct({
-        dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+export const listCampaignCandidateIds = Effect.fn("listCampaignCandidateIds")(
+  function* (
+    db: Pick<WorkspaceDatabaseClient, "select" | "selectDistinct">,
+    purpose: CampaignPurpose
+  ) {
+    const consents = db
+      .select({
+        dotyposCustomerId: customerMarketingConsents.dotyposCustomerId,
       })
-      .from(workspaceReservations),
-    db
-      .select({ dotyposCustomerId: customerAccountLinks.dotyposCustomerId })
-      .from(customerAccountLinks),
-    consents,
-  ]);
-  return sortedCustomerIds([...reservations, ...accounts, ...all]);
-});
+      .from(customerMarketingConsents);
+    if (purpose === "marketing") {
+      const active = yield* consents.where(
+        isNull(customerMarketingConsents.withdrawnAt)
+      );
+      return sortedCustomerIds(active);
+    }
+    const [reservations, accounts, all] = yield* Effect.all([
+      db
+        .selectDistinct({
+          dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+        })
+        .from(workspaceReservations),
+      db
+        .select({ dotyposCustomerId: customerAccountLinks.dotyposCustomerId })
+        .from(customerAccountLinks),
+      consents,
+    ]);
+    return sortedCustomerIds([...reservations, ...accounts, ...all]);
+  }
+);
 
 const sortedCustomerIds = (
   rows: readonly { readonly dotyposCustomerId: DotyposCustomerId }[]

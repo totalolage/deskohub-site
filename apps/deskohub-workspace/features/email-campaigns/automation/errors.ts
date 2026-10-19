@@ -1,9 +1,6 @@
 import { Data, type Schema } from "effect";
 import type { CalendarExpressionNeverOccurs } from "@/shared/utils/calendar-expression";
-import type {
-  CampaignAudienceId,
-  CampaignId,
-} from "../campaign-identifiers";
+import type { CampaignAudienceId, CampaignId } from "../campaign-identifiers";
 import type { AutomatedCampaignStatus } from "../campaign-states";
 import type {
   AutomationPreviewId,

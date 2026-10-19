@@ -1,5 +1,5 @@
-import { dotyposIdFilterBatchSize } from "@deskohub/dotypos";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
+import { dotyposIdFilterBatchSize } from "@deskohub/dotypos";
 import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -8,8 +8,8 @@ import {
   emailCampaignAutomationRuns as runs,
 } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
-import type { AudienceDotyposReads } from "../../backend/audience-facts.service";
 import { audienceEvaluationAt } from "../../backend/audience-evaluation-context";
+import type { AudienceDotyposReads } from "../../backend/audience-facts.service";
 import type { AutomationRunId } from "../automation-identifiers";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import {
@@ -86,7 +86,10 @@ export class AutomationIntakePlanning extends Context.Service<
           .innerJoin(
             customerEvents,
             and(
-              eq(customerEvents.workspaceReservationId, runs.triggerReservationId),
+              eq(
+                customerEvents.workspaceReservationId,
+                runs.triggerReservationId
+              ),
               eq(customerEvents.kind, "reservation-cancelled"),
               isNull(customerEvents.automationProcessedAt)
             )
@@ -192,7 +195,9 @@ export class AutomationIntakePlanning extends Context.Service<
             requestCost <= maxUnitRequestCost ||
             chunk.customers.length === 1
           ) {
-            return Effect.succeed([{ customers: chunk.customers, requestCost }]);
+            return Effect.succeed([
+              { customers: chunk.customers, requestCost },
+            ]);
           }
           const half = Math.ceil(chunk.customers.length / 2);
           return Effect.forEach(
@@ -248,7 +253,9 @@ export class AutomationIntakePlanning extends Context.Service<
                 .limit(intakeBatchSize)
                 .for("update", { skipLocked: true })
             ),
-            Effect.bind("matches", ({ events }) => matchIntakeEvents(tx, events)),
+            Effect.bind("matches", ({ events }) =>
+              matchIntakeEvents(tx, events)
+            ),
             Effect.let("unmatched", ({ events, matches }) => {
               const matched = new Set(matches.map(({ event }) => event.id));
               return events
@@ -269,13 +276,15 @@ export class AutomationIntakePlanning extends Context.Service<
                     Effect.flatMap((reads) => pack(matches, reads))
                   )
             ),
-            Effect.let("eventIdsByKey", ({ units }) =>
-              new Map(
-                units.map((unit) => [
-                  plannedIntakeUnit(unit, at).key,
-                  unit.eventIds,
-                ])
-              )
+            Effect.let(
+              "eventIdsByKey",
+              ({ units }) =>
+                new Map(
+                  units.map((unit) => [
+                    plannedIntakeUnit(unit, at).key,
+                    unit.eventIds,
+                  ])
+                )
             ),
             Effect.bind("planned", ({ units }) =>
               planAutomationUnits(
@@ -293,7 +302,10 @@ export class AutomationIntakePlanning extends Context.Service<
                     .set({ automationUnitId: unitId })
                     .where(
                       and(
-                        inArray(customerEvents.id, eventIdsByKey.get(key) ?? []),
+                        inArray(
+                          customerEvents.id,
+                          eventIdsByKey.get(key) ?? []
+                        ),
                         isNull(customerEvents.automationUnitId),
                         isNull(customerEvents.automationProcessedAt)
                       )

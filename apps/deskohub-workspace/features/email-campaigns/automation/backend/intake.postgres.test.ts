@@ -5,13 +5,13 @@ import type { AutomationFlow } from "@deskohub/workspace-admin-api";
 import { Effect } from "effect";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AudienceFilter } from "../../audience-filter";
-import type { CampaignPurpose } from "../../body/campaign-content";
 import {
   deleteAutomatedCampaigns,
   seedAutomatedCampaign,
   seedAutomation,
   seedAutomationVersion,
 } from "../../backend/email-campaigns.test-utils";
+import type { CampaignPurpose } from "../../body/campaign-content";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationStepId } from "../automation-identifiers";
 import {

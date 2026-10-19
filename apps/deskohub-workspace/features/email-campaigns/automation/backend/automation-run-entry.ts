@@ -4,8 +4,8 @@ import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { Effect, Option, Schema } from "effect";
 import {
-  emailCampaignAutomationRuns as runs,
   emailCampaignAutomationTriggerReceipts as receipts,
+  emailCampaignAutomationRuns as runs,
   emailCampaignAutomationVersions as versions,
 } from "@/db/schema";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";

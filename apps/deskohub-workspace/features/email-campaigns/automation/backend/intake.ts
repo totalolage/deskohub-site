@@ -44,6 +44,7 @@ import {
   AutomationUnitFetchFailure,
   type AutomationUnitHandler,
   automationUnitDeadlineMissLimit,
+  type ClaimedAutomationUnit,
   type PlannedAutomationUnit,
   registerAutomationUnitHandler,
 } from "./automation-unit-handler";
@@ -123,15 +124,22 @@ const recheckVisit = (
   if (Option.isNone(visit) || visit.value.status === "cancelled") {
     return "withdrawn";
   }
-  const reached =
-    event.kind === "reservation-started"
-      ? visit.value.startsAt
-      : event.kind === "reservation-finished"
-        ? visit.value.endsAt
-        : undefined;
+  const reached = triggeringInstant(event, visit.value);
   return reached !== undefined && Temporal.Instant.compare(reached, now) > 0
     ? "superseded"
     : "current";
+};
+
+/** When a started or finished event's visit reaches its trigger. */
+const triggeringInstant = (event: IntakeEvent, visit: ReservationVisit) => {
+  switch (event.kind) {
+    case "reservation-started":
+      return visit.startsAt;
+    case "reservation-finished":
+      return visit.endsAt;
+    default:
+      return undefined;
+  }
 };
 
 const ownedEvents = (
@@ -319,7 +327,10 @@ export const makeIntakeHandler = Effect.gen(function* () {
               id,
               Option.fromUndefinedOr(visits.get(id)),
             ])
-          ) as ReadonlyMap<WorkspaceReservationId, Option.Option<ReservationVisit>>
+          ) as ReadonlyMap<
+            WorkspaceReservationId,
+            Option.Option<ReservationVisit>
+          >
         );
       },
       onNone: () =>
@@ -333,164 +344,168 @@ export const makeIntakeHandler = Effect.gen(function* () {
     });
   };
 
-  const handler: AutomationUnitHandler<IntakeSubject, readonly IntakeDecision[]> =
-    {
-      kind: "intake",
-      subject: intakeSubjectSchema,
-      expire: (tx, unit, at) =>
-        Effect.gen(function* () {
-          const events = yield* ownedEvents(tx, unit.id, unit.subject.eventIds);
-          const solo =
-            new Set(events.map(({ dotyposCustomerId }) => dotyposCustomerId))
-              .size === 1 &&
-            unit.deadlineMisses >= automationUnitDeadlineMissLimit;
-          const limit = at.subtract(intakeEventLimit);
-          const expired = solo
-            ? events
-            : events.filter(
-                ({ recordedAt }) =>
-                  Temporal.Instant.compare(recordedAt, limit) <= 0
-              );
-          if (expired.length === 0) return "remaining" as const;
-          const matches = yield* matchIntakeEvents(tx, expired);
-          yield* commitIntakeDecisions(tx, {
-            unitId: unit.id,
-            eventIds: expired.map(({ id }) => id),
-            decisions: matches.map((match) => ({
-              ...match,
-              firstStepId: Option.none(),
-              outcome: "failed" as const,
-            })),
-            at,
-          }).pipe(Effect.catchTag("AutomationUnitRecheckFailed", Effect.die));
-          return expired.length === events.length
-            ? ("settled" as const)
-            : ("remaining" as const);
-        }),
-      fetch: (unit) =>
-        Effect.gen(function* () {
-          const { matches, versions } = yield* db
-            .transaction((tx) =>
-              ownedEvents(tx, unit.id, unit.subject.eventIds).pipe(
-                Effect.flatMap((events) => matchIntakeEvents(tx, events)),
-                Effect.flatMap((matches) =>
-                  loadAutomationEntryVersions(
-                    tx,
-                    matches.map(({ versionId }) => versionId)
-                  ).pipe(Effect.map((versions) => ({ matches, versions })))
-                )
-              )
+  const handler: AutomationUnitHandler<
+    IntakeSubject,
+    readonly IntakeDecision[]
+  > = {
+    kind: "intake",
+    subject: intakeSubjectSchema,
+    expire: Effect.fn("intake.expire")(function* (
+      tx: AutomationEngineTransaction,
+      unit: ClaimedAutomationUnit<IntakeSubject>,
+      at: Temporal.Instant
+    ) {
+      const events = yield* ownedEvents(tx, unit.id, unit.subject.eventIds);
+      const solo =
+        new Set(events.map(({ dotyposCustomerId }) => dotyposCustomerId))
+          .size === 1 && unit.deadlineMisses >= automationUnitDeadlineMissLimit;
+      const limit = at.subtract(intakeEventLimit);
+      const expired = solo
+        ? events
+        : events.filter(
+            ({ recordedAt }) => Temporal.Instant.compare(recordedAt, limit) <= 0
+          );
+      if (expired.length === 0) return "remaining" as const;
+      const matches = yield* matchIntakeEvents(tx, expired);
+      yield* commitIntakeDecisions(tx, {
+        unitId: unit.id,
+        eventIds: expired.map(({ id }) => id),
+        decisions: matches.map((match) => ({
+          ...match,
+          firstStepId: Option.none(),
+          outcome: "failed" as const,
+        })),
+        at,
+      }).pipe(Effect.catchTag("AutomationUnitRecheckFailed", Effect.die));
+      return expired.length === events.length
+        ? ("settled" as const)
+        : ("remaining" as const);
+    }),
+    fetch: Effect.fn("intake.fetch")(function* (
+      unit: ClaimedAutomationUnit<IntakeSubject>
+    ) {
+      const { matches, versions } = yield* db
+        .transaction((tx) =>
+          ownedEvents(tx, unit.id, unit.subject.eventIds).pipe(
+            Effect.flatMap((events) => matchIntakeEvents(tx, events)),
+            Effect.flatMap((matches) =>
+              loadAutomationEntryVersions(
+                tx,
+                matches.map(({ versionId }) => versionId)
+              ).pipe(Effect.map((versions) => ({ matches, versions })))
             )
-            .pipe(Effect.mapError(databaseFailure));
-          if (matches.length === 0) return [];
+          )
+        )
+        .pipe(Effect.mapError(databaseFailure));
+      if (matches.length === 0) return [];
 
-          const plannedAt = yield* currentInstant;
-          const plans = yield* Effect.forEach(versions.values(), (version) =>
-            facts
-              .plan({
-                filters: { entryAudience: version.audienceFilter },
-                context: audienceEvaluationAt(plannedAt),
-              })
-              .pipe(Effect.orDie)
-          );
-          const reads: AudienceDotyposReads = {
-            visits: plans.some(({ reads }) => reads.visits),
-            profiles: plans.some(({ reads }) => reads.profiles),
-          };
-          const customers: readonly DotyposCustomerId[] = [
-            ...new Set(matches.map(({ event }) => event.dotyposCustomerId)),
-          ].sort();
-          const fetched = yield* facts.fetch({ reads, customers });
-          const visits = yield* triggeringVisits(
-            matches.map(({ event }) => event),
-            fetched
-          );
-          const now = yield* currentInstant;
+      const plannedAt = yield* currentInstant;
+      const plans = yield* Effect.forEach(versions.values(), (version) =>
+        facts
+          .plan({
+            filters: { entryAudience: version.audienceFilter },
+            context: audienceEvaluationAt(plannedAt),
+          })
+          .pipe(Effect.orDie)
+      );
+      const reads: AudienceDotyposReads = {
+        visits: plans.some(({ reads }) => reads.visits),
+        profiles: plans.some(({ reads }) => reads.profiles),
+      };
+      const customers: readonly DotyposCustomerId[] = [
+        ...new Set(matches.map(({ event }) => event.dotyposCustomerId)),
+      ].sort();
+      const fetched = yield* facts.fetch({ reads, customers });
+      const visits = yield* triggeringVisits(
+        matches.map(({ event }) => event),
+        fetched
+      );
+      const now = yield* currentInstant;
 
-          return yield* Effect.forEach(
-            matches,
-            (match): Effect.Effect<IntakeDecision, AutomationUnitFetchFailure> => {
-              const version = versions.get(match.versionId);
-              const firstStepId = Option.flatMap(
-                Option.fromUndefinedOr(version),
-                ({ firstStepId }) => firstStepId
-              );
-              if (version === undefined || Option.isNone(firstStepId)) {
-                return Effect.succeed({
+      return yield* Effect.forEach(
+        matches,
+        (match): Effect.Effect<IntakeDecision, AutomationUnitFetchFailure> => {
+          const version = versions.get(match.versionId);
+          const firstStepId = Option.flatMap(
+            Option.fromUndefinedOr(version),
+            ({ firstStepId }) => firstStepId
+          );
+          if (version === undefined || Option.isNone(firstStepId)) {
+            return Effect.succeed({
+              ...match,
+              firstStepId,
+              outcome: "failed",
+            });
+          }
+          const visit = Option.flatten(
+            Option.fromUndefinedOr(
+              match.event.workspaceReservationId === null
+                ? undefined
+                : visits.get(match.event.workspaceReservationId)
+            )
+          );
+          const recheck = recheckVisit(match.event, visit, now);
+          if (recheck !== "current") {
+            return Effect.succeed({
+              ...match,
+              firstStepId,
+              outcome: recheck,
+            });
+          }
+          const customer = match.event.dotyposCustomerId;
+          return recipients
+            .resolve({
+              purpose: version.purpose,
+              filter: version.audienceFilter,
+              scope: AudienceScope.Customers({ ids: [customer] }),
+              context: {
+                now,
+                campaignId: Option.some(match.campaignId),
+                trigger: Option.some({
+                  kind: match.event.kind,
+                  at: match.event.occurredAt,
+                  reservationId: Option.fromNullishOr(
+                    match.event.workspaceReservationId
+                  ),
+                }),
+              },
+              facts: fetched,
+            })
+            .pipe(
+              Effect.mapError(databaseFailure),
+              Effect.map(
+                (resolution): IntakeDecision => ({
                   ...match,
                   firstStepId,
-                  outcome: "failed",
-                });
-              }
-              const visit = Option.flatten(
-                Option.fromUndefinedOr(
-                  match.event.workspaceReservationId === null
-                    ? undefined
-                    : visits.get(match.event.workspaceReservationId)
-                )
-              );
-              const recheck = recheckVisit(match.event, visit, now);
-              if (recheck !== "current") {
-                return Effect.succeed({
-                  ...match,
-                  firstStepId,
-                  outcome: recheck,
-                });
-              }
-              const customer = match.event.dotyposCustomerId;
-              return recipients
-                .resolve({
-                  purpose: version.purpose,
-                  filter: version.audienceFilter,
-                  scope: AudienceScope.Customers({ ids: [customer] }),
-                  context: {
-                    now,
-                    campaignId: Option.some(match.campaignId),
-                    trigger: Option.some({
-                      kind: match.event.kind,
-                      at: match.event.occurredAt,
-                      reservationId: Option.fromNullishOr(
-                        match.event.workspaceReservationId
-                      ),
-                    }),
-                  },
-                  facts: fetched,
+                  // Unreachable customers still count as members;
+                  // reachability is checked at send time (§5.6).
+                  outcome: [
+                    ...resolution.recipients.map(
+                      ({ dotyposCustomerId }) => dotyposCustomerId
+                    ),
+                    ...resolution.exclusions.map(
+                      ({ dotyposCustomerId }) => dotyposCustomerId
+                    ),
+                    ...resolution.duplicates.flatMap(
+                      ({ duplicateCustomerIds }) => duplicateCustomerIds
+                    ),
+                  ].includes(customer)
+                    ? "member"
+                    : "not-in-audience",
                 })
-                .pipe(
-                  Effect.mapError(databaseFailure),
-                  Effect.map(
-                    (resolution): IntakeDecision => ({
-                      ...match,
-                      firstStepId,
-                      // Unreachable customers still count as members;
-                      // reachability is checked at send time (§5.6).
-                      outcome: [
-                        ...resolution.recipients.map(
-                          ({ dotyposCustomerId }) => dotyposCustomerId
-                        ),
-                        ...resolution.exclusions.map(
-                          ({ dotyposCustomerId }) => dotyposCustomerId
-                        ),
-                        ...resolution.duplicates.flatMap(
-                          ({ duplicateCustomerIds }) => duplicateCustomerIds
-                        ),
-                      ].includes(customer)
-                        ? "member"
-                        : "not-in-audience",
-                    })
-                  )
-                );
-            }
-          );
-        }),
-      commit: (tx, unit, decisions, at) =>
-        commitIntakeDecisions(tx, {
-          unitId: unit.id,
-          eventIds: unit.subject.eventIds as CustomerEventId[],
-          decisions,
-          at,
-        }).pipe(Effect.as([])),
-    };
+              )
+            );
+        }
+      );
+    }),
+    commit: (tx, unit, decisions, at) =>
+      commitIntakeDecisions(tx, {
+        unitId: unit.id,
+        eventIds: unit.subject.eventIds as CustomerEventId[],
+        decisions,
+        at,
+      }).pipe(Effect.as([])),
+  };
 
   return registerAutomationUnitHandler(handler);
 });

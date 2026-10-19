@@ -185,7 +185,7 @@ describe.skipIf(!database)("AutomationIntakePlanning on Postgres", () => {
             {
               property: "tier",
               operator: "anyOf",
-              value: ["reserved-seat"],
+              value: ["reserved-desk"],
             },
           ],
         },
@@ -297,7 +297,7 @@ describe.skipIf(!database)("AutomationIntakePlanning on Postgres", () => {
             {
               property: "tier",
               operator: "anyOf",
-              value: ["reserved-seat"],
+              value: ["reserved-desk"],
             },
           ],
         },
@@ -315,7 +315,7 @@ describe.skipIf(!database)("AutomationIntakePlanning on Postgres", () => {
       customer,
       startsAt: now.add({ hours: 30 }),
       endsAt: now.add({ hours: 32 }),
-      entryTier: "reserved-seat",
+      reservedDesk: true,
     });
     const openEvent = await fixtures.recordEvent({
       kind: "reservation-booked",

@@ -1,4 +1,5 @@
 import {
+  DotyposCloudIdSchema,
   type DotyposCustomer,
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
@@ -52,7 +53,8 @@ export const makeEntryDotypos = () => {
   const customers = new Map<DotyposCustomerId, DotyposCustomer>();
   const reservations = new Map<string, DotyposReservation>();
   const calls = { getCustomersPage: 0, listReservationsPage: 0 };
-  const reservationReads = () => seededReservationReads([...reservations.values()]);
+  const reservationReads = () =>
+    seededReservationReads([...reservations.values()]);
   return {
     customers,
     reservations,
@@ -125,13 +127,19 @@ export const entryEngineLayer = async (input: {
   });
 };
 
-/** A profile Dotypos returns, reachable at a test-domain address. */
-export const entryCustomer = (id: DotyposCustomerId): DotyposCustomer =>
+/**
+ * A profile Dotypos returns, reachable at a test-domain address; the local
+ * part keeps the id's end, within the 64 characters an address allows.
+ */
+export const entryCustomer = (
+  id: DotyposCustomerId,
+  email = `${id.slice(-48)}@example.test`
+): DotyposCustomer =>
   ({
     id,
-    _cloudId: "automation-entry-cloud",
+    _cloudId: DotyposCloudIdSchema.make("automation-entry-cloud"),
     firstName: "Test",
-    email: `${id}@example.test`,
+    email,
     points: "0",
     flags: "0",
     display: true,
@@ -164,10 +172,10 @@ export const makeEntryFixtures = (
   /** A customer Dotypos returns, with an active marketing consent. */
   const addCustomer = async (
     label: string,
-    options: { readonly consent?: boolean } = {}
+    options: { readonly consent?: boolean; readonly email?: string } = {}
   ) => {
     const id = customerId(label);
-    dotypos.customers.set(id, entryCustomer(id));
+    dotypos.customers.set(id, entryCustomer(id, options.email));
     if (options.consent ?? true) {
       created.consents.push(id);
       await Effect.runPromise(
@@ -189,7 +197,7 @@ export const makeEntryFixtures = (
     readonly customer: DotyposCustomerId;
     readonly startsAt: Temporal.Instant;
     readonly endsAt: Temporal.Instant;
-    readonly entryTier?: "open-space" | "reserved-seat";
+    readonly reservedDesk?: boolean;
   }) => {
     const id = workspaceReservationIdSchema.make(`${prefix}-${input.label}`);
     created.reservations.push(id);
@@ -206,11 +214,9 @@ export const makeEntryFixtures = (
         paidAt: confirmedAt,
         fulfillmentState: "fulfilled",
         fulfilledAt: confirmedAt,
-        reservationDetails: {
-          kind: "cowork",
-          entryTier: input.entryTier ?? "open-space",
-          coffee: false,
-        },
+        reservationDetails: input.reservedDesk
+          ? { kind: "cowork", entryTier: "reserved-desk", coffee: true }
+          : { kind: "cowork", entryTier: "open-space", coffee: false },
         locale: "cs-CZ",
         createdAt: confirmedAt,
       })
@@ -255,7 +261,8 @@ export const makeEntryFixtures = (
   }) => {
     let customerAccountId: CustomerAccountId | null = null;
     if (input.kind === "account-created") {
-      customerAccountId = `${prefix}-account-${created.accounts.length}` as CustomerAccountId;
+      customerAccountId =
+        `${prefix}-account-${created.accounts.length}` as CustomerAccountId;
       created.accounts.push(customerAccountId);
       await Effect.runPromise(
         db.insert(customerAccounts).values({ id: customerAccountId })
@@ -326,8 +333,7 @@ export const runEngineAt = <A, E>(
   Effect.runPromise(
     TestClock.setTime(at.epochMilliseconds).pipe(
       Effect.andThen(effect),
-      Effect.provide(layer),
-      Effect.provide(TestClock.layer())
+      Effect.provide(Layer.merge(layer, TestClock.layer()))
     )
   );
 

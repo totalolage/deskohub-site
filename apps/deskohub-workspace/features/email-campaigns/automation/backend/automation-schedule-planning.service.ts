@@ -3,8 +3,8 @@ import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   emailCampaignAutomations as automations,
-  emailCampaignAutomationScheduleFires as fires,
   emailCampaigns,
+  emailCampaignAutomationScheduleFires as fires,
 } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
@@ -75,8 +75,8 @@ export class AutomationSchedulePlanning extends Context.Service<
             )
             .orderBy(asc(automations.campaignId))
             .pipe(
-              Effect.flatMap(
-                Effect.forEach(({ campaignId }) =>
+              Effect.flatMap((due) =>
+                Effect.forEach(due, ({ campaignId }) =>
                   db.transaction((tx) => planNextFire(tx, campaignId, at))
                 )
               ),
