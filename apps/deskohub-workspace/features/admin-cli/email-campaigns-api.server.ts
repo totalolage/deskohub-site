@@ -191,6 +191,12 @@ const toCampaignApiFailure = (cause: CampaignApiCause) =>
           ].join(", ")}, which saved audiences and campaigns can't use yet.`,
         })
     ),
+    Match.orElse(toCampaignSendFailure)
+  );
+
+/** Failures of a test send, a confirmed send, or a retry. */
+const toCampaignSendFailure = (cause: CampaignApiCause) =>
+  Match.value(cause).pipe(
     Match.tag(
       "CampaignConfirmationRejected",
       ({ reason }) =>
