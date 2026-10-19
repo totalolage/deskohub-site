@@ -198,7 +198,12 @@ export const makeMeetingRoomE2ECases = ({
             datasourceConfig,
             flow: {
               id: "meeting-room-paid-one-hour",
-              submitReservationScript: getSubmitMeetingRoomReservationScript,
+              // Picks the start from the listed free start times; the other
+              // hourly cases type it into the time input.
+              submitReservationScript: (data) =>
+                getSubmitMeetingRoomReservationScript(data, {
+                  startTimeEntry: "listed",
+                }),
             },
             payPageSteps: () => [
               {
