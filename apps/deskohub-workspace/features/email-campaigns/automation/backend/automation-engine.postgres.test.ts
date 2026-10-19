@@ -8,77 +8,12 @@ import {
   databaseInstant,
   makeAutomationEngineScenario,
 } from "./automation-engine-scenario.test-utils";
-import { automationFlowFixture } from "./automation-lifecycle.test-utils";
+import { reviewRequestFlow } from "./automation-stories.test-utils";
 
 const database = await connectWorkspacePostgresTestDatabase();
 
 /** Tuesday 13 October 2026, 08:00 in Prague. */
 const start = Temporal.Instant.from("2026-10-13T06:00:00Z");
-
-/** Story 1 (§2.4): a review request after a second visit within a month. */
-const reviewRequestFlow = automationFlowFixture({
-  trigger: { _tag: "ReservationFinished" },
-  steps: [
-    {
-      _tag: "Condition",
-      id: "second-visit-within-a-month",
-      filter: {
-        _tag: "Group",
-        operator: "and",
-        filters: [
-          {
-            attribute: "reservationCount",
-            _tag: "Condition",
-            params: {
-              dateBasis: "visit",
-              period: {
-                _tag: "TriggerWindow",
-                side: "before",
-                count: 1,
-                unit: "month",
-              },
-            },
-            operator: "eq",
-            value: 2,
-          },
-          {
-            attribute: "firstVisit",
-            _tag: "Condition",
-            operator: "in",
-            value: {
-              _tag: "TriggerWindow",
-              side: "before",
-              count: 1,
-              unit: "month",
-            },
-          },
-          {
-            attribute: "campaignEmailCount",
-            _tag: "Condition",
-            params: {
-              purpose: "any",
-              period: { _tag: "AnyTime" },
-              campaign: { _tag: "This" },
-            },
-            operator: "eq",
-            value: 0,
-          },
-        ],
-      },
-    },
-    {
-      _tag: "Wait",
-      id: "settle",
-      wait: { _tag: "Duration", count: 2, unit: "hour" },
-    },
-    {
-      _tag: "Wait",
-      id: "ten-oclock",
-      wait: { _tag: "Calendar", expression: { hours: [10] } },
-    },
-    { _tag: "Send", id: "send" },
-  ],
-});
 
 const iso = (value: Date | string | null | undefined) =>
   databaseInstant(value)?.toString() ?? null;
