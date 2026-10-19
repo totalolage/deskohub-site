@@ -18,6 +18,10 @@ export const workspaceE2ETimeouts = {
   authDelivery: 2 * MINUTE,
   browserAction: 30 * SECOND,
   browserNavigation: 60 * SECOND,
+  // One MCP exchange, with room for a cold advisory snapshot to fill from
+  // Dotypos (one full Dotypos request timeout).
+  customerMcpRequest: 60 * SECOND,
+  customerMcpCase: 4 * MINUTE,
   // One reload of an advertised-pricing page, and the overall wait for the
   // advertisedPricingSources cache (60-second revalidation) to converge.
   calendarSaleAdvertisement: 2 * MINUTE,
@@ -40,6 +44,9 @@ export const workspaceE2ETimeouts = {
   localeSwitchHeldResponse: 3 * SECOND,
   paymentTerminalCase: 4 * MINUTE,
   providerTransition: 90 * SECOND,
+  // Edits, reloads, and restoration checks on one reservation form, with no
+  // submission: at most two edit-and-reload rounds or two page selections.
+  reservationUrlStateCase: 4 * MINUTE,
   uiTransition: 45 * SECOND,
   zeroTotalCheckoutCase: 5 * MINUTE,
 } as const;
@@ -103,6 +110,32 @@ export const workspaceE2EEmailCampaignPlaywrightTimeout =
 export const workspaceE2EAdministratorAccessPlaywrightTimeout =
   workspaceE2ETimeouts.administratorAccessCase +
   workspaceE2ETimeouts.browserAction;
+
+// Agent evals give each agent a task budget; the harness gets SIGTERM a grace
+// period after it and SIGKILL a kill grace later. Around that, a run seeds its account and picks its dates,
+// checks the status page after a payment, and reconciles its journal.
+export const workspaceAgentEvalTimeouts = {
+  bookingTask: 10 * MINUTE,
+  factsTask: 5 * MINUTE,
+  harnessExitGrace: 30 * SECOND,
+  harnessKillGrace: 10 * SECOND,
+  paymentTask: 15 * MINUTE,
+  runPreparation: 3 * MINUTE,
+  statusPage: workspaceE2ETimeouts.providerTransition,
+} as const;
+
+const workspaceAgentEvalCleanupTimeout =
+  workspaceE2ETimeouts.browserAction +
+  workspaceE2ETimeouts.cleanupAction * 2 +
+  workspaceE2ETimeouts.datasource;
+
+export const workspaceAgentEvalPlaywrightTimeout = (taskBudgetMs: number) =>
+  workspaceAgentEvalTimeouts.runPreparation +
+  taskBudgetMs +
+  workspaceAgentEvalTimeouts.harnessExitGrace +
+  workspaceAgentEvalTimeouts.harnessKillGrace +
+  workspaceAgentEvalTimeouts.statusPage +
+  workspaceAgentEvalCleanupTimeout;
 
 export type WorkspaceE2ETimeouts = Readonly<
   Record<keyof typeof workspaceE2ETimeouts, number>

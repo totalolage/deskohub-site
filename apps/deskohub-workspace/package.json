@@ -32,6 +32,7 @@
     "test:admin-cli": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1 features/admin-cli/workspace-admin-api.server.test.ts features/admin-cli/email-campaigns-api.server.test.ts features/admin-cli/administrators-api.server.test.ts",
     "test:instant-navigation": "playwright test --config playwright.instant-navigation.config.ts",
     "test:accessibility": "playwright test --config playwright.accessibility.config.ts",
+    "test:agent-evals": "playwright test --config playwright.agent-evals.config.ts",
     "typecheck": "tsc --noEmit",
     "typegen": "next typegen",
     "start": "next start"
@@ -63,6 +64,7 @@
     "@effect/sql-pg": "4.0.0-beta.85",
     "@inlang/paraglide-js": "^2.26.0",
     "@js-temporal/polyfill": "^0.5.1",
+    "@modelcontextprotocol/server": "^2.3.1",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/api-logs": "0.223.0",
     "@opentelemetry/exporter-logs-otlp-http": "0.223.0",
@@ -150,6 +152,7 @@
     "@axe-core/playwright": "^4.13.0",
     "@biomejs/biome": "^2.5.14",
     "@happy-dom/global-registrator": "^20.10.1",
+    "@modelcontextprotocol/client": "^2.3.1",
     "@next/playwright": "16.4.0",
     "@opentelemetry/context-async-hooks": "2.12.0",
     "@playwright/test": "1.61.1",

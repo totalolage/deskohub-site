@@ -1,5 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
+import { plainDateStringSchema } from "@/shared/utils/temporal";
 import {
+  getMeetingRoomStartTimesUrl,
   getWorkspaceAvailabilityUrl,
   loadWorkspaceAvailability,
   workspaceAvailabilityReplacementHeader,
@@ -32,6 +34,19 @@ describe("getWorkspaceAvailabilityUrl", () => {
       })
     ).toBe(
       "/api/workspace/availability?kind=meeting-room&from=2099-07-30&to=2099-07-31&startsAt=2099-07-30T08%3A00%3A00Z&endsAt=2099-07-31T08%3A00%3A00Z"
+    );
+  });
+
+  test("serializes the meeting-room start-times mode", () => {
+    expect(
+      getMeetingRoomStartTimesUrl({
+        kind: "meeting-room",
+        mode: "start-times",
+        date: plainDateStringSchema.make("2099-07-30"),
+        duration: "hour:4",
+      })
+    ).toBe(
+      "/api/workspace/availability?kind=meeting-room&mode=start-times&date=2099-07-30&duration=hour%3A4"
     );
   });
 

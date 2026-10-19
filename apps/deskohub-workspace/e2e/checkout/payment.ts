@@ -186,19 +186,13 @@ const submitReservationAndWaitForPayPage = ({
       attempt: number
     ): Effect.Effect<ReservationStartResult, WorkspaceE2EError> =>
       Effect.gen(function* () {
-        yield* waitForBrowserReactHydration(
+        yield* prepareReservationSelection({
+          prepareScript: submitReservationScript,
           run,
           session,
-          reservationSubmitSelector,
-          { timeoutMs: timeouts.browserAction }
-        );
-        yield* startReservationPreparation(
-          run,
-          session,
-          submitReservationScript,
-          timeouts.browserAction
-        );
-        yield* waitForReservationPreparation(run, session, timeoutMs);
+          timeoutMs,
+          timeouts,
+        });
         yield* activateHydratedBrowserElement(
           run,
           session,
@@ -249,6 +243,40 @@ const submitReservationAndWaitForPayPage = ({
         );
       }
     );
+  });
+
+/**
+ * Runs a side-effect-free reservation preparation script on the hydrated
+ * form: a short evaluation starts it and keeps its status in the page, and
+ * the runner polls that status within `timeoutMs`. Nothing is submitted.
+ */
+export const prepareReservationSelection = ({
+  prepareScript,
+  run,
+  session,
+  timeoutMs,
+  timeouts,
+}: {
+  readonly prepareScript: string;
+  readonly run: Runner;
+  readonly session: string;
+  readonly timeoutMs: number;
+  readonly timeouts: WorkspaceE2ETimeouts;
+}): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    yield* waitForBrowserReactHydration(
+      run,
+      session,
+      reservationSubmitSelector,
+      { timeoutMs: timeouts.browserAction }
+    );
+    yield* startReservationPreparation(
+      run,
+      session,
+      prepareScript,
+      timeouts.browserAction
+    );
+    yield* waitForReservationPreparation(run, session, timeoutMs);
   });
 
 type ReservationPreparationState =
