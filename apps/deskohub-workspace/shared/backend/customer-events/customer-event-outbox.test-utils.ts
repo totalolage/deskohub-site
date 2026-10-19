@@ -1,5 +1,9 @@
 import type { Pool } from "pg";
 
+/**
+ * Makes each `customer_events` insert whose row matches `condition`, a SQL
+ * boolean over `new`, fail until the returned cleanup runs.
+ */
 export const rejectCustomerEventInserts = async (
   pool: Pool,
   condition: string
