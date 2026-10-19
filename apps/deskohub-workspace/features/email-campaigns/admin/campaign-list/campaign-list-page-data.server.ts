@@ -7,20 +7,23 @@ import { CampaignService } from "../../backend/campaign.service";
 import { CampaignAudienceService } from "../../backend/campaign-audience.service";
 import type { CampaignPurpose } from "../../body/campaign-content";
 import type { CampaignId } from "../../campaign-identifiers";
-import type { CampaignStatus } from "../../campaign-states";
+import { isOnceCampaign, type OnceCampaignStatus } from "../../campaign-states";
 
 export type CampaignListItem = {
   readonly id: CampaignId;
   readonly title: string;
   readonly purpose: CampaignPurpose;
-  readonly status: CampaignStatus;
+  readonly status: OnceCampaignStatus;
   /** Null when the campaign has no audience or its audience was deleted. */
   readonly audienceTitle: string | null;
   /** ISO instant. */
   readonly updatedAt: string;
 };
 
-/** Every campaign, newest first, with its audience title. */
+/**
+ * Every one-off campaign, newest first, with its audience title. Automated
+ * campaigns have no admin pages yet.
+ */
 export const loadCampaignList = async (): Promise<
   readonly CampaignListItem[]
 > => {
@@ -35,7 +38,7 @@ export const loadCampaignList = async (): Promise<
     const audienceTitles = new Map(
       audienceRows.map((audience) => [audience.id, audience.title])
     );
-    return campaignRows.map((campaign) => ({
+    return campaignRows.filter(isOnceCampaign).map((campaign) => ({
       id: campaign.id,
       title: campaign.title,
       purpose: campaign.purpose,

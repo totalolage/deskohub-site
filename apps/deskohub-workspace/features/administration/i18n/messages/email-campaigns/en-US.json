@@ -53,6 +53,8 @@
   "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "Campaign purpose",
   "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "marketing",
   "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "operational",
+  "emailCampaignsAudienceCampaignEmailCountSourceSpecific": "from campaign {campaign}",
+  "emailCampaignsAudienceCampaignEmailCountSourceThis": "from this campaign",
   "emailCampaignsAudienceConditionAttributeLabel": "Customer attribute",
   "emailCampaignsAudienceConditionRemove": "Remove condition",
   "emailCampaignsAudienceCountAlwaysMatchesError": "“≥ 0” always matches. Use “≥ 1” for any, or remove the condition.",
@@ -155,6 +157,12 @@
       }
     }
   ],
+  "emailCampaignsAudienceFirstVisitEver": "have visited{product}",
+  "emailCampaignsAudienceFirstVisitInPeriod": "first visited{product} {period}",
+  "emailCampaignsAudienceFirstVisitLabel": "First visit",
+  "emailCampaignsAudienceFirstVisitNever": "have never visited{product}",
+  "emailCampaignsAudienceFirstVisitNoValue": "never visited",
+  "emailCampaignsAudienceFirstVisitNotInPeriod": "have visited{product}, with the first visit not {period}",
   "emailCampaignsAudienceLastVisitEver": "have visited{product}",
   "emailCampaignsAudienceLastVisitInPeriod": "last visited{product} {period}",
   "emailCampaignsAudienceLastVisitLabel": "Last visit",
@@ -399,6 +407,7 @@
   "emailCampaignsAudienceReservationCountVisitPeriod": "visiting {period}",
   "emailCampaignsAudienceSaveFailedCheckFilters": "The audience could not be saved. Check the filters and try again.",
   "emailCampaignsAudienceSaveFailedRetry": "The audience could not be saved. Try again.",
+  "emailCampaignsAudienceSaveFilterUnavailable": "The audience could not be saved. Trigger-relative periods, the first visit, “any time so far” and emails of one campaign can’t be saved in an audience yet.",
   "emailCampaignsAudienceSectionAccount": "Account",
   "emailCampaignsAudienceSectionEmails": "Emails",
   "emailCampaignsAudienceSectionProfile": "Profile",
@@ -504,8 +513,77 @@
     }
   ],
   "emailCampaignsAudienceSummaryPeriodOnward": "from {date} onward",
+  "emailCampaignsAudienceSummaryPeriodPast": "at any time so far",
   "emailCampaignsAudienceSummaryPeriodRange": "from {from} to {to}",
   "emailCampaignsAudienceSummaryPeriodSince": "since {date}",
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowDay": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "within {formattedCount} day before the trigger",
+        "side=before, countPlural=other": "within {formattedCount} days before the trigger",
+        "side=after, countPlural=one": "within {formattedCount} day after the trigger",
+        "side=after, countPlural=other": "within {formattedCount} days after the trigger"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowMonth": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "within {formattedCount} month before the trigger",
+        "side=before, countPlural=other": "within {formattedCount} months before the trigger",
+        "side=after, countPlural=one": "within {formattedCount} month after the trigger",
+        "side=after, countPlural=other": "within {formattedCount} months after the trigger"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowWeek": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "within {formattedCount} week before the trigger",
+        "side=before, countPlural=other": "within {formattedCount} weeks before the trigger",
+        "side=after, countPlural=one": "within {formattedCount} week after the trigger",
+        "side=after, countPlural=other": "within {formattedCount} weeks after the trigger"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowYear": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "within {formattedCount} year before the trigger",
+        "side=before, countPlural=other": "within {formattedCount} years before the trigger",
+        "side=after, countPlural=one": "within {formattedCount} year after the trigger",
+        "side=after, countPlural=other": "within {formattedCount} years after the trigger"
+      }
+    }
+  ],
   "emailCampaignsAudienceSummaryPeriodUntil": "until {date}",
   "emailCampaignsAudienceSummaryProduct": "for {family}",
   "emailCampaignsAudienceSummaryProductAnyOf": "{property} {values}",
@@ -520,6 +598,256 @@
   "emailCampaignsAudienceUnarchiveFailed": "The audience could not be unarchived.",
   "emailCampaignsAudienceUnarchiveFailedRetry": "The audience could not be unarchived. Try again.",
   "emailCampaignsAudienceUnarchiving": "Unarchiving…",
+  "emailCampaignsCalendarDayOfMonth": [
+    {
+      "declarations": [
+        "input day",
+        "local dayOrdinal = day: plural type=ordinal"
+      ],
+      "selectors": ["dayOrdinal"],
+      "match": {
+        "dayOrdinal=one": "{day}st",
+        "dayOrdinal=two": "{day}nd",
+        "dayOrdinal=few": "{day}rd",
+        "dayOrdinal=*": "{day}th"
+      }
+    }
+  ],
+  "emailCampaignsCalendarDaysOfMonth": "the {days}",
+  "emailCampaignsCalendarEveryDay": "every day",
+  "emailCampaignsCalendarEveryHour": "every hour",
+  "emailCampaignsCalendarHourRange": "between {start} and {end}",
+  "emailCampaignsCalendarInMonths": "in {months}",
+  "emailCampaignsCalendarInWeeks": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "in ISO week {weeks}",
+        "countPlural=*": "in ISO weeks {weeks}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastDayOfMonth": "last day",
+  "emailCampaignsCalendarLastOccurrence": "last {weekday}",
+  "emailCampaignsCalendarMinute": ":{minute}",
+  "emailCampaignsCalendarMonthInName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "January",
+        "month=2": "February",
+        "month=3": "March",
+        "month=4": "April",
+        "month=5": "May",
+        "month=6": "June",
+        "month=7": "July",
+        "month=8": "August",
+        "month=9": "September",
+        "month=10": "October",
+        "month=11": "November",
+        "month=*": "December"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMonthName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "January",
+        "month=2": "February",
+        "month=3": "March",
+        "month=4": "April",
+        "month=5": "May",
+        "month=6": "June",
+        "month=7": "July",
+        "month=8": "August",
+        "month=9": "September",
+        "month=10": "October",
+        "month=11": "November",
+        "month=*": "December"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMonthOfName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "January",
+        "month=2": "February",
+        "month=3": "March",
+        "month=4": "April",
+        "month=5": "May",
+        "month=6": "June",
+        "month=7": "July",
+        "month=8": "August",
+        "month=9": "September",
+        "month=10": "October",
+        "month=11": "November",
+        "month=*": "December"
+      }
+    }
+  ],
+  "emailCampaignsCalendarOccurrence": [
+    {
+      "declarations": [
+        "input occurrence",
+        "input weekday",
+        "local occurrenceOrdinal = occurrence: plural type=ordinal"
+      ],
+      "selectors": ["occurrenceOrdinal"],
+      "match": {
+        "occurrenceOrdinal=one": "{occurrence}st {weekday}",
+        "occurrenceOrdinal=two": "{occurrence}nd {weekday}",
+        "occurrenceOrdinal=few": "{occurrence}rd {weekday}",
+        "occurrenceOrdinal=*": "{occurrence}th {weekday}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarOccurrences": "the {occurrences}",
+  "emailCampaignsCalendarSchedule": "{description} (Prague time)",
+  "emailCampaignsCalendarScheduleDate": "on {day} {month} every year",
+  "emailCampaignsCalendarScheduleMonthStart": "on the first day of {months} every year",
+  "emailCampaignsCalendarScheduleOn": "on {subject}",
+  "emailCampaignsCalendarScheduleQualified": "on {subject} that is {qualifier}",
+  "emailCampaignsCalendarScheduleWeekMonthStart": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "input months",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "on the first day of ISO week {weeks} that falls in {months}, every year",
+        "countPlural=*": "on the first day of ISO weeks {weeks} that falls in {months}, every year"
+      }
+    }
+  ],
+  "emailCampaignsCalendarScheduleWeekStart": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "at the start of ISO week {weeks} (Monday) every year",
+        "countPlural=*": "at the start of ISO weeks {weeks} (Monday) every year"
+      }
+    }
+  ],
+  "emailCampaignsCalendarScopeAnyMonth": "{phrase} of the month",
+  "emailCampaignsCalendarScopeEveryMonth": "{phrase} of every month",
+  "emailCampaignsCalendarScopeMonths": "{phrase} of {months}",
+  "emailCampaignsCalendarScopeQualifier": "{phrase}",
+  "emailCampaignsCalendarTimeAt": "at {times}",
+  "emailCampaignsCalendarTimeEveryHourAt": "every hour at {minutes}",
+  "emailCampaignsCalendarTimeMinutesPastHours": "at {minutes} past {hours}",
+  "emailCampaignsCalendarWait": "Waits until {target} (Prague time); continues at once if it's already then",
+  "emailCampaignsCalendarWaitDay": "a day",
+  "emailCampaignsCalendarWaitMonthDay": "a {months} day",
+  "emailCampaignsCalendarWaitNextMinute": "the next {minutes}",
+  "emailCampaignsCalendarWaitQualified": [
+    {
+      "declarations": ["input kind", "input subject", "input qualifier"],
+      "selectors": ["kind"],
+      "match": {
+        "kind=weekday": "{subject} {qualifier}",
+        "kind=*": "{subject} that is {qualifier}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWaitTime": "{time}",
+  "emailCampaignsCalendarWaitWeeks": "ISO week {weeks}",
+  "emailCampaignsCalendarWeekNumber": "{week}",
+  "emailCampaignsCalendarWeekdayEveryName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "Monday",
+        "weekday=tuesday": "Tuesday",
+        "weekday=wednesday": "Wednesday",
+        "weekday=thursday": "Thursday",
+        "weekday=friday": "Friday",
+        "weekday=saturday": "Saturday",
+        "weekday=*": "Sunday"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "Monday",
+        "weekday=tuesday": "Tuesday",
+        "weekday=wednesday": "Wednesday",
+        "weekday=thursday": "Thursday",
+        "weekday=friday": "Friday",
+        "weekday=saturday": "Saturday",
+        "weekday=*": "Sunday"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayWaitName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "Monday",
+        "weekday=tuesday": "Tuesday",
+        "weekday=wednesday": "Wednesday",
+        "weekday=thursday": "Thursday",
+        "weekday=friday": "Friday",
+        "weekday=saturday": "Saturday",
+        "weekday=*": "Sunday"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysEvery": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "every weekday",
+        "set=weekend": "every weekend day",
+        "set=*": "every {weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysWait": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "a weekday",
+        "set=weekend": "a weekend day",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysWaitQualified": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "a weekday",
+        "set=weekend": "a weekend day",
+        "set=*": "a {weekdays}"
+      }
+    }
+  ],
   "emailCampaignsBadgePurposeMarketing": "Marketing",
   "emailCampaignsBadgePurposeOperational": "Operational",
   "emailCampaignsBadgeRecipientStatusBounced": "Bounced",
@@ -574,6 +902,7 @@
   "emailCampaignsComposerPurposeOperational": "Operational",
   "emailCampaignsComposerPurposeOperationalDescription": "Service announcements for every matching customer. The footer says why they get it.",
   "emailCampaignsComposerSaveAudienceArchived": "The selected audience is archived. Choose another audience.",
+  "emailCampaignsComposerSaveAudienceFilterUnavailable": "The selected audience uses filters campaigns can’t use yet. Choose another audience.",
   "emailCampaignsComposerSaveAudienceNotFound": "The selected audience no longer exists.",
   "emailCampaignsComposerSaveCheckFields": "The campaign could not be saved. Check the fields.",
   "emailCampaignsComposerSaveContentInvalid": "The content has problems. Fix the listed issues, then save.",
@@ -868,5 +1197,6 @@
   "emailCampaignsTestSendTitle": "Send a test email",
   "emailCampaignsTestSendUnsavedChanges": "Save your changes first. A test send uses the saved campaign, so its code wouldn't confirm your unsaved edits.",
   "emailCampaignsActionTimedOut": "The server took too long to respond. Try again.",
+  "emailCampaignsDeliveryMismatch": "This action works only for one-off campaigns, and this campaign sends automatically.",
   "emailCampaignsActionFailedUnexpectedly": "Something went wrong on the server. Try again."
 }

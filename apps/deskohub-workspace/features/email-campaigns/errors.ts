@@ -1,7 +1,8 @@
 import { Data, type Schema } from "effect";
 import type { BetterAuthSecretsMessage } from "@/features/account/backend/auth/auth-secrets";
+import type { AudienceFilterUses } from "./audience-filter-usage";
 import type { CampaignAudienceId, CampaignId } from "./campaign-identifiers";
-import type { CampaignStatus } from "./campaign-states";
+import type { CampaignDelivery, CampaignStatus } from "./campaign-states";
 
 export class CampaignNotFound extends Data.TaggedError("CampaignNotFound")<{
   readonly campaignId: CampaignId;
@@ -29,6 +30,20 @@ export class CampaignReadOnly extends Data.TaggedError("CampaignReadOnly")<{
   readonly status: Exclude<CampaignStatus, "draft">;
 }> {}
 
+/**
+ * A one-off operation (edit, delete, test send, confirmation, send, retry,
+ * duplicate) was asked of an automated campaign.
+ */
+export class CampaignDeliveryMismatch extends Data.TaggedError(
+  "CampaignDeliveryMismatch"
+)<{
+  readonly campaignId: CampaignId;
+  readonly delivery: CampaignDelivery;
+}> {
+  /** Stable across transports, so clients can tell this conflict apart. */
+  static readonly code = "campaign-delivery-mismatch";
+}
+
 /** Draft campaigns use the audience, so it can be archived but not deleted. */
 export class CampaignAudienceInUse extends Data.TaggedError(
   "CampaignAudienceInUse"
@@ -43,6 +58,20 @@ export class CampaignAudienceArchived extends Data.TaggedError(
 )<{
   readonly audienceId: CampaignAudienceId;
 }> {}
+
+/**
+ * The audience filter uses attributes, periods, or campaign sources its
+ * context can't hold: a saved audience, and so a one-off campaign, can't
+ * hold trigger-relative or not yet writable ones.
+ */
+export class AudienceFilterContextInvalid extends Data.TaggedError(
+  "AudienceFilterContextInvalid"
+)<{
+  readonly uses: AudienceFilterUses;
+}> {
+  /** Stable across transports, so clients can tell this rejection apart. */
+  static readonly code = "audience-filter-context";
+}
 
 export type CampaignConfirmationRejection =
   | "unknown-code"

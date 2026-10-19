@@ -1,13 +1,19 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import {
   holdPostgresTransaction,
   waitForPostgresLockWaiter,
 } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import type { CampaignAudienceId, CampaignId } from "../campaign-identifiers";
+import { type AudienceFilter, audienceFilterSchema } from "../audience-filter";
+import type { AudienceFilterUses } from "../audience-filter-usage";
+import {
+  type CampaignAudienceId,
+  type CampaignId,
+  campaignIdSchema,
+} from "../campaign-identifiers";
 import { CampaignService } from "./campaign.service";
 import { CampaignAudienceService } from "./campaign-audience.service";
 import {
@@ -467,6 +473,263 @@ describe.skipIf(!testDatabase)(
       expect(failure(result)).toMatchObject({
         _tag: "CampaignAudienceArchived",
       });
+    });
+
+    const noUses: AudienceFilterUses = {
+      attributes: [],
+      periods: [],
+      campaignSources: [],
+    };
+    const otherCampaignId = campaignIdSchema.make(
+      "01990000-0000-7000-8000-0000000000aa"
+    );
+    const upcomingUses: readonly {
+      readonly use: string;
+      readonly filter: AudienceFilter;
+      readonly uses: AudienceFilterUses;
+    }[] = [
+      {
+        use: "the first visit",
+        filter: {
+          attribute: "firstVisit",
+          _tag: "Condition",
+          operator: "none",
+        },
+        uses: { ...noUses, attributes: ["firstVisit"] },
+      },
+      {
+        use: "any time so far",
+        filter: {
+          attribute: "lastVisit",
+          _tag: "Condition",
+          operator: "in",
+          value: { _tag: "Past" },
+        },
+        uses: { ...noUses, periods: ["Past"] },
+      },
+      {
+        use: "a trigger window",
+        filter: {
+          attribute: "reservationCount",
+          _tag: "Condition",
+          params: {
+            dateBasis: "visit",
+            period: {
+              _tag: "TriggerWindow",
+              side: "before",
+              count: 7,
+              unit: "day",
+            },
+          },
+          operator: "gt",
+          value: 0,
+        },
+        uses: { ...noUses, periods: ["TriggerWindow"] },
+      },
+      {
+        use: "one campaign's emails",
+        filter: {
+          attribute: "campaignEmailCount",
+          _tag: "Condition",
+          params: {
+            purpose: "any",
+            period: { _tag: "AnyTime" },
+            campaign: { _tag: "Specific", campaignId: otherCampaignId },
+          },
+          operator: "eq",
+          value: 0,
+        },
+        uses: { ...noUses, campaignSources: ["Specific"] },
+      },
+      {
+        use: "this campaign's emails",
+        filter: {
+          attribute: "campaignEmailCount",
+          _tag: "Condition",
+          params: {
+            purpose: "any",
+            period: { _tag: "AnyTime" },
+            campaign: { _tag: "This" },
+          },
+          operator: "eq",
+          value: 0,
+        },
+        uses: { ...noUses, campaignSources: ["This"] },
+      },
+    ];
+    const everyUpcomingUse: AudienceFilter = {
+      _tag: "Group",
+      operator: "or",
+      filters: upcomingUses.map(({ filter }) => filter),
+    };
+
+    const countAudiencesTitled = async (title: string) => {
+      const result = (await testDatabase.pool.query(
+        "select count(*)::int as count from email_campaign_audiences where title = $1",
+        [title]
+      )) as { rows: Array<{ count: number }> };
+      return result.rows[0]?.count;
+    };
+
+    /** Stores a filter the way only SQL can while writes reject it. */
+    const insertAudienceBySql = async (
+      title: string,
+      filter: AudienceFilter
+    ) => {
+      const result = (await testDatabase.pool.query(
+        "insert into email_campaign_audiences (title, filter) values ($1, $2::jsonb) returning id",
+        [title, JSON.stringify(filter)]
+      )) as { rows: Array<{ id: CampaignAudienceId }> };
+      const id = result.rows[0]!.id;
+      audienceIds.push(id);
+      return id;
+    };
+
+    test.each(upcomingUses)(
+      "refuses to create an audience with $use and stores nothing",
+      async ({ use, filter, uses }) => {
+        const title = `Upcoming ${use} ${crypto.randomUUID()}`;
+        const creation = await run(
+          CampaignAudienceService.pipe(
+            Effect.flatMap((audiences) => audiences.create({ title, filter }))
+          )
+        );
+        if (Exit.isSuccess(creation)) audienceIds.push(creation.value.id);
+
+        expect(failure(creation)).toMatchObject({
+          _tag: "AudienceFilterContextInvalid",
+          uses,
+        });
+        expect(await countAudiencesTitled(title)).toBe(0);
+      }
+    );
+
+    test.each(upcomingUses)(
+      "refuses to change an audience's filter to $use and keeps the stored one",
+      async ({ filter, uses }) => {
+        const audience = await createAudience("Upcoming shape update");
+        const update = await run(
+          CampaignAudienceService.pipe(
+            Effect.flatMap((audiences) =>
+              audiences.update({
+                audienceId: audience.id,
+                title: "Renamed by a refused update",
+                filter,
+              })
+            )
+          )
+        );
+        expect(failure(update)).toMatchObject({
+          _tag: "AudienceFilterContextInvalid",
+          uses,
+        });
+
+        const stored = await run(
+          CampaignAudienceService.pipe(
+            Effect.flatMap((audiences) => audiences.get(audience.id))
+          )
+        );
+        expect(Exit.isSuccess(stored) && stored.value).toMatchObject({
+          title: "Upcoming shape update",
+          filter: everyoneFilter,
+        });
+      }
+    );
+
+    test("reads, decodes, and renames an audience that already holds upcoming shapes", async () => {
+      const audienceId = await insertAudienceBySql(
+        "Stored upcoming shapes",
+        everyUpcomingUse
+      );
+
+      const read = await run(
+        CampaignAudienceService.pipe(
+          Effect.flatMap((audiences) =>
+            Effect.all([
+              audiences.get(audienceId),
+              audiences.list({ includeArchived: false }),
+            ])
+          )
+        )
+      );
+      if (Exit.isFailure(read)) throw Cause.squash(read.cause);
+      const [audience, listed] = read.value;
+      expect(listed.some(({ id }) => id === audienceId)).toBe(true);
+      expect(
+        Schema.decodeUnknownSync(audienceFilterSchema)(audience.filter)
+      ).toEqual(everyUpcomingUse);
+
+      const renamed = await run(
+        CampaignAudienceService.pipe(
+          Effect.flatMap((audiences) =>
+            audiences.update({ audienceId, title: "Renamed upcoming shapes" })
+          )
+        )
+      );
+      expect(Exit.isSuccess(renamed) && renamed.value).toMatchObject({
+        title: "Renamed upcoming shapes",
+        filter: everyUpcomingUse,
+      });
+    });
+
+    test("refuses to assign an audience holding upcoming uses to a campaign", async () => {
+      const audienceId = await insertAudienceBySql(
+        "Stored upcoming uses for campaigns",
+        everyUpcomingUse
+      );
+      const allUses = {
+        attributes: ["firstVisit"],
+        periods: ["Past", "TriggerWindow"],
+        campaignSources: ["Specific", "This"],
+      };
+
+      const creation = await run(
+        CampaignService.pipe(
+          Effect.flatMap((campaigns) =>
+            campaigns.create({
+              title: "Upcoming uses draft",
+              purpose: "marketing",
+              templateKey: "workspace",
+              content: campaignContentFixture(),
+              audienceId,
+            })
+          )
+        )
+      );
+      if (Exit.isSuccess(creation)) campaignIds.push(creation.value.id);
+      expect(failure(creation)).toMatchObject({
+        _tag: "AudienceFilterContextInvalid",
+        uses: allUses,
+      });
+
+      const draft = await createCampaign(
+        (await createAudience("Assignable before the move")).id
+      );
+      const move = await run(
+        CampaignService.pipe(
+          Effect.flatMap((campaigns) =>
+            campaigns.update({ campaignId: draft.id, audienceId })
+          )
+        )
+      );
+      expect(failure(move)).toMatchObject({
+        _tag: "AudienceFilterContextInvalid",
+        uses: allUses,
+      });
+      expect(await storedAudienceId(draft.id)).toBe(draft.audienceId);
+    });
+
+    test("duplicates a draft without an audience that came to hold upcoming shapes", async () => {
+      const audience = await createAudience("Upcoming uses after assignment");
+      const draft = await createCampaign(audience.id);
+      await testDatabase.pool.query(
+        "update email_campaign_audiences set filter = $2::jsonb where id = $1",
+        [audience.id, JSON.stringify(everyUpcomingUse)]
+      );
+
+      const copy = await duplicate(draft.id);
+      expect(Exit.isSuccess(copy) && copy.value.audienceId).toBeNull();
+      expect(await storedAudienceId(draft.id)).toBe(audience.id);
     });
 
     test("reports a missing audience", async () => {

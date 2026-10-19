@@ -15,6 +15,7 @@ import {
 } from "./audience-attribute-extension.typecheck";
 import { audienceFactKey, countFactRequest } from "./audience-filter";
 import type { AudienceResolution } from "./backend/audience-attribute-resolvers";
+import { audienceEvaluationAt } from "./backend/audience-evaluation-context";
 
 registerWorkspaceComponentTestEnv();
 // @testing-library/react must load after the happy-dom registration.
@@ -89,13 +90,14 @@ describe("a count attribute added as one catalogue entry and its resolver", () =
   });
 
   test("resolves its counts through its resolver", async () => {
-    const request = countFactRequest(condition);
+    const request = countFactRequest(
+      giftCardCount,
+      condition,
+      audienceEvaluationAt(Temporal.Now.instant())
+    );
     expect(audienceFactKey(request)).toContain('"giftCardCount"');
     const counts = await Effect.runPromise(
-      extendedResolvers.giftCardCount.count(
-        request.params,
-        {} as AudienceResolution
-      )
+      extendedResolvers.giftCardCount.count(request, {} as AudienceResolution)
     );
     expect([...counts.values()]).toEqual([3]);
   });

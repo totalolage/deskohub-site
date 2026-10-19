@@ -67,6 +67,7 @@ import {
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
+import { CliClientCompatibilityLive } from "./cli-client-version";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
 import {
   AdminCliAdministrationApiHandlers,
@@ -210,6 +211,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(SessionAdministratorAuthentication),
       Effect.provide(Layer.succeed(AdministrationService, {} as never)),
       Effect.provide(UnusedReservationAccessAdministration),
+      Effect.provide(CliClientCompatibilityLive),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -257,6 +259,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(SessionAdministratorAuthentication),
       Effect.provide(failingAdministration),
       Effect.provide(UnusedReservationAccessAdministration),
+      Effect.provide(CliClientCompatibilityLive),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.withLogger(capturingLogger),
@@ -339,6 +342,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(UnusedDiscountAdministration),
       Effect.provide(UnusedStandaloneAccessCodeAdministration),
       Effect.provide(SessionAdministratorAuthentication),
+      Effect.provide(CliClientCompatibilityLive),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -409,6 +413,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(admission),
       Effect.provide(authentication),
+      Effect.provide(CliClientCompatibilityLive),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -604,6 +609,7 @@ describe("Workspace Admin API", () => {
         )
       ),
       Effect.provide(reservationAccess),
+      Effect.provide(CliClientCompatibilityLive),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -717,6 +723,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(UnusedInvoiceAdministration),
       Effect.provide(UnusedStandaloneAccessCodeAdministration),
       Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(CliClientCompatibilityLive),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -834,6 +841,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(UnusedInvoiceAdministration),
       Effect.provide(UnusedStandaloneAccessCodeAdministration),
       Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(CliClientCompatibilityLive),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -936,6 +944,7 @@ describe("Workspace Admin API", () => {
         )
       ),
       Effect.provide(UnusedReservationAccessAdministration),
+      Effect.provide(CliClientCompatibilityLive),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -1032,6 +1041,7 @@ describe("standalone access-code CLI endpoint", () => {
         )
       ),
       Effect.provide(UnusedReservationAccessAdministration),
+      Effect.provide(CliClientCompatibilityLive),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped
     );

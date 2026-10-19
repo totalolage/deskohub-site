@@ -6,6 +6,10 @@ import {
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
+import {
+  type AudienceCountCondition,
+  audienceAttributeCatalogue,
+} from "@deskohub/workspace-admin-api";
 import { Effect, Option } from "effect";
 import {
   customerAccountLinks,
@@ -15,15 +19,21 @@ import {
 import { authUser } from "@/db/schema/auth";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { type AudienceCondition, audienceFactKey } from "../audience-filter";
+import {
+  type AudienceCondition,
+  audienceFactKey,
+  countFactRequest,
+} from "../audience-filter";
 import type { DatePeriodBounds } from "../date-period";
 import { evaluateAudienceFilter } from "./audience-evaluation";
+import { audienceEvaluationAt } from "./audience-evaluation-context";
 import {
   CampaignCandidateRepository,
   type CampaignReservationSelection,
 } from "./campaign-candidate.repository";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
+const context = audienceEvaluationAt(Temporal.Now.instant());
 
 const run = crypto.randomUUID();
 const customerId = (role: string) =>
@@ -277,6 +287,39 @@ describe.skipIf(!testDatabase)(
       ).toEqual([consented]);
     });
 
+    test("lists only the given customers, with the same pool rules", async () => {
+      const listed = async (
+        purpose: "marketing" | "operational",
+        ids: readonly (typeof seeded)[number][]
+      ) =>
+        (
+          await repository((candidates) =>
+            candidates.listCandidates({ purpose, ids })
+          )
+        )
+          .map(({ dotyposCustomerId }) => dotyposCustomerId)
+          .sort();
+      expect(
+        await listed("operational", [reserved, linked, withdrawn])
+      ).toEqual([reserved, linked, withdrawn].sort());
+      expect(await listed("marketing", [consented, withdrawn])).toEqual([
+        consented,
+      ]);
+      expect(await listed("operational", [])).toEqual([]);
+      const operational = await seededCandidates("operational");
+      expect(
+        (
+          await repository((candidates) =>
+            candidates.listCandidates({ purpose: "operational", ids: [linked] })
+          )
+        )[0]
+      ).toEqual(
+        operational.find(
+          ({ dotyposCustomerId }) => dotyposCustomerId === linked
+        )
+      );
+    });
+
     test("collects every known customer with their locale sources", async () => {
       const candidates = await seededCandidates("operational");
       expect(candidates).toEqual(
@@ -341,10 +384,13 @@ describe.skipIf(!testDatabase)(
       const facts = {
         counts: new Map([
           [
-            audienceFactKey({
-              attribute: "reservationCount",
-              params: condition("gt").params,
-            } as never),
+            audienceFactKey(
+              countFactRequest(
+                audienceAttributeCatalogue.reservationCount,
+                condition("gt") as AudienceCountCondition,
+                context
+              )
+            ),
             await reservationCounts({ booked: {} }),
           ],
         ]),
@@ -358,6 +404,7 @@ describe.skipIf(!testDatabase)(
             locale: "en-US",
             hasAccount: false,
           },
+          context,
           facts,
           profile: Option.none(),
         });

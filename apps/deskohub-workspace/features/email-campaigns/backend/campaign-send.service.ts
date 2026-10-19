@@ -49,11 +49,13 @@ import type {
   CampaignId,
   CampaignSendId,
 } from "../campaign-identifiers";
+import { isOnceCampaign } from "../campaign-states";
 import {
   CampaignAudienceMissing,
   type CampaignAudienceNotFound,
   type CampaignConfirmationRejected,
   CampaignContentMissing,
+  CampaignDeliveryMismatch,
   CampaignDeliveryQueueFailed,
   CampaignEmailDeliveryFailed,
   type CampaignEmailNotConfigured,
@@ -126,6 +128,7 @@ export interface ICampaignSendService {
   }) => Effect.Effect<
     CampaignTestSend,
     | CampaignNotFound
+    | CampaignDeliveryMismatch
     | CampaignReadOnly
     | CampaignTestRecipientInvalid
     | CampaignRecipientsOutsideTestDomain
@@ -149,6 +152,7 @@ export interface ICampaignSendService {
   }) => Effect.Effect<
     CampaignSendStarted,
     | CampaignNotFound
+    | CampaignDeliveryMismatch
     | CampaignReadOnly
     | CampaignConfirmationRejected
     | CampaignAudienceMissing
@@ -173,6 +177,7 @@ export interface ICampaignSendService {
   }) => Effect.Effect<
     CampaignRetryStarted,
     | CampaignNotFound
+    | CampaignDeliveryMismatch
     | CampaignNotRetryable
     | CampaignDeliveryQueueFailed
     | DatabaseError
@@ -198,7 +203,7 @@ export class CampaignSendService extends Context.Service<
       const queue = yield* CampaignSendQueueService;
 
       const getDraft = (campaignId: CampaignId) =>
-        campaigns.get(campaignId).pipe(
+        campaigns.getOnce(campaignId).pipe(
           Effect.flatMap((campaign) =>
             Match.value(campaign.status).pipe(
               Match.when("draft", () => Effect.succeed(campaign)),
@@ -463,12 +468,21 @@ export class CampaignSendService extends Context.Service<
       ) {
         const { campaignId, now } = input;
         const [campaign] = yield* tx
-          .select({ status: emailCampaigns.status })
+          .select({
+            delivery: emailCampaigns.delivery,
+            status: emailCampaigns.status,
+          })
           .from(emailCampaigns)
           .where(eq(emailCampaigns.id, campaignId))
           .for("update");
         if (!campaign) {
           return yield* new CampaignNotFound({ campaignId });
+        }
+        if (!isOnceCampaign(campaign)) {
+          return yield* new CampaignDeliveryMismatch({
+            campaignId,
+            delivery: campaign.delivery,
+          });
         }
         if (campaign.status !== "failed") {
           return yield* new CampaignNotRetryable({

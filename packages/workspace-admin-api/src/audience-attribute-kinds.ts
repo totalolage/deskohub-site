@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { AdministrationCampaignId } from "./campaign-identifiers";
 import type { AdministrationCampaignLocale } from "./campaign-locale-and-purpose";
 import { DatePeriod } from "./date-period";
 import { AdministrationReservationFamily } from "./workspace-admin-api";
@@ -176,7 +177,38 @@ export const optionalChoiceParam = <Choice extends ChoiceSchema>(
 export const periodParam = { part: "period", field: DatePeriod } as const;
 export type AudiencePeriodParam = typeof periodParam;
 
-export type AudienceParam = AudienceChoiceParam | AudiencePeriodParam;
+/**
+ * Which campaign's emails count: one chosen campaign, or the campaign whose
+ * automation evaluates the condition. Only automation conditions have a
+ * campaign of their own, so only they accept `This`.
+ */
+export const CampaignEmailSource = Schema.Union([
+  Schema.TaggedStruct("Specific", { campaignId: AdministrationCampaignId }),
+  Schema.TaggedStruct("This", {}),
+]).annotate({
+  identifier: "CampaignEmailSource",
+  description:
+    "Emails of one campaign (Specific) or of the evaluating automation's own campaign (This, automation conditions only).",
+});
+export type CampaignEmailSource = typeof CampaignEmailSource.Type;
+
+/**
+ * The campaign a count attribute counts emails of. Leaving it unset counts
+ * every campaign, so filters stored before it existed keep their bytes and
+ * their meaning.
+ */
+export const campaignSourceParam = {
+  part: "campaign",
+  field: Schema.optionalKey(CampaignEmailSource),
+  label: "Campaign",
+  absent: { label: "any campaign" },
+} as const;
+export type AudienceCampaignParam = typeof campaignSourceParam;
+
+export type AudienceParam =
+  | AudienceChoiceParam
+  | AudiencePeriodParam
+  | AudienceCampaignParam;
 
 type CountParams = { readonly [param: string]: AudienceParam } & {
   readonly period: AudiencePeriodParam;
@@ -292,21 +324,32 @@ export const countAttribute = <
       readonly operator: AudienceCountOperator;
       readonly value: number;
     }>;
+    /** Rejects param combinations that contradict each other. */
+    readonly paramsIssue?: NoInfer<
+      (
+        params: Schema.Struct<CountParamsFields<Params, Product>>["Type"]
+      ) => Schema.FilterIssue | undefined
+    >;
   }
-) => ({
-  kind: "count" as const,
-  attribute,
-  ...definition,
-  reservationProduct: definition.reservationProduct ?? false,
-  conditions: [
-    conditionShape(attribute, {
-      params: Schema.Struct(
-        countParamsFields(definition.params, definition.reservationProduct)
-      ),
-      ...audienceCountComparisonFields,
-    }).check(meaningfulComparison),
-  ] as const,
-});
+) => {
+  const params = Schema.Struct(
+    countParamsFields(definition.params, definition.reservationProduct)
+  );
+  return {
+    kind: "count" as const,
+    attribute,
+    ...definition,
+    reservationProduct: definition.reservationProduct ?? false,
+    conditions: [
+      conditionShape(attribute, {
+        params: definition.paramsIssue
+          ? params.check(Schema.makeFilter(definition.paramsIssue))
+          : params,
+        ...audienceCountComparisonFields,
+      }).check(meaningfulComparison),
+    ] as const,
+  };
+};
 
 type DateParamsFields<Product extends boolean> = Product extends true
   ? {

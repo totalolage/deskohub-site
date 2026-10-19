@@ -23,11 +23,22 @@ import {
   audienceSingleLocale,
   collectAudienceFactRequests,
   compareCount,
+  countFactRequest,
+  dateFactRequest,
   matchesSet,
 } from "./audience-filter";
 import { evaluateAudienceFilter } from "./backend/audience-evaluation";
+import {
+  type AudienceEvaluationContext,
+  audienceEvaluationAt,
+} from "./backend/audience-evaluation-context";
+import { campaignIdSchema } from "./campaign-identifiers";
 
 const customerId = DotyposCustomerIdSchema.make("customer-1");
+
+/** 12:00 in Prague (CEST). */
+const now = Temporal.Instant.from("2026-10-15T10:00:00Z");
+const context = audienceEvaluationAt(now);
 
 const candidate: AudienceCandidate = {
   dotyposCustomerId: customerId,
@@ -111,11 +122,13 @@ const evaluate = (
   options: {
     readonly facts?: AudienceFacts;
     readonly profile?: Option.Option<DotyposCustomer>;
+    readonly context?: AudienceEvaluationContext;
   } = {}
 ) =>
   evaluateAudienceFilter({
     filter,
     candidate,
+    context: options.context ?? context,
     facts: options.facts ?? noFacts,
     profile: options.profile ?? Option.none(),
   });
@@ -184,10 +197,11 @@ describe("evaluateAudienceFilter", () => {
 
   test("compares the resolved count of the condition's own request", () => {
     const facts = countFacts(
-      {
-        attribute: "campaignEmailCount",
-        params: marketingEmailsLastTenDays.params,
-      },
+      countFactRequest(
+        audienceAttributeCatalogue.campaignEmailCount,
+        marketingEmailsLastTenDays,
+        context
+      ),
       new Map([[customerId, 1]])
     );
     expect(evaluate(marketingEmailsLastTenDays, { facts })).toBe("noMatch");
@@ -204,10 +218,7 @@ describe("evaluateAudienceFilter", () => {
   });
 
   test("a date in, not in, or without a value", () => {
-    const request = {
-      attribute: "lastVisit",
-      period: lastVisitNotRecent.value,
-    } as const;
+    const request = dateFactRequest(lastVisitNotRecent, context);
     const visitedLongAgo = dateFacts(request, {
       withValue: new Set([customerId]),
       inPeriod: new Set(),
@@ -240,10 +251,7 @@ describe("evaluateAudienceFilter", () => {
       _tag: "Condition",
       operator: "none",
     } as const satisfies AudienceCondition;
-    const anyTime = {
-      attribute: "lastVisit",
-      period: { _tag: "AnyTime" },
-    } as const;
+    const anyTime = dateFactRequest(never, context);
     expect(
       evaluate(never, {
         facts: dateFacts(anyTime, {
@@ -301,23 +309,122 @@ describe("collectAudienceFactRequests", () => {
         { ...lastVisitNotRecent, operator: "in" },
         { attribute: "lastVisit", _tag: "Condition", operator: "none" },
         group("and", [taggedVip, speaks("cs-CZ")]),
-      ])
+      ]),
+      [context]
     );
 
+    // Periods are fixed to their instants in the context.
     expect(requests.counts).toEqual([
       {
         attribute: "reservationCount",
-        params: reservationsVisitedInMarch.params,
+        params: {
+          dateBasis: "visit",
+          period: {
+            startsAtOrAfter: Temporal.Instant.from("2026-02-28T23:00:00Z"),
+            startsBefore: Temporal.Instant.from("2026-03-31T22:00:00Z"),
+          },
+        },
       },
       {
         attribute: "campaignEmailCount",
-        params: marketingEmailsLastTenDays.params,
+        params: {
+          purpose: "marketing",
+          period: {
+            startsAtOrAfter: Temporal.Instant.from("2026-10-05T10:00:00Z"),
+            startsAtOrBefore: now,
+          },
+        },
       },
     ]);
     expect(requests.dates).toEqual([
-      { attribute: "lastVisit", period: lastVisitNotRecent.value },
-      { attribute: "lastVisit", period: { _tag: "AnyTime" } },
+      {
+        attribute: "lastVisit",
+        bounds: {
+          startsAtOrAfter: Temporal.Instant.from("2026-09-15T10:00:00Z"),
+          startsAtOrBefore: now,
+        },
+        asOf: now,
+      },
+      { attribute: "lastVisit", bounds: {}, asOf: now },
     ]);
+  });
+
+  test("shares a request between contexts only where their bounds agree", () => {
+    const triggeredAt = (at: string): AudienceEvaluationContext => ({
+      ...context,
+      trigger: Option.some({ at: Temporal.Instant.from(at) }),
+    });
+    const afterTrigger = {
+      attribute: "reservationCount",
+      _tag: "Condition",
+      params: {
+        dateBasis: "visit",
+        period: {
+          _tag: "TriggerWindow",
+          side: "after",
+          count: 1,
+          unit: "week",
+        },
+      },
+      operator: "gt",
+      value: 0,
+    } as const satisfies AudienceCondition;
+    const requests = collectAudienceFactRequests(
+      group("and", [afterTrigger, marketingEmailsLastTenDays]),
+      [
+        triggeredAt("2026-10-01T08:00:00Z"),
+        triggeredAt("2026-10-01T08:00:00Z"),
+        triggeredAt("2026-10-08T08:00:00Z"),
+      ]
+    );
+    // Two trigger windows, and one last-ten-days count for every context.
+    expect(requests.counts.map(({ attribute }) => attribute)).toEqual([
+      "reservationCount",
+      "campaignEmailCount",
+      "reservationCount",
+    ]);
+  });
+
+  test("fixes a campaign source to the evaluating campaign", () => {
+    const fromThisCampaign = {
+      attribute: "campaignEmailCount",
+      _tag: "Condition",
+      params: {
+        purpose: "any",
+        period: { _tag: "AnyTime" },
+        campaign: { _tag: "This" },
+      },
+      operator: "eq",
+      value: 0,
+    } as const satisfies AudienceCondition;
+    const entry = audienceAttributeCatalogue.campaignEmailCount;
+    const campaignId = campaignIdSchema.make("campaign-1");
+    expect(
+      countFactRequest(entry, fromThisCampaign, {
+        ...context,
+        campaignId: Option.some(campaignId),
+      }).params.campaign
+    ).toBe(campaignId);
+    // Without a campaign of its own, "this campaign" sent nothing.
+    expect(
+      countFactRequest(entry, fromThisCampaign, context).params.campaign
+    ).toBeNull();
+    expect(
+      countFactRequest(
+        entry,
+        {
+          ...fromThisCampaign,
+          params: {
+            ...fromThisCampaign.params,
+            campaign: {
+              _tag: "Specific",
+              campaignId: campaignIdSchema.make("campaign-2"),
+            },
+          },
+        },
+        context
+      ).params.campaign
+    ).toBe(campaignIdSchema.make("campaign-2"));
   });
 });
 
@@ -430,6 +537,7 @@ describe("audienceAttributeCatalogue", () => {
       )
     ).toEqual([
       ["reservationCount", "count"],
+      ["firstVisit", "date"],
       ["lastVisit", "date"],
       ["campaignEmailCount", "count"],
       ["hasAccount", "boolean"],

@@ -12,8 +12,13 @@ import {
 } from "@/db/schema";
 import { currentInstant } from "@/shared/utils/temporal";
 import type { AudienceFilter } from "../audience-filter";
+import { ensureSavedAudienceFilter } from "../audience-filter-usage";
 import type { CampaignAudienceId } from "../campaign-identifiers";
-import { CampaignAudienceInUse, CampaignAudienceNotFound } from "../errors";
+import {
+  type AudienceFilterContextInvalid,
+  CampaignAudienceInUse,
+  CampaignAudienceNotFound,
+} from "../errors";
 
 type CampaignAudience = CampaignAudienceRow;
 
@@ -34,7 +39,10 @@ export interface ICampaignAudienceService {
   >;
   readonly create: (
     input: CampaignAudienceInput
-  ) => Effect.Effect<CampaignAudience, EffectDrizzleQueryError>;
+  ) => Effect.Effect<
+    CampaignAudience,
+    AudienceFilterContextInvalid | EffectDrizzleQueryError
+  >;
   /** Draft campaigns follow the change; sent campaigns keep their snapshot. */
   readonly update: (
     input: {
@@ -42,7 +50,9 @@ export interface ICampaignAudienceService {
     } & Partial<CampaignAudienceInput>
   ) => Effect.Effect<
     CampaignAudience,
-    CampaignAudienceNotFound | EffectDrizzleQueryError
+    | CampaignAudienceNotFound
+    | AudienceFilterContextInvalid
+    | EffectDrizzleQueryError
   >;
   readonly archive: (
     audienceId: CampaignAudienceId
@@ -153,6 +163,7 @@ export class CampaignAudienceService extends Context.Service<
             .pipe(Effect.flatMap(requireUpdated(audienceId)));
         }),
         create: Effect.fn("CampaignAudienceService.create")(function* (input) {
+          yield* ensureSavedAudienceFilter(input.filter);
           const [audience] = yield* db
             .insert(emailCampaignAudiences)
             .values({ title: input.title, filter: input.filter })
@@ -164,6 +175,7 @@ export class CampaignAudienceService extends Context.Service<
           title,
           filter,
         }) {
+          if (filter !== undefined) yield* ensureSavedAudienceFilter(filter);
           const updatedAt = yield* currentInstant;
           return yield* db
             .update(emailCampaignAudiences)
