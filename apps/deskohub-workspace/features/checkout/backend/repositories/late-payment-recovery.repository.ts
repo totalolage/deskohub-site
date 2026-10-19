@@ -16,6 +16,7 @@ import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers"
 import type { DiscountClaimError } from "@/features/discounts/errors";
 import { referralFirstBookingLockStatement } from "@/features/referrals/advisory-locks";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import {
   attemptRecordsReferral,
   ensureReferralFirstPaidTransition,
@@ -391,13 +392,28 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                       )
                     )
                   )
-                  .returning({ id: workspaceReservations.id });
+                  .returning({
+                    dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+                    reservationConfirmedAt:
+                      workspaceReservations.reservationConfirmedAt,
+                  });
                 if (!updatedReservation) {
                   return yield* recoveryStateError(
                     "settle",
                     input.paymentAttemptId,
                     "Late-payment reservation settlement failed."
                   );
+                }
+                if (
+                  input.reservationState === "confirmed" &&
+                  updatedReservation.reservationConfirmedAt
+                ) {
+                  yield* recordCustomerEvent(tx, {
+                    kind: "reservation-booked",
+                    occurredAt: updatedReservation.reservationConfirmedAt,
+                    dotyposCustomerId: updatedReservation.dotyposCustomerId,
+                    workspaceReservationId: input.workspaceReservationId,
+                  });
                 }
               }
 

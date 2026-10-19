@@ -8,7 +8,9 @@ import {
 import { NexiOrderIdSchema, NexiWebhookEventIdSchema } from "@deskohub/nexi";
 import { eq } from "drizzle-orm";
 import { Effect } from "effect";
+import { toStoredInstant } from "@/db/instant";
 import {
+  customerEvents,
   discountApplications,
   discountCodeRedemptions,
   discountCodes,
@@ -806,6 +808,81 @@ describe.skipIf(!testDatabase)(
       expect(attempt?.state).toBe("paid");
       expect(recoveries[0]?.state).toBe("recovered");
       expect(recoveries[0]?.recoveredDotyposReservationId).toBe(replacementId);
+    });
+
+    const readCustomerEvents = (reservationId: WorkspaceReservationId) =>
+      Effect.runPromise(
+        testDatabase.db
+          .select({
+            kind: customerEvents.kind,
+            occurredAt: customerEvents.occurredAt,
+            dotyposCustomerId: customerEvents.dotyposCustomerId,
+          })
+          .from(customerEvents)
+          .where(eq(customerEvents.workspaceReservationId, reservationId))
+      );
+
+    test("records one booked event when settlement confirms the reservation", async () => {
+      const checkout = await insertLatePaidCheckout({
+        reservationState: "cancelled",
+        holdExpiresAt: Temporal.Now.instant().subtract({ minutes: 30 }),
+      });
+      await startAndClaim({ ...checkout, webhookEventId: "webhook-booked" });
+      const completedAt = Temporal.Now.instant();
+
+      await run((repository) =>
+        repository.completeWithReplacement({
+          paymentAttemptId: checkout.paymentAttemptId,
+          workspaceReservationId: checkout.reservationId,
+          recoveredDotyposReservationId: DotyposReservationIdSchema.make(
+            `dotypos-replacement-${checkout.id}`
+          ),
+          reservationState: "confirmed",
+          completedAt,
+        })
+      );
+
+      const { reservation } = await readRows(checkout);
+      expect(await readCustomerEvents(checkout.reservationId)).toEqual([
+        {
+          kind: "reservation-booked",
+          occurredAt: toStoredInstant(completedAt),
+          dotyposCustomerId: reservation!.dotyposCustomerId,
+        },
+      ]);
+    });
+
+    test("records no booked event for a held recovery or a refund", async () => {
+      const held = await insertLatePaidCheckout({
+        reservationState: "held",
+        holdExpiresAt: Temporal.Now.instant().add({ minutes: 5 }),
+      });
+      await startAndClaim({ ...held, webhookEventId: "webhook-held" });
+      const refunded = await insertLatePaidCheckout({
+        reservationState: "cancelled",
+        holdExpiresAt: Temporal.Now.instant().subtract({ minutes: 30 }),
+      });
+      await startAndClaim({ ...refunded, webhookEventId: "webhook-refund" });
+
+      await run((repository) =>
+        repository.completeUsingOriginalReservation({
+          paymentAttemptId: held.paymentAttemptId,
+          workspaceReservationId: held.reservationId,
+          reservationState: "held",
+          completedAt: Temporal.Now.instant(),
+        })
+      );
+      await run((repository) =>
+        repository.requireRefund({
+          paymentAttemptId: refunded.paymentAttemptId,
+          workspaceReservationId: refunded.reservationId,
+          failureCode: "late_payment_reservation_unavailable",
+          completedAt: Temporal.Now.instant(),
+        })
+      );
+
+      expect(await readCustomerEvents(held.reservationId)).toEqual([]);
+      expect(await readCustomerEvents(refunded.reservationId)).toEqual([]);
     });
 
     test("a superseded attempt Nexi already refunded stays refunded without touching the reservation", async () => {
