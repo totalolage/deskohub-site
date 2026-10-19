@@ -161,7 +161,7 @@ const toCampaignApiFailure = (cause: CampaignApiCause) =>
       () =>
         new CliMutationRejected({
           message:
-            "This campaign sends automatically, so it can't be test sent, sent, retried, or duplicated like a one-off campaign.",
+            "This campaign sends automatically, so it can't be edited, deleted, test sent, sent, retried, or duplicated like a one-off campaign.",
         })
     ),
     Match.tag(

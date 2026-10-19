@@ -61,6 +61,9 @@ const campaignSaveError =
         Match.when("CampaignReadOnly", () =>
           m.emailCampaignsComposerSaveReadOnly({}, { locale })
         ),
+        Match.when("CampaignDeliveryMismatch", () =>
+          m.emailCampaignsDeliveryMismatch({}, { locale })
+        ),
         Match.when("CampaignNotFound", () =>
           m.emailCampaignsDraftNotFound({}, { locale })
         ),
@@ -75,6 +78,9 @@ const campaignDeleteError =
       message: Match.value(cause._tag).pipe(
         Match.when("CampaignReadOnly", () =>
           m.emailCampaignsDraftDeleteReadOnly({}, { locale })
+        ),
+        Match.when("CampaignDeliveryMismatch", () =>
+          m.emailCampaignsDeliveryMismatch({}, { locale })
         ),
         Match.when("CampaignNotFound", () =>
           m.emailCampaignsDraftNotFound({}, { locale })
