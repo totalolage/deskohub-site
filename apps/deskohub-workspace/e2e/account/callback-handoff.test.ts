@@ -10,6 +10,7 @@ import {
 import * as fsPromises from "node:fs/promises";
 import { resolve } from "node:path";
 import type * as Playwright from "@playwright/test";
+import { encodeAuthCallbackReturn } from "@/features/account/routes";
 import { workspaceE2ETimeouts } from "../timeouts";
 
 const baseUrl = "https://deskohub-workspace-review.example.test";
@@ -22,6 +23,23 @@ const fakeMainFrame = {} as Playwright.Frame;
 const fakeSubFrame = {} as Playwright.Frame;
 const callbackHandoffFailureMessage =
   "Account callback handoff verification failed";
+const englishCard = {
+  body: "Taking you to your account…",
+  label: "Loading sign-in…",
+  title: "You are signed in",
+} as const;
+const czechCard = {
+  body: "Vracíme vás tam, kde jste skončili. Dokončit můžete přímo v tomto prohlížeči.",
+  label: "Načítání přihlášení…",
+  title: "Jste přihlášeni",
+} as const;
+const selection = "/cs-CZ/reservation/cowork?selection=synthetic-1";
+const czechExpectation = {
+  locale: "cs-CZ",
+  returnTo: selection,
+  reviewTarget: "callback-signed-in-return-cs-desktop",
+} as const;
+const czechCallbackUrl = `${baseUrl}/cs-CZ/auth/callback?attempt=0f0a9c1e-7b62-4c8d-9e21-53ab2f0d4c7a&return=${encodeAuthCallbackReturn(selection)}`;
 const initialViewport = { height: 768, width: 1024 } as const;
 const screenshotBuffer = Buffer.from("synthetic-png");
 const accountReviewArtifactDirectory = resolve(
@@ -42,6 +60,7 @@ const documentReviewControl = {
   failValidateFromCall: Number.POSITIVE_INFINITY as number,
   pixels: Buffer.from("adapter-document-png"),
   prepareCalls: 0,
+  preparedLanding: undefined as unknown,
   preparedViewport: null as Playwright.ViewportSize | null,
   timeline: [] as string[],
   validateCalls: 0,
@@ -52,6 +71,7 @@ const documentReviewControl = {
     documentReviewControl.failValidate = false;
     documentReviewControl.failValidateFromCall = Number.POSITIVE_INFINITY;
     documentReviewControl.prepareCalls = 0;
+    documentReviewControl.preparedLanding = undefined;
     documentReviewControl.preparedViewport = null;
     documentReviewControl.timeline = [];
     documentReviewControl.validateCalls = 0;
@@ -63,9 +83,11 @@ mock.module("./callback-document-review", () => ({
   prepareCallbackDocumentReview: async (
     page: Playwright.Page,
     _baseOrigin: string,
+    landing: unknown,
     viewport: Playwright.ViewportSize | null
   ) => {
     documentReviewControl.prepareCalls += 1;
+    documentReviewControl.preparedLanding = landing;
     documentReviewControl.preparedViewport = viewport && { ...viewport };
     documentReviewControl.timeline.push("adapter-prepare");
     if (viewport) await page.setViewportSize(viewport);
@@ -95,18 +117,28 @@ mock.module("./callback-document-review", () => ({
   },
 }));
 
-const { withCallbackHandoffReview } = await import("./callback-handoff");
+const { accountCallbackHandoff, withCallbackHandoffReview } = await import(
+  "./callback-handoff"
+);
 
 type CallbackFakePageOptions = {
+  /** The signed-in card the page renders; English account copy by default. */
+  readonly card?: {
+    readonly body: string;
+    readonly label: string;
+    readonly title: string;
+  };
   readonly continueError?: Error;
   readonly deferContinue?: boolean;
   readonly deferRoute?: boolean;
   readonly deferUnroute?: boolean;
   readonly failLoadingWait?: boolean;
   readonly failScreenshot?: boolean;
+  readonly hiddenTitle?: boolean;
   readonly loadingConnected?: boolean;
   readonly onFontsReady?: () => void;
   readonly onScreenshot?: () => Promise<void> | void;
+  readonly titleCount?: number;
   readonly unrouteError?: Error;
 };
 
@@ -199,21 +231,30 @@ const makeCallbackFakePage = (
       },
     }
   );
+  const card = options.card ?? englishCard;
   const makeLocator = (kind: string): Playwright.Locator =>
     Object.assign({} as Playwright.Locator, {
       boundingBox: async () => {
         if (kind === "main") return { height: 800, width: 1_000, x: 0, y: 0 };
         return { height: 422, width: 512, x: 0, y: 0 };
       },
-      count: async () => 1,
+      count: async () =>
+        kind === "card-title" ? (options.titleCount ?? 1) : 1,
       elementHandle: async () => loadingElement,
       first: () => makeLocator(kind),
-      locator: () => makeLocator("loading-skeleton"),
+      locator: (selector: string) =>
+        makeLocator(selector === "h1" ? "card-title" : "card-body"),
+      // Surrounding whitespace is trimmed before comparison.
+      textContent: async () =>
+        `\n  ${kind === "card-title" ? card.title : card.body} `,
       waitFor: async (waitOptions: { readonly timeout?: number }) => {
         events.push(`wait:${kind}`);
         waitTimeouts.push(waitOptions.timeout ?? -1);
         if (kind === "loading-card" && options.failLoadingWait)
           throw new Error("raw locator failure");
+        if (kind === "card-title" && options.hiddenTitle)
+          throw new Error("raw hidden heading wait failure");
+        if (kind === "other-status") throw new Error("raw status wait failure");
       },
     });
 
@@ -222,8 +263,12 @@ const makeCallbackFakePage = (
       events.push("fonts-ready");
       options.onFontsReady?.();
     },
-    getByRole: (role: string) =>
-      makeLocator(role === "status" ? "loading-status" : "landmark"),
+    getByRole: (role: string, roleOptions?: { readonly name?: string }) => {
+      if (role !== "status") return makeLocator("landmark");
+      return makeLocator(
+        roleOptions?.name === card.label ? "loading-status" : "other-status"
+      );
+    },
     locator: (selector: string) =>
       makeLocator(selector === "main" ? "main" : "loading-card"),
     route: async (
@@ -287,6 +332,7 @@ const makeCallbackFakePage = (
       isNavigationRequest: () => requestOptions.isNavigationRequest ?? false,
       method: () => requestOptions.method ?? "GET",
       resourceType: () => requestOptions.resourceType ?? "fetch",
+      url: () => url,
     });
     if (!routeHandler)
       throw new Error("callback handoff route was not installed");
@@ -434,6 +480,26 @@ describe("account callback handoff review", () => {
       fakePage.events().indexOf("continue")
     );
     expect(fakePage.unrouteCallCount()).toBe(1);
+  });
+
+  test("defaults to the English callback leaving for the account", async () => {
+    expect(accountCallbackHandoff).toEqual({
+      locale: "en-US",
+      reviewTarget: "callback-loading-desktop",
+    });
+    const fakePage = makeCallbackFakePage();
+
+    await withCallbackHandoffReview(fakePage.page, review, async () => {
+      await fakePage.dispatch(accountUrl);
+    });
+
+    expect(documentReviewControl.preparedLanding).toBe(accountCallbackHandoff);
+    expect(writeFileSpy?.mock.calls).toEqual([
+      [
+        resolve(accountReviewArtifactDirectory, "callback-loading-desktop.png"),
+        screenshotBuffer,
+      ],
+    ]);
   });
 
   test("aborts capture when the case returns before the handler", async () => {
@@ -705,6 +771,209 @@ describe("account callback handoff review", () => {
       expect(fakePage.unrouteCallCount()).toBe(1);
     });
   }
+
+  for (const [name, options] of [
+    ["no signed-in heading", { titleCount: 0 }],
+    ["two headings", { titleCount: 2 }],
+    ["a hidden heading", { hiddenTitle: true }],
+    ["the wrong title", { card: { ...englishCard, title: "Signing you in" } }],
+    [
+      "the returning body without a return target",
+      { card: { ...englishCard, body: czechCard.body } },
+    ],
+    ["the Czech card", { card: czechCard }],
+  ] as const) {
+    test(`rejects a held RSC handoff showing ${name}`, async () => {
+      const fakePage = makeCallbackFakePage(options);
+
+      await expect(
+        withCallbackHandoffReview(fakePage.page, review, async () => {
+          await fakePage.dispatch(accountUrl);
+        })
+      ).rejects.toThrow(callbackHandoffFailureMessage);
+
+      expect(fakePage.screenshotCalls).toHaveLength(0);
+      expect(writeFileSpy?.mock.calls).toHaveLength(0);
+      expect(fakePage.continueCallCount()).toBe(1);
+      expect(fakePage.unrouteCallCount()).toBe(1);
+    });
+  }
+
+  test("waits for the signed-in heading and body before capturing", async () => {
+    const fakePage = makeCallbackFakePage();
+
+    await withCallbackHandoffReview(fakePage.page, review, async () => {
+      await fakePage.dispatch(accountUrl);
+    });
+
+    const timeline = fakePage.events();
+    expect(timeline.indexOf("wait:card-title")).toBeGreaterThanOrEqual(0);
+    expect(timeline.indexOf("wait:card-body")).toBeGreaterThan(
+      timeline.indexOf("wait:card-title")
+    );
+    expect(timeline.indexOf("wait:card-body")).toBeLessThan(
+      timeline.indexOf("screenshot")
+    );
+  });
+
+  test("holds the Czech return target's RSC request and captures its review", async () => {
+    const fakePage = makeCallbackFakePage({ card: czechCard });
+
+    await withCallbackHandoffReview(
+      fakePage.page,
+      review,
+      async () => {
+        expect(
+          await fakePage.dispatch(`${baseUrl}/cs-CZ/account`, {
+            pageUrl: czechCallbackUrl,
+          })
+        ).toBe(false);
+        await fakePage.dispatch(`${baseUrl}${selection}&_rsc=synthetic-key`, {
+          pageUrl: czechCallbackUrl,
+        });
+      },
+      czechExpectation
+    );
+
+    expect(fakePage.screenshotCalls).toHaveLength(1);
+    expect(writeFileSpy?.mock.calls).toEqual([
+      [
+        resolve(
+          accountReviewArtifactDirectory,
+          "callback-signed-in-return-cs-desktop.png"
+        ),
+        screenshotBuffer,
+      ],
+    ]);
+    expect(documentReviewControl.preparedLanding).toBe(czechExpectation);
+    expect(fakePage.continueCallCount()).toBe(1);
+  });
+
+  test("holds the Czech return target's document and persists its review", async () => {
+    const fakePage = makeCallbackFakePage({ card: czechCard });
+
+    await withCallbackHandoffReview(
+      fakePage.page,
+      review,
+      async () => {
+        await fakePage.dispatch(`${baseUrl}${selection}`, {
+          headers: {},
+          isNavigationRequest: true,
+          pageUrl: czechCallbackUrl,
+          resourceType: "document",
+        });
+      },
+      czechExpectation
+    );
+
+    expect(documentReviewControl.captureCalls).toBe(1);
+    expect(writeFileSpy?.mock.calls).toEqual([
+      [
+        resolve(
+          accountReviewArtifactDirectory,
+          "callback-signed-in-return-cs-desktop.png"
+        ),
+        documentReviewControl.pixels,
+      ],
+    ]);
+  });
+
+  for (const [name, destination] of [
+    ["without the selection query", "/cs-CZ/reservation/cowork"],
+    [
+      "with another selection",
+      "/cs-CZ/reservation/cowork?selection=synthetic-2",
+    ],
+    ["with an extra parameter", `${selection}&extra=1`],
+  ] as const) {
+    test(`does not hold the Czech destination ${name}`, async () => {
+      const fakePage = makeCallbackFakePage({ card: czechCard });
+
+      await expect(
+        withCallbackHandoffReview(
+          fakePage.page,
+          review,
+          async () => {
+            await fakePage.dispatch(`${baseUrl}${destination}`, {
+              headers: {},
+              isNavigationRequest: true,
+              pageUrl: czechCallbackUrl,
+              resourceType: "document",
+            });
+          },
+          czechExpectation
+        )
+      ).rejects.toThrow(callbackHandoffFailureMessage);
+
+      expect(documentReviewControl.validateCalls).toBe(0);
+      expect(writeFileSpy?.mock.calls).toHaveLength(0);
+      expect(fakePage.continueCallCount()).toBe(1);
+    });
+  }
+
+  for (const [name, options, pageUrl] of [
+    [
+      "a callback carrying another return",
+      { card: czechCard },
+      `${baseUrl}/cs-CZ/auth/callback?return=${encodeAuthCallbackReturn("/cs-CZ/account")}`,
+    ],
+    [
+      "a callback without its return",
+      { card: czechCard },
+      `${baseUrl}/cs-CZ/auth/callback`,
+    ],
+    [
+      "the English callback",
+      { card: czechCard },
+      `${callbackUrl}?return=${encodeAuthCallbackReturn(selection)}`,
+    ],
+    ["the English card", { card: englishCard }, czechCallbackUrl],
+    [
+      "the account body",
+      { card: { ...czechCard, body: "Přesměrujeme vás na účet…" } },
+      czechCallbackUrl,
+    ],
+  ] as const) {
+    test(`rejects the Czech handoff on ${name}`, async () => {
+      const fakePage = makeCallbackFakePage(options);
+
+      await expect(
+        withCallbackHandoffReview(
+          fakePage.page,
+          review,
+          async () => {
+            await fakePage.dispatch(`${baseUrl}${selection}&_rsc=synthetic`, {
+              pageUrl,
+            });
+          },
+          czechExpectation
+        )
+      ).rejects.toThrow(callbackHandoffFailureMessage);
+
+      expect(fakePage.screenshotCalls).toHaveLength(0);
+      expect(writeFileSpy?.mock.calls).toHaveLength(0);
+      expect(fakePage.continueCallCount()).toBe(1);
+    });
+  }
+
+  test("rejects a return target that is not a same-origin path", async () => {
+    const fakePage = makeCallbackFakePage({ card: czechCard });
+    let runCaseCalls = 0;
+
+    await expect(
+      withCallbackHandoffReview(
+        fakePage.page,
+        review,
+        async () => {
+          runCaseCalls += 1;
+        },
+        { ...czechExpectation, returnTo: "//evil.example/cs-CZ" }
+      )
+    ).rejects.toThrow(callbackHandoffFailureMessage);
+
+    expect(runCaseCalls).toBe(0);
+    expect(fakePage.routeInstallArguments).toHaveLength(0);
+  });
 
   test("fails closed when no qualifying request is observed", async () => {
     const fakePage = makeCallbackFakePage();

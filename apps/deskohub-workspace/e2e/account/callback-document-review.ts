@@ -1,20 +1,29 @@
 import { randomUUID } from "node:crypto";
 import type * as Playwright from "@playwright/test";
+import {
+  getAuthCallbackPath,
+  signInAttemptParam,
+  signInCallbackReturnParam,
+} from "@/features/account/routes";
 import { workspaceE2ETimeouts } from "../timeouts";
-import { isExactCallbackUrl } from "./callback-url";
+import {
+  type CallbackLanding,
+  expectedCallbackReturnValue,
+  isExactCallbackUrl,
+  signedInCallbackCopy,
+} from "./callback-url";
 
 /**
  * Receipt-backed review of the callback handoff document.
  *
  * A held qualifying account document request blocks every Playwright page-DOM
- * protocol operation (evaluate, locators, page.screenshot), so the loading
- * document is validated through a passive beforeunload binding receipt and
+ * protocol operation (evaluate, locators, page.screenshot), so the signed-in
+ * callback document is validated through a passive beforeunload binding receipt and
  * captured through the CDP compositor while the request stays held. The
  * listener stays observational: it never navigates, mutates storage, or
  * touches provider/auth state.
  */
 
-const callbackLoadingAriaLabel = "Loading sign-in…";
 const callbackLoadingSelector = '[data-slot="auth-callback-loading"]';
 const mainSelector = 'main, [role="main"]';
 const bannerSelector = '[role="banner"], body > header';
@@ -134,9 +143,13 @@ export const collectCallbackDocumentSnapshot = (config: {
   readonly attemptParamName: string;
   readonly uuidPatternSource: string;
   readonly callbackPath: string;
+  readonly returnParamName: string;
+  /** The exact `return` value the URL carries, or null when it carries none. */
+  readonly returnValue: string | null;
   readonly loadingSelector: string;
-  readonly loadingSkeletonSelector: string;
   readonly loadingAriaLabel: string;
+  readonly titleText: string;
+  readonly bodyText: string;
   readonly mainSelector: string;
   readonly bannerSelector: string;
   readonly footerSelector: string;
@@ -147,7 +160,9 @@ export const collectCallbackDocumentSnapshot = (config: {
   readonly viewport: { readonly width: number; readonly height: number } | null;
 }): string => {
   // Strict callback grammar mirror of e2e/account/callback-url.ts: exact
-  // origin and path, no fragment, at most one canonical UUIDv4 attempt param.
+  // origin and path, no fragment, at most one canonical UUIDv4 attempt param,
+  // and exactly the expected return value when one is expected (none
+  // otherwise).
   const urlGrammarValid = (rawUrl: string): boolean => {
     try {
       const url = new URL(rawUrl);
@@ -159,13 +174,22 @@ export const collectCallbackDocumentSnapshot = (config: {
       }
       if (url.hash !== "") return false;
       const entries = [...url.searchParams.entries()];
-      if (entries.length === 0) return true;
-      if (entries.length !== 1 || entries[0] === undefined) return false;
-      const [name, value] = entries[0];
-      return (
-        name === config.attemptParamName &&
-        new RegExp(config.uuidPatternSource).test(value)
+      const attempts = entries.filter(
+        ([name]) => name === config.attemptParamName
       );
+      const returns = entries.filter(
+        ([name]) => name === config.returnParamName
+      );
+      if (attempts.length + returns.length !== entries.length) return false;
+      if (attempts.length > 1) return false;
+      if (
+        attempts[0] !== undefined &&
+        !new RegExp(config.uuidPatternSource).test(attempts[0][1])
+      ) {
+        return false;
+      }
+      if (config.returnValue === null) return returns.length === 0;
+      return returns.length === 1 && returns[0]?.[1] === config.returnValue;
     } catch {
       return false;
     }
@@ -187,6 +211,36 @@ export const collectCallbackDocumentSnapshot = (config: {
       if (current.getAttribute("aria-hidden") === "true") return true;
     }
     return false;
+  };
+
+  const isRendered = (node: Element): boolean => {
+    const style = getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    return (
+      style.display !== "none" &&
+      style.visibility !== "hidden" &&
+      rect.width > 0 &&
+      rect.height > 0
+    );
+  };
+
+  // The one visible element of a selector inside the card with the exact
+  // trimmed text; each failure records only a numeric flag.
+  const checkCardText = (
+    card: Element,
+    selector: string,
+    text: string,
+    metric: string
+  ): void => {
+    const nodes = card.querySelectorAll(selector);
+    if (nodes.length !== 1) {
+      fail(`${metric}Count`);
+      return;
+    }
+    const node = nodes[0]!;
+    if (node.textContent?.trim() !== text) fail(metric);
+    if (hiddenByAriaAncestor(node) || !isRendered(node))
+      fail(`${metric}Visible`);
   };
 
   // Conservative effective-default semantic role match: an explicit
@@ -250,23 +304,8 @@ export const collectCallbackDocumentSnapshot = (config: {
     if (card.getAttribute("aria-busy") !== "true") fail("busy");
     if (card.getAttribute("aria-label") !== config.loadingAriaLabel)
       fail("label");
-    const skeletons = card.querySelectorAll(config.loadingSkeletonSelector);
-    if (skeletons.length === 0) {
-      fail("skeletons");
-    } else if (
-      ![...skeletons].some((skeleton) => {
-        const skeletonStyle = getComputedStyle(skeleton);
-        const skeletonRect = skeleton.getBoundingClientRect();
-        return (
-          skeletonStyle.display !== "none" &&
-          skeletonStyle.visibility !== "hidden" &&
-          skeletonRect.width > 0 &&
-          skeletonRect.height > 0
-        );
-      })
-    ) {
-      fail("skeletonVisible");
-    }
+    checkCardText(card, "h1", config.titleText, "title");
+    checkCardText(card, "p", config.bodyText, "body");
     if (hiddenByAriaAncestor(card)) fail("cardHidden");
     const style = getComputedStyle(card);
     const cardRect = card.getBoundingClientRect();
@@ -312,6 +351,8 @@ const isPayloadValidTrue = (payload: string): boolean => {
 };
 
 /**
+ * The receipt requires the signed-in card of `landing`: its localized
+ * callback path and exact return value, status label, heading, and body.
  * A null capture viewport prepares the handoff validation alone: the page
  * viewport is left untouched, the receipt skips the pixel-only font and
  * viewport checks, and `capture` fails closed.
@@ -319,6 +360,7 @@ const isPayloadValidTrue = (payload: string): boolean => {
 export const prepareCallbackDocumentReview = async (
   page: Playwright.Page,
   baseOrigin: string,
+  landing: CallbackLanding,
   viewport: Playwright.ViewportSize | null,
   options: BoundedOptions
 ): Promise<CallbackDocumentReview> => {
@@ -329,7 +371,9 @@ export const prepareCallbackDocumentReview = async (
     throw callbackDocumentReviewFailure();
   }
   throwIfAborted(options.signal);
+  const returnValue = expectedCallbackReturnValue(landing);
   if (
+    returnValue === undefined ||
     !Number.isFinite(options.deadline) ||
     options.deadline <= Date.now() ||
     (viewport !== null && (viewport.width <= 0 || viewport.height <= 0))
@@ -337,6 +381,7 @@ export const prepareCallbackDocumentReview = async (
     throw callbackDocumentReviewFailure();
   }
 
+  const cardCopy = signedInCallbackCopy(landing);
   const previousViewport = page.viewportSize();
   const bindingName = `__deskohubCallbackDocumentReview${randomUUID()}`;
 
@@ -598,13 +643,16 @@ export const prepareCallbackDocumentReview = async (
             const collect = ${collectCallbackDocumentSnapshot.toString()};
             const config = ${JSON.stringify({
               baseOrigin: baseOriginValid,
-              attemptParamName: "attempt",
+              attemptParamName: signInAttemptParam,
               uuidPatternSource:
                 "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-              callbackPath: "/en-US/auth/callback",
+              callbackPath: getAuthCallbackPath(landing.locale ?? "en-US"),
+              returnParamName: signInCallbackReturnParam,
+              returnValue,
               loadingSelector: callbackLoadingSelector,
-              loadingSkeletonSelector: '[data-slot="skeleton"]',
-              loadingAriaLabel: callbackLoadingAriaLabel,
+              loadingAriaLabel: cardCopy.label,
+              titleText: cardCopy.title,
+              bodyText: cardCopy.body,
               mainSelector,
               bannerSelector,
               footerSelector,
@@ -686,7 +734,7 @@ export const prepareCallbackDocumentReview = async (
         // Current receipt plus the strict URL grammar on the live page URL;
         // no page DOM APIs are used after navigation.
         requireCurrentValidReceipt();
-        if (!isExactCallbackUrl(page, baseOrigin)) {
+        if (!isExactCallbackUrl(page, baseOrigin, landing)) {
           throw callbackDocumentReviewFailure();
         }
       },
