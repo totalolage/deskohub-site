@@ -22,9 +22,9 @@ import {
 } from "@/features/reservation/reservation-kind";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import { getPlainDatesBetween } from "@/shared/utils/temporal";
 import {
   currentInstant,
+  getPlainDatesBetween,
   type PlainDate,
   plainDateStringSchema,
 } from "@/shared/utils/temporal";
