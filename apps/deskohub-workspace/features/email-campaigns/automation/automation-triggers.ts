@@ -7,7 +7,7 @@ import { calendarFrequency } from "@/shared/utils/calendar-expression";
 import type { AutomationTriggerKind } from "./automation-states";
 
 /** The kind runs, receipts and the run log record for a flow trigger. */
-export const automationTriggerKind = (
+const automationTriggerKind = (
   trigger: AutomationTrigger
 ): AutomationTriggerKind =>
   Match.value(trigger).pipe(

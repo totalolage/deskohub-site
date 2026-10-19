@@ -98,7 +98,7 @@ type FlowValidationError =
   | AutomationFlowInvalid
   | AutomationCalendarNeverOccurs;
 
-export type AutomationActivationError =
+type AutomationActivationError =
   | WorkingCopyError
   | FlowValidationError
   | AutomationArchived
