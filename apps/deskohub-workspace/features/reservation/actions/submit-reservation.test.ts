@@ -68,10 +68,11 @@ const runSubmitReservation = async (options?: {
           createHostedPaymentCheckout,
         }),
         Layer.mock(CustomerAccountContactService, {
-          currentLinkedAccount: Effect.succeed(
+          currentAccount: Effect.succeed(
             options?.bookerCustomerId === undefined
-              ? null
+              ? { status: "signed-out" }
               : ({
+                  status: "linked",
                   accountId: "booker-account",
                   dotyposCustomerId: options.bookerCustomerId,
                 } as never)

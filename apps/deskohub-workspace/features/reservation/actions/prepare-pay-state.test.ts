@@ -443,8 +443,26 @@ const runReusableReservationScenario = async (input: {
   const accountAuthority = await accountAuthorityFixture(
     input.accountAuthority
   );
+  // Without a fixture the session has no linked account.
+  const readLinkedAccount = mock(
+    () => input.linkedAccount ?? Effect.succeed(null)
+  );
+  // Without an account fixture, the session's account follows its linked
+  // account: linked, or signed out.
   const readAccount = mock(
-    () => input.account ?? Effect.die("the current account must not be read")
+    () =>
+      input.account ??
+      readLinkedAccount().pipe(
+        Effect.map((linked) =>
+          linked
+            ? ({
+                status: "linked",
+                email: testEmailAddressForAda,
+                ...linked,
+              } as never)
+            : ({ status: "signed-out" } as never)
+        )
+      )
   );
   const linkedContact =
     input.linkedContact ??
@@ -452,10 +470,6 @@ const runReusableReservationScenario = async (input: {
   const completeProfileUnderHeldLock =
     input.completeProfileUnderHeldLock ??
     mock(() => Effect.die("no profile may be created"));
-  // Without a fixture the session has no linked account.
-  const readLinkedAccount = mock(
-    () => input.linkedAccount ?? Effect.succeed(null)
-  );
   const evaluateCheckoutReferral =
     input.evaluateCheckoutReferral ??
     mock(() => Effect.die("a referral must not be evaluated"));
@@ -2034,19 +2048,18 @@ describe("prepareWorkspacePayState", () => {
           findByAttemptKeys: mock(() => Effect.succeed(null)),
           createDraft: createFreshDraft(),
           ...linkedAccountBooking(),
-          linkedAccount: Effect.fail(
-            new CustomerAccountAccessError({ reason: "unavailable" })
-          ),
           rememberedReferralCode: "RFL12345",
           evaluateCheckoutReferral: mock(() =>
             Effect.succeed({ kind: "already_accepted" as const })
           ),
-          hasSettledReferral: mock(() => Effect.die("unreachable")),
+          hasSettledReferral: mock(() =>
+            Effect.fail(new ReferralError({ reason: "unavailable" }))
+          ),
         });
 
         expect(scenario.result?.status).toBe("ready");
         expect(scenario.createDraft).toHaveBeenCalledTimes(1);
-        expect(scenario.hasSettledReferral).not.toHaveBeenCalled();
+        expect(scenario.hasSettledReferral).toHaveBeenCalledTimes(1);
         expect(scenario.rememberedReferralCodeAfter).toBe("RFL12345");
       });
 
@@ -2151,17 +2164,25 @@ describe("prepareWorkspacePayState", () => {
         ],
         [
           "an account whose first profile this checkout saved",
-          () => ({
-            customer: "account" as const,
-            account: unlinkedAccountState(),
-            completeProfileUnderHeldLock: profileCompletion(),
+          () => {
             // The claimed link is read back once the state is created.
-            linkedAccount: Effect.succeed({
-              accountId,
-              dotyposCustomerId: createdCustomerId,
-              email: testEmailAddressForGrace,
-            } as never),
-          }),
+            let reads = 0;
+            const unlinked = unlinkedAccountState();
+            return {
+              customer: "account" as const,
+              account: Effect.suspend(() =>
+                reads++ === 0
+                  ? unlinked
+                  : Effect.succeed({
+                      status: "linked",
+                      accountId,
+                      dotyposCustomerId: createdCustomerId,
+                      email: testEmailAddressForGrace,
+                    } as never)
+              ),
+              completeProfileUnderHeldLock: profileCompletion(),
+            };
+          },
           createdCustomerId,
         ],
       ] as const)(

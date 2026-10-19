@@ -37,7 +37,8 @@ mock.module(
   () => ({
     isRememberedCoworkOfferAvailable: () => Promise.resolve(false),
     isRememberedMeetingRoomReservationAvailable,
-    loadReservationExistingCustomer: () => Promise.resolve(undefined),
+    loadReservationCheckoutAccount: () =>
+      Promise.resolve({ status: "signed-out" }),
   })
 );
 const preloadAvailability = mock(
