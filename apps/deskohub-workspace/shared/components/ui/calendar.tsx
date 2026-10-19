@@ -3,11 +3,16 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type * as React from "react";
 import { DayPicker } from "react-day-picker";
+import { cs, enUS } from "react-day-picker/locale";
 import { buttonVariants } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 import "react-day-picker/style.css";
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
+
+/** The calendar locale whose month, weekday, and day names match the site locale. */
+export const getCalendarLocale = (locale: string | undefined) =>
+  locale === "cs-CZ" ? cs : enUS;
 
 export function Calendar({
   className,
@@ -44,12 +49,14 @@ export function Calendar({
         week: "mt-2 flex w-full",
         day: "h-9 w-9 p-0 text-center text-sm",
         day_button:
-          "inline-flex size-9 cursor-pointer items-center justify-center rounded-xl text-sm text-navy-blue transition-colors hover:bg-sunset-yellow/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 aria-selected:bg-burned-orange aria-selected:text-white",
-        today:
-          "[&_.rdp-day_button]:border [&_.rdp-day_button]:border-sunset-yellow",
+          "inline-flex size-9 cursor-pointer items-center justify-center rounded-xl text-sm text-navy-blue transition-colors hover:bg-sunset-yellow/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        // Custom class names replace react-day-picker's own, so day states
+        // style the day button through its cell.
+        today: "[&>button]:border [&>button]:border-sunset-yellow",
         outside: "text-navy-blue/28",
         disabled: "text-navy-blue/22 opacity-50",
-        selected: "text-white",
+        selected:
+          "[&>button]:bg-burned-orange [&>button]:text-white [&>button]:hover:bg-burned-orange",
         ...classNames,
       }}
       components={{

@@ -1166,6 +1166,40 @@ describe("ProfileForm", () => {
     }
   });
 
+  test("gives phone and billing inputs the reservation autofill tokens", async () => {
+    const { ProfileForm } = await import("./profile-form");
+    const view = render(
+      <ProfileForm
+        mode="edit"
+        locale="en-US"
+        email={adaAddress}
+        profile={businessProfile}
+      />
+    );
+    const autocompleteOf = (id: string) =>
+      view.container.querySelector(`#${id}`)?.getAttribute("autocomplete");
+
+    const phone = view.container.querySelector("#account-profile-phone");
+    expect(phone?.getAttribute("type")).toBe("tel");
+    expect(phone?.getAttribute("autocomplete")).toBe("tel");
+    expect(autocompleteOf("account-profile-billing-company-name")).toBe(
+      "organization"
+    );
+    expect(autocompleteOf("account-profile-billing-address-line1")).toBe(
+      "address-line1"
+    );
+    expect(autocompleteOf("account-profile-billing-address-line2")).toBe(
+      "address-line2"
+    );
+    expect(autocompleteOf("account-profile-billing-city")).toBe(
+      "address-level2"
+    );
+    expect(autocompleteOf("account-profile-billing-zip")).toBe("postal-code");
+    expect(autocompleteOf("account-profile-billing-country")).toBe("country");
+    expect(autocompleteOf("account-profile-billing-company-id")).toBeNull();
+    expect(autocompleteOf("account-profile-billing-vat-id")).toBeNull();
+  });
+
   test("submits only the active billing kind and keeps the saved baseline", async () => {
     const { ProfileForm } = await import("./profile-form");
     const { UnsavedChangesProvider } = await import(

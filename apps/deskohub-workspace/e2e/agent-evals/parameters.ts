@@ -35,7 +35,8 @@ import {
 
 /**
  * Date windows that stay clear of the E2E suites sharing the Dotypos
- * sandbox: checkout cases book 14 to 90 days out and the account lane 120.
+ * sandbox: checkout cases book 14 to 90 days out, the account lane 120, and
+ * the accessibility audit's Pay case 175 to 180 (e2e/accessibility/pay-page.ts).
  * Office bookings end at most a month out, so office evals take the days
  * before the checkout window.
  */
