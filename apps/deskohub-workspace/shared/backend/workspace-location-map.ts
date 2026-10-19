@@ -1,5 +1,6 @@
 import "server-only";
 
+import { join } from "node:path";
 import { Effect } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { cacheLife } from "next/cache";
@@ -74,10 +75,16 @@ const fetchThroughTileCache: typeof globalThis.fetch = Object.assign(
   }
 );
 
+// Vercel functions have no system fonts, so the map attribution brings its own.
+const attributionFont = {
+  file: join(process.cwd(), "assets", "fonts", "Geist", "regular.ttf"),
+  family: "Geist",
+};
+
 export const generateWorkspaceLocationMapImage = (
   options: StaticMapImageOptions = workspaceLocationMapImageOptions
 ) =>
-  generateStaticMapImage(options).pipe(
+  generateStaticMapImage({ attributionFont, ...options }).pipe(
     Effect.withConcurrency(workspaceLocationMapTileConcurrency),
     Effect.provide(FetchHttpClient.layer),
     Effect.provideService(FetchHttpClient.Fetch, fetchThroughTileCache)

@@ -26,6 +26,7 @@
         "scripts/account-sticky/browser-entry.tsx",
         "scripts/shared/command.*-fixture.ts",
         "e2e/coordination/hosted-payment-permit.holder-fixture.ts",
+        "shared/backend/workspace-location-map.render-fixture.ts",
         // Bundled by path for browser-rendered test fixtures.
         "shared/testing/posthog-identity-browser-fixture.tsx",
         "types/*.d.ts"
