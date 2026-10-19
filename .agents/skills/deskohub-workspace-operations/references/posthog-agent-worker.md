@@ -43,7 +43,7 @@ Branch protection on `main` requires no approval and doesn't apply to administra
 - The change doesn't touch migrations, data schemas, authentication, authorization, access codes, checkout, pricing, payments, accounting, external API contracts, dependencies, build or deployment configuration, CI workflows, or feature-flag policy.
 - Every required check passes on the current head, no review is unresolved, and the change needs no product judgment.
 
-Then run `gh pr merge --auto --merge`. Otherwise leave the pull request ready for human merge and explain which condition blocked auto-merge.
+Then merge `origin/main` as the last step, following the `deskohub-pr-review` skill, and run `gh pr merge --auto --merge`. Otherwise leave the pull request ready for human merge and explain which condition blocked auto-merge.
 
 After every required check and review is resolved on the exact current head, comment this marker on the issue, whether you enabled auto-merge or left the pull request for human merge:
 

@@ -23,6 +23,7 @@ import type {
 } from "../campaign-states";
 import type { CampaignNotFound } from "../errors";
 import { CampaignService } from "./campaign.service";
+import { onceCampaignSend } from "./campaign-send-selection";
 
 type CampaignRecipientDeliveryStatus = {
   readonly dotyposCustomerId: DotyposCustomerId;
@@ -44,7 +45,10 @@ type CampaignSendStatus = {
 };
 
 export interface ICampaignSendStatusService {
-  /** The campaign's send with per-recipient delivery status, if it was sent. */
+  /**
+   * A `once` campaign's send with per-recipient delivery status, if it was
+   * sent. An automated campaign's sends never appear here.
+   */
   readonly get: (input: {
     readonly campaignId: CampaignId;
   }) => Effect.Effect<
@@ -72,7 +76,7 @@ export class CampaignSendStatusService extends Context.Service<
         db
           .select()
           .from(emailCampaignSends)
-          .where(eq(emailCampaignSends.campaignId, campaignId))
+          .where(onceCampaignSend(campaignId))
           .pipe(Effect.map(Arr.head));
 
       const listRecipients = (send: CampaignSendRow) =>

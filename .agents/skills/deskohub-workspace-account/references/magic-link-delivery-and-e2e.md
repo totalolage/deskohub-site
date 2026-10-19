@@ -102,6 +102,7 @@ Lane scheduling and the magic-link rate budget live in the
   sign-up after deletion.
 - Keep provider-independent Postgres tests (`*.postgres.test.ts`) for
   same-account convergence, two accounts claiming one Dotypos customer,
-  deletion racing resolution, and timestamp decoding. Run them against the
+  deletion racing resolution, timestamp decoding, and an expired magic link
+  (`auth/magic-link-verification.postgres.test.ts`), which E2E can't wait out. Run them against the
   migrated disposable database so cascades, unique constraints, and the real
   advisory lock are exercised.

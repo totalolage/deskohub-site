@@ -611,7 +611,7 @@ const legalDocuments = {
     "privacy-policy": {
       title: "Privacy Policy",
       lead: "This page explains how Desktechub s.r.o. handles personal data on the Deskohub Workspace website, including customer accounts, contact forms, and reservations.",
-      updatedAt: "17 October 2026",
+      updatedAt: "19 October 2026",
       sections: [
         {
           heading: "1. Controller",
@@ -696,12 +696,14 @@ const legalDocuments = {
             <>
               If you separately opt in to future marketing communications, we
               also process your name, email address, preferred language, consent
-              time, and the version of the marketing notice you accepted. We
-              record this choice with the relevant customer record. The choice
-              belongs to that customer record, not to the email address. If the
-              customer's email address changes, the choice follows that customer
-              record. Customer records that use the same email address have
-              separate choices.
+              time, and the version of the marketing notice you accepted. The
+              record also notes where you gave consent: in the reservation form,
+              through a browser assistant using this site's tools, in your
+              account settings, or through an email link. We record this choice
+              with the relevant customer record. The choice belongs to that
+              customer record, not to the email address. If the customer's email
+              address changes, the choice follows that customer record. Customer
+              records that use the same email address have separate choices.
             </>,
           ],
         },
@@ -1098,7 +1100,7 @@ const legalDocuments = {
     "privacy-policy": {
       title: "Zásady ochrany osobních údajů",
       lead: "Na této stránce vysvětlujeme, jak Desktechub s.r.o. nakládá s osobními údaji zaslanými přes veřejný web Deskohub Workspace, včetně kontaktního a rezervačního formuláře.",
-      updatedAt: "17. října 2026",
+      updatedAt: "19. října 2026",
       sections: [
         {
           heading: "1. Správce",
@@ -1179,7 +1181,10 @@ const legalDocuments = {
               Pokud se samostatně přihlásíte k odběru budoucích marketingových
               sdělení, zpracováváme také vaše jméno, e-mailovou adresu,
               preferovaný jazyk, čas souhlasu a verzi marketingového oznámení,
-              které jste přijali. Tuto volbu zaznamenáváme k příslušnému záznamu
+              které jste přijali. Záznam také uvádí, kde jste souhlas udělili: v
+              rezervačním formuláři, prostřednictvím asistenta v prohlížeči,
+              který používá nástroje tohoto webu, v nastavení účtu nebo přes
+              odkaz v e-mailu. Tuto volbu zaznamenáváme k příslušnému záznamu
               zákazníka. Volba patří záznamu zákazníka, nikoli e-mailové adrese.
               Pokud se e-mailová adresa tohoto záznamu změní, volba zůstává u
               tohoto záznamu. Záznamy zákazníků se stejnou e-mailovou adresou

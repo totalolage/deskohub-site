@@ -5,9 +5,14 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { EmailRecipientDomainServiceMock } from "@deskohub/email/backend/recipient-domain.service.mock";
 import { testEmailAddress } from "@deskohub/test-email";
+import { eq } from "drizzle-orm";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Duration, Effect, Layer, Schema } from "effect";
-import type { WorkspaceReservation } from "@/db/schema";
+import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  customerMarketingConsents,
+  type WorkspaceReservation,
+} from "@/db/schema";
 import type { OptionalAccountActivityFixture } from "@/features/account/backend/customer-account-activity.test-utils";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { CustomerAccountAccessError } from "@/features/account/customer-account";
@@ -33,7 +38,10 @@ import {
 } from "@/features/discounts/contracts";
 import { PromotionCodeUnavailableError } from "@/features/discounts/errors";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
-import type { ICustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import type {
+  CustomerMarketingConsentRepository as CustomerMarketingConsentRepositoryService,
+  ICustomerMarketingConsentRepository,
+} from "@/features/legal/backend/customer-marketing-consent.repository";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { ReferralError } from "@/features/referrals/contracts";
 import type { ReferralService } from "@/features/referrals/referral.service";
@@ -45,6 +53,7 @@ import type { IWorkspaceAvailabilityService } from "@/features/reservation/backe
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
 import { getSlowestSuccessfulCalendarLoad } from "@/shared/backend/config/google-calendar.config.test-utils";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
@@ -89,6 +98,8 @@ mock.module("@/features/referrals/remembered-referral-code.server", () => ({
 // Format of the checkout lookup keys new rows store: the active key's
 // key-ID-prefixed digest.
 const storedLookupKeyPattern = /^test:[a-f0-9]{64}$/;
+
+const testDatabase = await connectWorkspacePostgresTestDatabase();
 
 const reservation = {
   kind: "cowork" as const,
@@ -337,6 +348,9 @@ const runReusableReservationScenario = async (input: {
   readonly markCancellationFailed?: ReturnType<typeof mock>;
   readonly advertisedPriceToken?: string;
   readonly marketingConsent?: boolean;
+  readonly marketingConsentSource?: "site_tool";
+  /** Replaces the mocked marketing consent repository. */
+  readonly marketingConsentRepository?: Layer.Layer<CustomerMarketingConsentRepositoryService>;
   readonly affirmAdvertisement?: ReturnType<typeof mock>;
   readonly quoteForCustomer?: ReturnType<typeof mock>;
   readonly ensureAvailable?: ReturnType<typeof mock>;
@@ -382,6 +396,7 @@ const runReusableReservationScenario = async (input: {
   const grantMarketingConsent = mock(() => Effect.void);
   const getMarketingConsent = mock(() => Effect.succeed(null));
   const withdrawMarketingConsent = mock(() => Effect.void);
+  const withdrawActiveMarketingConsent = mock(() => Effect.succeed(false));
   const ensureAvailable = input.ensureAvailable ?? mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
   const createDraft = input.createDraft ?? mock(() => Effect.die("unused"));
@@ -492,12 +507,14 @@ const runReusableReservationScenario = async (input: {
       markCancelled: mock(() => Effect.void),
       markCancellationFailed,
     }),
-    Layer.mock(CustomerMarketingConsentRepository, {
-      grantInitial: grantInitialMarketingConsent,
-      grant: grantMarketingConsent,
-      get: getMarketingConsent,
-      withdraw: withdrawMarketingConsent,
-    } satisfies ICustomerMarketingConsentRepository),
+    input.marketingConsentRepository ??
+      Layer.mock(CustomerMarketingConsentRepository, {
+        grantInitial: grantInitialMarketingConsent,
+        grant: grantMarketingConsent,
+        get: getMarketingConsent,
+        withdraw: withdrawMarketingConsent,
+        withdrawActive: withdrawActiveMarketingConsent,
+      } satisfies ICustomerMarketingConsentRepository),
     Layer.mock(ReservationHoldCleanupScheduleService, {
       enqueueCleanup,
     } as never),
@@ -523,6 +540,7 @@ const runReusableReservationScenario = async (input: {
       input.advertisedPriceToken ?? (await buildAdvertisedPriceToken()),
     reservation: input.reservation ?? reservation,
     marketingConsent: input.marketingConsent,
+    marketingConsentSource: input.marketingConsentSource,
     customer: input.customer,
   }).pipe(Effect.provide(testLayer), Effect.result, Effect.runPromise);
 
@@ -535,6 +553,8 @@ const runReusableReservationScenario = async (input: {
     updateReservationDetails,
     grantInitialMarketingConsent,
     grantMarketingConsent,
+    withdrawMarketingConsent,
+    withdrawActiveMarketingConsent,
     ensureAvailable,
     createDraft,
     claimHoldCreation,
@@ -1233,6 +1253,8 @@ describe("prepareWorkspacePayState", () => {
     expect(state.orderId).toBe("reservation-id");
     expect(state.checkoutSessionId).toBe("session-id");
     expect(state.submittedCode).toBeUndefined();
+    // A site tool reports when the prepared Pay URL stops working.
+    expect(result.expiresAt).toBe(new Date(state.exp * 1000).toISOString());
     expect(quoteForCustomer).toHaveBeenCalledWith(
       expect.objectContaining({
         dotyposCustomerId: "customer-id",
@@ -1271,7 +1293,7 @@ describe("prepareWorkspacePayState", () => {
     );
   });
 
-  test("records marketing opt-in against the resolved customer", async () => {
+  test("records a form opt-in against the resolved customer as an initial grant from the reservation form", async () => {
     const existingReservation = makeReusableReservation();
     const result = await runReusableReservationScenario({
       findByAttemptKeys: mock(() => Effect.succeed(existingReservation)),
@@ -1284,8 +1306,227 @@ describe("prepareWorkspacePayState", () => {
       documentHash: "marketing-hash",
       locale: "en-US",
       grantedAt: expect.any(Temporal.Instant),
+      source: "reservation_form",
     });
+    // An initial grant keeps an existing row, so a withdrawn consent is never
+    // reactivated; only `grant` reactivates.
     expect(result.grantMarketingConsent).not.toHaveBeenCalled();
+  });
+
+  test("labels an opt-in submitted through the site's tools", async () => {
+    const result = await runReusableReservationScenario({
+      findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
+      marketingConsent: true,
+      marketingConsentSource: "site_tool",
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(result.grantInitialMarketingConsent).toHaveBeenCalledTimes(1);
+    expect(result.grantInitialMarketingConsent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dotyposCustomerId: "customer-id",
+        source: "site_tool",
+      })
+    );
+    expect(result.grantMarketingConsent).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["absent", undefined],
+    ["false", false],
+  ] as const)(
+    "a %s marketing choice neither grants nor withdraws consent",
+    async (_label, marketingConsent) => {
+      const result = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() =>
+          Effect.succeed(makeReusableReservation())
+        ),
+        marketingConsent,
+      });
+
+      expect(result.result.status).toBe("ready");
+      expect(result.grantInitialMarketingConsent).not.toHaveBeenCalled();
+      expect(result.grantMarketingConsent).not.toHaveBeenCalled();
+      expect(result.withdrawMarketingConsent).not.toHaveBeenCalled();
+      expect(result.withdrawActiveMarketingConsent).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each([
+    ["absent", {}],
+    ["false", { marketingConsent: false }],
+  ] as const)(
+    "rejects a marketing consent source when marketingConsent is %s",
+    async (_label, marketingConsent) => {
+      const { preparePayStateSchema } = await import(
+        "./prepare-pay-state.schema"
+      );
+      const validInput = {
+        locale: "en-US",
+        checkoutSessionId: "session-id",
+        checkoutAttemptId: "attempt-id",
+        advertisedPriceToken: "advertised-price-token",
+        reservation: { ...reservation, date: "2099-07-01" },
+      };
+
+      const accepted = await preparePayStateSchema["~standard"].validate({
+        ...validInput,
+        marketingConsent: true,
+        marketingConsentSource: "site_tool",
+      });
+      const rejected = await preparePayStateSchema["~standard"].validate({
+        ...validInput,
+        ...marketingConsent,
+        marketingConsentSource: "site_tool",
+      });
+
+      expect(accepted.issues).toBeUndefined();
+      expect(rejected.issues).toEqual([
+        expect.objectContaining({ path: ["marketingConsentSource"] }),
+      ]);
+    }
+  );
+
+  test("rejects a marketing consent source other than the site's tools", async () => {
+    const { preparePayStateSchema } = await import(
+      "./prepare-pay-state.schema"
+    );
+
+    const result = await preparePayStateSchema["~standard"].validate({
+      locale: "en-US",
+      checkoutSessionId: "session-id",
+      checkoutAttemptId: "attempt-id",
+      advertisedPriceToken: "advertised-price-token",
+      reservation: { ...reservation, date: "2099-07-01" },
+      marketingConsent: true,
+      marketingConsentSource: "reservation_form",
+    });
+
+    expect(result.issues).toBeDefined();
+  });
+
+  describe.skipIf(!testDatabase)("stored marketing consent", () => {
+    const customerId = "customer-id";
+    const earlierGrant = {
+      documentHash: "earlier-marketing-hash",
+      locale: "cs-CZ" as const,
+      grantedAt: Temporal.Instant.from("2026-09-01T10:00:00Z"),
+      grantSource: "account" as const,
+    };
+    const activeRow = { ...earlierGrant, withdrawnAt: null };
+    const withdrawnRow = {
+      ...earlierGrant,
+      withdrawnAt: Temporal.Instant.from("2026-09-02T10:00:00Z"),
+    };
+
+    const runWithStoredConsent = async (
+      stored: typeof activeRow | typeof withdrawnRow | null,
+      input: {
+        readonly marketingConsent?: boolean;
+        readonly marketingConsentSource?: "site_tool";
+      }
+    ) => {
+      const { db } = testDatabase!;
+      const { CustomerMarketingConsentRepository } = await import(
+        "@/features/legal/backend/customer-marketing-consent.repository"
+      );
+      await Effect.runPromise(
+        db
+          .delete(customerMarketingConsents)
+          .where(eq(customerMarketingConsents.dotyposCustomerId, customerId))
+      );
+      if (stored) {
+        await Effect.runPromise(
+          db
+            .insert(customerMarketingConsents)
+            .values({ dotyposCustomerId: customerId, ...stored })
+        );
+      }
+
+      const scenario = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() =>
+          Effect.succeed(makeReusableReservation())
+        ),
+        ...input,
+        marketingConsentRepository:
+          CustomerMarketingConsentRepository.Default.pipe(
+            Layer.provide(
+              Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.of({ db }))
+            )
+          ),
+      });
+      expect(scenario.result?.status).toBe("ready");
+
+      const [row] = await Effect.runPromise(
+        db
+          .select()
+          .from(customerMarketingConsents)
+          .where(eq(customerMarketingConsents.dotyposCustomerId, customerId))
+      );
+      await Effect.runPromise(
+        db
+          .delete(customerMarketingConsents)
+          .where(eq(customerMarketingConsents.dotyposCustomerId, customerId))
+      );
+      return row ?? null;
+    };
+
+    const expectStoredRow = (
+      row: Awaited<ReturnType<typeof runWithStoredConsent>>,
+      expected: typeof activeRow | typeof withdrawnRow
+    ) => {
+      expect(row).not.toBeNull();
+      expect(row?.documentHash).toBe(expected.documentHash);
+      expect(row?.locale).toBe(expected.locale);
+      expect(row?.grantSource).toBe(expected.grantSource);
+      expect(row?.grantedAt.equals(expected.grantedAt)).toBe(true);
+      if (expected.withdrawnAt) {
+        expect(row?.withdrawnAt?.equals(expected.withdrawnAt)).toBe(true);
+      } else {
+        expect(row?.withdrawnAt).toBeNull();
+      }
+    };
+
+    test("an absent choice writes no consent row", async () => {
+      expect(await runWithStoredConsent(null, {})).toBeNull();
+    });
+
+    test("false leaves an active consent active and unchanged", async () => {
+      const row = await runWithStoredConsent(activeRow, {
+        marketingConsent: false,
+      });
+      expectStoredRow(row, activeRow);
+    });
+
+    test("false leaves a withdrawn consent unchanged", async () => {
+      const row = await runWithStoredConsent(withdrawnRow, {
+        marketingConsent: false,
+      });
+      expectStoredRow(row, withdrawnRow);
+    });
+
+    test("an opt-in through the site's tools stores site_tool as the source", async () => {
+      const row = await runWithStoredConsent(null, {
+        marketingConsent: true,
+        marketingConsentSource: "site_tool",
+      });
+      expect(row?.grantSource).toBe("site_tool");
+      expect(row?.withdrawnAt).toBeNull();
+    });
+
+    test("a form opt-in stores reservation_form as the source", async () => {
+      const row = await runWithStoredConsent(null, { marketingConsent: true });
+      expect(row?.grantSource).toBe("reservation_form");
+      expect(row?.withdrawnAt).toBeNull();
+    });
+
+    test("an opt-in does not reactivate a withdrawn consent", async () => {
+      const row = await runWithStoredConsent(withdrawnRow, {
+        marketingConsent: true,
+        marketingConsentSource: "site_tool",
+      });
+      expectStoredRow(row, withdrawnRow);
+    });
   });
 
   test("fails checkout when an explicit marketing opt-in cannot be stored", async () => {

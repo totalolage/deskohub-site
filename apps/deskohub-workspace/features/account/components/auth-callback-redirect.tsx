@@ -14,7 +14,18 @@ import type { Locale } from "@/features/i18n";
 import { handOffReturn } from "@/shared/browser/return-window";
 import { AuthCallbackLoading } from "./auth-callback-loading";
 
-export function AuthCallbackRedirect({ locale }: { readonly locale: Locale }) {
+/**
+ * Finishes a signed-in callback: hands the return over to the tab that sent
+ * the email when one in this browser answers, otherwise continues here.
+ * `returning` says whether the callback carries a valid return target.
+ */
+export function AuthCallbackRedirect({
+  locale,
+  returning,
+}: {
+  readonly locale: Locale;
+  readonly returning: boolean;
+}) {
   useEffect(() => {
     let active = true;
     let attemptId = "";
@@ -92,5 +103,5 @@ export function AuthCallbackRedirect({ locale }: { readonly locale: Locale }) {
     };
   }, [locale]);
 
-  return <AuthCallbackLoading locale={locale} />;
+  return <AuthCallbackLoading locale={locale} signedIn={{ returning }} />;
 }

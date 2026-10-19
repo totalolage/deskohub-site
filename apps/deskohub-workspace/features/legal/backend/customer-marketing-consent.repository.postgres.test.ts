@@ -1,11 +1,21 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { rm } from "node:fs/promises";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  linkMigrationsBefore,
+  withScratchDatabase,
+  workspaceMigrationsFolder,
+} from "@/db/migration-scratch-database.test-utils";
+import { customerMarketingConsents } from "@/db/schema";
 import type { CustomerMarketingConsent } from "@/db/schema/customer-marketing-consents";
+import type { MarketingConsentGrantSource } from "@/features/legal/marketing-consent-grant-source";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   CustomerMarketingConsentRepository,
@@ -38,6 +48,7 @@ const makeInput = (
   documentHash: `document-${crypto.randomUUID()}`,
   locale: "en-US",
   grantedAt: Temporal.Instant.from("2026-09-01T10:00:00Z"),
+  source: "reservation_form",
   ...overrides,
 });
 
@@ -61,6 +72,7 @@ const expectConsent = (
     readonly locale: GrantCustomerMarketingConsentInput["locale"];
     readonly grantedAt: Temporal.Instant;
     readonly withdrawnAt: Temporal.Instant | null;
+    readonly source: MarketingConsentGrantSource | null;
   }
 ) => {
   expect(actual).not.toBeNull();
@@ -70,6 +82,7 @@ const expectConsent = (
   expect(actual.documentHash).toBe(expected.documentHash);
   expect(actual.locale).toBe(expected.locale);
   expect(actual.grantedAt.equals(expected.grantedAt)).toBe(true);
+  expect(actual.grantSource).toBe(expected.source);
   if (expected.withdrawnAt) {
     expect(actual.withdrawnAt?.equals(expected.withdrawnAt)).toBe(true);
   } else {
@@ -80,17 +93,19 @@ const expectConsent = (
 describe.skipIf(!testDatabase)(
   "CustomerMarketingConsentRepository on disposable Postgres",
   () => {
-    test("initial grants preserve every field for active and withdrawn records", async () => {
+    test("initial grants preserve every field, including the source, for active and withdrawn records", async () => {
       const activeCustomerId = uniqueCustomerId();
       const activeInitial = makeInput(activeCustomerId, {
         documentHash: "active-initial-document",
         locale: "en-US",
         grantedAt: Temporal.Instant.from("2026-09-01T10:00:00Z"),
+        source: "reservation_form",
       });
       const activeRetry = makeInput(activeCustomerId, {
         documentHash: "active-retry-document",
         locale: "cs-CZ",
         grantedAt: Temporal.Instant.from("2026-09-02T10:00:00Z"),
+        source: "site_tool",
       });
 
       const withdrawnCustomerId = uniqueCustomerId();
@@ -98,6 +113,7 @@ describe.skipIf(!testDatabase)(
         documentHash: "withdrawn-initial-document",
         locale: "cs-CZ",
         grantedAt: Temporal.Instant.from("2026-09-01T11:00:00Z"),
+        source: "site_tool",
       });
       const withdrawal = makeInput(withdrawnCustomerId, {
         documentHash: "withdrawal-request-document",
@@ -108,6 +124,7 @@ describe.skipIf(!testDatabase)(
         documentHash: "withdrawn-retry-document",
         locale: "en-US",
         grantedAt: Temporal.Instant.from("2026-09-04T11:00:00Z"),
+        source: "reservation_form",
       });
 
       const [active, withdrawn] = await runRepository((repository) =>
@@ -134,17 +151,19 @@ describe.skipIf(!testDatabase)(
       });
     });
 
-    test("explicit grants update evidence and reactivate withdrawn records", async () => {
+    test("explicit grants update evidence and source and reactivate withdrawn records", async () => {
       const customerId = uniqueCustomerId();
       const initial = makeInput(customerId, {
         documentHash: "initial-document",
         locale: "en-US",
         grantedAt: Temporal.Instant.from("2026-09-01T12:00:00Z"),
+        source: "reservation_form",
       });
       const activeUpdate = makeInput(customerId, {
         documentHash: "active-update-document",
         locale: "cs-CZ",
         grantedAt: Temporal.Instant.from("2026-09-02T12:00:00Z"),
+        source: "account",
       });
       const withdrawal = makeInput(customerId, {
         documentHash: "ignored-withdrawal-document",
@@ -155,6 +174,7 @@ describe.skipIf(!testDatabase)(
         documentHash: "explicit-grant-document",
         locale: "en-US",
         grantedAt: Temporal.Instant.from("2026-09-04T12:00:00Z"),
+        source: "link",
       });
 
       const { active, reactivated } = await runRepository((repository) =>
@@ -188,6 +208,7 @@ describe.skipIf(!testDatabase)(
       const staleGrant = makeInput(customerId, {
         documentHash: "stale-grant-document",
         grantedAt: Temporal.Instant.from("2026-09-02T12:00:00Z"),
+        source: "account",
       });
       const withdrawal = makeInput(customerId, {
         documentHash: "newer-withdrawal-document",
@@ -233,6 +254,7 @@ describe.skipIf(!testDatabase)(
       expectConsent(consent, {
         ...withdrawal,
         withdrawnAt: withdrawal.grantedAt,
+        source: null,
       });
     });
 
@@ -268,6 +290,7 @@ describe.skipIf(!testDatabase)(
         documentHash: "monotonic-initial-document",
         locale: "en-US",
         grantedAt: Temporal.Instant.from("2026-09-10T10:00:00Z"),
+        source: "site_tool",
       });
       const olderWithdrawal = makeInput(customerId, {
         documentHash: "older-withdrawal-document",
@@ -306,5 +329,76 @@ describe.skipIf(!testDatabase)(
         withdrawnAt: latestWithdrawal.grantedAt,
       });
     });
+
+    test("withdrawing an active consent keeps its source", async () => {
+      const customerId = uniqueCustomerId();
+      const initial = makeInput(customerId, { source: "link" });
+      const withdrawnAt = Temporal.Instant.from("2026-09-02T10:00:00Z");
+
+      const consent = await runRepository((repository) =>
+        Effect.gen(function* () {
+          yield* repository.grantInitial(initial);
+          yield* repository.withdrawActive({
+            dotyposCustomerId: customerId,
+            withdrawnAt,
+          });
+          return yield* repository.get(customerId);
+        })
+      );
+
+      expectConsent(consent, { ...initial, withdrawnAt });
+    });
+
+    test("the database rejects an unknown grant source", async () => {
+      await expect(
+        testDatabase!.pool.query(
+          `insert into customer_marketing_consents
+             (dotypos_customer_id, document_hash, locale, granted_at, grant_source)
+           values ($1, 'document', 'en-US', now(), 'webmcp')`,
+          [uniqueCustomerId()]
+        )
+      ).rejects.toThrow("customer_marketing_consents_grant_source_check");
+    });
   }
 );
+
+const GRANT_SOURCE_MIGRATION_DIR =
+  "20261019124424_customer_marketing_consent_grant_source";
+const testDatabaseUrl = process.env.WORKSPACE_TEST_DATABASE_URL;
+
+describe.skipIf(!testDatabaseUrl)("grant source migration", () => {
+  test("leaves grants recorded before it with an unknown source", async () => {
+    const earlierMigrations = await linkMigrationsBefore(
+      GRANT_SOURCE_MIGRATION_DIR
+    );
+    try {
+      await withScratchDatabase(
+        testDatabaseUrl!,
+        "marketing_consent_grant_source_migration",
+        async (pool) => {
+          await migrate(drizzle({ client: pool }), {
+            migrationsFolder: earlierMigrations,
+          });
+          const customerId = uniqueCustomerId();
+          await pool.query(
+            `insert into customer_marketing_consents
+               (dotypos_customer_id, document_hash, locale, granted_at)
+             values ($1, 'document', 'en-US', now())`,
+            [customerId]
+          );
+
+          await migrate(drizzle({ client: pool }), {
+            migrationsFolder: workspaceMigrationsFolder,
+          });
+
+          const rows = await drizzle({ client: pool })
+            .select({ grantSource: customerMarketingConsents.grantSource })
+            .from(customerMarketingConsents);
+          expect(rows).toEqual([{ grantSource: null }]);
+        }
+      );
+    } finally {
+      await rm(earlierMigrations, { recursive: true, force: true });
+    }
+  });
+});

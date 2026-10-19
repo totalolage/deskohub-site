@@ -8,8 +8,10 @@ import {
   WorkspaceDatabaseAdvisoryLock,
   withPostgresAdvisoryLock,
 } from "@/db/postgres-advisory-lock";
+import { rejectCustomerEventInserts } from "@/shared/backend/customer-events/customer-event-outbox.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { customerAccountIdSchema } from "../customer-account";
+import { CustomerAccountRepository } from "./customer-account.repository";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import { waitForAccountAdvisoryLockWait } from "./customer-account-lock.test-utils";
 
@@ -213,8 +215,109 @@ describe.skipIf(!testDatabase)(
         }).pipe(Effect.provide(layer))
       );
     });
+
+    test("records account creation only for the claim that inserts the link and keeps it past deletion", async () => {
+      const account = customerAccountIdSchema.make(uniqueId());
+      const dotyposCustomerId = uniqueDotyposId();
+      await insertAuthUser(account, testEmailAddress(`e-${account}`));
+
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          yield* links.claim(account, dotyposCustomerId);
+          yield* links.claim(account, dotyposCustomerId);
+        }).pipe(Effect.provide(makeRepositoryLayer()))
+      );
+
+      const recorded = await accountCreatedEvents(account);
+      expect(recorded).toEqual([
+        {
+          dotypos_customer_id: dotyposCustomerId,
+          occurred_at: await accountCreatedAt(account),
+        },
+      ]);
+
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const accounts = yield* CustomerAccountRepository;
+          yield* accounts.tombstone(account, Temporal.Now.instant());
+        }).pipe(
+          Effect.provide(
+            CustomerAccountRepository.Default.pipe(
+              Layer.provide(
+                Layer.succeed(
+                  WorkspaceDatabase,
+                  WorkspaceDatabase.of({ db: testDatabase!.db })
+                )
+              )
+            )
+          )
+        )
+      );
+      await testDatabase!.pool.query(`delete from auth."user" where id = $1`, [
+        account,
+      ]);
+
+      expect(await accountCreatedEvents(account)).toEqual(recorded);
+    });
+
+    test("rolls the first account-link claim back with a failed event write", async () => {
+      const account = customerAccountIdSchema.make(uniqueId());
+      const dotyposCustomerId = uniqueDotyposId();
+      await insertAuthUser(account, testEmailAddress(`r-${account}`));
+      const cleanup = await rejectCustomerEventInserts(
+        testDatabase!.pool,
+        `new.dotypos_customer_id = '${dotyposCustomerId}'`
+      );
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          return yield* Effect.result(links.claim(account, dotyposCustomerId));
+        }).pipe(Effect.provide(makeRepositoryLayer()))
+      ).finally(cleanup);
+
+      expect(result._tag).toBe("Failure");
+      const claimRows = await testDatabase!.pool.query(
+        "select dotypos_customer_id from customer_account_links where customer_account_id = $1",
+        [account]
+      );
+      expect(claimRows.rows).toEqual([]);
+      expect(await accountCreatedEvents(account)).toEqual([]);
+
+      const retry = await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          return yield* links.claim(account, dotyposCustomerId);
+        }).pipe(Effect.provide(makeRepositoryLayer()))
+      );
+      expect(retry).toEqual({
+        kind: "linked",
+        customerId: dotyposCustomerId,
+        created: true,
+      });
+    });
   }
 );
+
+async function accountCreatedEvents(accountId: string) {
+  const { rows } = await testDatabase!.pool.query<{
+    dotypos_customer_id: string;
+    occurred_at: string;
+  }>(
+    `select dotypos_customer_id, occurred_at from customer_events
+      where kind = 'account-created' and customer_account_id = $1`,
+    [accountId]
+  );
+  return rows;
+}
+
+async function accountCreatedAt(accountId: string) {
+  const { rows } = await testDatabase!.pool.query<{ created_at: string }>(
+    "select created_at from customer_accounts where id = $1",
+    [accountId]
+  );
+  return rows[0]?.created_at;
+}
 
 function uniqueDotyposId() {
   return `${Math.floor(Math.random() * 900000) + 100000}${Math.floor(

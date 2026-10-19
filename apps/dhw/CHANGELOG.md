@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.20.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.19.0...dhw-v1.20.0) (2026-10-19)
+
+
+### Features
+
+* **dhw:** decode upcoming audience attributes ([1a7e3c5](https://github.com/totalolage/deskohub-site/commit/1a7e3c5e9e274469acb8db8345ef191db10dc34d))
+* **dhw:** send client version ([a138e31](https://github.com/totalolage/deskohub-site/commit/a138e313727940dc7777ea98918aa9d28a88bdee))
+* **email-campaigns:** calendar expressions, trigger periods and campaign-scoped email counts (readers) ([6c3e43c](https://github.com/totalolage/deskohub-site/commit/6c3e43c1377e734bdb2d1312275e18d9fdea3447))
+
 ## [1.19.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.18.0...dhw-v1.19.0) (2026-10-19)
 
 

@@ -22,6 +22,12 @@ export const workspaceE2ETimeouts = {
   // Dotypos (one full Dotypos request timeout).
   customerMcpRequest: 60 * SECOND,
   customerMcpCase: 4 * MINUTE,
+  // The site tools register after hydration, the release gate's streamed
+  // boundary, and one `tools/list` exchange.
+  siteToolsRegistration: 60 * SECOND,
+  // A page's own requests after load: long enough that a site tool request
+  // would have started.
+  siteToolsQuietPeriod: 5 * SECOND,
   // One reload of an advertised-pricing page, and the overall wait for the
   // advertisedPricingSources cache (60-second revalidation) to converge.
   calendarSaleAdvertisement: 2 * MINUTE,

@@ -82,6 +82,7 @@ import {
 import { CampaignEmailConfig } from "./campaign-email.config";
 import { CampaignRecipientService } from "./campaign-recipient.service";
 import { CampaignSendQueueService } from "./campaign-send-queue.service";
+import { onceCampaignSend } from "./campaign-send-selection";
 
 type DatabaseError = EffectDrizzleQueryError | SqlError.SqlError;
 
@@ -495,7 +496,7 @@ export class CampaignSendService extends Context.Service<
           .set({
             deliveryAttempt: sql`${emailCampaignSends.deliveryAttempt} + 1`,
           })
-          .where(eq(emailCampaignSends.campaignId, campaignId))
+          .where(onceCampaignSend(campaignId))
           .returning({
             sendId: emailCampaignSends.id,
             deliveryAttempt: emailCampaignSends.deliveryAttempt,
