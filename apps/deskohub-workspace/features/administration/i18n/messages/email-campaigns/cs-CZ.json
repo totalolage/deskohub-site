@@ -15,9 +15,8 @@
   "emailCampaignsAudienceCampaignEmailCountAmount": "obdrželi {amount}{period}",
   "emailCampaignsAudienceCampaignEmailCountAny": "obdrželi alespoň jeden {single}{period}",
   "emailCampaignsAudienceCampaignEmailCountCountLabel": "Počet e-mailů z kampaní",
-  "emailCampaignsAudienceCampaignEmailCountFromText": "kampaň:",
   "emailCampaignsAudienceCampaignEmailCountLabel": "Přijaté e-maily z kampaní",
-  "emailCampaignsAudienceCampaignEmailCountLeadText": "e-mailů z kampaní, které zákazník obdržel",
+  "emailCampaignsAudienceCampaignEmailCountLeadText": "e-mailů, které zákazník obdržel z",
   "emailCampaignsAudienceCampaignEmailCountNone": "neobdrželi žádný {single}{period}",
   "emailCampaignsAudienceCampaignEmailCountNounAny": [
     {
@@ -57,8 +56,10 @@
   "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "Účel kampaně",
   "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "marketingových",
   "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "provozních",
-  "emailCampaignsAudienceCampaignEmailCountSourceAny": "libovolná",
+  "emailCampaignsAudienceCampaignEmailCountSourceAny": "libovolné kampaně",
+  "emailCampaignsAudienceCampaignEmailCountSourceEmpty": "Žádná kampaň neodpovídá.",
   "emailCampaignsAudienceCampaignEmailCountSourceLabel": "Kampaň",
+  "emailCampaignsAudienceCampaignEmailCountSourceSearch": "Hledat kampaně",
   "emailCampaignsAudienceCampaignEmailCountSourceSpecific": "(kampaň {campaign})",
   "emailCampaignsAudienceCampaignEmailCountSourceThis": "(tato kampaň)",
   "emailCampaignsAudienceCampaignEmailCountSourceUnknown": "Smazaná kampaň",
@@ -849,6 +850,7 @@
       }
     }
   ],
+  "emailCampaignsBadgeDeliveryAutomated": "Automatická",
   "emailCampaignsBadgePurposeMarketing": "Marketingová",
   "emailCampaignsBadgePurposeOperational": "Provozní",
   "emailCampaignsBadgeRecipientStatusBounced": "Vráceno",

@@ -28,6 +28,10 @@ export type AudienceChoiceWording = {
 export type AudienceCampaignSourceWording = {
   /** Names the control for screen readers. */
   readonly label: string;
+  /** The search field's placeholder. */
+  readonly search: string;
+  /** Shown when no campaign matches the search. */
+  readonly empty: string;
   /** The label of the param left unset, which counts every campaign. */
   readonly absent: string;
   /** A chosen campaign missing from the list, such as a deleted one. */
@@ -328,14 +332,19 @@ const audienceAttributeWordings = (
         {
           text: m.emailCampaignsAudienceCampaignEmailCountLeadText({}, options),
         },
-        {
-          text: m.emailCampaignsAudienceCampaignEmailCountFromText({}, options),
-        },
         { param: "campaign" },
       ],
       campaignSources: {
         campaign: {
           label: m.emailCampaignsAudienceCampaignEmailCountSourceLabel(
+            {},
+            options
+          ),
+          search: m.emailCampaignsAudienceCampaignEmailCountSourceSearch(
+            {},
+            options
+          ),
+          empty: m.emailCampaignsAudienceCampaignEmailCountSourceEmpty(
             {},
             options
           ),

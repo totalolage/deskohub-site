@@ -15,9 +15,8 @@
   "emailCampaignsAudienceCampaignEmailCountAmount": "received {amount}{period}",
   "emailCampaignsAudienceCampaignEmailCountAny": "received any {none}{period}",
   "emailCampaignsAudienceCampaignEmailCountCountLabel": "Campaign email count",
-  "emailCampaignsAudienceCampaignEmailCountFromText": "from",
   "emailCampaignsAudienceCampaignEmailCountLabel": "Campaign emails received",
-  "emailCampaignsAudienceCampaignEmailCountLeadText": "campaign emails received",
+  "emailCampaignsAudienceCampaignEmailCountLeadText": "campaign emails received from",
   "emailCampaignsAudienceCampaignEmailCountNone": "received no {none}{period}",
   "emailCampaignsAudienceCampaignEmailCountNounAny": [
     {
@@ -55,7 +54,9 @@
   "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "marketing",
   "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "operational",
   "emailCampaignsAudienceCampaignEmailCountSourceAny": "any campaign",
+  "emailCampaignsAudienceCampaignEmailCountSourceEmpty": "No campaign matches.",
   "emailCampaignsAudienceCampaignEmailCountSourceLabel": "Campaign",
+  "emailCampaignsAudienceCampaignEmailCountSourceSearch": "Search campaigns",
   "emailCampaignsAudienceCampaignEmailCountSourceSpecific": "from campaign {campaign}",
   "emailCampaignsAudienceCampaignEmailCountSourceThis": "from this campaign",
   "emailCampaignsAudienceCampaignEmailCountSourceUnknown": "Deleted campaign",
@@ -854,6 +855,7 @@
       }
     }
   ],
+  "emailCampaignsBadgeDeliveryAutomated": "Automated",
   "emailCampaignsBadgePurposeMarketing": "Marketing",
   "emailCampaignsBadgePurposeOperational": "Operational",
   "emailCampaignsBadgeRecipientStatusBounced": "Bounced",

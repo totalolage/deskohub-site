@@ -20,6 +20,7 @@ import {
   audienceConditionsOf,
   viewAudienceCondition,
 } from "../audience-filter";
+import type { CampaignDelivery, CampaignStatus } from "../campaign-states";
 import type { DatePeriod } from "../date-period";
 import {
   type AudienceCountWording,
@@ -43,6 +44,12 @@ export type AudienceValueOption = {
 /** A Dotypos discount group an audience can filter by. */
 export type DiscountGroupOption = AudienceValueOption;
 
+/** A campaign an audience can count the emails of, with its state for badges. */
+export type AudienceCampaignOption = AudienceValueOption & {
+  readonly delivery: CampaignDelivery;
+  readonly status: CampaignStatus;
+};
+
 /** The value lists Workspace looked up; a missing one shows raw values. */
 export type AudienceValueLookups = {
   readonly [Lookup in AudienceValueLookup]?:
@@ -50,7 +57,7 @@ export type AudienceValueLookups = {
     | undefined;
 } & {
   /** Campaign names for counts of one campaign's emails. */
-  readonly campaigns?: readonly AudienceValueOption[] | undefined;
+  readonly campaigns?: readonly AudienceCampaignOption[] | undefined;
 };
 
 type ListType = "conjunction" | "disjunction";

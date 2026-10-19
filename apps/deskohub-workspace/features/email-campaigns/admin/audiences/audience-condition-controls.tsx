@@ -23,12 +23,26 @@ import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/shared/components/ui/command";
+import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
+import { fieldTriggerVariants } from "@/shared/components/ui/field-trigger";
 import { Input } from "@/shared/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/shared/components/ui/popover";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import {
   Select,
@@ -40,9 +54,11 @@ import {
 import { cn } from "@/shared/utils";
 import type { DatePeriod } from "../../date-period";
 import type {
+  AudienceCampaignOption,
   AudienceValueLookups,
   AudienceValueOption,
 } from "../audience-filter-summary";
+import { CampaignStateBadge } from "../campaign-list/campaign-badges";
 import type {
   AudienceBooleanWording,
   AudienceCampaignSourceWording,
@@ -281,13 +297,11 @@ function ChoiceParamControl({
   wording,
   value,
   onChange,
-  disabled = false,
 }: {
   readonly param: AudienceChoiceParam;
   readonly wording: AudienceChoiceWording | undefined;
   readonly value: unknown;
   readonly onChange: (value: string | undefined) => void;
-  readonly disabled?: boolean;
 }) {
   const options = Object.keys(param.options).map((option) => ({
     option,
@@ -312,15 +326,10 @@ function ChoiceParamControl({
         }))}
         size="sm"
         value={chosen ?? ""}
-        disabled={disabled}
       />
     )),
     Match.when("select", () => (
-      <Select
-        value={chosen ?? absentValue}
-        onValueChange={pick}
-        disabled={disabled}
-      >
+      <Select value={chosen ?? absentValue} onValueChange={pick}>
         <SelectTrigger aria-label={label} className={compactSelectClassName}>
           <SelectValue />
         </SelectTrigger>
@@ -344,10 +353,11 @@ function ChoiceParamControl({
 const absentValue = "absent";
 
 /**
- * Whose emails count: any campaign, or one picked by name. A chosen campaign
- * missing from the list, such as a deleted one, stays chosen under the
- * wording's label for it. "This campaign" is for automation conditions only,
- * so saved audiences don't offer it.
+ * Whose emails count: any campaign, or one picked by name, searchable and
+ * badged with each campaign's state. A chosen campaign missing from the list,
+ * such as a deleted one, stays chosen under the wording's label for it.
+ * "This campaign" is for automation conditions only, so saved audiences don't
+ * offer it.
  */
 function CampaignSourceControl({
   wording,
@@ -356,49 +366,99 @@ function CampaignSourceControl({
   onChange,
 }: {
   readonly wording: AudienceCampaignSourceWording;
-  readonly campaigns: readonly AudienceValueOption[] | undefined;
+  readonly campaigns: readonly AudienceCampaignOption[] | undefined;
   readonly value: CampaignEmailSourceType | undefined;
   readonly onChange: (value: CampaignEmailSourceType | undefined) => void;
 }) {
+  const locale = useRouteLocale();
+  const [open, setOpen] = useState(false);
   const chosen = value?._tag === "Specific" ? value.campaignId : undefined;
-  const lost =
-    chosen !== undefined && !campaigns.some(({ id }) => id === chosen);
+  const chosenCampaign = campaigns.find(({ id }) => id === chosen);
+  const lost = chosen !== undefined && chosenCampaign === undefined;
+  const pick = (next: CampaignEmailSourceType | undefined) => {
+    onChange(next);
+    setOpen(false);
+  };
   return (
-    <Select
-      value={chosen ?? absentValue}
-      onValueChange={(next) =>
-        onChange(
-          next === absentValue
-            ? undefined
-            : {
-                _tag: "Specific",
-                campaignId: AdministrationCampaignId.make(next),
-              }
-        )
-      }
-    >
-      <SelectTrigger
-        aria-label={wording.label}
-        className={cn(compactSelectClassName, "max-w-72")}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          role="combobox"
+          aria-expanded={open}
+          aria-label={wording.label}
+          className={cn(
+            fieldTriggerVariants(),
+            compactSelectClassName,
+            "max-w-72 justify-between"
+          )}
+        >
+          <span className="min-w-0 truncate">
+            {chosenCampaign?.name ?? (lost ? wording.unknown : wording.absent)}
+          </span>
+          <ChevronDown
+            className="h-4 w-4 shrink-0 text-navy-blue/60"
+            aria-hidden
+          />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-[min(22rem,calc(100vw-2rem))] overflow-hidden p-0"
       >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={absentValue}>{wording.absent}</SelectItem>
-        {lost && <SelectItem value={chosen}>{wording.unknown}</SelectItem>}
-        {campaigns.map(({ id, name }) => (
-          <SelectItem key={id} value={id}>
-            {name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+        <Command>
+          <CommandInput placeholder={wording.search} />
+          <CommandList>
+            <CommandEmpty>{wording.empty}</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value={absentValue}
+                keywords={[wording.absent]}
+                selected={chosen === undefined}
+                onSelect={() => pick(undefined)}
+              >
+                {wording.absent}
+              </CommandItem>
+              {lost && (
+                <CommandItem
+                  value={chosen}
+                  keywords={[wording.unknown]}
+                  selected
+                  onSelect={() => setOpen(false)}
+                >
+                  {wording.unknown}
+                </CommandItem>
+              )}
+              {campaigns.map((campaign) => (
+                <CommandItem
+                  key={campaign.id}
+                  value={campaign.id}
+                  keywords={[campaign.name]}
+                  selected={campaign.id === chosen}
+                  onSelect={() =>
+                    pick({
+                      _tag: "Specific",
+                      campaignId: AdministrationCampaignId.make(campaign.id),
+                    })
+                  }
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    {campaign.name}
+                  </span>
+                  <CampaignStateBadge locale={locale} campaign={campaign} />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
 /**
  * One campaign's emails count whatever their purpose, so while a campaign
- * param is set, a choice offering "any" holds it and can't change.
+ * param is set, a choice offering "any" holds it and is hidden.
  */
 const pinnedChoice = "any";
 
@@ -475,13 +535,13 @@ export function CountConditionControls<
             );
           }
           return (
-            param?.part === "choice" && (
+            param?.part === "choice" &&
+            !pinsChoice(param) && (
               <ChoiceParamControl
                 key={token.param}
                 param={param}
                 wording={wording.choices[token.param]}
                 value={params[token.param]}
-                disabled={pinsChoice(param)}
                 onChange={(value) => {
                   const { [token.param]: _, ...rest } = params;
                   changeParams(

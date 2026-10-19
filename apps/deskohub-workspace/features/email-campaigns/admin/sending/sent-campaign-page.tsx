@@ -33,13 +33,12 @@ export async function SentCampaignPage({
 }: {
   readonly campaign: OnceCampaign;
 }) {
-  const [{ send, audienceTitle }, lookups, emails, locale] =
-    await Promise.all([
-      loadSentCampaign(campaign.id),
-      loadAudienceValueLookups(),
-      loadSentCampaignEmails(campaign),
-      getRequestLocale(),
-    ]);
+  const [{ send, audienceTitle }, lookups, emails, locale] = await Promise.all([
+    loadSentCampaign(campaign.id),
+    loadAudienceValueLookups(),
+    loadSentCampaignEmails(campaign),
+    getRequestLocale(),
+  ]);
   const sentAt =
     send && formatAdministrationDateTime(send.createdAt.toString(), locale);
   return (

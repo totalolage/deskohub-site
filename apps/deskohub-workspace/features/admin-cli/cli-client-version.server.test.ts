@@ -27,8 +27,7 @@ import { handleWorkspaceAdminApiRequest } from "./workspace-admin-api.server";
 
 const minimum = DhwVersion.make("1.20.0");
 
-// Every minimum is unset in the real API, so a test-local API exercises the
-// enforcement through the same middleware.
+// A test-local API exercises header edge cases through the same middleware.
 const TestApi = HttpApi.make("testApi")
   .add(
     HttpApiGroup.make("campaigns")
@@ -170,19 +169,36 @@ describe("dhw client version", () => {
     });
   });
 
-  test("reports the Workspace API's minimums from getInfo, none of them set yet", async () => {
+  test("reports the campaigns minimum and no minimum for other groups", async () => {
+    const expectedMinimums: Record<string, DhwVersion> = {};
+    HttpApi.reflect(WorkspaceAdminApi, {
+      onGroup: () => undefined,
+      onEndpoint: ({ group, endpoint, mergedAnnotations }) => {
+        const endpointMinimum = Context.get(
+          mergedAnnotations,
+          MinimumDhwVersion
+        );
+        if (group.identifier === "campaigns") {
+          expect(endpointMinimum).toEqual(Option.some(minimum));
+          expectedMinimums[`campaigns.${endpoint.name}`] = minimum;
+        } else {
+          expect(endpointMinimum).toEqual(Option.none());
+        }
+      },
+    });
+
     const response = await handleWorkspaceAdminApiRequest(
       new Request("https://workspace.deskohub.test/api/v1/cli/info", {
         headers: { [dhwVersionHeader]: "not-a-version" },
       })
     );
 
-    expect(minimumDhwVersions).toEqual({});
+    expect(minimumDhwVersions).toEqual(expectedMinimums);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       apiVersion: "v1",
       service: "deskohub-workspace",
-      minimumDhwVersions: {},
+      minimumDhwVersions: expectedMinimums,
     });
   });
 });
