@@ -18,7 +18,9 @@ Operators may read:
 - customers and their Workspace reservation history;
 - discount definitions, codes, and scheduled sales;
 - email campaigns, their per-locale texts, current recipients, and delivery status;
-- saved campaign audiences and email templates, including rendered template previews; and
+- saved campaign audiences and email templates, including rendered template previews;
+- automated campaigns: their flow, activation readiness, dry runs, published versions, runs with their timelines and counts, and the automation engine's health;
+- descriptions and next starts of calendar expressions; and
 - issued administration sessions.
 
 Search and filters use the same business definitions as the dashboard. Human output is compact; machine-readable output retains the complete supported result without changing the meaning of a command.
@@ -30,7 +32,8 @@ Operators may:
 - create, update, disable, or delete eligible discounts and codes;
 - assign product families and customer audiences to a code;
 - set or clear a customer's discount group;
-- create, update, duplicate, or delete draft email campaigns, with each locale's body written in Markdown;
+- create, update, duplicate, or delete draft email campaigns, sent once or by an automation, with each locale's body written in Markdown;
+- replace an automated campaign's flow, dry-run it, activate it after a completed dry run of the current draft, and pause, resume, or archive it;
 - create, update, archive, unarchive, or delete saved campaign audiences;
 - send a campaign's test emails, then send the campaign with the confirmation code from the latest test email, and retry the recipients it didn't reach, optionally including those whose delivery is unconfirmed and who may already have the email;
 - fill the booked product of older meeting-room and office reservations from their Dotypos booking, first as a dry run;
@@ -39,7 +42,7 @@ Operators may:
 
 Creating a code may create its discount benefit atomically. Fixed-money values use the currency's minor units. An omitted schedule or global-use limit means unrestricted along that dimension.
 
-Destructive or access-broadening operations require explicit confirmation. This includes granting the administrator role, deleting resources, removing the final audience restriction, revoking a session, changing a customer's discount group, removing a customer from a restricted code, archiving or deleting a campaign audience, deleting a campaign, sending or retrying a campaign, or filling reservation products. Non-interactive execution must provide that confirmation deliberately.
+Destructive or access-broadening operations require explicit confirmation. This includes granting the administrator role, deleting resources, removing the final audience restriction, revoking a session, changing a customer's discount group, removing a customer from a restricted code, archiving or deleting a campaign audience, deleting a campaign, sending or retrying a campaign, activating, pausing, resuming, or archiving an automation, or filling reservation products. Non-interactive execution must provide that confirmation deliberately.
 
 Discount-management mutations and the creation or duplication of campaigns and campaign audiences are safe to retry after an ambiguous connection failure. The same administration session and request identity must return the original result rather than apply the mutation twice.
 

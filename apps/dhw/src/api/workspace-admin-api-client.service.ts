@@ -72,6 +72,24 @@ import {
   type AdministrationVoucherDetailType,
   type AdministrationVoucherIdType,
   type AdministrationWorkspaceReservationIdType,
+  type AutomationActivateInputType,
+  type AutomationDetailType,
+  type AutomationDryRunType,
+  type AutomationEngineHealthType,
+  type AutomationFlowUpdateType,
+  type AutomationPreviewRefType,
+  type AutomationPreviewStatusType,
+  type AutomationRunDetailType,
+  type AutomationRunListInputType,
+  type AutomationRunPageType,
+  type AutomationRunRefType,
+  type AutomationRunStatsInputType,
+  type AutomationRunStatsType,
+  type AutomationVersionDetailType,
+  type AutomationVersionRefType,
+  type AutomationVersionSummaryType,
+  type CalendarPreviewInputType,
+  type CalendarPreviewType,
   type CliAccessTokenType,
   type CliAuthenticationCodeType,
   CliAuthenticationRateLimited,
@@ -544,6 +562,68 @@ interface IWorkspaceAdminApiClient {
     AdministrationCampaignSendStatusResultType,
     CampaignRequestError
   >;
+  readonly getAutomation: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    campaignId: AdministrationCampaignIdType
+  ) => Effect.Effect<AutomationDetailType, CampaignRequestError>;
+  readonly updateAutomationFlow: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    input: AutomationFlowUpdateType
+  ) => Effect.Effect<AutomationDetailType, CampaignRequestError>;
+  readonly dryRunAutomation: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    campaignId: AdministrationCampaignIdType
+  ) => Effect.Effect<AutomationPreviewStatusType, CampaignRequestError>;
+  readonly getAutomationDryRun: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    input: AutomationPreviewRefType
+  ) => Effect.Effect<AutomationDryRunType, CampaignRequestError>;
+  readonly activateAutomation: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    input: AutomationActivateInputType
+  ) => Effect.Effect<AutomationVersionSummaryType, CampaignRequestError>;
+  readonly pauseAutomation: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    campaignId: AdministrationCampaignIdType
+  ) => Effect.Effect<AutomationDetailType, CampaignRequestError>;
+  readonly resumeAutomation: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    campaignId: AdministrationCampaignIdType
+  ) => Effect.Effect<AutomationDetailType, CampaignRequestError>;
+  readonly archiveAutomation: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    campaignId: AdministrationCampaignIdType
+  ) => Effect.Effect<AutomationDetailType, CampaignRequestError>;
+  readonly listAutomationVersions: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    campaignId: AdministrationCampaignIdType
+  ) => Effect.Effect<
+    ReadonlyArray<AutomationVersionSummaryType>,
+    CampaignRequestError
+  >;
+  readonly getAutomationVersion: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    input: AutomationVersionRefType
+  ) => Effect.Effect<AutomationVersionDetailType, CampaignRequestError>;
+  readonly getAutomationRunStats: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    input: AutomationRunStatsInputType
+  ) => Effect.Effect<AutomationRunStatsType, CampaignRequestError>;
+  readonly listAutomationRuns: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    input: AutomationRunListInputType
+  ) => Effect.Effect<AutomationRunPageType, CampaignRequestError>;
+  readonly getAutomationRun: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    input: AutomationRunRefType
+  ) => Effect.Effect<AutomationRunDetailType, CampaignRequestError>;
+  readonly previewCalendarExpression: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    input: CalendarPreviewInputType
+  ) => Effect.Effect<CalendarPreviewType, CampaignRequestError>;
+  readonly getAutomationEngineHealth: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>
+  ) => Effect.Effect<AutomationEngineHealthType, CampaignRequestError>;
 }
 
 /** Every campaign endpoint reports these; input and state messages are user-facing. */
@@ -1339,6 +1419,215 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           ),
           Effect.mapError(sanitizeCampaignError)
         )
+    ),
+    getAutomation: Effect.fn("WorkspaceAdminApiClient.getAutomation")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        campaignId: AdministrationCampaignIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.automations.getAutomation({ params: { campaignId } })
+          ),
+          Effect.mapError(sanitizeCampaignError)
+        )
+    ),
+    updateAutomationFlow: Effect.fn(
+      "WorkspaceAdminApiClient.updateAutomationFlow"
+    )(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        { campaignId, ...payload }: AutomationFlowUpdateType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.automations.updateAutomationFlow({
+              params: { campaignId },
+              payload,
+            })
+          ),
+          Effect.mapError(sanitizeCampaignError)
+        )
+    ),
+    dryRunAutomation: Effect.fn("WorkspaceAdminApiClient.dryRunAutomation")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        campaignId: AdministrationCampaignIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.automations.dryRunAutomation({ params: { campaignId } })
+          ),
+          Effect.mapError(sanitizeCampaignError)
+        )
+    ),
+    getAutomationDryRun: Effect.fn(
+      "WorkspaceAdminApiClient.getAutomationDryRun"
+    )(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        { previewId, ...query }: AutomationPreviewRefType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.automations.getAutomationDryRun({
+              params: { previewId },
+              query,
+            })
+          ),
+          Effect.mapError(sanitizeCampaignError)
+        )
+    ),
+    activateAutomation: Effect.fn("WorkspaceAdminApiClient.activateAutomation")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        { campaignId, ...payload }: AutomationActivateInputType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.automations.activateAutomation({
+              params: { campaignId },
+              payload,
+            })
+          ),
+          Effect.mapError(sanitizeCampaignError)
+        )
+    ),
+    pauseAutomation: Effect.fn("WorkspaceAdminApiClient.pauseAutomation")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        campaignId: AdministrationCampaignIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.automations.pauseAutomation({ params: { campaignId } })
+          ),
+          Effect.mapError(sanitizeCampaignError)
+        )
+    ),
+    resumeAutomation: Effect.fn("WorkspaceAdminApiClient.resumeAutomation")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        campaignId: AdministrationCampaignIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.automations.resumeAutomation({ params: { campaignId } })
+          ),
+          Effect.mapError(sanitizeCampaignError)
+        )
+    ),
+    archiveAutomation: Effect.fn("WorkspaceAdminApiClient.archiveAutomation")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        campaignId: AdministrationCampaignIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.automations.archiveAutomation({ params: { campaignId } })
+          ),
+          Effect.mapError(sanitizeCampaignError)
+        )
+    ),
+    listAutomationVersions: Effect.fn(
+      "WorkspaceAdminApiClient.listAutomationVersions"
+    )(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        campaignId: AdministrationCampaignIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.automations.listAutomationVersions({
+              params: { campaignId },
+            })
+          ),
+          Effect.mapError(sanitizeCampaignError)
+        )
+    ),
+    getAutomationVersion: Effect.fn(
+      "WorkspaceAdminApiClient.getAutomationVersion"
+    )(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        input: AutomationVersionRefType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.automations.getAutomationVersion({ params: input })
+          ),
+          Effect.mapError(sanitizeCampaignError)
+        )
+    ),
+    getAutomationRunStats: Effect.fn(
+      "WorkspaceAdminApiClient.getAutomationRunStats"
+    )(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        { campaignId, ...query }: AutomationRunStatsInputType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.automations.getAutomationRunStats({
+              params: { campaignId },
+              query,
+            })
+          ),
+          Effect.mapError(sanitizeCampaignError)
+        )
+    ),
+    listAutomationRuns: Effect.fn("WorkspaceAdminApiClient.listAutomationRuns")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        { campaignId, ...query }: AutomationRunListInputType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.automations.listAutomationRuns({
+              params: { campaignId },
+              query,
+            })
+          ),
+          Effect.mapError(sanitizeCampaignError)
+        )
+    ),
+    getAutomationRun: Effect.fn("WorkspaceAdminApiClient.getAutomationRun")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        input: AutomationRunRefType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.automations.getAutomationRun({ params: input })
+          ),
+          Effect.mapError(sanitizeCampaignError)
+        )
+    ),
+    previewCalendarExpression: Effect.fn(
+      "WorkspaceAdminApiClient.previewCalendarExpression"
+    )(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        input: CalendarPreviewInputType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.automations.previewCalendarExpression({
+              payload: input,
+            })
+          ),
+          Effect.mapError(sanitizeCampaignError)
+        )
+    ),
+    getAutomationEngineHealth: Effect.fn(
+      "WorkspaceAdminApiClient.getAutomationEngineHealth"
+    )((accessToken: Redacted.Redacted<CliAccessTokenType>) =>
+      makeClient(accessToken).pipe(
+        Effect.flatMap((authorized) =>
+          authorized.automations.getAutomationEngineHealth({})
+        ),
+        Effect.mapError(sanitizeCampaignError)
+      )
     ),
   };
 });
