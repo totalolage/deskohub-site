@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "8d5039e7-0cc4-4fd5-a0a7-d4c06702fbd4",
+  "id": "9f943b09-cac1-4cf8-b33a-54bfc6e182f0",
   "prevIds": [
-    "4c6172d9-53b6-4573-b240-92eaceaeb171"
+    "c7bdda8a-93df-4c45-9a0e-4420ab34e8ed"
   ],
   "ddl": [
     {
@@ -2426,6 +2426,19 @@
       "generated": null,
       "identity": null,
       "name": "audience_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "email_campaigns"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'once'",
+      "generated": null,
+      "identity": null,
+      "name": "delivery",
       "entityType": "columns",
       "schema": "public",
       "table": "email_campaigns"
@@ -9692,7 +9705,14 @@
       "table": "email_campaigns"
     },
     {
-      "value": "\"status\" in ('draft', 'sending', 'sent', 'failed')",
+      "value": "\"delivery\" in ('once', 'automated')",
+      "name": "email_campaigns_delivery_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "email_campaigns"
+    },
+    {
+      "value": "(\"delivery\" = 'once' and \"status\" in ('draft', 'sending', 'sent', 'failed')) or (\"delivery\" = 'automated' and \"status\" in ('draft', 'active', 'paused', 'archived'))",
       "name": "email_campaigns_status_check",
       "entityType": "checks",
       "schema": "public",
