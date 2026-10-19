@@ -87,6 +87,14 @@ export type AdministrationCampaignRecipientSkipReason =
 
 const AdministrationCampaignTitle = Schema.Trim.check(Schema.isNonEmpty());
 
+export const administrationCampaignAudienceTitleMaxLength = 120;
+
+/** A trimmed, non-empty audience title of at most 120 characters. */
+export const AdministrationCampaignAudienceTitle = Schema.Trim.check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(administrationCampaignAudienceTitleMaxLength)
+);
+
 export const AdministrationCampaignAudience = Schema.Struct({
   id: AdministrationCampaignAudienceId,
   title: Schema.String,
@@ -99,7 +107,7 @@ export type AdministrationCampaignAudience =
   typeof AdministrationCampaignAudience.Type;
 
 export const AdministrationCampaignAudienceInput = Schema.Struct({
-  title: AdministrationCampaignTitle,
+  title: AdministrationCampaignAudienceTitle,
   filter: AudienceFilter,
 }).annotate(strictParseOptions);
 export type AdministrationCampaignAudienceInput =
@@ -110,11 +118,21 @@ export const AdministrationCampaignAudienceCreateRequest = Schema.Struct({
   requestId: CliMutationRequestId,
   audience: AdministrationCampaignAudienceInput,
 }).annotate(strictParseOptions);
+export const AdministrationCampaignAudiences = Schema.Array(
+  AdministrationCampaignAudience
+);
+
+export const AdministrationCampaignAudienceDeleted = Schema.Struct({
+  id: AdministrationCampaignAudienceId,
+});
+export type AdministrationCampaignAudienceDeleted =
+  typeof AdministrationCampaignAudienceDeleted.Type;
+
 export type AdministrationCampaignAudienceCreateRequest =
   typeof AdministrationCampaignAudienceCreateRequest.Type;
 
 export const AdministrationCampaignAudienceUpdate = Schema.Struct({
-  title: Schema.optionalKey(AdministrationCampaignTitle),
+  title: Schema.optionalKey(AdministrationCampaignAudienceTitle),
   filter: Schema.optionalKey(AudienceFilter),
 }).annotate(strictParseOptions);
 export type AdministrationCampaignAudienceUpdate =
@@ -127,6 +145,10 @@ export const AdministrationCampaignTemplate = Schema.Struct({
 });
 export type AdministrationCampaignTemplate =
   typeof AdministrationCampaignTemplate.Type;
+
+export const AdministrationCampaignTemplates = Schema.Array(
+  AdministrationCampaignTemplate
+);
 
 const AdministrationCampaignOperationalReason = Schema.Trim.check(
   Schema.isNonEmpty()
@@ -186,11 +208,23 @@ export const AdministrationCampaignCreateInput = Schema.Struct({
   title: AdministrationCampaignTitle,
   purpose: AdministrationCampaignPurpose,
   templateKey: AdministrationCampaignTemplateKey,
+  /** `once` when omitted. */
+  delivery: Schema.optionalKey(AdministrationCampaignDelivery),
   audienceId: Schema.NullOr(AdministrationCampaignAudienceId),
   content: AdministrationCampaignContent,
 }).annotate(strictParseOptions);
 export type AdministrationCampaignCreateInput =
   typeof AdministrationCampaignCreateInput.Type;
+
+export const AdministrationCampaignSummaries = Schema.Array(
+  AdministrationCampaignSummary
+);
+
+export const AdministrationCampaignDeleted = Schema.Struct({
+  id: AdministrationCampaignId,
+});
+export type AdministrationCampaignDeleted =
+  typeof AdministrationCampaignDeleted.Type;
 
 /** The request ID makes a retried creation replay the first one's draft. */
 export const AdministrationCampaignCreateRequest = Schema.Struct({
@@ -405,7 +439,7 @@ const audienceParams = { audienceId: AdministrationCampaignAudienceId };
 export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
   .add(
     HttpApiEndpoint.get("listCampaignAudiences", "/campaign-audiences", {
-      success: Schema.Array(AdministrationCampaignAudience),
+      success: AdministrationCampaignAudiences,
       error: campaignErrors,
     })
   )
@@ -467,14 +501,14 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
       "/campaign-audiences/:audienceId",
       {
         params: audienceParams,
-        success: Schema.Struct({ id: AdministrationCampaignAudienceId }),
+        success: AdministrationCampaignAudienceDeleted,
         error: campaignErrors,
       }
     )
   )
   .add(
     HttpApiEndpoint.get("listCampaignTemplates", "/campaign-templates", {
-      success: Schema.Array(AdministrationCampaignTemplate),
+      success: AdministrationCampaignTemplates,
     })
   )
   .add(
@@ -491,7 +525,7 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
   )
   .add(
     HttpApiEndpoint.get("listCampaigns", "/campaigns", {
-      success: Schema.Array(AdministrationCampaignSummary),
+      success: AdministrationCampaignSummaries,
       error: campaignErrors,
     })
   )
@@ -532,7 +566,7 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
   .add(
     HttpApiEndpoint.delete("deleteCampaign", "/campaigns/:campaignId", {
       params: campaignParams,
-      success: Schema.Struct({ id: AdministrationCampaignId }),
+      success: AdministrationCampaignDeleted,
       error: campaignErrors,
     })
   )

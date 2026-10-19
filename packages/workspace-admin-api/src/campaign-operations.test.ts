@@ -1,0 +1,101 @@
+import { describe, expect, test } from "bun:test";
+import { Result, Schema } from "effect";
+import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
+import {
+  CampaignRef,
+  campaignOperationEndpoints,
+  campaignOperations,
+  defineOperations,
+  OperationInputInvalid,
+  operationEndpoints,
+  query,
+} from "./campaign-operations";
+
+describe("campaign operations", () => {
+  // test.each clones its cases, so the cases are names. The endpoint holds
+  // its success schema's JSON codec, so the two compare as JSON Schema.
+  const names = Object.keys(campaignOperations) as Array<
+    keyof typeof campaignOperations
+  >;
+
+  test.each(names)(
+    "%s has an endpoint of its name answering with its output",
+    (name) => {
+      const endpoint = campaignOperationEndpoints[name];
+      const { output } = campaignOperations[name];
+
+      expect(endpoint.name).toBe(name);
+      expect(
+        [...endpoint.success].map((schema) =>
+          Schema.toJsonSchemaDocument(schema)
+        )
+      ).toEqual([Schema.toJsonSchemaDocument(output)]);
+    }
+  );
+
+  test("an operation without an endpoint fails the typecheck", () => {
+    const operations = defineOperations({
+      getThing: query({ input: CampaignRef, output: Schema.String }),
+      listThings: query({ input: CampaignRef, output: Schema.String }),
+    });
+    const group = HttpApiGroup.make("things").add(
+      HttpApiEndpoint.get("getThing", "/things", { success: Schema.String })
+    );
+
+    // @ts-expect-error listThings has no endpoint
+    const endpoints = operationEndpoints(operations, group);
+
+    expect(endpoints.listThings).toBeUndefined();
+  });
+
+  test.each([
+    ["listCampaigns", {}],
+    ["getCampaign", { campaignId: "campaign-1" }],
+    [
+      "previewCampaignTemplate",
+      {
+        templateKey: "workspace",
+        preview: {
+          _tag: "Campaign",
+          campaignId: "campaign-1",
+          locale: "cs-CZ",
+        },
+      },
+    ],
+    ["sendCampaign", { campaignId: "campaign-1", confirmationCode: "code" }],
+  ] as const)("%s rejects an unknown key", (name, input) => {
+    const decode = Schema.decodeUnknownResult(
+      campaignOperations[name].input as Schema.Decoder<unknown>
+    );
+
+    expect(Result.isSuccess(decode(input))).toBe(true);
+    expect(Result.isFailure(decode({ ...input, unexpected: true }))).toBe(true);
+  });
+
+  test("records name, kind and ledger", () => {
+    expect(campaignOperations.createCampaign).toMatchObject({
+      name: "createCampaign",
+      kind: "mutation",
+      ledger: true,
+    });
+    expect(campaignOperations.getCampaign).toMatchObject({
+      name: "getCampaign",
+      kind: "query",
+      ledger: false,
+    });
+  });
+
+  test("an error category keeps its code, message, issues and cause", () => {
+    const cause = new Error("domain failure");
+    const error = new OperationInputInvalid({
+      code: "flow-invalid",
+      message: "The flow needs a send step.",
+      issues: [{ path: ["flow", "steps"], message: "Missing send step." }],
+      cause,
+    });
+
+    expect(error._tag).toBe("OperationInputInvalid");
+    expect(error.code).toBe("flow-invalid");
+    expect(error.cause).toBe(cause);
+  });
+});
