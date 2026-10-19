@@ -13,9 +13,10 @@ import { workspaceReservations } from "@/db/schema";
 import {
   CustomerAccountReservationOwnership,
   CustomerAccountResolver,
-  type LinkedCustomerAccount,
 } from "@/features/account";
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
+import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { CustomerDotyposAdapter } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
   type CheckoutStatusViewModel,
@@ -41,7 +42,7 @@ const testDatabase = await connectWorkspacePostgresTestDatabase();
 
 type Fixture = {
   readonly accountId: string;
-  readonly accountEmail: string;
+  readonly accountEmail: ReturnType<typeof testEmailAddress>;
   readonly customerId: DotyposCustomerId;
   readonly reservationId: WorkspaceReservationId;
   readonly dotyposReservationId: string;
@@ -68,11 +69,32 @@ const insertAuthUser = async (
   );
 };
 
+const linkCustomer = async (
+  postgres: WorkspacePostgresTestDatabase,
+  fixture: Fixture
+) => {
+  await postgres.pool.query(
+    `insert into customer_accounts (id) values ($1) on conflict do nothing`,
+    [fixture.accountId]
+  );
+  await postgres.pool.query(
+    `insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2)`,
+    [fixture.accountId, fixture.customerId]
+  );
+};
+
 const insertReservation = async (
   postgres: WorkspacePostgresTestDatabase,
   fixture: Fixture,
-  customerId: DotyposCustomerId = fixture.customerId
+  customerId: DotyposCustomerId = fixture.customerId,
+  options: { readonly authoredByAccount?: boolean } = {}
 ) => {
+  if (options.authoredByAccount) {
+    await postgres.pool.query(
+      `insert into customer_accounts (id) values ($1) on conflict do nothing`,
+      [fixture.accountId]
+    );
+  }
   await Effect.runPromise(
     postgres.db.insert(workspaceReservations).values({
       id: fixture.reservationId,
@@ -80,6 +102,9 @@ const insertReservation = async (
         `attempt-${crypto.randomUUID()}`
       ),
       dotyposCustomerId: customerId,
+      authorAccountId: options.authoredByAccount
+        ? customerAccountIdSchema.make(fixture.accountId)
+        : null,
       dotyposReservationId: DotyposReservationIdSchema.make(
         fixture.dotyposReservationId
       ),
@@ -107,6 +132,13 @@ const cleanupFixture = async (
   await postgres.pool.query(`delete from auth."user" where id = $1`, [
     fixture.accountId,
   ]);
+  await postgres.pool.query(
+    `delete from customer_account_links where customer_account_id = $1`,
+    [fixture.accountId]
+  );
+  await postgres.pool.query(`delete from customer_accounts where id = $1`, [
+    fixture.accountId,
+  ]);
 
   const remaining = await postgres.pool.query(
     `select
@@ -129,9 +161,14 @@ const cleanupFixture = async (
   }
 };
 
+/**
+ * Wires the real account resolver over the fixture's signed-in session. An
+ * account without a link row resolves through an exact-email Dotypos lookup
+ * that finds no customer, as for an author who never linked one.
+ */
 const makeAuthorization = (
   postgres: WorkspacePostgresTestDatabase,
-  account: LinkedCustomerAccount
+  fixture: Fixture
 ) => {
   const databaseLayer = Layer.mergeAll(
     postgres.layer,
@@ -140,14 +177,28 @@ const makeAuthorization = (
   const linksLayer = CustomerAccountLinkRepository.Default.pipe(
     Layer.provide(databaseLayer)
   );
-  const ownershipLayer = CustomerAccountReservationOwnership.Default.pipe(
+  const authenticationLayer = Layer.succeed(CustomerAuthentication, {
+    currentUser: Effect.succeed({
+      accountId: customerAccountIdSchema.make(fixture.accountId),
+      email: fixture.accountEmail,
+      deletionRequested: false,
+    }),
+  });
+  const resolverLayer = CustomerAccountResolver.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
-        Layer.succeed(CustomerAccountResolver, {
-          resolve: Effect.succeed(account),
-        }),
-        linksLayer
+        authenticationLayer,
+        linksLayer,
+        Layer.mock(CustomerDotyposAdapter, {
+          classifyExactEmailCustomers: () =>
+            Effect.succeed({ kind: "not-found" }),
+        })
       )
+    )
+  );
+  const ownershipLayer = CustomerAccountReservationOwnership.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(authenticationLayer, resolverLayer, linksLayer)
     )
   );
   const reservationsLayer = WorkspaceReservationRepository.Default.pipe(
@@ -171,26 +222,27 @@ const runStatusLoad = async (options: {
   readonly postgres: WorkspacePostgresTestDatabase;
   readonly fixture: Fixture;
   readonly reservationCustomerId?: DotyposCustomerId;
+  readonly authoredByAccount?: boolean;
   readonly deletionRequestedAt?: Date;
   readonly removeAuthUser?: boolean;
+  readonly unlinked?: boolean;
   readonly expectedAuthorized: boolean;
 }) => {
   const {
     fixture,
     postgres,
     reservationCustomerId,
+    authoredByAccount,
     deletionRequestedAt,
     removeAuthUser,
+    unlinked,
     expectedAuthorized,
   } = options;
-  const account: LinkedCustomerAccount = {
-    accountId: customerAccountIdSchema.make(fixture.accountId),
-    dotyposCustomerId: fixture.customerId,
-  };
-  const authorizationInput: ReservationAuthorizationInput = {
-    locale: "en-US",
-    orderId: fixture.reservationId,
-  };
+  const authorizationInput: Omit<ReservationAuthorizationInput, "permission"> =
+    {
+      locale: "en-US",
+      orderId: fixture.reservationId,
+    };
   const fulfilledStatus: CheckoutStatusViewModel = {
     orderId: fixture.reservationId,
     returnOutcome: "success",
@@ -207,8 +259,11 @@ const runStatusLoad = async (options: {
   };
 
   await insertAuthUser(postgres, fixture);
+  if (!unlinked) await linkCustomer(postgres, fixture);
   if (reservationCustomerId !== undefined) {
-    await insertReservation(postgres, fixture, reservationCustomerId);
+    await insertReservation(postgres, fixture, reservationCustomerId, {
+      authoredByAccount,
+    });
   }
   if (deletionRequestedAt) {
     await postgres.pool.query(
@@ -222,7 +277,7 @@ const runStatusLoad = async (options: {
     ]);
   }
 
-  const authorization = await makeAuthorization(postgres, account);
+  const authorization = await makeAuthorization(postgres, fixture);
   const result = await Effect.runPromise(
     loadCheckoutStatusPage(statusService, authorization, {
       ...authorizationInput,
@@ -278,6 +333,122 @@ describe.skipIf(!testDatabase)(
           reservationCustomerId: DotyposCustomerIdSchema.make(
             `foreign-customer-${crypto.randomUUID()}`
           ),
+          expectedAuthorized: false,
+        });
+      } finally {
+        await cleanupFixture(postgres, fixture);
+      }
+    });
+
+    test("allows the author's session to another customer's reservation", async () => {
+      const fixture = makeFixture();
+      try {
+        await runStatusLoad({
+          fixture,
+          postgres,
+          reservationCustomerId: DotyposCustomerIdSchema.make(
+            `booked-for-customer-${crypto.randomUUID()}`
+          ),
+          authoredByAccount: true,
+          expectedAuthorized: true,
+        });
+      } finally {
+        await cleanupFixture(postgres, fixture);
+      }
+    });
+
+    test("allows an unlinked author's session to the reservation it booked", async () => {
+      const fixture = makeFixture();
+      try {
+        await runStatusLoad({
+          fixture,
+          postgres,
+          reservationCustomerId: DotyposCustomerIdSchema.make(
+            `booked-for-customer-${crypto.randomUUID()}`
+          ),
+          authoredByAccount: true,
+          unlinked: true,
+          expectedAuthorized: true,
+        });
+      } finally {
+        await cleanupFixture(postgres, fixture);
+      }
+    });
+
+    test("denies an unlinked account's session to a reservation it did not author", async () => {
+      const fixture = makeFixture();
+      try {
+        await runStatusLoad({
+          fixture,
+          postgres,
+          reservationCustomerId: fixture.customerId,
+          unlinked: true,
+          expectedAuthorized: false,
+        });
+      } finally {
+        await cleanupFixture(postgres, fixture);
+      }
+    });
+
+    test.each([
+      ["the author booking for another customer", false, false],
+      ["the customer's linked account", true, true],
+    ] as const)(
+      "decides the access code for %s by customer ownership",
+      async (_label, ownsCustomer, expected) => {
+        const fixture = makeFixture();
+        try {
+          await insertAuthUser(postgres, fixture);
+          await linkCustomer(postgres, fixture);
+          await insertReservation(
+            postgres,
+            fixture,
+            ownsCustomer
+              ? fixture.customerId
+              : DotyposCustomerIdSchema.make(
+                  `booked-for-customer-${crypto.randomUUID()}`
+                ),
+            { authoredByAccount: !ownsCustomer }
+          );
+          const authorization = await makeAuthorization(postgres, fixture);
+          const input = {
+            locale: "en-US",
+            orderId: fixture.reservationId,
+          } as const;
+
+          await expect(
+            Effect.runPromise(
+              authorization.isAuthorized({
+                ...input,
+                permission: "view-access-code",
+              })
+            )
+          ).resolves.toBe(expected);
+          await expect(
+            Effect.runPromise(
+              authorization.isAuthorized({
+                ...input,
+                permission: "view-status",
+              })
+            )
+          ).resolves.toBe(true);
+        } finally {
+          await cleanupFixture(postgres, fixture);
+        }
+      }
+    );
+
+    test("denies an author whose auth activity has a deletion marker", async () => {
+      const fixture = makeFixture();
+      try {
+        await runStatusLoad({
+          fixture,
+          postgres,
+          reservationCustomerId: DotyposCustomerIdSchema.make(
+            `booked-for-customer-${crypto.randomUUID()}`
+          ),
+          authoredByAccount: true,
+          deletionRequestedAt: new Date("2026-09-07T10:00:00.000Z"),
           expectedAuthorized: false,
         });
       } finally {

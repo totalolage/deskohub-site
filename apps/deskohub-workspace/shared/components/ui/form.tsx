@@ -118,6 +118,7 @@ function FormLabel({
 
 function FormControl({
   ref,
+  "aria-describedby": describedBy,
   ...props
 }: React.ComponentPropsWithoutRef<typeof Slot> & {
   ref?: React.Ref<React.ComponentRef<typeof Slot>>;
@@ -128,7 +129,10 @@ function FormControl({
     <Slot
       ref={ref}
       id={formItemId}
-      aria-describedby={error ? formMessageId : undefined}
+      aria-describedby={
+        [describedBy, error && formMessageId].filter(Boolean).join(" ") ||
+        undefined
+      }
       aria-invalid={Boolean(error)}
       aria-labelledby={formLabelId}
       {...props}

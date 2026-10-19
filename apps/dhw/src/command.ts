@@ -23,6 +23,7 @@ import {
   type AdministrationOverviewMetricType,
   type AdministrationReservationAccessGrantType,
   type AdministrationReservationAccessMutationType,
+  type AdministrationReservationAuthorType,
   type AdministrationReservationProductDetailsBackfillBatchType,
   AdministrationReservationQuery,
   type AdministrationReservationSummaryType,
@@ -236,6 +237,9 @@ const reservationsGetCommand = Command.make(
             reservation.status.label,
           ].join("\t")
         );
+        if (detail.author) {
+          yield* Console.log(formatReservationAuthor(detail.author));
+        }
         yield* Console.log(
           `${detail.paymentAttempts.length} payment attempts · ${detail.orders.length} provider orders · ${detail.discounts.length} discounts`
         );
@@ -2645,6 +2649,13 @@ const formatReservationRow = (
     reservation.customer?.displayName ?? reservation.customerId,
     reservation.status.label,
   ].join("\t");
+
+const formatReservationAuthor = (author: AdministrationReservationAuthorType) =>
+  `Booked by: ${
+    author.kind === "account"
+      ? `${author.displayName} <${author.email}>`
+      : { deleted: "deleted account", unavailable: "unavailable" }[author.kind]
+  }`;
 
 const formatReservationAccessGrant = (
   grant: AdministrationReservationAccessGrantType

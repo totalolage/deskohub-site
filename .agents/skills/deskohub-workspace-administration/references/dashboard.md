@@ -31,6 +31,10 @@ Projections exclude Workspace access codes, payment security tokens, provider re
 
 The page loader applies the default date range with `getAdministrationReservationListDateRange`: from January 1 of the current Prague year, with no upper bound. It passes the effective range back so date controls, sort links, and pagination carry it. A `customerId` list gets no default range. Keep the default in the UI loader. `AdministrationService.listReservations` and `dhw reservations list` treat an absent range as unbounded.
 
+## Reservation author
+
+`AdministrationService.loadReservation` reads `author_account_id` with the reservation and describes it through `ReservationAuthorDirectory` from `@/features/account` (see the domain skill's [reservation parties](../../deskohub-workspace-domain/references/reservation-parties.md)). The detail's `author` is null when `isCustomerOwnAuthor` holds. Otherwise it's `deleted`, `unavailable` (the directory read failed; the page still loads), or an `account` named by the author's own linked Dotypos customer through `loadCustomers`, with the login email. An author without a linked or readable customer gets the unnamed-customer name and `hasName: false`. The API contract declares `author` with a null decoding default, and `dhw reservations get` prints it as a `Booked by:` line.
+
 ## Status and lifecycle projection
 
 - `features/administration/reservation-status.ts` projects the local reservation state, payment-attempt state, and fulfillment outcome into Started, Held, Paid, Complete, or the exact cancellation substate.
