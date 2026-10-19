@@ -37,6 +37,14 @@ import { AutomationUnitFetchFailure } from "./automation-unit-handler";
 const maxUnitRequestCost = 8;
 
 /**
+ * The most booked reservations a customer can have and still share a packed
+ * unit: one profile request plus ⌈350 / 50⌉ visit pages fill the request
+ * cap. A customer above it becomes a solo unit (§5.3).
+ */
+export const soloUnitBookingThreshold =
+  (maxUnitRequestCost - 1) * dotyposIdFilterBatchSize;
+
+/**
  * A condition references a saved audience that no longer exists. It can't
  * pass again, so the condition unit ends its runs failed (evaluation
  * unavailable) instead of retrying.

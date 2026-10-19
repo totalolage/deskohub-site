@@ -1,0 +1,334 @@
+import type {
+  AudienceFilterOf,
+  AutomationConditionLeaf,
+  AutomationStepType as AutomationStep,
+} from "@deskohub/workspace-admin-api";
+import { Effect, Match, Option } from "effect";
+import {
+  type AudienceCondition,
+  type AudienceFilterOutcome,
+  mapAudienceLeaves,
+} from "../audience-filter";
+import type { AudienceEvaluationContext } from "../backend/audience-evaluation-context";
+import type { CampaignPurpose } from "../body/campaign-content";
+import { datePeriodBounds, isWithinDatePeriodBounds } from "../date-period";
+import type { AutomationStepId } from "./automation-identifiers";
+import type { AutomationPreviewOutcome } from "./automation-states";
+import {
+  evaluateStep,
+  type StepState,
+  type StepTransition,
+} from "./automation-step-evaluation";
+
+type ConditionStep = Extract<AutomationStep, { readonly _tag: "Condition" }>;
+
+/** Where one simulated run of a flow ends. */
+export type SimulatedRunEnd = {
+  /** `unavailable`: a Calendar wait with no start within the horizon. */
+  readonly outcome: Extract<
+    AutomationPreviewOutcome,
+    "would-send" | "condition-failed" | "unavailable"
+  >;
+  readonly stepId: AutomationStepId;
+  /** The send instant, or the instant the run ended. */
+  readonly at: Temporal.Instant;
+};
+
+/**
+ * Walks a flow's steps from `triggerAt` as live execution would, through
+ * the same `evaluateStep` the engine uses (design §5.8, §8): each step is
+ * entered at the simulated time `s`, a wait jumps `s` to its due time, and
+ * a Condition step asks `evaluateCondition` for its outcome at `s`. There is
+ * no pause, so no resume overshoot.
+ */
+export const simulateRun = <E, R>(input: {
+  readonly steps: readonly AutomationStep[];
+  readonly triggerAt: Temporal.Instant;
+  readonly evaluateCondition: (
+    step: ConditionStep,
+    at: Temporal.Instant
+  ) => Effect.Effect<AudienceFilterOutcome, E, R>;
+}): Effect.Effect<SimulatedRunEnd, E, R> => {
+  const enter = (
+    steps: readonly AutomationStep[],
+    at: Temporal.Instant
+  ): Effect.Effect<SimulatedRunEnd, E, R> => {
+    const [step, ...rest] = steps;
+    // A decoded flow always ends with its send step.
+    return step === undefined
+      ? Effect.die(new Error("A flow ended without a send step"))
+      : next(
+          {
+            step,
+            phase: "ready",
+            at,
+            stepEnteredAt: at,
+            dueAt: Option.none(),
+            resumedAt: Option.none(),
+            condition: Option.none(),
+          },
+          rest
+        );
+  };
+
+  const next = (
+    state: StepState,
+    rest: readonly AutomationStep[]
+  ): Effect.Effect<SimulatedRunEnd, E, R> =>
+    Match.value<StepTransition>(evaluateStep(state)).pipe(
+      Match.tagsExhaustive({
+        EvaluateCondition: () =>
+          state.step._tag === "Condition"
+            ? input
+                .evaluateCondition(state.step, state.at)
+                .pipe(
+                  Effect.flatMap((outcome) =>
+                    next({ ...state, condition: Option.some(outcome) }, rest)
+                  )
+                )
+            : Effect.die(new Error("Only a condition step evaluates one")),
+        Advance: ({ at }) => enter(rest, at),
+        Wait: ({ dueAt }) =>
+          next(
+            {
+              ...state,
+              phase: "waiting",
+              at: dueAt,
+              dueAt: Option.some(dueAt),
+            },
+            rest
+          ),
+        End: (end) =>
+          Effect.succeed<SimulatedRunEnd>({
+            outcome:
+              end.outcome === "condition-failed"
+                ? "condition-failed"
+                : "unavailable",
+            stepId: state.step.id,
+            at: state.at,
+          }),
+        Send: () =>
+          Effect.succeed<SimulatedRunEnd>({
+            outcome: "would-send",
+            stepId: state.step.id,
+            at: state.at,
+          }),
+      })
+    );
+
+  return enter(input.steps, input.triggerAt);
+};
+
+/** What replaying one event did for its customer. */
+export type ReplayedEvent =
+  /** Superseded: Dotypos moved the visit later, so a later event stands for it. */
+  | { readonly _tag: "Hidden" }
+  /** The re-check or the pre-submit check withdrew it. */
+  | {
+      readonly _tag: "Withdrawn";
+      readonly stepId: Option.Option<AutomationStepId>;
+      /** When a run it started ended; none when it started no run. */
+      readonly at: Option.Option<Temporal.Instant>;
+    }
+  | { readonly _tag: "NotInAudience" }
+  | { readonly _tag: "Entered"; readonly end: SimulatedRunEnd };
+
+/** A dry-run row before it is stored: a computed outcome only (D35). */
+export type DryRunOutcome = {
+  readonly triggerAt: Temporal.Instant;
+  readonly outcome: AutomationPreviewOutcome;
+  readonly stepId: AutomationStepId | null;
+  readonly sendAt: Temporal.Instant | null;
+  /** Evaluated past `now`, from facts as they are now. */
+  readonly projected: boolean;
+};
+
+/**
+ * Replays one customer's events in time order with per-customer overlays
+ * only (design §8.2): an event during the customer's open simulated run is
+ * `already-active` (D4), and each simulated send counts toward "this
+ * campaign" from its send instant for the later events. `replay` decides
+ * one event given the sends simulated before it.
+ */
+export const replayCustomerEvents = <Event, E, R>(input: {
+  /** In `occurredAt` order. */
+  readonly events: readonly Event[];
+  readonly occurredAt: (event: Event) => Temporal.Instant;
+  readonly now: Temporal.Instant;
+  readonly replay: (
+    event: Event,
+    simulatedSends: readonly Temporal.Instant[]
+  ) => Effect.Effect<ReplayedEvent, E, R>;
+}): Effect.Effect<readonly ReplayedRow<Event>[], E, R> => {
+  const projected = (at: Temporal.Instant) =>
+    Temporal.Instant.compare(at, input.now) > 0;
+
+  const next = (
+    events: readonly Event[],
+    replayed: CustomerReplay<Event>
+  ): Effect.Effect<readonly ReplayedRow<Event>[], E, R> => {
+    const [event, ...rest] = events;
+    if (event === undefined) return Effect.succeed(replayed.rows);
+    const triggerAt = input.occurredAt(event);
+    const row = (outcome: Omit<DryRunOutcome, "triggerAt">) => [
+      ...replayed.rows,
+      { event, outcome: { triggerAt, ...outcome } },
+    ];
+    const alreadyActive = Option.exists(
+      replayed.openUntil,
+      (until) => Temporal.Instant.compare(triggerAt, until) < 0
+    );
+    const decided: Effect.Effect<CustomerReplay<Event>, E, R> = alreadyActive
+      ? Effect.succeed({
+          ...replayed,
+          rows: row({
+            outcome: "already-active",
+            stepId: null,
+            sendAt: null,
+            projected: false,
+          }),
+        })
+      : input.replay(event, replayed.sends).pipe(
+          Effect.map(
+            (outcome): CustomerReplay<Event> =>
+              Match.value(outcome).pipe(
+                Match.tagsExhaustive({
+                  Hidden: () => replayed,
+                  NotInAudience: () => ({
+                    ...replayed,
+                    rows: row({
+                      outcome: "not-in-audience",
+                      stepId: null,
+                      sendAt: null,
+                      projected: false,
+                    }),
+                  }),
+                  Withdrawn: ({ stepId, at }) => ({
+                    ...replayed,
+                    rows: row({
+                      outcome: "withdrawn",
+                      stepId: Option.getOrNull(stepId),
+                      sendAt: null,
+                      projected: Option.exists(at, projected),
+                    }),
+                    openUntil: Option.orElse(at, () => replayed.openUntil),
+                  }),
+                  Entered: ({ end }) => ({
+                    rows: row({
+                      outcome: end.outcome,
+                      stepId: end.stepId,
+                      sendAt: end.outcome === "would-send" ? end.at : null,
+                      projected: projected(end.at),
+                    }),
+                    sends:
+                      end.outcome === "would-send"
+                        ? [...replayed.sends, end.at]
+                        : replayed.sends,
+                    openUntil: Option.some(end.at),
+                  }),
+                })
+              )
+          )
+        );
+    return Effect.flatMap(decided, (state) => next(rest, state));
+  };
+
+  return next(input.events, {
+    rows: [],
+    sends: [],
+    openUntil: Option.none(),
+  });
+};
+
+/** One replayed event with its computed outcome. */
+export type ReplayedRow<Event> = {
+  readonly event: Event;
+  readonly outcome: DryRunOutcome;
+};
+
+/** One customer's replay so far: rows, simulated sends and the open run. */
+type CustomerReplay<Event> = {
+  readonly rows: readonly ReplayedRow<Event>[];
+  readonly sends: readonly Temporal.Instant[];
+  /** When the customer's latest simulated run ends (D4). */
+  readonly openUntil: Option.Option<Temporal.Instant>;
+};
+
+type CampaignEmailCount = Extract<
+  AudienceCondition,
+  { readonly attribute: "campaignEmailCount" }
+>;
+
+const isCampaignEmailCount = (
+  leaf: AutomationConditionLeaf
+): leaf is CampaignEmailCount =>
+  leaf._tag === "Condition" && leaf.attribute === "campaignEmailCount";
+
+/**
+ * A filter as the replay evaluates it in `context` (design §8.2). "Campaign
+ * emails received" counts only emails dispatched by the evaluation time, so
+ * "any time" stops there, and each send simulated before it counts toward
+ * the conditions that would count this campaign's email: shifting the
+ * compared value by the simulated sends in the period gives the same outcome
+ * as adding them to the stored count, for every count operator.
+ */
+export const replayedFilter = <Leaf extends AutomationConditionLeaf>(
+  filter: AudienceFilterOf<Leaf>,
+  input: {
+    readonly context: AudienceEvaluationContext;
+    readonly purpose: CampaignPurpose;
+    readonly simulatedSends: readonly Temporal.Instant[];
+  }
+): AudienceFilterOf<Leaf> =>
+  mapAudienceLeaves(filter, (leaf) =>
+    isCampaignEmailCount(leaf) ? replayedEmailCount(leaf, input) : leaf
+  );
+
+const replayedEmailCount = <Condition extends CampaignEmailCount>(
+  condition: Condition,
+  input: {
+    readonly context: AudienceEvaluationContext;
+    readonly purpose: CampaignPurpose;
+    readonly simulatedSends: readonly Temporal.Instant[];
+  }
+): Condition => {
+  const period =
+    condition.params.period._tag === "AnyTime"
+      ? ({ _tag: "Past" } as const)
+      : condition.params.period;
+  const bounds = datePeriodBounds(period, input.context);
+  const simulated = countsSimulatedSends(condition.params, input)
+    ? input.simulatedSends.filter((at) => isWithinDatePeriodBounds(bounds, at))
+        .length
+    : 0;
+  return {
+    ...condition,
+    params: { ...condition.params, period },
+    value: condition.value - simulated,
+  };
+};
+
+/**
+ * Whether the condition counts the evaluating campaign's emails: any
+ * campaign of its purpose, or this campaign itself. A simulated send is
+ * the evaluating campaign's email.
+ */
+const countsSimulatedSends = (
+  params: CampaignEmailCount["params"],
+  {
+    context,
+    purpose,
+  }: {
+    readonly context: AudienceEvaluationContext;
+    readonly purpose: CampaignPurpose;
+  }
+) =>
+  params.campaign === undefined
+    ? params.purpose === "any" || params.purpose === purpose
+    : Match.value(params.campaign).pipe(
+        Match.tagsExhaustive({
+          This: () => true,
+          Specific: ({ campaignId }) =>
+            Option.contains(context.campaignId, campaignId),
+        })
+      );

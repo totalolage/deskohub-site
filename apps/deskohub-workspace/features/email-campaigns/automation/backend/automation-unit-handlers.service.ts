@@ -6,6 +6,7 @@ import { CampaignRecipientService } from "../../backend/campaign-recipient.servi
 import type { AutomationWorkUnitKind } from "../automation-work-units";
 import { AutomationConditionEvaluation } from "./automation-condition-evaluation.service";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
+import { makePreviewUnitHandler } from "./automation-preview-unit";
 import type { RegisteredAutomationUnitHandler } from "./automation-unit-handler";
 import { makeConditionHandler } from "./condition";
 import { makeDeliverHandler } from "./deliver";
@@ -48,6 +49,7 @@ export class AutomationUnitHandlers extends Context.Service<
   static Live = this.layer(
     Effect.all([
       makeSweepPageHandler,
+      makePreviewUnitHandler,
       makeIntakeHandler,
       makeFireChunkHandler,
       makeConditionHandler,

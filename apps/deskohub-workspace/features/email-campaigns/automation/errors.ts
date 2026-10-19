@@ -4,6 +4,7 @@ import type { CampaignId } from "../campaign-identifiers";
 import type { AutomatedCampaignStatus } from "../campaign-states";
 import type {
   AutomationPreviewId,
+  AutomationRunId,
   AutomationStepId,
 } from "./automation-identifiers";
 
@@ -60,6 +61,16 @@ export class AutomationPreviewRequired extends Data.TaggedError(
   static readonly code = "automation-preview-required";
 }
 
+/** No dry run has this id, or housekeeping removed it a day after it started. */
+export class AutomationPreviewNotFound extends Data.TaggedError(
+  "AutomationPreviewNotFound"
+)<{
+  readonly previewId: AutomationPreviewId;
+}> {
+  /** Stable across transports, so clients can tell this rejection apart. */
+  static readonly code = "automation-preview-not-found";
+}
+
 /**
  * The working copy or the campaign audience changed after the dry run, so
  * the dry run no longer describes what activation would publish.
@@ -104,3 +115,26 @@ export class AutomationVersionNotFound extends Data.TaggedError(
   readonly campaignId: CampaignId;
   readonly versionNumber: number;
 }> {}
+
+/** No automation run has this id. */
+export class AutomationRunNotFound extends Data.TaggedError(
+  "AutomationRunNotFound"
+)<{
+  readonly runId: AutomationRunId;
+}> {
+  /** Stable across transports, so clients can tell this rejection apart. */
+  static readonly code = "automation-run-not-found";
+}
+
+/**
+ * A page cursor this server didn't issue, or one an older build issued in
+ * another format. Start again from the first page.
+ */
+export class AutomationPageCursorInvalid extends Data.TaggedError(
+  "AutomationPageCursorInvalid"
+)<{
+  readonly cause: Schema.SchemaError;
+}> {
+  /** Stable across transports, so clients can tell this rejection apart. */
+  static readonly code = "automation-page-cursor-invalid";
+}

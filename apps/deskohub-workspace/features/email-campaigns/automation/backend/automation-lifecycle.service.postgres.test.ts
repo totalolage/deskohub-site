@@ -2,28 +2,19 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { testEmailAddress } from "@deskohub/test-email";
-import {
-  type AutomationFlowType,
-  AutomationFlow as automationFlowContractSchema,
-} from "@deskohub/workspace-admin-api";
-import { Effect, Option, Schema } from "effect";
-import { TestClock } from "effect/testing";
-import { emailCampaignAudiences } from "@/db/schema";
-import { authUser } from "@/db/schema/auth";
-import type { CustomerAccountId } from "@/features/account/customer-account";
-import type { AudienceFilter } from "@/features/email-campaigns/audience-filter";
+import type { AutomationFlowType } from "@deskohub/workspace-admin-api";
 import {
   campaignContentFixture,
-  deleteAutomatedCampaigns,
-  everyoneFilter,
-  seedAutomatedCampaign,
   seedAutomatedSend,
 } from "@/features/email-campaigns/backend/email-campaigns.test-utils";
 import type {
   CampaignAudienceId,
   CampaignId,
 } from "@/features/email-campaigns/campaign-identifiers";
+import {
+  holdPostgresTransaction,
+  waitForPostgresLockWaiter,
+} from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type {
   AutomationPreviewId,
@@ -761,6 +752,9 @@ describe.skipIf(!testDatabase)(
 
       test("archive ends active runs and every unit but a persisted batch", async () => {
         const { campaignId, units, runs } = await seedBusy();
+        const runningPreview = await seedPreview(campaignId, {
+          status: "running",
+        });
         const archivedAt = now.add({ minutes: 10 });
 
         const detail = await run(
@@ -794,6 +788,14 @@ describe.skipIf(!testDatabase)(
           outcome: "archived",
           last_kind: "archived",
         });
+        // An archived automation can't activate, so its dry run ends.
+        const { rows: previews } = await pool.query(
+          "select status, error_code from email_campaign_automation_previews where id = $1",
+          [runningPreview]
+        );
+        expect(previews).toEqual([
+          { status: "failed", error_code: "automation-archived" },
+        ]);
         // A queued batch's recipients are the only emails that still go out.
         expect(states[runs.sending]).toMatchObject({
           status: "sending",
@@ -854,6 +856,32 @@ describe.skipIf(!testDatabase)(
           (await failure(lifecycle((l) => l.pause(campaignId))))._tag
         ).toBe("CampaignDeliveryMismatch");
       });
+    });
+
+    test("updateFlow share-locks the saved audiences it names", async () => {
+      const { campaignId } = await seedDraft();
+      const referenced = await insertAudience();
+      // An audience deletion that got there first holds the row.
+      const deletion = await holdPostgresTransaction(
+        pool,
+        "delete from email_campaign_audiences where id = $1",
+        [referenced]
+      );
+
+      const update = failure(
+        lifecycle((l) =>
+          l.updateFlow({ campaignId, flow: inAudienceFlow(referenced) })
+        )
+      );
+      await waitForPostgresLockWaiter(pool, {
+        condition: "$1 = any(pg_blocking_pids(pid))",
+        values: [deletion.pid],
+        description: "the flow write to wait on the audience deletion",
+      });
+      await deletion.commit();
+
+      expect((await update)._tag).toBe("AutomationFlowInvalid");
+      expect((await run(lifecycle((l) => l.get(campaignId)))).flow).toBeNull();
     });
 
     test("updateFlow stores the canonical flow and rejects invalid ones", async () => {
