@@ -44,22 +44,24 @@ export function PasskeySignInOption({
     return () => autofill.abort();
   }, [locale, returnTo, pending]);
 
-  // Aborted when the option unmounts, which cancels a pending button attempt.
-  const mounted = useRef<AbortSignal>(undefined);
+  // A button attempt continues to the destination it started for. Another
+  // destination, or unmounting the option, cancels it.
+  const destination = useRef<{
+    readonly locale: Locale;
+    readonly returnTo?: string;
+    readonly signal: AbortSignal;
+  }>(undefined);
   useEffect(() => {
     const lifetime = new AbortController();
-    mounted.current = lifetime.signal;
+    destination.current = { locale, returnTo, signal: lifetime.signal };
     return () => lifetime.abort();
-  }, []);
+  }, [locale, returnTo]);
 
   const signIn = async () => {
+    if (destination.current === undefined) return;
     setFailed(false);
     setPending(true);
-    const result = await signInWithPasskey({
-      locale,
-      returnTo,
-      signal: mounted.current,
-    });
+    const result = await signInWithPasskey(destination.current);
     if (result === "signed-in") return;
     setPending(false);
     setFailed(result === "failed");

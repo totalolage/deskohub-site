@@ -1338,6 +1338,108 @@ describe("account components", () => {
     expect(navigations).toEqual(["/en-US/admin/invoices?page=4"]);
   });
 
+  test("sign-in card opened for another destination cancels a passkey button attempt waiting for its options", async () => {
+    holdsOptions = true;
+    ignoresAbort = true;
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = await renderSettled(
+      <SignInCard
+        locale={locale}
+        passkeysEnabled
+        returnTo="/en-US/admin/invoices?page=3"
+      />
+    );
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountSignInPasskey({}, { locale }),
+        })
+      );
+    });
+    expect(passkeyRequestNames()).toEqual(["options"]);
+
+    await act(async () => {
+      view.rerender(
+        <SignInCard
+          locale={locale}
+          passkeysEnabled
+          returnTo="/en-US/admin/invoices?page=4"
+        />
+      );
+    });
+    expect(passkeyRequest("options").signal.aborted).toBe(true);
+    // The superseded options still arrive.
+    await act(async () => {
+      passkeyRequest("options").resolve(passkeyOptions);
+    });
+
+    expect(passkeyRequestNames()).toEqual(["options"]);
+    expect(navigations).toEqual([]);
+    expect(
+      view.getByRole("button", {
+        name: m.accountSignInPasskey({}, { locale }),
+      })
+    ).toBeDefined();
+  });
+
+  test("sign-in card opened for another destination cancels a passkey button ceremony and continues to the new one", async () => {
+    ignoresAbort = true;
+    getPasskeyAssertion.mockImplementationOnce((_options, { signal }) =>
+      startPasskeyRequest("modal", signal)
+    );
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = await renderSettled(
+      <SignInCard
+        locale={locale}
+        passkeysEnabled
+        returnTo="/en-US/admin/invoices?page=3"
+      />
+    );
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountSignInPasskey({}, { locale }),
+        })
+      );
+    });
+    expect(passkeyRequestNames()).toEqual(["options", "modal"]);
+
+    await act(async () => {
+      view.rerender(
+        <SignInCard
+          locale={locale}
+          passkeysEnabled
+          returnTo="/en-US/admin/invoices?page=4"
+        />
+      );
+    });
+    expect(passkeyRequest("modal").signal.aborted).toBe(true);
+    // The superseded ceremony still picks a passkey.
+    await act(async () => {
+      passkeyRequest("modal").resolve({ id: "credential" });
+    });
+    expect(passkeyRequestNames()).toEqual(["options", "modal"]);
+    expect(navigations).toEqual([]);
+
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountSignInPasskey({}, { locale }),
+        })
+      );
+    });
+    expect(passkeyRequestNames()).toEqual([
+      "options",
+      "modal",
+      "options",
+      "modal",
+      "verify",
+    ]);
+    expect(navigations).toEqual(["/en-US/admin/invoices?page=4"]);
+  });
+
   test("sign-in card closed during a passkey ceremony cancels it", async () => {
     getPasskeyAssertion.mockImplementationOnce((_options, { signal }) =>
       startPasskeyRequest("modal", signal)
