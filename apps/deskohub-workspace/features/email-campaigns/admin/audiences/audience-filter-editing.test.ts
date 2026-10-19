@@ -139,6 +139,33 @@ describe("switchDatePeriod", () => {
       to: today,
     });
   });
+
+  test("switches stored periods the builder doesn't offer yet", () => {
+    const triggerWindow: DatePeriod = {
+      _tag: "TriggerWindow",
+      side: "after",
+      count: 2,
+      unit: "week",
+    };
+    expect(switchDatePeriod({ _tag: "Past" }, "Since", today)).toEqual({
+      _tag: "Since",
+      date: today,
+    });
+    expect(switchDatePeriod(triggerWindow, "Until", today)).toEqual({
+      _tag: "Until",
+      date: today,
+    });
+    expect(switchDatePeriod(range, "Past", today)).toEqual({ _tag: "Past" });
+    expect(switchDatePeriod(range, "TriggerWindow", today)).toEqual({
+      _tag: "TriggerWindow",
+      side: "before",
+      count: 1,
+      unit: "month",
+    });
+    expect(switchDatePeriod(triggerWindow, "TriggerWindow", today)).toBe(
+      triggerWindow
+    );
+  });
 });
 
 describe("the attribute catalogue in the builder", () => {
