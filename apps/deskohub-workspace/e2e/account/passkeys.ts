@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { type Locale, m } from "@/features/i18n";
 import { escapeRegExp } from "@/shared/utils/escape-regexp";
 import {
+  describeBrowserFailure,
   type WorkspaceE2EAccountPasskeyDiagnosticCode,
   type WorkspaceE2EError,
   workspaceE2EError,
@@ -131,12 +132,22 @@ export const makeWorkspaceE2EAccountPasskeys = ({
               operation: description,
             })
           : workspaceE2EError(
-              cause instanceof PasskeyJourneyFailure
-                ? `${description} failed: ${cause.message}`
-                : `${description} failed`,
+              `${description} failed: ${
+                cause instanceof PasskeyJourneyFailure
+                  ? cause.message
+                  : describeBrowserFailure(cause)
+              }`,
               { diagnosticCode, operation: description }
             ),
-      try: () => body(getPage()),
+      try: () => {
+        let page: Page;
+        try {
+          page = getPage();
+        } catch {
+          throw new PasskeyJourneyFailure("the lane has no single page");
+        }
+        return body(page);
+      },
     });
 
   const clickHydrated = async (

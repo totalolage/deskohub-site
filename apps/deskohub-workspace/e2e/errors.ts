@@ -376,6 +376,29 @@ const formatUnknownFailure = (cause: unknown, seen: Set<unknown>): string => {
 const getCauseMessage = (cause: unknown) =>
   cause instanceof Error ? cause.message : String(cause);
 
+const browserFailureKinds = [
+  [
+    /has been closed|Target closed|Session closed/,
+    "the page or browser closed",
+  ],
+  [/Execution context was destroyed/, "the page navigated during the call"],
+  [/Target crashed/, "the page crashed"],
+] as const;
+
+/**
+ * Fixed text naming the kind of a browser failure. Playwright messages can
+ * carry the preview URL, so a boundary that reports only fixed text still
+ * says which browser failure it met.
+ */
+export const describeBrowserFailure = (cause: unknown) => {
+  const message = getCauseMessage(cause);
+  const kind = browserFailureKinds.find(([pattern]) => pattern.test(message));
+  if (kind) return kind[1];
+  return cause instanceof Error
+    ? `an unrecognized ${cause.name}`
+    : "an unrecognized failure";
+};
+
 const indent = (value: string) =>
   value
     .split("\n")
