@@ -31,8 +31,8 @@ export class CampaignReadOnly extends Data.TaggedError("CampaignReadOnly")<{
 }> {}
 
 /**
- * A one-off operation (test send, send, retry, duplicate) was asked of an
- * automated campaign.
+ * A one-off operation (edit, delete, test send, confirmation, send, retry,
+ * duplicate) was asked of an automated campaign.
  */
 export class CampaignDeliveryMismatch extends Data.TaggedError(
   "CampaignDeliveryMismatch"
