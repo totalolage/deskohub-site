@@ -25,7 +25,6 @@ import {
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Fiber, Layer, Result } from "effect";
 import { TestClock } from "effect/testing";
-import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import {
   customerAccounts,
   customerEvents,
@@ -271,7 +270,7 @@ export const makeEngineDotypos = () => {
 export type EngineDotypos = ReturnType<typeof makeEngineDotypos>;
 
 /** A Dotypos profile reachable at a test-domain address. */
-export const engineProfile = (
+const engineProfile = (
   id: DotyposCustomerId,
   overrides: Partial<DotyposCustomer> = {}
 ) =>
@@ -854,7 +853,7 @@ export const databaseInstant = (value: Date | string | null | undefined) =>
       );
 
 /** The queue's redelivery delay after a failed delivery (`retryAfterSeconds`). */
-export const automationQueueRetryAfter = { seconds: 60 } as const;
+const automationQueueRetryAfter = { seconds: 60 } as const;
 
 /** What one queue delivery did. */
 export type AutomationScenarioDelivery = {
@@ -1335,7 +1334,3 @@ export const makeAutomationEngineScenario = async (input: {
     cleanup,
   };
 };
-
-export type AutomationEngineScenario = Awaited<
-  ReturnType<typeof makeAutomationEngineScenario>
->;
