@@ -126,16 +126,17 @@ export class AutomationUnitProcessor extends Context.Service<
         settlement:
           | { readonly status: "failed"; readonly code: string }
           | { readonly status: "dropped" }
+          /** A failed lifecycle recheck drops the unit whether or not it is marked. */
+          | { readonly status: "dropped"; readonly code: string }
       ): Effect.Effect<AutomationUnitOutcome, AutomationUnitRedelivery> =>
         slots
           .handOff((tx, at) =>
-            settleClaimed(
-              tx,
-              unit,
-              settlement.status,
-              at,
-              "code" in settlement ? settlement.code : undefined
-            )
+            "code" in settlement
+              ? settleClaimed(tx, unit, settlement.status, at, {
+                  lastErrorCode: settlement.code,
+                  ignoreMark: true,
+                })
+              : settleClaimed(tx, unit, settlement.status, at)
           )
           .pipe(
             Effect.as<AutomationUnitOutcome>(settlement.status),
@@ -245,6 +246,8 @@ export class AutomationUnitProcessor extends Context.Service<
                 settle(unit, { status: "dropped" }),
               AutomationUnitDefect: (defect) =>
                 settle(unit, { status: "failed", code: defect.code }),
+              AutomationUnitRecheckFailed: (recheck) =>
+                settle(unit, { status: "dropped", code: recheck.code }),
             }),
             Effect.catchIf(isDatabaseQueryError, (cause) =>
               requeue(unit, { code: "database", deadlineMissed: false, cause })
@@ -389,7 +392,10 @@ const settleClaimed = (
   unit: ClaimedUnit,
   status: "done" | "dropped" | "failed",
   at: Temporal.Instant,
-  lastErrorCode?: string
+  {
+    lastErrorCode,
+    ignoreMark = false,
+  }: { readonly lastErrorCode?: string; readonly ignoreMark?: boolean } = {}
 ) =>
   releaseAutomationUnitSubjects(tx, [unit]).pipe(
     Effect.andThen(
@@ -407,7 +413,7 @@ const settleClaimed = (
           and(
             eq(units.id, unit.id),
             eq(units.claimId, unit.claimId),
-            settlementMarkCondition[status]
+            ignoreMark ? undefined : settlementMarkCondition[status]
           )
         )
         .returning({ id: units.id })

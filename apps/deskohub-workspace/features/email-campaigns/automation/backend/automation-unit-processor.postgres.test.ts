@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq, inArray } from "drizzle-orm";
-import { Cause, Effect, Exit, Fiber, type Layer } from "effect";
+import { Cause, Effect, Exit, Fiber, type Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import {
   emailCampaigns,
@@ -27,6 +27,8 @@ import { AutomationPlanner } from "./automation-planner.service";
 import {
   AutomationUnitDefect,
   AutomationUnitFetchFailure,
+  AutomationUnitRecheckFailed,
+  registerAutomationUnitHandler,
 } from "./automation-unit-handler";
 import {
   type AutomationUnitOutcome,
@@ -326,6 +328,32 @@ describe.skipIf(!database)("automation unit processor", () => {
     expect(await run(processUnit(unit.id), layer)).toBe("dropped");
     expect(fetches).toBe(0);
     expect((await readUnit(unit.id)).status).toBe("dropped");
+  });
+
+  test("a failed lifecycle recheck drops an unmarked unit", async () => {
+    const queue = makeAutomationUnitQueueFake();
+    const layer = automationEngineTestLayer({
+      database: postgres,
+      queue,
+      handlers: [
+        registerAutomationUnitHandler({
+          kind: "condition",
+          subject: Schema.Struct({ label: Schema.String }),
+          fetch: () => Effect.void,
+          commit: () =>
+            Effect.fail(
+              new AutomationUnitRecheckFailed({ code: "automation-paused" })
+            ),
+        }),
+      ],
+    });
+    const unit = await seed({ kind: "condition", status: "enqueued" });
+
+    expect(await run(processUnit(unit.id), layer)).toBe("dropped");
+    expect(await readUnit(unit.id)).toMatchObject({
+      status: "dropped",
+      lastErrorCode: "automation-paused",
+    });
   });
 
   test("a defect settles the unit failed and hands off its slot", async () => {

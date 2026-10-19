@@ -87,6 +87,19 @@ const dotyposFailureCode = (
 };
 
 /**
+ * A commit whose lifecycle recheck failed (§5.4): the automation is no
+ * longer active, or the fire no longer entering. The processor rolls the
+ * commit back and settles the unit `dropped`, freeing its subjects where
+ * they stand for the planner to replan after resume (§5.2).
+ */
+export class AutomationUnitRecheckFailed extends Data.TaggedError(
+  "AutomationUnitRecheckFailed"
+)<{
+  /** Stored as `last_error_code`, such as `automation-paused`. */
+  readonly code: string;
+}> {}
+
+/**
  * After this many deadline misses a solo unit's subjects count as
  * unavailable (§5.3); its handler's `expire` settles them.
  */
@@ -146,7 +159,7 @@ export interface AutomationUnitHandler<Subject, Fetched> {
     at: Temporal.Instant
   ) => Effect.Effect<
     ReadonlyArray<PlannedAutomationUnit>,
-    AutomationUnitDefect | DatabaseQueryError
+    AutomationUnitDefect | AutomationUnitRecheckFailed | DatabaseQueryError
   >;
 }
 
@@ -156,7 +169,7 @@ export type AutomationUnitCommit = (
   at: Temporal.Instant
 ) => Effect.Effect<
   ReadonlyArray<PlannedAutomationUnit>,
-  AutomationUnitDefect | DatabaseQueryError
+  AutomationUnitDefect | AutomationUnitRecheckFailed | DatabaseQueryError
 >;
 
 /** A handler with its subject and fetched types closed over, so a registry can hold every kind. */
