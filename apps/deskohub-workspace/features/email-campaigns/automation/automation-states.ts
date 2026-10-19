@@ -17,11 +17,11 @@ export type AutomationTriggerKind = typeof automationTriggerKindSchema.Type;
  * its due time. A `sending` run is a recipient of a persisted batch. An
  * `ended` run has an outcome.
  */
-export const automationRunStatuses = ["active", "sending", "ended"] as const;
+const automationRunStatuses = ["active", "sending", "ended"] as const;
 const automationRunStatusSchema = Schema.Literals(automationRunStatuses);
 export type AutomationRunStatus = typeof automationRunStatusSchema.Type;
 
-export const automationRunPhases = ["ready", "waiting"] as const;
+const automationRunPhases = ["ready", "waiting"] as const;
 const automationRunPhaseSchema = Schema.Literals(automationRunPhases);
 export type AutomationRunPhase = typeof automationRunPhaseSchema.Type;
 
@@ -42,7 +42,7 @@ const automationRunOutcomeSchema = Schema.Literals(automationRunOutcomes);
 export type AutomationRunOutcome = typeof automationRunOutcomeSchema.Type;
 
 /** Why a run ended `failed`; `skipped` reuses the recipient skip reasons. */
-export const automationRunFailureReasons = [
+const automationRunFailureReasons = [
   "delivery-refused",
   "evaluation-unavailable",
 ] as const;
