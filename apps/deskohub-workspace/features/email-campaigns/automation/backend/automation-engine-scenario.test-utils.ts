@@ -1017,8 +1017,12 @@ export const makeAutomationEngineScenario = async (input: {
           Effect.provide(Layer.merge(layer, TestClock.layer()))
         )
       );
+      const done = Effect.runPromise(Effect.result(Fiber.join(fiber)));
+      // An interrupted consumer rejects `done`; callers that cut it off
+      // needn't await it.
+      done.catch(() => {});
       return {
-        done: Effect.runPromise(Effect.result(Fiber.join(fiber))),
+        done,
         interrupt: () => Effect.runPromise(Fiber.interrupt(fiber)),
       };
     };
