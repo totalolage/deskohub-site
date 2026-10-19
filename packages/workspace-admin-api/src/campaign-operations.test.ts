@@ -12,7 +12,10 @@ import {
   query,
 } from "./campaign-operations";
 import { MinimumDhwVersion } from "./dhw-version";
+import { AdminCliAutomationsApi } from "./email-automations";
 import { AdminCliCampaignsApi } from "./email-campaigns";
+
+const operationGroups = [AdminCliCampaignsApi, AdminCliAutomationsApi];
 
 describe("campaign operations", () => {
   // test.each clones its cases, so the cases are names. The endpoint holds
@@ -40,12 +43,16 @@ describe("campaign operations", () => {
     "%s requires the same dhw version as its endpoint",
     (name) => {
       const endpoint = campaignOperationEndpoints[name];
+      const group = operationGroups.find((candidate) =>
+        Object.hasOwn(candidate.endpoints, name)
+      );
 
+      expect(group).toBeDefined();
       expect(
         Option.getOrUndefined(
           Context.get(
             Context.merge(
-              AdminCliCampaignsApi.annotations,
+              group?.annotations ?? Context.empty(),
               endpoint.annotations
             ),
             MinimumDhwVersion
@@ -65,7 +72,7 @@ describe("campaign operations", () => {
     );
 
     // @ts-expect-error listThings has no endpoint
-    const endpoints = operationEndpoints(operations, group);
+    const endpoints = operationEndpoints(operations, [group]);
 
     expect(endpoints.listThings).toBeUndefined();
   });
@@ -85,6 +92,15 @@ describe("campaign operations", () => {
       },
     ],
     ["sendCampaign", { campaignId: "campaign-1", confirmationCode: "code" }],
+    [
+      "activateAutomation",
+      { campaignId: "campaign-1", previewId: "preview-1" },
+    ],
+    ["getAutomationEngineHealth", {}],
+    [
+      "listAutomationRuns",
+      { campaignId: "campaign-1", state: "active", limit: 100 },
+    ],
   ] as const)("%s rejects an unknown key", (name, input) => {
     const decode = Schema.decodeUnknownResult(
       campaignOperations[name].input as Schema.Decoder<unknown>

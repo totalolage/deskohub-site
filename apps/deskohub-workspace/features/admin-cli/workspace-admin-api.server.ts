@@ -83,6 +83,7 @@ import {
   minimumDhwVersions,
 } from "./cli-client-version";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
+import { AdminCliAutomationsApiHandlers } from "./email-automations-api.server";
 import { AdminCliCampaignsApiHandlers } from "./email-campaigns-api.server";
 
 export const AdminCliApiHandlers = HttpApiBuilder.group(
@@ -930,6 +931,7 @@ const WorkspaceAdminApiLive = Layer.mergeAll(
     Layer.provide(AdminCliApiHandlers),
     Layer.provide(AdminCliAdministrationApiHandlers),
     Layer.provide(AdminCliCampaignsApiHandlers),
+    Layer.provide(AdminCliAutomationsApiHandlers),
     Layer.provide(AdminCliAdministratorsApiHandlers),
     Layer.provide(CliBearerAuthenticationLive),
     Layer.provide(CliClientCompatibilityLive),

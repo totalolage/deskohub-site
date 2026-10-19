@@ -426,7 +426,7 @@ export type AdministrationCampaignSendStatusResult =
  * applied under the same request ID (409), and an unavailable dependency
  * (503).
  */
-const campaignErrors = [
+export const campaignErrors = [
   CliInputInvalid.schema,
   CliMutationInProgress.schema,
   CliMutationRejected.schema,

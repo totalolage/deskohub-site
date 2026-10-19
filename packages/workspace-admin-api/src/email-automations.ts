@@ -1,4 +1,5 @@
-import { Schema } from "effect";
+import { Option, Schema, Struct } from "effect";
+import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import { ReservationProductFilter } from "./audience-attribute-kinds";
 import {
   type AudienceCondition,
@@ -16,15 +17,21 @@ import {
   AdministrationCampaignLocale,
   AdministrationCampaignPurpose,
 } from "./campaign-locale-and-purpose";
+import { DhwVersion, MinimumDhwVersion } from "./dhw-version";
 import {
   AdministrationCampaignContent,
   AdministrationCampaignEmailPreview,
   AdministrationCampaignRecipientSkipReason,
   AdministrationCampaignSendId,
   AdministrationCampaignTemplateKey,
+  campaignErrors,
 } from "./email-campaigns";
 import { fieldWithDefault, listField, nullableField } from "./response-fields";
-import { AdministrationDotyposCustomerId } from "./workspace-admin-api";
+import {
+  AdministrationDotyposCustomerId,
+  CliBearerAuthentication,
+  CliClientCompatibility,
+} from "./workspace-admin-api";
 
 /** Stable id of a flow step. A run's position is a step id, not an index. */
 export const AutomationStepId = Schema.String.check(
@@ -743,3 +750,185 @@ export const AutomationEngineHealth = Schema.Struct({
   ),
 });
 export type AutomationEngineHealth = typeof AutomationEngineHealth.Type;
+
+/**
+ * The first `dhw` release with the `automations` and `calendar` commands.
+ * Older binaries can't decode a flow, so every automation operation, reads
+ * included, requires it.
+ */
+export const automationsMinimumDhwVersion = DhwVersion.make("1.21.0");
+
+/** An input without its path parameters: what an endpoint's body or query carries. */
+const withoutPathParams = <
+  Fields extends Schema.Struct.Fields,
+  const Keys extends ReadonlyArray<keyof Fields>,
+>(
+  input: Schema.Struct<Fields>,
+  keys: Keys
+) => input.mapFields(Struct.omit(keys)).annotate(strictParseOptions);
+
+const automationParams = { campaignId: AdministrationCampaignId };
+const automationVersionParams = {
+  campaignId: AdministrationCampaignId,
+  versionNumber: AutomationVersionNumber,
+};
+
+export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
+  .add(
+    HttpApiEndpoint.get("getAutomation", "/automations/:campaignId/flow", {
+      params: automationParams,
+      success: AutomationDetail,
+      error: campaignErrors,
+    })
+  )
+  .add(
+    HttpApiEndpoint.put(
+      "updateAutomationFlow",
+      "/automations/:campaignId/flow",
+      {
+        params: automationParams,
+        payload: withoutPathParams(AutomationFlowUpdate, ["campaignId"]),
+        success: AutomationDetail,
+        error: campaignErrors,
+      }
+    )
+  )
+  .add(
+    HttpApiEndpoint.post(
+      "dryRunAutomation",
+      "/automations/:campaignId/dry-run",
+      {
+        params: automationParams,
+        success: AutomationPreviewStatus,
+        error: campaignErrors,
+      }
+    )
+  )
+  .add(
+    HttpApiEndpoint.get(
+      "getAutomationDryRun",
+      "/automation-dry-runs/:previewId",
+      {
+        params: { previewId: AutomationPreviewId },
+        query: withoutPathParams(AutomationPreviewRef, ["previewId"]),
+        success: AutomationDryRun,
+        error: campaignErrors,
+      }
+    )
+  )
+  .add(
+    HttpApiEndpoint.post(
+      "activateAutomation",
+      "/automations/:campaignId/activate",
+      {
+        params: automationParams,
+        payload: withoutPathParams(AutomationActivateInput, ["campaignId"]),
+        success: AutomationVersionSummary,
+        error: campaignErrors,
+      }
+    )
+  )
+  .add(
+    HttpApiEndpoint.post("pauseAutomation", "/automations/:campaignId/pause", {
+      params: automationParams,
+      success: AutomationDetail,
+      error: campaignErrors,
+    })
+  )
+  .add(
+    HttpApiEndpoint.post(
+      "resumeAutomation",
+      "/automations/:campaignId/resume",
+      {
+        params: automationParams,
+        success: AutomationDetail,
+        error: campaignErrors,
+      }
+    )
+  )
+  .add(
+    HttpApiEndpoint.post(
+      "archiveAutomation",
+      "/automations/:campaignId/archive",
+      {
+        params: automationParams,
+        success: AutomationDetail,
+        error: campaignErrors,
+      }
+    )
+  )
+  .add(
+    HttpApiEndpoint.get(
+      "listAutomationVersions",
+      "/automations/:campaignId/versions",
+      {
+        params: automationParams,
+        success: Schema.Array(AutomationVersionSummary),
+        error: campaignErrors,
+      }
+    )
+  )
+  .add(
+    HttpApiEndpoint.get(
+      "getAutomationVersion",
+      "/automations/:campaignId/versions/:versionNumber",
+      {
+        params: automationVersionParams,
+        success: AutomationVersionDetail,
+        error: campaignErrors,
+      }
+    )
+  )
+  .add(
+    HttpApiEndpoint.get(
+      "getAutomationRunStats",
+      "/automations/:campaignId/runs/stats",
+      {
+        params: automationParams,
+        query: withoutPathParams(AutomationRunStatsInput, ["campaignId"]),
+        success: AutomationRunStats,
+        error: campaignErrors,
+      }
+    )
+  )
+  .add(
+    HttpApiEndpoint.get("listAutomationRuns", "/automations/:campaignId/runs", {
+      params: automationParams,
+      query: withoutPathParams(AutomationRunListInput, ["campaignId"]),
+      success: AutomationRunPage,
+      error: campaignErrors,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("getAutomationRun", "/automation-runs/:runId", {
+      params: { runId: AutomationRunId },
+      success: AutomationRunDetail,
+      error: campaignErrors,
+    })
+  )
+  .add(
+    HttpApiEndpoint.post(
+      "previewCalendarExpression",
+      "/calendar-expressions/preview",
+      {
+        payload: CalendarPreviewInput,
+        success: CalendarPreview,
+        error: campaignErrors,
+      }
+    )
+  )
+  .add(
+    HttpApiEndpoint.get(
+      "getAutomationEngineHealth",
+      "/automations/engine-health",
+      {
+        success: AutomationEngineHealth,
+        error: campaignErrors,
+      }
+    )
+  )
+  .annotate(MinimumDhwVersion, Option.some(automationsMinimumDhwVersion))
+  .middleware(CliBearerAuthentication)
+  // Added last, so it runs first, as in the campaigns group.
+  .middleware(CliClientCompatibility)
+  .prefix("/api/v1/cli");

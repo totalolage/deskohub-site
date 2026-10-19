@@ -14,10 +14,15 @@ import {
   OperationUnauthorized,
 } from "@deskohub/workspace-admin-api";
 import { Context, Effect, Layer, Match, Schema, SchemaIssue } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
 import { getRuntimeMarketingPreferencesAccessUrl } from "@/features/legal/marketing-preferences-access-url";
 import { type AudienceFilter, audienceFilterSchema } from "../audience-filter";
+import { previewCalendarExpression } from "../automation/automation-calendar-preview";
+import { AutomationEngineHealth } from "../automation/backend/automation-engine-health.service";
+import { AutomationLifecycle } from "../automation/backend/automation-lifecycle.service";
+import { AutomationRunLog } from "../automation/backend/automation-run-log.service";
 import type { CampaignPurpose } from "../body/campaign-content";
 import { campaignTemplates } from "../body/campaign-templates";
 import {
@@ -45,11 +50,18 @@ import { OperationRequestLedger } from "./operation-request-ledger.service";
 
 type Registry = CampaignOperationRegistry;
 
-/** One handler per registered operation; a missing one fails the typecheck. */
+/**
+ * One handler per registered operation; a missing one fails the typecheck.
+ * A handler may read who acts, as activation records it.
+ */
 type CampaignOperationHandlers = {
   readonly [Name in CampaignOperationName]: (
     input: OperationDecodedInput<Registry[Name]>
-  ) => Effect.Effect<OperationOutput<Registry[Name]>, CampaignOperationCause>;
+  ) => Effect.Effect<
+    OperationOutput<Registry[Name]>,
+    CampaignOperationCause,
+    CurrentAdministrator
+  >;
 };
 
 export interface ICampaignOperations {
@@ -117,7 +129,8 @@ export class CampaignOperations extends Context.Service<
                         apply: handle(decoded),
                       } as never) as Effect.Effect<
                         OperationOutput<Registry[Name]>,
-                        CampaignOperationCause
+                        CampaignOperationCause,
+                        CurrentAdministrator
                       >
                   )
                 )
@@ -146,7 +159,12 @@ export class CampaignOperations extends Context.Service<
         CampaignService.Live,
         CampaignRecipientService.Live,
         CampaignSendService.Live,
-        CampaignSendStatusService.Live
+        CampaignSendStatusService.Live,
+        AutomationLifecycle.Live,
+        Layer.merge(
+          AutomationRunLog.Default,
+          AutomationEngineHealth.Default
+        ).pipe(Layer.provide(WorkspaceDatabase.Default))
       )
     )
   );
@@ -214,6 +232,9 @@ const makeCampaignOperationHandlers = Effect.gen(function* () {
   const recipients = yield* CampaignRecipientService;
   const sending = yield* CampaignSendService;
   const sendStatus = yield* CampaignSendStatusService;
+  const automations = yield* AutomationLifecycle;
+  const runLog = yield* AutomationRunLog;
+  const engineHealth = yield* AutomationEngineHealth;
 
   /** Unsaved texts, or a saved campaign's locale. */
   const loadPreviewSource = (
@@ -377,6 +398,25 @@ const makeCampaignOperationHandlers = Effect.gen(function* () {
       sendStatus
         .get({ campaignId })
         .pipe(Effect.map(toAdministrationSendStatus)),
+    getAutomation: ({ campaignId }) => automations.get(campaignId),
+    updateAutomationFlow: (input) => automations.updateFlow(input),
+    activateAutomation: (input) =>
+      CurrentAdministrator.pipe(
+        Effect.flatMap(({ accountId }) =>
+          automations.activate({ ...input, activatedBy: accountId })
+        )
+      ),
+    pauseAutomation: ({ campaignId }) => automations.pause(campaignId),
+    resumeAutomation: ({ campaignId }) => automations.resume(campaignId),
+    archiveAutomation: ({ campaignId }) => automations.archive(campaignId),
+    listAutomationVersions: ({ campaignId }) =>
+      automations.listVersions(campaignId),
+    getAutomationVersion: (input) => automations.getVersion(input),
+    getAutomationRunStats: (input) => runLog.getRunStats(input),
+    listAutomationRuns: (input) => runLog.listRuns(input),
+    getAutomationRun: (input) => runLog.getRun(input),
+    previewCalendarExpression: (input) => previewCalendarExpression(input),
+    getAutomationEngineHealth: () => engineHealth.get,
   };
 
   return handlers;

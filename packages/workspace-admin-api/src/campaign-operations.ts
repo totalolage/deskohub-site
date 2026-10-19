@@ -6,6 +6,28 @@ import {
 } from "./campaign-identifiers";
 import type { DhwVersion } from "./dhw-version";
 import {
+  AdminCliAutomationsApi,
+  AutomationActivateInput,
+  AutomationDetail,
+  AutomationDryRun,
+  AutomationEngineHealth,
+  AutomationFlowUpdate,
+  AutomationPreviewRef,
+  AutomationPreviewStatus,
+  AutomationRunDetail,
+  AutomationRunListInput,
+  AutomationRunPage,
+  AutomationRunRef,
+  AutomationRunStats,
+  AutomationRunStatsInput,
+  AutomationVersionDetail,
+  AutomationVersionRef,
+  AutomationVersionSummary,
+  automationsMinimumDhwVersion,
+  CalendarPreview,
+  CalendarPreviewInput,
+} from "./email-automations";
+import {
   AdminCliCampaignsApi,
   AdministrationCampaignAudience,
   AdministrationCampaignAudienceCreateRequest,
@@ -162,28 +184,33 @@ export type OperationEndpoints<
 };
 
 /**
- * Pairs each operation with the group's endpoint of the same name. An
- * operation without one fails the typecheck.
+ * Pairs each operation with the endpoint of the same name in one of the
+ * groups. An operation without one fails the typecheck.
  */
 export const operationEndpoints = <
   Ops extends Operations,
-  Group extends HttpApiGroup.Any,
+  const Groups extends ReadonlyArray<HttpApiGroup.Any>,
 >(
   operations: Ops,
-  group: Group &
-    ([OperationsWithoutEndpoint<Ops, HttpApiGroup.Endpoints<Group>>] extends [
-      never,
-    ]
+  groups: Groups &
+    ([
+      OperationsWithoutEndpoint<Ops, HttpApiGroup.Endpoints<Groups[number]>>,
+    ] extends [never]
       ? unknown
       : {
           readonly missingEndpoints: OperationsWithoutEndpoint<
             Ops,
-            HttpApiGroup.Endpoints<Group>
+            HttpApiGroup.Endpoints<Groups[number]>
           >;
         })
-): OperationEndpoints<Ops, HttpApiGroup.Endpoints<Group>> =>
+): OperationEndpoints<Ops, HttpApiGroup.Endpoints<Groups[number]>> =>
   Object.fromEntries(
-    Object.keys(operations).map((name) => [name, group.endpoints[name]])
+    Object.keys(operations).map((name) => [
+      name,
+      groups.find((group) => Object.hasOwn(group.endpoints, name))?.endpoints[
+        name
+      ],
+    ])
   ) as never;
 
 const strictParseOptions = {
@@ -422,6 +449,83 @@ export const campaignOperations = defineOperations({
     input: CampaignRef,
     output: AdministrationCampaignSendStatusResult,
   }),
+  getAutomation: query({
+    minimumDhwVersion: automationsMinimumDhwVersion,
+    input: CampaignRef,
+    output: AutomationDetail,
+  }),
+  updateAutomationFlow: mutation({
+    minimumDhwVersion: automationsMinimumDhwVersion,
+    input: AutomationFlowUpdate,
+    output: AutomationDetail,
+  }),
+  /** Starts the dry run of the current draft, or returns its job. */
+  dryRunAutomation: mutation({
+    minimumDhwVersion: automationsMinimumDhwVersion,
+    input: CampaignRef,
+    output: AutomationPreviewStatus,
+  }),
+  getAutomationDryRun: query({
+    minimumDhwVersion: automationsMinimumDhwVersion,
+    input: AutomationPreviewRef,
+    output: AutomationDryRun,
+  }),
+  /** A retried activation returns the version the first one published. */
+  activateAutomation: mutation({
+    minimumDhwVersion: automationsMinimumDhwVersion,
+    input: AutomationActivateInput,
+    output: AutomationVersionSummary,
+  }),
+  pauseAutomation: mutation({
+    minimumDhwVersion: automationsMinimumDhwVersion,
+    input: CampaignRef,
+    output: AutomationDetail,
+  }),
+  resumeAutomation: mutation({
+    minimumDhwVersion: automationsMinimumDhwVersion,
+    input: CampaignRef,
+    output: AutomationDetail,
+  }),
+  archiveAutomation: mutation({
+    minimumDhwVersion: automationsMinimumDhwVersion,
+    input: CampaignRef,
+    output: AutomationDetail,
+  }),
+  listAutomationVersions: query({
+    minimumDhwVersion: automationsMinimumDhwVersion,
+    input: CampaignRef,
+    output: Schema.Array(AutomationVersionSummary),
+  }),
+  getAutomationVersion: query({
+    minimumDhwVersion: automationsMinimumDhwVersion,
+    input: AutomationVersionRef,
+    output: AutomationVersionDetail,
+  }),
+  getAutomationRunStats: query({
+    minimumDhwVersion: automationsMinimumDhwVersion,
+    input: AutomationRunStatsInput,
+    output: AutomationRunStats,
+  }),
+  listAutomationRuns: query({
+    minimumDhwVersion: automationsMinimumDhwVersion,
+    input: AutomationRunListInput,
+    output: AutomationRunPage,
+  }),
+  getAutomationRun: query({
+    minimumDhwVersion: automationsMinimumDhwVersion,
+    input: AutomationRunRef,
+    output: AutomationRunDetail,
+  }),
+  previewCalendarExpression: query({
+    minimumDhwVersion: automationsMinimumDhwVersion,
+    input: CalendarPreviewInput,
+    output: CalendarPreview,
+  }),
+  getAutomationEngineHealth: query({
+    minimumDhwVersion: automationsMinimumDhwVersion,
+    input: NoInput,
+    output: AutomationEngineHealth,
+  }),
 });
 export type CampaignOperations = typeof campaignOperations;
 export type CampaignOperationName = keyof CampaignOperations;
@@ -429,5 +533,5 @@ export type CampaignOperationName = keyof CampaignOperations;
 /** The `/api/v1/cli` endpoint of every campaign operation. */
 export const campaignOperationEndpoints = operationEndpoints(
   campaignOperations,
-  AdminCliCampaignsApi
+  [AdminCliCampaignsApi, AdminCliAutomationsApi]
 );

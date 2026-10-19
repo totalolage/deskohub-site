@@ -157,6 +157,7 @@ export {
   MinimumDhwVersion,
 } from "./dhw-version";
 export {
+  AdminCliAutomationsApi,
   AutomationActivateInput,
   type AutomationActivateInput as AutomationActivateInputType,
   AutomationActivation,
@@ -257,6 +258,7 @@ export {
   automationRunEventKinds,
   automationRunOutcomes,
   automationRunStates,
+  automationsMinimumDhwVersion,
   automationTriggerKinds,
   CalendarExpressionUsage,
   type CalendarExpressionUsage as CalendarExpressionUsageType,

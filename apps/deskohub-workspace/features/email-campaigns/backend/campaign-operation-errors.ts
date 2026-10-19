@@ -6,12 +6,20 @@ import {
   OperationUnavailable,
 } from "@deskohub/workspace-admin-api";
 import { Match } from "effect";
+import type { CalendarExpressionNeverOccurs } from "@/shared/utils/calendar-expression";
 import type { AutomationConditionAudienceMissing } from "../automation/backend/automation-evaluation-facts.service";
 import type { AutomationUnitFetchFailure } from "../automation/backend/automation-unit-handler";
 import {
+  AutomationArchived,
   AutomationCalendarNeverOccurs,
+  AutomationDraftChanged,
   type AutomationFlowInvalid,
   type AutomationFlowLocation,
+  AutomationPageCursorInvalid,
+  AutomationPreviewRequired,
+  AutomationRunNotFound,
+  AutomationStatusConflict,
+  type AutomationVersionNotFound,
 } from "../automation/errors";
 import {
   AudienceFilterCampaignNotFound,
@@ -48,7 +56,15 @@ import {
 export type CampaignOperationCause =
   | CampaignOperationError
   | AudienceFilterCampaignNotFound
+  | AutomationArchived
   | AutomationCalendarNeverOccurs
+  | AutomationDraftChanged
+  | AutomationPageCursorInvalid
+  | AutomationPreviewRequired
+  | AutomationRunNotFound
+  | AutomationStatusConflict
+  | AutomationVersionNotFound
+  | CalendarExpressionNeverOccurs
   | AutomationConditionAudienceMissing
   | AutomationFlowInvalid
   | AutomationUnitFetchFailure
@@ -197,11 +213,13 @@ export const toOperationError = (
     ),
     Match.tag(
       "CampaignDeliveryMismatch",
-      () =>
+      ({ delivery }) =>
         new OperationConflict({
           code: CampaignDeliveryMismatch.code,
           message:
-            "This campaign sends automatically, so it can't be test sent, sent, or retried like a one-off campaign.",
+            delivery === "automated"
+              ? "This campaign sends automatically, so it can't be test sent, sent, or retried like a one-off campaign."
+              : "This is a one-off campaign, so it has no automation. Create an automated campaign instead.",
           cause,
         })
     ),
@@ -294,6 +312,94 @@ const toAutomationOperationError = (
           code,
           message:
             "The Dotypos API is unavailable, so customers couldn't be read. Try again shortly.",
+          cause,
+        })
+    ),
+    Match.tag(
+      "CalendarExpressionNeverOccurs",
+      () =>
+        new OperationInputInvalid({
+          code: AutomationCalendarNeverOccurs.code,
+          message:
+            "The calendar never happens in the next 8 years. Choose another combination.",
+          cause,
+        })
+    ),
+    Match.orElse(toAutomationLifecycleOperationError)
+  );
+
+/** Refusals of the automation lifecycle, its versions and its run log. */
+const toAutomationLifecycleOperationError = (
+  cause: CampaignOperationCause
+): CampaignOperationError =>
+  Match.value(cause).pipe(
+    Match.tag(
+      "AutomationPreviewRequired",
+      () =>
+        new OperationConflict({
+          code: AutomationPreviewRequired.code,
+          message:
+            "Activation needs a completed dry run of this automation's current draft. Run a dry run and wait for it to complete.",
+          cause,
+        })
+    ),
+    Match.tag(
+      "AutomationDraftChanged",
+      () =>
+        new OperationConflict({
+          code: AutomationDraftChanged.code,
+          message:
+            "The flow or the audience changed after this dry run. Run a new dry run, then activate with it.",
+          cause,
+        })
+    ),
+    Match.tag(
+      "AutomationArchived",
+      () =>
+        new OperationConflict({
+          code: AutomationArchived.code,
+          message:
+            "The automation is archived and can't change any more. Duplicate the campaign to start again.",
+          cause,
+        })
+    ),
+    Match.tag(
+      "AutomationStatusConflict",
+      ({ operation, status }) =>
+        new OperationConflict({
+          code: AutomationStatusConflict.code,
+          message:
+            operation === "pause"
+              ? `Only an active automation can be paused, and this one is ${status}.`
+              : `Only a paused automation can be resumed, and this one is ${status}.`,
+          cause,
+        })
+    ),
+    Match.tag(
+      "AutomationVersionNotFound",
+      ({ versionNumber }) =>
+        new OperationNotFound({
+          code: "automation-version-not-found",
+          message: `The automation has no version ${versionNumber}.`,
+          cause,
+        })
+    ),
+    Match.tag(
+      "AutomationRunNotFound",
+      () =>
+        new OperationNotFound({
+          code: AutomationRunNotFound.code,
+          message: "The automation run was not found.",
+          cause,
+        })
+    ),
+    Match.tag(
+      "AutomationPageCursorInvalid",
+      () =>
+        new OperationInputInvalid({
+          code: AutomationPageCursorInvalid.code,
+          message:
+            "The page cursor is invalid. Start again from the first page.",
           cause,
         })
     ),
