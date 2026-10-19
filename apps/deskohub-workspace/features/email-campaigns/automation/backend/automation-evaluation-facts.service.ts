@@ -11,7 +11,7 @@ import type {
   InSavedAudience,
 } from "@deskohub/workspace-admin-api";
 import { inArray } from "drizzle-orm";
-import { Context, Data, Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { emailCampaignAudiences } from "@/db/schema";
 import { ReservationVisits } from "@/features/reservation/backend/reservation-visits.service";
@@ -31,6 +31,7 @@ import {
   audienceDotyposReads,
 } from "../../backend/audience-facts.service";
 import type { CampaignAudienceId } from "../../campaign-identifiers";
+import { AutomationConditionAudienceMissing } from "../errors";
 import { AutomationUnitFetchFailure } from "./automation-unit-handler";
 
 /** The most Dotypos requests one packed unit makes (§5.3). */
@@ -43,20 +44,6 @@ const maxUnitRequestCost = 8;
  */
 export const soloUnitBookingThreshold =
   (maxUnitRequestCost - 1) * dotyposIdFilterBatchSize;
-
-/**
- * A condition references a saved audience that no longer exists. It can't
- * pass again, so the condition unit ends its runs failed (evaluation
- * unavailable) instead of retrying.
- */
-export class AutomationConditionAudienceMissing extends Data.TaggedError(
-  "AutomationConditionAudienceMissing"
-)<{
-  readonly audienceId: CampaignAudienceId;
-}> {
-  /** Stable across transports, so clients can tell this failure apart. */
-  static readonly code = "audience-missing";
-}
 
 /**
  * What one automation unit evaluates: the version's entry audience
