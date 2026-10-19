@@ -8,6 +8,7 @@ import {
   type AudienceFilter,
   audienceFilterSchema,
 } from "../../audience-filter";
+import { isSavedAudienceAttribute } from "../../audience-filter-usage";
 import type { DatePeriod } from "../../date-period";
 import { audienceAttributeMenu } from "./audience-attribute-menu";
 import {
@@ -173,7 +174,11 @@ describe("the attribute catalogue in the builder", () => {
     const listed = audienceAttributeMenu.flatMap(
       ({ attributes: sectionAttributes }) => sectionAttributes
     );
-    expect(listed.toSorted()).toEqual(attributes.toSorted());
+    expect(listed.toSorted()).toEqual(
+      attributes.filter(isSavedAudienceAttribute).toSorted()
+    );
+    // The first visit can't be saved yet, so the menu doesn't offer it.
+    expect(listed).not.toContain("firstVisit");
     for (const attribute of attributes) {
       expect(audienceAttributeCatalogue[attribute].label).not.toBe("");
       expect(newCondition(attribute).attribute).toBe(attribute);

@@ -107,6 +107,12 @@ const savedAudienceUnavailableUses = {
   campaignSources: ["Specific", "This"],
 } as const satisfies AudienceFilterUses;
 
+/** Whether a saved audience can hold conditions on `attribute`. */
+export const isSavedAudienceAttribute = (attribute: AudienceAttribute) =>
+  !savedAudienceUnavailableUses.attributes.some(
+    (unavailable) => unavailable === attribute
+  );
+
 /** What `filter` uses that a saved audience can't hold, possibly nothing. */
 export const savedAudienceUnavailableUsesIn = (
   filter: AudienceFilter
