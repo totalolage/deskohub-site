@@ -1019,6 +1019,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
               documentHash: documents.marketingCommunications.hash,
               locale: input.locale,
               grantedAt: Temporal.Now.instant(),
+              source: input.marketingConsentSource ?? "reservation_form",
             });
           }).pipe(
             Effect.tapError((cause) =>
