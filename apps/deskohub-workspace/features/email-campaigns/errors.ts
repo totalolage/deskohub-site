@@ -75,8 +75,8 @@ export class CampaignPublished extends Data.TaggedError("CampaignPublished")<{
 }
 
 /**
- * A one-off operation (edit, delete, test send, confirmation, send, retry,
- * duplicate) was asked of an automated campaign.
+ * A one-off operation (test send, confirmation, send, retry) was asked of an
+ * automated campaign.
  */
 export class CampaignDeliveryMismatch extends Data.TaggedError(
   "CampaignDeliveryMismatch"
