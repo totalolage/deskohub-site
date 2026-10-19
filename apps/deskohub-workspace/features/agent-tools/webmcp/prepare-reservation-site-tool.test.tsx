@@ -256,7 +256,8 @@ const renderForm = async (
 };
 
 const runTool = (input: Schema.JsonObject) =>
-  modelContext.getTool(toolName).execute(input, {});
+  // As Chrome 151 calls it: with the input alone.
+  modelContext.getTool(toolName).execute(input);
 
 const getMarketingConsentCheckbox = (view: ReturnType<typeof render>) =>
   view.container.querySelector<HTMLButtonElement>(

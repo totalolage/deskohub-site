@@ -98,7 +98,7 @@ export const registerPrepareReservationSiteTool = ({
           runSiteToolCall(
             "agent-tools.site-tool.prepare_reservation",
             form.current().locale,
-            options.signal
+            options?.signal
           )
         ),
     },

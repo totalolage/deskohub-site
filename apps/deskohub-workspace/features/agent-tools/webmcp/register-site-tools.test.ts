@@ -149,6 +149,18 @@ describe("registerReadSiteTools", () => {
       });
     });
 
+    test("runs when the browser passes the input alone, as Chrome 151 does", async () => {
+      await register();
+
+      await expect(
+        modelContext.getTool("list_offerings").execute({})
+      ).resolves.toEqual({});
+      expect(endpoint.requests.at(-1)?.params).toEqual({
+        name: "list_offerings",
+        arguments: { locale: "cs-CZ" },
+      });
+    });
+
     test("keeps the locale the agent sends", async () => {
       await register();
 

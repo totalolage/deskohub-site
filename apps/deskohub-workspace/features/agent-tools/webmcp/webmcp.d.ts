@@ -22,10 +22,13 @@ export type ModelContextTool = {
   readonly description: string;
   /** A JSON Schema; the browser rejects a registration it can't serialize. */
   readonly inputSchema?: Schema.JsonObject;
-  /** Receives the agent's JSON input; the result is JSON-serialized for it. */
+  /**
+   * Receives the agent's JSON input; the result is JSON-serialized for it.
+   * Chrome 151 calls it with the input alone, so the options may be missing.
+   */
   readonly execute: (
     input: Schema.JsonObject,
-    options: ModelContextToolExecuteOptions
+    options?: ModelContextToolExecuteOptions
   ) => Promise<unknown>;
   readonly annotations?: ModelContextToolAnnotations;
 };

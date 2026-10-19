@@ -97,10 +97,14 @@ const toReadSiteTool = (
   description: tool.description,
   inputSchema: tool.inputSchema,
   annotations: { readOnlyHint: true },
-  execute: (input, { signal }) =>
+  execute: (input, options) =>
     callAgentTool(tool.name, withPageLocale(tool, input, locale)).pipe(
       Effect.map(({ structuredContent }) => structuredContent),
-      runSiteToolCall(`agent-tools.site-tool.${tool.name}`, locale, signal)
+      runSiteToolCall(
+        `agent-tools.site-tool.${tool.name}`,
+        locale,
+        options?.signal
+      )
     ),
 });
 
