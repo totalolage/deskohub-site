@@ -1,5 +1,8 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import type { AutomationRunEventDetail } from "@deskohub/workspace-admin-api";
+import type {
+  AutomationRunEventDetail,
+  AutomationTrigger,
+} from "@deskohub/workspace-admin-api";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -95,9 +98,10 @@ export const emailCampaignAutomationVersions = pgTable(
     versionNumber: integer("version_number").notNull(),
     // Saved-audience conditions store ids only; they're evaluated live.
     flow: jsonb("flow").notNull(),
+    // The flow trigger's tag, such as "Schedule" or "ReservationBooked".
     triggerKind: text("trigger_kind")
       .notNull()
-      .$type<AutomationTriggerKind>()
+      .$type<AutomationTrigger["_tag"]>()
       .generatedAlwaysAs(sql`flow->'trigger'->>'_tag'`),
     purpose: text("purpose").notNull().$type<CampaignPurpose>(),
     templateKey: text("template_key").notNull().$type<CampaignTemplateKey>(),
