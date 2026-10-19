@@ -1,24 +1,20 @@
 import { expect, test } from "bun:test";
 import { describeBrowserFailure } from "./errors";
 
-test("names known browser failures with fixed text that drops the message", () => {
-  const url = "https://preview.example.test/en-US/account?token=secret";
+test("describes a browser failure by its first line without its URLs", () => {
   expect(
     describeBrowserFailure(
       new Error(
-        `page.waitForFunction: Target page, context or browser has been closed at ${url}`
+        "page.waitForFunction: Target page, context or browser has been closed at https://preview.example.test/en-US/account?token=secret\nCall log:\n  - waiting"
       )
     )
-  ).toBe("the page or browser closed");
-  expect(
-    describeBrowserFailure(
-      new Error(
-        `page.waitForFunction: Execution context was destroyed, most likely because of a navigation to ${url}`
-      )
-    )
-  ).toBe("the page navigated during the call");
-  expect(describeBrowserFailure(new TypeError(url))).toBe(
-    "an unrecognized TypeError"
+  ).toBe(
+    "Error: page.waitForFunction: Target page, context or browser has been closed at [url]"
   );
-  expect(describeBrowserFailure(url)).toBe("an unrecognized failure");
+  expect(describeBrowserFailure(new TypeError("x".repeat(40)))).toBe(
+    "TypeError: [token]"
+  );
+  expect(describeBrowserFailure("a thrown string")).toBe(
+    "failure: a thrown string"
+  );
 });

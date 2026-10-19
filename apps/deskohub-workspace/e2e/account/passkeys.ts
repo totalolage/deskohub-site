@@ -123,8 +123,9 @@ export const makeWorkspaceE2EAccountPasskeys = ({
     body: (page: Page) => Promise<A>
   ): Effect.Effect<A, WorkspaceE2EError> =>
     Effect.tryPromise({
-      // Playwright causes can carry the preview URL, so only fixed text and
-      // the closed diagnostic code leave this boundary.
+      // Playwright causes can carry the preview URL, so only fixed text, the
+      // closed diagnostic code, and a redacted first line leave this
+      // boundary.
       catch: (cause) =>
         cause instanceof errors.TimeoutError
           ? workspaceE2ETimeoutError(`${description} timed out`, {

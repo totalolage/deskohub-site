@@ -1,5 +1,5 @@
 import { Data, Effect } from "effect";
-import { redact } from "./runtime";
+import { redact, redactDiagnosticText } from "./runtime";
 
 const nexiWebhookDiagnosticCodes = [
   "nexi_webhook_parse_failed",
@@ -376,27 +376,17 @@ const formatUnknownFailure = (cause: unknown, seen: Set<unknown>): string => {
 const getCauseMessage = (cause: unknown) =>
   cause instanceof Error ? cause.message : String(cause);
 
-const browserFailureKinds = [
-  [
-    /has been closed|Target closed|Session closed/,
-    "the page or browser closed",
-  ],
-  [/Execution context was destroyed/, "the page navigated during the call"],
-  [/Target crashed/, "the page crashed"],
-] as const;
-
 /**
- * Fixed text naming the kind of a browser failure. Playwright messages can
- * carry the preview URL, so a boundary that reports only fixed text still
- * says which browser failure it met.
+ * The first line of a browser failure, with registered secrets, URLs, and
+ * token-like runs redacted, so a boundary that keeps Playwright messages out
+ * of its reports can still say which failure it met.
  */
 export const describeBrowserFailure = (cause: unknown) => {
-  const message = getCauseMessage(cause);
-  const kind = browserFailureKinds.find(([pattern]) => pattern.test(message));
-  if (kind) return kind[1];
-  return cause instanceof Error
-    ? `an unrecognized ${cause.name}`
-    : "an unrecognized failure";
+  const name = cause instanceof Error ? cause.name : "failure";
+  const [firstLine = ""] = redactDiagnosticText(getCauseMessage(cause)).split(
+    "\n"
+  );
+  return `${name}: ${firstLine.slice(0, 200)}`;
 };
 
 const indent = (value: string) =>
