@@ -1,5 +1,5 @@
 import { Effect, Layer, Option } from "effect";
-import type { DotyposReservation } from "../types";
+import type { DotyposReservation, DotyposReservationInterval } from "../types";
 import {
   DotyposService,
   dotyposMaximumPageSize,
@@ -18,7 +18,7 @@ export const seededReservationReads = (
   reservations: readonly DotyposReservation[]
 ): Pick<
   DotyposService["Service"],
-  "listReservations" | "listReservationsPage"
+  "listReservations" | "listReservationsPage" | "listActiveReservationsPage"
 > => {
   const select = (options: ReservationListOptions) => {
     const ids = options.ids && new Set<string>(options.ids);
@@ -42,19 +42,32 @@ export const seededReservationReads = (
     );
   };
 
+  const selectActive = (interval: DotyposReservationInterval) =>
+    reservations.filter(
+      (reservation) =>
+        (reservation.status === "NEW" || reservation.status === "CONFIRMED") &&
+        Date.parse(reservation.startDate) < interval.endDate.getTime() &&
+        Date.parse(reservation.endDate) > interval.startDate.getTime()
+    );
+
   return {
     listReservations: (options = {}) => Effect.sync(() => select(options)),
     listReservationsPage: ({ page, ...options }) =>
-      Effect.sync((): ReservationPage => {
-        const selected = select(options);
-        const start = (page - 1) * dotyposMaximumPageSize;
-        const end = start + dotyposMaximumPageSize;
-        return {
-          reservations: selected.slice(start, end),
-          nextPage:
-            end < selected.length ? Option.some(page + 1) : Option.none(),
-        };
-      }),
+      Effect.sync(() => pageOf(select(options), page)),
+    listActiveReservationsPage: (interval, page) =>
+      Effect.sync(() => pageOf(selectActive(interval), page)),
+  };
+};
+
+const pageOf = (
+  selected: readonly DotyposReservation[],
+  page: number
+): ReservationPage => {
+  const start = (page - 1) * dotyposMaximumPageSize;
+  const end = start + dotyposMaximumPageSize;
+  return {
+    reservations: selected.slice(start, end),
+    nextPage: end < selected.length ? Option.some(page + 1) : Option.none(),
   };
 };
 
