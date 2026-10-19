@@ -1,14 +1,17 @@
-import type {
-  AudienceCountCondition,
-  AudienceCountOperatorType,
-  AudienceDateCondition,
-  AudienceSetAttributeDefinition,
-  AudienceSetCondition,
-  AudienceValueLookup,
-  ReservationProductFilterType,
-  ReservationProductPropertyCondition,
+import {
+  type AudienceCountAttributeDefinition,
+  type AudienceCountCondition,
+  type AudienceCountOperatorType,
+  type AudienceDateCondition,
+  type AudienceSetAttributeDefinition,
+  type AudienceSetCondition,
+  type AudienceValueLookup,
+  CampaignEmailSource,
+  type CampaignEmailSourceType,
+  type ReservationProductFilterType,
+  type ReservationProductPropertyCondition,
 } from "@deskohub/workspace-admin-api";
-import { Match } from "effect";
+import { Match, Schema } from "effect";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { reservationProductProperty } from "@/features/reservation/reservation-product-descriptor";
@@ -45,6 +48,9 @@ export type AudienceValueLookups = {
   readonly [Lookup in AudienceValueLookup]?:
     | readonly AudienceValueOption[]
     | undefined;
+} & {
+  /** Campaign names for counts of one campaign's emails. */
+  readonly campaigns?: readonly AudienceValueOption[] | undefined;
 };
 
 type ListType = "conjunction" | "disjunction";
@@ -180,18 +186,65 @@ const describeProduct = (
   return ` ${phrase}`;
 };
 
+const isCampaignEmailSource = Schema.is(CampaignEmailSource);
+
+/**
+ * Whose emails a count counts, with a leading space: " from this campaign" or
+ * " from campaign “Spring sale”". A campaign missing from `campaigns` shows
+ * by ID.
+ */
+const describeCampaignSource = (
+  source: CampaignEmailSourceType,
+  campaigns: readonly AudienceValueOption[] | undefined,
+  locale: Locale
+): string => {
+  const options = { locale };
+  const phrase = Match.value(source).pipe(
+    Match.tagsExhaustive({
+      This: () =>
+        m.emailCampaignsAudienceCampaignEmailCountSourceThis({}, options),
+      Specific: ({ campaignId }) => {
+        const campaign = campaigns?.find(({ id }) => id === campaignId);
+        return m.emailCampaignsAudienceCampaignEmailCountSourceSpecific(
+          { campaign: campaign ? quoted(campaign.name, locale) : campaignId },
+          options
+        );
+      },
+    })
+  );
+  return ` ${phrase}`;
+};
+
+/** Context for a count summary beyond the condition and its wording. */
+type CountSummaryContext = {
+  /** The attribute's entry, whose campaign params name a campaign source. */
+  readonly entry?: AudienceCountAttributeDefinition;
+  readonly lookups?: AudienceValueLookups;
+};
+
 /**
  * "have no booked reservations for cowork visiting in the last 30 days": the
- * attribute's wording around the count, the counted noun with its product,
- * and the period.
+ * attribute's wording around the count, the counted noun with its product
+ * and campaign source, and the period.
  */
 export const describeCountCondition = (
   { params, operator, value }: AudienceCountCondition,
   wording: AudienceCountWording,
-  locale: Locale
+  locale: Locale,
+  { entry, lookups = {} }: CountSummaryContext = {}
 ): string => {
   const product = describeProduct(params.product, locale);
-  const noun = (count: number) => wording.summary.noun(params, count, product);
+  // An unset campaign param counts every campaign and adds nothing.
+  const source = Object.entries(entry?.params ?? {})
+    .map(([name, param]) => {
+      const campaign = params[name];
+      return param.part === "campaign" && isCampaignEmailSource(campaign)
+        ? describeCampaignSource(campaign, lookups.campaigns, locale)
+        : "";
+    })
+    .join("");
+  const noun = (count: number) =>
+    `${wording.summary.noun(params, count, product)}${source}`;
   const period =
     params.period._tag === "AnyTime"
       ? ""
@@ -274,9 +327,9 @@ const describeCondition = (
   const wording = audienceAttributeWording(condition.attribute, locale);
   return Match.value(viewAudienceCondition(condition)).pipe(
     Match.discriminatorsExhaustive("kind")({
-      count: ({ condition: count }) =>
+      count: ({ entry, condition: count }) =>
         wording?.kind === "count"
-          ? describeCountCondition(count, wording, locale)
+          ? describeCountCondition(count, wording, locale, { entry, lookups })
           : condition.attribute,
       date: ({ condition: date }) =>
         wording?.kind === "date"
@@ -323,13 +376,25 @@ const describeFilter = (
     .reduce((left, right) => join({ left, right }, options));
 };
 
-const endsAtEvaluation = (period: DatePeriod) =>
-  period._tag === "Last" || period._tag === "Since";
+const endsAtEvaluation = (period: DatePeriod): boolean =>
+  Match.value(period).pipe(
+    Match.tagsExhaustive({
+      AnyTime: () => false,
+      Past: () => true,
+      Last: () => true,
+      Range: () => false,
+      Since: () => true,
+      Onward: () => false,
+      Until: () => false,
+      // The trigger is a schedule's fire time, which moves with the clock.
+      TriggerWindow: () => true,
+    })
+  );
 
 /**
- * Whether a period in the filter runs up to the evaluation time ("last N
- * days", "since"), so the audience it describes moves with the clock. A sent
- * campaign evaluated those at its send time.
+ * Whether a period in the filter moves with the evaluation time ("so far",
+ * "last N days", "since", around the trigger), so the audience it describes
+ * moves with the clock. A sent campaign evaluated those at its send time.
  */
 export const hasPeriodEndingAtEvaluation = (filter: AudienceFilter): boolean =>
   audienceConditionsOf(filter).some((condition) =>

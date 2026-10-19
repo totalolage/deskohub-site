@@ -42,11 +42,14 @@ const reservations = (
 
 const campaignEmails = (
   operator: AudienceCountOperatorType,
-  value: number
+  value: number,
+  params: Partial<
+    Extract<AudienceCondition, { attribute: "campaignEmailCount" }>["params"]
+  > = {}
 ): AudienceCondition => ({
   attribute: "campaignEmailCount",
   _tag: "Condition",
-  params: { purpose: "any", period: { _tag: "AnyTime" } },
+  params: { purpose: "any", period: { _tag: "AnyTime" }, ...params },
   operator,
   value,
 });
@@ -154,6 +157,106 @@ describe("describeAudienceFilter", () => {
     ).toBe("Customers who created a Workspace account since Sep 1, 2026");
   });
 
+  test("describes the first visit", () => {
+    const firstVisit = (
+      condition: Omit<
+        Extract<AudienceCondition, { attribute: "firstVisit" }>,
+        "attribute" | "_tag"
+      >
+    ): AudienceCondition => ({
+      attribute: "firstVisit",
+      _tag: "Condition",
+      ...condition,
+    });
+    const cowork = { product: { family: "cowork", properties: [] } } as const;
+    expect(
+      describe_(
+        firstVisit({
+          params: cowork,
+          operator: "in",
+          value: { _tag: "Last", count: 30, unit: "day" },
+        })
+      )
+    ).toBe("Customers who first visited for cowork in the last 30 days");
+    expect(
+      describe_(firstVisit({ operator: "in", value: { _tag: "AnyTime" } }))
+    ).toBe("Customers who have visited");
+    expect(
+      describe_(
+        firstVisit({
+          operator: "notIn",
+          value: { _tag: "Since", date: "2026-09-01" },
+        })
+      )
+    ).toBe(
+      "Customers who have visited, with the first visit not since Sep 1, 2026"
+    );
+    expect(describe_(firstVisit({ operator: "none" }))).toBe(
+      "Customers who have never visited"
+    );
+    expect(
+      describe_(
+        firstVisit({
+          operator: "in",
+          value: { _tag: "Last", count: 30, unit: "day" },
+        }),
+        "cs-CZ"
+      )
+    ).toBe("Zákazníci, kteří nás poprvé navštívili za posledních 30 dní");
+    expect(
+      describe_(
+        firstVisit({
+          operator: "notIn",
+          value: { _tag: "Last", count: 1, unit: "month" },
+        }),
+        "cs-CZ"
+      )
+    ).toBe("Zákazníci, kteří nás navštívili, ale poprvé ne za poslední měsíc");
+    expect(describe_(firstVisit({ operator: "none" }), "cs-CZ")).toBe(
+      "Zákazníci, kteří nás nikdy nenavštívili"
+    );
+  });
+
+  describe("campaign source", () => {
+    const lastTenDays = { _tag: "Last", count: 10, unit: "day" } as const;
+    const fromSpring = campaignEmails("gte", 2, {
+      period: lastTenDays,
+      campaign: { _tag: "Specific", campaignId: "campaign-spring" },
+    });
+    const campaigns = [{ id: "campaign-spring", name: "Spring sale" }];
+
+    test("leaves counts of any campaign as they were", () => {
+      expect(describe_(campaignEmails("gte", 2, { period: lastTenDays }))).toBe(
+        "Customers who received at least 2 campaign emails in the last 10 days"
+      );
+    });
+
+    test("names the evaluating campaign", () => {
+      const fromThis = campaignEmails("eq", 0, {
+        period: lastTenDays,
+        campaign: { _tag: "This" },
+      });
+      expect(describe_(fromThis)).toBe(
+        "Customers who received no campaign emails from this campaign in the last 10 days"
+      );
+      expect(describe_(fromThis, "cs-CZ")).toBe(
+        "Zákazníci, kteří neobdrželi žádný e-mail z kampaně (tato kampaň) za posledních 10 dní"
+      );
+    });
+
+    test("names a looked-up campaign, otherwise shows its ID", () => {
+      expect(describeAudienceFilter(fromSpring, "en-US", { campaigns })).toBe(
+        "Customers who received at least 2 campaign emails from campaign “Spring sale” in the last 10 days"
+      );
+      expect(describeAudienceFilter(fromSpring, "cs-CZ", { campaigns })).toBe(
+        "Zákazníci, kteří obdrželi alespoň 2 e-maily z kampaní (kampaň „Spring sale“) za posledních 10 dní"
+      );
+      expect(describe_(fromSpring)).toBe(
+        "Customers who received at least 2 campaign emails from campaign campaign-spring in the last 10 days"
+      );
+    });
+  });
+
   test("describes in Czech", () => {
     expect(describe_(and(), "cs-CZ")).toBe(
       "Každý zákazník, kterého Workspace zná"
@@ -247,6 +350,15 @@ describe("describeDatePeriod", () => {
     [{ _tag: "Since", date: "2026-01-01" }, "since Jan 1, 2026"],
     [{ _tag: "Onward", date: "2026-01-01" }, "from Jan 1, 2026 onward"],
     [{ _tag: "Until", date: "2026-01-01" }, "until Jan 1, 2026"],
+    [{ _tag: "Past" }, "at any time so far"],
+    [
+      { _tag: "TriggerWindow", side: "before", count: 1, unit: "month" },
+      "within 1 month before the trigger",
+    ],
+    [
+      { _tag: "TriggerWindow", side: "after", count: 2, unit: "week" },
+      "within 2 weeks after the trigger",
+    ],
   ])("names %o as “%s”", (period, phrase) => {
     expect(describeDatePeriod(period, "en-US")).toBe(phrase);
   });
@@ -261,6 +373,28 @@ describe("describeDatePeriod", () => {
     expect(
       describeDatePeriod({ _tag: "Last", count: 1, unit: "day" }, "cs-CZ")
     ).toBe("za poslední den");
+  });
+
+  test.each<[DatePeriod, string]>([
+    [{ _tag: "Past" }, "kdykoli dosud"],
+    [
+      { _tag: "TriggerWindow", side: "before", count: 1, unit: "month" },
+      "během 1 měsíce před spouštěcí událostí",
+    ],
+    [
+      { _tag: "TriggerWindow", side: "after", count: 2, unit: "week" },
+      "během 2 týdnů po spouštěcí události",
+    ],
+    [
+      { _tag: "TriggerWindow", side: "after", count: 5, unit: "year" },
+      "během 5 let po spouštěcí události",
+    ],
+    [
+      { _tag: "TriggerWindow", side: "before", count: 3, unit: "day" },
+      "během 3 dní před spouštěcí událostí",
+    ],
+  ])("names %o in Czech as “%s”", (period, phrase) => {
+    expect(describeDatePeriod(period, "cs-CZ")).toBe(phrase);
   });
 });
 
@@ -296,6 +430,27 @@ describe("hasPeriodEndingAtEvaluation", () => {
         operator: "none",
       })
     ).toBe(false);
+  });
+
+  test.each<[DatePeriod, boolean]>([
+    [{ _tag: "AnyTime" }, false],
+    [{ _tag: "Past" }, true],
+    [{ _tag: "Range", from: "2026-01-01", to: "2026-02-01" }, false],
+    [{ _tag: "Onward", date: "2026-01-01" }, false],
+    [{ _tag: "Until", date: "2026-01-01" }, false],
+    [{ _tag: "TriggerWindow", side: "before", count: 1, unit: "month" }, true],
+  ])("moves with the evaluation time for %o: %p", (period, moves) => {
+    expect(hasPeriodEndingAtEvaluation(reservations("gt", 0, { period }))).toBe(
+      moves
+    );
+    expect(
+      hasPeriodEndingAtEvaluation({
+        attribute: "firstVisit",
+        _tag: "Condition",
+        operator: "in",
+        value: period,
+      })
+    ).toBe(moves);
   });
 });
 

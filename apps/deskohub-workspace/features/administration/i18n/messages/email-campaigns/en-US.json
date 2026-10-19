@@ -53,6 +53,8 @@
   "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "Campaign purpose",
   "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "marketing",
   "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "operational",
+  "emailCampaignsAudienceCampaignEmailCountSourceSpecific": "from campaign {campaign}",
+  "emailCampaignsAudienceCampaignEmailCountSourceThis": "from this campaign",
   "emailCampaignsAudienceConditionAttributeLabel": "Customer attribute",
   "emailCampaignsAudienceConditionRemove": "Remove condition",
   "emailCampaignsAudienceCountAlwaysMatchesError": "“≥ 0” always matches. Use “≥ 1” for any, or remove the condition.",
@@ -155,6 +157,12 @@
       }
     }
   ],
+  "emailCampaignsAudienceFirstVisitEver": "have visited{product}",
+  "emailCampaignsAudienceFirstVisitInPeriod": "first visited{product} {period}",
+  "emailCampaignsAudienceFirstVisitLabel": "First visit",
+  "emailCampaignsAudienceFirstVisitNever": "have never visited{product}",
+  "emailCampaignsAudienceFirstVisitNoValue": "never visited",
+  "emailCampaignsAudienceFirstVisitNotInPeriod": "have visited{product}, with the first visit not {period}",
   "emailCampaignsAudienceLastVisitEver": "have visited{product}",
   "emailCampaignsAudienceLastVisitInPeriod": "last visited{product} {period}",
   "emailCampaignsAudienceLastVisitLabel": "Last visit",
@@ -504,8 +512,77 @@
     }
   ],
   "emailCampaignsAudienceSummaryPeriodOnward": "from {date} onward",
+  "emailCampaignsAudienceSummaryPeriodPast": "at any time so far",
   "emailCampaignsAudienceSummaryPeriodRange": "from {from} to {to}",
   "emailCampaignsAudienceSummaryPeriodSince": "since {date}",
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowDay": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "within {formattedCount} day before the trigger",
+        "side=before, countPlural=other": "within {formattedCount} days before the trigger",
+        "side=after, countPlural=one": "within {formattedCount} day after the trigger",
+        "side=after, countPlural=other": "within {formattedCount} days after the trigger"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowMonth": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "within {formattedCount} month before the trigger",
+        "side=before, countPlural=other": "within {formattedCount} months before the trigger",
+        "side=after, countPlural=one": "within {formattedCount} month after the trigger",
+        "side=after, countPlural=other": "within {formattedCount} months after the trigger"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowWeek": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "within {formattedCount} week before the trigger",
+        "side=before, countPlural=other": "within {formattedCount} weeks before the trigger",
+        "side=after, countPlural=one": "within {formattedCount} week after the trigger",
+        "side=after, countPlural=other": "within {formattedCount} weeks after the trigger"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowYear": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "within {formattedCount} year before the trigger",
+        "side=before, countPlural=other": "within {formattedCount} years before the trigger",
+        "side=after, countPlural=one": "within {formattedCount} year after the trigger",
+        "side=after, countPlural=other": "within {formattedCount} years after the trigger"
+      }
+    }
+  ],
   "emailCampaignsAudienceSummaryPeriodUntil": "until {date}",
   "emailCampaignsAudienceSummaryProduct": "for {family}",
   "emailCampaignsAudienceSummaryProductAnyOf": "{property} {values}",
