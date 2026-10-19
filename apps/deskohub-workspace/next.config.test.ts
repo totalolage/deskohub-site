@@ -10,21 +10,15 @@ const resolveReferrerPolicy = async (path: string) =>
     })
   ).headers.get("referrer-policy");
 
-test("keeps the historical no-referrer default outside the localized landing pages", async () => {
+test("sends no referrer from every page, including the localized landing pages", async () => {
   for (const path of [
     "/",
+    "/en-US",
+    "/cs-CZ",
     "/en-US/reservation/cowork",
     "/cs-CZ/pricing",
     "/workspace-location-map.jpeg",
   ]) {
     expect(await resolveReferrerPolicy(path)).toBe("no-referrer");
-  }
-});
-
-test("sends a tile-compatible referrer policy on the localized landing pages", async () => {
-  for (const path of ["/en-US", "/cs-CZ"]) {
-    expect(await resolveReferrerPolicy(path)).toBe(
-      "strict-origin-when-cross-origin"
-    );
   }
 });

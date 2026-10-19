@@ -2,6 +2,7 @@ import { Effect, Predicate } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import sharp, { type OverlayOptions } from "sharp";
 import { ImageRenderingError, OsmTileRequestError } from "./errors";
+import { renderTextImage } from "./text-image";
 
 const defaultTileSize = 256;
 const defaultTileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -18,6 +19,23 @@ export interface StaticMapImageOptions {
   readonly tileUrl?: string;
   readonly userAgent?: string;
   readonly quality?: number;
+  /**
+   * Font the OpenStreetMap attribution is drawn with. Without it the
+   * attribution needs a system sans-serif font, which serverless runtimes
+   * such as Vercel functions lack.
+   */
+  readonly attributionFont?: StaticMapAttributionFont;
+  /**
+   * Image pixels per displayed pixel. Enlarges the attribution so it stays
+   * legible when the image is shown downscaled. Defaults to 1.
+   */
+  readonly attributionScale?: number;
+}
+
+export interface StaticMapAttributionFont {
+  readonly file: string;
+  /** Family name of the font in `file`. */
+  readonly family: string;
 }
 
 const staticMapDefaults = {
@@ -32,6 +50,7 @@ export const generateStaticMapImage = Effect.fn("osm.generateStaticMapImage")(
     return Effect.succeed(input).pipe(
       Effect.bind("composites", fetchTileComposites),
       Effect.bind("tiledMap", renderTiledMap),
+      Effect.bind("attribution", renderAttribution),
       Effect.bind("image", renderStaticMap),
       Effect.map(({ image }) => image)
     );
@@ -51,6 +70,8 @@ interface TilePlacement {
 }
 
 interface StaticMapInput {
+  readonly attributionFont: StaticMapAttributionFont | undefined;
+  readonly attributionScale: number;
   readonly baseHeight: number;
   readonly baseWidth: number;
   readonly extractLeft: number;
@@ -101,14 +122,57 @@ const renderTiledMap = ({
       }),
   });
 
+// OpenStreetMap's attribution guidelines ask for this text where the map is
+// shown.
+const attributionText = "© OpenStreetMap contributors";
+const attributionFontSize = 12;
+
+const renderAttribution = ({
+  attributionFont,
+  attributionScale,
+  height,
+  width,
+}: StaticMapInput) =>
+  Effect.tryPromise({
+    try: async () => {
+      const text = await renderTextImage({
+        text: attributionText,
+        font: `${attributionFont?.family ?? "sans-serif"} ${attributionFontSize * attributionScale}`,
+        fontfile: attributionFont?.file,
+        color: "#00024f",
+      });
+      const paddingX = Math.round(8 * attributionScale);
+      const paddingY = Math.round(5 * attributionScale);
+      const boxWidth = text.info.width + 2 * paddingX;
+      const boxHeight = text.info.height + 2 * paddingY;
+
+      return Buffer.from(`
+        <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+          <rect x="${width - boxWidth}" y="${height - boxHeight}" width="${boxWidth}" height="${boxHeight}" fill="rgba(255,255,255,0.88)"/>
+          <image x="${width - boxWidth + paddingX}" y="${height - boxHeight + paddingY}" width="${text.info.width}" height="${text.info.height}" href="data:image/png;base64,${text.data.toString("base64")}"/>
+        </svg>
+      `);
+    },
+    catch: (cause) =>
+      new ImageRenderingError({
+        cause,
+        message: "The map attribution could not be rendered.",
+        operation: "render-map-attribution",
+      }),
+  });
+
 const renderStaticMap = ({
+  attribution,
   extractLeft,
   extractTop,
   height,
   quality,
   tiledMap,
   width,
-}: StaticMapInput & { readonly tiledMap: Buffer }) =>
+}: StaticMapInput & {
+  readonly attribution: Buffer;
+  readonly tiledMap: Buffer;
+}) =>
   Effect.tryPromise({
     try: () =>
       sharp(tiledMap)
@@ -125,7 +189,7 @@ const renderStaticMap = ({
             top: 0,
           },
           {
-            input: createAttributionSvg(width, height),
+            input: attribution,
             left: 0,
             top: 0,
           },
@@ -156,6 +220,9 @@ const fetchTile = Effect.fn("osm.fetchTile")(
     );
 
     return HttpClient.execute(request).pipe(
+      // Trace headers would leak internal span IDs to the tile server and make
+      // every request for the same tile unique, defeating HTTP tile caches.
+      Effect.provideService(HttpClient.TracerPropagationEnabled, false),
       Effect.filterOrFail(
         ({ status }) => status >= 200 && status < 300,
         ({ status }) =>
@@ -231,6 +298,8 @@ const createStaticMapInput = (
   }
 
   return {
+    attributionFont: options.attributionFont,
+    attributionScale: options.attributionScale ?? 1,
     baseWidth: (endTileX - startTileX + 1) * tileSize,
     baseHeight: (endTileY - startTileY + 1) * tileSize,
     extractLeft: left - startTileX * tileSize,
@@ -290,11 +359,3 @@ const createMarkerSvg = (width: number, height: number) => {
     </svg>
   `);
 };
-
-const createAttributionSvg = (width: number, height: number) =>
-  Buffer.from(`
-    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="${width - 196}" y="${height - 23}" width="196" height="23" fill="rgba(255,255,255,0.88)"/>
-      <text x="${width - 188}" y="${height - 7}" font-family="Arial, sans-serif" font-size="12" fill="#00024f">&#169; OpenStreetMap contributors</text>
-    </svg>
-  `);

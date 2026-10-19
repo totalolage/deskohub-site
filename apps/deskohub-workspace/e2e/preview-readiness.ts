@@ -9,7 +9,6 @@ import {
 import { isNotFoundPage } from "./not-found-page";
 import { makeUrl } from "./urls";
 
-const previewTileReferrerPolicy = "strict-origin-when-cross-origin";
 const previewAuthSessionCacheControl = "private, no-store";
 
 export const assertPreviewEndpointsReady = (
@@ -19,7 +18,6 @@ export const assertPreviewEndpointsReady = (
     [
       assertPreviewEndpointReady(config, "/api/webhooks/nexi"),
       assertPreviewEndpointReady(config, "/api/webhooks/resend"),
-      assertPreviewHomepageTilesReady(config),
       assertPreviewJpegReady(config, "/workspace-location-map.jpeg"),
       assertPreviewAuthSessionReady(config),
     ],
@@ -69,33 +67,6 @@ export const assertPreviewAuthSessionReady = Effect.fn(
       () =>
         workspaceE2EError(
           `${path} preview auth session did not return a healthy null session`,
-          { operation }
-        )
-    )
-  );
-});
-
-export const assertPreviewHomepageTilesReady = Effect.fn(
-  "previewReadiness.assertHomepageTilesReady"
-)(function* (config: WorkspaceE2EConfig) {
-  const path = "/en-US";
-  const operation = `check ${path} preview homepage`;
-  const response = yield* requestPreviewEndpoint(config, path);
-
-  yield* Effect.succeed(response).pipe(
-    Effect.filterOrFail(
-      ({ status }) => status >= 200 && status < 300,
-      ({ status }) =>
-        workspaceE2EError(
-          `${path} preview homepage check failed with ${status}`,
-          { operation }
-        )
-    ),
-    Effect.filterOrFail(
-      ({ headers }) => headers["referrer-policy"] === previewTileReferrerPolicy,
-      ({ headers }) =>
-        workspaceE2EError(
-          `${path} preview homepage sent Referrer-Policy ${headers["referrer-policy"] ?? "without a policy"} instead of ${previewTileReferrerPolicy}; OpenStreetMap browser tiles require a Referer`,
           { operation }
         )
     )

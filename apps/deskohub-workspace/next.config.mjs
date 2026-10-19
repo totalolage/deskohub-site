@@ -121,15 +121,6 @@ const nextConfig = {
           },
         ],
       },
-      {
-        source: `/:locale(${localeRedirectPattern})`,
-        headers: [
-          {
-            key: "Referrer-Policy",
-            value: "strict-origin-when-cross-origin",
-          },
-        ],
-      },
     ];
   },
   images: {

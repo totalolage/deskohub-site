@@ -1,4 +1,5 @@
 import { Column, Img, Link, Row, Section, Text } from "react-email";
+import { workspaceLocationMapEmailWidth } from "@/shared/utils";
 import {
   WorkspaceEmailHeading,
   WorkspaceEmailLabel,
@@ -127,7 +128,7 @@ export function CustomerReservationEmail({
             alt={labels.location}
             className="block h-auto w-full"
             src={location.mapImageSrc}
-            width="534"
+            width={workspaceLocationMapEmailWidth}
           />
         )}
         <Section className="px-5 py-5 text-center">
