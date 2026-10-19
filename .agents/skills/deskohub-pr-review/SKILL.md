@@ -1,6 +1,6 @@
 ---
 name: deskohub-pr-review
-description: Pull request, PR review feedback, review threads, code review round, regression fix, UI screenshots, PR screenshot upload, ready for review, mergeable.
+description: Pull request, PR review feedback, review threads, code review round, regression fix, UI screenshots, PR screenshot upload, ready for review, mergeable, merge main, branch behind main, PR monitoring.
 ---
 
 # Deskohub PR review
@@ -25,8 +25,18 @@ Every PR that introduces or changes UI needs a screenshot of each newly introduc
 - Upload through GitHub; don't commit screenshots unless they're durable documentation or test fixtures. Never use Cloudinary.
 - With a GitHub browser session, use the `gh image` extension for native `user-attachments` uploads. Headless, upload synthetic-only screenshots as release assets in `totalolage/gitshot-images` and embed their URLs with `gh pr comment`.
 
+## Merging main
+
+Each push to a pull request branch starts a full Vercel preview build, so merge `origin/main` into the branch once, as the last step before merging the pull request.
+
+1. Finish development, review, and every other required check on the branch as it stands. A branch behind `main` is fine; GitHub doesn't require it to be up to date.
+2. `git fetch origin && git merge origin/main`, then push. Always merge; never rebase or force-push.
+3. If CI stays green, merge the pull request without another review round. If CI goes red, the pull request returns to development and review.
+
+Merge `main` earlier only to resolve a real conflict that blocks work in progress. Main moving, a `BEHIND` merge state, and monitoring a pull request are not reasons to merge. A merge that needed conflict resolution follows the branch integration guidance in the `deskohub-repository` skill.
+
 ## Completion
 
 - At a planned stopping point, mark the PR ready for review instead of leaving it in draft.
-- Local verification is a checkpoint, not the finish. Continue through review, commit, push, screenshot evidence from the deployment, thread resolution, and required checks until the PR is mergeable. Stop earlier only when the user pauses the work or a blocker needs their input.
+- Local verification is a checkpoint, not the finish. Continue through review, commit, push, screenshot evidence from the deployment, thread resolution, required checks, and the final main merge until the PR is mergeable. Stop earlier only when the user pauses the work or a blocker needs their input.
 - After a fix is pushed and validated, reply to each addressed thread with a short summary and resolve it.

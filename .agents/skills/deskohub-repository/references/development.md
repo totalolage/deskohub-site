@@ -64,7 +64,7 @@ The root `patchedDependencies` patch `effect`, `@effect/sql-pg`, and `@effect/op
 
 ## Branch integration
 
-When you combine branches, inspect each conflict and decide the exact combined behavior before you resolve it. Keep lockfile reconciliation and generated-file cleanup separate from other changes. Then verify the combined result and get it reviewed.
+When combining branches needs conflict resolution, inspect each conflict and decide the exact combined behavior before you resolve it. Keep lockfile reconciliation and generated-file cleanup separate from other changes. Then verify the combined result and get the resolution reviewed. For when to merge `origin/main` into a pull request branch, follow the `deskohub-pr-review` skill.
 
 ## Environment files
 
