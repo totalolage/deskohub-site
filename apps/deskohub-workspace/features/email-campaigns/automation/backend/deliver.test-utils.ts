@@ -87,7 +87,7 @@ export type ResendFakeResponse =
  * and one reused with a different payload is refused as 409 (an unknown
  * outcome). `respond` decides how each fresh request is answered.
  */
-export const makeResendFake = () => {
+const makeResendFake = () => {
   const accepted = new Map<
     string,
     { readonly payloadHash: string; readonly ids: readonly string[] }
@@ -178,13 +178,13 @@ export const makeResendFake = () => {
       }),
   };
 };
-export type ResendFake = ReturnType<typeof makeResendFake>;
+type ResendFake = ReturnType<typeof makeResendFake>;
 
 /**
  * Dotypos with seeded profiles and reservations that a test can change
  * between invocations, counting the reads a deliver unit makes.
  */
-export const makeDeliverDotypos = (input: {
+const makeDeliverDotypos = (input: {
   readonly customers: readonly DotyposCustomer[];
   readonly reservations?: readonly DotyposReservation[];
 }) => {
@@ -224,7 +224,6 @@ export const makeDeliverDotypos = (input: {
     },
   };
 };
-export type DeliverDotypos = ReturnType<typeof makeDeliverDotypos>;
 
 /** A Dotypos profile with a test-domain email. */
 export const deliverProfile = (
@@ -246,7 +245,7 @@ export const deliverProfile = (
  * The registered deliver handler over the test database, `dotypos` and
  * `resend`, with delivery's recheck as in `deploymentEnvironment`.
  */
-export const makeDeliverTestHandler = (input: {
+const makeDeliverTestHandler = (input: {
   readonly database: WorkspacePostgresTestDatabase;
   readonly dotypos: Layer.Layer<DotyposService>;
   readonly resend: ResendFake;
@@ -524,4 +523,3 @@ export const makeDeliverEngine = async (input: {
     lifecycle,
   };
 };
-export type DeliverEngine = Awaited<ReturnType<typeof makeDeliverEngine>>;

@@ -200,7 +200,7 @@ export interface ICampaignDeliveryService {
  * Settles a submitted automated send in the caller's transaction: records
  * its batch outcome, completes the send and ends its runs.
  */
-export type AutomatedSendSettlement = (
+type AutomatedSendSettlement = (
   tx: AutomationEngineTransaction,
   at: Temporal.Instant
 ) => Effect.Effect<void, DatabaseQueryError>;
@@ -236,7 +236,7 @@ type AttemptContext = DeliveryContext & {
   readonly leaseId: string;
 };
 
-export type BatchRecipient = {
+type BatchRecipient = {
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
 };

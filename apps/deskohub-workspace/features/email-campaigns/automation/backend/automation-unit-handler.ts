@@ -35,7 +35,7 @@ export type ClaimedAutomationUnit<Subject> = {
  * The unit holds its claim and slot until the send settles, and only the
  * send's id matters from then on, so the subject isn't decoded again.
  */
-export type PersistedAutomationUnit = Omit<
+type PersistedAutomationUnit = Omit<
   ClaimedAutomationUnit<unknown>,
   "subject"
 > & {
@@ -47,7 +47,7 @@ export type PersistedAutomationUnit = Omit<
  * transaction that settles the unit `done`, before its claim CAS and the
  * slot hand-off, so the unit settles only with its send.
  */
-export type AutomationUnitSettlement = (
+type AutomationUnitSettlement = (
   tx: AutomationEngineTransaction,
   at: Temporal.Instant
 ) => Effect.Effect<void, AutomationUnitDefect | DatabaseQueryError>;
@@ -210,7 +210,7 @@ export interface AutomationUnitHandler<Subject, Fetched> {
 }
 
 /** Commits a fetched unit at the instant sampled after its fetch. */
-export type AutomationUnitCommit = (
+type AutomationUnitCommit = (
   tx: AutomationEngineTransaction,
   at: Temporal.Instant
 ) => Effect.Effect<
