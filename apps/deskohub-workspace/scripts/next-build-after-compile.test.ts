@@ -61,6 +61,21 @@ process.stdout.write(String(typeof resolved.compiler?.runAfterProductionCompile 
     return stdout;
   };
 
+  test("runs its after-compile hook as the runner does", async () => {
+    // Without PostHog settings the config has no hook, so this only loads it
+    // the way the runner's hook phase does.
+    const result = await runCommand(
+      ["node", join(import.meta.dir, "next-after-compile.mjs")],
+      {
+        cwd: join(import.meta.dir, ".."),
+        env: { PATH: process.env.PATH, VERCEL_ENV: "production" },
+        timeoutMs: 30_000,
+      }
+    );
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  }, 60_000);
+
   test("defers PostHog's production source-map hook to the runner", async () => {
     expect(await hasHook(productionEnvironment)).toBe("true");
     expect(

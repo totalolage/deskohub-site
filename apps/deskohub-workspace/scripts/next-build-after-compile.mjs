@@ -3,12 +3,12 @@
  * PostHog's source-map processing and upload, inside the compile process
  * while Turbopack is still writing its build cache. Together they left a cold
  * production compile no headroom on Vercel's 8 GB build machine. So
- * `scripts/next-build.ts` has its compile run skip the hook and runs the hook
- * itself, through this module, once that process exits. Generation skips the
+ * `scripts/next-build.ts` has its compile run skip the hook and runs it with
+ * `scripts/next-after-compile.mjs` once that process exits. Generation skips the
  * hook, so the hook still runs once, before generation, as in one `next build`.
  */
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { PHASE_PRODUCTION_BUILD } from "next/constants.js";
 
 /** Set to `1` for a `next build` whose after-compile hook the runner runs. */
@@ -67,7 +67,3 @@ export const runAfterCompile = async (projectDir) => {
     projectDir,
   });
 };
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  await runAfterCompile(process.cwd());
-}

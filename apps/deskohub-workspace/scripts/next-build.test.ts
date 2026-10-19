@@ -40,14 +40,15 @@ case "$*" in *"build-mode=\${NEXT_HANG_MODE:-none}"*) sleep 30 & echo "$$ $!" > 
 `;
 
 /**
- * The project's Next config, whose after-compile hook records the metadata
- * it gets and fails or hangs like the stand-in `next` when its mode is
- * `after-compile`.
+ * The project's Next config, wrapped like the Workspace's, whose
+ * after-compile hook records the metadata it gets and fails or hangs like the
+ * stand-in `next` when its mode is `after-compile`.
  */
 const fixtureConfig = `import { spawn } from "node:child_process";
 import { appendFileSync, writeFileSync } from "node:fs";
+import { withDeferrableAfterCompile } from ${JSON.stringify(join(import.meta.dir, "next-build-after-compile.mjs"))};
 
-export default async () => ({
+export default withDeferrableAfterCompile(async () => ({
   compiler: {
     runAfterProductionCompile: async ({ distDir, projectDir }) => {
       const ownDistDir = distDir === projectDir + "/.next";
@@ -65,7 +66,7 @@ export default async () => ({
       }
     },
   },
-});
+}));
 `;
 
 const startBuild = (

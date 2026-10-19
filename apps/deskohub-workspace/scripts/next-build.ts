@@ -38,7 +38,7 @@ export const nextBuildPhases = (
         {
           command: [
             "node",
-            join(import.meta.dir, "next-build-after-compile.mjs"),
+            join(import.meta.dir, "next-after-compile.mjs"),
           ],
         },
         { command: nextBuild([`${buildModeFlag}=generate`, ...args]) },
