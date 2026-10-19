@@ -60,7 +60,7 @@ export const reservationSelectionFields = {
   start_time: Schema.optionalKey(
     Schema.String.annotate({
       description:
-        "Meeting room only: Prague start time in HH:mm on the hour, such as 09:00, not earlier than now. Not used for the whole-day booking.",
+        "Meeting room only: Prague start time in HH:mm on the hour, such as 09:00; the booking must end after the current time (a booking already in progress is allowed). Not used for the whole-day booking.",
     }).check(Schema.isPattern(/^\d{2}:\d{2}$/))
   ),
   duration: Schema.optionalKey(
