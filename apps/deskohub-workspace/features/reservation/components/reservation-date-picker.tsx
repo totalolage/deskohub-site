@@ -85,7 +85,8 @@ const getPlainDateFromCalendar = (date: Date) =>
  * Arrow opens the calendar dialog. Typed text becomes the field's value on
  * blur, Enter, or opening the calendar. Text that is no date, or a date the
  * calendar would not offer, clears the value and shows why, so the form never
- * holds a date the field does not show.
+ * holds a date the field does not show. Escape or a pick closes the calendar
+ * back into the text field.
  */
 export function ReservationDatePicker({
   ariaDescribedBy,
@@ -108,6 +109,10 @@ export function ReservationDatePicker({
 }: ReservationDatePickerProps) {
   const [openRequested, setOpenRequested] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Escape and a pick close the calendar back into the text field, as in the
+  // APG pattern; other closes keep Radix's focus handling.
+  const closesToFieldRef = useRef(false);
   const calendar = useLoadedModule(reservationCalendar);
   usePreloadWhenIdle(reservationCalendar);
   const open = openRequested && calendar !== undefined;
@@ -207,19 +212,19 @@ export function ReservationDatePicker({
 
   /** Makes the typed text the field's value; false when it holds no usable date. */
   const commitText = () => {
-    if (text === formatText(committedValue)) {
-      setTypedError(undefined);
-      return true;
-    }
     if (text.trim() === "") {
       setTypedError(undefined);
       commitValue("");
       return true;
     }
 
-    const typedDate = Option.getOrUndefined(
-      parseNumericPlainDate({ locale, text })
-    );
+    // Unchanged text stands for the committed date, which still has to be one
+    // the calendar would offer: a prefilled date can be unavailable, and the
+    // bounds can move after it was chosen.
+    const typedDate =
+      selectedDate && text === formatText(committedValue)
+        ? selectedDate
+        : Option.getOrUndefined(parseNumericPlainDate({ locale, text }));
     const error: TypedDateError | undefined = typedDate
       ? getUnavailability(typedDate)
       : { kind: "invalid" };
@@ -273,6 +278,7 @@ export function ReservationDatePicker({
       >
         <div className="flex gap-2">
           <Input
+            ref={inputRef}
             id={id}
             role="combobox"
             aria-autocomplete="none"
@@ -339,6 +345,15 @@ export function ReservationDatePicker({
           className="w-auto p-3"
           // The calendar focuses the selected day, or today, itself.
           onOpenAutoFocus={(event) => event.preventDefault()}
+          onEscapeKeyDown={() => {
+            closesToFieldRef.current = true;
+          }}
+          onCloseAutoFocus={(event) => {
+            if (!closesToFieldRef.current) return;
+            closesToFieldRef.current = false;
+            event.preventDefault();
+            inputRef.current?.focus();
+          }}
         >
           {calendar && (
             <calendar.Calendar
@@ -360,6 +375,7 @@ export function ReservationDatePicker({
                 setText(formatNumericPlainDate({ date: plainDate, locale }));
                 setTypedError(undefined);
                 commitValue(plainDate.toString());
+                closesToFieldRef.current = true;
                 setOpenRequested(false);
                 onBlur?.();
               }}

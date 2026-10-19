@@ -229,6 +229,42 @@ describe("ReservationDatePicker typed date", () => {
     );
   });
 
+  test("rejects an unavailable prefilled date when its text is confirmed unchanged", () => {
+    for (const confirm of ["blur", "Enter"] as const) {
+      const { description, hiddenInput, input, onBlur } = renderPicker({
+        initialValue: "2099-06-10",
+        isDateDisabled: (date) => date.toString() === "2099-06-10",
+      });
+
+      if (confirm === "blur") fireEvent.focusOut(input);
+      else fireEvent.keyDown(input, { key: "Enter" });
+
+      expect({ confirm, value: hiddenInput() }).toEqual({ confirm, value: "" });
+      expect(input.value).toBe("6/10/2099");
+      expect(input.getAttribute("aria-invalid")).toBe("true");
+      expect(description()).toContain(
+        "June 10, 2099 isn't available. Choose another date."
+      );
+      expect(onBlur).not.toHaveBeenCalled();
+      cleanup();
+    }
+  });
+
+  test("rejects a committed date that new bounds leave out of range", () => {
+    const { description, hiddenInput, input, view } = renderPicker({
+      initialValue: "2099-06-10",
+    });
+
+    view.rerender(
+      <ControlledPicker initialValue="2099-06-10" minimum="2099-06-11" />
+    );
+    fireEvent.focusOut(input);
+
+    expect(hiddenInput()).toBe("");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(description()).toContain("Choose a date on or after June 11, 2099.");
+  });
+
   test("explains the format for text that is no date", () => {
     const { description, hiddenInput, input, typeDate } = renderPicker({
       initialValue: "2099-06-10",
@@ -320,6 +356,41 @@ describe("ReservationDatePicker typed date", () => {
     await waitFor(() => {
       expect(document.activeElement).toBe(selectedDay.querySelector("button"));
     });
+  });
+
+  test("closing the calendar with Escape or a pick returns focus to the typed field", async () => {
+    const { input } = renderPicker({ initialValue: "2099-06-10" });
+    const openFromField = () =>
+      waitFor(() => {
+        const day = document.querySelector<HTMLButtonElement>(
+          '[data-day="2099-06-18"] button'
+        );
+        if (!day) throw new Error("calendar did not open");
+        return day;
+      });
+
+    input.focus();
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    const day = await openFromField();
+    await waitFor(() => {
+      expect(document.activeElement?.closest("[data-day]")).not.toBeNull();
+    });
+    fireEvent.keyDown(document.activeElement ?? day, { key: "Escape" });
+    await waitFor(() => {
+      expect(input.getAttribute("aria-expanded")).toBe("false");
+    });
+    expect(document.activeElement).toBe(input);
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    const nextDay = await openFromField();
+    act(() => {
+      nextDay.click();
+    });
+    await waitFor(() => {
+      expect(input.getAttribute("aria-expanded")).toBe("false");
+    });
+    expect(input.value).toBe("6/18/2099");
+    expect(document.activeElement).toBe(input);
   });
 
   test("names the calendar's months and weekdays in the visitor's language", async () => {
