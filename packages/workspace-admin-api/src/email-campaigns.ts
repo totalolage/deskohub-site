@@ -281,9 +281,19 @@ export const AdministrationCampaignUpdateInput = Schema.Struct({
 export type AdministrationCampaignUpdateInput =
   typeof AdministrationCampaignUpdateInput.Type;
 
-/** Renders either unsaved texts or a saved campaign's locale in a template. */
+/**
+ * Renders unsaved texts, texts still being written, or a saved campaign's
+ * locale in a template. Unsaved `Content` must meet the rules saving applies;
+ * `UnfinishedContent` skips the body's content rules, so links, buttons and
+ * images may be incomplete or point anywhere.
+ */
 export const AdministrationCampaignTemplatePreviewInput = Schema.Union([
   Schema.TaggedStruct("Content", {
+    purpose: AdministrationCampaignPurpose,
+    locale: AdministrationCampaignLocale,
+    content: AdministrationCampaignLocaleContent,
+  }).annotate(strictParseOptions),
+  Schema.TaggedStruct("UnfinishedContent", {
     purpose: AdministrationCampaignPurpose,
     locale: AdministrationCampaignLocale,
     content: AdministrationCampaignLocaleContent,

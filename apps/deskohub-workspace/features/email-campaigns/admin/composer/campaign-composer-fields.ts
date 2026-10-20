@@ -2,6 +2,7 @@ import type {
   AdministrationCampaignContent,
   AdministrationCampaignLocaleContent,
   AdministrationCampaignUpdateInput,
+  CampaignTemplatePreviewInputType,
 } from "@deskohub/workspace-admin-api";
 import { Schema } from "effect";
 import type { CampaignRow } from "@/db/schema";
@@ -139,7 +140,7 @@ export const composerLocales = (singleLocale: Locale | undefined) =>
     ? { editable: [singleLocale], required: singleLocale }
     : { editable: campaignLocales, required: campaignFallbackLocale };
 
-export const toCampaignLocaleContent = (
+const toCampaignLocaleContent = (
   fields: CampaignComposerLocaleFields,
   purpose: CampaignPurpose
 ): CampaignLocaleContent => {
@@ -164,6 +165,31 @@ const toAdministrationLocaleContent = (
   const { body, ...texts } = toCampaignLocaleContent(fields, purpose);
   return { ...texts, bodyMarkdown: campaignBodyToMarkdown(body) };
 };
+
+/**
+ * The campaign port's preview of one locale still being written. The body
+ * crosses as Markdown, as saving sends it, and may hold unfinished links,
+ * buttons and images.
+ */
+export const toCampaignPreviewInput = ({
+  templateKey,
+  purpose,
+  locale,
+  fields,
+}: {
+  readonly templateKey: CampaignTemplateKey;
+  readonly purpose: CampaignPurpose;
+  readonly locale: Locale;
+  readonly fields: CampaignComposerLocaleFields;
+}): CampaignTemplatePreviewInputType => ({
+  templateKey,
+  preview: {
+    _tag: "UnfinishedContent",
+    purpose,
+    locale,
+    content: toAdministrationLocaleContent(fields, purpose),
+  },
+});
 
 /** A new campaign's content: each editable locale that has any text. */
 export const toAdministrationCampaignContent = (

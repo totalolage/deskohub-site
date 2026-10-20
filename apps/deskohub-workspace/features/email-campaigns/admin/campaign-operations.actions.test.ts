@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Exit, Layer } from "effect";
 import { automationServiceStubs } from "../backend/campaign-operations.test-utils";
 import type { ICampaignSendService } from "../backend/campaign-send.service";
 import {
@@ -132,6 +132,15 @@ mock.module("../backend/campaign-operations.service", () => ({
 }));
 
 const { runCampaignOperation } = await import("./campaign-operations.actions");
+const { CurrentAdministrator } = await import(
+  "@/features/administrators/backend/current-administrator"
+);
+const { OperationRequestLedger } = await import(
+  "../backend/operation-request-ledger.service"
+);
+const { toCampaignPreviewInput } = await import(
+  "./composer/campaign-composer-fields"
+);
 
 beforeEach(() => {
   authorizationResult = Effect.succeed(administrator);
@@ -290,5 +299,114 @@ describe("runCampaignOperation", () => {
 
     expect(result?.data).toBeUndefined();
     expect(result?.validationErrors).toBeDefined();
+  });
+});
+
+describe("composer preview", () => {
+  /** The port itself, without the Admin UI bridge in between. */
+  const invokePort = (input: ReturnType<typeof toCampaignPreviewInput>) =>
+    Effect.runPromiseExit(
+      operationsModule.CampaignOperations.pipe(
+        Effect.flatMap((operations) =>
+          operations.invoke("previewCampaignTemplate", input)
+        ),
+        Effect.provideService(CurrentAdministrator, administrator as never),
+        Effect.provide(
+          Layer.mergeAll(
+            OperationRequestLedger.unscoped,
+            StubbedCampaignOperations.Live
+          )
+        )
+      )
+    );
+
+  const link = (href: string | null) => ({
+    type: "paragraph",
+    content: [
+      { type: "text", text: "Visit " },
+      {
+        type: "text",
+        text: "our site",
+        marks: [{ type: "link", attrs: { href } }],
+      },
+    ],
+  });
+
+  const previewInput = (...content: ReadonlyArray<object>) =>
+    toCampaignPreviewInput({
+      templateKey: "workspace",
+      purpose: "operational",
+      locale: "en-US",
+      fields: {
+        subject: " Synthetic news ",
+        preheader: "Synthetic preheader",
+        body: { type: "doc", content } as never,
+        operationalReason: "",
+      },
+    });
+
+  const strict = (input: ReturnType<typeof previewInput>) => ({
+    ...input,
+    preview: { ...input.preview, _tag: "Content" as const },
+  });
+
+  test("renders unfinished buttons and links as the port does", async () => {
+    const input = previewInput(
+      link(""),
+      link("htt"),
+      { type: "ctaButton", attrs: { label: "", href: null } },
+      { type: "ctaButton", attrs: { label: "Book", href: "javascript:x" } }
+    );
+
+    const direct = await invokePort(input);
+    const bridged = await runCampaignOperation({
+      operation: "previewCampaignTemplate",
+      input,
+    });
+
+    expect(Exit.isSuccess(direct)).toBe(true);
+    if (!Exit.isSuccess(direct)) return;
+    expect(direct.value.subject).toBe("Synthetic news");
+    expect(direct.value.html).toContain("our site");
+    expect(direct.value.html).toContain("Book");
+    expect(bridged?.data).toEqual({ _tag: "Success", output: direct.value });
+  });
+
+  test("refuses the same unfinished content as unsaved content", async () => {
+    const input = strict(
+      previewInput({ type: "ctaButton", attrs: { label: "", href: null } })
+    );
+
+    const direct = await invokePort(input);
+    const bridged = await runCampaignOperation({
+      operation: "previewCampaignTemplate",
+      input,
+    });
+
+    expect(Exit.isFailure(direct)).toBe(true);
+    expect(bridged?.data).toMatchObject({
+      _tag: "Failure",
+      category: "OperationInputInvalid",
+      code: "content-markdown-invalid",
+    });
+  });
+
+  test("renders finished content the same in either mode", async () => {
+    const input = previewInput(link("https://workspace.deskohub.cz"), {
+      type: "ctaButton",
+      attrs: { label: "Book", href: "https://workspace.deskohub.cz" },
+    });
+
+    const unfinished = await runCampaignOperation({
+      operation: "previewCampaignTemplate",
+      input,
+    });
+    const finished = await runCampaignOperation({
+      operation: "previewCampaignTemplate",
+      input: strict(input),
+    });
+
+    expect(unfinished?.data?._tag).toBe("Success");
+    expect(unfinished?.data).toEqual(finished?.data);
   });
 });

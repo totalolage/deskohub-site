@@ -116,6 +116,9 @@ type AdapterContractCases<Ops extends Operations> = {
   ];
 };
 
+/** A body whose button and link the composer hasn't finished yet. */
+const unfinishedBody = "Více na [webu]().\n\n[[button: ]()]";
+
 const success = { _tag: "Success" } as const;
 const failure = (
   category: CampaignOperationError["_tag"],
@@ -216,6 +219,32 @@ const cases: AdapterContractCases<Registry> = {
         },
       }),
       expect: success,
+    },
+    {
+      title: "renders texts with an unfinished button and link",
+      input: () => ({
+        templateKey: "workspace",
+        preview: {
+          _tag: "UnfinishedContent",
+          purpose: "operational",
+          locale: "cs-CZ",
+          content: { ...czechContent["cs-CZ"], bodyMarkdown: unfinishedBody },
+        },
+      }),
+      expect: success,
+    },
+    {
+      title: "refuses unsaved texts with an unfinished button and link",
+      input: () => ({
+        templateKey: "workspace",
+        preview: {
+          _tag: "Content",
+          purpose: "operational",
+          locale: "cs-CZ",
+          content: { ...czechContent["cs-CZ"], bodyMarkdown: unfinishedBody },
+        },
+      }),
+      expect: failure("OperationInputInvalid", "content-markdown-invalid"),
     },
     {
       title: "refuses a saved campaign's missing locale",

@@ -17,19 +17,14 @@ import { Context, Effect, Layer, Match, Schema, SchemaIssue } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
-import { getRuntimeMarketingPreferencesAccessUrl } from "@/features/legal/marketing-preferences-access-url";
 import { type AudienceFilter, audienceFilterSchema } from "../audience-filter";
 import { previewCalendarExpression } from "../automation/automation-calendar-preview";
 import { AutomationDryRun } from "../automation/backend/automation-dry-run.service";
 import { AutomationEngineHealth } from "../automation/backend/automation-engine-health.service";
 import { AutomationLifecycle } from "../automation/backend/automation-lifecycle.service";
 import { AutomationRunLog } from "../automation/backend/automation-run-log.service";
-import type { CampaignPurpose } from "../body/campaign-content";
 import { campaignTemplates } from "../body/campaign-templates";
-import {
-  CampaignEmailFooter,
-  renderCampaignEmail,
-} from "../body/render-campaign-email";
+import { renderCampaignEmailPreview } from "../body/render-campaign-email-preview";
 import { CampaignService } from "./campaign.service";
 import { CampaignAudienceService } from "./campaign-audience.service";
 import {
@@ -43,6 +38,7 @@ import {
   toAdministrationSendStatus,
   toCampaignLocaleContent,
   toCampaignLocalizedContent,
+  toUnfinishedCampaignLocaleContent,
 } from "./campaign-operation-projections";
 import { CampaignRecipientService } from "./campaign-recipient.service";
 import { CampaignSendService } from "./campaign-send.service";
@@ -212,22 +208,6 @@ const decodeAudienceFilter = (filter: AudienceFilter) =>
     )
   );
 
-/** The preview footer: the real link carries each recipient's token. */
-const previewFooter = (purpose: CampaignPurpose) =>
-  Match.value(purpose).pipe(
-    Match.when("marketing", () =>
-      getRuntimeMarketingPreferencesAccessUrl("preview").pipe(
-        Effect.map((marketingPreferencesUrl) =>
-          CampaignEmailFooter.Marketing({ marketingPreferencesUrl })
-        )
-      )
-    ),
-    Match.when("operational", () =>
-      Effect.succeed(CampaignEmailFooter.Operational())
-    ),
-    Match.exhaustive
-  );
-
 const makeCampaignOperationHandlers = Effect.gen(function* () {
   const audiences = yield* CampaignAudienceService;
   const campaigns = yield* CampaignService;
@@ -239,7 +219,7 @@ const makeCampaignOperationHandlers = Effect.gen(function* () {
   const runLog = yield* AutomationRunLog;
   const engineHealth = yield* AutomationEngineHealth;
 
-  /** Unsaved texts, or a saved campaign's locale. */
+  /** Unsaved texts, texts still being written, or a saved campaign's locale. */
   const loadPreviewSource = (
     preview: CampaignTemplatePreviewInputType["preview"]
   ) =>
@@ -247,6 +227,10 @@ const makeCampaignOperationHandlers = Effect.gen(function* () {
       Match.tagsExhaustive({
         Content: ({ purpose, locale, content }) =>
           toCampaignLocaleContent(locale, content).pipe(
+            Effect.map((parsed) => ({ purpose, content: parsed }))
+          ),
+        UnfinishedContent: ({ purpose, locale, content }) =>
+          toUnfinishedCampaignLocaleContent(locale, content).pipe(
             Effect.map((parsed) => ({ purpose, content: parsed }))
           ),
         Campaign: ({ campaignId, locale }) =>
@@ -342,16 +326,12 @@ const makeCampaignOperationHandlers = Effect.gen(function* () {
     previewCampaignTemplate: ({ templateKey, preview }) =>
       loadPreviewSource(preview).pipe(
         Effect.flatMap(({ purpose, content }) =>
-          previewFooter(purpose).pipe(
-            Effect.flatMap((footer) =>
-              renderCampaignEmail({
-                templateKey,
-                locale: preview.locale,
-                content,
-                footer,
-              })
-            )
-          )
+          renderCampaignEmailPreview({
+            templateKey,
+            purpose,
+            locale: preview.locale,
+            content,
+          })
         ),
         Effect.map(({ subject, html, text }) => ({ subject, html, text }))
       ),
