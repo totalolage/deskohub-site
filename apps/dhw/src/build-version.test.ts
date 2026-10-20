@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import packageMetadata from "../package.json";
 import type { BuildTarget } from "./build-info";
-import { makeDhwBuildDefinitions } from "./build-version";
+import {
+  type DhwBuildChannel,
+  makeDhwBuildDefinitions,
+  makeDhwBuildVersion,
+} from "./build-version";
 import { dhwRunTimeout, runDhw } from "./testing/dhw-process";
 
 const outputDirectory = mkdtempSync(join(tmpdir(), "dhw-build-test-"));
@@ -12,21 +16,22 @@ const outputDirectory = mkdtempSync(join(tmpdir(), "dhw-build-test-"));
 const prVersionTag = "pr.762.0123456789ab";
 
 /**
- * Compiles for the host but stamps the given target and optional version tag,
- * as `build.ts` does.
+ * Compiles for the host but stamps the given target and channel, as
+ * `build.ts` does.
  */
-const compile = async (buildTarget: BuildTarget, versionTag?: string) => {
-  const outfile = join(
-    outputDirectory,
-    `dhw-${buildTarget}${versionTag === undefined ? "" : `-${versionTag}`}`
-  );
+const compile = async (
+  name: string,
+  buildTarget: BuildTarget,
+  channel: DhwBuildChannel
+) => {
+  const outfile = join(outputDirectory, `dhw-${name}`);
   const result = await Bun.build({
     entrypoints: [new URL("./main.ts", import.meta.url).pathname],
     compile: { outfile, autoloadDotenv: false, autoloadBunfig: false },
     define: makeDhwBuildDefinitions(
       packageMetadata.version,
       buildTarget,
-      versionTag
+      channel
     ),
   });
   if (!result.success) throw new AggregateError(result.logs);
@@ -39,9 +44,12 @@ let developmentBinary: ReadonlyArray<string>;
 
 beforeAll(async () => {
   [releaseBinary, pullRequestBinary, developmentBinary] = await Promise.all([
-    compile("linux-x64-baseline"),
-    compile("linux-x64-baseline", prVersionTag),
-    compile("development"),
+    compile("release", "linux-x64-baseline", { release: true }),
+    compile("pull-request", "linux-x64-baseline", {
+      release: false,
+      versionTag: prVersionTag,
+    }),
+    compile("development", "development", { release: false }),
   ]);
 }, 60_000);
 
@@ -101,6 +109,21 @@ describe("compiled dhw", () => {
   );
 
   test(
+    "a PR build can't update itself",
+    async () => {
+      const run = await runDhw(["update", "--json"], {
+        executable: pullRequestBinary,
+        workspace: "http://localhost:3000",
+      });
+
+      expect(run.exitCode).toBe(0);
+      expect(JSON.parse(run.stdout)).toEqual({ status: "development-build" });
+      expect(run.egress).toEqual([]);
+    },
+    dhwRunTimeout
+  );
+
+  test(
     "a development build fails closed without a selected Workspace",
     async () => {
       const run = await runDhw(["version", "--json"], {
@@ -128,4 +151,30 @@ describe("compiled dhw", () => {
     },
     dhwRunTimeout
   );
+});
+
+describe("makeDhwBuildVersion", () => {
+  test("keeps the plain package version only for a release", () => {
+    expect(
+      makeDhwBuildVersion("1.2.3", "linux-x64-baseline", { release: true })
+    ).toBe("1.2.3");
+  });
+
+  test("tags a release-target build outside the release channel", () => {
+    expect(
+      makeDhwBuildVersion("1.2.3", "linux-x64-baseline", { release: false })
+    ).toBe("1.2.3+development");
+    expect(
+      makeDhwBuildVersion("1.2.3", "darwin-arm64", {
+        release: false,
+        versionTag: prVersionTag,
+      })
+    ).toBe(`1.2.3+${prVersionTag}`);
+  });
+
+  test("refuses a release without a release build target", () => {
+    expect(() =>
+      makeDhwBuildVersion("1.2.3", "development", { release: true })
+    ).toThrow("A dhw release needs a release build target.");
+  });
 });

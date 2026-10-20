@@ -28,10 +28,9 @@ export const DHW_BUILD_TARGET: BuildTarget =
 
 /**
  * Only a published release defaults to the production Workspace and updates
- * itself. Releases carry the plain package version; PR artifacts and
- * development builds tag theirs (`+pr.<number>.<head-sha>`, `+development`),
- * so a native PR binary isn't a release.
+ * itself. `build-version.ts` keeps the plain package version for release
+ * builds only; PR artifacts and every other build carry a version tag
+ * (`+pr.<number>.<head-sha>`, `+development`), even on a release target.
  */
 export const isReleaseBuild =
-  DHW_BUILD_TARGET !== "development" &&
-  DHW_VERSION === packageMetadata.version;
+  DHW_BUILD_TARGET !== "development" && DHW_VERSION === packageMetadata.version;
