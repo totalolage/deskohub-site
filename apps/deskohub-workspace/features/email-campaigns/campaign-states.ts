@@ -1,13 +1,62 @@
 import { Schema } from "effect";
 
 /**
+ * How a campaign delivers, chosen at creation and never changed. A `once`
+ * campaign sends one email to its audience; an `automated` campaign runs a
+ * flow for customers as they qualify.
+ */
+export const campaignDeliveries = ["once", "automated"] as const;
+const campaignDeliverySchema = Schema.Literals(campaignDeliveries);
+export type CampaignDelivery = typeof campaignDeliverySchema.Type;
+
+/**
  * Draft campaigns are editable. Sending and Sent campaigns have frozen
  * recipients and are read-only; a Failed send can retry its undelivered
  * recipients.
  */
-export const campaignStatuses = ["draft", "sending", "sent", "failed"] as const;
-const campaignStatusSchema = Schema.Literals(campaignStatuses);
-export type CampaignStatus = typeof campaignStatusSchema.Type;
+export const onceCampaignStatuses = [
+  "draft",
+  "sending",
+  "sent",
+  "failed",
+] as const;
+
+/**
+ * A Draft automation has never run. Active ones admit customers, Paused ones
+ * hold them, and Archived ones have ended for good.
+ */
+export const automatedCampaignStatuses = [
+  "draft",
+  "active",
+  "paused",
+  "archived",
+] as const;
+
+const onceCampaignStateSchema = Schema.Struct({
+  delivery: Schema.Literal("once"),
+  status: Schema.Literals(onceCampaignStatuses),
+});
+
+/**
+ * The delivery mode with the statuses it allows, as the
+ * `email_campaigns_status_check` constraint stores them.
+ */
+const campaignStateSchema = Schema.Union([
+  onceCampaignStateSchema,
+  Schema.Struct({
+    delivery: Schema.Literal("automated"),
+    status: Schema.Literals(automatedCampaignStatuses),
+  }),
+]);
+type CampaignState = typeof campaignStateSchema.Type;
+export type OnceCampaignStatus = (typeof onceCampaignStatuses)[number];
+export type CampaignStatus = CampaignState["status"];
+
+/**
+ * Narrows a stored campaign to a one-off campaign. Send, test send, retry,
+ * and the one-off admin pages handle only these.
+ */
+export const isOnceCampaign = Schema.is(onceCampaignStateSchema);
 
 /**
  * Delivery state of one frozen recipient. `pending` has no confirmed

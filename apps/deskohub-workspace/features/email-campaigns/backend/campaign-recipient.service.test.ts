@@ -7,8 +7,14 @@ import {
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Cause, Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Option } from "effect";
 import type { AudienceFilter } from "../audience-filter";
+import { campaignIdSchema } from "../campaign-identifiers";
+import {
+  type AudienceEvaluationContext,
+  AudienceScope,
+  audienceEvaluationAt,
+} from "./audience-evaluation-context";
 import { AudienceFactsService } from "./audience-facts.service";
 import {
   type CampaignCandidateFacts,
@@ -60,6 +66,8 @@ const resolve = async (input: {
   /** Received campaign emails per customer, for any query. */
   readonly receivedEmails?: ReadonlyMap<DotyposCustomerId, number>;
   readonly dotypos?: Parameters<typeof DotyposServiceMock>[0];
+  readonly scope?: AudienceScope;
+  readonly context?: AudienceEvaluationContext;
 }) => {
   const listCandidates = mock(() => Effect.succeed(input.candidates));
   const countReceivedCampaignEmails = mock(() =>
@@ -79,6 +87,8 @@ const resolve = async (input: {
         service.resolve({
           purpose: input.purpose ?? "operational",
           filter: input.filter ?? everyone,
+          ...(input.scope && { scope: input.scope }),
+          ...(input.context && { context: input.context }),
         })
       )
     ).pipe(
@@ -113,6 +123,57 @@ describe("CampaignRecipientService.resolve", () => {
       purpose: "marketing",
     });
     expect(listCandidates).toHaveBeenCalledWith({ purpose: "marketing" });
+  });
+
+  test("limits the candidates and counts to a customer scope", async () => {
+    const { listCandidates, countReceivedCampaignEmails } = await resolve({
+      candidates: [],
+      purpose: "marketing",
+      scope: AudienceScope.Customers({ ids: [customerId("1")] }),
+      filter: {
+        attribute: "campaignEmailCount",
+        _tag: "Condition",
+        params: { purpose: "any", period: { _tag: "AnyTime" } },
+        operator: "eq",
+        value: 0,
+      },
+    });
+    expect(listCandidates).toHaveBeenCalledWith({
+      purpose: "marketing",
+      ids: [customerId("1")],
+    });
+    expect(countReceivedCampaignEmails).toHaveBeenCalledWith({
+      dispatched: {},
+      customers: [customerId("1")],
+    });
+  });
+
+  test("evaluates in the given context", async () => {
+    const campaignId = campaignIdSchema.make("campaign-1");
+    const { countReceivedCampaignEmails } = await resolve({
+      candidates: [],
+      context: {
+        ...audienceEvaluationAt(Temporal.Instant.from("2026-10-15T10:00:00Z")),
+        campaignId: Option.some(campaignId),
+      },
+      filter: {
+        attribute: "campaignEmailCount",
+        _tag: "Condition",
+        params: {
+          purpose: "any",
+          period: { _tag: "Past" },
+          campaign: { _tag: "This" },
+        },
+        operator: "eq",
+        value: 0,
+      },
+    });
+    expect(countReceivedCampaignEmails).toHaveBeenCalledWith({
+      campaignId,
+      dispatched: {
+        startsAtOrBefore: Temporal.Instant.from("2026-10-15T10:00:00Z"),
+      },
+    });
   });
 
   test("resolves the recipient locale from account, reservation, consent, then Czech", async () => {

@@ -38,7 +38,6 @@ export const accountReviewTargetByCaseId: Partial<
   "account-anonymous-redirect": "sign-in-desktop",
   "account-sign-in-form": "sign-in-accepted-desktop",
   "account-magic-link-delivery": "completion-mobile375x900",
-  "account-session-lifecycle": "callback-failed-desktop",
   "account-linking-variants": "support-desktop",
   "account-locale-preference": "linked-profile-language-desktop",
 };
@@ -58,6 +57,24 @@ export const languagePreferenceReviewTargetByStage = {
 
 export type LanguagePreferenceReviewStage =
   keyof typeof languagePreferenceReviewTargetByStage;
+
+/**
+ * The cross-browser sign-in's review moments in the assistant's browser: the
+ * Czech card its accepted request shows, and the failure card the link it
+ * replays after another browser consumed it lands on. The signed-in callback
+ * between them is captured by the lane's callback handoff hold.
+ */
+export const signInHandoffReviewTargetByStage = {
+  "sign-in-accepted": "sign-in-accepted-cs-desktop",
+  "callback-failed": "callback-failed-cs-desktop",
+} as const satisfies Readonly<Record<string, AccountReviewTarget>>;
+
+export type SignInHandoffReviewStage =
+  keyof typeof signInHandoffReviewTargetByStage;
+
+export type SignInHandoffReviewCapture = (
+  stage: SignInHandoffReviewStage
+) => Promise<void>;
 
 /**
  * The cowork reservation customer section in each mode: the signed-in

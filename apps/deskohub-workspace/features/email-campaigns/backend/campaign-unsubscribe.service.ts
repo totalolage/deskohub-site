@@ -5,6 +5,7 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
+  emailCampaignAutomationVersions,
   emailCampaignRecipients,
   emailCampaignSends,
   emailCampaigns,
@@ -27,6 +28,7 @@ import {
   signCampaignUnsubscribeToken,
 } from "../campaign-unsubscribe-token";
 import { CampaignUnsubscribeTokenInvalid } from "../errors";
+import { sendAutomationVersion, sendPurpose } from "./campaign-send-selection";
 import { loadCampaignSigningKeys } from "./campaign-signing-keys";
 
 /** Path of the one-click unsubscribe endpoint (`List-Unsubscribe`). */
@@ -93,7 +95,7 @@ export class CampaignUnsubscribeService extends Context.Service<
           }
         );
         const [row] = yield* db
-          .select({ purpose: emailCampaigns.purpose })
+          .select({ purpose: sendPurpose })
           .from(emailCampaignRecipients)
           .innerJoin(
             emailCampaignSends,
@@ -103,6 +105,7 @@ export class CampaignUnsubscribeService extends Context.Service<
             emailCampaigns,
             eq(emailCampaigns.id, emailCampaignSends.campaignId)
           )
+          .leftJoin(emailCampaignAutomationVersions, sendAutomationVersion)
           .where(
             and(
               eq(emailCampaignRecipients.sendId, recipient.sendId),

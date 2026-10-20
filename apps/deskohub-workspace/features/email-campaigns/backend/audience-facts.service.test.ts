@@ -15,7 +15,12 @@ import {
   type AudienceFilter,
   audienceFactKey,
 } from "../audience-filter";
-import type { DatePeriodBounds } from "../date-period";
+import {
+  type DatePeriod,
+  type DatePeriodBounds,
+  datePeriodBounds,
+} from "../date-period";
+import { audienceEvaluationAt } from "./audience-evaluation-context";
 import { AudienceFactsService } from "./audience-facts.service";
 import {
   type CampaignBookedReservation,
@@ -64,7 +69,10 @@ const resolveFacts = async (input: {
     })
   );
   const listBookedReservations = mock(
-    (ids: readonly string[], _product?: ReservationProductFilterType) =>
+    (
+      ids: readonly string[],
+      _selection?: { readonly product?: ReservationProductFilterType }
+    ) =>
       Effect.succeed(
         (input.booked ?? []).filter(({ dotyposReservationId }) =>
           ids.includes(dotyposReservationId)
@@ -84,7 +92,7 @@ const resolveFacts = async (input: {
       const service = yield* AudienceFactsService;
       return yield* service.resolve({
         filter: input.filter,
-        now: evaluationTime,
+        contexts: [audienceEvaluationAt(evaluationTime)],
       });
     }).pipe(
       Effect.provide(
@@ -119,6 +127,14 @@ const resolveFacts = async (input: {
     listReservations,
   };
 };
+
+/** The key of a last-visit request evaluated at `at`. */
+const lastVisitKey = (period: DatePeriod, at: Temporal.Instant = now) =>
+  audienceFactKey({
+    attribute: "lastVisit",
+    bounds: datePeriodBounds(period, audienceEvaluationAt(at)),
+    asOf: at,
+  });
 
 const facts = (exit: Exit.Exit<AudienceFacts, unknown>) => {
   if (Exit.isFailure(exit)) throw new Error(String(exit.cause));
@@ -348,19 +364,14 @@ describe("AudienceFactsService last visit", () => {
 
   test("takes each customer's latest booked visit as the value", async () => {
     const { dates } = facts((await run()).exit);
-    expect(
-      dates.get(audienceFactKey({ attribute: "lastVisit", period: recent }))
-    ).toEqual({
+    expect(dates.get(lastVisitKey(recent))).toEqual({
       withValue: new Set([customerId("a"), customerId("b")]),
       inPeriod: new Set([customerId("a")]),
     });
     // A visit in August no longer counts as the last one after an October visit.
     expect(
       dates.get(
-        audienceFactKey({
-          attribute: "lastVisit",
-          period: { _tag: "Range", from: "2026-08-01", to: "2026-09-30" },
-        })
+        lastVisitKey({ _tag: "Range", from: "2026-08-01", to: "2026-09-30" })
       )?.inPeriod
     ).toEqual(new Set([customerId("b")]));
   });
@@ -407,9 +418,7 @@ describe("AudienceFactsService evaluation time", () => {
     expect(listReservations.mock.calls[0]?.[0].startsBefore).toBe(
       "2026-10-15T10:00:00.001Z"
     );
-    expect(
-      dates.get(audienceFactKey({ attribute: "lastVisit", period: lastDay }))
-    ).toEqual({
+    expect(dates.get(lastVisitKey(lastDay))).toEqual({
       withValue: new Set([customerId("a")]),
       inPeriod: new Set([customerId("a")]),
     });
@@ -472,7 +481,9 @@ describe("AudienceFactsService product filters", () => {
     // booked-reservation join differs by product.
     expect(listReservations).toHaveBeenCalledTimes(1);
     expect(
-      listBookedReservations.mock.calls.map(([, product]) => product)
+      listBookedReservations.mock.calls.map(
+        ([, selection]) => selection?.product
+      )
     ).toEqual([coworkDesk, undefined]);
   });
 });

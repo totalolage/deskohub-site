@@ -288,6 +288,7 @@ function ConditionEditor({
             value={count}
             onChange={onChange}
             errorAt={errorAt}
+            lookups={context.lookups}
           />
         ),
       date: ({ entry, condition: date }) =>

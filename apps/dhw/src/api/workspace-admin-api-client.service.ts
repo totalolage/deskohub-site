@@ -91,6 +91,7 @@ import {
   CliSessionUnauthorized,
   CliStandaloneAccessCodeCleanupRequired,
   CliStandaloneAccessCodeReconciled,
+  dhwVersionHeader,
   type ExchangeCliGrantType,
   type GrantedCliSessionType,
   type RenameCliSessionType,
@@ -114,6 +115,7 @@ import {
   HttpClientRequest,
 } from "effect/unstable/http";
 import { HttpApiClient } from "effect/unstable/httpapi";
+import { DHW_VERSION } from "../build-info";
 import { DhwConfig } from "../config/dhw-config.service";
 
 interface IWorkspaceAdminApiClient {
@@ -579,6 +581,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
       transformClient: HttpClient.mapRequest(
         HttpClientRequest.setHeaders({
           ...requestHeaders,
+          [dhwVersionHeader]: DHW_VERSION,
           ...(accessToken && {
             authorization: `Bearer ${Redacted.value(accessToken)}`,
           }),

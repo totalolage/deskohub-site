@@ -3,9 +3,12 @@ import type { Locale } from "@/features/i18n";
 import { Badge } from "@/shared/components/ui/badge";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import type { CampaignPurpose } from "../../body/campaign-content";
-import type {
-  CampaignRecipientStatus,
-  CampaignStatus,
+import {
+  type CampaignDelivery,
+  type CampaignRecipientStatus,
+  type CampaignStatus,
+  isOnceCampaign,
+  type OnceCampaignStatus,
 } from "../../campaign-states";
 
 export function CampaignStatusBadge({
@@ -13,7 +16,7 @@ export function CampaignStatusBadge({
   status,
 }: {
   readonly locale: Locale;
-  readonly status: CampaignStatus;
+  readonly status: OnceCampaignStatus;
 }) {
   return (
     <StatusBadge
@@ -34,6 +37,29 @@ export function CampaignStatusBadge({
         sent: m.emailCampaignsBadgeStatusSent,
         failed: m.emailCampaignsBadgeStatusFailed,
       }[status]({}, { locale })}
+    </StatusBadge>
+  );
+}
+
+/**
+ * A one-off campaign's status, or that the campaign is automated, for lists
+ * that mix both kinds.
+ */
+export function CampaignStateBadge({
+  locale,
+  campaign,
+}: {
+  readonly locale: Locale;
+  readonly campaign: {
+    readonly delivery: CampaignDelivery;
+    readonly status: CampaignStatus;
+  };
+}) {
+  return isOnceCampaign(campaign) ? (
+    <CampaignStatusBadge locale={locale} status={campaign.status} />
+  ) : (
+    <StatusBadge tone="positive">
+      {m.emailCampaignsBadgeDeliveryAutomated({}, { locale })}
     </StatusBadge>
   );
 }

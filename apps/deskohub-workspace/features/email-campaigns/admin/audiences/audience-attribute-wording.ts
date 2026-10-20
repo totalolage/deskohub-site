@@ -6,6 +6,7 @@ import type {
   AudienceEditorToken,
   AudienceSetOperatorType,
 } from "@deskohub/workspace-admin-api";
+import { Data } from "effect";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 
@@ -24,6 +25,20 @@ export type AudienceChoiceWording = {
   readonly absent?: string;
 };
 
+/** A campaign parameter's picker: its name, "any campaign", and a lost one. */
+export type AudienceCampaignSourceWording = {
+  /** Names the control for screen readers. */
+  readonly label: string;
+  /** The search field's placeholder. */
+  readonly search: string;
+  /** Shown when no campaign matches the search. */
+  readonly empty: string;
+  /** The label of the param left unset, which counts every campaign. */
+  readonly absent: string;
+  /** A chosen campaign missing from the list, such as a deleted one. */
+  readonly unknown: string;
+};
+
 /** The counted noun with its forms around a count, for a count summary. */
 type AudienceCountPhrase = {
   /** The noun as counted for one ("booked reservation"). */
@@ -36,22 +51,44 @@ type AudienceCountPhrase = {
 
 type CountParams = AudienceCountCondition["params"];
 
+/**
+ * Whose emails a count summary counts, once its campaign is looked up: the
+ * evaluating campaign, one campaign by name (or ID when campaigns weren't
+ * looked up), or a chosen campaign that no longer exists.
+ */
+export type AudienceCampaignSourceSummary = Data.TaggedEnum<{
+  This: Record<never, never>;
+  Specific: { readonly campaign: string };
+  Deleted: Record<never, never>;
+}>;
+
+export const AudienceCampaignSourceSummary =
+  Data.taggedEnum<AudienceCampaignSourceSummary>();
+
 export type AudienceCountWording = {
   readonly kind: "count";
   readonly label: string;
   /** The editor line after "Number of": words between parameter controls. */
   readonly lead: readonly AudienceEditorToken[];
   readonly choices: Readonly<Record<string, AudienceChoiceWording>>;
+  /** Each campaign parameter's picker, by parameter name. */
+  readonly campaignSources?: Readonly<
+    Record<string, AudienceCampaignSourceWording>
+  >;
   /** What the period applies to, for screen readers. */
   readonly period: string;
   /** What is counted, for screen readers. */
   readonly count: string;
   readonly summary: {
-    /** The counted noun for `count`, with the product phrase. */
+    /**
+     * The counted noun for `count`, with the product phrase and, for a
+     * campaign parameter that names one, whose emails count.
+     */
     readonly noun: (
       params: CountParams,
       count: number,
-      product: string
+      product: string,
+      source: AudienceCampaignSourceSummary | undefined
     ) => string;
     /** The period as the chosen parameters introduce it. */
     readonly period: (params: CountParams, period: string) => string;
@@ -264,6 +301,27 @@ const audienceAttributeWordings = (
           ),
       },
     },
+    firstVisit: {
+      kind: "date",
+      label: m.emailCampaignsAudienceFirstVisitLabel({}, options),
+      noValue: m.emailCampaignsAudienceFirstVisitNoValue({}, options),
+      summary: {
+        ever: (product) =>
+          m.emailCampaignsAudienceFirstVisitEver({ product }, options),
+        inPeriod: (product, period) =>
+          m.emailCampaignsAudienceFirstVisitInPeriod(
+            { product, period },
+            options
+          ),
+        notInPeriod: (product, period) =>
+          m.emailCampaignsAudienceFirstVisitNotInPeriod(
+            { product, period },
+            options
+          ),
+        never: (product) =>
+          m.emailCampaignsAudienceFirstVisitNever({ product }, options),
+      },
+    },
     lastVisit: {
       kind: "date",
       label: m.emailCampaignsAudienceLastVisitLabel({}, options),
@@ -293,7 +351,32 @@ const audienceAttributeWordings = (
         {
           text: m.emailCampaignsAudienceCampaignEmailCountLeadText({}, options),
         },
+        { param: "campaign" },
       ],
+      campaignSources: {
+        campaign: {
+          label: m.emailCampaignsAudienceCampaignEmailCountSourceLabel(
+            {},
+            options
+          ),
+          search: m.emailCampaignsAudienceCampaignEmailCountSourceSearch(
+            {},
+            options
+          ),
+          empty: m.emailCampaignsAudienceCampaignEmailCountSourceEmpty(
+            {},
+            options
+          ),
+          absent: m.emailCampaignsAudienceCampaignEmailCountSourceAny(
+            {},
+            options
+          ),
+          unknown: m.emailCampaignsAudienceCampaignEmailCountSourceUnknown(
+            {},
+            options
+          ),
+        },
+      },
       choices: {
         purpose: {
           label: m.emailCampaignsAudienceCampaignEmailCountPurposeLabel(
@@ -324,11 +407,30 @@ const audienceAttributeWordings = (
       ),
       count: m.emailCampaignsAudienceCampaignEmailCountCountLabel({}, options),
       summary: {
-        noun: (params, count) =>
-          (
-            optionOf(campaignEmailNouns, params, "purpose") ??
-            m.emailCampaignsAudienceCampaignEmailCountNounAny
-          )({ count }, options),
+        // One campaign's emails count whatever their purpose.
+        noun: (params, count, _product, source) =>
+          source
+            ? AudienceCampaignSourceSummary.$match(source, {
+                This: () =>
+                  m.emailCampaignsAudienceCampaignEmailCountNounThis(
+                    { count },
+                    options
+                  ),
+                Specific: ({ campaign }) =>
+                  m.emailCampaignsAudienceCampaignEmailCountNounSpecific(
+                    { count, campaign },
+                    options
+                  ),
+                Deleted: () =>
+                  m.emailCampaignsAudienceCampaignEmailCountNounDeleted(
+                    { count },
+                    options
+                  ),
+              })
+            : (
+                optionOf(campaignEmailNouns, params, "purpose") ??
+                m.emailCampaignsAudienceCampaignEmailCountNounAny
+              )({ count }, options),
         period: (_params, period) => period,
         none: (phrase) =>
           m.emailCampaignsAudienceCampaignEmailCountNone(phrase, options),

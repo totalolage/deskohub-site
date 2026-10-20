@@ -22,6 +22,8 @@ Skew Protection (12-hour max age from deployment creation) keeps browsers that l
 
 Vercel queue messages stay pinned to the deployment that published them, and that older code can consume them until they're acknowledged or expire. Late-payment recovery messages are retained for seven days. Before a release that older consumers can't tolerate, check what each topic's consumer writes and whether undelivered messages from older deployments remain.
 
+Email automation work units (`workspace-email-automation-unit`) ship consumer first. Each deployment compiles in a list of the unit kinds it can run, and it claims, promotes and reaps only those kinds. A message for an unknown kind is acknowledged without being claimed, and a deployment that supports the kind re-sends the unit. Add a kind's handler before any code plans that kind. Once automated campaigns exist, never instant-roll back past the release that added the automation schema and the unit consumer. Older code can't decode automated campaigns, shows automated sends as one-off sends, and can't run newer unit kinds.
+
 Don't add a custom Vercel Ignored Build Step for documentation-, test-, CI-, or E2E-only changes. Rely on Vercel's automatic affected-project skipping.
 
 ## Migrate protected preview databases

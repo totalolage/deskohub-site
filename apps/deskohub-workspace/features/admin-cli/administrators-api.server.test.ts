@@ -21,6 +21,7 @@ import {
   LegacyAdministratorBackfillError,
 } from "@/features/administrators/backend/legacy-administrator-backfill.service";
 import { AdminCliAdministratorsApiHandlers } from "./administrators-api.server";
+import { CliClientCompatibilityLive } from "./cli-client-version";
 
 const cliAdministratorEmail = AdministrationActorEmail.make(
   testEmailAddress("cli-admin")
@@ -75,6 +76,7 @@ const callBackfill = (
     Effect.provide(AdminCliAdministratorsApiHandlers),
     Effect.provide(bearer),
     Effect.provide(Layer.succeed(LegacyAdministratorBackfill, { run })),
+    Effect.provide(CliClientCompatibilityLive),
     Effect.provide(NodeHttpServer.layerHttpServices),
     Effect.scoped,
     Effect.runPromise

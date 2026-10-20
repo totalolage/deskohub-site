@@ -1,4 +1,3 @@
-import type { CampaignRow } from "@/db/schema";
 import {
   AdministrationAlert,
   AdministrationDetailSection,
@@ -10,12 +9,13 @@ import {
 import { m } from "@/features/administration/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { formatCount } from "@/shared/utils/number";
+import type { OnceCampaign } from "../../backend/campaign.service";
 import { campaignRecipientStatuses } from "../../campaign-states";
 import {
   describeAudienceFilter,
   hasPeriodEndingAtEvaluation,
 } from "../audience-filter-summary";
-import { loadDiscountGroupOptions } from "../audiences/discount-group-options.server";
+import { loadAudienceValueLookups } from "../audiences/audience-value-lookups.server";
 import {
   CampaignPurposeBadge,
   CampaignRecipientStatusBadge,
@@ -31,15 +31,14 @@ import { SentRecipientTable } from "./sent-recipient-table";
 export async function SentCampaignPage({
   campaign,
 }: {
-  readonly campaign: CampaignRow;
+  readonly campaign: OnceCampaign;
 }) {
-  const [{ send, audienceTitle }, discountGroups, emails, locale] =
-    await Promise.all([
-      loadSentCampaign(campaign.id),
-      loadDiscountGroupOptions(),
-      loadSentCampaignEmails(campaign),
-      getRequestLocale(),
-    ]);
+  const [{ send, audienceTitle }, lookups, emails, locale] = await Promise.all([
+    loadSentCampaign(campaign.id),
+    loadAudienceValueLookups(),
+    loadSentCampaignEmails(campaign),
+    getRequestLocale(),
+  ]);
   const sentAt =
     send && formatAdministrationDateTime(send.createdAt.toString(), locale);
   return (
@@ -131,7 +130,7 @@ export async function SentCampaignPage({
                           filter: describeAudienceFilter(
                             send.audienceFilter,
                             locale,
-                            { discountGroups }
+                            lookups
                           ),
                           sentAt: formatAdministrationDateTime(
                             send.createdAt.toString(),
@@ -145,7 +144,7 @@ export async function SentCampaignPage({
                           filter: describeAudienceFilter(
                             send.audienceFilter,
                             locale,
-                            { discountGroups }
+                            lookups
                           ),
                         },
                         { locale }

@@ -33,6 +33,7 @@ import type {
   DotyposDiscountGroup,
   DotyposDiscountGroupId,
   DotyposProduct,
+  DotyposReservation,
   DotyposReservationId,
   DotyposReservationInterval,
   UpdateDotyposReservationInput,
@@ -64,6 +65,11 @@ export type ReservationListOptions = {
   readonly startsAtOrAfter?: string;
   readonly startsBefore?: string;
   readonly order?: "startDateAscending" | "startDateDescending";
+};
+
+export type ReservationPage = {
+  readonly reservations: readonly DotyposReservation[];
+  readonly nextPage: Option.Option<number>;
 };
 
 export type CustomerListOptions = {
@@ -102,7 +108,7 @@ export type CustomerChanges = {
 };
 
 /** Dotypos serves at most this many records per list page. */
-const dotyposMaximumPageSize = 100;
+export const dotyposMaximumPageSize = 100;
 
 type DotyposPage<A> = {
   readonly data?: readonly A[];
@@ -243,6 +249,68 @@ const createdFromFilter = (createdFrom: Option.Option<DotyposTimestamp>) =>
     onNone: () => [],
     onSome: (created) => [`created|gteq|${formatDotyposTimestamp(created)}`],
   });
+
+type ReservationListQuery = {
+  readonly filter?: string;
+  readonly sort?: string;
+};
+
+/**
+ * The reservation list request's filter and sort, or none when an empty id
+ * selection leaves nothing to read.
+ */
+const reservationListQuery = (
+  options: ReservationListOptions
+): Effect.Effect<Option.Option<ReservationListQuery>, ValidationError> => {
+  const ids = [...new Set(options.ids ?? [])];
+  if (options.ids && ids.length === 0) return Effect.succeed(Option.none());
+  const filterValues = [
+    options.customerId,
+    options.startsAtOrAfter,
+    options.startsBefore,
+  ].filter((value): value is string => value !== undefined);
+
+  if (
+    ids.some((id) => !id.trim() || /[|;,]/.test(id)) ||
+    filterValues.some((value) => !value.trim() || /[|;]/.test(value))
+  ) {
+    return Effect.fail(
+      new ValidationError({
+        message: "Reservation filters contain an invalid value",
+      })
+    );
+  }
+
+  const filter = [
+    ids.length > 0 && `id|in|${ids.join(",")}`,
+    options.customerId && `_customerId|eq|${options.customerId}`,
+    options.startsAtOrAfter && `startDate|gteq|${options.startsAtOrAfter}`,
+    options.startsBefore && `startDate|lt|${options.startsBefore}`,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(";");
+
+  return Effect.succeed(
+    Option.some({
+      ...(filter && { filter }),
+      ...(options.order && {
+        sort:
+          options.order === "startDateAscending" ? "startDate" : "-startDate",
+      }),
+    })
+  );
+};
+
+const validateReservationPageNumber = (
+  page: number
+): Effect.Effect<void, ValidationError> =>
+  Number.isSafeInteger(page) && page >= 1
+    ? Effect.void
+    : Effect.fail(
+        new ValidationError({
+          message: "Reservation page must be a positive integer",
+        })
+      );
 
 const getNextDotyposPageNumber = (input: {
   readonly currentPage: number;
@@ -1753,37 +1821,37 @@ const makeDotyposService = Effect.gen(function* () {
       )
   );
 
-  const loadReservations = (options: {
-    readonly filter?: string;
-    readonly sort?: string;
+  const readReservationPage = (input: {
+    readonly query: ReservationListQuery;
+    readonly page: number;
+    readonly operation: string;
   }) =>
+    runDotyposRequest(
+      client.listReservations(config.cloudId, {
+        params: {
+          limit: dotyposMaximumPageSize,
+          page: input.page,
+          ...(input.query.filter && { filter: input.query.filter }),
+          ...(input.query.sort && { sort: input.query.sort }),
+        },
+      }),
+      input.operation
+    ).pipe(
+      Effect.catchTag("ExternalAPIError", (error) =>
+        input.page === 1 && error.statusCode === 404
+          ? Effect.succeed({ data: [] })
+          : Effect.fail(error)
+      ),
+      Effect.flatMap((result) =>
+        decodeProviderPage(DotyposReservationSchema, result, input.operation)
+      )
+    );
+
+  const loadReservations = (query: ReservationListQuery) =>
     loadDotyposPages({
       operation: "listReservations",
       loadPage: (page) =>
-        runDotyposRequest(
-          client.listReservations(config.cloudId, {
-            params: {
-              limit: 100,
-              page,
-              ...(options.filter && { filter: options.filter }),
-              ...(options.sort && { sort: options.sort }),
-            },
-          }),
-          "listReservations"
-        ).pipe(
-          Effect.catchTag("ExternalAPIError", (error) =>
-            page === 1 && error.statusCode === 404
-              ? Effect.succeed({ data: [] })
-              : Effect.fail(error)
-          ),
-          Effect.flatMap((result) =>
-            decodeProviderPage(
-              DotyposReservationSchema,
-              result,
-              "listReservations"
-            )
-          )
-        ),
+        readReservationPage({ query, page, operation: "listReservations" }),
     }).pipe(
       Effect.retry(retryPolicy),
       catchUnexpectedDotyposError("listReservations")
@@ -1792,41 +1860,75 @@ const makeDotyposService = Effect.gen(function* () {
   const listReservations = Effect.fn("listReservations")(function* (
     options: ReservationListOptions = {}
   ) {
-    const ids = [...new Set(options.ids ?? [])];
-    if (options.ids && ids.length === 0) return [];
-    const filterValues = [
-      options.customerId,
-      options.startsAtOrAfter,
-      options.startsBefore,
-    ].filter((value): value is string => value !== undefined);
-
-    if (
-      ids.some((id) => !id.trim() || /[|;,]/.test(id)) ||
-      filterValues.some((value) => !value.trim() || /[|;]/.test(value))
-    ) {
-      return yield* new ValidationError({
-        message: "Reservation filters contain an invalid value",
-      });
-    }
-
-    const filter = [
-      ids.length > 0 && `id|in|${ids.join(",")}`,
-      options.customerId && `_customerId|eq|${options.customerId}`,
-      options.startsAtOrAfter && `startDate|gteq|${options.startsAtOrAfter}`,
-      options.startsBefore && `startDate|lt|${options.startsBefore}`,
-    ]
-      .filter((value): value is string => Boolean(value))
-      .join(";");
-
-    const { items: reservations } = yield* loadReservations({
-      ...(filter && { filter }),
-      ...(options.order && {
-        sort:
-          options.order === "startDateAscending" ? "startDate" : "-startDate",
-      }),
-    });
+    const query = yield* reservationListQuery(options);
+    if (Option.isNone(query)) return [];
+    const { items: reservations } = yield* loadReservations(query.value);
     return reservations;
   });
+
+  /**
+   * Reads one page of reservations. It sends exactly one list request and
+   * never retries it, so every call costs one request against the Dotypos
+   * rate limit and the caller decides when to try again.
+   */
+  const listReservationsPage = Effect.fn("listReservationsPage")(function* (
+    options: ReservationListOptions & { readonly page: number }
+  ) {
+    yield* validateReservationPageNumber(options.page);
+    const query = yield* reservationListQuery(options);
+    if (Option.isNone(query)) {
+      const empty: ReservationPage = {
+        reservations: [],
+        nextPage: Option.none(),
+      };
+      return empty;
+    }
+    return yield* readSingleReservationPage({
+      query: query.value,
+      page: options.page,
+      operation: "listReservationsPage",
+    });
+  });
+
+  /**
+   * Reads one page of the reservations still `NEW` or `CONFIRMED` that
+   * overlap the interval. Like {@link listReservationsPage}, it sends exactly
+   * one list request and never retries it.
+   */
+  const listActiveReservationsPage = Effect.fn("listActiveReservationsPage")(
+    function* (interval: DotyposReservationInterval, page: number) {
+      yield* validateReservationPageNumber(page);
+      const filter = yield* getActiveReservationOverlapFilter(interval);
+      return yield* readSingleReservationPage({
+        query: { filter },
+        page,
+        operation: "listActiveReservationsPage",
+      });
+    }
+  );
+
+  const readSingleReservationPage = (input: {
+    readonly query: ReservationListQuery;
+    readonly page: number;
+    readonly operation: string;
+  }) =>
+    readReservationPage(input).pipe(
+      catchUnexpectedDotyposError(input.operation),
+      Effect.flatMap((result) =>
+        getNextDotyposPageNumber({
+          currentPage: input.page,
+          nextPage: result.nextPage,
+          operation: input.operation,
+        }).pipe(
+          Effect.map(
+            (nextPage): ReservationPage => ({
+              reservations: result.data ?? [],
+              nextPage: Option.fromUndefinedOr(nextPage),
+            })
+          )
+        )
+      )
+    );
 
   const listActiveReservationsOverlapping = Effect.fn(
     "listActiveReservationsOverlapping"
@@ -1930,6 +2032,8 @@ const makeDotyposService = Effect.gen(function* () {
     findOrCreateCustomer,
     getTables,
     listReservations,
+    listReservationsPage,
+    listActiveReservationsPage,
     listActiveReservationsOverlapping,
     getProducts,
     getCategories,

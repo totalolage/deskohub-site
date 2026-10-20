@@ -26,6 +26,7 @@ mock.module("./use-reservation-checkout", () => ({
     hasPreparedPayRedirect: false,
     isPreparingCheckout: false,
     isSubmittingCheckout: false,
+    preparedCheckout: undefined,
     setSubmissionError: mock(),
     startCheckout,
     submissionError: undefined,
@@ -130,6 +131,7 @@ function Harness({
       }
       locale="en-US"
       selectionSummary={selectionSummary}
+      selection={{ kind: "cowork", fromSearchParams: () => ({}) }}
     >
       <input
         aria-label="Reservation date"
@@ -526,8 +528,11 @@ describe("ReservationCheckoutForm", () => {
 
       await waitFor(() => expect(startCheckout).toHaveBeenCalledTimes(1));
       expect(startCheckout.mock.calls[0]?.[0]).not.toHaveProperty("customer");
+      // Someone else's contact is never asked, so no consent is sent.
+      expect(startCheckout.mock.calls[0]?.[0]).not.toHaveProperty(
+        "marketingConsent"
+      );
       expect(startCheckout.mock.calls[0]?.[0]).toMatchObject({
-        marketingConsent: false,
         reservation: { email: graceEmail, name: "Grace Hopper" },
       });
     });
@@ -556,14 +561,14 @@ describe("ReservationCheckoutForm", () => {
       );
 
       expect(getMarketingConsentCheckbox(view)).toBeNull();
-      // The hidden checkbox submits no opt-in, which leaves the stored
+      // The hidden checkbox sends no consent fields, which leaves the stored
       // consent as it is.
       fireEvent.click(getSubmitButton(view));
       await waitFor(() => expect(startCheckout).toHaveBeenCalledTimes(1));
-      expect(startCheckout.mock.calls[0]?.[0]).toMatchObject({
-        customer: "account",
-        marketingConsent: false,
-      });
+      const submitted = startCheckout.mock.calls[0]?.[0];
+      expect(submitted).toMatchObject({ customer: "account" });
+      expect(submitted).not.toHaveProperty("marketingConsent");
+      expect(submitted).not.toHaveProperty("marketingConsentSource");
     });
 
     test("explains that a verified email's saved profile replaced the typed details", () => {

@@ -1,7 +1,14 @@
 "use client";
 
 import { type FormEvent, type ReactNode, useEffect, useRef } from "react";
-import type { FieldPath, FieldValues, UseFormReturn } from "react-hook-form";
+import type {
+  FieldPath,
+  FieldValues,
+  Path,
+  PathValue,
+  UseFormReturn,
+} from "react-hook-form";
+import { usePrepareReservationSiteTool } from "@/features/agent-tools/webmcp/use-prepare-reservation-site-tool";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import type { CheckoutStatusSummaryPresentation } from "@/features/checkout/checkout-status-summary-presentation";
 import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-summary";
@@ -13,8 +20,15 @@ import type {
   ReservationCheckoutCustomerForm,
   ReservationContactValues,
 } from "@/features/reservation/reservation-existing-customer";
-import type { ReservationOrderIssuanceData } from "@/features/reservation/reservation-order";
+import type {
+  ReservationOrderData,
+  ReservationOrderIssuanceData,
+} from "@/features/reservation/reservation-order";
 import { Form } from "@/shared/components/ui/form";
+import {
+  getInvalidFormFields,
+  type InvalidFormField,
+} from "@/shared/utils/form-field-errors";
 import { ReservationBillingFields } from "./reservation-billing-fields";
 import {
   confirmReservationContactEmail,
@@ -29,7 +43,10 @@ import { ReservationPrivacyNotice } from "./reservation-privacy-notice";
 import { ReservationSelectionSummary } from "./reservation-selection-summary";
 import { ReservationSubmitSection } from "./reservation-submit-section";
 import { useCheckoutEmailVerification } from "./use-checkout-email-verification";
-import { useReservationCheckout } from "./use-reservation-checkout";
+import {
+  type CheckoutSubmission,
+  useReservationCheckout,
+} from "./use-reservation-checkout";
 import { useReservationCheckoutStep } from "./use-reservation-checkout-step";
 
 type ReservationFormData = FieldValues &
@@ -37,6 +54,25 @@ type ReservationFormData = FieldValues &
     readonly billing: ReservationBillingSelectionInput;
     readonly marketingConsent: boolean;
   };
+
+/** Where a submission of the form led. */
+export type ReservationFormSubmission =
+  | CheckoutSubmission
+  | {
+      readonly status: "invalid";
+      readonly fields: readonly InvalidFormField[];
+    }
+  /**
+   * A signed-out customer was sent the sign-in email; checkout continues
+   * once they verify it.
+   */
+  | { readonly status: "email-verification" };
+
+type ReservationSubmitOptions = {
+  readonly event?: FormEvent<HTMLFormElement>;
+  /** Labels a marketing consent the site tool ticked for the customer. */
+  readonly marketingConsentSource?: "site_tool";
+};
 
 type ReservationCheckoutFormProps<
   Input extends FieldValues,
@@ -74,6 +110,13 @@ type ReservationCheckoutFormProps<
   readonly locale: Locale;
   /** The space picked at the first step, summarized at the contact step. */
   readonly selectionSummary: CheckoutStatusSummaryPresentation;
+  /** The family the form books, and its selection values from link parameters. */
+  readonly selection: {
+    readonly kind: ReservationOrderData["kind"];
+    readonly fromSearchParams: (
+      searchParams: URLSearchParams
+    ) => Partial<Input>;
+  };
 };
 
 /**
@@ -103,6 +146,7 @@ export function ReservationCheckoutForm<
   getReservation,
   locale,
   selectionSummary,
+  selection,
 }: ReservationCheckoutFormProps<Input, Data>) {
   const checkoutStep = useReservationCheckoutStep();
   const existingCustomer =
@@ -123,6 +167,7 @@ export function ReservationCheckoutForm<
     capturePrePaymentOutcome,
     clearSubmissionError,
     hasPreparedPayRedirect,
+    preparedCheckout,
     isPreparingCheckout,
     isSubmittingCheckout,
     setSubmissionError,
@@ -133,52 +178,86 @@ export function ReservationCheckoutForm<
     locale,
   });
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    void form.handleSubmit(
+  const checkout = (
+    data: Data,
+    marketingConsentSource: "site_tool" | undefined
+  ): ReservationFormSubmission | Promise<CheckoutSubmission> => {
+    if (preparedCheckout) return preparedCheckout;
+
+    clearSubmissionError();
+    emailVerification.clearError();
+    if (booksForSomeoneElse && !confirmReservationContactEmail(form, locale)) {
+      capturePrePaymentOutcome("validation");
+      return {
+        status: "invalid",
+        fields: [
+          {
+            name: "emailConfirmation",
+            message: m.contactValidationEmailConfirmationMismatch(
+              {},
+              { locale }
+            ),
+          },
+        ],
+      };
+    }
+    if (availability.unavailableMessage) {
+      capturePrePaymentOutcome("availability_changed");
+      setSubmissionError(availability.unavailableMessage);
+      return { status: "error", message: availability.unavailableMessage };
+    }
+    if (!advertisedPrice.token) {
+      capturePrePaymentOutcome("transport_error");
+      const message = m.reservationErrorMessage({}, { locale });
+      setSubmissionError(message);
+      return { status: "error", message };
+    }
+
+    if (checkoutCustomer.status === "signed-out") {
+      emailVerification.verify({
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        billing: data.billing,
+        marketingConsent: data.marketingConsent,
+      });
+      return { status: "email-verification" };
+    }
+
+    return startCheckout({
+      advertisedPriceToken: advertisedPrice.token,
+      ...(!booksForSomeoneElse && { customer: "account" }),
+      // Without the checkbox the account already consented: send no consent.
+      ...(asksMarketingConsent && {
+        marketingConsent: data.marketingConsent,
+        ...(data.marketingConsent &&
+          marketingConsentSource && { marketingConsentSource }),
+      }),
+      reservation: getReservation(data),
+    });
+  };
+
+  // The submit button and the site tool share this path: validation, the
+  // availability and price checks, then checkout.
+  const submit = async ({
+    event,
+    marketingConsentSource,
+  }: ReservationSubmitOptions = {}): Promise<ReservationFormSubmission> => {
+    let submission: ReservationFormSubmission | Promise<CheckoutSubmission> = {
+      status: "invalid",
+      fields: [],
+    };
+    await form.handleSubmit(
       (data) => {
-        if (hasPreparedPayRedirect) return;
-
-        clearSubmissionError();
-        emailVerification.clearError();
-        if (
-          booksForSomeoneElse &&
-          !confirmReservationContactEmail(form, locale)
-        ) {
-          capturePrePaymentOutcome("validation");
-          return;
-        }
-        if (availability.unavailableMessage) {
-          capturePrePaymentOutcome("availability_changed");
-          setSubmissionError(availability.unavailableMessage);
-          return;
-        }
-        if (!advertisedPrice.token) {
-          capturePrePaymentOutcome("transport_error");
-          setSubmissionError(m.reservationErrorMessage({}, { locale }));
-          return;
-        }
-
-        if (checkoutCustomer.status === "signed-out") {
-          emailVerification.verify({
-            name: data.name,
-            email: data.email,
-            phone: data.phone,
-            billing: data.billing,
-            marketingConsent: data.marketingConsent,
-          });
-          return;
-        }
-
-        startCheckout({
-          advertisedPriceToken: advertisedPrice.token,
-          ...(!booksForSomeoneElse && { customer: "account" }),
-          marketingConsent: asksMarketingConsent && data.marketingConsent,
-          reservation: getReservation(data),
-        });
+        submission = checkout(data, marketingConsentSource);
       },
       (errors) => {
         if (booksForSomeoneElse) confirmReservationContactEmail(form, locale);
         capturePrePaymentOutcome("validation");
+        submission = {
+          status: "invalid",
+          fields: getInvalidFormFields(errors),
+        };
         // A selection that went stale since the first step is fixed there.
         if (
           Object.keys(errors).some((name) => !contactStepFieldNames.has(name))
@@ -187,6 +266,49 @@ export function ReservationCheckoutForm<
         }
       }
     )(event);
+    return submission;
+  };
+
+  const marketingConsentField = "marketingConsent" as Path<Input>;
+  usePrepareReservationSiteTool({
+    asksMarketingConsent,
+    hasMarketingConsent: () => form.getValues(marketingConsentField) === true,
+    giveMarketingConsent: () =>
+      form.setValue(
+        marketingConsentField,
+        true as PathValue<Input, Path<Input>>,
+        { shouldDirty: true, shouldTouch: true }
+      ),
+    applySelection: (searchParams) => {
+      let changed = false;
+      for (const [name, value] of Object.entries(
+        selection.fromSearchParams(searchParams)
+      )) {
+        const field = name as Path<Input>;
+        if (Object.is(form.getValues(field), value)) continue;
+        form.setValue(field, value, {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+        changed = true;
+      }
+      return changed;
+    },
+    kind: selection.kind,
+    locale,
+    readiness: {
+      isPending:
+        availability.isPending ||
+        advertisedPrice.isFetching ||
+        (!advertisedPrice.token && !advertisedPrice.isError),
+      priceError: advertisedPrice.isError,
+      unavailableMessage: availability.unavailableMessage,
+    },
+    submit: (marketingConsentSource) => submit({ marketingConsentSource }),
+  });
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    void submit({ event });
   };
 
   const continueToContact = async () => {

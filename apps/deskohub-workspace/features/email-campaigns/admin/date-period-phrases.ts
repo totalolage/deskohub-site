@@ -15,6 +15,20 @@ const lastPeriods: Readonly<
   year: m.emailCampaignsAudienceSummaryPeriodLastYear,
 };
 
+type TriggerWindowInputs = {
+  readonly side: "before" | "after";
+  readonly count: number;
+};
+
+const triggerWindowPeriods: Readonly<
+  Record<DatePeriodUnitType, AudienceMessage<TriggerWindowInputs>>
+> = {
+  day: m.emailCampaignsAudienceSummaryPeriodTriggerWindowDay,
+  week: m.emailCampaignsAudienceSummaryPeriodTriggerWindowWeek,
+  month: m.emailCampaignsAudienceSummaryPeriodTriggerWindowMonth,
+  year: m.emailCampaignsAudienceSummaryPeriodTriggerWindowYear,
+};
+
 /** A period's date in `locale`; a date still being entered reads as a gap. */
 const periodDate = (date: string, locale: Locale) =>
   date === ""
@@ -22,10 +36,11 @@ const periodDate = (date: string, locale: Locale) =>
     : formatAdministrationPlainDate(date, locale);
 
 /**
- * The period as audience summaries name it: "at any time", "in the last 10
- * days", "from Jan 1, 2026 to Mar 31, 2026", "since Jan 1, 2026" (through
- * now), "from Jan 1, 2026 onward" (future included), or "until Jan 1, 2026",
- * with dates in `locale`.
+ * The period as audience summaries name it: "at any time", "at any time so
+ * far", "in the last 10 days", "from Jan 1, 2026 to Mar 31, 2026", "since Jan
+ * 1, 2026" (through now), "from Jan 1, 2026 onward" (future included), "until
+ * Jan 1, 2026", or "within 2 weeks before the trigger", with dates in
+ * `locale`.
  */
 export const describeDatePeriod = (
   period: DatePeriod,
@@ -35,6 +50,7 @@ export const describeDatePeriod = (
   return Match.value(period).pipe(
     Match.tagsExhaustive({
       AnyTime: () => m.emailCampaignsAudienceSummaryPeriodAnyTime({}, options),
+      Past: () => m.emailCampaignsAudienceSummaryPeriodPast({}, options),
       Last: ({ count, unit }) => lastPeriods[unit]({ count }, options),
       Range: ({ from, to }) =>
         m.emailCampaignsAudienceSummaryPeriodRange(
@@ -56,6 +72,8 @@ export const describeDatePeriod = (
           { date: periodDate(date, locale) },
           options
         ),
+      TriggerWindow: ({ side, count, unit }) =>
+        triggerWindowPeriods[unit]({ side, count }, options),
     })
   );
 };

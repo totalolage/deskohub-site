@@ -51,6 +51,8 @@ export const describeCampaignSendingFailure = (
         m.emailCampaignsSendingFailureCampaignNotFound({}, options),
       CampaignReadOnly: () =>
         m.emailCampaignsSendingFailureCampaignReadOnly({}, options),
+      CampaignDeliveryMismatch: () =>
+        m.emailCampaignsDeliveryMismatch({}, options),
       CampaignConfirmationRejected: ({ reason }) =>
         confirmationRejectionMessages[reason]({}, options),
       CampaignTestRecipientInvalid: ({ email }) =>

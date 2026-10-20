@@ -54,7 +54,7 @@ import {
 
 const testEmailAddressForAda = testEmailAddress("ada");
 
-const execute = mock(() => undefined);
+const executeAsync = mock(() => Promise.resolve({}));
 const getAdvertisedPrices = mock(
   (requests: ReadonlyArray<AdvertisedPriceRequest>) =>
     Promise.resolve(advertisedPricesResult(requests))
@@ -268,7 +268,7 @@ describe("MeetingRoomReservationForm", () => {
       new URLSearchParams("utm_source=meeting-room-test")
     );
     workspaceUseAction.mockReturnValue({
-      execute,
+      executeAsync,
       isExecuting: false,
       result: {},
     });
@@ -279,7 +279,7 @@ describe("MeetingRoomReservationForm", () => {
 
   afterEach(() => {
     cleanup();
-    execute.mockClear();
+    executeAsync.mockClear();
     getAdvertisedPrices.mockClear();
   });
 
@@ -407,8 +407,8 @@ describe("MeetingRoomReservationForm", () => {
 
     await continueAndSubmitReservation(continueButton);
 
-    await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
-    expect(execute.mock.calls[0]?.[0]).toMatchObject({
+    await waitFor(() => expect(executeAsync).toHaveBeenCalledTimes(1));
+    expect(executeAsync.mock.calls[0]?.[0]).toMatchObject({
       locale: "en-US",
       checkoutSessionId: "restored-checkout-session",
       advertisedPriceToken: "sealed-advertised-price",
@@ -494,8 +494,8 @@ describe("MeetingRoomReservationForm", () => {
       view.getByRole("button", { name: "Continue" }) as HTMLButtonElement
     );
 
-    await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
-    expect(execute.mock.calls[0]?.[0]).toMatchObject({
+    await waitFor(() => expect(executeAsync).toHaveBeenCalledTimes(1));
+    expect(executeAsync.mock.calls[0]?.[0]).toMatchObject({
       advertisedPriceToken: advertisedPrice.advertisedPriceToken,
       marketingConsent: false,
       reservation: {
@@ -578,8 +578,8 @@ describe("MeetingRoomReservationForm", () => {
       });
       await continueAndSubmitReservation(continueButton as HTMLButtonElement);
 
-      await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
-      expect(execute.mock.calls[0]?.[0].reservation).toMatchObject({
+      await waitFor(() => expect(executeAsync).toHaveBeenCalledTimes(1));
+      expect(executeAsync.mock.calls[0]?.[0].reservation).toMatchObject({
         kind: "meeting-room",
         duration: { unit: "hour", amount: 1 },
         reservationDate: "2099-07-30",
