@@ -3,6 +3,11 @@ import type { CustomerAgentConnection } from "@/features/account/customer-agent-
 import { describeCustomerAgentScope } from "@/features/account/customer-agent-scope-copy";
 import { m } from "@/features/i18n";
 import {
+  deliverWorkspaceBrowserLogs,
+  discardWorkspaceBrowserLogs,
+  type WorkspaceBrowserLogRecord,
+} from "@/shared/browser/workspace-browser-logs";
+import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
@@ -87,9 +92,17 @@ const confirmDisconnect = async (dialog: HTMLElement, locale: TestLocale) => {
 
 afterAll(unregisterWorkspaceComponentTestEnv);
 
+const reported: WorkspaceBrowserLogRecord[] = [];
+discardWorkspaceBrowserLogs();
+const detachLogs = deliverWorkspaceBrowserLogs((record) => {
+  reported.push(record);
+});
+afterAll(detachLogs);
+
 describe("CustomerAgentConnectionsSection", () => {
   afterEach(() => {
     cleanup();
+    reported.length = 0;
     deleteConsent.mockReset();
     deleteConsent.mockImplementation(() => Promise.resolve({ error: null }));
   });
@@ -208,6 +221,9 @@ describe("CustomerAgentConnectionsSection", () => {
     expect(
       view.container.querySelector("#account-assistants-status")?.textContent
     ).toBe("");
+    expect(reported.map(({ attributes }) => attributes.failureCode)).toEqual([
+      "account.customer-agent-disconnect.failed",
+    ]);
   });
 
   test("treats a network failure as a failed disconnect", async () => {
@@ -236,5 +252,6 @@ describe("CustomerAgentConnectionsSection", () => {
     await confirmDisconnect(dialog, locale);
 
     expect(view.queryByText("Synthetic Assistant")).toBeNull();
+    expect(reported).toEqual([]);
   });
 });
