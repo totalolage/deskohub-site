@@ -12,6 +12,7 @@ import {
 import { customerAgentTestClientMetadata } from "../../customer-agent-test-client";
 import { AuthCleanupService } from "./auth-cleanup.service";
 import {
+  buildDatabaseAdapter,
   type CapturedMagicLink,
   cookieJar,
   getSessionCookie,
@@ -429,6 +430,51 @@ const countRows = async (table: string, userId: string) => {
     [userId]
   );
   return result.rows[0]!.count as number;
+};
+
+/**
+ * The test database adapter, with a hook that runs one step of a test just
+ * before the plugin's next write of a given kind to a given model. It forces
+ * two concurrent requests to interleave at that write.
+ */
+const makeInterleavingDatabase = () => {
+  const base = buildDatabaseAdapter();
+  type Write = "create" | "delete";
+  let next:
+    | {
+        readonly write: Write;
+        readonly model: string;
+        readonly step: () => Promise<unknown>;
+      }
+    | undefined;
+  const beforeWrite = async (write: Write, model: string) => {
+    if (next?.write !== write || next.model !== model) return;
+    const { step } = next;
+    next = undefined;
+    await step();
+  };
+  return {
+    database: (options: Parameters<typeof base>[0]) => {
+      const adapter = base(options);
+      const create = async (input: Parameters<typeof adapter.create>[0]) => {
+        await beforeWrite("create", input.model);
+        return adapter.create(input);
+      };
+      const remove = async (input: Parameters<typeof adapter.delete>[0]) => {
+        await beforeWrite("delete", input.model);
+        return adapter.delete(input);
+      };
+      return {
+        ...adapter,
+        create: create as typeof adapter.create,
+        delete: remove as typeof adapter.delete,
+      };
+    },
+    /** Runs `step` before the next `write` to `model`, which then goes on. */
+    before: (write: Write, model: string, step: () => Promise<unknown>) => {
+      next = { write, model, step };
+    },
+  };
 };
 
 /**
@@ -1209,6 +1255,102 @@ describe.skipIf(!testDatabase)(
         0
       );
       expect((await exchangeCode(auth, reconnected)).status).toBe(200);
+    });
+
+    /**
+     * Connects one assistant through an adapter that lets a test interleave
+     * its refresh with its disconnect.
+     */
+    const connectForRace = async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const interleaving = makeInterleavingDatabase();
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+        database: interleaving.database,
+      });
+      const customer = await signIn(auth, sentLinks);
+      const tokens = await connectSignedIn(auth, customer.cookie, agent);
+      const [connection] = await listConnections(auth, customer.cookie);
+      const refresh = (refreshToken: string) =>
+        requestToken(auth, {
+          grant_type: "refresh_token",
+          client_id: agent.clientId,
+          refresh_token: refreshToken,
+          resource: RESOURCE,
+        });
+      const disconnect = () =>
+        request(auth, "/oauth2/delete-consent", {
+          method: "POST",
+          cookie: customer.cookie,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: connection!.id }),
+        });
+      /** No issued token works any more, and none is left stored. */
+      const expectRevoked = async (issued: readonly TokenResponse[]) => {
+        for (const { access_token, refresh_token } of issued) {
+          expect(await failureReasonOf(authorityOver(auth), access_token)).toBe(
+            "invalid-token"
+          );
+          expect((await refresh(refresh_token!)).status).toBe(400);
+        }
+        for (const table of [
+          "oauth_access_token",
+          "oauth_refresh_token",
+          "oauth_consent",
+        ]) {
+          expect(await countRows(table, customer.accountId)).toBe(0);
+        }
+      };
+      return { interleaving, tokens, refresh, disconnect, expectRevoked };
+    };
+
+    // Guards the Workspace oauth-provider patch: a disconnect that lands
+    // after a refresh rotated the old token but before it wrote the new ones
+    // would otherwise leave the new pair usable.
+    test("refuses a refresh that a disconnect overtakes mid-rotation", async () => {
+      const race = await connectForRace();
+      race.interleaving.before("create", "oauthRefreshToken", async () => {
+        expect((await race.disconnect()).status).toBe(200);
+      });
+
+      const rotated = await race.refresh(race.tokens.refresh_token!);
+      expect(rotated.status).toBe(400);
+      expect(((await rotated.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
+      await race.expectRevoked([race.tokens]);
+    });
+
+    // Guards the Workspace oauth-provider patch: the disconnect deletes the
+    // consent before the tokens, so a refresh that still saw the consent
+    // wrote its tokens before the token deletes started.
+    test("revokes the tokens of a refresh that finishes while a disconnect is under way", async () => {
+      const race = await connectForRace();
+      let rotated: Promise<Response> | undefined;
+      let disconnected: Promise<Response> | undefined;
+      race.interleaving.before(
+        "create",
+        "oauthRefreshToken",
+        () =>
+          new Promise<void>((resume) => {
+            race.interleaving.before("delete", "oauthConsent", async () => {
+              resume();
+              await rotated;
+            });
+            disconnected = race.disconnect();
+          })
+      );
+
+      rotated = race.refresh(race.tokens.refresh_token!);
+      const response = await rotated;
+      expect(response.status).toBe(200);
+      expect((await disconnected!).status).toBe(200);
+      await race.expectRevoked([
+        race.tokens,
+        (await response.json()) as TokenResponse,
+      ]);
     });
 
     test("deletes a connected account with its grants, and its tokens stop authorizing", async () => {
