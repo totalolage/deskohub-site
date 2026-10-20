@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.23.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.22.0...dhw-v1.23.0) (2026-10-20)
+
+
+### Features
+
+* **account:** fold customer links into customer accounts, enforce authors ([#682](https://github.com/totalolage/deskohub-site/issues/682) release B) ([75603b6](https://github.com/totalolage/deskohub-site/commit/75603b67828ea5a2cb66e21aee1fa831c69787b6))
+
 ## [1.22.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.21.0...dhw-v1.22.0) (2026-10-20)
 
 
