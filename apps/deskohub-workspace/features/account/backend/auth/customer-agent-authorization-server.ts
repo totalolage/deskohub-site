@@ -9,14 +9,10 @@ import {
   customerAgentConsentPath,
   customerAgentSignInPath,
 } from "../../customer-agent-routes";
-import { customerAgentScopes } from "../../customer-agent-scopes";
-
-/**
- * Agents may refresh their access without the customer present. Without
- * `offline_access`, Better Auth revokes a grant's tokens when the browser
- * session it was granted in ends.
- */
-const offlineAccessScope = "offline_access";
+import {
+  customerAgentOfflineAccessScope,
+  customerAgentScopes,
+} from "../../customer-agent-scopes";
 
 /**
  * OAuth endpoints a signed-in customer could otherwise call to register or
@@ -71,10 +67,10 @@ export const makeCustomerAgentAuthorizationPlugins = ({
     loginPage: customerAgentSignInPath,
     consentPage: customerAgentConsentPath,
     disableJwtPlugin: true,
-    scopes: [...customerAgentScopes, offlineAccessScope],
+    scopes: [...customerAgentScopes, customerAgentOfflineAccessScope],
     clientRegistrationDefaultScopes: [
       ...customerAgentScopes,
-      offlineAccessScope,
+      customerAgentOfflineAccessScope,
     ],
   });
 

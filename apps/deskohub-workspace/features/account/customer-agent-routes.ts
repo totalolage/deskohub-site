@@ -1,4 +1,7 @@
-import { customerAgentScopes } from "./customer-agent-scopes";
+import {
+  customerAgentOfflineAccessScope,
+  customerAgentScopes,
+} from "./customer-agent-scopes";
 
 /**
  * Where the OAuth server sends a customer who connects an AI agent: the
@@ -103,7 +106,7 @@ export const resolveCustomerAgentConnectStep = ({
  */
 export const customerAgentConsentScopes = [
   ...customerAgentScopes,
-  "offline_access",
+  customerAgentOfflineAccessScope,
 ] as const;
 
 export type CustomerAgentConsentScope =
