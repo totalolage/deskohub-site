@@ -10,12 +10,17 @@ import { E2EDatabase } from "../integrations/database.service";
 import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutRow } from "../types";
-import { assertReservationCookieIsolation } from "./reservation-cookie-isolation";
+import { assertReservationStatusIsolation } from "./reservation-status-isolation";
 
 const baseUrl = "https://workspace.test";
 const orderId = "019f70bd-0131-7f30-9f8a-48e768f00292";
 const customerId = "dotypos-customer-paid";
-const targetStatusUrl = `${baseUrl}/en-US/reservation/status/${orderId}`;
+const targetStatusPath = `/en-US/reservation/status/${orderId}`;
+const targetStatusUrl = `${baseUrl}${targetStatusPath}`;
+const signInUrl = `${baseUrl}/en-US/auth/sign-in?${new URLSearchParams({
+  returnTo: targetStatusPath,
+  for: "reservation",
+})}`;
 const originalUrl = `${baseUrl}/en-US/contact?email=${encodeURIComponent(testEmailAddress("synthetic"))}&message=${orderId}`;
 
 const config: WorkspaceE2EConfig = {
@@ -38,13 +43,15 @@ const targetRow = {
   reservation_id: orderId,
 } as CheckoutRow;
 
-type IsolationMode = "scoped" | "any-cookie-all-orders";
+type IsolationMode =
+  | "scoped"
+  | "session-reads-every-order"
+  | "signed-out-reads-status";
 
 const matchesLocation = (condition: string, url: string): boolean =>
   new Function("location", `return ${condition}`)(new URL(url));
 
 const makeRunner = (mode: IsolationMode) => {
-  let currentUrl = originalUrl;
   const calls: Array<{
     readonly command: string;
     readonly options: Parameters<Runner>[2];
@@ -55,57 +62,88 @@ const makeRunner = (mode: IsolationMode) => {
   const rawOpenedUrls: string[] = [];
   const waits: Array<{ readonly condition: string; readonly url: string }> = [];
 
-  const frame = {
-    evaluate: async (input: string) => {
-      if (input === browserTextScript) {
-        const text = currentUrl.includes("local-reservation-")
-          ? "We could not find this order. Please check the link or start a new reservation."
-          : `We couldn't deliver your confirmation. Your payment went through and your reservation is saved, but your confirmation and access link didn't reach your email. Send support request. Order reference ${orderId}.`;
-        rawBrowserTexts.push(text);
-        return text;
-      }
-      if (input.includes('document.querySelectorAll("dd")')) {
-        return !currentUrl.includes("local-reservation-");
-      }
-      if (input.includes("#checkout-status-support-contact")) {
-        return !currentUrl.includes("local-reservation-") || mode === "scoped";
-      }
-      return true;
-    },
-    waitForFunction: async (condition: string) => {
-      waits.push({ condition, url: currentUrl });
-      if (!matchesLocation(condition, currentUrl))
-        throw new Error(`browser wait condition does not match ${currentUrl}`);
-      return true;
-    },
-  };
-  const page = {
-    goto: async (url: string) => {
-      currentUrl = url;
-      rawOpenedUrls.push(url);
-    },
-    mainFrame: () => frame,
-    on: () => undefined,
-    url: () => currentUrl,
-  };
-  const context = {
-    close: async () => undefined,
-    newPage: async () => page,
-    on: () => undefined,
-    request: {
-      get: async (url: string) => {
-        throw new Error(`unexpected browser request: ${url}`);
+  // The first context is the signed-in booking session; later ones are
+  // signed out.
+  const makeContext = (signedIn: boolean) => {
+    let currentUrl = signedIn ? originalUrl : "about:blank";
+    const frame = {
+      evaluate: async (input: string) => {
+        if (input === browserTextScript) {
+          let text = `We couldn't deliver your confirmation. Your payment went through and your reservation is saved, but your confirmation and access link didn't reach your email. Send support request. Order reference ${orderId}.`;
+          if (currentUrl.includes("local-reservation-")) {
+            text =
+              "We could not find this order. Please check the link or start a new reservation.";
+          }
+          if (currentUrl.includes("/auth/sign-in")) {
+            text = "Sign in to see your reservation. Email.";
+          }
+          rawBrowserTexts.push(text);
+          return text;
+        }
+        if (input.includes('document.querySelectorAll("dd")')) {
+          return !currentUrl.includes("local-reservation-");
+        }
+        if (input.includes("signed-out") || input.includes("innerText")) {
+          if (currentUrl.includes("/auth/sign-in")) return true;
+        }
+        if (input.includes("#checkout-status-support-contact")) {
+          return (
+            !currentUrl.includes("local-reservation-") ||
+            mode !== "session-reads-every-order"
+          );
+        }
+        return true;
       },
-    },
+      waitForFunction: async (condition: string) => {
+        waits.push({ condition, url: currentUrl });
+        if (!matchesLocation(condition, currentUrl))
+          throw new Error(
+            `browser wait condition does not match ${currentUrl}`
+          );
+        return true;
+      },
+    };
+    const page = {
+      goto: async (url: string) => {
+        rawOpenedUrls.push(url);
+        currentUrl =
+          !signedIn &&
+          url === targetStatusUrl &&
+          mode !== "signed-out-reads-status"
+            ? signInUrl
+            : url;
+      },
+      mainFrame: () => frame,
+      on: () => undefined,
+      url: () => currentUrl,
+    };
+    return {
+      context: {
+        close: async () => undefined,
+        newPage: async () => page,
+        on: () => undefined,
+        request: {
+          get: async (url: string) => {
+            throw new Error(`unexpected browser request: ${url}`);
+          },
+        },
+      },
+      currentUrl: () => currentUrl,
+    };
   };
+  const booking = makeContext(true);
+  let contexts = 0;
   const actualRun = makePlaywrightBrowserRunner({
-    newContext: async () => context,
+    newContext: async () => {
+      contexts += 1;
+      return contexts === 1 ? booking.context : makeContext(false).context;
+    },
   } as Browser);
   const run: Runner = async (command, args, options) => {
     const session = args[1];
     if (!session) throw new Error("browser session missing");
-    const operation = ["request", "get", "open", "wait", "eval"].find((value) =>
-      args.includes(value)
+    const operation = ["request", "get", "open", "wait", "eval", "close"].find(
+      (value) => args.includes(value)
     );
     if (!operation)
       throw new Error(`unexpected browser command: ${args.join(" ")}`);
@@ -121,7 +159,7 @@ const makeRunner = (mode: IsolationMode) => {
 
   return {
     calls,
-    currentUrl: () => currentUrl,
+    currentUrl: booking.currentUrl,
     outputs,
     rawBrowserTexts,
     rawOpenedUrls,
@@ -201,7 +239,7 @@ const runIsolation = async (mode: IsolationMode = "scoped") => {
   const runner = makeRunner(mode);
   const database = makeDatabase();
   const exit = await Effect.runPromiseExit(
-    assertReservationCookieIsolation({
+    assertReservationStatusIsolation({
       config,
       customerId: customerId as never,
       data: { locale: "en-US" },
@@ -214,15 +252,20 @@ const runIsolation = async (mode: IsolationMode = "scoped") => {
   return { database, exit, runner };
 };
 
-test("checks target authorization and other-order isolation in the submitted session", async () => {
+test("checks target authorization, other-order isolation, and signed-out sign-in", async () => {
   const result = await runIsolation();
 
   expect(result.exit._tag).toBe("Success");
+  expect(new Set(result.runner.calls.map(({ session }) => session))).toEqual(
+    new Set(["meeting-room-paid-test", "meeting-room-paid-test-signed-out"])
+  );
   expect(
-    result.runner.calls.every(
-      ({ session }) => session === "meeting-room-paid-test"
+    result.runner.calls.some(
+      ({ command, session }) =>
+        command === "close" && session === "meeting-room-paid-test-signed-out"
     )
   ).toBe(true);
+  expect(result.runner.waits.some(({ url }) => url === signInUrl)).toBe(true);
   expect(result.runner.calls.some(({ command }) => command === "request")).toBe(
     false
   );
@@ -240,9 +283,10 @@ test("checks target authorization and other-order isolation in the submitted ses
   const contactWaits = result.runner.waits.filter(
     ({ url }) => new URL(url).pathname === "/en-US/contact"
   );
-  const exactWaits = result.runner.waits.filter(
-    ({ url }) => new URL(url).pathname !== "/en-US/contact"
-  );
+  const exactWaits = result.runner.waits.filter(({ url }) => {
+    const { pathname } = new URL(url);
+    return pathname !== "/en-US/contact" && pathname !== "/en-US/auth/sign-in";
+  });
   expect(contactWaits.length).toBeGreaterThan(0);
   expect(exactWaits.length).toBeGreaterThan(0);
   for (const { condition } of contactWaits) {
@@ -261,12 +305,23 @@ test("checks target authorization and other-order isolation in the submitted ses
   }
 });
 
-test("fails when one reservation cookie authorizes every order", async () => {
-  const result = await runIsolation("any-cookie-all-orders");
+test("fails when the booking session reads every order", async () => {
+  const result = await runIsolation("session-reads-every-order");
 
   expect(result.exit._tag).toBe("Failure");
   expect(String(result.exit)).toContain(
-    "other reservation details were exposed through the target cookie"
+    "other reservation details were exposed to the booking session"
+  );
+  expect(result.runner.currentUrl()).toBe(`${baseUrl}/en-US/contact`);
+  expect(result.database.hasOnlyTarget()).toBe(true);
+});
+
+test("fails when a signed-out visitor reads the status page", async () => {
+  const result = await runIsolation("signed-out-reads-status");
+
+  expect(result.exit._tag).toBe("Failure");
+  expect(String(result.exit)).toContain(
+    "signed-out reservation status sign-in URL"
   );
   expect(result.runner.currentUrl()).toBe(`${baseUrl}/en-US/contact`);
   expect(result.database.hasOnlyTarget()).toBe(true);

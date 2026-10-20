@@ -10,7 +10,7 @@ export function CheckoutFlowPageSkeleton({
   readonly locale: Locale;
 }) {
   return (
-    <CheckoutFlowLayout activeStepKey="access" locale={locale}>
+    <CheckoutFlowLayout activeStepKey="complete" locale={locale}>
       <output
         aria-busy="true"
         aria-label={label}

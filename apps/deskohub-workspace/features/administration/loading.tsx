@@ -93,7 +93,7 @@ export function AdministrationMetricsLoading() {
     <LoadingRegion
       label={m.administrationLoadingReservationActivity({}, { locale })}
     >
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid gap-3 @xl:grid-cols-3">
         {["today", "upcoming", "recent"].map((key) => (
           <div
             className="rounded-xl border border-navy-blue/10 bg-white px-5 py-5 sm:px-6"
@@ -115,7 +115,7 @@ export function AdministrationCustomerMetricsLoading() {
     <LoadingRegion
       label={m.administrationLoadingCustomerActivity({}, { locale })}
     >
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3 @xl:grid-cols-2">
         {["unique", "new"].map((key) => (
           <div
             className="rounded-xl border border-navy-blue/10 bg-white px-5 py-5 sm:px-6"

@@ -22,6 +22,14 @@ const makeDateFormatter = ({
 }: InstantDateTimeFormatOptions) =>
   new Intl.DateTimeFormat(locale, { dateStyle, timeStyle, timeZone });
 
+/**
+ * Replaces the narrow no-break and thin spaces that Node's ICU puts in times
+ * and ranges with the plain spaces Chromium renders, so text formatted on
+ * both the server and the client hydrates.
+ */
+export const withPlainSpaces = (text: string) =>
+  text.replace(/[\u202F\u2009]/g, " ");
+
 export const formatInstantDate = ({
   instant,
   ...options

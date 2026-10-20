@@ -4,7 +4,9 @@ import {
   workspaceE2EAccountLaneJournalOwner,
 } from "../account/reconcile";
 import { workspaceE2EAdministrationJournalOwners } from "../administrators/identities";
-import { guestReferralPaymentJournalOwner } from "../cases/guest-referral-payment";
+import { referralSomeoneElsePaymentJournalOwner } from "../cases/referral-someone-else-payment";
+import { signedOutVerificationJournalOwner } from "../cases/signed-out-verification";
+import { workspaceE2ECheckoutBookerJournalOwners } from "../checkout/booker";
 import {
   cleanupPreparedCheckoutFlowStates,
   prepareCheckoutFlowCleanup,
@@ -34,7 +36,9 @@ test("reconcile workspace checkout reservations", async ({
           [
             workspaceE2EAccountLaneJournalOwner,
             ...workspaceE2EReferralJournalOwners,
-            guestReferralPaymentJournalOwner,
+            referralSomeoneElsePaymentJournalOwner,
+            signedOutVerificationJournalOwner,
+            ...workspaceE2ECheckoutBookerJournalOwners,
             ...workspaceE2EAdministrationJournalOwners,
           ]
         )

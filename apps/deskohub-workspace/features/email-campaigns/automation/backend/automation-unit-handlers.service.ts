@@ -1,0 +1,51 @@
+import { Context, Effect, Layer } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { ReservationActivitySweep } from "@/features/reservation/backend/reservation-activity-sweep.service";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import type { AutomationWorkUnitKind } from "../automation-work-units";
+import type { RegisteredAutomationUnitHandler } from "./automation-unit-handler";
+import { makeSweepPageHandler } from "./sweep-page";
+
+interface IAutomationUnitHandlers {
+  readonly byKind: ReadonlyMap<
+    AutomationWorkUnitKind,
+    RegisteredAutomationUnitHandler
+  >;
+  /**
+   * The kinds this deployment claims, promotes and reaps. A unit of any
+   * other kind waits for a deployment that supports it (§9.1).
+   */
+  readonly supportedKinds: ReadonlyArray<AutomationWorkUnitKind>;
+}
+
+/** The unit kinds this deployment runs. */
+export class AutomationUnitHandlers extends Context.Service<
+  AutomationUnitHandlers,
+  IAutomationUnitHandlers
+>()("@deskohub-workspace/email-campaigns/AutomationUnitHandlers") {
+  static layer = <R>(
+    handlers: Effect.Effect<
+      ReadonlyArray<RegisteredAutomationUnitHandler>,
+      never,
+      R
+    >
+  ) =>
+    Layer.effect(
+      this,
+      Effect.map(handlers, (registered) => ({
+        byKind: new Map(registered.map((handler) => [handler.kind, handler])),
+        supportedKinds: registered.map((handler) => handler.kind),
+      }))
+    );
+
+  /** PR C runs sweep pages only. */
+  static Live = this.layer(Effect.all([makeSweepPageHandler])).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        ReservationActivitySweep.Default,
+        WorkspaceDatabase.Default,
+        WorkspaceDotyposLayer
+      )
+    )
+  );
+}

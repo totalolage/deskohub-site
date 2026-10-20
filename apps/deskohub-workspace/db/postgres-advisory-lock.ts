@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { Context, Effect, Layer, Result, Semaphore } from "effect";
 import { SqlError } from "effect/unstable/sql";
 import type { Pool } from "pg";
@@ -11,6 +12,17 @@ export type PostgresAdvisoryLockClient = {
 
 export type PostgresAdvisoryLockPool = {
   readonly connect: () => Promise<PostgresAdvisoryLockClient>;
+};
+
+/**
+ * Takes a transaction-scoped advisory lock inside the caller's own
+ * transaction; the lock releases when that transaction ends.
+ */
+export const postgresAdvisoryTransactionLockStatement = (
+  key: PostgresAdvisoryLockKey
+) => {
+  const [namespace, lockKey] = key;
+  return sql`select pg_advisory_xact_lock(hashtext(${namespace}), hashtext(${lockKey}))`;
 };
 
 const beginSql = "begin";

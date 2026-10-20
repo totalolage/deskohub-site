@@ -16,12 +16,14 @@ import {
   getCoworkRestoredReservationValues,
   getReservationDefaultValuesFromSearchParams,
 } from "@/features/reservation/cowork-reservation-checkout-query";
+import type { ReservationCheckoutContact } from "@/features/reservation/reservation-checkout-contact";
 import { getReservationCustomerQueryMode } from "@/features/reservation/reservation-checkout-query";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import {
   type CustomerLastReservationForKind,
-  getReservationExistingCustomerForm,
-  type ReservationExistingCustomer,
+  getCheckoutAccountLastReservation,
+  getReservationCheckoutCustomerForm,
+  type ReservationCheckoutAccount,
 } from "@/features/reservation/reservation-existing-customer";
 import { getCoworkPageOfferings } from "@/features/reservation/reservation-page-offerings";
 import {
@@ -110,7 +112,8 @@ const getCoworkQueryValues = async (
 
 export async function renderCoworkReservationContent({
   checkoutSessionId,
-  existingCustomer,
+  checkoutAccount,
+  checkoutContact,
   initialReservation,
   locale,
   replacementToken,
@@ -118,7 +121,8 @@ export async function renderCoworkReservationContent({
   submittedCode,
 }: {
   readonly checkoutSessionId?: CheckoutSessionId;
-  readonly existingCustomer?: ReservationExistingCustomer<"cowork">;
+  readonly checkoutAccount: ReservationCheckoutAccount<"cowork">;
+  readonly checkoutContact?: ReservationCheckoutContact;
   readonly initialReservation?: NormalizedCoworkReservationOrder;
   readonly locale: Locale;
   readonly replacementToken?: string;
@@ -140,19 +144,17 @@ export async function renderCoworkReservationContent({
       )
     : await getCoworkQueryValues(
         searchParams,
-        existingCustomer?.lastReservation,
+        getCheckoutAccountLastReservation(checkoutAccount),
         today
       );
-  const { existingCustomer: existingCustomerForm, initialValues } =
-    existingCustomer
-      ? getReservationExistingCustomerForm({
-          contact: existingCustomer.contact,
-          hasMarketingConsent: existingCustomer.hasMarketingConsent,
-          queryMode: getReservationCustomerQueryMode(searchParams),
-          restored: Boolean(initialReservation),
-          values: restoredOrQueryValues,
-        })
-      : { existingCustomer: undefined, initialValues: restoredOrQueryValues };
+  const { checkoutCustomer, initialValues } =
+    getReservationCheckoutCustomerForm({
+      account: checkoutAccount,
+      checkoutContact,
+      queryMode: getReservationCustomerQueryMode(searchParams),
+      restored: Boolean(initialReservation),
+      values: restoredOrQueryValues,
+    });
   // Every price and the initial availability render with the content, so no
   // option streams in later and resizes the form.
   const [initialAdvertisedPrices, initialAvailability] = await Promise.all([
@@ -186,7 +188,7 @@ export async function renderCoworkReservationContent({
       />
       <CoworkReservationForm
         checkoutSessionId={checkoutSessionId}
-        existingCustomer={existingCustomerForm}
+        checkoutCustomer={checkoutCustomer}
         initialAdvertisedPrices={initialAdvertisedPrices}
         initialAvailability={initialAvailability}
         initialReservation={initialReservation}

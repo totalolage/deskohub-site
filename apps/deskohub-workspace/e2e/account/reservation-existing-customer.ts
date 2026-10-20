@@ -7,7 +7,8 @@ import {
 import { waitForReactClickHandler } from "../react-handlers";
 import { workspaceE2ETimeouts } from "../timeouts";
 
-const coworkReservationPath = "/en-US/reservation/cowork";
+// The customer section is on the contact step, which the URL reopens.
+const coworkReservationPath = "/en-US/reservation/cowork?step=contact";
 const existingCustomerCardName = "Booking as";
 const bookForSomeoneElseName = "Book for someone else";
 // The submit button reports when availability and the advertised price are

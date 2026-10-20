@@ -28,6 +28,7 @@ import {
   ReservationSubmitFallback,
 } from "@/features/reservation/components/reservation-form-fallback";
 import { ReservationFormLabel } from "@/features/reservation/components/reservation-form-label";
+import { getReservationAdvertisedTotal } from "@/features/reservation/components/reservation-selection-summary";
 import {
   ReservationTypeInput,
   ReservationTypeOption,
@@ -47,7 +48,10 @@ import {
   meetingRoomReservationSchema,
   type NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
-import { getMeetingRoomReservationSelectionSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
+import {
+  getMeetingRoomReservationDefaultValuesFromSearchParams,
+  getMeetingRoomReservationSelectionSearchParams,
+} from "@/features/reservation/meeting-room-reservation-checkout-query";
 import {
   getMeetingRoomReservationDuration,
   getMeetingRoomReservationDurationKey,
@@ -58,7 +62,7 @@ import {
   getEarliestMeetingRoomStartDateTime,
   getMeetingRoomReservationInterval,
 } from "@/features/reservation/meeting-room-reservation-time";
-import type { ReservationExistingCustomerForm } from "@/features/reservation/reservation-existing-customer";
+import type { ReservationCheckoutCustomerForm } from "@/features/reservation/reservation-existing-customer";
 import {
   getMeetingRoomSelectionAvailabilityQuery,
   getMeetingRoomStartTimesQuery,
@@ -72,10 +76,11 @@ import {
   FormMessage,
 } from "@/shared/components/ui/form";
 import { cn } from "@/shared/utils";
+import { getMeetingRoomReservationSelectionSummary } from "./meeting-room-reservation-selection-summary";
 
 type MeetingRoomReservationFormProps = {
   readonly checkoutSessionId?: CheckoutSessionId;
-  readonly existingCustomer?: ReservationExistingCustomerForm;
+  readonly checkoutCustomer: ReservationCheckoutCustomerForm;
   readonly initialAdvertisedPrices?: ReadonlyArray<PreloadedAdvertisedPrice>;
   readonly initialAvailability?: ReadonlyArray<PreloadedWorkspaceAvailability>;
   readonly initialReservation?: NormalizedMeetingRoomReservationOrder;
@@ -93,7 +98,7 @@ type MeetingRoomReservationFormFallbackProps = {
 
 export function MeetingRoomReservationForm({
   checkoutSessionId,
-  existingCustomer,
+  checkoutCustomer,
   initialAdvertisedPrices = [],
   initialAvailability,
   initialReservation,
@@ -217,7 +222,7 @@ export function MeetingRoomReservationForm({
 
   return (
     <ReservationCheckoutForm
-      existingCustomer={existingCustomer}
+      checkoutCustomer={checkoutCustomer}
       advertisedPrice={{
         token: advertisedPrice?.advertisedPriceToken,
         isFetching: advertisedPriceQueryResult?.isFetching ?? false,
@@ -232,6 +237,9 @@ export function MeetingRoomReservationForm({
               ),
             }
           : undefined,
+        total: advertisedPrice
+          ? getReservationAdvertisedTotal(advertisedPrice.quote.payment)
+          : undefined,
       }}
       availability={{
         isPending: availabilityQueryResult.isPending,
@@ -241,6 +249,23 @@ export function MeetingRoomReservationForm({
       form={form}
       getReservation={getMeetingRoomReservationOrder}
       locale={locale}
+      selectionSummary={getMeetingRoomReservationSelectionSummary(
+        {
+          durationKey: selectedDurationKey,
+          startDateTime: selectedStartDateTime,
+        },
+        locale
+      )}
+      selection={{
+        kind: "meeting-room",
+        fromSearchParams: (searchParams) => {
+          const { startDateTime, duration } =
+            getMeetingRoomReservationDefaultValuesFromSearchParams(
+              searchParams
+            );
+          return { startDateTime, duration };
+        },
+      }}
     >
       <FormField
         control={form.control}

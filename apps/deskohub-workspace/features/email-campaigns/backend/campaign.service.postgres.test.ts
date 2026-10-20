@@ -1,10 +1,18 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
+import { EmailServiceTag } from "@deskohub/email";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { CampaignId } from "../campaign-identifiers";
+import type { CampaignStatus } from "../campaign-states";
 import { CampaignService } from "./campaign.service";
+import { CampaignAudienceService } from "./campaign-audience.service";
+import { CampaignConfirmationCodeService } from "./campaign-confirmation-code.service";
+import { CampaignEmailConfig } from "./campaign-email.config";
+import { CampaignRecipientService } from "./campaign-recipient.service";
+import { CampaignSendService } from "./campaign-send.service";
+import { CampaignSendQueueService } from "./campaign-send-queue.service";
 import { campaignContentFixture } from "./email-campaigns.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -20,14 +28,28 @@ describe.skipIf(!testDatabase)("CampaignService on disposable Postgres", () => {
     );
   });
 
-  const run = <A, E>(effect: Effect.Effect<A, E, CampaignService>) =>
-    Effect.runPromiseExit(
-      effect.pipe(
-        Effect.provide(
-          CampaignService.Default.pipe(Layer.provide(testDatabase.layer))
+  // The one-off guards refuse before sending touches anything else, so its
+  // other capabilities are unimplemented mocks.
+  const services = Layer.mergeAll(
+    CampaignService.Default,
+    CampaignSendService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          CampaignService.Default,
+          Layer.mock(CampaignAudienceService, {}),
+          Layer.mock(CampaignRecipientService, {}),
+          Layer.mock(CampaignConfirmationCodeService, {}),
+          Layer.mock(CampaignEmailConfig, {}),
+          Layer.mock(EmailServiceTag, {}),
+          Layer.mock(CampaignSendQueueService, {})
         )
       )
-    );
+    )
+  ).pipe(Layer.provide(testDatabase.layer));
+
+  const run = <A, E>(
+    effect: Effect.Effect<A, E, CampaignService | CampaignSendService>
+  ) => Effect.runPromiseExit(effect.pipe(Effect.provide(services)));
 
   const failure = (exit: Exit.Exit<unknown, unknown>) =>
     Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
@@ -188,9 +210,123 @@ describe.skipIf(!testDatabase)("CampaignService on disposable Postgres", () => {
       templateKey: campaign.templateKey,
       content: campaign.content,
       audienceId: campaign.audienceId,
+      delivery: "once",
       status: "draft",
     });
     expect(copy.value.id).not.toBe(campaign.id);
+  });
+
+  // Nothing writes automated campaigns yet, so the tests insert them by SQL.
+  const insertAutomated = async (status: CampaignStatus) => {
+    const { rows } = await testDatabase.pool.query<{ id: CampaignId }>(
+      `insert into email_campaigns (title, purpose, template_key, delivery, status)
+       values ('Weekly come-back', 'marketing', 'workspace', 'automated', $1)
+       returning id`,
+      [status]
+    );
+    campaignIds.push(rows[0]!.id);
+    return rows[0]!.id;
+  };
+
+  test("refuses one-off operations on an automated campaign", async () => {
+    for (const status of ["draft", "active", "paused", "archived"] as const) {
+      const campaignId = await insertAutomated(status);
+      const mismatch = {
+        _tag: "CampaignDeliveryMismatch",
+        campaignId,
+        delivery: "automated",
+      };
+
+      const operations = [
+        CampaignSendService.pipe(
+          Effect.flatMap((sending) =>
+            sending.testSend({ campaignId, extraRecipients: [] })
+          )
+        ),
+        CampaignSendService.pipe(
+          Effect.flatMap((sending) =>
+            sending.send({ campaignId, confirmationCode: "ABCD-EFGH" })
+          )
+        ),
+        CampaignSendService.pipe(
+          Effect.flatMap((sending) => sending.retryUndelivered({ campaignId }))
+        ),
+        CampaignService.pipe(
+          Effect.flatMap((campaigns) => campaigns.duplicate(campaignId))
+        ),
+        CampaignService.pipe(
+          Effect.flatMap((campaigns) =>
+            campaigns.update({ campaignId, title: "Edited" })
+          )
+        ),
+        CampaignService.pipe(
+          Effect.flatMap((campaigns) => campaigns.delete(campaignId))
+        ),
+      ];
+      for (const operation of operations) {
+        expect(failure(await run(operation))).toMatchObject(mismatch);
+      }
+
+      const { rows } = await testDatabase.pool.query(
+        "select title, status from email_campaigns where id = $1",
+        [campaignId]
+      );
+      expect(rows).toEqual([{ title: "Weekly come-back", status }]);
+    }
+    const { rows: copies } = await testDatabase.pool.query(
+      "select id from email_campaigns where title = 'Copy of Weekly come-back'"
+    );
+    expect(copies).toEqual([]);
+  });
+
+  test("reads an automated campaign with its delivery and status", async () => {
+    const campaignId = await insertAutomated("active");
+    const stored = await run(
+      CampaignService.pipe(
+        Effect.flatMap((campaigns) => campaigns.get(campaignId))
+      )
+    );
+    expect(Exit.isSuccess(stored) && stored.value).toMatchObject({
+      delivery: "automated",
+      status: "active",
+    });
+  });
+
+  test("keeps a campaign's delivery mode and its statuses consistent", async () => {
+    const draft = await createDraft();
+    const automatedId = await insertAutomated("draft");
+
+    expect(draft.delivery).toBe("once");
+    await expect(
+      testDatabase.pool.query(
+        "update email_campaigns set delivery = 'automated' where id = $1",
+        [draft.id]
+      )
+    ).rejects.toMatchObject({ code: "55000" });
+    await expect(
+      testDatabase.pool.query(
+        "update email_campaigns set delivery = 'once' where id = $1",
+        [automatedId]
+      )
+    ).rejects.toMatchObject({ code: "55000" });
+    // An update that leaves the mode as it is still goes through.
+    await testDatabase.pool.query(
+      "update email_campaigns set delivery = 'once', title = 'Hours' where id = $1",
+      [draft.id]
+    );
+
+    await expect(
+      testDatabase.pool.query(
+        "update email_campaigns set status = 'active' where id = $1",
+        [draft.id]
+      )
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      testDatabase.pool.query(
+        "update email_campaigns set status = 'sent' where id = $1",
+        [automatedId]
+      )
+    ).rejects.toMatchObject({ code: "23514" });
   });
 
   test("deletes a draft and reports a missing campaign", async () => {

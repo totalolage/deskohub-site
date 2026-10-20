@@ -18,12 +18,12 @@ mock.module("next/server", () => ({
   connection: () => Promise.resolve(),
 }));
 
-const loadReservationExistingCustomer = mock(
-  (_kind: string): Promise<unknown> => Promise.resolve(undefined)
+const loadReservationCheckoutAccount = mock(
+  (_kind: string): Promise<unknown> => Promise.resolve({ status: "signed-out" })
 );
 mock.module(
   "@/features/reservation/backend/reservation-existing-customer.server",
-  () => ({ loadReservationExistingCustomer })
+  () => ({ loadReservationCheckoutAccount })
 );
 
 const payStateBookedAt = instantStringSchema.make("2026-06-01T09:58:00.000Z");
@@ -31,14 +31,23 @@ const payStateBookedAt = instantStringSchema.make("2026-06-01T09:58:00.000Z");
 const { createReservationPage } = await import(
   "./create-reservation-page.server"
 );
+const { checkoutContactReturnState } = await import(
+  "@/features/reservation/backend/checkout-contact-return-state"
+);
+const { checkoutContactQueryParam } = await import(
+  "@/features/reservation/reservation-checkout-contact"
+);
 
-const existingCustomer = {
-  contact: {
-    name: "Ada Lovelace",
-    email: testEmailAddressForAda,
-    phone: "+420 777 777 777",
+const checkoutAccount = {
+  status: "linked",
+  customer: {
+    contact: {
+      name: "Ada Lovelace",
+      email: testEmailAddressForAda,
+      phone: "+420 777 777 777",
+    },
+    hasMarketingConsent: false,
   },
-  hasMarketingConsent: false,
 };
 
 type ReservationContentProps = {
@@ -208,14 +217,14 @@ test("prefers the signed requested discount code over a fresh public query code"
   });
 });
 
-test("loads the existing customer and the page data concurrently", async () => {
+test("loads the checkout account and the page data concurrently", async () => {
   const customerStarted = createDeferred();
   const pageDataStarted = createDeferred();
   // Each load waits for the other to start, so a sequential render times out.
-  loadReservationExistingCustomer.mockImplementationOnce(async () => {
+  loadReservationCheckoutAccount.mockImplementationOnce(async () => {
     customerStarted.resolve();
     await pageDataStarted.promise;
-    return existingCustomer;
+    return checkoutAccount;
   });
   const loadPageData = mock(async () => {
     pageDataStarted.resolve();
@@ -242,8 +251,46 @@ test("loads the existing customer and the page data concurrently", async () => {
   );
 
   expect(content).toBe("seats 5");
-  expect(loadReservationExistingCustomer).toHaveBeenCalledWith("office");
+  expect(loadReservationCheckoutAccount).toHaveBeenCalledWith("office");
   expect(render).toHaveBeenCalledWith(
-    expect.objectContaining({ existingCustomer, locale: "en-US", pageData: 5 })
+    expect.objectContaining({ checkoutAccount, locale: "en-US", pageData: 5 })
   );
+});
+
+test("reopens the contact details sealed into a sign-in's return path", async () => {
+  const contact = {
+    name: "Ada Lovelace",
+    email: testEmailAddressForAda,
+    phone: "+420777777777",
+    billing: { purpose: "personal", invoice: "none" },
+    marketingConsent: true,
+  } as const;
+  const token = await Effect.runPromise(
+    checkoutContactReturnState.seal(contact)
+  );
+  const render = mock(
+    (_context: { readonly checkoutContact?: unknown }): ReactNode =>
+      "contact form"
+  );
+  const pageDefinition = createReservationPage({
+    fallback: () => "loading reservation form",
+    kind: "cowork",
+    metadata: () => ({ description: "Description", title: "Title" }),
+    pathname: "/reservation/cowork",
+    render,
+  });
+
+  for (const [query, expected] of [
+    [{ [checkoutContactQueryParam]: token }, contact],
+    [{ [checkoutContactQueryParam]: "not-a-sealed-contact" }, undefined],
+    [{}, undefined],
+  ] as const) {
+    render.mockClear();
+    await renderContent(
+      await pageDefinition.Page({ searchParams: Promise.resolve(query) })
+    );
+    expect(render.mock.calls[0]?.[0]).toMatchObject({
+      checkoutContact: expected,
+    });
+  }
 });

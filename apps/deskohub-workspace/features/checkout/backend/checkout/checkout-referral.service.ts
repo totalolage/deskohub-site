@@ -90,8 +90,8 @@ export class CheckoutReferralService extends Context.Service<
           });
           if (codeKind.kind !== "referral") return unavailable;
 
-          // The referral belongs to the booked customer, whoever books: a
-          // guest, someone booking for another person, or an account.
+          // The referral belongs to the booked customer: the account's own
+          // customer, or the person it books for.
           const currentReservation = yield* payableReservations.requireCurrent({
             orderId: opened.orderId,
             checkoutSessionId: opened.checkoutSessionId,

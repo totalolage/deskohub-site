@@ -2,6 +2,7 @@ import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { sql } from "drizzle-orm";
 import {
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -11,6 +12,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { AudienceFilter } from "@/features/email-campaigns/audience-filter";
+import type { AutomationVersionId } from "@/features/email-campaigns/automation/automation-identifiers";
 import type {
   CampaignLocalizedContent,
   CampaignPurpose,
@@ -23,14 +25,17 @@ import type {
   CampaignSendId,
 } from "@/features/email-campaigns/campaign-identifiers";
 import {
+  automatedCampaignStatuses,
+  type CampaignDelivery,
   type CampaignDeliveryBatchStatus,
   type CampaignRecipientSkipReason,
   type CampaignRecipientStatus,
   type CampaignStatus,
+  campaignDeliveries,
   campaignDeliveryBatchStatuses,
   campaignRecipientSkipReasons,
   campaignRecipientStatuses,
-  campaignStatuses,
+  onceCampaignStatuses,
 } from "@/features/email-campaigns/campaign-states";
 import type { Locale } from "@/features/i18n";
 import inlangSettings from "../../project.inlang/settings.json" with {
@@ -38,11 +43,12 @@ import inlangSettings from "../../project.inlang/settings.json" with {
 };
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
+import { emailCampaignAutomationVersions } from "./email-campaign-automations";
 import { quotedSqlList } from "./sql-list";
 
 // Keyed by every purpose so a new one fails to compile until it's listed.
 // A type-only import keeps drizzle-kit off the body module's env loading.
-const campaignPurposes = Object.keys({
+export const campaignPurposes = Object.keys({
   marketing: true,
   operational: true,
 } satisfies Record<CampaignPurpose, true>);
@@ -85,6 +91,11 @@ export const emailCampaigns = pgTable(
     audienceId: text("audience_id")
       .references(() => emailCampaignAudiences.id, { onDelete: "set null" })
       .$type<CampaignAudienceId>(),
+    // The `email_campaigns_delivery_immutable` trigger rejects any change.
+    delivery: text("delivery")
+      .notNull()
+      .default("once")
+      .$type<CampaignDelivery>(),
     status: text("status").notNull().default("draft").$type<CampaignStatus>(),
     createdAt: instant("created_at").notNull().default(sql`now()`),
     updatedAt: instant("updated_at").notNull().default(sql`now()`),
@@ -97,15 +108,22 @@ export const emailCampaigns = pgTable(
       sql`${t.purpose} in (${quotedSqlList(campaignPurposes)})`
     ),
     check(
+      "email_campaigns_delivery_check",
+      sql`${t.delivery} in (${quotedSqlList(campaignDeliveries)})`
+    ),
+    check(
       "email_campaigns_status_check",
-      sql`${t.status} in (${quotedSqlList(campaignStatuses)})`
+      sql`(${t.delivery} = 'once' and ${t.status} in (${quotedSqlList(onceCampaignStatuses)})) or (${t.delivery} = 'automated' and ${t.status} in (${quotedSqlList(automatedCampaignStatuses)}))`
     ),
   ]
 );
 
 export type CampaignRow = typeof emailCampaigns.$inferSelect;
 
-/** The one send of a campaign, with the audience filter it was resolved by. */
+/**
+ * A send with the audience filter it was resolved by: the one send of a
+ * `once` campaign, or one batch of an automated campaign's version.
+ */
 export const emailCampaignSends = pgTable(
   "email_campaign_sends",
   {
@@ -119,6 +137,14 @@ export const emailCampaignSends = pgTable(
       .$type<CampaignAudienceId>(),
     audienceFilter: jsonb("audience_filter").$type<AudienceFilter>().notNull(),
     contentHash: text("content_hash").notNull().$type<CampaignContentHash>(),
+    /**
+     * The automation version an automated send delivers, whose audience
+     * filter and content hash it copies. Null for the send of a `once`
+     * campaign, so one-off reads filter on `automation_version_id is null`.
+     */
+    automationVersionId: text(
+      "automation_version_id"
+    ).$type<AutomationVersionId>(),
     /**
      * The current delivery attempt: 1 for the first delivery, then one more
      * per retry of the undelivered recipients. Batch idempotency keys include
@@ -136,7 +162,18 @@ export const emailCampaignSends = pgTable(
     completedAt: instant("completed_at"),
   },
   (t) => [
-    uniqueIndex("email_campaign_sends_campaign_unique_idx").on(t.campaignId),
+    uniqueIndex("email_campaign_sends_once_campaign_unique_idx")
+      .on(t.campaignId)
+      .where(sql`${t.automationVersionId} is null`),
+    foreignKey({
+      name: "email_campaign_sends_automation_version_fk",
+      columns: [t.automationVersionId, t.campaignId],
+      foreignColumns: [
+        emailCampaignAutomationVersions.id,
+        emailCampaignAutomationVersions.campaignId,
+      ],
+    }),
+    index("email_campaign_sends_campaign_idx").on(t.campaignId),
     check(
       "email_campaign_sends_delivery_attempt_check",
       sql`${t.deliveryAttempt} >= 1`

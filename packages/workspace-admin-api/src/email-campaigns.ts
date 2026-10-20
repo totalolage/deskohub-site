@@ -1,13 +1,19 @@
-import { Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import { AudienceFilter } from "./audience-filter";
+import {
+  AdministrationCampaignAudienceId,
+  AdministrationCampaignId,
+} from "./campaign-identifiers";
 import {
   AdministrationCampaignLocale,
   AdministrationCampaignPurpose,
 } from "./campaign-locale-and-purpose";
+import { DhwVersion, MinimumDhwVersion } from "./dhw-version";
 import {
   AdministrationDotyposCustomerId,
   CliBearerAuthentication,
+  CliClientCompatibility,
   CliInputInvalid,
   CliMutationInProgress,
   CliMutationRejected,
@@ -19,23 +25,6 @@ import {
 const strictParseOptions = {
   parseOptions: { errors: "all", onExcessProperty: "error" },
 } as const;
-
-export const AdministrationCampaignId = Schema.NonEmptyString.pipe(
-  Schema.brand("CampaignId")
-).annotate({
-  identifier: "CampaignId",
-  description: "Database-generated identifier of one email campaign.",
-});
-export type AdministrationCampaignId = typeof AdministrationCampaignId.Type;
-
-export const AdministrationCampaignAudienceId = Schema.NonEmptyString.pipe(
-  Schema.brand("CampaignAudienceId")
-).annotate({
-  identifier: "CampaignAudienceId",
-  description: "Database-generated identifier of one saved campaign audience.",
-});
-export type AdministrationCampaignAudienceId =
-  typeof AdministrationCampaignAudienceId.Type;
 
 export const AdministrationCampaignSendId = Schema.NonEmptyString.pipe(
   Schema.brand("CampaignSendId")
@@ -51,11 +40,23 @@ export const AdministrationCampaignTemplateKey = Schema.Literals(["workspace"]);
 export type AdministrationCampaignTemplateKey =
   typeof AdministrationCampaignTemplateKey.Type;
 
+/** Chosen at creation and never changed. */
+export const AdministrationCampaignDelivery = Schema.Literals([
+  "once",
+  "automated",
+]);
+export type AdministrationCampaignDelivery =
+  typeof AdministrationCampaignDelivery.Type;
+
+/** One-off statuses, then the statuses only an automated campaign has. */
 export const AdministrationCampaignStatus = Schema.Literals([
   "draft",
   "sending",
   "sent",
   "failed",
+  "active",
+  "paused",
+  "archived",
 ]);
 export type AdministrationCampaignStatus =
   typeof AdministrationCampaignStatus.Type;
@@ -162,6 +163,10 @@ export const AdministrationCampaignSummary = Schema.Struct({
   title: Schema.String,
   purpose: AdministrationCampaignPurpose,
   templateKey: AdministrationCampaignTemplateKey,
+  /** Servers and stored results that predate automated campaigns omit it. */
+  delivery: AdministrationCampaignDelivery.pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed("once" as const))
+  ),
   status: AdministrationCampaignStatus,
   audienceId: Schema.NullOr(AdministrationCampaignAudienceId),
   locales: Schema.Array(AdministrationCampaignLocale),
@@ -395,6 +400,14 @@ const campaignErrors = [
   CliServiceUnavailable.schema,
 ];
 
+/**
+ * The first `dhw` release that decodes the first visit, "any time so far",
+ * and one campaign's emails. An older binary drops a stored filter's
+ * `campaign` and would write "any campaign" back, so every campaign and
+ * audience operation, reads included, requires it.
+ */
+const campaignsMinimumDhwVersion = DhwVersion.make("1.20.0");
+
 const campaignParams = { campaignId: AdministrationCampaignId };
 const audienceParams = { audienceId: AdministrationCampaignAudienceId };
 
@@ -582,5 +595,10 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
       }
     )
   )
+  .annotate(MinimumDhwVersion, Option.some(campaignsMinimumDhwVersion))
   .middleware(CliBearerAuthentication)
+  // Added last, so it runs first: an outdated `dhw` is refused before its
+  // session is read. Every campaign endpoint already declares the
+  // `CliInputInvalid` it fails with, so released binaries print it.
+  .middleware(CliClientCompatibility)
   .prefix("/api/v1/cli");

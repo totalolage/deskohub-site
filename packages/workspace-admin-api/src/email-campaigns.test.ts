@@ -51,6 +51,43 @@ describe("campaign admin API contract", () => {
     expect(reencode(storedFilterJson)).toBe(storedFilterJson);
   });
 
+  test.each([
+    [
+      "the first visit",
+      '{"attribute":"firstVisit","_tag":"Condition","params":{"product":{"family":"cowork","properties":[]}},"operator":"in","value":{"_tag":"Last","count":30,"unit":"day"}}',
+    ],
+    [
+      "a trigger-relative period",
+      '{"attribute":"reservationCount","_tag":"Condition","params":{"dateBasis":"visit","period":{"_tag":"TriggerWindow","side":"after","count":2,"unit":"week"}},"operator":"gt","value":0}',
+    ],
+    [
+      "the past",
+      '{"attribute":"lastVisit","_tag":"Condition","operator":"notIn","value":{"_tag":"Past"}}',
+    ],
+    [
+      "emails of one campaign",
+      '{"_tag":"Group","operator":"or","filters":[{"attribute":"campaignEmailCount","_tag":"Condition","params":{"purpose":"any","period":{"_tag":"AnyTime"},"campaign":{"_tag":"Specific","campaignId":"campaign-1"}},"operator":"eq","value":0},{"attribute":"campaignEmailCount","_tag":"Condition","params":{"purpose":"any","period":{"_tag":"Last","count":3,"unit":"month"},"campaign":{"_tag":"This"}},"operator":"eq","value":0}]}',
+    ],
+  ])("keeps the wire format of %s byte for byte", (_shape, json) => {
+    expect(reencode(json)).toBe(json);
+  });
+
+  test("rejects a campaign purpose beside one campaign's emails", () => {
+    const fromCampaign = (purpose: string) => ({
+      attribute: "campaignEmailCount",
+      _tag: "Condition",
+      params: {
+        purpose,
+        period: { _tag: "AnyTime" },
+        campaign: { _tag: "This" },
+      },
+      operator: "eq",
+      value: 0,
+    });
+    expect(issuePaths(fromCampaign("marketing"))).toEqual(["params.purpose"]);
+    expect(issuePaths(fromCampaign("any"))).toEqual([]);
+  });
+
   test("decodes an audience filter in jsonb key order", () => {
     expect(reencode(jsonbFilterJson)).toBe(
       '{"_tag":"Group","operator":"and","filters":[{"attribute":"reservationCount","_tag":"Condition","params":{"dateBasis":"booking","period":{"_tag":"Range","from":"2026-01-01","to":"2026-06-30"},"status":"complete"},"operator":"gt","value":0}]}'

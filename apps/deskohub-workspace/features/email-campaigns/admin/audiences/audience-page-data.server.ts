@@ -15,7 +15,7 @@ import {
 import { CampaignAudienceService } from "../../backend/campaign-audience.service";
 import type { CampaignAudienceId } from "../../campaign-identifiers";
 import { describeAudienceFilter } from "../audience-filter-summary";
-import { loadDiscountGroupOptions } from "./discount-group-options.server";
+import { loadAudienceValueLookups } from "./audience-value-lookups.server";
 
 /** An audience a campaign can select. */
 export type AudienceOption = {
@@ -70,9 +70,9 @@ export const loadAudienceList = async (): Promise<
   readonly AudienceListItem[]
 > => {
   await authorizeAdministratorPage();
-  const [audiences, discountGroups, locale] = await Promise.all([
+  const [audiences, lookups, locale] = await Promise.all([
     runAudienceListing(true),
-    loadDiscountGroupOptions(),
+    loadAudienceValueLookups(),
     getRequestLocale(),
   ]);
   return audiences
@@ -84,9 +84,7 @@ export const loadAudienceList = async (): Promise<
     .map((audience) => ({
       id: audience.id,
       title: audience.title,
-      summary: describeAudienceFilter(audience.filter, locale, {
-        discountGroups,
-      }),
+      summary: describeAudienceFilter(audience.filter, locale, lookups),
       archived: isArchived(audience),
       updatedAt: audience.updatedAt.toString(),
       updatedAtText: formatAdministrationDateTime(
@@ -101,16 +99,16 @@ export const loadAudienceOptions = async (): Promise<
   readonly AudienceOption[]
 > => {
   await authorizeAdministratorPage();
-  const [audiences, discountGroups, locale] = await Promise.all([
+  const [audiences, lookups, locale] = await Promise.all([
     runAudienceListing(false),
-    loadDiscountGroupOptions(),
+    loadAudienceValueLookups(),
     getRequestLocale(),
   ]);
   return audiences
     .map(({ id, title, filter }) => ({
       id,
       title,
-      summary: describeAudienceFilter(filter, locale, { discountGroups }),
+      summary: describeAudienceFilter(filter, locale, lookups),
       singleLocale: audienceSingleLocale(filter),
     }))
     .toSorted(byTitle);

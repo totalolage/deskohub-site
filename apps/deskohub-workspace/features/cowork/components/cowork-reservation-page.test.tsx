@@ -89,9 +89,21 @@ const { CoworkOfferReplaced, renderCoworkReservationContent } = await import(
 
 /** The form the page renders beside its structured data. */
 const renderCoworkReservationForm = async (
-  input: Parameters<typeof renderCoworkReservationContent>[0]
+  input: Omit<
+    Parameters<typeof renderCoworkReservationContent>[0],
+    "checkoutAccount"
+  > &
+    Partial<
+      Pick<
+        Parameters<typeof renderCoworkReservationContent>[0],
+        "checkoutAccount"
+      >
+    >
 ) => {
-  const page = (await renderCoworkReservationContent(input)) as ReactElement<{
+  const page = (await renderCoworkReservationContent({
+    checkoutAccount: { status: "signed-out" },
+    ...input,
+  })) as ReactElement<{
     readonly children: ReactNode;
   }>;
   return Children.toArray(page.props.children)[1];
@@ -284,6 +296,7 @@ test("offers the default selection's preloaded prices in structured data", async
     );
 
     const page = (await renderCoworkReservationContent({
+      checkoutAccount: { status: "signed-out" },
       locale: "en-US",
       searchParams: {},
     })) as ReactElement<{ readonly children: ReactNode }>;
@@ -397,6 +410,7 @@ test("offers the restart state for a legacy basic reservation in en-US", async (
 
   const markup = renderToString(
     await renderCoworkReservationContent({
+      checkoutAccount: { status: "signed-out" },
       locale: "en-US",
       initialReservation: legacyBasicReservation,
       searchParams: {},

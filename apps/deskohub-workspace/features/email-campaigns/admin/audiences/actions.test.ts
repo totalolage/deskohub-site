@@ -8,7 +8,11 @@ import {
   campaignAudienceIdSchema,
   campaignIdSchema,
 } from "../../campaign-identifiers";
-import { CampaignAudienceInUse } from "../../errors";
+import {
+  AudienceFilterCampaignNotFound,
+  AudienceFilterContextInvalid,
+  CampaignAudienceInUse,
+} from "../../errors";
 
 mock.module("next/server", () => ({
   after: () => undefined,
@@ -165,6 +169,42 @@ describe("email campaign audience actions", () => {
       expect(deleteCalls).toHaveLength(1);
     }
   );
+
+  test("explains which filters a saved audience can't hold yet", async () => {
+    createResult = Effect.fail(
+      new AudienceFilterContextInvalid({
+        uses: {
+          attributes: ["firstVisit"],
+          periods: [],
+          campaignSources: [],
+        },
+      })
+    );
+    const { saveAudience } = await import("./actions");
+
+    const result = await saveAudience(validInput);
+
+    expect(result?.serverError).toBe(
+      "The audience could not be saved. Trigger-relative periods and “this campaign” only work in automation conditions."
+    );
+    expect(result?.data).toBeUndefined();
+  });
+
+  test("explains when a counted campaign no longer exists", async () => {
+    createResult = Effect.fail(
+      new AudienceFilterCampaignNotFound({
+        campaignIds: [campaignIdSchema.make("synthetic-missing-campaign")],
+      })
+    );
+    const { saveAudience } = await import("./actions");
+
+    const result = await saveAudience(validInput);
+
+    expect(result?.serverError).toBe(
+      "The audience could not be saved. A campaign it counts emails from no longer exists. Choose another campaign."
+    );
+    expect(result?.data).toBeUndefined();
+  });
 
   test("returns the saved audience ID on success", async () => {
     const { saveAudience } = await import("./actions");

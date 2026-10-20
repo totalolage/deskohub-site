@@ -112,7 +112,7 @@ export function ReservationAccessPage({
   return presentation === "modal" ? (
     content
   ) : (
-    <CheckoutFlowLayout activeStepKey="access" locale={locale}>
+    <CheckoutFlowLayout activeStepKey="complete" locale={locale}>
       {content}
     </CheckoutFlowLayout>
   );

@@ -47,7 +47,7 @@ Inspect settings and deployment metadata without printing values.
 - E2E Dotypos URL, credentials, and tenant IDs. The E2E cloud needs at least one active percentage discount group between 0.01% and 90%; the runner picks one deterministically and fails closed when none exists.
 - `EMAIL_API_KEY`. Env validation requires it in Preview and production. Recipient routing sends mail for `EMAIL_TEST_DOMAIN` recipients to Console, so E2E sends no real mail; a real person using a preview gets real mail.
 - `EMAIL_CAMPAIGN_ADMIN_INBOX` set to an `@deskohub.test` address, so campaign test sends and their confirmation codes stay on Console and in the server logs. `EMAIL_CAMPAIGN_FROM` and `EMAIL_CAMPAIGN_REPLY_TO` are optional in Preview.
-- `POSTHOG_FEATURE_FLAG_OVERRIDES={"calendar_sales":true,"customer_discounts":true,"discount_codes":true,"meeting_room_page":true,"office_page":true,"referrals":true}`. The referral lane needs `referrals:true`, even when the production rollout is off. The account lane skips the passkey cases unless `login_passkeys` is on, and the sign-in code case unless `login_email_code` is on; turn them on for a PR with a branch-scoped override. A branch-scoped override replaces the whole map, so include every flag. Set it before the preview is built; Vercel accepts a branch scope only after the branch is pushed.
+- `POSTHOG_FEATURE_FLAG_OVERRIDES={"calendar_sales":true,"customer_discounts":true,"discount_codes":true,"meeting_room_page":true,"office_page":true,"referrals":true,"webmcp_site_tools":true}`. The referral lane needs `referrals:true`, even when the production rollout is off. The site-tools lane (`e2e/instant-navigation/site-tools.pw.ts`) skips its registration cases unless `webmcp_site_tools` is on. The account lane skips the passkey cases unless `login_passkeys` is on, and the sign-in code case unless `login_email_code` is on; turn them on for a PR with a branch-scoped override. A branch-scoped override replaces the whole map, so include every flag. Set it before the preview is built; Vercel accepts a branch scope only after the branch is pushed.
 - `GOOGLE_CALENDAR_SALES_ID` for the dedicated E2E sales calendar (see [fixtures](fixtures.md#calendar-sale-event)).
 - `VERCEL_AUTOMATION_BYPASS_SECRET` for Deployment Protection.
 
@@ -62,7 +62,7 @@ Never put production Nexi, Dotypos, or database credentials in Preview. Never ad
 | `WORKSPACE_E2E_VERCEL_PROJECT` | Variable | Project for log retrieval. |
 | `WORKSPACE_E2E_COORDINATOR_DATABASE_URL` | Secret | Allocator role; used only by the trusted allocation action. |
 | `WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL` | Secret | Connect-only role for the replay permit. |
-| `WORKSPACE_E2E_BETTER_AUTH_SECRETS` | Secret | Copy of the Preview-only `BETTER_AUTH_SECRETS` that signs seeded referral and administrator sessions ([seeded sessions](referral-lane.md#seeded-sessions)). |
+| `WORKSPACE_E2E_BETTER_AUTH_SECRETS` | Secret | Copy of the Preview-only `BETTER_AUTH_SECRETS`. Required to run checkout E2E: booker and case-specific verification or referral identity binders use it; administrator sessions use it too ([seeded sessions](referral-lane.md#seeded-sessions)). |
 | `WORKSPACE_E2E_DOTYPOS_*` | Secrets | E2E Dotypos cloud; mapped to `DOTYPOS_*` per step. |
 | `VERCEL_AUTOMATION_BYPASS_SECRET`, `NEON_API_KEY`, `TURBO_TOKEN` | Secrets | Protection bypass, branch lookup, remote cache. |
 

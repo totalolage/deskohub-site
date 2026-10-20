@@ -88,7 +88,7 @@ export function PostOrderInvoicePage({
   };
 
   return (
-    <CheckoutFlowLayout activeStepKey="access" locale={locale}>
+    <CheckoutFlowLayout activeStepKey="complete" locale={locale}>
       <section
         className="overflow-hidden rounded-[2.25rem] border border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm"
         data-ph-mask=""

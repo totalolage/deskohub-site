@@ -22,6 +22,13 @@ export const asRootGroup = (filter: AudienceFilter): AudienceFilterGroup =>
 
 const lastThirtyDays: DatePeriod = { _tag: "Last", count: 30, unit: "day" };
 
+const monthBeforeTrigger: DatePeriod = {
+  _tag: "TriggerWindow",
+  side: "before",
+  count: 1,
+  unit: "month",
+};
+
 /** A condition with the entry's defaults. */
 export const newConditionFrom = ({
   attribute,
@@ -92,15 +99,18 @@ export const switchDatePeriod = (
   const dates = Match.value(period).pipe(
     Match.tagsExhaustive({
       AnyTime: () => ({ from: today, to: today }),
+      Past: () => ({ from: today, to: today }),
       Last: () => ({ from: today, to: today }),
       Range: ({ from, to }) => ({ from, to }),
       Since: ({ date }) => ({ from: date, to: date }),
       Onward: ({ date }) => ({ from: date, to: date }),
       Until: ({ date }) => ({ from: date, to: date }),
+      TriggerWindow: () => ({ from: today, to: today }),
     })
   );
   return Match.value(kind).pipe(
     Match.when("AnyTime", (): DatePeriod => ({ _tag: "AnyTime" })),
+    Match.when("Past", (): DatePeriod => ({ _tag: "Past" })),
     Match.when(
       "Last",
       (): DatePeriod => (period._tag === "Last" ? period : lastThirtyDays)
@@ -118,6 +128,11 @@ export const switchDatePeriod = (
       (): DatePeriod => ({ _tag: "Onward", date: dates.from })
     ),
     Match.when("Until", (): DatePeriod => ({ _tag: "Until", date: dates.to })),
+    Match.when(
+      "TriggerWindow",
+      (): DatePeriod =>
+        period._tag === "TriggerWindow" ? period : monthBeforeTrigger
+    ),
     Match.exhaustive
   );
 };

@@ -1,12 +1,17 @@
 import { Effect, Layer, Option, Schema } from "effect";
 import { cookies, headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import {
   CheckoutStatusService,
   loadCheckoutStatusPage,
 } from "@/features/checkout/backend/checkout";
+import {
+  getReservationStatusSignInPath,
+  isStatusViewerSignedOut,
+} from "@/features/checkout/backend/checkout/checkout-status-sign-in";
 import { shouldAutoRefreshCheckoutStatus } from "@/features/checkout/checkout-status-refresh-policy";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import { CheckoutPaymentWindowCoordinator } from "@/features/checkout/components/checkout-payment-window";
@@ -115,6 +120,17 @@ async function CheckoutStatusContent({
       ),
       runWorkspaceEffect("checkout.status.load")
     );
+    // A signed-out visitor, such as one following the link in the author's
+    // email, signs in and comes back instead of seeing "not found".
+    if (status.status === "not_found" && (await isSignedOut())) {
+      redirect(
+        getReservationStatusSignInPath(
+          locale,
+          orderId,
+          decodedSearchParams.outcome
+        )
+      );
+    }
     return (
       <>
         <RouteAutoRefresh
@@ -131,6 +147,12 @@ async function CheckoutStatusContent({
   });
 }
 
+const isSignedOut = () =>
+  isStatusViewerSignedOut().pipe(
+    Effect.provide(CustomerAccountContactService.Live),
+    runWorkspaceEffect("checkout.status.viewer")
+  );
+
 function CheckoutStatusFallback({
   locale,
   presentation,
@@ -145,7 +167,7 @@ function CheckoutStatusFallback({
   if (presentation === "modal") return skeleton;
 
   return (
-    <CheckoutFlowLayout activeStepKey="access" locale={locale}>
+    <CheckoutFlowLayout activeStepKey="complete" locale={locale}>
       {skeleton}
     </CheckoutFlowLayout>
   );
