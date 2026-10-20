@@ -264,6 +264,22 @@ const userExists = async (userId: string) => {
   return result.rows.length > 0;
 };
 
+/** Every token value and refresh replay response persisted for an account. */
+const storedTokenMaterial = async (userId: string) => {
+  const result = await testDatabase!.pool.query(
+    `select token, null as rotation_replay_response
+       from auth.oauth_access_token where user_id = $1
+     union all
+     select token, rotation_replay_response
+       from auth.oauth_refresh_token where user_id = $1`,
+    [userId]
+  );
+  return result.rows as ReadonlyArray<{
+    readonly token: string | null;
+    readonly rotation_replay_response: string | null;
+  }>;
+};
+
 const countRows = async (table: string, userId: string) => {
   const result = await testDatabase!.pool.query(
     `select count(*)::int as count from auth.${table} where user_id = $1`,
@@ -494,6 +510,24 @@ describe.skipIf(!testDatabase)(
         (await authorizeToken(authorityOver(auth), renewed.access_token))._tag
       ).toBe("Success");
 
+      // Only token hashes are persisted: refreshing stores no replayable
+      // token response, and no issued token is kept in clear.
+      const issuedTokens = [
+        tokens.access_token,
+        tokens.refresh_token!,
+        renewed.access_token,
+        renewed.refresh_token!,
+      ];
+      const stored = await storedTokenMaterial(customer.accountId);
+      expect(stored).toHaveLength(4);
+      for (const row of stored) {
+        expect(row.rotation_replay_response).toBeNull();
+        expect(row.token).toBeTruthy();
+        expect(issuedTokens.some((token) => token.includes(row.token!))).toBe(
+          false
+        );
+      }
+
       // The code is single use, and replaying it revokes the access it
       // bought.
       const replayed = await exchangeCode(auth, {
@@ -506,6 +540,23 @@ describe.skipIf(!testDatabase)(
       expect(
         await failureReasonOf(authorityOver(auth), tokens.access_token)
       ).toBe("invalid-token");
+
+      // A rotated refresh token is never reusable: reusing it ends the
+      // client's refresh tokens, so the customer reconnects the assistant.
+      const reusedRefresh = await requestToken(auth, {
+        grant_type: "refresh_token",
+        client_id: agent.clientId,
+        refresh_token: tokens.refresh_token!,
+        resource: RESOURCE,
+      });
+      expect(reusedRefresh.status).toBe(400);
+      const afterReuse = await requestToken(auth, {
+        grant_type: "refresh_token",
+        client_id: agent.clientId,
+        refresh_token: renewed.refresh_token!,
+        resource: RESOURCE,
+      });
+      expect(afterReuse.status).toBe(400);
     });
 
     test("refuses a code exchanged for another resource", async () => {
