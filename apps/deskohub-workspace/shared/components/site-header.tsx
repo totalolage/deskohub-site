@@ -13,7 +13,6 @@ import {
 import {
   AdministratorEntryButton,
   AdministratorEntryMenuButton,
-  AdministratorRibbon,
 } from "@/shared/components/site-header-administrator-entry";
 import type {
   SiteHeaderAccountEntry,
@@ -184,7 +183,7 @@ export function SiteHeader({
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-(--site-header-height) border-b border-white/10 bg-navy-blue/92 text-white backdrop-blur-md">
-      <div className="mx-auto flex h-(--site-header-bar-height) w-full max-w-8xl items-center justify-between gap-3 px-3 sm:gap-4 sm:px-6 lg:px-8 xl:gap-2 xl:px-6 2xl:gap-3">
+      <div className="mx-auto flex h-full w-full max-w-8xl items-center justify-between gap-3 px-3 sm:gap-4 sm:px-6 lg:px-8 xl:gap-2 xl:px-6 2xl:gap-3">
         <Link
           href={`/${currentLocale}`}
           aria-label="Deskohub Workspace"
@@ -276,10 +275,6 @@ export function SiteHeader({
           </Button>
         </div>
       </div>
-
-      {administrator !== undefined && (
-        <AdministratorRibbon entry={administrator} onNavigate={closeMenu} />
-      )}
 
       <div
         id="site-header-mobile-menu"

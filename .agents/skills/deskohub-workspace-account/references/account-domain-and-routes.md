@@ -158,14 +158,11 @@ glossary defines the customer account, reservation author, and tombstone.
   `isCustomerSignedIn` promise that the header resolves with `use()` inside
   `Suspense`, with the sign-in href as fallback. Keep the static shell
   independent of the session; a failed session check reads as signed out.
-- The header's Admin entry (button, mobile-menu button, and ribbon) follows
+- The header's Admin entry (button and mobile-menu button) follows
   the same pattern: an uncached `isCurrentAccountAdministrator` promise
   (`features/administrators/server`) checks the verified session's account
   against `AccountRoleGrants` on every request, renders nothing while pending,
-  and reads any failure as not an administrator. The ribbon raises
-  `--site-header-height` through `:root:has([data-site-header-admin-ribbon])`
-  in `app/globals.css`; size header offsets with that variable, and the bar
-  itself with `--site-header-bar-height`.
+  and reads any failure as not an administrator.
 - Keep sign-in completion and sign-out as document navigations so the header
   re-reads the session. The `/account` redirect for signed-out visitors stays
   only for direct or stale navigations, and it is a document navigation too,
