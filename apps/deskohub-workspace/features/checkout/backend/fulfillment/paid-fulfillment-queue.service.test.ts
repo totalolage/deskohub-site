@@ -150,18 +150,43 @@ describe("paid fulfillment queue", () => {
     }
   });
 
-  test("acknowledges a recorded fulfillment failure and keeps its cause", async () => {
+  test("backs off a failed fulfillment the claim can retake", async () => {
+    const failure = fulfillmentFailure("dotypos_reservation_failed");
+    for (const reservationState of ["held", "confirmed"] as const) {
+      const result = await processMessage({
+        message: { orderId },
+        fulfillPaidOrder: mock(() => Effect.fail(failure)),
+        progressAfter: { fulfillmentState: "failed", reservationState },
+      });
+
+      expect(result).toMatchObject({
+        failure: {
+          _tag: "PaidFulfillmentPendingError",
+          reason: "fulfillment_failed",
+          cause: failure,
+        },
+      });
+      expect(
+        Result.isFailure(result) && paidFulfillmentRedelivery(result.failure)
+      ).toEqual(QueueRedelivery.WithBackoff());
+    }
+  });
+
+  test("acknowledges a failed fulfillment on a cancelled reservation and keeps its cause", async () => {
     const failure = fulfillmentFailure("dotypos_reservation_failed");
     const result = await processMessage({
       message: { orderId },
       fulfillPaidOrder: mock(() => Effect.fail(failure)),
-      progressAfter: { fulfillmentState: "failed" },
+      progressAfter: {
+        fulfillmentState: "failed",
+        reservationState: "cancelled",
+      },
     });
 
     expect(result).toMatchObject({
       failure: {
         _tag: "PaidFulfillmentSettledFailureError",
-        reason: "fulfillment_settled",
+        reason: "reservation_cancelled",
         cause: failure,
       },
     });
@@ -244,6 +269,54 @@ describe("paid fulfillment queue", () => {
       },
     });
   });
+
+  test.each([
+    "hold_expired",
+    "confirming",
+    "cancelling",
+    "cancellation_failed",
+  ] as const)(
+    "keeps redelivering a failed fulfillment on a %s reservation",
+    async (reservationState) => {
+      const failure = fulfillmentFailure("dotypos_reservation_failed");
+      const result = await processMessage({
+        message: { orderId },
+        fulfillPaidOrder: mock(() => Effect.fail(failure)),
+        progressAfter: { fulfillmentState: "failed", reservationState },
+      });
+
+      expect(result).toMatchObject({
+        failure: {
+          _tag: "PaidFulfillmentPendingError",
+          reason: "reservation_not_fulfillable",
+          cause: failure,
+        },
+      });
+    }
+  );
+
+  test.each(["refund_required", "review_required"] as const)(
+    "acknowledges a failed fulfillment whose late payment ended %s",
+    async (latePaymentRecoveryState) => {
+      const failure = fulfillmentFailure("dotypos_reservation_failed");
+      const result = await processMessage({
+        message: { orderId },
+        fulfillPaidOrder: mock(() => Effect.fail(failure)),
+        progressAfter: { fulfillmentState: "failed", latePaymentRecoveryState },
+      });
+
+      expect(result).toMatchObject({
+        failure: {
+          _tag: "PaidFulfillmentSettledFailureError",
+          reason: "late_payment_recovery_settled",
+          cause: failure,
+        },
+      });
+      expect(
+        Result.isFailure(result) && paidFulfillmentRedelivery(result.failure)
+      ).toEqual(QueueRedelivery.Never());
+    }
+  );
 
   test("leaves failures it does not own to the default redelivery", () => {
     expect(paidFulfillmentRedelivery(new Error("layer failed"))).toEqual(

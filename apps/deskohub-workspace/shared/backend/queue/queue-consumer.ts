@@ -3,11 +3,11 @@ import {
   type MessageMetadata,
   type RetryDirective,
 } from "@vercel/queue";
-import { Cause, Clock, Data, Effect, Match } from "effect";
+import { Cause, Data, Effect, Match, Predicate } from "effect";
 import { isDatabaseUnavailable } from "@/db/database-unavailable";
 import { env } from "@/env";
 import { defineWorkspaceTask } from "@/shared/backend/workspace-effect";
-import { clamp } from "@/shared/utils";
+import { clamp, currentInstant } from "@/shared/utils";
 
 /** How a consumer wants the queue to treat one of its failures. */
 export type QueueRedelivery = Data.TaggedEnum<{
@@ -178,6 +178,41 @@ export class QueueDeliveryFailure extends Data.TaggedError(
   readonly directive: RetryDirective | undefined;
 }> {}
 
+const logRedeliveryDecision = <E>(input: {
+  readonly cause: Cause.Cause<E>;
+  readonly decision: QueueRedeliveryDecision;
+}) => {
+  const log = redeliveryLogs[input.decision.reason];
+  return Effect.logWithLevel(log.level)(log.message, {
+    reason: input.decision.reason,
+    directive: input.decision.directive,
+    cause: input.cause,
+  });
+};
+
+const toQueueDeliveryFailure = (input: {
+  readonly decision: QueueRedeliveryDecision;
+}) =>
+  new QueueDeliveryFailure({
+    message: redeliveryLogs[input.decision.reason].message,
+    ...input.decision,
+  });
+
+/** Logs a failed delivery with its cause and fails with its directive. */
+const failQueueDelivery = <E>(input: {
+  readonly cause: Cause.Cause<E>;
+  readonly redelivery: (error: E) => QueueRedelivery;
+  readonly deliveryCount: number;
+  readonly environment: VercelEnvironment;
+}): Effect.Effect<never, QueueDeliveryFailure> =>
+  Effect.succeed(input).pipe(
+    Effect.bind("now", () => currentInstant),
+    Effect.let("decision", decideQueueRedelivery),
+    Effect.tap(logRedeliveryDecision),
+    Effect.let("failure", toQueueDeliveryFailure),
+    Effect.flatMap(({ failure }) => Effect.fail(failure))
+  );
+
 /**
  * Runs one delivery. A failure is logged with its cause and replaced by a
  * `QueueDeliveryFailure` that carries the redelivery directive.
@@ -196,32 +231,13 @@ export const deliverQueueMessage =
     // logged and sanitized here.
     Effect.suspend(() => input.consume(message)).pipe(
       Effect.asVoid,
-      Effect.catchCause(
-        (cause): Effect.Effect<never, E | QueueDeliveryFailure> =>
-          Cause.hasInterruptsOnly(cause)
-            ? Effect.failCause(cause)
-            : Effect.gen(function* () {
-                const now = Temporal.Instant.fromEpochMilliseconds(
-                  yield* Clock.currentTimeMillis
-                );
-                const decision = decideQueueRedelivery({
-                  cause,
-                  redelivery: input.redelivery,
-                  deliveryCount: metadata.deliveryCount,
-                  environment: input.environment,
-                  now,
-                });
-                const log = redeliveryLogs[decision.reason];
-                yield* Effect.logWithLevel(log.level)(log.message, {
-                  reason: decision.reason,
-                  directive: decision.directive,
-                  cause,
-                });
-                return yield* new QueueDeliveryFailure({
-                  message: log.message,
-                  ...decision,
-                });
-              })
+      Effect.catchCauseIf(Predicate.not(Cause.hasInterruptsOnly), (cause) =>
+        failQueueDelivery({
+          cause,
+          redelivery: input.redelivery,
+          deliveryCount: metadata.deliveryCount,
+          environment: input.environment,
+        })
       ),
       Effect.annotateLogs({
         queueTopic: metadata.topicName,

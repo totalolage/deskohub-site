@@ -30,6 +30,7 @@ type PaidFulfillmentQueueProgress = Data.TaggedEnum<{
   Pending: {
     readonly reason:
       | "fulfillment_in_progress"
+      | "fulfillment_failed"
       | "late_payment_recovery_in_progress"
       | "invoice_processing_failed";
   };
@@ -42,9 +43,11 @@ const PaidFulfillmentQueueProgress =
 
 /**
  * Mirrors the claim in `claimPaidFulfillment`: an order the claim can never
- * take again is settled for this message. Late-payment recoveries that ended
- * in `refund_required` or `review_required` are owned by the refund batch and
- * operators, and the stalled-fulfillment cron skips them too.
+ * take again is settled for this message. The claim retakes a `failed`
+ * fulfillment, so one on a held or confirmed reservation stays pending, and it
+ * settles only once the reservation is cancelled. Late-payment recoveries that
+ * ended in `refund_required` or `review_required` are owned by the refund batch
+ * and operators, and the stalled-fulfillment cron skips them too.
  */
 const describePaidFulfillmentProgress = (
   progress: PaidFulfillmentProgress | null
@@ -61,7 +64,8 @@ const describePaidFulfillmentProgress = (
   }
   if (
     progress.fulfillmentState !== "not_started" &&
-    progress.fulfillmentState !== "processing"
+    progress.fulfillmentState !== "processing" &&
+    progress.fulfillmentState !== "failed"
   ) {
     return PaidFulfillmentQueueProgress.Settled({
       reason: "fulfillment_settled",
@@ -88,7 +92,10 @@ const describePaidFulfillmentProgress = (
     progress.reservationState === "confirmed"
   ) {
     return PaidFulfillmentQueueProgress.Pending({
-      reason: "fulfillment_in_progress",
+      reason:
+        progress.fulfillmentState === "failed"
+          ? "fulfillment_failed"
+          : "fulfillment_in_progress",
     });
   }
   if (progress.reservationState === "cancelled") {
