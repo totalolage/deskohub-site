@@ -55,7 +55,7 @@ The guard scans every emitted script under `.next/static`, not only the ones rou
 The `*.build.test.ts` pattern is excluded from the Workspace `test` script and runs by path:
 
 ```bash
-bun turbo run build --filter=deskohub-workspace -- --experimental-build-mode=compile
+bun turbo run build:compile --filter=deskohub-workspace
 bun --cwd apps/deskohub-workspace run test:build-output
 ```
 
