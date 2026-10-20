@@ -50,7 +50,7 @@ const outputSchema = Schema.Struct({
   }),
   pay_url_expires_at: Schema.String.annotate({
     description:
-      "When the Pay link expires, as an ISO 8601 instant. Call start_reservation again with the same selection for a fresh link.",
+      "When the Pay link expires, as an ISO 8601 instant, together with the hold. After it, call start_reservation again with the same selection for a new hold.",
   }),
   family: workspaceReservationKindSchema,
   total: agentToolMoneySchema.annotate({
@@ -82,7 +82,7 @@ export const startReservationTool = defineSignedInAgentTool({
   name: "start_reservation",
   title: "Start a DH Workspace booking",
   description:
-    "Holds a complete selection for the signed-in customer, with the same arguments as get_quote, and returns a pay_url. Give the pay_url to the customer: they check the order, accept the terms, and pay on the website before the link expires; this tool can't pay. The customer's account profile is the contact. Calling again with the same selection returns the same held order with a fresh link; a different selection replaces the previous hold.",
+    "Holds a complete selection for the signed-in customer, with the same arguments as get_quote, and returns a pay_url. Give the pay_url to the customer: they check the order, accept the terms, and pay on the website before the link expires; this tool can't pay. The customer's account profile is the contact. Calling again with the same selection returns the same held order and pay_url until the link expires; a different selection replaces the previous hold.",
   scope: "reservations:create",
   accountBudget: startReservationAccountBudget,
   readOnly: false,
@@ -95,6 +95,12 @@ export const startReservationTool = defineSignedInAgentTool({
       Effect.bind("now", () => currentInstant),
       Effect.bind("grant", () => CurrentCustomerAgentGrant),
       Effect.bind("selection", resolveQuoteSelection),
+      Effect.let("identifiers", ({ grant, selection }) =>
+        deriveAgentCheckoutIdentifiers({
+          grant,
+          reservation: selection.reservation,
+        })
+      ),
       Effect.bind("contact", () => readBookingContact),
       Effect.bind("advertised", ({ selection }) =>
         buildAdvertisedPrice(selection.request).pipe(
@@ -102,9 +108,12 @@ export const startReservationTool = defineSignedInAgentTool({
         )
       ),
       Effect.bind("submission", toSubmission),
-      Effect.bind("prepared", ({ grant, submission }) =>
+      Effect.bind("prepared", ({ grant, identifiers, submission }) =>
         prepareWorkspacePayState(submission).pipe(
-          Effect.provideService(BookingAgent, { clientId: grant.clientId }),
+          Effect.provideService(BookingAgent, {
+            clientId: grant.clientId,
+            selectionKey: identifiers.selectionKey,
+          }),
           Effect.mapError(toStartReservationError)
         )
       ),
@@ -130,27 +139,22 @@ const readBookingContact = CustomerAccountContactService.pipe(
 const toSubmission = ({
   input,
   locale,
-  now,
-  grant,
+  identifiers,
   selection,
   contact,
   advertised,
 }: {
   readonly input: StartReservationInput;
   readonly locale: Locale;
-  readonly now: Temporal.Instant;
-  readonly grant: CurrentCustomerAgentGrant["Service"];
+  readonly identifiers: ReturnType<typeof deriveAgentCheckoutIdentifiers>;
   readonly selection: QuoteSelection;
   readonly contact: Effect.Success<typeof readBookingContact>;
   readonly advertised: Effect.Success<ReturnType<typeof buildAdvertisedPrice>>;
 }): Effect.Effect<PreparePayStateInput, AgentToolError> =>
   Schema.decodeUnknownEffect(preparePayStateInputSchema)({
     locale,
-    ...deriveAgentCheckoutIdentifiers({
-      grant,
-      reservation: selection.reservation,
-      now,
-    }),
+    checkoutSessionId: identifiers.checkoutSessionId,
+    checkoutAttemptId: identifiers.checkoutAttemptId,
     advertisedPriceToken: advertised.advertisedPriceToken,
     // Absent or false records nothing and withdraws nothing; the booking
     // operation labels a grant with the agent channel.
@@ -174,14 +178,14 @@ const toStartReservationError = (
     Match.tag("WorkspaceTableUnavailableError", (cause) =>
       AgentToolError.refused("selection_unavailable")(cause)
     ),
-    Match.tag("AgentHoldLimitError", (cause) =>
-      AgentToolError.refused("hold_limit_reached")(cause)
-    ),
     Match.tag("AgentBookingProfileRequiredError", (cause) =>
       AgentToolError.refused("profile_incomplete")(cause)
     ),
     Match.tag("CheckoutAttemptUnavailableError", (cause) =>
       AgentToolError.refused("reservation_conflict")(cause)
+    ),
+    Match.tag("AgentBookingPaymentInProgressError", (cause) =>
+      AgentToolError.refused("payment_in_progress")(cause)
     ),
     Match.tag("AdvertisedPriceMismatchError", (cause) =>
       AgentToolError.refused("reservation_conflict")(cause)
