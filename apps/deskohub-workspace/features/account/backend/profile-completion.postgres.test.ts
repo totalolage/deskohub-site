@@ -51,6 +51,10 @@ const uniqueCode = () =>
 
 const insertAuthUser = async (accountId: CustomerAccountId) => {
   await testDatabase!.pool.query(
+    "insert into customer_accounts (id) values ($1) on conflict do nothing",
+    [accountId]
+  );
+  await testDatabase!.pool.query(
     `insert into auth."user" (id, name, email) values ($1, '', $2)`,
     [accountId, testEmailAddress(accountId)]
   );
@@ -62,7 +66,7 @@ const insertReferrer = async () => {
   const customerId = uniqueDotyposId();
   await insertAuthUser(accountId);
   await testDatabase!.pool.query(
-    `insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2)`,
+    `update customer_accounts set dotypos_customer_id = $2 where id = $1`,
     [accountId, customerId]
   );
   const code = uniqueCode();
@@ -101,10 +105,9 @@ const newAccount = async () => {
 const readLinkedCustomer = async (accountId: CustomerAccountId) => {
   const result = await testDatabase!.pool.query<{
     dotypos_customer_id: DotyposCustomerId;
-  }>(
-    "select dotypos_customer_id from customer_account_links where customer_account_id = $1",
-    [accountId]
-  );
+  }>("select dotypos_customer_id from customer_accounts where id = $1", [
+    accountId,
+  ]);
   return result.rows[0]?.dotypos_customer_id;
 };
 
@@ -880,7 +883,7 @@ describe.skipIf(!testDatabase)(
 
       expect(outcome).toEqual({ status: "referral-code-unavailable" });
       expect(createdCustomers).toEqual([]);
-      expect(await readLinkedCustomer(accountId)).toBeUndefined();
+      expect(await readLinkedCustomer(accountId)).toBeNull();
     });
 
     test("ignores a submitted code while the referral program is withheld", async () => {

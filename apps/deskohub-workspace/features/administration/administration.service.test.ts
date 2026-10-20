@@ -1832,7 +1832,7 @@ describe("AdministrationService reservation author", () => {
     accountId,
     describe,
   }: {
-    readonly accountId: CustomerAccountId | null;
+    readonly accountId: CustomerAccountId;
     readonly describe: ReservationAuthorDirectory["Service"]["describe"];
   }) => {
     let selectCall = 0;
@@ -1922,20 +1922,6 @@ describe("AdministrationService reservation author", () => {
     ): ReservationAuthorDirectory["Service"]["describe"] =>
     () =>
       Effect.succeed(new Map([[author.accountId, author]]));
-
-  test("shows no author for an authorless reservation", async () => {
-    let described = false;
-    const author = await loadAuthor({
-      accountId: null,
-      describe: () => {
-        described = true;
-        return Effect.succeed(new Map());
-      },
-    });
-
-    expect(author).toBeNull();
-    expect(described).toBe(false);
-  });
 
   test("shows no author when the customer booked for themselves", async () => {
     const author = await loadAuthor({

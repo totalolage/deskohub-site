@@ -2,8 +2,8 @@ import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { eq } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { customerAccounts } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
-import { customerAccountLinks } from "@/db/schema/customer-account-links";
 import type { Locale } from "@/features/i18n";
 
 /**
@@ -50,12 +50,9 @@ export class CustomerEmailLocaleService extends Context.Service<
       const byDotyposCustomer = (dotyposCustomerId: DotyposCustomerId) =>
         db
           .select({ locale: authUser.locale })
-          .from(customerAccountLinks)
-          .leftJoin(
-            authUser,
-            eq(authUser.id, customerAccountLinks.customerAccountId)
-          )
-          .where(eq(customerAccountLinks.dotyposCustomerId, dotyposCustomerId))
+          .from(customerAccounts)
+          .leftJoin(authUser, eq(authUser.id, customerAccounts.id))
+          .where(eq(customerAccounts.dotyposCustomerId, dotyposCustomerId))
           .limit(1)
           .pipe(
             Effect.mapError(

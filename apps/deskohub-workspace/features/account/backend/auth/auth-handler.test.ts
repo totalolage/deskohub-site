@@ -359,6 +359,23 @@ describe.skipIf(!testDatabase)(
         )
       ).rows[0]?.locale;
 
+    const readCreatedUser = async (id: string) => {
+      const { rows } = await testDatabase!.pool.query<{
+        id: string;
+        locale: string | null;
+        email_verified: boolean;
+        customer_account_id: string | null;
+      }>(
+        `select auth_user.id, auth_user.locale, auth_user.email_verified,
+                customer_accounts.id as customer_account_id
+         from auth."user" as auth_user
+         left join customer_accounts on customer_accounts.id = auth_user.id
+         where auth_user.id = $1`,
+        [id]
+      );
+      return rows[0];
+    };
+
     test("sets the locale preference from the initiating site locale in the account-creation insert", async () => {
       const sentLinks: CapturedMagicLink[] = [];
       const auth = makeTestAuth({ sentLinks });
@@ -385,6 +402,106 @@ describe.skipIf(!testDatabase)(
       expect(await createdLocaleFor(emailDefault)).toBe("en-US");
     });
 
+    test("creates the durable account for a magic-link sign-up", async () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({ sentLinks });
+      const email = uniqueEmail("account-sign-up");
+
+      await signInForMagicLink(auth, email);
+      const verified = await verifyMagicLink(auth, sentLinks[0]!);
+      expect(getSessionCookie(verified)).toBeTruthy();
+
+      const userId = (await userIdForEmail(email))!;
+      const { rows } = await testDatabase!.pool.query<{
+        user_id: string;
+        customer_account_id: string | null;
+      }>(
+        `select auth_user.id as user_id, customer_accounts.id as customer_account_id
+         from auth."user" as auth_user
+         left join customer_accounts on customer_accounts.id = auth_user.id
+         where auth_user.id = $1`,
+        [userId]
+      );
+
+      expect(rows).toEqual([
+        {
+          user_id: userId,
+          customer_account_id: userId,
+        },
+      ]);
+    });
+
+    test("creates a durable account for internal user creation with a supplied locale", async () => {
+      const auth = makeTestAuth();
+      const context = await auth.$context;
+      const id = context.generateId({ model: "user" });
+      const { internalAdapter } = context;
+      const user = await internalAdapter.createUser({
+        id,
+        email: uniqueEmail("internal-account-locale"),
+        name: "",
+        emailVerified: false,
+        locale: "cs-CZ",
+      });
+
+      expect(user.id).toBe(id);
+      expect(await readCreatedUser(id)).toEqual({
+        id,
+        locale: "cs-CZ",
+        email_verified: false,
+        customer_account_id: id,
+      });
+    });
+
+    test("uses the default locale for internal user creation without one", async () => {
+      const auth = makeTestAuth();
+      const context = await auth.$context;
+      const id = context.generateId({ model: "user" });
+      const { internalAdapter } = context;
+      const user = await internalAdapter.createUser({
+        id,
+        email: uniqueEmail("internal-account-default-locale"),
+        name: "",
+        emailVerified: false,
+      });
+
+      expect(user.id).toBe(id);
+      expect(await readCreatedUser(id)).toEqual({
+        id,
+        locale: "en-US",
+        email_verified: false,
+        customer_account_id: id,
+      });
+    });
+
+    test("rejects internal user creation without an id and creates no rows", async () => {
+      const auth = makeTestAuth();
+      const { internalAdapter } = await auth.$context;
+      const email = uniqueEmail("internal-account-missing-id");
+      const before = await testDatabase!.pool.query<{ count: string }>(
+        `select count(*)::text as count from customer_accounts`
+      );
+
+      await expect(
+        internalAdapter.createUser({
+          email,
+          name: "",
+          emailVerified: false,
+        })
+      ).rejects.toThrow(/valid account identifier/);
+
+      const users = await testDatabase!.pool.query(
+        `select id from auth."user" where email = $1`,
+        [email]
+      );
+      const after = await testDatabase!.pool.query<{ count: string }>(
+        `select count(*)::text as count from customer_accounts`
+      );
+
+      expect(users.rows).toHaveLength(0);
+      expect(after.rows[0]?.count).toBe(before.rows[0]?.count);
+    });
+
     test("keeps the creation locale when a later sign-in carries another one", async () => {
       const sentLinks: CapturedMagicLink[] = [];
       const auth = makeTestAuth({ sentLinks });
@@ -401,6 +518,10 @@ describe.skipIf(!testDatabase)(
 
     const insertLegacyAccount = async (email: string) => {
       const id = crypto.randomUUID();
+      await testDatabase!.pool.query(
+        "insert into customer_accounts (id) values ($1) on conflict do nothing",
+        [id]
+      );
       await testDatabase!.pool.query(
         `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, true)`,
         [id, email]
@@ -721,10 +842,10 @@ describe.skipIf(!testDatabase)(
       expect(user.rows).toHaveLength(0);
 
       const link = await testDatabase!.pool.query(
-        `select * from customer_account_links where customer_account_id = $1`,
+        `select dotypos_customer_id from customer_accounts where id = $1`,
         [userId]
       );
-      expect(link.rows).toHaveLength(0);
+      expect(link.rows).toEqual([{ dotypos_customer_id: null }]);
 
       const sessions = await testDatabase!.pool.query(
         `select id from auth.session where user_id = $1`,
@@ -765,10 +886,11 @@ describe.skipIf(!testDatabase)(
       expect(user.rows[0]!.deletion_requested_at).not.toBeNull();
 
       const link = await testDatabase!.pool.query(
-        `select * from customer_account_links where customer_account_id = $1`,
+        `select dotypos_customer_id from customer_accounts where id = $1`,
         [userId]
       );
       expect(link.rows).toHaveLength(1);
+      expect(link.rows[0]?.dotypos_customer_id).not.toBeNull();
     });
 
     test("keeps the auth identity and link when avatar deletion has an unknown provider outcome", async () => {
@@ -804,10 +926,11 @@ describe.skipIf(!testDatabase)(
       expect(user.rows[0]!.deletion_requested_at).not.toBeNull();
 
       const link = await testDatabase!.pool.query(
-        `select * from customer_account_links where customer_account_id = $1`,
+        `select dotypos_customer_id from customer_accounts where id = $1`,
         [userId]
       );
       expect(link.rows).toHaveLength(1);
+      expect(link.rows[0]?.dotypos_customer_id).not.toBeNull();
     });
 
     test("rejects stale sessions before the deletion hook runs", async () => {

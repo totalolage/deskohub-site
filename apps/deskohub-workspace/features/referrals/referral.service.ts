@@ -6,7 +6,7 @@ import {
   type WorkspaceDatabaseClient,
 } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
-import { customerAccountLinks } from "@/db/schema";
+import { customerAccounts } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import { discountApplications } from "@/db/schema/discount-applications";
 import { promotionCodes } from "@/db/schema/discounts";
@@ -515,16 +515,13 @@ export class ReferralService extends Context.Service<
             eq(promotionCodes.id, referralCodes.promotionCodeId)
           )
           .innerJoin(
-            customerAccountLinks,
+            customerAccounts,
             eq(
-              customerAccountLinks.dotyposCustomerId,
+              customerAccounts.dotyposCustomerId,
               referralCodes.referrerDotyposCustomerId
             )
           )
-          .innerJoin(
-            authUser,
-            eq(authUser.id, customerAccountLinks.customerAccountId)
-          )
+          .innerJoin(authUser, eq(authUser.id, customerAccounts.id))
           .where(
             and(
               eq(promotionCodes.code, canonicalPromotionCodeSchema.make(code)),
@@ -913,13 +910,11 @@ export class ReferralService extends Context.Service<
                   if (!referralTarget) return yield* fail("unavailable");
 
                   const [ownerLink] = yield* db
-                    .select({
-                      accountId: customerAccountLinks.customerAccountId,
-                    })
-                    .from(customerAccountLinks)
+                    .select({ accountId: customerAccounts.id })
+                    .from(customerAccounts)
                     .where(
                       eq(
-                        customerAccountLinks.dotyposCustomerId,
+                        customerAccounts.dotyposCustomerId,
                         referralTarget.referrerDotyposCustomerId
                       )
                     )
@@ -964,15 +959,10 @@ export class ReferralService extends Context.Service<
                         const [currentLink] = yield* tx
                           .select({
                             dotyposCustomerId:
-                              customerAccountLinks.dotyposCustomerId,
+                              customerAccounts.dotyposCustomerId,
                           })
-                          .from(customerAccountLinks)
-                          .where(
-                            eq(
-                              customerAccountLinks.customerAccountId,
-                              identity.accountId
-                            )
-                          )
+                          .from(customerAccounts)
+                          .where(eq(customerAccounts.id, identity.accountId))
                           .limit(1)
                           .pipe(
                             Effect.mapError(() => fail("account_unavailable"))
@@ -1007,21 +997,16 @@ export class ReferralService extends Context.Service<
                         }
 
                         const [owner] = yield* tx
-                          .select({
-                            accountId: customerAccountLinks.customerAccountId,
-                          })
-                          .from(customerAccountLinks)
+                          .select({ accountId: customerAccounts.id })
+                          .from(customerAccounts)
                           .innerJoin(
                             authUser,
-                            eq(
-                              authUser.id,
-                              customerAccountLinks.customerAccountId
-                            )
+                            eq(authUser.id, customerAccounts.id)
                           )
                           .where(
                             and(
                               eq(
-                                customerAccountLinks.dotyposCustomerId,
+                                customerAccounts.dotyposCustomerId,
                                 referral.referrerDotyposCustomerId
                               ),
                               isNull(authUser.deletionRequestedAt)

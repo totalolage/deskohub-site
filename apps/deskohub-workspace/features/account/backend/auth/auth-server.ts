@@ -37,7 +37,7 @@ import {
   type CustomerAccountId,
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
-import { defaultLocale, type Locale, locales } from "@/features/i18n";
+import { defaultLocale, isLocale, type Locale, locales } from "@/features/i18n";
 import {
   classifyAgentTraffic,
   unclassifiedTraffic,
@@ -126,6 +126,13 @@ export type WorkspaceAuthConfig = {
   readonly beforeDeleteUser: (
     accountId: CustomerAccountId
   ) => Effect.Effect<void, CustomerAccountDeletionError>;
+  /**
+   * Creates the durable customer account of a login Better Auth is about to
+   * insert, before the insert.
+   */
+  readonly createCustomerAccount: (
+    accountId: CustomerAccountId
+  ) => Effect.Effect<void, EffectDrizzleQueryError>;
   /**
    * Sets the locale preference of an account that has none, never
    * overwriting a saved one. Every sign-in captures it from the callback
@@ -275,6 +282,14 @@ const captureLocalePreference = (
         )
       )
     );
+
+/** Better Auth gave the login it is creating no usable account id. */
+class CreatingAccountIdInvalidError extends Data.TaggedError(
+  "CreatingAccountIdInvalidError"
+)<Record<never, never>> {
+  override readonly message =
+    "The login being created has no valid account identifier.";
+}
 
 /** The deleting session's user id is not a customer account id. */
 class DeletingAccountIdInvalidError extends Data.TaggedError(
@@ -915,18 +930,38 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
       },
       user: {
         create: {
+          // The durable customer account is created before its login, so no
+          // login exists without one; Better Auth keeps the id returned here.
+          // A sign-in request supplies the id generator; a server-side
+          // creation has no request, so it must pass the id itself. A login
+          // insert that fails afterwards leaves an unused account that the
+          // auth cleanup cron tombstones a day later.
+          //
           // The locale preference is part of the user insert, so no account
-          // exists without one. It comes from the initiating site locale in
-          // the callback URL, else the site default.
-          before: async (user, ctx) => ({
-            data: {
-              ...user,
-              locale:
-                callbackLocaleFromAuthContext(
-                  Option.getOrElse(decodeAuthContext(ctx), () => ({}))
-                ) ?? defaultLocale,
-            },
-          }),
+          // exists without one. A server-side creation supplies it; otherwise
+          // it comes from the initiating site locale in the callback URL, else
+          // the site default.
+          before: (user, ctx) =>
+            runWorkspaceEffect("account.customer-account.create", {
+              boundary: "route",
+            })(
+              Effect.gen(function* () {
+                const accountId = decodeAccountId(
+                  user.id ?? ctx?.context.generateId({ model: "user" }) ?? ""
+                );
+                if (!accountId) {
+                  return yield* new CreatingAccountIdInvalidError();
+                }
+                yield* config.createCustomerAccount(accountId);
+                const locale =
+                  Predicate.isString(user.locale) && isLocale(user.locale)
+                    ? user.locale
+                    : (callbackLocaleFromAuthContext(
+                        Option.getOrElse(decodeAuthContext(ctx), () => ({}))
+                      ) ?? defaultLocale);
+                return { data: { ...user, id: accountId, locale } };
+              })
+            ),
         },
       },
     },

@@ -50,8 +50,6 @@ export type SiteHeaderAdministratorEntry = {
   readonly visible: Promise<boolean>;
   readonly href: string;
   readonly label: string;
-  readonly ribbonLabel: string;
-  readonly ribbonActionLabel: string;
 };
 
 type DisabledSiteHeaderMenuItems = Partial<
@@ -162,8 +160,6 @@ const createSiteHeaderAdministratorEntry = (
   visible: isCurrentAccountAdministrator().catch(() => false),
   href: `/${locale}/admin`,
   label: m.siteHeaderAdminLabel({}, { locale }),
-  ribbonLabel: m.siteHeaderAdminRibbonLabel({}, { locale }),
-  ribbonActionLabel: m.siteHeaderAdminRibbonAction({}, { locale }),
 });
 
 // Not awaited, like the account entry: the switcher learns after the shell

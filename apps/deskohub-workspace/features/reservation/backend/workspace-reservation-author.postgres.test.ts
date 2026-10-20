@@ -41,14 +41,19 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
       Effect.runPromise
     );
 
-  const newAccountId = () => {
+  /** A signed-in account, whose customer account sign-up created. */
+  const newAccountId = async () => {
     const accountId = customerAccountIdSchema.make(crypto.randomUUID());
     accountIds.push(accountId);
+    await postgres.db
+      .insert(customerAccounts)
+      .values({ id: accountId })
+      .pipe(Effect.runPromise);
     return accountId;
   };
 
   const draftInput = (
-    authorAccountId: CustomerAccountId | null
+    authorAccountId: CustomerAccountId
   ): CreateWorkspaceReservationDraftInput => {
     const checkoutSessionKey = checkoutSessionKeySchema.make(
       `session:${crypto.randomUUID()}`
@@ -92,15 +97,6 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
     return row?.authorAccountId;
   };
 
-  const readAccount = async (id: CustomerAccountId) => {
-    const [row] = await postgres.db
-      .select()
-      .from(customerAccounts)
-      .where(eq(customerAccounts.id, id))
-      .pipe(Effect.runPromise);
-    return row;
-  };
-
   afterEach(async () => {
     if (reservationIds.length > 0) {
       await postgres.db
@@ -118,64 +114,30 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
     }
   });
 
-  test("records the author and creates its durable customer account", async () => {
-    const author = newAccountId();
+  test("records the signed-in account as the author", async () => {
+    const author = await newAccountId();
 
     const draft = await createDraft(draftInput(author));
 
     expect(await readAuthor(draft.id)).toBe(author);
-    expect(await readAccount(author)).toMatchObject({
-      id: author,
-      deletedAt: null,
-    });
   });
 
-  test("reuses the author's existing customer account", async () => {
-    const author = newAccountId();
+  test("refuses an author without a customer account", async () => {
+    const author = customerAccountIdSchema.make(crypto.randomUUID());
 
-    const first = await createDraft(draftInput(author));
-    const second = await createDraft(draftInput(author));
-
-    expect(await readAuthor(first.id)).toBe(author);
-    expect(await readAuthor(second.id)).toBe(author);
-  });
-
-  const assignAuthor = (
-    id: WorkspaceReservationId,
-    authorAccountId: CustomerAccountId
-  ) =>
-    run(
+    const created = await run(
       Effect.gen(function* () {
         const reservations = yield* WorkspaceReservationRepository;
-        return yield* reservations.assignAuthor({ id, authorAccountId });
-      })
+        return yield* reservations.createDraft(draftInput(author));
+      }).pipe(Effect.result)
     );
 
-  test("makes the resuming account the author of a legacy unauthored draft", async () => {
-    const author = newAccountId();
-    const draft = await createDraft(draftInput(null));
-    expect(await readAuthor(draft.id)).toBeNull();
-
-    expect(await assignAuthor(draft.id, author)).toBe(author);
-
-    expect(await readAuthor(draft.id)).toBe(author);
-    expect(await readAccount(author)).toMatchObject({ deletedAt: null });
-  });
-
-  test("never replaces an established author", async () => {
-    const author = newAccountId();
-    const otherAccount = newAccountId();
-    const draft = await createDraft(draftInput(author));
-
-    expect(await assignAuthor(draft.id, otherAccount)).toBe(author);
-
-    expect(await readAuthor(draft.id)).toBe(author);
-    expect(await readAccount(otherAccount)).toBeUndefined();
+    expect(created._tag).toBe("Failure");
   });
 
   test("records the author on a superseding replacement", async () => {
-    const firstAuthor = newAccountId();
-    const replacementAuthor = newAccountId();
+    const firstAuthor = await newAccountId();
+    const replacementAuthor = await newAccountId();
     const superseded = await createDraft(draftInput(firstAuthor));
     await postgres.db
       .update(workspaceReservations)
@@ -199,9 +161,6 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
     reservationIds.push(replacementDraft.id);
 
     expect(await readAuthor(replacementDraft.id)).toBe(replacementAuthor);
-    expect(await readAccount(replacementAuthor)).toMatchObject({
-      deletedAt: null,
-    });
   });
   const agentClientId = customerAgentClientIdSchema.make(
     "https://assistant.example/oauth-client.json"

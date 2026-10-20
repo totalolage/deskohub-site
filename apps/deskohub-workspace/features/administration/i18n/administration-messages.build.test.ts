@@ -13,7 +13,7 @@ import {
 
 // Checks the client chunks of a production build, so it stays out of the
 // default suite. Build, then select it by path:
-//   bun turbo run build --filter=deskohub-workspace -- --experimental-build-mode=compile
+//   bun turbo run build:compile --filter=deskohub-workspace
 //   bun --cwd apps/deskohub-workspace run test:build-output
 // Turbopack renames modules and exports, so the check matches message text.
 

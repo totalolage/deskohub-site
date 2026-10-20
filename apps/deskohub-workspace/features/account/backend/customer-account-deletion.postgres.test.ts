@@ -23,6 +23,10 @@ const uniqueDotyposId = () => String(60000 + Math.floor(Math.random() * 999));
 
 const insertAuthUser = async (id: string, email: string) => {
   await testDatabase!.pool.query(
+    "insert into customer_accounts (id) values ($1) on conflict do nothing",
+    [id]
+  );
+  await testDatabase!.pool.query(
     `insert into auth."user" (id, name, email) values ($1, '', $2)`,
     [id, email]
   );
@@ -30,7 +34,7 @@ const insertAuthUser = async (id: string, email: string) => {
 
 const insertLink = async (account: string, dotyposCustomerId: string) => {
   await testDatabase!.pool.query(
-    `insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2) on conflict do nothing`,
+    `update customer_accounts set dotypos_customer_id = $2 where id = $1`,
     [account, dotyposCustomerId]
   );
 };
@@ -108,7 +112,7 @@ describe.skipIf(!testDatabase)(
       expect(await readDeletedAt(account)).not.toBeNull();
     });
 
-    test("keeps the durable marker and the link row when the avatar destroy fails retryably", async () => {
+    test("keeps the durable marker and Dotypos customer ID when avatar destroy fails retryably", async () => {
       const layer = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
       const dotyposCustomerId = uniqueDotyposId();
@@ -141,12 +145,12 @@ describe.skipIf(!testDatabase)(
       expect(marker.rows[0]?.deletion_requested_at).not.toBeNull();
 
       const link = await testDatabase!.pool.query(
-        `select dotypos_customer_id from customer_account_links where customer_account_id = $1`,
+        `select dotypos_customer_id from customer_accounts where id = $1`,
         [account]
       );
       expect(link.rows).toHaveLength(1);
       expect(link.rows[0]?.dotypos_customer_id).toBe(dotyposCustomerId);
-      expect(await readDeletedAt(account)).toBeUndefined();
+      expect(await readDeletedAt(account)).toBeNull();
     });
 
     test("keeps an authored reservation and its author tombstone after the identity is removed", async () => {
@@ -155,10 +159,6 @@ describe.skipIf(!testDatabase)(
       const dotyposCustomerId = uniqueDotyposId();
       await insertAuthUser(account, testEmailAddress(`del-${account}`));
       await insertLink(account, dotyposCustomerId);
-      await testDatabase!.pool.query(
-        `insert into customer_accounts (id) values ($1)`,
-        [account]
-      );
       const reservation = await testDatabase!.pool.query<{ id: string }>(
         `insert into workspace_reservations
            (checkout_attempt_key, dotypos_customer_id, author_account_id,
@@ -201,10 +201,10 @@ describe.skipIf(!testDatabase)(
         expect(deletedAt).not.toBeNull();
         expect(await readDeletedAt(account)).toEqual(deletedAt);
         const link = await testDatabase!.pool.query(
-          `select 1 from customer_account_links where customer_account_id = $1`,
+          `select dotypos_customer_id from customer_accounts where id = $1`,
           [account]
         );
-        expect(link.rows).toHaveLength(0);
+        expect(link.rows).toEqual([{ dotypos_customer_id: null }]);
         await expect(
           testDatabase!.pool.query(
             `delete from customer_accounts where id = $1`,
@@ -217,6 +217,10 @@ describe.skipIf(!testDatabase)(
           [reservationId]
         );
         await testDatabase!.pool.query(
+          `delete from auth."user" where id = $1`,
+          [account]
+        );
+        await testDatabase!.pool.query(
           `delete from customer_accounts where id = $1`,
           [account]
         );
@@ -226,6 +230,11 @@ describe.skipIf(!testDatabase)(
     test("a repeated deletion keeps the first tombstone instant", async () => {
       const layer = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
+      const dotyposCustomerId = `${Date.now()}${Math.floor(Math.random() * 1_000_000)}`;
+      await testDatabase!.pool.query(
+        `insert into customer_accounts (id, dotypos_customer_id) values ($1, $2)`,
+        [account, dotyposCustomerId]
+      );
 
       const tombstoneAt = (deletedAt: string) =>
         Effect.runPromise(
@@ -242,6 +251,12 @@ describe.skipIf(!testDatabase)(
       await tombstoneAt("2026-10-17T11:00:00Z");
 
       expect(await readDeletedAt(account)).toBe("2026-10-17T10:00:00Z");
+      const row = await testDatabase!.pool.query<{
+        dotypos_customer_id: string | null;
+      }>("select dotypos_customer_id from customer_accounts where id = $1", [
+        account,
+      ]);
+      expect(row.rows[0]?.dotypos_customer_id).toBeNull();
     });
   }
 );

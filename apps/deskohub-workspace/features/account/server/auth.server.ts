@@ -17,6 +17,7 @@ import {
   workspaceBeforeDeleteUser,
   workspaceSendMagicLink,
 } from "@/features/account/backend/auth/auth-server";
+import { ensureCustomerAccount } from "@/features/account/backend/customer-account.repository";
 import { captureAccountLocalePreference } from "@/features/account/backend/customer-locale-preference";
 import { customerMcpServerPath } from "@/features/account/customer-agent-routes";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
@@ -88,6 +89,10 @@ export const auth = makeWorkspaceAuth({
     ).pipe(Effect.provide(WorkspaceDatabaseAdvisoryLock.Default)),
   sendMagicLink: workspaceSendMagicLink,
   beforeDeleteUser: workspaceBeforeDeleteUser,
+  createCustomerAccount: (accountId) =>
+    Effect.flatMap(WorkspaceDatabase, ({ db }) =>
+      ensureCustomerAccount(db, accountId)
+    ).pipe(Effect.provide(WorkspaceDatabase.Default)),
   captureAccountLocalePreference: (accountId, locale) =>
     captureAccountLocalePreference(accountId, locale).pipe(
       Effect.provide(WorkspaceDatabase.Default)

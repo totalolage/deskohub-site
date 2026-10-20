@@ -1,0 +1,2 @@
+ALTER TABLE "workspace_e2e_coordination"."allocation_requests" ADD COLUMN "preview_branch" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "allocation_requests_one_owner_per_preview_branch_idx" ON "workspace_e2e_coordination"."allocation_requests" ("pool_name","preview_branch") WHERE "allocated_shard" is not null and "preview_branch" is not null;

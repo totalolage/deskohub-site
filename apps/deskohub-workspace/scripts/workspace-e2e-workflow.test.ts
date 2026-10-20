@@ -6,7 +6,6 @@ import { runCommand } from "./shared/command";
 import {
   findStepByName,
   parseWorkflow,
-  type WorkflowJob,
   type WorkflowStep,
   workflowStepNames,
 } from "./shared/workflow-contract";
@@ -157,10 +156,6 @@ const projectByName = (config: PlaywrightCheckoutConfig, name: string) =>
 // Checkout case projects.
 const checkoutCaseProjectNames = ["checkout-cases"];
 
-const jobHasConcurrencyLock = (
-  job: WorkflowJob & { readonly concurrency?: unknown }
-): boolean => job.concurrency !== undefined;
-
 describe("workspace E2E workflow", () => {
   test("keeps the atomic allocator isolated from exact-SHA test code", () => {
     const tokenCheckouts = allSteps.filter((step) =>
@@ -230,9 +225,20 @@ describe("workspace E2E workflow", () => {
       )
     ).toEqual({
       "resolve-target": undefined,
-      "test-e2e": { actions: "read", contents: "read", statuses: "write" },
-      "publish-final-status": { contents: "read", statuses: "write" },
-      "publish-skipped-status": { contents: "read", statuses: "write" },
+      "test-e2e": {
+        actions: "read",
+        contents: "read",
+        "pull-requests": "read",
+        statuses: "write",
+      },
+      // Cancels only its own run, and runs no exact-SHA code.
+      "cancel-superseded-run": { actions: "write", "pull-requests": "read" },
+      "publish-final-status": {
+        contents: "read",
+        "pull-requests": "read",
+        statuses: "write",
+      },
+      "publish-status-without-run": { contents: "read", statuses: "write" },
     });
   });
 
@@ -294,10 +300,40 @@ describe("workspace E2E workflow", () => {
     ).toBe(false);
   });
 
+  test("cancels E2E only for a duplicate run of the same SHA", () => {
+    // A late event for an older head or a skip resolves ineligible or never
+    // reaches the E2E job, so cancellation lives on that job alone, after
+    // eligibility, and runs for different SHAs never share its group. Assert
+    // on parsed objects so a workflow-level group or a cancelling group on
+    // another job is caught however it is spelled.
+    expect(doc.concurrency).toBeUndefined();
+    expect(testJob.if).toContain(
+      "needs.resolve-target.outputs.eligible == 'true'"
+    );
+    expect(testJob.if).toContain(
+      "needs.resolve-target.outputs.deployment == 'success'"
+    );
+    const testConcurrency = testJob.concurrency;
+    expect(testConcurrency?.["cancel-in-progress"]).toBe(true);
+    expect(testConcurrency?.group).toStartWith("workspace-e2e-pr-");
+    expect(testConcurrency?.group).toContain(
+      "needs.resolve-target.outputs.pr_number"
+    );
+    expect(testConcurrency?.group).toContain(
+      "needs.resolve-target.outputs.sha"
+    );
+    for (const [name, job] of Object.entries(doc.jobs)) {
+      if (name !== "test-e2e") {
+        expect(job.concurrency).toBeUndefined();
+      }
+    }
+  });
+
   test("uses the allocator without a global provider lock", () => {
-    // Assert on the parsed job object so a reintroduced job-level
-    // concurrency lock is caught regardless of its YAML spelling or position.
-    expect(jobHasConcurrencyLock(testJob)).toBe(false);
+    // The only E2E concurrency group is per PR, never across PRs.
+    expect(JSON.stringify(testJob.concurrency)).toContain(
+      "needs.resolve-target.outputs.pr_number"
+    );
 
     const targetCheckoutIndex = stepNames.indexOf("Checkout exact target");
     const coordinatorCheckoutIndex = stepNames.indexOf(
@@ -526,9 +562,9 @@ describe("workspace E2E workflow", () => {
       "resolve-target",
       "test-e2e",
     ]);
-    // A Vercel-skipped target keeps its waiver status instead of a final one.
+    // A target E2E never ran against gets no final status.
     expect(doc.jobs["publish-final-status"].if).toContain(
-      "needs.resolve-target.outputs.skipped != 'true'"
+      "needs.resolve-target.outputs.deployment == 'success'"
     );
     // As a checkout project it extended the setup phase barrier, so no
     // checkout project may run the read-only navigation tests.

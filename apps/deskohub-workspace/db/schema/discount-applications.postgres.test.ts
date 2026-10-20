@@ -2,7 +2,10 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import type { PoolClient } from "pg";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 const postgresDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -11,10 +14,10 @@ const customerId = "synthetic-claim-customer";
 /** Seeds three synthetic checkouts, one discount code and one voucher. */
 const seedClaimTargets = async (client: PoolClient) => {
   await client.query(
-    `insert into workspace_reservations (id, checkout_attempt_key, dotypos_customer_id, dotypos_reservation_id, reservation_state, payment_state, fulfillment_state, reservation_details, locale)
-     select 'claim-reservation-' || n, 'claim-attempt-key-' || n, $1, 'claim-booking-' || n, 'cancelled', 'expired', 'not_started', '{"kind":"cowork","entryTier":"open-space","coffee":false}', 'en-US'
+    `insert into workspace_reservations (id, checkout_attempt_key, dotypos_customer_id, dotypos_reservation_id, reservation_state, payment_state, fulfillment_state, reservation_details, locale, author_account_id)
+     select 'claim-reservation-' || n, 'claim-attempt-key-' || n, $1, 'claim-booking-' || n, 'cancelled', 'expired', 'not_started', '{"kind":"cowork","entryTier":"open-space","coffee":false}', 'en-US', $2
        from generate_series(1, 3) n`,
-    [customerId]
+    [customerId, fixtureReservationAuthorId]
   );
   await client.query(
     `insert into payment_attempts (id, workspace_reservation_id, provider, provider_order_id, state, failure_code, refund_state, amount_value, amount_exponent, currency)
