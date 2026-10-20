@@ -10,6 +10,7 @@ import {
   resolveCustomerAgentConnectStep,
 } from "../../customer-agent-routes";
 import { customerAgentTestClientMetadata } from "../../customer-agent-test-client";
+import { AuthCleanupService } from "./auth-cleanup.service";
 import {
   type CapturedMagicLink,
   cookieJar,
@@ -24,7 +25,6 @@ import {
   userIdForEmail,
   verifyMagicLink,
 } from "./auth-handler.test-utils";
-import { AuthCleanupService } from "./auth-cleanup.service";
 import {
   type CustomerAgentAuthority,
   CustomerAgentAuthorization,
@@ -686,9 +686,9 @@ describe.skipIf(!testDatabase)(
         expect(
           await failureReasonOf(authorityOver(auth), renewed.access_token)
         ).toBe("invalid-token");
-        expect(
-          await countRows("oauth_refresh_token", customer.accountId)
-        ).toBe(0);
+        expect(await countRows("oauth_refresh_token", customer.accountId)).toBe(
+          0
+        );
       } finally {
         setSystemTime();
       }
