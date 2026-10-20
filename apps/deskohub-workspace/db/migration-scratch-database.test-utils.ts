@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
+import { createScratchPostgresDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 /** The Workspace Drizzle migrations. */
 export const workspaceMigrationsFolder = fileURLToPath(
@@ -31,17 +32,12 @@ export const withScratchDatabase = async (
   namePrefix: string,
   run: (pool: Pool) => Promise<void>
 ) => {
-  const name = `${namePrefix}_${crypto.randomUUID().replaceAll("-", "")}`;
-  const admin = new Pool({ connectionString: databaseUrl, max: 1 });
-  await admin.query(`create database "${name}"`);
-  const url = new URL(databaseUrl);
-  url.pathname = `/${name}`;
-  const pool = new Pool({ connectionString: url.toString(), max: 2 });
+  const scratch = await createScratchPostgresDatabase(databaseUrl, namePrefix);
+  const pool = new Pool({ connectionString: scratch.url, max: 2 });
   try {
     await run(pool);
   } finally {
     await pool.end();
-    await admin.query(`drop database if exists "${name}" with (force)`);
-    await admin.end();
+    await scratch.drop();
   }
 };

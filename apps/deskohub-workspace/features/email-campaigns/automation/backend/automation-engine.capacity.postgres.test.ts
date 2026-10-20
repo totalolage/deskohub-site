@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import {
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
@@ -15,7 +15,7 @@ import type {
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, References } from "effect";
 import { TestClock } from "effect/testing";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { everyoneFilter } from "../../backend/email-campaigns.test-utils";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
@@ -37,7 +37,14 @@ import {
 } from "./automation-lifecycle.test-utils";
 import { scheduleDedupKey } from "./automation-schedule-fires";
 
-const database = await connectWorkspacePostgresTestDatabase();
+/**
+ * The engine plans every active automation over every active consent, so
+ * the suite runs on a database of its own: another suite's automations
+ * would share its slots and their customers its pools.
+ */
+const database = await createWorkspacePostgresSuiteDatabase(
+  "automation_capacity"
+);
 
 /**
  * Real Postgres under simulated hours: well past the package's 30 s
@@ -128,6 +135,8 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
     for (const cleanup of cleanups.splice(0)) await cleanup();
   });
 
+  afterAll(() => database.close());
+
   /**
    * The full engine with the given slot limits and planner steps, the
    * discrete-event driver over it, and every Dotypos request held for the
@@ -146,21 +155,7 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
       ...(input.limits && { limits: input.limits }),
       ...(input.planning && { planning: input.planning }),
     });
-    // Another suite's active automation would share the slots and, as a
-    // schedule, this pool: pause it while the scenario runs.
-    const { rows: paused } = await pool.query<{ id: CampaignId }>(
-      `update email_campaigns set status = 'paused'
-       where status = 'active'
-         and id in (select campaign_id from email_campaign_automations)
-       returning id`
-    );
-    cleanups.push(async () => {
-      await scenario.cleanup();
-      await pool.query(
-        "update email_campaigns set status = 'active' where id = any($1)",
-        [paused.map(({ id }) => id)]
-      );
-    });
+    cleanups.push(scenario.cleanup);
     await scenario.prepare(input.sweptUntil ?? start);
     const simulation = makeAutomationEngineSimulation({
       queue: scenario.queue,
@@ -199,13 +194,7 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
    */
   const bulkPool = (scenario: AutomationEngineScenario) => {
     const prefix = `capacity-${crypto.randomUUID().slice(0, 8)}`;
-    /** Other suites' active consents, withdrawn while this pool runs. */
-    let setAside: readonly string[] = [];
     cleanups.push(async () => {
-      await pool.query(
-        "update customer_marketing_consents set withdrawn_at = null where dotypos_customer_id = any($1)",
-        [setAside]
-      );
       await pool.query(
         "delete from workspace_reservations where id like $1 || '-%'",
         [prefix]
@@ -271,15 +260,6 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
          from unnest($1::text[], $2::text[]) as r(id, customer)`,
         [reservationIds, reservationCustomers, confirmedAt]
       );
-      // Every active consent forms a schedule's pool: set other suites'
-      // aside until cleanup, so n is this pool's.
-      const { rows } = await pool.query<{ dotypos_customer_id: string }>(
-        `update customer_marketing_consents set withdrawn_at = greatest(granted_at, $2)
-         where withdrawn_at is null and dotypos_customer_id not like $1 || '-%'
-         returning dotypos_customer_id`,
-        [prefix, start.toString()]
-      );
-      setAside = [...setAside, ...rows.map((row) => row.dotypos_customer_id)];
       return ids;
     };
 
