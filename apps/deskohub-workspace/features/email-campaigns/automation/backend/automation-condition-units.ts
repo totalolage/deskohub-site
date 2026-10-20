@@ -43,7 +43,7 @@ export type ConditionSubject = typeof conditionSubjectSchema.Type;
  * A `condition` unit for runs at one `(version, step)`. `id` keeps the key
  * unique per planning, so runs a settled unit released are planned again.
  */
-export const plannedConditionUnit = (input: {
+const plannedConditionUnit = (input: {
   readonly id: string;
   readonly campaignId: CampaignId;
   readonly versionId: AutomationVersionId;
