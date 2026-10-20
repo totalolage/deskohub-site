@@ -2,13 +2,14 @@ import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Effect, Layer } from "effect";
-import { Pool } from "pg";
+import type { Pool } from "pg";
 import {
   WorkspaceDatabase,
   type WorkspaceDatabaseClient,
 } from "@/db/database.service";
 import { makeDatabaseClient, makeDatabasePool } from "@/db/database-client";
 import { databasePoolTimeouts } from "@/db/database-pool-timeouts";
+import { createScratchPostgresDatabase } from "./postgres-scratch-database.test-utils";
 
 export interface WorkspacePostgresTestDatabase {
   readonly db: WorkspaceDatabaseClient;
@@ -36,9 +37,7 @@ const connectWorkspacePostgres = async (
   };
 
   try {
-    const probeConnection = await pool.connect();
-    await probeConnection.query("select 1");
-    probeConnection.release();
+    await pool.query("select 1");
   } catch (cause) {
     return failClosed("is unreachable", cause);
   }
@@ -72,32 +71,6 @@ const connectConfiguredWorkspacePostgres = async () => {
 export const connectWorkspacePostgresTestDatabase =
   (): Promise<WorkspacePostgresTestDatabase | null> =>
     (connection ??= connectConfiguredWorkspacePostgres());
-
-/**
- * Creates an empty sibling database next to the one at `databaseUrl`.
- * `drop` removes it, closing any connections still open to it.
- */
-export const createScratchPostgresDatabase = async (
-  databaseUrl: string,
-  namePrefix: string
-) => {
-  const name = `${namePrefix}_${crypto.randomUUID().replaceAll("-", "")}`;
-  const administer = async (statement: string) => {
-    const admin = new Pool({ connectionString: databaseUrl, max: 1 });
-    try {
-      await admin.query(statement);
-    } finally {
-      await admin.end();
-    }
-  };
-  await administer(`create database "${name}"`);
-  const url = new URL(databaseUrl);
-  url.pathname = `/${name}`;
-  return {
-    url: url.toString(),
-    drop: () => administer(`drop database if exists "${name}" with (force)`),
-  };
-};
 
 /**
  * A migrated database of the suite's own, beside the configured test

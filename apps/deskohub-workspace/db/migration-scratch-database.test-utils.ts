@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
-import { createScratchPostgresDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createScratchPostgresDatabase } from "@/shared/testing/postgres-scratch-database.test-utils";
 
 /** The Workspace Drizzle migrations. */
 export const workspaceMigrationsFolder = fileURLToPath(
