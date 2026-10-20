@@ -4,6 +4,7 @@ export const workspaceE2ENonPaymentCaseIds = [
   "voucher-reuse-and-exhaustion",
   "discount-code-capacity-reached",
   "referral-profile-completion-checkout",
+  "checkout-signed-out-verification",
   "reservation-link-meeting-room-zero-total-en-US",
   "discount-code-already-redeemed",
   "referral-checkout-code-entry",
@@ -35,7 +36,7 @@ export const workspaceE2ENonPaymentCaseIds = [
 // permit.
 const workspaceE2EPaidCaseIds = [
   "checkout-calendar-sale",
-  "checkout-guest-referral",
+  "checkout-referral-someone-else",
   "payment-late-recovery-recreated",
   "checkout-meeting-room-paid-one-hour",
   "checkout-meeting-room-paid-whole-day",

@@ -63,7 +63,13 @@ const quoteSchema = Schema.Struct({
 
 type Quote = typeof quoteSchema.Type;
 
-const contactFieldRoots = new Set(["name", "email", "phone", "billing"]);
+const contactFieldRoots = new Set([
+  "name",
+  "email",
+  "emailConfirmation",
+  "phone",
+  "billing",
+]);
 
 type MarketingConsentOutcome =
   | "submitted"
@@ -367,6 +373,11 @@ const toPrepareReservationResult = ({
       };
     case "error":
       return siteToolError("checkout_failed", submission.message);
+    case "email-verification":
+      return siteToolError(
+        "email_verification_required",
+        m.siteToolEmailVerificationRequired({}, { locale })
+      );
     case "invalid": {
       const { fields } = submission;
       return fields.every(({ name }) =>

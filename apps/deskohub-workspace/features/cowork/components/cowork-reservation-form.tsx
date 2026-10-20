@@ -49,6 +49,7 @@ import {
   ReservationFormFallback as SharedReservationFormFallback,
 } from "@/features/reservation/components/reservation-form-fallback";
 import { ReservationFormLabel } from "@/features/reservation/components/reservation-form-label";
+import { getReservationAdvertisedTotal } from "@/features/reservation/components/reservation-selection-summary";
 import {
   illustratedReservationTypeOptionLayout,
   ReservationTypeInput,
@@ -79,7 +80,7 @@ import {
   formatReservationInputDate,
   getCurrentWorkspaceDate,
 } from "@/features/reservation/reservation-date";
-import type { ReservationExistingCustomerForm } from "@/features/reservation/reservation-existing-customer";
+import type { ReservationCheckoutCustomerForm } from "@/features/reservation/reservation-existing-customer";
 import {
   getCoworkAvailabilityQueries,
   type PreloadedWorkspaceAvailability,
@@ -93,6 +94,7 @@ import {
 import { Label } from "@/shared/components/ui/label";
 import { cn } from "@/shared/utils";
 import { CoworkOptionalAddonToggle } from "./cowork-optional-addon-toggle";
+import { getCoworkReservationSelectionSummary } from "./cowork-reservation-selection-summary";
 
 type CoworkReservationFormProps = {
   initialReservation?: NormalizedCoworkReservationOrder;
@@ -100,7 +102,7 @@ type CoworkReservationFormProps = {
   initialValues?: CoworkReservationInput;
   locale: Locale;
   checkoutSessionId?: CheckoutSessionId;
-  existingCustomer?: ReservationExistingCustomerForm;
+  checkoutCustomer: ReservationCheckoutCustomerForm;
   initialAvailability?: ReadonlyArray<PreloadedWorkspaceAvailability>;
   replacementToken?: string;
   submittedCode?: CanonicalPromotionCode;
@@ -153,7 +155,7 @@ export function CoworkReservationForm({
   initialValues,
   locale,
   checkoutSessionId,
-  existingCustomer,
+  checkoutCustomer,
   initialAvailability,
   replacementToken,
   submittedCode,
@@ -538,7 +540,7 @@ export function CoworkReservationForm({
 
   return (
     <ReservationCheckoutForm
-      existingCustomer={existingCustomer}
+      checkoutCustomer={checkoutCustomer}
       advertisedPrice={{
         token: advertisedPrice?.advertisedPriceToken,
         isFetching: Boolean(advertisedPriceQueryResult?.isFetching),
@@ -549,6 +551,9 @@ export function CoworkReservationForm({
               discounts: advertisedPrice.quote.payment.discounts,
               productLabel: getWorkspaceProductTierTitle(selectedTier, locale),
             }
+          : undefined,
+        total: advertisedPrice
+          ? getReservationAdvertisedTotal(advertisedPrice.quote.payment)
           : undefined,
       }}
       availability={{
@@ -563,6 +568,15 @@ export function CoworkReservationForm({
       form={form}
       getReservation={getCoworkCurrentReservationOrder}
       locale={locale}
+      selectionSummary={getCoworkReservationSelectionSummary(
+        {
+          entryTier: selectedTier,
+          date: selectedDate,
+          coffee: selectedCoffee,
+          monitorOption: selectedMonitorOption,
+        },
+        locale
+      )}
       selection={{
         kind: "cowork",
         fromSearchParams: (searchParams) => {
