@@ -2,6 +2,7 @@ import "server-only";
 
 import { Effect, Layer, Result } from "effect";
 import { cache } from "react";
+import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { acceptAutoLinkedReferral } from "@/features/account/backend/auto-linked-referral";
 import { resolveCurrentCustomerAccount } from "@/features/account/backend/customer-account-resolver.service";
@@ -29,6 +30,7 @@ import {
   isCustomerProfileMissing,
   type LinkedCustomerAccount,
 } from "@/features/account/customer-account";
+import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
 import type { AccountPasskeySettings } from "@/features/account/passkeys";
 import {
   areAccountAvatarsEnabled,
@@ -48,12 +50,19 @@ import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/works
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 
 /**
- * Sign-in methods need only the session, so every signed-in state carries
- * them, whether or not the Dotypos profile is available.
+ * Sign-in methods and connected assistants need only the session, so every
+ * signed-in state carries them, whether or not the Dotypos profile is
+ * available.
  */
-type SignInMethods = {
+type SessionSettings = {
   /** The account's passkeys; absent while `login_passkeys` is off. */
   readonly passkeys?: AccountPasskeySettings;
+  /**
+   * The AI assistants the customer connected, null when they couldn't be
+   * read. Absent while deletion is pending: those grants no longer
+   * authorize, and deleting the account removes them.
+   */
+  readonly assistants?: readonly CustomerAgentConnection[] | null;
 };
 
 /**
@@ -66,7 +75,7 @@ export type CustomerAccountPageState =
   | { readonly kind: "unauthenticated" }
   | SignedInAccountPageState;
 
-type SignedInAccountPageState = SignInMethods &
+type SignedInAccountPageState = SessionSettings &
   (
     | { readonly kind: "authenticated-unavailable"; readonly email: string }
     | {
@@ -157,6 +166,22 @@ const loadPasskeySettings = Effect.fn(function* (accountId: CustomerAccountId) {
   );
   return { accountId, passkeys } satisfies AccountPasskeySettings;
 });
+
+/**
+ * The Connected assistants section's list. An unreadable list keeps the
+ * section with an unavailable notice.
+ */
+const loadCustomerAgentConnections = Effect.flatMap(
+  CustomerAgentConnections,
+  (connections) => connections.list
+).pipe(
+  Effect.provide(CustomerAgentConnections.Default),
+  Effect.tapError(() =>
+    logDegradedAccountSection("account.assistants.unavailable")
+  ),
+  Effect.orElseSucceed(() => null),
+  withOperation("account.assistants")
+);
 
 const loadLinkedAccount = Effect.fn(function* (
   user: { readonly email: string },
@@ -441,8 +466,21 @@ const loadAccountPageState = Effect.gen(function* () {
     ? ({ kind: "deletion-pending", email: user.email } as const)
     : yield* loadSignedInAccount(user);
   if (state.kind === "unauthenticated") return state;
-  const passkeys = yield* loadPasskeySettings(user.accountId);
-  return passkeys ? { ...state, passkeys } : state;
+  const { passkeys, assistants } = yield* Effect.all(
+    {
+      passkeys: loadPasskeySettings(user.accountId),
+      assistants:
+        state.kind === "deletion-pending"
+          ? Effect.void
+          : loadCustomerAgentConnections,
+    },
+    { concurrency: "unbounded" }
+  );
+  return {
+    ...state,
+    ...(passkeys && { passkeys }),
+    ...(assistants !== undefined && { assistants }),
+  };
 });
 
 /**

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Bot,
   CalendarDays,
   CreditCard,
   Gift,
@@ -86,6 +87,7 @@ export function AccountShell({
       { icon: Gift, key: "referrals" },
       { icon: UserRound, key: "profile" },
       { icon: KeyRound, key: "security" },
+      { icon: Bot, key: "assistants" },
       { icon: CreditCard, key: "billing" },
       { icon: ShieldCheck, key: "legal" },
       { icon: TriangleAlert, key: "danger" },

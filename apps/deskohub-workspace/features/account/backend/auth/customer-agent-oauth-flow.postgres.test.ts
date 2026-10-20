@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Option } from "effect";
+import { Effect, Layer, Option } from "effect";
 import type { CustomerAccountId } from "../../customer-account";
 import {
   customerAgentAuthorizePath,
@@ -26,6 +26,7 @@ import {
   CustomerAgentAuthorization,
 } from "./customer-agent-authorization.service";
 import { CustomerAgentClientDirectory } from "./customer-agent-client-directory.service";
+import { CustomerAgentConnections } from "./customer-agent-connections.service";
 
 const RESOURCE = `https://${HOST}/api/mcp`;
 const ORIGIN = `https://${HOST}`;
@@ -36,14 +37,14 @@ const AGENT_SCOPE =
 const CLIENT_NAME = "Example Agent";
 
 /** A synthetic agent that publishes its Client ID Metadata Document. */
-const makeAgent = () => {
+const makeAgent = (clientName = CLIENT_NAME) => {
   const base = `https://client.example/${crypto.randomUUID()}`;
   const clientId = `${base}/oauth-client.json`;
   const redirectUri = `${base}/callback`;
   const metadataRequests: string[] = [];
   const document = {
     client_id: clientId,
-    client_name: CLIENT_NAME,
+    client_name: clientName,
     redirect_uris: [redirectUri],
     token_endpoint_auth_method: "none",
     grant_types: ["authorization_code", "refresh_token"],
@@ -255,6 +256,79 @@ const findClient = (auth: TestAuth, clientId: string, headers: Headers) =>
       Effect.result
     )
   );
+
+/** Serves each agent's metadata document from one transport. */
+const serveAgents =
+  (...agents: ReadonlyArray<ReturnType<typeof makeAgent>>) =>
+  (input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input);
+    const agent =
+      agents.find((candidate) => candidate.clientId === url) ?? agents[0]!;
+    return agent.clientMetadataTransport(input);
+  };
+
+/**
+ * Connects an agent for a customer who is already signed in: the request
+ * goes straight to consent, the customer allows it, and the agent exchanges
+ * its code.
+ */
+const connectSignedIn = async (
+  auth: TestAuth,
+  cookie: string,
+  agent: ReturnType<typeof makeAgent>
+) => {
+  const pkce = await makePkce();
+  const consentPage = redirectOf(
+    await request(
+      auth,
+      authorizePath({
+        clientId: agent.clientId,
+        redirectUri: agent.redirectUri,
+        challenge: pkce.challenge,
+        state: crypto.randomUUID(),
+        scope: AGENT_SCOPE,
+      }),
+      { cookie }
+    )
+  );
+  expect(consentPage.pathname).toBe("/auth/consent");
+  const callback = await answerConsent(auth, cookie, consentPage, true);
+  const response = await exchangeCode(auth, {
+    clientId: agent.clientId,
+    redirectUri: agent.redirectUri,
+    code: callback.searchParams.get("code")!,
+    verifier: pkce.verifier,
+  });
+  expect(response.status).toBe(200);
+  return (await response.json()) as TokenResponse;
+};
+
+/** The customer's connections, as the account page lists them. */
+const listConnections = (auth: TestAuth, cookie: string) => {
+  const headers = new Headers({ cookie, host: HOST });
+  return Effect.runPromise(
+    Effect.flatMap(
+      CustomerAgentConnections,
+      (connections) => connections.list
+    ).pipe(
+      Effect.provide(
+        CustomerAgentConnections.fromAuthority({
+          listConsents: () => auth.api.getOAuthConsents({ headers }),
+        }).pipe(
+          Layer.provide(
+            CustomerAgentClientDirectory.fromAuthority({
+              findPublicClient: (clientId) =>
+                auth.api.getOAuthClientPublic({
+                  query: { client_id: clientId },
+                  headers,
+                }),
+            })
+          )
+        )
+      )
+    )
+  );
+};
 
 const userExists = async (userId: string) => {
   const result = await testDatabase!.pool.query(
@@ -724,6 +798,114 @@ describe.skipIf(!testDatabase)(
           customer.accountId as CustomerAccountId
         );
       }
+    });
+
+    test("disconnects one assistant: its tokens stop working and other grants keep theirs", async () => {
+      const agent = makeAgent();
+      const other = makeAgent("Other Agent");
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: serveAgents(agent, other),
+      });
+      const customer = await signIn(auth, sentLinks);
+      const neighbour = await signIn(auth, sentLinks);
+      const disconnecting = await connectSignedIn(auth, customer.cookie, agent);
+      const staying = await connectSignedIn(auth, customer.cookie, other);
+      const neighbours = await connectSignedIn(auth, neighbour.cookie, agent);
+
+      // The account page lists both assistants, named from their metadata
+      // and with the scopes the consent page explained.
+      const listed = await listConnections(auth, customer.cookie);
+      expect(
+        listed.map(({ name, host, scopes }) => ({ name, host, scopes }))
+      ).toEqual([
+        {
+          name: CLIENT_NAME,
+          host: "client.example",
+          scopes: [
+            "offerings:read",
+            "reservations:read",
+            "reservations:create",
+            "offline_access",
+          ],
+        },
+        {
+          name: "Other Agent",
+          host: "client.example",
+          scopes: [
+            "offerings:read",
+            "reservations:read",
+            "reservations:create",
+            "offline_access",
+          ],
+        },
+      ]);
+      const connection = listed.find(({ name }) => name === CLIENT_NAME)!;
+      expect(Date.parse(connection.connectedAt)).not.toBeNaN();
+
+      // Another customer can't disconnect it.
+      const foreign = await request(auth, "/oauth2/delete-consent", {
+        method: "POST",
+        cookie: neighbour.cookie,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: connection.id }),
+      });
+      expect(foreign.status).toBe(401);
+
+      const disconnected = await request(auth, "/oauth2/delete-consent", {
+        method: "POST",
+        cookie: customer.cookie,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: connection.id }),
+      });
+      expect(disconnected.status).toBe(200);
+
+      // The disconnected assistant's next MCP call is refused, and it can't
+      // refresh its way back in.
+      expect(
+        await failureReasonOf(authorityOver(auth), disconnecting.access_token)
+      ).toBe("invalid-token");
+      const refreshed = await requestToken(auth, {
+        grant_type: "refresh_token",
+        client_id: agent.clientId,
+        refresh_token: disconnecting.refresh_token!,
+        resource: RESOURCE,
+      });
+      expect(refreshed.status).toBe(400);
+
+      // The customer's other assistant and the neighbour's grant to the same
+      // assistant keep working.
+      expect(
+        (await authorizeToken(authorityOver(auth), staying.access_token))._tag
+      ).toBe("Success");
+      expect(
+        (await authorizeToken(authorityOver(auth), neighbours.access_token))
+          ._tag
+      ).toBe("Success");
+      expect(
+        (await listConnections(auth, customer.cookie)).map(({ name }) => name)
+      ).toEqual(["Other Agent"]);
+      expect(
+        (await listConnections(auth, neighbour.cookie)).map(({ name }) => name)
+      ).toEqual([CLIENT_NAME]);
+
+      // Connecting again asks the customer for consent again.
+      const pkce = await makePkce();
+      const reconnect = redirectOf(
+        await request(
+          auth,
+          authorizePath({
+            clientId: agent.clientId,
+            redirectUri: agent.redirectUri,
+            challenge: pkce.challenge,
+            state: crypto.randomUUID(),
+            scope: AGENT_SCOPE,
+          }),
+          { cookie: customer.cookie }
+        )
+      );
+      expect(reconnect.pathname).toBe("/auth/consent");
     });
 
     test("deletes a connected account with its grants, and its tokens stop authorizing", async () => {

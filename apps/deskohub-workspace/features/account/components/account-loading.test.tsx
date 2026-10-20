@@ -16,6 +16,7 @@ import { AccountLoading } from "./account-loading";
 const sectionKeys = [
   "reservations",
   "profile",
+  "assistants",
   "billing",
   "legal",
   "danger",
@@ -47,6 +48,7 @@ const localizedLoadingCopy: readonly LoadingCopy[] = [
       danger: "Danger zone",
       legal: "Legal & Privacy",
       profile: "Profile & Identity",
+      assistants: "Connected assistants",
       referrals: "Referrals",
       reservations: "Reservations",
     },
@@ -64,6 +66,7 @@ const localizedLoadingCopy: readonly LoadingCopy[] = [
       danger: "Nebezpečná zóna",
       legal: "Právní informace a soukromí",
       profile: "Profil a identita",
+      assistants: "Připojení asistenti",
       referrals: "Doporučení",
       reservations: "Rezervace",
     },

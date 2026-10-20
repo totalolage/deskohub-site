@@ -4,6 +4,7 @@ import { type ReactNode, useEffect } from "react";
 import type { CustomerProfile } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { useAccountLayout } from "@/features/account/components/account-layout-shell";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
+import { CustomerAgentConnectionsSection } from "@/features/account/components/customer-agent-connections/customer-agent-connections-section";
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
 import { SignInSecuritySection } from "@/features/account/components/passkeys/sign-in-security-section";
 import { useAccountPasskeys } from "@/features/account/components/passkeys/use-account-passkeys";
@@ -14,6 +15,7 @@ import type {
   CustomerAvatarPresentation,
   ProfileCompletionReferralOutcome,
 } from "@/features/account/contracts";
+import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
 import type { AccountPasskeySettings } from "@/features/account/passkeys";
 import { type Locale, m } from "@/features/i18n";
 import {
@@ -41,9 +43,12 @@ type LinkedAccountProps = {
   readonly signupReferral?: ProfileCompletionReferralOutcome;
   /** The account's passkeys; absent while `login_passkeys` is off. */
   readonly passkeys?: AccountPasskeySettings;
+  /** The connected AI assistants; null when they couldn't be read. */
+  readonly assistants?: readonly CustomerAgentConnection[] | null;
 };
 
 export function LinkedAccount({
+  assistants,
   avatarPresentation,
   email,
   locale,
@@ -129,6 +134,14 @@ export function LinkedAccount({
           accountPasskeys={accountPasskeys}
           email={email}
           hidden={activeSection !== "security"}
+          locale={locale}
+        />
+      )}
+
+      {assistants !== undefined && (
+        <CustomerAgentConnectionsSection
+          connections={assistants}
+          hidden={activeSection !== "assistants"}
           locale={locale}
         />
       )}

@@ -14,6 +14,8 @@ resource.
 | Login, consent, MCP and authorize paths; the connect-step resolver | `features/account/customer-agent-routes.ts` |
 | Token → customer identity adapter | `features/account/backend/auth/customer-agent-authorization.service.ts` |
 | Client name and host for the consent page | `features/account/backend/auth/customer-agent-client-directory.service.ts` |
+| The customer's connected assistants (consents named by the client directory) | `features/account/backend/auth/customer-agent-connections.service.ts` |
+| Connected assistants section and Disconnect | `features/account/components/customer-agent-connections/`, `features/account/customer-agent-connection-client.ts` |
 | Discovery handler and its tests | `features/account/server/customer-agent-discovery.server.ts` (+ `.test.ts`) |
 | Discovery routes | `app/.well-known/oauth-authorization-server/api/auth`, `app/.well-known/oauth-protected-resource` (root and `/api/mcp`) |
 | Pages | `app/[locale]/(site)/(minimal-header)/auth/connect`, `.../auth/consent` |
@@ -117,6 +119,22 @@ resource.
 - Terms acceptance and legal consent evidence stay on the Pay step; the
   consent page records only the OAuth grant.
 
+## Connected assistants
+
+- The account's `assistants` section lists the customer's consents
+  (`getOAuthConsents`), each named and hosted through
+  `CustomerAgentClientDirectory`, with the granted scopes in the consent
+  page's words (`describeCustomerAgentScope`) and the consent's creation
+  time. Better Auth records no last-use time.
+- The list needs only the session, so every signed-in state except a pending
+  deletion carries it, with or without a Dotypos profile. An unreadable list
+  shows an unavailable notice; a client whose metadata can't be read stays
+  listed without a name, so it can still be disconnected.
+- Disconnect calls `authClient.oauth2.deleteConsent({ id })` from the
+  browser, as passkey deletion does; Better Auth checks the session and that
+  the consent is the customer's. A consent that is already gone counts as
+  disconnected. Reconnecting asks for consent again.
+
 ## Account-boundary adapter
 
 - `CustomerAgentAuthorization.authorize(token)` validates the token, requires
@@ -139,7 +157,7 @@ resource.
   refresh tokens (their access tokens cascade), and expired client-assertion
   records. Revoked tokens stay until they expire because refresh-token replay
   detection reads them. Consents and CIMD client rows have no expiry; consents
-  last until account deletion.
+  last until the customer disconnects the assistant or deletes the account.
 - Lifetimes: access tokens 1 hour, refresh tokens 30 days (rotated on use),
   signed authorization requests and codes 10 minutes. Replaying a used code
   fails and revokes the tokens it bought.

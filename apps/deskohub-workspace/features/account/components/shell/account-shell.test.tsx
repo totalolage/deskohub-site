@@ -21,6 +21,7 @@ const sectionKeys: readonly AccountSection[] = [
   "referrals",
   "profile",
   "security",
+  "assistants",
   "billing",
   "legal",
   "danger",
@@ -37,6 +38,7 @@ const labels: AccountShellProps["labels"] = {
     referrals: "Referrals",
     reservations: "Reservations",
     security: "Sign-in & security",
+    assistants: "Connected assistants",
   },
 };
 
@@ -690,6 +692,7 @@ describe("AccountShell", () => {
     ).toEqual([
       "Reservations",
       "Profile & identity",
+      "Connected assistants",
       "Billing & invoices",
       "Legal & privacy",
       "Danger zone",

@@ -35,6 +35,7 @@ export function AccountPage({
         <LinkedAccount
           avatarPresentation={state.avatar}
           email={state.email}
+          assistants={state.assistants}
           locale={locale}
           passkeys={state.passkeys}
           profile={state.profile}
@@ -79,6 +80,7 @@ function renderState(
     case "authenticated-unavailable":
       return (
         <AccountWithoutProfile
+          assistants={state.assistants}
           email={state.email}
           locale={locale}
           passkeys={state.passkeys}
@@ -89,6 +91,7 @@ function renderState(
     case "completion-required":
       return (
         <AccountWithoutProfile
+          assistants={state.assistants}
           email={state.email}
           locale={locale}
           passkeys={state.passkeys}
@@ -105,6 +108,7 @@ function renderState(
     case "support-required":
       return (
         <AccountWithoutProfile
+          assistants={state.assistants}
           email={state.email}
           locale={locale}
           passkeys={state.passkeys}

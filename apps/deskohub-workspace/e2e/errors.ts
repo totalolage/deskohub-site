@@ -85,6 +85,7 @@ const accountLayoutSections = [
   "referrals",
   "profile",
   "security",
+  "assistants",
   "billing",
   "legal",
   "danger",

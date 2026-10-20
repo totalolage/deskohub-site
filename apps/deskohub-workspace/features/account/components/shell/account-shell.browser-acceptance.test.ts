@@ -14,6 +14,7 @@ const sectionLabels = {
   reservations: m.accountSectionReservations({}, { locale }),
   referrals: m.accountSectionReferrals({}, { locale }),
   profile: m.accountSectionProfile({}, { locale }),
+  assistants: m.accountSectionAssistants({}, { locale }),
   billing: m.accountSectionBilling({}, { locale }),
   legal: m.accountSectionLegal({}, { locale }),
   danger: m.accountSectionDanger({}, { locale }),
