@@ -61,6 +61,6 @@ END
 $$;
 --> statement-breakpoint
 ALTER TABLE "auth"."user" ADD CONSTRAINT "user_id_customer_accounts_id_fkey" FOREIGN KEY ("id") REFERENCES "customer_accounts"("id") ON DELETE RESTRICT;--> statement-breakpoint
--- Fails while any reservation has no author: the account backfill must run
--- before this release.
+-- Fails while any reservation has no author: release A's account backfill
+-- must run before this release.
 ALTER TABLE "workspace_reservations" ALTER COLUMN "author_account_id" SET NOT NULL;

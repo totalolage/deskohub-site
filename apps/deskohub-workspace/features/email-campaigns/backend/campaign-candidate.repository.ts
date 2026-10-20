@@ -89,11 +89,7 @@ const receivedCampaignEmailStatuses = [
   "unconfirmed",
 ] as const;
 
-/**
- * The joined login is verified. The account backfill creates unverified
- * logins for legacy customers silently; they count as accounts only once
- * their owner signs in.
- */
+/** Only verified logins may receive campaigns. */
 const verifiedLogin = eq(authUser.emailVerified, true);
 
 /** The linked customer of an account, where the query keeps linked accounts only. */

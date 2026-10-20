@@ -917,8 +917,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
           // login exists without one; Better Auth keeps the id returned here.
           // A sign-in request supplies the id generator; a server-side
           // creation has no request, so it must pass the id itself. A login
-          // insert that fails afterwards leaves an unused account that the
-          // account backfill tombstones.
+          // insert that fails afterwards leaves an unused account row.
           //
           // The locale preference is part of the user insert, so no account
           // exists without one. A server-side creation supplies it; otherwise
