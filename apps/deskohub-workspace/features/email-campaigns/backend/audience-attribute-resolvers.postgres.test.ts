@@ -463,13 +463,11 @@ describe.skipIf(!testDatabase)(
         )
       );
       await Effect.runPromise(
-        db
-          .insert(customerAccounts)
-          .values({
-            id: accountId,
-            dotyposCustomerId: accountHolder,
-            createdAt: accountCreatedAt,
-          })
+        db.insert(customerAccounts).values({
+          id: accountId,
+          dotyposCustomerId: accountHolder,
+          createdAt: accountCreatedAt,
+        })
       );
       await Effect.runPromise(
         db.insert(authUser).values({
