@@ -13,7 +13,9 @@ mock.module("next/server", () => ({
 
 // Load the route through the document's pathname, so the test fails when the
 // route folder and the published client ID drift apart.
-const { GET } = await import(`../../..${customerAgentTestClientPathname}/route`);
+const { GET } = await import(
+  `../../..${customerAgentTestClientPathname}/route`
+);
 
 describe("test agent Client ID Metadata Document", () => {
   test("serves the document as JSON cached for a minute", async () => {
