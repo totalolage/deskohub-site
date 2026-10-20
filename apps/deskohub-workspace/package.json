@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "MIMALLOC_PURGE_DELAY=0 next build --turbo --experimental-build-mode=generate",
+    "build:generate": "MIMALLOC_PURGE_DELAY=0 next build --turbo --experimental-build-mode=generate",
     "build:compile": "MIMALLOC_PURGE_DELAY=0 next build --turbo --experimental-build-mode=compile",
     "build:source-maps": "bun scripts/upload-source-maps.ts",
     "vercel-build": "turbo build",

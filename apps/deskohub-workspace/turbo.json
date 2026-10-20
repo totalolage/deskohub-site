@@ -36,10 +36,14 @@
       "cache": false,
       "dependsOn": ["build:compile"]
     },
-    "build": {
+    "build:generate": {
       "cache": false,
       "dependsOn": ["build:source-maps"],
       "passThroughEnv": ["BETTER_AUTH_SECRETS"]
+    },
+    "build": {
+      "cache": false,
+      "dependsOn": ["build:generate"]
     },
     "i18n:compile": {
       "dependsOn": ["i18n:compile:administration"],

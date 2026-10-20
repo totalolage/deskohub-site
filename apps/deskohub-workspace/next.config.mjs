@@ -51,7 +51,7 @@ const nextConfig = {
     // Next's TS CLI integration needs bin tsc, which the official TS6 wrapper (tsc6-only) must not provide.
     useTypeScriptCli: false,
     // Turbopack's build filesystem cache is on by default; the separate
-    // `build:compile` and `build` (generate) tasks keep writing it apart from
+    // `build:compile` and `build:generate` tasks keep writing it apart from
     // prerendering to fit Vercel's 8 GB machine.
     // Garbage collection drops unreachable work from it, which slows its growth
     // toward Vercel's 1.5 GB build-cache limit, past which Vercel discards it.
