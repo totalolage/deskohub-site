@@ -3,16 +3,18 @@ import {
   customerAgentConsentPath,
   customerMcpServerPath,
 } from "@/features/account/customer-agent-routes";
+import { customerAgentTestClientMetadata } from "@/features/account/customer-agent-test-client";
 import type { Locale } from "@/features/i18n";
 import { withLocalePrefixAndSearch } from "@/features/i18n/routing";
 import { parseUrl } from "../runtime";
 
 /**
- * The synthetic agent's redirect URI. The host never resolves; the case's
- * browser context answers it itself, so the authorization code never leaves
- * the runner.
+ * The test agent's redirect URI. The host never resolves; the case's browser
+ * context answers it itself, so the authorization code never leaves the
+ * runner.
  */
-export const customerAgentRedirectUri = "https://e2e-agent.invalid/callback";
+export const [customerAgentRedirectUri] =
+  customerAgentTestClientMetadata.redirect_uris;
 
 /** What the synthetic agent asks for: booking and reading reservations. */
 export const customerAgentRequestedScopes = [

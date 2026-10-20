@@ -149,6 +149,11 @@ resource.
 - Stub CIMD fetches with `makeTestAuth({ clientMetadataTransport })`; the
   transport receives the metadata URL and returns a `Response`.
   `https://client.example/...` needs no DNS.
+- The preview E2E's synthetic agent publishes its metadata document on the
+  production host (`features/account/customer-agent-test-client.ts`, served
+  by `app/oauth/clients/e2e-agent.json/route.ts`). The Postgres flow test
+  registers that committed document, so a change that the OAuth server would
+  reject fails before it deploys.
 - Prove protocol behaviour in the Postgres flow test against the real
   handler; keep adapter rules in unit tests with fake authorities. Build
   memory-backed stores with `makeMemoryAuthStore()`, which includes the

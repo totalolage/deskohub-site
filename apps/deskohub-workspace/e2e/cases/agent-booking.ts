@@ -2,6 +2,7 @@ import type { Client } from "@modelcontextprotocol/client";
 import { type BrowserContext, expect, type Page } from "@playwright/test";
 import { Effect, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import { customerAgentTestClientMetadata } from "@/features/account/customer-agent-test-client";
 import { type Locale, m } from "@/features/i18n";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
@@ -26,7 +27,6 @@ import {
 } from "../config";
 import {
   customerAgentRequestedScopes,
-  customerMcpResourceFor,
   isCustomerAgentCallbackUrl,
   isCustomerAgentConsentUrl,
   localizeCustomerAgentConsentUrl,
@@ -40,11 +40,6 @@ import {
   exchangeCustomerAgentCode,
   startCustomerAgentAuthorization,
 } from "../customer-agent/mcp";
-import {
-  type CustomerAgentClient,
-  removeCustomerAgentClient,
-  seedCustomerAgentClient,
-} from "../customer-agent/oauth-client";
 import {
   toWorkspaceE2EError,
   tryWorkspaceE2EPromise,
@@ -74,8 +69,9 @@ type AgentBookerLabel = typeof agentBookerLabel;
 
 /**
  * The case's own identity journal: the account the agent books for. The
- * synthetic OAuth client belongs to that account, so reconciling the journal
- * also removes the client and its grants.
+ * agent's consents and tokens belong to that account, so reconciling the
+ * journal also removes its grants. The agent's client, registered from its
+ * Client ID Metadata Document, is shared by every run and stays.
  */
 export const agentBookingJournalOwner: WorkspaceE2EAccountJournalOwner = {
   ownerId: agentBookingCaseId,
@@ -223,35 +219,19 @@ const executeAgentBooking = Effect.fn("AgentBooking.execute")(function* (
     id: "answer-agent-redirect-in-browser",
     timeoutMs: config.timeouts.browserAction,
   });
-  // The challenge comes first, as for a real agent; serving it also starts
-  // the deployment's OAuth server, which registers the MCP resource the
-  // client is linked to.
+  // The challenge comes first, as for a real agent. The agent's client ID
+  // is the URL of its metadata document on the production host, which the
+  // deployment's OAuth server fetches when it first looks the agent up.
   const server = yield* runStep({
     execute: discoverCustomerAgentAuthorization(config),
     id: "discover-agent-authorization",
     timeoutMs: config.timeouts.customerMcpRequest,
-  });
-  const client = yield* runStep({
-    execute: Effect.acquireRelease(
-      seedCustomerAgentClient({
-        ownerAccountId: booker.accountId,
-        resource: customerMcpResourceFor(config.baseUrl),
-      }),
-      (seeded) =>
-        removeCustomerAgentClient(seeded).pipe(
-          Effect.timeout(config.timeouts.cleanupAction),
-          Effect.orDie
-        )
-    ),
-    id: "seed-agent-client",
-    timeoutMs: config.timeouts.datasource,
   });
 
   const denied = yield* runStep({
     execute: answerAgentConsent({
       answer: "deny",
       booking,
-      client,
       locale: "cs-CZ",
       server,
     }),
@@ -270,7 +250,6 @@ const executeAgentBooking = Effect.fn("AgentBooking.execute")(function* (
     execute: answerAgentConsent({
       answer: "allow",
       booking,
-      client,
       locale: booking.state.data.locale,
       server,
     }),
@@ -287,7 +266,7 @@ const executeAgentBooking = Effect.fn("AgentBooking.execute")(function* (
         );
       }
       return yield* exchangeCustomerAgentCode({
-        clientId: client.clientId,
+        clientId: customerAgentTestClientMetadata.client_id,
         code: callback.code,
         config,
         iss: callback.iss,
@@ -356,19 +335,17 @@ const consentScopeLabels = {
 const answerAgentConsent = ({
   answer,
   booking: { config, context, run, session },
-  client,
   locale,
   server,
 }: {
   readonly answer: "allow" | "deny";
   readonly booking: AgentBookingContext;
-  readonly client: CustomerAgentClient;
   readonly locale: Locale;
   readonly server: CustomerAgentAuthorizationServer;
 }) =>
   Effect.gen(function* () {
     const request = yield* startCustomerAgentAuthorization({
-      clientId: client.clientId,
+      clientId: customerAgentTestClientMetadata.client_id,
       config,
       server,
     });
@@ -401,7 +378,7 @@ const answerAgentConsent = ({
           exact: true,
           level: 1,
           name: m.customerAgentConsentTitle(
-            { client: client.name },
+            { client: customerAgentTestClientMetadata.client_name },
             { locale }
           ),
         })
