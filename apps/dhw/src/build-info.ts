@@ -26,4 +26,12 @@ export const DHW_BUILD_TARGET: BuildTarget =
         Schema.Union([ReleaseBuildTarget, Schema.Literal("development")])
       )(__DHW_BUILD_TARGET__);
 
-export const isReleaseBuild = DHW_BUILD_TARGET !== "development";
+/**
+ * Only a published release defaults to the production Workspace and updates
+ * itself. Releases carry the plain package version; PR artifacts and
+ * development builds tag theirs (`+pr.<number>.<head-sha>`, `+development`),
+ * so a native PR binary isn't a release.
+ */
+export const isReleaseBuild =
+  DHW_BUILD_TARGET !== "development" &&
+  DHW_VERSION === packageMetadata.version;

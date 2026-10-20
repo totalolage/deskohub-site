@@ -160,6 +160,8 @@ jobs:
 
       - name: Verify and package the PR binary
         env:
+          # PR binaries have no default Workspace; this origin is never contacted.
+          DHW_BASE: http://localhost:3000
           DHW_BUILD_VERSION_TAG: ${{ steps.build.outputs.version_tag }}
           DHW_TARGET: ${{ matrix.target }}
         run: |

@@ -20,8 +20,9 @@ export const makeDhwBuildVersion = (
 };
 
 /**
- * The compile-time constants `build-info.ts` reads. A release build target
- * makes the binary default to the production Workspace.
+ * The compile-time constants `build-info.ts` reads. Only an untagged release
+ * build target makes the binary a release that defaults to the production
+ * Workspace; a version tag, such as a PR's, keeps it a non-release build.
  */
 export const makeDhwBuildDefinitions = (
   packageVersion: string,
