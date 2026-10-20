@@ -161,37 +161,40 @@ type MemoryAuthStore = {
   readonly verification: Verification[];
   readonly rateLimit: RateLimit[];
   readonly passkey: Passkey[];
-} & Record<(typeof customerAgentOAuthModels)[number], unknown[]>;
+  readonly oauthClient: unknown[];
+  readonly oauthResource: unknown[];
+  readonly oauthClientResource: unknown[];
+  readonly oauthRefreshToken: unknown[];
+  readonly oauthAccessToken: unknown[];
+  readonly oauthConsent: unknown[];
+  readonly oauthClientAssertion: unknown[];
+};
 
 /**
- * The OAuth server's models. The provider seeds the MCP resource when the
- * instance starts, so the store needs them even in tests that never
- * authorize an agent.
+ * An empty in-memory store with every model the Workspace instance uses. The
+ * OAuth provider seeds the MCP resource when the instance starts, so the
+ * store needs its models even in tests that never authorize an agent.
  */
-const customerAgentOAuthModels = [
-  "oauthClient",
-  "oauthResource",
-  "oauthClientResource",
-  "oauthRefreshToken",
-  "oauthAccessToken",
-  "oauthConsent",
-  "oauthClientAssertion",
-] as const;
+export const makeMemoryAuthStore = (): MemoryAuthStore => ({
+  user: [],
+  session: [],
+  account: [],
+  verification: [],
+  rateLimit: [],
+  passkey: [],
+  oauthClient: [],
+  oauthResource: [],
+  oauthClientResource: [],
+  oauthRefreshToken: [],
+  oauthAccessToken: [],
+  oauthConsent: [],
+  oauthClientAssertion: [],
+});
 
 export const makeMemoryTestAuth = (
   options: Omit<TestAuthOptions, "database"> = {}
 ) => {
-  const store: MemoryAuthStore = {
-    user: [],
-    session: [],
-    account: [],
-    verification: [],
-    rateLimit: [],
-    passkey: [],
-    ...(Object.fromEntries(
-      customerAgentOAuthModels.map((model) => [model, []])
-    ) as Record<(typeof customerAgentOAuthModels)[number], unknown[]>),
-  };
+  const store = makeMemoryAuthStore();
   const auth = makeTestAuth({
     ...options,
     database: memoryAdapter(store),
