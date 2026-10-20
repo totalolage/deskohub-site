@@ -78,6 +78,13 @@ Derive every payment summary's status from `getAdministrationPaymentStatus` and 
 - With the operator's `providerCredentialRemovedAttemptId` confirmation, append one `reconciled` event for that target (idempotent under concurrency) and claim the new attempt in the same transaction. Another unresolved target produces another `cleanup-required` outcome.
 - Replaying a reconciled attempt's own ID without confirmation still reports `ambiguous`. With confirmation it records the reconciliation and returns `reconciled`, so the client can issue a fresh attempt.
 
+## Customer list
+
+- `parseAdministrationCustomerListSearchParams` (`page-data.server.ts`) is the pure parser for `/admin/customers` URLs; the page loader authorizes first, and any other route over the list reuses it. It reads `from`, `to`, `marketingConsent`, `sort`, `direction`, and `page`, normalizes dates through `getAdministrationReservationDateRange`, and applies no default range.
+- `getAdministrationCustomerListParams` (`customer-list-filters.ts`) builds the one normalized params object (no page) that the filter form's shortcuts, sort links, and pagination carry. Add a new customer filter there and in the parser, not per link.
+- `AdministrationService.listCustomers` applies one filter (`getCustomerListFilter`) to the count and the grouped rows (`selectCustomerSummaryRows`). The date filter loads the Dotypos range with `loadReservationRangeMap` and keeps customers with a `successfulReservationCondition` row among those bookings, by stored `dotyposCustomerId`. It filters customers, not rows, so the aggregates stay full-history. An unavailable range selects nothing and sets `dateFilterUnavailable`.
+- `customerMarketingConsentState` derives `granted`, `withdrawn`, or `never` from `customer_marketing_consents`; the filter and the list item's `marketingConsent` share it. Consent is kind-specific: another consent kind gets its own param and select.
+
 ## Customer and overview metrics
 
 - Customer detail bounds provider enrichment and visible history to the 24 most recently updated reservations, and the transaction table to the latest 50 payment attempts. Link to the filtered reservation index when more exist. Count, revenue, savings, and favourite product stay database aggregates over the full local history.

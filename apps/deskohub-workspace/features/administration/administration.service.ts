@@ -88,6 +88,7 @@ import type { WorkspaceReservationKind } from "@/features/reservation/reservatio
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
+import type { AdministrationCustomerMarketingConsentState } from "./customer-list-filters";
 import {
   type AdministrationCustomerName,
   unnamedCustomerDisplayName,
@@ -186,10 +187,19 @@ type ReservationListInput = AdministrationReservationListInput & {
   readonly pageSize?: number;
 };
 
+/**
+ * The customer list's criteria. `from` and `to` are inclusive Workspace
+ * calendar dates: a customer belongs to the list only with a successful
+ * reservation whose booking starts in the range. `marketingConsent` keeps
+ * customers in that current consent state.
+ */
 export type AdministrationCustomerListInput = {
   readonly direction?: AdministrationSortDirection;
+  readonly from?: string;
+  readonly marketingConsent?: AdministrationCustomerMarketingConsentState;
   readonly page?: number;
   readonly sort?: AdministrationCustomerSort;
+  readonly to?: string;
 };
 
 export type AdministrationCustomerSort = "reservations" | "activity";
@@ -463,6 +473,7 @@ export type AdministrationReservationAccessGrant = {
 export type AdministrationCustomerSummary = {
   readonly customer: AdministrationCustomer | null;
   readonly customerId: DotyposCustomerId;
+  readonly marketingConsent: AdministrationCustomerMarketingConsentState;
   readonly reservationCount: number;
   readonly lastActivityAt: string;
 };
@@ -938,6 +949,37 @@ const successfulReservationCount =
     Number
   );
 
+/**
+ * The reservation's customer's current marketing consent state. The customer
+ * list filters and displays this one definition, so both always agree.
+ */
+const customerMarketingConsentState = sql<AdministrationCustomerMarketingConsentState>`coalesce((
+  select case when ${customerMarketingConsents.withdrawnAt} is null then 'granted' else 'withdrawn' end
+  from ${customerMarketingConsents}
+  where ${customerMarketingConsents.dotyposCustomerId} = ${workspaceReservations.dotyposCustomerId}
+), 'never')`;
+
+/**
+ * Selects every reservation of a customer who has a successful reservation
+ * among the given Dotypos bookings, so the customer's aggregates keep their
+ * full history.
+ */
+const customerWithSuccessfulReservationAmong = (
+  reservationIds: readonly DotyposReservationId[]
+): SQL =>
+  reservationIds.length === 0
+    ? sql`false`
+    : sql`${workspaceReservations.dotyposCustomerId} in (
+        select ${workspaceReservations.dotyposCustomerId}
+        from ${workspaceReservations}
+        where ${and(
+          inArray(workspaceReservations.dotyposReservationId, [
+            ...reservationIds,
+          ]),
+          successfulReservationCondition
+        )}
+      )`;
+
 const reservationStatusSort = sql<string>`case
   when ${workspaceReservations.fulfillmentState} = 'failed' then 'Confirmation issue'
   when ${workspaceReservations.reservationState} = 'cancellation_failed' then 'Cancellation issue'
@@ -1308,6 +1350,7 @@ export class AdministrationService extends Context.Service<
       input: AdministrationCustomerListInput
     ) => Effect.Effect<
       {
+        readonly dateFilterUnavailable: boolean;
         readonly items: readonly AdministrationCustomerSummary[];
         readonly page: number;
         readonly pageCount: number;
@@ -2470,55 +2513,117 @@ export class AdministrationService extends Context.Service<
         return { startsAt: details.reservation.startDate, tableName };
       });
 
+      /**
+       * The customer list's filter. A booking-date range Dotypos can't answer
+       * selects no customers and reports `dateFilterUnavailable`, so the list
+       * never broadens to customers outside the range.
+       */
+      const getCustomerListFilter = Effect.fn(
+        "AdministrationService.getCustomerListFilter"
+      )(function* (input: AdministrationCustomerListInput) {
+        const dateRange = getAdministrationReservationDateRange({
+          from: input.from,
+          to: input.to,
+        });
+        const dateReservations = yield* loadReservationRangeMap(dateRange);
+        const conditions: SQL[] = [];
+        if (dateRange) {
+          conditions.push(
+            customerWithSuccessfulReservationAmong(
+              dateReservations ? [...dateReservations.keys()] : []
+            )
+          );
+        }
+        if (input.marketingConsent) {
+          conditions.push(
+            sql`${customerMarketingConsentState} = ${input.marketingConsent}`
+          );
+        }
+        return {
+          dateFilterUnavailable: Boolean(dateRange && !dateReservations),
+          where: conditions.length > 0 ? and(...conditions) : undefined,
+        };
+      });
+
+      /**
+       * One row per customer matching `where`, in the list's sort order, with
+       * full-history aggregates. Callers add paging.
+       */
+      const selectCustomerSummaryRows = (
+        input: Pick<AdministrationCustomerListInput, "direction" | "sort">,
+        where: SQL | undefined
+      ) => {
+        const lastActivityAt = max(workspaceReservations.updatedAt);
+        const order = input.direction === "asc" ? asc : desc;
+        return db
+          .select({
+            customerId: workspaceReservations.dotyposCustomerId,
+            marketingConsent: customerMarketingConsentState,
+            reservationCount: successfulReservationCount,
+            lastActivityAt,
+          })
+          .from(workspaceReservations)
+          .where(where)
+          .groupBy(workspaceReservations.dotyposCustomerId)
+          .orderBy(
+            order(
+              input.sort === "reservations"
+                ? successfulReservationCount
+                : lastActivityAt
+            ),
+            asc(workspaceReservations.dotyposCustomerId)
+          );
+      };
+
+      const toCustomerSummaries = Effect.fn(
+        "AdministrationService.toCustomerSummaries"
+      )(function* (
+        rows: readonly {
+          readonly customerId: DotyposCustomerId;
+          readonly marketingConsent: AdministrationCustomerMarketingConsentState;
+          readonly reservationCount: number;
+          readonly lastActivityAt: Temporal.Instant | null;
+        }[]
+      ) {
+        const customersById = yield* loadCustomers(
+          rows.map(({ customerId }) => customerId)
+        );
+        return rows.map((row): AdministrationCustomerSummary => {
+          const customer = customersById.get(row.customerId);
+          return {
+            customer: customer ? toCustomer(customer, row.customerId) : null,
+            customerId: row.customerId,
+            marketingConsent: row.marketingConsent,
+            reservationCount: Number(row.reservationCount),
+            lastActivityAt: row.lastActivityAt
+              ? toIsoString(row.lastActivityAt)
+              : Temporal.Instant.fromEpochMilliseconds(0).toString(),
+          };
+        });
+      });
+
       const listCustomers = Effect.fn("AdministrationService.listCustomers")(
         function* (input: AdministrationCustomerListInput) {
+          const { dateFilterUnavailable, where } =
+            yield* getCustomerListFilter(input);
           const countRows = yield* db
             .select({
               value: countDistinct(workspaceReservations.dotyposCustomerId),
             })
-            .from(workspaceReservations);
+            .from(workspaceReservations)
+            .where(where);
           const total = Number(countRows[0]?.value ?? 0);
           const pagination = getAdministrationPagination({
             pageSize: customerPageSize,
             requestedPage: input.page,
             total,
           });
-          const lastActivityAt = max(workspaceReservations.updatedAt);
-          const order = input.direction === "asc" ? asc : desc;
-          const rows = yield* db
-            .select({
-              customerId: workspaceReservations.dotyposCustomerId,
-              reservationCount: successfulReservationCount,
-              lastActivityAt,
-            })
-            .from(workspaceReservations)
-            .groupBy(workspaceReservations.dotyposCustomerId)
-            .orderBy(
-              order(
-                input.sort === "reservations"
-                  ? successfulReservationCount
-                  : lastActivityAt
-              ),
-              asc(workspaceReservations.dotyposCustomerId)
-            )
+          const rows = yield* selectCustomerSummaryRows(input, where)
             .limit(customerPageSize)
             .offset(pagination.offset);
-          const customersById = yield* loadCustomers(
-            rows.map(({ customerId }) => customerId)
-          );
-          const items = rows.map((row) => {
-            const customer = customersById.get(row.customerId);
-            return {
-              customer: customer ? toCustomer(customer, row.customerId) : null,
-              customerId: row.customerId,
-              reservationCount: Number(row.reservationCount),
-              lastActivityAt: row.lastActivityAt
-                ? toIsoString(row.lastActivityAt)
-                : Temporal.Instant.fromEpochMilliseconds(0).toString(),
-            };
-          });
           return {
-            items,
+            dateFilterUnavailable,
+            items: yield* toCustomerSummaries(rows),
             page: pagination.page,
             pageCount: pagination.pageCount,
             total,
