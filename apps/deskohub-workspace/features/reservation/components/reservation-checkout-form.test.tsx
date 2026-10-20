@@ -638,9 +638,7 @@ describe("ReservationCheckoutForm", () => {
     expect(
       view.queryByRole("group", { name: m.reservationPurposeLabel({}, en) })
     ).toBeNull();
-    expect(
-      view.queryByRole("link", { name: "Privacy Policy" })
-    ).toBeNull();
+    expect(view.queryByRole("link", { name: "Privacy Policy" })).toBeNull();
     expect(getMarketingConsentCheckbox(view)).toBeNull();
     expect(getSubmitButton(view)).toBeNull();
   });
