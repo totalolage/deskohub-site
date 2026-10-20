@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { and, eq, isNull, lt, notExists, type SQL, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import {
@@ -6,7 +6,39 @@ import {
   type WorkspaceDatabaseClient,
 } from "@/db/database.service";
 import { customerAccounts } from "@/db/schema";
+import { authUser } from "@/db/schema/auth";
 import type { CustomerAccountId } from "../customer-account";
+
+/**
+ * Marks the live accounts whose login is gone deleted and frees their
+ * Dotypos customers, as an account deletion does, once they are a day old at
+ * `now`. A sign-up commits its account before Better Auth inserts the login,
+ * so a younger one may still be signing up, and an account deletion marks
+ * the account before it deletes the login, so only an interrupted sign-up or
+ * deletion leaves one behind. Returns how many it marked.
+ */
+export const tombstoneOrphanedAccounts = Effect.fn(function* (
+  db: WorkspaceDatabaseClient,
+  now: SQL
+) {
+  const rows = yield* db
+    .update(customerAccounts)
+    .set({ deletedAt: sql`now()`, dotyposCustomerId: null })
+    .where(
+      and(
+        isNull(customerAccounts.deletedAt),
+        lt(customerAccounts.createdAt, sql`${now} - interval '1 day'`),
+        notExists(
+          db
+            .select({ id: authUser.id })
+            .from(authUser)
+            .where(eq(authUser.id, customerAccounts.id))
+        )
+      )
+    )
+    .returning({ id: customerAccounts.id });
+  return rows.length;
+});
 
 /**
  * Creates the account's durable record when it has none, through the caller's

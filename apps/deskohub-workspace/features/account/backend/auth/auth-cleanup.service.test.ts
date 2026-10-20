@@ -45,6 +45,27 @@ const insertRateLimitRow = (id: string, lastRequestEpochMs: string) =>
     [id, `key-${id}`, lastRequestEpochMs]
   );
 
+const insertCustomerAccount = (id: string, createdAt: string) =>
+  testDatabase!.pool.query(
+    `insert into customer_accounts (id, created_at)
+     values ($1, $2::timestamptz) on conflict (id) do nothing`,
+    [id, createdAt]
+  );
+
+const readAccountDeletions = async (runId: string) => {
+  const result = await testDatabase!.pool.query<{
+    id: string;
+    deleted: boolean;
+  }>(
+    `select id, deleted_at is not null as deleted from customer_accounts
+     where id like $1 order by id`,
+    [`%${runId}`]
+  );
+  return Object.fromEntries(
+    result.rows.map(({ id, deleted }) => [id.replace(`-${runId}`, ""), deleted])
+  );
+};
+
 const countSweepRows = async (runId: string) => {
   const count = async (table: string) => {
     const result = await testDatabase!.pool.query(
@@ -76,7 +97,7 @@ const runSweep = (now: Date) =>
 const preSweepNow = new Date(Date.parse("2999-01-01T00:00:00Z"));
 
 describe.skipIf(!testDatabase)("AuthCleanupService", () => {
-  test("deletes exactly the expired sessions, verifications, and stale rate-limit rows", async () => {
+  test("deletes exactly the expired sessions, verifications, and stale rate-limit rows and tombstones settled login-less accounts", async () => {
     const runId = crypto.randomUUID();
     const nowMs = 1_800_000_000_000;
 
@@ -110,12 +131,31 @@ describe.skipIf(!testDatabase)("AuthCleanupService", () => {
       String(nowMs - 600_000)
     );
 
+    await insertCustomerAccount(
+      `user-${runId}`,
+      new Date(nowMs - 2 * 86_400_000).toISOString()
+    );
+    await insertCustomerAccount(
+      `settled-orphan-${runId}`,
+      new Date(nowMs - 86_400_001).toISOString()
+    );
+    await insertCustomerAccount(
+      `recent-orphan-${runId}`,
+      new Date(nowMs - 86_400_000).toISOString()
+    );
+
     const counts = await runSweep(new Date(nowMs));
 
     expect(counts).toEqual({
       sessions: 1,
       verifications: 1,
       rateLimitRows: 1,
+      orphanedAccounts: 1,
+    });
+    expect(await readAccountDeletions(runId)).toEqual({
+      "recent-orphan": false,
+      "settled-orphan": true,
+      user: false,
     });
     expect(await countSweepRows(runId)).toEqual({
       sessions: 1,

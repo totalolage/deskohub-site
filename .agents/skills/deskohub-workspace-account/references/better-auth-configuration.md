@@ -132,7 +132,8 @@ Better Auth only removes expired rows when a later request happens to touch
 them. The daily `auth-cleanup` cron (scheduled in `vercel.json`, authorized
 with `CRON_SECRET`) deletes expired sessions and verifications, and rate-limit
 rows older than the longest configured window, using plain set-based SQL. It
-only cleans its own deployment's database.
+also tombstones customer accounts whose login is gone and that are more than
+a day old. It only cleans its own deployment's database.
 
 ## Secrets and release
 

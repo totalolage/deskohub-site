@@ -11,7 +11,7 @@ ON CONFLICT ("id") DO NOTHING;
 --> statement-breakpoint
 -- An account whose login is gone was deleted; it becomes a tombstone. A day's
 -- grace spares a sign-up whose account exists but whose login isn't committed
--- yet.
+-- yet; the daily auth cleanup cron tombstones the rest once they are a day old.
 UPDATE "customer_accounts" SET "deleted_at" = now(), "dotypos_customer_id" = NULL
 WHERE "deleted_at" IS NULL
   AND "created_at" < now() - interval '1 day'
