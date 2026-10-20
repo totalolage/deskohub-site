@@ -1,4 +1,11 @@
-import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
 import type { DotyposCustomer, DotyposCustomerId } from "@deskohub/dotypos";
 import type { CapturedMagicLink } from "@/features/account/backend/auth/auth-handler.test-utils";
 import type { CustomerAccountBackfillReport } from "@/features/account/backend/customer-account-backfill.service";
@@ -71,21 +78,44 @@ describe.skipIf(!testDatabase)(
           [`${fixture.prefix}%`]
         );
         const userIds = users.rows.map(({ id }) => id);
+        const accounts = await testDatabase.pool.query<{ id: string }>(
+          `select id from customer_accounts
+           where id = any($1::text[]) or dotypos_customer_id = any($2::text[])`,
+          [fixture.accountIds, fixture.customerIds]
+        );
+        const accountIds = [
+          ...new Set([
+            ...fixture.accountIds,
+            ...userIds,
+            ...accounts.rows.map(({ id }) => id),
+          ]),
+        ];
         await testDatabase.pool.query(
-          `delete from workspace_reservations where dotypos_customer_id = any($1::text[])`,
-          [fixture.customerIds]
+          `delete from customer_events
+           where customer_account_id = any($1::text[])
+              or dotypos_customer_id = any($2::text[])
+              or workspace_reservation_id = any($3::text[])`,
+          [accountIds, fixture.customerIds, fixture.reservationIds]
         );
         await testDatabase.pool.query(
-          `delete from auth."user" where id = any($1::text[])`,
-          [userIds]
+          `delete from customer_account_links
+           where customer_account_id = any($1::text[])
+              or dotypos_customer_id = any($2::text[])`,
+          [accountIds, fixture.customerIds]
+        );
+        await testDatabase.pool.query(
+          `delete from workspace_reservations
+           where id = any($1::text[]) or dotypos_customer_id = any($2::text[])`,
+          [fixture.reservationIds, fixture.customerIds]
         );
         await testDatabase.pool.query(
           `delete from customer_accounts
            where id = any($1::text[]) or dotypos_customer_id = any($2::text[])`,
-          [
-            [...new Set([...fixture.accountIds, ...userIds])],
-            fixture.customerIds,
-          ]
+          [accountIds, fixture.customerIds]
+        );
+        await testDatabase.pool.query(
+          `delete from auth."user" where id = any($1::text[])`,
+          [userIds]
         );
       }
       fixtures.clear();
@@ -249,13 +279,62 @@ describe.skipIf(!testDatabase)(
         )
       );
 
+    let settledReport: CustomerAccountBackfillReport | undefined;
+    beforeEach(async () => {
+      const emptyFixture: Fixture = {
+        prefix: "account-backfill-settlement",
+        customerIds: [],
+        accountIds: [],
+        reservationIds: [],
+        customers: new Map(),
+      };
+      settledReport = undefined;
+      let report: CustomerAccountBackfillReport;
+      do {
+        report = await runBackfill(emptyFixture, false);
+      } while (report.authors.remainingCustomers > 0);
+      settledReport = report;
+    });
+
+    const getSettledReport = () => {
+      if (!settledReport)
+        throw new Error("The account backfill was not settled.");
+      return settledReport;
+    };
+
+    const getSettledPostState = () => {
+      const report = getSettledReport();
+      return {
+        alreadyPresentLogins:
+          report.logins.created + report.logins.alreadyPresent,
+        alreadyRecordedLinks:
+          report.links.recorded + report.links.alreadyRecorded,
+        alreadyDeletedAccounts:
+          report.tombstones.recorded + report.tombstones.alreadyDeleted,
+        alreadyAuthoredReservations:
+          report.authors.alreadyAuthored +
+          report.authors.viaLink.reservations +
+          report.authors.viaNewLogin.reservations +
+          report.authors.viaResumedLogin.reservations,
+      };
+    };
+
+    const fixtureRefusals = (
+      report: CustomerAccountBackfillReport,
+      fixture: Fixture
+    ) =>
+      report.authors.refused.filter(({ dotyposCustomerId }) =>
+        fixture.customerIds.includes(dotyposCustomerId)
+      );
+
     const expectRefusal = (
       report: CustomerAccountBackfillReport,
+      fixture: Fixture,
       dotyposCustomerId: DotyposCustomerId,
       reason: string,
       reservations: number
     ) =>
-      expect(report.authors.refused).toContainEqual({
+      expect(fixtureRefusals(report, fixture)).toContainEqual({
         dotyposCustomerId,
         reason,
         reservations,
@@ -282,7 +361,10 @@ describe.skipIf(!testDatabase)(
       const accountId = await insertAuthUser(fixture, email);
 
       const dryRun = await runBackfill(fixture, true);
-      expect(dryRun.logins).toEqual({ created: 1, alreadyPresent: 0 });
+      expect(dryRun.logins.created).toBe(1);
+      expect(dryRun.logins.alreadyPresent).toBe(
+        getSettledPostState().alreadyPresentLogins
+      );
       const accountsAfterDryRun = await Effect.runPromise(
         testDatabase.db
           .select({ id: customerAccounts.id })
@@ -292,7 +374,10 @@ describe.skipIf(!testDatabase)(
       expect(accountsAfterDryRun).toEqual([]);
 
       const applied = await runBackfill(fixture, false);
-      expect(applied.logins).toEqual({ created: 1, alreadyPresent: 0 });
+      expect(applied.logins.created).toBe(1);
+      expect(applied.logins.alreadyPresent).toBe(
+        getSettledPostState().alreadyPresentLogins
+      );
       const accountsAfterApply = await Effect.runPromise(
         testDatabase.db
           .select({ id: customerAccounts.id })
@@ -302,7 +387,10 @@ describe.skipIf(!testDatabase)(
       expect(accountsAfterApply).toHaveLength(1);
 
       const nextDryRun = await runBackfill(fixture, true);
-      expect(nextDryRun.logins).toEqual({ created: 0, alreadyPresent: 1 });
+      expect(nextDryRun.logins.created).toBe(0);
+      expect(nextDryRun.logins.alreadyPresent).toBe(
+        getSettledPostState().alreadyPresentLogins + 1
+      );
     });
 
     test("resyncs pending links and reports three unchanged link conflicts", async () => {
@@ -348,7 +436,13 @@ describe.skipIf(!testDatabase)(
       await insertLink(deletedAccount, deletedCustomer);
 
       const report = await runBackfill(fixture, false);
-      expect(report.links).toMatchObject({ recorded: 1, conflicts: 3 });
+      expect(report.links.recorded).toBe(1);
+      expect(report.links.conflicts).toBe(
+        getSettledReport().links.conflicts + 3
+      );
+      expect(report.links.alreadyRecorded).toBe(
+        getSettledPostState().alreadyRecordedLinks
+      );
 
       const accounts = await testDatabase.pool.query<{
         id: string;
@@ -382,11 +476,14 @@ describe.skipIf(!testDatabase)(
       });
 
       const dryRun = await runBackfill(fixture, true);
-      expect(dryRun.tombstones).toMatchObject({
-        recorded: 1,
-        alreadyDeleted: 0,
-        skippedRecent: 1,
-      });
+      expect(dryRun.tombstones.recorded).toBe(1);
+      expect(dryRun.tombstones.alreadyDeleted).toBe(
+        getSettledPostState().alreadyDeletedAccounts
+      );
+      expect(
+        dryRun.tombstones.skippedRecent -
+          getSettledReport().tombstones.skippedRecent
+      ).toBe(1);
       const afterDryRun = await testDatabase.pool.query(
         `select id, dotypos_customer_id, deleted_at from customer_accounts
          where id = any($1::text[]) order by id`,
@@ -397,10 +494,14 @@ describe.skipIf(!testDatabase)(
       );
 
       const applied = await runBackfill(fixture, false);
-      expect(applied.tombstones).toMatchObject({
-        recorded: 1,
-        skippedRecent: 1,
-      });
+      expect(applied.tombstones.recorded).toBe(1);
+      expect(applied.tombstones.alreadyDeleted).toBe(
+        getSettledPostState().alreadyDeletedAccounts
+      );
+      expect(
+        applied.tombstones.skippedRecent -
+          getSettledReport().tombstones.skippedRecent
+      ).toBe(1);
       const accounts = await testDatabase.pool.query<{
         id: string;
         dotypos_customer_id: string | null;
@@ -445,9 +546,12 @@ describe.skipIf(!testDatabase)(
       });
 
       const report = await runBackfill(fixture, false);
-      expect(report.authors).toMatchObject({
-        alreadyAuthored: 1,
-        viaLink: { customers: 1, reservations: 1 },
+      expect(report.authors.alreadyAuthored).toBe(
+        getSettledPostState().alreadyAuthoredReservations + 1
+      );
+      expect(report.authors.viaLink).toEqual({
+        customers: 1,
+        reservations: 1,
       });
       const rows = await testDatabase.pool.query<{
         id: string;
@@ -579,7 +683,7 @@ describe.skipIf(!testDatabase)(
       ];
 
       const report = await runBackfill(fixture, false);
-      expectRefusal(report, customerId, "customer_not_found", 1);
+      expectRefusal(report, fixture, customerId, "customer_not_found", 1);
       await expectAuthorless(reservations);
     });
 
@@ -598,7 +702,7 @@ describe.skipIf(!testDatabase)(
       ];
 
       const report = await runBackfill(fixture, false);
-      expectRefusal(report, customerId, "customer_deleted", 1);
+      expectRefusal(report, fixture, customerId, "customer_deleted", 1);
       await expectAuthorless(reservations);
     });
 
@@ -617,7 +721,7 @@ describe.skipIf(!testDatabase)(
       ];
 
       const report = await runBackfill(fixture, false);
-      expectRefusal(report, customerId, "customer_expired", 1);
+      expectRefusal(report, fixture, customerId, "customer_expired", 1);
       await expectAuthorless(reservations);
     });
 
@@ -633,7 +737,7 @@ describe.skipIf(!testDatabase)(
       ];
 
       const report = await runBackfill(fixture, false);
-      expectRefusal(report, customerId, "email_missing", 1);
+      expectRefusal(report, fixture, customerId, "email_missing", 1);
       await expectAuthorless(reservations);
     });
 
@@ -649,7 +753,7 @@ describe.skipIf(!testDatabase)(
       ];
 
       const report = await runBackfill(fixture, false);
-      expectRefusal(report, customerId, "email_invalid", 1);
+      expectRefusal(report, fixture, customerId, "email_invalid", 1);
       await expectAuthorless(reservations);
     });
 
@@ -684,9 +788,9 @@ describe.skipIf(!testDatabase)(
         )
       );
       const report = await runBackfill(fixture, false);
-      expectRefusal(report, firstCustomer, "email_duplicated", 1);
-      expectRefusal(report, secondCustomer, "email_duplicated", 1);
-      expectRefusal(report, linkedCandidate, "email_duplicated", 1);
+      expectRefusal(report, fixture, firstCustomer, "email_duplicated", 1);
+      expectRefusal(report, fixture, secondCustomer, "email_duplicated", 1);
+      expectRefusal(report, fixture, linkedCandidate, "email_duplicated", 1);
       await expectAuthorless(reservations);
     });
 
@@ -716,8 +820,8 @@ describe.skipIf(!testDatabase)(
         )
       );
       const report = await runBackfill(fixture, false);
-      expectRefusal(report, verifiedCustomer, "login_conflict", 1);
-      expectRefusal(report, linkedLoginCustomer, "login_conflict", 1);
+      expectRefusal(report, fixture, verifiedCustomer, "login_conflict", 1);
+      expectRefusal(report, fixture, linkedLoginCustomer, "login_conflict", 1);
       await expectAuthorless(reservations);
     });
 
@@ -739,8 +843,10 @@ describe.skipIf(!testDatabase)(
       ];
 
       const report = await runBackfill(fixture, false);
-      expectRefusal(report, customerId, "link_conflict", 1);
-      expect(report.links.conflicts).toBe(1);
+      expectRefusal(report, fixture, customerId, "link_conflict", 1);
+      expect(report.links.conflicts).toBe(
+        getSettledReport().links.conflicts + 1
+      );
       await expectAuthorless(reservations);
     });
 
@@ -769,23 +875,84 @@ describe.skipIf(!testDatabase)(
       });
 
       const snapshot = async () => {
-        const [users, accounts, links, reservations] = await Promise.all([
-          testDatabase.pool.query(`select * from auth."user" order by id`),
+        const emailPattern = `${fixture.prefix}%`;
+        const [
+          users,
+          accounts,
+          links,
+          reservations,
+          events,
+          userCount,
+          accountCount,
+          linkCount,
+        ] = await Promise.all([
           testDatabase.pool.query(
-            `select * from customer_accounts order by id`
+            `select * from auth."user" where email like $1 order by id`,
+            [emailPattern]
           ),
           testDatabase.pool.query(
-            `select * from customer_account_links order by customer_account_id`
+            `select * from customer_accounts
+             where id = any($1::text[])
+                or dotypos_customer_id = any($2::text[])
+                or id in (select id from auth."user" where email like $3)
+             order by id`,
+            [fixture.accountIds, fixture.customerIds, emailPattern]
           ),
           testDatabase.pool.query(
-            `select id, author_account_id, updated_at from workspace_reservations order by id`
+            `select * from customer_account_links
+             where customer_account_id = any($1::text[])
+                or dotypos_customer_id = any($2::text[])
+                or customer_account_id in (
+                  select id from auth."user" where email like $3
+                )
+             order by customer_account_id`,
+            [fixture.accountIds, fixture.customerIds, emailPattern]
+          ),
+          testDatabase.pool.query(
+            `select id, author_account_id, updated_at from workspace_reservations
+             where id = any($1::text[]) or dotypos_customer_id = any($2::text[])
+             order by id`,
+            [fixture.reservationIds, fixture.customerIds]
+          ),
+          testDatabase.pool.query(
+            `select * from customer_events
+             where customer_account_id = any($1::text[])
+                or dotypos_customer_id = any($2::text[])
+                or workspace_reservation_id = any($3::text[])
+                or customer_account_id in (
+                  select id from auth."user" where email like $4
+                )
+             order by id`,
+            [
+              fixture.accountIds,
+              fixture.customerIds,
+              fixture.reservationIds,
+              emailPattern,
+            ]
+          ),
+          testDatabase.pool.query(
+            `select count(*)::int as count from auth."user"`
+          ),
+          testDatabase.pool.query(
+            `select count(*)::int as count from customer_accounts`
+          ),
+          testDatabase.pool.query(
+            `select count(*)::int as count from customer_account_links`
           ),
         ]);
         return {
-          users: users.rows,
-          accounts: accounts.rows,
-          links: links.rows,
-          reservations: reservations.rows,
+          fixture: {
+            users: users.rows,
+            accounts: accounts.rows,
+            links: links.rows,
+            reservations: reservations.rows,
+            events: events.rows,
+          },
+          counts: {
+            users: userCount.rows[0]?.count,
+            accounts: accountCount.rows[0]?.count,
+            links: linkCount.rows[0]?.count,
+          },
         };
       };
       const before = await snapshot();
@@ -847,8 +1014,10 @@ describe.skipIf(!testDatabase)(
         reservations: 0,
       });
       expect(rerun.authors.remainingCustomers).toBe(0);
-      expect(rerun.authors.refused).toEqual(firstApply.authors.refused);
-      expectRefusal(rerun, refusedCustomer, "customer_deleted", 1);
+      expect(fixtureRefusals(rerun, fixture)).toEqual(
+        fixtureRefusals(firstApply, fixture)
+      );
+      expectRefusal(rerun, fixture, refusedCustomer, "customer_deleted", 1);
     });
 
     test("applies authors in batches of 100 linked customers", async () => {
