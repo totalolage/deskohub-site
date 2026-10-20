@@ -15768,6 +15768,7 @@ var AllocationRequest = Struct({
   ...AllocationOwner.fields,
   allocatedShard: NullOr(allocationShard),
   preferredShard: allocationShard,
+  previewBranch: NullOr(NonEmptyString),
   queuePosition: positiveInteger
 });
 var allocationOwnerKey = (owner) => `${owner.repository}:${owner.runId}:${owner.runAttempt}`;
@@ -15775,14 +15776,21 @@ var assignQueuedAllocationRequests = ({
   requests,
   shardCount
 }) => {
-  const occupiedShards = new Set(requests.flatMap(({ allocatedShard }) => allocatedShard === null ? [] : [allocatedShard]));
+  const allocated = requests.filter(({ allocatedShard }) => allocatedShard !== null);
+  const occupiedShards = new Set(allocated.map(({ allocatedShard }) => allocatedShard));
+  const occupiedPreviewBranches = new Set(allocated.map(({ previewBranch }) => previewBranch));
   const assignments = [];
   for (const request of requests.filter(({ allocatedShard }) => allocatedShard === null).toSorted((left, right) => left.queuePosition - right.queuePosition)) {
+    const { previewBranch } = request;
+    if (previewBranch !== null && occupiedPreviewBranches.has(previewBranch)) {
+      continue;
+    }
     for (let offset = 0;offset < shardCount; offset += 1) {
       const shard = (request.preferredShard - 1 + offset) % shardCount + 1;
       if (occupiedShards.has(shard))
         continue;
       occupiedShards.add(shard);
+      occupiedPreviewBranches.add(previewBranch);
       assignments.push({ owner: request, shard });
       break;
     }
@@ -15819,13 +15827,15 @@ class AllocationRepository extends Service()("WorkspaceE2E/AllocationRepository"
                   repository,
                   run_id,
                   run_attempt,
-                  preferred_shard
+                  preferred_shard,
+                  preview_branch
                 ) values (
                   ${allocationPoolName},
                   ${input.owner.repository},
                   ${input.owner.runId},
                   ${input.owner.runAttempt},
-                  ${input.preferredShard}
+                  ${input.preferredShard},
+                  ${input.previewBranch}
                 )
                 on conflict (pool_name, repository, run_id, run_attempt)
                 do update set last_observed_at = clock_timestamp()
@@ -15882,6 +15892,7 @@ var listRequests = (sql) => sql`
     select
       allocated_shard as "allocatedShard",
       preferred_shard as "preferredShard",
+      preview_branch as "previewBranch",
       queue_position::double precision as "queuePosition",
       repository,
       run_attempt as "runAttempt",
@@ -15968,6 +15979,7 @@ class AllocationService extends Service()("WorkspaceE2E/AllocationService") {
       const attempt = Do2.pipe(bind3("terminalOwners", terminalOwners), bind3("shard", ({ terminalOwners: completed }) => repository.acquire({
         owner: input.owner,
         preferredShard: input.preferredShard,
+        previewBranch: input.previewBranch,
         terminalOwners: completed
       })), map6(({ shard: shard2 }) => shard2));
       const shard = yield* attempt.pipe(repeat2({
@@ -15976,7 +15988,7 @@ class AllocationService extends Service()("WorkspaceE2E/AllocationService") {
       }), timeoutOrElse2({
         duration: `${input.waitSeconds} seconds`,
         orElse: () => fail5(new AllocationError({
-          message: "Workspace E2E allocation exhausted: all 3 shards remained leased for supported concurrency 3."
+          message: "Workspace E2E allocation timed out: all 3 shards remained leased for supported concurrency 3, or another run kept this branch's preview database."
         }))
       }));
       return shard;
@@ -16000,6 +16012,7 @@ var Environment = Struct({
   GITHUB_RUN_ID: positiveIntegerFromString,
   WORKSPACE_E2E_ALLOCATION_MODE: Literals(["acquire", "release"]),
   WORKSPACE_E2E_ALLOCATION_PREFERRED_SHARD: allocationShardFromString,
+  WORKSPACE_E2E_ALLOCATION_PREVIEW_BRANCH: String4,
   WORKSPACE_E2E_ALLOCATION_TOKEN: NonEmptyString,
   WORKSPACE_E2E_ALLOCATION_WAIT_SECONDS: positiveIntegerFromString,
   WORKSPACE_E2E_COORDINATOR_DATABASE_URL: NonEmptyString
@@ -16015,9 +16028,16 @@ var run2 = fn2("WorkspaceE2EAllocation.run")(function* (environment) {
     yield* allocation.release(owner);
     return;
   }
+  const previewBranch = environment.WORKSPACE_E2E_ALLOCATION_PREVIEW_BRANCH;
+  if (previewBranch === "") {
+    return yield* new AllocationError({
+      message: "Workspace E2E allocation needs the preview branch to acquire."
+    });
+  }
   const acquireAndPublish = allocation.acquire({
     owner,
     preferredShard: environment.WORKSPACE_E2E_ALLOCATION_PREFERRED_SHARD,
+    previewBranch,
     waitSeconds: environment.WORKSPACE_E2E_ALLOCATION_WAIT_SECONDS
   }).pipe(tap2((shard) => tryPromise2({
     try: () => appendFile(environment.GITHUB_OUTPUT, `shard=${shard}
