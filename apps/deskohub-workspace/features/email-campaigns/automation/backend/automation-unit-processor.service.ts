@@ -328,7 +328,9 @@ export class AutomationUnitProcessor extends Context.Service<
       /**
        * §5.2 step 2: the handler settles subjects past their limit in a
        * transaction that commits only while this claim holds and the unit
-       * is unmarked (the unit row locks last, §5.4).
+       * is unmarked (the unit row locks last, §5.4). With nothing left to
+       * fetch, the same transaction settles the unit `done` and hands off
+       * its slot, so a redelivery never repeats an expiry that settled it.
        */
       const expire = (
         unit: ClaimedUnit,
@@ -336,28 +338,28 @@ export class AutomationUnitProcessor extends Context.Service<
       ) =>
         expireSubjects === undefined
           ? Effect.succeed<AutomationUnitExpiry>("remaining")
-          : Effect.flatMap(currentInstant, (at) =>
-              db.transaction((tx) =>
-                expireSubjects(tx, unit, at).pipe(
-                  Effect.tap(() =>
-                    tx
-                      .select({ id: units.id })
-                      .from(units)
-                      .where(
-                        and(
-                          eq(units.id, unit.id),
-                          eq(units.claimId, unit.claimId),
-                          isNull(units.cancelRequestedAt)
+          : slots.handOff((tx, at) =>
+              expireSubjects(tx, unit, at).pipe(
+                Effect.tap((expiry) =>
+                  expiry === "settled"
+                    ? settleClaimed(tx, unit, "done", at)
+                    : tx
+                        .select({ id: units.id })
+                        .from(units)
+                        .where(
+                          and(
+                            eq(units.id, unit.id),
+                            eq(units.claimId, unit.claimId),
+                            isNull(units.cancelRequestedAt)
+                          )
                         )
-                      )
-                      .for("update")
-                      .pipe(
-                        Effect.filterOrFail(
-                          (held) => held.length > 0,
-                          () => new AutomationUnitClaimLost()
+                        .for("update")
+                        .pipe(
+                          Effect.filterOrFail(
+                            (held) => held.length > 0,
+                            () => new AutomationUnitClaimLost()
+                          )
                         )
-                      )
-                  )
                 )
               )
             );
@@ -380,7 +382,7 @@ export class AutomationUnitProcessor extends Context.Service<
             expire(unit, handler).pipe(
               Effect.flatMap((expiry) =>
                 expiry === "settled"
-                  ? commit(unit, { commit: () => Effect.succeed([]) })
+                  ? Effect.succeed<AutomationUnitOutcome>("done")
                   : fetchAndCommit(unit, handler)
               )
             )

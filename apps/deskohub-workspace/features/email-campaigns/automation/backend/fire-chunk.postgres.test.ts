@@ -272,6 +272,64 @@ describe.skipIf(!database)("fire-chunk units on Postgres", () => {
     expect(rows[0].runs).toBe(0);
   });
 
+  test("counts an expired solo chunk once when its settlement fails and the unit is redelivered", async () => {
+    const alice = await fixtures.addCustomer("replayed-alice");
+    const bob = await fixtures.addCustomer("replayed-bob");
+    const { campaignId, unitIds } = await enteringFire({
+      fireAt: yesterday,
+      chunks: [[alice], [bob]],
+      deadlineMisses: 3,
+    });
+    const expiring = unitIds[0]!;
+    const sibling = unitIds[1]!;
+    // The crash: the unit's `done` settlement fails after the expiry ran.
+    const fault = `fail_settlement_${crypto.randomUUID().replaceAll("-", "")}`;
+    await pool.query(
+      `create function ${fault}() returns trigger language plpgsql as $$ begin raise exception 'settlement interrupted'; end $$`
+    );
+    await pool.query(
+      `create trigger ${fault} before update on email_campaign_automation_work_units for each row when (new.status = 'done' and new.id = '${expiring}') execute function ${fault}()`
+    );
+    try {
+      await expect(process(expiring)).rejects.toMatchObject({
+        _tag: "AutomationUnitRedelivery",
+      });
+    } finally {
+      await pool.query(
+        `drop trigger ${fault} on email_campaign_automation_work_units`
+      );
+      await pool.query(`drop function ${fault}()`);
+    }
+
+    expect(await process(expiring)).toBe("done");
+
+    expect(await fireRows(campaignId)).toEqual([
+      expect.objectContaining({
+        fireAt: yesterday,
+        status: "entering",
+        chunks_done: 1,
+      }),
+    ]);
+    await pool.query(
+      "update email_campaign_automation_work_units set deadline_misses = 0 where id = $1",
+      [sibling]
+    );
+    expect(await process(sibling)).toBe("done");
+    expect((await fireRows(campaignId))[0]).toEqual({
+      fireAt: yesterday,
+      status: "entered",
+      chunks_total: 2,
+      chunks_done: 2,
+      entered_count: 1,
+    });
+    expect(await receiptsOf(campaignId)).toEqual(
+      [
+        [scheduleDedupKey(yesterday, alice), "failed"],
+        [scheduleDedupKey(yesterday, bob), "started"],
+      ].toSorted(([left], [right]) => left!.localeCompare(right!))
+    );
+  });
+
   test("fails the fire when its version's flow no longer decodes, and the next fire proceeds", async () => {
     const alice = await fixtures.addCustomer("undecodable-alice");
     const { campaignId, unitIds } = await enteringFire({
