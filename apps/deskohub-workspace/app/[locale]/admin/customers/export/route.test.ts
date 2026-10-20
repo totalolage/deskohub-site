@@ -148,8 +148,8 @@ describe("GET /[locale]/admin/customers/export", () => {
         "dotypos-customer-1",
         "Jana Nováková",
         testEmailAddress("export-jana"),
-        // A leading "+" would run as a spreadsheet formula.
-        "'+420 777 000 000",
+        // A phone number keeps its leading "+": it can't run as a formula.
+        "+420 777 000 000",
         "3",
         "2026-08-01 09:35",
         "Granted",
