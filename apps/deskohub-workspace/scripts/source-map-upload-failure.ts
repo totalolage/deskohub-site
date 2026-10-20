@@ -228,6 +228,8 @@ export const describeSourceMapUploadFailure = (
   let kind: SourceMapUploadFailureKind;
   if (result.timedOut || result.signalCode !== null) kind = "interrupted";
   else if (kinds.includes("permanent")) kind = "permanent";
+  // A response body may have supplied one of the statuses.
+  else if (statuses.length > 1) kind = "unknown";
   else if (kinds.includes("transient")) kind = "transient";
   else kind = "unknown";
 

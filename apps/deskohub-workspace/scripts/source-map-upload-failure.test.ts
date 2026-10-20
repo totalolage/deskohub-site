@@ -146,6 +146,19 @@ Caused by:
         "posthog-cli exited with code 1 while uploading a chunk: conflicting HTTP statuses",
     },
     {
+      name: "conflicting S3 statuses beside a transient cause",
+      stderr: `ERROR posthog_cli::utils: Request failed: Response { url: "${presignedUrl}", status: 403 }
+ERROR posthog_cli::utils: Response text: Request failed: Response { status: 503 }
+Oops! Failed to upload chunk
+
+Caused by:
+    0: connection reset
+    1: Request failed`,
+      kind: "unknown",
+      summary:
+        "posthog-cli exited with code 1 while uploading a chunk: conflicting HTTP statuses, connection failed",
+    },
+    {
       name: "a permanent final error after a retried transient one",
       stderr: `ERROR posthog_cli::utils: Request failed: Response { url: "${presignedUrl}", status: 503 }
 Oops! Release ID mismatch: symbol sets already exist with different release IDs`,
