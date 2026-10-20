@@ -167,6 +167,7 @@ const resolveCount = <Attribute extends AudienceAttributeOfKind<"count">>(
   request: {
     readonly attribute: Attribute;
     readonly params: ConcreteCountParams<AudienceCountParams<Attribute>>;
+    readonly existedBy?: Temporal.Instant;
   },
   resolution: AudienceResolution
 ) => countResolvers[request.attribute].count(request, resolution);

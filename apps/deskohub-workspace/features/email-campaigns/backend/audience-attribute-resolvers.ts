@@ -59,6 +59,7 @@ export type AudienceCountResolver<Params> = {
     request: {
       readonly attribute: string;
       readonly params: ConcreteCountParams<Params>;
+      readonly existedBy?: Temporal.Instant;
     },
     resolution: AudienceResolution
   ) => Resolved<ReadonlyMap<DotyposCustomerId, number>>;
@@ -156,21 +157,25 @@ const database = CampaignRecipientResolutionError.database;
 /**
  * Booked reservations by booking date count from local data; by visit date
  * in a bounded period they count among the Dotypos reservations starting in
- * it; by visit date at any time every booked reservation counts.
+ * it; by visit date at any time every booked reservation counts. By visit
+ * date, a replay counts only those that existed by its moment.
  */
 const countReservations = (
   {
     params: { dateBasis, period, status, product },
+    existedBy,
   }: {
     readonly params: ConcreteCountParams<
       AudienceConditionOf<"reservationCount">["params"]
     >;
+    readonly existedBy?: Temporal.Instant;
   },
   { candidates, scope, visitsIn }: AudienceResolution
 ) => {
   const selection = {
     ...(status && { status }),
     ...(product && { product }),
+    ...(existedBy && { existedBy }),
     customers: scopedCustomers(scope),
   };
   const countSelected = (
@@ -199,16 +204,17 @@ const countReservations = (
 
 /**
  * Each customer's earliest or latest booked visit among the visits begun by
- * the request's `asOf`, of the product if given.
+ * the request's `asOf`, of the product and existing by `existedBy` if given.
  */
 const visitDates =
   (pick: "earliest" | "latest"): AudienceDateResolver["dates"] =>
-  ({ bounds, asOf, product }, { candidates, scope, pastVisits }) =>
+  ({ bounds, asOf, product, existedBy }, { candidates, scope, pastVisits }) =>
     pastVisits(asOf).pipe(
       Effect.flatMap((startById) =>
         candidates
           .listBookedReservations([...startById.keys()], {
             ...(product && { product }),
+            ...(existedBy && { existedBy }),
             customers: scopedCustomers(scope),
           })
           .pipe(

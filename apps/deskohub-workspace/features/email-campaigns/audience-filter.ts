@@ -116,6 +116,7 @@ type CountRequestOf<Condition extends AudienceCountCondition> =
     ? {
         readonly attribute: Condition["attribute"];
         readonly params: ConcreteCountParams<Condition["params"]>;
+        readonly existedBy?: Temporal.Instant;
       }
     : never;
 
@@ -138,6 +139,8 @@ export type AudienceDateRequest<
   readonly asOf: Temporal.Instant;
   /** Only reservations of this product count (reservation-based dates). */
   readonly product?: ReservationProductFilterType;
+  /** Only reservations that existed by then count (reservation-based dates). */
+  readonly existedBy?: Temporal.Instant;
 };
 
 /** Customers whose date attribute has a value, and whose value is in the period. */
@@ -205,6 +208,14 @@ export const occurrenceBounds = (
     : bounds;
 };
 
+/**
+ * A replayed moment, by which a reservation must have existed to count by
+ * its visit: the visit may lie anywhere, but a later booking hadn't happened
+ * yet. Live evaluations leave it unset and count what exists now.
+ */
+const existedByReplayed = ({ now, replayed }: AudienceEvaluationContext) =>
+  replayed ? { existedBy: now } : {};
+
 /** One param value fixed by the context, by its param's part. */
 const concreteParam = (
   param: AudienceParam | undefined,
@@ -236,7 +247,8 @@ const datesOccurrences = ({ attribute, params }: AudienceCountCondition) =>
 
 /**
  * The count condition's request in one evaluation context, with each param
- * fixed by its part in the condition's catalogue entry.
+ * fixed by its part in the condition's catalogue entry. A count by visit
+ * date in a replay counts only the reservations that existed by then.
  */
 export const countFactRequest = <Condition extends AudienceCountCondition>(
   entry: Pick<AudienceCountAttributeDefinition, "params">,
@@ -244,9 +256,8 @@ export const countFactRequest = <Condition extends AudienceCountCondition>(
   context: AudienceEvaluationContext
 ): CountRequestOf<Condition> => {
   const { attribute, params } = condition;
-  const periodBounds = datesOccurrences(condition)
-    ? occurrenceBounds
-    : datePeriodBounds;
+  const occurrences = datesOccurrences(condition);
+  const periodBounds = occurrences ? occurrenceBounds : datePeriodBounds;
   return {
     attribute,
     params: Object.fromEntries(
@@ -259,6 +270,8 @@ export const countFactRequest = <Condition extends AudienceCountCondition>(
         ]
       )
     ),
+    // Occurrence bounds already end by a replayed moment.
+    ...(!occurrences && existedByReplayed(context)),
   } as CountRequestOf<Condition>;
 };
 
@@ -274,6 +287,7 @@ export const dateFactRequest = <Condition extends AudienceDateCondition>(
   ),
   asOf: context.now,
   ...(condition.params && { product: condition.params.product }),
+  ...existedByReplayed(context),
 });
 
 export const audienceConditionsOf = (

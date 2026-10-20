@@ -472,6 +472,47 @@ describe("collectAudienceFactRequests", () => {
         .period
     ).toEqual({ startsAtOrAfter: march });
   });
+
+  test("counts and dates visits that existed by a replayed moment", () => {
+    const replayed = { ...context, replayed: true };
+    const { reservationCount, campaignEmailCount } = audienceAttributeCatalogue;
+    const visitsAnyTime = {
+      ...reservationsVisitedInMarch,
+      params: { dateBasis: "visit", period: { _tag: "AnyTime" } },
+    } as const satisfies AudienceCondition;
+    const bookingsAnyTime = {
+      ...visitsAnyTime,
+      params: { dateBasis: "booking", period: { _tag: "AnyTime" } },
+    } as const satisfies AudienceCondition;
+
+    expect(
+      countFactRequest(reservationCount, visitsAnyTime, replayed).existedBy
+    ).toEqual(now);
+    expect(dateFactRequest(lastVisitNotRecent, replayed).existedBy).toEqual(
+      now
+    );
+    // Live evaluations count what exists now, and occurrence bounds already
+    // end by the replayed moment.
+    expect(
+      countFactRequest(reservationCount, visitsAnyTime, context)
+    ).not.toHaveProperty("existedBy");
+    expect(dateFactRequest(lastVisitNotRecent, context)).not.toHaveProperty(
+      "existedBy"
+    );
+    expect(
+      countFactRequest(reservationCount, bookingsAnyTime, replayed)
+    ).not.toHaveProperty("existedBy");
+    expect(
+      countFactRequest(campaignEmailCount, marketingEmailsLastTenDays, replayed)
+    ).not.toHaveProperty("existedBy");
+    // A live and a replayed evaluation at the same moment look up apart.
+    expect(
+      collectAudienceFactRequests(group("and", [visitsAnyTime]), [
+        context,
+        replayed,
+      ]).counts
+    ).toHaveLength(2);
+  });
 });
 
 describe("audienceFilterSchema", () => {

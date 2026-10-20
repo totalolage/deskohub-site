@@ -60,8 +60,19 @@ type Booking = {
   readonly name: string;
   readonly customer: DotyposCustomerId;
   readonly startsAt: string;
+  /** When the reservation was booked; 1 March unless given. */
+  readonly bookedAt?: string;
   readonly details?: typeof plainCowork | typeof coffeeCowork;
 };
+
+/** The booking event a dry run replays. */
+const replayedEvent = Temporal.Instant.from("2026-10-01T10:00:00Z");
+const replayedAt = (
+  at: Temporal.Instant = replayedEvent
+): AudienceEvaluationContext => ({
+  ...audienceEvaluationAt(at),
+  replayed: true,
+});
 
 const firstVisitor = customerId("first-visitor");
 /** Story 2: one visit two months ago and a booking next month. */
@@ -70,6 +81,34 @@ const lapsed = customerId("lapsed");
 const recentlyBack = customerId("recently-back");
 const lapsedWithBooking = customerId("lapsed-with-booking");
 const mailed = customerId("mailed");
+/** One visit booked before the replayed event and a second booked after. */
+const bookedAfterEvent = customerId("booked-after-event");
+/** A visit after the replayed event, booked before it. */
+const bookedAheadOfEvent = customerId("booked-ahead-of-event");
+/** A visit that began before it was booked, on the replayed event's day. */
+const bookedOnTheDay = customerId("booked-on-the-day");
+/** Two holds that expired unconfirmed, created before and after the event. */
+const expiredHolder = customerId("expired-holder");
+/** A checkout started before the event and confirmed after it, unfulfilled. */
+const confirmedLater = customerId("confirmed-later");
+const statusedReservations = [
+  {
+    name: "expired-before-event",
+    customer: expiredHolder,
+    createdAt: "2026-09-25T10:00:00Z",
+  },
+  {
+    name: "expired-after-event",
+    customer: expiredHolder,
+    createdAt: "2026-10-05T10:00:00Z",
+  },
+  {
+    name: "confirmed-after-event",
+    customer: confirmedLater,
+    createdAt: "2026-09-30T10:00:00Z",
+    confirmedAt: "2026-10-02T10:00:00Z",
+  },
+];
 
 const bookings: readonly Booking[] = [
   {
@@ -121,6 +160,30 @@ const bookings: readonly Booking[] = [
     customer: lapsedWithBooking,
     startsAt: "2026-11-15T08:00:00Z",
   },
+  ...[bookedAfterEvent, bookedAheadOfEvent].map((customer) => ({
+    name: `${customer}-september`,
+    customer,
+    startsAt: "2026-09-10T08:00:00Z",
+    bookedAt: "2026-09-01T10:00:00Z",
+  })),
+  {
+    name: "booked-five-days-later",
+    customer: bookedAfterEvent,
+    startsAt: "2026-10-08T08:00:00Z",
+    bookedAt: "2026-10-06T10:00:00Z",
+  },
+  {
+    name: "booked-ahead",
+    customer: bookedAheadOfEvent,
+    startsAt: "2026-10-08T08:00:00Z",
+    bookedAt: "2026-09-20T10:00:00Z",
+  },
+  {
+    name: "booked-on-the-day",
+    customer: bookedOnTheDay,
+    startsAt: "2026-10-01T08:00:00Z",
+    bookedAt: "2026-10-01T10:00:00Z",
+  },
 ];
 
 const seeded = [
@@ -130,6 +193,11 @@ const seeded = [
   recentlyBack,
   lapsedWithBooking,
   mailed,
+  bookedAfterEvent,
+  bookedAheadOfEvent,
+  bookedOnTheDay,
+  expiredHolder,
+  confirmedLater,
 ];
 
 const visits: readonly DotyposReservation[] = bookings.map(
@@ -230,7 +298,7 @@ describe.skipIf(!testDatabase)(
     beforeAll(async () => {
       await Effect.runPromise(
         db.insert(workspaceReservations).values(
-          bookings.map(({ name, customer, details }) => ({
+          bookings.map(({ name, customer, bookedAt, details }) => ({
             checkoutAttemptKey: checkoutAttemptKeySchema.make(
               `resolver-${name}-${run}`
             ),
@@ -238,7 +306,7 @@ describe.skipIf(!testDatabase)(
             dotyposReservationId: reservationId(name),
             reservationState: "confirmed" as const,
             reservationConfirmedAt: Temporal.Instant.from(
-              "2026-03-01T10:00:00Z"
+              bookedAt ?? "2026-03-01T10:00:00Z"
             ),
             paymentState: "paid" as const,
             paidAt: Temporal.Instant.from("2026-03-01T10:00:00Z"),
@@ -248,6 +316,34 @@ describe.skipIf(!testDatabase)(
             locale: "cs-CZ" as const,
             createdAt: Temporal.Instant.from("2026-03-01T10:00:00Z"),
           }))
+        )
+      );
+      await Effect.runPromise(
+        db.insert(workspaceReservations).values(
+          statusedReservations.map(
+            ({ name, customer, createdAt, confirmedAt }) => ({
+              checkoutAttemptKey: checkoutAttemptKeySchema.make(
+                `resolver-${name}-${run}`
+              ),
+              dotyposCustomerId: customer,
+              ...(confirmedAt
+                ? {
+                    dotyposReservationId: reservationId(name),
+                    reservationState: "confirmed" as const,
+                    reservationConfirmedAt: Temporal.Instant.from(confirmedAt),
+                    paymentState: "paid" as const,
+                    paidAt: Temporal.Instant.from(confirmedAt),
+                  }
+                : {
+                    reservationState: "hold_expired" as const,
+                    paymentState: "expired" as const,
+                  }),
+              fulfillmentState: "not_started" as const,
+              reservationDetails: plainCowork,
+              locale: "cs-CZ" as const,
+              createdAt: Temporal.Instant.from(createdAt),
+            })
+          )
         )
       );
       const filter = JSON.stringify(group("and", []));
@@ -416,6 +512,94 @@ describe.skipIf(!testDatabase)(
           story
         )
       ).toEqual([counterexample, lapsed, lapsedWithBooking]);
+    });
+
+    test("a replay counts the visits booked by its event, wherever they lie", async () => {
+      const replay = [bookedAfterEvent, bookedAheadOfEvent];
+      const twoVisits = visitCount({ _tag: "AnyTime" }, "gte", 2);
+      // The second reservation was booked five days after the event.
+      expect(await matching(twoVisits, replay, replayedAt())).toEqual([
+        bookedAheadOfEvent,
+      ]);
+      expect(await matching(twoVisits, replay)).toEqual(replay);
+      // A booking counts from its own moment, as its booked event does.
+      expect(
+        await matching(
+          twoVisits,
+          replay,
+          replayedAt(Temporal.Instant.from("2026-10-06T10:00:00Z"))
+        )
+      ).toEqual(replay);
+      // Bounded visit periods, past or ahead of the event, count the same way.
+      expect(
+        await matching(
+          visitCount({ _tag: "Onward", date: "2026-10-02" }, "gte", 1),
+          replay,
+          replayedAt()
+        )
+      ).toEqual([bookedAheadOfEvent]);
+      expect(
+        await matching(
+          visitCount(
+            { _tag: "Range", from: "2026-09-01", to: "2026-10-31" },
+            "gte",
+            2
+          ),
+          replay,
+          replayedAt()
+        )
+      ).toEqual([bookedAheadOfEvent]);
+    });
+
+    test("a replay counts a reservation of a status from its creation", async () => {
+      const visitsWith = (
+        status: "cancelled" | "in_progress",
+        operator: AudienceCountOperatorType,
+        value: number
+      ) =>
+        condition({
+          attribute: "reservationCount",
+          params: { dateBasis: "visit", period: { _tag: "AnyTime" }, status },
+          operator,
+          value,
+        });
+      // A hold that never confirmed existed from its creation.
+      const expiredOnce = visitsWith("cancelled", "eq", 1);
+      expect(
+        await matching(expiredOnce, [expiredHolder], replayedAt())
+      ).toEqual([expiredHolder]);
+      expect(await matching(expiredOnce, [expiredHolder])).toEqual([]);
+      // So did a checkout in progress then, confirmed since.
+      expect(
+        await matching(
+          visitsWith("in_progress", "gte", 1),
+          [confirmedLater],
+          replayedAt()
+        )
+      ).toEqual([confirmedLater]);
+      // Booked, though, it counts from its confirmation.
+      expect(
+        await matching(
+          visitCount({ _tag: "AnyTime" }, "gte", 1),
+          [confirmedLater],
+          replayedAt()
+        )
+      ).toEqual([]);
+    });
+
+    test("a replay dates only the visits booked by its event", async () => {
+      const visitedThatDay = condition({
+        attribute: "lastVisit",
+        operator: "in",
+        value: { _tag: "Range", from: "2026-10-01", to: "2026-10-01" },
+      });
+      const nineOClock = Temporal.Instant.from("2026-10-01T09:00:00Z");
+      expect(
+        await matching(visitedThatDay, [bookedOnTheDay], replayedAt(nineOClock))
+      ).toEqual([]);
+      expect(
+        await matching(visitedThatDay, [bookedOnTheDay], replayedAt())
+      ).toEqual([bookedOnTheDay]);
     });
 
     test("gives a customer scope the same facts as everyone", async () => {
