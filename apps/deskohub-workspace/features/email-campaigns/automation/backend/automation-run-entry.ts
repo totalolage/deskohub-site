@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { DotyposCustomerId } from "@deskohub/dotypos";
+import type { AutomationStepType as AutomationStep } from "@deskohub/workspace-admin-api";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { Effect, Option, Schema } from "effect";
 import {
@@ -16,13 +17,14 @@ import type { CampaignId } from "../../campaign-identifiers";
 import { automationFlowSchema } from "../automation-flow";
 import type {
   AutomationRunId,
-  AutomationStepId,
   AutomationVersionId,
 } from "../automation-identifiers";
 import type {
   AutomationTriggerDisposition,
   AutomationTriggerKind,
 } from "../automation-states";
+import type { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
+import { planReachedStep } from "./automation-reached-step";
 import { appendAutomationRunProgress } from "./automation-run-timeline";
 import {
   type AutomationEngineTransaction,
@@ -61,8 +63,10 @@ type AutomationRunEntry = {
  * occurrence starts a run at the flow's first step, `ready` and due at
  * `at`, unless the customer already has an open run (D4), which records
  * `already-active`; a customer admitted twice starts once, from the
- * earliest occurrence. Every occurrence gets one receipt. Call it under the
- * lifecycle lock after the caller's rechecks.
+ * earliest occurrence. Every occurrence gets one receipt. The started runs'
+ * first step is planned in the same transaction, so a first Condition or
+ * Send runs within the entry's tick (D36). Call it under the lifecycle lock
+ * after the caller's rechecks.
  *
  * Runs insert before receipts, so a concurrent entry of the same customer
  * waits on the one-open-run index and then sees the run. A receipt key a
@@ -77,15 +81,17 @@ export const enterAutomationRuns = Effect.fn("automationRuns.enter")(function* (
     readonly versionId: AutomationVersionId;
     /** Occurrences that start runs at the version's first step. */
     readonly admitted?: {
-      readonly firstStepId: AutomationStepId;
+      readonly firstStep: AutomationStep;
       readonly occurrences: readonly AutomationTriggerOccurrence[];
+      /** Plans a first Condition step's units. */
+      readonly facts: AutomationEvaluationFacts["Service"];
     };
     readonly rejected: readonly AutomationTriggerRejection[];
     readonly at: Temporal.Instant;
   }
 ) {
   const admitted = input.admitted?.occurrences ?? [];
-  const firstStepId = input.admitted?.firstStepId;
+  const firstStepId = input.admitted?.firstStep.id;
   const firstByCustomer = new Map<
     DotyposCustomerId,
     AutomationTriggerOccurrence
@@ -171,6 +177,26 @@ export const enterAutomationRuns = Effect.fn("automationRuns.enter")(function* (
       at: input.at,
     }))
   );
+  if (input.admitted !== undefined) {
+    yield* planReachedStep(tx, input.admitted.facts, {
+      campaignId: input.campaignId,
+      versionId: input.versionId,
+      step: input.admitted.firstStep,
+      runs: inserted.flatMap((run) =>
+        Option.toArray(
+          Option.fromUndefinedOr(firstByCustomer.get(run.dotyposCustomerId))
+        ).map((occurrence) => ({
+          runId: run.id,
+          dotyposCustomerId: run.dotyposCustomerId,
+          triggerKind: occurrence.kind,
+          triggerAt: occurrence.at,
+          triggerReservationId: occurrence.reservationId,
+        }))
+      ),
+      at: input.at,
+      chainedSteps: 0,
+    });
+  }
   return {
     started: startedRuns.size,
     alreadyActive: admitted.length - startedRuns.size,
@@ -235,7 +261,7 @@ type AutomationEntryVersion = {
   readonly purpose: CampaignPurpose;
   readonly audienceFilter: AudienceFilter;
   /** None when the stored flow no longer decodes: a domain defect. */
-  readonly firstStepId: Option.Option<AutomationStepId>;
+  readonly firstStep: Option.Option<AutomationStep>;
 };
 
 const decodeFlow = Schema.decodeUnknownOption(automationFlowSchema);
@@ -266,9 +292,8 @@ export const loadAutomationEntryVersions = Effect.fn(
         version.id,
         {
           ...version,
-          firstStepId: decodeFlow(flow).pipe(
-            Option.flatMap(({ steps }) => Option.fromUndefinedOr(steps[0])),
-            Option.map(({ id }) => id as AutomationStepId)
+          firstStep: decodeFlow(flow).pipe(
+            Option.flatMap(({ steps }) => Option.fromUndefinedOr(steps[0]))
           ),
         },
       ])

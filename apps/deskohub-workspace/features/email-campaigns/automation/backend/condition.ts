@@ -1,28 +1,32 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import type {
-  AutomationConditionFilter,
-  AutomationRunEventDetail,
-  AutomationStepType as AutomationStep,
+import {
+  type AutomationConditionFilter,
+  type AutomationRunEventDetail,
+  type AutomationStepType as AutomationStep,
+  automationFlowMaxSteps,
 } from "@deskohub/workspace-admin-api";
 import { and, eq, inArray } from "drizzle-orm";
-import { Effect, Match, Option, Schema } from "effect";
+import { Effect, Match, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { emailCampaignAutomationRuns as runs } from "@/db/schema";
 import { isDatabaseQueryError } from "@/db/sql-constraint";
-import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { currentInstant } from "@/shared/utils/temporal";
-import type { AudienceEvaluationContext } from "../../backend/audience-evaluation-context";
 import type { CampaignId } from "../../campaign-identifiers";
 import type {
   AutomationRunId,
-  AutomationStepId,
-  AutomationVersionId,
   AutomationWorkUnitId,
 } from "../automation-identifiers";
-import type { AutomationTriggerKind } from "../automation-states";
 import { AutomationConditionEvaluation } from "./automation-condition-evaluation.service";
+import {
+  automationRunEvaluationContext,
+  type ConditionStepRun,
+  type ConditionSubject,
+  conditionStepAt,
+  conditionSubjectSchema,
+} from "./automation-condition-units";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
+import { planReachedStep } from "./automation-reached-step";
 import { advanceAutomationRuns } from "./automation-run-progress";
 import {
   type AutomationRunExpectation,
@@ -36,94 +40,27 @@ import {
   AutomationUnitRecheckFailed,
   automationUnitDeadlineMissLimit,
   type ClaimedAutomationUnit,
-  type PlannedAutomationUnit,
   registerAutomationUnitHandler,
 } from "./automation-unit-handler";
-import {
-  type AutomationStepPosition,
-  automationStepPosition,
-  loadAutomationVersionFlows,
-} from "./automation-version-flows";
+import { loadAutomationVersionFlows } from "./automation-version-flows";
 
-const conditionSubjectSchema = Schema.Struct({
-  versionId: Schema.NonEmptyString.pipe(Schema.brand("AutomationVersionId")),
-  stepId: Schema.NonEmptyString.pipe(Schema.brand("AutomationStepId")),
-  runIds: Schema.Array(
-    Schema.NonEmptyString.pipe(Schema.brand("AutomationRunId"))
-  ),
-});
-type ConditionSubject = typeof conditionSubjectSchema.Type;
 type ConditionUnit = ClaimedAutomationUnit<ConditionSubject>;
 
 /** Runs wait for their condition's facts at most this long (§5.2). */
 const conditionExpiry = Temporal.Duration.from({ hours: 24 });
 
 /**
- * A `condition` unit for runs at one `(version, step)`. `id` keeps the key
- * unique per planning, so runs a settled unit released are planned again.
+ * The chain depth at which a condition unit stops planning the step its
+ * passed runs reach (D36). Entry and the planner plan condition units at
+ * depth 0, and each unit plans the next one a step deeper. A flow has at
+ * most `automationFlowMaxSteps` steps, so every valid flow reaches its wait
+ * or send within the tick, and the cap only bounds a defect. Runs a unit at
+ * the cap passes stay `ready` for the next planner tick.
  */
-export const plannedConditionUnit = (input: {
-  readonly id: string;
-  readonly campaignId: CampaignId;
-  readonly versionId: AutomationVersionId;
-  readonly stepId: AutomationStepId;
-  readonly runIds: readonly AutomationRunId[];
-  readonly requestCost: number;
-}): PlannedAutomationUnit => ({
-  kind: "condition",
-  key: `condition:${input.versionId}:${input.stepId}:${input.id}`,
-  campaignId: input.campaignId,
-  subject: Schema.encodeSync(conditionSubjectSchema)({
-    versionId: input.versionId,
-    stepId: input.stepId,
-    runIds: [...input.runIds],
-  }),
-  requestCost: input.requestCost,
-});
-
-/** The filter of `stepId` if it is a Condition step of the flow. */
-export const conditionStepAt = (
-  ...position: Parameters<typeof automationStepPosition>
-): Option.Option<
-  AutomationStepPosition & {
-    readonly filter: AutomationConditionFilter;
-  }
-> =>
-  Option.flatMap(automationStepPosition(...position), ({ step, next }) =>
-    step._tag === "Condition"
-      ? Option.some({ step, next, filter: step.filter })
-      : Option.none()
-  );
-
-/** What started a run, as its condition evaluates it. */
-export type AutomationRunTrigger = {
-  readonly triggerKind: AutomationTriggerKind;
-  readonly triggerAt: Temporal.Instant;
-  readonly triggerReservationId: WorkspaceReservationId | null;
-};
-
-/**
- * A run's condition context at `now`: its automation, which `This`
- * campaign sources name, and its trigger, which trigger-relative periods
- * count from.
- */
-export const automationRunEvaluationContext = (
-  run: AutomationRunTrigger,
-  input: { readonly campaignId: CampaignId; readonly now: Temporal.Instant }
-): AudienceEvaluationContext => ({
-  now: input.now,
-  campaignId: Option.some(input.campaignId),
-  trigger: Option.some({
-    kind: run.triggerKind,
-    at: run.triggerAt,
-    reservationId: Option.fromNullishOr(run.triggerReservationId),
-  }),
-});
+export const maxChainedConditionSteps = automationFlowMaxSteps - 1;
 
 /** A run the unit still owns, as it read it. */
-type ConditionRun = AutomationRunTrigger & {
-  readonly runId: AutomationRunId;
-  readonly dotyposCustomerId: DotyposCustomerId;
+type ConditionRun = ConditionStepRun & {
   readonly stepEnteredAt: Temporal.Instant;
 };
 
@@ -151,7 +88,7 @@ type ConditionFetched =
       readonly _tag: "Decided";
       readonly next: Option.Option<AutomationStep>;
       readonly decisions: readonly {
-        readonly runId: AutomationRunId;
+        readonly run: ConditionRun;
         readonly decision: ConditionDecision;
       }[];
     }
@@ -315,7 +252,7 @@ export const makeConditionHandler = Effect.gen(function* () {
             .pipe(
               Effect.map((decided) =>
                 group.runs.map((run) => ({
-                  runId: run.runId,
+                  run,
                   decision: decided.get(run.dotyposCustomerId) ?? undecided,
                 }))
               )
@@ -341,22 +278,60 @@ export const makeConditionHandler = Effect.gen(function* () {
       })
     );
 
-  /** Advances the runs that matched and ends the rest `condition-failed`. */
+  /**
+   * Plans the step the passed runs reached, one deeper in the chain (D36).
+   * Past the cap the runs stay `ready` for the next planner tick.
+   */
+  const planReached = Effect.fn("condition.planReached")(function* (
+    tx: AutomationEngineTransaction,
+    unit: ConditionUnit,
+    input: {
+      readonly campaignId: CampaignId;
+      readonly next: AutomationStep;
+      readonly moved: readonly ConditionRun[];
+      readonly at: Temporal.Instant;
+    }
+  ) {
+    const chainedSteps = unit.subject.chainedSteps ?? 0;
+    if (chainedSteps < maxChainedConditionSteps) {
+      return yield* planReachedStep(tx, facts, {
+        campaignId: input.campaignId,
+        versionId: unit.subject.versionId,
+        step: input.next,
+        runs: input.moved,
+        at: input.at,
+        chainedSteps: chainedSteps + 1,
+      });
+    }
+    if (input.moved.length > 0) {
+      yield* Effect.logWarning("Automation condition chain reached its cap", {
+        unitId: unit.id,
+        chainedSteps,
+        runs: input.moved.length,
+      });
+    }
+  });
+
+  /**
+   * Advances the runs that matched, planning the step they reach, and ends
+   * the rest `condition-failed`.
+   */
   const commitDecisions = (
     tx: AutomationEngineTransaction,
     unit: ConditionUnit,
+    campaignId: CampaignId,
     decided: Extract<ConditionFetched, { _tag: "Decided" }>,
     at: Temporal.Instant
   ) => {
-    const passed = decided.decisions.filter(
-      ({ decision }) => decision.outcome === "match"
+    const passed = decided.decisions.flatMap(({ run, decision }) =>
+      decision.outcome === "match" ? [run] : []
     );
-    const failed = decided.decisions.flatMap(({ runId, decision }) =>
+    const failed = decided.decisions.flatMap(({ run, decision }) =>
       decision.outcome === "match"
         ? []
         : [
             {
-              runId,
+              runId: run.runId,
               detail: {
                 failedConditions: [...decision.failedConditions],
                 savedAudiences: decision.savedAudiences.map(
@@ -388,7 +363,17 @@ export const makeConditionHandler = Effect.gen(function* () {
               })),
               workUnitId: unit.id,
               at,
-            }),
+            }).pipe(
+              Effect.flatMap((movedIds) => {
+                const moved = new Set(movedIds);
+                return planReached(tx, unit, {
+                  campaignId,
+                  next,
+                  moved: passed.filter(({ runId }) => moved.has(runId)),
+                  at,
+                });
+              })
+            ),
         })
       ),
       Effect.tap(() =>
@@ -480,20 +465,24 @@ export const makeConditionHandler = Effect.gen(function* () {
       ),
     commit: (tx, unit, fetched, at) =>
       campaignOf(unit).pipe(
-        Effect.flatMap((campaignId) => lockAutomationForEngine(tx, campaignId)),
-        Effect.filterOrFail(
-          (lifecycle) => lifecycle.status === "active",
-          (lifecycle) =>
-            new AutomationUnitRecheckFailed({
-              code: `automation-${lifecycle.status ?? "missing"}`,
-            })
+        Effect.tap((campaignId) =>
+          lockAutomationForEngine(tx, campaignId).pipe(
+            Effect.filterOrFail(
+              (lifecycle) => lifecycle.status === "active",
+              (lifecycle) =>
+                new AutomationUnitRecheckFailed({
+                  code: `automation-${lifecycle.status ?? "missing"}`,
+                })
+            )
+          )
         ),
-        Effect.andThen(
+        Effect.flatMap((campaignId) =>
           Match.value(fetched).pipe(
             Match.tagsExhaustive({
               Unavailable: () =>
                 endUnavailable(tx, unit, unit.subject.runIds, at),
-              Decided: (decided) => commitDecisions(tx, unit, decided, at),
+              Decided: (decided) =>
+                commitDecisions(tx, unit, campaignId, decided, at),
             })
           )
         ),

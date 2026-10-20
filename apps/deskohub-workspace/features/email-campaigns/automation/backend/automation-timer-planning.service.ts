@@ -14,7 +14,10 @@ import type {
   AutomationVersionId,
 } from "../automation-identifiers";
 import type { AutomationRunPhase } from "../automation-states";
-import { evaluateStep } from "../automation-step-evaluation";
+import {
+  automationWaitDueTolerance,
+  evaluateStep,
+} from "../automation-step-evaluation";
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
 import {
   type AutomationRunPosition,
@@ -132,6 +135,7 @@ export class AutomationTimerPlanning extends Context.Service<
 /**
  * Due active runs of active automations, oldest due first, except `ready`
  * runs at a Condition or Send step: condition and send planning own those.
+ * A run due within `automationWaitDueTolerance` counts, as in `evaluateStep`.
  */
 const readDueRuns = (
   db: WorkspaceDatabase["Service"]["db"],
@@ -153,7 +157,7 @@ const readDueRuns = (
     .where(
       and(
         eq(runs.status, "active"),
-        lte(runs.dueAt, at),
+        lte(runs.dueAt, at.add(automationWaitDueTolerance)),
         sql`${runs.workUnitId} is null`,
         eq(campaigns.status, "active"),
         or(

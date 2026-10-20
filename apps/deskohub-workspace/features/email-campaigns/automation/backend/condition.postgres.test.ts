@@ -53,7 +53,7 @@ import {
   drainAutomationUnitQueue,
   makeAutomationUnitQueueFake,
 } from "./automation-unit-queue.test-utils";
-import { makeConditionHandler } from "./condition";
+import { makeConditionHandler, maxChainedConditionSteps } from "./condition";
 
 /**
  * The engine plans over whole tables, so the suite runs on a database of
@@ -335,6 +335,7 @@ describe.skipIf(!database)("condition units on Postgres", () => {
       versionId: seeded.versionId,
       stepId: "check",
       runIds: [...runIds].sort(),
+      chainedSteps: 0,
     });
     for (const runId of runIds) {
       expect((await readAutomationRun(database.db, runId)).workUnitId).toBe(
@@ -376,6 +377,148 @@ describe.skipIf(!database)("condition units on Postgres", () => {
     expect(
       (await engine.plan(at.add({ minutes: 1 }))).conditions.runsPlanned
     ).toBe(0);
+  });
+
+  /** Three conditions before the delay; the first two pass Czech customers. */
+  const chainedAutomation = async (last: AutomationConditionFilter) => {
+    const seeded = await seedFlowAutomation(database.db, {
+      flow: automationFlowOf(
+        conditionStep("check", all(locale("cs-CZ"))),
+        conditionStep("check-2", all(locale("cs-CZ"))),
+        conditionStep("check-3", last),
+        waitStep("delay", oneDay)
+      ),
+      activatedAt,
+    });
+    campaignIds.push(seeded.campaignId);
+    return seeded;
+  };
+
+  /** Each unit's step and chain depth, by step. */
+  const chainOf = async (campaignId: CampaignId) =>
+    Object.fromEntries(
+      (await unitsOf(campaignId)).map((unit) => {
+        const subject = unit.subject as {
+          readonly stepId: string;
+          readonly chainedSteps?: number;
+        };
+        return [subject.stepId, subject.chainedSteps ?? 0];
+      })
+    );
+
+  test("consecutive conditions take their runs to the wait within one planner run", async () => {
+    const engine = await makeEngine();
+    const seeded = await chainedAutomation(all(locale("cs-CZ")));
+    const runIds = await readyRuns(seeded, ["chain-a", "chain-b"]);
+
+    // One plan and the queue drained after it, with no planning in between.
+    expect((await engine.plan()).conditions.unitsPlanned).toBe(1);
+    const drainedAt = at.add({ seconds: 5 });
+    const deliveries = await engine.drain(drainedAt);
+
+    expect(deliveries.map(({ outcome }) => outcome)).toEqual([
+      "done",
+      "done",
+      "done",
+    ]);
+    expect(await chainOf(seeded.campaignId)).toEqual({
+      check: 0,
+      "check-2": 1,
+      "check-3": 2,
+    });
+    expect(dotypos.profilePages).toBe(0);
+    for (const runId of runIds) {
+      const run = await readAutomationRun(database.db, runId);
+      expect(run).toMatchObject({
+        status: "active",
+        stepId: "delay",
+        phase: "ready",
+        workUnitId: null,
+      });
+      expect(run.stepEnteredAt.equals(drainedAt)).toBe(true);
+      expect(await readAutomationRunTimeline(database.db, runId)).toEqual(
+        ["check", "check-2", "check-3"].map((stepId) => ({
+          kind: "condition-passed",
+          stepId,
+          at: drainedAt.toString(),
+          detail: {},
+        }))
+      );
+    }
+
+    // Duplicate deliveries of the settled chain decide and plan nothing again.
+    for (const unit of await unitsOf(seeded.campaignId)) {
+      engine.queue.redeliver({
+        unitId: unit.id,
+        idempotencyKey: `duplicate-${unit.id}`,
+      });
+    }
+    await engine.drain(drainedAt.add({ seconds: 1 }));
+    expect(await unitsOf(seeded.campaignId)).toHaveLength(3);
+    for (const runId of runIds) {
+      expect(await readAutomationRunTimeline(database.db, runId)).toHaveLength(
+        3
+      );
+    }
+    expect(
+      (await engine.plan(at.add({ minutes: 15 }))).conditions.runsPlanned
+    ).toBe(0);
+  });
+
+  test("a condition failing mid-chain ends the run condition-failed there", async () => {
+    const engine = await makeEngine();
+    const seeded = await chainedAutomation(all(locale("en-US")));
+    const [runId] = await readyRuns(seeded, ["chain-failed"]);
+
+    await engine.plan();
+    const drainedAt = at.add({ seconds: 5 });
+    await engine.drain(drainedAt);
+
+    expect(await readAutomationRun(database.db, runId!)).toMatchObject({
+      status: "ended",
+      outcome: "condition-failed",
+      stepId: "check-3",
+      workUnitId: null,
+    });
+    expect(
+      (await readAutomationRunTimeline(database.db, runId!)).map(
+        ({ kind, stepId }) => [kind, stepId]
+      )
+    ).toEqual([
+      ["condition-passed", "check"],
+      ["condition-passed", "check-2"],
+      ["condition-failed", "check-3"],
+    ]);
+  });
+
+  test("past the chain cap, passed runs stay ready for the next planner run", async () => {
+    const engine = await makeEngine();
+    const seeded = await chainedAutomation(all(locale("cs-CZ")));
+    const [runId] = await readyRuns(seeded, ["chain-capped"]);
+
+    await engine.plan();
+    const [planned] = await unitsOf(seeded.campaignId);
+    // As if the unit ended a chain already as deep as the cap allows.
+    await database.pool.query(
+      "update email_campaign_automation_work_units set subject = subject || $1::jsonb where id = $2",
+      [JSON.stringify({ chainedSteps: maxChainedConditionSteps }), planned!.id]
+    );
+    await engine.drain(at.add({ seconds: 5 }));
+
+    expect(await unitsOf(seeded.campaignId)).toHaveLength(1);
+    expect(await readAutomationRun(database.db, runId!)).toMatchObject({
+      status: "active",
+      stepId: "check-2",
+      phase: "ready",
+      workUnitId: null,
+    });
+    const next = at.add({ minutes: 15 });
+    expect((await engine.plan(next)).conditions).toEqual({
+      runsPlanned: 1,
+      unitsPlanned: 1,
+      runsEnded: 0,
+    });
+    expect((await chainOf(seeded.campaignId))["check-2"]).toBe(0);
   });
 
   test("failing runs end condition-failed with their failed clauses and the saved audiences' hashes", async () => {

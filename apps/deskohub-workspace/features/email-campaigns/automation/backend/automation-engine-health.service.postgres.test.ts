@@ -219,8 +219,9 @@ describe.skipIf(!testDatabase)(
     });
 
     test("reports every field of a keeping-pace engine without warnings", async () => {
+      // One missed tick isn't stale.
       await setHeartbeats({
-        lastPlannedAt: ago({ minutes: 1 }),
+        lastPlannedAt: ago({ minutes: 16 }),
         sweptUntil: ago({ minutes: 3 }),
       });
       const hourly = await schedule({
@@ -315,7 +316,7 @@ describe.skipIf(!testDatabase)(
       const report = await health();
 
       expect(report).toMatchObject({
-        lastPlannedAt: ago({ minutes: 1 }).toString(),
+        lastPlannedAt: ago({ minutes: 16 }).toString(),
         sweepLagSeconds: 180,
         unitDurations: [
           { kind: "intake", samples: 2, meanSeconds: 15, maxSeconds: 20 },
@@ -369,15 +370,15 @@ describe.skipIf(!testDatabase)(
 
     test("warns about a stale planner, backlogs and a schedule falling behind", async () => {
       await setHeartbeats({
-        lastPlannedAt: ago({ minutes: 6 }),
-        sweptUntil: ago({ minutes: 16 }),
+        lastPlannedAt: ago({ minutes: 31 }),
+        sweptUntil: ago({ minutes: 31 }),
       });
       const [reservationId] = await reservations("backlog", ["confirmed"]);
       await Effect.runPromise(
         db.insert(customerEvents).values({
           kind: "reservation-booked",
-          occurredAt: ago({ minutes: 20 }),
-          recordedAt: ago({ minutes: 20 }),
+          occurredAt: ago({ minutes: 31 }),
+          recordedAt: ago({ minutes: 31 }),
           dotyposCustomerId: DotyposCustomerIdSchema.make(
             `engine-health-${suite}-backlog`
           ),
@@ -387,7 +388,7 @@ describe.skipIf(!testDatabase)(
       await unit({
         kind: "preview",
         status: "planned",
-        createdAt: ago({ minutes: 16 }),
+        createdAt: ago({ minutes: 31 }),
       });
       const everyTenMinutes = await schedule({
         minutes: [0, 10, 20, 30, 40, 50],
@@ -404,9 +405,9 @@ describe.skipIf(!testDatabase)(
       const report = await health();
 
       expect(report.oldestUnprocessedEventAt).toBe(
-        ago({ minutes: 20 }).toString()
+        ago({ minutes: 31 }).toString()
       );
-      expect(report.sweepLagSeconds).toBe(16 * 60);
+      expect(report.sweepLagSeconds).toBe(31 * 60);
       expect(
         report.automations.find(
           ({ campaignId }) => campaignId === everyTenMinutes.campaignId

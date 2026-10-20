@@ -128,20 +128,53 @@ describe("Send step", () => {
 
 describe("Duration wait", () => {
   test.each([
-    [1, "minute", "2026-11-16T08:01"],
+    [2, "minute", "2026-11-16T08:02"],
     [2, "hour", "2026-11-16T10:00"],
     [3, "day", "2026-11-19T08:00"],
     [1, "week", "2026-11-23T08:00"],
     [1, "month", "2026-12-16T08:00"],
   ] as const)("waits %i %s from step entry", (count, unit, due) => {
     // `at` is later than the entry, so the delay counts from the entry.
+    const later = prague("2026-11-16T08:00:30");
     expect(
       evaluateStep(
-        ready(durationStep(count, unit), at, {
+        ready(durationStep(count, unit), later, {
           stepEnteredAt: prague("2026-11-16T08:00"),
         })
       )
     ).toEqual(wait(prague(due)));
+  });
+
+  test("a wait first checked a tick after entry advances at once when due", () => {
+    // Entered after the 10:15 tick's timers, so first checked at 10:30.
+    const tick = prague("2026-11-16T10:30");
+    expect(
+      evaluateStep(
+        ready(durationStep(7, "minute"), tick, {
+          stepEnteredAt: prague("2026-11-16T10:15:05"),
+        })
+      )
+    ).toEqual(advance(tick));
+  });
+
+  test("counts a wait due within the tolerance as due", () => {
+    const tick = prague("2026-11-16T12:15");
+    expect(
+      evaluateStep(
+        waiting(durationStep(2, "hour"), prague("2026-11-16T12:15:59"), tick)
+      )
+    ).toEqual(advance(tick));
+    expect(
+      evaluateStep(
+        ready(durationStep(2, "hour"), tick, {
+          stepEnteredAt: prague("2026-11-16T10:15:05"),
+        })
+      )
+    ).toEqual(advance(tick));
+    const later = prague("2026-11-16T12:16:01");
+    expect(evaluateStep(waiting(durationStep(2, "hour"), later, tick))).toEqual(
+      wait(later)
+    );
   });
 
   test("advances at the transition time once due", () => {
@@ -222,6 +255,14 @@ describe("Duration wait", () => {
 
 describe("Calendar wait", () => {
   const mondayMorning = calendarStep({ weekdays: ["monday"], hours: [10] });
+
+  test("advances at once when the next start is within the tolerance", () => {
+    const tick = prague("2026-11-16T09:59:30");
+    expect(evaluateStep(ready(mondayMorning, tick))).toEqual(advance(tick));
+    expect(
+      evaluateStep(waiting(mondayMorning, prague("2026-11-16T10:00"), tick))
+    ).toEqual(advance(tick));
+  });
 
   test("advances at once while the expression holds", () => {
     const monday = prague("2026-11-16T10:40");

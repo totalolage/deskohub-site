@@ -1,4 +1,5 @@
 import type { DotyposCustomerId, DotyposService } from "@deskohub/dotypos";
+import type { AutomationStepType as AutomationStep } from "@deskohub/workspace-admin-api";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { Effect, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -20,10 +21,7 @@ import {
 } from "../../backend/audience-evaluation-context";
 import type { AudienceDotyposReads } from "../../backend/audience-facts.service";
 import { CampaignRecipientService } from "../../backend/campaign-recipient.service";
-import type {
-  AutomationStepId,
-  AutomationWorkUnitId,
-} from "../automation-identifiers";
+import type { AutomationWorkUnitId } from "../automation-identifiers";
 import { versionInForce } from "../automation-versions";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import {
@@ -101,7 +99,7 @@ export const revisitedReservations = (
 /** What intake decided for one event and one automation. */
 type IntakeDecision = IntakeMatch & {
   /** None when the version's flow no longer decodes. */
-  readonly firstStepId: Option.Option<AutomationStepId>;
+  readonly firstStep: Option.Option<AutomationStep>;
   readonly outcome:
     | "member"
     | "not-in-audience"
@@ -209,6 +207,8 @@ const commitIntakeDecisions = Effect.fn("automationIntake.commit")(function* (
     readonly eventIds: readonly CustomerEventId[];
     readonly decisions: readonly IntakeDecision[];
     readonly at: Temporal.Instant;
+    /** Plans the first step of the runs members start. */
+    readonly facts: AutomationEvaluationFacts["Service"];
   }
 ) {
   const released = new Set<CustomerEventId>();
@@ -272,17 +272,18 @@ const commitIntakeDecisions = Effect.fn("automationIntake.commit")(function* (
       const ofVersion = byVersion.get(version.id) ?? [];
       if (ofVersion.length === 0) continue;
       const members = ofVersion.filter(({ outcome }) => outcome === "member");
-      const firstStepId = Option.flatMap(
+      const firstStep = Option.flatMap(
         Option.fromUndefinedOr(members[0]),
-        ({ firstStepId }) => firstStepId
+        ({ firstStep }) => firstStep
       );
       yield* enterAutomationRuns(tx, {
         campaignId,
         versionId: version.id,
-        ...(Option.isSome(firstStepId) && {
+        ...(Option.isSome(firstStep) && {
           admitted: {
-            firstStepId: firstStepId.value,
+            firstStep: firstStep.value,
             occurrences: members.map(occurrenceOf),
+            facts: input.facts,
           },
         }),
         rejected: ofVersion.flatMap((decision) =>
@@ -398,10 +399,11 @@ export const makeIntakeHandler = Effect.gen(function* () {
         eventIds: expired.map(({ id }) => id),
         decisions: matches.map((match) => ({
           ...match,
-          firstStepId: Option.none(),
+          firstStep: Option.none(),
           outcome: "failed" as const,
         })),
         at,
+        facts,
       }).pipe(Effect.catchTag("AutomationUnitRecheckFailed", Effect.die));
       return expired.length === events.length
         ? ("settled" as const)
@@ -452,14 +454,14 @@ export const makeIntakeHandler = Effect.gen(function* () {
         matches,
         (match): Effect.Effect<IntakeDecision, AutomationUnitFetchFailure> => {
           const version = versions.get(match.versionId);
-          const firstStepId = Option.flatMap(
+          const firstStep = Option.flatMap(
             Option.fromUndefinedOr(version),
-            ({ firstStepId }) => firstStepId
+            ({ firstStep }) => firstStep
           );
-          if (version === undefined || Option.isNone(firstStepId)) {
+          if (version === undefined || Option.isNone(firstStep)) {
             return Effect.succeed({
               ...match,
-              firstStepId,
+              firstStep,
               outcome: "failed",
             });
           }
@@ -474,7 +476,7 @@ export const makeIntakeHandler = Effect.gen(function* () {
           if (recheck !== "current") {
             return Effect.succeed({
               ...match,
-              firstStepId,
+              firstStep,
               outcome: recheck,
             });
           }
@@ -502,7 +504,7 @@ export const makeIntakeHandler = Effect.gen(function* () {
               Effect.map(
                 (resolution): IntakeDecision => ({
                   ...match,
-                  firstStepId,
+                  firstStep,
                   // Unreachable customers still count as members;
                   // reachability is checked at send time (§5.6).
                   outcome: [
@@ -530,6 +532,7 @@ export const makeIntakeHandler = Effect.gen(function* () {
         eventIds: unit.subject.eventIds as CustomerEventId[],
         decisions,
         at,
+        facts,
       }).pipe(Effect.as([])),
   };
 

@@ -3,6 +3,7 @@ import "server-only";
 import {
   AutomationTrigger,
   type AutomationEngineHealthType as EngineHealthReport,
+  emailAutomationTickMinutes,
 } from "@deskohub/workspace-admin-api";
 import {
   and,
@@ -52,14 +53,24 @@ interface IAutomationEngineHealth {
   readonly get: Effect.Effect<EngineHealthReport, DatabaseQueryError>;
 }
 
-/** The planner runs every minute; five minutes without a run is stale. */
-const plannerStaleAfterSeconds = 5 * 60;
+const tickSeconds = emailAutomationTickMinutes * 60;
+
 /**
- * The sweep, an unprocessed event or a planned unit waiting longer than
- * this is a backlog: the upper end of the design's 10–15 minutes, so a few
- * slow planner minutes don't raise it.
+ * The planner runs every tick. Two ticks without a run is stale, so one
+ * missed or late cron doesn't raise it.
  */
-const backlogAfterSeconds = 15 * 60;
+const plannerStaleAfterSeconds = 2 * tickSeconds;
+/**
+ * The sweep or an unprocessed event waiting longer than this is a backlog.
+ * An event normally waits up to a tick for intake, so a backlog is one that
+ * outlasts the next tick too.
+ */
+const backlogAfterSeconds = 2 * tickSeconds;
+/**
+ * A planned unit waiting longer than this is a backlog. Slots hand off as
+ * units settle, between ticks too, so this doesn't scale with the tick.
+ */
+const unitBacklogAfterSeconds = 15 * 60;
 /** A schedule whose oldest pending fire trails now by more than this lags. */
 const scheduleLaggingAfterSeconds = 10 * 60;
 /**
@@ -327,7 +338,7 @@ const healthReport = (
       ...(waitedLongerThan(reads.oldestUnprocessedEventAt, backlogAfterSeconds)
         ? (["event-backlog"] as const)
         : []),
-      ...(waitedLongerThan(reads.oldestPlannedUnitAt, backlogAfterSeconds)
+      ...(waitedLongerThan(reads.oldestPlannedUnitAt, unitBacklogAfterSeconds)
         ? (["unit-backlog"] as const)
         : []),
       ...(schedules.some(

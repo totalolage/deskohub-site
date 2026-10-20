@@ -91,8 +91,19 @@ const wait = (dueAt: Temporal.Instant): StepTransition => ({
 const waitingDueAt = (state: StepState) =>
   state.phase === "waiting" ? state.dueAt : Option.none();
 
+/**
+ * How early a wait may complete. The engine ticks every
+ * `emailAutomationTickMinutes`, and a run enters a wait seconds after a tick
+ * (in a unit, or after the cron started), so its due time lands just after
+ * the tick its length reaches. Counting a wait due this much early makes it
+ * complete on that tick rather than a whole tick late (D36).
+ */
+export const automationWaitDueTolerance = Temporal.Duration.from({
+  minutes: 1,
+});
+
 const isDue = (dueAt: Temporal.Instant, at: Temporal.Instant) =>
-  Temporal.Instant.compare(dueAt, at) <= 0;
+  Temporal.Instant.compare(dueAt, at.add(automationWaitDueTolerance)) <= 0;
 
 const evaluateCondition = ({ condition, at }: StepState): StepTransition =>
   Option.match(condition, {
@@ -104,23 +115,28 @@ const evaluateCondition = ({ condition, at }: StepState): StepTransition =>
   });
 
 /**
- * A due delay advances, including one that overshot during a pause (D12).
- * The engine computed `dueAt`, so it isn't recomputed.
+ * A due delay advances, including one that overshot during a pause (D12),
+ * or one already due when a tick first sees it. The engine computed a
+ * waiting run's `dueAt`, so it isn't recomputed.
  */
 const evaluateDurationWait = (
   duration: Extract<AutomationWait, { _tag: "Duration" }>,
   state: StepState
 ): StepTransition =>
   Option.match(waitingDueAt(state), {
-    onNone: () => wait(addWaitDuration(state.stepEnteredAt, duration)),
+    onNone: () => {
+      const dueAt = addWaitDuration(state.stepEnteredAt, duration);
+      return isDue(dueAt, state.at) ? advance(state.at) : wait(dueAt);
+    },
     onSome: (dueAt) =>
       isDue(dueAt, state.at) ? advance(state.at) : wait(dueAt),
   });
 
 /**
- * Advance while the expression holds, else wait for its next start. A start
- * beyond the eight-year horizon can't be stored as a due time, so the run
- * ends `failed / evaluation-unavailable` rather than waiting unbounded.
+ * Advance while the expression holds or its next start is due, else wait
+ * for that start. A start beyond the eight-year horizon can't be stored as a
+ * due time, so the run ends `failed / evaluation-unavailable` rather than
+ * waiting unbounded.
  */
 const enterCalendarWait = (
   expression: CalendarExpression,
@@ -134,12 +150,12 @@ const enterCalendarWait = (
           outcome: "failed",
           reason: "evaluation-unavailable",
         }),
-        onSome: wait,
+        onSome: (start) => (isDue(start, at) ? advance(at) : wait(start)),
       });
 
 /**
  * Lateness rule: a due run advances without re-checking `holds`, so a late
- * planner run or a DST gap can't strand it. The exception is a due time a
+ * tick, the due tolerance or a DST gap can't strand it. The exception is a due time a
  * pause passed over, which is re-evaluated as on entry (D12).
  */
 const evaluateCalendarWait = (
