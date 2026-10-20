@@ -26,7 +26,6 @@ import {
   latePaymentRecoveries,
   paymentAttempts,
   reservationAccessGrants,
-  type WorkspaceReservation as WorkspaceReservationRow,
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
@@ -50,7 +49,13 @@ import { reservationAccessProvisioningStaleAfterMilliseconds } from "@/features/
 import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import { supersedableReservationPaymentStates } from "./reservation-supersession";
 
-const withReservationKindFields = (reservation: WorkspaceReservationRow) => {
+type WorkspaceReservationRow = typeof workspaceReservations.$inferSelect;
+
+const withReservationKindFields = ({
+  // Replay evidence only the reservation status SQL reads.
+  recoveredFulfillmentFailedAt: _,
+  ...reservation
+}: WorkspaceReservationRow) => {
   const reservationWithCoworkFields = withCoworkProductFields(reservation);
 
   // Compose field enrichments for additional reservation kinds here.
@@ -60,6 +65,9 @@ const withReservationKindFields = (reservation: WorkspaceReservationRow) => {
 export type WorkspaceReservation = ReturnType<typeof withReservationKindFields>;
 
 export const fulfillmentEmailFailureCode = "fulfillment_email_failed";
+
+/** Moves the failure a recovery clears into its recovered evidence. */
+const keptRecoveredFulfillmentFailure = sql`coalesce(${workspaceReservations.fulfillmentFailedAt}, ${workspaceReservations.recoveredFulfillmentFailedAt})`;
 
 export class WorkspaceReservationStateError extends Data.TaggedError(
   "WorkspaceReservationStateError"
@@ -1373,6 +1381,7 @@ export class WorkspaceReservationRepository extends Context.Service<
               fulfillmentState: "fulfilled",
               fulfilledAt: input.fulfilledAt,
               fulfillmentFailedAt: null,
+              recoveredFulfillmentFailedAt: keptRecoveredFulfillmentFailure,
               fulfillmentFailureCode: null,
               updatedAt: Temporal.Now.instant(),
             })
@@ -1534,6 +1543,7 @@ export class WorkspaceReservationRepository extends Context.Service<
               fulfillmentState: "fulfilled",
               fulfilledAt: input.deliveredAt,
               fulfillmentFailedAt: null,
+              recoveredFulfillmentFailedAt: keptRecoveredFulfillmentFailure,
               fulfillmentFailureCode: null,
               updatedAt: Temporal.Now.instant(),
             })

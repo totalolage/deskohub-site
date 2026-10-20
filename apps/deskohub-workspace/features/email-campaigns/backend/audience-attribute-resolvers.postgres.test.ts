@@ -114,6 +114,8 @@ const failedLater = customerId("failed-later");
 const cancellationFailedLater = customerId("cancellation-failed-later");
 /** Its fulfillment failed at 09:00 and was retried at 12:00, undated. */
 const retriedLater = customerId("retried-later");
+/** Its fulfillment email failed at 09:00 and was delivered at 11:00. */
+const recoveredLater = customerId("recovered-later");
 const transitionedLater = [
   fulfilledLater,
   cancelledLater,
@@ -122,6 +124,7 @@ const transitionedLater = [
   failedLater,
   cancellationFailedLater,
   retriedLater,
+  recoveredLater,
 ];
 const confirmedOnEventDay = {
   reservationConfirmedAt: onEventDay("08:30"),
@@ -181,6 +184,15 @@ const transitionedReservations = [
     fulfillmentFailedAt: onEventDay("09:00"),
     fulfillmentFailureCode: "fulfillment_email_failed",
     updatedAt: onEventDay("12:00"),
+  },
+  {
+    customer: recoveredLater,
+    reservationState: "confirmed" as const,
+    ...confirmedOnEventDay,
+    fulfillmentState: "fulfilled" as const,
+    fulfilledAt: onEventDay("11:00"),
+    recoveredFulfillmentFailedAt: onEventDay("09:00"),
+    updatedAt: onEventDay("11:00"),
   },
 ];
 
@@ -463,13 +475,11 @@ describe.skipIf(!testDatabase)(
         )
       );
       await Effect.runPromise(
-        db
-          .insert(customerAccounts)
-          .values({
-            id: accountId,
-            dotyposCustomerId: accountHolder,
-            createdAt: accountCreatedAt,
-          })
+        db.insert(customerAccounts).values({
+          id: accountId,
+          dotyposCustomerId: accountHolder,
+          createdAt: accountCreatedAt,
+        })
       );
       await Effect.runPromise(
         db.insert(authUser).values({
@@ -779,6 +789,8 @@ describe.skipIf(!testDatabase)(
         failedLater,
         // Failed then, but its retry is undated, so it reads as it is now.
         retriedLater,
+        // Failed then, but the recovery cleared the failure's date.
+        recoveredLater,
       ]);
       // By visit or by booking, the reservation cancelled at 12:00 was booked.
       for (const dateBasis of ["visit", "booking"] as const) {
@@ -831,6 +843,8 @@ describe.skipIf(!testDatabase)(
         [cancellationFailedLater]: noon,
         [failedLater]: noon,
         [retriedLater]: noon,
+        // The failure the 11:00 recovery cleared is dated by that update.
+        [recoveredLater]: onEventDay("11:00").toString(),
       });
       expect(await undated(["needs_refund"])).toEqual({});
     });
