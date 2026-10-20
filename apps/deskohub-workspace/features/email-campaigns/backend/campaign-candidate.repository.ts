@@ -68,8 +68,9 @@ export type CampaignReservationSelection = {
   /** Booking (confirmation) instant bounds. */
   readonly booked?: DatePeriodBounds;
   /**
-   * Only reservations that existed by then: booked by then, or created by
-   * then if they never confirmed, as an explicit status may select.
+   * Only reservations that existed by then. Without a status, a reservation
+   * counts as booked from its confirmation; a status group is the current
+   * one, so with a status it counts from its creation.
    */
   readonly existedBy?: Temporal.Instant;
   /** Limits the count to these Dotypos reservations (visit-date periods). */
@@ -132,7 +133,11 @@ const reservationSelection = ({
     booked &&
       withinBounds(workspaceReservations.reservationConfirmedAt, booked),
     existedBy &&
-      sql`coalesce(${workspaceReservations.reservationConfirmedAt}, ${workspaceReservations.createdAt}) <= ${temporalInstantToDate(existedBy)}`,
+      sql`${
+        status
+          ? workspaceReservations.createdAt
+          : workspaceReservations.reservationConfirmedAt
+      } <= ${temporalInstantToDate(existedBy)}`,
     dotyposReservationIds &&
       inArray(workspaceReservations.dotyposReservationId, [
         ...dotyposReservationIds,

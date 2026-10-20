@@ -89,9 +89,25 @@ const bookedAheadOfEvent = customerId("booked-ahead-of-event");
 const bookedOnTheDay = customerId("booked-on-the-day");
 /** Two holds that expired unconfirmed, created before and after the event. */
 const expiredHolder = customerId("expired-holder");
-const expiredHolds = [
-  { name: "expired-before-event", createdAt: "2026-09-25T10:00:00Z" },
-  { name: "expired-after-event", createdAt: "2026-10-05T10:00:00Z" },
+/** A checkout started before the event and confirmed after it, unfulfilled. */
+const confirmedLater = customerId("confirmed-later");
+const statusedReservations = [
+  {
+    name: "expired-before-event",
+    customer: expiredHolder,
+    createdAt: "2026-09-25T10:00:00Z",
+  },
+  {
+    name: "expired-after-event",
+    customer: expiredHolder,
+    createdAt: "2026-10-05T10:00:00Z",
+  },
+  {
+    name: "confirmed-after-event",
+    customer: confirmedLater,
+    createdAt: "2026-09-30T10:00:00Z",
+    confirmedAt: "2026-10-02T10:00:00Z",
+  },
 ];
 
 const bookings: readonly Booking[] = [
@@ -181,6 +197,7 @@ const seeded = [
   bookedAheadOfEvent,
   bookedOnTheDay,
   expiredHolder,
+  confirmedLater,
 ];
 
 const visits: readonly DotyposReservation[] = bookings.map(
@@ -303,18 +320,30 @@ describe.skipIf(!testDatabase)(
       );
       await Effect.runPromise(
         db.insert(workspaceReservations).values(
-          expiredHolds.map(({ name, createdAt }) => ({
-            checkoutAttemptKey: checkoutAttemptKeySchema.make(
-              `resolver-${name}-${run}`
-            ),
-            dotyposCustomerId: expiredHolder,
-            reservationState: "hold_expired" as const,
-            paymentState: "expired" as const,
-            fulfillmentState: "not_started" as const,
-            reservationDetails: plainCowork,
-            locale: "cs-CZ" as const,
-            createdAt: Temporal.Instant.from(createdAt),
-          }))
+          statusedReservations.map(
+            ({ name, customer, createdAt, confirmedAt }) => ({
+              checkoutAttemptKey: checkoutAttemptKeySchema.make(
+                `resolver-${name}-${run}`
+              ),
+              dotyposCustomerId: customer,
+              ...(confirmedAt
+                ? {
+                    dotyposReservationId: reservationId(name),
+                    reservationState: "confirmed" as const,
+                    reservationConfirmedAt: Temporal.Instant.from(confirmedAt),
+                    paymentState: "paid" as const,
+                    paidAt: Temporal.Instant.from(confirmedAt),
+                  }
+                : {
+                    reservationState: "hold_expired" as const,
+                    paymentState: "expired" as const,
+                  }),
+              fulfillmentState: "not_started" as const,
+              reservationDetails: plainCowork,
+              locale: "cs-CZ" as const,
+              createdAt: Temporal.Instant.from(createdAt),
+            })
+          )
         )
       );
       const filter = JSON.stringify(group("and", []));
@@ -522,21 +551,40 @@ describe.skipIf(!testDatabase)(
       ).toEqual([bookedAheadOfEvent]);
     });
 
-    test("a replay counts a reservation that never confirmed from its creation", async () => {
-      const expiredOnce = condition({
-        attribute: "reservationCount",
-        params: {
-          dateBasis: "visit",
-          period: { _tag: "AnyTime" },
-          status: "cancelled",
-        },
-        operator: "eq",
-        value: 1,
-      });
+    test("a replay counts a reservation of a status from its creation", async () => {
+      const visitsWith = (
+        status: "cancelled" | "in_progress",
+        operator: AudienceCountOperatorType,
+        value: number
+      ) =>
+        condition({
+          attribute: "reservationCount",
+          params: { dateBasis: "visit", period: { _tag: "AnyTime" }, status },
+          operator,
+          value,
+        });
+      // A hold that never confirmed existed from its creation.
+      const expiredOnce = visitsWith("cancelled", "eq", 1);
       expect(
         await matching(expiredOnce, [expiredHolder], replayedAt())
       ).toEqual([expiredHolder]);
       expect(await matching(expiredOnce, [expiredHolder])).toEqual([]);
+      // So did a checkout in progress then, confirmed since.
+      expect(
+        await matching(
+          visitsWith("in_progress", "gte", 1),
+          [confirmedLater],
+          replayedAt()
+        )
+      ).toEqual([confirmedLater]);
+      // Booked, though, it counts from its confirmation.
+      expect(
+        await matching(
+          visitCount({ _tag: "AnyTime" }, "gte", 1),
+          [confirmedLater],
+          replayedAt()
+        )
+      ).toEqual([]);
     });
 
     test("a replay dates only the visits booked by its event", async () => {
