@@ -11,11 +11,17 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCommand } from "./shared/command";
+import { redactValues } from "./shared/redact-values";
 
 type SourceMapUpload = {
   readonly args: readonly string[];
   /** Credentials stay in the environment, out of the logged command line. */
-  readonly env: Readonly<Record<string, string>>;
+  readonly env: Readonly<{
+    readonly POSTHOG_CLI_API_KEY: string;
+    readonly POSTHOG_CLI_HOST: string;
+    readonly POSTHOG_CLI_PROJECT_ID: string;
+    readonly RUST_LOG: string;
+  }>;
 };
 
 const requireVariable = (
@@ -60,6 +66,35 @@ export const sourceMapUpload = (
   };
 };
 
+export const runSourceMapUpload = async (
+  upload: SourceMapUpload,
+  posthogCli: string,
+  commandRunner: typeof runCommand = runCommand
+): Promise<void> => {
+  const result = await commandRunner([posthogCli, ...upload.args], {
+    env: { ...process.env, ...upload.env },
+  });
+  if (result.exitCode === 0 && result.signalCode === null && !result.timedOut) {
+    return;
+  }
+
+  const credentials = [
+    upload.env.POSTHOG_CLI_API_KEY,
+    upload.env.POSTHOG_CLI_HOST,
+    upload.env.POSTHOG_CLI_PROJECT_ID,
+  ];
+  process.stdout.write(redactValues(result.stdout, credentials));
+  process.stderr.write(redactValues(result.stderr, credentials));
+  let outcome: string;
+  if (result.timedOut) outcome = "timed out";
+  else if (result.signalCode !== null) {
+    outcome = `was ended by ${result.signalCode}`;
+  } else {
+    outcome = `exited with code ${result.exitCode}`;
+  }
+  throw new Error(`posthog-cli ${outcome}`);
+};
+
 if (import.meta.main) {
   const upload = sourceMapUpload(
     process.env,
@@ -73,24 +108,6 @@ if (import.meta.main) {
     const posthogCli = fileURLToPath(
       import.meta.resolve("@posthog/cli/run-posthog-cli.js")
     );
-    const result = await runCommand([posthogCli, ...upload.args], {
-      env: { ...process.env, ...upload.env },
-    });
-    if (
-      result.exitCode !== 0 ||
-      result.signalCode !== null ||
-      result.timedOut
-    ) {
-      process.stdout.write(result.stdout);
-      process.stderr.write(result.stderr);
-      let outcome: string;
-      if (result.timedOut) outcome = "timed out";
-      else if (result.signalCode !== null) {
-        outcome = `was ended by ${result.signalCode}`;
-      } else {
-        outcome = `exited with code ${result.exitCode}`;
-      }
-      throw new Error(`posthog-cli ${outcome}`);
-    }
+    await runSourceMapUpload(upload, posthogCli);
   }
 }

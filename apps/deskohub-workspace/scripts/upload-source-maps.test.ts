@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { sourceMapUpload } from "./upload-source-maps";
+import { runSourceMapUpload, sourceMapUpload } from "./upload-source-maps";
 
 const productionEnv = {
   POSTHOG_API_HOST: "https://posthog.example",
@@ -50,4 +50,67 @@ describe("sourceMapUpload", () => {
       ).toThrow(`${name} is required`);
     }
   );
+
+  test("redacts credential values from failed CLI output and reports failure", async () => {
+    const credentials = [
+      "phx_TEST_ONLY_not_a_secret",
+      "https://posthog.test-only.invalid",
+      "project_TEST_ONLY_12345",
+    ];
+    const upload = sourceMapUpload(
+      {
+        ...productionEnv,
+        POSTHOG_API_HOST: credentials[1] ?? "",
+        POSTHOG_API_KEY: credentials[0] ?? "",
+        POSTHOG_PROJECT_ID: credentials[2] ?? "",
+      },
+      "/app/.next"
+    );
+    if (!upload) throw new Error("Expected a production source-map upload");
+
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const previousStdout = process.stdout.write;
+    const previousStderr = process.stderr.write;
+    process.stdout.write = ((chunk: string) => {
+      stdout.push(chunk);
+      return true;
+    }) as typeof process.stdout.write;
+    process.stderr.write = ((chunk: string) => {
+      stderr.push(chunk);
+      return true;
+    }) as typeof process.stderr.write;
+
+    let failure: unknown;
+    try {
+      await runSourceMapUpload(
+        upload,
+        "/fake/posthog-cli",
+        async (command, options) => {
+          expect(command[0]).toBe("/fake/posthog-cli");
+          expect(options.env?.POSTHOG_CLI_API_KEY).toBe(credentials[0]);
+          return {
+            exitCode: 1,
+            signalCode: null,
+            stdout: `failed for ${credentials[2]} using ${credentials[0]}\n`,
+            stderr: `request to ${credentials[1]} rejected for ${credentials[0]}\n`,
+            timedOut: false,
+          };
+        }
+      );
+    } catch (error) {
+      failure = error;
+    } finally {
+      process.stdout.write = previousStdout;
+      process.stderr.write = previousStderr;
+    }
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("exited with code 1");
+    const printedOutput = `${stdout.join("")}${stderr.join("")}`;
+    expect(printedOutput).toContain("[REDACTED]");
+    for (const credential of credentials) {
+      expect(printedOutput).not.toContain(credential);
+    }
+  });
 });
