@@ -943,7 +943,7 @@ export class CheckoutStatusService extends Context.Service<
    * The status service wired to read reservation details from `records`:
    * live for the status page, shared snapshots for customers' AI agents.
    */
-  static withRecords = (records: Layer.Layer<ReservationRecords>) =>
+  static withRecords = <E>(records: Layer.Layer<ReservationRecords, E>) =>
     this.Default.pipe(
       Layer.provide(records),
       Layer.provide(ProviderPaymentFinalizationService.Live),

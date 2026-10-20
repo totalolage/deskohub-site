@@ -459,7 +459,7 @@ export class CustomerReservationHistoryService extends Context.Service<
    * The history wired to read reservation details from `records`: live for
    * the account page, shared snapshots for customers' AI agents.
    */
-  static withRecords = (records: Layer.Layer<ReservationRecords>) =>
+  static withRecords = <E>(records: Layer.Layer<ReservationRecords, E>) =>
     this.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
