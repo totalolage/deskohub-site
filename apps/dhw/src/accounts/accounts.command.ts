@@ -114,7 +114,7 @@ const accountsBackfillCommand = Command.make(
           `Dotypos links: ${dryRun ? "would record" : "recorded"} ${result.links.recorded}, already recorded ${result.links.alreadyRecorded}, conflicts ${result.links.conflicts}`
         );
         yield* Console.log(
-          `Deleted logins: ${dryRun ? "would mark" : "marked"} ${result.tombstones.recorded}, already marked ${result.tombstones.alreadyDeleted}, skipped recent ${result.tombstones.skippedRecent}`
+          `Accounts without a login: ${dryRun ? "would mark deleted" : "marked deleted"} ${result.tombstones.recorded}, already deleted ${result.tombstones.alreadyDeleted}, skipped recent ${result.tombstones.skippedRecent}`
         );
         yield* Console.log(
           `Authors: already authored ${result.authors.alreadyAuthored} reservations`
