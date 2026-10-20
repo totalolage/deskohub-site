@@ -176,7 +176,7 @@ describe.skipIf(!database)("AutomationIntakePlanning on Postgres", () => {
     }
     const cancelledAt = now.subtract({ minutes: 5 });
     const confirmedAt = now.subtract({ hours: 48 });
-    const reservations = Array.from({ length: 1000 }, (_, index) => ({
+    const reservations = Array.from({ length: 1001 }, (_, index) => ({
       id: workspaceReservationIdSchema.make(`${prefix}-drain-${index}`),
       customer: fixtures.customerId(`drain-${index}`),
     }));
@@ -187,7 +187,9 @@ describe.skipIf(!database)("AutomationIntakePlanning on Postgres", () => {
           id,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
           dotyposCustomerId: customer,
-          dotyposReservationId: DotyposReservationIdSchema.make(`${id}-dotypos`),
+          dotyposReservationId: DotyposReservationIdSchema.make(
+            `${id}-dotypos`
+          ),
           reservationState: "confirmed" as const,
           reservationConfirmedAt: confirmedAt,
           reservationCancelledAt: cancelledAt,
@@ -205,10 +207,12 @@ describe.skipIf(!database)("AutomationIntakePlanning on Postgres", () => {
         }))
       )
     );
+    // Intake takes the first cancellation at once: it has no runs.
+    const withRuns = reservations.slice(1);
     for (const { campaignId, versionId } of automations) {
       await Effect.runPromise(
         db.insert(runs).values(
-          reservations.map(({ id, customer }) => ({
+          withRuns.map(({ id, customer }) => ({
             campaignId,
             versionId: versionId as AutomationVersionId,
             dotyposCustomerId: customer,
@@ -265,8 +269,10 @@ describe.skipIf(!database)("AutomationIntakePlanning on Postgres", () => {
     };
 
     expect((await plan()).withdrawnRuns).toBe(5000);
-    expect(await state()).toMatchObject({
+    expect(await state()).toEqual({
       activeRuns: 1000,
+      withdrawnRuns: 5000,
+      processedEvents: 1,
       processedWithActiveRuns: 0,
     });
 
@@ -274,7 +280,7 @@ describe.skipIf(!database)("AutomationIntakePlanning on Postgres", () => {
     expect(await state()).toEqual({
       activeRuns: 0,
       withdrawnRuns: 6000,
-      processedEvents: 1000,
+      processedEvents: 1001,
       processedWithActiveRuns: 0,
     });
   }, 120_000);

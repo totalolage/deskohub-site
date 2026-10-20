@@ -88,7 +88,7 @@ export class AutomationIntakePlanning extends Context.Service<
        * `sending` runs are in a persisted batch and settle normally. One
        * short transaction per automation, under its lifecycle lock. Intake
        * leaves a cancellation unprocessed until none remain, so runs past
-       * the batch are withdrawn by the next planner run.
+       * the batch are withdrawn by subsequent planner runs.
        */
       const withdraw = (at: Temporal.Instant) =>
         db
