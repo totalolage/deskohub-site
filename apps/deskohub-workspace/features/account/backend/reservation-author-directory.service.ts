@@ -7,6 +7,7 @@ import { authUser } from "@/db/schema/auth";
 import { customerAccountLinks } from "@/db/schema/customer-account-links";
 import type { Locale } from "@/features/i18n";
 import type { CustomerAccountId } from "../customer-account";
+import { linkedDotyposCustomerId } from "./customer-account-dotypos-link";
 
 /** The reservation authors could not be read. */
 export class ReservationAuthorReadError extends Data.TaggedError(
@@ -84,7 +85,7 @@ export class ReservationAuthorDirectory extends Context.Service<
               email: authUser.email,
               locale: authUser.locale,
               deletionRequestedAt: authUser.deletionRequestedAt,
-              dotyposCustomerId: customerAccountLinks.dotyposCustomerId,
+              dotyposCustomerId: linkedDotyposCustomerId,
             })
             .from(customerAccounts)
             .leftJoin(authUser, eq(authUser.id, customerAccounts.id))

@@ -10,6 +10,7 @@ import {
   count,
   eq,
   inArray,
+  isNotNull,
   max,
   min,
   type SQL,
@@ -21,6 +22,7 @@ import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   customerAccountLinks,
+  customerAccounts,
   customerMarketingConsents,
   emailCampaignAutomationVersions,
   emailCampaignDeliveryBatches,
@@ -30,6 +32,7 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
+import { linkedDotyposCustomerId } from "@/features/account/backend/customer-account-dotypos-link";
 import type { AdministrationReservationStatusFilter } from "@/features/administration/administration.service";
 import {
   bookedReservationCondition,
@@ -94,6 +97,9 @@ const receivedCampaignEmailStatuses = [
  * their owner signs in.
  */
 const verifiedLogin = eq(authUser.emailVerified, true);
+
+/** The linked customer of an account, where the query keeps linked accounts only. */
+const accountCustomerId = sql<DotyposCustomerId>`${linkedDotyposCustomerId}`;
 
 /** A customer column among the customers, when the query is limited to some. */
 const ofCustomers = (
@@ -225,18 +231,20 @@ export class CampaignCandidateRepository extends Context.Service<
       const accounts = (customers?: readonly DotyposCustomerId[]) =>
         db
           .select({
-            dotyposCustomerId: customerAccountLinks.dotyposCustomerId,
+            dotyposCustomerId: accountCustomerId,
             locale: authUser.locale,
           })
-          .from(customerAccountLinks)
-          .innerJoin(
-            authUser,
-            eq(authUser.id, customerAccountLinks.customerAccountId)
+          .from(authUser)
+          .leftJoin(customerAccounts, eq(customerAccounts.id, authUser.id))
+          .leftJoin(
+            customerAccountLinks,
+            eq(customerAccountLinks.customerAccountId, authUser.id)
           )
           .where(
             and(
               verifiedLogin,
-              ofCustomers(customerAccountLinks.dotyposCustomerId, customers)
+              isNotNull(linkedDotyposCustomerId),
+              ofCustomers(linkedDotyposCustomerId, customers)
             )
           );
 
@@ -374,21 +382,23 @@ export class CampaignCandidateRepository extends Context.Service<
         )(function* (created, customers) {
           const rows = yield* db
             .select({
-              dotyposCustomerId: customerAccountLinks.dotyposCustomerId,
+              dotyposCustomerId: accountCustomerId,
               inPeriod: sql<boolean>`${and(
                 sql`true`,
                 withinBounds(authUser.createdAt, created)
               )}`,
             })
-            .from(customerAccountLinks)
-            .innerJoin(
-              authUser,
-              eq(authUser.id, customerAccountLinks.customerAccountId)
+            .from(authUser)
+            .leftJoin(customerAccounts, eq(customerAccounts.id, authUser.id))
+            .leftJoin(
+              customerAccountLinks,
+              eq(customerAccountLinks.customerAccountId, authUser.id)
             )
             .where(
               and(
                 verifiedLogin,
-                ofCustomers(customerAccountLinks.dotyposCustomerId, customers)
+                isNotNull(linkedDotyposCustomerId),
+                ofCustomers(linkedDotyposCustomerId, customers)
               )
             );
           return {
