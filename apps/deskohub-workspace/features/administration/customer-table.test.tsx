@@ -6,7 +6,7 @@ import {
   expect,
   test,
 } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, within } from "@testing-library/react";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   registerWorkspaceComponentTestEnv,
@@ -18,11 +18,13 @@ import { formatAdministrationDateTime } from "./formatters";
 
 const customerSummary = (
   id: string,
-  reservationCount: number
+  reservationCount: number,
+  marketingConsent: AdministrationCustomerSummary["marketingConsent"] = "never"
 ): AdministrationCustomerSummary => ({
   customer: null,
   customerId: id as AdministrationCustomerSummary["customerId"],
   lastActivityAt: "2026-08-14T12:00:00Z",
+  marketingConsent,
   reservationCount,
 });
 
@@ -89,6 +91,78 @@ describe("AdministrationCustomerTable", () => {
       ).toHaveLength(1);
       view.unmount();
     }
+  });
+
+  test("shows each customer's marketing consent state on desktop and mobile", () => {
+    const view = render(
+      <RouteLocaleProvider locale="en-US">
+        <AdministrationCustomerTable
+          customers={[
+            customerSummary("granted", 1, "granted"),
+            customerSummary("withdrawn", 1, "withdrawn"),
+            customerSummary("never", 1, "never"),
+          ]}
+        />
+      </RouteLocaleProvider>
+    );
+
+    expect(
+      view.getByRole("columnheader", { name: "Marketing consent" })
+    ).toBeDefined();
+    const table = view.getByRole("table");
+    const mobileList = view.getByRole("list");
+    for (const label of ["Granted", "Withdrawn", "Never granted"]) {
+      expect(within(table).getAllByText(label)).toHaveLength(1);
+      expect(within(mobileList).getAllByText(label)).toHaveLength(1);
+    }
+    expect(within(mobileList).getAllByText("Marketing consent")).toHaveLength(
+      3
+    );
+  });
+
+  test("keeps the list's filters in sort links", () => {
+    const view = render(
+      <RouteLocaleProvider locale="en-US">
+        <AdministrationCustomerTable
+          customers={[customerSummary("one", 1)]}
+          sorting={{
+            direction: "desc",
+            field: "activity",
+            params: {
+              direction: "desc",
+              from: "2026-10-01",
+              marketingConsent: "granted",
+              sort: "activity",
+              to: "2026-10-31",
+            },
+          }}
+        />
+      </RouteLocaleProvider>
+    );
+
+    const href = view
+      .getByRole("link", { name: /Reservations/ })
+      .getAttribute("href");
+    const search = new URL(href ?? "", "https://admin.test").searchParams;
+    expect(Object.fromEntries(search)).toEqual({
+      direction: "asc",
+      from: "2026-10-01",
+      marketingConsent: "granted",
+      sort: "reservations",
+      to: "2026-10-31",
+    });
+  });
+
+  test("explains an empty filtered list", () => {
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <AdministrationCustomerTable customers={[]} filtered />
+      </RouteLocaleProvider>
+    );
+
+    expect(
+      view.getByText("Těmto filtrům neodpovídá žádný zákazník.")
+    ).toBeDefined();
   });
 
   test("explains an empty list in Czech", () => {
