@@ -10,7 +10,6 @@ import {
   type AudienceCountCondition,
   audienceAttributeCatalogue,
 } from "@deskohub/workspace-admin-api";
-import { eq } from "drizzle-orm";
 import { Effect, Option } from "effect";
 import {
   customerAccounts,
