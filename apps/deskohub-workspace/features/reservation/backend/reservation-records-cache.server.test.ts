@@ -80,6 +80,7 @@ beforeEach(() => {
   ]) {
     fn.mockClear();
   }
+  listReservations.mockImplementation(() => Effect.succeed([reservation]));
 });
 
 const expectRecordsLifetime = (loads: number) => {
@@ -126,6 +127,34 @@ describe("shared reservation records", () => {
     expect(listReservations.mock.calls).toEqual([
       [{ ids: ids.slice(0, 50), order: "startDateDescending" }],
       [{ ids: ids.slice(50), order: "startDateDescending" }],
+    ]);
+    expectRecordsLifetime(2);
+  });
+
+  // A list snapshot can predate a booking the customer made since.
+  test("read the customer's recorded reservations a list snapshot lacks by ID", async () => {
+    const booked = DotyposReservationIdSchema.make("synthetic-new-reservation");
+    listReservations.mockImplementation((options) =>
+      Effect.succeed(
+        options.ids
+          ? options.ids.map((id) => ({ ...reservation, id }))
+          : [reservation]
+      )
+    );
+
+    const records = await Effect.runPromise(
+      Effect.flatMap(ReservationRecords, (shared) =>
+        shared.listForCustomer({
+          customerId,
+          recordedIds: [reservationId, booked],
+        })
+      ).pipe(Effect.provide(SharedReservationRecordsLive))
+    );
+
+    expect(records).toEqual([record, { ...record, id: booked }]);
+    expect(listReservations.mock.calls).toEqual([
+      [{ customerId, order: "startDateDescending" }],
+      [{ ids: [booked], order: "startDateDescending" }],
     ]);
     expectRecordsLifetime(2);
   });

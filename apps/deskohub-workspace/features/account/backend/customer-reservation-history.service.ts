@@ -16,7 +16,6 @@ import {
   ReservationRecords,
   type ReservationRecordsError,
 } from "@/features/reservation/backend/reservation-records";
-import { SharedReservationRecordsLive } from "@/features/reservation/backend/reservation-records-cache.server";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type {
   CustomerReservationHistory,
@@ -338,11 +337,6 @@ export class CustomerReservationHistoryService extends Context.Service<
           )
         );
 
-      /**
-       * The customer's reservations, with the ones Workspace recorded for the
-       * customer that the list doesn't show yet: a shared snapshot of the
-       * list can predate a booking made since.
-       */
       const listOwn = ({
         customerId,
         rows,
@@ -350,21 +344,14 @@ export class CustomerReservationHistoryService extends Context.Service<
         readonly customerId: DotyposCustomerId;
         readonly rows: readonly ReservationRow[];
       }) =>
-        records.listForCustomer(customerId).pipe(
-          Effect.flatMap((listed) => {
-            const listedIds = new Set(
-              listed.flatMap((reservation) => reservation.id ?? [])
-            );
-            return listRecorded(
-              rows.filter(
-                (row) =>
-                  row.dotyposCustomerId === customerId &&
-                  row.dotyposReservationId !== null &&
-                  !listedIds.has(row.dotyposReservationId)
-              )
-            ).pipe(Effect.map((unlisted) => [...listed, ...unlisted]));
-          })
-        );
+        records.listForCustomer({
+          customerId,
+          recordedIds: rows.flatMap((row) =>
+            row.dotyposCustomerId === customerId && row.dotyposReservationId
+              ? [row.dotyposReservationId]
+              : []
+          ),
+        });
 
       // Names only label a reservation, so a failed read leaves the party
       // unnamed instead of failing the history.
@@ -468,15 +455,22 @@ export class CustomerReservationHistoryService extends Context.Service<
     })
   );
 
-  static Live = this.Default.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        WorkspaceDatabase.Default,
-        WorkspaceDotyposLayer,
-        SharedReservationRecordsLive,
-        CustomerAccountLinkRepository.Live,
-        ReservationAuthorDirectory.Live
+  /**
+   * The history wired to read reservation details from `records`: live for
+   * the account page, shared snapshots for customers' AI agents.
+   */
+  static withRecords = (records: Layer.Layer<ReservationRecords>) =>
+    this.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          WorkspaceDatabase.Default,
+          WorkspaceDotyposLayer,
+          records,
+          CustomerAccountLinkRepository.Live,
+          ReservationAuthorDirectory.Live
+        )
       )
-    )
-  );
+    );
+
+  static Live = this.withRecords(ReservationRecords.Live);
 }

@@ -35,7 +35,6 @@ import {
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { SharedAvailabilityInventoryLive } from "@/features/reservation/backend/availability-inventory-cache.server";
 import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
-import { SharedReservationRecordsLive } from "@/features/reservation/backend/reservation-records-cache.server";
 import {
   type CustomerReservationTable,
   getCustomerReservationTable,
@@ -940,20 +939,27 @@ export class CheckoutStatusService extends Context.Service<
 >()("@deskohub-workspace/checkout/CheckoutStatusService") {
   static Default = Layer.effect(this, implementation);
 
-  static Live = this.Default.pipe(
-    Layer.provide(ProviderPaymentFinalizationService.Live),
-    Layer.provide(LatePaymentVerificationService.Live),
-    Layer.provide(LatePaymentRecoveryRepository.Default),
-    Layer.provide(PaymentAttemptRepository.Default),
-    Layer.provide(WorkspaceReservationRepository.Default),
-    Layer.provide(WorkspaceDatabase.Default),
-    Layer.provide(WorkspaceDotyposLayer),
-    Layer.provide(SharedAvailabilityInventoryLive),
-    Layer.provide(SharedReservationRecordsLive),
-    Layer.provide(
-      SeatingMapFeatureFlagService.Default.pipe(
-        Layer.provide(WorkspaceFeatureFlagService.Default)
+  /**
+   * The status service wired to read reservation details from `records`:
+   * live for the status page, shared snapshots for customers' AI agents.
+   */
+  static withRecords = (records: Layer.Layer<ReservationRecords>) =>
+    this.Default.pipe(
+      Layer.provide(records),
+      Layer.provide(ProviderPaymentFinalizationService.Live),
+      Layer.provide(LatePaymentVerificationService.Live),
+      Layer.provide(LatePaymentRecoveryRepository.Default),
+      Layer.provide(PaymentAttemptRepository.Default),
+      Layer.provide(WorkspaceReservationRepository.Default),
+      Layer.provide(WorkspaceDatabase.Default),
+      Layer.provide(WorkspaceDotyposLayer),
+      Layer.provide(SharedAvailabilityInventoryLive),
+      Layer.provide(
+        SeatingMapFeatureFlagService.Default.pipe(
+          Layer.provide(WorkspaceFeatureFlagService.Default)
+        )
       )
-    )
-  );
+    );
+
+  static Live = this.withRecords(ReservationRecords.Live);
 }

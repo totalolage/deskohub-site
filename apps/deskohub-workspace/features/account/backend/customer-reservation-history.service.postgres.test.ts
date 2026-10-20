@@ -141,10 +141,28 @@ const testDatabaseLayer = () =>
 /**
  * Stands in for Dotypos: a reservation without a customer belongs to every
  * customer query, and lists come back newest start first, as Dotypos sorts
- * them. A customer query leaves out the `unlisted` reservations, as a shared
- * snapshot taken before they were booked would. Reads fail with the supplied
- * failure, when there is one.
+ * them. Reads fail with the supplied failure, when there is one.
  */
+/** Reads reservation records live, noting each customer list request. */
+const recordingCustomerListReads = (
+  reads:
+    | Parameters<ReservationRecords["Service"]["listForCustomer"]>[0][]
+    | undefined
+) =>
+  Layer.effect(
+    ReservationRecords,
+    Effect.gen(function* () {
+      const live = yield* ReservationRecords;
+      return {
+        ...live,
+        listForCustomer: (input) => {
+          reads?.push(input);
+          return live.listForCustomer(input);
+        },
+      } satisfies ReservationRecords["Service"];
+    })
+  ).pipe(Layer.provide(ReservationRecords.Provider));
+
 const makeHistoryLayer = (
   reservations: readonly DotyposReservation[],
   options: {
@@ -152,14 +170,16 @@ const makeHistoryLayer = (
     readonly customerReads?: DotyposCustomerId[][];
     readonly failNames?: boolean;
     readonly failAuthors?: boolean;
-    readonly unlisted?: readonly DotyposReservationId[];
+    readonly customerListReads?: Parameters<
+      ReservationRecords["Service"]["listForCustomer"]
+    >[0][];
   } = {}
 ) =>
   CustomerReservationHistoryService.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
         testDatabaseLayer(),
-        ReservationRecords.Provider.pipe(
+        recordingCustomerListReads(options.customerListReads).pipe(
           Layer.provideMerge(
             Layer.mock(DotyposService, {
               listReservations: (filter = {}) =>
@@ -168,12 +188,8 @@ const makeHistoryLayer = (
                     .filter(
                       (reservation) =>
                         (!filter.customerId ||
-                          ((!reservation._customerId ||
-                            reservation._customerId === filter.customerId) &&
-                            !(
-                              reservation.id &&
-                              options.unlisted?.includes(reservation.id)
-                            ))) &&
+                          !reservation._customerId ||
+                          reservation._customerId === filter.customerId) &&
                         (!filter.ids ||
                           (reservation.id !== undefined &&
                             filter.ids.includes(reservation.id)))
@@ -716,22 +732,39 @@ describe.skipIf(!testDatabase)(
       ]);
     });
 
-    test("lists a booking Workspace recorded that the customer's reservation list doesn't show yet", async () => {
+    // A shared snapshot of the list can predate one of these bookings, so
+    // the records reader needs them to fill the gap.
+    test("tells the records reader which of the customer's reservations Workspace recorded", async () => {
       const seeded = await seedOwnReservations([
-        { key: "listed", reservationState: "confirmed", status: "CONFIRMED" },
-        { key: "new", reservationState: "held", status: "NEW" },
+        { key: "first", reservationState: "confirmed", status: "CONFIRMED" },
+        { key: "second", reservationState: "held", status: "NEW" },
       ]);
+      const customerListReads: Parameters<
+        ReservationRecords["Service"]["listForCustomer"]
+      >[0][] = [];
 
       const past = await loadPast(
         seeded.account,
-        makeHistoryLayer(seeded.reservations, {
-          unlisted: [seeded.idsOf("new").dotypos],
-        })
+        makeHistoryLayer(seeded.reservations, { customerListReads })
       );
 
       expect(past.map(({ id }) => id)).toEqual([
-        seeded.idsOf("new").workspace,
-        seeded.idsOf("listed").workspace,
+        seeded.idsOf("second").workspace,
+        seeded.idsOf("first").workspace,
+      ]);
+      expect(
+        customerListReads.map(({ customerId, recordedIds }) => ({
+          customerId,
+          recordedIds: recordedIds.toSorted(),
+        }))
+      ).toEqual([
+        {
+          customerId: seeded.account.dotyposCustomerId,
+          recordedIds: [
+            seeded.idsOf("first").dotypos,
+            seeded.idsOf("second").dotypos,
+          ].toSorted(),
+        },
       ]);
     });
   }

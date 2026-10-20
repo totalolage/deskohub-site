@@ -8,6 +8,7 @@ import {
   type ValidationError,
 } from "@deskohub/dotypos";
 import { Context, Effect, Layer } from "effect";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import {
   type ReservationRecord,
   toReservationRecord,
@@ -23,10 +24,15 @@ export interface ReservationRecordReads {
   readonly get: (
     id: DotyposReservationId
   ) => Effect.Effect<ReservationRecord, ReservationRecordsError>;
-  /** The customer's reservations, newest start first. */
-  readonly listForCustomer: (
-    customerId: DotyposCustomerId
-  ) => Effect.Effect<readonly ReservationRecord[], ReservationRecordsError>;
+  /**
+   * The customer's reservations, newest start first. `recordedIds` are the
+   * customer's reservations Workspace recorded, which a list snapshot taken
+   * before one of them was booked doesn't hold yet.
+   */
+  readonly listForCustomer: (input: {
+    readonly customerId: DotyposCustomerId;
+    readonly recordedIds: readonly DotyposReservationId[];
+  }) => Effect.Effect<readonly ReservationRecord[], ReservationRecordsError>;
   readonly listByIds: (
     ids: readonly DotyposReservationId[]
   ) => Effect.Effect<readonly ReservationRecord[], ReservationRecordsError>;
@@ -55,7 +61,8 @@ const makeProviderReservationRecords = Effect.gen(function* () {
       dotypos
         .getReservationWithoutCustomer(id)
         .pipe(Effect.map(toReservationRecord)),
-    listForCustomer: (customerId) =>
+    // The live list already holds every recorded reservation.
+    listForCustomer: ({ customerId }) =>
       dotypos
         .listReservations({ customerId, order: "startDateDescending" })
         .pipe(
@@ -73,13 +80,16 @@ const makeProviderReservationRecords = Effect.gen(function* () {
 });
 
 /**
- * Reservation details for customer-facing reads, which may serve a shared
- * snapshot. Statuses come from Workspace rows; checks that guard a booking
- * read Dotypos directly instead.
+ * Reservation details for customer-facing reads. Browser pages read them
+ * live (`Live`) so staff edits show on the next load; customers' AI agents
+ * read the shared snapshots in `SharedReservationRecordsLive`. Statuses come
+ * from Workspace rows; checks that guard a booking read Dotypos directly.
  */
 export class ReservationRecords extends Context.Service<
   ReservationRecords,
   ReservationRecordReads
 >()("@deskohub-workspace/reservation/ReservationRecords") {
   static Provider = Layer.effect(this, makeProviderReservationRecords);
+
+  static Live = this.Provider.pipe(Layer.provide(WorkspaceDotyposLayer));
 }

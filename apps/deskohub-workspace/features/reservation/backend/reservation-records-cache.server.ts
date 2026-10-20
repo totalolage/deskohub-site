@@ -22,8 +22,9 @@ import {
 } from "./reservation-records";
 
 /**
- * Serves customer-facing reservation details from cross-request snapshots,
- * fresh for the `reservationRecords` profile's `revalidate` window and served
+ * Serves the reservation details customers' AI agents read from
+ * cross-request snapshots, so agent reads don't spend the shared Dotypos
+ * quota; browser pages read live. Snapshots are fresh for the `reservationRecords` profile's `revalidate` window and served
  * stale while they refresh until `expire`. Every Dotypos reservation write
  * expires them. Callers authorize the reservation or account before reading;
  * the snapshots hold no customer links or notes. Failed loads are never
@@ -35,17 +36,31 @@ import {
 export const SharedReservationRecordsLive = Layer.succeed(ReservationRecords, {
   get: (id) =>
     fromRecordsSnapshot("get", () => loadSharedReservationRecord(id)),
-  listForCustomer: (customerId) =>
+  // A list snapshot can predate a booking the customer made since, so the
+  // recorded reservations it lacks are read by ID.
+  listForCustomer: ({ customerId, recordedIds }) =>
     fromRecordsSnapshot("listForCustomer", () =>
       loadSharedCustomerReservationRecords(customerId)
+    ).pipe(
+      Effect.flatMap((listed) => {
+        const listedIds = new Set(
+          listed.flatMap((reservation) => reservation.id ?? [])
+        );
+        return listSharedByIds(
+          recordedIds.filter((id) => !listedIds.has(id))
+        ).pipe(Effect.map((unlisted) => [...listed, ...unlisted]));
+      })
     ),
-  listByIds: (ids) =>
-    readRecordsInSortedBatches(ids, (batch) =>
-      fromRecordsSnapshot("listByIds", () =>
-        loadSharedReservationRecordsByIds(batch)
-      )
-    ),
+  listByIds: (ids) => listSharedByIds(ids),
 } satisfies ReservationRecordReads);
+
+function listSharedByIds(ids: readonly DotyposReservationId[]) {
+  return readRecordsInSortedBatches(ids, (batch) =>
+    fromRecordsSnapshot("listByIds", () =>
+      loadSharedReservationRecordsByIds(batch)
+    )
+  );
+}
 
 export async function loadSharedReservationRecord(
   id: DotyposReservationId
@@ -65,7 +80,7 @@ export async function loadSharedCustomerReservationRecords(
 
   return await readThroughProvider(
     "reservation.records.customer.load",
-    (records) => records.listForCustomer(customerId)
+    (records) => records.listForCustomer({ customerId, recordedIds: [] })
   );
 }
 
