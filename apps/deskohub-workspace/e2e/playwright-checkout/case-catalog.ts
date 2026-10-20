@@ -40,6 +40,7 @@ const workspaceE2EPaidCaseIds = [
   "payment-late-recovery-recreated",
   "checkout-meeting-room-paid-one-hour",
   "checkout-meeting-room-paid-whole-day",
+  "checkout-agent-booking",
   "checkout-cowork-basic",
   "checkout-all-discounts",
   "checkout-office-paid-multi-day",
