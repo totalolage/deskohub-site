@@ -304,6 +304,7 @@ const authorizeSignedIn = async (
       ? await answerConsent(auth, cookie, redirect, true)
       : redirect;
   expect(callback.href.startsWith(agent.redirectUri)).toBe(true);
+  expect(callback.searchParams.get("code")).toBeTruthy();
   return {
     clientId: agent.clientId,
     redirectUri: agent.redirectUri,
