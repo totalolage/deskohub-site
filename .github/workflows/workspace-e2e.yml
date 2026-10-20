@@ -2,7 +2,7 @@ name: Workspace E2E
 
 on:
   repository_dispatch:
-    types: [vercel.deployment.skipped, vercel.deployment.success]
+    types: [vercel.deployment.failed, vercel.deployment.skipped, vercel.deployment.success]
   workflow_dispatch:
     inputs:
       cleanup_stale_e2e_reservations:
@@ -26,10 +26,6 @@ permissions:
   pull-requests: read
   statuses: read
 
-concurrency:
-  group: workspace-e2e-${{ github.event_name == 'workflow_dispatch' && 'prj_7FliQBcbBiBwGaO2JLrigicnXCRd' || github.event.client_payload.project.id }}-pr-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}
-  cancel-in-progress: ${{ github.event_name != 'repository_dispatch' || github.event.client_payload.state.type != 'skipped' }}
-
 jobs:
   resolve-target:
     if: >-
@@ -39,96 +35,39 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
+      deployment: ${{ steps.target.outputs.deployment }}
       eligible: ${{ steps.target.outputs.eligible }}
       head_ref: ${{ steps.target.outputs.head_ref }}
       pr_number: ${{ steps.target.outputs.pr_number }}
       sha: ${{ steps.target.outputs.sha }}
-      skipped: ${{ steps.target.outputs.skipped }}
-      skipped_status_description: ${{ steps.target.outputs.skipped_status_description }}
-      skipped_status_state: ${{ steps.target.outputs.skipped_status_state }}
+      status_description: ${{ steps.status-without-run.outputs.description }}
+      status_state: ${{ steps.status-without-run.outputs.state }}
       url: ${{ steps.target.outputs.url }}
     steps:
       - name: Resolve eligible PR and immutable preview
         id: target
         env:
           GH_TOKEN: ${{ github.token }}
+          TARGET_DEPLOYMENT: ${{ github.event_name == 'workflow_dispatch' && 'success' || github.event.client_payload.state.type }}
           TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}
           TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha || github.event.client_payload.git.sha }}
-          TARGET_SKIPPED: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.state.type == 'skipped' }}
           TARGET_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.url || github.event.client_payload.url }}
         run: |
           set -euo pipefail
 
+          case "$TARGET_DEPLOYMENT" in
+            success | skipped | failed) ;;
+            *)
+              echo "Unsupported Vercel deployment state" >&2
+              exit 1
+              ;;
+          esac
           if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "Target SHA is not a full Git commit SHA" >&2
             exit 1
           fi
           if ! git check-ref-format --branch "$TARGET_REF" >/dev/null; then
             echo "Target ref is not a valid branch name" >&2
-            exit 1
-          fi
-
-          normalized_url="$({ TARGET_URL="$TARGET_URL" node <<'NODE'
-          const url = new URL(process.env.TARGET_URL);
-          const host = url.hostname.toLowerCase();
-          if (
-            url.protocol !== "https:" ||
-            url.username ||
-            url.password ||
-            url.port ||
-            url.pathname !== "/" ||
-            url.search ||
-            url.hash ||
-            !/^[a-z0-9-]+\.vercel\.app$/.test(host) ||
-            host.includes("-git-")
-          ) {
-            throw new Error("Target must be an immutable HTTPS Vercel deployment origin");
-          }
-          process.stdout.write(`https://${host}`);
-          NODE
-          } 2>/dev/null)" || {
-            echo "Target must be an immutable HTTPS Vercel deployment origin" >&2
-            exit 1
-          }
-
-          deployments="$(gh api \
-            --method GET \
-            -H "Accept: application/vnd.github+json" \
-            "repos/$GITHUB_REPOSITORY/deployments" \
-            -f sha="$TARGET_SHA" \
-            -f environment='Preview – deskohub-workspace-site' \
-            -f per_page=100)"
-          deployment_matches_target=false
-          while IFS= read -r deployment_id; do
-            if [[ -z "$deployment_id" ]]; then
-              continue
-            fi
-            deployment_statuses="$(gh api \
-              -H "Accept: application/vnd.github+json" \
-              "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses")"
-            if jq -e \
-              --arg target "$normalized_url" \
-              --argjson skipped "$TARGET_SKIPPED" \
-              'any(.[];
-                (if $skipped then
-                  .state == "inactive" and
-                  .description == "Skipped - Not affected"
-                else
-                  .state == "success"
-                end) and
-                (((.environment_url? // "") | rtrimstr("/")) == $target)
-              )' \
-              <<<"$deployment_statuses" >/dev/null; then
-              deployment_matches_target=true
-              break
-            fi
-          done < <(jq -r '.[] | select(.creator.login == "vercel[bot]") | .id' <<<"$deployments")
-          if [[ "$deployment_matches_target" != "true" ]]; then
-            if [[ "$TARGET_SKIPPED" == "true" ]]; then
-              echo "No skipped exact-SHA Workspace deployment matches the target URL" >&2
-            else
-              echo "No successful exact-SHA Workspace deployment matches the target URL" >&2
-            fi
             exit 1
           fi
 
@@ -155,73 +94,214 @@ jobs:
             echo "eligible=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [[ "$eligible_count" != "1" ]]; then
-            echo "More than one eligible PR matches the exact deployment SHA" >&2
-            exit 1
-          fi
 
-          pr_number="$(jq -r '.[0].number' <<<"$eligible_pulls")"
-
-          if [[ "$TARGET_SKIPPED" == "true" ]]; then
-            previous_state=""
-            mapfile -t commit_shas < <(gh api --paginate \
-              "repos/$GITHUB_REPOSITORY/pulls/$pr_number/commits?per_page=100" \
-              --jq '.[].sha')
-            target_seen=false
-            for ((index=${#commit_shas[@]} - 1; index >= 0; index--)); do
-              commit_sha="${commit_shas[$index]}"
-              if [[ "$commit_sha" == "$TARGET_SHA" ]]; then
-                target_seen=true
-                continue
-              fi
-              if [[ "$target_seen" != "true" ]]; then
-                continue
-              fi
-              previous_state="$(gh api --paginate --slurp \
-                "repos/$GITHUB_REPOSITORY/commits/$commit_sha/statuses?per_page=100" | \
-                jq -r 'add | first(.[] | select(
-                  .context == "Workspace E2E" and
-                  .creator.login == "github-actions[bot]"
-                )) | .state // empty')"
-              if [[ -n "$previous_state" ]]; then
-                break
-              fi
-            done
-            if [[ "$target_seen" != "true" ]]; then
-              echo "Target SHA is missing from the matching PR history" >&2
-              exit 1
-            fi
-
-            skipped_status_state=success
-            skipped_status_description='Workspace unchanged; E2E skipped'
-            if [[ -n "$previous_state" && "$previous_state" != "success" ]]; then
-              skipped_status_state=failure
-              skipped_status_description='Workspace unchanged; prior E2E did not pass'
-            fi
-            {
-              echo "skipped_status_state=$skipped_status_state"
-              echo "skipped_status_description=$skipped_status_description"
-            } >> "$GITHUB_OUTPUT"
-          fi
-
+          # The target is now the head of an eligible PR. A failure below
+          # must leave its required status failed with a way to recover, so
+          # it records a status description before the step fails.
           {
+            echo "deployment=$TARGET_DEPLOYMENT"
             echo "eligible=true"
+            echo "sha=$TARGET_SHA"
+          } >> "$GITHUB_OUTPUT"
+          fail() {
+            echo "$1" >&2
+            echo "resolution_error=$2" >> "$GITHUB_OUTPUT"
+            exit 1
+          }
+
+          if [[ "$eligible_count" != "1" ]]; then
+            fail 'More than one eligible PR matches the exact deployment SHA' \
+              'More than one open PR has this head; E2E needs exactly one'
+          fi
+          pr_number="$(jq -r '.[0].number' <<<"$eligible_pulls")"
+          {
             echo "head_ref=$TARGET_REF"
             echo "pr_number=$pr_number"
-            echo "sha=$TARGET_SHA"
-            echo "skipped=$TARGET_SKIPPED"
-            echo "url=$normalized_url"
           } >> "$GITHUB_OUTPUT"
+
+          normalized_url="$({ TARGET_URL="$TARGET_URL" node <<'NODE'
+          const url = new URL(process.env.TARGET_URL);
+          const host = url.hostname.toLowerCase();
+          if (
+            url.protocol !== "https:" ||
+            url.username ||
+            url.password ||
+            url.port ||
+            url.pathname !== "/" ||
+            url.search ||
+            url.hash ||
+            !/^[a-z0-9-]+\.vercel\.app$/.test(host) ||
+            host.includes("-git-")
+          ) {
+            throw new Error("Target must be an immutable HTTPS Vercel deployment origin");
+          }
+          process.stdout.write(`https://${host}`);
+          NODE
+          } 2>/dev/null)" ||
+            fail 'Target must be an immutable HTTPS Vercel deployment origin' \
+              'The event named no immutable Vercel preview URL; redeploy the Workspace preview to run E2E'
+
+          deployments="$(gh api \
+            --method GET \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/deployments" \
+            -f sha="$TARGET_SHA" \
+            -f environment='Preview – deskohub-workspace-site' \
+            -f per_page=100)"
+          deployment_matches_target=false
+          while IFS= read -r deployment_id; do
+            if [[ -z "$deployment_id" ]]; then
+              continue
+            fi
+            deployment_statuses="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses")"
+            if jq -e \
+              --arg target "$normalized_url" \
+              --arg deployment "$TARGET_DEPLOYMENT" \
+              'any(.[];
+                (if $deployment == "skipped" then
+                  .state == "inactive" and
+                  .description == "Skipped - Not affected"
+                elif $deployment == "failed" then
+                  .state == "failure" or .state == "error"
+                else
+                  .state == "success"
+                end) and
+                (((.environment_url? // "") | rtrimstr("/")) == $target)
+              )' \
+              <<<"$deployment_statuses" >/dev/null; then
+              deployment_matches_target=true
+              break
+            fi
+          done < <(jq -r '.[] | select(.creator.login == "vercel[bot]") | .id' <<<"$deployments")
+          if [[ "$deployment_matches_target" != "true" ]]; then
+            fail "No $TARGET_DEPLOYMENT exact-SHA Workspace deployment matches the target URL" \
+              'No Vercel deployment record matches this preview yet; re-run the failed jobs of this Workspace E2E run'
+          fi
+
+          echo "url=$normalized_url" >> "$GITHUB_OUTPUT"
+
+      - name: Decide status without an E2E run
+        id: status-without-run
+        if: >-
+          !cancelled() && steps.target.outputs.eligible == 'true' &&
+          (steps.target.outcome != 'success' || steps.target.outputs.deployment != 'success')
+        env:
+          DEPLOYMENT: ${{ steps.target.outputs.deployment }}
+          # Descriptions only a run that tested its own commit publishes, as
+          # github-actions[bot]. Any workflow whose token can write statuses
+          # could post them too, but it could as well post a passing
+          # Workspace E2E on its own head, so this trusts exactly what the
+          # required status itself trusts.
+          E2E_RUN_DESCRIPTIONS: '["Protected preview E2E is running","Protected preview E2E passed","Protected preview E2E failed"]'
+          # A run a newer head superseded publishes this over its own
+          # "running" status. It tested nothing, so its commit is passed over.
+          E2E_SUPERSEDED_DESCRIPTION: Superseded by a newer PR head before E2E finished
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.target.outputs.pr_number }}
+          RESOLUTION_ERROR: ${{ steps.target.outputs.resolution_error }}
+          TARGET_OUTCOME: ${{ steps.target.outcome }}
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          decide() {
+            {
+              echo "state=$1"
+              echo "description=$2"
+            } >> "$GITHUB_OUTPUT"
+            echo "Workspace E2E for \`$TARGET_SHA\`: **$1**. $2" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          # Without a recorded description, the publishing job falls back to
+          # a generic one.
+          if [[ "$TARGET_OUTCOME" != "success" ]]; then
+            if [[ -n "$RESOLUTION_ERROR" ]]; then
+              decide failure "$RESOLUTION_ERROR"
+            fi
+            exit 0
+          fi
+
+          if [[ "$DEPLOYMENT" == "failed" ]]; then
+            decide failure 'Vercel preview deployment failed; fix or redeploy it to run E2E'
+            exit 0
+          fi
+
+          # Vercel skips a commit when the Workspace is unaffected relative to
+          # its parent alone, even when that parent's deployment failed or
+          # never ran E2E. Only a run on a commit with the identical tree
+          # proves this code passed, and a status carried forward by an
+          # earlier skip proves nothing.
+          pr_commits="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/commits?per_page=100" | \
+            jq 'add')"
+          target_tree="$(jq -r --arg sha "$TARGET_SHA" \
+            'first(.[] | select(.sha == $sha) | .commit.tree.sha) // empty' \
+            <<<"$pr_commits")"
+          if [[ -z "$target_tree" ]]; then
+            echo "Target SHA is missing from the matching PR history" >&2
+            decide failure "Head missing from this PR's commit list (GitHub lists 250 at most); deploy its Workspace preview to run E2E"
+            exit 1
+          fi
+          mapfile -t same_tree_shas < <(jq -r \
+            --arg sha "$TARGET_SHA" \
+            --arg tree "$target_tree" \
+            '[.[] | select(.sha != $sha and .commit.tree.sha == $tree) | .sha] | reverse | .[]' \
+            <<<"$pr_commits")
+
+          for sha in "${same_tree_shas[@]}"; do
+            run_state="$(gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/commits/$sha/statuses?per_page=100" | \
+              jq -r \
+                --argjson descriptions "$E2E_RUN_DESCRIPTIONS" \
+                --arg superseded "$E2E_SUPERSEDED_DESCRIPTION" \
+                'add | first(.[] | select(
+                  .context == "Workspace E2E" and
+                  .creator.login == "github-actions[bot]" and
+                  (.description | IN($descriptions[], $superseded))
+                )) | if .description == $superseded then "superseded" else .state end')"
+            case "$run_state" in
+              success)
+                decide success "Same tree as ${sha:0:7}, which passed E2E"
+                exit 0
+                ;;
+              failure | error)
+                decide failure "Same tree as ${sha:0:7}, which failed E2E"
+                exit 0
+                ;;
+              pending)
+                decide failure "Same tree as ${sha:0:7}, whose E2E is still running; rerun this check after it ends"
+                exit 0
+                ;;
+            esac
+          done
+
+          decide failure 'Vercel skipped this SHA and no E2E-tested commit has its tree; deploy its Workspace preview'
 
   test-e2e:
     needs: resolve-target
-    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
+    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
+    # Keyed by PR and SHA, so only a duplicate run for the same SHA cancels
+    # this one. Runs for different SHAs never cancel each other: a run can
+    # resolve its head as current, stall, and reach this job after a newer
+    # head's run started, in either order, and a PR-keyed group would let it
+    # cancel or replace that newer run. A superseded run stops itself
+    # instead, through the head checks below and cancel-superseded-run.
+    # Every SHA of a PR shares its branch's Neon preview database, so the
+    # date shard lease also holds that branch exclusively from before the
+    # migration until the release step. A newer head's run waits for the
+    # older run to release it, or for its attempt to complete.
+    concurrency:
+      group: workspace-e2e-pr-${{ needs.resolve-target.outputs.pr_number }}-${{ needs.resolve-target.outputs.sha }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 50
     environment: workspace-checkout-e2e
     permissions:
       actions: read
       contents: read
+      pull-requests: read
       statuses: write
     outputs:
       release_outcome: ${{ steps.release.outcome }}
@@ -236,6 +316,28 @@ jobs:
       WORKSPACE_E2E_PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
 
     steps:
+      # Runs for every SHA of a PR share its Neon preview branch, so a run
+      # whose head was superseded before this job started must not lease a
+      # shard or migrate. cancel-superseded-run cancels it; this step holds
+      # the job until then.
+      - name: Stop unless this SHA is still the PR head
+        env:
+          CANCEL_WAIT_SECONDS: 300
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          head_sha="$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/pulls/$WORKSPACE_E2E_PR_NUMBER" | \
+            jq -r '.head.sha')"
+          if [[ "$head_sha" == "$TARGET_SHA" ]]; then
+            echo "Target SHA is still the head of PR #$WORKSPACE_E2E_PR_NUMBER"
+            exit 0
+          fi
+          echo "PR #$WORKSPACE_E2E_PR_NUMBER moved to ${head_sha:0:7}; waiting for cancel-superseded-run to cancel this run" >&2
+          sleep "$CANCEL_WAIT_SECONDS"
+          exit 1
+
       - name: Checkout exact target
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -267,14 +369,36 @@ jobs:
           PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
         run: echo "shard=$((PR_NUMBER % 3 + 1))" >> "$GITHUB_OUTPUT"
 
+      # Waits while another run of this branch holds its preview database,
+      # including a superseded run whose cancellation is still pending.
       - name: Lease an available date shard
         id: lease
         uses: ./.workspace-e2e-coordinator/.github/actions/workspace-e2e-allocation
         with:
           mode: acquire
           preferred-shard: ${{ steps.preferred-shard.outputs.shard }}
+          preview-branch: ${{ needs.resolve-target.outputs.head_ref }}
           token: ${{ github.token }}
           database-url: ${{ secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL }}
+
+      # The head can move while this run waits for the lease. A superseded
+      # run fails here instead of waiting to be cancelled, so the release
+      # step frees the preview database for the newer head's run at once.
+      - name: Release the lease unless this SHA is still the PR head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          head_sha="$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/pulls/$WORKSPACE_E2E_PR_NUMBER" | \
+            jq -r '.head.sha')"
+          if [[ "$head_sha" == "$TARGET_SHA" ]]; then
+            echo "Target SHA is still the head of PR #$WORKSPACE_E2E_PR_NUMBER"
+            exit 0
+          fi
+          echo "PR #$WORKSPACE_E2E_PR_NUMBER moved to ${head_sha:0:7} while this run waited for its lease; releasing it" >&2
+          exit 1
 
       - name: Publish allocation status
         env:
@@ -546,6 +670,9 @@ jobs:
           DOTYPOS_BRANCH_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_BRANCH_ID }}
           DOTYPOS_EMPLOYEE_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_EMPLOYEE_ID }}
         run: bun --cwd apps/deskohub-workspace e2e:account-state
+      # Also frees the branch's preview database. It runs after a
+      # cancellation too; if it can't, the next acquisition reclaims the
+      # lease once GitHub reports this attempt completed.
       - name: Release date shard
         id: release
         if: always() && steps.lease.outputs.shard != ''
@@ -555,13 +682,63 @@ jobs:
           token: ${{ github.token }}
           database-url: ${{ secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL }}
 
+  # Cancels this run once a newer head of its PR is pushed, so the run stops
+  # itself instead of a newer run cancelling it. Cancellation is not
+  # exclusion: the newer head's run waits on the preview branch lease until
+  # this run releases it. It runs beside test-e2e, which runs exact-SHA
+  # code, so that job never holds actions: write.
+  cancel-superseded-run:
+    needs: resolve-target
+    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    permissions:
+      actions: write
+      pull-requests: read
+    steps:
+      - name: Cancel this run once a newer PR head supersedes it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          POLL_SECONDS: 15
+          PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
+          TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
+        run: |
+          set -euo pipefail
+          while true; do
+            # A failed lookup is retried; only a real other SHA cancels.
+            head_sha="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" | \
+              jq -r '.head.sha')" || head_sha=""
+            if [[ "$head_sha" =~ ^[0-9a-f]{40}$ && "$head_sha" != "$TARGET_SHA" ]]; then
+              echo "PR #$PR_NUMBER moved to ${head_sha:0:7}; cancelling this run for ${TARGET_SHA:0:7}"
+              if gh api \
+                --method POST \
+                -H "Accept: application/vnd.github+json" \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/cancel" \
+                >/dev/null; then
+                exit 0
+              fi
+            fi
+            test_status="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs" | \
+              jq -r '.jobs[] | select(.name == "test-e2e") | .status')" || test_status=""
+            if [[ "$test_status" == "completed" ]]; then
+              echo "test-e2e finished while ${TARGET_SHA:0:7} was the PR head"
+              exit 0
+            fi
+            sleep "$POLL_SECONDS"
+          done
+
   publish-final-status:
     needs: [resolve-target, test-e2e]
-    if: always() && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
+    if: always() && needs.resolve-target.result == 'success' && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
+      pull-requests: read
       statuses: write
     steps:
       - name: Publish final commit status
@@ -570,13 +747,27 @@ jobs:
           ALLOCATION_SHARD: ${{ needs.test-e2e.outputs.shard }}
           ALLOCATION_DESCRIPTION: ${{ needs.test-e2e.outputs.shard == '' && 'Workspace E2E shard allocation failed' || needs.test-e2e.outputs.release_outcome == 'success' && 'Workspace E2E shard released' || 'Workspace E2E shard release failed' }}
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
           STATUS_STATE: ${{ needs.test-e2e.result == 'success' && 'success' || 'failure' }}
+          SUPERSEDED_DESCRIPTION: Superseded by a newer PR head before E2E finished
           TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
         run: |
+          set -euo pipefail
           if [[ "$STATUS_STATE" == "success" ]]; then
             description='Protected preview E2E passed'
           else
             description='Protected preview E2E failed'
+            # A superseded run stopped itself, so its failure says nothing
+            # about this code. Statuses are per SHA, so this never touches
+            # the newer head's status.
+            head_sha="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" | \
+              jq -r '.head.sha')" || head_sha=""
+            if [[ "$head_sha" =~ ^[0-9a-f]{40}$ && "$head_sha" != "$TARGET_SHA" ]]; then
+              description="$SUPERSEDED_DESCRIPTION"
+              ALLOCATION_DESCRIPTION="$SUPERSEDED_DESCRIPTION"
+            fi
           fi
           gh api \
             --method POST \
@@ -597,20 +788,24 @@ jobs:
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             >/dev/null
 
-  publish-skipped-status:
+  # Publishes for every eligible head E2E doesn't run against, including one
+  # whose resolution failed, so its required status never stays absent.
+  publish-status-without-run:
     needs: resolve-target
-    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped == 'true'
+    if: >-
+      !cancelled() && needs.resolve-target.outputs.eligible == 'true' &&
+      (needs.resolve-target.result != 'success' || needs.resolve-target.outputs.deployment != 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
       statuses: write
     steps:
-      - name: Publish status for unchanged Workspace
+      - name: Publish status without an E2E run
         env:
           GH_TOKEN: ${{ github.token }}
-          STATUS_DESCRIPTION: ${{ needs.resolve-target.outputs.skipped_status_description }}
-          STATUS_STATE: ${{ needs.resolve-target.outputs.skipped_status_state }}
+          STATUS_DESCRIPTION: ${{ needs.resolve-target.outputs.status_description || 'Workspace E2E could not resolve this preview; re-run the failed jobs of this Workspace E2E run' }}
+          STATUS_STATE: ${{ needs.resolve-target.outputs.status_state || 'failure' }}
           TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
         run: |
           set -euo pipefail
