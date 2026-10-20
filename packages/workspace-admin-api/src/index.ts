@@ -157,6 +157,10 @@ export {
   MinimumDhwVersion,
 } from "./dhw-version";
 export {
+  emailAutomationScheduleMinutes,
+  emailAutomationTickMinutes,
+} from "./email-automation-cadence";
+export {
   AdminCliAutomationsApi,
   AutomationActivateInput,
   type AutomationActivateInput as AutomationActivateInputType,
