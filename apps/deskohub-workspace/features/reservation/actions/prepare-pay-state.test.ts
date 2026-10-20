@@ -1,13 +1,21 @@
 import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, mock, test } from "bun:test";
+import {
+  afterEach,
+  describe,
+  expect,
+  mock,
+  setSystemTime,
+  test,
+} from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { EmailRecipientDomainServiceMock } from "@deskohub/email/backend/recipient-domain.service.mock";
 import { testEmailAddress } from "@deskohub/test-email";
 import { eq } from "drizzle-orm";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Duration, Effect, Layer, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   customerMarketingConsents,
@@ -50,6 +58,7 @@ import {
   WithheldReferralService,
 } from "@/features/referrals/referral.service.mock";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
+import type { CreateWorkspaceReservationDraftInput } from "@/features/reservation/backend/workspace-reservation.repository";
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
 import type { ReservationBillingSelectionInput } from "@/features/reservation/reservation-billing";
 import { getSlowestSuccessfulCalendarLoad } from "@/shared/backend/config/google-calendar.config.test-utils";
@@ -114,6 +123,8 @@ const reservation = {
   billing: { purpose: "personal" as const, invoice: "none" as const },
 };
 
+afterEach(() => setSystemTime());
+
 const reusableHoldExpiresAt = Temporal.Instant.from("2030-07-01T12:00:00.000Z");
 
 const meetingRoomReservationInput = {
@@ -127,16 +138,27 @@ const meetingRoomReservationInput = {
   phone: "+420 777 777 777",
 };
 
+const withInstant = <A, E, R>(
+  instant: Temporal.Instant,
+  effect: Effect.Effect<A, E, R>
+) =>
+  TestClock.setTime(instant.epochMilliseconds).pipe(
+    Effect.andThen(effect),
+    Effect.provide(TestClock.layer())
+  );
+
 const buildAdvertisedPriceToken = async (
   quote: CoworkReservationQuote = buildCoworkReservationQuote(reservation),
   ttlMilliseconds?: number,
   locale: "en-US" | "cs-CZ" = "en-US",
-  requestedDiscountCode?: string
+  requestedDiscountCode?: string,
+  at?: Temporal.Instant,
+  coworkReservation = reservation
 ) => {
   const { buildAdvertisedPriceState, sealAdvertisedPriceState } = await import(
     "@/features/checkout/backend/checkout"
   );
-  return Effect.gen(function* () {
+  const effect = Effect.gen(function* () {
     const state = yield* buildAdvertisedPriceState({
       kind: "cowork",
       locale,
@@ -144,9 +166,9 @@ const buildAdvertisedPriceToken = async (
         kind: "cowork",
         details: {
           kind: "cowork",
-          entryTier: reservation.entryTier,
-          coffee: reservation.coffee,
-          date: reservation.date,
+          entryTier: coworkReservation.entryTier,
+          coffee: coworkReservation.coffee,
+          date: coworkReservation.date,
         },
       },
       quote,
@@ -158,7 +180,8 @@ const buildAdvertisedPriceToken = async (
       }),
     });
     return yield* sealAdvertisedPriceState(state);
-  }).pipe(Effect.runPromise);
+  });
+  return (at ? withInstant(at, effect) : effect).pipe(Effect.runPromise);
 };
 
 const buildMeetingRoomAdvertisedPriceToken = async (
@@ -362,6 +385,7 @@ const loadReservationFormPreparation = async () => {
 
 const runReusableReservationScenario = async (input: {
   readonly findByAttemptKeys: ReturnType<typeof mock>;
+  readonly findLatestByAgentSelectionKey?: ReturnType<typeof mock>;
   readonly findCurrentByCheckoutSessionKey?: ReturnType<typeof mock>;
   readonly findStoredCheckoutSessionKey?: ReturnType<typeof mock>;
   readonly createDraft?: ReturnType<typeof mock>;
@@ -375,6 +399,9 @@ const runReusableReservationScenario = async (input: {
   readonly getReservationStatus?: ReturnType<typeof mock>;
   readonly markCancellationFailed?: ReturnType<typeof mock>;
   readonly advertisedPriceToken?: string;
+  readonly checkoutSessionId?: string;
+  readonly checkoutAttemptId?: string;
+  readonly now?: Temporal.Instant;
   readonly marketingConsent?: boolean;
   readonly marketingConsentSource?: "site_tool";
   /** Replaces the mocked marketing consent repository. */
@@ -404,7 +431,10 @@ const runReusableReservationScenario = async (input: {
    * Books through the customer MCP server's path instead of the form: the
    * shared operation for this agent client, without BotID.
    */
-  readonly bookingAgent?: { readonly clientId: string };
+  readonly bookingAgent?: {
+    readonly clientId: string;
+    readonly selectionKey: string;
+  };
 }) => {
   const prepareFromReservationForm = await loadReservationFormPreparation();
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
@@ -440,6 +470,8 @@ const runReusableReservationScenario = async (input: {
   const withdrawActiveMarketingConsent = mock(() => Effect.succeed(false));
   const ensureAvailable = input.ensureAvailable ?? mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
+  const findLatestByAgentSelectionKey =
+    input.findLatestByAgentSelectionKey ?? mock(() => Effect.succeed([]));
   const createDraft = input.createDraft ?? mock(() => Effect.die("unused"));
   const assignAuthor =
     input.assignAuthor ??
@@ -550,6 +582,7 @@ const runReusableReservationScenario = async (input: {
     } satisfies IWorkspaceAvailabilityService),
     Layer.mock(WorkspaceReservationRepository, {
       findByAttemptKeys: input.findByAttemptKeys,
+      findLatestByAgentSelectionKey,
       findCurrentByCheckoutSessionKey:
         input.findCurrentByCheckoutSessionKey ??
         mock(() => Effect.succeed(null)),
@@ -595,24 +628,37 @@ const runReusableReservationScenario = async (input: {
 
   const submission = {
     locale: "en-US",
-    checkoutSessionId: "session-id",
-    checkoutAttemptId: "attempt-id",
+    checkoutSessionId: input.checkoutSessionId ?? "session-id",
+    checkoutAttemptId: input.checkoutAttemptId ?? "attempt-id",
     advertisedPriceToken:
-      input.advertisedPriceToken ?? (await buildAdvertisedPriceToken()),
+      input.advertisedPriceToken ??
+      (await buildAdvertisedPriceToken(
+        undefined,
+        undefined,
+        "en-US",
+        undefined,
+        input.now,
+        input.reservation ?? reservation
+      )),
     reservation: input.reservation ?? reservation,
     marketingConsent: input.marketingConsent,
     marketingConsentSource: input.marketingConsentSource,
     customer: input.customer,
   } as PreparePayStateInput;
   const { bookingAgent } = input;
-  const result = await (bookingAgent
-    ? prepareWorkspacePayState(submission).pipe(
-        Effect.provideService(BookingAgent, bookingAgent as never)
-      )
-    : prepareFromReservationForm(submission).pipe(
-        Effect.provide(BotProtectionServiceMock({ verifyHuman }))
-      )
-  ).pipe(Effect.provide(testLayer), Effect.result, Effect.runPromise);
+  const bookingPreparation = (
+    bookingAgent
+      ? prepareWorkspacePayState(submission).pipe(
+          Effect.provideService(BookingAgent, bookingAgent as never)
+        )
+      : prepareFromReservationForm(submission).pipe(
+          Effect.provide(BotProtectionServiceMock({ verifyHuman }))
+        )
+  ).pipe(Effect.provide(testLayer));
+  const result = await (input.now
+    ? withInstant(input.now, bookingPreparation)
+    : bookingPreparation
+  ).pipe(Effect.result, Effect.runPromise);
 
   return {
     result: result._tag === "Success" ? result.success : undefined,
@@ -626,6 +672,7 @@ const runReusableReservationScenario = async (input: {
     withdrawMarketingConsent,
     withdrawActiveMarketingConsent,
     ensureAvailable,
+    findLatestByAgentSelectionKey,
     createDraft,
     claimHoldCreation,
     findById,
@@ -1502,7 +1549,10 @@ describe("prepareWorkspacePayState", () => {
       input: {
         readonly marketingConsent?: boolean;
         readonly marketingConsentSource?: "site_tool";
-        readonly bookingAgent?: { readonly clientId: string };
+        readonly bookingAgent?: {
+          readonly clientId: string;
+          readonly selectionKey: string;
+        };
       }
     ) => {
       const { db } = testDatabase!;
@@ -1601,6 +1651,7 @@ describe("prepareWorkspacePayState", () => {
 
     const bookingAgent = {
       clientId: "https://assistant.example/oauth-client.json",
+      selectionKey: "stored-consent-agent-selection",
     };
 
     test("an agent's opt-in stores mcp_tool as the source", async () => {
@@ -1878,7 +1929,9 @@ describe("prepareWorkspacePayState", () => {
     describe("through a customer agent", () => {
       const bookingAgent = {
         clientId: "https://assistant.example/oauth-client.json",
+        selectionKey: "agent-selection-key",
       };
+      const agentReservation = { ...reservation, date: "2026-10-22" };
       const agentBooking = () => ({
         ...linkedAccountBooking(),
         bookingAgent,
@@ -1889,6 +1942,139 @@ describe("prepareWorkspacePayState", () => {
           agentClientId: bookingAgent.clientId,
           ...overrides,
         });
+      const runAgentAt = async (
+        now: Temporal.Instant,
+        overrides: Omit<
+          Parameters<typeof runReusableReservationScenario>[0],
+          "bookingAgent" | "reservation" | "now" | "advertisedPriceToken"
+        >
+      ) => {
+        setSystemTime(new Date(now.toString()));
+        const advertisedPriceToken = await buildAdvertisedPriceToken(
+          buildCoworkReservationQuote(agentReservation),
+          undefined,
+          "en-US",
+          undefined,
+          now,
+          agentReservation
+        );
+        return runReusableReservationScenario({
+          ...agentBooking(),
+          reservation: agentReservation,
+          now,
+          advertisedPriceToken,
+          ...overrides,
+        });
+      };
+      const makeAgentDraft = (id: string) =>
+        mock((input) =>
+          Effect.succeed(
+            makeReusableReservation({
+              id,
+              checkoutSessionKey: input.checkoutSessionKey,
+              checkoutAttemptKey: input.checkoutAttemptKey,
+              correlationId: `${id}-correlation`,
+              dotyposCustomerId: input.dotyposCustomerId,
+              reservationDetails: input.reservationDetails,
+              locale: input.locale,
+              reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+              authorAccountId: input.authorAccountId,
+              agentClientId: input.agentClientId,
+              agentSelectionKey: input.agentSelectionKey,
+              reservationState: "draft",
+              paymentState: "not_started",
+              dotyposReservationId: null,
+            })
+          )
+        );
+      const makeAgentHoldFromDraft = (
+        id: string,
+        input: CreateWorkspaceReservationDraftInput,
+        bookedAt: Temporal.Instant,
+        overrides: Partial<WorkspaceReservation> = {}
+      ) =>
+        agentHold({
+          id,
+          checkoutSessionKey: input.checkoutSessionKey,
+          checkoutAttemptKey: input.checkoutAttemptKey,
+          correlationId: `${id}-correlation`,
+          dotyposCustomerId: input.dotyposCustomerId,
+          dotyposReservationId: "dotypos-reservation-id",
+          authorAccountId: accountId as never,
+          agentClientId: bookingAgent.clientId,
+          agentSelectionKey: input.agentSelectionKey,
+          reservationDetails: input.reservationDetails,
+          locale: input.locale,
+          reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+          reservationCreatedAt: bookedAt,
+          createdAt: bookedAt,
+          ...overrides,
+        });
+      const makeInitialAgentHold = async () => {
+        const bookedAt = Temporal.Instant.from("2026-10-20T12:09:59Z");
+        const createDraft = makeAgentDraft("agent-live-hold-id");
+        const createReservation = mock(() =>
+          Effect.succeed({ id: "dotypos-live-hold-id" } as never)
+        );
+        const cancelReservation = mock(() => Effect.void);
+        const claimSupersessionCancellation = mock(() => Effect.succeed(null));
+        const first = await runAgentAt(bookedAt, {
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          createDraft,
+          createReservation,
+          cancelReservation,
+          claimSupersessionCancellation,
+        });
+        const draftInput = createDraft.mock.calls[0]?.[0];
+        expect(first.result?.status).toBe("ready");
+        expect(draftInput?.reservationHoldExpiresAt?.toString()).toBe(
+          "2026-10-20T12:19:59Z"
+        );
+        expect(draftInput?.agentSelectionKey).toBe(bookingAgent.selectionKey);
+        const held = makeAgentHoldFromDraft(
+          "agent-live-hold-id",
+          draftInput!,
+          bookedAt
+        );
+        return {
+          first,
+          held,
+          createDraft,
+          createReservation,
+          cancelReservation,
+          claimSupersessionCancellation,
+        };
+      };
+      const runLiveHoldRetry = async (retryAt: Temporal.Instant) => {
+        const initial = await makeInitialAgentHold();
+        const retry = await runAgentAt(retryAt, {
+          findLatestByAgentSelectionKey: mock(() =>
+            Effect.succeed([initial.held])
+          ),
+          findByAttemptKeys: mock((keys: readonly string[]) =>
+            Effect.succeed(
+              keys.includes(initial.held.checkoutAttemptKey)
+                ? initial.held
+                : null
+            )
+          ),
+          createDraft: initial.createDraft,
+          createReservation: initial.createReservation,
+          cancelReservation: initial.cancelReservation,
+          claimSupersessionCancellation: initial.claimSupersessionCancellation,
+        });
+
+        expect(retry.result?.orderId).toBe(initial.first.result?.orderId);
+        expect(retry.result?.redirectUrl).toBe(
+          initial.first.result?.redirectUrl
+        );
+        expect(retry.result?.expiresAt).toBe(initial.first.result?.expiresAt);
+        expect(initial.createReservation).toHaveBeenCalledTimes(1);
+        expect(initial.cancelReservation).not.toHaveBeenCalled();
+        expect(initial.createDraft).toHaveBeenCalledTimes(1);
+        expect(initial.claimSupersessionCancellation).not.toHaveBeenCalled();
+        return { initial, retry };
+      };
 
       test("books without BotID and records the agent client on the new hold", async () => {
         const scenario = await runReusableReservationScenario({
@@ -1935,6 +2121,199 @@ describe("prepareWorkspacePayState", () => {
         });
         expect(scenario.createReservation).not.toHaveBeenCalled();
         expect(scenario.createDraft).not.toHaveBeenCalled();
+      });
+
+      test("reuses the live hold when an identical request repeats across the old 10-minute boundary", async () => {
+        const { initial, retry } = await runLiveHoldRetry(
+          Temporal.Instant.from("2026-10-20T12:10:01Z")
+        );
+
+        expect(initial.first.result?.orderId).toBe("agent-live-hold-id");
+        expect(retry.result?.orderId).toBe("agent-live-hold-id");
+      });
+
+      test("returns a byte-identical Pay URL for a same-time identical retry", async () => {
+        const { initial, retry } = await runLiveHoldRetry(
+          Temporal.Instant.from("2026-10-20T12:09:59Z")
+        );
+
+        expect(retry.result?.redirectUrl).toBe(
+          initial.first.result?.redirectUrl
+        );
+      });
+
+      test("keeps a booking whose payment is pending", async () => {
+        const initial = await makeInitialAgentHold();
+        const pending = agentHold({
+          ...initial.held,
+          paymentState: "pending",
+          activePaymentAttemptId: "pending-payment-attempt-id" as never,
+        });
+        const claimHoldCreation = mock(() =>
+          Effect.die("a pending retry must not claim hold creation")
+        );
+        const claimSupersessionCancellation = mock(() =>
+          Effect.die("a pending retry must not cancel its hold")
+        );
+        const retry = await runAgentAt(
+          Temporal.Instant.from("2026-10-20T12:15:00Z"),
+          {
+            findLatestByAgentSelectionKey: mock(() =>
+              Effect.succeed([pending])
+            ),
+            findByAttemptKeys: mock(() =>
+              Effect.die("a pending retry must not look up another attempt")
+            ),
+            createDraft: initial.createDraft,
+            claimHoldCreation,
+            claimSupersessionCancellation,
+            createReservation: initial.createReservation,
+            cancelReservation: initial.cancelReservation,
+          }
+        );
+
+        expect(retry.result?.orderId).toBe(initial.first.result?.orderId);
+        expect(retry.result?.redirectUrl).toBe(
+          initial.first.result?.redirectUrl
+        );
+        expect(retry.result?.expiresAt).toBe(initial.first.result?.expiresAt);
+        expect(initial.createReservation).toHaveBeenCalledTimes(1);
+        expect(initial.cancelReservation).not.toHaveBeenCalled();
+        expect(initial.createDraft).toHaveBeenCalledTimes(1);
+        expect(claimHoldCreation).not.toHaveBeenCalled();
+        expect(claimSupersessionCancellation).not.toHaveBeenCalled();
+      });
+
+      test("refuses a repeat once a pending booking's Pay link expired", async () => {
+        const pending = agentHold({
+          id: "expired-pending-agent-hold-id",
+          reservationHoldExpiresAt: Temporal.Instant.from(
+            "2026-10-20T12:19:59Z"
+          ),
+          reservationCreatedAt: Temporal.Instant.from("2026-10-20T12:09:59Z"),
+          paymentState: "pending",
+          activePaymentAttemptId: "pending-payment-attempt-id" as never,
+        });
+        const createReservation = mock(() =>
+          Effect.succeed({ id: "unexpected-dotypos-hold-id" } as never)
+        );
+        const cancelReservation = mock(() => Effect.void);
+        const scenario = await runAgentAt(
+          Temporal.Instant.from("2026-10-20T12:20:30Z"),
+          {
+            findLatestByAgentSelectionKey: mock(() =>
+              Effect.succeed([pending])
+            ),
+            findByAttemptKeys: mock(() => Effect.die("no attempt lookup")),
+            createReservation,
+            cancelReservation,
+          }
+        );
+
+        expect(scenario.error).toMatchObject({
+          _tag: "AgentBookingPaymentInProgressError",
+        });
+        expect(createReservation).not.toHaveBeenCalled();
+        expect(cancelReservation).not.toHaveBeenCalled();
+        expect(scenario.createDraft).not.toHaveBeenCalled();
+      });
+
+      test("refuses an identical request whose live hold sits in a rotated session after the profile changed", async () => {
+        const rotatedHold = agentHold({
+          id: "rotated-agent-hold-id",
+          checkoutSessionKey: "rotated-session-key" as never,
+          checkoutAttemptKey: "stale-attempt-key" as never,
+          reservationHoldExpiresAt: Temporal.Instant.from(
+            "2026-10-20T12:19:59Z"
+          ),
+          reservationCreatedAt: Temporal.Instant.from("2026-10-20T12:09:59Z"),
+          reservationState: "held",
+          paymentState: "not_started",
+          dotyposReservationId: "rotated-dotypos-reservation-id",
+        });
+        const createReservation = mock(() =>
+          Effect.succeed({ id: "unexpected-dotypos-hold-id" } as never)
+        );
+        const cancelReservation = mock(() => Effect.void);
+        const claimSupersessionCancellation = mock(() =>
+          Effect.succeed(rotatedHold)
+        );
+        const scenario = await runAgentAt(
+          Temporal.Instant.from("2026-10-20T12:15:00Z"),
+          {
+            findLatestByAgentSelectionKey: mock(() =>
+              Effect.succeed([rotatedHold])
+            ),
+            findByAttemptKeys: mock(() => Effect.die("no attempt lookup")),
+            createReservation,
+            cancelReservation,
+            claimSupersessionCancellation,
+          }
+        );
+
+        expect(scenario.error).toMatchObject({
+          _tag: "CheckoutAttemptUnavailableError",
+        });
+        expect(createReservation).not.toHaveBeenCalled();
+        expect(cancelReservation).not.toHaveBeenCalled();
+        expect(scenario.createDraft).not.toHaveBeenCalled();
+        expect(claimSupersessionCancellation).not.toHaveBeenCalled();
+      });
+
+      test("starts a new hold for an identical request after the hold expired", async () => {
+        const initial = await makeInitialAgentHold();
+        const replacementId = "agent-after-expiry-hold-id";
+        const createReservation = mock(() =>
+          Effect.succeed({ id: "dotypos-after-expiry-hold-id" } as never)
+        );
+        const cancelReservation = mock(() => Effect.void);
+        const claimSupersessionCancellation = mock(() =>
+          Effect.succeed(initial.held)
+        );
+        const completeSupersessionAndCreateDraft = mock((input) =>
+          Effect.succeed(
+            agentHold({
+              id: replacementId,
+              checkoutSessionKey: input.replacement.checkoutSessionKey,
+              checkoutAttemptKey: input.replacement.checkoutAttemptKey,
+              correlationId: `${replacementId}-correlation`,
+              dotyposCustomerId: input.replacement.dotyposCustomerId,
+              reservationDetails: input.replacement.reservationDetails,
+              locale: input.replacement.locale,
+              reservationHoldExpiresAt:
+                input.replacement.reservationHoldExpiresAt,
+              agentSelectionKey: input.replacement.agentSelectionKey,
+              dotyposReservationId: null,
+              reservationState: "draft",
+              paymentState: "not_started",
+            })
+          )
+        );
+        const scenario = await runAgentAt(
+          Temporal.Instant.from("2026-10-20T12:25:00Z"),
+          {
+            findLatestByAgentSelectionKey: mock(() =>
+              Effect.succeed([initial.held])
+            ),
+            findByAttemptKeys: mock(() => Effect.succeed(null)),
+            findCurrentByCheckoutSessionKey: mock(() =>
+              Effect.succeed(initial.held)
+            ),
+            getReservationStatus: mock(() => Effect.succeed("NEW" as const)),
+            claimSupersessionCancellation,
+            completeSupersessionAndCreateDraft,
+            createReservation,
+            cancelReservation,
+          }
+        );
+        const replacementAttemptKey =
+          completeSupersessionAndCreateDraft.mock.calls[0]?.[0].replacement
+            .checkoutAttemptKey;
+
+        expect(scenario.result?.orderId).toBe(replacementId);
+        expect(scenario.result?.orderId).not.toBe(initial.held.id);
+        expect(createReservation).toHaveBeenCalledTimes(1);
+        expect(replacementAttemptKey).not.toBe(initial.held.checkoutAttemptKey);
       });
 
       test("supersedes the client's previous hold in its session", async () => {
