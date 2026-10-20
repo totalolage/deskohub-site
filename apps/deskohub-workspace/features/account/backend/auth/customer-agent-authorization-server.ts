@@ -33,6 +33,10 @@ export const disabledCustomerAgentClientPaths = [
   "/oauth2/end-session",
 ];
 
+/** Fetches an agent's Client ID Metadata Document. */
+export type CustomerAgentClientMetadataTransport =
+  typeof fetchClientMetadataResource;
+
 const accessTokenVerificationBody = Schema.toStandardSchemaV1(
   Schema.Struct({ token: Schema.String })
 );
@@ -52,9 +56,15 @@ const accessTokenVerificationBody = Schema.toStandardSchemaV1(
  */
 export const makeCustomerAgentAuthorizationPlugins = ({
   resource,
+  clientMetadataTransport = fetchClientMetadataResource,
 }: {
   /** The canonical URL of this deployment's customer MCP server. */
   readonly resource: string;
+  /**
+   * Fetches agents' Client ID Metadata Documents. Defaults to the pinned
+   * public-address Node transport; tests inject a stub instead of the network.
+   */
+  readonly clientMetadataTransport?: CustomerAgentClientMetadataTransport;
 }) => {
   const provider = mcp({
     resource,
@@ -88,7 +98,10 @@ export const makeCustomerAgentAuthorizationPlugins = ({
 
   return [
     provider,
-    cimd({ fetchClientMetadataResource, metadataProfile: "mcp-2026-07-28" }),
+    cimd({
+      fetchClientMetadataResource: clientMetadataTransport,
+      metadataProfile: "mcp-2026-07-28",
+    }),
     accessTokenVerification,
   ] as const;
 };

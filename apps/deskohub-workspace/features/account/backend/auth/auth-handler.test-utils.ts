@@ -76,6 +76,7 @@ export type TestAuthOptions = {
   readonly verifyHuman?: WorkspaceAuthConfig["verifyHuman"];
   readonly beforeDeleteUser?: WorkspaceAuthConfig["beforeDeleteUser"];
   readonly captureAccountLocalePreference?: WorkspaceAuthConfig["captureAccountLocalePreference"];
+  readonly clientMetadataTransport?: WorkspaceAuthConfig["clientMetadataTransport"];
 };
 
 /** The real sign-in capture against the migrated disposable database. */
@@ -141,6 +142,7 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
     allowedHosts: [HOST],
     passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
     customerMcpResource: `https://${HOST}/api/mcp`,
+    clientMetadataTransport: options.clientMetadataTransport,
     httpsOnly: true,
     isSignInCodeEnabled: options.isSignInCodeEnabled ?? (async () => false),
     arePasskeysEnabled: options.arePasskeysEnabled ?? (async () => true),
@@ -159,7 +161,22 @@ type MemoryAuthStore = {
   readonly verification: Verification[];
   readonly rateLimit: RateLimit[];
   readonly passkey: Passkey[];
-};
+} & Record<(typeof customerAgentOAuthModels)[number], unknown[]>;
+
+/**
+ * The OAuth server's models. The provider seeds the MCP resource when the
+ * instance starts, so the store needs them even in tests that never
+ * authorize an agent.
+ */
+const customerAgentOAuthModels = [
+  "oauthClient",
+  "oauthResource",
+  "oauthClientResource",
+  "oauthRefreshToken",
+  "oauthAccessToken",
+  "oauthConsent",
+  "oauthClientAssertion",
+] as const;
 
 export const makeMemoryTestAuth = (
   options: Omit<TestAuthOptions, "database"> = {}
@@ -171,6 +188,9 @@ export const makeMemoryTestAuth = (
     verification: [],
     rateLimit: [],
     passkey: [],
+    ...(Object.fromEntries(
+      customerAgentOAuthModels.map((model) => [model, []])
+    ) as Record<(typeof customerAgentOAuthModels)[number], unknown[]>),
   };
   const auth = makeTestAuth({
     ...options,
