@@ -7,6 +7,7 @@ import { env } from "@/env";
 import {
   type BetterAuthHostEnvironment,
   resolveBetterAuthAllowedHosts,
+  resolveCustomerMcpResource,
   resolvePasskeyRelyingParty,
 } from "@/features/account/backend/auth/auth-hosts";
 import { parseBetterAuthSecrets } from "@/features/account/backend/auth/auth-secrets";
@@ -17,6 +18,7 @@ import {
   workspaceSendMagicLink,
 } from "@/features/account/backend/auth/auth-server";
 import { captureAccountLocalePreference } from "@/features/account/backend/customer-locale-preference";
+import { customerMcpServerPath } from "@/features/account/customer-agent-routes";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
@@ -51,6 +53,17 @@ if (passkeyRelyingParty.kind === "invalid") {
   );
 }
 
+const mcpResource = resolveCustomerMcpResource(
+  hostEnvironment,
+  customerMcpServerPath
+);
+if (mcpResource.kind === "invalid") {
+  throw new Error(`Workspace account bootstrap failed: ${mcpResource.message}`);
+}
+
+/** The canonical URL of this deployment's customer MCP server. */
+export const customerMcpResource = mcpResource.resource;
+
 /**
  * The fail-closed server-only Better Auth singleton. Loading this module
  * without valid authentication configuration throws, so a deployment cannot
@@ -61,6 +74,7 @@ export const auth = makeWorkspaceAuth({
   secrets: secrets.secrets,
   allowedHosts: allowedHosts.hosts,
   passkeyRelyingParty: passkeyRelyingParty.relyingParty,
+  customerMcpResource,
   httpsOnly: env.VERCEL_ENV !== "development",
   isSignInCodeEnabled,
   arePasskeysEnabled,

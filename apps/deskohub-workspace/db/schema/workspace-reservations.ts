@@ -107,6 +107,12 @@ export const workspaceReservations = pgTable(
     authorAccountId: text("author_account_id")
       .references(() => customerAccounts.id, { onDelete: "restrict" })
       .$type<CustomerAccountId>(),
+    /**
+     * The OAuth client ID of the customer's AI agent that started this
+     * reservation through the customer MCP server; null for reservations made
+     * on the site.
+     */
+    agentClientId: text("agent_client_id"),
     reservationPurpose: text("reservation_purpose").$type<ReservationPurpose>(),
     dotyposReservationId: text(
       "dotypos_reservation_id"

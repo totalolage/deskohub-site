@@ -140,6 +140,7 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
     secrets: options.secrets ?? [{ version: 1, value: SECRET_V1 }],
     allowedHosts: [HOST],
     passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
+    customerMcpResource: `https://${HOST}/api/mcp`,
     httpsOnly: true,
     isSignInCodeEnabled: options.isSignInCodeEnabled ?? (async () => false),
     arePasskeysEnabled: options.arePasskeysEnabled ?? (async () => true),

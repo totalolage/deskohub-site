@@ -60,6 +60,10 @@ import {
   betterAuthMagicLinkOptions,
   betterAuthSignInCodeOptions,
 } from "./auth-options";
+import {
+  disabledCustomerAgentClientPaths,
+  makeCustomerAgentAuthorizationPlugins,
+} from "./customer-agent-authorization-server";
 import { renderMagicLinkEmail } from "./magic-link-email";
 import {
   magicLinkDeliveryEnvironment,
@@ -92,6 +96,8 @@ export type WorkspaceAuthConfig = {
   readonly allowedHosts: readonly string[];
   /** This deployment's passkey RP ID and origins, never the plugin default. */
   readonly passkeyRelyingParty: PasskeyRelyingParty;
+  /** The canonical URL of this deployment's customer MCP server. */
+  readonly customerMcpResource: string;
   readonly httpsOnly: boolean;
   /**
    * The `login_email_code` read, once per sign-in email; a rejection counts
@@ -810,7 +816,11 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
         });
       },
     },
-    disabledPaths: ["/update-user", ...disabledSignInCodePaths],
+    disabledPaths: [
+      "/update-user",
+      ...disabledSignInCodePaths,
+      ...disabledCustomerAgentClientPaths,
+    ],
     hooks: {
       before: createAuthMiddleware((ctx) =>
         runWorkspaceEffect("account.auth.guard", { boundary: "route" })(
@@ -873,6 +883,9 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
               boundary: "route",
             })(confirmSessionPasskey(assertion)),
         },
+      }),
+      ...makeCustomerAgentAuthorizationPlugins({
+        resource: config.customerMcpResource,
       }),
       // Better Auth requires `nextCookies` to be the last plugin: it forwards
       // Set-Cookie headers into the Next.js cookie store for Server Action
