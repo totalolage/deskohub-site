@@ -15,7 +15,7 @@ index 42c943dd45aa3d297a14edcc056a14e7ddd54680..eb59a62d768552bd01b7789eb2f3ae66
  async function updateConsentEndpoint(ctx, opts) {
  	const session = await getSessionFromCtx(ctx);
 diff --git a/dist/introspect-C6P1zrTr.mjs b/dist/introspect-C6P1zrTr.mjs
-index 0b3934dd6724d408a84624a3fb0215f6d3274fea..885cf9eb1a96403efc0f6df05a21ab71f30d2a03 100644
+index 0b3934dd6724d408a84624a3fb0215f6d3274fea..59c2e30aa109c167aadd7226f020da5eddabdb84 100644
 --- a/dist/introspect-C6P1zrTr.mjs
 +++ b/dist/introspect-C6P1zrTr.mjs
 @@ -802,6 +802,14 @@ function getSeedState(ctx) {
@@ -51,7 +51,7 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..885cf9eb1a96403efc0f6df05a21ab71
  				if (/unique|duplicate|UNIQUE/i.test(message)) {
  					logger.debug(`oauth-provider: resource ${input.identifier} already inserted by a concurrent process — skipping.`);
  					continue;
-@@ -1495,34 +1503,55 @@ async function createOpaqueAccessToken(ctx, opts, user, client, scopes, payload,
+@@ -1495,27 +1503,37 @@ async function createOpaqueAccessToken(ctx, opts, user, client, scopes, payload,
  *
  * @internal
  */
@@ -92,38 +92,25 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..885cf9eb1a96403efc0f6df05a21ab71
  	});
  	await ctx.context.adapter.deleteMany({
  		model: "oauthRefreshToken",
--		where: [{
--			field: "clientId",
--			value: clientId
--		}, {
--			field: "userId",
--			value: userId
--		}]
 +		where
 +	});
 +}
 +// Workspace patch (better-auth/better-auth#11056): a rotation that wrote its
 +// tokens after a concurrent consent delete revokes them. The consent delete
 +// runs before the token deletes, so either this lookup misses the consent or
-+// the token deletes start after these tokens were written.
++// the token deletes start after these tokens were written. Only the consent
++// with the token's own reference counts.
 +async function revokeRotationWithoutConsent(ctx, clientId, userId, referenceId) {
-+	if (await ctx.context.adapter.findOne({
++	if ((await ctx.context.adapter.findMany({
 +		model: "oauthConsent",
-+		where: [
-+			{
-+				field: "clientId",
-+				value: clientId
-+			},
-+			{
-+				field: "userId",
-+				value: userId
-+			},
-+			...referenceId ? [{
-+				field: "referenceId",
-+				value: referenceId
-+			}] : []
-+		]
-+	})) return;
+ 		where: [{
+ 			field: "clientId",
+ 			value: clientId
+@@ -1523,6 +1541,11 @@ async function invalidateRefreshFamily(ctx, clientId, userId) {
+ 			field: "userId",
+ 			value: userId
+ 		}]
++	})).some((consent) => (consent.referenceId ?? null) === (referenceId ?? null))) return;
 +	await invalidateRefreshFamily(ctx, clientId, userId, referenceId);
 +	throw new APIError("BAD_REQUEST", {
 +		error_description: "invalid refresh token",
@@ -131,7 +118,7 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..885cf9eb1a96403efc0f6df05a21ab71
  	});
  }
  async function revokeTokensIssuedForAuthorizationCode(ctx, authorizationCodeId) {
-@@ -1866,6 +1895,7 @@ async function createUserTokens(ctx, opts, params) {
+@@ -1866,6 +1889,7 @@ async function createUserTokens(ctx, opts, params) {
  		exp: refreshTokenExp,
  		sid: sessionId
  	}, existingRefreshToken, authTime, refreshResources, confirmation, requestedUserInfoClaims) : void 0]);
