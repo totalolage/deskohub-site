@@ -4,7 +4,6 @@ export {
   type CustomerAgentClientId,
   type CustomerAgentGrant,
   customerAgentClientIdSchema,
-  customerAuthenticationForAgent,
   readAgentAccessToken,
 } from "./backend/auth/customer-agent-authorization.service";
 export {
@@ -31,7 +30,4 @@ export type {
   CustomerReservationSummary,
 } from "./contracts";
 export { CustomerAccountAccessError } from "./customer-account";
-export {
-  type CustomerAgentScope,
-  customerAgentScopes,
-} from "./customer-agent-scopes";
+export type { CustomerAgentScope } from "./customer-agent-scopes";
