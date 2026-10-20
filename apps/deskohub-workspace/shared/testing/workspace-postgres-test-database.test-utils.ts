@@ -67,7 +67,10 @@ const connectConfiguredWorkspacePostgres = async () => {
   return databaseUrl ? connectWorkspacePostgres(databaseUrl) : null;
 };
 
-/** The configured test database, migrated once and shared by every suite. */
+/**
+ * The configured test database, migrated once and shared by every suite
+ * without a database of its own.
+ */
 export const connectWorkspacePostgresTestDatabase =
   (): Promise<WorkspacePostgresTestDatabase | null> =>
     (connection ??= connectConfiguredWorkspacePostgres());
