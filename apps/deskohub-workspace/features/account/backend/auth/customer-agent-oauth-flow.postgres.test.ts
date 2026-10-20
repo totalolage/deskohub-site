@@ -1174,20 +1174,23 @@ describe.skipIf(!testDatabase)(
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ id: connection!.id }),
         });
-      /** No issued token works any more, and none is left stored. */
+      /**
+       * None is left stored, and no issued token works any more. The rows
+       * are counted first, since a refresh attempt could delete leftovers.
+       */
       const expectRevoked = async (issued: readonly TokenResponse[]) => {
-        for (const { access_token, refresh_token } of issued) {
-          expect(await failureReasonOf(authorityOver(auth), access_token)).toBe(
-            "invalid-token"
-          );
-          expect((await refresh(refresh_token!)).status).toBe(400);
-        }
         for (const table of [
           "oauth_access_token",
           "oauth_refresh_token",
           "oauth_consent",
         ]) {
           expect(await countRows(table, customer.accountId)).toBe(0);
+        }
+        for (const { access_token, refresh_token } of issued) {
+          expect(await failureReasonOf(authorityOver(auth), access_token)).toBe(
+            "invalid-token"
+          );
+          expect((await refresh(refresh_token!)).status).toBe(400);
         }
       };
       return { interleaving, tokens, refresh, disconnect, expectRevoked };
@@ -1243,16 +1246,19 @@ describe.skipIf(!testDatabase)(
     // Guards the Workspace oauth-provider patch: the disconnect deletes the
     // tokens before the consent, so one that fails there keeps the consent
     // and a retry revokes the tokens instead of finding nothing to delete.
-    test("revokes the tokens when a disconnect that failed partway is retried", async () => {
-      const race = await connectForRace();
-      race.interleaving.before("deleteMany", "oauthAccessToken", async () => {
-        throw new Error("Injected token delete failure");
-      });
+    test.each(["oauthAccessToken", "oauthRefreshToken"])(
+      "revokes the tokens when a disconnect that failed deleting %s is retried",
+      async (model) => {
+        const race = await connectForRace();
+        race.interleaving.before("deleteMany", model, async () => {
+          throw new Error("Injected token delete failure");
+        });
 
-      expect((await race.disconnect()).status).toBe(500);
-      expect((await race.disconnect()).status).toBe(200);
-      await race.expectRevoked([race.tokens]);
-    });
+        expect((await race.disconnect()).status).toBe(500);
+        expect((await race.disconnect()).status).toBe(200);
+        await race.expectRevoked([race.tokens]);
+      }
+    );
 
     test("deletes a connected account with its grants, and its tokens stop authorizing", async () => {
       const agent = makeAgent();
