@@ -930,7 +930,9 @@ const resolveAgentCheckout = Effect.fn("preparePayState.resolveAgentCheckout")(
     // The agent session's current reservation is superseded as usual, but a
     // hold in a rotated session would only be left behind beside a new one.
     if (!inAgentSession) {
-      return yield* new CheckoutAttemptUnavailableError({ reservation: latest });
+      return yield* new CheckoutAttemptUnavailableError({
+        reservation: latest,
+      });
     }
     return nextAttempt(latest);
   }

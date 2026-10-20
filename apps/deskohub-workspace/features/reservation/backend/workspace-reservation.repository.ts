@@ -654,10 +654,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                   workspaceReservations.agentSelectionKey,
                   input.agentSelectionKey
                 ),
-                eq(
-                  workspaceReservations.authorAccountId,
-                  input.authorAccountId
-                )
+                eq(workspaceReservations.authorAccountId, input.authorAccountId)
               )
             )
             .orderBy(
@@ -1176,7 +1173,8 @@ export class WorkspaceReservationRepository extends Context.Service<
                   dotyposCustomerId: input.replacement.dotyposCustomerId,
                   authorAccountId: input.replacement.authorAccountId,
                   agentClientId: input.replacement.agentClientId ?? null,
-                  agentSelectionKey: input.replacement.agentSelectionKey ?? null,
+                  agentSelectionKey:
+                    input.replacement.agentSelectionKey ?? null,
                   reservationPurpose: input.replacement.reservationPurpose,
                   reservationState: "draft",
                   paymentState: "not_started",
