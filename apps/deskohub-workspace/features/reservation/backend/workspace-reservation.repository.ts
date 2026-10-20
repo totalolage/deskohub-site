@@ -8,7 +8,6 @@ import {
   asc,
   desc,
   eq,
-  gt,
   inArray,
   isNull,
   lt,
