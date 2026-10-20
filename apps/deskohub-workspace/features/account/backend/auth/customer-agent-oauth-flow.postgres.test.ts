@@ -404,7 +404,7 @@ const countRows = async (table: string, userId: string) => {
  */
 const makeInterleavingDatabase = () => {
   const base = buildDatabaseAdapter();
-  type Write = "create" | "delete";
+  type Write = "create" | "delete" | "deleteMany";
   let next:
     | {
         readonly write: Write;
@@ -429,10 +429,17 @@ const makeInterleavingDatabase = () => {
         await beforeWrite("delete", input.model);
         return adapter.delete(input);
       };
+      const removeMany = async (
+        input: Parameters<typeof adapter.deleteMany>[0]
+      ) => {
+        await beforeWrite("deleteMany", input.model);
+        return adapter.deleteMany(input);
+      };
       return {
         ...adapter,
         create: create as typeof adapter.create,
         delete: remove as typeof adapter.delete,
+        deleteMany: removeMany as typeof adapter.deleteMany,
       };
     },
     /** Runs `step` before the next `write` to `model`, which then goes on. */
@@ -1204,8 +1211,8 @@ describe.skipIf(!testDatabase)(
     });
 
     // Guards the Workspace oauth-provider patch: the disconnect deletes the
-    // consent before the tokens, so a refresh that still saw the consent
-    // wrote its tokens before the token deletes started.
+    // tokens again after the consent, so a refresh that still saw the consent
+    // wrote its tokens before that delete started.
     test("revokes the tokens of a refresh that finishes while a disconnect is under way", async () => {
       const race = await connectForRace();
       let rotated: Promise<Response> | undefined;
@@ -1231,6 +1238,20 @@ describe.skipIf(!testDatabase)(
         race.tokens,
         (await response.json()) as TokenResponse,
       ]);
+    });
+
+    // Guards the Workspace oauth-provider patch: the disconnect deletes the
+    // tokens before the consent, so one that fails there keeps the consent
+    // and a retry revokes the tokens instead of finding nothing to delete.
+    test("revokes the tokens when a disconnect that failed partway is retried", async () => {
+      const race = await connectForRace();
+      race.interleaving.before("deleteMany", "oauthAccessToken", async () => {
+        throw new Error("Injected token delete failure");
+      });
+
+      expect((await race.disconnect()).status).toBe(500);
+      expect((await race.disconnect()).status).toBe(200);
+      await race.expectRevoked([race.tokens]);
     });
 
     test("deletes a connected account with its grants, and its tokens stop authorizing", async () => {

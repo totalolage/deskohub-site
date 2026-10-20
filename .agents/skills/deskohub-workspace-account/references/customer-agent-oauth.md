@@ -138,7 +138,9 @@ resource.
   `@better-auth/oauth-provider` patch (see the `deskohub-repository` skill's
   patched dependencies) also deletes the client's access and refresh tokens
   for that customer, so its next MCP call gets the 401 challenge and its
-  refresh fails. It deletes the consent before the tokens, and a refresh
+  refresh fails. It deletes the tokens, then the consent, then the tokens
+  again. A disconnect that fails before the consent is gone keeps the
+  assistant listed, so retrying it still revokes the tokens. A refresh
   rotation that finds the consent gone after writing its tokens revokes them
   and answers `invalid_grant`, so a refresh in flight during the disconnect
   leaves no usable tokens. Authorization codes issued before the disconnect stay

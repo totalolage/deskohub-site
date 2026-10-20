@@ -1,21 +1,31 @@
 diff --git a/dist/authorize-BmTe2VYG.mjs b/dist/authorize-BmTe2VYG.mjs
-index 42c943dd45aa3d297a14edcc056a14e7ddd54680..eb59a62d768552bd01b7789eb2f3ae6611bee3b8 100644
+index 42c943dd45aa3d297a14edcc056a14e7ddd54680..b681f5555e89da4f08f3fd19934b9e98a19834fe 100644
 --- a/dist/authorize-BmTe2VYG.mjs
 +++ b/dist/authorize-BmTe2VYG.mjs
-@@ -3007,6 +3007,11 @@ async function deleteConsentEndpoint(ctx, opts) {
+@@ -3000,6 +3000,13 @@ async function deleteConsentEndpoint(ctx, opts) {
+ 		error: "not_found"
+ 	});
+ 	if (consent.userId !== session.user.id) throw new APIError("UNAUTHORIZED");
++	// Workspace patch (better-auth/better-auth#11056): disconnecting a client
++	// revokes the tokens it holds for the user. The tokens go before the
++	// consent, so a disconnect that fails before the consent is gone can be
++	// retried. They go again after it, so a refresh rotating concurrently
++	// either sees the consent gone and revokes its own tokens, or wrote them
++	// before the second delete starts.
++	await invalidateRefreshFamily(ctx, consent.clientId, consent.userId, consent.referenceId);
+ 	await ctx.context.adapter.delete({
+ 		model: "oauthConsent",
+ 		where: [{
+@@ -3007,6 +3014,7 @@ async function deleteConsentEndpoint(ctx, opts) {
  			value: id
  		}]
  	});
-+	// Workspace patch (better-auth/better-auth#11056): disconnecting a client
-+	// revokes the tokens it holds for the user. The consent goes first, so a
-+	// refresh rotating concurrently either sees it gone and revokes its own
-+	// tokens, or wrote them before this delete starts.
 +	await invalidateRefreshFamily(ctx, consent.clientId, consent.userId, consent.referenceId);
  }
  async function updateConsentEndpoint(ctx, opts) {
  	const session = await getSessionFromCtx(ctx);
 diff --git a/dist/introspect-C6P1zrTr.mjs b/dist/introspect-C6P1zrTr.mjs
-index 0b3934dd6724d408a84624a3fb0215f6d3274fea..59c2e30aa109c167aadd7226f020da5eddabdb84 100644
+index 0b3934dd6724d408a84624a3fb0215f6d3274fea..c14e564efa6f72b4d22c8ec64b833dd793cbf44e 100644
 --- a/dist/introspect-C6P1zrTr.mjs
 +++ b/dist/introspect-C6P1zrTr.mjs
 @@ -802,6 +802,14 @@ function getSeedState(ctx) {
@@ -97,8 +107,8 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..59c2e30aa109c167aadd7226f020da5e
 +}
 +// Workspace patch (better-auth/better-auth#11056): a rotation that wrote its
 +// tokens after a concurrent consent delete revokes them. The consent delete
-+// runs before the token deletes, so either this lookup misses the consent or
-+// the token deletes start after these tokens were written. Only the consent
++// runs before the last token delete, so either this lookup misses the consent
++// or that delete starts after these tokens were written. Only the consent
 +// with the token's own reference counts.
 +async function revokeRotationWithoutConsent(ctx, clientId, userId, referenceId) {
 +	if ((await ctx.context.adapter.findMany({
