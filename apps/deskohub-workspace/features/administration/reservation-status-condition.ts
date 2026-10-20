@@ -151,12 +151,13 @@ export type ReservationStatusRead =
  * - a cancellation in progress or failed, and a cancelled or expired legacy
  *   row without its timestamp, are dated only by the row's last update;
  * - for the groups that read fulfillment, a failure erases the fulfillment
- *   it may have followed, and a retry of a failed fulfillment is dated only
- *   by the row's last update;
+ *   it may have followed, and a retry of a failed fulfillment, or a
+ *   recovery from one, is dated only by the row's last update;
  * - a refund requirement carries no timestamp of its own.
  *
- * Not reported: a fulfillment failure recovered since then, whose failure
- * the recovery erases, reads as still in progress then.
+ * A recovery keeps the failure it cleared as `recoveredFulfillmentFailedAt`.
+ * Not reported: a failure recovered before recoveries kept it reads as
+ * still in progress then.
  */
 export const undatedStatusChangeAt = (
   statuses: ReadonlySet<ReservationStatusRead>
@@ -187,7 +188,7 @@ export const undatedStatusChangeAt = (
     readsFulfillment &&
       sql`case
         when ${currentStates.fulfillmentFailed} then ${workspaceReservations.fulfillmentFailedAt}
-        when ${workspaceReservations.fulfillmentFailedAt} is not null then ${workspaceReservations.updatedAt}
+        when coalesce(${workspaceReservations.fulfillmentFailedAt}, ${workspaceReservations.recoveredFulfillmentFailedAt}) is not null then ${workspaceReservations.updatedAt}
       end`,
     statuses.has("needs_refund") &&
       sql`(

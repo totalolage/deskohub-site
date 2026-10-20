@@ -6,7 +6,7 @@ import {
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import { type EmailDeliveryId, EmailDeliveryIdSchema } from "@deskohub/email";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import { type FulfillmentState, workspaceReservations } from "@/db/schema";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
@@ -83,6 +83,15 @@ describe.skipIf(!postgresDatabase)(
         fixtureReservationIds.push(id);
         return id;
       });
+
+    const recoveredFailure = (id: WorkspaceReservationId) =>
+      Effect.map(
+        postgres.db
+          .select({ at: workspaceReservations.recoveredFulfillmentFailedAt })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id)),
+        ([row]) => row?.at ?? null
+      );
 
     beforeAll(async () => {
       reservations = await Effect.runPromise(
@@ -337,6 +346,9 @@ describe.skipIf(!postgresDatabase)(
       expect(updated?.fulfilledAt?.equals(fulfilledAt)).toBe(true);
       expect(updated?.fulfillmentFailedAt).toBeNull();
       expect(updated?.fulfillmentFailureCode).toBeNull();
+      // Replay evidence stays out of the reservation the app works with.
+      expect(updated).not.toHaveProperty("recoveredFulfillmentFailedAt");
+      expect(await Effect.runPromise(recoveredFailure(id))).toBeNull();
 
       const stored = await Effect.runPromise(reservations.findById(id));
       expect(stored?.fulfillmentState).toBe("fulfilled");
@@ -470,6 +482,9 @@ describe.skipIf(!postgresDatabase)(
       expect(repaired?.fulfillmentState).toBe("fulfilled");
       expect(repaired?.fulfillmentFailedAt).toBeNull();
       expect(repaired?.fulfillmentFailureCode).toBeNull();
+      expect(
+        (await Effect.runPromise(recoveredFailure(id)))?.equals(failedAt)
+      ).toBe(true);
     });
 
     test("does not repair a delivery failure recorded under a different failure code", async () => {

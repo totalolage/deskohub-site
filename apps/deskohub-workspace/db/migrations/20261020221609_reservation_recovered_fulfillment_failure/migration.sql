@@ -1,0 +1,1 @@
+ALTER TABLE "workspace_reservations" ADD COLUMN "recovered_fulfillment_failed_at" timestamp with time zone;

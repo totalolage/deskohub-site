@@ -140,6 +140,12 @@ export const workspaceReservations = pgTable(
     paidAt: instant("paid_at"),
     fulfilledAt: instant("fulfilled_at"),
     fulfillmentFailedAt: instant("fulfillment_failed_at"),
+    /**
+     * The failure the latest recovery cleared from `fulfillment_failed_at`,
+     * so a status replay knows the reservation failed before it recovered.
+     * Every write that clears the failure keeps it here.
+     */
+    recoveredFulfillmentFailedAt: instant("recovered_fulfillment_failed_at"),
     failureCode: text("failure_code"),
     fulfillmentFailureCode: text("fulfillment_failure_code"),
     createdAt: instant("created_at").notNull().default(sql`now()`),
@@ -228,4 +234,11 @@ export const workspaceReservations = pgTable(
   ]
 );
 
-export type WorkspaceReservation = typeof workspaceReservations.$inferSelect;
+/**
+ * A reservation as the app works with it, without the replay evidence only
+ * the reservation status SQL reads.
+ */
+export type WorkspaceReservation = Omit<
+  typeof workspaceReservations.$inferSelect,
+  "recoveredFulfillmentFailedAt"
+>;

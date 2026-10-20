@@ -381,6 +381,45 @@ describe.skipIf(!testDatabase)(
         expect((await claim(recovered))?.id).toBe(recovered);
       });
 
+      test("keeps a retried failure once the retry's delivery succeeds", async () => {
+        const id = await insertReservation({
+          ...paid,
+          reservationState: "confirmed",
+          fulfillmentState: "failed",
+          fulfillmentFailedAt: at(1),
+          fulfillmentFailureCode: fulfillmentEmailFailureCode,
+        });
+        const customerEmailDeliveryId =
+          EmailDeliveryIdSchema.make("retried-delivery");
+
+        expect((await claim(id))?.id).toBe(id);
+        expect(await readReservation(id)).toMatchObject({
+          fulfillmentState: "processing",
+          fulfillmentFailedAt: at(1),
+          recoveredFulfillmentFailedAt: null,
+        });
+        await run((repository) =>
+          repository.markAwaitingCustomerEmailDelivery({
+            id,
+            customerEmailDeliveryId,
+            expectedActiveCustomerEmailDeliveryId: null,
+          })
+        );
+        await run((repository) =>
+          repository.markCustomerEmailDeliveryFulfilled({
+            customerEmailDeliveryId,
+            fulfilledAt: at(2),
+          })
+        );
+
+        expect(await readReservation(id)).toMatchObject({
+          fulfillmentState: "fulfilled",
+          fulfilledAt: at(2),
+          fulfillmentFailedAt: null,
+          recoveredFulfillmentFailedAt: at(1),
+        });
+      });
+
       test("marks only a processing paid booking fulfilled", async () => {
         const processing = await insertReservation({
           ...paid,
@@ -562,14 +601,44 @@ describe.skipIf(!testDatabase)(
           fulfillmentState: "fulfilled",
           fulfilledAt: at(5),
           fulfillmentFailedAt: null,
+          recoveredFulfillmentFailedAt: at(4),
           fulfillmentFailureCode: null,
         });
-        expect((await readReservation(sameInstant))?.fulfillmentState).toBe(
-          "failed"
-        );
+        expect(await readReservation(sameInstant)).toMatchObject({
+          fulfillmentState: "failed",
+          recoveredFulfillmentFailedAt: null,
+        });
         expect((await readReservation(otherFailure))?.fulfillmentState).toBe(
           "failed"
         );
+      });
+
+      test("keeps the latest failure a recovery cleared through later failures", async () => {
+        const id = await insertReservation({
+          ...paid,
+          fulfillmentState: "fulfilled",
+          fulfilledAt: at(4),
+          recoveredFulfillmentFailedAt: at(2),
+        });
+
+        expect((await markDeliveryFailed(id))?.id).toBe(id);
+        expect(await readReservation(id)).toMatchObject({
+          fulfillmentState: "failed",
+          fulfillmentFailedAt: at(5),
+          recoveredFulfillmentFailedAt: at(2),
+        });
+        expect(
+          (
+            await run((repository) =>
+              repository.recoverEmailDeliveryFailure({ id, deliveredAt: at(6) })
+            )
+          )?.id
+        ).toBe(id);
+        expect(await readReservation(id)).toMatchObject({
+          fulfillmentState: "fulfilled",
+          fulfillmentFailedAt: null,
+          recoveredFulfillmentFailedAt: at(5),
+        });
       });
     });
 
