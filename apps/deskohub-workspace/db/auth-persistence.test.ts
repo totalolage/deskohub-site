@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { sql } from "drizzle-orm";
 import type { Pool } from "pg";
@@ -11,7 +12,6 @@ import {
 import { type AuthDatabase, makeAuthDatabase } from "./auth-database-client";
 import { makeDatabasePool } from "./database-client";
 import { authAccount, authSession, authUser } from "./schema/auth";
-import { customerAccountLinks } from "./schema/customer-account-links";
 import { customerAccounts } from "./schema/customer-accounts";
 
 const postgresDatabase: WorkspacePostgresTestDatabase | null =
@@ -93,7 +93,7 @@ describe.skipIf(!postgresDatabase)(
       expect(inserted[0]!.createdAt).toBeInstanceOf(Date);
     });
 
-    test("keeps one link per Dotypos customer and rejects blank customer IDs", async () => {
+    test("keeps one account per Dotypos customer and rejects blank customer IDs", async () => {
       const firstUserId = uniqueId();
       const secondUserId = uniqueId();
       const dotyposCustomerId = `60${Math.floor(Math.random() * 1_000_000)}`;
@@ -108,54 +108,49 @@ describe.skipIf(!postgresDatabase)(
         secondUserId,
         testEmailAddress(`link-b-${uniqueId()}`)
       );
-      await db
-        .insert(customerAccountLinks)
-        .values({ customerAccountId: firstUserId, dotyposCustomerId });
-
-      const duplicate = await pgErrorCode(
+      const linkTo = (id: string, customerId: string) =>
         db
-          .insert(customerAccountLinks)
-          .values({ customerAccountId: secondUserId, dotyposCustomerId })
+          .update(customerAccounts)
+          .set({ dotyposCustomerId: customerId as DotyposCustomerId })
+          .where(sql`${customerAccounts.id} = ${id}`);
+      await linkTo(firstUserId, dotyposCustomerId);
+
+      expect(await pgErrorCode(linkTo(secondUserId, dotyposCustomerId))).toBe(
+        "23505"
       );
-
-      expect(duplicate).toBe("23505");
-
-      const blank = await pgErrorCode(
-        db
-          .insert(customerAccountLinks)
-          .values({ customerAccountId: secondUserId, dotyposCustomerId: "   " })
-      );
-
-      expect(blank).toBe("23514");
+      expect(await pgErrorCode(linkTo(secondUserId, "   "))).toBe("23514");
     });
 
-    test("cascades link removal from the auth user and enforces the foreign key", async () => {
+    test("roots every login in a customer account that outlives it", async () => {
       const userId = uniqueId();
       await insertAuthUser(
         db,
         userId,
-        testEmailAddress(`cascade-${uniqueId()}`)
+        testEmailAddress(`rooted-${uniqueId()}`)
       );
-      await db.insert(customerAccountLinks).values({
-        customerAccountId: userId,
-        dotyposCustomerId: `61${Math.floor(Math.random() * 1_000_000)}`,
-      });
 
-      const orphan = await pgErrorCode(
-        db.insert(customerAccountLinks).values({
-          customerAccountId: uniqueId(),
-          dotyposCustomerId: `62${Math.floor(Math.random() * 1_000_000)}`,
+      const accountless = await pgErrorCode(
+        db.insert(authUser).values({
+          id: uniqueId(),
+          name: "",
+          email: testEmailAddress(`accountless-${uniqueId()}`),
         })
       );
-      expect(orphan).toBe("23503");
+      expect(accountless).toBe("23503");
+      const accountDeletion = await pgErrorCode(
+        db
+          .delete(customerAccounts)
+          .where(sql`${customerAccounts.id} = ${userId}`)
+      );
+      expect(accountDeletion).toBe("23001");
 
       await db.delete(authUser).where(sql`${authUser.id} = ${userId}`);
 
       const remaining = await db
         .select()
-        .from(customerAccountLinks)
-        .where(sql`${customerAccountLinks.customerAccountId} = ${userId}`);
-      expect(remaining).toHaveLength(0);
+        .from(customerAccounts)
+        .where(sql`${customerAccounts.id} = ${userId}`);
+      expect(remaining).toHaveLength(1);
     });
 
     test("resolves user→sessions/accounts joins through the auth-only graph", async () => {
