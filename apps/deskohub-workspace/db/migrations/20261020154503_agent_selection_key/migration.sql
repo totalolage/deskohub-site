@@ -1,0 +1,3 @@
+ALTER TABLE "workspace_reservations" ADD COLUMN "agent_selection_key" text;--> statement-breakpoint
+CREATE INDEX "workspace_reservations_agent_selection_idx" ON "workspace_reservations" ("agent_selection_key","created_at") WHERE "agent_selection_key" is not null;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_agent_selection_check" CHECK ("agent_selection_key" is null or "agent_client_id" is not null);

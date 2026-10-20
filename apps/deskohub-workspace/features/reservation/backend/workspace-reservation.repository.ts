@@ -42,6 +42,7 @@ import type {
 } from "@/features/checkout/checkout-identifiers";
 import type { DiscountClaimError } from "@/features/discounts/errors";
 import type { Locale } from "@/features/i18n";
+import type { AgentSelectionKey } from "@/features/reservation/backend/booking-agent";
 import { withCoworkProductFields } from "@/features/reservation/cowork-reservation-product";
 import {
   type StoredWorkspaceReservationDetails,
@@ -102,6 +103,8 @@ export interface CreateWorkspaceReservationInput {
   readonly authorAccountId: CustomerAccountId | null;
   /** The customer's AI agent that started the reservation, if one did. */
   readonly agentClientId?: CustomerAgentClientId;
+  /** The agent booking request the reservation answers, if an agent made it. */
+  readonly agentSelectionKey?: AgentSelectionKey;
   readonly reservationPurpose: ReservationPurpose;
   readonly reservationDetails: StoredWorkspaceReservationDetails;
   readonly locale: string;
@@ -157,6 +160,17 @@ export interface IWorkspaceReservationRepository {
   readonly findStoredCheckoutSessionKey: (
     checkoutSessionKeys: readonly CheckoutSessionKey[]
   ) => Effect.Effect<CheckoutSessionKey | null, EffectDrizzleQueryError>;
+  /**
+   * The latest two reservations the account's agent booking request created,
+   * newest first: the request's current reservation and the one before it.
+   */
+  readonly findLatestByAgentSelectionKey: (input: {
+    readonly authorAccountId: CustomerAccountId;
+    readonly agentSelectionKey: AgentSelectionKey;
+  }) => Effect.Effect<
+    readonly WorkspaceReservation[],
+    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
   readonly findCurrentByCheckoutSessionKey: (
     checkoutSessionKey: CheckoutSessionKey
   ) => Effect.Effect<
@@ -537,6 +551,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                     dotyposCustomerId: input.dotyposCustomerId,
                     authorAccountId: input.authorAccountId,
                     agentClientId: input.agentClientId ?? null,
+                    agentSelectionKey: input.agentSelectionKey ?? null,
                     reservationPurpose: input.reservationPurpose,
                     reservationState: "draft",
                     paymentState: "not_started",
@@ -627,6 +642,31 @@ export class WorkspaceReservationRepository extends Context.Service<
               })
             )
         ),
+        findLatestByAgentSelectionKey: Effect.fn(
+          "workspaceReservations.findLatestByAgentSelectionKey"
+        )(function* (input) {
+          const rows = yield* db
+            .select()
+            .from(workspaceReservations)
+            .where(
+              and(
+                eq(
+                  workspaceReservations.agentSelectionKey,
+                  input.agentSelectionKey
+                ),
+                eq(
+                  workspaceReservations.authorAccountId,
+                  input.authorAccountId
+                )
+              )
+            )
+            .orderBy(
+              desc(workspaceReservations.createdAt),
+              desc(workspaceReservations.id)
+            )
+            .limit(2);
+          return yield* Effect.forEach(rows, decodeWorkspaceReservation);
+        }),
         findCurrentByCheckoutSessionKey: Effect.fn(
           "workspaceReservations.findCurrentByCheckoutSessionKey"
         )(
@@ -1136,6 +1176,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                   dotyposCustomerId: input.replacement.dotyposCustomerId,
                   authorAccountId: input.replacement.authorAccountId,
                   agentClientId: input.replacement.agentClientId ?? null,
+                  agentSelectionKey: input.replacement.agentSelectionKey ?? null,
                   reservationPurpose: input.replacement.reservationPurpose,
                   reservationState: "draft",
                   paymentState: "not_started",

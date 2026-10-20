@@ -79,8 +79,11 @@ import {
   readRememberedReferralCode,
 } from "@/features/referrals/remembered-referral-code.server";
 import {
+  AgentBookingPaymentInProgressError,
   AgentBookingProfileRequiredError,
+  type AgentSelectionKey,
   BookingAgent,
+  deriveAgentCheckoutAttemptId,
 } from "@/features/reservation/backend/booking-agent";
 import { payStatePreparationServices } from "@/features/reservation/backend/pay-state-preparation-services";
 import { supersedableReservationPaymentStates } from "@/features/reservation/backend/reservation-supersession";
@@ -304,18 +307,32 @@ const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
     readonly checkoutSessionId: CheckoutSessionId;
     readonly bookedAt: Temporal.Instant;
     readonly changedKeys?: CheckoutSummaryChangedKeys;
+    /**
+     * Issues the Pay state as of `bookedAt` and seals it deterministically,
+     * so rebuilding it for the same hold returns the same link.
+     */
+    readonly stableLink?: boolean;
   }) {
-    const state = yield* buildSignedPayState({
-      ...input.prepared,
-      locale: input.locale,
-      orderId: input.reservationId,
-      bookedAt: instantStringSchema.make(
-        temporalInstantToIsoString(input.bookedAt)
-      ),
-      checkoutSessionId: input.checkoutSessionId,
-      changedKeys: input.changedKeys,
-    });
-    const sealedState = yield* sealPayStateForUrl(state);
+    const linkOptions = input.stableLink
+      ? {
+          now: () => new Date(input.bookedAt.epochMilliseconds),
+          syntheticIv: true,
+        }
+      : {};
+    const state = yield* buildSignedPayState(
+      {
+        ...input.prepared,
+        locale: input.locale,
+        orderId: input.reservationId,
+        bookedAt: instantStringSchema.make(
+          temporalInstantToIsoString(input.bookedAt)
+        ),
+        checkoutSessionId: input.checkoutSessionId,
+        changedKeys: input.changedKeys,
+      },
+      linkOptions
+    );
+    const sealedState = yield* sealPayStateForUrl(state, linkOptions);
     const redirectUrl = buildCheckoutPayPath(input.locale, sealedState, {
       orderId: input.reservationId,
     });
@@ -777,6 +794,131 @@ const prepareReservationDraft = Effect.fn(
 });
 
 /**
+ * The booking instant of an agent's hold. An agent hold lasts one Pay-state
+ * lifetime from it and its Pay state is issued as of it, so a repeated
+ * request rebuilds the same Pay link, which never outlives the hold. Null for
+ * a reservation without a hold deadline.
+ */
+const getAgentHoldBookedAt = (reservation: WorkspaceReservation) =>
+  reservation.reservationHoldExpiresAt?.subtract({
+    milliseconds: payStateDefaultTtlMilliseconds,
+  }) ?? null;
+
+type AgentCheckout =
+  | {
+      readonly kind: "attempt";
+      readonly checkoutSessionId: CheckoutSessionId;
+      readonly checkoutAttemptId: CheckoutAttemptId;
+    }
+  | {
+      readonly kind: "payment_pending";
+      readonly checkoutSessionId: CheckoutSessionId;
+      readonly reservation: WorkspaceReservation;
+    };
+
+/**
+ * Where an agent booking request continues. The request's latest reservation
+ * decides: an open one (a draft, an in-flight transition, or a live unpaid
+ * hold) continues under the session and attempt that created it, so the
+ * checkout's idempotency reuses it; one waiting for payment is kept as it is,
+ * and once its Pay link expired the request is refused; any other ended, and the request starts its next attempt in the agent's
+ * session, which supersedes or rotates past the session's current
+ * reservation as usual. An open reservation whose attempt no longer matches,
+ * such as after the customer edited the profile, counts as ended.
+ */
+const resolveAgentCheckout = Effect.fn("preparePayState.resolveAgentCheckout")(
+  function* (input: {
+    readonly selectionKey: AgentSelectionKey;
+    readonly authorAccountId: CustomerAccountId;
+    readonly checkoutSessionId: CheckoutSessionId;
+    readonly reservation: PreparePayStateInput["reservation"];
+  }) {
+    const reservations = yield* WorkspaceReservationRepository;
+    const [latestFound, previous] =
+      yield* reservations.findLatestByAgentSelectionKey({
+        authorAccountId: input.authorAccountId,
+        agentSelectionKey: input.selectionKey,
+      });
+    const nextAttempt = (latest?: WorkspaceReservation): AgentCheckout => ({
+      kind: "attempt",
+      checkoutSessionId: input.checkoutSessionId,
+      checkoutAttemptId: deriveAgentCheckoutAttemptId(
+        input.selectionKey,
+        latest?.id
+      ),
+    });
+    if (!latestFound) return nextAttempt();
+
+    const latest =
+      latestFound.reservationState === "creating_hold" ||
+      latestFound.reservationState === "cancelling"
+        ? ((yield* waitForPendingReservationTransition({
+            reservations,
+            reservationId: latestFound.id,
+          })) ?? latestFound)
+        : latestFound;
+    const checkoutAttemptId = deriveAgentCheckoutAttemptId(
+      input.selectionKey,
+      previous?.id
+    );
+    const agentSessionKeys = yield* deriveCheckoutSessionKeys(
+      input.checkoutSessionId
+    );
+    const checkoutSessionId =
+      latest.checkoutSessionKey &&
+      agentSessionKeys.accepted.includes(latest.checkoutSessionKey)
+        ? input.checkoutSessionId
+        : promoteCheckoutAttemptToSessionId(checkoutAttemptId);
+
+    if (
+      latest.reservationState === "held" &&
+      latest.paymentState === "pending"
+    ) {
+      // The payment decides this booking; a repeat neither holds again nor
+      // cancels. The Pay link resumes the payment until it expires.
+      const holdBookedAt = getAgentHoldBookedAt(latest);
+      if (
+        !holdBookedAt ||
+        Temporal.Instant.compare(
+          holdBookedAt.add({ milliseconds: payStateDefaultTtlMilliseconds }),
+          Temporal.Now.instant()
+        ) <= 0
+      ) {
+        return yield* new AgentBookingPaymentInProgressError({
+          reservationId: latest.id,
+        });
+      }
+      return {
+        kind: "payment_pending",
+        checkoutSessionId,
+        reservation: latest,
+      } satisfies AgentCheckout;
+    }
+
+    const open =
+      latest.reservationState === "draft" ||
+      latest.reservationState === "creating_hold" ||
+      latest.reservationState === "cancelling" ||
+      isReusableSubmissionReservation(latest);
+    if (!open) return nextAttempt(latest);
+
+    const attemptKeys = yield* deriveCheckoutAttemptKeys({
+      checkoutSessionId,
+      checkoutAttemptId,
+      reservation: input.reservation,
+    });
+    return latest.checkoutAttemptKey &&
+      attemptKeys.accepted.includes(latest.checkoutAttemptKey)
+      ? ({
+          kind: "attempt",
+          checkoutSessionId,
+          checkoutAttemptId,
+        } satisfies AgentCheckout)
+      : nextAttempt(latest);
+  }
+);
+
+/**
  * The account a reservation booked "as the account" belongs to: the linked
  * Dotypos customer and the contact the reservation must carry. An account
  * without a profile yet saves the submitted contact and billing as its
@@ -1099,20 +1241,112 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         yield* Effect.annotateLogsScoped({ quote: prepared.quote });
         yield* Effect.logDebug("Workspace reservation quote built");
 
+        // An agent's hold is anchored at its booking instant, and a repeated
+        // request rebuilds its Pay state as of that instant, so the request
+        // gets the same Pay link back for as long as the hold lasts.
+        const quoteAt = Effect.fn("preparePayState.quoteAt")(function* (
+          at: Temporal.Instant,
+          customerId: DotyposCustomerId
+        ) {
+          const anchoredAdvertisement = yield* prepareAdvertisement({
+            ...input,
+            ...(accountCustomer && {
+              reservation: { ...input.reservation, ...accountCustomer.contact },
+            }),
+            bookedAt: at,
+          });
+          return yield* quotePreparedReservation({
+            advertisement: anchoredAdvertisement,
+            dotyposCustomerId: customerId,
+            locale: input.locale,
+            referralCodePrefill,
+            referralCode: accountReferral?.referralCode,
+          });
+        });
+        const toHeldResult = Effect.fn("preparePayState.toHeldResult")(
+          function* (held: {
+            readonly reservation: WorkspaceReservation;
+            readonly checkoutSessionId: CheckoutSessionId;
+            readonly prepared: typeof prepared;
+          }) {
+            const holdBookedAt = Option.isSome(bookingAgent)
+              ? getAgentHoldBookedAt(held.reservation)
+              : null;
+            if (!holdBookedAt) {
+              return yield* toReadyResult({
+                locale: input.locale,
+                prepared: held.prepared,
+                reservationId: held.reservation.id,
+                checkoutSessionId: held.checkoutSessionId,
+                bookedAt,
+                changedKeys: held.prepared.changedKeys,
+              });
+            }
+
+            const anchoredPrepared = holdBookedAt.equals(bookedAt)
+              ? held.prepared
+              : yield* quoteAt(
+                  holdBookedAt,
+                  yield* getDotyposCustomerId(
+                    held.reservation.dotyposCustomerId
+                  )
+                );
+            return yield* toReadyResult({
+              locale: input.locale,
+              prepared: anchoredPrepared,
+              reservationId: held.reservation.id,
+              checkoutSessionId: held.checkoutSessionId,
+              bookedAt: holdBookedAt,
+              changedKeys: anchoredPrepared.changedKeys,
+              stableLink: true,
+            });
+          }
+        );
+
+        const checkout: AgentCheckout = yield* Option.match(bookingAgent, {
+          onNone: () =>
+            Effect.succeed({
+              kind: "attempt",
+              checkoutSessionId: input.checkoutSessionId,
+              checkoutAttemptId: input.checkoutAttemptId,
+            } satisfies AgentCheckout),
+          onSome: ({ selectionKey }) =>
+            resolveAgentCheckout({
+              selectionKey,
+              authorAccountId: accountId,
+              checkoutSessionId: input.checkoutSessionId,
+              reservation,
+            }),
+        });
+        if (checkout.kind === "payment_pending") {
+          yield* Effect.logInfo(
+            "Workspace reservation with a pending payment kept for a repeated agent request",
+            { reservationId: checkout.reservation.id }
+          );
+          return yield* toHeldResult({
+            reservation: checkout.reservation,
+            checkoutSessionId: checkout.checkoutSessionId,
+            prepared,
+          });
+        }
+
         const holdExpiresAt = getReservationHoldExpiresAt(
-          Temporal.Now.instant()
+          Option.isSome(bookingAgent) ? bookedAt : Temporal.Now.instant()
         );
 
         const preparedDraft = yield* prepareReservationDraft({
-          checkoutSessionId: input.checkoutSessionId,
-          checkoutAttemptId: input.checkoutAttemptId,
+          checkoutSessionId: checkout.checkoutSessionId,
+          checkoutAttemptId: checkout.checkoutAttemptId,
           reservation,
           draft: {
             dotyposCustomerId,
             authorAccountId: accountId,
             ...Option.match(bookingAgent, {
               onNone: () => ({}),
-              onSome: ({ clientId }) => ({ agentClientId: clientId }),
+              onSome: ({ clientId, selectionKey }) => ({
+                agentClientId: clientId,
+                agentSelectionKey: selectionKey,
+              }),
             }),
             reservationPurpose: billing.purpose,
             reservationDetails:
@@ -1174,13 +1408,10 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           });
           yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
-          return yield* toReadyResult({
-            locale: input.locale,
-            prepared,
-            reservationId: reservationDraft.id,
+          return yield* toHeldResult({
+            reservation: reservationDraft,
             checkoutSessionId,
-            bookedAt,
-            changedKeys: prepared.changedKeys,
+            prepared,
           });
         }
 
@@ -1225,13 +1456,10 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
             });
             yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
-            return yield* toReadyResult({
-              locale: input.locale,
-              prepared: reusedPrepared,
-              reservationId: claimConflictReservation.id,
+            return yield* toHeldResult({
+              reservation: claimConflictReservation,
               checkoutSessionId,
-              bookedAt,
-              changedKeys: reusedPrepared.changedKeys,
+              prepared: reusedPrepared,
             });
           }
 
@@ -1384,6 +1612,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           checkoutSessionId,
           bookedAt,
           changedKeys: prepared.changedKeys,
+          stableLink: Option.isSome(bookingAgent),
         });
       })
     );
@@ -1442,6 +1671,9 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           ),
           Match.tag("AgentBookingProfileRequiredError", () =>
             captureOutcome("validation")
+          ),
+          Match.tag("AgentBookingPaymentInProgressError", () =>
+            captureOutcome("reservation_conflict")
           ),
           Match.orElse(() => captureOutcome("server_error"))
         )
