@@ -598,7 +598,7 @@ describe("workspace production release checks", () => {
               },
               {
                 path: "/api/cron/workspace/payment-refunds",
-                schedule: "37 * * * *",
+                schedule: "30 * * * *",
               },
             ],
           })
@@ -1121,7 +1121,7 @@ describe("workspace production release checks", () => {
             },
             {
               path: "/api/cron/workspace/payment-refunds",
-              schedule: "37 * * * *",
+              schedule: "30 * * * *",
             },
           ],
         })
@@ -1170,7 +1170,7 @@ describe("workspace production release checks", () => {
               },
               {
                 path: "/api/cron/workspace/payment-refunds",
-                schedule: "37 * * * *",
+                schedule: "30 * * * *",
               },
             ],
           })
@@ -1243,7 +1243,7 @@ describe("workspace production release checks", () => {
             },
             {
               path: "/api/cron/workspace/payment-refunds",
-              schedule: "37 * * * *",
+              schedule: "30 * * * *",
             },
           ],
         })
@@ -1286,7 +1286,7 @@ describe("workspace production release checks", () => {
                   },
                   {
                     path: "/api/cron/workspace/payment-refunds",
-                    schedule: "37 * * * *",
+                    schedule: "30 * * * *",
                   },
                 ]
               : [
@@ -1437,7 +1437,7 @@ describe("workspace production release checks", () => {
               },
               {
                 path: "/api/cron/workspace/payment-refunds",
-                schedule: "37 * * * *",
+                schedule: "30 * * * *",
               },
             ],
           },
