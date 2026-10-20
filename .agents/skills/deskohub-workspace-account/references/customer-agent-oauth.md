@@ -48,6 +48,13 @@ resource.
 - `verifyCustomerAgentAccessToken` is a `SERVER_ONLY` endpoint over the
   provider's `getOAuthProviderApi(...).validateAccessToken`, so the MCP route
   verifies in-process without an introspection client.
+- Every direct `auth.api.*` call needs a request or a `host` header: with the
+  dynamic `allowedHosts` base URL, Better Auth otherwise throws a 500
+  `APIError` before the endpoint runs. The adapter passes the MCP resource's
+  host, which every deployment trusts and which needs no Next request store.
+- Classify Better Auth failures with `isProviderRejection`
+  (`customer-agent-authorization.service.ts`): a 4xx `APIError` is a refusal
+  (unknown token or client); a 5xx `APIError` or anything else is an outage.
 - The `mcp()` resource check accepts only HTTPS, or HTTP on loopback.
 
 ## Discovery
@@ -71,10 +78,16 @@ resource.
 - The provider redirects to the root-relative `loginPage`/`consentPage`
   with the authorize parameters plus `exp`, `ba_iat`, `ba_param`, and `sig`.
   The proxy localizes them and keeps the query.
-- `/auth/connect` re-checks the session. `resolveCustomerAgentConnectStep`
-  decides the next step: signed out, or asked to sign in again (`prompt=login`
-  or `create`, `max_age`), the customer goes to the existing sign-in page with
-  the assistant purpose and a `signed_in=1` marker on the return path.
+- Both pages re-read the session through `readCustomerAgentSession`
+  (signed out, signed in, deletion pending, unavailable). A deletion-pending
+  account can't connect: its tokens would never authorize. Both export
+  `instant = false` and call `redirect()` outside Suspense, so the redirect
+  happens before streaming starts and stays an HTTP 307. Keep it that way:
+  a Suspense boundary above the redirect turns it into a client redirect.
+- `/auth/connect` uses `resolveCustomerAgentConnectStep` for the next step:
+  signed out, or asked to sign in again (`prompt=login` or `create`,
+  `max_age`), the customer goes to the existing sign-in page with the
+  `assistant` purpose and a `signed_in=1` marker on the return path.
   Signed in, the page redirects to `/api/auth/oauth2/authorize` with the
   original parameters minus the signing parameters; the provider validates
   the request from scratch and continues to consent. A marked return drops
@@ -83,7 +96,12 @@ resource.
   sets the session cookie, which magic-link sign-in never does, and
   `/oauth2/continue` covers only account selection, sign-up, and post-login
   pages.
-- `/auth/consent` re-checks the session, reads the client through
+- The provider always fills in `scope` (the client's defaults when the
+  agent asks for none) before it signs the request, so the consent page
+  lists exactly the signed scopes. Read page queries with
+  `toURLSearchParams` so repeated `ba_param` values survive.
+- `/auth/consent` first rejects requests that can't succeed (no `client_id`,
+  `sig`, or `exp`; past `exp`), then re-checks the session, reads the client through
   `CustomerAgentClientDirectory` (`getOAuthClientPublic`, which needs the
   customer's session), and shows the client's name and metadata host, the
   requested scopes in plain words, what the assistant can't do (pay, cancel,
@@ -123,7 +141,8 @@ resource.
   detection reads them. Consents and CIMD client rows have no expiry; consents
   last until account deletion.
 - Lifetimes: access tokens 1 hour, refresh tokens 30 days (rotated on use),
-  signed authorization requests and codes 10 minutes.
+  signed authorization requests and codes 10 minutes. Replaying a used code
+  fails and revokes the tokens it bought.
 
 ## Tests
 
@@ -131,7 +150,11 @@ resource.
   transport receives the metadata URL and returns a `Response`.
   `https://client.example/...` needs no DNS.
 - Prove protocol behaviour in the Postgres flow test against the real
-  handler; keep adapter rules in unit tests with fake authorities.
+  handler; keep adapter rules in unit tests with fake authorities. Build
+  memory-backed stores with `makeMemoryAuthStore()`, which includes the
+  OAuth models.
+- Pre-registered public clients come from `auth.api.adminCreateOAuthClient`
+  with a session and a `host` header.
 - The cleanup test pre-sweeps the whole database at a far-future instant.
   Locally, run it against its own database when other suites share the
   container.
