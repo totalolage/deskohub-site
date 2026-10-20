@@ -446,13 +446,13 @@ describe.skipIf(!testDatabase)(
         email: uniqueEmail("internal-account-locale"),
         name: "",
         emailVerified: false,
-        locale: "en",
+        locale: "cs-CZ",
       });
 
       expect(user.id).toBe(id);
       expect(await readCreatedUser(id)).toEqual({
         id,
-        locale: "en",
+        locale: "cs-CZ",
         email_verified: false,
         customer_account_id: id,
       });
