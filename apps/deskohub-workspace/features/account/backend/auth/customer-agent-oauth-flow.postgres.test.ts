@@ -570,6 +570,18 @@ describe.skipIf(!testDatabase)(
         expect(replays[0]).not.toContain(token);
       }
 
+      // Once the reuse window has passed, the daily cleanup clears the
+      // encrypted copy and keeps the rotated token for reuse detection.
+      await runAuthCleanup(
+        new Date(
+          Date.now() + (customerAgentRefreshTokenReuseSeconds + 1) * 1000
+        )
+      );
+      expect(await storedReplays(customer.accountId)).toEqual([]);
+      expect(await countRows("oauth_refresh_token", customer.accountId)).toBe(
+        2
+      );
+
       // The code is single use, and replaying it revokes the access it
       // bought.
       const replayed = await exchangeCode(auth, {
@@ -628,11 +640,27 @@ describe.skipIf(!testDatabase)(
       expect(refreshed.status).toBe(200);
       const renewed = (await refreshed.json()) as TokenResponse;
 
-      // Inside the window, a repeated refresh (a race, or a retry after a
-      // lost response) gets the same tokens, and the grant stays.
-      const repeated = await refresh(tokens.refresh_token!);
-      expect(repeated.status).toBe(200);
-      expect(await repeated.json()).toEqual(renewed);
+      const refreshedAt = Date.now();
+
+      // Inside the window, a refresh retried after a lost response gets the
+      // same tokens, with `expires_in` counted down, and the grant stays.
+      setSystemTime(new Date(refreshedAt + 10_000));
+      try {
+        const repeated = await refresh(tokens.refresh_token!);
+        expect(repeated.status).toBe(200);
+        const replayed = (await repeated.json()) as TokenResponse & {
+          readonly expires_at: number;
+        };
+        const { expires_in: renewedExpiresIn, ...renewedTokens } = renewed;
+        const { expires_in: replayedExpiresIn, ...replayedTokens } = replayed;
+        expect(replayedTokens).toEqual(renewedTokens);
+        expect(replayedExpiresIn).toBe(
+          replayed.expires_at - Math.floor((refreshedAt + 10_000) / 1000)
+        );
+        expect(replayedExpiresIn).toBeLessThan(renewedExpiresIn);
+      } finally {
+        setSystemTime();
+      }
       expect(
         (await authorizeToken(authorityOver(auth), renewed.access_token))._tag
       ).toBe("Success");
@@ -641,20 +669,13 @@ describe.skipIf(!testDatabase)(
       );
       expect(await storedReplays(customer.accountId)).toHaveLength(1);
 
-      // Once the window has passed, the daily cleanup clears the encrypted
-      // copy and keeps the rotated token for reuse detection.
-      const afterWindow = new Date(
-        Date.now() + (customerAgentRefreshTokenReuseSeconds + 1) * 1000
+      // Reusing the rotated token after the window, before any cleanup has
+      // cleared its copy, ends the client's tokens for this customer.
+      setSystemTime(
+        new Date(
+          refreshedAt + (customerAgentRefreshTokenReuseSeconds + 1) * 1000
+        )
       );
-      await runAuthCleanup(afterWindow);
-      expect(await storedReplays(customer.accountId)).toEqual([]);
-      expect(await countRows("oauth_refresh_token", customer.accountId)).toBe(
-        2
-      );
-
-      // Reusing the rotated token after the window ends the client's tokens
-      // for this customer.
-      setSystemTime(afterWindow);
       try {
         const reused = await refresh(tokens.refresh_token!);
         expect(reused.status).toBe(400);

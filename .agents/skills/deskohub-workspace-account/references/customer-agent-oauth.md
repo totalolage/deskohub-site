@@ -144,9 +144,11 @@ resource.
   (`customerAgentRefreshTokenReuseSeconds`, set explicitly because the
   privacy notice discloses it). The provider stores the replacement token
   response in `rotation_replay_response` on the rotated row, encrypted with
-  the Better Auth secret, and replays it for a matching repeat refresh until
-  `rotation_replay_expires_at`. Reuse after that deletes the client's tokens
-  for the customer. The provider never clears the copy, so `auth-cleanup`
+  the Better Auth secret, and replays it (with `expires_in` recounted) for a
+  matching repeat refresh until `rotation_replay_expires_at`. Truly
+  concurrent refreshes still race; the loser gets `invalid_grant` without
+  ending the grant. Reuse after the window deletes the client's tokens for
+  the customer. The provider never clears the copy, so `auth-cleanup`
   nulls it once the window has passed; deleting the row (expiry, account
   deletion, reuse) removes it too.
 - Lifetimes: access tokens 1 hour, refresh tokens 30 days (rotated on use),

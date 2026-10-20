@@ -9,7 +9,7 @@ what the privacy copy promises. Privacy copy lives in
 | System | Holds | Removal |
 | --- | --- | --- |
 | Neon `auth` schema | Login email, hashed verification token with the email in its value, sessions without IP or user agent, `IP\|path` rate-limit keys | Better Auth deletes identity rows on account deletion; the daily `auth-cleanup` cron removes expired sessions, verifications, and stale rate-limit rows |
-| Neon `auth` OAuth tables | Connected AI agents: client ID (its metadata URL), name, and redirect URIs; the customer's consent (client, scopes); hashed access and refresh tokens | Consents and tokens cascade with the auth user on account deletion; the daily `auth-cleanup` cron removes expired tokens and client-assertion records; client rows stay |
+| Neon `auth` OAuth tables | Connected AI agents: client ID (its metadata URL), name, and redirect URIs; the customer's consent (client, scopes); hashed access and refresh tokens; on a rotated refresh token, the replacing token response encrypted with the Better Auth secret for the 30-second reuse window | Consents and tokens cascade with the auth user on account deletion; the daily `auth-cleanup` cron removes expired tokens and client-assertion records and clears replay copies whose window has passed; client rows stay |
 | Neon `public.customer_account_links` | Two opaque IDs | Cascades with the auth user |
 | Neon `public.customer_accounts` | Account ID, deletion instant | Kept as a deleted-account tombstone so reservations keep their author |
 | Neon administrator records (`account_role_grants`, account actors on CLI authentication requests and sessions, standalone access-code events, and `manual_invoice_actors`) | Account ID, role, and the administrator's login-email snapshot as provenance | Grants cascade with the auth user; actor account IDs are set to null and the email snapshot stays with the audit record |
@@ -25,7 +25,9 @@ what the privacy copy promises. Privacy copy lives in
   Current settings: 30-day rolling sessions refreshed at most daily, 10-minute
   magic-link validity, daily cleanup of expired rows, identity rows kept until
   the customer deletes the account. Connected AI agents: 1-hour access tokens,
-  30-day refresh tokens rotated on use, consents kept until account deletion.
+  30-day refresh tokens rotated on use with a 30-second reuse window whose
+  encrypted replay copy the daily cleanup clears, consents kept until account
+  deletion.
 - Account deletion expires the Dotypos profile and removes the live login
   account. Don't promise automatic Dotypos deletion after any period: the
   Dotypos Customer API documents no retention or anonymization behavior for
