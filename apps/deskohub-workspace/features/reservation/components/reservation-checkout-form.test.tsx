@@ -625,6 +625,9 @@ describe("ReservationCheckoutForm", () => {
       view.getByText(m.reservationAccountSupportTitle({}, en))
     ).toBeDefined();
     expect(
+      view.getByRole("button", { name: m.reservationSelectionChange({}, en) })
+    ).toBeDefined();
+    expect(
       view.queryByLabelText(new RegExp(`^${m.contactEmailLabel({}, en)}`))
     ).toBeNull();
     expect(
@@ -632,6 +635,13 @@ describe("ReservationCheckoutForm", () => {
         name: m.reservationAccountUnavailableRetry({}, en),
       })
     ).toBeNull();
-    expect(getSubmitButton(view).disabled).toBe(true);
+    expect(
+      view.queryByRole("group", { name: m.reservationPurposeLabel({}, en) })
+    ).toBeNull();
+    expect(
+      view.queryByRole("link", { name: "Privacy Policy" })
+    ).toBeNull();
+    expect(getMarketingConsentCheckbox(view)).toBeNull();
+    expect(getSubmitButton(view)).toBeNull();
   });
 });

@@ -328,11 +328,13 @@ export function ReservationCheckoutForm<
     checkoutStep.goTo("contact");
   };
   const isContactStep = checkoutStep.step === "contact";
+  // Support has to sort out the account before it can book, so the contact
+  // step shows only what was chosen and how to reach support.
+  const isSupportRequired = checkoutCustomer.status === "support-required";
   const isSubmitDisabled =
     form.formState.isSubmitting ||
     (isContactStep &&
-      (checkoutCustomer.status === "unavailable" ||
-        checkoutCustomer.status === "support-required")) ||
+      (checkoutCustomer.status === "unavailable" || isSupportRequired)) ||
     isSubmittingCheckout ||
     emailVerification.isVerifying ||
     hasPreparedPayRedirect ||
@@ -400,10 +402,14 @@ export function ReservationCheckoutForm<
               customer={customer}
               locale={locale}
             />
-            <ReservationBillingFields locale={locale} />
-            <ReservationPrivacyNotice locale={locale} />
-            {asksMarketingConsent && (
-              <ReservationMarketingConsentField locale={locale} />
+            {!isSupportRequired && (
+              <>
+                <ReservationBillingFields locale={locale} />
+                <ReservationPrivacyNotice locale={locale} />
+                {asksMarketingConsent && (
+                  <ReservationMarketingConsentField locale={locale} />
+                )}
+              </>
             )}
             {checkoutCustomer.status === "signed-out" && (
               <ReservationContactHint>
@@ -411,22 +417,24 @@ export function ReservationCheckoutForm<
               </ReservationContactHint>
             )}
           </div>
-          <ReservationSubmitSection
-            disabled={isSubmitDisabled}
-            isAvailabilityLoading={availability.isPending}
-            isPriceLoading={
-              advertisedPrice.isFetching && !advertisedPrice.token
-            }
-            locale={locale}
-            onContinue={
-              isContactStep ? undefined : () => void continueToContact()
-            }
-            onRetryPrice={advertisedPrice.retry}
-            priceError={advertisedPrice.isError}
-            retryingPrice={advertisedPrice.isFetching}
-            submissionError={submissionError ?? emailVerification.error}
-            unavailableMessage={availability.unavailableMessage}
-          />
+          {!(isContactStep && isSupportRequired) && (
+            <ReservationSubmitSection
+              disabled={isSubmitDisabled}
+              isAvailabilityLoading={availability.isPending}
+              isPriceLoading={
+                advertisedPrice.isFetching && !advertisedPrice.token
+              }
+              locale={locale}
+              onContinue={
+                isContactStep ? undefined : () => void continueToContact()
+              }
+              onRetryPrice={advertisedPrice.retry}
+              priceError={advertisedPrice.isError}
+              retryingPrice={advertisedPrice.isFetching}
+              submissionError={submissionError ?? emailVerification.error}
+              unavailableMessage={availability.unavailableMessage}
+            />
+          )}
         </form>
       </Form>
     </ReservationFormCard>
