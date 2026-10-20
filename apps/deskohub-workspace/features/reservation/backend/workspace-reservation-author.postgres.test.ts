@@ -16,6 +16,7 @@ import {
 } from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { agentSelectionKeySchema } from "./booking-agent";
 import {
   type CreateWorkspaceReservationDraftInput,
   WorkspaceReservationRepository,
@@ -206,13 +207,16 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
     "https://assistant.example/oauth-client.json"
   );
 
-  const readAgentClient = async (id: WorkspaceReservationId) => {
+  const readAgentBooking = async (id: WorkspaceReservationId) => {
     const [row] = await postgres.db
-      .select({ agentClientId: workspaceReservations.agentClientId })
+      .select({
+        agentClientId: workspaceReservations.agentClientId,
+        agentSelectionKey: workspaceReservations.agentSelectionKey,
+      })
       .from(workspaceReservations)
       .where(eq(workspaceReservations.id, id))
       .pipe(Effect.runPromise);
-    return row?.agentClientId;
+    return row;
   };
 
   test("records the agent client that started a draft, and none for the site", async () => {
@@ -224,12 +228,21 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
     });
     const siteDraft = await createDraft(draftInput(author));
 
-    expect(await readAgentClient(agentDraft.id)).toBe(agentClientId);
-    expect(await readAgentClient(siteDraft.id)).toBeNull();
+    expect(await readAgentBooking(agentDraft.id)).toEqual({
+      agentClientId,
+      agentSelectionKey: null,
+    });
+    expect(await readAgentBooking(siteDraft.id)).toEqual({
+      agentClientId: null,
+      agentSelectionKey: null,
+    });
   });
 
-  test("records the agent client on a superseding replacement", async () => {
+  test("stores the selection key on supersession replacements", async () => {
     const author = newAccountId();
+    const agentSelectionKey = agentSelectionKeySchema.make(
+      `selection:${crypto.randomUUID()}`
+    );
     const superseded = await createDraft({
       ...draftInput(author),
       agentClientId,
@@ -249,13 +262,122 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
         return yield* reservations.completeSupersessionAndCreateDraft({
           cancelledReservationId: superseded.id,
           cancelledAt: Temporal.Now.instant(),
-          replacement: { ...draftInput(author), agentClientId },
+          replacement: {
+            ...draftInput(author),
+            agentClientId,
+            agentSelectionKey,
+          },
         });
       })
     );
     reservationIds.push(replacementDraft.id);
 
-    expect(await readAgentClient(replacementDraft.id)).toBe(agentClientId);
+    expect(await readAgentBooking(replacementDraft.id)).toEqual({
+      agentClientId,
+      agentSelectionKey,
+    });
   });
 
+  test("finds an agent booking request's latest two reservations, newest first", async () => {
+    const author = newAccountId();
+    const otherAuthor = newAccountId();
+    const selectionKey = agentSelectionKeySchema.make(
+      `selection:${crypto.randomUUID()}`
+    );
+    const otherSelectionKey = agentSelectionKeySchema.make(
+      `selection:${crypto.randomUUID()}`
+    );
+    const firstCreatedAt = Temporal.Instant.from("1990-01-01T00:00:00Z");
+
+    const createSelectedDraft = async (input: {
+      readonly authorAccountId: CustomerAccountId;
+      readonly agentSelectionKey: typeof selectionKey;
+      readonly createdAt: Temporal.Instant;
+    }) => {
+      const draft = await createDraft({
+        ...draftInput(input.authorAccountId),
+        agentClientId,
+        agentSelectionKey: input.agentSelectionKey,
+      });
+      await postgres.db
+        .update(workspaceReservations)
+        .set({ createdAt: input.createdAt })
+        .where(eq(workspaceReservations.id, draft.id))
+        .pipe(Effect.runPromise);
+      return draft;
+    };
+
+    const first = await createSelectedDraft({
+      authorAccountId: author,
+      agentSelectionKey: selectionKey,
+      createdAt: firstCreatedAt,
+    });
+    const second = await createSelectedDraft({
+      authorAccountId: author,
+      agentSelectionKey: selectionKey,
+      createdAt: firstCreatedAt.add({ minutes: 1 }),
+    });
+    const third = await createSelectedDraft({
+      authorAccountId: author,
+      agentSelectionKey: selectionKey,
+      createdAt: firstCreatedAt.add({ minutes: 2 }),
+    });
+    await createSelectedDraft({
+      authorAccountId: author,
+      agentSelectionKey: otherSelectionKey,
+      createdAt: firstCreatedAt.add({ minutes: 3 }),
+    });
+    await createSelectedDraft({
+      authorAccountId: otherAuthor,
+      agentSelectionKey: selectionKey,
+      createdAt: firstCreatedAt.add({ minutes: 4 }),
+    });
+
+    const latest = await run(
+      Effect.gen(function* () {
+        const reservations = yield* WorkspaceReservationRepository;
+        return yield* reservations.findLatestByAgentSelectionKey({
+          authorAccountId: author,
+          agentSelectionKey: selectionKey,
+        });
+      })
+    );
+
+    expect(latest.map(({ id }) => id)).toEqual([third.id, second.id]);
+    expect(latest.map(({ id }) => id)).not.toContain(first.id);
+  });
+
+  test("rejects a selection key without an agent client", async () => {
+    const agentSelectionKey = agentSelectionKeySchema.make(
+      `selection:${crypto.randomUUID()}`
+    );
+
+    await expect(
+      postgres.pool.query(
+        `insert into workspace_reservations (
+          checkout_attempt_key,
+          dotypos_customer_id,
+          reservation_state,
+          payment_state,
+          fulfillment_state,
+          reservation_details,
+          locale,
+          agent_selection_key
+        ) values ($1, $2, 'draft', 'not_started', 'not_started', $3, 'en-US', $4)`,
+        [
+          `attempt:${crypto.randomUUID()}`,
+          `customer-${crypto.randomUUID()}`,
+          JSON.stringify({
+            kind: "cowork",
+            entryTier: "basic",
+            coffee: false,
+          }),
+          agentSelectionKey,
+        ]
+      )
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "workspace_reservations_agent_selection_check",
+    });
+  });
 });
