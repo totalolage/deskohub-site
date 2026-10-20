@@ -664,7 +664,6 @@
     "scripts/refresh-test-timings.test.ts": 81,
     "scripts/shared/app-module-build.test.ts": 518,
     "scripts/shared/command.test.ts": 3151,
-    "scripts/shared/redact-values.test.ts": 1,
     "scripts/shared/source-ast.test.ts": 234,
     "scripts/shared/testing/bounded-process.test.ts": 1033,
     "scripts/stacked-pr-ci-workflow.test.ts": 9,

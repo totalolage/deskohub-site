@@ -11,7 +11,6 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCommand } from "./shared/command";
-import { redactValues } from "./shared/redact-values";
 
 type SourceMapUpload = {
   readonly args: readonly string[];
@@ -23,6 +22,8 @@ type SourceMapUpload = {
     readonly RUST_LOG: string;
   }>;
 };
+
+class SourceMapUploadFailed extends Error {}
 
 const requireVariable = (
   env: Readonly<Record<string, string | undefined>>,
@@ -78,13 +79,6 @@ export const runSourceMapUpload = async (
     return;
   }
 
-  const credentials = [
-    upload.env.POSTHOG_CLI_API_KEY,
-    upload.env.POSTHOG_CLI_HOST,
-    upload.env.POSTHOG_CLI_PROJECT_ID,
-  ];
-  process.stdout.write(redactValues(result.stdout, credentials));
-  process.stderr.write(redactValues(result.stderr, credentials));
   let outcome: string;
   if (result.timedOut) outcome = "timed out";
   else if (result.signalCode !== null) {
@@ -92,7 +86,10 @@ export const runSourceMapUpload = async (
   } else {
     outcome = `exited with code ${result.exitCode}`;
   }
-  throw new Error(`posthog-cli ${outcome}`);
+  process.stderr.write(
+    `PostHog source-map upload failed (${outcome}). CLI output is withheld because it can echo credentials; rerun \`posthog-cli sourcemap process\` locally with the same environment to see details.\n`
+  );
+  throw new SourceMapUploadFailed(`posthog-cli ${outcome}`);
 };
 
 if (import.meta.main) {
@@ -108,6 +105,11 @@ if (import.meta.main) {
     const posthogCli = fileURLToPath(
       import.meta.resolve("@posthog/cli/run-posthog-cli.js")
     );
-    await runSourceMapUpload(upload, posthogCli);
+    try {
+      await runSourceMapUpload(upload, posthogCli);
+    } catch (error) {
+      if (!(error instanceof SourceMapUploadFailed)) throw error;
+      process.exitCode = 1;
+    }
   }
 }

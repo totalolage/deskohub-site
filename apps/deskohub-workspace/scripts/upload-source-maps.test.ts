@@ -51,18 +51,18 @@ describe("sourceMapUpload", () => {
     }
   );
 
-  test("redacts credential values from failed CLI output and reports failure", async () => {
-    const credentials = [
+  test("withholds failed CLI output and reports failure", async () => {
+    const credential = 'phx_TEST_ONLY_not_a_secret/"\\';
+    const credentialForms = [
       "phx_TEST_ONLY_not_a_secret",
-      "https://posthog.test-only.invalid",
-      "project_TEST_ONLY_12345",
+      "Bearer phx_TEST_ONLY_not_a_secret",
+      encodeURIComponent(credential),
+      JSON.stringify(credential).slice(1, -1),
     ];
     const upload = sourceMapUpload(
       {
         ...productionEnv,
-        POSTHOG_API_HOST: credentials[1] ?? "",
-        POSTHOG_API_KEY: credentials[0] ?? "",
-        POSTHOG_PROJECT_ID: credentials[2] ?? "",
+        POSTHOG_API_KEY: credential,
       },
       "/app/.next"
     );
@@ -88,12 +88,12 @@ describe("sourceMapUpload", () => {
         "/fake/posthog-cli",
         async (command, options) => {
           expect(command[0]).toBe("/fake/posthog-cli");
-          expect(options.env?.POSTHOG_CLI_API_KEY).toBe(credentials[0]);
+          expect(options.env?.POSTHOG_CLI_API_KEY).toBe(credential);
           return {
             exitCode: 1,
             signalCode: null,
-            stdout: `failed for ${credentials[2]} using ${credentials[0]}\n`,
-            stderr: `request to ${credentials[1]} rejected for ${credentials[0]}\n`,
+            stdout: `${credentialForms.join("\n")}\n`,
+            stderr: `${credentialForms.join("\n")}\n`,
             timedOut: false,
           };
         }
@@ -108,9 +108,11 @@ describe("sourceMapUpload", () => {
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("exited with code 1");
     const printedOutput = `${stdout.join("")}${stderr.join("")}`;
-    expect(printedOutput).toContain("[REDACTED]");
-    for (const credential of credentials) {
-      expect(printedOutput).not.toContain(credential);
-    }
+    expect(printedOutput).toBe(
+      "PostHog source-map upload failed (exited with code 1). CLI output is withheld because it can echo credentials; rerun `posthog-cli sourcemap process` locally with the same environment to see details.\n"
+    );
+    for (const form of credentialForms)
+      expect(printedOutput).not.toContain(form);
+    expect(printedOutput).not.toContain("TEST_ONLY_not_a_secret");
   });
 });
