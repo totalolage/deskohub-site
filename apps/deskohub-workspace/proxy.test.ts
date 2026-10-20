@@ -811,6 +811,49 @@ test.each([
   }
 );
 
+describe("AI assistant sign-in step", () => {
+  const signedQuery =
+    "?response_type=code&client_id=https%3A%2F%2Fassistant.invalid%2Fclient.json&scope=reservations%3Aread&state=s&exp=1900000000&ba_iat=1899999400&ba_param=client_id&sig=SYNTHETIC-SIG_-";
+
+  test("sends a signed-out page load to the assistant sign-in with an HTTP redirect", async () => {
+    const response = await proxy(
+      new NextRequest(
+        `https://workspace.example/en-US/auth/connect${signedQuery}`
+      )
+    );
+
+    expect(response.status).toBe(307);
+    const location = new URL(response.headers.get("location")!);
+    expect(location.pathname).toBe("/en-US/auth/sign-in");
+    expect(location.searchParams.get("for")).toBe("assistant");
+    const returnTo = new URL(
+      location.searchParams.get("returnTo")!,
+      "https://workspace.example"
+    );
+    expect(returnTo.pathname).toBe("/en-US/auth/connect");
+    expect(returnTo.searchParams.get("client_id")).toBe(
+      "https://assistant.invalid/client.json"
+    );
+    expect(returnTo.searchParams.has("sig")).toBe(false);
+    expect(response.headers.get("cache-control")).toContain("no-store");
+  });
+
+  test.each([
+    [
+      "a signed-in visitor",
+      `/en-US/auth/connect${signedQuery}`,
+      { cookie: sessionCookie },
+    ],
+    ["a request without a client", "/en-US/auth/connect", {}],
+  ])("leaves %s to the page", async (_label, path, headers) => {
+    const response = await proxy(
+      new NextRequest(`https://workspace.example${path}`, { headers })
+    );
+
+    expect(response.headers.get("location")).toBeNull();
+  });
+});
+
 describe("account render pathname hand-off", () => {
   const renderedPathname = (response: Response) =>
     response.headers.get("x-middleware-request-x-deskohub-request-pathname");
