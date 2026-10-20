@@ -1163,7 +1163,6 @@
   "agentToolBookingHandoff": "Bookings are made and paid on the website. Open the reservation link to choose the details and pay.",
   "agentToolErrorProfileIncomplete": "Finish your profile on the website first: add your name and phone number on your account page, then try again.",
   "agentToolErrorSelectionUnavailable": "This selection is no longer available. Check availability and choose another option.",
-  "agentToolErrorHoldLimitReached": "You already have as many open holds from assistants as allowed. Pay for one or let it expire, then try again.",
   "agentToolErrorReservationConflict": "The booking couldn't be started because it is already being processed. Try again in a minute.",
   "agentToolErrorReservationUnavailable": "The booking can't be started right now. Try again shortly or book on the website.",
   "agentToolErrorAccountUnavailable": "Your account can't make bookings right now. Sign in on the website to check it.",

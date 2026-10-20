@@ -80,8 +80,6 @@ import {
 } from "@/features/referrals/remembered-referral-code.server";
 import {
   AgentBookingProfileRequiredError,
-  AgentHoldLimitError,
-  agentHoldLimit,
   BookingAgent,
 } from "@/features/reservation/backend/booking-agent";
 import { payStatePreparationServices } from "@/features/reservation/backend/pay-state-preparation-services";
@@ -367,31 +365,6 @@ const isAnotherAccountsReservation = (
 ) =>
   reservation.authorAccountId !== null &&
   reservation.authorAccountId !== authorAccountId;
-
-/**
- * A new hold an agent starts must stay within the account's agent hold
- * limit. Reusing or superseding the agent's own hold adds none, so only a
- * new draft is checked; the account lock the caller holds serializes it.
- */
-const ensureAgentHoldLimit = Effect.fn("preparePayState.ensureAgentHoldLimit")(
-  function* (
-    draft: Pick<
-      CreateWorkspaceReservationInput,
-      "agentClientId" | "authorAccountId"
-    >
-  ) {
-    if (!draft.agentClientId || !draft.authorAccountId) return;
-
-    const reservations = yield* WorkspaceReservationRepository;
-    const liveHolds = yield* reservations.countLiveAgentHolds({
-      authorAccountId: draft.authorAccountId,
-      now: Temporal.Now.instant(),
-    });
-    if (liveHolds >= agentHoldLimit) {
-      return yield* new AgentHoldLimitError({ liveHolds });
-    }
-  }
-);
 
 const mustRotateCheckoutSession = (reservation: WorkspaceReservation) =>
   reservation.reservationState !== "held" ||
@@ -773,7 +746,6 @@ const prepareReservationDraft = Effect.fn(
       );
     }
 
-    yield* ensureAgentHoldLimit(input.draft);
     yield* ensureReservationAvailable({
       availability,
       reservation: input.reservation,
@@ -1470,9 +1442,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           ),
           Match.tag("AgentBookingProfileRequiredError", () =>
             captureOutcome("validation")
-          ),
-          Match.tag("AgentHoldLimitError", () =>
-            captureOutcome("reservation_conflict")
           ),
           Match.orElse(() => captureOutcome("server_error"))
         )

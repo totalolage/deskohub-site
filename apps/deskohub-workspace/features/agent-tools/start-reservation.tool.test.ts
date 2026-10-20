@@ -124,10 +124,6 @@ const cowork = (days = 2) => ({
 class WorkspaceTableUnavailableError extends Data.TaggedError(
   "WorkspaceTableUnavailableError"
 )<Record<string, never>> {}
-class AgentHoldLimitError extends Data.TaggedError("AgentHoldLimitError")<
-  Record<string, never>
-> {}
-
 describe("start_reservation", () => {
   beforeEach(() => {
     submissions.length = 0;
@@ -250,15 +246,13 @@ describe("start_reservation", () => {
     });
   });
 
-  test.each([
-    [new WorkspaceTableUnavailableError({}), "selection_unavailable"],
-    [new AgentHoldLimitError({}), "hold_limit_reached"],
-  ] as const)("maps a booking refusal to %s", async (error, code) => {
+  test("maps unavailable selection to a refusal", async () => {
+    const error = new WorkspaceTableUnavailableError({});
     prepared = { fail: error };
 
     expect(await start(cowork())).toMatchObject({
       _tag: "Failure",
-      failure: { details: { code } },
+      failure: { details: { code: "selection_unavailable" } },
     });
   });
 

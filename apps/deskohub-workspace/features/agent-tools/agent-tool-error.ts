@@ -13,7 +13,6 @@ export type AgentToolErrorCode =
   | "service_unavailable"
   | "profile_incomplete"
   | "selection_unavailable"
-  | "hold_limit_reached"
   | "reservation_conflict"
   | "reservation_unavailable"
   | "account_unavailable"
@@ -80,7 +79,6 @@ export const agentToolErrorResultSchema = Schema.Struct({
         "service_unavailable",
         "profile_incomplete",
         "selection_unavailable",
-        "hold_limit_reached",
         "reservation_conflict",
         "reservation_unavailable",
         "account_unavailable",
@@ -133,7 +131,6 @@ export class AgentToolError extends Data.TaggedError("AgentToolError")<{
         AgentToolErrorCode,
         | "profile_incomplete"
         | "selection_unavailable"
-        | "hold_limit_reached"
         | "reservation_conflict"
         | "account_unavailable"
         | "reservation_not_found"
@@ -178,8 +175,6 @@ export const getAgentToolErrorMessage = (
         m.agentToolErrorProfileIncomplete({}, { locale }),
       selection_unavailable: () =>
         m.agentToolErrorSelectionUnavailable({}, { locale }),
-      hold_limit_reached: () =>
-        m.agentToolErrorHoldLimitReached({}, { locale }),
       reservation_conflict: () =>
         m.agentToolErrorReservationConflict({}, { locale }),
       reservation_unavailable: () =>

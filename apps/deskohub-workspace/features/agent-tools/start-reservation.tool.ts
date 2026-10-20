@@ -174,9 +174,6 @@ const toStartReservationError = (
     Match.tag("WorkspaceTableUnavailableError", (cause) =>
       AgentToolError.refused("selection_unavailable")(cause)
     ),
-    Match.tag("AgentHoldLimitError", (cause) =>
-      AgentToolError.refused("hold_limit_reached")(cause)
-    ),
     Match.tag("AgentBookingProfileRequiredError", (cause) =>
       AgentToolError.refused("profile_incomplete")(cause)
     ),

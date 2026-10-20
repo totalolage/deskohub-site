@@ -400,7 +400,6 @@ const runReusableReservationScenario = async (input: {
   /** Replaces the mocked referral operations above. */
   readonly referralService?: Layer.Layer<ReferralService>;
   readonly checkContactEmailDomain?: ReturnType<typeof mock>;
-  readonly countLiveAgentHolds?: ReturnType<typeof mock>;
   /**
    * Books through the customer MCP server's path instead of the form: the
    * shared operation for this agent client, without BotID.
@@ -441,8 +440,6 @@ const runReusableReservationScenario = async (input: {
   const withdrawActiveMarketingConsent = mock(() => Effect.succeed(false));
   const ensureAvailable = input.ensureAvailable ?? mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
-  const countLiveAgentHolds =
-    input.countLiveAgentHolds ?? mock(() => Effect.succeed(0));
   const createDraft = input.createDraft ?? mock(() => Effect.die("unused"));
   const assignAuthor =
     input.assignAuthor ??
@@ -570,7 +567,6 @@ const runReusableReservationScenario = async (input: {
       completeSupersessionAndCreateDraft,
       markCancelled: mock(() => Effect.void),
       markCancellationFailed,
-      countLiveAgentHolds,
     }),
     input.marketingConsentRepository ??
       Layer.mock(CustomerMarketingConsentRepository, {
@@ -1931,7 +1927,6 @@ describe("prepareWorkspacePayState", () => {
           findByAttemptKeys: mock(() =>
             Effect.succeed(agentHold({ id: "agent-hold-id" }))
           ),
-          countLiveAgentHolds: mock(() => Effect.succeed(3)),
         });
 
         expect(scenario.result).toMatchObject({
@@ -1942,38 +1937,7 @@ describe("prepareWorkspacePayState", () => {
         expect(scenario.createDraft).not.toHaveBeenCalled();
       });
 
-      test("refuses a new hold once the account holds the agent limit", async () => {
-        const countLiveAgentHolds = mock(() => Effect.succeed(3));
-        const scenario = await runReusableReservationScenario({
-          ...agentBooking(),
-          findByAttemptKeys: mock(() => Effect.succeed(null)),
-          createDraft: createFreshDraft(),
-          countLiveAgentHolds,
-        });
-
-        expect(scenario.error).toMatchObject({
-          _tag: "AgentHoldLimitError",
-          liveHolds: 3,
-        });
-        expect(countLiveAgentHolds.mock.calls[0]?.[0]).toMatchObject({
-          authorAccountId: accountId,
-        });
-        expect(scenario.createDraft).not.toHaveBeenCalled();
-        expect(scenario.createReservation).not.toHaveBeenCalled();
-      });
-
-      test("starts a new hold below the agent limit", async () => {
-        const scenario = await runReusableReservationScenario({
-          ...agentBooking(),
-          findByAttemptKeys: mock(() => Effect.succeed(null)),
-          createDraft: createFreshDraft(),
-          countLiveAgentHolds: mock(() => Effect.succeed(2)),
-        });
-
-        expect(scenario.result?.status).toBe("ready");
-      });
-
-      test("supersedes the client's previous hold in its session without counting it against the limit", async () => {
+      test("supersedes the client's previous hold in its session", async () => {
         const previous = agentHold({
           id: "previous-agent-hold-id",
           dotyposReservationId: "previous-dotypos-reservation-id",
@@ -1994,7 +1958,6 @@ describe("prepareWorkspacePayState", () => {
               })
             )
           ),
-          countLiveAgentHolds: mock(() => Effect.succeed(3)),
         });
 
         expect(scenario.result).toMatchObject({

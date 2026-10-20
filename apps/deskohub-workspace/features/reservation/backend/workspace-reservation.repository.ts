@@ -389,14 +389,6 @@ export interface IWorkspaceReservationRepository {
   readonly selectExpiredHoldDotyposReservationIds: (input: {
     readonly now: Temporal.Instant;
   }) => Effect.Effect<readonly DotyposReservationId[], EffectDrizzleQueryError>;
-  /**
-   * Counts an account's holds that customer agents started and that are
-   * still live: held, not yet paid for, and before their hold deadline.
-   */
-  readonly countLiveAgentHolds: (input: {
-    readonly authorAccountId: CustomerAccountId;
-    readonly now: Temporal.Instant;
-  }) => Effect.Effect<number, EffectDrizzleQueryError>;
   readonly selectStalledPaidFulfillments: (input: {
     readonly updatedBefore: Temporal.Instant;
     readonly limit: number;
@@ -1716,27 +1708,6 @@ export class WorkspaceReservationRepository extends Context.Service<
           return rows.flatMap(({ dotyposReservationId }) =>
             dotyposReservationId ? [dotyposReservationId] : []
           );
-        }),
-        countLiveAgentHolds: Effect.fn(
-          "workspaceReservations.countLiveAgentHolds"
-        )(function* (input) {
-          const [row] = yield* db
-            .select({ count: sql<number>`count(*)::int` })
-            .from(workspaceReservations)
-            .where(
-              and(
-                eq(
-                  workspaceReservations.authorAccountId,
-                  input.authorAccountId
-                ),
-                sql`${workspaceReservations.agentClientId} is not null`,
-                eq(workspaceReservations.reservationState, "held"),
-                eq(workspaceReservations.paymentState, "not_started"),
-                gt(workspaceReservations.reservationHoldExpiresAt, input.now)
-              )
-            );
-
-          return row?.count ?? 0;
         }),
         selectStalledPaidFulfillments: Effect.fn(
           "workspaceReservations.selectStalledPaidFulfillments"
