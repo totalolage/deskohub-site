@@ -1,13 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  test,
-} from "bun:test";
+import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
@@ -34,11 +27,18 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { seedAutomationUnit } from "./automation-engine.test-utils";
 import { AutomationEngineHealth } from "./automation-engine-health.service";
 
-const testDatabase = await connectWorkspacePostgresTestDatabase();
+/**
+ * The health report counts every unit and sweep cursor, so the suite runs
+ * on a database of its own.
+ */
+const testDatabase = await createWorkspacePostgresSuiteDatabase(
+  "automation_engine_health"
+);
+afterAll(() => testDatabase?.close());
 
 const suite = crypto.randomUUID().slice(0, 8);
 const now = Temporal.Instant.from("2026-10-19T12:00:00Z");
@@ -52,11 +52,6 @@ describe.skipIf(!testDatabase)(
     const { db, pool, layer } = testDatabase;
     const campaignIds: CampaignId[] = [];
     const reservationIds: WorkspaceReservationId[] = [];
-    let saved: {
-      readonly lastPlannedAt: unknown;
-      readonly sweeps: readonly { source: string; swept_until: unknown }[];
-      readonly unprocessedEventIds: readonly string[];
-    };
 
     const health = () =>
       Effect.runPromise(
@@ -190,29 +185,6 @@ describe.skipIf(!testDatabase)(
       return rows.map(({ id }) => id);
     };
 
-    beforeAll(async () => {
-      const engine = await pool.query(
-        "select last_planned_at from email_campaign_automation_engine where id = 1"
-      );
-      const sweeps = await pool.query(
-        "select source, swept_until from customer_event_sweeps"
-      );
-      // Events an earlier suite left unprocessed would skew the backlog.
-      const unprocessed = await pool.query(
-        "update customer_events set automation_processed_at = $1 where automation_processed_at is null returning id",
-        [now.toString()]
-      );
-      saved = {
-        lastPlannedAt: (engine as { rows: { last_planned_at: unknown }[] })
-          .rows[0]?.last_planned_at,
-        sweeps: (sweeps as { rows: { source: string; swept_until: unknown }[] })
-          .rows,
-        unprocessedEventIds: (
-          unprocessed as { rows: { id: string }[] }
-        ).rows.map(({ id }) => id),
-      };
-    });
-
     beforeEach(async () => {
       await pool.query("delete from email_campaign_automation_work_units");
     });
@@ -240,20 +212,6 @@ describe.skipIf(!testDatabase)(
           )
       );
       await deleteAutomatedCampaigns(db, campaignIds);
-      await pool.query(
-        "update email_campaign_automation_engine set last_planned_at = $1 where id = 1",
-        [saved.lastPlannedAt]
-      );
-      for (const sweep of saved.sweeps) {
-        await pool.query(
-          "update customer_event_sweeps set swept_until = $2 where source = $1",
-          [sweep.source, sweep.swept_until]
-        );
-      }
-      await pool.query(
-        "update customer_events set automation_processed_at = null where id = any($1)",
-        [saved.unprocessedEventIds]
-      );
     });
 
     test("reports every field of a keeping-pace engine without warnings", async () => {

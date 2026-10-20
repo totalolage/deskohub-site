@@ -2,7 +2,7 @@ import { Effect, Layer, Schema } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { emailCampaignAutomationWorkUnits } from "@/db/schema";
-import type { WorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import type { WorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AutomationWorkUnitStatus } from "../automation-work-units";
 import { automationWorkUnitPriorities } from "../automation-work-units";
 import {
@@ -74,12 +74,12 @@ const idleSchedulePlanning = Layer.succeed(AutomationSchedulePlanning, {
 });
 
 /**
- * The processor and planner over a test database and queue fake, running
- * `handlers` only. Slot limits default to production's, and each planner
+ * The processor and planner over the suite's own database and a queue
+ * fake, running `handlers` only. Slot limits default to production's, and each planner
  * step after the sweep is idle unless a test supplies it.
  */
 export const automationEngineTestLayer = (input: {
-  readonly database: WorkspacePostgresTestDatabase;
+  readonly database: WorkspacePostgresSuiteDatabase;
   readonly queue: AutomationUnitQueueFake;
   readonly handlers: ReadonlyArray<RegisteredAutomationUnitHandler>;
   readonly limits?: { readonly total: number; readonly deliver: number };

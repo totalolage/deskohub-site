@@ -30,10 +30,17 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import type { CustomerEventSweepSource } from "@/shared/backend/customer-events/customer-event";
 import { CustomerEventReconciler } from "@/shared/backend/customer-events/customer-event-reconciler";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { ReservationActivitySweep } from "./reservation-activity-sweep.service";
 
-const testDatabase = await connectWorkspacePostgresTestDatabase();
+/**
+ * The sweep reads every cursor and the planner every unit, so the suite runs
+ * on a database of its own.
+ */
+const testDatabase = await createWorkspacePostgresSuiteDatabase(
+  "reservation_activity_sweep"
+);
+afterAll(() => testDatabase?.close());
 
 /** How a Workspace reservation stands locally; `none` has no local row. */
 type LocalState = "booked" | "unconfirmed" | "cancelled" | "none";

@@ -67,21 +67,32 @@ const connectConfiguredWorkspacePostgres = async () => {
   return databaseUrl ? connectWorkspacePostgres(databaseUrl) : null;
 };
 
-/** The configured test database, migrated once and shared by every suite. */
+/**
+ * The configured test database, migrated once and shared by every suite
+ * without a database of its own.
+ */
 export const connectWorkspacePostgresTestDatabase =
   (): Promise<WorkspacePostgresTestDatabase | null> =>
     (connection ??= connectConfiguredWorkspacePostgres());
 
 /**
+ * A test database no other suite uses. Helpers whose subject reads or writes
+ * every row of a table, such as the automation engine planning every active
+ * automation over every active consent, require one.
+ */
+export interface WorkspacePostgresSuiteDatabase
+  extends WorkspacePostgresTestDatabase {
+  readonly owner: "suite";
+}
+
+/**
  * A migrated database of the suite's own, beside the configured test
- * database. For suites whose subject reads or writes every row of a table,
- * such as the automation engine planning every active automation over every
- * active consent: other suites' rows never reach it, nor its rows theirs.
- * `close` drops it.
+ * database: other suites' rows never reach it, nor its rows theirs. Close it
+ * in a file-level `afterAll`; `close` drops it.
  */
 export const createWorkspacePostgresSuiteDatabase = async (
   namePrefix: string
-): Promise<WorkspacePostgresTestDatabase | null> => {
+): Promise<WorkspacePostgresSuiteDatabase | null> => {
   const databaseUrl = process.env.WORKSPACE_TEST_DATABASE_URL;
   if (!databaseUrl) return null;
   const scratch = await createScratchPostgresDatabase(databaseUrl, namePrefix);
@@ -89,9 +100,13 @@ export const createWorkspacePostgresSuiteDatabase = async (
     const database = await connectWorkspacePostgres(scratch.url);
     return {
       ...database,
+      owner: "suite",
       close: async () => {
-        await database.close();
-        await scratch.drop();
+        try {
+          await database.close();
+        } finally {
+          await scratch.drop();
+        }
       },
     };
   } catch (cause) {

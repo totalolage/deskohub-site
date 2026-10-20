@@ -14,7 +14,7 @@ import {
   holdPostgresTransaction,
   waitForPostgresLockWaiter,
 } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { CampaignId } from "../../campaign-identifiers";
 import type {
   AutomationVersionId,
@@ -34,7 +34,14 @@ import { seedAutomationRun } from "./automation-steps.test-utils";
 import type { AutomationUnitOutcome } from "./automation-unit-processor.service";
 import { seedSendReadyRuns } from "./deliver.test-utils";
 
-const database = await connectWorkspacePostgresTestDatabase();
+/**
+ * The engine plans over whole tables, so the suite runs on a database of
+ * its own.
+ */
+const database = await createWorkspacePostgresSuiteDatabase(
+  "automation_engine_interleaving"
+);
+afterAll(() => database?.close());
 
 /** Tuesday 13 October 2026, 08:00 in Prague: every automation activates then. */
 const start = Temporal.Instant.from("2026-10-13T06:00:00Z");

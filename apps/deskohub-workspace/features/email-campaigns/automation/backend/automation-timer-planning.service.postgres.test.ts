@@ -3,7 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { afterAll, describe, expect, test } from "bun:test";
 import type { CalendarExpressionType as CalendarExpression } from "@deskohub/workspace-admin-api";
 import { Effect, Layer } from "effect";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   deleteAutomatedCampaigns,
   seedAutomatedCampaign,
@@ -25,7 +25,14 @@ import {
 } from "./automation-steps.test-utils";
 import { AutomationTimerPlanning } from "./automation-timer-planning.service";
 
-const database = await connectWorkspacePostgresTestDatabase();
+/**
+ * Timer planning reads every waiting run, so the suite runs on a database of
+ * its own.
+ */
+const database = await createWorkspacePostgresSuiteDatabase(
+  "automation_timer_planning"
+);
+afterAll(() => database?.close());
 const customer = testCustomerId(`automation-timers-${crypto.randomUUID()}`);
 
 /** Monday 2026-10-19 12:00 Prague (CEST). */

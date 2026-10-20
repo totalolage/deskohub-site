@@ -12,7 +12,7 @@ import {
   emailCampaignAutomationScheduleFires as fires,
   emailCampaignAutomationWorkUnits as units,
 } from "@/db/schema";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   deleteAutomatedCampaigns,
   seedAutomatedCampaign,
@@ -38,7 +38,15 @@ import {
 import { AutomationUnitProcessor } from "./automation-unit-processor.service";
 import { makeAutomationUnitQueueFake } from "./automation-unit-queue.test-utils";
 
-const database = await connectWorkspacePostgresTestDatabase();
+/**
+ * A finished fire plans the next over every active consent, and settling a
+ * unit promotes other automations' units, so the suite runs on a database of
+ * its own.
+ */
+const database = await createWorkspacePostgresSuiteDatabase(
+  "automation_fire_chunk"
+);
+afterAll(() => database?.close());
 const now = Temporal.Instant.from("2026-10-19T10:00:00Z");
 const prefix = `fire-chunk-${crypto.randomUUID()}`;
 
