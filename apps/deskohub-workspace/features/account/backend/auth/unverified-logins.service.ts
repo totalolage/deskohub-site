@@ -10,7 +10,7 @@ import type { makeWorkspaceAuth } from "./auth-server";
 type WorkspaceAuth = Pick<ReturnType<typeof makeWorkspaceAuth>, "$context">;
 
 /** The login could not be created; the cause is censored for logs. */
-export class UnverifiedLoginCreationError extends Data.TaggedError(
+class UnverifiedLoginCreationError extends Data.TaggedError(
   "UnverifiedLoginCreationError"
 )<{ readonly message: string; readonly cause: unknown }> {
   static from = (cause: unknown) =>

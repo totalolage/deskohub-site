@@ -39,7 +39,7 @@ import {
 import { customerAccountLockKey } from "./customer-account-link.repository";
 import { isCustomerProfileExpired } from "./customer-dotypos-adapter.service";
 
-export type CustomerAccountBackfillRefusalReason =
+type CustomerAccountBackfillRefusalReason =
   | "customer_not_found"
   | "customer_deleted"
   | "customer_expired"
