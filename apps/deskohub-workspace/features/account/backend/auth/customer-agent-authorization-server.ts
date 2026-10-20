@@ -49,8 +49,8 @@ const accessTokenVerificationBody = Schema.toStandardSchemaV1(
  * - Refresh tokens rotate without a reuse window. The MCP plugin's default
  *   30-second window stores the rotated token response, encrypted, so a
  *   repeated refresh can replay it; with no window only token hashes are
- *   persisted, and reusing a rotated refresh token revokes the client's
- *   refresh tokens, so the customer reconnects the assistant.
+ *   persisted. Reusing a rotated refresh token deletes every token that
+ *   client holds for the customer, so the customer reconnects the assistant.
  * - `verifyCustomerAgentAccessToken` is a server-only endpoint that validates
  *   a token through the provider's own capability surface, so the MCP route
  *   in this app needs no introspection client or HTTP round trip.
