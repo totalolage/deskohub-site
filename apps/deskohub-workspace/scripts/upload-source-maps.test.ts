@@ -284,6 +284,35 @@ Caused by:
     ).toBe(true);
   });
 
+  test("fails after retrying a request the CLI couldn't send", async () => {
+    // CLI 0.16.2 prints the same error for DNS, connection, and TLS failures.
+    const unsentRequest = failedWith(
+      `WARN posthog_cli::api::releases: failed to get release from hash: Request error: error sending request for url (https://posthog.example/api/hash/1)
+Oops! Request error: error sending request for url (https://posthog.example/api/hash/1)`
+    );
+    const distDir = await buildOutput();
+    const { calls, failure, logged, succeeded } = await runUpload(
+      [unsentRequest, unsentRequest, unsentRequest],
+      distDir
+    );
+
+    expect(succeeded).toBe(false);
+    expect(calls).toHaveLength(3);
+    expect(failure).toEqual(
+      expect.objectContaining({
+        _tag: "SourceMapUploadFailed",
+        kind: "unknown",
+        summary:
+          "posthog-cli exited with code 1 while looking up the release: request not sent",
+      })
+    );
+    expect(logged).not.toContain(skippedSourceMapUploadMarker);
+    expectNoCredential(logged);
+    expect(
+      await Bun.file(join(distDir, "static", "chunks", "app.js.map")).exists()
+    ).toBe(true);
+  });
+
   test("ships without public source maps when PostHog stays unavailable", async () => {
     const distDir = await buildOutput();
 

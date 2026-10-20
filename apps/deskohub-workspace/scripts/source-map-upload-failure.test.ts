@@ -67,18 +67,34 @@ Caused by:
       summary:
         "posthog-cli exited with code 1 while starting the upload: HTTP 429",
     },
-    {
-      name: "a dropped connection",
-      stderr: `Oops! Failed to create release
+    ...[
+      {
+        cause:
+          "2: client error (Connect)\n    3: dns error\n    4: failed to lookup address information: Name or service not known",
+        label: "DNS lookup failed",
+      },
+      {
+        cause:
+          "2: client error (Connect)\n    3: tcp connect error\n    4: Connection refused (os error 111)",
+        label: "connection refused",
+      },
+      {
+        cause:
+          "2: client error (SendRequest)\n    3: connection error\n    4: Connection reset by peer (os error 104)",
+        label: "connection reset",
+      },
+      { cause: "2: operation timed out", label: "request timed out" },
+    ].map(({ cause, label }) => ({
+      name: `an S3 chunk upload whose transport failed: ${label} (real CLI 0.16.2 output)`,
+      stderr: `Oops! Failed to upload chunk
 
 Caused by:
-    0: Request error: error sending request for url (${apiUrl}?token=${credential})
-    1: client error (Connect)
-    2: connection reset by peer`,
+    0: Failed to upload chunk
+    1: error sending request for url (${presignedUrl})
+    ${cause}`,
       kind: "transient",
-      summary:
-        "posthog-cli exited with code 1 while creating the release: connection failed, request not sent",
-    },
+      summary: `posthog-cli exited with code 1 while uploading a chunk: ${label}, request not sent`,
+    })),
     {
       name: "a throttled request reported as a PostHog error type",
       stderr: `Oops! Failed to finalize symbol upload; maps were not attached
@@ -156,7 +172,7 @@ Caused by:
     1: Request failed`,
       kind: "unknown",
       summary:
-        "posthog-cli exited with code 1 while uploading a chunk: conflicting HTTP statuses, connection failed",
+        "posthog-cli exited with code 1 while uploading a chunk: conflicting HTTP statuses, connection reset",
     },
     {
       name: "a permanent final error after a retried transient one",
@@ -179,9 +195,34 @@ Oops! Something new`,
       name: "a release lookup that couldn't reach PostHog (real CLI 0.16.2 output)",
       stderr: `2026-10-20T19:21:03.552715Z  WARN posthog_cli::api::releases: failed to get release from hash: Request error: error sending request for url (${apiUrl}/hash/8893c0f5)
 Oops! Request error: error sending request for url (${apiUrl}/hash/8893c0f5)`,
-      kind: "transient",
+      kind: "unknown",
       summary:
         "posthog-cli exited with code 1 while looking up the release: request not sent",
+    },
+    {
+      name: "an S3 chunk upload rejected by TLS verification (real CLI 0.16.2 output)",
+      stderr: `Oops! Failed to upload chunk
+
+Caused by:
+    0: Failed to upload chunk
+    1: error sending request for url (${presignedUrl})
+    2: client error (Connect)
+    3: invalid peer certificate: Other(OtherError(CaUsedAsEndEntity))`,
+      kind: "permanent",
+      summary:
+        "posthog-cli exited with code 1 while uploading a chunk: TLS handshake failed, request not sent",
+    },
+    {
+      name: "a TLS failure beside a transient cause",
+      stderr: `Oops! Failed to upload chunk
+
+Caused by:
+    0: Failed to upload chunk
+    1: error sending request for url (${presignedUrl})
+    2: connection reset during the TLS handshake`,
+      kind: "permanent",
+      summary:
+        "posthog-cli exited with code 1 while uploading a chunk: connection reset, TLS handshake failed, request not sent",
     },
     {
       name: "an API error whose body mimics transient evidence",

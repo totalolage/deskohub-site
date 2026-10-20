@@ -13,12 +13,15 @@ export const skippedSourceMapUploadMarker =
   "PostHog source-map upload skipped:";
 
 /**
- * - `transient`: PostHog or the network failed; a rerun can succeed.
+ * - `transient`: PostHog or its storage is down or throttling, shown by a
+ *   status or a transport cause that only an outage produces; a rerun can
+ *   succeed.
  * - `permanent`: credentials, configuration, or the build output is wrong; a
  *   rerun fails the same way.
  * - `interrupted`: the CLI was killed, possibly while rewriting chunks, so
  *   the build output can't be trusted.
- * - `unknown`: nothing in the output was recognised.
+ * - `unknown`: nothing in the output identifies the cause, including a
+ *   request the CLI couldn't send.
  */
 export type SourceMapUploadFailureKind =
   | "transient"
@@ -102,23 +105,40 @@ const causes: readonly Evidence[] = [
     label: "unreadable source map",
     kind: "permanent",
   },
+  // Only an S3 chunk upload prints the transport cause chain, and only these
+  // causes are an outage rather than a trust or configuration failure. Every
+  // other request prints a bare `error sending request` whatever the cause,
+  // so it stays unclassified.
   {
     pattern: /dns error|failed to lookup address/i,
     label: "DNS lookup failed",
     kind: "transient",
   },
   {
-    pattern:
-      /connection (?:refused|reset|closed)|error trying to connect|tcp connect error|broken pipe|unexpected eof/i,
-    label: "connection failed",
+    pattern: /connection refused/i,
+    label: "connection refused",
     kind: "transient",
   },
-  { pattern: /timed out/i, label: "request timed out", kind: "transient" },
   {
-    pattern: /error sending request/i,
-    label: "request not sent",
+    pattern: /connection reset/i,
+    label: "connection reset",
     kind: "transient",
   },
+  {
+    pattern: /operation timed out/i,
+    label: "request timed out",
+    kind: "transient",
+  },
+  {
+    pattern: /invalid peer certificate|received fatal alert|tls handshake/i,
+    label: "TLS handshake failed",
+    kind: "permanent",
+  },
+  {
+    pattern: /connection closed|broken pipe|unexpected eof/i,
+    label: "connection closed",
+  },
+  { pattern: /error sending request/i, label: "request not sent" },
 ];
 
 /**

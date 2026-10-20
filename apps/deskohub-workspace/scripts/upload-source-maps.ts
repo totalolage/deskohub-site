@@ -13,7 +13,8 @@
  * Transient and unrecognised failures are retried. When PostHog stays
  * unavailable, the release ships without uploaded source maps: the public maps
  * are deleted and production-build.ts raises a GitHub warning. Any other
- * failure stops the production build.
+ * failure stops the production build, including a request the CLI couldn't
+ * send for a reason its output doesn't name.
  */
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
