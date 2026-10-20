@@ -58,6 +58,11 @@ describe.skipIf(!testDatabase)(
       readonly accountIds: string[];
       readonly reservationIds: string[];
       readonly customers: Map<DotyposCustomerId, DotyposCustomer>;
+      /** What the exact-email search sees where it differs from `customers`. */
+      readonly searchedCustomers: Map<DotyposCustomerId, DotyposCustomer>;
+      /** Emails the exact-email search was asked for. */
+      readonly emailSearches: string[];
+      onEmailSearch?: (email: string) => Promise<void>;
     };
 
     const fixtures = new Set<Fixture>();
@@ -68,6 +73,8 @@ describe.skipIf(!testDatabase)(
         accountIds: [],
         reservationIds: [],
         customers: new Map(),
+        searchedCustomers: new Map(),
+        emailSearches: [],
       };
       fixtures.add(fixture);
       return fixture;
@@ -251,7 +258,12 @@ describe.skipIf(!testDatabase)(
 
     /** Dotypos' exact-email search over the fixture's customers. */
     const findCustomersByEmail = (fixture: Fixture, email: string) => {
-      const matches = [...fixture.customers.values()].filter(
+      const matches = [
+        ...new Map([
+          ...fixture.customers,
+          ...fixture.searchedCustomers,
+        ]).values(),
+      ].filter(
         (customer) =>
           customer.email != null &&
           toCustomerEmailIdentity(customer.email) ===
@@ -282,7 +294,11 @@ describe.skipIf(!testDatabase)(
             })
           ),
         findCustomer: ({ email }) =>
-          Effect.sync(() => findCustomersByEmail(fixture, email ?? "")),
+          Effect.promise(async () => {
+            fixture.emailSearches.push(email ?? "");
+            await fixture.onEmailSearch?.(email ?? "");
+            return findCustomersByEmail(fixture, email ?? "");
+          }),
       });
       return CustomerAccountBackfill.Default.pipe(
         Layer.provide(
@@ -317,6 +333,8 @@ describe.skipIf(!testDatabase)(
         accountIds: [],
         reservationIds: [],
         customers: new Map(),
+        searchedCustomers: new Map(),
+        emailSearches: [],
       };
       settledReport = undefined;
       let report: CustomerAccountBackfillReport;
@@ -755,6 +773,33 @@ describe.skipIf(!testDatabase)(
       await expectAuthorless(reservations);
     });
 
+    test("refuses a customer only the exact-email search finds expired", async () => {
+      const fixture = makeFixture();
+      const customerId = makeCustomerId(fixture, "search-expired");
+      const email = makeEmail(fixture, "search-expired");
+      addCustomer(fixture, customerId, { email });
+      fixture.searchedCustomers.set(
+        customerId,
+        makeCustomer(customerId, { email, expireDate: "2020-01-01T00:00:00Z" })
+      );
+      const reservations = [
+        await insertReservation(fixture, {
+          customerId,
+          label: "search-expired-reservation",
+        }),
+      ];
+
+      const report = await runBackfill(fixture, false);
+      expect(fixture.emailSearches).toEqual([email]);
+      expectRefusal(report, fixture, customerId, "customer_expired", 1);
+      await expectAuthorless(reservations);
+      const users = await testDatabase.pool.query(
+        `select id from auth."user" where email = $1`,
+        [email]
+      );
+      expect(users.rows).toEqual([]);
+    });
+
     test("refuses a customer with no email", async () => {
       const fixture = makeFixture();
       const customerId = makeCustomerId(fixture, "missing-email");
@@ -937,6 +982,39 @@ describe.skipIf(!testDatabase)(
       expectRefusal(report, fixture, verifiedCustomer, "login_conflict", 1);
       expectRefusal(report, fixture, linkedLoginCustomer, "login_conflict", 1);
       await expectAuthorless(reservations);
+    });
+
+    test("refuses a silent login its owner verifies between planning and apply", async () => {
+      const fixture = makeFixture();
+      const customerId = makeCustomerId(fixture, "verified-after-plan");
+      const email = makeEmail(fixture, "verified-after-plan");
+      addCustomer(fixture, customerId, { email });
+      const silentLogin = await insertAuthUser(fixture, email);
+      const reservations = [
+        await insertReservation(fixture, {
+          customerId,
+          label: "verified-after-plan-reservation",
+        }),
+      ];
+      // The exact-email search is the plan's last step for this customer.
+      fixture.onEmailSearch = async () => {
+        await testDatabase.pool.query(
+          `update auth."user" set email_verified = true where id = $1`,
+          [silentLogin]
+        );
+      };
+
+      const report = await runBackfill(fixture, false);
+      expect(fixture.emailSearches).toEqual([email]);
+      expectRefusal(report, fixture, customerId, "login_conflict", 1);
+      expect(report.authors.viaResumedLogin.customers).toBe(0);
+      await expectAuthorless(reservations);
+      const links = await testDatabase.pool.query(
+        `select dotypos_customer_id from customer_account_links
+         where customer_account_id = $1`,
+        [silentLogin]
+      );
+      expect(links.rows).toEqual([]);
     });
 
     test("refuses a link row that conflicts with another account's customer column", async () => {
@@ -1221,6 +1299,62 @@ describe.skipIf(!testDatabase)(
         [linkedCustomers]
       );
       expect(authored.rows[0]?.count).toBe(101);
+    });
+
+    test("searches only the emails one batch of 100 unlinked customers needs", async () => {
+      const fixture = makeFixture();
+      const customers = await Promise.all(
+        Array.from({ length: 101 }, async (_, index) => {
+          const customerId = makeCustomerId(fixture, `email-batch-${index}`);
+          addCustomer(fixture, customerId, {
+            email: makeEmail(fixture, `email-batch-${index}`),
+          });
+          await insertReservation(fixture, {
+            customerId,
+            label: `email-batch-${index}`,
+          });
+          return customerId;
+        })
+      );
+      const countAuthored = async () => {
+        const result = await testDatabase.pool.query<{ count: number }>(
+          `select count(*)::int as count from workspace_reservations
+           where dotypos_customer_id = any($1::text[])
+             and author_account_id is not null`,
+          [customers]
+        );
+        return result.rows[0]?.count;
+      };
+
+      const dryRun = await runBackfill(fixture, true);
+      expect(fixture.emailSearches).toHaveLength(101);
+      expect(dryRun.authors.viaNewLogin).toEqual({
+        customers: 101,
+        reservations: 101,
+      });
+      expect(dryRun.authors.remainingCustomers).toBe(0);
+      expect(fixtureRefusals(dryRun, fixture)).toEqual([]);
+      expect(await countAuthored()).toBe(0);
+
+      fixture.emailSearches.length = 0;
+      const first = await runBackfill(fixture, false);
+      expect(fixture.emailSearches).toHaveLength(100);
+      expect(first.authors.viaNewLogin).toEqual({
+        customers: 100,
+        reservations: 100,
+      });
+      expect(first.authors.remainingCustomers).toBe(1);
+      expect(await countAuthored()).toBe(100);
+
+      fixture.emailSearches.length = 0;
+      const second = await runBackfill(fixture, false);
+      expect(fixture.emailSearches).toHaveLength(1);
+      expect(second.authors.viaNewLogin).toEqual({
+        customers: 1,
+        reservations: 1,
+      });
+      expect(second.authors.remainingCustomers).toBe(0);
+      expect(await countAuthored()).toBe(101);
     });
   }
 );
