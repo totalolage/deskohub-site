@@ -7,7 +7,7 @@ import {
 } from "./customer-agent-authorization.service";
 
 /** What the consent page shows about the agent asking for access. */
-export type CustomerAgentClient = {
+type CustomerAgentClient = {
   readonly clientId: CustomerAgentClientId;
   /** The name the agent gives itself in its metadata document. */
   readonly name: string;

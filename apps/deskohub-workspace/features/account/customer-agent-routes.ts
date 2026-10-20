@@ -21,7 +21,7 @@ export const customerAgentAuthorizePath = "/api/auth/oauth2/authorize";
  * Marks a visit to the sign-in step that comes straight back from signing
  * in, so a request to sign in again counts as satisfied.
  */
-export const customerAgentSignedInParam = "signed_in";
+const customerAgentSignedInParam = "signed_in";
 
 /**
  * Parameters the OAuth server adds when it signs the authorization request
