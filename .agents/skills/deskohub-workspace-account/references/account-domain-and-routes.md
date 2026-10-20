@@ -67,6 +67,17 @@ glossary defines the customer account, reservation author, and tombstone.
 - `author_account_id` is null only for reservations made before authors were
   recorded, until the legacy backfill fills them and the column becomes NOT
   NULL.
+- `CustomerAccountBackfill` (`dhw accounts backfill`, see the administration
+  skill's [dhw-cli.md](../../deskohub-workspace-administration/references/dhw-cli.md#customer-account-backfill))
+  gives a legacy customer with no linked account a silent login: an
+  unverified `auth.user` row for its Dotypos email, created through
+  `UnverifiedLogins` (`backend/auth/unverified-logins.service.ts`, Better
+  Auth's `internalAdapter.createUser` with a generated id) without sending
+  email, then linked to the customer without an `account-created` event or
+  referral. Workspace rejects its sessions until the owner signs in by link
+  or code to that email, which verifies the same row. Account-created
+  reconciliation and campaign audiences count only verified logins. Nothing
+  else creates unverified logins.
 
 ## Error contract
 
