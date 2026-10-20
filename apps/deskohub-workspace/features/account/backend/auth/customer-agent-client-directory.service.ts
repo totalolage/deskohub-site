@@ -3,6 +3,7 @@ import {
   CustomerAgentAuthorizationError,
   type CustomerAgentClientId,
   customerAgentClientIdSchema,
+  isProviderRejection,
 } from "./customer-agent-authorization.service";
 
 /** What the consent page shows about the agent asking for access. */
@@ -44,9 +45,6 @@ export interface CustomerAgentClientAuthority {
    */
   readonly findPublicClient: (clientId: string) => Promise<unknown>;
 }
-
-const isProviderRejection = (cause: unknown) =>
-  cause instanceof Error && cause.name === "APIError";
 
 const toClient = (
   publicClient: typeof publicClientSchema.Type
