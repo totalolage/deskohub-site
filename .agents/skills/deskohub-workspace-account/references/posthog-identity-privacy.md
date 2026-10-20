@@ -107,11 +107,11 @@ non-production traffic apart:
   `$session_entry_*` variants, including session-entry campaign fields;
   disabled replay doesn't suppress session metadata. Drop malformed metadata,
   and remove saved UTM and click metadata.
-- Reservation checkout events carry no reservation form values (name, email,
+- Browser checkout events carry no reservation form values (name, email,
   phone, message, date, tier, or coffee and monitor preferences). The
-  PostHog `pre-payment outcome` event carries only its outcome; the Vercel
-  Analytics `workspace_checkout_started` event carries only the five `utm_*`
-  keys allowlisted in `features/reservation/reservation-analytics.ts`, each
+  PostHog `pre-payment outcome` event's only custom property is its outcome;
+  the Vercel Analytics `workspace_checkout_started` event's custom properties
+  are only the five `utm_*` keys allowlisted in `features/reservation/reservation-analytics.ts`, each
   trimmed to 128 characters.
 - Don't describe network IP handling as disabled.
 - Person properties never include email, name, phone, billing, reservation
@@ -171,10 +171,8 @@ non-production traffic apart:
   `verified_bot`. The page route is a template Next generated from the app
   directory (`AppRoutes`) without its locale segment; a path no page matches
   is `unknown`, so a requested path value never reaches PostHog. The privacy
-  policy describes these events in general terms (traffic category, page and
-  language, tool used and whether it worked, nothing that identifies a
-  person); a property outside that description needs a matching policy
-  change.
+  policy describes these events in plain terms; a property that sends a new
+  kind of data needs a matching policy change.
 - Checkout lifecycle events carry the agent fields of the request that
   emitted them. Actions and `client` routes provide request context
   themselves; a page whose run can emit one, such as the checkout status
