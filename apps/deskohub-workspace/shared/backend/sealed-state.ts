@@ -61,9 +61,9 @@ export type SealedStateCryptoOptions = {
   readonly randomBytes?: (size: number) => Buffer;
   /**
    * Seals equal state under one key to the same token, for a link a repeated
-   * request must return unchanged. The IV is a MAC of the header and
-   * plaintext (a synthetic IV, as in SIV), so different states still never
-   * share an IV; the token only reveals that two seals carried equal state.
+   * request must return unchanged. The IV is a 96-bit MAC of the header and
+   * plaintext (a synthetic IV, as in SIV), so different states get unrelated
+   * IVs; the token reveals only that two seals carried equal state.
    */
   readonly syntheticIv?: boolean;
 };

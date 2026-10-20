@@ -818,13 +818,18 @@ type AgentCheckout =
 
 /**
  * Where an agent booking request continues. The request's latest reservation
- * decides: an open one (a draft, an in-flight transition, or a live unpaid
- * hold) continues under the session and attempt that created it, so the
- * checkout's idempotency reuses it; one waiting for payment is kept as it is,
- * and once its Pay link expired the request is refused; any other ended, and the request starts its next attempt in the agent's
- * session, which supersedes or rotates past the session's current
- * reservation as usual. An open reservation whose attempt no longer matches,
- * such as after the customer edited the profile, counts as ended.
+ * decides:
+ * - An open one (a draft, an in-flight transition, or a live unpaid hold)
+ *   continues under the session and attempt that created it, so the
+ *   checkout's idempotency reuses it.
+ * - One waiting for payment is kept as it is; once its Pay link expired the
+ *   request is refused.
+ * - Any other ended, and the request starts its next attempt in the agent's
+ *   session, which supersedes or rotates past the session's current
+ *   reservation as usual.
+ * An open reservation whose attempt no longer matches, such as after the
+ * customer edited the profile, counts as ended when the agent session holds
+ * it, and is refused until it ends when it sits in a rotated session.
  */
 const resolveAgentCheckout = Effect.fn("preparePayState.resolveAgentCheckout")(
   function* (input: {
@@ -864,25 +869,30 @@ const resolveAgentCheckout = Effect.fn("preparePayState.resolveAgentCheckout")(
     const agentSessionKeys = yield* deriveCheckoutSessionKeys(
       input.checkoutSessionId
     );
-    const checkoutSessionId =
+    const inAgentSession = Boolean(
       latest.checkoutSessionKey &&
-      agentSessionKeys.accepted.includes(latest.checkoutSessionKey)
-        ? input.checkoutSessionId
-        : promoteCheckoutAttemptToSessionId(checkoutAttemptId);
+        agentSessionKeys.accepted.includes(latest.checkoutSessionKey)
+    );
+    const checkoutSessionId = inAgentSession
+      ? input.checkoutSessionId
+      : promoteCheckoutAttemptToSessionId(checkoutAttemptId);
 
     if (
       latest.reservationState === "held" &&
       latest.paymentState === "pending"
     ) {
       // The payment decides this booking; a repeat neither holds again nor
-      // cancels. The Pay link resumes the payment until it expires.
+      // cancels. The Pay link resumes the payment until it expires, at the
+      // whole second its sealed state carries.
       const holdBookedAt = getAgentHoldBookedAt(latest);
       if (
         !holdBookedAt ||
-        Temporal.Instant.compare(
-          holdBookedAt.add({ milliseconds: payStateDefaultTtlMilliseconds }),
-          Temporal.Now.instant()
-        ) <= 0
+        Math.floor(
+          (holdBookedAt.epochMilliseconds + payStateDefaultTtlMilliseconds) /
+            1000
+        ) *
+          1000 <=
+          Temporal.Now.instant().epochMilliseconds
       ) {
         return yield* new AgentBookingPaymentInProgressError({
           reservationId: latest.id,
@@ -907,14 +917,22 @@ const resolveAgentCheckout = Effect.fn("preparePayState.resolveAgentCheckout")(
       checkoutAttemptId,
       reservation: input.reservation,
     });
-    return latest.checkoutAttemptKey &&
+    if (
+      latest.checkoutAttemptKey &&
       attemptKeys.accepted.includes(latest.checkoutAttemptKey)
-      ? ({
-          kind: "attempt",
-          checkoutSessionId,
-          checkoutAttemptId,
-        } satisfies AgentCheckout)
-      : nextAttempt(latest);
+    ) {
+      return {
+        kind: "attempt",
+        checkoutSessionId,
+        checkoutAttemptId,
+      } satisfies AgentCheckout;
+    }
+    // The agent session's current reservation is superseded as usual, but a
+    // hold in a rotated session would only be left behind beside a new one.
+    if (!inAgentSession) {
+      return yield* new CheckoutAttemptUnavailableError({ reservation: latest });
+    }
+    return nextAttempt(latest);
   }
 );
 
