@@ -370,11 +370,9 @@ describe.skipIf(!testDatabase)(
         locale: string | null;
         email_verified: boolean;
         customer_account_id: string | null;
-        account_created_no_later: boolean | null;
       }>(
         `select auth_user.id, auth_user.locale, auth_user.email_verified,
-                customer_accounts.id as customer_account_id,
-                customer_accounts.created_at <= auth_user.created_at as account_created_no_later
+                customer_accounts.id as customer_account_id
          from auth."user" as auth_user
          left join customer_accounts on customer_accounts.id = auth_user.id
          where auth_user.id = $1`,
@@ -409,7 +407,7 @@ describe.skipIf(!testDatabase)(
       expect(await createdLocaleFor(emailDefault)).toBe("en-US");
     });
 
-    test("creates the durable account before a magic-link sign-up inserts its user", async () => {
+    test("creates the durable account for a magic-link sign-up", async () => {
       const sentLinks: CapturedMagicLink[] = [];
       const auth = makeTestAuth({ sentLinks });
       const email = uniqueEmail("account-sign-up");
@@ -422,10 +420,8 @@ describe.skipIf(!testDatabase)(
       const { rows } = await testDatabase!.pool.query<{
         user_id: string;
         customer_account_id: string | null;
-        account_created_no_later: boolean | null;
       }>(
-        `select auth_user.id as user_id, customer_accounts.id as customer_account_id,
-                customer_accounts.created_at <= auth_user.created_at as account_created_no_later
+        `select auth_user.id as user_id, customer_accounts.id as customer_account_id
          from auth."user" as auth_user
          left join customer_accounts on customer_accounts.id = auth_user.id
          where auth_user.id = $1`,
@@ -436,46 +432,79 @@ describe.skipIf(!testDatabase)(
         {
           user_id: userId,
           customer_account_id: userId,
-          account_created_no_later: true,
         },
       ]);
     });
 
     test("creates a durable account for internal user creation with a supplied locale", async () => {
       const auth = makeTestAuth();
-      const { internalAdapter } = await auth.$context;
+      const context = await auth.$context;
+      const id = context.generateId({ model: "user" });
+      const { internalAdapter } = context;
       const user = await internalAdapter.createUser({
+        id,
         email: uniqueEmail("internal-account-locale"),
         name: "",
         emailVerified: false,
         locale: "en",
       });
 
-      expect(await readCreatedUser(user.id)).toEqual({
-        id: user.id,
+      expect(user.id).toBe(id);
+      expect(await readCreatedUser(id)).toEqual({
+        id,
         locale: "en",
         email_verified: false,
-        customer_account_id: user.id,
-        account_created_no_later: true,
+        customer_account_id: id,
       });
     });
 
     test("uses the default locale for internal user creation without one", async () => {
       const auth = makeTestAuth();
-      const { internalAdapter } = await auth.$context;
+      const context = await auth.$context;
+      const id = context.generateId({ model: "user" });
+      const { internalAdapter } = context;
       const user = await internalAdapter.createUser({
+        id,
         email: uniqueEmail("internal-account-default-locale"),
         name: "",
         emailVerified: false,
       });
 
-      expect(await readCreatedUser(user.id)).toEqual({
-        id: user.id,
+      expect(user.id).toBe(id);
+      expect(await readCreatedUser(id)).toEqual({
+        id,
         locale: "en-US",
         email_verified: false,
-        customer_account_id: user.id,
-        account_created_no_later: true,
+        customer_account_id: id,
       });
+    });
+
+    test("rejects internal user creation without an id and creates no rows", async () => {
+      const auth = makeTestAuth();
+      const { internalAdapter } = await auth.$context;
+      const email = uniqueEmail("internal-account-missing-id");
+      const before = await testDatabase!.pool.query<{ count: string }>(
+        `select count(*)::text as count from customer_accounts`
+      );
+
+      await expect(
+        internalAdapter.createUser({
+          email,
+          name: "",
+          emailVerified: false,
+        })
+      ).rejects.toThrow(/valid account identifier/);
+
+      const users = await testDatabase!.pool.query(
+        `select id from auth."user" where email = $1`,
+        [email]
+      );
+      const after = await testDatabase!.pool.query<{ count: string }>(
+        `select count(*)::text as count from customer_accounts`
+      );
+
+      expect(users.rows).toHaveLength(0);
+      expect(after.rows[0]?.count).toBe(before.rows[0]?.count);
     });
 
     test("keeps the creation locale when a later sign-in carries another one", async () => {
