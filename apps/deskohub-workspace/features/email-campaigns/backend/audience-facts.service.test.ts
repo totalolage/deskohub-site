@@ -124,11 +124,14 @@ const resolveFacts = async (input: {
       Effect.succeed(new Map<DotyposCustomerId, number>())
   );
   const accountCreations = mock(
-    (_: { readonly created: DatePeriodBounds; readonly asOf: Temporal.Instant }) =>
-    Effect.succeed({
-      withValue: new Set<DotyposCustomerId>(),
-      inPeriod: new Set<DotyposCustomerId>(),
-    })
+    (_: {
+      readonly created: DatePeriodBounds;
+      readonly asOf: Temporal.Instant;
+    }) =>
+      Effect.succeed({
+        withValue: new Set<DotyposCustomerId>(),
+        inPeriod: new Set<DotyposCustomerId>(),
+      })
   );
   const listBookedReservations = mock(
     (

@@ -482,9 +482,10 @@ export class CampaignCandidateRepository extends Context.Service<
           if (statuses.size === 0 || customers.length === 0) {
             return new Map<DotyposCustomerId, Temporal.Instant>();
           }
-          const changedAt = sql<Temporal.Instant | null>`max(${undatedStatusChangeAt(
-            statuses
-          )})`.mapWith(workspaceReservations.updatedAt);
+          const changedAt =
+            sql<Temporal.Instant | null>`max(${undatedStatusChangeAt(
+              statuses
+            )})`.mapWith(workspaceReservations.updatedAt);
           const rows = yield* db
             .select({
               dotyposCustomerId: workspaceReservations.dotyposCustomerId,
@@ -498,7 +499,9 @@ export class CampaignCandidateRepository extends Context.Service<
             .having(isNotNull(changedAt));
           return new Map(
             rows.flatMap(({ dotyposCustomerId, changedAt }) =>
-              changedAt === null ? [] : [[dotyposCustomerId, changedAt] as const]
+              changedAt === null
+                ? []
+                : [[dotyposCustomerId, changedAt] as const]
             )
           );
         }),

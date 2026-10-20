@@ -486,11 +486,12 @@ describe("collectAudienceFactRequests", () => {
     } as const satisfies AudienceCondition;
 
     expect(
-      countFactRequest(reservationCount, visitsAnyTime, replayed).reservationsAsOf
+      countFactRequest(reservationCount, visitsAnyTime, replayed)
+        .reservationsAsOf
     ).toEqual(now);
-    expect(dateFactRequest(lastVisitNotRecent, replayed).reservationsAsOf).toEqual(
-      now
-    );
+    expect(
+      dateFactRequest(lastVisitNotRecent, replayed).reservationsAsOf
+    ).toEqual(now);
     // Live evaluations count reservations as they are now.
     expect(
       countFactRequest(reservationCount, visitsAnyTime, context)

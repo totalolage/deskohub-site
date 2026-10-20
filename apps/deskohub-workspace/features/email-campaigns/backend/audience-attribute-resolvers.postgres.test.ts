@@ -20,6 +20,7 @@ import type {
 import { Effect, Layer, Option } from "effect";
 import { customerAccountLinks, workspaceReservations } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
+import type { ReservationStatusRead } from "@/features/administration/reservation-status-condition";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type {
@@ -36,7 +37,6 @@ import {
   audienceEvaluationAt,
 } from "./audience-evaluation-context";
 import { AudienceFactsService } from "./audience-facts.service";
-import type { ReservationStatusRead } from "@/features/administration/reservation-status-condition";
 import { CampaignCandidateRepository } from "./campaign-candidate.repository";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -109,6 +109,8 @@ const holdExpiredLater = customerId("hold-expired-later");
 const failedLater = customerId("failed-later");
 /** Confirmed at 08:30; a cancellation failed at 12:00, undated. */
 const cancellationFailedLater = customerId("cancellation-failed-later");
+/** Its fulfillment failed at 09:00 and was retried at 12:00, undated. */
+const retriedLater = customerId("retried-later");
 const transitionedLater = [
   fulfilledLater,
   cancelledLater,
@@ -116,6 +118,7 @@ const transitionedLater = [
   holdExpiredLater,
   failedLater,
   cancellationFailedLater,
+  retriedLater,
 ];
 const confirmedOnEventDay = {
   reservationConfirmedAt: onEventDay("08:30"),
@@ -165,6 +168,15 @@ const transitionedReservations = [
     customer: cancellationFailedLater,
     reservationState: "cancellation_failed" as const,
     ...confirmedOnEventDay,
+    updatedAt: onEventDay("12:00"),
+  },
+  {
+    customer: retriedLater,
+    reservationState: "confirmed" as const,
+    ...confirmedOnEventDay,
+    fulfillmentState: "processing" as const,
+    fulfillmentFailedAt: onEventDay("09:00"),
+    fulfillmentFailureCode: "fulfillment_email_failed",
     updatedAt: onEventDay("12:00"),
   },
 ];
@@ -750,6 +762,8 @@ describe.skipIf(!testDatabase)(
         holdLapsedLater,
         holdExpiredLater,
         failedLater,
+        // Failed then, but its retry is undated, so it reads as it is now.
+        retriedLater,
       ]);
       // By visit or by booking, the reservation cancelled at 12:00 was booked.
       for (const dateBasis of ["visit", "booking"] as const) {
@@ -770,7 +784,7 @@ describe.skipIf(!testDatabase)(
       ).toEqual([cancelledLater, holdLapsedLater, holdExpiredLater]);
       expect(
         await matching(inStatus("in_progress"), transitionedLater, atOne)
-      ).toEqual([]);
+      ).toEqual([retriedLater]);
     });
 
     test("reports when a reservation's status changed in a way a replay can't date", async () => {
@@ -796,10 +810,12 @@ describe.skipIf(!testDatabase)(
       expect(await undated(["booked"])).toEqual({
         [cancellationFailedLater]: noon,
       });
-      // The failure may have followed a fulfillment it erased.
+      // The failure may have followed a fulfillment it erased, and the
+      // retry of a failure is dated only by the row's last update.
       expect(await undated(["complete"])).toEqual({
         [cancellationFailedLater]: noon,
         [failedLater]: noon,
+        [retriedLater]: noon,
       });
       expect(await undated(["needs_refund"])).toEqual({});
     });
@@ -815,12 +831,12 @@ describe.skipIf(!testDatabase)(
         operator: "none",
       });
       // The account was created at 12:00, two hours after the event.
-      expect(
-        await matching(hadAccount, [accountHolder], replayedAt())
-      ).toEqual([]);
-      expect(
-        await matching(noAccount, [accountHolder], replayedAt())
-      ).toEqual([accountHolder]);
+      expect(await matching(hadAccount, [accountHolder], replayedAt())).toEqual(
+        []
+      );
+      expect(await matching(noAccount, [accountHolder], replayedAt())).toEqual([
+        accountHolder,
+      ]);
       const afterCreation = replayedAt(accountCreatedAt.add({ hours: 1 }));
       expect(
         await matching(hadAccount, [accountHolder], afterCreation)

@@ -604,7 +604,9 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
    * Marks the replayed rows whose conditions read a reservation status that
    * changed after the row's trigger in a way the stored timestamps can't
    * date: from the trigger on, its evaluations read that status
-   * approximately (design §8.2). Outcomes no condition decided stay exact.
+   * approximately (design §8.2). Outcomes no condition decided stay
+   * unmarked: an `already-active` row follows an earlier row's admission,
+   * which carries its own mark.
    */
   const markUndatedStatuses = (
     plan: AutomationEvaluationPlan,

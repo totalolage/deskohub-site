@@ -209,7 +209,10 @@ const countReservations = (
  */
 const visitDates =
   (pick: "earliest" | "latest"): AudienceDateResolver["dates"] =>
-  ({ bounds, asOf, product, reservationsAsOf }, { candidates, scope, pastVisits }) =>
+  (
+    { bounds, asOf, product, reservationsAsOf },
+    { candidates, scope, pastVisits }
+  ) =>
     pastVisits(asOf).pipe(
       Effect.flatMap((startById) =>
         candidates

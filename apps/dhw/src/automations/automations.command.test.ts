@@ -558,10 +558,16 @@ describe("dhw automations show and dry-run", () => {
 
     const lines = fake.output.join("\n").split("\n");
     expect(
-      lines.find((line) => line.includes("customer-1\tAda"))?.split("\t").at(-1)
+      lines
+        .find((line) => line.includes("customer-1\tAda"))
+        ?.split("\t")
+        .at(-1)
     ).toBe("approximate reservation status");
     expect(
-      lines.find((line) => line.includes("customer-2"))?.split("\t").at(-1)
+      lines
+        .find((line) => line.includes("customer-2"))
+        ?.split("\t")
+        .at(-1)
     ).toBe("projected, approximate reservation status");
   });
 });

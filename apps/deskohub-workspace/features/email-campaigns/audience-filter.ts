@@ -216,8 +216,10 @@ export const occurrenceBounds = (
  * later fulfillment or cancellation hadn't changed its status. Live
  * evaluations leave it unset and count reservations as they are now.
  */
-const reservationsAsOfReplay = ({ now, replayed }: AudienceEvaluationContext) =>
-  replayed ? { reservationsAsOf: now } : {};
+const reservationsAsOfReplay = ({
+  now,
+  replayed,
+}: AudienceEvaluationContext) => (replayed ? { reservationsAsOf: now } : {});
 
 /** One param value fixed by the context, by its param's part. */
 const concreteParam = (
