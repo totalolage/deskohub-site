@@ -56,11 +56,12 @@ bun turbo build --filter=<package-name>
 
 ## Patched dependencies
 
-The root `patchedDependencies` patch `effect`, `@effect/sql-pg`, `@effect/openapi-generator`, and `@better-auth/oauth-provider` from `patches/`. An upgrade changes the patch key, so re-apply or drop the patch when you upgrade one of them. For `effect`, `@effect/sql-pg`, and `@better-auth/oauth-provider`, rerun the guard tests:
+The root `patchedDependencies` patch `effect`, `@effect/sql-pg`, `@effect/openapi-generator`, `@better-auth/oauth-provider`, and `@better-auth/cimd` from `patches/`. An upgrade changes the patch key, so re-apply or drop the patch when you upgrade one of them. For `effect`, `@effect/sql-pg`, `@better-auth/oauth-provider`, and `@better-auth/cimd`, rerun the guard tests:
 
 - `effect`: a fiber resumed by a callback continues in the async context it suspended in. Without it, Next.js request APIs (`revalidatePath`, `revalidateTag`, `after`, `headers`, `cookies`) can target another request. Keep request APIs inside Effects. Guards: `request async context` in `packages/next-effect/src/index.test.ts` and `apps/deskohub-workspace/db/database-async-context.test.ts`.
 - `@effect/sql-pg`: an interrupted statement, or one that fails without a server SQLSTATE, destroys its pooled connection instead of calling `pg_cancel_backend`, so the connection never returns to the pool mid-query or mid-transaction. Guard: `Database pool cancellation against real Postgres` in `apps/deskohub-workspace/db/database-pool-cancellation.test.ts`.
 - `@better-auth/oauth-provider`: the boot-time MCP resource seed reads the whole error cause chain, so a missing `auth.oauth_resource` table (Drizzle keeps the Postgres message in `cause`) defers the seed instead of failing every auth request of an instance that starts before its migration. Drop the patch once upstream checks the cause. Guard: `customer agent resource seed before the OAuth migration` in `apps/deskohub-workspace/features/account/backend/auth/customer-agent-resource-seed.postgres.test.ts`.
+- `@better-auth/cimd`: the Node transport's pinned DNS lookup answers Node's all-addresses form (`{ all: true }`, used by default address-family selection since Node 20) with an array; unpatched 1.7.2 fails every real metadata fetch with `Invalid IP address: undefined`, which surfaces as `invalid_client` "Failed to fetch metadata document". Upstream fixed it in 1.7.12; drop the patch when upgrading to it. Guard: `customer agent client metadata transport` in `apps/deskohub-workspace/features/account/backend/auth/customer-agent-client-metadata-transport.test.ts`.
 
 ## Generated assets
 
