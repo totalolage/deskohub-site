@@ -24,16 +24,25 @@ const runGrants = <A, E>(
 const insertAccount = async () => {
   const accountId = customerAccountIdSchema.make(crypto.randomUUID());
   await testDatabase!.pool.query(
+    `insert into customer_accounts (id) values ($1) on conflict do nothing`,
+    [accountId]
+  );
+  await testDatabase!.pool.query(
     `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, true)`,
     [accountId, testEmailAddress(`role-grant-${accountId}`)]
   );
   return accountId;
 };
 
-const deleteAccount = (accountId: string) =>
-  testDatabase!.pool.query(`delete from auth."user" where id = $1`, [
+const deleteAccount = async (accountId: string) => {
+  await testDatabase!.pool.query(`delete from auth."user" where id = $1`, [
     accountId,
   ]);
+  await testDatabase!.pool.query(
+    `delete from customer_accounts where id = $1`,
+    [accountId]
+  );
+};
 
 const role = "administrator" as const;
 

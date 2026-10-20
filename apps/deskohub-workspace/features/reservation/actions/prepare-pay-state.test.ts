@@ -286,11 +286,15 @@ const makeAdvertisementAffirmation = (basisPoints?: number) => {
   };
 };
 
+/** The account the activity fixture signs in, and so the author it resumes. */
+const signedInAccountId = "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01";
+
 const makeReusableReservation = (
   overrides: Partial<WorkspaceReservation> = {}
 ): WorkspaceReservation =>
   ({
     id: "existing-reservation-id",
+    authorAccountId: signedInAccountId,
     checkoutSessionKey: "session-key",
     checkoutAttemptKey: "attempt-key",
     correlationId: "correlation-id",
@@ -343,7 +347,6 @@ const runReusableReservationScenario = async (input: {
   readonly findCurrentByCheckoutSessionKey?: ReturnType<typeof mock>;
   readonly findStoredCheckoutSessionKey?: ReturnType<typeof mock>;
   readonly createDraft?: ReturnType<typeof mock>;
-  readonly assignAuthor?: ReturnType<typeof mock>;
   readonly claimHoldCreation?: ReturnType<typeof mock>;
   readonly findById?: ReturnType<typeof mock>;
   readonly claimSupersessionCancellation?: ReturnType<typeof mock>;
@@ -410,11 +413,6 @@ const runReusableReservationScenario = async (input: {
   const ensureAvailable = input.ensureAvailable ?? mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
   const createDraft = input.createDraft ?? mock(() => Effect.die("unused"));
-  const assignAuthor =
-    input.assignAuthor ??
-    mock((author: { readonly authorAccountId: string }) =>
-      Effect.succeed(author.authorAccountId)
-    );
   const claimHoldCreation =
     input.claimHoldCreation ?? mock(() => Effect.succeed(true));
   const findById = input.findById ?? mock(() => Effect.succeed(null));
@@ -526,7 +524,6 @@ const runReusableReservationScenario = async (input: {
       findStoredCheckoutSessionKey:
         input.findStoredCheckoutSessionKey ?? mock(() => Effect.succeed(null)),
       createDraft,
-      assignAuthor,
       claimHoldCreation,
       findById,
       releaseHoldCreation: mock(() => Effect.void),
@@ -580,7 +577,6 @@ const runReusableReservationScenario = async (input: {
     error: result._tag === "Failure" ? (result.failure as unknown) : undefined,
     guardEvents: accountAuthority.events,
     enqueueCleanup,
-    assignAuthor,
     updateReservationDetails,
     grantInitialMarketingConsent,
     grantMarketingConsent,
@@ -677,6 +673,7 @@ const runMeetingRoomNewHoldScenario = async (
   const createDraft = mock((input) =>
     Effect.succeed({
       id: "meeting-room-reservation-id",
+      authorAccountId: input.authorAccountId,
       checkoutSessionKey: input.checkoutSessionKey,
       checkoutAttemptKey: input.checkoutAttemptKey,
       reservationState: "draft",
@@ -758,9 +755,6 @@ const runMeetingRoomNewHoldScenario = async (
       findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
       findStoredCheckoutSessionKey: mock(() => Effect.succeed(null)),
       createDraft,
-      assignAuthor: mock((author: { readonly authorAccountId: string }) =>
-        Effect.succeed(author.authorAccountId)
-      ),
       claimHoldCreation: mock(() => Effect.succeed(true)),
       attachHold,
       findById: mock(() => Effect.succeed(null)),
@@ -1119,6 +1113,7 @@ describe("prepareWorkspacePayState", () => {
     const createDraft = mock((input) =>
       Effect.succeed({
         id: "reservation-id",
+        authorAccountId: input.authorAccountId,
         checkoutSessionKey: input.checkoutSessionKey,
         checkoutAttemptKey: input.checkoutAttemptKey,
         correlationId: "correlation-id",
@@ -1199,9 +1194,6 @@ describe("prepareWorkspacePayState", () => {
         findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
         findStoredCheckoutSessionKey: mock(() => Effect.succeed(null)),
         createDraft,
-        assignAuthor: mock((author: { readonly authorAccountId: string }) =>
-          Effect.succeed(author.authorAccountId)
-        ),
         claimHoldCreation,
         attachHold,
         findById: mock(() => Effect.succeed(null)),
@@ -1596,6 +1588,7 @@ describe("prepareWorkspacePayState", () => {
         Effect.succeed(
           makeReusableReservation({
             id: "locked-reservation-id",
+            authorAccountId: input.authorAccountId,
             checkoutSessionKey: input.checkoutSessionKey,
             checkoutAttemptKey: input.checkoutAttemptKey,
             correlationId: "locked-correlation-id",
@@ -1736,7 +1729,6 @@ describe("prepareWorkspacePayState", () => {
           expect(scenario.quoteForCustomer).not.toHaveBeenCalled();
           expect(scenario.grantInitialMarketingConsent).not.toHaveBeenCalled();
           expect(scenario.createDraft).not.toHaveBeenCalled();
-          expect(scenario.assignAuthor).not.toHaveBeenCalled();
           expect(scenario.createReservation).not.toHaveBeenCalled();
           expect(scenario.enqueueCleanup).not.toHaveBeenCalled();
           expect(scenario.evaluateCheckoutReferral).not.toHaveBeenCalled();
@@ -1933,10 +1925,6 @@ describe("prepareWorkspacePayState", () => {
           dotyposCustomerId: createdCustomerId,
           authorAccountId: accountId,
         });
-        expect(scenario.assignAuthor).toHaveBeenCalledWith({
-          id: "account-reservation-id",
-          authorAccountId: accountId,
-        });
       }
     );
 
@@ -1960,31 +1948,16 @@ describe("prepareWorkspacePayState", () => {
       }
     );
 
-    test.each([
-      ["a draft", makeReusableReservation({ reservationState: "draft" })],
-      ["a held retry", makeReusableReservation()],
-    ] as const)(
-      "makes the signed-in account the author of a legacy %s started before sign-in",
-      async (_label, startedAsGuest) => {
-        const scenario = await runReusableReservationScenario({
-          findByAttemptKeys: mock(() => Effect.succeed(startedAsGuest)),
-        });
-
-        expect(scenario.result?.status).toBe("ready");
-        expect(scenario.assignAuthor).toHaveBeenCalledWith({
-          id: startedAsGuest.id,
-          authorAccountId: accountId,
-        });
-      }
-    );
-
     test("refuses to resume a draft another account authored", async () => {
       const scenario = await runReusableReservationScenario({
         findByAttemptKeys: mock(() =>
-          Effect.succeed(makeReusableReservation({ reservationState: "draft" }))
-        ),
-        assignAuthor: mock(() =>
-          Effect.succeed("0d9c6a2e-7f41-4b8a-a6e3-2c5d9b1f4e70")
+          Effect.succeed(
+            makeReusableReservation({
+              reservationState: "draft",
+              authorAccountId:
+                "0d9c6a2e-7f41-4b8a-a6e3-2c5d9b1f4e70" as WorkspaceReservation["authorAccountId"],
+            })
+          )
         ),
         claimHoldCreation: mock(() => Effect.die("no hold may be claimed")),
       });
@@ -2010,7 +1983,6 @@ describe("prepareWorkspacePayState", () => {
           reason: "unauthenticated",
         },
       });
-      expect(scenario.assignAuthor).not.toHaveBeenCalled();
       expect(scenario.claimHoldCreation).not.toHaveBeenCalled();
     });
 

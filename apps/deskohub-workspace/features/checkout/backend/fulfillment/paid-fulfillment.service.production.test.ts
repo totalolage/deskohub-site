@@ -55,7 +55,9 @@ const { CustomerEmailLocaleService, ReservationAuthorDirectory } = await import(
   "@/features/account"
 );
 // Reservations here are authorless unless a test provides its own authors.
-const noReservationAuthors = Layer.mock(ReservationAuthorDirectory, {});
+const noReservationAuthors = Layer.mock(ReservationAuthorDirectory, {
+  describe: () => Effect.succeed(new Map()),
+});
 const { PostHogEventService } = await import(
   "@/shared/backend/analytics/posthog-event.service"
 );

@@ -94,8 +94,11 @@ const realCapture: WorkspaceAuthConfig["captureAccountLocalePreference"] = (
     )
   );
 
-/** The real durable-account creation against the migrated disposable database. */
-const realCreateCustomerAccount: WorkspaceAuthConfig["createCustomerAccount"] =
+/**
+ * The real durable-account creation against the migrated disposable database,
+ * which an adapter wrapping the Postgres one needs before every login insert.
+ */
+export const realCreateCustomerAccount: WorkspaceAuthConfig["createCustomerAccount"] =
   (accountId) => ensureCustomerAccount(testDatabase!.db, accountId);
 
 /** The production advisory lock on the migrated disposable database. */
@@ -257,7 +260,7 @@ export const linkAccount = async (
   dotyposCustomerId: string
 ) => {
   await testDatabase!.pool.query(
-    `insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2)`,
+    `update customer_accounts set dotypos_customer_id = $2 where id = $1`,
     [userId, dotyposCustomerId]
   );
 };

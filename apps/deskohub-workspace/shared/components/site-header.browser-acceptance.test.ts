@@ -140,7 +140,7 @@ afterAll(async () => {
 });
 
 type SiteHeaderPageOptions = {
-  // A signed-in administrator also gets the admin entry and ribbon.
+  // A signed-in administrator also gets the admin entry.
   readonly administrator?: boolean;
   // A long desktop page reserves a classic scrollbar, so the header is
   // narrower than the media queries' viewport width.
@@ -181,7 +181,11 @@ const openSiteHeader = async (
   await page.addScriptTag({ path: browserBundlePath });
   await page.getByRole("banner").waitFor();
   if (administrator) {
-    await page.locator("[data-site-header-admin-ribbon]").waitFor();
+    // The mobile layouts hide both admin links until the menu opens.
+    await page
+      .locator(`a[href="/${locale}/admin"]`)
+      .first()
+      .waitFor({ state: "attached" });
   }
   await page.evaluate(async () => {
     await document.fonts.ready;
@@ -460,9 +464,6 @@ for (const locale of locales) {
             .getByRole("link", { name: m.siteHeaderAdminLabel({}, { locale }) })
             .count()
         ).toBe(0);
-        expect(
-          await page.locator("[data-site-header-admin-ribbon]").count()
-        ).toBe(0);
         expect(await readHeaderHeights(page)).toEqual({
           header: 96,
           variable: 96,
@@ -535,37 +536,15 @@ for (const locale of locales) {
   }
 
   test.skipIf(!chromiumAvailable)(
-    `fits the admin button and ribbon on one desktop line at 1440px (${locale})`,
+    `keeps the administrator's header at the bar height (${locale})`,
     async () => {
       const page = await openSiteHeader(locale, desktopViewport, {
         administrator: true,
       });
       try {
-        await expectNoHorizontalOverflow(page);
-        expect(
-          await readWrappedNavigationLabels(
-            page,
-            m.primaryNavigationLabel({}, { locale })
-          )
-        ).toEqual([]);
-        expect(
-          await page
-            .getByRole("link", {
-              exact: true,
-              name: m.siteHeaderAdminLabel({}, { locale }),
-            })
-            .first()
-            .isVisible()
-        ).toBe(true);
-        expect(
-          await page
-            .getByText(m.siteHeaderAdminRibbonLabel({}, { locale }))
-            .isVisible()
-        ).toBe(true);
-        // The ribbon's height joins the header's, so content clears both.
         expect(await readHeaderHeights(page)).toEqual({
-          header: 140,
-          variable: 140,
+          header: 96,
+          variable: 96,
         });
       } finally {
         await page.close();
@@ -581,12 +560,6 @@ for (const locale of locales) {
       });
       try {
         await expectNoHorizontalOverflow(page);
-        expect(
-          await page
-            .locator("[data-site-header-admin-ribbon]")
-            .getByText(m.siteHeaderAdminLabel({}, { locale }), { exact: true })
-            .isVisible()
-        ).toBe(true);
 
         await page
           .getByRole("button", {

@@ -19,7 +19,10 @@ import type {
 import { Effect, Layer, Option } from "effect";
 import { workspaceReservations } from "@/db/schema";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type {
   AudienceCondition,
   AudienceFacts,
@@ -231,6 +234,7 @@ describe.skipIf(!testDatabase)(
       await Effect.runPromise(
         db.insert(workspaceReservations).values(
           bookings.map(({ name, customer, details }) => ({
+            authorAccountId: fixtureReservationAuthorId,
             checkoutAttemptKey: checkoutAttemptKeySchema.make(
               `resolver-${name}-${run}`
             ),
