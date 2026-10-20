@@ -1,3 +1,5 @@
+import { customerAgentScopes } from "./customer-agent-scopes";
+
 /**
  * Where the OAuth server sends a customer who connects an AI agent: the
  * sign-in step, then the consent step. The proxy places both on the
@@ -92,5 +94,57 @@ export const resolveCustomerAgentConnectStep = ({
   return {
     step: "authorize",
     location: `${customerAgentAuthorizePath}?${resumed}`,
+  };
+};
+
+/**
+ * The scopes the consent page explains, in the order it lists them: the
+ * customer agent scopes, then staying connected without the customer.
+ */
+export const customerAgentConsentScopes = [
+  ...customerAgentScopes,
+  "offline_access",
+] as const;
+
+export type CustomerAgentConsentScope =
+  (typeof customerAgentConsentScopes)[number];
+
+export type CustomerAgentConsentRequest =
+  /** The query is not a signed request naming an OAuth client. */
+  | { readonly status: "unknown-request" }
+  /** The signed request is past its expiry. */
+  | { readonly status: "expired" }
+  /** The customer decides whether `clientId` gets `scopes`. */
+  | {
+      readonly status: "pending";
+      readonly clientId: string;
+      readonly scopes: ReadonlyArray<CustomerAgentConsentScope>;
+    };
+
+/**
+ * What the consent step asks the customer, from the signed authorization
+ * request in `query` at `now` (epoch milliseconds). The OAuth server verifies
+ * the signature when the customer answers; this only spots requests that
+ * can't succeed. Without `scope` the request asks for every scope; scopes the
+ * page can't explain are left out.
+ */
+export const readCustomerAgentConsentRequest = (
+  query: URLSearchParams,
+  now: number
+): CustomerAgentConsentRequest => {
+  const clientId = query.get("client_id");
+  const expiresAt = Number(query.get("exp") || Number.NaN);
+  if (!clientId || !query.get("sig") || !Number.isFinite(expiresAt)) {
+    return { status: "unknown-request" };
+  }
+  if (expiresAt * 1000 <= now) return { status: "expired" };
+
+  const requested = query.get("scope")?.split(" ");
+  return {
+    status: "pending",
+    clientId,
+    scopes: requested
+      ? customerAgentConsentScopes.filter((scope) => requested.includes(scope))
+      : customerAgentConsentScopes,
   };
 };
