@@ -664,12 +664,10 @@ const legalDocuments = {
             </>,
             <>
               If you connect an AI assistant, such as ChatGPT or Claude, to your
-              customer account, we process the assistant's client identifier and
-              the name its provider publishes, the permissions you granted and
-              when you granted them, and the access and refresh tokens the
-              assistant uses, which we store only in hashed form. When the
-              assistant starts a reservation for you, we record that assistant's
-              client identifier with the reservation.
+              customer account, we process which assistant it is, the
+              permissions you gave it and when, and the access credentials it
+              uses. When the assistant starts a reservation for you, we record
+              which assistant started it.
             </>,
             <>
               For website operation and abuse prevention, we may also process
@@ -707,13 +705,13 @@ const legalDocuments = {
               also process your name, email address, preferred language, consent
               time, and the version of the marketing notice you accepted. The
               record also notes where you gave consent: in the reservation form,
-              through a browser assistant using this site's tools, through an AI
-              assistant connected to your customer account, in your account
-              settings, or through an email link. We record this choice with the
-              relevant customer record. The choice belongs to that customer
-              record, not to the email address. If the customer's email address
-              changes, the choice follows that customer record. Customer records
-              that use the same email address have separate choices.
+              through a browser assistant using this site's tools, through a
+              connected AI assistant, in your account settings, or through an
+              email link. We record this choice with the relevant customer
+              record. The choice belongs to that customer record, not to the
+              email address. If the customer's email address changes, the choice
+              follows that customer record. Customer records that use the same
+              email address have separate choices.
             </>,
           ],
         },
@@ -735,13 +733,10 @@ const legalDocuments = {
               only opaque account and customer identifiers for this connection.
             </>,
             <>
-              If you connect an AI assistant, we use the connection data to let
-              that assistant, on your instructions, look up our offers, start a
-              reservation hold that you then confirm and pay for on our website,
-              and show you your reservations and their status. A connected
-              assistant cannot pay, cancel a reservation, or delete your
-              account, and you accept the reservation terms yourself on our
-              website.
+              If you connect an AI assistant, we use the connection so that, on
+              your instructions, it can look up our offers, start a reservation
+              that you then confirm and pay for on our website, and show you
+              your reservations.
             </>,
             <>
               We do not use reservation or enquiry data for marketing unless you
@@ -852,13 +847,11 @@ const legalDocuments = {
               retention period.
             </>,
             <>
-              A connected assistant's access tokens are valid for one hour and
-              its refresh tokens for 30 days, and expired tokens are removed
-              automatically every day. The permission you granted lasts until
-              you delete your account or ask us to disconnect the assistant.
-              Deleting the account disconnects every assistant and removes its
-              tokens and permissions. The assistant identifier recorded with a
-              reservation stays with that reservation record.
+              A connected assistant's access credentials expire automatically
+              and are deleted regularly. The connection and the permissions you
+              gave last until the assistant is disconnected at your request or
+              you delete your account, which also deletes them. The record of
+              which assistant started a reservation stays with that reservation.
             </>,
             <>
               Analytics and campaign measurement data, including customer data
@@ -898,11 +891,10 @@ const legalDocuments = {
               or technical data needed to perform its role on our behalf.
             </>,
             <>
-              If you connect an AI assistant, the information it retrieves at
-              your request, such as our offers and your reservations, is sent to
-              that assistant's provider, which processes it under its own terms
-              as a recipient you chose. The assistant's provider is not our
-              processor.
+              If you connect an AI assistant, what it retrieves at your request,
+              such as our offers and your reservations, goes to that assistant's
+              provider, which handles it under its own terms as a recipient you
+              chose.
             </>,
             <>
               If we send marketing communications in the future, our email
@@ -1187,12 +1179,10 @@ const legalDocuments = {
             </>,
             <>
               Pokud ke svému zákaznickému účtu připojíte AI asistenta, například
-              ChatGPT nebo Claude, zpracováváme identifikátor klienta asistenta
-              a název, který zveřejňuje jeho poskytovatel, oprávnění, která jste
-              mu udělili, a kdy jste je udělili, a přístupové a obnovovací
-              tokeny, které asistent používá; tokeny ukládáme pouze v hašované
-              podobě. Když asistent vaším jménem zahájí rezervaci, zaznamenáme k
-              ní identifikátor klienta tohoto asistenta.
+              ChatGPT nebo Claude, zpracováváme údaje o tom, o kterého asistenta
+              jde, jaká oprávnění jste mu udělili a kdy, a přístupové údaje,
+              které asistent používá. Když asistent vaším jménem zahájí
+              rezervaci, zaznamenáme k ní, který asistent ji zahájil.
             </>,
             <>
               Pro provoz webu a ochranu před zneužitím můžeme zpracovávat také
@@ -1232,13 +1222,12 @@ const legalDocuments = {
               preferovaný jazyk, čas souhlasu a verzi marketingového oznámení,
               které jste přijali. Záznam také uvádí, kde jste souhlas udělili: v
               rezervačním formuláři, prostřednictvím asistenta v prohlížeči,
-              který používá nástroje tohoto webu, prostřednictvím AI asistenta
-              připojeného k vašemu zákaznickému účtu, v nastavení účtu nebo přes
-              odkaz v e-mailu. Tuto volbu zaznamenáváme k příslušnému záznamu
-              zákazníka. Volba patří záznamu zákazníka, nikoli e-mailové adrese.
-              Pokud se e-mailová adresa tohoto záznamu změní, volba zůstává u
-              tohoto záznamu. Záznamy zákazníků se stejnou e-mailovou adresou
-              mají samostatné volby.
+              který používá nástroje tohoto webu, prostřednictvím připojeného AI
+              asistenta, v nastavení účtu nebo přes odkaz v e-mailu. Tuto volbu
+              zaznamenáváme k příslušnému záznamu zákazníka. Volba patří záznamu
+              zákazníka, nikoli e-mailové adrese. Pokud se e-mailová adresa
+              tohoto záznamu změní, volba zůstává u tohoto záznamu. Záznamy
+              zákazníků se stejnou e-mailovou adresou mají samostatné volby.
             </>,
           ],
         },
@@ -1260,12 +1249,10 @@ const legalDocuments = {
               propojení pouze neprůhledné identifikátory účtu a zákazníka.
             </>,
             <>
-              Pokud připojíte AI asistenta, používáme údaje o připojení k tomu,
-              aby tento asistent podle vašich pokynů mohl vyhledat naši nabídku,
-              zahájit dočasné držení rezervace, které pak potvrdíte a zaplatíte
-              na našem webu, a zobrazit vám vaše rezervace a jejich stav.
-              Připojený asistent nemůže platit, rušit rezervace ani smazat váš
-              účet a obchodní podmínky rezervace přijímáte sami na našem webu.
+              Pokud připojíte AI asistenta, používáme jeho připojení k tomu, aby
+              podle vašich pokynů mohl vyhledat naši nabídku, zahájit rezervaci,
+              kterou pak potvrdíte a zaplatíte na našem webu, a zobrazit vám
+              vaše rezervace.
             </>,
             <>
               Rezervační ani poptávkové údaje nepoužíváme pro marketing, pokud k
@@ -1377,13 +1364,11 @@ const legalDocuments = {
               nebo oprávněnou dobu uchování.
             </>,
             <>
-              Přístupové tokeny připojeného asistenta platí jednu hodinu a
-              obnovovací tokeny 30 dní; expirované tokeny odstraňujeme každý den
-              automaticky. Udělené oprávnění trvá, dokud účet nesmažete nebo nás
-              nepožádáte o odpojení asistenta. Smazáním účtu se odpojí všichni
-              asistenti a odstraní se jejich tokeny a oprávnění. Identifikátor
-              asistenta zaznamenaný u rezervace zůstává u záznamu této
-              rezervace.
+              Přístupové údaje připojeného asistenta automaticky vyprší a
+              pravidelně je mažeme. Připojení a udělená oprávnění trvají, dokud
+              asistent nebude na vaši žádost odpojen nebo dokud nesmažete účet,
+              čímž se také smažou. Údaj o tom, který asistent rezervaci zahájil,
+              zůstává u záznamu rezervace.
             </>,
             <>
               Analytické údaje a údaje pro kampanové měření, včetně zákaznických
@@ -1424,10 +1409,9 @@ const legalDocuments = {
             </>,
             <>
               Pokud připojíte AI asistenta, informace, které na vaši žádost
-              získá, například naši nabídku a vaše rezervace, se předávají
-              poskytovateli tohoto asistenta, který je zpracovává podle
+              získá, například naši nabídku a vaše rezervace, předáváme
+              poskytovateli tohoto asistenta, který s nimi nakládá podle
               vlastních podmínek jako příjemce, kterého jste si zvolili.
-              Poskytovatel asistenta není naším zpracovatelem.
             </>,
             <>
               Pokud budeme v budoucnu zasílat marketingová sdělení, může náš
