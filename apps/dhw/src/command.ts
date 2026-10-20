@@ -66,6 +66,7 @@ import {
 } from "effect";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 import { AccessCodeAttemptStore } from "./access-codes/access-code-attempt-store.service";
+import { accountsCommand } from "./accounts/accounts.command";
 import { administratorsCommand } from "./administrators/administrators.command";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
 import { AuthenticationService } from "./authentication/authentication.service";
@@ -2333,6 +2334,7 @@ const updateCommand = Command.make(
 export const dhwCommand = rootCommand.pipe(
   Command.withSubcommands([
     versionCommand,
+    accountsCommand,
     accessCodesCommand,
     administratorsCommand,
     apiCommand,

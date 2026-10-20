@@ -36,15 +36,26 @@ The domain skill's [reservation parties](../../deskohub-workspace-domain/referen
 glossary defines the customer account, reservation author, and tombstone.
 
 - `public.customer_accounts` stores the account's id, which is the Better Auth
-  user id (`CustomerAccountId`), its creation instant, and `deleted_at`. It has
-  no foreign key to `auth.user`, so it outlives the identity, and it holds no
-  personal data. While the identity exists, `customer_account_links` links the
-  account to its own Dotypos customer.
-- The row appears lazily: `ensureCustomerAccount` creates it in the
-  transaction that first writes a record naming the account, and deletion
-  creates it as a tombstone when the account never authored anything. Eager
-  creation, an `auth.user` foreign key, and folding in
-  `customer_account_links` come with the contract migration (#682).
+  user id (`CustomerAccountId`), its own Dotypos customer
+  (`dotypos_customer_id`, unique), its creation instant, and `deleted_at`. It
+  has no foreign key to `auth.user`, so it outlives the identity, and it holds
+  no personal data.
+- The account's Dotypos customer is moving from `customer_account_links` onto
+  the column (#682 expand/contract). Until the contract release, the claim
+  writes both, readers prefer the column and fall back to the link row
+  (`customer-account-dotypos-link.ts`), and a tombstone gives up the column as
+  the link row goes with the identity.
+- The Better Auth `user.create.before` hook creates the row before the login
+  insert, so every new login has one; a server-side `createUser` must pass the
+  id from `generateId`. Logins from before the hook get theirs from the
+  account backfill. `ensureCustomerAccount` still creates a missing row in the
+  transaction that names the account, and deletion creates a tombstone when
+  none exists. Better Auth can't run the hook and the login insert in one
+  transaction (its magic-link `createUser` isn't transaction-wrapped), so a
+  failed insert leaves an account without a login. The daily auth cleanup
+  cron tombstones live accounts whose login is gone once they are a day old
+  (`tombstoneOrphanedAccounts`); account deletion tombstones before it
+  deletes the login, so the sweep only catches interrupted flows.
 - `workspace_reservations.author_account_id` references it with `ON DELETE
   RESTRICT`. Never delete a customer account row; deletion tombstones it
   through `CustomerAccountRepository.tombstone`.
@@ -67,6 +78,17 @@ glossary defines the customer account, reservation author, and tombstone.
 - `author_account_id` is null only for reservations made before authors were
   recorded, until the legacy backfill fills them and the column becomes NOT
   NULL.
+- `CustomerAccountBackfill` (`dhw accounts backfill`, see the administration
+  skill's [dhw-cli.md](../../deskohub-workspace-administration/references/dhw-cli.md#customer-account-backfill))
+  gives a legacy customer with no linked account a silent login: an
+  unverified `auth.user` row for its Dotypos email, created through
+  `UnverifiedLogins` (`backend/auth/unverified-logins.service.ts`, Better
+  Auth's `internalAdapter.createUser` with a generated id) without sending
+  email, then linked to the customer without an `account-created` event or
+  referral. Workspace rejects its sessions until the owner signs in by link
+  or code to that email, which verifies the same row. Account-created
+  reconciliation and campaign audiences count only verified logins. Nothing
+  else creates unverified logins.
 
 ## Error contract
 

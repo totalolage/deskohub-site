@@ -1,4 +1,5 @@
 import { HttpApi } from "effect/unstable/httpapi";
+import { AdminCliAccountsApi } from "./accounts";
 import { AdminCliAdministratorsApi } from "./administrators";
 import { AdminCliAutomationsApi } from "./email-automations";
 import { AdminCliCampaignsApi } from "./email-campaigns";
@@ -9,4 +10,5 @@ export const WorkspaceAdminApi = HttpApi.make("workspaceAdminApi")
   .add(AdminCliAdministrationApi)
   .add(AdminCliCampaignsApi)
   .add(AdminCliAutomationsApi)
-  .add(AdminCliAdministratorsApi);
+  .add(AdminCliAdministratorsApi)
+  .add(AdminCliAccountsApi);

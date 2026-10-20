@@ -82,6 +82,7 @@ export {
   DotyposTableIdSchema,
   DotyposTableSchema,
 } from "./types";
+export { toCustomerEmailIdentity } from "./utils/customer-email";
 export { getCustomerDisplayName } from "./utils/customer-name";
 export {
   dotyposIdFilterBatchSize,

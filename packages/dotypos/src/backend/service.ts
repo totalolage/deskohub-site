@@ -50,6 +50,7 @@ import {
   DotyposTableIdSchema,
   DotyposTableSchema,
 } from "../types";
+import { toCustomerEmailIdentity } from "../utils/customer-email";
 import { dotyposIdFilterBatchSize } from "../utils/id-filter-batches";
 import { normalizePhoneNumber } from "../utils/phone-formatting";
 import {
@@ -474,8 +475,6 @@ const normalizeCustomerLookupData = (
  * provider search returns every case variant and longer addresses that
  * contain the value; only a whole-address match identifies the customer.
  */
-const toCustomerEmailIdentity = (email: string) => email.trim().toLowerCase();
-
 const hasCustomerEmail = (customer: DotyposCustomer, email: string) =>
   customer.email != null &&
   toCustomerEmailIdentity(customer.email) === toCustomerEmailIdentity(email);

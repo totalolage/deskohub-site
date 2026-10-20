@@ -63,7 +63,7 @@ describe.skipIf(!testDatabase)(
           );
           const secondClaim = yield* links.claim(
             firstAccount,
-            dotyposCustomerId
+            uniqueDotyposId()
           );
           const rivalClaim = yield* Effect.result(
             links.claim(secondAccount, dotyposCustomerId)
@@ -86,6 +86,9 @@ describe.skipIf(!testDatabase)(
       if (outcomes.rivalClaim._tag === "Success") {
         expect(outcomes.rivalClaim.success.kind).toBe("claimed");
       }
+      expect(await accountDotyposCustomerId(firstAccount)).toBe(
+        dotyposCustomerId
+      );
     });
 
     test("converges concurrent claims so exactly one link exists per account", async () => {
@@ -117,6 +120,34 @@ describe.skipIf(!testDatabase)(
         [account]
       );
       expect(rows.rows).toHaveLength(1);
+      expect(await accountDotyposCustomerId(account)).toBe(dotyposCustomerId);
+    });
+
+    test("moves a customer's durable link off a tombstone when another account claims it", async () => {
+      const claimant = customerAccountIdSchema.make(uniqueId());
+      const tombstone = customerAccountIdSchema.make(uniqueId());
+      const dotyposCustomerId = uniqueDotyposId();
+      await insertAuthUser(claimant, testEmailAddress(`claim-${claimant}`));
+      await testDatabase!.pool.query(
+        `insert into customer_accounts (id, dotypos_customer_id, deleted_at)
+         values ($1, $2, '2026-10-01T10:00:00Z')`,
+        [tombstone, dotyposCustomerId]
+      );
+
+      const claim = await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          return yield* links.claim(claimant, dotyposCustomerId);
+        }).pipe(Effect.provide(makeRepositoryLayer()))
+      );
+
+      expect(claim).toEqual({
+        kind: "linked",
+        customerId: dotyposCustomerId,
+        created: true,
+      });
+      expect(await accountDotyposCustomerId(tombstone)).toBeNull();
+      expect(await accountDotyposCustomerId(claimant)).toBe(dotyposCustomerId);
     });
 
     test("exposes the activity state and stops it once the auth account row is gone", async () => {
@@ -282,6 +313,7 @@ describe.skipIf(!testDatabase)(
         [account]
       );
       expect(claimRows.rows).toEqual([]);
+      expect(await accountDotyposCustomerId(account)).toBeUndefined();
       expect(await accountCreatedEvents(account)).toEqual([]);
 
       const retry = await Effect.runPromise(
@@ -295,6 +327,129 @@ describe.skipIf(!testDatabase)(
         customerId: dotyposCustomerId,
         created: true,
       });
+    });
+
+    test("reads a link recorded on the account alone or in the link row alone", async () => {
+      const layer = makeRepositoryLayer();
+      const columnAccount = customerAccountIdSchema.make(uniqueId());
+      const rowAccount = customerAccountIdSchema.make(uniqueId());
+      const columnCustomer = uniqueDotyposId();
+      const rowCustomer = uniqueDotyposId();
+      await insertAuthUser(
+        columnAccount,
+        testEmailAddress(`h-${columnAccount}`)
+      );
+      await insertAuthUser(rowAccount, testEmailAddress(`i-${rowAccount}`));
+      await accountColumn(columnAccount, columnCustomer);
+      await linkRow(rowAccount, rowCustomer);
+
+      const found = await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          return [
+            yield* links.find(columnAccount),
+            yield* links.find(rowAccount),
+          ];
+        }).pipe(Effect.provide(layer))
+      );
+
+      expect(found).toEqual([columnCustomer, rowCustomer]);
+    });
+
+    test("keeps a link recorded on the account alone without recording it again", async () => {
+      const layer = makeRepositoryLayer();
+      const account = customerAccountIdSchema.make(uniqueId());
+      const linkedCustomer = uniqueDotyposId();
+      await insertAuthUser(account, testEmailAddress(`j-${account}`));
+      await accountColumn(account, linkedCustomer);
+
+      const claims = await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          return [
+            yield* links.claim(account, linkedCustomer),
+            yield* links.claim(account, uniqueDotyposId()),
+          ];
+        }).pipe(Effect.provide(layer))
+      );
+
+      for (const claim of claims) {
+        expect(claim).toEqual({
+          kind: "linked",
+          customerId: linkedCustomer,
+          created: false,
+        });
+      }
+      expect(await accountCreatedEvents(account)).toHaveLength(0);
+      const rows = await testDatabase!.pool.query(
+        "select 1 from customer_account_links where customer_account_id = $1",
+        [account]
+      );
+      expect(rows.rows).toHaveLength(0);
+    });
+
+    test("refuses a customer another live account holds on the account alone", async () => {
+      const layer = makeRepositoryLayer();
+      const holder = customerAccountIdSchema.make(uniqueId());
+      const claimant = customerAccountIdSchema.make(uniqueId());
+      const dotyposCustomerId = uniqueDotyposId();
+      await insertAuthUser(holder, testEmailAddress(`k-${holder}`));
+      await insertAuthUser(claimant, testEmailAddress(`l-${claimant}`));
+      await accountColumn(holder, dotyposCustomerId);
+
+      const claim = await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          return yield* links.claim(claimant, dotyposCustomerId);
+        }).pipe(Effect.provide(layer))
+      );
+
+      expect(claim).toEqual({ kind: "claimed" });
+      expect(await accountCreatedEvents(claimant)).toHaveLength(0);
+    });
+
+    test("links a customer a tombstone still names and records both links", async () => {
+      const layer = makeRepositoryLayer();
+      const tombstone = customerAccountIdSchema.make(uniqueId());
+      const claimant = customerAccountIdSchema.make(uniqueId());
+      const dotyposCustomerId = uniqueDotyposId();
+      await testDatabase!.pool.query(
+        "insert into customer_accounts (id, dotypos_customer_id, deleted_at) values ($1, $2, now())",
+        [tombstone, dotyposCustomerId]
+      );
+      await insertAuthUser(claimant, testEmailAddress(`m-${claimant}`));
+
+      const claim = await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          return yield* links.claim(claimant, dotyposCustomerId);
+        }).pipe(Effect.provide(layer))
+      );
+
+      expect(claim).toEqual({
+        kind: "linked",
+        customerId: dotyposCustomerId,
+        created: true,
+      });
+      const { rows } = await testDatabase!.pool.query<{
+        id: string;
+        dotypos_customer_id: string | null;
+        link: string | null;
+      }>(
+        `select a.id, a.dotypos_customer_id, l.dotypos_customer_id as link
+           from customer_accounts a
+           left join customer_account_links l on l.customer_account_id = a.id
+          where a.id = any($1) order by a.id = $2`,
+        [[tombstone, claimant], claimant]
+      );
+      expect(rows).toEqual([
+        { id: tombstone, dotypos_customer_id: null, link: null },
+        {
+          id: claimant,
+          dotypos_customer_id: dotyposCustomerId,
+          link: dotyposCustomerId,
+        },
+      ]);
     });
   }
 );
@@ -319,6 +474,15 @@ async function accountCreatedAt(accountId: string) {
   return rows[0]?.created_at;
 }
 
+async function accountDotyposCustomerId(accountId: string) {
+  const { rows } = await testDatabase!.pool.query<{
+    dotypos_customer_id: string | null;
+  }>("select dotypos_customer_id from customer_accounts where id = $1", [
+    accountId,
+  ]);
+  return rows[0]?.dotypos_customer_id;
+}
+
 function uniqueDotyposId() {
   return `${Math.floor(Math.random() * 900000) + 100000}${Math.floor(
     Math.random() * 900
@@ -328,6 +492,15 @@ function uniqueDotyposId() {
 async function linkRow(accountId: string, dotyposCustomerId: string) {
   await testDatabase!.pool.query(
     `insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2)`,
+    [accountId, dotyposCustomerId]
+  );
+}
+
+/** A link recorded on the account alone, as the contract release writes it. */
+async function accountColumn(accountId: string, dotyposCustomerId: string) {
+  await testDatabase!.pool.query(
+    `insert into customer_accounts (id, dotypos_customer_id) values ($1, $2)
+     on conflict (id) do update set dotypos_customer_id = excluded.dotypos_customer_id`,
     [accountId, dotyposCustomerId]
   );
 }

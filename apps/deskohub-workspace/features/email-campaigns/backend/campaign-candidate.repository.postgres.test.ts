@@ -49,14 +49,24 @@ const reserved = customerId("reserved");
 const abandoned = customerId("abandoned");
 const unfulfilled = customerId("unfulfilled");
 const linked = customerId("linked");
+const unverifiedLinked = customerId("unverified-linked");
 const consented = customerId("consented");
 const withdrawn = customerId("withdrawn");
-const seeded = [reserved, abandoned, unfulfilled, linked, consented, withdrawn];
+const seeded = [
+  reserved,
+  abandoned,
+  unfulfilled,
+  linked,
+  unverifiedLinked,
+  consented,
+  withdrawn,
+];
 const visitedReservation = DotyposReservationIdSchema.make(`booking-${run}`);
 const abandonedReservation = DotyposReservationIdSchema.make(
   `abandoned-${run}`
 );
 const accountId = `campaign-account-${run}`;
+const unverifiedAccountId = `campaign-unverified-account-${run}`;
 /** 23:50 on March 10 in Prague. */
 const createdAt = Temporal.Instant.from("2026-03-10T22:50:00Z");
 /** 00:30 on March 11 in Prague. */
@@ -153,14 +163,42 @@ describe.skipIf(!testDatabase)(
               locale: "en-US",
               createdAt,
             },
+            {
+              checkoutAttemptKey: checkoutAttemptKeySchema.make(
+                `unverified-linked-${run}`
+              ),
+              dotyposCustomerId: unverifiedLinked,
+              dotyposReservationId: DotyposReservationIdSchema.make(
+                `unverified-linked-${run}`
+              ),
+              reservationState: "confirmed",
+              reservationConfirmedAt: confirmedAt,
+              paymentState: "paid",
+              paidAt: confirmedAt,
+              fulfillmentState: "not_started",
+              reservationDetails,
+              locale: "en-US",
+              createdAt,
+            },
           ]),
-          db.insert(authUser).values({
-            id: accountId,
-            name: "Campaign test",
-            email: testEmailAddress(`campaign-${run}`),
-            locale: "en-US",
-            createdAt: new Date(accountCreatedAt.epochMilliseconds),
-          }),
+          db.insert(authUser).values([
+            {
+              id: accountId,
+              name: "Campaign test",
+              email: testEmailAddress(`campaign-${run}`),
+              emailVerified: true,
+              locale: "en-US",
+              createdAt: new Date(accountCreatedAt.epochMilliseconds),
+            },
+            {
+              id: unverifiedAccountId,
+              name: "Unverified campaign test",
+              email: testEmailAddress(`campaign-unverified-${run}`),
+              emailVerified: false,
+              locale: "en-US",
+              createdAt: new Date(accountCreatedAt.epochMilliseconds),
+            },
+          ]),
           db.insert(customerMarketingConsents).values([
             {
               dotyposCustomerId: consented,
@@ -179,9 +217,13 @@ describe.skipIf(!testDatabase)(
         ])
       );
       await Effect.runPromise(
-        db
-          .insert(customerAccountLinks)
-          .values({ customerAccountId: accountId, dotyposCustomerId: linked })
+        db.insert(customerAccountLinks).values([
+          { customerAccountId: accountId, dotyposCustomerId: linked },
+          {
+            customerAccountId: unverifiedAccountId,
+            dotyposCustomerId: unverifiedLinked,
+          },
+        ])
       );
       await seedCampaignDeliveries();
     });
@@ -265,9 +307,10 @@ describe.skipIf(!testDatabase)(
         "delete from customer_marketing_consents where dotypos_customer_id = any($1)",
         [seeded]
       );
-      await testDatabase.pool.query('delete from auth."user" where id = $1', [
-        accountId,
-      ]);
+      await testDatabase.pool.query(
+        'delete from auth."user" where id = any($1)',
+        [[accountId, unverifiedAccountId]]
+      );
     });
 
     const repository = <A, E>(
@@ -350,13 +393,21 @@ describe.skipIf(!testDatabase)(
             latestReservationAt: null,
             consentLocale: null,
           },
+          {
+            dotyposCustomerId: unverifiedLinked,
+            hasAccount: false,
+            accountLocale: null,
+            latestReservationLocale: "en-US",
+            latestReservationAt: createdAt,
+            consentLocale: null,
+          },
           expect.objectContaining({
             dotyposCustomerId: withdrawn,
             consentLocale: "en-US",
           }),
         ])
       );
-      expect(candidates).toHaveLength(6);
+      expect(candidates).toHaveLength(7);
     });
 
     const reservationCounts = (selection: CampaignReservationSelection) =>
@@ -576,6 +627,8 @@ describe.skipIf(!testDatabase)(
       expect(before.withValue.has(linked)).toBe(true);
       expect(before.inPeriod.has(linked)).toBe(false);
       expect(before.withValue.has(reserved)).toBe(false);
+      expect(before.withValue.has(unverifiedLinked)).toBe(false);
+      expect(before.inPeriod.has(unverifiedLinked)).toBe(false);
     });
 
     test("finds when the earliest reservation was created", async () => {

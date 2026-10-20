@@ -1,5 +1,5 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql";
@@ -19,7 +19,11 @@ import {
 } from "@/features/referrals/signup-intent.repository";
 import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import type { CustomerAccountId } from "../customer-account";
-import { ensureCustomerAccount } from "./customer-account.repository";
+import {
+  ensureCustomerAccount,
+  recordCustomerAccountLink,
+} from "./customer-account.repository";
+import { linkedDotyposCustomerId } from "./customer-account-dotypos-link";
 
 /**
  * `created` is true only for the claim that inserted the link; a claim that
@@ -90,9 +94,14 @@ export class CustomerAccountLinkRepository extends Context.Service<
         accountId: CustomerAccountId
       ) {
         const [link] = yield* db
-          .select({ customerId: customerAccountLinks.dotyposCustomerId })
-          .from(customerAccountLinks)
-          .where(eq(customerAccountLinks.customerAccountId, accountId))
+          .select({ customerId: linkedDotyposCustomerId })
+          .from(authUser)
+          .leftJoin(customerAccounts, eq(customerAccounts.id, authUser.id))
+          .leftJoin(
+            customerAccountLinks,
+            eq(customerAccountLinks.customerAccountId, authUser.id)
+          )
+          .where(eq(authUser.id, accountId))
           .limit(1);
         return link?.customerId ?? null;
       });
@@ -103,8 +112,38 @@ export class CustomerAccountLinkRepository extends Context.Service<
           customerId: DotyposCustomerId,
           signupReferral: ReferralSignupIntent | undefined
         ) {
-          const inserted = yield* db.transaction(
+          const settled = yield* db.transaction(
             Effect.fn(function* (tx) {
+              // The contract release (#682) links accounts through the column
+              // alone, so the column decides before the link row does. The
+              // row lock orders this claim after any claim of the account
+              // that release is committing.
+              yield* ensureCustomerAccount(tx, accountId);
+              const [account] = yield* tx
+                .select({ customerId: customerAccounts.dotyposCustomerId })
+                .from(customerAccounts)
+                .where(eq(customerAccounts.id, accountId))
+                .for("update");
+              if (account?.customerId) {
+                return {
+                  kind: "linked",
+                  customerId: account.customerId,
+                  created: false,
+                } as const;
+              }
+              const [holder] = yield* tx
+                .select({ id: customerAccounts.id })
+                .from(customerAccounts)
+                .where(
+                  and(
+                    eq(customerAccounts.dotyposCustomerId, customerId),
+                    ne(customerAccounts.id, accountId),
+                    isNull(customerAccounts.deletedAt)
+                  )
+                )
+                .limit(1);
+              if (holder) return { kind: "claimed" } as const;
+
               const [link] = yield* tx
                 .insert(customerAccountLinks)
                 .values({
@@ -116,6 +155,7 @@ export class CustomerAccountLinkRepository extends Context.Service<
                   customerId: customerAccountLinks.dotyposCustomerId,
                 });
               if (!link) return link;
+              yield* recordCustomerAccountLink(tx, accountId, link.customerId);
               if (signupReferral) {
                 yield* insertReferralSignupIntent(
                   tx,
@@ -124,16 +164,14 @@ export class CustomerAccountLinkRepository extends Context.Service<
                 );
               }
               yield* recordAccountCreated(tx, accountId, link.customerId);
-              return link;
+              return {
+                kind: "linked",
+                customerId: link.customerId,
+                created: true,
+              } as const;
             })
           );
-          if (inserted) {
-            return {
-              kind: "linked",
-              customerId: inserted.customerId,
-              created: true,
-            } as const;
-          }
+          if (settled) return settled;
 
           const racedLink = yield* find(accountId);
           return racedLink
@@ -207,14 +245,13 @@ export class CustomerAccountLinkRepository extends Context.Service<
 /**
  * The first link gives the account a mailable Dotypos customer, so it is
  * recorded as created at the durable account's creation instant. The link's
- * transaction creates the durable account when the account has none yet.
+ * transaction has already recorded the link on the durable account.
  */
 const recordAccountCreated = Effect.fn(function* (
   tx: WorkspaceDatabaseClient,
   accountId: CustomerAccountId,
   customerId: DotyposCustomerId
 ) {
-  yield* ensureCustomerAccount(tx, accountId);
   const [account] = yield* tx
     .select({ createdAt: customerAccounts.createdAt })
     .from(customerAccounts)

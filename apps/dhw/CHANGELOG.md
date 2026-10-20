@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.22.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.21.0...dhw-v1.22.0) (2026-10-20)
+
+
+### Features
+
+* **account:** link column, eager customer accounts and account backfill ([#682](https://github.com/totalolage/deskohub-site/issues/682) release A) ([c763766](https://github.com/totalolage/deskohub-site/commit/c7637666798d73dd21000931dd2902a67d6d2c97))
+* **dhw:** add accounts backfill command ([6e76dbc](https://github.com/totalolage/deskohub-site/commit/6e76dbc65fc1f6363fd19b54f50f6a2e90e1716a))
+* **dhw:** label the account backfill's deleted-account step ([15776e2](https://github.com/totalolage/deskohub-site/commit/15776e2e8ce6c925ac343b02d403ea0ffaa1a2ae))
+
 ## [1.21.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.20.0...dhw-v1.21.0) (2026-10-19)
 
 

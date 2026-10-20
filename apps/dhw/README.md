@@ -37,6 +37,7 @@ Operators may:
 - create, update, archive, unarchive, or delete saved campaign audiences;
 - send a campaign's test emails, then send the campaign with the confirmation code from the latest test email, and retry the recipients it didn't reach, optionally including those whose delivery is unconfirmed and who may already have the email;
 - fill the booked product of older meeting-room and office reservations from their Dotypos booking, first as a dry run;
+- create missing customer accounts and give legacy reservations an author, first with `dhw accounts backfill --dry-run`, then without `--dry-run`; the applying run repeats requests until no customer remains, and lists refused customers by Dotypos ID and reason only;
 - grant an account the administrator role and link the records a pre-account administrator username wrote to it, first as a dry run; and
 - rename or revoke administration sessions.
 
