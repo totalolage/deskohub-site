@@ -54,8 +54,6 @@ glossary defines the customer account, reservation author, and tombstone.
   with `ON DELETE RESTRICT`. Never delete a customer account row; deletion
   tombstones it through `CustomerAccountRepository.tombstone`, which also
   clears its Dotypos customer so another account can claim it.
-- `customer_account_links` is the legacy link table. Nothing reads or writes
-  it, and the next release drops it.
 - `OptionalAccountActivityGuard.guardStateCreation` hands the state-creating
   section the account it verified under the account lock. Checkout requires a
   verified session, so the submission section always gets one; it records it
