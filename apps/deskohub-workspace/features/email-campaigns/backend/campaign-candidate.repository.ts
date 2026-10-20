@@ -489,8 +489,14 @@ export const listCampaignCandidateIds = Effect.fn("listCampaignCandidateIds")(
         })
         .from(workspaceReservations),
       db
-        .select({ dotyposCustomerId: customerAccountLinks.dotyposCustomerId })
-        .from(customerAccountLinks),
+        .select({ dotyposCustomerId: accountCustomerId })
+        .from(authUser)
+        .leftJoin(customerAccounts, eq(customerAccounts.id, authUser.id))
+        .leftJoin(
+          customerAccountLinks,
+          eq(customerAccountLinks.customerAccountId, authUser.id)
+        )
+        .where(and(verifiedLogin, isNotNull(linkedDotyposCustomerId))),
       consents,
     ]);
     return sortedCustomerIds([...reservations, ...accounts, ...all]);

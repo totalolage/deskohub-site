@@ -13,10 +13,12 @@ import {
 import { Effect, Option } from "effect";
 import {
   customerAccountLinks,
+  customerAccounts,
   customerMarketingConsents,
   workspaceReservations,
 } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
@@ -31,6 +33,7 @@ import { audienceEvaluationAt } from "./audience-evaluation-context";
 import {
   CampaignCandidateRepository,
   type CampaignReservationSelection,
+  listCampaignCandidateIds,
 } from "./campaign-candidate.repository";
 import {
   deleteAutomatedCampaigns,
@@ -642,6 +645,82 @@ describe.skipIf(!testDatabase)(
             createdAt.subtract({ hours: 240 })
           ) <= 0
       ).toBe(true);
+    });
+
+    describe("schedule fire pool", () => {
+      /** Linked through `customer_accounts` alone, with a verified login. */
+      const columnLinked = customerId("column-linked");
+      /** Linked through an unverified backfilled login, with no reservation. */
+      const unverifiedOnly = customerId("unverified-only");
+      const columnAccountId = `campaign-column-account-${run}`;
+      const unverifiedOnlyAccountId = `campaign-unverified-only-account-${run}`;
+      const pooled = [...seeded, columnLinked, unverifiedOnly];
+
+      beforeAll(async () => {
+        await Effect.runPromise(
+          db.insert(authUser).values([
+            {
+              id: columnAccountId,
+              name: "Column-linked campaign test",
+              email: testEmailAddress(`campaign-column-${run}`),
+              emailVerified: true,
+              locale: "en-US",
+            },
+            {
+              id: unverifiedOnlyAccountId,
+              name: "Unverified-only campaign test",
+              email: testEmailAddress(`campaign-unverified-only-${run}`),
+              emailVerified: false,
+              locale: "en-US",
+            },
+          ])
+        );
+        await Effect.runPromise(
+          Effect.all([
+            db.insert(customerAccounts).values({
+              id: customerAccountIdSchema.make(columnAccountId),
+              dotyposCustomerId: columnLinked,
+            }),
+            db.insert(customerAccountLinks).values({
+              customerAccountId: unverifiedOnlyAccountId,
+              dotyposCustomerId: unverifiedOnly,
+            }),
+          ])
+        );
+      });
+
+      afterAll(async () => {
+        await testDatabase.pool.query(
+          "delete from customer_accounts where id = $1",
+          [columnAccountId]
+        );
+        await testDatabase.pool.query(
+          'delete from auth."user" where id = any($1)',
+          [[columnAccountId, unverifiedOnlyAccountId]]
+        );
+      });
+
+      test("pools the customers listCandidates lists", async () => {
+        for (const purpose of ["marketing", "operational"] as const) {
+          const pool = (
+            await Effect.runPromise(listCampaignCandidateIds(db, purpose))
+          ).filter((id) => pooled.includes(id));
+          const candidates = (
+            await repository((candidates) =>
+              candidates.listCandidates({ purpose })
+            )
+          )
+            .map(({ dotyposCustomerId }) => dotyposCustomerId)
+            .filter((id) => pooled.includes(id))
+            .sort();
+          expect(pool).toEqual(candidates);
+          expect(pool.includes(unverifiedOnly)).toBe(false);
+        }
+        const operational = await Effect.runPromise(
+          listCampaignCandidateIds(db, "operational")
+        );
+        expect(operational.includes(columnLinked)).toBe(true);
+      });
     });
   }
 );
