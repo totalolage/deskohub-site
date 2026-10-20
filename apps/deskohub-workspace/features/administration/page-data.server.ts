@@ -10,6 +10,7 @@ import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { parsePlainDate } from "@/shared/utils/temporal";
 import {
   type AdministrationBookingListInput,
+  type AdministrationCustomerExportInput,
   type AdministrationCustomerListInput,
   type AdministrationReservationExportInput,
   type AdministrationReservationListInput,
@@ -301,6 +302,15 @@ export const parseAdministrationCustomerListSearchParams = (
     page: parsePage(firstParam(params.page)),
     sort: parseCustomerSort(firstParam(params.sort)),
   }) satisfies AdministrationCustomerListInput;
+
+/** The customer export reads the list's filters and order, but no page. */
+export const parseAdministrationCustomerExportSearchParams = (
+  params: Awaited<AdministrationSearchParams>
+): AdministrationCustomerExportInput => {
+  const { page: _, ...input } =
+    parseAdministrationCustomerListSearchParams(params);
+  return input;
+};
 
 const getAdministrationCustomerListInput = async (
   searchParams: AdministrationSearchParams

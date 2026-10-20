@@ -6,6 +6,7 @@ import { AdministrationCustomerTable, Pagination } from "./components";
 import { getAdministrationCustomerListParams } from "./customer-list-filters";
 import { CustomersAdministrationFilterForm } from "./filter-forms";
 import { m } from "./i18n";
+import { getAdministrationListExportHref } from "./list-href";
 import {
   AdministrationCollectionLoading,
   AdministrationCountLoading,
@@ -63,6 +64,12 @@ export async function AdministrationCustomerList({
             <CustomerFilters input={input} />
           </Suspense>
         }
+        exportHref={input.then((resolvedInput) =>
+          getAdministrationListExportHref(
+            "/admin/customers",
+            getAdministrationCustomerListParams(resolvedInput)
+          )
+        )}
         label={m.administrationCustomerTableControls({}, { locale })}
         search={<CustomerSearch variant="toolbar" />}
       />

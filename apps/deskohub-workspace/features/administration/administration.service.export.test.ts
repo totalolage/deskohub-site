@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { ExternalAPIError } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Result } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { ReservationAuthorDirectory } from "@/features/account";
 import { AdministrationService } from "./administration.service";
@@ -14,6 +14,7 @@ type DotyposOverrides = Parameters<typeof DotyposServiceMock>[0];
 const makeQuery = <A>(rows: readonly A[]) => {
   const query = Effect.succeed(rows) as Effect.Effect<readonly A[]> & {
     from: () => typeof query;
+    groupBy: () => typeof query;
     innerJoin: () => typeof query;
     limit: () => typeof query;
     offset: () => typeof query;
@@ -21,6 +22,7 @@ const makeQuery = <A>(rows: readonly A[]) => {
     where: () => typeof query;
   };
   query.from = () => query;
+  query.groupBy = () => query;
   query.innerJoin = () => query;
   query.limit = () => query;
   query.offset = () => query;
@@ -67,6 +69,15 @@ const providerUnavailable = () =>
       operation: "listReservations",
       service: "Dotypos",
       statusCode: 503,
+    })
+  );
+
+const customerNotFound = () =>
+  Effect.fail(
+    new ExternalAPIError({
+      operation: "getCustomer",
+      service: "Dotypos",
+      statusCode: 404,
     })
   );
 
@@ -208,11 +219,11 @@ describe("AdministrationService.exportReservations", () => {
     ]);
   });
 
-  test("keeps a reservation whose booking or customer Dotypos didn't return", async () => {
+  test("keeps a reservation whose booking or customer Dotypos doesn't have", async () => {
     const { value: exported } = await runAdministration(
       {
         dotypos: {
-          getCustomer: () => Effect.die("no single-record read"),
+          getCustomer: customerNotFound,
           getCustomers: () => Effect.succeed([]),
           listReservations: () => Effect.succeed([]),
         },
@@ -278,6 +289,156 @@ describe("AdministrationService.exportReservations", () => {
       });
     }
   });
+
+  describe("reads a customer a successful batch left out on its own", () => {
+    const exportOne = (getCustomer: DotyposOverrides["getCustomer"]) => {
+      const singleReads: string[] = [];
+      return runAdministration(
+        {
+          dotypos: {
+            getCustomer: (id) =>
+              Effect.suspend(() => {
+                singleReads.push(id);
+                return getCustomer?.(id) ?? Effect.die("no single read");
+              }),
+            // The batch answers for the first customer only.
+            getCustomers: ({ ids }) =>
+              customersFor({
+                ids: ids.filter((id) => id === "dotypos-customer-1"),
+              }),
+            listReservations: () =>
+              Effect.succeed([makeBooking(1), makeBooking(2)]),
+          },
+          selects: exportSelects([makeRow(1), makeRow(2)]),
+        },
+        (administration) =>
+          administration.exportReservations({}).pipe(Effect.result)
+      ).then(({ value }) => ({ result: value, singleReads }));
+    };
+
+    test("and exports the customer it returns", async () => {
+      const { result, singleReads } = await exportOne((id) =>
+        Effect.succeed({ id, firstName: "Single", lastName: id })
+      );
+
+      expect(singleReads).toEqual(["dotypos-customer-2"]);
+      expect(Result.getOrThrow(result).map(({ customer }) => customer)).toEqual(
+        [
+          expect.objectContaining({
+            displayName: "Synthetic dotypos-customer-1",
+          }),
+          expect.objectContaining({ displayName: "Single dotypos-customer-2" }),
+        ]
+      );
+    });
+
+    test("and leaves a customer Dotypos doesn't have empty", async () => {
+      const { result } = await exportOne(customerNotFound);
+
+      expect(
+        Result.getOrThrow(result).map(({ customer }) => customer?.id ?? null)
+      ).toEqual(["dotypos-customer-1", null]);
+    });
+
+    test("and fails when that read fails", async () => {
+      const { result } = await exportOne(providerUnavailable);
+
+      expect(Result.isFailure(result) && result.failure).toMatchObject({
+        _tag: "AdministrationListSourceUnavailableError",
+        source: "customer-details",
+      });
+    });
+  });
+});
+
+describe("AdministrationService.exportCustomers", () => {
+  const customerRow = (id: string) => ({
+    customerId: id,
+    marketingConsent: "granted",
+    reservationCount: 2,
+    lastActivityAt: instant,
+  });
+
+  const exportTwo = (
+    dotypos: Pick<DotyposOverrides, "getCustomer" | "getCustomers">
+  ) =>
+    runAdministration(
+      {
+        dotypos: {
+          listReservations: () => Effect.die("no date range"),
+          ...dotypos,
+        },
+        selects: [
+          [
+            customerRow("dotypos-customer-1"),
+            customerRow("dotypos-customer-2"),
+          ],
+        ],
+      },
+      (administration) =>
+        administration
+          .exportCustomers({ marketingConsent: "granted" })
+          .pipe(Effect.result)
+    ).then(({ value }) => value);
+
+  // The batch answers for the first customer only.
+  const firstCustomerOnly: DotyposOverrides["getCustomers"] = ({ ids }) =>
+    customersFor({ ids: ids.filter((id) => id === "dotypos-customer-1") });
+
+  test("reads a customer the batch left out on its own", async () => {
+    const result = await exportTwo({
+      getCustomer: (id) =>
+        Effect.succeed({ id, firstName: "Single", lastName: id }),
+      getCustomers: firstCustomerOnly,
+    });
+
+    expect(
+      Result.getOrThrow(result).map(({ customer, customerId }) => [
+        customerId,
+        customer?.displayName,
+      ])
+    ).toEqual([
+      ["dotypos-customer-1", "Synthetic dotypos-customer-1"],
+      ["dotypos-customer-2", "Single dotypos-customer-2"],
+    ]);
+  });
+
+  test("keeps a customer Dotypos doesn't have, without details", async () => {
+    const result = await exportTwo({
+      getCustomer: customerNotFound,
+      getCustomers: firstCustomerOnly,
+    });
+
+    expect(
+      Result.getOrThrow(result).map(({ customer }) => customer?.id ?? null)
+    ).toEqual(["dotypos-customer-1", null]);
+  });
+
+  for (const { name, dotypos } of [
+    {
+      name: "the customer batch fails",
+      dotypos: {
+        getCustomer: () => Effect.die("no single-record fallback"),
+        getCustomers: providerUnavailable,
+      },
+    },
+    {
+      name: "the single read of a left-out customer fails",
+      dotypos: {
+        getCustomer: providerUnavailable,
+        getCustomers: firstCustomerOnly,
+      },
+    },
+  ] as const) {
+    test(`fails when ${name}`, async () => {
+      const result = await exportTwo(dotypos);
+
+      expect(Result.isFailure(result) && result.failure).toMatchObject({
+        _tag: "AdministrationListSourceUnavailableError",
+        source: "customer-details",
+      });
+    });
+  }
 });
 
 describe("AdministrationService.listReservations under the same Dotypos failures", () => {
@@ -335,5 +496,22 @@ describe("AdministrationService.listReservations under the same Dotypos failures
     expect(page.items[0]?.customer).toMatchObject({
       displayName: "Single dotypos-customer-1",
     });
+  });
+
+  test("still shows a row without customer details when the single read fails too", async () => {
+    const { value: page } = await runAdministration(
+      {
+        dotypos: {
+          getCustomer: providerUnavailable,
+          getCustomers: () => Effect.succeed([]),
+          listReservations: () => Effect.succeed([makeBooking(1)]),
+        },
+        selects: [[{ value: 1 }], [makeRow(1)], [], [], []],
+      },
+      (administration) => administration.listReservations({})
+    );
+
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]?.customer).toBeNull();
   });
 });

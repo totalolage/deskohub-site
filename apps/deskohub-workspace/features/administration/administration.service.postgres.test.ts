@@ -33,6 +33,7 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
+  type AdministrationCustomerExportInput,
   type AdministrationCustomerListInput,
   AdministrationService,
 } from "./administration.service";
@@ -670,6 +671,63 @@ describe.skipIf(!testDatabase)(
         });
       });
 
+      describe("export", () => {
+        const exportInRange = (
+          input: AdministrationCustomerExportInput,
+          bookings = inRangeLabels.map(booking)
+        ) =>
+          run((administration) => administration.exportCustomers(input), {
+            listReservations: () => Effect.succeed(bookings),
+          });
+
+        test("exports the customers the list shows under each filter", async () => {
+          for (const marketingConsent of [
+            undefined,
+            "granted",
+            "withdrawn",
+            "never",
+          ] as const) {
+            const exported = await run((administration) =>
+              administration.exportCustomers({ marketingConsent })
+            );
+            expect(
+              exported.filter(({ customerId }) =>
+                seededCustomers.has(customerId)
+              )
+            ).toEqual(await listSeeded({ marketingConsent }));
+
+            const exportedInRange = await exportInRange({
+              ...range,
+              marketingConsent,
+            });
+            expect(exportedInRange).toEqual(
+              (await listInRange({ ...range, marketingConsent })).items
+            );
+          }
+        });
+
+        test("fails instead of exporting no customers when Dotypos can't answer the range", async () => {
+          const failure = await run(
+            (administration) =>
+              administration.exportCustomers(range).pipe(Effect.flip),
+            {
+              listReservations: () =>
+                Effect.fail(
+                  new ExternalAPIError({
+                    operation: "listReservations",
+                    service: "Dotypos",
+                    statusCode: 503,
+                  })
+                ),
+            }
+          );
+          expect(failure).toMatchObject({
+            _tag: "AdministrationListSourceUnavailableError",
+            source: "booking-dates",
+          });
+        });
+      });
+
       test("doesn't read Dotypos without a range", async () => {
         const result = await run(
           (administration) =>
@@ -778,6 +836,26 @@ describe.skipIf(!testDatabase)(
                 reservationCount,
               ])
             );
+          }
+        });
+
+        test("exports every customer of the filtered set in list order, without pages", async () => {
+          for (const input of [
+            {},
+            { sort: "reservations", direction: "asc" },
+            { sort: "activity", direction: "asc" },
+          ] as const) {
+            const pages = await listAllPages(input);
+            const exported = await run(
+              (administration) =>
+                administration.exportCustomers({ ...range, ...input }),
+              {
+                listReservations: () =>
+                  Effect.succeed(pagedLabels.map(booking)),
+              }
+            );
+            expect(exported).toHaveLength(26);
+            expect(exported).toEqual(pages.flatMap(({ items }) => items));
           }
         });
       });

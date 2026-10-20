@@ -144,6 +144,20 @@ describe("CustomersAdministrationPage", () => {
     );
   });
 
+  test("exports the filtered list in its order, without the page", async () => {
+    customerPage = {
+      input: filteredInput,
+      result: { ...defaultCustomerPage.result, page: 2, pageCount: 3 },
+    };
+    const view = await prerenderCustomersPage();
+
+    expect(
+      view.getByRole("link", { name: "Export CSV" }).getAttribute("href")
+    ).toBe(
+      "/en-US/admin/customers/export?direction=asc&from=2026-10-01&marketingConsent=granted&sort=reservations&to=2026-10-31"
+    );
+  });
+
   test("warns in Czech when booking dates can't filter the list", async () => {
     routeLocale = "cs-CZ";
     customerPage = {
@@ -167,7 +181,13 @@ describe("CustomersAdministrationPage", () => {
   test("shows no warning for an unfiltered list", async () => {
     const view = await prerenderCustomersPage();
 
-    expect(view.queryByRole("alert")).toBeNull();
+    expect(
+      view.queryByText(/Booking dates are temporarily unavailable/)
+    ).toBeNull();
+    // Only the export control's live region, kept mounted and empty.
+    expect(
+      view.queryAllByRole("alert").map(({ textContent }) => textContent)
+    ).toEqual([""]);
     expect(view.getByText("No customers have reservations yet.")).toBeDefined();
   });
 });

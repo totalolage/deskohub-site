@@ -226,6 +226,12 @@ export type AdministrationCustomerListInput = {
   readonly to?: string;
 };
 
+/** The list filters and order of a customer export, which has no pages. */
+export type AdministrationCustomerExportInput = Omit<
+  AdministrationCustomerListInput,
+  "page"
+>;
+
 export type AdministrationCustomerSort = "reservations" | "activity";
 
 export type AdministrationBookingListInput = {
@@ -1310,8 +1316,8 @@ const getReservationOperatorNotice = ({
 };
 
 type ProviderReadFailure = {
-  /** The date range a failed date read logs. */
-  readonly annotations?: AdministrationReservationDateRange;
+  /** What a failed read logs beside the cause, such as its date range. */
+  readonly annotations?: Readonly<Record<string, string | undefined>>;
   readonly cause: unknown;
   /** The warning a degrading read logs. */
   readonly message: string;
@@ -1319,18 +1325,16 @@ type ProviderReadFailure = {
 };
 
 /**
- * How a list read treats a failed Dotypos read. A page degrades: it logs, shows
- * the details as unavailable, and retries records one by one where a batch
- * failed. An export fails fast with `AdministrationListSourceUnavailableError`.
- * A read that succeeds without some record isn't a failure under either.
+ * How a list read treats a failed Dotypos read. A page degrades: it logs and
+ * shows the details as unavailable. An export fails fast with
+ * `AdministrationListSourceUnavailableError`. A read that succeeds without some
+ * record isn't a failure under either.
  */
 type ProviderFailurePolicy<E> = {
   readonly recover: <A>(
     failure: ProviderReadFailure,
     fallback: A
   ) => Effect.Effect<A, E>;
-  /** Reads every record its batch didn't return through a single-record read. */
-  readonly readsUnreturnedRecordsSingly: boolean;
 };
 
 const degradeOnProviderFailure: ProviderFailurePolicy<never> = {
@@ -1338,7 +1342,6 @@ const degradeOnProviderFailure: ProviderFailurePolicy<never> = {
     Effect.logWarning(message, { cause, ...annotations }).pipe(
       Effect.as(fallback)
     ),
-  readsUnreturnedRecordsSingly: true,
 };
 
 const failOnProviderFailure: ProviderFailurePolicy<AdministrationListSourceUnavailableError> =
@@ -1347,7 +1350,6 @@ const failOnProviderFailure: ProviderFailurePolicy<AdministrationListSourceUnava
       Effect.fail(
         new AdministrationListSourceUnavailableError({ cause, source })
       ),
-    readsUnreturnedRecordsSingly: false,
   };
 
 const recoverProviderRead =
@@ -1447,6 +1449,17 @@ export class AdministrationService extends Context.Service<
       },
       EffectDrizzleQueryError
     >;
+    /**
+     * Every customer the list filters match, in list order, for a file export.
+     * Where the list would show Dotypos details as unavailable, the export
+     * fails with `AdministrationListSourceUnavailableError`.
+     */
+    readonly exportCustomers: (
+      input: AdministrationCustomerExportInput
+    ) => Effect.Effect<
+      readonly AdministrationCustomerSummary[],
+      EffectDrizzleQueryError | AdministrationListSourceUnavailableError
+    >;
     readonly loadCustomerReservations: (input: {
       readonly customerId: DotyposCustomerId;
       readonly page?: number;
@@ -1545,19 +1558,35 @@ export class AdministrationService extends Context.Service<
           const customersById = indexCustomersById(
             batches.flatMap(({ customers }) => customers)
           );
-          const unreturnedIds = policy.readsUnreturnedRecordsSingly
-            ? batches
-                .flatMap(({ ids: batchIds }) => batchIds)
-                .filter((id) => !customersById.has(id))
-            : [];
+          // A batch can leave out a customer that a single read still
+          // returns, so every customer a batch didn't return is read alone:
+          // under an export only those of successful batches, since a failed
+          // batch already failed it. Only a customer Dotypos doesn't know
+          // stays absent without a failure.
+          const unreturnedIds = batches
+            .flatMap(({ ids: batchIds }) => batchIds)
+            .filter((id) => !customersById.has(id));
           const missingCustomers = yield* Effect.all(
             unreturnedIds.map((id) =>
               dotypos.getCustomer(id).pipe(
                 Effect.map((customer) => [id, customer] as const),
-                Effect.catch((cause) => {
-                  unstable_rethrow(cause);
-                  return Effect.succeed(null);
-                })
+                Effect.catchIf(
+                  (error) =>
+                    error._tag === "ExternalAPIError" &&
+                    error.statusCode === 404,
+                  () => Effect.succeed(null)
+                ),
+                Effect.catch(
+                  recoverProviderRead(
+                    policy,
+                    {
+                      annotations: { customerId: id },
+                      message: "Customer details unavailable",
+                      source: "customer-details",
+                    },
+                    null
+                  )
+                )
               )
             ),
             { concurrency: 5 }
@@ -2701,12 +2730,18 @@ export class AdministrationService extends Context.Service<
        */
       const getCustomerListFilter = Effect.fn(
         "AdministrationService.getCustomerListFilter"
-      )(function* (input: AdministrationCustomerListInput) {
+      )(function* <E = never>(
+        input: AdministrationCustomerExportInput,
+        policy: ProviderFailurePolicy<E> = degradeOnProviderFailure
+      ) {
         const dateRange = getAdministrationReservationDateRange({
           from: input.from,
           to: input.to,
         });
-        const dateReservations = yield* loadReservationRangeMap(dateRange);
+        const dateReservations = yield* loadReservationRangeMap(
+          dateRange,
+          policy
+        );
         const conditions: SQL[] = [];
         if (dateRange) {
           conditions.push(
@@ -2758,16 +2793,18 @@ export class AdministrationService extends Context.Service<
 
       const toCustomerSummaries = Effect.fn(
         "AdministrationService.toCustomerSummaries"
-      )(function* (
+      )(function* <E = never>(
         rows: readonly {
           readonly customerId: DotyposCustomerId;
           readonly marketingConsent: AdministrationCustomerMarketingConsentState;
           readonly reservationCount: number;
           readonly lastActivityAt: Temporal.Instant | null;
-        }[]
+        }[],
+        policy: ProviderFailurePolicy<E> = degradeOnProviderFailure
       ) {
         const customersById = yield* loadCustomers(
-          rows.map(({ customerId }) => customerId)
+          rows.map(({ customerId }) => customerId),
+          policy
         );
         return rows.map((row): AdministrationCustomerSummary => {
           const customer = customersById.get(row.customerId);
@@ -2811,6 +2848,20 @@ export class AdministrationService extends Context.Service<
           };
         }
       );
+
+      const exportCustomers = Effect.fn(
+        "AdministrationService.exportCustomers"
+      )(function* (input: AdministrationCustomerExportInput) {
+        // A failed range read fails the export, so the filter is never left
+        // unavailable here.
+        const { where } = yield* getCustomerListFilter(
+          input,
+          failOnProviderFailure
+        );
+        const rows = yield* selectCustomerSummaryRows(input, where);
+        yield* Effect.annotateCurrentSpan({ customerCount: rows.length });
+        return yield* toCustomerSummaries(rows, failOnProviderFailure);
+      });
 
       const loadCustomerReservations = Effect.fn(
         "AdministrationService.loadCustomerReservations"
@@ -3347,6 +3398,7 @@ export class AdministrationService extends Context.Service<
         loadBooking,
         loadBookingBreadcrumb,
         listCustomers,
+        exportCustomers,
         loadCustomerReservations,
         loadCustomerActivity,
         loadCustomerReservationActivity,
