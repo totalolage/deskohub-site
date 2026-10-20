@@ -9,6 +9,7 @@ import {
   startAuthorization,
 } from "@modelcontextprotocol/client";
 import { Effect, Schema, type Scope } from "effect";
+import { customerAgentTestClientRedirectUri } from "@/features/account/customer-agent-test-client";
 import type { WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -18,7 +19,6 @@ import {
 } from "../errors";
 import { addRedaction, assert } from "../runtime";
 import {
-  customerAgentRedirectUri,
   customerAgentRequestedScopes,
   customerMcpResourceFor,
 } from "./authorization";
@@ -135,7 +135,7 @@ export const startCustomerAgentAuthorization = ({
       {
         clientInformation: { client_id: clientId },
         metadata: server.metadata,
-        redirectUrl: customerAgentRedirectUri,
+        redirectUrl: customerAgentTestClientRedirectUri,
         resource: customerMcpResourceFor(config.baseUrl),
         scope: customerAgentRequestedScopes.join(" "),
         state,
@@ -180,7 +180,7 @@ export const exchangeCustomerAgentCode = ({
       fetchFn: previewFetch(config, signal),
       iss,
       metadata: server.metadata,
-      redirectUri: customerAgentRedirectUri,
+      redirectUri: customerAgentTestClientRedirectUri,
       resource: customerMcpResourceFor(config.baseUrl),
     });
     addRedaction(tokens.access_token, true);

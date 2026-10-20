@@ -8,6 +8,11 @@ import {
   resolveCustomerAgentConnectStep,
 } from "../../customer-agent-routes";
 import {
+  customerAgentTestClientId,
+  customerAgentTestClientMetadata,
+  customerAgentTestClientRedirectUri,
+} from "../../customer-agent-test-client";
+import {
   type CapturedMagicLink,
   cookieJar,
   getSessionCookie,
@@ -787,6 +792,53 @@ describe.skipIf(!testDatabase)(
       expect(
         await failureReasonOf(authorityOver(auth), tokens.access_token)
       ).toBe("invalid-token");
+    });
+
+    test("registers the preview E2E's test agent from its published metadata document", async () => {
+      const metadataRequests: string[] = [];
+      const sentLinks: CapturedMagicLink[] = [];
+      // Answered as the site's route serves the document, so it meets the
+      // same content-type, size, and registration checks as in a deployment.
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: async (input: RequestInfo | URL) => {
+          const url = input instanceof Request ? input.url : String(input);
+          metadataRequests.push(url);
+          return url === customerAgentTestClientId
+            ? Response.json(customerAgentTestClientMetadata, {
+                headers: { "cache-control": "no-store" },
+              })
+            : new Response("not found", { status: 404 });
+        },
+      });
+      const pkce = await makePkce();
+
+      const { consentPage, customer } = await connectToConsent(
+        auth,
+        sentLinks,
+        {
+          clientId: customerAgentTestClientId,
+          redirectUri: customerAgentTestClientRedirectUri,
+          challenge: pkce.challenge,
+          state: crypto.randomUUID(),
+          scope: "reservations:read reservations:create offline_access",
+        }
+      );
+
+      expect(metadataRequests).toContain(customerAgentTestClientId);
+      expect(consentPage.pathname).toBe("/auth/consent");
+      const client = await findClient(
+        auth,
+        customerAgentTestClientId,
+        new Headers({ cookie: customer.cookie, host: HOST })
+      );
+      expect(client._tag === "Success" && client.success).toEqual(
+        Option.some({
+          clientId: customerAgentTestClientId as never,
+          name: customerAgentTestClientMetadata.client_name,
+          host: "workspace.deskohub.cz",
+        })
+      );
     });
   }
 );

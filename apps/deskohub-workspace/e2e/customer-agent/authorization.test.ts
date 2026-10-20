@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { customerAgentTestClientRedirectUri } from "@/features/account/customer-agent-test-client";
 import {
-  customerAgentRedirectUri,
   customerMcpResourceFor,
   isCustomerAgentCallbackUrl,
   isCustomerAgentConsentUrl,
@@ -11,7 +11,7 @@ import {
 const baseUrl = "https://deskohub-workspace-abc123.vercel.app";
 
 const callback = (params: Record<string, string>) =>
-  `${customerAgentRedirectUri}?${new URLSearchParams(params)}`;
+  `${customerAgentTestClientRedirectUri}?${new URLSearchParams(params)}`;
 
 describe("customer agent authorization helpers", () => {
   test("binds tokens to the deployment's MCP resource", () => {
