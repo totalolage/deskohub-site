@@ -11,14 +11,13 @@ export const customerAgentTestClientPathname = "/oauth/clients/e2e-agent.json";
  * Preview deployments sit behind deployment protection, so their OAuth
  * server can fetch the document only from the public production host.
  */
-export const customerAgentTestClientId = `https://${workspaceSiteConstants.brand.domain}${customerAgentTestClientPathname}`;
+const clientId = `https://${workspaceSiteConstants.brand.domain}${customerAgentTestClientPathname}`;
 
 /**
  * The redirect URI's host never resolves. The preview E2E's browser answers
  * it itself and reads the authorization response from the address bar.
  */
-export const customerAgentTestClientRedirectUri =
-  "https://e2e-agent.invalid/callback";
+const redirectUri = "https://e2e-agent.invalid/callback";
 
 /**
  * The Client ID Metadata Document of the synthetic AI agent the preview E2E
@@ -26,10 +25,10 @@ export const customerAgentTestClientRedirectUri =
  * code and refresh grants.
  */
 export const customerAgentTestClientMetadata = {
-  client_id: customerAgentTestClientId,
+  client_id: clientId,
   client_name: "Workspace E2E Test Agent",
   application_type: "web",
-  redirect_uris: [customerAgentTestClientRedirectUri],
+  redirect_uris: [redirectUri],
   grant_types: ["authorization_code", "refresh_token"],
   response_types: ["code"],
   token_endpoint_auth_method: "none",
