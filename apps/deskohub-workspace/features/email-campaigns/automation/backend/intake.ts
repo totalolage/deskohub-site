@@ -184,7 +184,7 @@ const isAfterOrAt = (left: Temporal.Instant, right: Temporal.Instant) =>
 
 /**
  * Whether a Workspace cancellation of the event's reservation withdraws it
- * (D28): runs a cancellation triggers are never withdrawn, as in planning.
+ * (D28): runs triggered by a cancellation are never withdrawn, as in planning.
  */
 const isWithdrawable = (decision: IntakeDecision) =>
   decision.outcome !== "failed" &&

@@ -3,6 +3,10 @@ import "@/shared/testing/workspace-test-env";
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import type { AutomationFlow } from "@deskohub/workspace-admin-api";
 import { Effect } from "effect";
+import {
+  holdPostgresTransaction,
+  waitForPostgresLockWaiter,
+} from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AudienceFilter } from "../../audience-filter";
 import {
@@ -302,7 +306,7 @@ describe.skipIf(!database)("intake units on Postgres", () => {
     expect(await runsOf(campaignId)).toEqual([]);
   });
 
-  test("withdraws an event whose reservation Workspace cancelled during the fetch, after its cancellation was processed (D28)", async () => {
+  test("withdraws an event whose reservation Workspace cancelled after the fetch, once its cancellation was processed (D28)", async () => {
     const campaignId = await automation();
     const customer = await fixtures.addCustomer("workspace-cancelled");
     const visit = await finishedVisit({
@@ -318,21 +322,32 @@ describe.skipIf(!database)("intake units on Postgres", () => {
         now
       );
     await plan();
-    const fetch = dotypos.gate();
+    // Holding the lifecycle lock stops the unit at its commit, after the
+    // fetch saw the visit active in Dotypos.
+    const lifecycle = await holdPostgresTransaction(
+      pool,
+      "select 1 from email_campaign_automations where campaign_id = $1 for update",
+      [campaignId]
+    );
     const unit = runEngineAt(drainAutomationUnitQueue(queue), layer, now);
-    await fetch.reached;
-    // Dotypos still returns the visit; only Workspace knows it is cancelled.
-    await fixtures.cancelInWorkspace(visit.reservationId, now);
-    const cancellation = await fixtures.recordEvent({
-      kind: "reservation-cancelled",
-      customer,
-      reservationId: visit.reservationId,
-      occurredAt: now,
-    });
-    await plan();
-    expect(await processed([cancellation])).toBe(true);
-
-    fetch.release();
+    try {
+      await waitForPostgresLockWaiter(pool, {
+        condition: "$1::int = any(pg_blocking_pids(pid))",
+        values: [lifecycle.pid],
+        description: "the intake commit waiting for the lifecycle lock",
+      });
+      await fixtures.cancelInWorkspace(visit.reservationId, now);
+      const cancellation = await fixtures.recordEvent({
+        kind: "reservation-cancelled",
+        customer,
+        reservationId: visit.reservationId,
+        occurredAt: now,
+      });
+      await plan();
+      expect(await processed([cancellation])).toBe(true);
+    } finally {
+      await lifecycle.commit();
+    }
     await unit;
 
     expect(await processed([visit.eventId])).toBe(true);
