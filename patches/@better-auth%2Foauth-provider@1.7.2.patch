@@ -1,5 +1,19 @@
+diff --git a/dist/authorize-BmTe2VYG.mjs b/dist/authorize-BmTe2VYG.mjs
+index 42c943dd45aa3d297a14edcc056a14e7ddd54680..7dd8463452da2c2edb87524276c8d8332c3eca07 100644
+--- a/dist/authorize-BmTe2VYG.mjs
++++ b/dist/authorize-BmTe2VYG.mjs
+@@ -3000,6 +3000,9 @@ async function deleteConsentEndpoint(ctx, opts) {
+ 		error: "not_found"
+ 	});
+ 	if (consent.userId !== session.user.id) throw new APIError("UNAUTHORIZED");
++	// Workspace patch (better-auth/better-auth#11056): disconnecting a client
++	// revokes the tokens it holds for the user.
++	await invalidateRefreshFamily(ctx, consent.clientId, consent.userId, consent.referenceId);
+ 	await ctx.context.adapter.delete({
+ 		model: "oauthConsent",
+ 		where: [{
 diff --git a/dist/introspect-C6P1zrTr.mjs b/dist/introspect-C6P1zrTr.mjs
-index 0b3934dd6724d408a84624a3fb0215f6d3274fea..fad7a3bd7d3b2dd7c371fc1a51ca6e04bce2eb5c 100644
+index 0b3934dd6724d408a84624a3fb0215f6d3274fea..3ac602f1aae795092b660eaf6da7e6f043a6b5e5 100644
 --- a/dist/introspect-C6P1zrTr.mjs
 +++ b/dist/introspect-C6P1zrTr.mjs
 @@ -802,6 +802,14 @@ function getSeedState(ctx) {
@@ -35,3 +49,55 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..fad7a3bd7d3b2dd7c371fc1a51ca6e04
  				if (/unique|duplicate|UNIQUE/i.test(message)) {
  					logger.debug(`oauth-provider: resource ${input.identifier} already inserted by a concurrent process — skipping.`);
  					continue;
+@@ -1495,34 +1503,27 @@ async function createOpaqueAccessToken(ctx, opts, user, client, scopes, payload,
+ *
+ * @internal
+ */
+-async function invalidateRefreshFamily(ctx, clientId, userId) {
+-	const refreshTokens = await ctx.context.adapter.findMany({
+-		model: "oauthRefreshToken",
+-		where: [{
+-			field: "clientId",
+-			value: clientId
+-		}, {
+-			field: "userId",
+-			value: userId
+-		}]
+-	});
+-	if (refreshTokens.length) await ctx.context.adapter.deleteMany({
++// Workspace patch (better-auth/better-auth#11056): a consent delete calls
++// this too, so it removes every access token of the client and user, not
++// only those bought with a refresh token.
++async function invalidateRefreshFamily(ctx, clientId, userId, referenceId) {
++	const where = [{
++		field: "clientId",
++		value: clientId
++	}, {
++		field: "userId",
++		value: userId
++	}, ...referenceId != null ? [{
++		field: "referenceId",
++		value: referenceId
++	}] : []];
++	await ctx.context.adapter.deleteMany({
+ 		model: "oauthAccessToken",
+-		where: [{
+-			field: "refreshId",
+-			operator: "in",
+-			value: refreshTokens.map((r) => r.id)
+-		}]
++		where
+ 	});
+ 	await ctx.context.adapter.deleteMany({
+ 		model: "oauthRefreshToken",
+-		where: [{
+-			field: "clientId",
+-			value: clientId
+-		}, {
+-			field: "userId",
+-			value: userId
+-		}]
++		where
+ 	});
+ }
+ async function revokeTokensIssuedForAuthorizationCode(ctx, authorizationCodeId) {

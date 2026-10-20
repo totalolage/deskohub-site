@@ -134,6 +134,12 @@ resource.
   browser, as passkey deletion does; Better Auth checks the session and that
   the consent is the customer's. A consent that is already gone counts as
   disconnected. Reconnecting asks for consent again.
+- Upstream Better Auth deletes only the consent row. The Workspace
+  `@better-auth/oauth-provider` patch (see the `deskohub-repository` skill's
+  patched dependencies) also deletes the client's access and refresh tokens
+  for that customer, so its next MCP call gets the 401 challenge and its
+  refresh fails. Authorization codes issued before the disconnect stay
+  redeemable until they expire (better-auth#11318).
 
 ## Account-boundary adapter
 

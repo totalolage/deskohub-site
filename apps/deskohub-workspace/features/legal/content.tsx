@@ -855,10 +855,11 @@ const legalDocuments = {
               A connected assistant's access tokens are valid for one hour and
               its refresh tokens for 30 days, and expired tokens are removed
               automatically every day. The permission you granted lasts until
-              you delete your account or ask us to disconnect the assistant.
-              Deleting the account disconnects every assistant and removes its
-              tokens and permissions. The assistant identifier recorded with a
-              reservation stays with that reservation record.
+              you disconnect the assistant in Connected assistants in your
+              account, or delete your account. Disconnecting an assistant
+              removes its permission and tokens right away; deleting the account
+              disconnects every assistant. The assistant identifier recorded
+              with a reservation stays with that reservation record.
             </>,
             <>
               Analytics and campaign measurement data, including customer data
@@ -1379,11 +1380,11 @@ const legalDocuments = {
             <>
               Přístupové tokeny připojeného asistenta platí jednu hodinu a
               obnovovací tokeny 30 dní; expirované tokeny odstraňujeme každý den
-              automaticky. Udělené oprávnění trvá, dokud účet nesmažete nebo nás
-              nepožádáte o odpojení asistenta. Smazáním účtu se odpojí všichni
-              asistenti a odstraní se jejich tokeny a oprávnění. Identifikátor
-              asistenta zaznamenaný u rezervace zůstává u záznamu této
-              rezervace.
+              automaticky. Udělené oprávnění trvá, dokud asistenta neodpojíte v
+              sekci Připojení asistenti ve svém účtu nebo účet nesmažete.
+              Odpojením asistenta se okamžitě odstraní jeho oprávnění a tokeny;
+              smazáním účtu se odpojí všichni asistenti. Identifikátor asistenta
+              zaznamenaný u rezervace zůstává u záznamu této rezervace.
             </>,
             <>
               Analytické údaje a údaje pro kampanové měření, včetně zákaznických

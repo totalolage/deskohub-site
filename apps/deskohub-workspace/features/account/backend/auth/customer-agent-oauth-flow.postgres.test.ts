@@ -800,6 +800,8 @@ describe.skipIf(!testDatabase)(
       }
     });
 
+    // Guards the Workspace oauth-provider patch (better-auth#11056): upstream
+    // consent deletion leaves the tokens valid.
     test("disconnects one assistant: its tokens stop working and other grants keep theirs", async () => {
       const agent = makeAgent();
       const other = makeAgent("Other Agent");
