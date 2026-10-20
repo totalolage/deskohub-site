@@ -187,10 +187,13 @@ export interface ICampaignCandidateRepository {
     Temporal.Instant | null,
     EffectDrizzleQueryError
   >;
-  /** The booked reservations among these Dotypos reservations, of the product and customers if given. */
+  /** The booked reservations among these Dotypos reservations, of the product, booking bounds and customers if given. */
   readonly listBookedReservations: (
     dotyposReservationIds: readonly DotyposReservationId[],
-    selection?: Pick<CampaignReservationSelection, "product" | "customers">
+    selection?: Pick<
+      CampaignReservationSelection,
+      "product" | "booked" | "customers"
+    >
   ) => Effect.Effect<
     readonly CampaignBookedReservation[],
     EffectDrizzleQueryError

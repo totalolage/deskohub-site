@@ -59,6 +59,7 @@ export type AudienceCountResolver<Params> = {
     request: {
       readonly attribute: string;
       readonly params: ConcreteCountParams<Params>;
+      readonly bookedBy?: Temporal.Instant;
     },
     resolution: AudienceResolution
   ) => Resolved<ReadonlyMap<DotyposCustomerId, number>>;
@@ -153,18 +154,25 @@ export type AudienceAttributeResolvers<
 
 const database = CampaignRecipientResolutionError.database;
 
+/** Limits a reservation selection to the bookings made by the instant, if any. */
+const bookedByThen = (bookedBy: Temporal.Instant | undefined) =>
+  bookedBy ? { booked: { startsAtOrBefore: bookedBy } } : {};
+
 /**
  * Booked reservations by booking date count from local data; by visit date
  * in a bounded period they count among the Dotypos reservations starting in
- * it; by visit date at any time every booked reservation counts.
+ * it; by visit date at any time every booked reservation counts. By visit
+ * date, a replay counts only those booked by its moment.
  */
 const countReservations = (
   {
     params: { dateBasis, period, status, product },
+    bookedBy,
   }: {
     readonly params: ConcreteCountParams<
       AudienceConditionOf<"reservationCount">["params"]
     >;
+    readonly bookedBy?: Temporal.Instant;
   },
   { candidates, scope, visitsIn }: AudienceResolution
 ) => {
@@ -186,10 +194,13 @@ const countReservations = (
     Match.when("booking", () => countSelected({ booked: period })),
     Match.when("visit", () =>
       isUnboundedPeriod(period)
-        ? countSelected({})
+        ? countSelected(bookedByThen(bookedBy))
         : visitsIn(period).pipe(
             Effect.flatMap((dotyposReservationIds) =>
-              countSelected({ dotyposReservationIds })
+              countSelected({
+                dotyposReservationIds,
+                ...bookedByThen(bookedBy),
+              })
             )
           )
     ),
@@ -199,16 +210,17 @@ const countReservations = (
 
 /**
  * Each customer's earliest or latest booked visit among the visits begun by
- * the request's `asOf`, of the product if given.
+ * the request's `asOf`, of the product and booked by `bookedBy` if given.
  */
 const visitDates =
   (pick: "earliest" | "latest"): AudienceDateResolver["dates"] =>
-  ({ bounds, asOf, product }, { candidates, scope, pastVisits }) =>
+  ({ bounds, asOf, product, bookedBy }, { candidates, scope, pastVisits }) =>
     pastVisits(asOf).pipe(
       Effect.flatMap((startById) =>
         candidates
           .listBookedReservations([...startById.keys()], {
             ...(product && { product }),
+            ...bookedByThen(bookedBy),
             customers: scopedCustomers(scope),
           })
           .pipe(

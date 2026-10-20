@@ -472,6 +472,38 @@ describe("collectAudienceFactRequests", () => {
         .period
     ).toEqual({ startsAtOrAfter: march });
   });
+
+  test("counts and dates visits booked by a replayed moment", () => {
+    const replayed = { ...context, replayed: true };
+    const { reservationCount, campaignEmailCount } = audienceAttributeCatalogue;
+    const visitsAnyTime = {
+      ...reservationsVisitedInMarch,
+      params: { dateBasis: "visit", period: { _tag: "AnyTime" } },
+    } as const satisfies AudienceCondition;
+    const bookingsAnyTime = {
+      ...visitsAnyTime,
+      params: { dateBasis: "booking", period: { _tag: "AnyTime" } },
+    } as const satisfies AudienceCondition;
+
+    expect(
+      countFactRequest(reservationCount, visitsAnyTime, replayed).bookedBy
+    ).toEqual(now);
+    expect(dateFactRequest(lastVisitNotRecent, replayed).bookedBy).toEqual(now);
+    // The present has no later bookings, and occurrence bounds already end
+    // by the replayed moment.
+    expect(
+      countFactRequest(reservationCount, visitsAnyTime, context)
+    ).not.toHaveProperty("bookedBy");
+    expect(dateFactRequest(lastVisitNotRecent, context)).not.toHaveProperty(
+      "bookedBy"
+    );
+    expect(
+      countFactRequest(reservationCount, bookingsAnyTime, replayed)
+    ).not.toHaveProperty("bookedBy");
+    expect(
+      countFactRequest(campaignEmailCount, marketingEmailsLastTenDays, replayed)
+    ).not.toHaveProperty("bookedBy");
+  });
 });
 
 describe("audienceFilterSchema", () => {
