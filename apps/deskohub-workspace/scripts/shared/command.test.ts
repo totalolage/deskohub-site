@@ -48,31 +48,6 @@ describe("runCommand", () => {
     });
   });
 
-  for (const runtime of ["bun", "node"] as const) {
-    test.skipIf(runtime === "node" && Bun.which("node") === null)(
-      `inherited output reaches the caller's streams under ${runtime}`,
-      async () => {
-        const result = await runCommand(
-          [
-            runtime === "bun" ? process.execPath : "node",
-            join(import.meta.dir, "command.inherit-fixture.mjs"),
-          ],
-          { timeoutMs: 15_000 }
-        );
-
-        expect(result.stderr).toBe("err\n");
-        expect(result.stdout.startsWith("out\n")).toBe(true);
-        expect(JSON.parse(result.stdout.slice("out\n".length))).toEqual({
-          exitCode: 3,
-          signalCode: null,
-          stdout: "",
-          stderr: "",
-          timedOut: false,
-        });
-      }
-    );
-  }
-
   test("a timeout ends descendants that inherit the output pipes", async () => {
     const started = performance.now();
     const result = await runCommand(
@@ -209,7 +184,6 @@ const shutdownScenarios = [
   { mode: "timeout", target: "caller", ended: [0, 1] },
   { mode: "no-timeout", target: "caller", ended: [0] },
   { mode: "no-timeout", target: "caller group", ended: [0, 1] },
-  { mode: "own-group", target: "caller", ended: [0, 1] },
 ] as const;
 
 describe("caller shutdown", () => {

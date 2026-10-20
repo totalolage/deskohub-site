@@ -20,37 +20,26 @@
         "package.json"
       ]
     },
-    "build": {
+    "build:compile": {
+      "cache": false,
       "dependsOn": [
-        "$TURBO_EXTENDS$",
+        "^build",
         "@deskohub/dotypos#generate",
         "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
-        "i18n:compile"
+        "i18n:compile",
+        "typecheck"
       ],
-      "env": [
-        "BETTER_AUTH_SECRETS",
-        "DOTYPOS_API_TIMEOUT",
-        "IGLOOHOME_API_TIMEOUT",
-        "IGLOOHOME_API_URL",
-        "IGLOOHOME_AUTH_URL",
-        "IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID",
-        "NEXI_API_ORIGIN",
-        "NEXI_CHECKOUT_CURRENCY_OVERRIDE",
-        "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME",
-        "NEXT_PUBLIC_GTM_ID",
-        "NEXT_PUBLIC_POSTHOG_HOST",
-        "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN",
-        "NEXT_PUBLIC_VERCEL_ENV",
-        "POSTHOG_API_KEY",
-        "POSTHOG_API_HOST",
-        "POSTHOG_FEATURE_FLAG_OVERRIDES",
-        "POSTHOG_INGEST_HOST",
-        "POSTHOG_PROJECT_ID",
-        "POSTHOG_SERVICE_NAME",
-        "POSTHOG_SERVICE_NAMESPACE",
-        "VERCEL_PROJECT_PRODUCTION_URL"
-      ]
+      "passThroughEnv": ["BETTER_AUTH_SECRETS"]
+    },
+    "build:source-maps": {
+      "cache": false,
+      "dependsOn": ["build:compile"]
+    },
+    "build": {
+      "cache": false,
+      "dependsOn": ["build:source-maps"],
+      "passThroughEnv": ["BETTER_AUTH_SECRETS"]
     },
     "i18n:compile": {
       "dependsOn": ["i18n:compile:administration"],

@@ -24,7 +24,6 @@
         "scripts/account-sticky/run.ts",
         // Loaded by path: bundled renderer entries and child-process fixtures.
         "scripts/account-sticky/browser-entry.tsx",
-        "scripts/next-after-compile.mjs",
         "scripts/shared/command.*-fixture.{ts,mjs}",
         "e2e/coordination/hosted-payment-permit.holder-fixture.ts",
         "shared/backend/workspace-location-map.render-fixture.ts",

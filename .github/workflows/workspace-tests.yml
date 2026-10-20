@@ -201,9 +201,8 @@ jobs:
           TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
           TURBO_TEAM: ${{ vars.TURBO_TEAM }}
         run: >-
-          bun turbo run build
+          bun turbo run build:compile
           --filter=./apps/deskohub-workspace
-          -- --experimental-build-mode=compile
 
       - name: Check administration messages in the build output
         working-directory: apps/deskohub-workspace

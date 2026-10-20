@@ -1,6 +1,6 @@
 /**
- * Runs an external command to completion and captures or streams its output,
- * in Bun and in Node (such as Playwright's worker processes) alike.
+ * Runs an external command to completion and captures its output, in Bun and
+ * in Node (such as Playwright's worker processes) alike.
  *
  * Commands always run asynchronously. Bun 1.4.2's synchronous spawn
  * (`Bun.spawnSync` and the `node:child_process` `*Sync` functions) waits on
@@ -24,18 +24,6 @@ export interface CommandOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Text written to the command's stdin; stdin is closed when omitted. */
   readonly stdin?: string;
-  /**
-   * `inherit` streams the command's stdout and stderr to the caller's as it
-   * runs, such as a build's progress, and leaves both empty in the result.
-   * Defaults to `capture`.
-   */
-  readonly output?: "capture" | "inherit";
-  /**
-   * Runs the command as the leader of its own process group, so caller
-   * shutdown ends its descendants too, such as worker processes that would
-   * outlive a killed parent. A timeout implies it.
-   */
-  readonly ownProcessGroup?: boolean;
   /**
    * Kills the command's process group with SIGKILL once it runs longer than
    * this, and stops waiting for output shortly after.
@@ -62,10 +50,9 @@ export interface CommandResult {
 const timedOutDrainMs = 500;
 
 const readText = async (
-  stream: ReadableStream<Uint8Array> | undefined,
+  stream: ReadableStream<Uint8Array>,
   abandoned: Promise<void>
 ): Promise<string> => {
-  if (stream === undefined) return "";
   const reader = stream.getReader();
   // Cancelling settles a pending read as done, so a pipe still held open by
   // an escaped descendant cannot keep the caller waiting.
@@ -82,9 +69,8 @@ const readText = async (
 /** One spawned command, the same shape under Bun and Node. */
 type SpawnedCommand = {
   readonly pid: number;
-  /** Absent when the command inherits the caller's output. */
-  readonly stdout: ReadableStream<Uint8Array> | undefined;
-  readonly stderr: ReadableStream<Uint8Array> | undefined;
+  readonly stdout: ReadableStream<Uint8Array>;
+  readonly stderr: ReadableStream<Uint8Array>;
   readonly exited: Promise<{
     readonly exitCode: number | null;
     readonly signalCode: string | null;
@@ -97,7 +83,6 @@ type SpawnRequest = {
   readonly cwd: string | undefined;
   readonly detached: boolean;
   readonly env: Readonly<Record<string, string | undefined>> | undefined;
-  readonly output: "capture" | "inherit";
   readonly stdin: string | undefined;
 };
 
@@ -107,8 +92,8 @@ const spawnWithBun = (request: SpawnRequest): SpawnedCommand => {
     cwd: request.cwd,
     env: request.env,
     stdin: request.stdin === undefined ? "ignore" : new Blob([request.stdin]),
-    stdout: request.output === "inherit" ? "inherit" : "pipe",
-    stderr: request.output === "inherit" ? "inherit" : "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
     detached: request.detached,
   });
   return {
@@ -118,8 +103,8 @@ const spawnWithBun = (request: SpawnRequest): SpawnedCommand => {
     })),
     kill: (signal) => child.kill(signal),
     pid: child.pid,
-    stderr: child.stderr ?? undefined,
-    stdout: child.stdout ?? undefined,
+    stderr: child.stderr,
+    stdout: child.stdout,
   };
 };
 
@@ -127,15 +112,15 @@ const spawnWithNode = async (
   request: SpawnRequest
 ): Promise<SpawnedCommand> => {
   const [executable = "", ...args] = request.command;
-  const output = request.output === "inherit" ? "inherit" : "pipe";
   const child = spawnNodeProcess(executable, args, {
     cwd: request.cwd,
     detached: request.detached,
     // Next's global types require NODE_ENV on ProcessEnv. As with Bun.spawn,
     // the child gets exactly the caller's environment.
     env: request.env as NodeJS.ProcessEnv | undefined,
-    // stdin is always a pipe, ended at once when there is no input.
-    stdio: ["pipe", output, output],
+    // stdin is always a pipe, ended at once when there is no input, so the
+    // spawn overload types every stream as present.
+    stdio: ["pipe", "pipe", "pipe"],
   });
   const exited = new Promise<{
     readonly exitCode: number | null;
@@ -152,14 +137,11 @@ const spawnWithNode = async (
   });
   // A command may exit without reading its stdin; the broken pipe is not
   // the caller's failure, and the exit code reports the command's own.
-  child.stdin?.on("error", () => undefined);
-  child.stdin?.end(request.stdin);
+  child.stdin.on("error", () => undefined);
+  child.stdin.end(request.stdin);
   // `Readable.toWeb` returns Node's own stream type, which TypeScript
   // doesn't relate to the global one Bun's spawn returns.
-  const toWeb = (
-    stream: Readable | null
-  ): ReadableStream<Uint8Array> | undefined => {
-    if (stream === null) return undefined;
+  const toWeb = (stream: Readable): ReadableStream<Uint8Array> => {
     const chunks: AsyncIterator<Uint8Array> = stream[Symbol.asyncIterator]();
     return new ReadableStream<Uint8Array>({
       cancel: async () => {
@@ -294,16 +276,13 @@ export const runCommand = async (
 ): Promise<CommandResult> => {
   // A timed command leads its own process group so the timeout reaches the
   // descendants that inherited its output pipes. An untimed one stays in the
-  // caller's group, where terminal and supervisor signals still reach it,
-  // unless it asks for its own.
-  const ownsGroup =
-    options.timeoutMs !== undefined || options.ownProcessGroup === true;
+  // caller's group, where terminal and supervisor signals still reach it.
+  const ownsGroup = options.timeoutMs !== undefined;
   const spawned = spawnCommand({
     command,
     cwd: options.cwd,
     detached: ownsGroup,
     env: options.env,
-    output: options.output ?? "capture",
     stdin: options.stdin,
   });
   const child = spawned instanceof Promise ? await spawned : spawned;
@@ -348,10 +327,7 @@ export const runCommand = async (
   }
 };
 
-/** How a command failed, or `undefined` when it exited 0 in time. */
-export const describeTermination = (
-  result: CommandResult
-): string | undefined => {
+const describeTermination = (result: CommandResult): string | undefined => {
   if (result.timedOut) return "timed out";
   if (result.signalCode !== null) return `was ended by ${result.signalCode}`;
   if (result.exitCode !== 0) return `exited with ${result.exitCode}`;
