@@ -473,7 +473,7 @@ describe("collectAudienceFactRequests", () => {
     ).toEqual({ startsAtOrAfter: march });
   });
 
-  test("counts and dates visits that existed by a replayed moment", () => {
+  test("counts and dates reservations as they stood at a replayed moment", () => {
     const replayed = { ...context, replayed: true };
     const { reservationCount, campaignEmailCount } = audienceAttributeCatalogue;
     const visitsAnyTime = {
@@ -486,25 +486,27 @@ describe("collectAudienceFactRequests", () => {
     } as const satisfies AudienceCondition;
 
     expect(
-      countFactRequest(reservationCount, visitsAnyTime, replayed).existedBy
+      countFactRequest(reservationCount, visitsAnyTime, replayed).reservationsAsOf
     ).toEqual(now);
-    expect(dateFactRequest(lastVisitNotRecent, replayed).existedBy).toEqual(
+    expect(dateFactRequest(lastVisitNotRecent, replayed).reservationsAsOf).toEqual(
       now
     );
-    // Live evaluations count what exists now, and occurrence bounds already
-    // end by the replayed moment.
+    // Live evaluations count reservations as they are now.
     expect(
       countFactRequest(reservationCount, visitsAnyTime, context)
-    ).not.toHaveProperty("existedBy");
+    ).not.toHaveProperty("reservationsAsOf");
     expect(dateFactRequest(lastVisitNotRecent, context)).not.toHaveProperty(
-      "existedBy"
+      "reservationsAsOf"
     );
+    // Booking bounds end by the replayed moment, but statuses change later.
     expect(
       countFactRequest(reservationCount, bookingsAnyTime, replayed)
-    ).not.toHaveProperty("existedBy");
+        .reservationsAsOf
+    ).toEqual(now);
+    // Email counts need only their occurrence bounds.
     expect(
       countFactRequest(campaignEmailCount, marketingEmailsLastTenDays, replayed)
-    ).not.toHaveProperty("existedBy");
+    ).not.toHaveProperty("reservationsAsOf");
     // A live and a replayed evaluation at the same moment look up apart.
     expect(
       collectAudienceFactRequests(group("and", [visitsAnyTime]), [

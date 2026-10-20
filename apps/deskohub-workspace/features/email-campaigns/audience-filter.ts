@@ -23,6 +23,7 @@ import {
   type ReservationProductFilterType,
 } from "@deskohub/workspace-admin-api";
 import { Match, Option, Schema } from "effect";
+import type { ReservationStatusRead } from "@/features/administration/reservation-status-condition";
 import { type Locale, locales } from "@/features/i18n";
 import { reservationProductFilterSchema } from "@/features/reservation/reservation-product-descriptor";
 import type { AudienceEvaluationContext } from "./backend/audience-evaluation-context";
@@ -116,7 +117,8 @@ type CountRequestOf<Condition extends AudienceCountCondition> =
     ? {
         readonly attribute: Condition["attribute"];
         readonly params: ConcreteCountParams<Condition["params"]>;
-        readonly existedBy?: Temporal.Instant;
+        /** Reservations count as they stood then (reservation counts). */
+        readonly reservationsAsOf?: Temporal.Instant;
       }
     : never;
 
@@ -139,8 +141,8 @@ export type AudienceDateRequest<
   readonly asOf: Temporal.Instant;
   /** Only reservations of this product count (reservation-based dates). */
   readonly product?: ReservationProductFilterType;
-  /** Only reservations that existed by then count (reservation-based dates). */
-  readonly existedBy?: Temporal.Instant;
+  /** Reservations count as they stood then (reservation-based dates). */
+  readonly reservationsAsOf?: Temporal.Instant;
 };
 
 /** Customers whose date attribute has a value, and whose value is in the period. */
@@ -209,12 +211,13 @@ export const occurrenceBounds = (
 };
 
 /**
- * A replayed moment, by which a reservation must have existed to count by
- * its visit: the visit may lie anywhere, but a later booking hadn't happened
- * yet. Live evaluations leave it unset and count what exists now.
+ * A replayed moment, at which reservations count as they stood then: a
+ * visit may lie anywhere, but a later booking hadn't happened yet, and a
+ * later fulfillment or cancellation hadn't changed its status. Live
+ * evaluations leave it unset and count reservations as they are now.
  */
-const existedByReplayed = ({ now, replayed }: AudienceEvaluationContext) =>
-  replayed ? { existedBy: now } : {};
+const reservationsAsOfReplay = ({ now, replayed }: AudienceEvaluationContext) =>
+  replayed ? { reservationsAsOf: now } : {};
 
 /** One param value fixed by the context, by its param's part. */
 const concreteParam = (
@@ -247,8 +250,8 @@ const datesOccurrences = ({ attribute, params }: AudienceCountCondition) =>
 
 /**
  * The count condition's request in one evaluation context, with each param
- * fixed by its part in the condition's catalogue entry. A count by visit
- * date in a replay counts only the reservations that existed by then.
+ * fixed by its part in the condition's catalogue entry. A reservation count
+ * in a replay counts the reservations as they stood then.
  */
 export const countFactRequest = <Condition extends AudienceCountCondition>(
   entry: Pick<AudienceCountAttributeDefinition, "params">,
@@ -270,8 +273,9 @@ export const countFactRequest = <Condition extends AudienceCountCondition>(
         ]
       )
     ),
-    // Occurrence bounds already end by a replayed moment.
-    ...(!occurrences && existedByReplayed(context)),
+    // Occurrence bounds already end by a replayed moment, but a reservation's
+    // status may have changed since its booking.
+    ...(attribute === "reservationCount" && reservationsAsOfReplay(context)),
   } as CountRequestOf<Condition>;
 };
 
@@ -287,12 +291,34 @@ export const dateFactRequest = <Condition extends AudienceDateCondition>(
   ),
   asOf: context.now,
   ...(condition.params && { product: condition.params.product }),
-  ...existedByReplayed(context),
+  ...reservationsAsOfReplay(context),
 });
 
 export const audienceConditionsOf = (
   filter: AudienceFilter
 ): readonly AudienceCondition[] => audienceLeavesOf(filter);
+
+/**
+ * The reservation statuses the filter's conditions read: a reservation
+ * count's status group, or `booked` for a count without one and for visit
+ * dates.
+ */
+export const audienceReservationStatusesOf = (
+  filter: AudienceFilter
+): ReadonlySet<ReservationStatusRead> =>
+  new Set(
+    audienceConditionsOf(filter).flatMap(
+      (condition): readonly ReservationStatusRead[] => {
+        if (condition.attribute === "reservationCount") {
+          return [condition.params.status ?? "booked"];
+        }
+        return condition.attribute === "firstVisit" ||
+          condition.attribute === "lastVisit"
+          ? ["booked"]
+          : [];
+      }
+    )
+  );
 
 /**
  * Every count and date lookup the tree needs in any of the contexts,

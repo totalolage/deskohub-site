@@ -669,6 +669,8 @@ export class AutomationDryRun extends Context.Service<
               stepId: row.stepId,
               sendAt: row.sendAt?.toString() ?? null,
               projected: row.projected,
+              reservationStatusesApproximate:
+                row.reservationStatusesApproximate,
             })),
             nextCursor:
               rows.length > limit && last !== undefined

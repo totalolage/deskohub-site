@@ -11,13 +11,15 @@ import {
   DotyposServiceMock,
   seededReservationReads,
 } from "@deskohub/dotypos/backend/service.mock";
+import { testEmailAddress } from "@deskohub/test-email";
 import type {
   AudienceCountOperatorType,
   CampaignEmailSourceType,
   ReservationProductFilterType,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, Option } from "effect";
-import { workspaceReservations } from "@/db/schema";
+import { customerAccountLinks, workspaceReservations } from "@/db/schema";
+import { authUser } from "@/db/schema/auth";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type {
@@ -34,6 +36,7 @@ import {
   audienceEvaluationAt,
 } from "./audience-evaluation-context";
 import { AudienceFactsService } from "./audience-facts.service";
+import type { ReservationStatusRead } from "@/features/administration/reservation-status-condition";
 import { CampaignCandidateRepository } from "./campaign-candidate.repository";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -91,6 +94,85 @@ const bookedOnTheDay = customerId("booked-on-the-day");
 const expiredHolder = customerId("expired-holder");
 /** A checkout started before the event and confirmed after it, unfulfilled. */
 const confirmedLater = customerId("confirmed-later");
+/** On the replayed event's day: 08:00 is before it, 12:00 after. */
+const onEventDay = (time: string) =>
+  Temporal.Instant.from(`2026-10-01T${time}:00Z`);
+/** Confirmed at 08:30 and fulfilled at 12:00. */
+const fulfilledLater = customerId("fulfilled-later");
+/** Confirmed at 08:30, unfulfilled, and cancelled at 12:00. */
+const cancelledLater = customerId("cancelled-later");
+/** A hold the cleanup cancelled when it expired at 11:00. */
+const holdLapsedLater = customerId("hold-lapsed-later");
+/** A legacy expired hold, due at 11:00. */
+const holdExpiredLater = customerId("hold-expired-later");
+/** Confirmed at 08:30; its fulfillment email failed at 12:00. */
+const failedLater = customerId("failed-later");
+/** Confirmed at 08:30; a cancellation failed at 12:00, undated. */
+const cancellationFailedLater = customerId("cancellation-failed-later");
+const transitionedLater = [
+  fulfilledLater,
+  cancelledLater,
+  holdLapsedLater,
+  holdExpiredLater,
+  failedLater,
+  cancellationFailedLater,
+];
+const confirmedOnEventDay = {
+  reservationConfirmedAt: onEventDay("08:30"),
+  paymentState: "paid" as const,
+  paidAt: onEventDay("08:30"),
+  fulfillmentState: "not_started" as const,
+};
+const transitionedReservations = [
+  {
+    customer: fulfilledLater,
+    reservationState: "confirmed" as const,
+    ...confirmedOnEventDay,
+    fulfillmentState: "fulfilled" as const,
+    fulfilledAt: onEventDay("12:00"),
+  },
+  {
+    customer: cancelledLater,
+    reservationState: "cancelled" as const,
+    ...confirmedOnEventDay,
+    reservationCancelledAt: onEventDay("12:00"),
+  },
+  {
+    customer: holdLapsedLater,
+    reservationState: "cancelled" as const,
+    reservationHoldExpiresAt: onEventDay("11:00"),
+    reservationHoldExpiredAt: onEventDay("11:00"),
+    reservationCancelledAt: onEventDay("11:00"),
+    paymentState: "expired" as const,
+    fulfillmentState: "not_started" as const,
+  },
+  {
+    customer: holdExpiredLater,
+    reservationState: "hold_expired" as const,
+    reservationHoldExpiresAt: onEventDay("11:00"),
+    paymentState: "expired" as const,
+    fulfillmentState: "not_started" as const,
+  },
+  {
+    customer: failedLater,
+    reservationState: "confirmed" as const,
+    ...confirmedOnEventDay,
+    fulfillmentState: "failed" as const,
+    fulfillmentFailedAt: onEventDay("12:00"),
+    fulfillmentFailureCode: "fulfillment_email_failed",
+  },
+  {
+    customer: cancellationFailedLater,
+    reservationState: "cancellation_failed" as const,
+    ...confirmedOnEventDay,
+    updatedAt: onEventDay("12:00"),
+  },
+];
+
+/** An account created two hours after the replayed event. */
+const accountHolder = customerId("account-holder");
+const accountId = `resolver-account-${run}`;
+const accountCreatedAt = Temporal.Instant.from("2026-10-01T12:00:00Z");
 const statusedReservations = [
   {
     name: "expired-before-event",
@@ -198,6 +280,7 @@ const seeded = [
   bookedOnTheDay,
   expiredHolder,
   confirmedLater,
+  ...transitionedLater,
 ];
 
 const visits: readonly DotyposReservation[] = bookings.map(
@@ -346,6 +429,37 @@ describe.skipIf(!testDatabase)(
           )
         )
       );
+      await Effect.runPromise(
+        db.insert(workspaceReservations).values(
+          transitionedReservations.map(({ customer, ...states }) => ({
+            checkoutAttemptKey: checkoutAttemptKeySchema.make(
+              `resolver-${customer}`
+            ),
+            dotyposCustomerId: customer,
+            dotyposReservationId: reservationId(customer),
+            reservationDetails: plainCowork,
+            locale: "cs-CZ" as const,
+            createdAt: onEventDay("08:00"),
+            ...states,
+          }))
+        )
+      );
+      await Effect.runPromise(
+        db.insert(authUser).values({
+          id: accountId,
+          name: "Resolver test",
+          email: testEmailAddress(`resolver-${run}`),
+          emailVerified: true,
+          locale: "cs-CZ",
+          createdAt: new Date(accountCreatedAt.epochMilliseconds),
+        })
+      );
+      await Effect.runPromise(
+        db.insert(customerAccountLinks).values({
+          customerAccountId: accountId,
+          dotyposCustomerId: accountHolder,
+        })
+      );
       const filter = JSON.stringify(group("and", []));
       await testDatabase.pool.query(
         `insert into email_campaigns (id, title, purpose, template_key, status)
@@ -380,6 +494,10 @@ describe.skipIf(!testDatabase)(
         "delete from workspace_reservations where dotypos_customer_id = any($1)",
         [seeded]
       );
+      // Its account link goes with it.
+      await testDatabase.pool.query('delete from auth."user" where id = $1', [
+        accountId,
+      ]);
     });
 
     const resolve = (input: {
@@ -600,6 +718,119 @@ describe.skipIf(!testDatabase)(
       expect(
         await matching(visitedThatDay, [bookedOnTheDay], replayedAt())
       ).toEqual([bookedOnTheDay]);
+    });
+
+    test("a replay reads each reservation's status as its timestamps date it then", async () => {
+      const inStatus = (status: "complete" | "cancelled" | "in_progress") =>
+        condition({
+          attribute: "reservationCount",
+          params: { dateBasis: "visit", period: { _tag: "AnyTime" }, status },
+          operator: "gte",
+          value: 1,
+        });
+      const bookedBy = (dateBasis: "visit" | "booking") =>
+        condition({
+          attribute: "reservationCount",
+          params: { dateBasis, period: { _tag: "AnyTime" } },
+          operator: "gte",
+          value: 1,
+        });
+      const dated = [fulfilledLater, cancelledLater, holdLapsedLater];
+      const atTen = replayedAt();
+      const atOne = replayedAt(onEventDay("13:00"));
+
+      // At 10:00 none of the later transitions had happened yet.
+      expect(await matching(inStatus("complete"), dated, atTen)).toEqual([]);
+      expect(await matching(inStatus("cancelled"), dated, atTen)).toEqual([]);
+      expect(
+        await matching(inStatus("in_progress"), transitionedLater, atTen)
+      ).toEqual([
+        fulfilledLater,
+        cancelledLater,
+        holdLapsedLater,
+        holdExpiredLater,
+        failedLater,
+      ]);
+      // By visit or by booking, the reservation cancelled at 12:00 was booked.
+      for (const dateBasis of ["visit", "booking"] as const) {
+        expect(
+          await matching(bookedBy(dateBasis), [cancelledLater], atTen)
+        ).toEqual([cancelledLater]);
+        expect(
+          await matching(bookedBy(dateBasis), [cancelledLater], atOne)
+        ).toEqual([]);
+      }
+
+      // At 13:00 they had.
+      expect(await matching(inStatus("complete"), dated, atOne)).toEqual([
+        fulfilledLater,
+      ]);
+      expect(
+        await matching(inStatus("cancelled"), transitionedLater, atOne)
+      ).toEqual([cancelledLater, holdLapsedLater, holdExpiredLater]);
+      expect(
+        await matching(inStatus("in_progress"), transitionedLater, atOne)
+      ).toEqual([]);
+    });
+
+    test("reports when a reservation's status changed in a way a replay can't date", async () => {
+      const undated = (statuses: readonly ReservationStatusRead[]) =>
+        Effect.runPromise(
+          CampaignCandidateRepository.pipe(
+            Effect.flatMap((candidates) =>
+              candidates.undatedStatusChanges({
+                statuses: new Set(statuses),
+                customers: transitionedLater,
+              })
+            ),
+            Effect.provide(CampaignCandidateRepository.Default),
+            Effect.provide(testDatabase.layer)
+          )
+        ).then((changes) =>
+          Object.fromEntries(
+            [...changes].map(([id, changedAt]) => [id, changedAt.toString()])
+          )
+        );
+      const noon = onEventDay("12:00").toString();
+      // The failed cancellation is dated only by the row's last update.
+      expect(await undated(["booked"])).toEqual({
+        [cancellationFailedLater]: noon,
+      });
+      // The failure may have followed a fulfillment it erased.
+      expect(await undated(["complete"])).toEqual({
+        [cancellationFailedLater]: noon,
+        [failedLater]: noon,
+      });
+      expect(await undated(["needs_refund"])).toEqual({});
+    });
+
+    test("a replay knows only the accounts created by its moment", async () => {
+      const hadAccount = condition({
+        attribute: "accountCreated",
+        operator: "in",
+        value: { _tag: "AnyTime" },
+      });
+      const noAccount = condition({
+        attribute: "accountCreated",
+        operator: "none",
+      });
+      // The account was created at 12:00, two hours after the event.
+      expect(
+        await matching(hadAccount, [accountHolder], replayedAt())
+      ).toEqual([]);
+      expect(
+        await matching(noAccount, [accountHolder], replayedAt())
+      ).toEqual([accountHolder]);
+      const afterCreation = replayedAt(accountCreatedAt.add({ hours: 1 }));
+      expect(
+        await matching(hadAccount, [accountHolder], afterCreation)
+      ).toEqual([accountHolder]);
+      expect(await matching(noAccount, [accountHolder], afterCreation)).toEqual(
+        []
+      );
+      expect(await matching(hadAccount, [accountHolder])).toEqual([
+        accountHolder,
+      ]);
     });
 
     test("gives a customer scope the same facts as everyone", async () => {

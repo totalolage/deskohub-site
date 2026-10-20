@@ -26,15 +26,17 @@ import {
 } from "@/features/reservation/backend/reservation-visits.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { currentInstant } from "@/shared/utils/temporal";
-import type {
-  AudienceFilter,
-  AudienceFilterOutcome,
+import {
+  type AudienceFilter,
+  type AudienceFilterOutcome,
+  audienceReservationStatusesOf,
 } from "../../audience-filter";
 import {
   type AudienceEvaluationContext,
   type AudienceFactSource,
   AudienceScope,
 } from "../../backend/audience-evaluation-context";
+import { CampaignCandidateRepository } from "../../backend/campaign-candidate.repository";
 import { CampaignRecipientService } from "../../backend/campaign-recipient.service";
 import type { CampaignPurpose } from "../../body/campaign-content";
 import type { CampaignId } from "../../campaign-identifiers";
@@ -151,6 +153,7 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
   const facts = yield* AutomationEvaluationFacts;
   const recipients = yield* CampaignRecipientService;
   const conditions = yield* AutomationConditionEvaluation;
+  const candidates = yield* CampaignCandidateRepository;
   const context = yield* Effect.context<WorkspaceDatabase | DotyposService>();
 
   const databaseFailure = (cause: DatabaseQueryError) =>
@@ -584,12 +587,46 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
               )
             )
           )
-        ).pipe(Effect.map((rows) => rows.flat()));
+        ).pipe(
+          Effect.map((rows) => rows.flat()),
+          Effect.flatMap((rows) =>
+            markUndatedStatuses(planned.plan, customers, rows)
+          )
+        );
       }),
       Effect.catchTag("AutomationConditionAudienceMissing", () =>
         Effect.succeed(unavailableRows(job, customers))
       )
     );
+  };
+
+  /**
+   * Marks the replayed rows whose conditions read a reservation status that
+   * changed after the row's trigger in a way the stored timestamps can't
+   * date: from the trigger on, its evaluations read that status
+   * approximately (design §8.2). Outcomes no condition decided stay exact.
+   */
+  const markUndatedStatuses = (
+    plan: AutomationEvaluationPlan,
+    customers: readonly DotyposCustomerId[],
+    rows: readonly AutomationPreviewOutcomeRow[]
+  ) => {
+    const statuses = audienceReservationStatusesOf(plan.factFilter);
+    return statuses.size === 0
+      ? Effect.succeed(rows)
+      : candidates.undatedStatusChanges({ statuses, customers }).pipe(
+          Effect.mapError(databaseFailure),
+          Effect.map((changes) =>
+            rows.map((row) => {
+              const changedAt = changes.get(row.dotyposCustomerId);
+              return changedAt !== undefined &&
+                conditionDecided(row.outcome) &&
+                Temporal.Instant.compare(row.triggerAt, changedAt) < 0
+                ? { ...row, reservationStatusesApproximate: true }
+                : row;
+            })
+          )
+        );
   };
 
   /** Live runs of the campaign: a customer in one is `already-active` at a fire (D4). */
@@ -898,6 +935,12 @@ const preSubmit = (input: {
     }),
   });
 };
+
+/** Outcomes the entry audience or a condition step decided. */
+const conditionDecided = (outcome: AutomationPreviewOutcomeRow["outcome"]) =>
+  outcome === "would-send" ||
+  outcome === "condition-failed" ||
+  outcome === "not-in-audience";
 
 /** Rows for customers whose facts can't be read: a schedule's at `F`, a replay's per event. */
 const unavailableRows = (

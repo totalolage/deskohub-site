@@ -620,8 +620,10 @@ describe.skipIf(!testDatabase)(
     });
 
     test("reads account creation from the linked Better Auth user", async () => {
-      const facts = (created: DatePeriodBounds) =>
-        repository((candidates) => candidates.accountCreations(created));
+      const facts = (created: DatePeriodBounds, asOf = context.now) =>
+        repository((candidates) =>
+          candidates.accountCreations({ created, asOf })
+        );
       const september = Temporal.Instant.from("2026-09-01T00:00:00Z");
       expect(
         (await facts({ startsAtOrAfter: september })).inPeriod.has(linked)
@@ -632,6 +634,13 @@ describe.skipIf(!testDatabase)(
       expect(before.withValue.has(reserved)).toBe(false);
       expect(before.withValue.has(unverifiedLinked)).toBe(false);
       expect(before.inPeriod.has(unverifiedLinked)).toBe(false);
+      // An account created after the moment doesn't exist yet then.
+      const earlier = await facts({}, accountCreatedAt.subtract({ hours: 2 }));
+      expect(earlier.withValue.has(linked)).toBe(false);
+      expect(earlier.inPeriod.has(linked)).toBe(false);
+      expect((await facts({}, accountCreatedAt)).withValue.has(linked)).toBe(
+        true
+      );
     });
 
     test("finds when the earliest reservation was created", async () => {

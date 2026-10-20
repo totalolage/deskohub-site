@@ -297,6 +297,12 @@ export const failStalledPreview = (
 export type AutomationPreviewOutcomeRow = DryRunOutcome & {
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly customerEventId: CustomerEventId | null;
+  /**
+   * A replayed row whose conditions read a reservation status that changed
+   * since its trigger in a way Workspace can't date, so they read it
+   * approximately.
+   */
+  readonly reservationStatusesApproximate?: boolean;
 };
 
 /**
@@ -355,6 +361,8 @@ const insertRows = (
             stepId: row.stepId,
             sendAt: row.sendAt,
             projected: row.projected,
+            reservationStatusesApproximate:
+              row.reservationStatusesApproximate ?? false,
           }))
         )
         .onConflictDoNothing()

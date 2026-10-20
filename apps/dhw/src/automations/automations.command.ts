@@ -336,7 +336,12 @@ const formatDryRun = (dryRun: AutomationDryRunType) => {
         row.outcome,
         row.stepId ?? "",
         row.sendAt ?? "",
-        row.projected ? "projected" : "",
+        [
+          ...(row.projected ? ["projected"] : []),
+          ...(row.reservationStatusesApproximate
+            ? ["approximate reservation status"]
+            : []),
+        ].join(", "),
       ].join("\t");
     }),
     `Emails: ${dryRun.emails.length}`,

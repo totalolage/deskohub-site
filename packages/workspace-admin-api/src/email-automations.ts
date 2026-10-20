@@ -387,6 +387,13 @@ export const AutomationDryRunRow = Schema.Struct({
   sendAt: nullableField(Instant),
   /** Evaluated after now, from facts as they are now. */
   projected: fieldWithDefault(Schema.Boolean, false),
+  /**
+   * Replay only: a condition read a reservation status that changed since
+   * the trigger in a way Workspace can't date, such as a cancellation in
+   * progress or failed, or a fulfillment that failed. It read that status
+   * as it is now, or as it most likely was then.
+   */
+  reservationStatusesApproximate: fieldWithDefault(Schema.Boolean, false),
 });
 export type AutomationDryRunRow = typeof AutomationDryRunRow.Type;
 

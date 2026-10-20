@@ -598,6 +598,10 @@ export const emailCampaignAutomationPreviewRows = pgTable(
     stepId: text("step_id").$type<AutomationStepId>(),
     sendAt: instant("send_at"),
     projected: boolean("projected").notNull(),
+    /** Read a reservation status the replay couldn't date then. */
+    reservationStatusesApproximate: boolean("reservation_statuses_approximate")
+      .notNull()
+      .default(false),
   },
   (t) => [
     primaryKey({ columns: [t.previewId, t.dotyposCustomerId, t.triggerAt] }),

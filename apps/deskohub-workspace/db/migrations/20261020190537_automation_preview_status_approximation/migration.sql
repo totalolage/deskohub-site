@@ -1,0 +1,1 @@
+ALTER TABLE "email_campaign_automation_preview_rows" ADD COLUMN "reservation_statuses_approximate" boolean DEFAULT false NOT NULL;

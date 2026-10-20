@@ -39,8 +39,10 @@ import { authUser } from "@/db/schema/auth";
 import { linkedDotyposCustomerId } from "@/features/account/backend/customer-account-dotypos-link";
 import type { AdministrationReservationStatusFilter } from "@/features/administration/administration.service";
 import {
-  bookedReservationCondition,
+  bookedReservationConditionAt,
+  type ReservationStatusRead,
   reservationStatusCondition,
+  undatedStatusChangeAt,
 } from "@/features/administration/reservation-status-condition";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 import type { AudienceDateFacts } from "../audience-filter";
@@ -71,11 +73,13 @@ export type CampaignReservationSelection = {
   /** Booking (confirmation) instant bounds. */
   readonly booked?: DatePeriodBounds;
   /**
-   * Only reservations that existed by then. Without a status, a reservation
-   * counts as booked from its confirmation; a status group is the current
-   * one, so with a status it counts from its creation.
+   * Reservations as they stood then: those existing by then, in the status
+   * the stored transition timestamps give them then. Without a status, a
+   * reservation counts as booked from its confirmation until its
+   * cancellation; with one it counts from its creation. Without an
+   * instant, as they stand now.
    */
-  readonly existedBy?: Temporal.Instant;
+  readonly asOf?: Temporal.Instant;
   /** Limits the count to these Dotypos reservations (visit-date periods). */
   readonly dotyposReservationIds?: readonly DotyposReservationId[];
   /** Limits the count to one product family and its catalog properties. */
@@ -134,7 +138,7 @@ const withinBounds = (
 const reservationSelection = ({
   status,
   booked,
-  existedBy,
+  asOf,
   dotyposReservationIds,
   product,
   customers,
@@ -142,15 +146,14 @@ const reservationSelection = ({
   and(
     ofCustomers(workspaceReservations.dotyposCustomerId, customers),
     product && reservationProductCondition(product),
-    status ? reservationStatusCondition(status) : bookedReservationCondition,
+    status
+      ? reservationStatusCondition(status, asOf)
+      : bookedReservationConditionAt(asOf),
     booked &&
       withinBounds(workspaceReservations.reservationConfirmedAt, booked),
-    existedBy &&
-      sql`${
-        status
-          ? workspaceReservations.createdAt
-          : workspaceReservations.reservationConfirmedAt
-      } <= ${temporalInstantToDate(existedBy)}`,
+    status &&
+      asOf &&
+      sql`${workspaceReservations.createdAt} <= ${temporalInstantToDate(asOf)}`,
     dotyposReservationIds &&
       inArray(workspaceReservations.dotyposReservationId, [
         ...dotyposReservationIds,
@@ -200,11 +203,16 @@ export interface ICampaignCandidateRepository {
     ReadonlyMap<DotyposCustomerId, number>,
     EffectDrizzleQueryError
   >;
-  /** Customers with a linked account, and those whose account was created in the bounds. */
-  readonly accountCreations: (
-    created: DatePeriodBounds,
-    customers?: readonly DotyposCustomerId[]
-  ) => Effect.Effect<AudienceDateFacts, EffectDrizzleQueryError>;
+  /**
+   * Customers with a linked account created by `asOf`, and those whose
+   * account was created in the bounds. An account created later doesn't
+   * exist yet at a replayed moment.
+   */
+  readonly accountCreations: (query: {
+    readonly created: DatePeriodBounds;
+    readonly asOf: Temporal.Instant;
+    readonly customers?: readonly DotyposCustomerId[];
+  }) => Effect.Effect<AudienceDateFacts, EffectDrizzleQueryError>;
   /**
    * When the earliest Workspace reservation was created, if there is one. No
    * Workspace reservation starts long before it, so it bounds visit queries.
@@ -213,15 +221,29 @@ export interface ICampaignCandidateRepository {
     Temporal.Instant | null,
     EffectDrizzleQueryError
   >;
-  /** The booked reservations among these Dotypos reservations, of the product and customers, and existing by the instant, if given. */
+  /** The booked reservations among these Dotypos reservations, of the product and customers, and as they stood at the instant, if given. */
   readonly listBookedReservations: (
     dotyposReservationIds: readonly DotyposReservationId[],
     selection?: Pick<
       CampaignReservationSelection,
-      "product" | "existedBy" | "customers"
+      "product" | "asOf" | "customers"
     >
   ) => Effect.Effect<
     readonly CampaignBookedReservation[],
+    EffectDrizzleQueryError
+  >;
+  /**
+   * Per customer, when one of their reservations last changed in a way the
+   * stored timestamps can't date for these statuses. As of an earlier
+   * moment, their counts in those statuses are approximate. Customers
+   * without such a change are absent. Every reservation of the customer
+   * counts, whatever product or period a condition limits itself to.
+   */
+  readonly undatedStatusChanges: (query: {
+    readonly statuses: ReadonlySet<ReservationStatusRead>;
+    readonly customers: readonly DotyposCustomerId[];
+  }) => Effect.Effect<
+    ReadonlyMap<DotyposCustomerId, Temporal.Instant>,
     EffectDrizzleQueryError
   >;
 }
@@ -399,7 +421,7 @@ export class CampaignCandidateRepository extends Context.Service<
         }),
         accountCreations: Effect.fn(
           "CampaignCandidateRepository.accountCreations"
-        )(function* (created, customers) {
+        )(function* ({ created, asOf, customers }) {
           const rows = yield* db
             .select({
               dotyposCustomerId: accountCustomerId,
@@ -418,7 +440,8 @@ export class CampaignCandidateRepository extends Context.Service<
               and(
                 verifiedLogin,
                 isNotNull(linkedDotyposCustomerId),
-                ofCustomers(linkedDotyposCustomerId, customers)
+                ofCustomers(linkedDotyposCustomerId, customers),
+                sql`${authUser.createdAt} <= ${temporalInstantToDate(asOf)}`
               )
             );
           return {
@@ -451,6 +474,32 @@ export class CampaignCandidateRepository extends Context.Service<
             dotyposReservationId === null
               ? []
               : [{ dotyposReservationId, dotyposCustomerId }]
+          );
+        }),
+        undatedStatusChanges: Effect.fn(
+          "CampaignCandidateRepository.undatedStatusChanges"
+        )(function* ({ statuses, customers }) {
+          if (statuses.size === 0 || customers.length === 0) {
+            return new Map<DotyposCustomerId, Temporal.Instant>();
+          }
+          const changedAt = sql<Temporal.Instant | null>`max(${undatedStatusChangeAt(
+            statuses
+          )})`.mapWith(workspaceReservations.updatedAt);
+          const rows = yield* db
+            .select({
+              dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+              changedAt,
+            })
+            .from(workspaceReservations)
+            .where(
+              ofCustomers(workspaceReservations.dotyposCustomerId, customers)
+            )
+            .groupBy(workspaceReservations.dotyposCustomerId)
+            .having(isNotNull(changedAt));
+          return new Map(
+            rows.flatMap(({ dotyposCustomerId, changedAt }) =>
+              changedAt === null ? [] : [[dotyposCustomerId, changedAt] as const]
+            )
           );
         }),
       } satisfies ICampaignCandidateRepository;

@@ -123,7 +123,8 @@ const resolveFacts = async (input: {
     (_: { readonly purpose?: string; readonly dispatched: DatePeriodBounds }) =>
       Effect.succeed(new Map<DotyposCustomerId, number>())
   );
-  const accountCreations = mock((_: DatePeriodBounds) =>
+  const accountCreations = mock(
+    (_: { readonly created: DatePeriodBounds; readonly asOf: Temporal.Instant }) =>
     Effect.succeed({
       withValue: new Set<DotyposCustomerId>(),
       inPeriod: new Set<DotyposCustomerId>(),
@@ -488,8 +489,11 @@ describe("AudienceFactsService last visit", () => {
     });
     expect(listReservations).not.toHaveBeenCalled();
     expect(accountCreations.mock.calls[0]?.[0]).toEqual({
-      startsAtOrAfter: instant("2026-08-31T22:00:00Z"),
-      startsAtOrBefore: now,
+      created: {
+        startsAtOrAfter: instant("2026-08-31T22:00:00Z"),
+        startsAtOrBefore: now,
+      },
+      asOf: now,
     });
   });
 });

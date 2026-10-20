@@ -952,6 +952,100 @@ describe.skipIf(!testDatabase)(
         expect(afterTheBooking.get(seeded.steady)).toBe("would-send");
         expect(afterTheBooking.get(seeded.later)).toBe("condition-failed");
       });
+
+      test("an entry gate reads reservation statuses as they stood at the event, and marks undated ones", async () => {
+        const label = "status-gate";
+        const [dated, undated, settled] = ["dated", "undated", "settled"].map(
+          (role) => customerId(`${label}-${role}`)
+        ) as [DotyposCustomerId, DotyposCustomerId, DotyposCustomerId];
+        const customers = [dated, undated, settled];
+        const twoDaysAfter = triggerAt.add({ hours: 24 * 2 });
+        await seedReservations(
+          customers.flatMap((customer, index) => [
+            {
+              label: `${label}-${index}`,
+              customer,
+              startsAt: triggerAt.subtract({ hours: 2 }),
+              endsAt: triggerAt,
+              bookedAt: triggerAt.subtract({ hours: 24 * 50 }),
+            },
+            {
+              label: `${label}-${index}-other`,
+              customer,
+              startsAt: triggerAt.add({ hours: 24 * 20 }),
+              endsAt: triggerAt.add({ hours: 24 * 20 + 2 }),
+              bookedAt: triggerAt.subtract({ hours: 24 * 5 }),
+              // Cancelled two days after the event: booked at it.
+              ...(customer === dated && { workspaceCancelledAt: twoDaysAfter }),
+            },
+          ])
+        );
+        // A cancellation that failed is dated only by the row's last update.
+        for (const [index, updatedAt] of [
+          [1, twoDaysAfter],
+          [2, triggerAt.subtract({ hours: 24 * 2 })],
+        ] as const) {
+          await query(
+            db
+              .update(workspaceReservations)
+              .set({ reservationState: "cancellation_failed", updatedAt })
+              .where(
+                eq(
+                  workspaceReservations.id,
+                  reservationIdOf(`${label}-${index}-other`)
+                )
+              )
+          );
+        }
+        const events = await seedEvents(
+          customers.map((customer, index) => ({
+            kind: "reservation-finished" as const,
+            reservation: `${label}-${index}`,
+            customer,
+            occurredAt: triggerAt,
+          }))
+        );
+        const campaignId = await seedAutomation({
+          flow: decodeFlow({
+            trigger: { _tag: "ReservationFinished" },
+            steps: [send],
+          }),
+          filter: {
+            _tag: "Group",
+            operator: "and",
+            filters: [bookingsIn({ _tag: "AnyTime" }, 2)],
+          },
+        });
+        const started = await start(campaignId);
+        await processAll(started.previewId);
+        const byEvent = new Map(
+          (await rowsOf(started.previewId)).map((row) => [
+            row.customerEventId,
+            row,
+          ])
+        );
+        const [datedEvent, undatedEvent, settledEvent] = events;
+
+        expect(byEvent.get(datedEvent!)).toMatchObject({
+          outcome: "would-send",
+          reservationStatusesApproximate: false,
+        });
+        // Read as it is now, which may not be how it stood at the event.
+        expect(byEvent.get(undatedEvent!)).toMatchObject({
+          outcome: "not-in-audience",
+          reservationStatusesApproximate: true,
+        });
+        // Unchanged since before the event, so exact.
+        expect(byEvent.get(settledEvent!)).toMatchObject({
+          outcome: "not-in-audience",
+          reservationStatusesApproximate: false,
+        });
+        const dryRun = await read(started.previewId);
+        expect(
+          dryRun.rows.find((row) => row.customerEventId === undatedEvent)
+            ?.reservationStatusesApproximate
+        ).toBe(true);
+      });
     });
 
     test("replays only the latest 1,000 events and counts the rest", async () => {

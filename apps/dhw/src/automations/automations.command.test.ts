@@ -523,6 +523,47 @@ describe("dhw automations show and dry-run", () => {
     expect(fake.errors).toEqual([]);
     expect(fake.output.join("\n")).toContain("customer-1\tAda");
   });
+
+  test("dry-run marks rows that read reservation statuses approximately", async () => {
+    const row = {
+      triggerAt: timestamp,
+      customerEventId: "event-1",
+      stepId: null,
+      sendAt: null,
+    };
+    const fake = makeAutomationLayer({
+      getAutomationDryRun: () =>
+        Effect.succeed(
+          dryRunFor(hourly, "completed", {
+            rows: [
+              {
+                ...row,
+                customerId: "customer-1",
+                outcome: "not-in-audience",
+                reservationStatusesApproximate: true,
+              },
+              {
+                ...row,
+                customerId: "customer-2",
+                outcome: "would-send",
+                projected: true,
+                reservationStatusesApproximate: true,
+              },
+            ],
+          })
+        ),
+    });
+
+    await runSuccess(["automations", "dry-run", campaignId], fake.layer);
+
+    const lines = fake.output.join("\n").split("\n");
+    expect(
+      lines.find((line) => line.includes("customer-1\tAda"))?.split("\t").at(-1)
+    ).toBe("approximate reservation status");
+    expect(
+      lines.find((line) => line.includes("customer-2"))?.split("\t").at(-1)
+    ).toBe("projected, approximate reservation status");
+  });
 });
 
 describe("dhw automations activate", () => {

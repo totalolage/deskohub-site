@@ -59,7 +59,7 @@ export type AudienceCountResolver<Params> = {
     request: {
       readonly attribute: string;
       readonly params: ConcreteCountParams<Params>;
-      readonly existedBy?: Temporal.Instant;
+      readonly reservationsAsOf?: Temporal.Instant;
     },
     resolution: AudienceResolution
   ) => Resolved<ReadonlyMap<DotyposCustomerId, number>>;
@@ -157,25 +157,25 @@ const database = CampaignRecipientResolutionError.database;
 /**
  * Booked reservations by booking date count from local data; by visit date
  * in a bounded period they count among the Dotypos reservations starting in
- * it; by visit date at any time every booked reservation counts. By visit
- * date, a replay counts only those that existed by its moment.
+ * it; by visit date at any time every booked reservation counts. A replay
+ * counts the reservations as they stood at its moment.
  */
 const countReservations = (
   {
     params: { dateBasis, period, status, product },
-    existedBy,
+    reservationsAsOf,
   }: {
     readonly params: ConcreteCountParams<
       AudienceConditionOf<"reservationCount">["params"]
     >;
-    readonly existedBy?: Temporal.Instant;
+    readonly reservationsAsOf?: Temporal.Instant;
   },
   { candidates, scope, visitsIn }: AudienceResolution
 ) => {
   const selection = {
     ...(status && { status }),
     ...(product && { product }),
-    ...(existedBy && { existedBy }),
+    ...(reservationsAsOf && { asOf: reservationsAsOf }),
     customers: scopedCustomers(scope),
   };
   const countSelected = (
@@ -204,17 +204,18 @@ const countReservations = (
 
 /**
  * Each customer's earliest or latest booked visit among the visits begun by
- * the request's `asOf`, of the product and existing by `existedBy` if given.
+ * the request's `asOf`, of the product, and booked as reservations stood at
+ * `reservationsAsOf` if given.
  */
 const visitDates =
   (pick: "earliest" | "latest"): AudienceDateResolver["dates"] =>
-  ({ bounds, asOf, product, existedBy }, { candidates, scope, pastVisits }) =>
+  ({ bounds, asOf, product, reservationsAsOf }, { candidates, scope, pastVisits }) =>
     pastVisits(asOf).pipe(
       Effect.flatMap((startById) =>
         candidates
           .listBookedReservations([...startById.keys()], {
             ...(product && { product }),
-            ...(existedBy && { existedBy }),
+            ...(reservationsAsOf && { asOf: reservationsAsOf }),
             customers: scopedCustomers(scope),
           })
           .pipe(
@@ -289,9 +290,13 @@ export const audienceAttributeResolvers: AudienceAttributeResolvers = {
   firstVisit: { dates: visitDates("earliest"), readsVisits: true },
   lastVisit: { dates: visitDates("latest"), readsVisits: true },
   accountCreated: {
-    dates: ({ bounds }, { candidates, scope }) =>
+    dates: ({ bounds, asOf }, { candidates, scope }) =>
       candidates
-        .accountCreations(bounds, scopedCustomers(scope))
+        .accountCreations({
+          created: bounds,
+          asOf,
+          customers: scopedCustomers(scope),
+        })
         .pipe(Effect.mapError(database)),
     readsVisits: false,
   },
