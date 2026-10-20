@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option } from "effect";
 import type {
   CustomerAgentClientId,
@@ -26,7 +27,7 @@ mock.module("./customer-agent-caller", () => ({
           linked
             ? ({
                 accountId: grant.accountId,
-                email: "agent@example.test",
+                email: testEmailAddress("list-my-reservations"),
                 ...linked,
               } as never)
             : null
