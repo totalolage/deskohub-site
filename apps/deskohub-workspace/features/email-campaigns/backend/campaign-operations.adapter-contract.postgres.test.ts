@@ -26,10 +26,17 @@ import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { cliSessions } from "@/db/schema";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import type { CampaignId } from "@/features/email-campaigns/campaign-identifiers";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { insertTestAdministrator } from "@/shared/testing/workspace-test-accounts.test-utils";
 
-const testDatabase = await connectWorkspacePostgresTestDatabase();
+/**
+ * Every run empties the campaign tables, so the suite runs on a database of
+ * its own.
+ */
+const testDatabase = await createWorkspacePostgresSuiteDatabase(
+  "campaign_operations_contract"
+);
+afterAll(() => testDatabase?.close());
 
 // Every Live layer reads the disposable database, and the admin UI's
 // session gate yields the seeded administrator; the port re-checks the
