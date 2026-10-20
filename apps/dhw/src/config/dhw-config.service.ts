@@ -10,8 +10,9 @@ import {
   type Redacted,
   Schema,
 } from "effect";
+import { isReleaseBuild } from "../build-info";
 
-const productionOrigin = new URL("https://workspace.deskohub.cz");
+export const productionOrigin = new URL("https://workspace.deskohub.cz");
 const managedRequestHeaders = new Set([
   "authorization",
   "content-length",
@@ -38,21 +39,40 @@ interface IDhwConfig {
 export class DhwConfig extends Context.Service<DhwConfig, IDhwConfig>()(
   "DhwConfig"
 ) {
-  static Default = Layer.effect(
-    this,
-    Effect.suspend(() => loadDhwConfig)
-  );
+  /**
+   * Released binaries default to production. Every other build needs an
+   * explicit `DHW_BASE`, so a run from source never reaches production by
+   * accident.
+   */
+  static layer = (build: { readonly isRelease: boolean }) =>
+    Layer.effect(
+      this,
+      Effect.suspend(() => loadDhwConfig(build))
+    );
+
+  static Default = this.layer({ isRelease: isReleaseBuild });
 }
 
 export class DhwConfigError extends Data.TaggedError("DhwConfigError")<{
   readonly message: string;
 }> {}
 
-const loadDhwConfig = Effect.gen(function* () {
+const loadDhwConfig = Effect.fn("DhwConfig.load")(function* (build: {
+  readonly isRelease: boolean;
+}) {
   const path = yield* Path.Path;
-  const baseUrl = yield* Config.url("DHW_BASE").pipe(
-    Config.withDefault(productionOrigin)
-  );
+  const selectedBaseUrl = yield* Config.option(Config.url("DHW_BASE"));
+  const baseUrl = yield* Option.match(selectedBaseUrl, {
+    onNone: () =>
+      build.isRelease
+        ? Effect.succeed(productionOrigin)
+        : Effect.fail(
+            new DhwConfigError({
+              message: `This dhw build has no default Workspace. Set DHW_BASE to the Workspace origin, such as http://localhost:3000. Set DHW_BASE=${productionOrigin.origin} only to work against production on purpose.`,
+            })
+          ),
+    onSome: Effect.succeed,
+  });
   const requestHeaders = yield* Config.schema(
     RequestHeaders,
     "DHW_REQUEST_HEADERS"

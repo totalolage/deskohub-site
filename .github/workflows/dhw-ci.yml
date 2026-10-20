@@ -107,7 +107,7 @@ jobs:
 
           bun apps/dhw/src/build.ts development
           expected_version="$(jq -r '.version' apps/dhw/package.json)+development"
-          build_info="$(apps/dhw/dist/dhw version --json)"
+          build_info="$(DHW_BASE=http://localhost:3000 apps/dhw/dist/dhw version --json)"
           test "$(jq -r '.version' <<<"$build_info")" = "$expected_version"
           test "$(jq -r '.target' <<<"$build_info")" = "development"
 
