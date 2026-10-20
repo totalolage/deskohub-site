@@ -13,7 +13,6 @@ import {
   emailCampaignAutomationRuns as runs,
   emailCampaignAutomationWorkUnits as units,
   emailCampaignAutomationVersions as versions,
-  workspaceReservations,
 } from "@/db/schema";
 import { isDatabaseQueryError } from "@/db/sql-constraint";
 import type { Locale } from "@/features/i18n";
@@ -48,6 +47,7 @@ import {
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
 import { appendAutomationRunProgress } from "./automation-run-timeline";
 import { AutomationRunTransitions } from "./automation-run-transitions";
+import { lockTriggeringReservations } from "./automation-triggering-reservations";
 import {
   type AutomationEngineTransaction,
   AutomationUnitFetchFailure,
@@ -320,7 +320,10 @@ export const makeDeliverHandler = Effect.gen(function* () {
   ) =>
     Effect.Do.pipe(
       Effect.bind("cancelled", () =>
-        lockTriggeringReservations(tx, input.facts.runs)
+        lockTriggeringReservations(
+          tx,
+          input.facts.runs.map((run) => run.triggerReservationId)
+        )
       ),
       Effect.let("verdicts", ({ cancelled }) =>
         Arr.groupBy(input.facts.runs, (run) =>
@@ -354,41 +357,6 @@ export const makeDeliverHandler = Effect.gen(function* () {
         persistSend(tx, { ...input, sendable: verdicts.send ?? [] }).pipe(
           Effect.when(Effect.succeed(verdicts.send !== undefined))
         )
-      )
-    );
-
-  /** Locks the triggering reservations and returns those Workspace cancelled. */
-  const lockTriggeringReservations = (
-    tx: AutomationEngineTransaction,
-    open: readonly DeliverRun[]
-  ) =>
-    Effect.succeed(
-      [
-        ...new Set(
-          open.flatMap((run) =>
-            run.triggerReservationId === null ? [] : [run.triggerReservationId]
-          )
-        ),
-      ].sort()
-    ).pipe(
-      Effect.flatMap((ids) =>
-        ids.length === 0
-          ? Effect.succeed([])
-          : tx
-              .select({
-                id: workspaceReservations.id,
-                cancelledAt: workspaceReservations.reservationCancelledAt,
-              })
-              .from(workspaceReservations)
-              .where(inArray(workspaceReservations.id, ids))
-              .orderBy(asc(workspaceReservations.id))
-              .for("share")
-      ),
-      Effect.map(
-        (rows) =>
-          new Set(
-            rows.flatMap((row) => (row.cancelledAt === null ? [] : [row.id]))
-          )
       )
     );
 

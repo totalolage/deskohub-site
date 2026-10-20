@@ -302,6 +302,50 @@ describe.skipIf(!database)("intake units on Postgres", () => {
     expect(await runsOf(campaignId)).toEqual([]);
   });
 
+  test("withdraws an event whose reservation Workspace cancelled during the fetch, after its cancellation was processed (D28)", async () => {
+    const campaignId = await automation();
+    const customer = await fixtures.addCustomer("workspace-cancelled");
+    const visit = await finishedVisit({
+      label: "workspace-cancelled",
+      customer,
+      hoursAgo: 1,
+    });
+    const { queue, layer } = await engine();
+    const plan = () =>
+      runEngineAt(
+        Effect.flatMap(AutomationPlanner, (planner) => planner.plan),
+        layer,
+        now
+      );
+    await plan();
+    const fetch = dotypos.gate();
+    const unit = runEngineAt(drainAutomationUnitQueue(queue), layer, now);
+    await fetch.reached;
+    // Dotypos still returns the visit; only Workspace knows it is cancelled.
+    await fixtures.cancelInWorkspace(visit.reservationId, now);
+    const cancellation = await fixtures.recordEvent({
+      kind: "reservation-cancelled",
+      customer,
+      reservationId: visit.reservationId,
+      occurredAt: now,
+    });
+    await plan();
+    expect(await processed([cancellation])).toBe(true);
+
+    fetch.release();
+    await unit;
+
+    expect(await processed([visit.eventId])).toBe(true);
+    expect(await receipts(campaignId)).toEqual([
+      {
+        key: `reservation-finished:${visit.reservationId}`,
+        disposition: "withdrawn",
+        run: false,
+      },
+    ]);
+    expect(await runsOf(campaignId)).toEqual([]);
+  });
+
   test("records not-in-audience for a customer outside the marketing consent pool", async () => {
     const campaignId = await automation({ purpose: "marketing" });
     const consenting = await finishedVisit({

@@ -39,6 +39,7 @@ import {
   loadAutomationEntryVersions,
   takenReceiptKeys,
 } from "./automation-run-entry";
+import { lockTriggeringReservations } from "./automation-triggering-reservations";
 import {
   type AutomationEngineTransaction,
   AutomationUnitFetchFailure,
@@ -182,12 +183,24 @@ const isAfterOrAt = (left: Temporal.Instant, right: Temporal.Instant) =>
   Temporal.Instant.compare(left, right) >= 0;
 
 /**
+ * Whether a Workspace cancellation of the event's reservation withdraws it
+ * (D28): runs a cancellation triggers are never withdrawn, as in planning.
+ */
+const isWithdrawable = (decision: IntakeDecision) =>
+  decision.outcome !== "failed" &&
+  decision.event.kind !== "reservation-cancelled";
+
+/**
  * Writes intake decisions in the caller's transaction, one automation at a
  * time under its lifecycle lock (§5.4): a paused or archived automation, or
  * an event before `accepting_since`, processes the event with no receipt;
  * an event whose version in force changed is released for replanning.
- * Otherwise each receipt key records once, from its earliest event, and
- * members enter. Finally the unit's other events are processed.
+ * Then the triggering reservations are locked: an event whose reservation
+ * Workspace cancelled is withdrawn, since that cancellation's event may
+ * already be processed with no run to withdraw, and a later cancellation
+ * waits for the commit and withdraws the runs it wrote (§5.6). Otherwise
+ * each receipt key records once, from its earliest event, and members
+ * enter. Finally the unit's other events are processed.
  */
 const commitIntakeDecisions = Effect.fn("automationIntake.commit")(function* (
   tx: AutomationEngineTransaction,
@@ -219,13 +232,26 @@ const commitIntakeDecisions = Effect.fn("automationIntake.commit")(function* (
       released.add(decision.event.id);
       return false;
     });
+    const cancelled = yield* lockTriggeringReservations(
+      tx,
+      accepted.flatMap((decision) =>
+        isWithdrawable(decision) ? [decision.event.workspaceReservationId] : []
+      )
+    );
+    const rechecked = accepted.map((decision) =>
+      isWithdrawable(decision) &&
+      decision.event.workspaceReservationId !== null &&
+      cancelled.has(decision.event.workspaceReservationId)
+        ? { ...decision, outcome: "withdrawn" as const }
+        : decision
+    );
     const taken = yield* takenReceiptKeys(
       tx,
       campaignId,
-      accepted.map(({ dedupKey }) => dedupKey)
+      rechecked.map(({ dedupKey }) => dedupKey)
     );
     const recorded = new Set(taken);
-    const receipted = accepted
+    const receipted = rechecked
       .filter(isReceipted)
       .toSorted(
         (left, right) =>
