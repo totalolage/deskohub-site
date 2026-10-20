@@ -63,7 +63,7 @@ describe.skipIf(!testDatabase)(
           );
           const secondClaim = yield* links.claim(
             firstAccount,
-            dotyposCustomerId
+            uniqueDotyposId()
           );
           const rivalClaim = yield* Effect.result(
             links.claim(secondAccount, dotyposCustomerId)
@@ -86,6 +86,9 @@ describe.skipIf(!testDatabase)(
       if (outcomes.rivalClaim._tag === "Success") {
         expect(outcomes.rivalClaim.success.kind).toBe("claimed");
       }
+      expect(await accountDotyposCustomerId(firstAccount)).toBe(
+        dotyposCustomerId
+      );
     });
 
     test("converges concurrent claims so exactly one link exists per account", async () => {
@@ -117,6 +120,34 @@ describe.skipIf(!testDatabase)(
         [account]
       );
       expect(rows.rows).toHaveLength(1);
+      expect(await accountDotyposCustomerId(account)).toBe(dotyposCustomerId);
+    });
+
+    test("moves a customer's durable link off a tombstone when another account claims it", async () => {
+      const claimant = customerAccountIdSchema.make(uniqueId());
+      const tombstone = customerAccountIdSchema.make(uniqueId());
+      const dotyposCustomerId = uniqueDotyposId();
+      await insertAuthUser(claimant, testEmailAddress(`claim-${claimant}`));
+      await testDatabase!.pool.query(
+        `insert into customer_accounts (id, dotypos_customer_id, deleted_at)
+         values ($1, $2, '2026-10-01T10:00:00Z')`,
+        [tombstone, dotyposCustomerId]
+      );
+
+      const claim = await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          return yield* links.claim(claimant, dotyposCustomerId);
+        }).pipe(Effect.provide(makeRepositoryLayer()))
+      );
+
+      expect(claim).toEqual({
+        kind: "linked",
+        customerId: dotyposCustomerId,
+        created: true,
+      });
+      expect(await accountDotyposCustomerId(tombstone)).toBeNull();
+      expect(await accountDotyposCustomerId(claimant)).toBe(dotyposCustomerId);
     });
 
     test("exposes the activity state and stops it once the auth account row is gone", async () => {
@@ -282,6 +313,7 @@ describe.skipIf(!testDatabase)(
         [account]
       );
       expect(claimRows.rows).toEqual([]);
+      expect(await accountDotyposCustomerId(account)).toBeUndefined();
       expect(await accountCreatedEvents(account)).toEqual([]);
 
       const retry = await Effect.runPromise(
@@ -317,6 +349,15 @@ async function accountCreatedAt(accountId: string) {
     [accountId]
   );
   return rows[0]?.created_at;
+}
+
+async function accountDotyposCustomerId(accountId: string) {
+  const { rows } = await testDatabase!.pool.query<{
+    dotypos_customer_id: string | null;
+  }>("select dotypos_customer_id from customer_accounts where id = $1", [
+    accountId,
+  ]);
+  return rows[0]?.dotypos_customer_id;
 }
 
 function uniqueDotyposId() {

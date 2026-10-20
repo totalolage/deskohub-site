@@ -364,6 +364,25 @@ describe.skipIf(!testDatabase)(
         )
       ).rows[0]?.locale;
 
+    const readCreatedUser = async (id: string) => {
+      const { rows } = await testDatabase!.pool.query<{
+        id: string;
+        locale: string | null;
+        email_verified: boolean;
+        customer_account_id: string | null;
+        account_created_no_later: boolean | null;
+      }>(
+        `select auth_user.id, auth_user.locale, auth_user.email_verified,
+                customer_accounts.id as customer_account_id,
+                customer_accounts.created_at <= auth_user.created_at as account_created_no_later
+         from auth."user" as auth_user
+         left join customer_accounts on customer_accounts.id = auth_user.id
+         where auth_user.id = $1`,
+        [id]
+      );
+      return rows[0];
+    };
+
     test("sets the locale preference from the initiating site locale in the account-creation insert", async () => {
       const sentLinks: CapturedMagicLink[] = [];
       const auth = makeTestAuth({ sentLinks });
@@ -388,6 +407,75 @@ describe.skipIf(!testDatabase)(
       await signInForMagicLink(auth, emailDefault);
       await verifyMagicLink(auth, sentLinks[2]!);
       expect(await createdLocaleFor(emailDefault)).toBe("en-US");
+    });
+
+    test("creates the durable account before a magic-link sign-up inserts its user", async () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({ sentLinks });
+      const email = uniqueEmail("account-sign-up");
+
+      await signInForMagicLink(auth, email);
+      const verified = await verifyMagicLink(auth, sentLinks[0]!);
+      expect(getSessionCookie(verified)).toBeTruthy();
+
+      const userId = (await userIdForEmail(email))!;
+      const { rows } = await testDatabase!.pool.query<{
+        user_id: string;
+        customer_account_id: string | null;
+        account_created_no_later: boolean | null;
+      }>(
+        `select auth_user.id as user_id, customer_accounts.id as customer_account_id,
+                customer_accounts.created_at <= auth_user.created_at as account_created_no_later
+         from auth."user" as auth_user
+         left join customer_accounts on customer_accounts.id = auth_user.id
+         where auth_user.id = $1`,
+        [userId]
+      );
+
+      expect(rows).toEqual([
+        {
+          user_id: userId,
+          customer_account_id: userId,
+          account_created_no_later: true,
+        },
+      ]);
+    });
+
+    test("creates a durable account for internal user creation with a supplied locale", async () => {
+      const auth = makeTestAuth();
+      const { internalAdapter } = await auth.$context;
+      const user = await internalAdapter.createUser({
+        email: uniqueEmail("internal-account-locale"),
+        name: "",
+        emailVerified: false,
+        locale: "en",
+      });
+
+      expect(await readCreatedUser(user.id)).toEqual({
+        id: user.id,
+        locale: "en",
+        email_verified: false,
+        customer_account_id: user.id,
+        account_created_no_later: true,
+      });
+    });
+
+    test("uses the default locale for internal user creation without one", async () => {
+      const auth = makeTestAuth();
+      const { internalAdapter } = await auth.$context;
+      const user = await internalAdapter.createUser({
+        email: uniqueEmail("internal-account-default-locale"),
+        name: "",
+        emailVerified: false,
+      });
+
+      expect(await readCreatedUser(user.id)).toEqual({
+        id: user.id,
+        locale: "en-US",
+        email_verified: false,
+        customer_account_id: user.id,
+        account_created_no_later: true,
+      });
     });
 
     test("keeps the creation locale when a later sign-in carries another one", async () => {
