@@ -23,6 +23,7 @@ import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { retryDatabaseRead } from "@/db/retry-database-read";
 import {
+  type LatePaymentRecoveryState,
   latePaymentRecoveries,
   paymentAttempts,
   reservationAccessGrants,
@@ -58,6 +59,15 @@ const withReservationKindFields = (reservation: WorkspaceReservationRow) => {
 };
 
 export type WorkspaceReservation = ReturnType<typeof withReservationKindFields>;
+
+export interface PaidFulfillmentProgress
+  extends Pick<
+    WorkspaceReservationRow,
+    "paymentState" | "reservationState" | "fulfillmentState"
+  > {
+  /** The unrecovered recovery of the active payment attempt, if any. */
+  readonly latePaymentRecoveryState: LatePaymentRecoveryState | null;
+}
 
 export const fulfillmentEmailFailureCode = "fulfillment_email_failed";
 
@@ -282,6 +292,13 @@ export interface IWorkspaceReservationRepository {
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
+  /**
+   * The states that decide whether paid fulfillment can still progress,
+   * including the late-payment recovery that blocks its claim, if any.
+   */
+  readonly findPaidFulfillmentProgress: (
+    id: WorkspaceReservationId
+  ) => Effect.Effect<PaidFulfillmentProgress | null, EffectDrizzleQueryError>;
   readonly findByActiveCustomerEmailDeliveryId: (
     customerEmailDeliveryId: EmailDeliveryId
   ) => Effect.Effect<
@@ -407,6 +424,18 @@ export class WorkspaceReservationRepository extends Context.Service<
 
       // A paid reservation whose active attempt is under late-payment
       // recovery is fulfilled by that recovery, not by paid fulfillment.
+      const isFulfillmentBlockingLatePaymentRecovery = () =>
+        and(
+          eq(
+            latePaymentRecoveries.workspaceReservationId,
+            workspaceReservations.id
+          ),
+          eq(
+            latePaymentRecoveries.paymentAttemptId,
+            workspaceReservations.activePaymentAttemptId
+          ),
+          ne(latePaymentRecoveries.state, "recovered")
+        );
       const isOutsideLatePaymentRecovery = () =>
         notExists(
           db
@@ -414,19 +443,7 @@ export class WorkspaceReservationRepository extends Context.Service<
               paymentAttemptId: latePaymentRecoveries.paymentAttemptId,
             })
             .from(latePaymentRecoveries)
-            .where(
-              and(
-                eq(
-                  latePaymentRecoveries.workspaceReservationId,
-                  workspaceReservations.id
-                ),
-                eq(
-                  latePaymentRecoveries.paymentAttemptId,
-                  workspaceReservations.activePaymentAttemptId
-                ),
-                ne(latePaymentRecoveries.state, "recovered")
-              )
-            )
+            .where(isFulfillmentBlockingLatePaymentRecovery())
         );
 
       const findById = Effect.fn("workspaceReservations.findById")(
@@ -1218,6 +1235,29 @@ export class WorkspaceReservationRepository extends Context.Service<
             .returning();
           return yield* decodeOptionalWorkspaceReservation(claimed);
         }),
+        findPaidFulfillmentProgress: Effect.fn(
+          "workspaceReservations.findPaidFulfillmentProgress"
+        )(
+          function* (id) {
+            const [progress] = yield* db
+              .select({
+                paymentState: workspaceReservations.paymentState,
+                reservationState: workspaceReservations.reservationState,
+                fulfillmentState: workspaceReservations.fulfillmentState,
+                latePaymentRecoveryState: latePaymentRecoveries.state,
+              })
+              .from(workspaceReservations)
+              .leftJoin(
+                latePaymentRecoveries,
+                isFulfillmentBlockingLatePaymentRecovery()
+              )
+              .where(eq(workspaceReservations.id, id))
+              .limit(1);
+            return progress ?? null;
+          },
+          (effect, reservationId) =>
+            effect.pipe(Effect.annotateLogs({ reservationId }))
+        ),
         findByActiveCustomerEmailDeliveryId: Effect.fn(
           "workspaceReservations.findByActiveCustomerEmailDeliveryId"
         )(

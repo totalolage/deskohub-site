@@ -2,23 +2,49 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { DuplicateMessageError } from "@vercel/queue";
-import { Effect, Layer } from "effect";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import { Effect, Layer, Result } from "effect";
+import {
+  type PaidFulfillmentProgress,
+  WorkspaceReservationRepository,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { WorkspacePaidFulfillmentService } from "./paid-fulfillment.service";
+import { QueueRedelivery } from "@/shared/backend/queue/queue-consumer";
+import {
+  WorkspacePaidFulfillmentError,
+  WorkspacePaidFulfillmentService,
+} from "./paid-fulfillment.service";
 import {
   makePaidFulfillmentQueueService,
   paidFulfillmentQueueTopic,
 } from "./paid-fulfillment-queue.service";
-import { processPaidFulfillmentMessage } from "./paid-fulfillment-queue-consumer";
+import {
+  paidFulfillmentRedelivery,
+  processPaidFulfillmentMessage,
+} from "./paid-fulfillment-queue-consumer";
 import { reconcileStalledPaidFulfillments } from "./paid-fulfillment-reconciliation";
 
 const orderId = "reservation-id" as WorkspaceReservationId;
 
+const heldPaidProgress = {
+  paymentState: "paid",
+  reservationState: "held",
+  fulfillmentState: "not_started",
+  latePaymentRecoveryState: null,
+} as const satisfies PaidFulfillmentProgress;
+
+const fulfillmentFailure = (
+  failureCode: WorkspacePaidFulfillmentError["failureCode"]
+) =>
+  new WorkspacePaidFulfillmentError({
+    orderId,
+    failureCode,
+    message: "Paid reservation fulfillment failed.",
+  });
+
 const processMessage = (input: {
   readonly message: unknown;
   readonly fulfillPaidOrder: ReturnType<typeof mock>;
-  readonly fulfillmentStateAfter?: string;
+  readonly progressAfter?: Partial<PaidFulfillmentProgress> | null;
 }) =>
   processPaidFulfillmentMessage(input.message).pipe(
     Effect.provide(
@@ -27,12 +53,16 @@ const processMessage = (input: {
           fulfillPaidOrder: input.fulfillPaidOrder,
         }),
         Layer.mock(WorkspaceReservationRepository, {
-          findById: mock(() =>
-            Effect.succeed({
-              id: orderId,
-              paymentState: "paid",
-              fulfillmentState: input.fulfillmentStateAfter ?? "fulfilled",
-            } as never)
+          findPaidFulfillmentProgress: mock(() =>
+            Effect.succeed(
+              input.progressAfter === null
+                ? null
+                : {
+                    ...heldPaidProgress,
+                    fulfillmentState: "fulfilled",
+                    ...input.progressAfter,
+                  }
+            )
           ),
         })
       )
@@ -79,32 +109,146 @@ describe("paid fulfillment queue", () => {
     });
   });
 
-  for (const fulfillmentStateAfter of ["not_started", "processing"]) {
-    test(`redelivers while fulfillment is still ${fulfillmentStateAfter}`, async () => {
+  for (const fulfillmentState of ["not_started", "processing"] as const) {
+    test(`backs off while fulfillment is still ${fulfillmentState}`, async () => {
+      const failure = fulfillmentFailure("fulfillment_order_load_failed");
       const result = await processMessage({
         message: { orderId },
-        fulfillPaidOrder: mock(() => Effect.fail(new Error("transient"))),
-        fulfillmentStateAfter,
+        fulfillPaidOrder: mock(() => Effect.fail(failure)),
+        progressAfter: { fulfillmentState },
       });
 
       expect(result).toMatchObject({
         failure: {
           _tag: "PaidFulfillmentPendingError",
           orderId,
-          fulfillmentState: fulfillmentStateAfter,
+          reason: "fulfillment_in_progress",
+          cause: failure,
         },
       });
+      expect(
+        Result.isFailure(result) && paidFulfillmentRedelivery(result.failure)
+      ).toEqual(QueueRedelivery.WithBackoff());
     });
   }
 
-  test("settles the message once fulfillment has failed terminally", async () => {
+  test("backs off while another worker or a late-payment recovery holds the order", async () => {
+    for (const progressAfter of [
+      { fulfillmentState: "processing" },
+      { latePaymentRecoveryState: "pending" },
+      { latePaymentRecoveryState: "processing" },
+    ] as const) {
+      const result = await processMessage({
+        message: { orderId },
+        fulfillPaidOrder: mock(() => Effect.void),
+        progressAfter: { fulfillmentState: "not_started", ...progressAfter },
+      });
+
+      expect(result).toMatchObject({
+        failure: { _tag: "PaidFulfillmentPendingError" },
+      });
+    }
+  });
+
+  test("acknowledges a recorded fulfillment failure and keeps its cause", async () => {
+    const failure = fulfillmentFailure("dotypos_reservation_failed");
     const result = await processMessage({
       message: { orderId },
-      fulfillPaidOrder: mock(() => Effect.fail(new Error("terminal"))),
-      fulfillmentStateAfter: "failed",
+      fulfillPaidOrder: mock(() => Effect.fail(failure)),
+      progressAfter: { fulfillmentState: "failed" },
     });
 
-    expect(result).toMatchObject({ success: "processed" });
+    expect(result).toMatchObject({
+      failure: {
+        _tag: "PaidFulfillmentSettledFailureError",
+        reason: "fulfillment_settled",
+        cause: failure,
+      },
+    });
+    expect(
+      Result.isFailure(result) && paidFulfillmentRedelivery(result.failure)
+    ).toEqual(QueueRedelivery.Never());
+  });
+
+  test.each([
+    ["refund_required", { latePaymentRecoveryState: "refund_required" }],
+    ["review_required", { latePaymentRecoveryState: "review_required" }],
+  ] as const)(
+    "settles an order whose late payment ended %s",
+    async (_label, progressAfter) => {
+      const result = await processMessage({
+        message: { orderId },
+        fulfillPaidOrder: mock(() => Effect.void),
+        progressAfter: { fulfillmentState: "not_started", ...progressAfter },
+      });
+
+      expect(result).toMatchObject({
+        success: "late_payment_recovery_settled",
+      });
+    }
+  );
+
+  test.each([
+    [
+      "a cancelled reservation",
+      { fulfillmentState: "not_started", reservationState: "cancelled" },
+      "reservation_cancelled",
+    ],
+    ["a fulfilled order", {}, "fulfillment_settled"],
+    [
+      "an unpaid order",
+      { fulfillmentState: "not_started", paymentState: "pending" },
+      "reservation_not_paid",
+    ],
+    ["a missing order", null, "reservation_missing"],
+  ] as const)("settles %s", async (_label, progressAfter, reason) => {
+    const result = await processMessage({
+      message: { orderId },
+      fulfillPaidOrder: mock(() => Effect.void),
+      progressAfter,
+    });
+
+    expect(result).toMatchObject({ success: reason });
+  });
+
+  test("retries a failed invoice although the order is fulfilled", async () => {
+    const result = await processMessage({
+      message: { orderId },
+      fulfillPaidOrder: mock(() =>
+        Effect.fail(fulfillmentFailure("invoice_processing_failed"))
+      ),
+    });
+
+    expect(result).toMatchObject({
+      failure: {
+        _tag: "PaidFulfillmentPendingError",
+        reason: "invoice_processing_failed",
+      },
+    });
+  });
+
+  test("keeps redelivering a paid order in a state no fulfillment path expects", async () => {
+    const result = await processMessage({
+      message: { orderId },
+      fulfillPaidOrder: mock(() => Effect.void),
+      progressAfter: {
+        fulfillmentState: "not_started",
+        reservationState: "cancelling",
+      },
+    });
+
+    expect(result).toMatchObject({
+      failure: {
+        _tag: "PaidFulfillmentPendingError",
+        reason: "reservation_not_fulfillable",
+      },
+    });
+  });
+
+  test("leaves failures it does not own to the default redelivery", () => {
+    expect(paidFulfillmentRedelivery(new Error("layer failed"))).toEqual(
+      QueueRedelivery.Default()
+    );
   });
 
   test("ignores malformed messages", async () => {

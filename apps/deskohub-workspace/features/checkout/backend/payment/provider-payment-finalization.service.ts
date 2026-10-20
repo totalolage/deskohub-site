@@ -7,7 +7,16 @@ import {
   NexiService,
   type NexiWebhookEventId,
 } from "@deskohub/nexi";
-import { Context, type Duration, Effect, Layer, Option, Schema } from "effect";
+import {
+  Context,
+  Data,
+  type Duration,
+  Effect,
+  Layer,
+  Match,
+  Option,
+  Schema,
+} from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import {
@@ -18,8 +27,8 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { WorkspaceNexiLayer } from "@/shared/backend/config/nexi.config";
 import {
+  getProviderOrderAbandonment,
   getProviderOrderAbandonmentCutoff,
-  getProviderOrderAbandonmentState,
   hasProviderPaymentActivity,
 } from "../../provider-order-abandonment";
 import {
@@ -40,9 +49,19 @@ import {
 } from "../repositories/payment-lifecycle.repository";
 import { getNexiCurrencyOverride } from "./nexi-currency";
 
+/**
+ * An operation-free provider order, or an unattached session, still inside
+ * its abandonment window. Nothing can resolve it before `abandonmentCutoff`.
+ */
+export class ProviderPaymentDeferral extends Data.TaggedClass(
+  "ProviderPaymentDeferral"
+)<{
+  readonly abandonmentCutoff: Temporal.Instant;
+}> {}
+
 type ProviderPaymentFinalizationResult =
   | "abandoned"
-  | "deferred"
+  | ProviderPaymentDeferral
   | "not_found"
   | "not_pending"
   | "not_verifiable"
@@ -126,16 +145,14 @@ function makeProviderPaymentFinalizationServiceLayer(
           );
           return "not_verifiable";
         }
-        if (
-          Temporal.Instant.compare(
-            input.checkedAt,
-            getProviderOrderAbandonmentCutoff(input.attempt.createdAt)
-          ) < 0
-        ) {
+        const abandonmentCutoff = getProviderOrderAbandonmentCutoff(
+          input.attempt.createdAt
+        );
+        if (Temporal.Instant.compare(input.checkedAt, abandonmentCutoff) < 0) {
           yield* Effect.logInfo(
             "Payment finalization deferred an unattached provider session"
           );
-          return "deferred";
+          return new ProviderPaymentDeferral({ abandonmentCutoff });
         }
 
         const providerOrder = yield* nexi
@@ -527,17 +544,23 @@ function makeProviderPaymentFinalizationServiceLayer(
               return "terminal";
             }
 
-            const emptyOrderResult = getProviderOrderAbandonmentState({
+            const emptyOrder = getProviderOrderAbandonment({
               checkedAt: input.abandonmentCheckedAt,
               providerOrderCreatedAt: attempt.providerOrderCreatedAt,
               order: verification.provider,
             });
-            if (emptyOrderResult !== "not_empty") {
+            if (emptyOrder.state !== "not_empty") {
               yield* Effect.logInfo(
                 "Payment finalization resolved empty provider order",
-                { result: emptyOrderResult }
+                { result: emptyOrder.state }
               );
-              return emptyOrderResult;
+              return Match.value(emptyOrder).pipe(
+                Match.discriminatorsExhaustive("state")({
+                  abandoned: () => "abandoned" as const,
+                  deferred: ({ cutoff }) =>
+                    new ProviderPaymentDeferral({ abandonmentCutoff: cutoff }),
+                })
+              );
             }
 
             yield* Effect.logInfo("Payment finalization returned pending");

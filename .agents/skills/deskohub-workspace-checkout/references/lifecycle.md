@@ -164,7 +164,7 @@ Keep abandoned and expired hold cleanup only in the per-reservation scheduled qu
 
 Nexi's card HPP documents no expiry, so queued cleanup applies a 30-minute abandonment window (`features/checkout/provider-order-abandonment.ts`):
 
-- For an attempt with a provider session, measure from `provider_order_created_at`. Before the cutoff, defer an operation-free order through the queue retry. At or after it, expire locally only if a fresh lookup shows no operations and no authorized or captured amount. Any activity stays pending for reconciliation or an operator.
+- For an attempt with a provider session, measure from `provider_order_created_at`. Before the cutoff, defer an operation-free order: finalization returns a `ProviderPaymentDeferral` with the cutoff, and the queue redelivers the message then. At or after it, expire locally only if a fresh lookup shows no operations and no authorized or captured amount. Any activity stays pending for reconciliation or an operator.
 - For an attempt still `created` without a security token, measure from creation. If Nexi returns 404 or an empty order, fail it with `nexi_hpp_create_unconfirmed` (only while still `created`) and release its claim before cancelling the hold. Payment activity needs operator review; an inconclusive lookup retries later.
 
 ## Late payment recovery
@@ -202,7 +202,7 @@ The budget arithmetic is documented in the route and service. Keep these rules w
 Paid fulfillment confirms the Dotypos reservation, issues the access PIN ([reservation-access.md](reservation-access.md)), and sends the customer confirmation with a protected access link, never the PIN.
 
 - Recovery reclaims a stale `processing` claim after `PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS` but never reclaims `awaiting_delivery`.
-- The queue consumer fails a message for redelivery while fulfillment is still `not_started` or `processing`. The daily paid-fulfillment cron covers orders stuck there over 15 minutes outside unrecovered late-payment recovery; re-enqueueing can't, because the per-order idempotency key dedupes it. The cron takes the least recently updated orders first, and a claim bumps `updatedAt`, so a repeatedly failing order rotates behind untried ones.
+- The queue consumer classifies each run from the persisted state the claim reads (`findPaidFulfillmentProgress`). It backs off while fulfillment can still progress: `not_started` or `processing` on a held or confirmed reservation, a `pending` or `processing` late-payment recovery, or a failed invoice. It acknowledges what no redelivery can change: a missing, unpaid, cancelled, or settled (`fulfilled`, `awaiting_delivery`, `failed`) order, or a late payment that ended `refund_required` or `review_required`. Any other paid state logs an error and keeps backing off. The daily paid-fulfillment cron covers orders stuck there over 15 minutes outside unrecovered late-payment recovery; re-enqueueing can't, because the per-order idempotency key dedupes it. The cron takes the least recently updated orders first, and a claim bumps `updatedAt`, so a repeatedly failing order rotates behind untried ones.
 
 ### Email delivery
 
