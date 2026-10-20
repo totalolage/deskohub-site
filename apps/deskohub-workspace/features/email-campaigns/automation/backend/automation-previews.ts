@@ -300,7 +300,8 @@ export type AutomationPreviewOutcomeRow = DryRunOutcome & {
   /**
    * A replayed row whose conditions read a reservation status that changed
    * since its trigger in a way Workspace can't date, so they read it
-   * approximately.
+   * approximately, or a row that depends on such an earlier row of the
+   * customer (see `AutomationDryRunRow`).
    */
   readonly reservationStatusesApproximate?: boolean;
 };

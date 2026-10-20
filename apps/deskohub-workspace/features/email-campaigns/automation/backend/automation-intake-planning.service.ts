@@ -47,7 +47,7 @@ export const emptyAutomationIntakePlan: AutomationIntakePlan = {
 /** The most unplanned events one planner run matches (§5.5). */
 const intakeBatchSize = 2000;
 
-/** The most runs one planner run withdraws; the rest follow next minute. */
+/** The most runs one planner run withdraws; the next planner run takes the rest. */
 const withdrawalBatchSize = 5000;
 
 /**
