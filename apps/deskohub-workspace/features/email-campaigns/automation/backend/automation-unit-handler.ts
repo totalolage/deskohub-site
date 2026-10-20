@@ -163,11 +163,12 @@ export interface AutomationUnitHandler<Subject, Fetched> {
   /**
    * §5.2 step 2: settles, locally and before any fetch, the subjects past
    * their limit (24 hours, or `automationUnitDeadlineMissLimit` misses for a
-   * solo unit), and reports whether any subject is left to fetch. It reads
-   * the subjects' current rows, so a repeated call is a no-op. The processor
-   * runs it in a transaction guarded by the claim, and settles the unit
-   * `done` without fetching when it returns `settled`. Kinds without a limit
-   * omit it.
+   * solo unit), and reports whether any subject is left to fetch. The
+   * processor runs it in a transaction guarded by the claim; when it returns
+   * `settled`, that transaction also settles the unit `done`, so its writes
+   * commit at most once. A `remaining` expiry commits without settling the
+   * unit and may run again, so it must read the subjects' current rows to
+   * make a repeated call a no-op. Kinds without a limit omit it.
    */
   readonly expire?: (
     tx: AutomationEngineTransaction,
