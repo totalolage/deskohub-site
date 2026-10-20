@@ -668,10 +668,11 @@ const legalDocuments = {
               To understand how search engines and AI assistants use the
               website, we sort requests into broad traffic categories based on
               browser information. We tell our analytics provider only the
-              category, the page and language, and, for our booking tools for AI
-              assistants, which tool was used and whether it worked. We send
-              nothing that identifies you, and this does not depend on analytics
-              consent.
+              category, the name of a recognised assistant, the page and
+              language, which form a blocked automated request tried to use,
+              and, for our booking tools for AI assistants, which tool was used
+              and whether it worked. We send nothing that identifies you, and
+              this does not depend on analytics consent.
             </>,
             <>
               If you consent to analytics cookies or similar technologies, we
@@ -1125,10 +1126,12 @@ const legalDocuments = {
               Abychom porozuměli tomu, jak web používají vyhledávače a AI
               asistenti, řadíme požadavky podle údajů o prohlížeči do obecných
               kategorií provozu. Poskytovateli analytických služeb sdělujeme
-              pouze tuto kategorii, stránku a jazyk a u našich rezervačních
-              nástrojů pro AI asistenty to, který nástroj byl použit a zda
-              uspěl. Nepředáváme nic, co by vás identifikovalo, a toto měření
-              nezávisí na souhlasu s analytikou.
+              pouze tuto kategorii, název rozpoznaného asistenta, stránku a
+              jazyk, formulář, který se pokusil použít zablokovaný
+              automatizovaný požadavek, a u našich rezervačních nástrojů pro AI
+              asistenty to, který nástroj byl použit a zda uspěl. Nepředáváme
+              nic, co by vás identifikovalo, a toto měření nezávisí na souhlasu
+              s analytikou.
             </>,
             <>
               Pokud udělíte souhlas s analytickými cookies nebo obdobnými
