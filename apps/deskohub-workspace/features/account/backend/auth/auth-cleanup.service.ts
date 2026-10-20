@@ -1,4 +1,4 @@
-import { lt, lte } from "drizzle-orm";
+import { and, isNotNull, isNull, lt, lte, or } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -18,6 +18,8 @@ type DeletedAuthRowCounts = {
   readonly agentAccessTokens: number;
   readonly agentRefreshTokens: number;
   readonly agentClientAssertions: number;
+  /** Rotated refresh tokens whose encrypted replay response was cleared. */
+  readonly agentRefreshReplays: number;
 };
 
 /**
@@ -45,8 +47,10 @@ interface IAuthCleanupService {
  * last request is older than the longest configured rate-limit window, and
  * the expired access tokens, refresh tokens, and client-assertion replay
  * records of customers' AI agents. Revoked agent tokens stay until they
- * expire, since refresh-token replay detection reads them. No queue,
- * archive, lock, or provider cleanup runs here.
+ * expire, since refresh-token replay detection reads them, but the
+ * encrypted token response a rotated refresh token keeps for its reuse
+ * window is cleared once that window has passed. No queue, archive, lock,
+ * or provider cleanup runs here.
  */
 export class AuthCleanupService extends Context.Service<
   AuthCleanupService,
@@ -90,6 +94,21 @@ export class AuthCleanupService extends Context.Service<
             .delete(authOauthClientAssertion)
             .where(lte(authOauthClientAssertion.expiresAt, input.now))
             .returning({ id: authOauthClientAssertion.id });
+          // The provider replays this response only while its expiry is
+          // still ahead (`>= now`); past it, the copy serves no purpose.
+          const agentRefreshReplays = yield* db
+            .update(authOauthRefreshToken)
+            .set({ rotationReplayResponse: null })
+            .where(
+              and(
+                isNotNull(authOauthRefreshToken.rotationReplayResponse),
+                or(
+                  isNull(authOauthRefreshToken.rotationReplayExpiresAt),
+                  lt(authOauthRefreshToken.rotationReplayExpiresAt, input.now)
+                )
+              )
+            )
+            .returning({ id: authOauthRefreshToken.id });
           return {
             sessions: sessions.length,
             verifications: verifications.length,
@@ -97,6 +116,7 @@ export class AuthCleanupService extends Context.Service<
             agentAccessTokens: agentAccessTokens.length,
             agentRefreshTokens: agentRefreshTokens.length,
             agentClientAssertions: agentClientAssertions.length,
+            agentRefreshReplays: agentRefreshReplays.length,
           } satisfies DeletedAuthRowCounts;
         }).pipe(
           Effect.mapError(

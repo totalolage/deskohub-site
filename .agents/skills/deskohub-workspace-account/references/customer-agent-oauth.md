@@ -164,6 +164,17 @@ resource.
   records. Revoked tokens stay until they expire because refresh-token replay
   detection reads them. Consents and CIMD client rows have no expiry; consents
   last until the customer disconnects the assistant or deletes the account.
+- Refresh tokens rotate with a 30-second reuse window
+  (`customerAgentRefreshTokenReuseSeconds`, set explicitly because the
+  privacy notice discloses it). The provider stores the replacement token
+  response in `rotation_replay_response` on the rotated row, encrypted with
+  the Better Auth secret, and replays it (with `expires_in` recounted) for a
+  matching repeat refresh until `rotation_replay_expires_at`. Truly
+  concurrent refreshes still race; the loser gets `invalid_grant` without
+  ending the grant. Reuse after the window deletes the client's tokens for
+  the customer. The provider never clears the copy, so `auth-cleanup`
+  nulls it once the window has passed; deleting the row (expiry, account
+  deletion, reuse, disconnect) removes it too.
 - Lifetimes: access tokens 1 hour, refresh tokens 30 days (rotated on use),
   signed authorization requests and codes 10 minutes. Replaying a used code
   fails and revokes the tokens it bought.
@@ -173,6 +184,11 @@ resource.
 - Stub CIMD fetches with `makeTestAuth({ clientMetadataTransport })`; the
   transport receives the metadata URL and returns a `Response`.
   `https://client.example/...` needs no DNS.
+- The preview E2E's synthetic agent publishes its metadata document on the
+  production host (`features/account/customer-agent-test-client.ts`, served
+  by `app/oauth/clients/e2e-agent.json/route.ts`). The Postgres flow test
+  registers that committed document, so a change that the OAuth server would
+  reject fails before it deploys.
 - Prove protocol behaviour in the Postgres flow test against the real
   handler; keep adapter rules in unit tests with fake authorities. Build
   memory-backed stores with `makeMemoryAuthStore()`, which includes the

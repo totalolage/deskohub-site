@@ -33,6 +33,13 @@ export const disabledCustomerAgentClientPaths = [
 export type CustomerAgentClientMetadataTransport =
   typeof fetchClientMetadataResource;
 
+/**
+ * Seconds a rotated refresh token still gets the response that replaced it.
+ * Matches the MCP plugin's default, stated here because the privacy notice
+ * discloses it.
+ */
+export const customerAgentRefreshTokenReuseSeconds = 30;
+
 const accessTokenVerificationBody = Schema.toStandardSchemaV1(
   Schema.Struct({ token: Schema.String })
 );
@@ -46,11 +53,15 @@ const accessTokenVerificationBody = Schema.toStandardSchemaV1(
  * - Access tokens are opaque and stored hashed (`disableJwtPlugin`), so every
  *   MCP request checks the token row: revocation and account deletion take
  *   effect on the next call, and no signing keys live in the database.
- * - Refresh tokens rotate without a reuse window. The MCP plugin's default
- *   30-second window stores the rotated token response, encrypted, so a
- *   repeated refresh can replay it; with no window only token hashes are
- *   persisted. Reusing a rotated refresh token deletes every token that
- *   client holds for the customer, so the customer reconnects the assistant.
+ * - Refresh tokens rotate with a 30-second reuse window, so a lost refresh
+ *   response doesn't disconnect the assistant: a refresh repeated inside the
+ *   window, after the first one has completed, gets the same tokens, which
+ *   the provider keeps encrypted with the auth secret on the rotated token's
+ *   row. Truly concurrent refreshes still race: the loser gets
+ *   `invalid_grant`, but the grant survives. The daily auth cleanup clears
+ *   the copy once the window has passed. Reusing a rotated refresh token
+ *   after the window deletes every token that client holds for the
+ *   customer, so the customer reconnects the assistant.
  * - `verifyCustomerAgentAccessToken` is a server-only endpoint that validates
  *   a token through the provider's own capability surface, so the MCP route
  *   in this app needs no introspection client or HTTP round trip.
@@ -72,7 +83,7 @@ export const makeCustomerAgentAuthorizationPlugins = ({
     loginPage: customerAgentSignInPath,
     consentPage: customerAgentConsentPath,
     disableJwtPlugin: true,
-    refreshTokenReuseInterval: 0,
+    refreshTokenReuseInterval: customerAgentRefreshTokenReuseSeconds,
     scopes: [...customerAgentScopes, customerAgentOfflineAccessScope],
     clientRegistrationDefaultScopes: [
       ...customerAgentScopes,

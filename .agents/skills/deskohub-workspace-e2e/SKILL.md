@@ -1,6 +1,6 @@
 ---
 name: deskohub-workspace-e2e
-description: Workspace E2E, Playwright, protected preview, exact-SHA run, checkout or account lane, Nexi sandbox, webhook replay, E2E fixtures, MCP OAuth agent booking, seeded OAuth client, date shard, E2E failure triage, flaky E2E, agent task evals, browser agent harness, agent eval results.
+description: Workspace E2E, Playwright, protected preview, exact-SHA run, checkout or account lane, Nexi sandbox, webhook replay, E2E fixtures, MCP OAuth agent booking, CIMD test agent, date shard, E2E failure triage, flaky E2E, agent task evals, browser agent harness, agent eval results.
 ---
 
 # Deskohub Workspace E2E
