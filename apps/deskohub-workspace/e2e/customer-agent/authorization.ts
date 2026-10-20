@@ -8,7 +8,6 @@ import type { Locale } from "@/features/i18n";
 import { withLocalePrefixAndSearch } from "@/features/i18n/routing";
 import { parseUrl } from "../runtime";
 
-
 /**
  * The test agent's redirect URI. The host never resolves; the case's browser
  * context answers it itself, so the authorization code never leaves the
