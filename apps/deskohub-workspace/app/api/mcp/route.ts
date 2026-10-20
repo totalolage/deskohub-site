@@ -1,4 +1,6 @@
 import { Effect, Layer } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { CustomerAgentAuthorization } from "@/features/account";
 import {
   AgentToolAdmission,
   type AgentToolExposure,
@@ -7,15 +9,19 @@ import {
   customerAgentTools,
   selectAgentTools,
 } from "@/features/agent-tools";
+import { RequestBudget } from "@/shared/backend/request-budget/request-budget.service";
 import {
   defineWorkspaceRoute,
   WorkspaceRouteFailure,
 } from "@/shared/backend/workspace-route";
 
-/** This endpoint serves only public, read-only tools; it authenticates no one. */
+/**
+ * This endpoint serves the public tools to anyone and the signed-in tools,
+ * including starting a booking, to agents with an OAuth access token.
+ */
 const customerToolExposure: AgentToolExposure = {
-  access: ["public"],
-  transactional: false,
+  access: ["public", "signed-in"],
+  transactional: true,
 };
 
 const customerTools = selectAgentTools(
@@ -26,7 +32,9 @@ const customerTools = selectAgentTools(
 /**
  * The customer MCP server: stateless Streamable HTTP. POST carries every
  * request; GET and DELETE, which only sessions use, are answered with 405.
- * Browsers may call it only from the host serving the request. Each tool call
+ * Browsers may call it only from the host serving the request. Signed-in
+ * tools need a bearer access token from the Workspace OAuth server; a call
+ * without a usable one is answered with an OAuth challenge. Each tool call
  * is counted by the caller's agent category.
  */
 const handleMcpRequest = defineWorkspaceRoute(
@@ -38,7 +46,13 @@ const handleMcpRequest = defineWorkspaceRoute(
   (request: Request) =>
     answerAgentToolMcpRequest({ tools: customerTools, request }).pipe(
       Effect.provide(
-        Layer.merge(CustomerAgentToolsLive, AgentToolAdmission.Default)
+        Layer.mergeAll(
+          CustomerAgentToolsLive,
+          AgentToolAdmission.Default,
+          CustomerAgentAuthorization.Default,
+          RequestBudget.Live,
+          WorkspaceDatabase.Default
+        )
       ),
       Effect.mapError(WorkspaceRouteFailure.internal("The MCP request failed."))
     )

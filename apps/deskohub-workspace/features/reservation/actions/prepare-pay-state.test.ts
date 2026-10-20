@@ -57,6 +57,7 @@ import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import type { PreparePayStateInput } from "./prepare-pay-state.schema";
 
 const testEmailAddressForAda = testEmailAddress("ada");
 const testEmailAddressForGrace = testEmailAddress("grace");
@@ -296,6 +297,8 @@ const makeReusableReservation = (
     correlationId: "correlation-id",
     dotyposCustomerId: "customer-id",
     dotyposReservationId: "dotypos-reservation-id",
+    authorAccountId: null,
+    agentClientId: null,
     reservationState: "held",
     paymentState: "not_started",
     fulfillmentState: "not_started",
@@ -338,6 +341,25 @@ const accountAuthorityFixture = async (
   return makeOptionalAccountActivityGuard(options);
 };
 
+/**
+ * Prepares Pay as the reservation form's Server Action does: BotID first,
+ * then the shared booking operation, with the form's public messages.
+ */
+const loadReservationFormPreparation = async () => {
+  const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+  const { toReservationFormError, verifyReservationFormHuman } = await import(
+    "./prepare-pay-state-form"
+  );
+  return (input: PreparePayStateInput) =>
+    verifyReservationFormHuman(input.locale).pipe(
+      Effect.andThen(
+        prepareWorkspacePayState(input).pipe(
+          Effect.mapError(toReservationFormError(input))
+        )
+      )
+    );
+};
+
 const runReusableReservationScenario = async (input: {
   readonly findByAttemptKeys: ReturnType<typeof mock>;
   readonly findCurrentByCheckoutSessionKey?: ReturnType<typeof mock>;
@@ -378,8 +400,18 @@ const runReusableReservationScenario = async (input: {
   /** Replaces the mocked referral operations above. */
   readonly referralService?: Layer.Layer<ReferralService>;
   readonly checkContactEmailDomain?: ReturnType<typeof mock>;
+  readonly countLiveAgentHolds?: ReturnType<typeof mock>;
+  /**
+   * Books through the customer MCP server's path instead of the form: the
+   * shared operation for this agent client, without BotID.
+   */
+  readonly bookingAgent?: { readonly clientId: string };
 }) => {
+  const prepareFromReservationForm = await loadReservationFormPreparation();
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+  const { BookingAgent } = await import(
+    "@/features/reservation/backend/booking-agent"
+  );
   const { PostHogEventService } = await import(
     "@/shared/backend/analytics/posthog-event.service"
   );
@@ -409,6 +441,8 @@ const runReusableReservationScenario = async (input: {
   const withdrawActiveMarketingConsent = mock(() => Effect.succeed(false));
   const ensureAvailable = input.ensureAvailable ?? mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
+  const countLiveAgentHolds =
+    input.countLiveAgentHolds ?? mock(() => Effect.succeed(0));
   const createDraft = input.createDraft ?? mock(() => Effect.die("unused"));
   const assignAuthor =
     input.assignAuthor ??
@@ -512,7 +546,6 @@ const runReusableReservationScenario = async (input: {
       affirmCoworkAdvertisement: affirmAdvertisement,
       quoteForCustomer: quoteForCustomerResult as never,
     }),
-    BotProtectionServiceMock({ verifyHuman }),
     EmailRecipientDomainServiceMock({ check: checkContactEmailDomain }),
     Layer.mock(WorkspaceAvailabilityService, {
       getAvailability: mock(() => Effect.die("unused")),
@@ -537,6 +570,7 @@ const runReusableReservationScenario = async (input: {
       completeSupersessionAndCreateDraft,
       markCancelled: mock(() => Effect.void),
       markCancellationFailed,
+      countLiveAgentHolds,
     }),
     input.marketingConsentRepository ??
       Layer.mock(CustomerMarketingConsentRepository, {
@@ -563,7 +597,7 @@ const runReusableReservationScenario = async (input: {
     })
   );
 
-  const result = await prepareWorkspacePayState({
+  const submission = {
     locale: "en-US",
     checkoutSessionId: "session-id",
     checkoutAttemptId: "attempt-id",
@@ -573,7 +607,16 @@ const runReusableReservationScenario = async (input: {
     marketingConsent: input.marketingConsent,
     marketingConsentSource: input.marketingConsentSource,
     customer: input.customer,
-  }).pipe(Effect.provide(testLayer), Effect.result, Effect.runPromise);
+  } as PreparePayStateInput;
+  const { bookingAgent } = input;
+  const result = await (bookingAgent
+    ? prepareWorkspacePayState(submission).pipe(
+        Effect.provideService(BookingAgent, bookingAgent as never)
+      )
+    : prepareFromReservationForm(submission).pipe(
+        Effect.provide(BotProtectionServiceMock({ verifyHuman }))
+      )
+  ).pipe(Effect.provide(testLayer), Effect.result, Effect.runPromise);
 
   return {
     result: result._tag === "Success" ? result.success : undefined,
@@ -638,7 +681,7 @@ const runMeetingRoomNewHoldScenario = async (
     readonly deadline: Duration.Input;
   }
 ) => {
-  const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+  const prepareFromReservationForm = await loadReservationFormPreparation();
   const { withActionDeadline } = await import(
     "@/shared/backend/workspace-action"
   );
@@ -793,7 +836,7 @@ const runMeetingRoomNewHoldScenario = async (
     })
   );
 
-  const submission = prepareWorkspacePayState({
+  const submission = prepareFromReservationForm({
     locale: "en-US",
     checkoutSessionId: "meeting-room-session-id",
     checkoutAttemptId: "meeting-room-attempt-id",
@@ -909,13 +952,13 @@ describe("prepareWorkspacePayState", () => {
   });
 
   test("rejects office reservation issuance while the office flag is disabled", async () => {
-    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const prepareFromReservationForm = await loadReservationFormPreparation();
     const { BotProtectionServiceMock } = await import(
       "@/shared/backend/bot-protection/bot-protection.service.mock"
     );
     const verifyHuman = mock(() => Effect.void);
     const { layer: accountAuthorityLayer } = await accountAuthorityFixture();
-    const effect = prepareWorkspacePayState({
+    const effect = prepareFromReservationForm({
       locale: "en-US",
       checkoutSessionId: "session-id",
       checkoutAttemptId: "attempt-id",
@@ -1082,7 +1125,7 @@ describe("prepareWorkspacePayState", () => {
   });
 
   test("creates a held reservation and returns an openable pay state", async () => {
-    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const prepareFromReservationForm = await loadReservationFormPreparation();
     const { openPayState, payStateTokenQueryParam } = await import(
       "@/features/checkout/backend/checkout"
     );
@@ -1233,7 +1276,7 @@ describe("prepareWorkspacePayState", () => {
         capture: mock(() => Effect.void),
       })
     );
-    const result = await prepareWorkspacePayState({
+    const result = await prepareFromReservationForm({
       locale: "en-US",
       checkoutSessionId: "session-id",
       checkoutAttemptId: "attempt-id",
@@ -1463,6 +1506,7 @@ describe("prepareWorkspacePayState", () => {
       input: {
         readonly marketingConsent?: boolean;
         readonly marketingConsentSource?: "site_tool";
+        readonly bookingAgent?: { readonly clientId: string };
       }
     ) => {
       const { db } = testDatabase!;
@@ -1557,6 +1601,31 @@ describe("prepareWorkspacePayState", () => {
       const row = await runWithStoredConsent(null, { marketingConsent: true });
       expect(row?.grantSource).toBe("reservation_form");
       expect(row?.withdrawnAt).toBeNull();
+    });
+
+    const bookingAgent = {
+      clientId: "https://assistant.example/oauth-client.json",
+    };
+
+    test("an agent's opt-in stores mcp_tool as the source", async () => {
+      const row = await runWithStoredConsent(null, {
+        marketingConsent: true,
+        bookingAgent,
+      });
+      expect(row?.grantSource).toBe("mcp_tool");
+      expect(row?.withdrawnAt).toBeNull();
+    });
+
+    test("an agent's absent choice writes no consent row", async () => {
+      expect(await runWithStoredConsent(null, { bookingAgent })).toBeNull();
+    });
+
+    test("an agent's false leaves an active consent active and unchanged", async () => {
+      const row = await runWithStoredConsent(activeRow, {
+        marketingConsent: false,
+        bookingAgent,
+      });
+      expectStoredRow(row, activeRow);
     });
 
     test("an opt-in does not reactivate a withdrawn consent", async () => {
@@ -1809,6 +1878,237 @@ describe("prepareWorkspacePayState", () => {
       postalCode: "110 00",
       country: "CZ",
     };
+
+    describe("through a customer agent", () => {
+      const bookingAgent = {
+        clientId: "https://assistant.example/oauth-client.json",
+      };
+      const agentBooking = () => ({
+        ...linkedAccountBooking(),
+        bookingAgent,
+      });
+      const agentHold = (overrides: Partial<WorkspaceReservation> = {}) =>
+        makeReusableReservation({
+          authorAccountId: accountId as never,
+          agentClientId: bookingAgent.clientId,
+          ...overrides,
+        });
+
+      test("books without BotID and records the agent client on the new hold", async () => {
+        const scenario = await runReusableReservationScenario({
+          ...agentBooking(),
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          createDraft: createFreshDraft(),
+        });
+
+        expect(scenario.result).toMatchObject({
+          status: "ready",
+          orderId: "account-reservation-id",
+        });
+        expect(scenario.verifyHuman).not.toHaveBeenCalled();
+        expect(scenario.createDraft.mock.calls[0]?.[0]).toMatchObject({
+          authorAccountId: accountId,
+          agentClientId: bookingAgent.clientId,
+        });
+      });
+
+      test("keeps the form's drafts free of an agent client", async () => {
+        const scenario = await runReusableReservationScenario({
+          ...linkedAccountBooking(),
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          createDraft: createFreshDraft(),
+        });
+
+        expect(scenario.verifyHuman).toHaveBeenCalledTimes(1);
+        expect(scenario.createDraft.mock.calls[0]?.[0]).not.toHaveProperty(
+          "agentClientId"
+        );
+      });
+
+      test("reuses the live hold of an identical repeat without creating another", async () => {
+        const scenario = await runReusableReservationScenario({
+          ...agentBooking(),
+          findByAttemptKeys: mock(() =>
+            Effect.succeed(agentHold({ id: "agent-hold-id" }))
+          ),
+          countLiveAgentHolds: mock(() => Effect.succeed(3)),
+        });
+
+        expect(scenario.result).toMatchObject({
+          status: "ready",
+          orderId: "agent-hold-id",
+        });
+        expect(scenario.createReservation).not.toHaveBeenCalled();
+        expect(scenario.createDraft).not.toHaveBeenCalled();
+      });
+
+      test("refuses a new hold once the account holds the agent limit", async () => {
+        const countLiveAgentHolds = mock(() => Effect.succeed(3));
+        const scenario = await runReusableReservationScenario({
+          ...agentBooking(),
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          createDraft: createFreshDraft(),
+          countLiveAgentHolds,
+        });
+
+        expect(scenario.error).toMatchObject({
+          _tag: "AgentHoldLimitError",
+          liveHolds: 3,
+        });
+        expect(countLiveAgentHolds.mock.calls[0]?.[0]).toMatchObject({
+          authorAccountId: accountId,
+        });
+        expect(scenario.createDraft).not.toHaveBeenCalled();
+        expect(scenario.createReservation).not.toHaveBeenCalled();
+      });
+
+      test("starts a new hold below the agent limit", async () => {
+        const scenario = await runReusableReservationScenario({
+          ...agentBooking(),
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          createDraft: createFreshDraft(),
+          countLiveAgentHolds: mock(() => Effect.succeed(2)),
+        });
+
+        expect(scenario.result?.status).toBe("ready");
+      });
+
+      test("supersedes the client's previous hold in its session without counting it against the limit", async () => {
+        const previous = agentHold({
+          id: "previous-agent-hold-id",
+          dotyposReservationId: "previous-dotypos-reservation-id",
+        });
+        const scenario = await runReusableReservationScenario({
+          ...agentBooking(),
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(previous)),
+          claimSupersessionCancellation: mock(() => Effect.succeed(previous)),
+          completeSupersessionAndCreateDraft: mock((input) =>
+            Effect.succeed(
+              agentHold({
+                id: "replacement-agent-hold-id",
+                checkoutSessionKey: input.replacement.checkoutSessionKey,
+                checkoutAttemptKey: input.replacement.checkoutAttemptKey,
+                dotyposReservationId: null,
+                reservationState: "draft",
+              })
+            )
+          ),
+          countLiveAgentHolds: mock(() => Effect.succeed(3)),
+        });
+
+        expect(scenario.result).toMatchObject({
+          status: "ready",
+          orderId: "replacement-agent-hold-id",
+        });
+        expect(scenario.cancelReservation).toHaveBeenCalledWith(
+          "previous-dotypos-reservation-id"
+        );
+        expect(
+          scenario.completeSupersessionAndCreateDraft.mock.calls[0]?.[0]
+        ).toMatchObject({
+          replacement: {
+            authorAccountId: accountId,
+            agentClientId: bookingAgent.clientId,
+          },
+        });
+        expect(scenario.createReservation).toHaveBeenCalledTimes(1);
+      });
+
+      test("never supersedes a reservation another account authored in the session", async () => {
+        const scenario = await runReusableReservationScenario({
+          ...agentBooking(),
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          // The rotated session the submission moves to has no reservation.
+          findCurrentByCheckoutSessionKey: mock()
+            .mockReturnValueOnce(
+              Effect.succeed(
+                makeReusableReservation({
+                  id: "someone-elses-hold-id",
+                  authorAccountId: "another-account" as never,
+                })
+              )
+            )
+            .mockReturnValue(Effect.succeed(null)),
+          createDraft: createFreshDraft(),
+        });
+
+        expect(scenario.result?.status).toBe("ready");
+        expect(scenario.claimSupersessionCancellation).not.toHaveBeenCalled();
+        expect(scenario.cancelReservation).not.toHaveBeenCalled();
+        expect(scenario.createDraft).toHaveBeenCalledTimes(1);
+      });
+
+      test("labels the customer's marketing opt-in with the MCP channel", async () => {
+        const scenario = await runReusableReservationScenario({
+          ...agentBooking(),
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          createDraft: createFreshDraft(),
+          marketingConsent: true,
+        });
+
+        expect(
+          scenario.grantInitialMarketingConsent.mock.calls[0]?.[0]
+        ).toMatchObject({
+          dotyposCustomerId: accountDotyposCustomerId,
+          source: "mcp_tool",
+        });
+      });
+
+      test.each([
+        ["absent", undefined],
+        ["false", false],
+      ] as const)(
+        "records and withdraws nothing for an %s marketing choice",
+        async (_, marketingConsent) => {
+          const scenario = await runReusableReservationScenario({
+            ...agentBooking(),
+            findByAttemptKeys: mock(() => Effect.succeed(null)),
+            createDraft: createFreshDraft(),
+            marketingConsent,
+          });
+
+          expect(scenario.result?.status).toBe("ready");
+          expect(scenario.grantInitialMarketingConsent).not.toHaveBeenCalled();
+          expect(scenario.grantMarketingConsent).not.toHaveBeenCalled();
+          expect(scenario.withdrawMarketingConsent).not.toHaveBeenCalled();
+          expect(
+            scenario.withdrawActiveMarketingConsent
+          ).not.toHaveBeenCalled();
+        }
+      );
+
+      test("asks an account without a profile to finish it on the site", async () => {
+        const scenario = await runReusableReservationScenario({
+          bookingAgent,
+          customer: "account",
+          account: unlinkedAccountState(),
+          completeProfileUnderHeldLock: profileCompletion(),
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          createDraft: createFreshDraft(),
+        });
+
+        expect(scenario.error).toMatchObject({
+          _tag: "AgentBookingProfileRequiredError",
+        });
+        expect(scenario.completeProfileUnderHeldLock).not.toHaveBeenCalled();
+        expect(scenario.createDraft).not.toHaveBeenCalled();
+      });
+
+      test("asks a profile without a phone number to be finished on the site", async () => {
+        const scenario = await runReusableReservationScenario({
+          ...agentBooking(),
+          linkedContact: mock(() => accountContact({ phone: null })),
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          createDraft: createFreshDraft(),
+        });
+
+        expect(scenario.error).toMatchObject({
+          _tag: "AgentBookingProfileRequiredError",
+        });
+        expect(scenario.createDraft).not.toHaveBeenCalled();
+      });
+    });
 
     test("books under the linked Dotypos customer without resolving one from the contact", async () => {
       const lockProbe = { held: false };
@@ -3125,12 +3425,12 @@ describe("prepareWorkspacePayState", () => {
       reason: "input_mismatch",
     },
   ])("rejects a $label before downstream work", async (row) => {
-    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const prepareFromReservationForm = await loadReservationFormPreparation();
     const { BotProtectionServiceMock } = await import(
       "@/shared/backend/bot-protection/bot-protection.service.mock"
     );
     const { layer: accountAuthorityLayer } = await accountAuthorityFixture();
-    const effect = prepareWorkspacePayState({
+    const effect = prepareFromReservationForm({
       locale: "en-US",
       checkoutSessionId: "session-id",
       checkoutAttemptId: "attempt-id",
@@ -3219,7 +3519,7 @@ describe("prepareWorkspacePayState", () => {
   test.each(["en-US", "cs-CZ"] as const)(
     "rejects a classified bot before resolving downstream services in %s",
     async (locale) => {
-      const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+      const prepareFromReservationForm = await loadReservationFormPreparation();
       const { BotDetectedError } = await import(
         "@/shared/backend/bot-protection/bot-protection.service"
       );
@@ -3236,7 +3536,7 @@ describe("prepareWorkspacePayState", () => {
         )
       );
       const { layer: accountAuthorityLayer } = await accountAuthorityFixture();
-      const effect = prepareWorkspacePayState({
+      const effect = prepareFromReservationForm({
         locale,
         checkoutSessionId: "session-id",
         checkoutAttemptId: "attempt-id",

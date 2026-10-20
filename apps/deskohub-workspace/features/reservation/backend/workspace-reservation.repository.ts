@@ -8,6 +8,7 @@ import {
   asc,
   desc,
   eq,
+  gt,
   inArray,
   isNull,
   lt,
@@ -30,6 +31,7 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
+import type { CustomerAgentClientId } from "@/features/account";
 import { ensureCustomerAccount } from "@/features/account/backend/customer-account.repository";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { releaseCodeClaim } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
@@ -98,6 +100,8 @@ export interface CreateWorkspaceReservationInput {
   readonly dotyposCustomerId: DotyposCustomerId;
   /** The signed-in account making the reservation; null for a guest. */
   readonly authorAccountId: CustomerAccountId | null;
+  /** The customer's AI agent that started the reservation, if one did. */
+  readonly agentClientId?: CustomerAgentClientId;
   readonly reservationPurpose: ReservationPurpose;
   readonly reservationDetails: StoredWorkspaceReservationDetails;
   readonly locale: string;
@@ -385,6 +389,14 @@ export interface IWorkspaceReservationRepository {
   readonly selectExpiredHoldDotyposReservationIds: (input: {
     readonly now: Temporal.Instant;
   }) => Effect.Effect<readonly DotyposReservationId[], EffectDrizzleQueryError>;
+  /**
+   * Counts an account's holds that customer agents started and that are
+   * still live: held, not yet paid for, and before their hold deadline.
+   */
+  readonly countLiveAgentHolds: (input: {
+    readonly authorAccountId: CustomerAccountId;
+    readonly now: Temporal.Instant;
+  }) => Effect.Effect<number, EffectDrizzleQueryError>;
   readonly selectStalledPaidFulfillments: (input: {
     readonly updatedBefore: Temporal.Instant;
     readonly limit: number;
@@ -532,6 +544,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                     correlationId: postgresUuidV7,
                     dotyposCustomerId: input.dotyposCustomerId,
                     authorAccountId: input.authorAccountId,
+                    agentClientId: input.agentClientId ?? null,
                     reservationPurpose: input.reservationPurpose,
                     reservationState: "draft",
                     paymentState: "not_started",
@@ -1130,6 +1143,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                   correlationId: postgresUuidV7,
                   dotyposCustomerId: input.replacement.dotyposCustomerId,
                   authorAccountId: input.replacement.authorAccountId,
+                  agentClientId: input.replacement.agentClientId ?? null,
                   reservationPurpose: input.replacement.reservationPurpose,
                   reservationState: "draft",
                   paymentState: "not_started",
@@ -1702,6 +1716,27 @@ export class WorkspaceReservationRepository extends Context.Service<
           return rows.flatMap(({ dotyposReservationId }) =>
             dotyposReservationId ? [dotyposReservationId] : []
           );
+        }),
+        countLiveAgentHolds: Effect.fn(
+          "workspaceReservations.countLiveAgentHolds"
+        )(function* (input) {
+          const [row] = yield* db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(workspaceReservations)
+            .where(
+              and(
+                eq(
+                  workspaceReservations.authorAccountId,
+                  input.authorAccountId
+                ),
+                sql`${workspaceReservations.agentClientId} is not null`,
+                eq(workspaceReservations.reservationState, "held"),
+                eq(workspaceReservations.paymentState, "not_started"),
+                gt(workspaceReservations.reservationHoldExpiresAt, input.now)
+              )
+            );
+
+          return row?.count ?? 0;
         }),
         selectStalledPaidFulfillments: Effect.fn(
           "workspaceReservations.selectStalledPaidFulfillments"

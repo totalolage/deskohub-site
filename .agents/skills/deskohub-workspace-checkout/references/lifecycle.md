@@ -9,6 +9,7 @@ Business policy for holds, payment, recovery, refunds, and fulfillment is in the
 - [State machines](#state-machines)
 - [Checkout session and attempt keys](#checkout-session-and-attempt-keys)
 - [Supersession](#supersession)
+- [Agent bookings](#agent-bookings)
 - [Nexi payment attempts](#nexi-payment-attempts)
 - [Hold cleanup](#hold-cleanup)
 - [Late payment recovery](#late-payment-recovery)
@@ -129,6 +130,18 @@ Resubmitting the reservation form from checkout never reuses or mutates a Dotypo
 - If the previous row has pending or paid payment, isn't `NEW`, or its cancellation fails (log it), leave it to its own lifecycle and rotate the submission into a fresh checkout session.
 - Every row keeps its own cleanup deadline and scheduled cleanup task. Never refresh or transfer a task.
 - Reject stale Pay state unless its exact local reservation is still current for the session and live Dotypos still reports it pending. Repeat that live check immediately before creating a provider payment session.
+- Never supersede a session's current reservation that another account authored; rotate the submission into a fresh session instead.
+
+## Agent bookings
+
+The customer MCP tool `start_reservation` (`features/agent-tools/start-reservation.tool.ts`) books through the same `prepareWorkspacePayState` as the reservation form. Only the channel differs.
+
+- Each caller authenticates its own channel before the shared operation: the form's Server Action verifies BotID (`prepare-pay-state-form.ts`), and the MCP route authorizes the agent's OAuth token. Keep BotID out of `prepareWorkspacePayState`; the account activity guard stays inside it.
+- Agent-only inputs travel in the `BookingAgent` context service (`features/reservation/backend/booking-agent.ts`), which only the MCP tool provides. Never add them to the Server Action schema, which rejects excess properties. With an agent, the operation records `agent_client_id` on new and replacement drafts, labels a marketing grant `mcp_tool`, and refuses an account without a bookable profile (no profile, no name, or no phone) with `AgentBookingProfileRequiredError` instead of saving one: the customer completes the profile on the site.
+- The tool derives the checkout IDs (`agent-checkout-identifiers.ts`): one session per account and agent client, so a new selection supersedes the client's previous hold, and one attempt per selection and hold window (the Pay-state lifetime), so an identical repeat reuses the live hold. A repeat in a later window becomes a new attempt that supersedes the old hold; that keeps an expired or paid attempt from blocking the same selection, which a window-free attempt ID would do after its session rotated once.
+- A repeat returns the same order with a freshly sealed Pay URL. Pay state is sealed with a fresh IV on every call, and the 10-minute lifetime is business policy, so don't make the URL deterministic or extend it to return the identical string.
+- `agentHoldLimit` caps an account's live agent holds (held, `not_started`, before the hold deadline). The check runs only before a new draft, under the account lock the guard holds; reusing or superseding the client's own hold adds none.
+- Agent bookings use the account's profile contact and personal billing without an invoice; business billing and invoices stay on the site.
 
 ## Nexi payment attempts
 
