@@ -191,7 +191,7 @@ const transitionedReservations = [
     ...confirmedOnEventDay,
     fulfillmentState: "fulfilled" as const,
     fulfilledAt: onEventDay("11:00"),
-    recoveredFulfillmentFailedAt: onEventDay("09:00"),
+    fulfillmentFailedAt: onEventDay("09:00"),
     updatedAt: onEventDay("11:00"),
   },
 ];
@@ -789,7 +789,7 @@ describe.skipIf(!testDatabase)(
         failedLater,
         // Failed then, but its retry is undated, so it reads as it is now.
         retriedLater,
-        // Failed then, but the recovery cleared the failure's date.
+        // Failed then; recovered since, so it reads in progress and is flagged.
         recoveredLater,
       ]);
       // By visit or by booking, the reservation cancelled at 12:00 was booked.
@@ -843,7 +843,7 @@ describe.skipIf(!testDatabase)(
         [cancellationFailedLater]: noon,
         [failedLater]: noon,
         [retriedLater]: noon,
-        // The failure the 11:00 recovery cleared is dated by that update.
+        // The 11:00 recovery that kept the failure's time is dated by that update.
         [recoveredLater]: onEventDay("11:00").toString(),
       });
       expect(await undated(["needs_refund"])).toEqual({});

@@ -396,7 +396,6 @@ describe.skipIf(!testDatabase)(
         expect(await readReservation(id)).toMatchObject({
           fulfillmentState: "processing",
           fulfillmentFailedAt: at(1),
-          recoveredFulfillmentFailedAt: null,
         });
         await run((repository) =>
           repository.markAwaitingCustomerEmailDelivery({
@@ -415,8 +414,7 @@ describe.skipIf(!testDatabase)(
         expect(await readReservation(id)).toMatchObject({
           fulfillmentState: "fulfilled",
           fulfilledAt: at(2),
-          fulfillmentFailedAt: null,
-          recoveredFulfillmentFailedAt: at(1),
+          fulfillmentFailedAt: at(1),
         });
       });
 
@@ -600,32 +598,29 @@ describe.skipIf(!testDatabase)(
         expect(await readReservation(recoverable)).toMatchObject({
           fulfillmentState: "fulfilled",
           fulfilledAt: at(5),
-          fulfillmentFailedAt: null,
-          recoveredFulfillmentFailedAt: at(4),
+          fulfillmentFailedAt: at(4),
           fulfillmentFailureCode: null,
         });
-        expect(await readReservation(sameInstant)).toMatchObject({
-          fulfillmentState: "failed",
-          recoveredFulfillmentFailedAt: null,
-        });
+        expect((await readReservation(sameInstant))?.fulfillmentState).toBe(
+          "failed"
+        );
         expect((await readReservation(otherFailure))?.fulfillmentState).toBe(
           "failed"
         );
       });
 
-      test("keeps the latest failure a recovery cleared through later failures", async () => {
+      test("keeps the latest failure's time through a later failure and recovery", async () => {
         const id = await insertReservation({
           ...paid,
           fulfillmentState: "fulfilled",
           fulfilledAt: at(4),
-          recoveredFulfillmentFailedAt: at(2),
+          fulfillmentFailedAt: at(2),
         });
 
         expect((await markDeliveryFailed(id))?.id).toBe(id);
         expect(await readReservation(id)).toMatchObject({
           fulfillmentState: "failed",
           fulfillmentFailedAt: at(5),
-          recoveredFulfillmentFailedAt: at(2),
         });
         expect(
           (
@@ -636,8 +631,8 @@ describe.skipIf(!testDatabase)(
         ).toBe(id);
         expect(await readReservation(id)).toMatchObject({
           fulfillmentState: "fulfilled",
-          fulfillmentFailedAt: null,
-          recoveredFulfillmentFailedAt: at(5),
+          fulfilledAt: at(6),
+          fulfillmentFailedAt: at(5),
         });
       });
     });
