@@ -6,6 +6,7 @@ import { accountRoleGrants } from "@/db/schema/account-role-grants";
 import { authSession, authUser } from "@/db/schema/auth";
 import { customerAccountLinks } from "@/db/schema/customer-account-links";
 import { parseBetterAuthSecrets } from "@/features/account/backend/auth/auth-secrets";
+import { recordCustomerAccountLink } from "@/features/account/backend/customer-account.repository";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { AccountRole } from "@/features/administrators/account-role";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
@@ -139,6 +140,11 @@ export const seedWorkspaceE2ESyntheticAccount = (
               customerAccountId: accountId,
               dotyposCustomerId: account.linkedCustomerId,
             });
+            yield* recordCustomerAccountLink(
+              tx,
+              accountId,
+              account.linkedCustomerId
+            );
           }
           if (account.roles && account.roles.length > 0) {
             yield* tx
