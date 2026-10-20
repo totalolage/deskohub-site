@@ -113,13 +113,13 @@ Administrators sign in with their customer accounts; the `administrator` grant a
 
 ## Configuration
 
-- `DHW_BASE`: Workspace origin. Must be an HTTPS origin, or an HTTP origin on `localhost` or `127.0.0.1`. Only release-target binaries (published releases and PR artifacts; `__DHW_BUILD_TARGET__` stamped by `build.ts`, see `isReleaseBuild`) default to `https://workspace.deskohub.cz`. Source runs and development builds fail closed without it, except `--help` and `--version`; point them at a local or preview Workspace, and pass the production origin only to work against production on purpose.
+- `DHW_BASE`: Workspace origin. Must be an HTTPS origin, or an HTTP origin on `localhost` or `127.0.0.1`. Only published releases (built with `DHW_BUILD_CHANNEL=release` by `dhw-release.yml`, see `isReleaseBuild`) default to `https://workspace.deskohub.cz`. PR artifacts, local native builds, source runs and development builds fail closed without it, except `--help` and `--version`; point them at a local or preview Workspace, and pass the production origin only to work against production on purpose.
 - `DHW_CREDENTIAL_STORE`: `system` (default) uses the operating-system credential store, keyed by Workspace origin. `memory` keeps credentials for one process only.
 - `DHW_REQUEST_HEADERS`: JSON object of extra API headers, such as a Vercel protection-bypass header. Values are redacted, can't override headers that `dhw` manages, and are never sent to GitHub.
 - `DHW_STATE_DIR`: overrides the state directory for updater state and access-code attempt reservations.
 - `DHW_NO_UPDATE_CHECK=true` disables automatic update checks. They also never run for `--json`, under `CI`, or without a TTY.
 
-`dhw update` forces a check. Automatic checks persist the GitHub ETag and wait 30 seconds between requests. The updater accepts only a stable, immutable `dhw-v*` release asset for the build target embedded at compile time, with the expected size and SHA-256 digest and a matching self-reported version and target. Never infer the target from the host OS or architecture. Windows is unsupported.
+Only published releases check for or install updates. `dhw update` forces a check. Automatic checks persist the GitHub ETag and wait 30 seconds between requests. The updater accepts only a stable, immutable `dhw-v*` release asset for the build target embedded at compile time, with the expected size and SHA-256 digest and a matching self-reported version and target. Never infer the target from the host OS or architecture. Windows is unsupported.
 
 ## Checks
 
