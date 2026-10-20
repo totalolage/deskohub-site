@@ -36,7 +36,7 @@ export const getCustomerReservationTable = (reservation: {
 };
 
 export const getReservationTableName = (
-  reservation: Reservation,
+  reservation: Pick<Reservation, "_tableId">,
   tables: readonly Table[]
 ) => {
   const tableId = reservation._tableId?.trim();

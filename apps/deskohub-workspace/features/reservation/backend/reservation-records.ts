@@ -47,7 +47,7 @@ export const readRecordsInSortedBatches = <E>(
   );
 
 /** Reads every reservation record live from Dotypos. */
-export const makeProviderReservationRecords = Effect.gen(function* () {
+const makeProviderReservationRecords = Effect.gen(function* () {
   const dotypos = yield* DotyposService;
 
   return {
