@@ -1341,11 +1341,21 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
             "Workspace reservation with a pending payment kept for a repeated agent request",
             { reservationId: checkout.reservation.id }
           );
-          return yield* toHeldResult({
+          const pendingResult = yield* toHeldResult({
             reservation: checkout.reservation,
             checkoutSessionId: checkout.checkoutSessionId,
             prepared,
           });
+          // Re-quoting at the anchor may have outlasted the link.
+          if (
+            Date.parse(pendingResult.expiresAt) <=
+            Temporal.Now.instant().epochMilliseconds
+          ) {
+            return yield* new AgentBookingPaymentInProgressError({
+              reservationId: checkout.reservation.id,
+            });
+          }
+          return pendingResult;
         }
 
         const holdExpiresAt = getReservationHoldExpiresAt(
