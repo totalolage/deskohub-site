@@ -111,10 +111,6 @@ export {
   MinimumDhwVersion,
 } from "./dhw-version";
 export {
-  emailAutomationScheduleMinutes,
-  emailAutomationTickMinutes,
-} from "./email-automation-cadence";
-export {
   AdminCliCampaignsApi,
   AdministrationCampaignAudience,
   type AdministrationCampaignAudience as AdministrationCampaignAudienceType,

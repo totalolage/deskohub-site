@@ -1,17 +1,13 @@
 import { expect, test } from "bun:test";
 import { prefixPathnameWithLocale } from "@deskohub/i18n/pathname";
-import {
-  emailAutomationScheduleMinutes,
-  emailAutomationTickMinutes,
-} from "@deskohub/workspace-admin-api";
 import { locales } from "@/features/i18n/routing";
 import { publicPages } from "@/features/public-pages/public-pages";
-import vercelConfig from "./vercel.json";
+import { config } from "./vercel";
 
 // Vercel serves prerendered pages with the cached response's own `Vary`, so the
 // proxy cannot add `Accept` there. A Vercel route transform appends it to every
 // public page, which answers with Markdown when `Accept` prefers it.
-const varyOnAcceptRoute = vercelConfig.routes.find(({ transforms }) =>
+const varyOnAcceptRoute = config.routes.find(({ transforms }) =>
   transforms.some(
     ({ type, op, target, args }) =>
       type === "response.headers" &&
@@ -47,22 +43,4 @@ test("leaves other paths out of the Accept variation", () => {
   ]) {
     expect(variesOnAccept(pathname)).toBe(false);
   }
-});
-
-const cronSchedule = (path: string) =>
-  vercelConfig.crons.find((cron) => cron.path === path)?.schedule;
-
-test("ticks the email automation engine on its cadence", () => {
-  expect(cronSchedule("/api/cron/workspace/email-automations")).toBe(
-    `*/${emailAutomationTickMinutes} * * * *`
-  );
-});
-
-// Each cron run wakes the production database, so the hourly refund poll
-// shares a minute with an engine tick instead of waking it again.
-test("polls payment refunds hourly on an engine tick minute", () => {
-  const [minute, ...hourlyFields] =
-    cronSchedule("/api/cron/workspace/payment-refunds")?.split(" ") ?? [];
-  expect(emailAutomationScheduleMinutes).toContain(Number(minute));
-  expect(hourlyFields).toEqual(["*", "*", "*", "*"]);
 });

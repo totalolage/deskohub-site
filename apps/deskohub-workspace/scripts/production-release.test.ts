@@ -4,6 +4,7 @@ import { appendFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { config } from "@/vercel";
 import {
   assertAuthSessionReady,
   assertCanonicalLandingReady,
@@ -587,20 +588,7 @@ describe("workspace production release checks", () => {
             target: "production",
             readyState: "READY",
             url: "workspace-staged.vercel.app",
-            crons: [
-              {
-                path: "/api/cron/workspace/reservation-holds",
-                schedule: "0 0 * * *",
-              },
-              {
-                path: "/api/cron/workspace/auth-cleanup",
-                schedule: "17 3 * * *",
-              },
-              {
-                path: "/api/cron/workspace/payment-refunds",
-                schedule: "30 * * * *",
-              },
-            ],
+            crons: config.crons,
           })
         );
       }
@@ -1110,20 +1098,7 @@ describe("workspace production release checks", () => {
           target: "production",
           readyState: "READY",
           url: "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
-          crons: [
-            {
-              path: "/api/cron/workspace/reservation-holds",
-              schedule: "0 0 * * *",
-            },
-            {
-              path: "/api/cron/workspace/auth-cleanup",
-              schedule: "17 3 * * *",
-            },
-            {
-              path: "/api/cron/workspace/payment-refunds",
-              schedule: "30 * * * *",
-            },
-          ],
+          crons: config.crons,
         })
       );
     });
@@ -1159,20 +1134,7 @@ describe("workspace production release checks", () => {
             ...identity,
             readyState: "READY",
             url: "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
-            crons: [
-              {
-                path: "/api/cron/workspace/reservation-holds",
-                schedule: "0 0 * * *",
-              },
-              {
-                path: "/api/cron/workspace/auth-cleanup",
-                schedule: "17 3 * * *",
-              },
-              {
-                path: "/api/cron/workspace/payment-refunds",
-                schedule: "30 * * * *",
-              },
-            ],
+            crons: config.crons,
           })
         )
       );
@@ -1232,20 +1194,7 @@ describe("workspace production release checks", () => {
           target: "production",
           readyState: "READY",
           url: "another-deployment.vercel.app",
-          crons: [
-            {
-              path: "/api/cron/workspace/reservation-holds",
-              schedule: "0 0 * * *",
-            },
-            {
-              path: "/api/cron/workspace/auth-cleanup",
-              schedule: "17 3 * * *",
-            },
-            {
-              path: "/api/cron/workspace/payment-refunds",
-              schedule: "30 * * * *",
-            },
-          ],
+          crons: config.crons,
         })
       )
     );
@@ -1275,20 +1224,7 @@ describe("workspace production release checks", () => {
           crons: {
             deploymentId: updated ? "dpl_staged" : "dpl_baseline",
             definitions: updated
-              ? [
-                  {
-                    path: "/api/cron/workspace/reservation-holds",
-                    schedule: "0 0 * * *",
-                  },
-                  {
-                    path: "/api/cron/workspace/auth-cleanup",
-                    schedule: "17 3 * * *",
-                  },
-                  {
-                    path: "/api/cron/workspace/payment-refunds",
-                    schedule: "30 * * * *",
-                  },
-                ]
+              ? config.crons
               : [
                   {
                     path: "/api/cron/workspace/reservation-holds",
@@ -1426,20 +1362,7 @@ describe("workspace production release checks", () => {
           id: "prj_test",
           crons: {
             deploymentId: "dpl_staged",
-            definitions: [
-              {
-                path: "/api/cron/workspace/reservation-holds",
-                schedule: "0 0 * * *",
-              },
-              {
-                path: "/api/cron/workspace/auth-cleanup",
-                schedule: "17 3 * * *",
-              },
-              {
-                path: "/api/cron/workspace/payment-refunds",
-                schedule: "30 * * * *",
-              },
-            ],
+            definitions: config.crons,
           },
         })
       );

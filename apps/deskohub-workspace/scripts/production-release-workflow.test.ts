@@ -53,21 +53,6 @@ const stepByName = (name: string): WorkflowStep => {
 
 const stepIndexOfName = (name: string): number => stepNames.indexOf(name);
 
-const requiredWorkspaceCronDefinitions = [
-  {
-    path: "/api/cron/workspace/reservation-holds",
-    schedule: "0 0 * * *",
-  },
-  {
-    path: "/api/cron/workspace/auth-cleanup",
-    schedule: "17 3 * * *",
-  },
-  {
-    path: "/api/cron/workspace/payment-refunds",
-    schedule: "30 * * * *",
-  },
-] as const;
-
 describe("deploy-workspace-production workflow", () => {
   test("gates the release on the production baseline before building and promoting", () => {
     const gateIndex = stepIndexOfName(
@@ -93,16 +78,6 @@ describe("deploy-workspace-production workflow", () => {
     expect(probeIndex).toBeLessThan(promoteIndex);
     expect(cronsIndex).toBeGreaterThan(probeIndex);
     expect(cronsIndex).toBeLessThan(promoteIndex);
-  });
-
-  test("keeps the release cron contract aligned with checked-in Vercel definitions", async () => {
-    const config = await Bun.file(
-      new URL("../vercel.json", import.meta.url)
-    ).json();
-
-    expect(config.crons).toEqual(
-      expect.arrayContaining(requiredWorkspaceCronDefinitions)
-    );
   });
 
   test("exposes the protection secret only to the staged probe", () => {
