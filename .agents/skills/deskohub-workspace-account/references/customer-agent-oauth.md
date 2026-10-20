@@ -138,8 +138,9 @@ resource.
   `@better-auth/oauth-provider` patch (see the `deskohub-repository` skill's
   patched dependencies) also deletes the client's access and refresh tokens
   for that customer, so its next MCP call gets the 401 challenge and its
-  refresh fails. Authorization codes issued before the disconnect stay
-  redeemable until they expire (better-auth#11318).
+  refresh fails. The patch also binds each authorization code to the consent
+  that authorized it, so a code issued before the disconnect gets
+  `invalid_grant`, even after the customer reconnects.
 
 ## Account-boundary adapter
 

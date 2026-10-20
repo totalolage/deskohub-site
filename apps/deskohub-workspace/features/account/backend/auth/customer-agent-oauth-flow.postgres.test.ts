@@ -273,17 +273,19 @@ const serveAgents =
   };
 
 /**
- * Connects an agent for a customer who is already signed in: the request
- * goes straight to consent, the customer allows it, and the agent exchanges
- * its code.
+ * Authorizes an agent for a customer who is already signed in and returns
+ * the code it receives, without exchanging it. Without a consent on record
+ * the request goes to the consent page and the customer allows it; with one
+ * the agent gets its code straight away.
  */
-const connectSignedIn = async (
+const authorizeSignedIn = async (
   auth: TestAuth,
   cookie: string,
-  agent: ReturnType<typeof makeAgent>
+  agent: ReturnType<typeof makeAgent>,
+  consent: "asks" | "granted"
 ) => {
   const pkce = await makePkce();
-  const consentPage = redirectOf(
+  const redirect = redirectOf(
     await request(
       auth,
       authorizePath({
@@ -296,14 +298,34 @@ const connectSignedIn = async (
       { cookie }
     )
   );
-  expect(consentPage.pathname).toBe("/auth/consent");
-  const callback = await answerConsent(auth, cookie, consentPage, true);
-  const response = await exchangeCode(auth, {
+  if (consent === "asks") expect(redirect.pathname).toBe("/auth/consent");
+  const callback =
+    consent === "asks"
+      ? await answerConsent(auth, cookie, redirect, true)
+      : redirect;
+  expect(callback.href.startsWith(agent.redirectUri)).toBe(true);
+  return {
     clientId: agent.clientId,
     redirectUri: agent.redirectUri,
     code: callback.searchParams.get("code")!,
     verifier: pkce.verifier,
-  });
+  };
+};
+
+/**
+ * Connects an agent for a customer who is already signed in: the request
+ * goes straight to consent, the customer allows it, and the agent exchanges
+ * its code.
+ */
+const connectSignedIn = async (
+  auth: TestAuth,
+  cookie: string,
+  agent: ReturnType<typeof makeAgent>
+) => {
+  const response = await exchangeCode(
+    auth,
+    await authorizeSignedIn(auth, cookie, agent, "asks")
+  );
   expect(response.status).toBe(200);
   return (await response.json()) as TokenResponse;
 };
@@ -361,6 +383,18 @@ const storedTokenMaterial = async (userId: string) => {
     readonly token: string | null;
     readonly rotation_replay_response: string | null;
   }>;
+};
+
+/** How many access and refresh tokens an account holds for one client. */
+const countClientTokens = async (userId: string, clientId: string) => {
+  const result = await testDatabase!.pool.query(
+    `select (select count(*)::int from auth.oauth_access_token
+              where user_id = $1 and client_id = $2)
+          + (select count(*)::int from auth.oauth_refresh_token
+              where user_id = $1 and client_id = $2) as count`,
+    [userId, clientId]
+  );
+  return result.rows[0]!.count as number;
 };
 
 /** The encrypted refresh replay responses still stored for an account. */
@@ -1089,6 +1123,91 @@ describe.skipIf(!testDatabase)(
         )
       );
       expect(reconnect.pathname).toBe("/auth/consent");
+    });
+
+    // Guards the Workspace oauth-provider patch (better-auth#11318): upstream
+    // consent deletion leaves codes already issued under it redeemable.
+    test("disconnects one assistant: its codes from before the disconnect no longer exchange, other codes do", async () => {
+      const agent = makeAgent();
+      const other = makeAgent("Other Agent");
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: serveAgents(agent, other),
+      });
+      const customer = await signIn(auth, sentLinks);
+      const neighbour = await signIn(auth, sentLinks);
+
+      // Codes the assistants hold but haven't exchanged yet: two from the
+      // disconnecting assistant, one from the customer's other assistant,
+      // and one the neighbour issued to the same assistant.
+      const firstPending = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "asks"
+      );
+      const secondPending = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "granted"
+      );
+      const otherAssistant = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        other,
+        "asks"
+      );
+      const neighbours = await authorizeSignedIn(
+        auth,
+        neighbour.cookie,
+        agent,
+        "asks"
+      );
+
+      const connection = (await listConnections(auth, customer.cookie)).find(
+        ({ name }) => name === CLIENT_NAME
+      )!;
+      const disconnected = await request(auth, "/oauth2/delete-consent", {
+        method: "POST",
+        cookie: customer.cookie,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: connection.id }),
+      });
+      expect(disconnected.status).toBe(200);
+
+      const refused = await exchangeCode(auth, firstPending);
+      expect(refused.status).toBe(400);
+      expect(((await refused.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
+      expect(await countClientTokens(customer.accountId, agent.clientId)).toBe(
+        0
+      );
+
+      // The customer's other assistant and the neighbour's grant to the same
+      // assistant still exchange their codes.
+      expect((await exchangeCode(auth, otherAssistant)).status).toBe(200);
+      expect((await exchangeCode(auth, neighbours)).status).toBe(200);
+
+      // Reconnecting creates a new consent: a code issued under it
+      // exchanges, and a code from before the disconnect stays refused.
+      const reconnected = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "asks"
+      );
+      const stale = await exchangeCode(auth, secondPending);
+      expect(stale.status).toBe(400);
+      expect(((await stale.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
+      expect(await countClientTokens(customer.accountId, agent.clientId)).toBe(
+        0
+      );
+      expect((await exchangeCode(auth, reconnected)).status).toBe(200);
     });
 
     test("deletes a connected account with its grants, and its tokens stop authorizing", async () => {

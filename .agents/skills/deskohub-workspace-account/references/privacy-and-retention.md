@@ -40,7 +40,8 @@ what the privacy copy promises. Privacy copy lives in
   permissions last until the customer disconnects the assistant in Connected
   assistants or deletes the account, and that either deletes the connection,
   its permissions, and its access credentials right away. Keep consent
-  deletion revoking the client's tokens (the oauth-provider patch) and keep
+  deletion revoking the client's tokens and unexchanged codes (the
+  oauth-provider patch) and keep
   the Connected assistants section name in step with the copy.
 - Account deletion expires the Dotypos profile and removes the live login
   account. Don't promise automatic Dotypos deletion after any period: the

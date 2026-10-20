@@ -1,5 +1,5 @@
 diff --git a/dist/authorize-BmTe2VYG.mjs b/dist/authorize-BmTe2VYG.mjs
-index 42c943dd45aa3d297a14edcc056a14e7ddd54680..7dd8463452da2c2edb87524276c8d8332c3eca07 100644
+index 42c943dd45aa3d297a14edcc056a14e7ddd54680..91b3d01464938a466abd3cd104af0ff259b8a57a 100644
 --- a/dist/authorize-BmTe2VYG.mjs
 +++ b/dist/authorize-BmTe2VYG.mjs
 @@ -3000,6 +3000,9 @@ async function deleteConsentEndpoint(ctx, opts) {
@@ -12,8 +12,31 @@ index 42c943dd45aa3d297a14edcc056a14e7ddd54680..7dd8463452da2c2edb87524276c8d833
  	await ctx.context.adapter.delete({
  		model: "oauthConsent",
  		where: [{
+@@ -5646,7 +5649,11 @@ async function authorizeEndpoint(ctx, opts, settings) {
+ 		sessionId: session.session.id,
+ 		authTime: new Date(session.session.createdAt).getTime(),
+ 		referenceId,
+-		resource: requestedResources
++		resource: requestedResources,
++		// Workspace patch (better-auth/better-auth#11318, change from open PR
++		// better-auth/better-auth#11345): bind the code to the consent that
++		// authorized it, so deleting that consent also invalidates the code.
++		consentId: consent.id
+ 	});
+ }
+ function serializeAuthorizationQuery(query) {
+@@ -5674,7 +5681,8 @@ async function redirectWithAuthorizationCode(ctx, opts, verificationValue) {
+ 			sessionId: verificationValue?.sessionId,
+ 			referenceId: verificationValue.referenceId,
+ 			authTime: verificationValue.authTime,
+-			resource: verificationValue.resource
++			resource: verificationValue.resource,
++			consentId: verificationValue.consentId
+ 		})
+ 	};
+ 	await ctx.context.internalAdapter.createVerificationValue({
 diff --git a/dist/introspect-C6P1zrTr.mjs b/dist/introspect-C6P1zrTr.mjs
-index 0b3934dd6724d408a84624a3fb0215f6d3274fea..3ac602f1aae795092b660eaf6da7e6f043a6b5e5 100644
+index 0b3934dd6724d408a84624a3fb0215f6d3274fea..609894132b8aeb73a069bd39e24315a2e92c94a9 100644
 --- a/dist/introspect-C6P1zrTr.mjs
 +++ b/dist/introspect-C6P1zrTr.mjs
 @@ -802,6 +802,14 @@ function getSeedState(ctx) {
@@ -49,7 +72,17 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..3ac602f1aae795092b660eaf6da7e6f0
  				if (/unique|duplicate|UNIQUE/i.test(message)) {
  					logger.debug(`oauth-provider: resource ${input.identifier} already inserted by a concurrent process — skipping.`);
  					continue;
-@@ -1495,34 +1503,27 @@ async function createOpaqueAccessToken(ctx, opts, user, client, scopes, payload,
+@@ -1067,7 +1075,8 @@ const verificationValueSchema = z.object({
+ 	userId: z.string(),
+ 	referenceId: z.string().optional(),
+ 	authTime: z.number().optional(),
+-	resource: z.array(z.string()).optional()
++	resource: z.array(z.string()).optional(),
++	consentId: z.string().optional()
+ }).passthrough();
+ /**
+ * Request body accepted at `POST /oauth2/register` (RFC 7591 §2 client
+@@ -1495,34 +1504,27 @@ async function createOpaqueAccessToken(ctx, opts, user, client, scopes, payload,
  *
  * @internal
  */
@@ -101,3 +134,36 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..3ac602f1aae795092b660eaf6da7e6f0
  	});
  }
  async function revokeTokensIssuedForAuthorizationCode(ctx, authorizationCodeId) {
+@@ -1919,6 +1921,32 @@ async function checkVerificationValue(ctx, opts, code, client_id, redirect_uri,
+ 		error_description: "invalid client_id",
+ 		error: "invalid_grant"
+ 	});
++	// Workspace patch (better-auth/better-auth#11318, change from open PR
++	// better-auth/better-auth#11345): a code redeems only while the consent
++	// that authorized it exists and still covers its scopes and resources. A
++	// reconnect creates a new consent row, so it doesn't revive older codes.
++	// Codes issued without a consent (`skipConsent` clients) carry no id.
++	if (verificationValue.consentId) {
++		const consent = await ctx.context.adapter.findOne({
++			model: "oauthConsent",
++			where: [{
++				field: "id",
++				value: verificationValue.consentId
++			}]
++		});
++		if (!consent || consent.clientId !== client_id || consent.userId !== verificationValue.userId) throw new APIError("BAD_REQUEST", {
++			error_description: "consent revoked",
++			error: "invalid_grant"
++		});
++		const consentedScopes = consent.scopes ?? [];
++		const consentedResources = consent.resources ?? [];
++		const codeScopes = (verificationValue.query.scope?.split(" ") ?? []).filter(Boolean);
++		const codeResources = verificationValue.resource ?? [];
++		if (!codeScopes.every((scope) => consentedScopes.includes(scope)) || !codeResources.every((codeResource) => consentedResources.includes(codeResource))) throw new APIError("BAD_REQUEST", {
++			error_description: "consent no longer covers this authorization",
++			error: "invalid_grant"
++		});
++	}
+ 	const boundRedirectUri = verificationValue.query.redirect_uri;
+ 	if (boundRedirectUri) {
+ 		if (!redirect_uri) throw new APIError("BAD_REQUEST", {
