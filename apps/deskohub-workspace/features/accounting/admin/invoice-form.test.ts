@@ -35,6 +35,9 @@ mock.module("./actions", () => ({
 mock.module("next/navigation", () => ({
   useParams: () => ({ locale: "en-US" }),
   useRouter: () => ({ push: workspaceRouterPush }),
+  // The administration's export control runs browser Effects, whose runner
+  // rethrows only Next control flow, which these tests never raise.
+  unstable_rethrow: () => {},
 }));
 
 // The form module (and the Radix dialog it renders) must be imported after
