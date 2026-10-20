@@ -144,6 +144,10 @@ resource.
   leaves no usable tokens. The patch also binds each authorization code to the
   consent that authorized it, so a code issued before the disconnect and
   redeemed after it gets `invalid_grant`, even after the customer reconnects.
+  The code exchange checks the consent again after writing its tokens and
+  revokes them when it is gone, so an exchange in flight during the
+  disconnect leaves no usable tokens either. Codes issued before the patch
+  carry no consent id; they redeem only under a consent that predates them.
 
 ## Account-boundary adapter
 

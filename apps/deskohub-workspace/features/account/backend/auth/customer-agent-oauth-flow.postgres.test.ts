@@ -433,6 +433,28 @@ const countRows = async (table: string, userId: string) => {
 };
 
 /**
+ * Turns an account's pending authorization codes into codes issued before the
+ * Workspace oauth-provider patch bound codes to their consent: they carry no
+ * consent id, were issued a minute ago, under a consent given before them.
+ */
+const predateConsentBinding = async (userId: string) => {
+  await testDatabase!.pool.query(
+    `update auth.verification
+        set value = (value::jsonb - 'consentId')::text,
+            created_at = created_at - interval '1 minute'
+      where case when value like '{"type":"authorization_code"%'
+                 then value::jsonb ->> 'userId' end = $1`,
+    [userId]
+  );
+  await testDatabase!.pool.query(
+    `update auth.oauth_consent
+        set created_at = created_at - interval '2 minutes'
+      where user_id = $1`,
+    [userId]
+  );
+};
+
+/**
  * The test database adapter, with a hook that runs one step of a test just
  * before the plugin's next write of a given kind to a given model. It forces
  * two concurrent requests to interleave at that write.
@@ -1257,9 +1279,79 @@ describe.skipIf(!testDatabase)(
       expect((await exchangeCode(auth, reconnected)).status).toBe(200);
     });
 
+    // Guards the Workspace oauth-provider patch: codes issued before it carry
+    // no consent id, and must stop at a disconnect all the same.
+    test("refuses codes from before the consent binding once their assistant is disconnected", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const customer = await signIn(auth, sentLinks);
+      const connected = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "asks"
+      );
+      const beforeDisconnect = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "granted"
+      );
+      const beforeReconnect = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "granted"
+      );
+      await predateConsentBinding(customer.accountId);
+
+      // While the assistant stays connected, such a code still exchanges.
+      expect((await exchangeCode(auth, connected)).status).toBe(200);
+
+      const [connection] = await listConnections(auth, customer.cookie);
+      const disconnected = await request(auth, "/oauth2/delete-consent", {
+        method: "POST",
+        cookie: customer.cookie,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: connection!.id }),
+      });
+      expect(disconnected.status).toBe(200);
+
+      const refused = await exchangeCode(auth, beforeDisconnect);
+      expect(refused.status).toBe(400);
+      expect(((await refused.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
+      expect(await countClientTokens(customer.accountId, agent.clientId)).toBe(
+        0
+      );
+
+      // The consent a reconnect gives is newer than the code, so the code
+      // stays refused while a code issued under it exchanges.
+      const reconnected = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "asks"
+      );
+      const stale = await exchangeCode(auth, beforeReconnect);
+      expect(stale.status).toBe(400);
+      expect(((await stale.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
+      expect(await countClientTokens(customer.accountId, agent.clientId)).toBe(
+        0
+      );
+      expect((await exchangeCode(auth, reconnected)).status).toBe(200);
+    });
+
     /**
      * Connects one assistant through an adapter that lets a test interleave
-     * its refresh with its disconnect.
+     * its refresh or code exchange with its disconnect.
      */
     const connectForRace = async () => {
       const agent = makeAgent();
@@ -1303,7 +1395,19 @@ describe.skipIf(!testDatabase)(
           expect(await countRows(table, customer.accountId)).toBe(0);
         }
       };
-      return { interleaving, tokens, refresh, disconnect, expectRevoked };
+      const authorize = () =>
+        authorizeSignedIn(auth, customer.cookie, agent, "granted");
+      const exchange = (code: Awaited<ReturnType<typeof authorize>>) =>
+        exchangeCode(auth, code);
+      return {
+        interleaving,
+        tokens,
+        refresh,
+        authorize,
+        exchange,
+        disconnect,
+        expectRevoked,
+      };
     };
 
     // Guards the Workspace oauth-provider patch: a disconnect that lands
@@ -1351,6 +1455,24 @@ describe.skipIf(!testDatabase)(
         race.tokens,
         (await response.json()) as TokenResponse,
       ]);
+    });
+
+    // Guards the Workspace oauth-provider patch: a disconnect that lands
+    // after a code exchange checked the consent but before it wrote the
+    // tokens would otherwise leave those tokens usable.
+    test("refuses a code exchange that a disconnect overtakes before its tokens are written", async () => {
+      const race = await connectForRace();
+      const pending = await race.authorize();
+      race.interleaving.before("create", "oauthRefreshToken", async () => {
+        expect((await race.disconnect()).status).toBe(200);
+      });
+
+      const exchanged = await race.exchange(pending);
+      expect(exchanged.status).toBe(400);
+      expect(((await exchanged.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
+      await race.expectRevoked([race.tokens]);
     });
 
     test("deletes a connected account with its grants, and its tokens stop authorizing", async () => {

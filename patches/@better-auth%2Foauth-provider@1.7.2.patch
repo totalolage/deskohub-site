@@ -38,7 +38,7 @@ index 42c943dd45aa3d297a14edcc056a14e7ddd54680..31e87ea81d1e1c24d327a9f04cd9108b
  	};
  	await ctx.context.internalAdapter.createVerificationValue({
 diff --git a/dist/introspect-C6P1zrTr.mjs b/dist/introspect-C6P1zrTr.mjs
-index 0b3934dd6724d408a84624a3fb0215f6d3274fea..5da91c2e8976dbe125089eebcb66180c0f330247 100644
+index 0b3934dd6724d408a84624a3fb0215f6d3274fea..ef1cadba5aab030c2c6caaab7be2232bb1cf763f 100644
 --- a/dist/introspect-C6P1zrTr.mjs
 +++ b/dist/introspect-C6P1zrTr.mjs
 @@ -802,6 +802,14 @@ function getSeedState(ctx) {
@@ -159,36 +159,111 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..5da91c2e8976dbe125089eebcb66180c
  	const idToken = isIdToken ? await createIdToken(ctx, opts, user, client, effectiveScopes, nonce, sessionId, authTime, accessToken, additionalIdTokenClaims) : void 0;
  	const responseBody = {
  		...customFields,
-@@ -1919,6 +1944,32 @@ async function checkVerificationValue(ctx, opts, code, client_id, redirect_uri,
+@@ -1889,6 +1914,43 @@ async function createUserTokens(ctx, opts, params) {
+ 	}
+ 	return ctx.json(responseBody);
+ }
++// Workspace patch (better-auth/better-auth#11318, change from open PR
++// better-auth/better-auth#11345): a code redeems only while the consent that
++// authorized it exists and still covers its scopes and resources. A reconnect
++// creates a new consent row, so it doesn't revive older codes. A code issued
++// before this patch carries no consent id, so it redeems under the client's
++// consent for the user only if that consent existed when the code was
++// issued. The code's `createdAt` has whole seconds.
++async function refuseAuthorizationCodeConsent(ctx, clientId, verificationValue, issuedAt) {
++	const consent = verificationValue.consentId ? await ctx.context.adapter.findOne({
++		model: "oauthConsent",
++		where: [{
++			field: "id",
++			value: verificationValue.consentId
++		}]
++	}) : (await ctx.context.adapter.findMany({
++		model: "oauthConsent",
++		where: [{
++			field: "clientId",
++			value: clientId
++		}, {
++			field: "userId",
++			value: verificationValue.userId
++		}]
++	})).find((candidate) => (candidate.referenceId ?? null) === (verificationValue.referenceId ?? null) && new Date(candidate.createdAt).getTime() < issuedAt + 1e3);
++	if (!consent || consent.clientId !== clientId || consent.userId !== verificationValue.userId) return new APIError("BAD_REQUEST", {
++		error_description: "consent revoked",
++		error: "invalid_grant"
++	});
++	const consentedScopes = consent.scopes ?? [];
++	const consentedResources = consent.resources ?? [];
++	const codeScopes = (verificationValue.query.scope?.split(" ") ?? []).filter(Boolean);
++	const codeResources = verificationValue.resource ?? [];
++	if (!codeScopes.every((scope) => consentedScopes.includes(scope)) || !codeResources.every((codeResource) => consentedResources.includes(codeResource))) return new APIError("BAD_REQUEST", {
++		error_description: "consent no longer covers this authorization",
++		error: "invalid_grant"
++	});
++}
+ /** Checks verification value */
+ async function checkVerificationValue(ctx, opts, code, client_id, redirect_uri, resource) {
+ 	const authorizationCodeId = await storeToken(opts.storeTokens, code, "authorization_code");
+@@ -1919,6 +1981,15 @@ async function checkVerificationValue(ctx, opts, code, client_id, redirect_uri,
  		error_description: "invalid client_id",
  		error: "invalid_grant"
  	});
 +	// Workspace patch (better-auth/better-auth#11318, change from open PR
-+	// better-auth/better-auth#11345): a code redeems only while the consent
-+	// that authorized it exists and still covers its scopes and resources. A
-+	// reconnect creates a new consent row, so it doesn't revive older codes.
-+	// Codes issued without a consent (`skipConsent` clients) carry no id.
++	// better-auth/better-auth#11345): refuse a code whose consent is gone.
++	// Codes of `skipConsent` clients carry no consent id, and codes from
++	// before this patch are checked once the client is known.
++	const issuedAt = new Date(verification.createdAt).getTime();
 +	if (verificationValue.consentId) {
-+		const consent = await ctx.context.adapter.findOne({
-+			model: "oauthConsent",
-+			where: [{
-+				field: "id",
-+				value: verificationValue.consentId
-+			}]
-+		});
-+		if (!consent || consent.clientId !== client_id || consent.userId !== verificationValue.userId) throw new APIError("BAD_REQUEST", {
-+			error_description: "consent revoked",
-+			error: "invalid_grant"
-+		});
-+		const consentedScopes = consent.scopes ?? [];
-+		const consentedResources = consent.resources ?? [];
-+		const codeScopes = (verificationValue.query.scope?.split(" ") ?? []).filter(Boolean);
-+		const codeResources = verificationValue.resource ?? [];
-+		if (!codeScopes.every((scope) => consentedScopes.includes(scope)) || !codeResources.every((codeResource) => consentedResources.includes(codeResource))) throw new APIError("BAD_REQUEST", {
-+			error_description: "consent no longer covers this authorization",
-+			error: "invalid_grant"
-+		});
++		const refusal = await refuseAuthorizationCodeConsent(ctx, client_id, verificationValue, issuedAt);
++		if (refusal) throw refusal;
 +	}
  	const boundRedirectUri = verificationValue.query.redirect_uri;
  	if (boundRedirectUri) {
  		if (!redirect_uri) throw new APIError("BAD_REQUEST", {
+@@ -1947,7 +2018,8 @@ async function checkVerificationValue(ctx, opts, code, client_id, redirect_uri,
+ 		verificationValue,
+ 		effectiveResources,
+ 		authorizedResources: storedResources,
+-		authorizationCodeId
++		authorizationCodeId,
++		issuedAt
+ 	};
+ }
+ /**
+@@ -1972,7 +2044,7 @@ async function handleAuthorizationCodeGrant(ctx, opts) {
+ 		error: "invalid_request"
+ 	});
+ 	/** Get and check Verification Value */
+-	const { verificationValue, effectiveResources, authorizedResources, authorizationCodeId } = await checkVerificationValue(ctx, opts, code, client_id, redirect_uri, resources);
++	const { verificationValue, effectiveResources, authorizedResources, authorizationCodeId, issuedAt } = await checkVerificationValue(ctx, opts, code, client_id, redirect_uri, resources);
+ 	const scopes = verificationValue.query.scope?.split(" ");
+ 	if (!scopes) throw new APIError("INTERNAL_SERVER_ERROR", {
+ 		error_description: "verification scope unset",
+@@ -2032,7 +2104,7 @@ async function handleAuthorizationCodeGrant(ctx, opts) {
+ 	});
+ 	const authTime = verificationValue.authTime != null ? normalizeTimestampValue(verificationValue.authTime) : resolveSessionAuthTime(session);
+ 	const requestedUserInfoClaims = getRequestedUserInfoClaims(verificationValue.query.claims, getSupportedClaims(opts));
+-	return createUserTokens(ctx, opts, {
++	const tokens = await createUserTokens(ctx, opts, {
+ 		client,
+ 		scopes: verificationValue.query.scope?.split(" ") ?? [],
+ 		user,
+@@ -2047,6 +2119,19 @@ async function handleAuthorizationCodeGrant(ctx, opts) {
+ 		resources: effectiveResources,
+ 		originalResources: authorizedResources
+ 	});
++	// Workspace patch (better-auth/better-auth#11318): check the consent again
++	// once the tokens exist. A disconnect deletes the consent before the
++	// client's tokens, so either this misses the consent and revokes the
++	// tokens issued for the code, or the disconnect's token deletes start
++	// after these tokens were written.
++	if (verificationValue.consentId || !client.skipConsent) {
++		const refusal = await refuseAuthorizationCodeConsent(ctx, client_id, verificationValue, issuedAt);
++		if (refusal) {
++			await revokeTokensIssuedForAuthorizationCode(ctx, authorizationCodeId);
++			throw refusal;
++		}
++	}
++	return tokens;
+ }
+ /**
+ * Grant that allows direct access to an API using the application's credentials
