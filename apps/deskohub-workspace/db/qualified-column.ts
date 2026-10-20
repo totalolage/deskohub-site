@@ -1,4 +1,4 @@
-import { getTableName, type SQL, sql } from "drizzle-orm";
+import { getColumnTable, getTableName, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 /**
@@ -12,4 +12,4 @@ export const qualifiedColumn = <TColumn extends AnyPgColumn>(
 ): SQL<TColumn["_"]["data"]> =>
   sql<
     TColumn["_"]["data"]
-  >`${sql.identifier(getTableName(column.table))}.${sql.identifier(column.name)}`;
+  >`${sql.identifier(getTableName(getColumnTable(column)))}.${sql.identifier(column.name)}`;
