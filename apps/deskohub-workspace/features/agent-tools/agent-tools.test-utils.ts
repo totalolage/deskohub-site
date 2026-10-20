@@ -8,7 +8,6 @@ import {
 import { Effect, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
-import type { OccupancyReservation } from "@/features/checkout/backend/reservation";
 import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
 import {
   type DiscountAdvertisementInput,
@@ -19,6 +18,7 @@ import { DiscountServiceMock } from "@/features/discounts/discount.service.mock"
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { GoogleCalendarWorkspaceLimitationsService } from "@/features/reservation/backend/google-calendar-workspace-limitations.service";
+import type { ReservationRecord } from "@/features/reservation/backend/reservation-record";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
@@ -84,7 +84,7 @@ export const atInstant =
 export const makeTestOccupancy = (input: {
   readonly tableId: string;
   readonly date: string;
-}): OccupancyReservation => {
+}): ReservationRecord => {
   const { timeZone } = workspaceSiteConstants.location;
   const day = Temporal.PlainDate.from(input.date);
 
@@ -161,7 +161,7 @@ export const makeAgentToolTestServices = ({
   saleBasisPoints,
 }: {
   readonly tables?: readonly DotyposTable[];
-  readonly occupancy?: readonly OccupancyReservation[];
+  readonly occupancy?: readonly ReservationRecord[];
   readonly officeEnabled?: boolean;
   readonly saleBasisPoints?: number;
 } = {}) => {
