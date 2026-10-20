@@ -1,13 +1,23 @@
 import { lt, lte } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { authRateLimit, authSession, authVerification } from "@/db/schema/auth";
+import {
+  authOauthAccessToken,
+  authOauthClientAssertion,
+  authOauthRefreshToken,
+  authRateLimit,
+  authSession,
+  authVerification,
+} from "@/db/schema/auth";
 import { betterAuthMagicLinkOptions } from "./auth-options";
 
 type DeletedAuthRowCounts = {
   readonly sessions: number;
   readonly verifications: number;
   readonly rateLimitRows: number;
+  readonly agentAccessTokens: number;
+  readonly agentRefreshTokens: number;
+  readonly agentClientAssertions: number;
 };
 
 /**
@@ -31,9 +41,12 @@ interface IAuthCleanupService {
 
 /**
  * Daily maintenance of the authentication schema: ordinary set-based
- * deletion of expired sessions and verifications, plus rate-limit rows whose
- * last request is older than the longest configured rate-limit window. No
- * queue, archive, lock, or provider cleanup runs here.
+ * deletion of expired sessions and verifications, rate-limit rows whose
+ * last request is older than the longest configured rate-limit window, and
+ * the expired access tokens, refresh tokens, and client-assertion replay
+ * records of customers' AI agents. Revoked agent tokens stay until they
+ * expire, since refresh-token replay detection reads them. No queue,
+ * archive, lock, or provider cleanup runs here.
  */
 export class AuthCleanupService extends Context.Service<
   AuthCleanupService,
@@ -63,10 +76,27 @@ export class AuthCleanupService extends Context.Service<
             .delete(authRateLimit)
             .where(lt(authRateLimit.lastRequest, rateLimitCutoffMs))
             .returning({ id: authRateLimit.id });
+          const agentAccessTokens = yield* db
+            .delete(authOauthAccessToken)
+            .where(lte(authOauthAccessToken.expiresAt, input.now))
+            .returning({ id: authOauthAccessToken.id });
+          // An expired refresh token's remaining access tokens go with it
+          // (ON DELETE CASCADE); they expire long before it does.
+          const agentRefreshTokens = yield* db
+            .delete(authOauthRefreshToken)
+            .where(lte(authOauthRefreshToken.expiresAt, input.now))
+            .returning({ id: authOauthRefreshToken.id });
+          const agentClientAssertions = yield* db
+            .delete(authOauthClientAssertion)
+            .where(lte(authOauthClientAssertion.expiresAt, input.now))
+            .returning({ id: authOauthClientAssertion.id });
           return {
             sessions: sessions.length,
             verifications: verifications.length,
             rateLimitRows: rateLimitRows.length,
+            agentAccessTokens: agentAccessTokens.length,
+            agentRefreshTokens: agentRefreshTokens.length,
+            agentClientAssertions: agentClientAssertions.length,
           } satisfies DeletedAuthRowCounts;
         }).pipe(
           Effect.mapError(

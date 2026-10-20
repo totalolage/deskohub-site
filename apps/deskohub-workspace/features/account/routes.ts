@@ -77,15 +77,19 @@ export const getSignInDestination = (
 /** The sign-in page query parameter naming why the visitor signs in. */
 export const signInPurposeParam = "for";
 
+const signInPurposes = ["reservation", "assistant"] as const;
+
 /**
  * Why a visitor signs in, when a page sends them: `reservation` to see a
- * reservation they were linked to.
+ * reservation they were linked to, `assistant` to connect an AI assistant to
+ * their account.
  */
-export type SignInPurpose = "reservation";
+export type SignInPurpose = (typeof signInPurposes)[number];
 
 export const parseSignInPurpose = (
   value: string | null | undefined
-): SignInPurpose | undefined => (value === "reservation" ? value : undefined);
+): SignInPurpose | undefined =>
+  signInPurposes.find((purpose) => purpose === value);
 
 /**
  * The sign-in page, continuing to `returnTo` after sign-in when it is a

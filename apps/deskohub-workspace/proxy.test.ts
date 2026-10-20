@@ -787,6 +787,30 @@ test("redirects session-cookie unprefixed administration URLs to the resolved lo
   }
 });
 
+test.each([
+  ["signed out", {}],
+  ["signed in", { cookie: sessionCookie }],
+])(
+  "redirects the OAuth server's AI assistant pages to the locale with their signed query intact while %s",
+  async (_label, headers) => {
+    // The provider's signed query, with encoded values and a repeated key.
+    const query =
+      "?response_type=code&client_id=https%3A%2F%2Fassistant.invalid%2Fclient.json&scope=offerings%3Aread+reservations%3Aread&state=a%2Fb%3Dc&exp=1900000000&ba_iat=1899999400&ba_param=client_id&ba_param=scope&sig=SYNTHETIC-SIG_-";
+    for (const path of ["/auth/connect", "/auth/consent"]) {
+      const response = await proxy(
+        new NextRequest(`https://workspace.example${path}${query}`, {
+          headers: { ...headers, "accept-language": "cs-CZ,cs;q=0.9" },
+        })
+      );
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe(
+        `https://workspace.example/cs-CZ${path}${query}`
+      );
+    }
+  }
+);
+
 describe("account render pathname hand-off", () => {
   const renderedPathname = (response: Response) =>
     response.headers.get("x-middleware-request-x-deskohub-request-pathname");

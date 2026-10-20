@@ -78,8 +78,14 @@ export interface CustomerAgentAuthority {
   ) => Promise<BetterAuthUser | null>;
 }
 
-const isProviderRejection = (cause: unknown) =>
-  cause instanceof Error && cause.name === "APIError";
+/**
+ * Whether Better Auth refused the request itself, such as an unknown token or
+ * client. Its own failures, which surface as 5xx API errors, are not refusals.
+ */
+export const isProviderRejection = (cause: unknown) =>
+  cause instanceof Error &&
+  cause.name === "APIError" &&
+  !(Number((cause as { readonly statusCode?: unknown }).statusCode) >= 500);
 
 const invalidToken = () =>
   new CustomerAgentAuthorizationError({ reason: "invalid-token" });
@@ -210,7 +216,13 @@ export class CustomerAgentAuthorization extends Context.Service<
         CustomerAgentAuthorization.fromAuthority({
           resource: customerMcpResource,
           validateAccessToken: (token) =>
-            auth.api.verifyCustomerAgentAccessToken({ body: { token } }),
+            auth.api.verifyCustomerAgentAccessToken({
+              body: { token },
+              // Direct calls resolve the dynamic base URL from a host; the
+              // MCP resource's host is trusted on every deployment and needs
+              // no request store.
+              headers: new Headers({ host: new URL(customerMcpResource).host }),
+            }),
           findUser: async (accountId) =>
             (await auth.$context).internalAdapter.findUserById(accountId),
         })

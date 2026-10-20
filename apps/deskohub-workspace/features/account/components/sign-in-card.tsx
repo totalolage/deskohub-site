@@ -197,14 +197,18 @@ export function SignInCard({
         {m.accountSignInEyebrow({}, { locale })}
       </p>
       <h1 className="mt-3 text-3xl text-navy-blue">
-        {purpose === "reservation"
-          ? m.accountSignInReservationTitle({}, { locale })
-          : m.accountSignInTitle({}, { locale })}
+        {{
+          none: m.accountSignInTitle,
+          reservation: m.accountSignInReservationTitle,
+          assistant: m.customerAgentSignInTitle,
+        }[purpose ?? "none"]({}, { locale })}
       </h1>
       <p className="mt-3 text-sm leading-6 text-navy-blue/68">
-        {purpose === "reservation"
-          ? m.accountSignInReservationDescription({}, { locale })
-          : m.accountSignInDescription({}, { locale })}
+        {{
+          none: m.accountSignInDescription,
+          reservation: m.accountSignInReservationDescription,
+          assistant: m.customerAgentSignInDescription,
+        }[purpose ?? "none"]({}, { locale })}
       </p>
       <div id="account-sign-in-notice" role="status">
         {showNoLongerWaiting && noticeRegionMounted && (

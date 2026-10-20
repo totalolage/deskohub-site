@@ -61,6 +61,7 @@ import {
   betterAuthSignInCodeOptions,
 } from "./auth-options";
 import {
+  type CustomerAgentClientMetadataTransport,
   disabledCustomerAgentClientPaths,
   makeCustomerAgentAuthorizationPlugins,
 } from "./customer-agent-authorization-server";
@@ -98,6 +99,8 @@ export type WorkspaceAuthConfig = {
   readonly passkeyRelyingParty: PasskeyRelyingParty;
   /** The canonical URL of this deployment's customer MCP server. */
   readonly customerMcpResource: string;
+  /** Test-only stub for fetching agents' Client ID Metadata Documents. */
+  readonly clientMetadataTransport?: CustomerAgentClientMetadataTransport;
   readonly httpsOnly: boolean;
   /**
    * The `login_email_code` read, once per sign-in email; a rejection counts
@@ -886,6 +889,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
       }),
       ...makeCustomerAgentAuthorizationPlugins({
         resource: config.customerMcpResource,
+        clientMetadataTransport: config.clientMetadataTransport,
       }),
       // Better Auth requires `nextCookies` to be the last plugin: it forwards
       // Set-Cookie headers into the Next.js cookie store for Server Action

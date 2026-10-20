@@ -1,6 +1,6 @@
 ---
 name: deskohub-workspace-account
-description: Workspace customer account, Better Auth, magic link, sign-in, session, auth persistence, customer account link, durable customer account, customer_accounts, deleted-account tombstone, reservation author storage, profile, avatar, account deletion, reservation history, saved language preference, signed-in locale, auth retention or PII, PostHog identity.
+description: Workspace customer account, Better Auth, magic link, sign-in, session, auth persistence, customer account link, durable customer account, customer_accounts, deleted-account tombstone, reservation author storage, profile, avatar, account deletion, reservation history, saved language preference, signed-in locale, auth retention or PII, PostHog identity, OAuth server, MCP authorization, AI agent or assistant connection, consent page, CIMD, access token, well-known discovery.
 ---
 
 # Workspace customer accounts
@@ -75,6 +75,9 @@ Read the reference that matches your change before editing:
 - [Magic-link delivery and account E2E](references/magic-link-delivery-and-e2e.md):
   email routing, the Preview and development log lines, Vercel log retrieval,
   and required account test coverage.
+- [Customer agent OAuth](references/customer-agent-oauth.md): the OAuth
+  2.1 server for customers' AI agents, discovery routes, the connect and
+  consent pages, the token-to-customer adapter, revocation, and cleanup.
 - [Privacy and retention](references/privacy-and-retention.md): what each
   system retains, Neon preview copies, Resend, Dotypos expiry, and privacy-copy
   obligations.

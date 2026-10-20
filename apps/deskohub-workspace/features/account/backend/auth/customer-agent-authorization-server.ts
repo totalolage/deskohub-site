@@ -9,14 +9,10 @@ import {
   customerAgentConsentPath,
   customerAgentSignInPath,
 } from "../../customer-agent-routes";
-import { customerAgentScopes } from "../../customer-agent-scopes";
-
-/**
- * Agents may refresh their access without the customer present. Without
- * `offline_access`, Better Auth revokes a grant's tokens when the browser
- * session it was granted in ends.
- */
-const offlineAccessScope = "offline_access";
+import {
+  customerAgentOfflineAccessScope,
+  customerAgentScopes,
+} from "../../customer-agent-scopes";
 
 /**
  * OAuth endpoints a signed-in customer could otherwise call to register or
@@ -32,6 +28,10 @@ export const disabledCustomerAgentClientPaths = [
   "/oauth2/delete-client",
   "/oauth2/end-session",
 ];
+
+/** Fetches an agent's Client ID Metadata Document. */
+export type CustomerAgentClientMetadataTransport =
+  typeof fetchClientMetadataResource;
 
 const accessTokenVerificationBody = Schema.toStandardSchemaV1(
   Schema.Struct({ token: Schema.String })
@@ -52,19 +52,25 @@ const accessTokenVerificationBody = Schema.toStandardSchemaV1(
  */
 export const makeCustomerAgentAuthorizationPlugins = ({
   resource,
+  clientMetadataTransport = fetchClientMetadataResource,
 }: {
   /** The canonical URL of this deployment's customer MCP server. */
   readonly resource: string;
+  /**
+   * Fetches agents' Client ID Metadata Documents. Defaults to the pinned
+   * public-address Node transport; tests inject a stub instead of the network.
+   */
+  readonly clientMetadataTransport?: CustomerAgentClientMetadataTransport;
 }) => {
   const provider = mcp({
     resource,
     loginPage: customerAgentSignInPath,
     consentPage: customerAgentConsentPath,
     disableJwtPlugin: true,
-    scopes: [...customerAgentScopes, offlineAccessScope],
+    scopes: [...customerAgentScopes, customerAgentOfflineAccessScope],
     clientRegistrationDefaultScopes: [
       ...customerAgentScopes,
-      offlineAccessScope,
+      customerAgentOfflineAccessScope,
     ],
   });
 
@@ -88,7 +94,10 @@ export const makeCustomerAgentAuthorizationPlugins = ({
 
   return [
     provider,
-    cimd({ fetchClientMetadataResource, metadataProfile: "mcp-2026-07-28" }),
+    cimd({
+      fetchClientMetadataResource: clientMetadataTransport,
+      metadataProfile: "mcp-2026-07-28",
+    }),
     accessTokenVerification,
   ] as const;
 };
