@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
+  type AdministrationAccountBackfillReportType,
   AdministrationActorEmail,
   AdministrationDiscountCodeId,
+  AdministrationDotyposCustomerId,
   AdministrationLegacyUsername,
   type AdministrationReservationDetailType,
   AdministrationStandaloneAccessCodeAttemptId,
@@ -29,7 +31,11 @@ import { BunServices } from "@effect/platform-bun";
 import { Console, Effect, Exit, Layer, Option, Redacted, Schema } from "effect";
 import { Command } from "effect/unstable/cli";
 import { AccessCodeAttemptStore } from "./access-codes/access-code-attempt-store.service";
-import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
+import { combineAccountBackfillReports } from "./accounts/accounts.command";
+import {
+  CliApiRequestError,
+  WorkspaceAdminApiClient,
+} from "./api/workspace-admin-api-client.service";
 import { AuthenticationService } from "./authentication/authentication.service";
 import { dhwCommand } from "./command";
 import { DhwConfig } from "./config/dhw-config.service";
@@ -76,6 +82,71 @@ const accountApprover = {
   approvedBy: toAdministrationActorName(accountApproverEmail),
   approvedByEmail: accountApproverEmail,
 };
+const makeAccountBackfillReport = (
+  overrides: {
+    readonly dryRun?: boolean;
+    readonly logins?: Partial<
+      AdministrationAccountBackfillReportType["logins"]
+    >;
+    readonly links?: Partial<AdministrationAccountBackfillReportType["links"]>;
+    readonly tombstones?: Partial<
+      AdministrationAccountBackfillReportType["tombstones"]
+    >;
+    readonly authors?: {
+      readonly alreadyAuthored?: number;
+      readonly viaLink?: Partial<
+        AdministrationAccountBackfillReportType["authors"]["viaLink"]
+      >;
+      readonly viaNewLogin?: Partial<
+        AdministrationAccountBackfillReportType["authors"]["viaNewLogin"]
+      >;
+      readonly viaResumedLogin?: Partial<
+        AdministrationAccountBackfillReportType["authors"]["viaResumedLogin"]
+      >;
+      readonly refused?: AdministrationAccountBackfillReportType["authors"]["refused"];
+      readonly remainingCustomers?: number;
+    };
+  } = {}
+): AdministrationAccountBackfillReportType => ({
+  dryRun: overrides.dryRun ?? false,
+  logins: {
+    created: 0,
+    alreadyPresent: 0,
+    ...overrides.logins,
+  },
+  links: {
+    recorded: 0,
+    alreadyRecorded: 0,
+    conflicts: 0,
+    ...overrides.links,
+  },
+  tombstones: {
+    recorded: 0,
+    alreadyDeleted: 0,
+    skippedRecent: 0,
+    ...overrides.tombstones,
+  },
+  authors: {
+    alreadyAuthored: overrides.authors?.alreadyAuthored ?? 0,
+    viaLink: {
+      customers: 0,
+      reservations: 0,
+      ...overrides.authors?.viaLink,
+    },
+    viaNewLogin: {
+      customers: 0,
+      reservations: 0,
+      ...overrides.authors?.viaNewLogin,
+    },
+    viaResumedLogin: {
+      customers: 0,
+      reservations: 0,
+      ...overrides.authors?.viaResumedLogin,
+    },
+    refused: overrides.authors?.refused ?? [],
+    remainingCustomers: overrides.authors?.remainingCustomers ?? 0,
+  },
+});
 const createdAccessCodeOutcome = Schema.decodeUnknownSync(
   AdministrationStandaloneAccessCodeCreationOutcome
 )({
@@ -550,6 +621,218 @@ describe("dhw mutation commands", () => {
     ).pipe(Effect.flip, Effect.runPromise);
 
     expect(error).toBe(notFound);
+  });
+
+  test("combines account backfill counts using initial state and final batch state", () => {
+    const firstRefusal = {
+      dotyposCustomerId: AdministrationDotyposCustomerId.make("customer-first"),
+      reason: "email_missing" as const,
+      reservations: 1,
+    };
+    const lastRefusal = {
+      dotyposCustomerId: AdministrationDotyposCustomerId.make("customer-last"),
+      reason: "login_conflict" as const,
+      reservations: 2,
+    };
+    const first = makeAccountBackfillReport({
+      logins: { created: 1, alreadyPresent: 10 },
+      links: { recorded: 2, alreadyRecorded: 11, conflicts: 12 },
+      tombstones: { recorded: 3, alreadyDeleted: 13, skippedRecent: 14 },
+      authors: {
+        alreadyAuthored: 15,
+        viaLink: { customers: 4, reservations: 5 },
+        viaNewLogin: { customers: 6, reservations: 7 },
+        viaResumedLogin: { customers: 8, reservations: 9 },
+        refused: [firstRefusal],
+        remainingCustomers: 2,
+      },
+    });
+    const last = makeAccountBackfillReport({
+      logins: { created: 16, alreadyPresent: 17 },
+      links: { recorded: 18, alreadyRecorded: 19, conflicts: 20 },
+      tombstones: { recorded: 21, alreadyDeleted: 22, skippedRecent: 23 },
+      authors: {
+        alreadyAuthored: 24,
+        viaLink: { customers: 25, reservations: 26 },
+        viaNewLogin: { customers: 27, reservations: 28 },
+        viaResumedLogin: { customers: 29, reservations: 30 },
+        refused: [lastRefusal],
+        remainingCustomers: 0,
+      },
+    });
+
+    expect(combineAccountBackfillReports([first, last])).toEqual(
+      makeAccountBackfillReport({
+        logins: { created: 17, alreadyPresent: 10 },
+        links: { recorded: 20, alreadyRecorded: 11, conflicts: 20 },
+        tombstones: { recorded: 24, alreadyDeleted: 13, skippedRecent: 23 },
+        authors: {
+          alreadyAuthored: 15,
+          viaLink: { customers: 29, reservations: 31 },
+          viaNewLogin: { customers: 33, reservations: 35 },
+          viaResumedLogin: { customers: 37, reservations: 39 },
+          refused: [lastRefusal],
+          remainingCustomers: 0,
+        },
+      })
+    );
+  });
+
+  test("dry-runs the accounts backfill with exactly one request and no confirmation", async () => {
+    const requests: unknown[] = [];
+    const report = makeAccountBackfillReport({
+      dryRun: true,
+      authors: { remainingCustomers: 5 },
+    });
+    const { layer } = makeCommandLayer({
+      backfillAccounts: (_accessToken, input) =>
+        Effect.sync(() => {
+          requests.push(input);
+          return report;
+        }),
+    });
+    const output: string[] = [];
+    const capturedOutput = Layer.succeed(Console.Console, {
+      ...globalThis.console,
+      log: (...args: ReadonlyArray<unknown>) => {
+        output.push(args.join(" "));
+      },
+    } satisfies Console.Console);
+
+    await runCommand(
+      ["--json", "accounts", "backfill", "--dry-run"],
+      Layer.mergeAll(layer, capturedOutput)
+    ).pipe(Effect.runPromise);
+
+    expect(requests).toEqual([{ dryRun: true }]);
+    expect(output).toEqual([JSON.stringify(report)]);
+  });
+
+  test("applies the accounts backfill through all batches and prints one report", async () => {
+    const refusal = {
+      dotyposCustomerId:
+        AdministrationDotyposCustomerId.make("customer-refused"),
+      reason: "email_missing" as const,
+      reservations: 2,
+    };
+    const requests: unknown[] = [];
+    const batches = [
+      makeAccountBackfillReport({
+        logins: { created: 1, alreadyPresent: 2 },
+        authors: {
+          viaNewLogin: { customers: 1, reservations: 3 },
+          remainingCustomers: 1,
+        },
+      }),
+      makeAccountBackfillReport({
+        logins: { created: 4, alreadyPresent: 5 },
+        links: { conflicts: 6 },
+        authors: {
+          viaLink: { customers: 7, reservations: 8 },
+          refused: [refusal],
+          remainingCustomers: 0,
+        },
+      }),
+    ] as const;
+    const { layer } = makeCommandLayer({
+      backfillAccounts: (_accessToken, input) =>
+        Effect.sync(() => {
+          requests.push(input);
+          return requests.length === 1 ? batches[0] : batches[1];
+        }),
+    });
+    const output: string[] = [];
+    const capturedOutput = Layer.succeed(Console.Console, {
+      ...globalThis.console,
+      log: (...args: ReadonlyArray<unknown>) => {
+        output.push(args.join(" "));
+      },
+    } satisfies Console.Console);
+
+    await runCommand(
+      ["--json", "accounts", "backfill", "--yes"],
+      Layer.mergeAll(layer, capturedOutput)
+    ).pipe(Effect.runPromise);
+
+    expect(requests).toEqual([{ dryRun: false }, { dryRun: false }]);
+    expect(output.map((line) => JSON.parse(line))).toEqual([
+      combineAccountBackfillReports([batches[0], batches[1]]),
+    ]);
+  });
+
+  test("requires confirmation before applying the accounts backfill in JSON mode", async () => {
+    const requests: unknown[] = [];
+    const { layer } = makeCommandLayer({
+      backfillAccounts: (_accessToken, input) =>
+        Effect.sync(() => {
+          requests.push(input);
+          return makeAccountBackfillReport();
+        }),
+    });
+
+    const error = await runCommand(
+      ["--json", "accounts", "backfill"],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(error).toMatchObject({ _tag: "ConfirmationRequiredError" });
+    expect(requests).toEqual([]);
+  });
+
+  test("fails when an account backfill batch makes no progress", async () => {
+    const requests: unknown[] = [];
+    const report = makeAccountBackfillReport({
+      authors: { remainingCustomers: 2 },
+    });
+    const { layer } = makeCommandLayer({
+      backfillAccounts: (_accessToken, input) =>
+        Effect.sync(() => {
+          requests.push(input);
+          return report;
+        }),
+    });
+
+    const error = await runCommand(
+      ["--json", "accounts", "backfill", "--yes"],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(requests).toEqual([{ dryRun: false }, { dryRun: false }]);
+    expect(error).toBeInstanceOf(CliApiRequestError);
+    expect(error.message).toContain("backfill made no progress");
+  });
+
+  test("prints refusal IDs and reasons in human accounts backfill output", async () => {
+    const refusal = {
+      dotyposCustomerId:
+        AdministrationDotyposCustomerId.make("customer-refused"),
+      reason: "login_conflict" as const,
+      reservations: 3,
+    };
+    const { layer } = makeCommandLayer({
+      backfillAccounts: () =>
+        Effect.succeed(
+          makeAccountBackfillReport({
+            dryRun: true,
+            authors: { refused: [refusal] },
+          })
+        ),
+    });
+    const output: string[] = [];
+    const capturedOutput = Layer.succeed(Console.Console, {
+      ...globalThis.console,
+      log: (...args: ReadonlyArray<unknown>) => {
+        output.push(args.join(" "));
+      },
+    } satisfies Console.Console);
+
+    await runCommand(
+      ["accounts", "backfill", "--dry-run"],
+      Layer.mergeAll(layer, capturedOutput)
+    ).pipe(Effect.runPromise);
+
+    expect(output).toContain("Refused: 1 customers");
+    expect(output).toContain("customer-refused\tlogin_conflict\t3");
   });
 
   test("clears the local credential after revoking its own session", async () => {
@@ -1278,6 +1561,7 @@ const runCommand = <R>(
   );
 
 const makeCommandLayer = ({
+  backfillAccounts = () => Effect.die("not used"),
   backfillLegacyAdministrator = () => Effect.die("not used"),
   backfillReservationProductDetails = () => Effect.die("not used"),
   cancelReservation = () =>
@@ -1293,6 +1577,7 @@ const makeCommandLayer = ({
   revokeSession = () => Effect.succeed({ changed: false }),
   stateDirectory = `/tmp/dhw-command-test-${crypto.randomUUID()}`,
 }: {
+  readonly backfillAccounts?: WorkspaceAdminApiClient["Service"]["backfillAccounts"];
   readonly backfillLegacyAdministrator?: WorkspaceAdminApiClient["Service"]["backfillLegacyAdministrator"];
   readonly backfillReservationProductDetails?: WorkspaceAdminApiClient["Service"]["backfillReservationProductDetails"];
   readonly cancelReservation?: WorkspaceAdminApiClient["Service"]["cancelReservation"];
@@ -1314,6 +1599,7 @@ const makeCommandLayer = ({
   }> = [];
   const api = Layer.succeed(WorkspaceAdminApiClient, {
     ...({} as WorkspaceAdminApiClient["Service"]),
+    backfillAccounts,
     backfillLegacyAdministrator,
     backfillReservationProductDetails,
     cancelReservation,
