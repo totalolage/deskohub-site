@@ -173,6 +173,10 @@ const uniqueDotyposCustomerId = () =>
 
 const insertAuthUser = async (id: string, email: string) => {
   await testDatabase!.pool.query(
+    "insert into customer_accounts (id) values ($1) on conflict do nothing",
+    [id]
+  );
+  await testDatabase!.pool.query(
     `insert into auth."user" (id, name, email) values ($1, '', $2)`,
     [id, email]
   );
@@ -180,7 +184,7 @@ const insertAuthUser = async (id: string, email: string) => {
 
 const insertLink = async (account: string, dotyposCustomerId: string) => {
   await testDatabase!.pool.query(
-    `insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2) on conflict do nothing`,
+    `update customer_accounts set dotypos_customer_id = $2 where id = $1`,
     [account, dotyposCustomerId]
   );
 };

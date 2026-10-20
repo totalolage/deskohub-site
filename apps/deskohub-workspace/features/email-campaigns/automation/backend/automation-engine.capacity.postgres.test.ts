@@ -15,7 +15,10 @@ import type {
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, References } from "effect";
 import { TestClock } from "effect/testing";
-import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  createWorkspacePostgresSuiteDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { everyoneFilter } from "../../backend/email-campaigns.test-utils";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
@@ -249,16 +252,21 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
       const confirmedAt = visitedAt.subtract({ hours: 48 }).toString();
       await pool.query(
         `insert into workspace_reservations
-           (id, checkout_attempt_key, dotypos_customer_id, dotypos_reservation_id,
-            reservation_state, reservation_confirmed_at, payment_state, paid_at,
-            fulfillment_state, fulfilled_at, reservation_details, locale,
-            reservation_created_at)
-         select r.id, r.id, r.customer, r.id || '-dotypos',
+           (id, checkout_attempt_key, dotypos_customer_id, author_account_id,
+            dotypos_reservation_id, reservation_state, reservation_confirmed_at,
+            payment_state, paid_at, fulfillment_state, fulfilled_at,
+            reservation_details, locale, reservation_created_at)
+         select r.id, r.id, r.customer, $4, r.id || '-dotypos',
                 'confirmed', $3, 'paid', $3, 'fulfilled', $3,
                 '{"kind":"cowork","entryTier":"open-space","coffee":false}'::jsonb,
                 'cs-CZ', $3
          from unnest($1::text[], $2::text[]) as r(id, customer)`,
-        [reservationIds, reservationCustomers, confirmedAt]
+        [
+          reservationIds,
+          reservationCustomers,
+          confirmedAt,
+          fixtureReservationAuthorId,
+        ]
       );
       return ids;
     };

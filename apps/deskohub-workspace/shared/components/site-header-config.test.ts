@@ -109,8 +109,6 @@ describe("getSiteHeaderConfig", () => {
     expect(en.administrator).toMatchObject({
       href: "/en-US/admin",
       label: "Admin",
-      ribbonLabel: "Signed in as administrator",
-      ribbonActionLabel: "Open admin",
     });
 
     const cs = await getSiteHeaderConfig("cs-CZ");
@@ -118,8 +116,6 @@ describe("getSiteHeaderConfig", () => {
     expect(cs.administrator).toMatchObject({
       href: "/cs-CZ/admin",
       label: "Admin",
-      ribbonLabel: "Přihlášeni jako administrátor",
-      ribbonActionLabel: "Otevřít administraci",
     });
   });
 

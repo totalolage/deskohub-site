@@ -94,9 +94,7 @@
   --brand-burned-orange-ink: #7a2e0a;
   --brand-aquamarine-green: #00df99;
   --brand-aquamarine-ink: #004c3b;
-  --site-header-bar-height: 6rem;
-  --site-header-admin-ribbon-height: 2.75rem;
-  --site-header-height: var(--site-header-bar-height);
+  --site-header-height: 6rem;
   --anchor-scroll-offset: var(--site-header-height);
 
   --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI",
@@ -110,13 +108,6 @@
   --font-body-weight: 400;
 
   --radius: 0.65rem;
-}
-
-/* The administrator ribbon docks under the bar, so content clears both. */
-:root:has([data-site-header-admin-ribbon]) {
-  --site-header-height: calc(
-    var(--site-header-bar-height) + var(--site-header-admin-ribbon-height)
-  );
 }
 
 html {

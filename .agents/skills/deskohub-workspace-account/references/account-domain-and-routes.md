@@ -37,35 +37,34 @@ glossary defines the customer account, reservation author, and tombstone.
 
 - `public.customer_accounts` stores the account's id, which is the Better Auth
   user id (`CustomerAccountId`), its own Dotypos customer
-  (`dotypos_customer_id`, unique), its creation instant, and `deleted_at`. It
-  has no foreign key to `auth.user`, so it outlives the identity, and it holds
-  no personal data.
-- The account's Dotypos customer is moving from `customer_account_links` onto
-  the column (#682 expand/contract). Until the contract release, the claim
-  writes both, readers prefer the column and fall back to the link row
-  (`customer-account-dotypos-link.ts`), and a tombstone gives up the column as
-  the link row goes with the identity.
-- The Better Auth `user.create.before` hook creates the row before the login
-  insert, so every new login has one; a server-side `createUser` must pass the
-  id from `generateId`. Logins from before the hook get theirs from the
-  account backfill. `ensureCustomerAccount` still creates a missing row in the
-  transaction that names the account, and deletion creates a tombstone when
-  none exists. Better Auth can't run the hook and the login insert in one
-  transaction (its magic-link `createUser` isn't transaction-wrapped), so a
-  failed insert leaves an account without a login. The daily auth cleanup
-  cron tombstones live accounts whose login is gone once they are a day old
-  (`tombstoneOrphanedAccounts`); account deletion tombstones before it
-  deletes the login, so the sweep only catches interrupted flows.
-- `workspace_reservations.author_account_id` references it with `ON DELETE
-  RESTRICT`. Never delete a customer account row; deletion tombstones it
-  through `CustomerAccountRepository.tombstone`.
+  (`dotypos_customer_id`, unique, null until the profile is completed), its
+  creation instant, and `deleted_at`. It holds no personal data.
+- Every login has one. Better Auth's `user.create.before` hook creates the
+  account (`ensureCustomerAccount`) before it inserts the login, and
+  `auth.user.id` references `customer_accounts.id` with `ON DELETE RESTRICT`,
+  so the account outlives the login. A server-side `createUser` must pass the
+  id from `generateId`, and anything that inserts `auth.user` rows directly,
+  such as a test fixture, creates the account first.
+- Better Auth can't run that hook and the login insert in one transaction
+  (its magic-link `createUser` isn't transaction-wrapped), so a failed insert
+  leaves an account without a login. The daily auth cleanup cron tombstones
+  live accounts whose login is gone once they are a day old
+  (`tombstoneOrphanedAccounts`). Account deletion tombstones the account
+  before it deletes the login, so the sweep only catches interrupted flows.
+- `CustomerAccountLinkRepository.claim` links the account to its customer on
+  that row. Only a live account without a customer takes one, the unique index
+  turns a customer another account holds into `claimed`, and only the claim
+  that records the link writes the `account-created` event and the signup
+  referral.
+- `workspace_reservations.author_account_id` is `NOT NULL` and references it
+  with `ON DELETE RESTRICT`. Never delete a customer account row; deletion
+  tombstones it through `CustomerAccountRepository.tombstone`, which also
+  clears its Dotypos customer so another account can claim it.
 - `OptionalAccountActivityGuard.guardStateCreation` hands the state-creating
   section the account it verified under the account lock. Checkout requires a
   verified session, so the submission section always gets one; it records it
-  as the author of new drafts and calls `WorkspaceReservationRepository.assignAuthor` when a
-  signed-in submission reuses an authorless draft. Payment does not set an
-  author. An authorless legacy reservation stays authorless until the #682
-  backfill.
+  as the author of new drafts and never reuses a draft another account
+  authored. Payment does not set an author.
 - `CustomerReservationHistoryService` lists the rows of the account's own
   customer and the rows it authored for other customers (fetched from Dotypos
   by reservation id through `readInIdFilterBatches`). Each summary's `party` labels the
@@ -75,20 +74,14 @@ glossary defines the customer account, reservation author, and tombstone.
   `getCustomerDisplayName` over `getCustomers` reads batched the same way. Author and
   name reads are degradable: a failure logs a fixed code and leaves the party
   unnamed (null), never failing the history.
-- `author_account_id` is null only for reservations made before authors were
-  recorded, until the legacy backfill fills them and the column becomes NOT
-  NULL.
-- `CustomerAccountBackfill` (`dhw accounts backfill`, see the administration
-  skill's [dhw-cli.md](../../deskohub-workspace-administration/references/dhw-cli.md#customer-account-backfill))
-  gives a legacy customer with no linked account a silent login: an
-  unverified `auth.user` row for its Dotypos email, created through
-  `UnverifiedLogins` (`backend/auth/unverified-logins.service.ts`, Better
-  Auth's `internalAdapter.createUser` with a generated id) without sending
-  email, then linked to the customer without an `account-created` event or
-  referral. Workspace rejects its sessions until the owner signs in by link
+- Legacy reservations got their authors before release B (#682): release A's
+  `dhw accounts backfill` gave each unlinked legacy customer a silent,
+  unverified login for its Dotypos email and linked it without an
+  `account-created` event or referral, and B's migration enforces the result.
+  Workspace rejects such a login's sessions until its owner signs in by link
   or code to that email, which verifies the same row. Account-created
   reconciliation and campaign audiences count only verified logins. Nothing
-  else creates unverified logins.
+  creates unverified logins any more.
 
 ## Error contract
 
@@ -165,14 +158,11 @@ glossary defines the customer account, reservation author, and tombstone.
   `isCustomerSignedIn` promise that the header resolves with `use()` inside
   `Suspense`, with the sign-in href as fallback. Keep the static shell
   independent of the session; a failed session check reads as signed out.
-- The header's Admin entry (button, mobile-menu button, and ribbon) follows
+- The header's Admin entry (button and mobile-menu button) follows
   the same pattern: an uncached `isCurrentAccountAdministrator` promise
   (`features/administrators/server`) checks the verified session's account
   against `AccountRoleGrants` on every request, renders nothing while pending,
-  and reads any failure as not an administrator. The ribbon raises
-  `--site-header-height` through `:root:has([data-site-header-admin-ribbon])`
-  in `app/globals.css`; size header offsets with that variable, and the bar
-  itself with `--site-header-bar-height`.
+  and reads any failure as not an administrator.
 - Keep sign-in completion and sign-out as document navigations so the header
   re-reads the session. The `/account` redirect for signed-out visitors stays
   only for direct or stale navigations, and it is a document navigation too,

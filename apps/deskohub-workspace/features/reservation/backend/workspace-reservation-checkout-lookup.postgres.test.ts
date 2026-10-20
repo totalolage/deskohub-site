@@ -32,6 +32,7 @@ import {
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import {
   connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
@@ -62,6 +63,7 @@ describe.skipIf(!postgresDatabase)(
           `reservation-${crypto.randomUUID()}`
         );
         yield* postgres.db.insert(workspaceReservations).values({
+          authorAccountId: fixtureReservationAuthorId,
           id,
           checkoutSessionKey: input.checkoutSessionKey,
           checkoutAttemptKey: input.checkoutAttemptKey,
@@ -231,6 +233,7 @@ describe.skipIf(!postgresDatabase)(
       );
 
       return {
+        authorAccountId: fixtureReservationAuthorId,
         ...draftDetails,
         ...{
           "ring-keyed": {
@@ -283,6 +286,7 @@ describe.skipIf(!postgresDatabase)(
         const [inserted] = yield* postgres.db
           .insert(workspaceReservations)
           .values({
+            authorAccountId: fixtureReservationAuthorId,
             id: workspaceReservationIdSchema.make(
               `reservation-${crypto.randomUUID()}`
             ),
@@ -388,6 +392,7 @@ describe.skipIf(!postgresDatabase)(
         await drizzle({ client: writer })
           .insert(workspaceReservations)
           .values({
+            authorAccountId: fixtureReservationAuthorId,
             id: writerId,
             checkoutSessionKey: input.checkoutSessionKey,
             checkoutAttemptKey: input.checkoutAttemptKey,

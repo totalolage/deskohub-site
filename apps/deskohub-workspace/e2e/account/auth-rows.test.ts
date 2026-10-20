@@ -7,91 +7,56 @@ import { removeSyntheticAccountLink } from "./auth-rows";
 
 type SyntheticLink = {
   readonly customerAccountId: string;
-  readonly dotyposCustomerId: string;
-};
-
-type SyntheticAccount = {
-  readonly dotyposCustomerId: string | null;
-  readonly id: string;
-};
-
-type ReturnedAccountRows = readonly { readonly customerAccountId: string }[];
-
-const exactMatchParams = (condition: SQL) => {
-  const { params } = new PgDialect().sqlToQuery(condition);
-  const [accountId, customerId] = params;
-  return { accountId, customerId };
+  dotyposCustomerId: string | null;
 };
 
 const makeFakeDatabase = (input: {
-  readonly accounts?: readonly SyntheticAccount[];
-  readonly links: readonly SyntheticLink[];
-  readonly returnedAccountRows?: ReturnedAccountRows;
-  readonly returnedLinkRows?: ReturnedAccountRows;
+  readonly rows: readonly SyntheticLink[];
+  readonly returnedRows?: readonly { readonly customerAccountId: string }[];
 }) => {
-  const links = [...input.links];
-  const accounts = [...(input.accounts ?? [])];
-  const captured: { accountWhere?: SQL; linkWhere?: SQL } = {};
-
-  const tx = {
-    delete: (_table: unknown) => ({
-      where: (condition: SQL) => {
-        captured.linkWhere = condition;
-        return {
-          returning: (_selection: Record<string, unknown>) =>
-            Effect.sync(() => {
-              const { accountId, customerId } = exactMatchParams(condition);
-              const deleted = links.filter(
-                (row) =>
-                  row.customerAccountId === accountId &&
-                  row.dotyposCustomerId === customerId
-              );
-              links.splice(
-                0,
-                links.length,
-                ...links.filter((row) => !deleted.includes(row))
-              );
-              return (
-                input.returnedLinkRows ??
-                deleted.map(({ customerAccountId }) => ({ customerAccountId }))
-              );
-            }),
-        };
-      },
-    }),
-    update: (_table: unknown) => ({
-      set: (_values: Record<string, unknown>) => ({
-        where: (condition: SQL) => {
-          captured.accountWhere = condition;
-          return {
-            returning: (_selection: Record<string, unknown>) =>
-              Effect.sync(() => {
-                const { accountId, customerId } = exactMatchParams(condition);
-                const cleared: { customerAccountId: string }[] = [];
-                accounts.forEach((row, index) => {
-                  if (
-                    row.id === accountId &&
-                    row.dotyposCustomerId === customerId
-                  ) {
-                    accounts[index] = { ...row, dotyposCustomerId: null };
-                    cleared.push({ customerAccountId: row.id });
-                  }
-                });
-                return input.returnedAccountRows ?? cleared;
-              }),
-          };
-        },
-      }),
-    }),
-  };
+  const rows = [...input.rows];
+  const captured: { set?: Record<string, unknown>; where?: SQL } = {};
 
   const db = {
-    transaction: <A, E, R>(
-      run: (transaction: typeof tx) => Effect.Effect<A, E, R>
-    ) => run(tx),
+    update: (_table: unknown) => {
+      return {
+        set: (values: Record<string, unknown>) => {
+          captured.set = values;
+          return {
+            where: (condition: SQL) => {
+              captured.where = condition;
+              return {
+                returning: (_selection: Record<string, unknown>) => {
+                  return Effect.sync(() => {
+                    const { params } = new PgDialect().sqlToQuery(condition);
+                    const [accountId, customerId] = params;
+                    const updated = rows.filter(
+                      (row) =>
+                        row.customerAccountId === accountId &&
+                        row.dotyposCustomerId === customerId
+                    );
+                    for (const row of updated) {
+                      row.dotyposCustomerId = values.dotyposCustomerId as
+                        | string
+                        | null;
+                    }
+                    return (
+                      input.returnedRows ??
+                      updated.map(({ customerAccountId }) => ({
+                        customerAccountId,
+                      }))
+                    );
+                  });
+                },
+              };
+            },
+          };
+        },
+      };
+    },
   };
 
-  return { accounts, captured, db, links };
+  return { captured, db, rows };
 };
 
 const runRemoveSyntheticAccountLink = async (
@@ -109,20 +74,12 @@ const runRemoveSyntheticAccountLink = async (
   );
 
 describe("removeSyntheticAccountLink", () => {
-  test("unlinks only the exact account in both records and preserves other synthetic records", async () => {
+  test("clears only the exact account link and preserves other synthetic records", async () => {
     const accountId = "account-target";
     const customerId = "customer-target";
     const database = makeFakeDatabase({
-      accounts: [
-        { dotyposCustomerId: customerId, id: accountId },
-        { dotyposCustomerId: "customer-other", id: "account-other" },
-      ],
-      links: [
+      rows: [
         { customerAccountId: accountId, dotyposCustomerId: customerId },
-        {
-          customerAccountId: accountId,
-          dotyposCustomerId: "customer-other-for-account",
-        },
         {
           customerAccountId: "account-other",
           dotyposCustomerId: "customer-other",
@@ -137,89 +94,42 @@ describe("removeSyntheticAccountLink", () => {
     );
 
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(database.links).toEqual([
+    expect(database.rows).toEqual([
       {
         customerAccountId: accountId,
-        dotyposCustomerId: "customer-other-for-account",
+        dotyposCustomerId: null,
       },
       {
         customerAccountId: "account-other",
         dotyposCustomerId: "customer-other",
       },
     ]);
-    expect(database.accounts).toEqual([
-      { dotyposCustomerId: null, id: accountId },
-      { dotyposCustomerId: "customer-other", id: "account-other" },
-    ]);
-    const dialect = new PgDialect();
-    const linkQuery = dialect.sqlToQuery(database.captured.linkWhere!);
-    expect(linkQuery.sql).toBe(
-      '(("customer_account_links"."customer_account_id" = $1) and ("customer_account_links"."dotypos_customer_id" = $2))'
-    );
-    expect(linkQuery.params).toEqual([accountId, customerId]);
-    const accountQuery = dialect.sqlToQuery(database.captured.accountWhere!);
-    expect(accountQuery.sql).toBe(
+    expect(database.captured.where).toBeDefined();
+    expect(database.captured.set).toEqual({ dotyposCustomerId: null });
+    const query = new PgDialect().sqlToQuery(database.captured.where!);
+    expect(query.sql).toBe(
       '(("customer_accounts"."id" = $1) and ("customer_accounts"."dotypos_customer_id" = $2))'
     );
-    expect(accountQuery.params).toEqual([accountId, customerId]);
-  });
-
-  test("unlinks an account that only one record names", async () => {
-    const accountId = "account-target";
-    const customerId = "customer-target";
-    const database = makeFakeDatabase({
-      accounts: [{ dotyposCustomerId: customerId, id: accountId }],
-      links: [],
-    });
-
-    const exit = await runRemoveSyntheticAccountLink(
-      accountId,
-      customerId,
-      database
-    );
-
-    expect(Exit.isSuccess(exit)).toBe(true);
-    expect(database.accounts).toEqual([
-      { dotyposCustomerId: null, id: accountId },
-    ]);
+    expect(query.params).toEqual([accountId, customerId]);
   });
 
   test.each([
     {
       name: "missing",
-      returnedAccountRows: [],
-      returnedLinkRows: [],
+      returnedRows: [],
     },
     {
       name: "mismatched",
-      returnedAccountRows: [],
-      returnedLinkRows: [{ customerAccountId: "account-other" }],
-    },
-    {
-      name: "mismatched in the account record",
-      returnedAccountRows: [{ customerAccountId: "account-other" }],
-      returnedLinkRows: [{ customerAccountId: "account-target" }],
-    },
-    {
-      name: "duplicated",
-      returnedAccountRows: [
-        { customerAccountId: "account-target" },
-        { customerAccountId: "account-target" },
-      ],
-      returnedLinkRows: [],
+      returnedRows: [{ customerAccountId: "account-other" }],
     },
   ])(
-    "fails closed when the unlinked account is $name",
-    async ({ returnedAccountRows, returnedLinkRows }) => {
+    "fails closed when the deleted link is $name",
+    async ({ returnedRows }) => {
       const accountId = "account-target";
       const customerId = "customer-target";
       const database = makeFakeDatabase({
-        accounts: [{ dotyposCustomerId: customerId, id: accountId }],
-        links: [
-          { customerAccountId: accountId, dotyposCustomerId: customerId },
-        ],
-        returnedAccountRows,
-        returnedLinkRows,
+        returnedRows,
+        rows: [{ customerAccountId: accountId, dotyposCustomerId: customerId }],
       });
 
       const exit = await runRemoveSyntheticAccountLink(

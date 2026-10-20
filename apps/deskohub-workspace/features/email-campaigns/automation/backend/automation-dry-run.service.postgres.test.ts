@@ -36,7 +36,10 @@ import {
 } from "@/db/schema";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  createWorkspacePostgresSuiteDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AudienceCondition, AudienceFilter } from "../../audience-filter";
 import { AudienceFactsService } from "../../backend/audience-facts.service";
 import { CampaignCandidateRepository } from "../../backend/campaign-candidate.repository";
@@ -390,6 +393,7 @@ describe.skipIf(!testDatabase)(
         const cancelled = reservation.workspaceCancelledAt !== undefined;
         return {
           id,
+          authorAccountId: fixtureReservationAuthorId,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
           dotyposCustomerId: reservation.customer,
           dotyposReservationId: DotyposReservationIdSchema.make(

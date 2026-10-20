@@ -1101,14 +1101,8 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         const { checkoutSessionId, reservationDraft } = preparedDraft;
         yield* Effect.annotateLogsScoped({ reservationDraft });
 
-        // A legacy draft started before sign-in has no author yet, so the
-        // account resuming it becomes its author. A draft another account
-        // authored isn't this account's to resume.
-        const author = yield* reservations.assignAuthor({
-          id: reservationDraft.id,
-          authorAccountId: accountId,
-        });
-        if (author !== accountId) {
+        // A draft another account authored isn't this account's to resume.
+        if (reservationDraft.authorAccountId !== accountId) {
           return yield* new CheckoutAttemptUnavailableError({
             reservation: reservationDraft,
           });

@@ -14,7 +14,10 @@ import {
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { PaymentAdministrationService } from "./payment-administration.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -66,6 +69,7 @@ describe.skipIf(!testDatabase)(
     test("filters local orders by provider order creation time, falling back to attempt creation", async () => {
       await Effect.runPromise(
         testDatabase.db.insert(workspaceReservations).values({
+          authorAccountId: fixtureReservationAuthorId,
           id: reservationId,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${runId}`),
           dotyposCustomerId: DotyposCustomerIdSchema.make(

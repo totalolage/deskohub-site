@@ -11,7 +11,10 @@ import {
 } from "@/db/schema";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  createWorkspacePostgresSuiteDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   deleteAutomatedCampaigns,
   seedAutomatedCampaign,
@@ -192,6 +195,7 @@ describe.skipIf(!database)("AutomationIntakePlanning on Postgres", () => {
       db.insert(workspaceReservations).values(
         reservations.map(({ id, customer }) => ({
           id,
+          authorAccountId: fixtureReservationAuthorId,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
           dotyposCustomerId: customer,
           dotyposReservationId: DotyposReservationIdSchema.make(

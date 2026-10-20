@@ -24,7 +24,10 @@ import type {
   AudienceFilter,
 } from "@/features/email-campaigns/audience-filter";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   AudienceFactSource,
   audienceEvaluationAt,
@@ -73,6 +76,7 @@ const insertReservations = async (
       const unconfirmed = state === "unconfirmed";
       return {
         id,
+        authorAccountId: fixtureReservationAuthorId,
         checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
         dotyposCustomerId,
         dotyposReservationId: DotyposReservationIdSchema.make(

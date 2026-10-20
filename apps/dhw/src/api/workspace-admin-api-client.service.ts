@@ -1,7 +1,5 @@
 import {
   type AdminCliInfoType,
-  type AdministrationAccountBackfillInputType,
-  type AdministrationAccountBackfillReportType,
   type AdministrationBookingDetailType,
   type AdministrationBookingPageType,
   type AdministrationBookingQueryType,
@@ -189,13 +187,6 @@ interface IWorkspaceAdminApiClient {
     | CliResourceNotFound
     | CliSessionUnauthorized
     | CliServiceUnavailable
-  >;
-  readonly backfillAccounts: (
-    accessToken: Redacted.Redacted<CliAccessTokenType>,
-    input: AdministrationAccountBackfillInputType
-  ) => Effect.Effect<
-    AdministrationAccountBackfillReportType,
-    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
   readonly backfillReservationProductDetails: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
@@ -910,18 +901,6 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
         ),
         Effect.mapError(sanitizeSessionError)
       )
-    ),
-    backfillAccounts: Effect.fn("WorkspaceAdminApiClient.backfillAccounts")(
-      (
-        accessToken: Redacted.Redacted<CliAccessTokenType>,
-        input: AdministrationAccountBackfillInputType
-      ) =>
-        makeClient(accessToken).pipe(
-          Effect.flatMap((authorized) =>
-            authorized.accounts.backfillAccounts({ payload: input })
-          ),
-          Effect.mapError(sanitizeSessionError)
-        )
     ),
     backfillReservationProductDetails: Effect.fn(
       "WorkspaceAdminApiClient.backfillReservationProductDetails"

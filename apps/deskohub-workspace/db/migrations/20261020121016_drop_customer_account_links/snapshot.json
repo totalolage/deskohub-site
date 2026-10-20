@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "2dbab457-ad41-414c-a69f-9e5bf7288f08",
+  "id": "78322a3d-e9ae-4284-983d-12b3884eb0f0",
   "prevIds": [
-    "d00224b0-4933-46ff-a5ce-e01bbb8c6b71"
+    "59e4a2b1-6f26-4406-8761-9a758e432072"
   ],
   "ddl": [
     {
@@ -37,12 +37,6 @@
     {
       "isRlsEnabled": false,
       "name": "cli_sessions",
-      "entityType": "tables",
-      "schema": "public"
-    },
-    {
-      "isRlsEnabled": false,
-      "name": "customer_account_links",
       "entityType": "tables",
       "schema": "public"
     },
@@ -947,32 +941,6 @@
       "entityType": "columns",
       "schema": "public",
       "table": "cli_sessions"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "customer_account_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "customer_account_links"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "dotypos_customer_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "customer_account_links"
     },
     {
       "type": "text",
@@ -2335,19 +2303,6 @@
       "generated": null,
       "identity": null,
       "name": "projected",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "email_campaign_automation_preview_rows"
-    },
-    {
-      "type": "boolean",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "false",
-      "generated": null,
-      "identity": null,
-      "name": "reservation_statuses_approximate",
       "entityType": "columns",
       "schema": "public",
       "table": "email_campaign_automation_preview_rows"
@@ -6765,7 +6720,7 @@
     {
       "type": "text",
       "typeSchema": null,
-      "notNull": false,
+      "notNull": true,
       "dimensions": 0,
       "default": null,
       "generated": null,
@@ -7890,27 +7845,6 @@
       "entityType": "indexes",
       "schema": "public",
       "table": "cli_sessions"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
-          "value": "dotypos_customer_id",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": true,
-      "where": null,
-      "with": "",
-      "method": "btree",
-      "concurrently": false,
-      "name": "customer_account_links_dotypos_customer_unique_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "customer_account_links"
     },
     {
       "nameExplicit": true,
@@ -10396,23 +10330,6 @@
     {
       "nameExplicit": false,
       "columns": [
-        "customer_account_id"
-      ],
-      "schemaTo": "auth",
-      "tableTo": "user",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "customer_account_links_customer_account_id_user_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "customer_account_links"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
         "workspace_reservation_id"
       ],
       "schemaTo": "public",
@@ -11576,6 +11493,23 @@
       "table": "session"
     },
     {
+      "nameExplicit": false,
+      "columns": [
+        "id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "customer_accounts",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "name": "user_id_customer_accounts_id_fkey",
+      "entityType": "fks",
+      "schema": "auth",
+      "table": "user"
+    },
+    {
       "columns": [
         "account_id",
         "role"
@@ -11747,16 +11681,6 @@
       "name": "cli_sessions_pkey",
       "schema": "public",
       "table": "cli_sessions",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
-        "customer_account_id"
-      ],
-      "nameExplicit": false,
-      "name": "customer_account_links_pkey",
-      "schema": "public",
-      "table": "customer_account_links",
       "entityType": "pks"
     },
     {
@@ -12403,13 +12327,6 @@
       "entityType": "checks",
       "schema": "public",
       "table": "cli_sessions"
-    },
-    {
-      "value": "btrim(\"dotypos_customer_id\") <> ''",
-      "name": "customer_account_links_customer_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "customer_account_links"
     },
     {
       "value": "btrim(\"dotypos_customer_id\") <> ''",

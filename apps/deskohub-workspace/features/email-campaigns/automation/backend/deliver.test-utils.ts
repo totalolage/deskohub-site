@@ -20,7 +20,10 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import type { WorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  fixtureReservationAuthorId,
+  type WorkspacePostgresSuiteDatabase,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   seedAutomatedCampaign,
   seedAutomation,
@@ -166,6 +169,7 @@ export const seedDeliverReservations = async (
     const id = workspaceReservationIdSchema.make(`${prefix}-${visit.label}`);
     return {
       id,
+      authorAccountId: fixtureReservationAuthorId,
       checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
       dotyposCustomerId: visit.customer,
       dotyposReservationId: DotyposReservationIdSchema.make(

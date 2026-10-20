@@ -45,9 +45,10 @@ import type {
   CustomerEventKind,
 } from "@/shared/backend/customer-events/customer-event";
 import { CustomerEventReconciler } from "@/shared/backend/customer-events/customer-event-reconciler";
-import type {
-  WorkspacePostgresSuiteDatabase,
-  WorkspacePostgresTestDatabase,
+import {
+  fixtureReservationAuthorId,
+  type WorkspacePostgresSuiteDatabase,
+  type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { AudienceFactsService } from "../../backend/audience-facts.service";
 import { CampaignCandidateRepository } from "../../backend/campaign-candidate.repository";
@@ -696,6 +697,7 @@ export const makeEngineFixtures = (
     await Effect.runPromise(
       db.insert(workspaceReservations).values({
         id,
+        authorAccountId: fixtureReservationAuthorId,
         checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
         dotyposCustomerId: input.customer,
         dotyposReservationId: dotyposReservationId(id),

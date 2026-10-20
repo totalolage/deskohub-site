@@ -5,7 +5,7 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import { emailCampaignAudiences } from "@/db/schema";
+import { customerAccounts, emailCampaignAudiences } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { AudienceFilter } from "@/features/email-campaigns/audience-filter";
@@ -186,6 +186,9 @@ export const automationLifecycleTestKit = (
   const seedAccount = async () => {
     const accountId = crypto.randomUUID() as CustomerAccountId;
     accountIds.push(accountId);
+    await Effect.runPromise(
+      db.insert(customerAccounts).values({ id: accountId })
+    );
     await Effect.runPromise(
       db.insert(authUser).values({
         id: accountId,

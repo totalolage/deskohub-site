@@ -33,7 +33,10 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import { rejectCustomerEventInserts } from "@/shared/backend/customer-events/customer-event-outbox.test-utils";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   fulfillmentEmailFailureCode,
   WorkspaceReservationRepository,
@@ -100,6 +103,7 @@ describe.skipIf(!testDatabase)(
       reservationIds.push(id);
       await Effect.runPromise(
         testDatabase.db.insert(workspaceReservations).values({
+          authorAccountId: fixtureReservationAuthorId,
           id,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${key}`),
           dotyposCustomerId: DotyposCustomerIdSchema.make(`customer-${key}`),
@@ -984,7 +988,7 @@ describe.skipIf(!testDatabase)(
               dotyposCustomerId: DotyposCustomerIdSchema.make(
                 `customer-${replacementKey}`
               ),
-              authorAccountId: null,
+              authorAccountId: fixtureReservationAuthorId,
               reservationPurpose: "personal",
               reservationDetails: {
                 kind: "cowork",

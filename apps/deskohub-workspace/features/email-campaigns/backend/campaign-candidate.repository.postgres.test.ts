@@ -12,7 +12,6 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { Effect, Option } from "effect";
 import {
-  customerAccountLinks,
   customerAccounts,
   customerMarketingConsents,
   workspaceReservations,
@@ -20,7 +19,10 @@ import {
 import { authUser } from "@/db/schema/auth";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type AudienceCondition,
   audienceFactKey,
@@ -105,9 +107,19 @@ describe.skipIf(!testDatabase)(
 
     beforeAll(async () => {
       await Effect.runPromise(
+        db
+          .insert(customerAccounts)
+          .values([
+            { id: accountId, dotyposCustomerId: linked },
+            { id: unverifiedAccountId, dotyposCustomerId: unverifiedLinked },
+          ])
+          .onConflictDoNothing()
+      );
+      await Effect.runPromise(
         Effect.all([
           db.insert(workspaceReservations).values([
             {
+              authorAccountId: fixtureReservationAuthorId,
               checkoutAttemptKey: checkoutAttemptKeySchema.make(`old-${run}`),
               dotyposCustomerId: reserved,
               dotyposReservationId: DotyposReservationIdSchema.make(
@@ -121,6 +133,7 @@ describe.skipIf(!testDatabase)(
               createdAt: createdAt.subtract({ hours: 240 }),
             },
             {
+              authorAccountId: fixtureReservationAuthorId,
               checkoutAttemptKey: checkoutAttemptKeySchema.make(`new-${run}`),
               dotyposCustomerId: reserved,
               dotyposReservationId: visitedReservation,
@@ -135,6 +148,7 @@ describe.skipIf(!testDatabase)(
               createdAt,
             },
             {
+              authorAccountId: fixtureReservationAuthorId,
               checkoutAttemptKey: checkoutAttemptKeySchema.make(
                 `abandoned-${run}`
               ),
@@ -148,6 +162,7 @@ describe.skipIf(!testDatabase)(
               createdAt,
             },
             {
+              authorAccountId: fixtureReservationAuthorId,
               checkoutAttemptKey: checkoutAttemptKeySchema.make(
                 `unfulfilled-${run}`
               ),
@@ -167,6 +182,7 @@ describe.skipIf(!testDatabase)(
               createdAt,
             },
             {
+              authorAccountId: fixtureReservationAuthorId,
               checkoutAttemptKey: checkoutAttemptKeySchema.make(
                 `unverified-linked-${run}`
               ),
@@ -217,15 +233,6 @@ describe.skipIf(!testDatabase)(
               withdrawnAt: createdAt,
             },
           ]),
-        ])
-      );
-      await Effect.runPromise(
-        db.insert(customerAccountLinks).values([
-          { customerAccountId: accountId, dotyposCustomerId: linked },
-          {
-            customerAccountId: unverifiedAccountId,
-            dotyposCustomerId: unverifiedLinked,
-          },
         ])
       );
       await seedCampaignDeliveries();
@@ -312,6 +319,10 @@ describe.skipIf(!testDatabase)(
       );
       await testDatabase.pool.query(
         'delete from auth."user" where id = any($1)',
+        [[accountId, unverifiedAccountId]]
+      );
+      await testDatabase.pool.query(
+        "delete from customer_accounts where id = any($1)",
         [[accountId, unverifiedAccountId]]
       );
     });
@@ -657,15 +668,27 @@ describe.skipIf(!testDatabase)(
     });
 
     describe("schedule fire pool", () => {
-      /** Linked through `customer_accounts` alone, with a verified login. */
+      /** A linked account with a verified login and no reservation. */
       const columnLinked = customerId("column-linked");
-      /** Linked through an unverified backfilled login, with no reservation. */
+      /** A linked account with an unverified login and no reservation. */
       const unverifiedOnly = customerId("unverified-only");
       const columnAccountId = `campaign-column-account-${run}`;
       const unverifiedOnlyAccountId = `campaign-unverified-only-account-${run}`;
       const pooled = [...seeded, columnLinked, unverifiedOnly];
 
       beforeAll(async () => {
+        await Effect.runPromise(
+          db.insert(customerAccounts).values([
+            {
+              id: customerAccountIdSchema.make(columnAccountId),
+              dotyposCustomerId: columnLinked,
+            },
+            {
+              id: customerAccountIdSchema.make(unverifiedOnlyAccountId),
+              dotyposCustomerId: unverifiedOnly,
+            },
+          ])
+        );
         await Effect.runPromise(
           db.insert(authUser).values([
             {
@@ -684,27 +707,15 @@ describe.skipIf(!testDatabase)(
             },
           ])
         );
-        await Effect.runPromise(
-          Effect.all([
-            db.insert(customerAccounts).values({
-              id: customerAccountIdSchema.make(columnAccountId),
-              dotyposCustomerId: columnLinked,
-            }),
-            db.insert(customerAccountLinks).values({
-              customerAccountId: unverifiedOnlyAccountId,
-              dotyposCustomerId: unverifiedOnly,
-            }),
-          ])
-        );
       });
 
       afterAll(async () => {
         await testDatabase.pool.query(
-          "delete from customer_accounts where id = $1",
-          [columnAccountId]
+          'delete from auth."user" where id = any($1)',
+          [[columnAccountId, unverifiedOnlyAccountId]]
         );
         await testDatabase.pool.query(
-          'delete from auth."user" where id = any($1)',
+          "delete from customer_accounts where id = any($1)",
           [[columnAccountId, unverifiedOnlyAccountId]]
         );
       });

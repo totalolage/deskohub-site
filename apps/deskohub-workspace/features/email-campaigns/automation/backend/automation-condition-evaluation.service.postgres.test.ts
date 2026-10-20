@@ -23,7 +23,10 @@ import {
 } from "@/db/schema";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  createWorkspacePostgresSuiteDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AudienceCondition, AudienceFilter } from "../../audience-filter";
 import {
   type AudienceEvaluationContext,
@@ -96,6 +99,7 @@ describe.skipIf(!testDatabase)(
             customerId: dotyposCustomerId,
             row: {
               id: workspaceReservationId,
+              authorAccountId: fixtureReservationAuthorId,
               checkoutAttemptKey: checkoutAttemptKeySchema.make(
                 workspaceReservationId
               ),

@@ -18,6 +18,7 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import type { DatabaseClient } from "../../db/database-client";
+import { seedWorkspaceE2EReservationAuthor } from "../account/auth-rows";
 import {
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
@@ -58,8 +59,9 @@ export type WorkspaceE2ELocalReservationTransaction = {
     readonly { readonly id: WorkspaceReservationId }[],
     unknown
   >;
+  /** Inserts the reservation with its customer's author account. */
   readonly insertReservation: (
-    row: typeof workspaceReservations.$inferInsert
+    row: Omit<typeof workspaceReservations.$inferInsert, "authorAccountId">
   ) => Effect.Effect<unknown, unknown>;
 };
 
@@ -115,7 +117,13 @@ const makeDatabase = (
             .from(workspaceReservations)
             .where(eq(workspaceReservations.id, id)),
         insertReservation: (row) =>
-          tx.insert(workspaceReservations).values(row),
+          seedWorkspaceE2EReservationAuthor(tx, row.dotyposCustomerId).pipe(
+            Effect.flatMap((authorAccountId) =>
+              tx
+                .insert(workspaceReservations)
+                .values({ ...row, authorAccountId })
+            )
+          ),
       })
     ),
 });
@@ -130,7 +138,7 @@ const resolveDatabase = (
 const makeReservationRow = (
   fixture: WorkspaceE2ELocalReservationFixture,
   paymentState: WorkspaceE2ELocalReservationPaymentState
-): typeof workspaceReservations.$inferInsert => {
+): Omit<typeof workspaceReservations.$inferInsert, "authorAccountId"> => {
   const now = Temporal.Now.instant();
   return {
     activeCustomerEmailDeliveryId: null,

@@ -18,11 +18,14 @@ import type {
   ReservationProductFilterType,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, Option } from "effect";
-import { customerAccountLinks, workspaceReservations } from "@/db/schema";
+import { customerAccounts, workspaceReservations } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import type { ReservationStatusRead } from "@/features/administration/reservation-status-condition";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type {
   AudienceCondition,
   AudienceFacts,
@@ -394,6 +397,7 @@ describe.skipIf(!testDatabase)(
       await Effect.runPromise(
         db.insert(workspaceReservations).values(
           bookings.map(({ name, customer, bookedAt, details }) => ({
+            authorAccountId: fixtureReservationAuthorId,
             checkoutAttemptKey: checkoutAttemptKeySchema.make(
               `resolver-${name}-${run}`
             ),
@@ -417,6 +421,7 @@ describe.skipIf(!testDatabase)(
         db.insert(workspaceReservations).values(
           statusedReservations.map(
             ({ name, customer, createdAt, confirmedAt }) => ({
+              authorAccountId: fixtureReservationAuthorId,
               checkoutAttemptKey: checkoutAttemptKeySchema.make(
                 `resolver-${name}-${run}`
               ),
@@ -444,6 +449,7 @@ describe.skipIf(!testDatabase)(
       await Effect.runPromise(
         db.insert(workspaceReservations).values(
           transitionedReservations.map(({ customer, ...states }) => ({
+            authorAccountId: fixtureReservationAuthorId,
             checkoutAttemptKey: checkoutAttemptKeySchema.make(
               `resolver-${customer}`
             ),
@@ -457,6 +463,11 @@ describe.skipIf(!testDatabase)(
         )
       );
       await Effect.runPromise(
+        db
+          .insert(customerAccounts)
+          .values({ id: accountId, dotyposCustomerId: accountHolder })
+      );
+      await Effect.runPromise(
         db.insert(authUser).values({
           id: accountId,
           name: "Resolver test",
@@ -464,12 +475,6 @@ describe.skipIf(!testDatabase)(
           emailVerified: true,
           locale: "cs-CZ",
           createdAt: new Date(accountCreatedAt.epochMilliseconds),
-        })
-      );
-      await Effect.runPromise(
-        db.insert(customerAccountLinks).values({
-          customerAccountId: accountId,
-          dotyposCustomerId: accountHolder,
         })
       );
       const filter = JSON.stringify(group("and", []));
@@ -506,10 +511,13 @@ describe.skipIf(!testDatabase)(
         "delete from workspace_reservations where dotypos_customer_id = any($1)",
         [seeded]
       );
-      // Its account link goes with it.
       await testDatabase.pool.query('delete from auth."user" where id = $1', [
         accountId,
       ]);
+      await testDatabase.pool.query(
+        "delete from customer_accounts where id = $1",
+        [accountId]
+      );
     });
 
     const resolve = (input: {

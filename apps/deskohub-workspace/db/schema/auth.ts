@@ -14,6 +14,7 @@ import type { Locale } from "@/features/i18n";
 import inlangSettings from "../../project.inlang/settings.json" with {
   type: "json",
 };
+import { customerAccounts } from "./customer-accounts";
 import { quotedSqlList } from "./sql-list";
 
 export const authSchema = pgSchema("auth");
@@ -21,7 +22,11 @@ export const authSchema = pgSchema("auth");
 export const authUser = authSchema.table(
   "user",
   {
-    id: text("id").primaryKey(),
+    // Every login belongs to a durable customer account, created first; the
+    // account outlives the login, so the reference never cascades.
+    id: text("id")
+      .primaryKey()
+      .references(() => customerAccounts.id, { onDelete: "restrict" }),
     name: text("name").notNull(),
     email: text("email").notNull(),
     emailVerified: boolean("email_verified").default(false).notNull(),

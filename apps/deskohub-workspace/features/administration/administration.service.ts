@@ -1903,9 +1903,7 @@ export class AdministrationService extends Context.Service<
               .from(paymentAttempts)
               .where(eq(paymentAttempts.workspaceReservationId, row.id))
               .orderBy(paymentAttempts.createdAt),
-            author: authorAccountId
-              ? loadAuthor(authorAccountId, row.dotyposCustomerId)
-              : Effect.succeed(null),
+            author: loadAuthor(authorAccountId, row.dotyposCustomerId),
             history: reservationHistory.load(row.id),
             latePaymentRows: db
               .select(latePaymentSelection)

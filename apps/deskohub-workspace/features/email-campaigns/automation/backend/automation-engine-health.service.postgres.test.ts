@@ -27,7 +27,10 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  createWorkspacePostgresSuiteDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { seedAutomationUnit } from "./automation-engine.test-utils";
 import { AutomationEngineHealth } from "./automation-engine-health.service";
 
@@ -161,6 +164,7 @@ describe.skipIf(!testDatabase)(
         reservationIds.push(id);
         return {
           id,
+          authorAccountId: fixtureReservationAuthorId,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
           dotyposCustomerId: DotyposCustomerIdSchema.make(
             `engine-health-${suite}-${customer}`

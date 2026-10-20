@@ -20,7 +20,10 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { PaymentRefundRepository } from "./payment-refund.repository";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -72,6 +75,7 @@ describe.skipIf(!testDatabase)(
       reservationIds.push(reservationId);
       await Effect.runPromise(
         testDatabase.db.insert(workspaceReservations).values({
+          authorAccountId: fixtureReservationAuthorId,
           id: reservationId,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${id}`),
           dotyposCustomerId: DotyposCustomerIdSchema.make(`customer-${id}`),
