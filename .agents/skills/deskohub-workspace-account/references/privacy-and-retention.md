@@ -16,6 +16,36 @@ what the privacy copy promises. Privacy copy lives in
 | Cloudinary | Avatar asset | Destroyed before identity removal |
 | PostHog warehouse | Allowlisted Dotypos customer fields in `custom.dotypos_customers` | PostHog retention settings; a Dotypos deletion arrives as `deleted: true`, not erasure |
 
+## Transfers outside the EU
+
+GDPR Chapter V inventory (Art. 13(1)(f)), checked 2026-10-20. "Transfer" means
+data made available to a recipient outside the EEA, including a US company
+whose terms let it access or process data stored in the EU. Adequacy-listed
+countries (UK, Israel) and US companies with an active
+[Data Privacy Framework](https://www.dataprivacyframework.gov/list) (DPF) entry
+are covered by adequacy. Elsewhere, transfers need SCCs or another Art. 46
+safeguard. Safeguards below come from each provider's published DPA and terms.
+Only Vercel's (Pro, through its Terms) and Resend's (a signed copy in the
+account) were confirmed to apply to our accounts.
+
+| Provider | Personal data | Where | Chapter V status and safeguard |
+| --- | --- | --- | --- |
+| Vercel Inc. (US) | Every request: IP, user agent, form data; runtime logs; Analytics (consented), BotID, Queues | Functions `fra1` + `arn1` (project `serverlessFunctionRegion`, read via `vercel api /v9/projects/deskohub-workspace-site`); [DPA](https://vercel.com/legal/dpa) names the US as the primary processing location; log region unpublished | Transfer. DPF active, EU/UK/Swiss ([6847](https://www.dataprivacyframework.gov/participant/6847)); DPA Schedule 3 SCCs bind Pro accounts through the Terms |
+| Neon, LLC / Databricks, Inc. (US) | All Workspace tables, including `auth` | Project `main`, `aws-eu-central-1` (Frankfurt), from `neonctl projects list` | Transfer (US staff access under the [platform terms](https://neon.com/platform-terms)). Databricks DPF entry covers Neon, LLC ([4569](https://www.dataprivacyframework.gov/participant/4569)); the legacy Neon Inc. entry lapsed on 2025-10-23. The [Databricks DPA](https://www.databricks.com/legal/databricks-data-processing-addendum) has SCCs |
+| Resend (US) | Recipient, content including magic links and contact-form messages, delivery metadata | US storage whatever the sending region ([GDPR page](https://resend.com/security/gdpr), [regions](https://resend.com/docs/dashboard/domains/regions)) | Transfer. [DPA](https://resend.com/legal/dpa) SCC Module 2, signed copy under Settings → Documents; DPF EU/UK "active, re-certification under review" ([8907](https://www.dataprivacyframework.gov/participant/8907)) |
+| PostHog Inc (US) | Consented events, logs, warehouse copy of Dotypos customers | EU Cloud, Frankfurt: `t.workspace.deskohub.cz` is a CNAME to `cf-prod-eu-proxy.europehog.com`; `.env.example` uses `eu.posthog.com` | Transfer (DPA allows US processing). DPF active ([2915](https://www.dataprivacyframework.gov/participant/2915)) and DPA SCC Module 2 |
+| Cloudinary Inc. / Ltd. (US, Israel) | Avatar image | Unconfirmed: US by default, EU only with an Enterprise data-residency add-on; the config in `packages/cloudinary/src/config.ts` doesn't set a region | Transfer. DPF active ([6136](https://www.dataprivacyframework.gov/participant/6136)); Israel is adequate; the DPA has SCCs |
+| Google (GTM, GA4, Ads) | IP and browser data from the GTM script request, which loads on idle or interaction regardless of consent (`features/cookie-consent/utils/tag-manager.ts`); measurement tags follow consent mode, default denied; the app sends no `user_data` or enhanced conversions | Global; Google Ireland is the EEA counterparty | Transfer to Google LLC. DPF active ([5780](https://www.dataprivacyframework.gov/participant/5780)), SCC fallback ([transfers page](https://business.safety.google/adsdatatransfers/)). GTM and GA4 are processors; Ads conversions are controller-to-controller |
+| Igloocompany Pte. Ltd. (Singapore) | Access name `Deskohub <reservationId>`, PIN time window, device ID (`features/reservation-access/backend/reservation-access.service.ts`) | AWS outside the EEA, region unpublished ([data-act page](https://www.igloohome.co/legal/eu-data-act-compliance)) | Transfer of pseudonymous data; Singapore has no adequacy decision. **No published DPA or SCCs; unresolved** |
+| OpenStreetMap Foundation (UK) via Fastly (US) | Visitor IP and origin referrer from map tiles, loaded without consent (`landing-page-interactive-map.tsx`) | Fastly edge worldwide; the [OSMF privacy policy](https://osmfoundation.org/wiki/Privacy_Policy) excludes tile requests from its UK/NL storage statement | UK adequacy (renewed to 2031). Fastly has DPF and SCCs ([DPT](https://www.fastly.com/data-processing)), but OSMF's tile-log location and onward safeguard are **unpublished** |
+| Nexi Central Europe a.s. (EU) | Name, email, phone, amount, order IDs; card data on the hosted page | EEA (live host `xpay.nexigroup.com`) | Not our transfer: the checkout notice names Nexi as an independent controller for payments, covering its own onward transfers (adequacy or SCCs). The merchant contract is unconfirmed |
+| Dotykačka ČR s.r.o. (EU) | Customer profiles, reservations | Dotypos Cloud, CZ/EU per public statements; provider unpublished | No transfer known; no DPA or subprocessor list is public |
+| Customer's AI assistant provider | Offerings, the customer's reservations, created bookings (PR #767) | Wherever the provider the customer chose runs | Disclosure at the customer's request to a recipient they chose, not our processor; still possibly a Chapter V transfer. **Unresolved** |
+
+Not a transfer: Google Calendar (calendar ID and time bounds only), Google
+Maps (a static directions link), and accounting documents, which are rendered
+in-app. Re-check this table whenever a provider, plan, or region changes.
+
 ## Rules
 
 - Keep privacy copy to what GDPR Art. 13 requires, in plain customer
