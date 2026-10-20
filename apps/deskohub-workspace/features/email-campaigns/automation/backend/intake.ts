@@ -1,5 +1,5 @@
 import type { DotyposCustomerId, DotyposService } from "@deskohub/dotypos";
-import type { AutomationStepType as AutomationStep } from "@deskohub/workspace-admin-api";
+import type { AutomationFlowType as AutomationFlow } from "@deskohub/workspace-admin-api";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { Effect, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -99,7 +99,7 @@ export const revisitedReservations = (
 /** What intake decided for one event and one automation. */
 type IntakeDecision = IntakeMatch & {
   /** None when the version's flow no longer decodes. */
-  readonly firstStep: Option.Option<AutomationStep>;
+  readonly flow: Option.Option<AutomationFlow>;
   readonly outcome:
     | "member"
     | "not-in-audience"
@@ -272,16 +272,16 @@ const commitIntakeDecisions = Effect.fn("automationIntake.commit")(function* (
       const ofVersion = byVersion.get(version.id) ?? [];
       if (ofVersion.length === 0) continue;
       const members = ofVersion.filter(({ outcome }) => outcome === "member");
-      const firstStep = Option.flatMap(
+      const flow = Option.flatMap(
         Option.fromUndefinedOr(members[0]),
-        ({ firstStep }) => firstStep
+        ({ flow }) => flow
       );
       yield* enterAutomationRuns(tx, {
         campaignId,
         versionId: version.id,
-        ...(Option.isSome(firstStep) && {
+        ...(Option.isSome(flow) && {
           admitted: {
-            firstStep: firstStep.value,
+            flow: flow.value,
             occurrences: members.map(occurrenceOf),
             facts: input.facts,
           },
@@ -399,7 +399,7 @@ export const makeIntakeHandler = Effect.gen(function* () {
         eventIds: expired.map(({ id }) => id),
         decisions: matches.map((match) => ({
           ...match,
-          firstStep: Option.none(),
+          flow: Option.none(),
           outcome: "failed" as const,
         })),
         at,
@@ -454,14 +454,14 @@ export const makeIntakeHandler = Effect.gen(function* () {
         matches,
         (match): Effect.Effect<IntakeDecision, AutomationUnitFetchFailure> => {
           const version = versions.get(match.versionId);
-          const firstStep = Option.flatMap(
+          const flow = Option.flatMap(
             Option.fromUndefinedOr(version),
-            ({ firstStep }) => firstStep
+            ({ flow }) => flow
           );
-          if (version === undefined || Option.isNone(firstStep)) {
+          if (version === undefined || Option.isNone(flow)) {
             return Effect.succeed({
               ...match,
-              firstStep,
+              flow,
               outcome: "failed",
             });
           }
@@ -476,7 +476,7 @@ export const makeIntakeHandler = Effect.gen(function* () {
           if (recheck !== "current") {
             return Effect.succeed({
               ...match,
-              firstStep,
+              flow,
               outcome: recheck,
             });
           }
@@ -504,7 +504,7 @@ export const makeIntakeHandler = Effect.gen(function* () {
               Effect.map(
                 (resolution): IntakeDecision => ({
                   ...match,
-                  firstStep,
+                  flow,
                   // Unreachable customers still count as members;
                   // reachability is checked at send time (§5.6).
                   outcome: [

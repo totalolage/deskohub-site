@@ -476,9 +476,61 @@ describe.skipIf(!database)("the automation engine's entry", async () => {
         "started",
         "condition-passed",
         "condition-passed",
+        "waiting",
         "woke",
         "send-queued",
         "sent",
+      ]);
+      expect(mailedTo(customer)).toHaveLength(1);
+    });
+
+    test("a wait that holds when the timers wake a run into it goes on to send on that tick", async () => {
+      const at = await begin(14);
+      const campaignId = await activate(
+        bookedConditionsFlow(
+          {
+            _tag: "Wait",
+            id: "hour",
+            wait: { _tag: "Duration", count: 1, unit: "hour" },
+          },
+          // 09:00–09:59 in Prague: holding when the hour ends at 09:15.
+          {
+            _tag: "Wait",
+            id: "nine-oclock",
+            wait: { _tag: "Calendar", expression: { hours: [9] } },
+          }
+        ),
+        at
+      );
+      const { customer, recordedAt } = await bookedEvent(at, "chain-woken");
+
+      const progress = await settleRuns(
+        campaignId,
+        recordedAt,
+        at.add({ hours: 4 }),
+        { onTicks: true }
+      );
+
+      expect(progress.settled).toBe(true);
+      const [run] = await read.runs(campaignId);
+      expect(run).toMatchObject({ status: "ended", outcome: "sent" });
+      expect(iso(run.ended_at)).toBe(
+        at.add({ hours: 1, minutes: 15 }).toString()
+      );
+      expect(
+        (await read.timeline(run.id)).map((entry) => [
+          entry.kind,
+          entry.step_id,
+        ])
+      ).toEqual([
+        ["started", "not-emailed"],
+        ["condition-passed", "not-emailed"],
+        ["condition-passed", "still-not-emailed"],
+        ["waiting", "hour"],
+        ["woke", "hour"],
+        ["woke", "nine-oclock"],
+        ["send-queued", "send"],
+        ["sent", "send"],
       ]);
       expect(mailedTo(customer)).toHaveLength(1);
     });
@@ -2532,6 +2584,41 @@ describe.skipIf(!database)(
         for (const customer of [early, second, third!]) {
           expect(mailedTo(customer)).toBe(1);
         }
+      });
+
+      test("a fire whose first step is a Calendar wait that holds sends on the fire's tick", async () => {
+        const { campaignId } = await kit.seedActive(
+          automationFlowFixture({
+            ...comeBackOfferFlow,
+            steps: [
+              {
+                _tag: "Wait",
+                id: "ten-oclock",
+                wait: { _tag: "Calendar", expression: { hours: [10] } },
+              },
+              { _tag: "Send", id: "send" },
+            ],
+          }),
+          { at: start, audienceFilter: lapsedRegularsFilter }
+        );
+        const customer = await lapsedRegular("holding-wait");
+
+        const progress = await scenario.runUntil({
+          from: firstMonday,
+          until: firstMonday.add({ hours: 1 }),
+          onTicks: true,
+          settled: () => allEnded(campaignId),
+        });
+
+        expect(progress.settled).toBe(true);
+        const [run] = await read.runs(campaignId);
+        expect(run).toMatchObject({ status: "ended", outcome: "sent" });
+        // The fire chunk entered the wait at 10:00, and it held.
+        expect(iso(run.ended_at)).toBe(firstMonday.toString());
+        expect(
+          (await read.timeline(run.id)).map((entry) => entry.kind)
+        ).toEqual(["started", "woke", "send-queued", "sent"]);
+        expect(mailedTo(customer)).toBe(1);
       });
 
       test("a customer sent the offer at one fire isn't offered it again at the next: condition-failed", async () => {

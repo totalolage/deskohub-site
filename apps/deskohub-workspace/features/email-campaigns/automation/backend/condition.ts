@@ -1,9 +1,9 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import {
-  type AutomationConditionFilter,
-  type AutomationRunEventDetail,
-  type AutomationStepType as AutomationStep,
-  automationFlowMaxSteps,
+import type {
+  AutomationConditionFilter,
+  AutomationFlowType as AutomationFlow,
+  AutomationRunEventDetail,
+  AutomationStepType as AutomationStep,
 } from "@deskohub/workspace-admin-api";
 import { and, eq, inArray } from "drizzle-orm";
 import { Effect, Match, Option } from "effect";
@@ -49,16 +49,6 @@ type ConditionUnit = ClaimedAutomationUnit<ConditionSubject>;
 /** Runs wait for their condition's facts at most this long (§5.2). */
 const conditionExpiry = Temporal.Duration.from({ hours: 24 });
 
-/**
- * The chain depth at which a condition unit stops planning the step its
- * passed runs reach (D36). Entry and the planner plan condition units at
- * depth 0, and each unit plans the next one a step deeper. A flow has at
- * most `automationFlowMaxSteps` steps, so every valid flow reaches its wait
- * or send within the tick, and the cap only bounds a defect. Runs a unit at
- * the cap passes stay `ready` for the next planner tick.
- */
-export const maxChainedConditionSteps = automationFlowMaxSteps - 1;
-
 /** A run the unit still owns, as it read it. */
 type ConditionRun = ConditionStepRun & {
   readonly stepEnteredAt: Temporal.Instant;
@@ -86,6 +76,7 @@ const undecided: ConditionDecision = {
 type ConditionFetched =
   | {
       readonly _tag: "Decided";
+      readonly flow: Option.Option<AutomationFlow>;
       readonly next: Option.Option<AutomationStep>;
       readonly decisions: readonly {
         readonly run: ConditionRun;
@@ -206,6 +197,7 @@ export const makeConditionHandler = Effect.gen(function* () {
   const decide = (input: {
     readonly campaignId: CampaignId;
     readonly condition: AutomationConditionFilter;
+    readonly flow: Option.Option<AutomationFlow>;
     readonly next: Option.Option<AutomationStep>;
     readonly owned: readonly ConditionRun[];
   }) =>
@@ -262,6 +254,7 @@ export const makeConditionHandler = Effect.gen(function* () {
       Effect.map(
         ({ decisions }): ConditionFetched => ({
           _tag: "Decided",
+          flow: input.flow,
           next: input.next,
           decisions: decisions.flat(),
         })
@@ -282,35 +275,26 @@ export const makeConditionHandler = Effect.gen(function* () {
    * Plans the step the passed runs reached, one deeper in the chain (D36).
    * Past the cap the runs stay `ready` for the next planner tick.
    */
-  const planReached = Effect.fn("condition.planReached")(function* (
+  const planReached = (
     tx: AutomationEngineTransaction,
     unit: ConditionUnit,
     input: {
       readonly campaignId: CampaignId;
+      readonly flow: Option.Option<AutomationFlow>;
       readonly next: AutomationStep;
       readonly moved: readonly ConditionRun[];
       readonly at: Temporal.Instant;
     }
-  ) {
-    const chainedSteps = unit.subject.chainedSteps ?? 0;
-    if (chainedSteps < maxChainedConditionSteps) {
-      return yield* planReachedStep(tx, facts, {
-        campaignId: input.campaignId,
-        versionId: unit.subject.versionId,
-        step: input.next,
-        runs: input.moved,
-        at: input.at,
-        chainedSteps: chainedSteps + 1,
-      });
-    }
-    if (input.moved.length > 0) {
-      yield* Effect.logWarning("Automation condition chain reached its cap", {
-        unitId: unit.id,
-        chainedSteps,
-        runs: input.moved.length,
-      });
-    }
-  });
+  ) =>
+    planReachedStep(tx, facts, {
+      campaignId: input.campaignId,
+      versionId: unit.subject.versionId,
+      flow: input.flow,
+      stepId: input.next.id,
+      runs: input.moved,
+      at: input.at,
+      chainedSteps: (unit.subject.chainedSteps ?? 0) + 1,
+    });
 
   /**
    * Advances the runs that matched, planning the step they reach, and ends
@@ -368,6 +352,7 @@ export const makeConditionHandler = Effect.gen(function* () {
                 const moved = new Set(movedIds);
                 return planReached(tx, unit, {
                   campaignId,
+                  flow: decided.flow,
                   next,
                   moved: passed.filter(({ runId }) => moved.has(runId)),
                   at,
@@ -438,25 +423,21 @@ export const makeConditionHandler = Effect.gen(function* () {
           loadAutomationVersionFlows(db, [unit.subject.versionId])
         ),
         Effect.bind("owned", () => readOwnedRuns(db, unit)),
-        Effect.flatMap(({ campaignId, flowOf, owned }) =>
-          Option.match(
-            conditionStepAt(
-              flowOf(unit.subject.versionId),
-              unit.subject.stepId
-            ),
-            {
-              onNone: () => Effect.succeed(unavailable),
-              onSome: ({ filter, next }) =>
-                owned.length === 0
-                  ? Effect.succeed<ConditionFetched>({
-                      _tag: "Decided",
-                      next,
-                      decisions: [],
-                    })
-                  : decide({ campaignId, condition: filter, next, owned }),
-            }
-          )
-        ),
+        Effect.flatMap(({ campaignId, flowOf, owned }) => {
+          const flow = flowOf(unit.subject.versionId);
+          return Option.match(conditionStepAt(flow, unit.subject.stepId), {
+            onNone: () => Effect.succeed(unavailable),
+            onSome: ({ filter, next }) =>
+              owned.length === 0
+                ? Effect.succeed<ConditionFetched>({
+                    _tag: "Decided",
+                    flow,
+                    next,
+                    decisions: [],
+                  })
+                : decide({ campaignId, condition: filter, flow, next, owned }),
+          });
+        }),
         Effect.catchIf(isDatabaseQueryError, (cause) =>
           Effect.fail(
             new AutomationUnitFetchFailure({ code: "database", cause })

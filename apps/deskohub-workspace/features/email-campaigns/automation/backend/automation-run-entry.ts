@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import type { AutomationStepType as AutomationStep } from "@deskohub/workspace-admin-api";
+import type { AutomationFlowType as AutomationFlow } from "@deskohub/workspace-admin-api";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { Effect, Option, Schema } from "effect";
 import {
@@ -64,9 +64,9 @@ type AutomationRunEntry = {
  * `at`, unless the customer already has an open run (D4), which records
  * `already-active`; a customer admitted twice starts once, from the
  * earliest occurrence. Every occurrence gets one receipt. The started runs'
- * first step is planned in the same transaction, so a first Condition or
- * Send runs within the entry's tick (D36). Call it under the lifecycle lock
- * after the caller's rechecks.
+ * first step is planned in the same transaction (`planReachedStep`), so
+ * their conditions and due waits run within the entry's tick (D36). Call it
+ * under the lifecycle lock after the caller's rechecks.
  *
  * Runs insert before receipts, so a concurrent entry of the same customer
  * waits on the one-open-run index and then sees the run. A receipt key a
@@ -81,7 +81,8 @@ export const enterAutomationRuns = Effect.fn("automationRuns.enter")(function* (
     readonly versionId: AutomationVersionId;
     /** Occurrences that start runs at the version's first step. */
     readonly admitted?: {
-      readonly firstStep: AutomationStep;
+      /** The version's flow; its first step is where runs start. */
+      readonly flow: AutomationFlow;
       readonly occurrences: readonly AutomationTriggerOccurrence[];
       /** Plans a first Condition step's units. */
       readonly facts: AutomationEvaluationFacts["Service"];
@@ -91,7 +92,7 @@ export const enterAutomationRuns = Effect.fn("automationRuns.enter")(function* (
   }
 ) {
   const admitted = input.admitted?.occurrences ?? [];
-  const firstStepId = input.admitted?.firstStep.id;
+  const firstStepId = input.admitted?.flow.steps[0]?.id;
   const firstByCustomer = new Map<
     DotyposCustomerId,
     AutomationTriggerOccurrence
@@ -177,11 +178,12 @@ export const enterAutomationRuns = Effect.fn("automationRuns.enter")(function* (
       at: input.at,
     }))
   );
-  if (input.admitted !== undefined) {
+  if (input.admitted !== undefined && firstStepId !== undefined) {
     yield* planReachedStep(tx, input.admitted.facts, {
       campaignId: input.campaignId,
       versionId: input.versionId,
-      step: input.admitted.firstStep,
+      flow: Option.some(input.admitted.flow),
+      stepId: firstStepId,
       runs: inserted.flatMap((run) =>
         Option.toArray(
           Option.fromUndefinedOr(firstByCustomer.get(run.dotyposCustomerId))
@@ -254,14 +256,14 @@ const receiptRow = (
   receivedAt: input.at,
 });
 
-/** What entering a version needs: its entry audience, purpose and first step. */
+/** What entering a version needs: its entry audience, purpose and flow. */
 type AutomationEntryVersion = {
   readonly id: AutomationVersionId;
   readonly campaignId: CampaignId;
   readonly purpose: CampaignPurpose;
   readonly audienceFilter: AudienceFilter;
-  /** None when the stored flow no longer decodes: a domain defect. */
-  readonly firstStep: Option.Option<AutomationStep>;
+  /** None when the stored flow no longer decodes, or has no step: a domain defect. */
+  readonly flow: Option.Option<AutomationFlow>;
 };
 
 const decodeFlow = Schema.decodeUnknownOption(automationFlowSchema);
@@ -292,8 +294,8 @@ export const loadAutomationEntryVersions = Effect.fn(
         version.id,
         {
           ...version,
-          firstStep: decodeFlow(flow).pipe(
-            Option.flatMap(({ steps }) => Option.fromUndefinedOr(steps[0]))
+          flow: decodeFlow(flow).pipe(
+            Option.filter(({ steps }) => steps.length > 0)
           ),
         },
       ])

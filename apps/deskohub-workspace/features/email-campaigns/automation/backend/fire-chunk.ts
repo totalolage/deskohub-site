@@ -1,5 +1,5 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import type { AutomationStepType as AutomationStep } from "@deskohub/workspace-admin-api";
+import type { AutomationFlowType as AutomationFlow } from "@deskohub/workspace-admin-api";
 import { and, eq, sql } from "drizzle-orm";
 import { Effect, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -44,7 +44,7 @@ type FireChunkEvaluation =
   | {
       readonly _tag: "Evaluated";
       readonly versionId: AutomationVersionId;
-      readonly firstStep: AutomationStep;
+      readonly flow: AutomationFlow;
       readonly entrants: readonly DotyposCustomerId[];
     }
   /** The fire's version flow no longer decodes: the fire fails (§1.2.8). */
@@ -200,7 +200,7 @@ export const makeFireChunkHandler = Effect.gen(function* () {
             loadAutomationEntryVersions(tx, [fire.versionId])
           )
           .pipe(Effect.mapError(databaseFailure))).get(fire.versionId);
-        if (version === undefined || Option.isNone(version.firstStep)) {
+        if (version === undefined || Option.isNone(version.flow)) {
           return { _tag: "Undecodable" } as const;
         }
 
@@ -236,7 +236,7 @@ export const makeFireChunkHandler = Effect.gen(function* () {
         return {
           _tag: "Evaluated",
           versionId: version.id,
-          firstStep: version.firstStep.value,
+          flow: version.flow.value,
           entrants: resolution.recipients.map(
             ({ dotyposCustomerId }) => dotyposCustomerId
           ),
@@ -276,7 +276,7 @@ export const makeFireChunkHandler = Effect.gen(function* () {
           campaignId,
           versionId: evaluation.versionId,
           admitted: {
-            firstStep: evaluation.firstStep,
+            flow: evaluation.flow,
             occurrences: evaluation.entrants.map((customerId) =>
               occurrenceOf(fireAt, customerId)
             ),

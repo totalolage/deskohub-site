@@ -35,6 +35,7 @@ import { AutomationConditionPlanning } from "./automation-condition-planning.ser
 import { automationEngineTestLayer } from "./automation-engine.test-utils";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import { AutomationPlanner } from "./automation-planner.service";
+import { maxChainedSteps } from "./automation-reached-step";
 import {
   automationFlowOf,
   conditionStep,
@@ -53,7 +54,7 @@ import {
   drainAutomationUnitQueue,
   makeAutomationUnitQueueFake,
 } from "./automation-unit-queue.test-utils";
-import { makeConditionHandler, maxChainedConditionSteps } from "./condition";
+import { makeConditionHandler } from "./condition";
 
 /**
  * The engine plans over whole tables, so the suite runs on a database of
@@ -348,21 +349,29 @@ describe.skipIf(!database)("condition units on Postgres", () => {
     expect(dotypos.profilePages).toBe(0);
     for (const runId of runIds) {
       const run = await readAutomationRun(database.db, runId);
+      // The commit enters the delay that the run reached (D36).
       expect(run).toMatchObject({
         status: "active",
         stepId: "delay",
-        phase: "ready",
+        phase: "waiting",
         workUnitId: null,
       });
       expect(run.stepEnteredAt.equals(at.add({ seconds: 5 }))).toBe(true);
-      expect(await readAutomationRunTimeline(database.db, runId)).toEqual([
-        {
-          kind: "condition-passed",
-          stepId: "check",
-          at: at.add({ seconds: 5 }).toString(),
-          detail: {},
-        },
-      ]);
+      expect(await readAutomationRunTimeline(database.db, runId)).toMatchObject(
+        [
+          {
+            kind: "condition-passed",
+            stepId: "check",
+            at: at.add({ seconds: 5 }).toString(),
+            detail: {},
+          },
+          {
+            kind: "waiting",
+            stepId: "delay",
+            at: at.add({ seconds: 5 }).toString(),
+          },
+        ]
+      );
     }
 
     // A duplicate delivery of the settled unit decides nothing again.
@@ -373,7 +382,7 @@ describe.skipIf(!database)("condition units on Postgres", () => {
     await engine.drain(at.add({ seconds: 6 }));
     expect(
       await readAutomationRunTimeline(database.db, runIds[0]!)
-    ).toHaveLength(1);
+    ).toHaveLength(2);
     expect(
       (await engine.plan(at.add({ minutes: 1 }))).conditions.runsPlanned
     ).toBe(0);
@@ -406,7 +415,7 @@ describe.skipIf(!database)("condition units on Postgres", () => {
       })
     );
 
-  test("consecutive conditions take their runs to the wait within one planner run", async () => {
+  test("consecutive conditions take their runs into the wait within one planner run", async () => {
     const engine = await makeEngine();
     const seeded = await chainedAutomation(all(locale("cs-CZ")));
     const runIds = await readyRuns(seeded, ["chain-a", "chain-b"]);
@@ -432,18 +441,22 @@ describe.skipIf(!database)("condition units on Postgres", () => {
       expect(run).toMatchObject({
         status: "active",
         stepId: "delay",
-        phase: "ready",
+        phase: "waiting",
         workUnitId: null,
       });
       expect(run.stepEnteredAt.equals(drainedAt)).toBe(true);
-      expect(await readAutomationRunTimeline(database.db, runId)).toEqual(
-        ["check", "check-2", "check-3"].map((stepId) => ({
-          kind: "condition-passed",
+      expect(
+        (await readAutomationRunTimeline(database.db, runId)).map(
+          ({ kind, stepId, at: entryAt }) => [kind, stepId, entryAt]
+        )
+      ).toEqual([
+        ...["check", "check-2", "check-3"].map((stepId) => [
+          "condition-passed",
           stepId,
-          at: drainedAt.toString(),
-          detail: {},
-        }))
-      );
+          drainedAt.toString(),
+        ]),
+        ["waiting", "delay", drainedAt.toString()],
+      ]);
     }
 
     // Duplicate deliveries of the settled chain decide and plan nothing again.
@@ -457,7 +470,7 @@ describe.skipIf(!database)("condition units on Postgres", () => {
     expect(await unitsOf(seeded.campaignId)).toHaveLength(3);
     for (const runId of runIds) {
       expect(await readAutomationRunTimeline(database.db, runId)).toHaveLength(
-        3
+        4
       );
     }
     expect(
@@ -501,7 +514,7 @@ describe.skipIf(!database)("condition units on Postgres", () => {
     // As if the unit ended a chain already as deep as the cap allows.
     await database.pool.query(
       "update email_campaign_automation_work_units set subject = subject || $1::jsonb where id = $2",
-      [JSON.stringify({ chainedSteps: maxChainedConditionSteps }), planned!.id]
+      [JSON.stringify({ chainedSteps: maxChainedSteps }), planned!.id]
     );
     await engine.drain(at.add({ seconds: 5 }));
 
@@ -719,7 +732,7 @@ describe.skipIf(!database)("condition units on Postgres", () => {
 
     expect(await readAutomationRun(database.db, runId!)).toMatchObject({
       stepId: "delay",
-      phase: "ready",
+      phase: "waiting",
     });
   });
 });

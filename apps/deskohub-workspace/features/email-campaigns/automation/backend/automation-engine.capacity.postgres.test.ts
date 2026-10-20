@@ -13,13 +13,19 @@ import type {
   AutomationFlow,
   CalendarExpression,
 } from "@deskohub/workspace-admin-api";
-import { Effect, Layer, References } from "effect";
+import { Effect, Layer, Option, References } from "effect";
 import { TestClock } from "effect/testing";
 import {
   createWorkspacePostgresSuiteDatabase,
   fixtureReservationAuthorId,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { everyoneFilter } from "../../backend/email-campaigns.test-utils";
+import { nextStartWithinHorizon } from "@/shared/utils/calendar-expression";
+import {
+  everyoneFilter,
+  seedAutomatedCampaign,
+  seedAutomation,
+  seedAutomationVersion,
+} from "../../backend/email-campaigns.test-utils";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
 import {
@@ -59,11 +65,16 @@ const drainTimeout = { timeout: 420_000 };
 /** Tuesday 20 October 2026, 09:00 Prague (CEST). */
 const start = Temporal.Instant.from("2026-10-20T07:00:00Z");
 
+/**
+ * Every minute: save validation now rejects it (D36). The scenarios that
+ * use it cover the engine staying bounded under such a stored schedule,
+ * seeded by `seedActiveWithPreTickSchedule`.
+ */
 const everyMinute: CalendarExpression = {
   minutes: Array.from({ length: 60 }, (_, minute) => minute),
 };
-/** 09:01 Prague: one fire a minute after the engine starts. */
-const dailyAtOne: CalendarExpression = { minutes: [1], hours: [9] };
+/** 09:00 Prague: one fire on the engine's first tick. */
+const dailyAtNine: CalendarExpression = { minutes: [0], hours: [9] };
 
 /**
  * Schedule → wait 30 days → send. Entered runs park at the wait, so fires
@@ -87,6 +98,41 @@ const scheduleSendFlow = (calendar: CalendarExpression): AutomationFlow =>
     trigger: { _tag: "Schedule", calendar },
     steps: [{ _tag: "Send", id: "send" }],
   });
+
+/**
+ * Activates `scheduleFlow(calendar)` at `at` as it stands when it was saved
+ * before schedules were held to the engine's tick minutes (D36): its
+ * campaign, version and automation rows are written directly, past the save
+ * validation that now rejects `calendar`.
+ */
+const seedActiveWithPreTickSchedule = async (
+  scenario: AutomationEngineScenario,
+  calendar: CalendarExpression,
+  input: {
+    readonly audienceFilter: AudienceFilter;
+    readonly at: Temporal.Instant;
+  }
+) => {
+  const { db } = database!;
+  const flow = scheduleFlow(calendar);
+  const campaignId = await seedAutomatedCampaign(db, { purpose: "marketing" });
+  scenario.kit.campaignIds.push(campaignId);
+  const versionId = await seedAutomationVersion(db, {
+    campaignId,
+    purpose: "marketing",
+    flow,
+    audienceFilter: input.audienceFilter,
+    activatedAt: input.at,
+  });
+  await seedAutomation(db, {
+    campaignId,
+    activeVersionId: versionId,
+    flow,
+    acceptingSince: input.at,
+    nextFireAt: Option.getOrNull(nextStartWithinHorizon(calendar, input.at)),
+  });
+  return { campaignId, versionId };
+};
 
 /**
  * Everyone who visited within a year: the audience reads visits, so a chunk
@@ -477,7 +523,7 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
           bookings: () => 2,
         });
         const schedule = await scenario.kit.seedActive(
-          scheduleFlow(dailyAtOne),
+          scheduleFlow(dailyAtNine),
           {
             audienceFilter: visitedThisYear,
             at: start.subtract({ hours: 1 }),
@@ -551,8 +597,9 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
           bookings: () => 1,
         });
         // Activated just after 08:57: the 08:58, 08:59 and 09:00 fires are due.
-        const { campaignId } = await scenario.kit.seedActive(
-          scheduleFlow(everyMinute),
+        const { campaignId } = await seedActiveWithPreTickSchedule(
+          scenario,
+          everyMinute,
           {
             audienceFilter: visitedThisYear,
             at: start.subtract({ minutes: 3 }).add({ seconds: 1 }),
@@ -619,12 +666,12 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
         count: 300,
         bookings: (index) => [400, 300][index] ?? 2,
       });
-      const visits = await scenario.kit.seedActive(scheduleFlow(dailyAtOne), {
+      const visits = await scenario.kit.seedActive(scheduleFlow(dailyAtNine), {
         audienceFilter: visitedThisYear,
         at: start.subtract({ hours: 1 }),
       });
       const sends = await scenario.kit.seedActive(
-        scheduleSendFlow(dailyAtOne),
+        scheduleSendFlow(dailyAtNine),
         {
           audienceFilter: everyoneFilter,
           at: start.subtract({ hours: 1 }),
@@ -728,7 +775,7 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
           bookings: () => 2,
         });
         const { campaignId } = await scenario.kit.seedActive(
-          scheduleFlow(dailyAtOne),
+          scheduleFlow(dailyAtNine),
           { audienceFilter: visitedThisYear, at: start.subtract({ hours: 1 }) }
         );
         let failed = false;
@@ -792,7 +839,7 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
           bookings: () => 2,
         });
         const { campaignId } = await scenario.kit.seedActive(
-          scheduleFlow(dailyAtOne),
+          scheduleFlow(dailyAtNine),
           { audienceFilter: visitedThisYear, at: start.subtract({ hours: 1 }) }
         );
         simulation.killNextConsumer({ onRequest: 2 });
@@ -844,8 +891,9 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
           planning: ["schedules"],
         });
         await seedCustomers({ count: 100, bookings: () => 2 });
-        const { campaignId } = await scenario.kit.seedActive(
-          scheduleFlow(everyMinute),
+        const { campaignId } = await seedActiveWithPreTickSchedule(
+          scenario,
+          everyMinute,
           {
             audienceFilter: visitedThisYear,
             at: start.subtract({ seconds: 30 }),
@@ -902,7 +950,7 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
         });
         await seedCustomers({ count: 1800, bookings: () => 2 });
         const { campaignId } = await scenario.kit.seedActive(
-          scheduleFlow(dailyAtOne),
+          scheduleFlow(dailyAtNine),
           { audienceFilter: visitedThisYear, at: start.subtract({ hours: 1 }) }
         );
 
@@ -933,8 +981,9 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
         });
         await seedCustomers({ count: 1000, bookings: () => 2 });
         // Activated an hour ago: the 08:01 … 09:00 fires are due at 09:00.
-        const { campaignId } = await scenario.kit.seedActive(
-          scheduleFlow(everyMinute),
+        const { campaignId } = await seedActiveWithPreTickSchedule(
+          scenario,
+          everyMinute,
           { audienceFilter: visitedThisYear, at: start.subtract({ hours: 1 }) }
         );
         const caughtUp = query<{
@@ -1000,13 +1049,13 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
         await capacityEngine({ latency: 30, overhead: 5 });
       const customers = await seedCustomers({ count: 1000, bookings: () => 2 });
       const activatedAt = start.subtract({ seconds: 30 });
-      const busy = await scenario.kit.seedActive(scheduleFlow(everyMinute), {
+      const busy = await seedActiveWithPreTickSchedule(scenario, everyMinute, {
         audienceFilter: visitedThisYear,
         at: activatedAt,
       });
-      // 09:05 Prague, hourly.
+      // 09:15 Prague, hourly.
       const hourly = await scenario.kit.seedActive(
-        scheduleFlow({ minutes: [5] }),
+        scheduleFlow({ minutes: [15] }),
         {
           audienceFilter: everyoneFilter,
           at: activatedAt,

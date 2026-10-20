@@ -19,6 +19,7 @@ import {
   evaluateStep,
 } from "../automation-step-evaluation";
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
+import { enterReachedWaits } from "./automation-reached-step";
 import {
   type AutomationRunPosition,
   advanceAutomationRuns,
@@ -231,6 +232,32 @@ const moveDueRuns = Effect.fn("AutomationTimerPlanning.moveDueRuns")(function* (
     workUnitId: null,
     at,
   });
+  // A wait the advanced runs reach is entered now, as a unit would (D36);
+  // Conditions and the Send stay `ready` for this tick's later steps.
+  const movedOn = new Set(advanced);
+  yield* Effect.forEach(
+    Map.groupBy(
+      moves.flatMap((move) =>
+        move._tag === "Advance" && movedOn.has(move.run.runId) ? [move] : []
+      ),
+      (move) => `${move.run.versionId}\u0000${move.nextStepId}`
+    ).values(),
+    (group) => {
+      const [first] = group;
+      return first === undefined
+        ? Effect.void
+        : enterReachedWaits(tx, {
+            campaignId: first.run.campaignId,
+            versionId: first.run.versionId,
+            flow: flowOf(first.run.versionId),
+            stepId: first.nextStepId,
+            runs: group.map((move) => ({ runId: move.run.runId })),
+            at,
+            chainedSteps: 1,
+          });
+    },
+    { discard: true }
+  );
   const woken = yield* wakeAutomationRuns(tx, {
     runs: moves.flatMap((move) => (move._tag === "Wake" ? [move.run] : [])),
     at,
