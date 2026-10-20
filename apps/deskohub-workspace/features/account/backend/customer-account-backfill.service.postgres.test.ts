@@ -12,7 +12,7 @@ import type { CustomerAccountBackfillReport } from "@/features/account/backend/c
 
 await import("@/shared/testing/workspace-test-env");
 const [
-  { DotyposCustomerIdSchema },
+  { DotyposCustomerIdSchema, FindCustomerResult, toCustomerEmailIdentity },
   { DotyposServiceMock },
   { testEmailAddress },
   { inArray },
@@ -22,6 +22,7 @@ const [
   { makeTestAuth },
   { UnverifiedLogins },
   { CustomerAccountBackfill },
+  { CustomerDotyposAdapter },
   { customerAccountIdSchema },
   { checkoutAttemptKeySchema },
   { workspaceReservationIdSchema },
@@ -37,6 +38,7 @@ const [
   import("@/features/account/backend/auth/auth-handler.test-utils"),
   import("@/features/account/backend/auth/unverified-logins.service"),
   import("@/features/account/backend/customer-account-backfill.service"),
+  import("@/features/account/backend/customer-dotypos-adapter.service"),
   import("@/features/account/customer-account"),
   import("@/features/checkout/checkout-identifiers"),
   import("@/features/reservation/persistence-contracts"),
@@ -247,25 +249,53 @@ describe.skipIf(!testDatabase)(
       return id;
     };
 
-    const makeLayer = (fixture: Fixture, auth = makeTestAuth()) =>
-      CustomerAccountBackfill.Default.pipe(
+    /** Dotypos' exact-email search over the fixture's customers. */
+    const findCustomersByEmail = (fixture: Fixture, email: string) => {
+      const matches = [...fixture.customers.values()].filter(
+        (customer) =>
+          customer.email != null &&
+          toCustomerEmailIdentity(customer.email) ===
+            toCustomerEmailIdentity(email)
+      );
+      const [customer, second, ...rest] = matches.filter(
+        ({ deleted }) => !deleted
+      );
+      if (!customer) {
+        return matches.length > 0
+          ? FindCustomerResult.Deleted({ matches })
+          : FindCustomerResult.NotFound({ matches: [] });
+      }
+      return second
+        ? FindCustomerResult.Ambiguous({
+            matches: [customer, second, ...rest],
+          })
+        : FindCustomerResult.Matched({ customer, matches: [customer] });
+    };
+
+    const makeLayer = (fixture: Fixture, auth = makeTestAuth()) => {
+      const dotypos = DotyposServiceMock({
+        getCustomers: ({ ids }) =>
+          Effect.succeed(
+            ids.flatMap((id) => {
+              const customer = fixture.customers.get(id);
+              return customer ? [customer] : [];
+            })
+          ),
+        findCustomer: ({ email }) =>
+          Effect.sync(() => findCustomersByEmail(fixture, email ?? "")),
+      });
+      return CustomerAccountBackfill.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             testDatabase.layer,
             WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase.pool),
-            DotyposServiceMock({
-              getCustomers: ({ ids }) =>
-                Effect.succeed(
-                  ids.flatMap((id) => {
-                    const customer = fixture.customers.get(id);
-                    return customer ? [customer] : [];
-                  })
-                ),
-            }),
+            dotypos,
+            CustomerDotyposAdapter.Default.pipe(Layer.provide(dotypos)),
             UnverifiedLogins.makeLayer(auth)
           )
         )
       );
+    };
 
     const runBackfill = (
       fixture: Fixture,
@@ -794,6 +824,90 @@ describe.skipIf(!testDatabase)(
       await expectAuthorless(reservations);
     });
 
+    test("refuses an email that a customer without authorless reservations shares", async () => {
+      const fixture = makeFixture();
+      const candidate = makeCustomerId(fixture, "shared-email-candidate");
+      const sibling = makeCustomerId(fixture, "shared-email-sibling");
+      addCustomer(fixture, candidate, {
+        email: makeEmail(fixture, "shared-email"),
+      });
+      addCustomer(fixture, sibling, {
+        email: makeEmail(fixture, "Shared-Email"),
+      });
+      const deletedSibling = makeCustomerId(fixture, "deleted-sibling");
+      const deletedCandidate = makeCustomerId(fixture, "deleted-candidate");
+      addCustomer(fixture, deletedCandidate, {
+        email: makeEmail(fixture, "deleted-sibling"),
+      });
+      addCustomer(fixture, deletedSibling, {
+        email: makeEmail(fixture, "deleted-sibling"),
+        deleted: true,
+      });
+      const reservations = [
+        await insertReservation(fixture, {
+          customerId: candidate,
+          label: "shared-email-candidate",
+        }),
+      ];
+      await insertReservation(fixture, {
+        customerId: deletedCandidate,
+        label: "deleted-sibling-candidate",
+      });
+
+      const dryRun = await runBackfill(fixture, true);
+      const applied = await runBackfill(fixture, false);
+      for (const report of [dryRun, applied]) {
+        expect(fixtureRefusals(report, fixture)).toEqual([
+          {
+            dotyposCustomerId: candidate,
+            reason: "email_duplicated",
+            reservations: 1,
+          },
+        ]);
+      }
+      expect(applied.authors.viaNewLogin.customers).toBe(1);
+      await expectAuthorless(reservations);
+      const logins = await testDatabase.pool.query(
+        `select id from auth."user" where lower(email) = lower($1)`,
+        [makeEmail(fixture, "shared-email")]
+      );
+      expect(logins.rows).toEqual([]);
+    });
+
+    test("plans the customer of an orphan it tombstones as unlinked in dry runs too", async () => {
+      const fixture = makeFixture();
+      const customerId = makeCustomerId(fixture, "orphan-without-email");
+      addCustomer(fixture, customerId);
+      const accountId = await insertCustomerAccount(fixture, {
+        customerId,
+        createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+      });
+      const reservationId = await insertReservation(fixture, {
+        customerId,
+        label: "orphan-without-email",
+      });
+
+      const dryRun = await runBackfill(fixture, true);
+      const applied = await runBackfill(fixture, false);
+      expect({ ...dryRun, dryRun: false }).toEqual(applied);
+      expect(applied.tombstones.recorded).toBe(1);
+      expect(fixtureRefusals(applied, fixture)).toEqual([
+        {
+          dotyposCustomerId: customerId,
+          reason: "email_missing",
+          reservations: 1,
+        },
+      ]);
+      await expectAuthorless([reservationId]);
+      const account = await testDatabase.pool.query(
+        `select deleted_at, dotypos_customer_id from customer_accounts
+         where id = $1`,
+        [accountId]
+      );
+      expect(account.rows[0]?.deleted_at).not.toBeNull();
+      expect(account.rows[0]?.dotypos_customer_id).toBeNull();
+    });
+
     test("refuses verified and already-linked login conflicts", async () => {
       const fixture = makeFixture();
       const verifiedCustomer = makeCustomerId(fixture, "verified-conflict");
@@ -873,6 +987,54 @@ describe.skipIf(!testDatabase)(
         customerId: newLoginCustomer,
         label: "dry-new-login-reservation",
       });
+
+      // Every author outcome, so the dry run has to predict each of them.
+      const orphanAuthorCustomer = makeCustomerId(fixture, "dry-orphan-author");
+      addCustomer(fixture, orphanAuthorCustomer);
+      await insertCustomerAccount(fixture, {
+        customerId: orphanAuthorCustomer,
+        createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      });
+      const recentOrphanCustomer = makeCustomerId(fixture, "dry-recent-orphan");
+      await insertCustomerAccount(fixture, {
+        customerId: recentOrphanCustomer,
+      });
+      const linkedCustomer = makeCustomerId(fixture, "dry-linked");
+      const linkedAccount = await insertAuthUser(
+        fixture,
+        makeEmail(fixture, "dry-linked-account")
+      );
+      await insertLink(linkedAccount, linkedCustomer);
+      const sharedEmailCustomer = makeCustomerId(fixture, "dry-shared-email");
+      addCustomer(fixture, sharedEmailCustomer, {
+        email: makeEmail(fixture, "dry-shared-email"),
+      });
+      addCustomer(fixture, makeCustomerId(fixture, "dry-shared-sibling"), {
+        email: makeEmail(fixture, "DRY-shared-email"),
+      });
+      const resumedCustomer = makeCustomerId(fixture, "dry-resumed");
+      const resumedEmail = makeEmail(fixture, "dry-resumed");
+      addCustomer(fixture, resumedCustomer, { email: resumedEmail });
+      await insertAuthUser(fixture, resumedEmail);
+      const verifiedCustomer = makeCustomerId(fixture, "dry-verified");
+      const verifiedEmail = makeEmail(fixture, "dry-verified");
+      addCustomer(fixture, verifiedCustomer, { email: verifiedEmail });
+      await insertAuthUser(fixture, verifiedEmail, true);
+      const missingCustomer = makeCustomerId(fixture, "dry-missing");
+      for (const [index, customerId] of [
+        orphanAuthorCustomer,
+        recentOrphanCustomer,
+        linkedCustomer,
+        sharedEmailCustomer,
+        resumedCustomer,
+        verifiedCustomer,
+        missingCustomer,
+      ].entries()) {
+        await insertReservation(fixture, {
+          customerId,
+          label: `dry-outcome-${index}`,
+        });
+      }
 
       const snapshot = async () => {
         const emailPattern = `${fixture.prefix}%`;

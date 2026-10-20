@@ -1,16 +1,5 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import {
-  and,
-  eq,
-  inArray,
-  isNotNull,
-  isNull,
-  lt,
-  ne,
-  notExists,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { Effect, Schema } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
@@ -24,7 +13,11 @@ import {
   type CustomerAccountId,
   customerAccountIdSchema,
 } from "../customer-account";
-import { recordCustomerAccountLink } from "./customer-account.repository";
+import {
+  accountLoginMissing,
+  accountSettled,
+  recordCustomerAccountLink,
+} from "./customer-account.repository";
 
 /**
  * The reads and writes of the account backfill. Every function takes the
@@ -35,27 +28,7 @@ const decodeAccountIds = Schema.decodeUnknownEffect(
   Schema.Array(customerAccountIdSchema)
 );
 
-/**
- * A live account without a login counts as orphaned only after this long. A
- * sign-up commits its account before Better Auth inserts the login, so a
- * younger one may still be signing up.
- */
-const orphanedAccountAge = sql`interval '1 day'`;
-
 const count = sql<number>`count(*)::int`;
-
-const settled = lt(
-  customerAccounts.createdAt,
-  sql`now() - ${orphanedAccountAge}`
-);
-
-const loginMissing = (db: WorkspaceDatabaseClient) =>
-  notExists(
-    db
-      .select({ id: authUser.id })
-      .from(authUser)
-      .where(eq(authUser.id, customerAccounts.id))
-  );
 
 /** Logins whose durable customer account was never created. */
 export const findLoginsWithoutAccount = Effect.fn(function* (
@@ -162,38 +135,32 @@ export const readLinkRecordStates = Effect.fn(function* (
   });
 });
 
-/** Live accounts whose login is gone, split by whether the gap is settled. */
-export const countOrphanedAccounts = Effect.fn(function* (
+/**
+ * Live accounts whose login is gone: the settled ones a run tombstones, how
+ * many are too recent, and how many accounts are already deleted.
+ */
+export const findOrphanedAccounts = Effect.fn(function* (
   db: WorkspaceDatabaseClient
 ) {
-  const [row] = yield* db
+  const orphans = yield* db
     .select({
-      settled: sql<number>`(count(*) filter (where ${settled}))::int`,
-      recent: sql<number>`(count(*) filter (where not ${settled}))::int`,
-      alreadyDeleted: sql<number>`(select count(*)::int from ${customerAccounts} where ${isNotNull(customerAccounts.deletedAt)})`,
+      id: customerAccounts.id,
+      settled: sql<boolean>`${accountSettled()}`,
     })
     .from(customerAccounts)
-    .where(and(isNull(customerAccounts.deletedAt), loginMissing(db)));
+    .where(and(isNull(customerAccounts.deletedAt), accountLoginMissing(db)))
+    .orderBy(customerAccounts.id);
+  const [deleted] = yield* db
+    .select({ count })
+    .from(customerAccounts)
+    .where(isNotNull(customerAccounts.deletedAt));
   return {
-    settled: row?.settled ?? 0,
-    recent: row?.recent ?? 0,
-    alreadyDeleted: row?.alreadyDeleted ?? 0,
+    settled: yield* decodeAccountIds(
+      orphans.flatMap(({ id, settled }) => (settled ? [id] : []))
+    ),
+    recent: orphans.filter(({ settled }) => !settled).length,
+    alreadyDeleted: deleted?.count ?? 0,
   };
-});
-
-/**
- * Marks the settled orphans deleted and frees their Dotypos customers, as
- * an account deletion does. Returns how many it marked.
- */
-export const tombstoneOrphanedAccounts = Effect.fn(function* (
-  db: WorkspaceDatabaseClient
-) {
-  const rows = yield* db
-    .update(customerAccounts)
-    .set({ deletedAt: sql`now()`, dotyposCustomerId: null })
-    .where(and(isNull(customerAccounts.deletedAt), loginMissing(db), settled))
-    .returning({ id: customerAccounts.id });
-  return rows.length;
 });
 
 /** One Dotypos customer that has reservations without an author. */
@@ -332,6 +299,18 @@ export const readLoginsByEmail = Effect.fn(function* (
       emailVerified: row.emailVerified,
     })
   );
+});
+
+/** Whether the account's login is verified, or undefined when it is gone. */
+export const readLoginVerified = Effect.fn(function* (
+  db: WorkspaceDatabaseClient,
+  accountId: CustomerAccountId
+) {
+  const [login] = yield* db
+    .select({ emailVerified: authUser.emailVerified })
+    .from(authUser)
+    .where(eq(authUser.id, accountId));
+  return login?.emailVerified;
 });
 
 /**

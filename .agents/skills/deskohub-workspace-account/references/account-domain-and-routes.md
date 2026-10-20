@@ -50,7 +50,12 @@ glossary defines the customer account, reservation author, and tombstone.
   id from `generateId`. Logins from before the hook get theirs from the
   account backfill. `ensureCustomerAccount` still creates a missing row in the
   transaction that names the account, and deletion creates a tombstone when
-  none exists.
+  none exists. Better Auth can't run the hook and the login insert in one
+  transaction (its magic-link `createUser` isn't transaction-wrapped), so a
+  failed insert leaves an account without a login. The daily auth cleanup
+  cron tombstones live accounts whose login is gone once they are a day old
+  (`tombstoneOrphanedAccounts`); account deletion tombstones before it
+  deletes the login, so the sweep only catches interrupted flows.
 - `workspace_reservations.author_account_id` references it with `ON DELETE
   RESTRICT`. Never delete a customer account row; deletion tombstones it
   through `CustomerAccountRepository.tombstone`.
