@@ -18,7 +18,7 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Console, Data, Effect, Schedule } from "effect";
+import { Console, Data, Effect, Match, Schedule } from "effect";
 import { runStandaloneWorkspaceEffect } from "@/shared/backend/standalone-workspace-effect";
 import { runCommand } from "./shared/command";
 import {
@@ -193,9 +193,12 @@ const reportBuildFailure = (
   failure: SourceMapUploadFailed | SourceMapCleanupFailed
 ) =>
   Console.error(
-    failure._tag === "SourceMapUploadFailed"
-      ? `PostHog source-map upload failed (${failure.kind}): ${failure.summary}. Stopping the production build.`
-      : `${failure.message}. Stopping the production build so they aren't deployed.`
+    Match.valueTags(failure, {
+      SourceMapUploadFailed: ({ kind, summary }) =>
+        `PostHog source-map upload failed (${kind}): ${summary}. Stopping the production build.`,
+      SourceMapCleanupFailed: ({ message }) =>
+        `${message}. Stopping the production build so they aren't deployed.`,
+    })
   ).pipe(
     Effect.andThen(
       Effect.sync(() => {

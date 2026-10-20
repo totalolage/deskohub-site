@@ -262,6 +262,28 @@ describe("uploadSourceMaps", () => {
     expectNoCredential(logged);
   });
 
+  test("fails a forbidden chunk upload whose body names a transient status", async () => {
+    const forbiddenChunk = failedWith(
+      `ERROR posthog_cli::utils: Request failed: Response { url: "https://s3.example/chunk", status: 403 }
+ERROR posthog_cli::utils: Response text: Request failed: Response { status: 503 }
+Oops! Failed to upload chunk
+
+Caused by:
+    0: Request failed`
+    );
+    const distDir = await buildOutput();
+    const { failure, succeeded } = await runUpload(
+      [forbiddenChunk, forbiddenChunk, forbiddenChunk],
+      distDir
+    );
+
+    expect(succeeded).toBe(false);
+    expect(failure).toEqual(expect.objectContaining({ kind: "unknown" }));
+    expect(
+      await Bun.file(join(distDir, "static", "chunks", "app.js.map")).exists()
+    ).toBe(true);
+  });
+
   test("ships without public source maps when PostHog stays unavailable", async () => {
     const distDir = await buildOutput();
 

@@ -122,6 +122,30 @@ Caused by:
       summary: "posthog-cli exited with code 1: no source files found",
     },
     {
+      name: "an S3 chunk upload whose body repeats its status",
+      stderr: `ERROR posthog_cli::utils: Request failed: Response { url: "${presignedUrl}", status: 503 }
+ERROR posthog_cli::utils: Response text: Request failed: Response { status: 503 }
+Oops! Failed to upload chunk
+
+Caused by:
+    0: Request failed`,
+      kind: "transient",
+      summary:
+        "posthog-cli exited with code 1 while uploading a chunk: HTTP 503",
+    },
+    {
+      name: "a forbidden S3 chunk upload whose body names a transient status",
+      stderr: `ERROR posthog_cli::utils: Request failed: Response { url: "${presignedUrl}", status: 403 }
+ERROR posthog_cli::utils: Response text: Request failed: Response { status: 503 }
+Oops! Failed to upload chunk
+
+Caused by:
+    0: Request failed`,
+      kind: "unknown",
+      summary:
+        "posthog-cli exited with code 1 while uploading a chunk: conflicting HTTP statuses",
+    },
+    {
       name: "a permanent final error after a retried transient one",
       stderr: `ERROR posthog_cli::utils: Request failed: Response { url: "${presignedUrl}", status: 503 }
 Oops! Release ID mismatch: symbol sets already exist with different release IDs`,

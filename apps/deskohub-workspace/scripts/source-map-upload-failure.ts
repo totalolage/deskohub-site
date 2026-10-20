@@ -140,8 +140,6 @@ const httpStatusKind = (status: number) =>
 
 const firstMatch = (text: string, pattern: RegExp) => pattern.exec(text)?.[1];
 
-const unique = <T>(values: readonly T[]) => Array.from(new Set(values));
-
 const exitOutcome = (result: CommandResult) => {
   if (result.timedOut) return "timed out";
   if (result.signalCode !== null) return `was ended by ${result.signalCode}`;
@@ -151,7 +149,8 @@ const exitOutcome = (result: CommandResult) => {
 /**
  * Splits the output into the CLI's final error and what it logged before.
  * Earlier lines hold retried errors and S3 response bodies, so only the
- * final error decides the kind. Its API error comes last and quotes the
+ * final error decides the kind, apart from the S3 status a bare
+ * `Request failed` points back to (see `httpStatuses`). Its API error comes last and quotes the
  * response body, so only the chain before it and the API error's own leading
  * fields are read. A body can also contain a line opening with `Oops! `; with
  * more than one such line the final error is ambiguous and read as nothing.
@@ -175,26 +174,29 @@ const finalError = (output: string) => {
   };
 };
 
-const allS3Statuses = (history: string) =>
-  Array.from(
-    history.matchAll(/Request failed: Response \{[^\n]*?\bstatus: (\d{3})\b/g),
-    ([, status = ""]) => status
-  );
-
-const httpStatus = ({
+/**
+ * Every distinct HTTP status the failure names, so more than one is a
+ * conflict. An S3 chunk upload ends in a bare `Request failed`; the
+ * response's status is in the error the CLI logged just before, ahead of the
+ * response body. The body can repeat that line with any status, so every such
+ * line is read: a body can echo the real status but never replace it.
+ */
+const httpStatuses = ({
   history,
   chain,
   apiError,
 }: ReturnType<typeof finalError>) => {
   const status =
     firstMatch(apiError, /^API error: status='(\d{3})'/) ??
-    firstMatch(chain, /\bHTTP status (?:client|server) error \((\d{3})\b/) ??
-    // An S3 chunk upload ends in a bare `Request failed`; the response's
-    // status is in the error the CLI logged just before.
-    (/\d: Request failed\s*$/.test(chain)
-      ? allS3Statuses(history).at(-1)
-      : undefined);
-  return status === undefined ? undefined : Number(status);
+    firstMatch(chain, /\bHTTP status (?:client|server) error \((\d{3})\b/);
+  if (status !== undefined) return [Number(status)];
+  if (!/\d: Request failed\s*$/.test(chain)) return [];
+  const s3Statuses = history.matchAll(
+    /Request failed: Response \{[^\n]*?\bstatus: (\d{3})\b/g
+  );
+  return [
+    ...new Set(Array.from(s3Statuses, ([, s3Status = ""]) => s3Status)),
+  ].map(Number);
 };
 
 export const describeSourceMapUploadFailure = (
@@ -208,7 +210,8 @@ export const describeSourceMapUploadFailure = (
   const matchedCauses = causes.filter(({ pattern }) =>
     pattern.test(output.chain)
   );
-  const status = httpStatus(output);
+  const statuses = httpStatuses(output);
+  const status = statuses.length === 1 ? statuses[0] : undefined;
   const apiType = firstMatch(
     output.apiError,
     /^API error: error='([a-z_]+)' code='/
@@ -230,6 +233,7 @@ export const describeSourceMapUploadFailure = (
 
   const details = [
     ...(status === undefined ? [] : [`HTTP ${status}`]),
+    ...(statuses.length > 1 ? ["conflicting HTTP statuses"] : []),
     ...(apiType === undefined
       ? []
       : [
@@ -242,7 +246,7 @@ export const describeSourceMapUploadFailure = (
   const where = step ? ` while ${step.label}` : "";
   let what: string;
   if (output.ambiguous) what = "several final errors in its output";
-  else if (details.length > 0) what = unique(details).join(", ");
+  else if (details.length > 0) what = details.join(", ");
   else what = "no recognised error in its output";
   return {
     kind,
