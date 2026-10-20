@@ -54,7 +54,7 @@ describe("dhw run from source", () => {
       const workspace = startLocalWorkspace();
 
       const run = await runDhw(["api", "info", "--json"], {
-        env: { DHW_BASE: workspace.base },
+        workspace: workspace.base,
       });
 
       expect(workspace.requests).toEqual(["/api/v1/cli/info"]);
@@ -69,7 +69,7 @@ describe("dhw run from source", () => {
       const workspace = startLocalWorkspace();
 
       const run = await runDhw(["overview", "--json"], {
-        env: { DHW_BASE: workspace.base },
+        workspace: workspace.base,
       });
 
       expect(run.exitCode).not.toBe(0);
@@ -85,7 +85,8 @@ describe("dhw run from source", () => {
       const workspace = startLocalWorkspace();
 
       const run = await runDhw(["overview", "--json"], {
-        env: { DHW_BASE: workspace.base, DHW_CREDENTIAL_STORE: "system" },
+        workspace: workspace.base,
+        credentialStore: "system",
       });
 
       expect(run.exitCode).not.toBe(0);
@@ -100,12 +101,15 @@ describe("dhw run from source", () => {
   test(
     "routes requests beyond localhost to the egress trap",
     async () => {
-      const inherited = { https_proxy: "", no_proxy: "*" };
-      Object.assign(process.env, inherited);
+      const previous = {
+        https_proxy: process.env.https_proxy,
+        no_proxy: process.env.no_proxy,
+      };
+      Object.assign(process.env, { https_proxy: "", no_proxy: "*" });
 
       try {
         const run = await runDhw(["api", "info", "--json"], {
-          env: { DHW_BASE: "https://workspace.example.test" },
+          workspace: "https://workspace.example.test",
         });
 
         expect(run.exitCode).not.toBe(0);
@@ -113,7 +117,10 @@ describe("dhw run from source", () => {
           "CONNECT workspace.example.test:443 HTTP/1.1",
         ]);
       } finally {
-        for (const name of Object.keys(inherited)) delete process.env[name];
+        for (const [name, value] of Object.entries(previous)) {
+          if (value === undefined) delete process.env[name];
+          else process.env[name] = value;
+        }
       }
     },
     dhwRunTimeout
@@ -123,7 +130,7 @@ describe("dhw run from source", () => {
     "refuses to select the production Workspace",
     async () => {
       await expect(
-        runDhw(["version"], { env: { DHW_BASE: productionOrigin.origin } })
+        runDhw(["version"], { workspace: productionOrigin.origin })
       ).rejects.toThrow("never select the production Workspace");
     },
     dhwRunTimeout

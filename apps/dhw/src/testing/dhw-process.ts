@@ -32,22 +32,30 @@ export type DhwRun = {
  * Runs `dhw` in a subprocess that inherits nothing from the caller's
  * environment. It gets a fresh home and state directory and a process-local
  * credential store, and every request to anything but localhost goes to a
- * trap that records and refuses it.
+ * trap that records and refuses it. Callers choose only the Workspace and,
+ * for source runs whose preload blocks it, the system credential store.
  */
 export const runDhw = async (
   args: ReadonlyArray<string>,
   options: {
     readonly executable?: ReadonlyArray<string>;
-    readonly env?: Readonly<Record<string, string>>;
+    readonly workspace?: string;
+    readonly credentialStore?: "memory" | "system";
   } = {}
 ): Promise<DhwRun> => {
-  const selectedBase = options.env?.DHW_BASE;
   if (
-    selectedBase !== undefined &&
-    URL.canParse(selectedBase) &&
-    new URL(selectedBase).origin === productionOrigin.origin
+    options.workspace !== undefined &&
+    new URL(options.workspace).origin === productionOrigin.origin
   ) {
     throw new Error("dhw tests never select the production Workspace.");
+  }
+  if (
+    options.executable !== undefined &&
+    options.credentialStore === "system"
+  ) {
+    throw new Error(
+      "Only a run from source blocks the system credential store."
+    );
   }
 
   const egress: Array<string> = [];
@@ -73,14 +81,17 @@ export const runDhw = async (
           TMPDIR: tmpdir(),
           HOME: home,
           DHW_STATE_DIR: join(home, "state"),
-          DHW_CREDENTIAL_STORE: "memory",
+          DHW_CREDENTIAL_STORE: options.credentialStore ?? "memory",
           DHW_NO_UPDATE_CHECK: "true",
+          ...(options.workspace === undefined
+            ? {}
+            : { DHW_BASE: options.workspace }),
           ...testNetworkEnvironment(`http://127.0.0.1:${trap.port}`),
-          ...options.env,
         },
         stdin: "ignore",
         stdout: "pipe",
         stderr: "pipe",
+        timeout: dhwRunTimeout - 10_000,
       }
     );
     const [exitCode, stdout, stderr] = await Promise.all([

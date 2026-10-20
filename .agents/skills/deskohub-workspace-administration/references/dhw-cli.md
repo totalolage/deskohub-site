@@ -115,7 +115,7 @@ bun apps/dhw/src/build.ts development
 DHW_BASE=http://localhost:3000 apps/dhw/dist/dhw version --json
 ```
 
-`apps/dhw` tests preload `src/testing/test-isolation.preload.ts`, which replaces `Bun.secrets` and sends non-local requests to an unreachable proxy. Start `dhw` subprocesses only through `runDhw` (`src/testing/dhw-process.ts`): it passes an environment built from scratch with the memory credential store, a fresh home, no `.env` loading, and a trap that records and refuses every request outside localhost. It rejects the production origin. Never run `dhw` against production or with the system credential store in tests.
+`apps/dhw` tests preload `src/testing/test-isolation.preload.ts`, which replaces `Bun.secrets` and sends non-local requests to an unreachable proxy. Start `dhw` subprocesses only through `runDhw` (`src/testing/dhw-process.ts`): it passes an environment built from scratch with the memory credential store, a fresh home, no `.env` loading, and a trap that records and refuses every request outside localhost. It rejects the production origin, and the system credential store for compiled executables, which skip the preload. Never run `dhw` against production or with the system credential store in tests.
 
 Development builds report `<version>+development`, and PR artifacts report `<version>+pr.<number>.<head-sha>`. Published releases use the plain package version.
 

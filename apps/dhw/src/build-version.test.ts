@@ -73,7 +73,7 @@ describe("compiled dhw", () => {
     async () => {
       const run = await runDhw(["version", "--json"], {
         executable: developmentBinary,
-        env: { DHW_BASE: "http://localhost:3000" },
+        workspace: "http://localhost:3000",
       });
 
       expect(run.exitCode).toBe(0);

@@ -17,8 +17,20 @@ Object.defineProperty(Bun, "secrets", {
   },
 });
 
-if (process.env.DHW_TEST_EGRESS_PROXY === undefined) {
-  Object.assign(process.env, testNetworkEnvironment("http://127.0.0.1:9"));
+Object.assign(
+  process.env,
+  testNetworkEnvironment(
+    localProxy(process.env.DHW_TEST_EGRESS_PROXY) ?? "http://127.0.0.1:9"
+  )
+);
+
+/** A subprocess keeps the egress trap its test started, if it is local. */
+function localProxy(proxy: string | undefined) {
+  return proxy !== undefined &&
+    URL.canParse(proxy) &&
+    new URL(proxy).origin === `http://127.0.0.1:${new URL(proxy).port}`
+    ? proxy
+    : undefined;
 }
 
 /**
