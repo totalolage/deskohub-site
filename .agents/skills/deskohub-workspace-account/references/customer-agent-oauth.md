@@ -165,10 +165,11 @@ resource.
   detection reads them. Consents and CIMD client rows have no expiry; consents
   last until the customer disconnects the assistant or deletes the account.
 - Refresh tokens rotate with a 30-second reuse window
-  (`customerAgentRefreshTokenReuseSeconds`, set explicitly because the
-  privacy notice discloses it). The provider stores the replacement token
-  response in `rotation_replay_response` on the rotated row, encrypted with
-  the Better Auth secret, and replays it (with `expires_in` recounted) for a
+  (`customerAgentRefreshTokenReuseSeconds`, set explicitly so the retention
+  settings in `privacy-and-retention.md` stay true if the provider default
+  changes; the privacy notice doesn't state it). The provider stores the
+  replacement token response in `rotation_replay_response` on the rotated
+  row, encrypted with the Better Auth secret, and replays it (with `expires_in` recounted) for a
   matching repeat refresh until `rotation_replay_expires_at`. Truly
   concurrent refreshes still race; the loser gets `invalid_grant` without
   ending the grant. Reuse after the window deletes the client's tokens for

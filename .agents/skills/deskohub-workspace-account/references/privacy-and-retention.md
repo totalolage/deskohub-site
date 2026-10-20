@@ -35,6 +35,13 @@ what the privacy copy promises. Privacy copy lives in
   30-day refresh tokens rotated on use with a 30-second reuse window whose
   encrypted replay copy the daily cleanup clears, consents kept until the
   customer disconnects the assistant or deletes the account.
+- The notice promises that connected assistants' access credentials expire
+  automatically and are deleted regularly, that the connection and its
+  permissions last until the customer disconnects the assistant in Connected
+  assistants or deletes the account, and that either deletes the connection,
+  its permissions, and its access credentials right away. Keep consent
+  deletion revoking the client's tokens (the oauth-provider patch) and keep
+  the Connected assistants section name in step with the copy.
 - Account deletion expires the Dotypos profile and removes the live login
   account. Don't promise automatic Dotypos deletion after any period: the
   Dotypos Customer API documents no retention or anonymization behavior for
