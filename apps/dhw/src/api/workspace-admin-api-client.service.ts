@@ -1248,6 +1248,11 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
                   params: { templateKey },
                   payload,
                 }),
+              UnfinishedContent: (payload) =>
+                authorized.campaigns.previewCampaignTemplate({
+                  params: { templateKey },
+                  payload,
+                }),
               Campaign: (payload) =>
                 authorized.campaigns.previewCampaignTemplate({
                   params: { templateKey },

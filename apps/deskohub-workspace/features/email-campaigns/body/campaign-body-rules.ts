@@ -99,10 +99,10 @@ const nodeIssues = (
 };
 
 /**
- * Checks a body against the campaign content set: the TipTap schema (known
- * nodes and marks, valid nesting) plus the rules the schema can't express.
+ * Checks a body against the TipTap schema of the campaign content set: known
+ * nodes and marks, valid nesting. A body that passes can be rendered.
  */
-export const campaignBodyIssues = (
+export const campaignBodyStructureIssues = (
   doc: CampaignBodyNode
 ): ReadonlyArray<CampaignBodyIssue> => {
   if (doc.type !== campaignBodySchema.topNodeType.name) {
@@ -117,7 +117,16 @@ export const campaignBodyIssues = (
     }),
   });
 
-  return Result.isFailure(schemaIssue)
-    ? [schemaIssue.failure]
-    : nodeIssues(doc, []);
+  return Result.isFailure(schemaIssue) ? [schemaIssue.failure] : [];
+};
+
+/**
+ * Checks a body against the campaign content set: its structure plus the
+ * rules the schema can't express, which links, buttons and images must meet.
+ */
+export const campaignBodyIssues = (
+  doc: CampaignBodyNode
+): ReadonlyArray<CampaignBodyIssue> => {
+  const structureIssues = campaignBodyStructureIssues(doc);
+  return structureIssues.length > 0 ? structureIssues : nodeIssues(doc, []);
 };

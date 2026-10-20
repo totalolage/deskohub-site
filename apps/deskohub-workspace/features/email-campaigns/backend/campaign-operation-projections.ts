@@ -12,6 +12,7 @@ import { type Locale, locales } from "@/features/i18n";
 import {
   campaignBodyToMarkdown,
   parseCampaignBodyMarkdown,
+  parseUnfinishedCampaignBodyMarkdown,
 } from "../body/campaign-body-markdown";
 import type {
   CampaignLocaleContent,
@@ -29,9 +30,13 @@ const localeEntries = <Value>(
     return value === undefined ? [] : [[locale, value] as const];
   });
 
-/** Parses one locale's Markdown body; its failure names the locale. */
-const parseLocaleBody = (locale: Locale, markdown: string) =>
-  parseCampaignBodyMarkdown(markdown).pipe(
+/** Parses one locale's Markdown body with `parse`; its failure names the locale. */
+const parseLocaleBody = (
+  locale: Locale,
+  markdown: string,
+  parse: typeof parseCampaignBodyMarkdown
+) =>
+  parse(markdown).pipe(
     Effect.mapError(
       (cause) => new CampaignBodyMarkdownInvalid({ locale, cause })
     )
@@ -43,16 +48,37 @@ const withOperationalReason = (
 ): CampaignLocaleContent =>
   operationalReason === undefined ? content : { ...content, operationalReason };
 
+/** One locale's texts as the contract sends them, with a body parsed by `parse`. */
+const parseLocaleContent = (
+  locale: Locale,
+  content: AdministrationCampaignLocaleContentType,
+  parse: typeof parseCampaignBodyMarkdown
+) =>
+  parseLocaleBody(locale, content.bodyMarkdown, parse).pipe(
+    Effect.map((body) =>
+      withOperationalReason(
+        { subject: content.subject, preheader: content.preheader, body },
+        content.operationalReason
+      )
+    )
+  );
+
 /** One locale's texts as the contract sends them, with a parsed body. */
 export const toCampaignLocaleContent = Effect.fn(
   "CampaignOperations.toCampaignLocaleContent"
-)(function* (locale: Locale, content: AdministrationCampaignLocaleContentType) {
-  const body = yield* parseLocaleBody(locale, content.bodyMarkdown);
-  return withOperationalReason(
-    { subject: content.subject, preheader: content.preheader, body },
-    content.operationalReason
-  );
-});
+)((locale: Locale, content: AdministrationCampaignLocaleContentType) =>
+  parseLocaleContent(locale, content, parseCampaignBodyMarkdown)
+);
+
+/**
+ * One locale's texts still being written, for a preview: the body's links,
+ * buttons and images may be unfinished.
+ */
+export const toUnfinishedCampaignLocaleContent = Effect.fn(
+  "CampaignOperations.toUnfinishedCampaignLocaleContent"
+)((locale: Locale, content: AdministrationCampaignLocaleContentType) =>
+  parseLocaleContent(locale, content, parseUnfinishedCampaignBodyMarkdown)
+);
 
 export const toCampaignLocalizedContent = (
   content: AdministrationCampaignContentType
