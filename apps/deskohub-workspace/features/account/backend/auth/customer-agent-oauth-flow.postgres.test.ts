@@ -1170,9 +1170,9 @@ describe.skipIf(!testDatabase)(
       /** No issued token works any more, and none is left stored. */
       const expectRevoked = async (issued: readonly TokenResponse[]) => {
         for (const { access_token, refresh_token } of issued) {
-          expect(
-            await failureReasonOf(authorityOver(auth), access_token)
-          ).toBe("invalid-token");
+          expect(await failureReasonOf(authorityOver(auth), access_token)).toBe(
+            "invalid-token"
+          );
           expect((await refresh(refresh_token!)).status).toBe(400);
         }
         for (const table of [
