@@ -23,6 +23,7 @@ import {
   EmailServiceTag,
 } from "@deskohub/email";
 import { testEmailAddress } from "@deskohub/test-email";
+import { emailAutomationTickMinutes } from "@deskohub/workspace-admin-api";
 import { Effect, Fiber, Layer, Result } from "effect";
 import { TestClock } from "effect/testing";
 import {
@@ -1045,7 +1046,7 @@ export const makeAutomationEngineScenario = async (input: {
       return deliveries;
     };
 
-    /** One planner minute, then every queued unit until none is left. */
+    /** One planner run, then every queued unit until none is left. */
     const tick = async (at: Temporal.Instant) => {
       const summary = await plan(at);
       const deliveries = await drain(at);
@@ -1053,19 +1054,52 @@ export const makeAutomationEngineScenario = async (input: {
     };
 
     /**
-     * Plans, then cuts the consumer of the oldest enqueued deliver unit
-     * off while its batch request is with the provider. The unit stays
+     * One planner run, then every queued unit except those of `kind`, so the
+     * `kind` units that entry and condition units planned (D36) stay queued.
+     */
+    const planUntilQueued = async (
+      at: Temporal.Instant,
+      kind: AutomationWorkUnitKind
+    ) => {
+      const summary = await plan(at);
+      for (;;) {
+        const { rows } = await pool.query<{ id: AutomationWorkUnitId }>(
+          "select id from email_campaign_automation_work_units where kind = $1 and id = any($2)",
+          [kind, queue.pending().map((message) => message.unitId)]
+        );
+        const held = new Set(rows.map(({ id }) => id));
+        const next = queue
+          .pending()
+          .find((message) => !held.has(message.unitId));
+        if (next === undefined) return summary;
+        await process(next.unitId, at);
+      }
+    };
+
+    /**
+     * Plans, runs the units ahead of the oldest enqueued deliver unit, then
+     * cuts its consumer off while its batch request is with the provider. The unit stays
      * claimed with its batch persisted; other messages stay pending.
      */
     const killDuringRequest = async (at: Temporal.Instant) => {
       const reached = resend.nextRequest();
       await plan(at);
-      const { rows } = await pool.query<{ id: AutomationWorkUnitId }>(
-        "select id from email_campaign_automation_work_units where kind = 'deliver' and id = any($1) order by created_at limit 1",
-        [queue.pending().map((message) => message.unitId)]
-      );
-      const unitId = rows[0]?.id;
-      if (unitId === undefined) throw new Error("No deliver unit was enqueued");
+      const pendingDeliverUnit = async () => {
+        const { rows } = await pool.query<{ id: AutomationWorkUnitId }>(
+          "select id from email_campaign_automation_work_units where kind = 'deliver' and id = any($1) order by created_at limit 1",
+          [queue.pending().map((message) => message.unitId)]
+        );
+        return rows[0]?.id;
+      };
+      // Entry and condition units plan the deliver unit as they commit (D36),
+      // so the units ahead of it run first.
+      let unitId = await pendingDeliverUnit();
+      while (unitId === undefined) {
+        const [next] = queue.pending();
+        if (next === undefined) throw new Error("No deliver unit was enqueued");
+        await process(next.unitId, at);
+        unitId = await pendingDeliverUnit();
+      }
       // Takes its message off the queue; the others stay pending.
       const rest = queue.pending().filter((m) => m.unitId !== unitId);
       queue.dropPending();
@@ -1098,6 +1132,7 @@ export const makeAutomationEngineScenario = async (input: {
       start,
       drain,
       tick,
+      planUntilQueued,
       killDuringRequest,
       lifecycle,
       health,
@@ -1181,13 +1216,28 @@ export const makeAutomationEngineScenario = async (input: {
     readonly maxTicks?: number;
     /**
      * Plans again at the same instant while work pends (up to 10 times),
-     * as overlapping planner runs within one minute would, so a chain of
-     * local steps completes at its own instant rather than a minute later.
+     * as overlapping planner runs would, so work only a later planner run
+     * picks up (a run a unit left `ready`, a replanned unit) completes at
+     * its own instant. Condition chains need none: the units plan the
+     * steps their runs reach (D36).
      */
     readonly sameInstant?: boolean;
+    /**
+     * Runs the engine as its cron does: one planner run and a queue drain on
+     * tick instants only, every `emailAutomationTickMinutes` from the first
+     * at or after `from`, skipping idle ticks to the first one at or after
+     * the next due instant. The queue is drained only on ticks too.
+     */
+    readonly onTicks?: boolean;
   }): Promise<AutomationScenarioProgress> => {
     const maxTicks = options.maxTicks ?? 500;
-    let at = options.from;
+    const tickAtOrAfter = (instant: Temporal.Instant) =>
+      instant.round({
+        smallestUnit: "minute",
+        roundingIncrement: emailAutomationTickMinutes,
+        roundingMode: "ceil",
+      });
+    let at = options.onTicks ? tickAtOrAfter(options.from) : options.from;
     let repeats = 0;
     for (let ticks = 0; ticks < maxTicks; ) {
       await engine.tick(at);
@@ -1201,11 +1251,13 @@ export const makeAutomationEngineScenario = async (input: {
         continue;
       }
       repeats = 0;
-      const nextMinute = at.add({ minutes: 1 });
-      const due = pending ? nextMinute : await nextDue(at);
+      const step = at.add({
+        minutes: options.onTicks ? emailAutomationTickMinutes : 1,
+      });
+      const due = pending ? step : await nextDue(at);
       if (due === undefined) return { at, ticks, settled: !options.settled };
-      const next =
-        Temporal.Instant.compare(due, nextMinute) < 0 ? nextMinute : due;
+      const dueAt = options.onTicks ? tickAtOrAfter(due) : due;
+      const next = Temporal.Instant.compare(dueAt, step) < 0 ? step : dueAt;
       if (Temporal.Instant.compare(next, options.until) > 0) {
         return { at, ticks, settled: false };
       }

@@ -1,4 +1,5 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
+import type { AutomationFlowType as AutomationFlow } from "@deskohub/workspace-admin-api";
 import { and, eq, sql } from "drizzle-orm";
 import { Effect, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -10,10 +11,7 @@ import {
 } from "../../backend/audience-evaluation-context";
 import { CampaignRecipientService } from "../../backend/campaign-recipient.service";
 import type { CampaignId } from "../../campaign-identifiers";
-import type {
-  AutomationStepId,
-  AutomationVersionId,
-} from "../automation-identifiers";
+import type { AutomationVersionId } from "../automation-identifiers";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
 import {
@@ -46,7 +44,7 @@ type FireChunkEvaluation =
   | {
       readonly _tag: "Evaluated";
       readonly versionId: AutomationVersionId;
-      readonly firstStepId: AutomationStepId;
+      readonly flow: AutomationFlow;
       readonly entrants: readonly DotyposCustomerId[];
     }
   /** The fire's version flow no longer decodes: the fire fails (§1.2.8). */
@@ -202,7 +200,7 @@ export const makeFireChunkHandler = Effect.gen(function* () {
             loadAutomationEntryVersions(tx, [fire.versionId])
           )
           .pipe(Effect.mapError(databaseFailure))).get(fire.versionId);
-        if (version === undefined || Option.isNone(version.firstStepId)) {
+        if (version === undefined || Option.isNone(version.flow)) {
           return { _tag: "Undecodable" } as const;
         }
 
@@ -238,7 +236,7 @@ export const makeFireChunkHandler = Effect.gen(function* () {
         return {
           _tag: "Evaluated",
           versionId: version.id,
-          firstStepId: version.firstStepId.value,
+          flow: version.flow.value,
           entrants: resolution.recipients.map(
             ({ dotyposCustomerId }) => dotyposCustomerId
           ),
@@ -278,10 +276,11 @@ export const makeFireChunkHandler = Effect.gen(function* () {
           campaignId,
           versionId: evaluation.versionId,
           admitted: {
-            firstStepId: evaluation.firstStepId,
+            flow: evaluation.flow,
             occurrences: evaluation.entrants.map((customerId) =>
               occurrenceOf(fireAt, customerId)
             ),
+            facts,
           },
           rejected: [],
           at,
