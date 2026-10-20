@@ -16,14 +16,14 @@ mock.module("next/server", () => ({
 const { GET } = await import(`../../..${customerAgentTestClientPathname}/route`);
 
 describe("test agent Client ID Metadata Document", () => {
-  test("serves the document as uncached JSON", async () => {
+  test("serves the document as JSON cached for a minute", async () => {
     const response: Response = await GET();
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toStartWith(
       "application/json"
     );
-    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=60");
     expect(await response.json()).toEqual(customerAgentTestClientMetadata);
   });
 
