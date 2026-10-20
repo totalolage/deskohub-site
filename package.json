@@ -32,6 +32,7 @@
   "patchedDependencies": {
     "@effect/sql-pg@4.0.0-beta.85": "patches/@effect%2Fsql-pg@4.0.0-beta.85.patch",
     "@effect/openapi-generator@4.0.0-beta.85": "patches/@effect%2Fopenapi-generator@4.0.0-beta.85.patch",
-    "effect@4.0.0-beta.85": "patches/effect@4.0.0-beta.85.patch"
+    "effect@4.0.0-beta.85": "patches/effect@4.0.0-beta.85.patch",
+    "@better-auth/oauth-provider@1.7.2": "patches/@better-auth%2Foauth-provider@1.7.2.patch"
   }
 }

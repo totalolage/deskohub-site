@@ -15,6 +15,12 @@ import { customerAgentScopes } from "@/features/account/customer-agent-scopes";
 const { auth } = makeMemoryTestAuth();
 mock.module("@/features/account/server/auth.server", () => ({ auth }));
 
+// Outside a request, Next's `connection()` throws; the routes call it so
+// the build never prerenders them.
+const nextServer = await import("next/server");
+const connection = mock(() => Promise.resolve());
+mock.module("next/server", () => ({ ...nextServer, connection }));
+
 const authorizationServerRoute = await import(
   "@/app/.well-known/oauth-authorization-server/api/auth/route"
 );
@@ -34,6 +40,19 @@ const get =
     route.GET(new Request(`${origin}${path}`));
 
 describe("customer agent OAuth discovery", () => {
+  test("renders every document per request, never at build time", async () => {
+    connection.mockClear();
+    await get(protectedResourceRoute)("/.well-known/oauth-protected-resource");
+    await get(mcpProtectedResourceRoute)(
+      "/.well-known/oauth-protected-resource/api/mcp"
+    );
+    await get(authorizationServerRoute)(
+      "/.well-known/oauth-authorization-server/api/auth"
+    );
+
+    expect(connection).toHaveBeenCalledTimes(3);
+  });
+
   test("serves the authorization-server metadata at the issuer's path-inserted URL", async () => {
     const response = await get(authorizationServerRoute)(
       "/.well-known/oauth-authorization-server/api/auth"
