@@ -29,6 +29,7 @@ import {
   type StandaloneAccessCodeCreationError,
   standaloneAccessCodeAttemptStaleAfterMilliseconds,
 } from "@/features/access-codes";
+import { CustomerAccountBackfill } from "@/features/account";
 import { InvoiceAdministrationService } from "@/features/accounting/admin/invoice-administration.service";
 import { InvoiceAdministrationNotFoundError } from "@/features/accounting/admin/invoice-administration-identifier";
 import { AdministrationService } from "@/features/administration/administration.service";
@@ -69,6 +70,7 @@ import {
   WorkspaceObservabilityLive,
   workspaceMemoMap,
 } from "@/shared/backend/workspace-effect";
+import { AdminCliAccountsApiHandlers } from "./accounts-api.server";
 import {
   makeServiceUnavailable,
   mapAdministrationApiFailure,
@@ -933,12 +935,14 @@ const WorkspaceAdminApiLive = Layer.mergeAll(
     Layer.provide(AdminCliAdministrationApiHandlers),
     Layer.provide(AdminCliCampaignsApiHandlers),
     Layer.provide(AdminCliAdministratorsApiHandlers),
+    Layer.provide(AdminCliAccountsApiHandlers),
     Layer.provide(CliBearerAuthenticationLive),
     Layer.provide(CliClientCompatibilityLive),
     Layer.provide(AdministrationService.Live),
     Layer.provide(ReservationAdministrationService.Live),
     Layer.provide(ReservationProductDetailsBackfill.Live),
     Layer.provide(LegacyAdministratorBackfill.Live),
+    Layer.provide(CustomerAccountBackfill.Live),
     Layer.provide(ReservationAccessAdministration.Live),
     Layer.provide(DiscountAdministration.Live),
     Layer.provide(InvoiceAdministrationService.Live),

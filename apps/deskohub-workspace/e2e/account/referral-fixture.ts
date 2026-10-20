@@ -17,6 +17,8 @@ import {
 } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import { customerAccountLinks } from "@/db/schema/customer-account-links";
+import { recordCustomerAccountLink } from "@/features/account/backend/customer-account.repository";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
   checkoutAttemptKeySchema,
   checkoutSessionKeySchema,
@@ -130,6 +132,11 @@ const insertReferralOwner = Effect.fn("seedWorkspaceE2EReferralOwner")(
       customerAccountId: owner.accountId,
       dotyposCustomerId: owner.dotyposCustomerId,
     });
+    yield* recordCustomerAccountLink(
+      tx,
+      customerAccountIdSchema.make(owner.accountId),
+      owner.dotyposCustomerId
+    );
     return yield* insertReferralCode(tx, owner.dotyposCustomerId);
   }
 );
