@@ -465,7 +465,11 @@ describe.skipIf(!testDatabase)(
       await Effect.runPromise(
         db
           .insert(customerAccounts)
-          .values({ id: accountId, dotyposCustomerId: accountHolder })
+          .values({
+            id: accountId,
+            dotyposCustomerId: accountHolder,
+            createdAt: accountCreatedAt,
+          })
       );
       await Effect.runPromise(
         db.insert(authUser).values({
@@ -474,7 +478,10 @@ describe.skipIf(!testDatabase)(
           email: testEmailAddress(`resolver-${run}`),
           emailVerified: true,
           locale: "cs-CZ",
-          createdAt: new Date(accountCreatedAt.epochMilliseconds),
+          // A backfilled login predates its account; the account's date counts.
+          createdAt: new Date(
+            accountCreatedAt.subtract({ hours: 30 * 24 }).epochMilliseconds
+          ),
         })
       );
       const filter = JSON.stringify(group("and", []));

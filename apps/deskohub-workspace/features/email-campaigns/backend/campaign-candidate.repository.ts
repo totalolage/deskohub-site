@@ -417,7 +417,7 @@ export class CampaignCandidateRepository extends Context.Service<
               dotyposCustomerId: accountCustomerId,
               inPeriod: sql<boolean>`${and(
                 sql`true`,
-                withinBounds(authUser.createdAt, created)
+                withinBounds(customerAccounts.createdAt, created)
               )}`,
             })
             .from(customerAccounts)
@@ -427,7 +427,7 @@ export class CampaignCandidateRepository extends Context.Service<
                 verifiedLogin,
                 isNotNull(customerAccounts.dotyposCustomerId),
                 ofCustomers(customerAccounts.dotyposCustomerId, customers),
-                sql`${authUser.createdAt} <= ${temporalInstantToDate(asOf)}`
+                sql`${customerAccounts.createdAt} <= ${temporalInstantToDate(asOf)}`
               )
             );
           return {

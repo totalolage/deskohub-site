@@ -126,17 +126,34 @@ describe("automation admin API", () => {
     expect(error).toBeInstanceOf(CliSessionUnauthorized);
   });
 
-  test("refuses a dhw older than the automation commands", async () => {
-    const error = await callAutomationsApi(
-      (client) =>
-        client.getAutomation({ params: { campaignId } }).pipe(Effect.flip),
-      { lifecycle: { get: () => Effect.die("not expected") } },
-      { dhwVersion: "1.21.0" }
-    );
+  // dhw 1.22.0 and 1.23.0 shipped before the automation commands did.
+  test.each(["1.21.0", "1.22.0", "1.23.0", "1.24.0-rc.1"])(
+    "refuses dhw %s, which lacks the automation commands",
+    async (dhwVersion) => {
+      const error = await callAutomationsApi(
+        (client) =>
+          client.getAutomation({ params: { campaignId } }).pipe(Effect.flip),
+        { lifecycle: { get: () => Effect.die("not expected") } },
+        { dhwVersion }
+      );
 
-    expect(error).toBeInstanceOf(CliInputInvalid);
-    expect(error.message).toContain("dhw update");
-  });
+      expect(error).toBeInstanceOf(CliInputInvalid);
+      expect(error.message).toContain("dhw update");
+    }
+  );
+
+  test.each(["1.24.0", "1.24.0+pr.762.abc1234", "1.25.0"])(
+    "accepts dhw %s, the first release with the automation commands or later",
+    async (dhwVersion) => {
+      const detail = await callAutomationsApi(
+        (client) => client.getAutomation({ params: { campaignId } }),
+        { lifecycle: { get: () => Effect.succeed(automationDetail) } },
+        { dhwVersion }
+      );
+
+      expect(detail.trigger?.frequency).toBeDefined();
+    }
+  );
 
   test("returns the working copy with the schedule's frequency", async () => {
     const requested: CampaignId[] = [];

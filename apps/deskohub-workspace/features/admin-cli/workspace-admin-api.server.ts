@@ -928,11 +928,15 @@ const noStore = HttpRouter.middleware(
 
 const WorkspaceAdminApiLive = Layer.mergeAll(
   HttpApiBuilder.layer(WorkspaceAdminApi).pipe(
-    Layer.provide(AdminCliApiHandlers),
-    Layer.provide(AdminCliAdministrationApiHandlers),
-    Layer.provide(AdminCliCampaignsApiHandlers),
-    Layer.provide(AdminCliAutomationsApiHandlers),
-    Layer.provide(AdminCliAdministratorsApiHandlers),
+    Layer.provide(
+      Layer.mergeAll(
+        AdminCliApiHandlers,
+        AdminCliAdministrationApiHandlers,
+        AdminCliCampaignsApiHandlers,
+        AdminCliAutomationsApiHandlers,
+        AdminCliAdministratorsApiHandlers
+      )
+    ),
     Layer.provide(CliBearerAuthenticationLive),
     Layer.provide(CliClientCompatibilityLive),
     Layer.provide(AdministrationService.Live),

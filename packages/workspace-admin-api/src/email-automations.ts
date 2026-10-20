@@ -763,7 +763,7 @@ export type AutomationEngineHealth = typeof AutomationEngineHealth.Type;
  * Older binaries can't decode a flow, so every automation operation, reads
  * included, requires it.
  */
-export const automationsMinimumDhwVersion = DhwVersion.make("1.22.0");
+export const automationsMinimumDhwVersion = DhwVersion.make("1.24.0");
 
 /** An input without its path parameters: what an endpoint's body or query carries. */
 const withoutPathParams = <
