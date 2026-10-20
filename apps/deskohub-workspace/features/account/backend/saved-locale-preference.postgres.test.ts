@@ -9,6 +9,7 @@ import { drizzleAuthTables } from "@/db/schema/auth";
 import { env } from "@/env";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { makeWorkspaceAuth } from "./auth/auth-server";
+import { ensureCustomerAccount } from "./customer-account.repository";
 import {
   CustomerAuthentication,
   makeAuthoritySessionRead,
@@ -55,6 +56,8 @@ describe.skipIf(!testDatabase)(
         },
         verifyHuman: () => Effect.void,
         beforeDeleteUser: () => Effect.void,
+        createCustomerAccount: (accountId) =>
+          ensureCustomerAccount(testDatabase!.db, accountId),
         captureAccountLocalePreference: () => Effect.void,
       });
 

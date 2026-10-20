@@ -19,7 +19,7 @@ import {
 } from "@/features/referrals/signup-intent.repository";
 import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import type { CustomerAccountId } from "../customer-account";
-import { ensureCustomerAccount } from "./customer-account.repository";
+import { recordCustomerAccountLink } from "./customer-account.repository";
 
 /**
  * `created` is true only for the claim that inserted the link; a claim that
@@ -116,6 +116,7 @@ export class CustomerAccountLinkRepository extends Context.Service<
                   customerId: customerAccountLinks.dotyposCustomerId,
                 });
               if (!link) return link;
+              yield* recordCustomerAccountLink(tx, accountId, link.customerId);
               if (signupReferral) {
                 yield* insertReferralSignupIntent(
                   tx,
@@ -207,14 +208,13 @@ export class CustomerAccountLinkRepository extends Context.Service<
 /**
  * The first link gives the account a mailable Dotypos customer, so it is
  * recorded as created at the durable account's creation instant. The link's
- * transaction creates the durable account when the account has none yet.
+ * transaction has already recorded the link on the durable account.
  */
 const recordAccountCreated = Effect.fn(function* (
   tx: WorkspaceDatabaseClient,
   accountId: CustomerAccountId,
   customerId: DotyposCustomerId
 ) {
-  yield* ensureCustomerAccount(tx, accountId);
   const [account] = yield* tx
     .select({ createdAt: customerAccounts.createdAt })
     .from(customerAccounts)

@@ -88,6 +88,13 @@ const receivedCampaignEmailStatuses = [
   "unconfirmed",
 ] as const;
 
+/**
+ * The joined login is verified. The account backfill creates unverified
+ * logins for legacy customers silently; they count as accounts only once
+ * their owner signs in.
+ */
+const verifiedLogin = eq(authUser.emailVerified, true);
+
 /** A customer column among the customers, when the query is limited to some. */
 const ofCustomers = (
   column: SQLWrapper,
@@ -227,7 +234,10 @@ export class CampaignCandidateRepository extends Context.Service<
             eq(authUser.id, customerAccountLinks.customerAccountId)
           )
           .where(
-            ofCustomers(customerAccountLinks.dotyposCustomerId, customers)
+            and(
+              verifiedLogin,
+              ofCustomers(customerAccountLinks.dotyposCustomerId, customers)
+            )
           );
 
       const consents = (customers?: readonly DotyposCustomerId[]) =>
@@ -376,7 +386,10 @@ export class CampaignCandidateRepository extends Context.Service<
               eq(authUser.id, customerAccountLinks.customerAccountId)
             )
             .where(
-              ofCustomers(customerAccountLinks.dotyposCustomerId, customers)
+              and(
+                verifiedLogin,
+                ofCustomers(customerAccountLinks.dotyposCustomerId, customers)
+              )
             );
           return {
             withValue: new Set(rows.map((row) => row.dotyposCustomerId)),
