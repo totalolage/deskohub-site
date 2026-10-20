@@ -2,9 +2,11 @@ import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { eq } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { customerAccounts } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import { customerAccountLinks } from "@/db/schema/customer-account-links";
 import type { Locale } from "@/features/i18n";
+import { linkedDotyposCustomerId } from "./customer-account-dotypos-link";
 
 /**
  * A linked account's reservation-email language read could not be completed.
@@ -50,12 +52,13 @@ export class CustomerEmailLocaleService extends Context.Service<
       const byDotyposCustomer = (dotyposCustomerId: DotyposCustomerId) =>
         db
           .select({ locale: authUser.locale })
-          .from(customerAccountLinks)
+          .from(authUser)
+          .leftJoin(customerAccounts, eq(customerAccounts.id, authUser.id))
           .leftJoin(
-            authUser,
-            eq(authUser.id, customerAccountLinks.customerAccountId)
+            customerAccountLinks,
+            eq(customerAccountLinks.customerAccountId, authUser.id)
           )
-          .where(eq(customerAccountLinks.dotyposCustomerId, dotyposCustomerId))
+          .where(eq(linkedDotyposCustomerId, dotyposCustomerId))
           .limit(1)
           .pipe(
             Effect.mapError(

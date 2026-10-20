@@ -70,6 +70,24 @@ describe.skipIf(!testDatabase)(
         )
       );
 
+    test("describes an author linked on the account alone", async () => {
+      const customerId = DotyposCustomerIdSchema.make(
+        `author-column-${crypto.randomUUID()}`
+      );
+      const author = await insertAccount({});
+      await query(
+        "update customer_accounts set dotypos_customer_id = $2 where id = $1",
+        [author, customerId]
+      );
+
+      const authors = await describeAuthors([author]);
+
+      expect(authors.get(author)).toMatchObject({
+        kind: "active",
+        dotyposCustomerId: customerId,
+      });
+    });
+
     test("describes active and deleted authors in one read", async () => {
       const customerId = DotyposCustomerIdSchema.make(
         `author-customer-${crypto.randomUUID()}`

@@ -278,7 +278,7 @@ describe.skipIf(!testDatabase)(
         const id = customerAccountIdSchema.make(crypto.randomUUID());
         accountIds.push(id);
         await testDatabase.pool.query(
-          `insert into auth."user" (id, name, email) values ($1, '', $2)`,
+          `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, true)`,
           [id, testEmailAddress(`reconcile-${id}`)]
         );
         await Effect.runPromise(

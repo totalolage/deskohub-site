@@ -158,6 +158,7 @@ describe.skipIf(!testDatabase)(
             id: accountId,
             name: "Campaign test",
             email: testEmailAddress(`campaign-${run}`),
+            emailVerified: true,
             locale: "en-US",
             createdAt: new Date(accountCreatedAt.epochMilliseconds),
           }),

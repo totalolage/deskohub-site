@@ -6,7 +6,7 @@ import {
   type WorkspaceDatabaseClient,
 } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
-import { customerAccountLinks } from "@/db/schema";
+import { customerAccountLinks, customerAccounts } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import { discountApplications } from "@/db/schema/discount-applications";
 import { promotionCodes } from "@/db/schema/discounts";
@@ -18,6 +18,10 @@ import {
 } from "@/db/schema/referrals";
 import { workspaceReservations } from "@/db/schema/workspace-reservations";
 import { requireAccountActivity } from "@/features/account/backend/customer-account-activity";
+import {
+  linkedCustomerAccountId,
+  linkedDotyposCustomerId,
+} from "@/features/account/backend/customer-account-dotypos-link";
 import {
   CustomerAccountLinkRepository,
   customerAccountLockKey,
@@ -514,17 +518,21 @@ export class ReferralService extends Context.Service<
             promotionCodes,
             eq(promotionCodes.id, referralCodes.promotionCodeId)
           )
-          .innerJoin(
+          .leftJoin(
+            customerAccounts,
+            eq(
+              customerAccounts.dotyposCustomerId,
+              referralCodes.referrerDotyposCustomerId
+            )
+          )
+          .leftJoin(
             customerAccountLinks,
             eq(
               customerAccountLinks.dotyposCustomerId,
               referralCodes.referrerDotyposCustomerId
             )
           )
-          .innerJoin(
-            authUser,
-            eq(authUser.id, customerAccountLinks.customerAccountId)
-          )
+          .innerJoin(authUser, eq(authUser.id, linkedCustomerAccountId))
           .where(
             and(
               eq(promotionCodes.code, canonicalPromotionCodeSchema.make(code)),
@@ -913,13 +921,19 @@ export class ReferralService extends Context.Service<
                   if (!referralTarget) return yield* fail("unavailable");
 
                   const [ownerLink] = yield* db
-                    .select({
-                      accountId: customerAccountLinks.customerAccountId,
-                    })
-                    .from(customerAccountLinks)
+                    .select({ accountId: authUser.id })
+                    .from(authUser)
+                    .leftJoin(
+                      customerAccounts,
+                      eq(customerAccounts.id, authUser.id)
+                    )
+                    .leftJoin(
+                      customerAccountLinks,
+                      eq(customerAccountLinks.customerAccountId, authUser.id)
+                    )
                     .where(
                       eq(
-                        customerAccountLinks.dotyposCustomerId,
+                        linkedDotyposCustomerId,
                         referralTarget.referrerDotyposCustomerId
                       )
                     )
@@ -963,16 +977,21 @@ export class ReferralService extends Context.Service<
                         }
                         const [currentLink] = yield* tx
                           .select({
-                            dotyposCustomerId:
-                              customerAccountLinks.dotyposCustomerId,
+                            dotyposCustomerId: linkedDotyposCustomerId,
                           })
-                          .from(customerAccountLinks)
-                          .where(
+                          .from(authUser)
+                          .leftJoin(
+                            customerAccounts,
+                            eq(customerAccounts.id, authUser.id)
+                          )
+                          .leftJoin(
+                            customerAccountLinks,
                             eq(
                               customerAccountLinks.customerAccountId,
-                              identity.accountId
+                              authUser.id
                             )
                           )
+                          .where(eq(authUser.id, identity.accountId))
                           .limit(1)
                           .pipe(
                             Effect.mapError(() => fail("account_unavailable"))
@@ -1007,21 +1026,23 @@ export class ReferralService extends Context.Service<
                         }
 
                         const [owner] = yield* tx
-                          .select({
-                            accountId: customerAccountLinks.customerAccountId,
-                          })
-                          .from(customerAccountLinks)
-                          .innerJoin(
-                            authUser,
+                          .select({ accountId: authUser.id })
+                          .from(authUser)
+                          .leftJoin(
+                            customerAccounts,
+                            eq(customerAccounts.id, authUser.id)
+                          )
+                          .leftJoin(
+                            customerAccountLinks,
                             eq(
-                              authUser.id,
-                              customerAccountLinks.customerAccountId
+                              customerAccountLinks.customerAccountId,
+                              authUser.id
                             )
                           )
                           .where(
                             and(
                               eq(
-                                customerAccountLinks.dotyposCustomerId,
+                                linkedDotyposCustomerId,
                                 referral.referrerDotyposCustomerId
                               ),
                               isNull(authUser.deletionRequestedAt)
