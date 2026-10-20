@@ -45,6 +45,12 @@ glossary defines the customer account, reservation author, and tombstone.
   so the account outlives the login. A server-side `createUser` must pass the
   id from `generateId`, and anything that inserts `auth.user` rows directly,
   such as a test fixture, creates the account first.
+- Better Auth can't run that hook and the login insert in one transaction
+  (its magic-link `createUser` isn't transaction-wrapped), so a failed insert
+  leaves an account without a login. The daily auth cleanup cron tombstones
+  live accounts whose login is gone once they are a day old
+  (`tombstoneOrphanedAccounts`). Account deletion tombstones the account
+  before it deletes the login, so the sweep only catches interrupted flows.
 - `CustomerAccountLinkRepository.claim` links the account to its customer on
   that row. Only a live account without a customer takes one, the unique index
   turns a customer another account holds into `claimed`, and only the claim

@@ -8,10 +8,13 @@ process.env.CRON_SECRET = "cron-secret-for-auth-cleanup-test";
 const cleanupCalls: { readonly now: Date }[] = [];
 
 interface IFakeCleanup {
-  readonly deleteExpiredRows: (input: {
-    readonly now: Date;
-  }) => Effect.Effect<
-    { sessions: number; verifications: number; rateLimitRows: number },
+  readonly deleteExpiredRows: (input: { readonly now: Date }) => Effect.Effect<
+    {
+      sessions: number;
+      verifications: number;
+      rateLimitRows: number;
+      orphanedAccounts: number;
+    },
     Error
   >;
 }
@@ -33,6 +36,7 @@ const fakeCleanupLayer = Layer.succeed(FakeCleanupService, {
           sessions: 3,
           verifications: 2,
           rateLimitRows: 1,
+          orphanedAccounts: 0,
         });
   },
 }) as Layer.Layer<FakeCleanupService>;

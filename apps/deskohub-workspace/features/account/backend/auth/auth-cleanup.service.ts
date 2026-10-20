@@ -1,13 +1,16 @@
-import { lt, lte } from "drizzle-orm";
+import { lt, lte, sql } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { authRateLimit, authSession, authVerification } from "@/db/schema/auth";
+import { tombstoneOrphanedAccounts } from "../customer-account.repository";
 import { betterAuthMagicLinkOptions } from "./auth-options";
 
 type DeletedAuthRowCounts = {
   readonly sessions: number;
   readonly verifications: number;
   readonly rateLimitRows: number;
+  /** Customer accounts marked deleted because their login is gone. */
+  readonly orphanedAccounts: number;
 };
 
 /**
@@ -32,8 +35,9 @@ interface IAuthCleanupService {
 /**
  * Daily maintenance of the authentication schema: ordinary set-based
  * deletion of expired sessions and verifications, plus rate-limit rows whose
- * last request is older than the longest configured rate-limit window. No
- * queue, archive, lock, or provider cleanup runs here.
+ * last request is older than the longest configured rate-limit window, and
+ * tombstoning of customer accounts whose login is gone. No queue, archive,
+ * lock, or provider cleanup runs here.
  */
 export class AuthCleanupService extends Context.Service<
   AuthCleanupService,
@@ -63,10 +67,15 @@ export class AuthCleanupService extends Context.Service<
             .delete(authRateLimit)
             .where(lt(authRateLimit.lastRequest, rateLimitCutoffMs))
             .returning({ id: authRateLimit.id });
+          const orphanedAccounts = yield* tombstoneOrphanedAccounts(
+            db,
+            sql`${input.now.toISOString()}::timestamptz`
+          );
           return {
             sessions: sessions.length,
             verifications: verifications.length,
             rateLimitRows: rateLimitRows.length,
+            orphanedAccounts,
           } satisfies DeletedAuthRowCounts;
         }).pipe(
           Effect.mapError(
