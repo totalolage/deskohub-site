@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./email-automation-cadence": "./src/email-automation-cadence.ts",
     "./site-time-zone": "./src/site-time-zone.ts"
   },
   "scripts": {

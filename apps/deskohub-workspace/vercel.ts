@@ -1,0 +1,100 @@
+import { emailAutomationTickMinutes } from "@deskohub/workspace-admin-api/email-automation-cadence";
+import type { VercelConfig } from "@vercel/config/v1";
+
+export const config = {
+  git: {
+    deploymentEnabled: {
+      main: false,
+    },
+  },
+  routes: [
+    {
+      src: "^/(?:en-US|cs-CZ)(?:/(?:contact|faq|pricing|meeting-room|team|ttrpg-room|logo|terms-and-conditions|privacy-policy|cookie-policy|operating-rules|marketing-communications|reservation/cowork|reservation/meeting-room|reservation/office))?$",
+      continue: true,
+      transforms: [
+        {
+          type: "response.headers",
+          op: "append",
+          target: {
+            key: "Vary",
+          },
+          args: "Accept",
+        },
+      ],
+    },
+  ],
+  crons: [
+    {
+      path: "/api/cron/workspace/reservation-holds",
+      schedule: "0 0 * * *",
+    },
+    {
+      path: "/api/cron/workspace/auth-cleanup",
+      schedule: "17 3 * * *",
+    },
+    {
+      path: "/api/cron/workspace/payment-refunds",
+      schedule: "30 * * * *",
+    },
+    {
+      path: "/api/cron/workspace/paid-fulfillment",
+      schedule: "57 5 * * *",
+    },
+    {
+      path: "/api/cron/workspace/email-automations",
+      schedule: `*/${emailAutomationTickMinutes} * * * *`,
+    },
+  ],
+  functions: {
+    "app/api/queues/workspace/email-campaign-send/route.ts": {
+      experimentalTriggers: [
+        {
+          type: "queue/v2beta",
+          topic: "workspace-email-campaign-send",
+          retryAfterSeconds: 60,
+          initialDelaySeconds: 0,
+        },
+      ],
+    },
+    "app/api/queues/workspace/email-automation-unit/route.ts": {
+      experimentalTriggers: [
+        {
+          type: "queue/v2beta",
+          topic: "workspace-email-automation-unit",
+          retryAfterSeconds: 60,
+          initialDelaySeconds: 0,
+        },
+      ],
+    },
+    "app/api/queues/workspace/late-payment-recovery/route.ts": {
+      experimentalTriggers: [
+        {
+          type: "queue/v2beta",
+          topic: "workspace-late-payment-recovery",
+          retryAfterSeconds: 60,
+          initialDelaySeconds: 0,
+        },
+      ],
+    },
+    "app/api/queues/workspace/paid-fulfillment/route.ts": {
+      experimentalTriggers: [
+        {
+          type: "queue/v2beta",
+          topic: "workspace-paid-fulfillment",
+          retryAfterSeconds: 60,
+          initialDelaySeconds: 0,
+        },
+      ],
+    },
+    "app/api/queues/workspace/reservation-hold-cleanup/route.ts": {
+      experimentalTriggers: [
+        {
+          type: "queue/v2beta",
+          topic: "workspace-reservation-hold-cleanup",
+          retryAfterSeconds: 60,
+          initialDelaySeconds: 0,
+        },
+      ],
+    },
+  },
+} satisfies VercelConfig;
