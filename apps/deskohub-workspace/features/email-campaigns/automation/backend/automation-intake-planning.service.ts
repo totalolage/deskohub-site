@@ -1,6 +1,6 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { dotyposIdFilterBatchSize } from "@deskohub/dotypos";
-import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, notExists, or } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -50,12 +50,22 @@ const intakeBatchSize = 2000;
 /** The most runs one planner run withdraws; the rest follow next minute. */
 const withdrawalBatchSize = 5000;
 
+/**
+ * D28: the runs a `reservation-cancelled` event withdraws, its
+ * reservation's `active` runs except those a cancellation triggered.
+ */
+const withdrawableRuns = and(
+  eq(runs.triggerReservationId, customerEvents.workspaceReservationId),
+  eq(runs.status, "active"),
+  ne(runs.triggerKind, "reservation-cancelled")
+);
+
 /** The most Dotypos requests one packed unit makes (§5.3). */
 const maxUnitRequestCost = 8;
 
 interface IAutomationIntakePlanning {
   /**
-   * Planner step 4 (§5.6): withdraws the active runs of each unprocessed `reservation-cancelled` event's reservation, matches up to 2,000 unplanned events against active automations, marks events matching nothing processed, and packs the rest by customer into intake units. Runs its own short idempotent transactions, so overlapping
+   * Planner step 4 (§5.6): withdraws the active runs of each unprocessed `reservation-cancelled` event's reservation, up to 5,000 per run, matches up to 2,000 unplanned events against active automations, marks events matching nothing processed, and packs the rest by customer into intake units. A cancellation waits for its withdrawals before intake takes it. Runs its own short idempotent transactions, so overlapping
    * planners are harmless.
    */
   readonly plan: (
@@ -74,30 +84,21 @@ export class AutomationIntakePlanning extends Context.Service<
       const facts = yield* AutomationEvaluationFacts;
 
       /**
-       * D28: each unprocessed cancellation ends its reservation's `active`
-       * runs, except runs the cancellation itself triggered. `sending`
-       * runs are in a persisted batch and settle normally. One short
-       * transaction per automation, under its lifecycle lock.
+       * D28: each unprocessed cancellation ends its withdrawable runs.
+       * `sending` runs are in a persisted batch and settle normally. One
+       * short transaction per automation, under its lifecycle lock. Intake
+       * leaves a cancellation unprocessed until none remain, so runs past
+       * the batch are withdrawn by subsequent planner runs.
        */
       const withdraw = (at: Temporal.Instant) =>
         db
           .selectDistinct({ campaignId: runs.campaignId, runId: runs.id })
           .from(runs)
-          .innerJoin(
-            customerEvents,
-            and(
-              eq(
-                customerEvents.workspaceReservationId,
-                runs.triggerReservationId
-              ),
-              eq(customerEvents.kind, "reservation-cancelled"),
-              isNull(customerEvents.automationProcessedAt)
-            )
-          )
+          .innerJoin(customerEvents, withdrawableRuns)
           .where(
             and(
-              eq(runs.status, "active"),
-              ne(runs.triggerKind, "reservation-cancelled")
+              eq(customerEvents.kind, "reservation-cancelled"),
+              isNull(customerEvents.automationProcessedAt)
             )
           )
           .orderBy(asc(runs.campaignId), asc(runs.id))
@@ -231,10 +232,11 @@ export class AutomationIntakePlanning extends Context.Service<
 
       /**
        * One transaction: locks up to 2,000 unplanned events (skipping those
-       * an overlapping planner holds), marks those no automation takes
-       * processed, and plans units for the rest, owning their events by
-       * compare-and-set. Unit keys include the planner instant, so events a
-       * dropped unit released are planned again under a new key.
+       * an overlapping planner holds, and cancellations with runs still to
+       * withdraw), marks those no automation takes processed, and plans
+       * units for the rest, owning their events by compare-and-set. Unit
+       * keys include the planner instant, so events a dropped unit released
+       * are planned again under a new key.
        */
       const planEvents = (at: Temporal.Instant) =>
         db.transaction((tx) =>
@@ -246,7 +248,16 @@ export class AutomationIntakePlanning extends Context.Service<
                 .where(
                   and(
                     isNull(customerEvents.automationProcessedAt),
-                    isNull(customerEvents.automationUnitId)
+                    isNull(customerEvents.automationUnitId),
+                    or(
+                      ne(customerEvents.kind, "reservation-cancelled"),
+                      notExists(
+                        tx
+                          .select({ id: runs.id })
+                          .from(runs)
+                          .where(withdrawableRuns)
+                      )
+                    )
                   )
                 )
                 .orderBy(asc(customerEvents.recordedAt), asc(customerEvents.id))

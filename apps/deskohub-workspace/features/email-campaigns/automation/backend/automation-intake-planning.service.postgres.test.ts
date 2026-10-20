@@ -1,9 +1,16 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { DotyposReservationIdSchema } from "@deskohub/dotypos";
 import type { AutomationFlow } from "@deskohub/workspace-admin-api";
 import { Effect } from "effect";
-import { emailCampaignAutomationRuns as runs } from "@/db/schema";
+import {
+  customerEvents,
+  emailCampaignAutomationRuns as runs,
+  workspaceReservations,
+} from "@/db/schema";
+import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   deleteAutomatedCampaigns,
@@ -158,6 +165,125 @@ describe.skipIf(!database)("AutomationIntakePlanning on Postgres", () => {
     );
     expect(entries.map(({ kind }) => kind)).toEqual(["withdrawn"]);
   });
+
+  test("keeps a cancellation unprocessed until later plans have withdrawn all its runs", async () => {
+    // 6,000 runs: more than one plan withdraws.
+    const automations = [];
+    for (let index = 0; index < 6; index++) {
+      automations.push(
+        await automation({ flow: flowOf({ _tag: "ReservationBooked" }) })
+      );
+    }
+    const cancelledAt = now.subtract({ minutes: 5 });
+    const confirmedAt = now.subtract({ hours: 48 });
+    const reservations = Array.from({ length: 1001 }, (_, index) => ({
+      id: workspaceReservationIdSchema.make(`${prefix}-drain-${index}`),
+      customer: fixtures.customerId(`drain-${index}`),
+    }));
+    fixtures.created.reservations.push(...reservations.map(({ id }) => id));
+    await Effect.runPromise(
+      db.insert(workspaceReservations).values(
+        reservations.map(({ id, customer }) => ({
+          id,
+          checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
+          dotyposCustomerId: customer,
+          dotyposReservationId: DotyposReservationIdSchema.make(
+            `${id}-dotypos`
+          ),
+          reservationState: "confirmed" as const,
+          reservationConfirmedAt: confirmedAt,
+          reservationCancelledAt: cancelledAt,
+          paymentState: "paid" as const,
+          paidAt: confirmedAt,
+          fulfillmentState: "fulfilled" as const,
+          fulfilledAt: confirmedAt,
+          reservationDetails: {
+            kind: "cowork" as const,
+            entryTier: "open-space" as const,
+            coffee: false,
+          },
+          locale: "cs-CZ" as const,
+          createdAt: confirmedAt,
+        }))
+      )
+    );
+    // Intake takes the first cancellation at once: it has no runs.
+    const withRuns = reservations.slice(1);
+    for (const { campaignId, versionId } of automations) {
+      await Effect.runPromise(
+        db.insert(runs).values(
+          withRuns.map(({ id, customer }) => ({
+            campaignId,
+            versionId: versionId as AutomationVersionId,
+            dotyposCustomerId: customer,
+            triggerKind: "reservation-booked" as const,
+            triggerAt: now.subtract({ hours: 1 }),
+            triggerReservationId: id,
+            status: "active" as const,
+            stepId: "send" as AutomationStepId,
+            phase: "waiting" as const,
+            stepEnteredAt: now.subtract({ hours: 1 }),
+            dueAt: now.add({ hours: 1 }),
+          }))
+        )
+      );
+    }
+    const events = await Effect.runPromise(
+      db
+        .insert(customerEvents)
+        .values(
+          reservations.map(({ id, customer }) => ({
+            kind: "reservation-cancelled" as const,
+            occurredAt: cancelledAt,
+            recordedAt: cancelledAt,
+            dotyposCustomerId: customer,
+            workspaceReservationId: id,
+          }))
+        )
+        .returning({ id: customerEvents.id })
+    );
+    fixtures.created.events.push(...events.map(({ id }) => id));
+
+    const state = async () => {
+      const { rows } = await pool.query(
+        `select
+           (select count(*)::int from email_campaign_automation_runs
+             where campaign_id = any($1) and status = 'active') as "activeRuns",
+           (select count(*)::int from email_campaign_automation_runs
+             where campaign_id = any($1) and outcome = 'withdrawn') as "withdrawnRuns",
+           (select count(*)::int from customer_events
+             where id = any($2) and automation_processed_at is not null) as "processedEvents",
+           (select count(*)::int from customer_events e
+             where e.id = any($2) and e.automation_processed_at is not null
+               and exists (
+                 select 1 from email_campaign_automation_runs r
+                 where r.trigger_reservation_id = e.workspace_reservation_id
+                   and r.status = 'active'
+               )) as "processedWithActiveRuns"`,
+        [
+          automations.map(({ campaignId }) => campaignId),
+          events.map(({ id }) => id),
+        ]
+      );
+      return rows[0];
+    };
+
+    expect((await plan()).withdrawnRuns).toBe(5000);
+    expect(await state()).toEqual({
+      activeRuns: 1000,
+      withdrawnRuns: 5000,
+      processedEvents: 1,
+      processedWithActiveRuns: 0,
+    });
+
+    expect((await plan()).withdrawnRuns).toBe(1000);
+    expect(await state()).toEqual({
+      activeRuns: 0,
+      withdrawnRuns: 6000,
+      processedEvents: 1001,
+      processedWithActiveRuns: 0,
+    });
+  }, 120_000);
 
   test("matches events by the version in force, accepting_since, receipt key and product filter", async () => {
     const versionSwitch = now.subtract({ hours: 2 });
