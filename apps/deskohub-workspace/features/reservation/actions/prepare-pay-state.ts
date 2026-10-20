@@ -12,6 +12,7 @@ import {
   Effect,
   Layer,
   Match,
+  Option,
   Predicate,
   Ref,
   Schedule,
@@ -24,6 +25,7 @@ import {
   CustomerAccountContactService,
   OptionalAccountActivityGuard,
 } from "@/features/account";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import {
   captureAvailabilityResult,
   capturePrePaymentOutcome,
@@ -46,7 +48,6 @@ import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backe
 import {
   createWorkspaceDotyposReservation,
   splitCustomerName,
-  WorkspaceTableAssignmentService,
 } from "@/features/checkout/backend/reservation";
 import {
   type CheckoutAttemptId,
@@ -67,21 +68,23 @@ import {
   type CanonicalPromotionCode,
   canonicalPromotionCodeSchema,
 } from "@/features/discounts/contracts";
-import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import { type Locale, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
-import {
-  ensureOfficeReservationsEnabled,
-  OfficeReservationFeatureFlagService,
-} from "@/features/office/backend/office-reservation-feature-flag.service";
+import { ensureOfficeReservationsEnabled } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { ReferralService } from "@/features/referrals";
 import type { ReferralCode } from "@/features/referrals/client";
-import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
 import {
   forgetRememberedReferralCode,
   readRememberedReferralCode,
 } from "@/features/referrals/remembered-referral-code.server";
+import {
+  AgentBookingProfileRequiredError,
+  AgentHoldLimitError,
+  agentHoldLimit,
+  BookingAgent,
+} from "@/features/reservation/backend/booking-agent";
+import { payStatePreparationServices } from "@/features/reservation/backend/pay-state-preparation-services";
 import { supersedableReservationPaymentStates } from "@/features/reservation/backend/reservation-supersession";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
@@ -101,12 +104,7 @@ import {
 import type { ReservationPrePaymentOutcome } from "@/features/reservation/reservation-analytics";
 import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
 import { getReservationCustomerProfile } from "@/features/reservation/reservation-customer-profile";
-import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
-import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
-import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
-import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
-import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import {
   currentInstant,
   instantStringSchema,
@@ -138,6 +136,10 @@ import {
   preparePayStateSchema,
 } from "./prepare-pay-state.schema";
 import { getPreparePayStateDeadline } from "./prepare-pay-state-deadline";
+import {
+  toReservationFormError,
+  verifyReservationFormHuman,
+} from "./prepare-pay-state-form";
 
 const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
   legalEvidenceMapSchema,
@@ -327,6 +329,7 @@ const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
     if (input.changedKeys) {
       return {
         status: "pricing_changed" as const,
+        orderId: input.reservationId,
         redirectUrl,
         expiresAt,
         affectedProductKeys: input.changedKeys.itemKeys.flatMap((key) =>
@@ -337,6 +340,7 @@ const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
 
     return {
       status: "ready" as const,
+      orderId: input.reservationId,
       redirectUrl,
       expiresAt,
     };
@@ -352,6 +356,42 @@ const isReusableSubmissionReservation = (reservation: WorkspaceReservation) =>
       reservation.reservationHoldExpiresAt,
       Temporal.Now.instant()
     ) > 0);
+
+/**
+ * A session's current reservation another account authored is never this
+ * account's to supersede: the submission starts its own session instead.
+ */
+const isAnotherAccountsReservation = (
+  reservation: WorkspaceReservation,
+  authorAccountId: CustomerAccountId | null
+) =>
+  reservation.authorAccountId !== null &&
+  reservation.authorAccountId !== authorAccountId;
+
+/**
+ * A new hold an agent starts must stay within the account's agent hold
+ * limit. Reusing or superseding the agent's own hold adds none, so only a
+ * new draft is checked; the account lock the caller holds serializes it.
+ */
+const ensureAgentHoldLimit = Effect.fn("preparePayState.ensureAgentHoldLimit")(
+  function* (
+    draft: Pick<
+      CreateWorkspaceReservationInput,
+      "agentClientId" | "authorAccountId"
+    >
+  ) {
+    if (!draft.agentClientId || !draft.authorAccountId) return;
+
+    const reservations = yield* WorkspaceReservationRepository;
+    const liveHolds = yield* reservations.countLiveAgentHolds({
+      authorAccountId: draft.authorAccountId,
+      now: Temporal.Now.instant(),
+    });
+    if (liveHolds >= agentHoldLimit) {
+      return yield* new AgentHoldLimitError({ liveHolds });
+    }
+  }
+);
 
 const mustRotateCheckoutSession = (reservation: WorkspaceReservation) =>
   reservation.reservationState !== "held" ||
@@ -597,7 +637,14 @@ const prepareReservationDraft = Effect.fn(
       continue;
     }
 
-    if (currentReservation && mustRotateCheckoutSession(currentReservation)) {
+    if (
+      currentReservation &&
+      (mustRotateCheckoutSession(currentReservation) ||
+        isAnotherAccountsReservation(
+          currentReservation,
+          input.draft.authorAccountId
+        ))
+    ) {
       yield* Effect.logInfo(
         "Checkout session rotated before reservation creation",
         {
@@ -726,6 +773,7 @@ const prepareReservationDraft = Effect.fn(
       );
     }
 
+    yield* ensureAgentHoldLimit(input.draft);
     yield* ensureReservationAvailable({
       availability,
       reservation: input.reservation,
@@ -760,12 +808,20 @@ const prepareReservationDraft = Effect.fn(
  * The account a reservation booked "as the account" belongs to: the linked
  * Dotypos customer and the contact the reservation must carry. An account
  * without a profile yet saves the submitted contact and billing as its
- * profile first. The account advisory lock is already held, so this reads
- * the existing link and creates one without taking the lock again.
+ * profile first, except through a customer agent: the customer completes
+ * the profile on the site. The account advisory lock is already held, so
+ * this reads the existing link and creates one without taking the lock
+ * again.
  */
 const resolveAccountCustomer = Effect.fn(
   "preparePayState.resolveAccountCustomer"
-)(function* (input: PreparePayStateInput) {
+)(function* ({
+  input,
+  bookingAgent,
+}: {
+  readonly input: PreparePayStateInput;
+  readonly bookingAgent: Option.Option<BookingAgent["Service"]>;
+}) {
   if (input.customer !== "account") return undefined;
 
   const contacts = yield* CustomerAccountContactService;
@@ -774,15 +830,22 @@ const resolveAccountCustomer = Effect.fn(
     Match.discriminatorsExhaustive("status")({
       "signed-out": () => Effect.succeed(null),
       unlinked: (unlinked) =>
-        contacts.completeProfileUnderHeldLock(
-          unlinked,
-          getReservationCustomerProfile(input.reservation)
-        ),
+        Option.isSome(bookingAgent)
+          ? Effect.fail(new AgentBookingProfileRequiredError({}))
+          : contacts.completeProfileUnderHeldLock(
+              unlinked,
+              getReservationCustomerProfile(input.reservation)
+            ),
       linked: (linked) => contacts.linkedContact(linked),
     })
   );
   if (!contact) {
-    return yield* new CustomerAccountAccessError({ reason: "unauthenticated" });
+    return yield* account.status === "linked" && Option.isSome(bookingAgent)
+      ? new AgentBookingProfileRequiredError({})
+      : new CustomerAccountAccessError({ reason: "unauthenticated" });
+  }
+  if (!contact.phone && Option.isSome(bookingAgent)) {
+    return yield* new AgentBookingProfileRequiredError({});
   }
 
   return {
@@ -906,17 +969,16 @@ const ensureContactEmailAcceptsMail = Effect.fn(
   return yield* new UndeliverableContactEmailError({});
 });
 
+/**
+ * Prepares the Pay page for one submission: the shared booking operation of
+ * the reservation form's Server Action and the customer MCP server. Each
+ * caller authenticates its own channel first, the form with BotID and the MCP
+ * server with the agent's OAuth token; a booking the MCP server makes carries
+ * its {@link BookingAgent}.
+ */
 export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
   function* (input: PreparePayStateInput) {
-    const botProtection = yield* BotProtectionService;
-    // Reservation form: the customer's own purchase path, so verified customer
-    // agents may continue; sign-in and payment still gate the order.
-    yield* botProtection.verifyHuman({
-      verificationFailurePolicy: "allow",
-      verifiedBots: { allow: customerAgentNames },
-      callSite: "reservation.prepare-pay-state",
-    });
-
+    const bookingAgent = yield* Effect.serviceOption(BookingAgent);
     const accountActivity = yield* OptionalAccountActivityGuard;
     const rememberedReferralCode = yield* readRememberedReferralCode.pipe(
       Effect.catch((cause) =>
@@ -956,7 +1018,10 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           })
         );
 
-        const accountCustomer = yield* resolveAccountCustomer(input);
+        const accountCustomer = yield* resolveAccountCustomer({
+          input,
+          bookingAgent,
+        });
         const accountReferral = yield* evaluateAccountReferralCode(
           accountCustomer?.dotyposCustomerId,
           rememberedReferralCode
@@ -1039,7 +1104,9 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
               documentHash: documents.marketingCommunications.hash,
               locale: input.locale,
               grantedAt: Temporal.Now.instant(),
-              source: input.marketingConsentSource ?? "reservation_form",
+              source: Option.isSome(bookingAgent)
+                ? "mcp_tool"
+                : (input.marketingConsentSource ?? "reservation_form"),
             });
           }).pipe(
             Effect.tapError((cause) =>
@@ -1071,6 +1138,10 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           draft: {
             dotyposCustomerId,
             authorAccountId: accountId,
+            ...Option.match(bookingAgent, {
+              onNone: () => ({}),
+              onSome: ({ clientId }) => ({ agentClientId: clientId }),
+            }),
             reservationPurpose: billing.purpose,
             reservationDetails:
               getStoredWorkspaceReservationDetails(reservation),
@@ -1397,76 +1468,21 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           Match.tag("CheckoutAttemptUnavailableError", () =>
             captureOutcome("reservation_conflict")
           ),
-          Match.tag("BotDetectedError", () => Effect.void),
+          Match.tag("AgentBookingProfileRequiredError", () =>
+            captureOutcome("validation")
+          ),
+          Match.tag("AgentHoldLimitError", () =>
+            captureOutcome("reservation_conflict")
+          ),
           Match.orElse(() => captureOutcome("server_error"))
         )
       ),
       Effect.annotateLogs({
         locale: input.locale,
         reservationKind: input.reservation.kind,
-      }),
-      Effect.mapError(
-        (error) =>
-          new PublicSafeActionError({
-            message: Match.value(error).pipe(
-              Match.tag("BotDetectedError", () =>
-                m.automatedRequestRejected({}, { locale: input.locale })
-              ),
-              Match.tag("UndeliverableContactEmailError", () =>
-                m.contactValidationEmailUndeliverable(
-                  {},
-                  { locale: input.locale }
-                )
-              ),
-              Match.tag("CustomerAccountAccessError", (cause) => {
-                if (
-                  cause.reason === "link-required" &&
-                  cause.linkReason === "deletion-requested"
-                ) {
-                  return m.accountDeletionPendingError(
-                    {},
-                    { locale: input.locale }
-                  );
-                }
-                if (cause.reason === "unauthenticated") {
-                  return m.accountSessionExpired({}, { locale: input.locale });
-                }
-                return m.reservationErrorMessage({}, { locale: input.locale });
-              }),
-              Match.orElse(() =>
-                m.reservationErrorMessage({}, { locale: input.locale })
-              )
-            ),
-            cause: error,
-          })
-      )
+      })
     );
   }
-);
-
-const PreparePayStateLive = Layer.mergeAll(
-  OptionalAccountActivityGuard.Live.pipe(
-    Layer.provide(WorkspaceDatabase.Default)
-  ),
-  Layer.mergeAll(
-    WorkspaceReservationRepository.Default,
-    CustomerMarketingConsentRepository.Default
-  ).pipe(Layer.provide(WorkspaceDatabase.Default)),
-  WorkspaceAvailabilityService.Live,
-  CustomerAccountContactService.Live,
-  EmailRecipientDomainService.Live,
-  WorkspaceTableAssignmentService.Default.pipe(
-    Layer.provide(WorkspaceReservationRepository.Live),
-    Layer.provide(WorkspaceDotyposLayer)
-  ),
-  ReservationHoldCleanupScheduleService.Default,
-  PostHogEventService.Live,
-  WorkspaceDotyposLayer,
-  CheckoutPricingService.Live,
-  ReferralService.Live,
-  OfficeReservationFeatureFlagService.Default.pipe(
-    Layer.provide(WorkspaceFeatureFlagService.Default)
-  )
 );
 
 const preparePayStateAction = defineWorkspaceAction(
@@ -1477,9 +1493,18 @@ const preparePayStateAction = defineWorkspaceAction(
     schema: preparePayStateSchema,
   },
   (input) =>
-    prepareWorkspacePayState(input).pipe(
+    verifyReservationFormHuman(input.locale).pipe(
+      Effect.andThen(
+        prepareWorkspacePayState(input).pipe(
+          Effect.mapError(toReservationFormError(input))
+        )
+      ),
       Effect.provide(
-        PreparePayStateLive.pipe(Layer.provideMerge(ReferralFeatureFlagRequest))
+        Layer.mergeAll(
+          payStatePreparationServices,
+          OptionalAccountActivityGuard.Live,
+          CustomerAccountContactService.Live
+        ).pipe(Layer.provide(WorkspaceDatabase.Default))
       )
     )
 );
