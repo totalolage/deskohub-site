@@ -21,8 +21,15 @@ what the privacy copy promises. Privacy copy lives in
 
 ## Rules
 
-- State retention as a scheduled cleanup, not as instant deletion on expiry.
-  Current settings: 30-day rolling sessions refreshed at most daily, 10-minute
+- Keep privacy copy to what GDPR Art. 13 requires, in plain customer
+  language: which data, purposes, legal basis, recipients and transfers,
+  retention period or the criteria for it, and rights. State retention as
+  criteria ("expire automatically and are deleted regularly", "until you
+  delete your account"), never as instant deletion on expiry, token lifetimes,
+  or a cleanup cadence. Security mechanics (hashing, encryption, replay
+  windows), library names, and data-model details belong in this reference,
+  not in the notice.
+- Current settings: 30-day rolling sessions refreshed at most daily, 10-minute
   magic-link validity, daily cleanup of expired rows, identity rows kept until
   the customer deletes the account. Connected AI agents: 1-hour access tokens,
   30-day refresh tokens rotated on use with a 30-second reuse window whose
