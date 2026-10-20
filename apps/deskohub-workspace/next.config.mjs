@@ -1,4 +1,3 @@
-import { withPostHogConfig } from "@posthog/nextjs-config";
 import inlangSettings from "./project.inlang/settings.json" with {
   type: "json",
 };
@@ -8,23 +7,6 @@ import { configureWorkspaceBotId } from "./shared/bot-protection/bot-protection.
 const localeRedirectPattern = inlangSettings.locales.join("|");
 const workspaceBotIdVercelEnvironment =
   process.env.VERCEL_ENV ?? "development";
-
-const postHogSourceMapConfig =
-  process.env.POSTHOG_API_KEY && process.env.POSTHOG_PROJECT_ID
-    ? {
-        personalApiKey: process.env.POSTHOG_API_KEY,
-        projectId: process.env.POSTHOG_PROJECT_ID,
-        host: process.env.POSTHOG_API_HOST,
-        sourcemaps: {
-          enabled: process.env.VERCEL_ENV === "production",
-          releaseName: "deskohub-workspace",
-          ...(process.env.VERCEL_GIT_COMMIT_SHA
-            ? { releaseVersion: process.env.VERCEL_GIT_COMMIT_SHA }
-            : {}),
-          deleteAfterUpload: true,
-        },
-      }
-    : undefined;
 
 /**
  * WebMCP origin-trial tokens from a comma-separated list, for the production
@@ -68,11 +50,12 @@ const nextConfig = {
     cpus: 1,
     // Next's TS CLI integration needs bin tsc, which the official TS6 wrapper (tsc6-only) must not provide.
     useTypeScriptCli: false,
-    // With the build cache on, Turbopack keeps about 5 GB resident while it
-    // persists the cache during prerendering, so a cold build exceeds Vercel's
-    // 8 GB build machine. The cache also pushes Vercel's build cache past its
-    // 1.5 GB limit.
-    turbopackFileSystemCacheForBuild: false,
+    // Turbopack's build filesystem cache is on by default; the separate
+    // `build:compile` and `build:generate` tasks keep writing it apart from
+    // prerendering to fit Vercel's 8 GB machine.
+    // Garbage collection drops unreachable work from it, which slows its growth
+    // toward Vercel's 1.5 GB build-cache limit, past which Vercel discards it.
+    turbopackGc: true,
     // Customer avatar uploads carry up to 2 MiB of raw image bytes plus the
     // Server Action / multipart envelope, so the 1 MiB default body limit is
     // too small; oversized images are rejected by the avatar policy itself.
@@ -86,8 +69,11 @@ const nextConfig = {
     },
   },
   partialPrefetching: true,
+  // `build:source-maps` uploads production browser source maps to PostHog and
+  // deletes them before generation, so they are never deployed.
+  productionBrowserSourceMaps: process.env.VERCEL_ENV === "production",
   reactCompiler: true,
-  // The build script type-checks with the native compiler before `next build`.
+  // The `typecheck` task runs the native compiler before `build:compile`.
   // Next's own check runs the TS6 compiler in a worker that needs 3–3.5 GB beside
   // the `next build` process, so it hung or got OOM-killed on Vercel.
   typescript: {
@@ -175,12 +161,8 @@ const nextConfig = {
   },
 };
 
-const botIdConfig = configureWorkspaceBotId(
+export default configureWorkspaceBotId(
   nextConfig,
   workspaceBotIdVercelEnvironment,
   withBotId
 );
-
-export default postHogSourceMapConfig
-  ? withPostHogConfig(botIdConfig, postHogSourceMapConfig)
-  : botIdConfig;
