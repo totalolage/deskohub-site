@@ -40,7 +40,7 @@
     },
     {
       "path": "/api/cron/workspace/email-automations",
-      "schedule": "* * * * *"
+      "schedule": "*/15 * * * *"
     }
   ],
   "functions": {
