@@ -1,12 +1,13 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  WorkspaceDatabase,
+  type WorkspaceDatabaseClient,
+} from "@/db/database.service";
 import { authPasskey, authSession, authUser } from "@/db/schema/auth";
-import { customerAccountLinks } from "@/db/schema/customer-account-links";
 import { customerAccounts } from "@/db/schema/customer-accounts";
 import { CustomerAccountRepository } from "@/features/account/backend/customer-account.repository";
-import { linkedDotyposCustomerId } from "@/features/account/backend/customer-account-dotypos-link";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
@@ -55,9 +56,25 @@ export const findAuthUserEmailById = (
   });
 
 /**
- * The synthetic account's Dotypos customer, read the way the app reads it:
- * the account record's column first, then its link row.
+ * The author of a reservation a fixture seeds for the customer: the live
+ * account linked to it, else a new synthetic customer account without a
+ * login, since every reservation has an author.
  */
+export const seedWorkspaceE2EReservationAuthor = Effect.fn(
+  "seedWorkspaceE2EReservationAuthor"
+)(function* (executor: WorkspaceDatabaseClient, customerId: DotyposCustomerId) {
+  const [linked] = yield* executor
+    .select({ id: customerAccounts.id })
+    .from(customerAccounts)
+    .where(eq(customerAccounts.dotyposCustomerId, customerId));
+  if (linked) return linked.id;
+  const id = customerAccountIdSchema.make(
+    `e2e-reservation-author-${crypto.randomUUID()}`
+  );
+  yield* executor.insert(customerAccounts).values({ id });
+  return id;
+});
+
 export const findLinkedDotyposCustomerId = (
   accountId: string
 ): Effect.Effect<string | undefined, WorkspaceE2EError, E2EDatabase> =>
@@ -66,72 +83,37 @@ export const findLinkedDotyposCustomerId = (
     const rows = yield* runDatabaseOperation(
       "read synthetic account link",
       db
-        .select({ dotyposCustomerId: linkedDotyposCustomerId })
+        .select({ dotyposCustomerId: customerAccounts.dotyposCustomerId })
         .from(customerAccounts)
-        .leftJoin(
-          customerAccountLinks,
-          eq(customerAccountLinks.customerAccountId, customerAccounts.id)
-        )
         .where(eq(customerAccounts.id, customerAccountIdSchema.make(accountId)))
     );
     return rows[0]?.dotyposCustomerId ?? undefined;
   });
 
-/**
- * Unlinks the synthetic account from its customer in both records the app
- * reads, so its next profile completion claims the customer again. Exactly
- * one account, the given one, must have named the customer.
- */
 export const removeSyntheticAccountLink = (
   accountId: string,
   customerId: string
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
-    const dotyposCustomerId = customerId as DotyposCustomerId;
-    const { accountRows, linkRows } = yield* runDatabaseOperation(
+    const rows = yield* runDatabaseOperation(
       "delete synthetic account link",
-      db.transaction(
-        Effect.fn(function* (tx) {
-          const linkRows = yield* tx
-            .delete(customerAccountLinks)
-            .where(
-              and(
-                eq(customerAccountLinks.customerAccountId, accountId),
-                eq(customerAccountLinks.dotyposCustomerId, dotyposCustomerId)
-              )
+      db
+        .update(customerAccounts)
+        .set({ dotyposCustomerId: null })
+        .where(
+          and(
+            eq(customerAccounts.id, customerAccountIdSchema.make(accountId)),
+            eq(
+              customerAccounts.dotyposCustomerId,
+              customerId as DotyposCustomerId
             )
-            .returning({
-              customerAccountId: customerAccountLinks.customerAccountId,
-            });
-          const accountRows = yield* tx
-            .update(customerAccounts)
-            .set({ dotyposCustomerId: null })
-            .where(
-              and(
-                eq(
-                  customerAccounts.id,
-                  customerAccountIdSchema.make(accountId)
-                ),
-                eq(customerAccounts.dotyposCustomerId, dotyposCustomerId)
-              )
-            )
-            .returning({ customerAccountId: customerAccounts.id });
-          return { accountRows, linkRows };
-        })
-      )
+          )
+        )
+        .returning({ customerAccountId: customerAccounts.id })
     );
 
-    const unlinked = [
-      ...linkRows.map((row) => row.customerAccountId),
-      ...accountRows.map((row) => row.customerAccountId),
-    ];
-    if (
-      linkRows.length > 1 ||
-      accountRows.length > 1 ||
-      unlinked.length === 0 ||
-      unlinked.some((id) => id !== accountId)
-    ) {
+    if (rows.length !== 1 || rows[0]?.customerAccountId !== accountId) {
       return yield* workspaceE2EError(
         "Synthetic account link cleanup did not remove exactly one matching row",
         {
@@ -311,9 +293,8 @@ const classifyWorkspaceE2EAccountState = (input: {
 
 /**
  * Classifies the exact synthetic account for one recipient. The read is
- * keyed by that recipient's unique email and joins only its own account
- * record and link row; it never scans or returns broader production-derived
- * rows.
+ * keyed by that recipient's unique email and joins only its own link row;
+ * it never scans or returns broader production-derived rows.
  */
 export const readSyntheticAccountState = (
   email: string
@@ -325,14 +306,10 @@ export const readSyntheticAccountState = (
       db
         .select({
           authUserId: authUser.id,
-          dotyposCustomerId: linkedDotyposCustomerId,
+          dotyposCustomerId: customerAccounts.dotyposCustomerId,
         })
         .from(authUser)
         .leftJoin(customerAccounts, eq(customerAccounts.id, authUser.id))
-        .leftJoin(
-          customerAccountLinks,
-          eq(customerAccountLinks.customerAccountId, authUser.id)
-        )
         .where(eq(authUser.email, sensitiveDatabaseParameter(email)))
     );
     const row = rows[0];

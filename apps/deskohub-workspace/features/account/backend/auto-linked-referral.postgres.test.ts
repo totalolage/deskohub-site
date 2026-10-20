@@ -45,6 +45,10 @@ const uniqueCode = () =>
 
 const insertAuthUser = async (accountId: CustomerAccountId) => {
   await testDatabase!.pool.query(
+    "insert into customer_accounts (id) values ($1) on conflict do nothing",
+    [accountId]
+  );
+  await testDatabase!.pool.query(
     `insert into auth."user" (id, name, email) values ($1, '', $2)`,
     [accountId, testEmailAddress(accountId)]
   );
@@ -55,7 +59,7 @@ const insertLink = async (
   customerId: DotyposCustomerId
 ) => {
   await testDatabase!.pool.query(
-    `insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2)`,
+    `update customer_accounts set dotypos_customer_id = $2 where id = $1`,
     [accountId, customerId]
   );
 };

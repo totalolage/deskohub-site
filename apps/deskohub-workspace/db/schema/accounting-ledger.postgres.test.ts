@@ -2,7 +2,10 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import type { PoolClient } from "pg";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -62,15 +65,17 @@ describe.skipIf(!testDatabase)(
       await client.query(
         `insert into workspace_reservations (
           id, checkout_attempt_key, dotypos_customer_id, reservation_state,
-          payment_state, fulfillment_state, locale, reservation_details, paid_at
+          payment_state, fulfillment_state, locale, reservation_details, paid_at,
+          author_account_id
         ) values ($1, $2, $3, 'draft', $4, 'not_started', 'en-US',
-          '{"kind":"meeting-room"}'::jsonb, $5)`,
+          '{"kind":"meeting-room"}'::jsonb, $5, $6)`,
         [
           reservationId,
           nextId("synthetic-checkout"),
           customerId,
           attemptState === "paid" ? "paid" : "failed",
           attemptState === "paid" ? new Date() : null,
+          fixtureReservationAuthorId,
         ]
       );
       await client.query(

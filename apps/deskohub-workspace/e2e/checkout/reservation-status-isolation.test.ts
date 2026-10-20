@@ -4,6 +4,7 @@ import { expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import type { Browser } from "@playwright/test";
 import { Effect } from "effect";
+import { customerAccounts } from "@/db/schema/customer-accounts";
 import { browserTextScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import { E2EDatabase } from "../integrations/database.service";
@@ -197,13 +198,16 @@ const makeDatabase = () => {
   };
 
   const makeTransaction = () => ({
-    insert: () => ({
+    // The fixture's synthetic reservation author isn't a reservation row.
+    insert: (table: unknown) => ({
       values: (row: { readonly id?: string }) =>
-        Effect.sync(() => {
-          if (!row.id) throw new Error("fixture reservation id missing");
-          lastInsertedId = row.id;
-          rows.set(row.id, row);
-        }),
+        table === customerAccounts
+          ? Effect.void
+          : Effect.sync(() => {
+              if (!row.id) throw new Error("fixture reservation id missing");
+              lastInsertedId = row.id;
+              rows.set(row.id, row);
+            }),
     }),
     select: makeSelect,
   });

@@ -12,6 +12,7 @@ import { type AuthDatabase, makeAuthDatabase } from "./auth-database-client";
 import { makeDatabasePool } from "./database-client";
 import { authAccount, authSession, authUser } from "./schema/auth";
 import { customerAccountLinks } from "./schema/customer-account-links";
+import { customerAccounts } from "./schema/customer-accounts";
 
 const postgresDatabase: WorkspacePostgresTestDatabase | null =
   await connectWorkspacePostgresTestDatabase();
@@ -33,11 +34,17 @@ const pgErrorCode = async (promise: Promise<unknown>) => {
   return undefined;
 };
 
-const insertAuthUser = (database: AuthDatabase, id: string, email: string) =>
-  database
+const insertAuthUser = async (
+  database: AuthDatabase,
+  id: string,
+  email: string
+) => {
+  await database.insert(customerAccounts).values({ id }).onConflictDoNothing();
+  return database
     .insert(authUser)
     .values({ id, name: "", email })
     .returning({ id: authUser.id, createdAt: authUser.createdAt });
+};
 
 describe.skipIf(!postgresDatabase)(
   "Better Auth persistence over the shared pool",
@@ -59,9 +66,14 @@ describe.skipIf(!postgresDatabase)(
     test("decodes timestamps as Date through the shared-pool facade", async () => {
       const instant = new Date("2026-09-03T10:30:00.123Z");
       const rawEmail = testEmailAddress(`raw-${uniqueId()}`);
+      const rawUserId = uniqueId();
+      await pool.query(
+        "insert into customer_accounts (id) values ($1) on conflict do nothing",
+        [rawUserId]
+      );
       await pool.query(
         `INSERT INTO auth."user" (id, name, email, created_at) VALUES ($1, '', $2, $3)`,
-        [uniqueId(), rawEmail, instant]
+        [rawUserId, rawEmail, instant]
       );
 
       const inserted = await insertAuthUser(

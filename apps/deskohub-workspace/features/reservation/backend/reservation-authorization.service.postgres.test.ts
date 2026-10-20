@@ -35,6 +35,7 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import {
   connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
@@ -64,6 +65,10 @@ const insertAuthUser = async (
   fixture: Fixture
 ) => {
   await postgres.pool.query(
+    `insert into customer_accounts (id) values ($1) on conflict do nothing`,
+    [fixture.accountId]
+  );
+  await postgres.pool.query(
     `insert into auth."user" (id, name, email) values ($1, '', $2)`,
     [fixture.accountId, fixture.accountEmail]
   );
@@ -74,11 +79,7 @@ const linkCustomer = async (
   fixture: Fixture
 ) => {
   await postgres.pool.query(
-    `insert into customer_accounts (id) values ($1) on conflict do nothing`,
-    [fixture.accountId]
-  );
-  await postgres.pool.query(
-    `insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2)`,
+    `update customer_accounts set dotypos_customer_id = $2 where id = $1`,
     [fixture.accountId, fixture.customerId]
   );
 };
@@ -89,12 +90,6 @@ const insertReservation = async (
   customerId: DotyposCustomerId = fixture.customerId,
   options: { readonly authoredByAccount?: boolean } = {}
 ) => {
-  if (options.authoredByAccount) {
-    await postgres.pool.query(
-      `insert into customer_accounts (id) values ($1) on conflict do nothing`,
-      [fixture.accountId]
-    );
-  }
   await Effect.runPromise(
     postgres.db.insert(workspaceReservations).values({
       id: fixture.reservationId,
@@ -104,7 +99,7 @@ const insertReservation = async (
       dotyposCustomerId: customerId,
       authorAccountId: options.authoredByAccount
         ? customerAccountIdSchema.make(fixture.accountId)
-        : null,
+        : fixtureReservationAuthorId,
       dotyposReservationId: DotyposReservationIdSchema.make(
         fixture.dotyposReservationId
       ),
@@ -132,10 +127,6 @@ const cleanupFixture = async (
   await postgres.pool.query(`delete from auth."user" where id = $1`, [
     fixture.accountId,
   ]);
-  await postgres.pool.query(
-    `delete from customer_account_links where customer_account_id = $1`,
-    [fixture.accountId]
-  );
   await postgres.pool.query(`delete from customer_accounts where id = $1`, [
     fixture.accountId,
   ]);
@@ -163,7 +154,7 @@ const cleanupFixture = async (
 
 /**
  * Wires the real account resolver over the fixture's signed-in session. An
- * account without a link row resolves through an exact-email Dotypos lookup
+ * account without a Dotypos customer id resolves through an exact-email lookup
  * that finds no customer, as for an author who never linked one.
  */
 const makeAuthorization = (

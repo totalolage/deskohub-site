@@ -628,16 +628,8 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
             Effect.as(reservationRecord)
           )
     );
-  const assignAuthor = mock(
-    (input: { readonly authorAccountId: CustomerAccountId }) =>
-      Effect.sync(() => {
-        reservationRecord.authorAccountId ??= input.authorAccountId;
-        return input.authorAccountId;
-      })
-  );
   const reservations = {
     findById: mock(() => Effect.succeed(reservationRecord)),
-    assignAuthor,
     updateReservationDetails,
   };
   const updateReservation = mock(
@@ -742,7 +734,6 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
     findAttempt,
     attachHostedPaymentPage,
     markTerminalForReservation,
-    assignAuthor,
     updateReservationDetails,
     updateReservation,
     createHostedPaymentPage,
@@ -2547,7 +2538,6 @@ describe("CheckoutService", () => {
     expect(harness.updateReservationDetails).toHaveBeenCalledTimes(1);
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);
     expect(harness.reservationRecord.authorAccountId).toBe(author);
-    expect(harness.assignAuthor).not.toHaveBeenCalled();
     expect(harness.guardEvents).toEqual([]);
   });
 
@@ -2568,7 +2558,6 @@ describe("CheckoutService", () => {
     expect(harness.createPendingNexiAttempt).toHaveBeenCalledTimes(1);
     expect(harness.createHostedPaymentPage).toHaveBeenCalledTimes(1);
     expect(harness.reservationRecord.authorAccountId).toBe(author);
-    expect(harness.assignAuthor).not.toHaveBeenCalled();
   });
 
   test("holds the account advisory lock across hosted checkout state creation", async () => {

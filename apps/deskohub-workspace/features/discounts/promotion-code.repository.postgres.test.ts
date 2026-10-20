@@ -26,7 +26,10 @@ import {
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { discountIdSchema } from "./contracts";
 import {
   canonicalPromotionCodeSchema,
@@ -194,6 +197,7 @@ describe.skipIf(!testDatabase)(
       paymentAttemptIds.push(paymentAttemptId);
       await Effect.runPromise(
         testDatabase.db.insert(workspaceReservations).values({
+          authorAccountId: fixtureReservationAuthorId,
           id: workspaceReservationId,
           checkoutSessionKey: `promotion-session-${id}`,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${id}`),

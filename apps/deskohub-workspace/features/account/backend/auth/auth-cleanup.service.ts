@@ -67,9 +67,10 @@ export class AuthCleanupService extends Context.Service<
             .delete(authRateLimit)
             .where(lt(authRateLimit.lastRequest, rateLimitCutoffMs))
             .returning({ id: authRateLimit.id });
-          const orphanedAccounts = yield* tombstoneOrphanedAccounts(db, {
-            now: sql`${input.now.toISOString()}::timestamptz`,
-          });
+          const orphanedAccounts = yield* tombstoneOrphanedAccounts(
+            db,
+            sql`${input.now.toISOString()}::timestamptz`
+          );
           return {
             sessions: sessions.length,
             verifications: verifications.length,

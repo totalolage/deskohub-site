@@ -15,6 +15,10 @@ const insertAccount = async (input: {
   const id = crypto.randomUUID();
   const email = testEmailAddress(`account-by-email-${id}`);
   await testDatabase!.pool.query(
+    "insert into customer_accounts (id) values ($1) on conflict do nothing",
+    [id]
+  );
+  await testDatabase!.pool.query(
     `insert into auth."user" (id, name, email, email_verified, deletion_requested_at)
      values ($1, '', $2, $3, $4)`,
     [

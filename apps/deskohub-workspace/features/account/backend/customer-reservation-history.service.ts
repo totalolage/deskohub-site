@@ -56,7 +56,7 @@ export type ReservationHistoryAccount = {
 type ReservationRow = {
   readonly id: (typeof workspaceReservations.$inferSelect)["id"];
   readonly dotyposCustomerId: DotyposCustomerId;
-  readonly authorAccountId: CustomerAccountId | null;
+  readonly authorAccountId: CustomerAccountId;
   readonly dotyposReservationId: DotyposReservationId | null;
   readonly reservationDetails: (typeof workspaceReservations.$inferSelect)["reservationDetails"];
   readonly reservationState: (typeof workspaceReservations.$inferSelect)["reservationState"];
@@ -139,7 +139,7 @@ const getPartyRelation = (
   if (row.dotyposCustomerId !== account.dotyposCustomerId) {
     return { kind: "booked-for", customerId: row.dotyposCustomerId };
   }
-  if (!row.authorAccountId || row.authorAccountId === account.accountId) {
+  if (row.authorAccountId === account.accountId) {
     return undefined;
   }
   const author = authors.get(row.authorAccountId) ?? null;
@@ -326,20 +326,14 @@ export class CustomerReservationHistoryService extends Context.Service<
       // Names only label a reservation, so a failed read leaves the party
       // unnamed instead of failing the history.
       const describeAuthors = (rows: readonly ReservationRow[]) =>
-        authorDirectory
-          .describe(
-            rows.flatMap((row) =>
-              row.authorAccountId ? [row.authorAccountId] : []
-            )
+        authorDirectory.describe(rows.map((row) => row.authorAccountId)).pipe(
+          Effect.tapError(() =>
+            logUnavailableParty("account.reservation-history.authors")
+          ),
+          Effect.orElseSucceed(
+            () => new Map<CustomerAccountId, ReservationAuthor>()
           )
-          .pipe(
-            Effect.tapError(() =>
-              logUnavailableParty("account.reservation-history.authors")
-            ),
-            Effect.orElseSucceed(
-              () => new Map<CustomerAccountId, ReservationAuthor>()
-            )
-          );
+        );
 
       const readReservationSources = ({
         account,

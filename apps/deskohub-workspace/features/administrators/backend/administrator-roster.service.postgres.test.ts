@@ -40,6 +40,10 @@ const insertAccount = async ({
   const accountId = customerAccountIdSchema.make(crypto.randomUUID());
   const email = testEmailAddress(`roster-${accountId}`);
   await testDatabase!.pool.query(
+    `insert into customer_accounts (id) values ($1) on conflict do nothing`,
+    [accountId]
+  );
+  await testDatabase!.pool.query(
     `insert into auth."user" (id, name, email, email_verified, deletion_requested_at)
      values ($1, '', $2, $3, case when $4 then now() end)`,
     [accountId, email, emailVerified, deletionRequested]

@@ -8,6 +8,7 @@ import { CustomerAccountReservationOwnership } from "@/features/account/backend/
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   createReservationAccessCookieCapability,
   reservationAccessCookieMaxAgeMilliseconds,
@@ -34,7 +35,7 @@ type AuthorizedReservation = Pick<
 
 const makeReservation = (
   dotyposCustomerId = accountCustomerId,
-  authorAccountId: string | null = null
+  authorAccountId: string = fixtureReservationAuthorId
 ): AuthorizedReservation =>
   ({ dotyposCustomerId, authorAccountId }) as AuthorizedReservation;
 
