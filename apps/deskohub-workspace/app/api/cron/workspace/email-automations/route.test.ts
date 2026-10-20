@@ -2,8 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
-
-process.env.CRON_SECRET = "cron-secret-for-email-automations-test";
+import { env } from "@/env";
 
 const cronUrl = "https://workspace.test/api/cron/workspace/email-automations";
 
@@ -77,7 +76,7 @@ describe("email automation planner cron route", () => {
 
   test("runs one planner tick and returns its summary", async () => {
     const response = await callCron({
-      authorization: "Bearer cron-secret-for-email-automations-test",
+      authorization: `Bearer ${env.CRON_SECRET}`,
     });
 
     expect(response.status).toBe(200);
@@ -88,7 +87,7 @@ describe("email automation planner cron route", () => {
   test("returns a 500 when planning fails", async () => {
     failPlanning = true;
     const response = await callCron({
-      authorization: "Bearer cron-secret-for-email-automations-test",
+      authorization: `Bearer ${env.CRON_SECRET}`,
     });
 
     expect(response.status).toBe(500);
