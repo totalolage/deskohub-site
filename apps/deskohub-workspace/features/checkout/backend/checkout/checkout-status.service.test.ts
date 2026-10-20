@@ -917,8 +917,10 @@ describe("CheckoutStatusService", () => {
         { dotypos, includeSupportContact: false }
       );
 
-      expect(status).toMatchObject({ status: "paid_awaiting_delivery" });
-      expect(status).not.toHaveProperty("supportContactPrefill");
+      expect(status).toMatchObject({
+        status: "paid_awaiting_delivery",
+        supportContactPrefill: undefined,
+      });
       expect(dotypos.getCustomer).not.toHaveBeenCalled();
     });
 

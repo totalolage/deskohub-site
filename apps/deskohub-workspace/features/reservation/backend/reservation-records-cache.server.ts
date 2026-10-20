@@ -70,7 +70,7 @@ export async function loadSharedCustomerReservationRecords(
 }
 
 /** Keyed by one sorted id batch, so equal id sets share an entry. */
-export async function loadSharedReservationRecordsByIds(
+async function loadSharedReservationRecordsByIds(
   ids: readonly DotyposReservationId[]
 ): Promise<readonly ReservationRecord[]> {
   "use cache: remote";
