@@ -45,7 +45,10 @@ export type CalendarWeekdayOccurrence = typeof CalendarWeekdayOccurrence.Type;
  * at the start of each period, and a wait holds while one lasts.
  */
 export const CalendarExpression = Schema.Struct({
-  /** Minute of the hour. */
+  /**
+   * Minute of the hour. A schedule trigger may list only the engine's tick
+   * minutes (`scheduleMinutesOffTick`); a wait may list any.
+   */
   minutes: Schema.optionalKey(valueList(integerBetween(0, 59), 60)),
   /** Hour of the day. */
   hours: Schema.optionalKey(valueList(integerBetween(0, 23), 24)),

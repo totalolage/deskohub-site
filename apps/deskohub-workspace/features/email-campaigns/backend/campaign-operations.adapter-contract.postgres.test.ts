@@ -431,6 +431,17 @@ const cases: AdapterContractCases<Registry> = {
       }),
       expect: failure("OperationInputInvalid", "calendar-never-occurs"),
     },
+    {
+      title: "refuses a schedule off the engine's ticks",
+      input: ({ automatedDraftId }) => ({
+        campaignId: automatedDraftId,
+        flow: {
+          ...twiceHourlyFlow,
+          trigger: { _tag: "Schedule", calendar: { minutes: [0, 7] } },
+        },
+      }),
+      expect: failure("OperationInputInvalid", "schedule-minutes-not-allowed"),
+    },
   ],
   dryRunAutomation: [
     {

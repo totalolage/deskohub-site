@@ -26,7 +26,11 @@ import {
   canonicalAutomationFlow,
   validateAutomationFlow,
 } from "./automation-flow";
-import { AutomationCalendarNeverOccurs, AutomationFlowInvalid } from "./errors";
+import {
+  AutomationCalendarNeverOccurs,
+  AutomationFlowInvalid,
+  AutomationScheduleMinutesNotAllowed,
+} from "./errors";
 
 const send: AutomationStep = {
   _tag: "Send",
@@ -265,6 +269,50 @@ describe("validateAutomationFlow calendars", () => {
         }
       )
     );
+  });
+});
+
+describe("validateAutomationFlow schedule minutes", () => {
+  const schedule = (calendar: CalendarExpression): AutomationTrigger => ({
+    _tag: "Schedule",
+    calendar,
+  });
+
+  test.each([
+    ["on the hour", { hours: [9] }],
+    ["at :00", { minutes: [0] }],
+    ["at :15", { minutes: [15] }],
+    ["at :30", { minutes: [30] }],
+    ["at :45", { minutes: [45] }],
+    ["at every tick", { minutes: [45, 0, 30, 15] }],
+  ] as const)("accepts a schedule that fires %s", async (_, calendar) => {
+    expect(
+      Result.isSuccess(await validate(flowOf([], schedule(calendar))))
+    ).toBe(true);
+  });
+
+  test("rejects a schedule that fires at :07 with a stable code", async () => {
+    const failure = await failureOf(flowOf([], schedule({ minutes: [7] })));
+    expect(failure).toBeInstanceOf(AutomationScheduleMinutesNotAllowed);
+    expect(failure).toMatchObject({ minutes: [7] });
+    expect(AutomationScheduleMinutesNotAllowed.code).toBe(
+      "schedule-minutes-not-allowed"
+    );
+  });
+
+  test("names every off-tick minute, ascending", async () => {
+    const failure = await failureOf(
+      flowOf([], schedule({ minutes: [50, 0, 7, 30] }))
+    );
+    expect(failure).toMatchObject({ minutes: [7, 50] });
+  });
+
+  test("lets a calendar wait use any minute", async () => {
+    expect(
+      Result.isSuccess(
+        await validate(flowOf([calendarWait({ minutes: [7, 52] })]))
+      )
+    ).toBe(true);
   });
 });
 

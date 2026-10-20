@@ -55,6 +55,7 @@ import type {
   CampaignId,
 } from "../../campaign-identifiers";
 import type { AutomationPreviewId } from "../automation-identifiers";
+import { automationTickAtOrAfter } from "../automation-ticks";
 import { AutomationConditionEvaluation } from "./automation-condition-evaluation.service";
 import { AutomationDryRun } from "./automation-dry-run.service";
 import { makeAutomationDryRunner } from "./automation-dry-run.test-utils";
@@ -661,8 +662,9 @@ describe.skipIf(!testDatabase)(
         stepId: "send",
         projected: false,
       });
-      expect(byEvent.get(e1!)?.sendAt?.equals(ago({ hours: 24 * 19 }))).toBe(
-        true
+      // On the engine tick: the event's tick, a day later.
+      expect(byEvent.get(e1!)?.sendAt).toEqual(
+        automationTickAtOrAfter(ago({ hours: 24 * 19 }))
       );
       // D4: the first run is still waiting.
       expect(byEvent.get(e2!)?.outcome).toBe("already-active");
@@ -1050,6 +1052,108 @@ describe.skipIf(!testDatabase)(
             ?.reservationStatusesApproximate
         ).toBe(true);
       });
+
+      test("an approximate admission marks the events it holds off and the later ones that count its send", async () => {
+        const label = "status-carry";
+        const roles = ["carried", "exact"] as const;
+        const [carried, exact] = roles.map((role) =>
+          customerId(`${label}-${role}`)
+        ) as [DotyposCustomerId, DotyposCustomerId];
+        const twoDaysAfter = triggerAt.add({ hours: 24 * 2 });
+        const visitEnds = [
+          triggerAt,
+          triggerAt.add({ hours: 1 }),
+          triggerAt.add({ hours: 24 * 3 }),
+        ];
+        await seedReservations(
+          [carried, exact].flatMap((customer, index) => [
+            ...visitEnds.map((endsAt, visit) => ({
+              label: `${label}-${roles[index]}-${visit}`,
+              customer,
+              startsAt: endsAt.subtract({ hours: 1 }),
+              endsAt,
+              bookedAt: triggerAt.subtract({ hours: 24 * 50 }),
+            })),
+            {
+              label: `${label}-${roles[index]}-upcoming`,
+              customer,
+              startsAt: triggerAt.add({ hours: 24 * 20 }),
+              endsAt: triggerAt.add({ hours: 24 * 20 + 2 }),
+              bookedAt: triggerAt.subtract({ hours: 24 * 5 }),
+            },
+          ])
+        );
+        // Only `carried` has an undated change, two days after its first
+        // two events and a day before its third.
+        await query(
+          db
+            .update(workspaceReservations)
+            .set({
+              reservationState: "cancellation_failed",
+              updatedAt: twoDaysAfter,
+            })
+            .where(
+              eq(
+                workspaceReservations.id,
+                reservationIdOf(`${label}-carried-upcoming`)
+              )
+            )
+        );
+        const events = await seedEvents(
+          [carried, exact].flatMap((customer, index) =>
+            visitEnds.map((occurredAt, visit) => ({
+              kind: "reservation-finished" as const,
+              reservation: `${label}-${roles[index]}-${visit}`,
+              customer,
+              occurredAt,
+            }))
+          )
+        );
+        const campaignId = await seedAutomation({
+          flow: decodeFlow({
+            trigger: { _tag: "ReservationFinished" },
+            steps: [
+              condition("first-email", noEmailFromThisCampaign),
+              waitHours("wait", 24),
+              send,
+            ],
+          }),
+          // At least two bookings, however the undated status reads.
+          filter: {
+            _tag: "Group",
+            operator: "and",
+            filters: [
+              { ...bookingsIn({ _tag: "AnyTime" }, 1), operator: "gt" },
+            ],
+          },
+        });
+        const started = await start(campaignId);
+        await processAll(started.previewId);
+        const byEvent = new Map(
+          (await rowsOf(started.previewId)).map((row) => [
+            row.customerEventId,
+            row,
+          ])
+        );
+        const outcomes = (ids: readonly (string | undefined)[]) =>
+          ids.map((id) => {
+            const row = byEvent.get(id!);
+            return [row?.outcome, row?.reservationStatusesApproximate];
+          });
+
+        // The admission read the undated status; the second event is held
+        // off by its run, and the third counts its send.
+        expect(outcomes(events.slice(0, 3))).toEqual([
+          ["would-send", true],
+          ["already-active", true],
+          ["condition-failed", true],
+        ]);
+        expect(outcomes(events.slice(3))).toEqual([
+          ["would-send", false],
+          ["already-active", false],
+          ["condition-failed", false],
+        ]);
+      });
     });
 
     test("replays only the latest 1,000 events and counts the rest", async () => {
@@ -1071,7 +1175,8 @@ describe.skipIf(!testDatabase)(
           kind: "reservation-cancelled",
           reservation: label,
           customer: customers[index % 3]!,
-          occurredAt: ago({ hours: 1, minutes: index }),
+          // A customer's events a tick apart, so none is held off.
+          occurredAt: ago({ hours: 1, minutes: 5 * index }),
         }))
       );
       const campaignId = await seedAutomation({
@@ -1098,7 +1203,7 @@ describe.skipIf(!testDatabase)(
       expect(rows.length).toBeLessThanOrEqual(1000);
       expect(
         rows.some((row) =>
-          row.triggerAt.equals(ago({ hours: 1, minutes: 1004 }))
+          row.triggerAt.equals(ago({ hours: 1, minutes: 5 * 1004 }))
         )
       ).toBe(false);
       expect(rows.every((row) => row.outcome === "would-send")).toBe(true);

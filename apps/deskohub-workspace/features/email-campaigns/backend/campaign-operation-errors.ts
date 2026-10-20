@@ -1,5 +1,6 @@
 import {
   type CampaignOperationError,
+  emailAutomationScheduleMinutes,
   OperationConflict,
   OperationInputInvalid,
   OperationNotFound,
@@ -19,6 +20,7 @@ import {
   AutomationPreviewNotFound,
   AutomationPreviewRequired,
   AutomationRunNotFound,
+  AutomationScheduleMinutesNotAllowed,
   AutomationStatusConflict,
   type AutomationVersionNotFound,
 } from "../automation/errors";
@@ -64,6 +66,7 @@ export type CampaignOperationCause =
   | AutomationPreviewNotFound
   | AutomationPreviewRequired
   | AutomationRunNotFound
+  | AutomationScheduleMinutesNotAllowed
   | AutomationStatusConflict
   | AutomationVersionNotFound
   | CalendarExpressionNeverOccurs
@@ -275,6 +278,12 @@ const describeFlowLocation = (location: AutomationFlowLocation) =>
     })
   );
 
+/** Minutes past the hour as ":00, :15, and :30". */
+const minutesPastTheHour = (minutes: readonly number[]) =>
+  new Intl.ListFormat("en", { type: "conjunction" }).format(
+    minutes.map((minute) => `:${String(minute).padStart(2, "0")}`)
+  );
+
 /** Failures of an automation's flow, its conditions and its Dotypos reads. */
 const toAutomationOperationError = (
   cause: CampaignOperationCause
@@ -295,6 +304,15 @@ const toAutomationOperationError = (
         new OperationInputInvalid({
           code: AutomationCalendarNeverOccurs.code,
           message: `The calendar of ${describeFlowLocation(location)} never happens in the next 8 years. Choose another combination.`,
+          cause,
+        })
+    ),
+    Match.tag(
+      "AutomationScheduleMinutesNotAllowed",
+      ({ minutes }) =>
+        new OperationInputInvalid({
+          code: AutomationScheduleMinutesNotAllowed.code,
+          message: `The schedule trigger fires at ${minutesPastTheHour(minutes)}. A schedule can fire only at ${minutesPastTheHour(emailAutomationScheduleMinutes)}.`,
           cause,
         })
     ),

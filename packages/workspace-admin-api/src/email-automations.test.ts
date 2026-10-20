@@ -8,6 +8,7 @@ import {
   AutomationPreviewRef,
   AutomationRunListInput,
   AutomationRunTimelineEntry,
+  scheduleMinutesOffTick,
 } from "./email-automations";
 
 const decodeFlow = Schema.decodeUnknownResult(AutomationFlow);
@@ -210,5 +211,15 @@ describe("automation responses", () => {
     expect(
       Result.getOrThrow(decodeEntry({ ...entry, kind: "waiting", detail: {} }))
     ).toEqual({ ...entry, kind: "waiting", detail: {} } as never);
+  });
+});
+
+describe("scheduleMinutesOffTick", () => {
+  test.each([
+    [{ hours: [9] }, []],
+    [{ minutes: [0, 15, 30, 45] }, []],
+    [{ minutes: [45, 7, 0, 1] }, [1, 7]],
+  ] as const)("%j fires off the engine's ticks at %j", (calendar, minutes) => {
+    expect(scheduleMinutesOffTick(calendar)).toEqual(minutes);
   });
 });

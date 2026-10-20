@@ -42,6 +42,7 @@ import type { CampaignPurpose } from "../../body/campaign-content";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { CampaignRecipientResolutionError } from "../../errors";
 import {
+  countsSimulatedSendsIn,
   type ReplayedEvent,
   replayCustomerEvents,
   replayedFilter,
@@ -54,6 +55,7 @@ import {
   automationPreviewIdSchema,
 } from "../automation-identifiers";
 import type { AutomationTriggerKind } from "../automation-states";
+import { automationTickAtOrAfter } from "../automation-ticks";
 import { automationTriggerKind } from "../automation-triggers";
 import type { AutomationConditionAudienceMissing } from "../errors";
 import { AutomationConditionEvaluation } from "./automation-condition-evaluation.service";
@@ -490,110 +492,137 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
       Effect.bind("cancellations", () =>
         workspaceCancellations(reservationIds)
       ),
+      Effect.bind("undatedChanges", ({ planned }) =>
+        undatedStatusChanges(planned.plan, customers)
+      ),
       Effect.bind("now", () => currentInstant),
-      Effect.flatMap(({ planned, visits, cancellations, now }) => {
-        const replay = (
-          event: ReplayEvent,
-          simulatedSends: readonly Temporal.Instant[]
-        ): Effect.Effect<
-          ReplayedEvent,
-          AutomationUnitFetchFailure | AutomationConditionAudienceMissing
-        > => {
-          const rechecked = recheck({ kind, event, visits, cancellations });
-          if (Option.isSome(rechecked)) return Effect.succeed(rechecked.value);
-          const entryContext = contextOf(event, event.occurredAt);
-          return audienceMembers({
-            job,
-            filter: replayedFilter(job.audienceFilter, {
+      Effect.flatMap(
+        ({ planned, visits, cancellations, undatedChanges, now }) => {
+          const replay = (
+            event: ReplayEvent,
+            simulatedSends: readonly Temporal.Instant[]
+          ): Effect.Effect<
+            ReplayedEvent,
+            AutomationUnitFetchFailure | AutomationConditionAudienceMissing
+          > => {
+            const rechecked = recheck({ kind, event, visits, cancellations });
+            if (Option.isSome(rechecked))
+              return Effect.succeed(rechecked.value);
+            const entryContext = contextOf(event, event.occurredAt);
+            return audienceMembers({
+              job,
+              filter: replayedFilter(job.audienceFilter, {
+                context: entryContext,
+                purpose: job.purpose,
+                simulatedSends,
+              }),
+              customers: [event.dotyposCustomerId],
               context: entryContext,
-              purpose: job.purpose,
-              simulatedSends,
-            }),
-            customers: [event.dotyposCustomerId],
-            context: entryContext,
-            source: planned.source,
-            reachableOnly: false,
-          }).pipe(
-            Effect.flatMap((members) =>
-              members.has(event.dotyposCustomerId)
-                ? simulateEntered(event, simulatedSends)
-                : Effect.succeed<ReplayedEvent>({ _tag: "NotInAudience" })
-            )
-          );
-        };
+              source: planned.source,
+              reachableOnly: false,
+            }).pipe(
+              Effect.flatMap((members) =>
+                members.has(event.dotyposCustomerId)
+                  ? simulateEntered(event, simulatedSends)
+                  : Effect.succeed<ReplayedEvent>({ _tag: "NotInAudience" })
+              )
+            );
+          };
 
-        const simulateEntered = (
-          event: ReplayEvent,
-          simulatedSends: readonly Temporal.Instant[]
-        ) =>
-          simulateRun({
-            steps: job.flow.steps,
-            triggerAt: event.occurredAt,
-            evaluateCondition: (step, at) => {
-              // Conditions use facts as of the step, or now once it's past.
-              const evaluatedAt =
-                Temporal.Instant.compare(at, now) > 0 ? now : at;
-              const conditionContext = contextOf(event, evaluatedAt);
-              return evaluateCondition({
-                condition: replayedFilter(step.filter, {
+          const simulateEntered = (
+            event: ReplayEvent,
+            simulatedSends: readonly Temporal.Instant[]
+          ) =>
+            simulateRun({
+              steps: job.flow.steps,
+              triggerAt: event.occurredAt,
+              evaluateCondition: (step, at) => {
+                // Conditions use facts as of the step, or now once it's past.
+                const evaluatedAt =
+                  Temporal.Instant.compare(at, now) > 0 ? now : at;
+                const conditionContext = contextOf(event, evaluatedAt);
+                return evaluateCondition({
+                  condition: replayedFilter(step.filter, {
+                    context: conditionContext,
+                    purpose: job.purpose,
+                    simulatedSends,
+                  }),
+                  plan: planned.plan,
+                  customers: [event.dotyposCustomerId],
                   context: conditionContext,
-                  purpose: job.purpose,
-                  simulatedSends,
-                }),
-                plan: planned.plan,
-                customers: [event.dotyposCustomerId],
-                context: conditionContext,
-                source: planned.source,
-              }).pipe(
-                Effect.map(
-                  (decided): AudienceFilterOutcome =>
-                    decided.get(event.dotyposCustomerId)?.outcome ?? "unknown"
-                ),
-                Effect.catchTag("AutomationConditionAudienceMissing", () =>
-                  Effect.fail(
-                    new PreviewConditionUnavailable({ stepId: step.id, at })
+                  source: planned.source,
+                }).pipe(
+                  Effect.map(
+                    (decided): AudienceFilterOutcome =>
+                      decided.get(event.dotyposCustomerId)?.outcome ?? "unknown"
+                  ),
+                  Effect.catchTag("AutomationConditionAudienceMissing", () =>
+                    Effect.fail(
+                      new PreviewConditionUnavailable({ stepId: step.id, at })
+                    )
                   )
-                )
-              );
-            },
-          }).pipe(
-            Effect.map((end) => preSubmit({ kind, event, end, cancellations })),
-            Effect.catchTag("PreviewConditionUnavailable", ({ stepId, at }) =>
-              Effect.succeed<ReplayedEvent>({
-                _tag: "Entered",
-                end: { outcome: "unavailable", stepId, at },
-              })
-            )
-          );
-
-        const byCustomer = Map.groupBy(
-          job.events,
-          ({ dotyposCustomerId }) => dotyposCustomerId
-        );
-        return Effect.forEach(customers, (customerId) =>
-          replayCustomerEvents({
-            events: byCustomer.get(customerId) ?? [],
-            occurredAt: ({ occurredAt }) => occurredAt,
-            now,
-            replay,
-          }).pipe(
-            Effect.map((replayed) =>
-              replayed.map(
-                ({ event, outcome }): AutomationPreviewOutcomeRow => ({
-                  ...outcome,
-                  dotyposCustomerId: event.dotyposCustomerId,
-                  customerEventId: event.id,
+                );
+              },
+            }).pipe(
+              Effect.map((end) =>
+                preSubmit({ kind, event, end, cancellations })
+              ),
+              Effect.catchTag("PreviewConditionUnavailable", ({ stepId, at }) =>
+                Effect.succeed<ReplayedEvent>({
+                  _tag: "Entered",
+                  end: { outcome: "unavailable", stepId, at },
                 })
               )
+            );
+
+          const byCustomer = Map.groupBy(
+            job.events,
+            ({ dotyposCustomerId }) => dotyposCustomerId
+          );
+          const sendsContext = {
+            context: {
+              now,
+              campaignId: Option.some(job.preview.campaignId),
+              trigger: Option.none(),
+            },
+            purpose: job.purpose,
+          };
+          const countsSimulatedSends = [
+            job.audienceFilter,
+            ...conditionStepsOf(job.flow).map(({ filter }) => filter),
+          ].some((filter) => countsSimulatedSendsIn(filter, sendsContext));
+          return Effect.forEach(customers, (customerId) =>
+            replayCustomerEvents({
+              events: byCustomer.get(customerId) ?? [],
+              occurredAt: ({ occurredAt }) => occurredAt,
+              now,
+              steps: job.flow.steps,
+              approximation: {
+                undatedChangeAt: Option.fromUndefinedOr(
+                  undatedChanges.get(customerId)
+                ),
+                countsSimulatedSends,
+              },
+              replay,
+            }).pipe(
+              Effect.map((replayed) =>
+                replayed.map(
+                  ({
+                    event,
+                    outcome,
+                    reservationStatusesApproximate,
+                  }): AutomationPreviewOutcomeRow => ({
+                    ...outcome,
+                    dotyposCustomerId: event.dotyposCustomerId,
+                    customerEventId: event.id,
+                    reservationStatusesApproximate,
+                  })
+                )
+              )
             )
-          )
-        ).pipe(
-          Effect.map((rows) => rows.flat()),
-          Effect.flatMap((rows) =>
-            markUndatedStatuses(planned.plan, customers, rows)
-          )
-        );
-      }),
+          ).pipe(Effect.map((rows) => rows.flat()));
+        }
+      ),
       Effect.catchTag("AutomationConditionAudienceMissing", () =>
         Effect.succeed(unavailableRows(job, customers))
       )
@@ -601,34 +630,20 @@ export const makePreviewUnitHandler = Effect.gen(function* () {
   };
 
   /**
-   * Marks the replayed rows whose conditions read a reservation status that
-   * changed after the row's trigger in a way the stored timestamps can't
-   * date: from the trigger on, its evaluations read that status
-   * approximately (design §8.2). Outcomes no condition decided stay
-   * unmarked: an `already-active` row follows an earlier row's admission,
-   * which carries its own mark.
+   * Per customer, their latest reservation status change the stored
+   * timestamps can't date, for the statuses the plan reads: replayed
+   * evaluations before it read those statuses approximately (design §8.2).
    */
-  const markUndatedStatuses = (
+  const undatedStatusChanges = (
     plan: AutomationEvaluationPlan,
-    customers: readonly DotyposCustomerId[],
-    rows: readonly AutomationPreviewOutcomeRow[]
+    customers: readonly DotyposCustomerId[]
   ) => {
     const statuses = audienceReservationStatusesOf(plan.factFilter);
     return statuses.size === 0
-      ? Effect.succeed(rows)
-      : candidates.undatedStatusChanges({ statuses, customers }).pipe(
-          Effect.mapError(databaseFailure),
-          Effect.map((changes) =>
-            rows.map((row) => {
-              const changedAt = changes.get(row.dotyposCustomerId);
-              return changedAt !== undefined &&
-                conditionDecided(row.outcome) &&
-                Temporal.Instant.compare(row.triggerAt, changedAt) < 0
-                ? { ...row, reservationStatusesApproximate: true }
-                : row;
-            })
-          )
-        );
+      ? Effect.succeed(new Map<DotyposCustomerId, Temporal.Instant>())
+      : candidates
+          .undatedStatusChanges({ statuses, customers })
+          .pipe(Effect.mapError(databaseFailure));
   };
 
   /** Live runs of the campaign: a customer in one is `already-active` at a fire (D4). */
@@ -929,20 +944,17 @@ const preSubmit = (input: {
     onSome: (at) => ({
       _tag: "Withdrawn",
       stepId: Option.some(input.end.stepId),
+      // On the engine tick that takes the cancellation in.
       at: Option.some(
-        Temporal.Instant.compare(at, input.event.occurredAt) > 0
-          ? at
-          : input.event.occurredAt
+        automationTickAtOrAfter(
+          Temporal.Instant.compare(at, input.event.occurredAt) > 0
+            ? at
+            : input.event.occurredAt
+        )
       ),
     }),
   });
 };
-
-/** Outcomes the entry audience or a condition step decided. */
-const conditionDecided = (outcome: AutomationPreviewOutcomeRow["outcome"]) =>
-  outcome === "would-send" ||
-  outcome === "condition-failed" ||
-  outcome === "not-in-audience";
 
 /** Rows for customers whose facts can't be read: a schedule's at `F`, a replay's per event. */
 const unavailableRows = (

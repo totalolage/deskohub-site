@@ -8,6 +8,7 @@ import {
   type CalendarExpressionType as CalendarExpression,
   canonicalCalendarExpression,
   type InSavedAudienceType as InSavedAudience,
+  scheduleMinutesOffTick,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Schema } from "effect";
 import { reservationProductFilterSchema } from "@/features/reservation/reservation-product-descriptor";
@@ -19,6 +20,7 @@ import {
   AutomationCalendarNeverOccurs,
   AutomationFlowInvalid,
   type AutomationFlowLocation,
+  AutomationScheduleMinutesNotAllowed,
 } from "./errors";
 
 const triggerLocation: AutomationFlowLocation = { _tag: "Trigger" };
@@ -124,6 +126,15 @@ const ensureWaitWithinLimit = (step: AutomationStep) =>
       )
     : Effect.void;
 
+/** A schedule fires only on the engine's ticks (D36); calendar waits may use any minute. */
+const ensureScheduleOnTicks = ({ trigger }: AutomationFlow) => {
+  const minutes =
+    trigger._tag === "Schedule" ? scheduleMinutesOffTick(trigger.calendar) : [];
+  return minutes.length > 0
+    ? Effect.fail(new AutomationScheduleMinutesNotAllowed({ minutes }))
+    : Effect.void;
+};
+
 /** The schedule trigger's calendar and each calendar wait's, with where they are. */
 const flowCalendars = (
   flow: AutomationFlow
@@ -170,8 +181,9 @@ export const canonicalAutomationFlow = (
 
 /**
  * The flow every write path stores and activation publishes: decoded with
- * `automationFlowSchema`, each wait at most 366 days, each calendar
- * occurring within eight years, in canonical form. Condition steps may use
+ * `automationFlowSchema`, a schedule firing only on engine ticks, each
+ * wait at most 366 days, each calendar occurring within eight years, in
+ * canonical form. Condition steps may use
  * trigger windows, "this campaign" and saved audiences; the campaign's
  * entry audience is a saved audience, so its writes reject them. Whether
  * referenced audiences and campaigns exist is the caller's database check
@@ -181,12 +193,15 @@ export const validateAutomationFlow = (
   flow: AutomationFlow
 ): Effect.Effect<
   AutomationFlow,
-  AutomationFlowInvalid | AutomationCalendarNeverOccurs
+  | AutomationFlowInvalid
+  | AutomationScheduleMinutesNotAllowed
+  | AutomationCalendarNeverOccurs
 > =>
   Schema.decodeEffect(automationFlowSchema)(flow).pipe(
     Effect.mapError(
       (cause) => new AutomationFlowInvalid({ message: cause.message, cause })
     ),
+    Effect.tap(ensureScheduleOnTicks),
     Effect.tap(({ steps }) =>
       Effect.forEach(steps, ensureWaitWithinLimit, { discard: true })
     ),
