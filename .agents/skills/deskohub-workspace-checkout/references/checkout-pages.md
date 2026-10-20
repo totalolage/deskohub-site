@@ -53,8 +53,10 @@ Each reservation form mirrors its selection into the page URL through `useReserv
 Every reservation needs a signed-in account with a verified email; there is no guest checkout. The contact step (`features/reservation/components/reservation-customer-fields.tsx`, seeded by `features/reservation/reservation-existing-customer.ts`) renders one of:
 
 - Signed out: name, email, phone, and billing. Continue seals the details (see `contact` above), sends the sign-in email with `startEmailSignIn`, and opens the verify modal (`use-checkout-email-verification.ts`). The email carries a code only when `login_email_code` is on. "Already a customer? Sign in" opens sign-in with the same return path.
-- Signed in without a profile: the same form with the account email read-only; name and phone are required. Submitting creates the Dotypos profile, with billing, and continues.
+- An account without a link first runs `CustomerAccountResolver` (`loadCheckoutAccount` in `reservation-existing-customer.server.ts`), so a returning customer's exact-email Dotypos profile is linked before the page decides it has none. A profile linked this way counts as an existing profile.
+- Signed in without a profile: the same form with the account email read-only; name and phone are required. Submitting creates the Dotypos profile, with billing, and continues. Creation re-resolves under the account lock (`CustomerProfileService.createUnderHeldLock`), so a customer created meanwhile, or by an attempt whose link write failed, is linked rather than duplicated, and its saved profile wins.
 - Signed in with a linked profile: the "Booking as" card (`customer: "account"`). If the sealed details came back for an email whose account already has a profile, the card shows a notice and the typed details, minus the email, prefill "Book for someone else".
+- Resolution support state (ambiguous, unusable, or claimed exact-email customers): a notice pointing to support, never a form or a retry.
 - Account read failure: an error with a retry, never a form.
 
 Booking modes:

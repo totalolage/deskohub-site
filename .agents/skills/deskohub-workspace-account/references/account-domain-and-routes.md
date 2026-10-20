@@ -25,6 +25,10 @@
   the claim is written in the link's transaction (referrals skill).
 - Never create a Dotypos customer from auth data alone; it needs the profile
   completion input.
+- Profile creation (`CustomerProfileService.createUnderHeldLock`) reruns the
+  locked steps (`resolveCustomerAccountLinkUnderHeldLock`) and creates only on
+  `not-found`. Because the created customer carries the verified email, a retry
+  after a failed link write links that customer instead of creating another.
 
 ## Durable customer account
 

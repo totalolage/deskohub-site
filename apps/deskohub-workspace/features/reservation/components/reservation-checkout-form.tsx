@@ -208,7 +208,9 @@ export function ReservationCheckoutForm<
   const isContactStep = checkoutStep.step === "contact";
   const isSubmitDisabled =
     form.formState.isSubmitting ||
-    (isContactStep && checkoutCustomer.status === "unavailable") ||
+    (isContactStep &&
+      (checkoutCustomer.status === "unavailable" ||
+        checkoutCustomer.status === "support-required")) ||
     isSubmittingCheckout ||
     emailVerification.isVerifying ||
     hasPreparedPayRedirect ||

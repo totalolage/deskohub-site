@@ -483,6 +483,8 @@
   "reservationExistingCustomerTitle": "Rezervuješ jako",
   "reservationBookForSomeoneElse": "Rezervovat pro někoho jiného",
   "reservationUseAccountDetails": "Použít údaje z mého účtu",
+  "reservationAccountSupportBody": "K tomuto e-mailu se nepodařilo bezpečně přiřadit jeden zákaznický profil, proto s ním zatím nemůžeš rezervovat. <contact>Napiš nám</contact> a propojíme správnou historii.",
+  "reservationAccountSupportTitle": "Potřebujeme ověřit tvůj profil",
   "reservationAccountUnavailableRetry": "Zkusit znovu",
   "reservationAccountUnavailableBody": "Údaje o rezervaci zůstávají zachované. Zkus to za chvíli znovu; pokud to nepůjde, odhlas se a znovu přihlas.",
   "reservationAccountUnavailableTitle": "Nepodařilo se načíst tvůj účet",

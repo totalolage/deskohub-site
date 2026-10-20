@@ -479,6 +479,8 @@
   "reservationExistingCustomerTitle": "Booking as",
   "reservationBookForSomeoneElse": "Book for someone else",
   "reservationUseAccountDetails": "Use my account details",
+  "reservationAccountSupportBody": "We couldn't safely match one customer profile to this email, so you can't book with it yet. <contact>Contact us</contact> and we'll connect the right history.",
+  "reservationAccountSupportTitle": "We need to verify your profile",
   "reservationAccountUnavailableRetry": "Try again",
   "reservationAccountUnavailableBody": "Your reservation details are kept. Try again in a moment; if it keeps failing, sign out and back in.",
   "reservationAccountUnavailableTitle": "We couldn't load your account",

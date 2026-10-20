@@ -6,11 +6,13 @@ import {
   CustomerAccountAccessError,
   type CustomerAccountId,
   customerAccountUnavailable,
+  isCustomerProfileMissing,
   type LinkedCustomerAccount,
   mapCustomerAccountFailure,
 } from "../customer-account";
 import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import { resolveCustomerAccountLinkUnderHeldLock } from "./customer-account-resolver.service";
 import {
   CustomerDotyposAdapter,
   type CustomerProfile,
@@ -78,6 +80,12 @@ export class CustomerProfileService extends Context.Service<
     Effect.gen(function* () {
       const links = yield* CustomerAccountLinkRepository;
       const dotypos = yield* CustomerDotyposAdapter;
+      const lockedResolution = {
+        findLink: links.find,
+        classify: dotypos.classifyExactEmailCustomers,
+        claimLink: links.claim,
+        reactivate: dotypos.reactivateCustomer,
+      };
 
       const load = Effect.fn("CustomerProfileService.load")(
         (account: LinkedCustomerAccount) =>
@@ -124,17 +132,26 @@ export class CustomerProfileService extends Context.Service<
         yield* Effect.logDebug("Account profile create lock scope entered");
         yield* requireAccountActivity(links, accountId);
 
-        const linkedCustomerId = yield* links
-          .find(accountId)
-          .pipe(
-            Effect.mapError(mapCustomerAccountFailure("account-link.read"))
+        // Resolve before creating, so a returning customer's exact-email
+        // profile, or the one an earlier attempt created before its link
+        // write failed, is linked instead of duplicated.
+        const resolution = yield* resolveCustomerAccountLinkUnderHeldLock(
+          lockedResolution,
+          { accountId, email: verifiedEmail },
+          signupReferral
+        ).pipe(
+          Effect.catchIf(isCustomerProfileMissing, () => Effect.succeed(null))
+        );
+        if (resolution) {
+          const profile = yield* readLinkedProfile(
+            dotypos,
+            resolution.account.dotyposCustomerId
           );
-        if (linkedCustomerId) {
-          const profile = yield* readLinkedProfile(dotypos, linkedCustomerId);
+          // Under the account lock only this call can have claimed the link.
           return {
-            account: { accountId, dotyposCustomerId: linkedCustomerId },
+            account: resolution.account,
             profile,
-            created: false,
+            created: resolution.autoLinked,
           } satisfies CustomerProfileCreation;
         }
 

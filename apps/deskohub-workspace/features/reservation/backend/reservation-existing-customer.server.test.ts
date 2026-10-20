@@ -7,6 +7,7 @@ import {
   type CurrentLinkedAccount,
   CustomerAccountContactService,
 } from "@/features/account/backend/customer-account-contact.service";
+import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import {
   CustomerAccountAccessError,
   customerAccountIdSchema,
@@ -182,8 +183,10 @@ describe("loadReservationCheckoutAccount", () => {
   // swaps them for fakes that read the current scenario.
   let currentAccount: CustomerAccountContactService["Service"]["currentAccount"];
   let linkedContact: CustomerAccountContactService["Service"]["linkedContact"];
+  let resolve: CustomerAccountResolver["Service"]["resolve"];
 
   const originalContactsLive = CustomerAccountContactService.Live;
+  const originalResolverLive = CustomerAccountResolver.Live;
   const originalLastReservationsLive = CustomerLastReservationService.Live;
   const originalMarketingConsentsLive = CustomerMarketingConsentRepository.Live;
 
@@ -194,6 +197,9 @@ describe("loadReservationCheckoutAccount", () => {
       linkedContact: (linked) => linkedContact(linked),
     }
   );
+  CustomerAccountResolver.Live = Layer.mock(CustomerAccountResolver, {
+    resolve: Effect.suspend(() => resolve),
+  });
   CustomerLastReservationService.Live = Layer.mock(
     CustomerLastReservationService,
     { load: () => Effect.succeed(null) }
@@ -206,10 +212,17 @@ describe("loadReservationCheckoutAccount", () => {
   beforeEach(() => {
     currentAccount = Effect.succeed({ status: "linked", ...account });
     linkedContact = mock(() => Effect.succeed(contact));
+    resolve = Effect.fail(
+      new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "not-found",
+      })
+    );
   });
 
   afterAll(() => {
     CustomerAccountContactService.Live = originalContactsLive;
+    CustomerAccountResolver.Live = originalResolverLive;
     CustomerLastReservationService.Live = originalLastReservationsLive;
     CustomerMarketingConsentRepository.Live = originalMarketingConsentsLive;
   });
@@ -236,6 +249,53 @@ describe("loadReservationCheckoutAccount", () => {
     });
     expect(linkedContact).not.toHaveBeenCalled();
   });
+
+  test("links an unlinked account to its exact-email customer and books with the saved profile", async () => {
+    currentAccount = Effect.succeed({
+      status: "unlinked",
+      accountId: account.accountId,
+      email: account.email,
+    });
+    resolve = Effect.succeed({
+      accountId: account.accountId,
+      dotyposCustomerId: account.dotyposCustomerId,
+    });
+
+    expect(await loadReservationCheckoutAccount("cowork")).toEqual({
+      status: "linked",
+      customer: {
+        contact: {
+          name: "Ada Lovelace",
+          email: testEmailAddressForAda,
+          phone: "+420 777 777 777",
+        },
+        hasMarketingConsent: false,
+      },
+    });
+    expect(linkedContact).toHaveBeenCalledWith(account);
+  });
+
+  test.each([
+    ["ambiguous", { status: "support-required" }],
+    ["unusable", { status: "support-required" }],
+    ["claimed", { status: "support-required" }],
+    ["deletion-requested", { status: "signed-out" }],
+  ] as const)(
+    "reads an unlinked account whose resolution is %s without a profile form",
+    async (linkReason, expected) => {
+      currentAccount = Effect.succeed({
+        status: "unlinked",
+        accountId: account.accountId,
+        email: account.email,
+      });
+      resolve = Effect.fail(
+        new CustomerAccountAccessError({ reason: "link-required", linkReason })
+      );
+
+      expect(await loadReservationCheckoutAccount("cowork")).toEqual(expected);
+      expect(linkedContact).not.toHaveBeenCalled();
+    }
+  );
 
   test("books a linked account as its customer by default", async () => {
     expect(await loadReservationCheckoutAccount("cowork")).toEqual({

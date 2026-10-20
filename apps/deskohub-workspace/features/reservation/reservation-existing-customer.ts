@@ -62,6 +62,11 @@ export type ReservationCheckoutAccount<
       readonly status: "linked";
       readonly customer: ReservationExistingCustomer<Kind>;
     }
+  /**
+   * The verified email's Dotypos customers can't be linked safely, so the
+   * account can't book as itself until support connects it.
+   */
+  | { readonly status: "support-required" }
   /** The session or its profile couldn't be read. */
   | { readonly status: "unavailable" };
 
@@ -166,6 +171,7 @@ export const getReservationExistingCustomerForm = <
 /** What the reservation form needs for its contact-details step. */
 export type ReservationCheckoutCustomerForm =
   | { readonly status: "signed-out" }
+  | { readonly status: "support-required" }
   | { readonly status: "unavailable" }
   | {
       readonly status: "profile-missing";
@@ -233,7 +239,11 @@ export const getReservationCheckoutCustomerForm = <
       }
     : values;
 
-  if (account.status === "signed-out" || account.status === "unavailable") {
+  if (
+    account.status === "signed-out" ||
+    account.status === "support-required" ||
+    account.status === "unavailable"
+  ) {
     return {
       checkoutCustomer: { status: account.status },
       initialValues: typedValues,

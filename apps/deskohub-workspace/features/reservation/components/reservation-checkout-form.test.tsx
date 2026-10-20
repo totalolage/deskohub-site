@@ -607,4 +607,26 @@ describe("ReservationCheckoutForm", () => {
     });
     expect(workspaceRouterRefresh).toHaveBeenCalledTimes(1);
   });
+
+  test("points to support instead of a form when the email's profile can't be linked", () => {
+    const view = render(
+      <Harness
+        advertisedPrice={signedPrice}
+        checkoutCustomer={{ status: "support-required" }}
+      />
+    );
+
+    expect(
+      view.getByText(m.reservationAccountSupportTitle({}, en))
+    ).toBeDefined();
+    expect(
+      view.queryByLabelText(new RegExp(`^${m.contactEmailLabel({}, en)}`))
+    ).toBeNull();
+    expect(
+      view.queryByRole("button", {
+        name: m.reservationAccountUnavailableRetry({}, en),
+      })
+    ).toBeNull();
+    expect(getSubmitButton(view).disabled).toBe(true);
+  });
 });

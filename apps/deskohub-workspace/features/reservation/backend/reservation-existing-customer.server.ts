@@ -6,6 +6,11 @@ import {
   type CurrentLinkedAccount,
   CustomerAccountContactService,
 } from "@/features/account/backend/customer-account-contact.service";
+import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
+import {
+  isCustomerAccountSupportRequired,
+  isCustomerProfileMissing,
+} from "@/features/account/customer-account";
 import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
 import { getMarketingPreferenceStatus } from "@/features/legal/marketing-preferences";
 import type { CoworkReservationInput } from "@/features/reservation/cowork-reservation";
@@ -29,11 +34,11 @@ import { WorkspaceAvailabilityService } from "./workspace-availability.service";
 
 /**
  * Who reaches a reservation page's contact-details step: signed out, signed
- * in without a usable profile, or the linked customer the page books for by
- * default, with their latest reservation of the page's family. An account
- * that can't be read is `unavailable`, so the page offers a retry instead of
- * booking as someone it doesn't know; without account configuration, every
- * visitor is signed out.
+ * in without a usable profile, signed in with an email only support can link,
+ * or the linked customer the page books for by default, with their latest
+ * reservation of the page's family. An account that can't be read is
+ * `unavailable`, so the page offers a retry instead of booking as someone it
+ * doesn't know; without account configuration, every visitor is signed out.
  */
 export const loadReservationCheckoutAccount = cache(
   async <Kind extends WorkspaceReservationKind>(
@@ -43,6 +48,7 @@ export const loadReservationCheckoutAccount = cache(
       Effect.provide(
         Layer.mergeAll(
           CustomerAccountContactService.Live,
+          CustomerAccountResolver.Live,
           CustomerLastReservationService.Live,
           CustomerMarketingConsentRepository.Live
         )
@@ -76,25 +82,66 @@ const loadCheckoutAccount = Effect.fn("reservation.loadCheckoutAccount")(
         status: "signed-out",
       } satisfies ReservationCheckoutAccount<Kind>;
     }
-    if (account.status === "unlinked") {
+    if (account.status === "linked") {
+      return yield* loadLinkedCheckoutAccount(account, kind);
+    }
+
+    // As on the account page, an account without a link first claims its
+    // exact-email Dotypos customer, so a returning customer books with the
+    // saved profile instead of creating another one.
+    const resolution = yield* CustomerAccountResolver.pipe(
+      Effect.flatMap((resolver) => resolver.resolve),
+      Effect.result
+    );
+    if (Result.isSuccess(resolution)) {
+      return yield* loadLinkedCheckoutAccount(
+        { ...resolution.success, email: account.email },
+        kind
+      );
+    }
+
+    const failure = resolution.failure;
+    if (isCustomerProfileMissing(failure)) {
       return {
         status: "profile-missing",
         email: account.email,
       } satisfies ReservationCheckoutAccount<Kind>;
     }
-
-    const customer = yield* loadLinkedExistingCustomer(account, kind);
-    return customer
-      ? ({
-          status: "linked",
-          customer,
-        } satisfies ReservationCheckoutAccount<Kind>)
-      : ({
-          status: "profile-missing",
-          email: account.email,
-        } satisfies ReservationCheckoutAccount<Kind>);
+    if (isCustomerAccountSupportRequired(failure)) {
+      return {
+        status: "support-required",
+      } satisfies ReservationCheckoutAccount<Kind>;
+    }
+    // The session ended or requested deletion since it was read.
+    if (
+      failure.reason === "unauthenticated" ||
+      failure.reason === "link-required"
+    ) {
+      return {
+        status: "signed-out",
+      } satisfies ReservationCheckoutAccount<Kind>;
+    }
+    return yield* failure;
   }
 );
+
+const loadLinkedCheckoutAccount = Effect.fn(
+  "reservation.loadLinkedCheckoutAccount"
+)(function* <Kind extends WorkspaceReservationKind>(
+  account: CurrentLinkedAccount,
+  kind: Kind
+) {
+  const customer = yield* loadLinkedExistingCustomer(account, kind);
+  return customer
+    ? ({
+        status: "linked",
+        customer,
+      } satisfies ReservationCheckoutAccount<Kind>)
+    : ({
+        status: "profile-missing",
+        email: account.email,
+      } satisfies ReservationCheckoutAccount<Kind>);
+});
 
 /**
  * The profile, last-reservation, and marketing-consent reads each issue a

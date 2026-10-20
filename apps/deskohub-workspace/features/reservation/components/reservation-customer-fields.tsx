@@ -124,6 +124,10 @@ export function ReservationCustomerSection({
     return <ReservationAccountUnavailable locale={locale} />;
   }
 
+  if (checkoutCustomer.status === "support-required") {
+    return <ReservationAccountSupportRequired locale={locale} />;
+  }
+
   if (checkoutCustomer.status === "profile-missing") {
     return (
       <div className="space-y-5">
@@ -369,6 +373,50 @@ function ReservationAccountUnavailable({
         <RotateCw aria-hidden="true" className="size-4" />
         {m.reservationAccountUnavailableRetry({}, { locale })}
       </Button>
+    </section>
+  );
+}
+
+/**
+ * Stops an account whose email matches Dotypos customers it can't safely
+ * link: retrying can't help, so it points to support instead.
+ */
+function ReservationAccountSupportRequired({
+  locale,
+}: {
+  readonly locale: Locale;
+}) {
+  return (
+    <section
+      aria-labelledby="reservation-account-support-heading"
+      className="space-y-3 rounded-[1.4rem] border border-burned-orange/20 bg-burned-orange/8 p-4 sm:p-5"
+      role="alert"
+    >
+      <h3
+        className="flex items-center gap-2 text-base font-semibold text-burned-orange-ink"
+        id="reservation-account-support-heading"
+      >
+        <AlertTriangle
+          aria-hidden="true"
+          className="size-4 shrink-0 text-burned-orange"
+        />
+        {m.reservationAccountSupportTitle({}, { locale })}
+      </h3>
+      <p className="text-sm leading-6 text-navy-blue/72">
+        <Interpolate
+          string={m.reservationAccountSupportBody({}, { locale })}
+          mapping={{
+            contact: (label) => (
+              <Link
+                className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"
+                href={`/${locale}/contact`}
+              >
+                {label}
+              </Link>
+            ),
+          }}
+        />
+      </p>
     </section>
   );
 }
