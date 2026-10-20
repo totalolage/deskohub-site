@@ -627,32 +627,8 @@ describe.skipIf(!testDatabase)(
         sentLinks,
         clientMetadataTransport: agent.clientMetadataTransport,
       });
-      const pkce = await makePkce();
-      const { consentPage, customer } = await connectToConsent(
-        auth,
-        sentLinks,
-        {
-          clientId: agent.clientId,
-          redirectUri: agent.redirectUri,
-          challenge: pkce.challenge,
-          state: crypto.randomUUID(),
-          scope: AGENT_SCOPE,
-        }
-      );
-      const callback = await answerConsent(
-        auth,
-        customer.cookie,
-        consentPage,
-        true
-      );
-      const tokens = (await (
-        await exchangeCode(auth, {
-          clientId: agent.clientId,
-          redirectUri: agent.redirectUri,
-          code: callback.searchParams.get("code")!,
-          verifier: pkce.verifier,
-        })
-      ).json()) as TokenResponse;
+      const customer = await signIn(auth, sentLinks);
+      const tokens = await connectSignedIn(auth, customer.cookie, agent);
       const refresh = (refreshToken: string) =>
         requestToken(auth, {
           grant_type: "refresh_token",
@@ -678,6 +654,7 @@ describe.skipIf(!testDatabase)(
       expect(await countRows("oauth_refresh_token", customer.accountId)).toBe(
         0
       );
+      expect(await countRows("oauth_access_token", customer.accountId)).toBe(0);
     });
 
     test("refuses a code exchanged for another resource", async () => {
