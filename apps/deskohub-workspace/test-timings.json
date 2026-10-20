@@ -669,6 +669,7 @@
     "scripts/stacked-pr-ci-workflow.test.ts": 9,
     "scripts/submit-indexnow.test.ts": 1275,
     "scripts/sync-posthog-feature-flags.test.ts": 675,
+    "scripts/upload-source-maps.test.ts": 20,
     "scripts/validate-migration-count.test.ts": 52,
     "scripts/workspace-e2e-allocation.test.ts": 127,
     "scripts/workspace-e2e-bun-cache-fill.test.ts": 117,
