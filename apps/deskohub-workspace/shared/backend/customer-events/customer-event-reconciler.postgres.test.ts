@@ -297,8 +297,8 @@ describe.skipIf(!testDatabase)(
         }
         return id;
       };
-      const linkedCustomer = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
-      const unverifiedCustomer = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+      const linkedCustomer = crypto.randomUUID();
+      const unverifiedCustomer = crypto.randomUUID();
       const linked = await insertAccount(linkedCustomer, true);
       const unverified = await insertAccount(unverifiedCustomer, false);
       const unlinked = await insertAccount(null, true);
