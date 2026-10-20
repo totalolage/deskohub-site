@@ -282,26 +282,43 @@ describe.skipIf(!database)("fire-chunk units on Postgres", () => {
     });
     const expiring = unitIds[0]!;
     const sibling = unitIds[1]!;
-    // The crash: the unit's `done` settlement fails after the expiry ran.
+    // Fails the unit's `done` settlement after its expiry ran.
     const fault = `fail_settlement_${crypto.randomUUID().replaceAll("-", "")}`;
-    await pool.query(
-      `create function ${fault}() returns trigger language plpgsql as $$ begin raise exception 'settlement interrupted'; end $$`
-    );
-    await pool.query(
-      `create trigger ${fault} before update on email_campaign_automation_work_units for each row when (new.status = 'done' and new.id = '${expiring}') execute function ${fault}()`
-    );
     try {
+      await pool.query(
+        `create function ${fault}() returns trigger language plpgsql as $$ begin raise exception 'settlement interrupted'; end $$`
+      );
+      await pool.query(
+        `create trigger ${fault} before update on email_campaign_automation_work_units for each row when (new.status = 'done' and new.id = '${expiring}') execute function ${fault}()`
+      );
       await expect(process(expiring)).rejects.toMatchObject({
         _tag: "AutomationUnitRedelivery",
       });
     } finally {
-      await pool.query(
-        `drop trigger ${fault} on email_campaign_automation_work_units`
-      );
-      await pool.query(`drop function ${fault}()`);
+      try {
+        await pool.query(
+          `drop trigger if exists ${fault} on email_campaign_automation_work_units`
+        );
+      } finally {
+        await pool.query(`drop function if exists ${fault}()`);
+      }
     }
 
+    // The expiry rolled back with the settlement, and the unit was requeued.
+    expect(await fireRows(campaignId)).toEqual([
+      expect.objectContaining({ status: "entering", chunks_done: 0 }),
+    ]);
+    expect(await receiptsOf(campaignId)).toEqual([]);
+    const { rows: requeued } = await pool.query(
+      "select status, last_error_code from email_campaign_automation_work_units where id = $1",
+      [expiring]
+    );
+    expect(requeued).toEqual([
+      { status: "enqueued", last_error_code: "database" },
+    ]);
+
     expect(await process(expiring)).toBe("done");
+    expect(await process(expiring)).toBe("acknowledged");
 
     expect(await fireRows(campaignId)).toEqual([
       expect.objectContaining({
