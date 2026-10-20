@@ -3,10 +3,9 @@ import { customerAgentTestClientMetadata } from "@/features/account/customer-age
 
 /**
  * The synthetic test agent's Client ID Metadata Document, served per
- * request. An OAuth server keeps it for at most a minute: long enough that
- * the lookups of one authorization reuse one fetch, which the metadata
- * fetch policy spaces at least a second apart, and short enough that each
- * E2E run fetches it again.
+ * request. An OAuth server revalidates it after at most a minute; caching
+ * it that long lets the lookups of one authorization reuse one fetch, which
+ * the metadata fetch policy spaces at least a second apart.
  */
 export async function GET() {
   await connection();
