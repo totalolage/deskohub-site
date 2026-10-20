@@ -1717,10 +1717,11 @@ describe.skipIf(!testDatabase)(
       });
       expect(previewed.settled).toBe(true);
       const rows = await previewRows(started.previewId);
+      // The engine on the cron's ticks, which the dry run's times model.
       const progress = await scenario.runUntil({
         from: at,
         until,
-        sameInstant: true,
+        onTicks: true,
         settled: async () => {
           const runs = await read.runs(campaignId);
           return runs.length > 0 && runs.every((run) => run.status === "ended");
