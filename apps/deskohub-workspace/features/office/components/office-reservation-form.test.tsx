@@ -15,6 +15,8 @@ import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-o
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
 import { discountIdSchema } from "@/features/discounts";
+import { mockReservationCheckoutStep } from "@/features/reservation/components/reservation-checkout-step.test-utils";
+import { mockCheckoutEmailVerification } from "@/features/reservation/components/use-checkout-email-verification.test-utils";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
 import { officeReservationDefaultValues } from "@/features/reservation/office-reservation";
 import { getOfficeAvailabilityQuery } from "@/features/reservation/workspace-availability";
@@ -47,6 +49,9 @@ mock.module("@/features/cookie-consent", () => ({
 mock.module("@/features/reservation/actions/get-advertised-price", () => ({
   getAdvertisedPrices: () => Promise.resolve({ data: [] }),
 }));
+
+mockCheckoutEmailVerification();
+mockReservationCheckoutStep();
 
 const {
   OfficeReservationForm,
@@ -88,6 +93,7 @@ const renderOfficeForm = (
   render(
     <QueryClientProvider client={queryClient}>
       <OfficeReservationForm
+        checkoutCustomer={{ status: "signed-out" }}
         seatCapacity={3}
         initialValues={officeReservationDefaultValues}
         locale="en-US"
@@ -151,6 +157,7 @@ describe("OfficeReservationForm", () => {
     const view = render(
       <QueryClientProvider client={queryClient}>
         <OfficeReservationForm
+          checkoutCustomer={{ status: "signed-out" }}
           seatCapacity={3}
           initialValues={{
             ...officeReservationDefaultValues,
@@ -252,6 +259,7 @@ describe("OfficeReservationForm", () => {
     const view = render(
       <QueryClientProvider client={queryClient}>
         <OfficeReservationForm
+          checkoutCustomer={{ status: "signed-out" }}
           seatCapacity={3}
           initialAdvertisedPrices={initialAdvertisedPrices}
           initialValues={{
@@ -291,6 +299,7 @@ describe("OfficeReservationForm", () => {
     const view = render(
       <QueryClientProvider client={queryClient}>
         <OfficeReservationForm
+          checkoutCustomer={{ status: "signed-out" }}
           seatCapacity={3}
           initialValues={{
             ...officeReservationDefaultValues,
@@ -313,6 +322,7 @@ describe("OfficeReservationForm", () => {
     const view = render(
       <QueryClientProvider client={queryClient}>
         <OfficeReservationForm
+          checkoutCustomer={{ status: "signed-out" }}
           seatCapacity={3}
           initialValues={officeReservationDefaultValues}
           locale="en-US"
@@ -348,6 +358,7 @@ describe("OfficeReservationForm", () => {
     const form = render(
       <QueryClientProvider client={queryClient}>
         <OfficeReservationForm
+          checkoutCustomer={{ status: "signed-out" }}
           seatCapacity={officeSeatOptionsFallbackCount}
           initialValues={officeReservationDefaultValues}
           locale="en-US"
@@ -403,6 +414,7 @@ describe("OfficeReservationForm", () => {
     const view = render(
       <QueryClientProvider client={queryClient}>
         <OfficeReservationForm
+          checkoutCustomer={{ status: "signed-out" }}
           seatCapacity={3}
           initialAdvertisedPrices={initialAdvertisedPrices}
           initialValues={{
@@ -480,6 +492,7 @@ describe("OfficeReservationForm", () => {
     const view = render(
       <QueryClientProvider client={queryClient}>
         <OfficeReservationForm
+          checkoutCustomer={{ status: "signed-out" }}
           seatCapacity={3}
           initialAdvertisedPrices={initialAdvertisedPrices}
           initialValues={{

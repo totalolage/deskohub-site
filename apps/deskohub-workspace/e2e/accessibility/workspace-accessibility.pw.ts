@@ -109,30 +109,20 @@ test("contact fields expose native required semantics", async ({ page }) => {
   );
 });
 
-const checkoutProgressPages = [
-  {
-    currentStepLabel: m.checkoutOrderStepReservation,
-    currentStepIndex: 1,
-    path: "/reservation/cowork",
-  },
-  {
-    currentStepLabel: m.checkoutOrderStepPayment,
-    currentStepIndex: 2,
-    path: "/checkout/pay",
-  },
-  {
-    currentStepLabel: m.checkoutOrderStepAccess,
-    currentStepIndex: 3,
-    path: "/reservation/access/instant-navigation-missing-order",
-  },
-] as const;
+// `currentStepIndex` is absent once every step is complete, as on the
+// access page.
+const checkoutProgressPages: readonly {
+  readonly currentStepIndex?: number;
+  readonly path: string;
+}[] = [
+  { currentStepIndex: 0, path: "/reservation/cowork" },
+  { currentStepIndex: 1, path: "/reservation/cowork?step=contact" },
+  { currentStepIndex: 2, path: "/checkout/pay" },
+  { path: "/reservation/access/instant-navigation-missing-order" },
+];
 
 for (const locale of locales) {
-  for (const {
-    currentStepLabel,
-    currentStepIndex,
-    path,
-  } of checkoutProgressPages) {
+  for (const { currentStepIndex, path } of checkoutProgressPages) {
     test(`checkout progress on ${locale} ${path}`, async ({ page }) => {
       await openSettledPage(page, `/${locale}${path}`);
 
@@ -142,29 +132,17 @@ for (const locale of locales) {
       await expect(stepsList).toBeVisible();
       expect(await stepsList.evaluate((list) => list.tagName)).toBe("OL");
 
-      const items = stepsList.getByRole("listitem");
-      await expect(items).toHaveCount(4);
-
-      const chooseSpaceLabel = m.checkoutOrderStepChooseSpace({}, { locale });
-      const completedLabel = m.checkoutOrderStepCompleted({}, { locale });
       const stepLabels = [
-        chooseSpaceLabel,
-        m.checkoutOrderStepReservation({}, { locale }),
+        m.checkoutOrderStepChooseSpace({}, { locale }),
+        m.checkoutOrderStepContact({}, { locale }),
         m.checkoutOrderStepPayment({}, { locale }),
-        m.checkoutOrderStepAccess({}, { locale }),
       ];
-      const chooseSpaceItem = items.nth(0);
+      const items = stepsList.getByRole("listitem");
+      await expect(items).toHaveCount(stepLabels.length);
 
-      await expect(chooseSpaceItem).toContainText(chooseSpaceLabel);
-      await expect(chooseSpaceItem.locator("span.sr-only")).toHaveText(
-        completedLabel
-      );
-      await expect(chooseSpaceItem.locator("svg.lucide-check")).toHaveCount(1);
-      expect(await chooseSpaceItem.getAttribute("aria-current")).toBeNull();
-      await expect(chooseSpaceItem.getByRole("link")).toHaveCount(0);
-      await expect(stepsList.getByText("1", { exact: true })).toHaveCount(0);
-
-      for (let index = 0; index < currentStepIndex; index += 1) {
+      const completedLabel = m.checkoutOrderStepCompleted({}, { locale });
+      const completedCount = currentStepIndex ?? stepLabels.length;
+      for (let index = 0; index < completedCount; index += 1) {
         const completedItem = items.nth(index);
         const badge = completedItem.locator("span").first();
 
@@ -178,18 +156,26 @@ for (const locale of locales) {
       }
 
       const currentItems = stepsList.locator('[aria-current="step"]');
-      await expect(currentItems).toHaveCount(1);
-      await expect(currentItems).toContainText(
-        currentStepLabel({}, { locale })
-      );
-      const currentItem = items.nth(currentStepIndex);
-      const currentBadge = currentItem.locator("span").first();
+      if (currentStepIndex === undefined) {
+        await expect(currentItems).toHaveCount(0);
+      } else {
+        await expect(currentItems).toHaveCount(1);
+        await expect(currentItems).toContainText(
+          stepLabels[currentStepIndex] ?? ""
+        );
+        const currentItem = items.nth(currentStepIndex);
+        const currentBadge = currentItem.locator("span").first();
 
-      await expect(currentBadge).toHaveText(String(currentStepIndex + 1));
-      await expect(currentItem.locator("svg.lucide-check")).toHaveCount(0);
-      await expect(currentItem.locator("span.sr-only")).toHaveCount(0);
+        await expect(currentBadge).toHaveText(String(currentStepIndex + 1));
+        await expect(currentItem.locator("svg.lucide-check")).toHaveCount(0);
+        await expect(currentItem.locator("span.sr-only")).toHaveCount(0);
+      }
 
-      for (let index = currentStepIndex + 1; index < 4; index += 1) {
+      for (
+        let index = completedCount + 1;
+        index < stepLabels.length;
+        index += 1
+      ) {
         const futureItem = items.nth(index);
         const badge = futureItem.locator("span").first();
 

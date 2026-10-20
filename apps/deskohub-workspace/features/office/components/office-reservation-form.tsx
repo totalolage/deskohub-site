@@ -28,6 +28,7 @@ import {
   ReservationSubmitFallback,
 } from "@/features/reservation/components/reservation-form-fallback";
 import { ReservationFormLabel } from "@/features/reservation/components/reservation-form-label";
+import { getReservationAdvertisedTotal } from "@/features/reservation/components/reservation-selection-summary";
 import {
   ReservationTypeInput,
   ReservationTypeOption,
@@ -54,7 +55,7 @@ import {
   getOfficeReservationDefaultValuesFromSearchParams,
   getOfficeReservationSelectionSearchParams,
 } from "@/features/reservation/office-reservation-checkout-query";
-import type { ReservationExistingCustomerForm } from "@/features/reservation/reservation-existing-customer";
+import type { ReservationCheckoutCustomerForm } from "@/features/reservation/reservation-existing-customer";
 import {
   getOfficeAvailabilityQuery,
   type PreloadedWorkspaceAvailability,
@@ -67,10 +68,11 @@ import {
 } from "@/shared/components/ui/form";
 import { cn } from "@/shared/utils";
 import { OfficeDayCountInput } from "./office-day-count-input";
+import { getOfficeReservationSelectionSummary } from "./office-reservation-selection-summary";
 
 type OfficeReservationFormProps = {
   readonly checkoutSessionId?: CheckoutSessionId;
-  readonly existingCustomer?: ReservationExistingCustomerForm;
+  readonly checkoutCustomer: ReservationCheckoutCustomerForm;
   readonly seatCapacity: number;
   readonly initialAdvertisedPrices?: ReadonlyArray<PreloadedAdvertisedPrice>;
   readonly initialAvailability?: ReadonlyArray<PreloadedWorkspaceAvailability>;
@@ -104,7 +106,7 @@ const getSelection = (
 
 export function OfficeReservationForm({
   checkoutSessionId,
-  existingCustomer,
+  checkoutCustomer,
   seatCapacity,
   initialAdvertisedPrices = [],
   initialAvailability,
@@ -231,7 +233,7 @@ export function OfficeReservationForm({
 
   return (
     <ReservationCheckoutForm
-      existingCustomer={existingCustomer}
+      checkoutCustomer={checkoutCustomer}
       advertisedPrice={{
         token: advertisedPrice?.advertisedPriceToken,
         isFetching: advertisedPriceResult?.isFetching ?? false,
@@ -243,6 +245,9 @@ export function OfficeReservationForm({
               productLabel: getWorkspaceOfficeProductTitle(locale),
             }
           : undefined,
+        total: advertisedPrice
+          ? getReservationAdvertisedTotal(advertisedPrice.quote.payment)
+          : undefined,
       }}
       availability={{
         isPending: availabilityResult.isPending,
@@ -252,6 +257,10 @@ export function OfficeReservationForm({
       form={form}
       getReservation={getOfficeReservationOrder}
       locale={locale}
+      selectionSummary={getOfficeReservationSelectionSummary(
+        { startsOn, dayCount, seats },
+        locale
+      )}
       selection={{
         kind: "office",
         fromSearchParams: (searchParams) => {

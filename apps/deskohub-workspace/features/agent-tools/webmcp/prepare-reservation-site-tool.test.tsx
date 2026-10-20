@@ -27,7 +27,10 @@ import {
 } from "react-hook-form";
 import { m } from "@/features/i18n";
 import type { PreparePayStateInput } from "@/features/reservation/actions/prepare-pay-state.schema";
-import type { ReservationExistingCustomerForm } from "@/features/reservation/reservation-existing-customer";
+import type {
+  ReservationCheckoutCustomerForm,
+  ReservationExistingCustomerForm,
+} from "@/features/reservation/reservation-existing-customer";
 import {
   workspaceRouterPush,
   workspaceUseAction,
@@ -47,6 +50,7 @@ import {
 
 const preparePayState = mock();
 const submitReservation = mock();
+const verifyEmail = mock();
 
 mock.module("@/features/cookie-consent", () => ({
   useCookieConsent: () => ({ isAccepted: () => false }),
@@ -57,6 +61,27 @@ mock.module("@/features/reservation/actions/prepare-pay-state", () => ({
 mock.module("@/features/reservation/actions/submit-reservation", () => ({
   submitReservation,
 }));
+mock.module(
+  "@/features/reservation/components/use-checkout-email-verification",
+  () => ({
+    useCheckoutEmailVerification: () => ({
+      clearError: mock(),
+      error: undefined,
+      isVerifying: false,
+      verify: verifyEmail,
+    }),
+  })
+);
+// The step lives in the URL; the tool fills the form at its contact step.
+mock.module(
+  "@/features/reservation/components/use-reservation-checkout-step",
+  () => ({
+    useReservationCheckoutStep: () => {
+      const [step, setStep] = useState<"selection" | "contact">("contact");
+      return { goTo: setStep, step };
+    },
+  })
+);
 
 const { ReservationCheckoutForm } = await import(
   "@/features/reservation/components/reservation-checkout-form"
@@ -114,27 +139,58 @@ type HarnessKind = "cowork" | "office";
 // The mounted harness form, for a test acting as the customer.
 let harnessForm: UseFormReturn<HarnessValues> | undefined;
 
+const getHarnessCheckoutCustomer = ({
+  existingCustomer,
+  signedOut,
+  typedEmail,
+}: {
+  readonly existingCustomer: ReservationExistingCustomerForm | undefined;
+  readonly signedOut: boolean;
+  readonly typedEmail: string | undefined;
+}): ReservationCheckoutCustomerForm => {
+  if (existingCustomer) {
+    return { status: "linked", existingCustomer, replacesTypedContact: false };
+  }
+  if (signedOut) return { status: "signed-out" };
+  return {
+    status: "profile-missing",
+    email: typedEmail ?? "",
+    continuesCheckout: false,
+  };
+};
+
+/**
+ * Without a saved profile the account books with the typed details;
+ * `signedOut` types them before the email verification instead.
+ */
 function Harness({
   existingCustomer,
-  guest = {},
+  typed = {},
+  signedOut = false,
   kind = "cowork",
   priceError = false,
   unavailableDates = [],
 }: {
   readonly existingCustomer?: ReservationExistingCustomerForm;
   readonly kind?: HarnessKind;
-  readonly guest?: Partial<Pick<HarnessValues, "name" | "email" | "phone">>;
+  readonly typed?: Partial<Pick<HarnessValues, "name" | "email" | "phone">>;
+  readonly signedOut?: boolean;
   readonly priceError?: boolean;
   readonly unavailableDates?: string[];
 }) {
+  const checkoutCustomer = getHarnessCheckoutCustomer({
+    existingCustomer,
+    signedOut,
+    typedEmail: typed.email,
+  });
   const form = useForm<HarnessValues>({
     defaultValues: {
       billing: { purpose: "personal", invoice: "none" },
       date: "2099-07-30",
-      email: existingCustomer?.contact.email ?? guest.email ?? "",
+      email: existingCustomer?.contact.email ?? typed.email ?? "",
       marketingConsent: false,
-      name: existingCustomer?.contact.name ?? guest.name ?? "",
-      phone: existingCustomer?.contact.phone ?? guest.phone ?? "",
+      name: existingCustomer?.contact.name ?? typed.name ?? "",
+      phone: existingCustomer?.contact.phone ?? typed.phone ?? "",
     },
     resolver: contactResolver,
   });
@@ -152,12 +208,16 @@ function Harness({
         token: `signed-price-${date}`,
       }}
       availability={useHarnessAvailability(date, unavailableDates)}
-      existingCustomer={existingCustomer}
+      checkoutCustomer={checkoutCustomer}
       form={form}
       getReservation={({ date: reservationDate, email, name, phone }) =>
         ({ kind, reservationDate, email, name, phone }) as never
       }
       locale="en-US"
+      selectionSummary={{
+        reservationTitle: "Open Space",
+        rows: [{ label: "Date", value: date }],
+      }}
       selection={{
         kind,
         fromSearchParams: (searchParams) => ({
@@ -208,7 +268,7 @@ const accountCustomer = (
   otherContact: { name: "", email: "", phone: "" },
 });
 
-const guestContact = {
+const typedContact = {
   name: "Grace Hopper",
   email: testEmailAddress("grace"),
   phone: "+420606060606",
@@ -275,6 +335,7 @@ describe("prepare_reservation site tool", () => {
     window.happyDOM.setURL("https://deskohub.test/en-US/reservation/cowork");
     modelContext = installFakeModelContext();
     endpoint = quoteEndpoint(quoteFor("cowork", "2099-07-31"));
+    verifyEmail.mockClear();
     executeAsync = mock((_input: PreparePayStateInput) =>
       Promise.resolve<PrepareActionResult>({
         data: {
@@ -381,8 +442,8 @@ describe("prepare_reservation site tool", () => {
     expect(workspaceRouterPush).toHaveBeenCalledWith(payPath);
   });
 
-  test("asks for missing guest contact details without calling the action, leaving the form filled", async () => {
-    const view = await renderForm({ guest: { name: "Grace Hopper" } });
+  test("asks for missing contact details without calling the action, leaving the form filled", async () => {
+    const view = await renderForm({ typed: { name: "Grace Hopper" } });
 
     const result = await runTool({ family: "cowork", date: "2099-07-31" });
 
@@ -397,9 +458,26 @@ describe("prepare_reservation site tool", () => {
     expect(view.getByTestId("date").textContent).toBe("2099-07-31");
   });
 
+  test("leaves a signed-out customer's checkout to the email verification it starts", async () => {
+    await renderForm({ typed: typedContact, signedOut: true });
+
+    const result = await runTool({ family: "cowork", date: "2099-07-31" });
+
+    expect(result).toEqual({
+      error: {
+        code: "email_verification_required",
+        message: m.siteToolEmailVerificationRequired({}, { locale: "en-US" }),
+      },
+    });
+    expect(verifyEmail).toHaveBeenCalledWith(
+      expect.objectContaining(typedContact)
+    );
+    expect(executeAsync).not.toHaveBeenCalled();
+  });
+
   test("returns the form's own message when the selection is no longer available", async () => {
     await renderForm({
-      guest: guestContact,
+      typed: typedContact,
       unavailableDates: ["2099-07-31"],
     });
 
@@ -410,7 +488,7 @@ describe("prepare_reservation site tool", () => {
   });
 
   test("stops on a price the form could not load", async () => {
-    await renderForm({ guest: guestContact, priceError: true });
+    await renderForm({ typed: typedContact, priceError: true });
 
     expect(await runTool({ family: "cowork", date: "2099-07-31" })).toEqual({
       error: {
@@ -431,7 +509,7 @@ describe("prepare_reservation site tool", () => {
     executeAsync.mockImplementation(() =>
       Promise.resolve({ data: { status: "error", message } })
     );
-    const view = await renderForm({ guest: guestContact });
+    const view = await renderForm({ typed: typedContact });
 
     expect(await runTool({ family: "cowork", date: "2099-07-31" })).toEqual({
       error: { code: "checkout_failed", message },
@@ -445,7 +523,7 @@ describe("prepare_reservation site tool", () => {
     endpoint = mockAgentToolEndpoint(() =>
       agentToolEventStream({ structuredContent: { error }, isError: true })
     );
-    const view = await renderForm({ guest: guestContact });
+    const view = await renderForm({ typed: typedContact });
 
     expect(await runTool({ family: "cowork", date: "nope" })).toEqual({
       error,
@@ -457,7 +535,7 @@ describe("prepare_reservation site tool", () => {
   test("for another family, opens its reservation page and prepares the reservation on the form there", async () => {
     endpoint.restore();
     endpoint = quoteEndpoint(quoteFor("office", "2099-08-03"));
-    const view = await renderForm({ guest: guestContact }, ReservationPages);
+    const view = await renderForm({ typed: typedContact }, ReservationPages);
     const coworkRegistration = modelContext.registered.get(toolName);
 
     const result = await runTool({
@@ -499,7 +577,7 @@ describe("prepare_reservation site tool", () => {
     endpoint.restore();
     endpoint = quoteEndpoint(quoteFor("office", "2099-08-03"));
     const view = await renderForm(
-      { guest: { name: "Grace Hopper" } },
+      { typed: { name: "Grace Hopper" } },
       ReservationPages
     );
 
@@ -524,7 +602,7 @@ describe("prepare_reservation site tool", () => {
     ])(
       "%s leaves the checkbox alone and sends no consent",
       async (_case, consent) => {
-        const view = await renderForm({ guest: guestContact });
+        const view = await renderForm({ typed: typedContact });
 
         const result = await runTool({
           family: "cowork",
@@ -542,7 +620,7 @@ describe("prepare_reservation site tool", () => {
     );
 
     test("keeps a box the customer ticked, as the customer's own consent", async () => {
-      const view = await renderForm({ guest: guestContact });
+      const view = await renderForm({ typed: typedContact });
       const checkbox = getMarketingConsentCheckbox(view);
       if (!checkbox) throw new Error("Missing marketing consent checkbox");
       fireEvent.click(checkbox);
@@ -556,7 +634,7 @@ describe("prepare_reservation site tool", () => {
     });
 
     test("true on a box the customer already ticked labels the consent as the site tool's", async () => {
-      const view = await renderForm({ guest: guestContact });
+      const view = await renderForm({ typed: typedContact });
       const checkbox = getMarketingConsentCheckbox(view);
       if (!checkbox) throw new Error("Missing marketing consent checkbox");
       fireEvent.click(checkbox);
@@ -576,7 +654,7 @@ describe("prepare_reservation site tool", () => {
     });
 
     test("true keeps the site tool's label on a retry after missing contact details", async () => {
-      const view = await renderForm({ guest: { name: "Grace Hopper" } });
+      const view = await renderForm({ typed: { name: "Grace Hopper" } });
       const input = {
         family: "cowork",
         date: "2099-07-31",
@@ -591,8 +669,8 @@ describe("prepare_reservation site tool", () => {
           getMarketingConsentCheckbox(view)?.getAttribute("aria-checked")
         ).toBe("true")
       );
-      await fillContactField("email", guestContact.email);
-      await fillContactField("phone", guestContact.phone);
+      await fillContactField("email", typedContact.email);
+      await fillContactField("phone", typedContact.phone);
 
       const result = await runTool(input);
 
@@ -608,7 +686,7 @@ describe("prepare_reservation site tool", () => {
     });
 
     test("true ticks the visible checkbox and labels the consent as the site tool's", async () => {
-      const view = await renderForm({ guest: guestContact });
+      const view = await renderForm({ typed: typedContact });
 
       const result = await runTool({
         family: "cowork",
@@ -648,7 +726,7 @@ describe("prepare_reservation site tool", () => {
   });
 
   test("stops before the Pay page: it never submits the reservation itself", async () => {
-    await renderForm({ guest: guestContact });
+    await renderForm({ typed: typedContact });
 
     await runTool({ family: "cowork", date: "2099-07-31" });
 

@@ -11,11 +11,11 @@ import {
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutFlowState } from "../types";
 import {
-  assertGuestReferralPayment,
-  getGuestReferralDiscounts,
-  guestReferralPaymentCaseId,
-  planGuestReferralPaymentCase,
-} from "./guest-referral-payment";
+  assertReferralSomeoneElsePayment,
+  getReferralSomeoneElseDiscounts,
+  planReferralSomeoneElsePaymentCase,
+  referralSomeoneElsePaymentCaseId,
+} from "./referral-someone-else-payment";
 
 const config: WorkspaceE2EConfig = {
   baseUrl: "https://workspace.example.test",
@@ -52,13 +52,13 @@ const paidRecord = (
       state: "redeemed",
     },
   ],
-  dotyposCustomerId: "guest",
+  dotyposCustomerId: "booked-customer",
   paymentState: "paid",
   ...overrides,
 });
 
 const expected = {
-  guestCustomerId: "guest",
+  bookedCustomerId: "booked-customer",
   invitationLabel,
   referrerCustomerId: "referrer",
 };
@@ -89,9 +89,9 @@ const discountRow = (
   ...row,
 });
 
-test("expects the Calendar sale before the invitation on the paid guest order", () => {
+test("expects the Calendar sale before the invitation on the paid order", () => {
   // CZK 290 Open Space, less the 20% E2E Calendar sale, less the 15%
-  // invitation on what remains: the CZK 197.20 the guest pays.
+  // invitation on what remains: the CZK 197.20 the booked customer pays.
   const rows = [
     discountRow({
       adjustment: { kind: "percentage", basisPoints: 2000 },
@@ -115,20 +115,24 @@ test("expects the Calendar sale before the invitation on the paid guest order", 
   ];
 
   expect(() =>
-    assertDiscountApplications(rows, getGuestReferralDiscounts("en-US"), "CZK")
+    assertDiscountApplications(
+      rows,
+      getReferralSomeoneElseDiscounts("en-US"),
+      "CZK"
+    )
   ).not.toThrow();
   expect(() =>
     assertDiscountApplications(
       rows.slice(1).map((row) => ({ ...row, sequence: 0 })),
-      getGuestReferralDiscounts("en-US"),
+      getReferralSomeoneElseDiscounts("en-US"),
       "CZK"
     )
   ).toThrow("expected 2 discount applications");
 });
 
-test("accepts a paid guest order attributed to the seeded referrer", () => {
+test("accepts a paid order attributed to the seeded referrer", () => {
   expect(() =>
-    assertGuestReferralPayment(paidRecord(), expected)
+    assertReferralSomeoneElsePayment(paidRecord(), expected)
   ).not.toThrow();
 });
 
@@ -136,17 +140,17 @@ test.each([
   [
     "the order is unpaid",
     paidRecord({ paymentState: "pending" }),
-    "guest referral order is not paid",
+    "referral order is not paid",
   ],
   [
     "the order changed its booked customer",
     paidRecord({ dotyposCustomerId: "someone-else" }),
-    "guest referral order changed its booked customer",
+    "referral order changed its booked customer",
   ],
   [
     "another referrer is attributed",
     paidRecord({ attributions: [{ referrerDotyposCustomerId: "other" }] }),
-    "guest is not attributed to the seeded referrer",
+    "booked customer is not attributed to the seeded referrer",
   ],
   [
     "no claim is active",
@@ -159,7 +163,7 @@ test.each([
         },
       ],
     }),
-    "guest needs exactly one active referral invitation claim",
+    "booked customer needs exactly one active referral invitation claim",
   ],
   [
     "the claim is still reserved",
@@ -207,19 +211,21 @@ test.each([
     "referral invitation application is not 15%",
   ],
 ] as const)(
-  "rejects a guest referral payment when %s",
+  "rejects a someone-else referral payment when %s",
   (_description, record, message) => {
-    expect(() => assertGuestReferralPayment(record, expected)).toThrow(message);
+    expect(() => assertReferralSomeoneElsePayment(record, expected)).toThrow(
+      message
+    );
   }
 );
 
-test("plans the guest referral payment on its own date and requires binding", async () => {
+test("plans the someone-else referral payment on its own date and requires binding", async () => {
   const flowStates: CheckoutFlowState[] = [
     { data: makeCoworkCheckoutData(config.baseUrl, "2099-08-01") },
     { data: makeCoworkCheckoutData(config.baseUrl, "2099-08-02") },
   ];
   const planned = await Effect.runPromise(
-    planGuestReferralPaymentCase({
+    planReferralSomeoneElsePaymentCase({
       allocation: {
         fromOffsetDays: 0,
         shardCount: 1,
@@ -232,7 +238,7 @@ test("plans the guest referral payment on its own date and requires binding", as
     })
   );
 
-  expect(planned.id).toBe(guestReferralPaymentCaseId);
+  expect(planned.id).toBe(referralSomeoneElsePaymentCaseId);
   expect(planned.checkoutStates.map(({ data }) => data.date)).toEqual([
     "2099-08-03",
   ]);

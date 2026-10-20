@@ -23,10 +23,11 @@ import type {
   CustomerReservationHistory,
   ProfileCompletionReferralOutcome,
 } from "@/features/account/contracts";
-import type {
-  CustomerAccountAccessError,
-  CustomerAccountId,
-  LinkedCustomerAccount,
+import {
+  type CustomerAccountId,
+  isCustomerAccountSupportRequired,
+  isCustomerProfileMissing,
+  type LinkedCustomerAccount,
 } from "@/features/account/customer-account";
 import type { AccountPasskeySettings } from "@/features/account/passkeys";
 import {
@@ -288,18 +289,6 @@ const loadAuthoredHistory = (user: CustomerAccountSession) =>
   );
 
 /**
- * Link outcomes of an active, verified account that support must resolve.
- * The account may still have booked for others meanwhile.
- */
-const supportResolvedLinkReasons: ReadonlySet<
-  CustomerAccountAccessError["linkReason"]
-> = new Set<CustomerAccountAccessError["linkReason"]>([
-  "ambiguous",
-  "unusable",
-  "claimed",
-]);
-
-/**
  * The customer's referral summary and share link. An unavailable summary
  * degrades to the referral screen's unavailable state.
  */
@@ -393,10 +382,7 @@ const loadSignedInAccount = Effect.fn(function* (user: CustomerAccountSession) {
   if (failure.reason === "unauthenticated") {
     return { kind: "unauthenticated" } as const;
   }
-  if (
-    failure.reason === "link-required" &&
-    failure.linkReason === "not-found"
-  ) {
+  if (isCustomerProfileMissing(failure)) {
     const availableReferralCode =
       rememberedReferralCode === undefined
         ? undefined
@@ -412,10 +398,8 @@ const loadSignedInAccount = Effect.fn(function* (user: CustomerAccountSession) {
       ...authoredHistory,
     } satisfies CustomerAccountPageState;
   }
-  if (
-    failure.reason === "link-required" &&
-    supportResolvedLinkReasons.has(failure.linkReason)
-  ) {
+  // The account may still have booked for others meanwhile.
+  if (isCustomerAccountSupportRequired(failure)) {
     const authoredHistory = yield* loadAuthoredHistory(user);
     return {
       kind: "support-required",

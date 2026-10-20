@@ -1,8 +1,10 @@
 import { connection } from "next/server";
 import { SignInCard } from "@/features/account/components/sign-in-card";
 import {
+  parseSignInPurpose,
   signInNoLongerWaitingNotice,
   signInNoticeParam,
+  signInPurposeParam,
   signInReturnParam,
 } from "@/features/account/routes";
 import { arePasskeysEnabled } from "@/features/account/server/account-feature-flag.server";
@@ -44,6 +46,7 @@ export async function SignInRouteCard({
         getSearchParam(query, signInNoticeParam) === signInNoLongerWaitingNotice
       }
       passkeysEnabled={passkeysEnabled}
+      purpose={parseSignInPurpose(getSearchParam(query, signInPurposeParam))}
       returnTo={returnTo}
     />
   );

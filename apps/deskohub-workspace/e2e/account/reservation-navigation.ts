@@ -258,19 +258,44 @@ const waitForReservationStatusLinkHydration = async (
   );
 };
 
-const expectWorkspaceE2EReservationNotFound = async (
+/**
+ * A signed-out visitor of a status link signs in first and comes back to it;
+ * the sign-in page shows nothing of the reservation.
+ */
+const expectWorkspaceE2EReservationSignIn = async (
   page: Page,
-  reservationId: WorkspaceReservationId
+  {
+    reservationId,
+    statusPath,
+  }: {
+    readonly reservationId: WorkspaceReservationId;
+    readonly statusPath: string;
+  }
 ) => {
-  const notFoundTitle = m.checkoutStatusNotFoundTitle(
-    {},
-    { locale: "en-US" satisfies Locale }
+  // The status page streams its redirect, so it lands after the load.
+  await page.waitForURL((url) => url.pathname === "/en-US/auth/sign-in", {
+    timeout: workspaceE2ETimeouts.browserNavigation,
+  });
+  const signInUrl = new URL(page.url());
+  equal(
+    signInUrl.pathname,
+    "/en-US/auth/sign-in",
+    "status did not ask to sign in"
   );
+  equal(
+    signInUrl.searchParams.get("returnTo"),
+    statusPath,
+    "sign-in does not return to the status page"
+  );
+  equal(signInUrl.searchParams.get("for"), "reservation");
   await expect(
     page.getByRole("heading", {
       exact: true,
       level: 1,
-      name: notFoundTitle,
+      name: m.accountSignInReservationTitle(
+        {},
+        { locale: "en-US" satisfies Locale }
+      ),
     })
   ).toBeVisible();
   await expect(page.getByText(reservationId, { exact: true })).toHaveCount(0);
@@ -366,10 +391,10 @@ const verifyPrivateRoutes = async (
           200,
           "private status route did not load"
         );
-        await expectWorkspaceE2EReservationNotFound(
-          page,
-          input.fixture.reservationId
-        );
+        await expectWorkspaceE2EReservationSignIn(page, {
+          reservationId: input.fixture.reservationId,
+          statusPath: urls.statusPath,
+        });
       },
       "assertion"
     );
