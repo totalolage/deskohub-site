@@ -9,6 +9,7 @@
  * `productionBrowserSourceMaps` in next.config.mjs) and upload nothing.
  */
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { runCommand } from "./shared/command";
 
 type SourceMapUpload = {
@@ -69,7 +70,10 @@ if (import.meta.main) {
       "Not a production build; skipping the source-map upload.\n"
     );
   } else {
-    const result = await runCommand(["posthog-cli", ...upload.args], {
+    const posthogCli = fileURLToPath(
+      import.meta.resolve("@posthog/cli/run-posthog-cli.js")
+    );
+    const result = await runCommand([posthogCli, ...upload.args], {
       env: { ...process.env, ...upload.env },
     });
     if (
