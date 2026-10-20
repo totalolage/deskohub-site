@@ -2301,7 +2301,7 @@ const updateCommand = Command.make(
         yield* Console.log(
           json
             ? JSON.stringify({ status: "development-build" })
-            : "Self-update is unavailable in development builds."
+            : "Self-update is available only in published releases."
         );
         return;
       }

@@ -146,6 +146,7 @@ jobs:
 
       - name: Compile the native binary
         env:
+          DHW_BUILD_CHANNEL: release
           DHW_TARGET: ${{ matrix.target }}
         run: bun apps/dhw/src/build.ts "$DHW_TARGET"
 
