@@ -140,6 +140,15 @@ resource.
   records. Revoked tokens stay until they expire because refresh-token replay
   detection reads them. Consents and CIMD client rows have no expiry; consents
   last until account deletion.
+- Refresh tokens rotate with a 30-second reuse window
+  (`customerAgentRefreshTokenReuseSeconds`, set explicitly because the
+  privacy notice discloses it). The provider stores the replacement token
+  response in `rotation_replay_response` on the rotated row, encrypted with
+  the Better Auth secret, and replays it for a matching repeat refresh until
+  `rotation_replay_expires_at`. Reuse after that deletes the client's tokens
+  for the customer. The provider never clears the copy, so `auth-cleanup`
+  nulls it once the window has passed; deleting the row (expiry, account
+  deletion, reuse) removes it too.
 - Lifetimes: access tokens 1 hour, refresh tokens 30 days (rotated on use),
   signed authorization requests and codes 10 minutes. Replaying a used code
   fails and revokes the tokens it bought.

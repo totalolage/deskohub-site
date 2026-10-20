@@ -1,8 +1,9 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setSystemTime, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { Effect, Option } from "effect";
+import { Effect, Layer, Option } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import type { CustomerAccountId } from "../../customer-account";
 import {
   customerAgentAuthorizePath,
@@ -23,10 +24,12 @@ import {
   userIdForEmail,
   verifyMagicLink,
 } from "./auth-handler.test-utils";
+import { AuthCleanupService } from "./auth-cleanup.service";
 import {
   type CustomerAgentAuthority,
   CustomerAgentAuthorization,
 } from "./customer-agent-authorization.service";
+import { customerAgentRefreshTokenReuseSeconds } from "./customer-agent-authorization-server";
 import { CustomerAgentClientDirectory } from "./customer-agent-client-directory.service";
 
 const RESOURCE = `https://${HOST}/api/mcp`;
@@ -286,6 +289,31 @@ const storedTokenMaterial = async (userId: string) => {
   }>;
 };
 
+/** The encrypted refresh replay responses still stored for an account. */
+const storedReplays = async (userId: string) =>
+  (await storedTokenMaterial(userId)).flatMap(
+    ({ rotation_replay_response }) => rotation_replay_response ?? []
+  );
+
+/** Runs the daily auth cleanup against the test database as of `now`. */
+const runAuthCleanup = (now: Date) =>
+  Effect.runPromise(
+    Effect.flatMap(AuthCleanupService, (cleanup) =>
+      cleanup.deleteExpiredRows({ now })
+    ).pipe(
+      Effect.provide(
+        AuthCleanupService.Default.pipe(
+          Layer.provide(
+            Layer.succeed(
+              WorkspaceDatabase,
+              WorkspaceDatabase.of({ db: testDatabase!.db })
+            )
+          )
+        )
+      )
+    )
+  );
+
 const countRows = async (table: string, userId: string) => {
   const result = await testDatabase!.pool.query(
     `select count(*)::int as count from auth.${table} where user_id = $1`,
@@ -516,8 +544,9 @@ describe.skipIf(!testDatabase)(
         (await authorizeToken(authorityOver(auth), renewed.access_token))._tag
       ).toBe("Success");
 
-      // Only token digests are persisted: refreshing stores no replayable
-      // token response, and each stored token is the SHA-256 of one issued.
+      // Only token digests are persisted: each stored token is the SHA-256
+      // of one issued. The rotated refresh token keeps the response that
+      // replaced it for the reuse window, encrypted, never in plain text.
       const stored = await storedTokenMaterial(customer.accountId);
       expect(stored.map(({ token }) => token).sort()).toEqual(
         [
@@ -529,8 +558,16 @@ describe.skipIf(!testDatabase)(
           .map(tokenDigest)
           .sort()
       );
-      for (const row of stored) {
-        expect(row.rotation_replay_response).toBeNull();
+      const replays = await storedReplays(customer.accountId);
+      expect(replays).toHaveLength(1);
+      expect(() => JSON.parse(replays[0]!)).toThrow();
+      for (const token of [
+        tokens.access_token,
+        tokens.refresh_token!,
+        renewed.access_token,
+        renewed.refresh_token!,
+      ]) {
+        expect(replays[0]).not.toContain(token);
       }
 
       // The code is single use, and replaying it revokes the access it
@@ -547,7 +584,7 @@ describe.skipIf(!testDatabase)(
       ).toBe("invalid-token");
     });
 
-    test("ends the assistant's tokens when a rotated refresh token is reused", async () => {
+    test("answers a repeated refresh inside the reuse window, and ends the assistant's tokens on reuse after it", async () => {
       const agent = makeAgent();
       const sentLinks: CapturedMagicLink[] = [];
       const auth = makeTestAuth({
@@ -587,24 +624,53 @@ describe.skipIf(!testDatabase)(
           refresh_token: refreshToken,
           resource: RESOURCE,
         });
-      const renewed = (await (
-        await refresh(tokens.refresh_token!)
-      ).json()) as TokenResponse;
+      const refreshed = await refresh(tokens.refresh_token!);
+      expect(refreshed.status).toBe(200);
+      const renewed = (await refreshed.json()) as TokenResponse;
 
-      // No reuse window: the rotated token is refused at once, and the
-      // client's tokens for this customer end with it.
-      const reused = await refresh(tokens.refresh_token!);
-      expect(reused.status).toBe(400);
-      expect(((await reused.json()) as { error: string }).error).toBe(
-        "invalid_grant"
-      );
-      expect((await refresh(renewed.refresh_token!)).status).toBe(400);
+      // Inside the window, a repeated refresh (a race, or a retry after a
+      // lost response) gets the same tokens, and the grant stays.
+      const repeated = await refresh(tokens.refresh_token!);
+      expect(repeated.status).toBe(200);
+      expect(await repeated.json()).toEqual(renewed);
       expect(
-        await failureReasonOf(authorityOver(auth), renewed.access_token)
-      ).toBe("invalid-token");
+        (await authorizeToken(authorityOver(auth), renewed.access_token))._tag
+      ).toBe("Success");
       expect(await countRows("oauth_refresh_token", customer.accountId)).toBe(
-        0
+        2
       );
+      expect(await storedReplays(customer.accountId)).toHaveLength(1);
+
+      // Once the window has passed, the daily cleanup clears the encrypted
+      // copy and keeps the rotated token for reuse detection.
+      const afterWindow = new Date(
+        Date.now() + (customerAgentRefreshTokenReuseSeconds + 1) * 1000
+      );
+      await runAuthCleanup(afterWindow);
+      expect(await storedReplays(customer.accountId)).toEqual([]);
+      expect(await countRows("oauth_refresh_token", customer.accountId)).toBe(
+        2
+      );
+
+      // Reusing the rotated token after the window ends the client's tokens
+      // for this customer.
+      setSystemTime(afterWindow);
+      try {
+        const reused = await refresh(tokens.refresh_token!);
+        expect(reused.status).toBe(400);
+        expect(((await reused.json()) as { error: string }).error).toBe(
+          "invalid_grant"
+        );
+        expect((await refresh(renewed.refresh_token!)).status).toBe(400);
+        expect(
+          await failureReasonOf(authorityOver(auth), renewed.access_token)
+        ).toBe("invalid-token");
+        expect(
+          await countRows("oauth_refresh_token", customer.accountId)
+        ).toBe(0);
+      } finally {
+        setSystemTime();
+      }
     });
 
     test("refuses a code exchanged for another resource", async () => {
@@ -858,9 +924,19 @@ describe.skipIf(!testDatabase)(
           verifier: pkce.verifier,
         })
       ).json()) as TokenResponse;
+      // A refresh leaves an encrypted replay response on the rotated token.
+      const refreshed = await requestToken(auth, {
+        grant_type: "refresh_token",
+        client_id: agent.clientId,
+        refresh_token: tokens.refresh_token!,
+        resource: RESOURCE,
+      });
+      expect(refreshed.status).toBe(200);
+      const renewed = (await refreshed.json()) as TokenResponse;
       expect(
-        (await authorizeToken(authorityOver(auth), tokens.access_token))._tag
+        (await authorizeToken(authorityOver(auth), renewed.access_token))._tag
       ).toBe("Success");
+      expect(await storedReplays(customer.accountId)).toHaveLength(1);
       expect(await countRows("oauth_consent", customer.accountId)).toBe(1);
       expect(
         await countRows("oauth_access_token", customer.accountId)
@@ -883,8 +959,9 @@ describe.skipIf(!testDatabase)(
       expect(await countRows("oauth_refresh_token", customer.accountId)).toBe(
         0
       );
+      expect(await storedReplays(customer.accountId)).toEqual([]);
       expect(
-        await failureReasonOf(authorityOver(auth), tokens.access_token)
+        await failureReasonOf(authorityOver(auth), renewed.access_token)
       ).toBe("invalid-token");
     });
 
