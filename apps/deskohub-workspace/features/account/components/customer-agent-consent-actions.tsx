@@ -2,10 +2,10 @@
 
 import { Data, Effect } from "effect";
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { authClient } from "@/features/account/auth.client";
 import { type Locale, m } from "@/features/i18n";
-import { runWorkspaceBrowserEffect } from "@/shared/browser/workspace-browser-effect";
+import { runWorkspaceBrowserEffectUntilAbort } from "@/shared/browser/workspace-browser-effect";
 import { reportWorkspaceBrowserFailure } from "@/shared/browser/workspace-browser-logs";
 import { Button } from "@/shared/components/ui/button";
 
@@ -28,11 +28,12 @@ const submitConsent = (accept: boolean) =>
     try: () => authClient.oauth2.consent({ accept }),
     catch: (cause) => new CustomerAgentConsentError({ cause }),
   }).pipe(
-    Effect.flatMap(({ data, error }) =>
-      data?.url
-        ? Effect.succeed(data.url)
-        : Effect.fail(new CustomerAgentConsentError({ status: error?.status }))
-    )
+    Effect.filterOrFail(
+      ({ data }) => Boolean(data?.url),
+      ({ error }) =>
+        new CustomerAgentConsentError({ status: error?.status, cause: error })
+    ),
+    Effect.map(({ data }) => data!.url)
   );
 
 const consentFailureCode = "account.customer-agent-consent.failed";
@@ -50,8 +51,16 @@ export function CustomerAgentConsentActions({
 }) {
   const [phase, setPhase] = useState<ConsentPhase>("idle");
   const [answer, setAnswer] = useState<boolean>();
+  // Leaving the page drops a pending answer, so a late reply can't navigate.
+  const lifetime = useRef<AbortSignal>(undefined);
+  useEffect(() => {
+    const controller = new AbortController();
+    lifetime.current = controller.signal;
+    return () => controller.abort();
+  }, []);
 
   const respond = (accept: boolean) => {
+    if (lifetime.current === undefined) return;
     setAnswer(accept);
     setPhase("submitting");
     void submitConsent(accept).pipe(
@@ -69,7 +78,10 @@ export function CustomerAgentConsentActions({
               Effect.andThen(Effect.sync(() => setPhase("failed")))
             )
       ),
-      runWorkspaceBrowserEffect("account.customer-agent-consent.submit")
+      runWorkspaceBrowserEffectUntilAbort(
+        "account.customer-agent-consent.submit",
+        lifetime.current
+      )
     );
   };
 
