@@ -17,6 +17,13 @@ const nextBuild = (args: readonly string[]): readonly string[] => [
   ...args,
 ];
 
+// Turbopack's native mimalloc keeps freed pages for a second by default
+// before returning them to the OS. A cold compile frees and allocates
+// quickly enough that the held pages added about 0.45 GB to its peak, which
+// decided whether it fit Vercel's 8 GB build machine. Returning them at once
+// cost no measurable compile time.
+const nextBuildEnv = { MIMALLOC_PURGE_DELAY: "0" };
+
 // After compiling, Turbopack persists its build cache while the same
 // `next build` runs the after-compile hook (PostHog's source-map upload in
 // production), collects page data, and prerenders. On Vercel's 8 GB build
@@ -28,17 +35,20 @@ export const nextBuildPhases = (
   args: readonly string[]
 ): readonly BuildPhase[] =>
   args.some((arg) => arg.startsWith(buildModeFlag))
-    ? [{ command: nextBuild(args) }]
+    ? [{ command: nextBuild(args), env: nextBuildEnv }]
     : [
         {
           command: nextBuild([`${buildModeFlag}=compile`, ...args]),
-          env: { [deferAfterCompileVariable]: "1" },
+          env: { ...nextBuildEnv, [deferAfterCompileVariable]: "1" },
         },
         // Node, like `next build` itself, runs the hook.
         {
           command: ["node", join(import.meta.dir, "next-after-compile.mjs")],
         },
-        { command: nextBuild([`${buildModeFlag}=generate`, ...args]) },
+        {
+          command: nextBuild([`${buildModeFlag}=generate`, ...args]),
+          env: nextBuildEnv,
+        },
       ];
 
 if (import.meta.main) {

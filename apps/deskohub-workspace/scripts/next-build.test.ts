@@ -28,13 +28,13 @@ const waitFor = async (condition: () => boolean): Promise<boolean> => {
 };
 
 /**
- * A stand-in `next` on PATH: it records each invocation's arguments and
- * whether its after-compile hook is deferred, exits with `NEXT_FAIL_EXIT` in
- * the `NEXT_FAIL_MODE` build mode, and in the `NEXT_HANG_MODE` build mode
- * starts a worker, records both pids, and waits.
+ * A stand-in `next` on PATH: it records each invocation's arguments,
+ * whether its after-compile hook is deferred, and its mimalloc purge delay,
+ * exits with `NEXT_FAIL_EXIT` in the `NEXT_FAIL_MODE` build mode, and in the
+ * `NEXT_HANG_MODE` build mode starts a worker, records both pids, and waits.
  */
 const fakeNext = `#!/usr/bin/env bash
-echo "next $*\${WORKSPACE_NEXT_BUILD_DEFERS_AFTER_COMPILE:+ (hook deferred)}" >> "$NEXT_CALLS"
+echo "next $*\${WORKSPACE_NEXT_BUILD_DEFERS_AFTER_COMPILE:+ (hook deferred)}\${MIMALLOC_PURGE_DELAY:+ (purge delay $MIMALLOC_PURGE_DELAY)}" >> "$NEXT_CALLS"
 case "$*" in *"build-mode=\${NEXT_FAIL_MODE:-none}"*) exit "$NEXT_FAIL_EXIT" ;; esac
 case "$*" in *"build-mode=\${NEXT_HANG_MODE:-none}"*) sleep 30 & echo "$$ $!" > "$NEXT_PID"; wait ;; esac
 `;
@@ -99,9 +99,10 @@ const calls = (directory: string): readonly string[] =>
     : [];
 
 const compile =
-  "next build --turbo --experimental-build-mode=compile (hook deferred)";
+  "next build --turbo --experimental-build-mode=compile (hook deferred) (purge delay 0)";
 const hook = "hook with the project's distDir";
-const generate = "next build --turbo --experimental-build-mode=generate";
+const generate =
+  "next build --turbo --experimental-build-mode=generate (purge delay 0)";
 
 describe("next-build", () => {
   let directory = "";
@@ -122,9 +123,9 @@ describe("next-build", () => {
     const build = startBuild(directory, {}, ["--debug"]);
     expect(await build.exited).toBe(0);
     expect(calls(directory)).toEqual([
-      "next build --turbo --experimental-build-mode=compile --debug (hook deferred)",
+      "next build --turbo --experimental-build-mode=compile --debug (hook deferred) (purge delay 0)",
       hook,
-      "next build --turbo --experimental-build-mode=generate --debug",
+      "next build --turbo --experimental-build-mode=generate --debug (purge delay 0)",
     ]);
   });
 
@@ -135,7 +136,7 @@ describe("next-build", () => {
     ]);
     expect(await build.exited).toBe(0);
     expect(calls(directory)).toEqual([
-      "next build --turbo --experimental-build-mode compile",
+      "next build --turbo --experimental-build-mode compile (purge delay 0)",
     ]);
   });
 
