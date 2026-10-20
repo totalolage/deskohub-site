@@ -95,6 +95,31 @@ describe("Workspace routes", () => {
     expect(body).not.toContain("private setup");
   });
 
+  test("adds a failure's stable code to the public error", async () => {
+    const GET = defineWorkspaceRoute(
+      {
+        operation: "test.unavailable",
+        cancellation: "continue-after-disconnect",
+        caller: "client",
+      },
+      () =>
+        Effect.fail(
+          WorkspaceRouteFailure.unavailable(
+            "Source unavailable",
+            "source_unavailable"
+          )(new TestLayerError({ message: "private cause" }))
+        ).pipe(Effect.as(new Response("unused")))
+    );
+
+    const response = await GET(new Request("https://deskohub.test"));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: "Source unavailable",
+      code: "source_unavailable",
+    });
+  });
+
   test("uses the request signal only when interruption is declared", async () => {
     const controller = new AbortController();
     let markStarted = () => {};

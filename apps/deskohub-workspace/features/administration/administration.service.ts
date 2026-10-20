@@ -40,7 +40,7 @@ import {
   sum,
 } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { unstable_rethrow } from "next/navigation";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -186,6 +186,29 @@ type ReservationListInput = AdministrationReservationListInput & {
   readonly pageSize?: number;
 };
 
+/** The list filters and order of a reservation export, which has no pages. */
+export type AdministrationReservationExportInput = Omit<
+  AdministrationReservationListInput,
+  "page"
+>;
+
+/** The Dotypos data a list export can't do without. */
+type AdministrationListSource =
+  | "booking-dates"
+  | "booking-details"
+  | "customer-details";
+
+/**
+ * A list export couldn't read Dotypos details its rows need. Pages show such
+ * details as unavailable instead; an export fails rather than leave them out.
+ */
+export class AdministrationListSourceUnavailableError extends Data.TaggedError(
+  "AdministrationListSourceUnavailableError"
+)<{
+  readonly source: AdministrationListSource;
+  readonly cause: unknown;
+}> {}
+
 export type AdministrationCustomerListInput = {
   readonly direction?: AdministrationSortDirection;
   readonly page?: number;
@@ -215,6 +238,7 @@ type AdministrationCustomer = {
 
 export type AdministrationReservationSummary = {
   readonly id: WorkspaceReservationId;
+  readonly dotyposReservationId: DotyposReservationId | null;
   readonly customerId: DotyposCustomerId;
   readonly customer: AdministrationCustomer | null;
   readonly liveDetailsAvailable: boolean;
@@ -822,6 +846,7 @@ const toReservationSummary = ({
 }): AdministrationReservationSummary => {
   return {
     id: row.id,
+    dotyposReservationId: row.dotyposReservationId,
     customerId: row.dotyposCustomerId,
     customer: live.customer
       ? toCustomer(live.customer, row.dotyposCustomerId)
@@ -1241,6 +1266,58 @@ const getReservationOperatorNotice = ({
   return null;
 };
 
+type ProviderReadFailure = {
+  /** The date range a failed date read logs. */
+  readonly annotations?: AdministrationReservationDateRange;
+  readonly cause: unknown;
+  /** The warning a degrading read logs. */
+  readonly message: string;
+  readonly source: AdministrationListSource;
+};
+
+/**
+ * How a list read treats a failed Dotypos read. A page degrades: it logs, shows
+ * the details as unavailable, and retries records one by one where a batch
+ * failed. An export fails fast with `AdministrationListSourceUnavailableError`.
+ * A read that succeeds without some record isn't a failure under either.
+ */
+type ProviderFailurePolicy<E> = {
+  readonly recover: <A>(
+    failure: ProviderReadFailure,
+    fallback: A
+  ) => Effect.Effect<A, E>;
+  /** Reads every record its batch didn't return through a single-record read. */
+  readonly readsUnreturnedRecordsSingly: boolean;
+};
+
+const degradeOnProviderFailure: ProviderFailurePolicy<never> = {
+  recover: ({ annotations, cause, message }, fallback) =>
+    Effect.logWarning(message, { cause, ...annotations }).pipe(
+      Effect.as(fallback)
+    ),
+  readsUnreturnedRecordsSingly: true,
+};
+
+const failOnProviderFailure: ProviderFailurePolicy<AdministrationListSourceUnavailableError> =
+  {
+    recover: ({ cause, source }) =>
+      Effect.fail(
+        new AdministrationListSourceUnavailableError({ cause, source })
+      ),
+    readsUnreturnedRecordsSingly: false,
+  };
+
+const recoverProviderRead =
+  <A, E>(
+    policy: ProviderFailurePolicy<E>,
+    failure: Omit<ProviderReadFailure, "cause">,
+    fallback: A
+  ) =>
+  (cause: unknown) => {
+    unstable_rethrow(cause);
+    return policy.recover({ ...failure, cause }, fallback);
+  };
+
 export class AdministrationService extends Context.Service<
   AdministrationService,
   {
@@ -1264,6 +1341,17 @@ export class AdministrationService extends Context.Service<
         readonly dateSortUnavailable: boolean;
       },
       EffectDrizzleQueryError
+    >;
+    /**
+     * Every reservation the list filters match, in list order, for a file
+     * export. Where the list would show Dotypos details as unavailable, the
+     * export fails with `AdministrationListSourceUnavailableError`.
+     */
+    readonly exportReservations: (
+      input: AdministrationReservationExportInput
+    ) => Effect.Effect<
+      readonly AdministrationReservationSummary[],
+      EffectDrizzleQueryError | AdministrationListSourceUnavailableError
     >;
     readonly loadReservation: (
       id: WorkspaceReservationId
@@ -1382,7 +1470,10 @@ export class AdministrationService extends Context.Service<
       });
 
       const loadCustomers = Effect.fn("AdministrationService.loadCustomers")(
-        function* (ids: readonly DotyposCustomerId[]) {
+        function* <E = never>(
+          ids: readonly DotyposCustomerId[],
+          policy: ProviderFailurePolicy<E> = degradeOnProviderFailure
+        ) {
           yield* Effect.annotateCurrentSpan({
             uniqueCustomerCount: new Set(ids).size,
           });
@@ -1394,37 +1485,37 @@ export class AdministrationService extends Context.Service<
                   customers,
                   ids: batchIds,
                 })),
-                Effect.catch((cause) => {
-                  unstable_rethrow(cause);
-                  return Effect.logWarning(
-                    "Batch customer details unavailable",
-                    { cause }
-                  ).pipe(
-                    Effect.as({
-                      customers: [] as const,
-                      ids: batchIds,
-                    })
-                  );
-                })
+                Effect.catch(
+                  recoverProviderRead(
+                    policy,
+                    {
+                      message: "Batch customer details unavailable",
+                      source: "customer-details",
+                    },
+                    { customers: [] as const, ids: batchIds }
+                  )
+                )
               ),
             { concurrency: 3 }
           );
           const customersById = indexCustomersById(
             batches.flatMap(({ customers }) => customers)
           );
+          const unreturnedIds = policy.readsUnreturnedRecordsSingly
+            ? batches
+                .flatMap(({ ids: batchIds }) => batchIds)
+                .filter((id) => !customersById.has(id))
+            : [];
           const missingCustomers = yield* Effect.all(
-            batches
-              .flatMap(({ ids: batchIds }) => batchIds)
-              .filter((id) => !customersById.has(id))
-              .map((id) =>
-                dotypos.getCustomer(id).pipe(
-                  Effect.map((customer) => [id, customer] as const),
-                  Effect.catch((cause) => {
-                    unstable_rethrow(cause);
-                    return Effect.succeed(null);
-                  })
-                )
-              ),
+            unreturnedIds.map((id) =>
+              dotypos.getCustomer(id).pipe(
+                Effect.map((customer) => [id, customer] as const),
+                Effect.catch((cause) => {
+                  unstable_rethrow(cause);
+                  return Effect.succeed(null);
+                })
+              )
+            ),
             { concurrency: 5 }
           );
           for (const customer of missingCustomers) {
@@ -1476,12 +1567,12 @@ export class AdministrationService extends Context.Service<
 
       const loadLiveReservations = Effect.fn(
         "AdministrationService.loadLiveReservations"
-      )(function* (
+      )(function* <E = never>(
         rows: readonly SafeReservationRow[],
-        knownReservations?: ReadonlyMap<
-          DotyposReservationId,
-          DotyposReservation
-        >
+        knownReservations:
+          | ReadonlyMap<DotyposReservationId, DotyposReservation>
+          | undefined,
+        policy: ProviderFailurePolicy<E>
       ) {
         const missingReservationIds = rows.flatMap((row) =>
           row.dotyposReservationId &&
@@ -1489,18 +1580,25 @@ export class AdministrationService extends Context.Service<
             ? [row.dotyposReservationId]
             : []
         );
-        const reservations = yield* dotypos
-          .listReservations({ ids: missingReservationIds })
-          .pipe(
-            Effect.catch((cause) => {
-              unstable_rethrow(cause);
-              return Effect.logWarning("Live booking details unavailable", {
-                cause,
-              }).pipe(Effect.as([] as const));
-            })
-          );
+        const reservationBatches = yield* readInIdFilterBatches(
+          missingReservationIds,
+          (batchIds) =>
+            dotypos.listReservations({ ids: batchIds }).pipe(
+              Effect.catch(
+                recoverProviderRead(
+                  policy,
+                  {
+                    message: "Live booking details unavailable",
+                    source: "booking-details",
+                  },
+                  [] as const
+                )
+              )
+            ),
+          { concurrency: 3 }
+        );
         const reservationsById = new Map(knownReservations);
-        for (const reservation of reservations) {
+        for (const reservation of reservationBatches.flat()) {
           const id = Option.getOrUndefined(
             decodeDotyposReservationId(reservation.id)
           );
@@ -1520,7 +1618,7 @@ export class AdministrationService extends Context.Service<
             })
           ),
         ];
-        const customersById = yield* loadCustomers(customerIds);
+        const customersById = yield* loadCustomers(customerIds, policy);
 
         return rows.map((row) => {
           const reservation = row.dotyposReservationId
@@ -1541,12 +1639,13 @@ export class AdministrationService extends Context.Service<
       });
 
       const enrichRows = Effect.fn("AdministrationService.enrichRows")(
-        function* (
+        function* <E = never>(
           rows: readonly SafeReservationRow[],
           knownReservations?: ReadonlyMap<
             DotyposReservationId,
             DotyposReservation
-          >
+          >,
+          policy: ProviderFailurePolicy<E> = degradeOnProviderFailure
         ) {
           if (rows.length === 0) return [];
           const { attemptRows, latePaymentRows, liveRows, recoveryRows } =
@@ -1580,7 +1679,7 @@ export class AdministrationService extends Context.Service<
                     )
                   )
                   .orderBy(asc(latePaymentRecoveries.createdAt)),
-                liveRows: loadLiveReservations(rows, knownReservations),
+                liveRows: loadLiveReservations(rows, knownReservations, policy),
               },
               { concurrency: 3 }
             );
@@ -1644,8 +1743,9 @@ export class AdministrationService extends Context.Service<
           })
         );
 
-      const loadReservationRangeMap = (
-        range: AdministrationReservationDateRange | undefined
+      const loadReservationRangeMap = <E = never>(
+        range: AdministrationReservationDateRange | undefined,
+        policy: ProviderFailurePolicy<E> = degradeOnProviderFailure
       ) => {
         if (!range) return Effect.succeed(undefined);
         return dotypos
@@ -1667,25 +1767,30 @@ export class AdministrationService extends Context.Service<
                   })
                 )
             ),
-            Effect.catch((cause) => {
-              unstable_rethrow(cause);
-              return Effect.logWarning("Reservation date filter unavailable", {
-                cause,
-                ...range,
-              }).pipe(Effect.as(null));
-            })
+            Effect.catch(
+              recoverProviderRead(
+                policy,
+                {
+                  annotations: range,
+                  message: "Reservation date filter unavailable",
+                  source: "booking-dates",
+                },
+                null
+              )
+            )
           );
       };
 
       const loadReservationDateOrder = Effect.fn(
         "AdministrationService.loadReservationDateOrder"
-      )(function* (
-        input: AdministrationReservationListInput,
+      )(function* <E>(
+        input: AdministrationReservationExportInput,
         hasDateRange: boolean,
         dateReservations:
           | ReadonlyMap<DotyposReservationId, DotyposReservation>
           | null
-          | undefined
+          | undefined,
+        policy: ProviderFailurePolicy<E>
       ) {
         if (hasDateRange) {
           if (!dateReservations) return null;
@@ -1711,12 +1816,16 @@ export class AdministrationService extends Context.Service<
                 return reservationId ? [reservationId] : [];
               })
             ),
-            Effect.catch((cause) => {
-              unstable_rethrow(cause);
-              return Effect.logWarning("Reservation date sorting unavailable", {
-                cause,
-              }).pipe(Effect.as(null));
-            })
+            Effect.catch(
+              recoverProviderRead(
+                policy,
+                {
+                  message: "Reservation date sorting unavailable",
+                  source: "booking-dates",
+                },
+                null
+              )
+            )
           );
       });
 
@@ -1732,12 +1841,21 @@ export class AdministrationService extends Context.Service<
         return Number(row?.value ?? 0);
       });
 
-      const listReservations = Effect.fn(
-        "AdministrationService.listReservations"
-      )(function* (input: ReservationListInput) {
-        const pageSize = input.pageSize ?? reservationPageSize;
+      /**
+       * The SQL condition of the list filters, with the Dotypos bookings that
+       * decide date filtering and, for the date sort, the provider order.
+       */
+      const loadReservationListScope = Effect.fn(
+        "AdministrationService.loadReservationListScope"
+      )(function* <E = never>(
+        input: AdministrationReservationExportInput,
+        policy: ProviderFailurePolicy<E> = degradeOnProviderFailure
+      ) {
         const dateRange = getAdministrationReservationDateRange(input);
-        const dateReservations = yield* loadReservationRangeMap(dateRange);
+        const dateReservations = yield* loadReservationRangeMap(
+          dateRange,
+          policy
+        );
         const conditions: SQL[] = [];
         if (input.customerId) {
           conditions.push(
@@ -1759,7 +1877,92 @@ export class AdministrationService extends Context.Service<
               : sql`false`
           );
         }
-        const where = conditions.length > 0 ? and(...conditions) : undefined;
+        const orderedProviderIds =
+          input.sort === "date"
+            ? yield* loadReservationDateOrder(
+                input,
+                Boolean(dateRange),
+                dateReservations,
+                policy
+              )
+            : undefined;
+        return {
+          dateRange,
+          dateReservations,
+          orderedProviderIds,
+          where: conditions.length > 0 ? and(...conditions) : undefined,
+        };
+      });
+
+      /**
+       * The matching rows in list order: one page of them, or every row when
+       * no page is given.
+       */
+      const selectReservationListRows = Effect.fn(
+        "AdministrationService.selectReservationListRows"
+      )(function* ({
+        direction,
+        orderedProviderIds,
+        page,
+        sort,
+        where,
+      }: Pick<AdministrationReservationExportInput, "direction" | "sort"> & {
+        readonly orderedProviderIds:
+          | readonly DotyposReservationId[]
+          | null
+          | undefined;
+        readonly page?: { readonly offset: number; readonly pageSize: number };
+        readonly where: SQL | undefined;
+      }) {
+        if (orderedProviderIds) {
+          const references = yield* db
+            .select({
+              id: workspaceReservations.id,
+              externalId: workspaceReservations.dotyposReservationId,
+            })
+            .from(workspaceReservations)
+            .where(where);
+          const pageIds = getAdministrationExternalOrderPageIds({
+            offset: page?.offset ?? 0,
+            orderedExternalIds: orderedProviderIds,
+            pageSize: page?.pageSize ?? references.length,
+            references,
+          });
+          const pageRows =
+            pageIds.length === 0
+              ? []
+              : yield* db
+                  .select(safeReservationSelection)
+                  .from(workspaceReservations)
+                  .where(inArray(workspaceReservations.id, pageIds));
+          const rowById = new Map(pageRows.map((row) => [row.id, row]));
+          return pageIds.flatMap((id) => {
+            const row = rowById.get(id);
+            return row ? [row] : [];
+          });
+        }
+        const rows = db
+          .select(safeReservationSelection)
+          .from(workspaceReservations)
+          .where(where)
+          .orderBy(
+            ...getReservationOrderBy({
+              direction,
+              sort: sort === "date" ? "created" : sort,
+            })
+          );
+        const selected: readonly SafeReservationRow[] = yield* page
+          ? rows.limit(page.pageSize).offset(page.offset)
+          : rows;
+        return selected;
+      });
+
+      const listReservations = Effect.fn(
+        "AdministrationService.listReservations"
+      )(function* (input: ReservationListInput) {
+        const pageSize = input.pageSize ?? reservationPageSize;
+        const { dateRange, dateReservations, orderedProviderIds, where } =
+          yield* loadReservationListScope(input);
 
         const countRows = yield* db
           .select({ value: count() })
@@ -1771,55 +1974,13 @@ export class AdministrationService extends Context.Service<
           requestedPage: input.page,
           total,
         });
-        const orderedProviderIds =
-          input.sort === "date"
-            ? yield* loadReservationDateOrder(
-                input,
-                Boolean(dateRange),
-                dateReservations
-              )
-            : undefined;
-        let rows: readonly SafeReservationRow[];
-        if (orderedProviderIds) {
-          const references = yield* db
-            .select({
-              id: workspaceReservations.id,
-              externalId: workspaceReservations.dotyposReservationId,
-            })
-            .from(workspaceReservations)
-            .where(where);
-          const pageIds = getAdministrationExternalOrderPageIds({
-            offset: pagination.offset,
-            orderedExternalIds: orderedProviderIds,
-            pageSize,
-            references,
-          });
-          const pageRows =
-            pageIds.length === 0
-              ? []
-              : yield* db
-                  .select(safeReservationSelection)
-                  .from(workspaceReservations)
-                  .where(inArray(workspaceReservations.id, pageIds));
-          const rowById = new Map(pageRows.map((row) => [row.id, row]));
-          rows = pageIds.flatMap((id) => {
-            const row = rowById.get(id);
-            return row ? [row] : [];
-          });
-        } else {
-          rows = yield* db
-            .select(safeReservationSelection)
-            .from(workspaceReservations)
-            .where(where)
-            .orderBy(
-              ...getReservationOrderBy({
-                direction: input.direction,
-                sort: input.sort === "date" ? "created" : input.sort,
-              })
-            )
-            .limit(pageSize)
-            .offset(pagination.offset);
-        }
+        const rows = yield* selectReservationListRows({
+          direction: input.direction,
+          orderedProviderIds,
+          page: { offset: pagination.offset, pageSize },
+          sort: input.sort,
+          where,
+        });
         return {
           items: yield* enrichRows(rows, dateReservations ?? undefined),
           page: pagination.page,
@@ -1831,6 +1992,25 @@ export class AdministrationService extends Context.Service<
           dateSortUnavailable:
             input.sort === "date" && orderedProviderIds === null,
         };
+      });
+
+      const exportReservations = Effect.fn(
+        "AdministrationService.exportReservations"
+      )(function* (input: AdministrationReservationExportInput) {
+        const { dateReservations, orderedProviderIds, where } =
+          yield* loadReservationListScope(input, failOnProviderFailure);
+        const rows = yield* selectReservationListRows({
+          direction: input.direction,
+          orderedProviderIds,
+          sort: input.sort,
+          where,
+        });
+        yield* Effect.annotateCurrentSpan({ reservationCount: rows.length });
+        return yield* enrichRows(
+          rows,
+          dateReservations ?? undefined,
+          failOnProviderFailure
+        );
       });
 
       const loadReservation = Effect.fn(
@@ -3053,6 +3233,7 @@ export class AdministrationService extends Context.Service<
         loadOverview,
         countReservationsNeedingRefund,
         listReservations,
+        exportReservations,
         loadReservation,
         loadReservationProduct,
         findReservationId,

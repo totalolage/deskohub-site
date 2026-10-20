@@ -20,6 +20,7 @@ import {
   formatAdministrationReservationDate,
 } from "./formatters";
 import { m } from "./i18n";
+import { getAdministrationListHref } from "./list-href";
 import { NexiOrderLink } from "./nexi-order-link";
 import { getAdministrationPaymentProviderLabel } from "./payment-presentation";
 import {
@@ -361,15 +362,11 @@ export function Pagination({
   readonly pageParam?: string;
   readonly params?: Readonly<Record<string, string | undefined>>;
 }) {
-  const href = (target: number) => {
-    const search = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (value) search.set(key, value);
-    }
-    if (target > 1) search.set(pageParam, String(target));
-    const query = search.toString();
-    return query ? `${basePath}?${query}` : basePath;
-  };
+  const href = (target: number) =>
+    getAdministrationListHref(basePath, {
+      ...params,
+      [pageParam]: target > 1 ? String(target) : undefined,
+    });
   if (pageCount <= 1) return null;
   return (
     <nav

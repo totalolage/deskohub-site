@@ -1,3 +1,5 @@
+import { getAdministrationListHref } from "./list-href";
+
 export type AdministrationTableSorting<T extends string> = {
   readonly direction: "asc" | "desc";
   readonly field: T;
@@ -14,12 +16,5 @@ export const getAdministrationTableSortHref = ({
   readonly direction: "asc" | "desc";
   readonly field: string;
   readonly params?: Readonly<Record<string, string | undefined>>;
-}) => {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params ?? {})) {
-    if (value) search.set(key, value);
-  }
-  search.set("sort", field);
-  search.set("direction", direction);
-  return `${basePath}?${search.toString()}`;
-};
+}) =>
+  getAdministrationListHref(basePath, { ...params, sort: field, direction });

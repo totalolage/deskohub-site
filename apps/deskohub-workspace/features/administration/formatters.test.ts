@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 import type { AdministrationPaymentAttempt } from "./administration.service";
 import {
   formatAdministrationDateTime,
+  formatAdministrationExportDateTime,
   formatAdministrationMoney,
   formatAdministrationPlainDate,
   formatAdministrationReservationDate,
+  getAdministrationMoneyAmount,
   getAdministrationPaymentStatus,
 } from "./formatters";
 
@@ -202,5 +204,29 @@ describe("getAdministrationPaymentStatus", () => {
     ).toBe(
       `Částečně vráceno ${formatAdministrationMoney(refundedAmount, "cs-CZ")}`
     );
+  });
+});
+
+describe("export values", () => {
+  test("writes date-times on Prague time in summer and winter", () => {
+    expect(formatAdministrationExportDateTime("2026-08-20T08:00:00Z")).toBe(
+      "2026-08-20 10:00"
+    );
+    expect(formatAdministrationExportDateTime("2026-01-15T23:30:00Z")).toBe(
+      "2026-01-16 00:30"
+    );
+  });
+
+  test("writes amounts in currency units", () => {
+    expect(
+      getAdministrationMoneyAmount({
+        value: 125_050,
+        exponent: 2,
+        currency: "CZK",
+      })
+    ).toBe(1250.5);
+    expect(
+      getAdministrationMoneyAmount({ value: 900, exponent: 0, currency: "CZK" })
+    ).toBe(900);
   });
 });
