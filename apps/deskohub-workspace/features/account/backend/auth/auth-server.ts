@@ -37,12 +37,7 @@ import {
   type CustomerAccountId,
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
-import {
-  defaultLocale,
-  isLocale,
-  type Locale,
-  locales,
-} from "@/features/i18n";
+import { defaultLocale, isLocale, type Locale, locales } from "@/features/i18n";
 import {
   classifyAgentTraffic,
   unclassifiedTraffic,
@@ -920,8 +915,10 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
         create: {
           // The durable customer account is created before its login, so no
           // login exists without one; Better Auth keeps the id returned here.
-          // A login insert that fails afterwards leaves an unused account
-          // that the account backfill tombstones.
+          // A sign-in request supplies the id generator; a server-side
+          // creation has no request, so it must pass the id itself. A login
+          // insert that fails afterwards leaves an unused account that the
+          // account backfill tombstones.
           //
           // The locale preference is part of the user insert, so no account
           // exists without one. A server-side creation supplies it; otherwise
@@ -940,7 +937,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
                 }
                 yield* config.createCustomerAccount(accountId);
                 const locale =
-                  typeof user.locale === "string" && isLocale(user.locale)
+                  Predicate.isString(user.locale) && isLocale(user.locale)
                     ? user.locale
                     : (callbackLocaleFromAuthContext(
                         Option.getOrElse(decodeAuthContext(ctx), () => ({}))

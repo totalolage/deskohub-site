@@ -42,8 +42,9 @@ glossary defines the customer account, reservation author, and tombstone.
 - Every login has one. Better Auth's `user.create.before` hook creates the
   account (`ensureCustomerAccount`) before it inserts the login, and
   `auth.user.id` references `customer_accounts.id` with `ON DELETE RESTRICT`,
-  so the account outlives the login. Anything that inserts `auth.user` rows
-  directly, such as a test fixture, creates the account first.
+  so the account outlives the login. A server-side `createUser` must pass the
+  id from `generateId`, and anything that inserts `auth.user` rows directly,
+  such as a test fixture, creates the account first.
 - `CustomerAccountLinkRepository.claim` links the account to its customer on
   that row. Only a live account without a customer takes one, the unique index
   turns a customer another account holds into `claimed`, and only the claim
@@ -69,6 +70,17 @@ glossary defines the customer account, reservation author, and tombstone.
   `getCustomerDisplayName` over `getCustomers` reads batched the same way. Author and
   name reads are degradable: a failure logs a fixed code and leaves the party
   unnamed (null), never failing the history.
+- `CustomerAccountBackfill` (`dhw accounts backfill`, see the administration
+  skill's [dhw-cli.md](../../deskohub-workspace-administration/references/dhw-cli.md#customer-account-backfill))
+  gives a legacy customer with no linked account a silent login: an
+  unverified `auth.user` row for its Dotypos email, created through
+  `UnverifiedLogins` (`backend/auth/unverified-logins.service.ts`, Better
+  Auth's `internalAdapter.createUser` with a generated id) without sending
+  email, then linked to the customer without an `account-created` event or
+  referral. Workspace rejects its sessions until the owner signs in by link
+  or code to that email, which verifies the same row. Account-created
+  reconciliation and campaign audiences count only verified logins. Nothing
+  else creates unverified logins.
 
 ## Error contract
 

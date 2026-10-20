@@ -277,15 +277,18 @@ describe.skipIf(!testDatabase)(
     test("records account creation for a linked account at its creation time", async () => {
       const now = nowInYear(2095);
       const createdAt = now.subtract({ hours: 5 });
-      const insertAccount = async (linkedCustomer: string | null) => {
+      const insertAccount = async (
+        linkedCustomer: string | null,
+        emailVerified: boolean
+      ) => {
         const id = customerAccountIdSchema.make(crypto.randomUUID());
         accountIds.push(id);
         await Effect.runPromise(
           testDatabase.db.insert(customerAccounts).values({ id, createdAt })
         );
         await testDatabase.pool.query(
-          `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, true)`,
-          [id, testEmailAddress(`reconcile-${id}`)]
+          `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, $3)`,
+          [id, testEmailAddress(`reconcile-${id}`), emailVerified]
         );
         if (linkedCustomer) {
           await Effect.runPromise(
@@ -299,9 +302,11 @@ describe.skipIf(!testDatabase)(
         }
         return id;
       };
-      const linkedCustomer = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
-      const linked = await insertAccount(linkedCustomer);
-      const unlinked = await insertAccount(null);
+      const linkedCustomer = crypto.randomUUID();
+      const unverifiedCustomer = crypto.randomUUID();
+      const linked = await insertAccount(linkedCustomer, true);
+      const unverified = await insertAccount(unverifiedCustomer, false);
+      const unlinked = await insertAccount(null, true);
       const readAccountEvents = (id: CustomerAccountId) =>
         Effect.runPromise(
           testDatabase.db
@@ -326,6 +331,7 @@ describe.skipIf(!testDatabase)(
           dotyposCustomerId: DotyposCustomerIdSchema.make(linkedCustomer),
         },
       ]);
+      expect(await readAccountEvents(unverified)).toEqual([]);
       expect(await readAccountEvents(unlinked)).toEqual([]);
     });
   }

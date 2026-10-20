@@ -67,7 +67,7 @@ describe.skipIf(!testDatabase)(
           );
           const secondClaim = yield* links.claim(
             firstAccount,
-            dotyposCustomerId
+            uniqueDotyposId()
           );
           const rivalClaim = yield* Effect.result(
             links.claim(secondAccount, dotyposCustomerId)
@@ -90,6 +90,9 @@ describe.skipIf(!testDatabase)(
       if (outcomes.rivalClaim._tag === "Success") {
         expect(outcomes.rivalClaim.success.kind).toBe("claimed");
       }
+      expect(await accountDotyposCustomerId(firstAccount)).toBe(
+        dotyposCustomerId
+      );
     });
 
     test("converges concurrent claims of one account on its link", async () => {
@@ -119,7 +122,7 @@ describe.skipIf(!testDatabase)(
       expect(
         claims.filter((claim) => claim.kind === "linked" && claim.created)
       ).toHaveLength(1);
-      expect(await accountColumnOf(account)).toBe(dotyposCustomerId);
+      expect(await accountDotyposCustomerId(account)).toBe(dotyposCustomerId);
       expect(await accountCreatedEvents(account)).toHaveLength(1);
     });
 
@@ -275,7 +278,7 @@ describe.skipIf(!testDatabase)(
       ).finally(cleanup);
 
       expect(result._tag).toBe("Failure");
-      expect(await accountColumnOf(account)).toBeNull();
+      expect(await accountDotyposCustomerId(account)).toBeNull();
       expect(await accountCreatedEvents(account)).toEqual([]);
 
       const retry = await Effect.runPromise(
@@ -349,8 +352,8 @@ describe.skipIf(!testDatabase)(
       ]);
       const winner = claims[0]?.kind === "linked" ? first : second;
       const loser = winner === first ? second : first;
-      expect(await accountColumnOf(winner)).toBe(dotyposCustomerId);
-      expect(await accountColumnOf(loser)).toBeNull();
+      expect(await accountDotyposCustomerId(winner)).toBe(dotyposCustomerId);
+      expect(await accountDotyposCustomerId(loser)).toBeNull();
       expect(await accountCreatedEvents(loser)).toHaveLength(0);
     });
 
@@ -388,8 +391,8 @@ describe.skipIf(!testDatabase)(
         customerId: dotyposCustomerId,
         created: true,
       });
-      expect(await accountColumnOf(deleted)).toBeNull();
-      expect(await accountColumnOf(claimant)).toBe(dotyposCustomerId);
+      expect(await accountDotyposCustomerId(deleted)).toBeNull();
+      expect(await accountDotyposCustomerId(claimant)).toBe(dotyposCustomerId);
     });
   }
 );
@@ -414,6 +417,15 @@ async function accountCreatedAt(accountId: string) {
   return rows[0]?.created_at;
 }
 
+async function accountDotyposCustomerId(accountId: string) {
+  const { rows } = await testDatabase!.pool.query<{
+    dotypos_customer_id: string | null;
+  }>("select dotypos_customer_id from customer_accounts where id = $1", [
+    accountId,
+  ]);
+  return rows[0]?.dotypos_customer_id;
+}
+
 function uniqueDotyposId() {
   return `${Math.floor(Math.random() * 900000) + 100000}${Math.floor(
     Math.random() * 900
@@ -425,13 +437,4 @@ async function accountColumn(accountId: string, dotyposCustomerId: string) {
     "update customer_accounts set dotypos_customer_id = $2 where id = $1",
     [accountId, dotyposCustomerId]
   );
-}
-
-async function accountColumnOf(accountId: string) {
-  const { rows } = await testDatabase!.pool.query<{
-    dotypos_customer_id: string | null;
-  }>("select dotypos_customer_id from customer_accounts where id = $1", [
-    accountId,
-  ]);
-  return rows[0]?.dotypos_customer_id;
 }

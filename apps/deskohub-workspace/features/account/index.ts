@@ -1,4 +1,5 @@
 export { OptionalAccountActivityGuard } from "./backend/customer-account-activity";
+export { CustomerAccountBackfill } from "./backend/customer-account-backfill.service";
 export { findActiveCustomerAccountByEmail } from "./backend/customer-account-by-email";
 export { CustomerAccountContactService } from "./backend/customer-account-contact.service";
 export { CustomerAccountReservationOwnership } from "./backend/customer-account-reservation-ownership";

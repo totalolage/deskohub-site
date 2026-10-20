@@ -230,6 +230,11 @@ describe.skipIf(!testDatabase)(
     test("a repeated deletion keeps the first tombstone instant", async () => {
       const layer = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
+      const dotyposCustomerId = `${Date.now()}${Math.floor(Math.random() * 1_000_000)}`;
+      await testDatabase!.pool.query(
+        `insert into customer_accounts (id, dotypos_customer_id) values ($1, $2)`,
+        [account, dotyposCustomerId]
+      );
 
       const tombstoneAt = (deletedAt: string) =>
         Effect.runPromise(
@@ -246,6 +251,12 @@ describe.skipIf(!testDatabase)(
       await tombstoneAt("2026-10-17T11:00:00Z");
 
       expect(await readDeletedAt(account)).toBe("2026-10-17T10:00:00Z");
+      const row = await testDatabase!.pool.query<{
+        dotypos_customer_id: string | null;
+      }>("select dotypos_customer_id from customer_accounts where id = $1", [
+        account,
+      ]);
+      expect(row.rows[0]?.dotypos_customer_id).toBeNull();
     });
   }
 );
