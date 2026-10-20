@@ -66,7 +66,10 @@ export const listMyReservationsTool = defineSignedInAgentTool({
       Effect.bind("account", () => readHistoryAccount),
       Effect.bind("history", ({ account }) =>
         CustomerReservationHistoryService.pipe(
-          Effect.flatMap((histories) => histories.load(account)),
+          // The tool never returns names, so it skips their uncached read.
+          Effect.flatMap((histories) =>
+            histories.load(account, { includePartyNames: false })
+          ),
           Effect.mapError(
             AgentToolError.unavailable("reservations_unavailable")
           )

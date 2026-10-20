@@ -88,7 +88,13 @@ export const getReservationStatusTool = defineSignedInAgentTool({
       Effect.bind("status", ({ orderId }) =>
         CheckoutStatusService.pipe(
           Effect.flatMap((statuses) =>
-            statuses.getStatus({ orderId, returnOutcome: "unknown" })
+            // The tool never returns contact details, so it skips their
+            // uncached Dotypos read.
+            statuses.getStatus({
+              orderId,
+              returnOutcome: "unknown",
+              includeSupportContact: false,
+            })
           ),
           Effect.mapError(
             AgentToolError.unavailable("reservations_unavailable")

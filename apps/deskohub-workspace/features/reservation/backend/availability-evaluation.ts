@@ -12,7 +12,6 @@ import {
   getWorkspaceTableCandidatesByPredicate,
   hasCandidateCapacity,
   isWorkspaceCoworkTableCandidate,
-  type OccupancyReservation,
   toTableBookings,
   type WorkspaceCoworkTableCandidateQuery,
   type WorkspaceTableCandidate,
@@ -41,6 +40,7 @@ import type {
   WorkspaceAvailability,
   WorkspaceAvailabilityQuery,
 } from "../workspace-availability";
+import type { ReservationRecord } from "./reservation-record";
 
 export type AvailabilityEvaluationInput = {
   readonly query: WorkspaceAvailabilityQuery;
@@ -49,7 +49,7 @@ export type AvailabilityEvaluationInput = {
   readonly reservation: ReservationInterval | undefined;
   readonly selectedDate: string | undefined;
   readonly tables: readonly DotyposTable[];
-  readonly reservations: readonly OccupancyReservation[];
+  readonly reservations: readonly ReservationRecord[];
   readonly fullyOccupiedDates: ReadonlySet<string>;
 };
 
@@ -201,7 +201,7 @@ type InventoryView = ReturnType<typeof createInventoryView>;
  */
 const createInventoryView = (
   tables: readonly DotyposTable[],
-  reservations: readonly OccupancyReservation[]
+  reservations: readonly ReservationRecord[]
 ) => {
   const bookings = toTableBookings(reservations);
   const occupancyByInterval = new Map<string, Occupancy>();

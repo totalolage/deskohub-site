@@ -102,8 +102,10 @@ describe("list_my_reservations", () => {
   test("lists the account's reservations without anyone's names", async () => {
     const result = await list();
 
+    // The tool never returns names, so it skips their uncached read.
     expect(load).toHaveBeenCalledWith(
-      expect.objectContaining({ accountId, dotyposCustomerId: "60111" })
+      expect.objectContaining({ accountId, dotyposCustomerId: "60111" }),
+      { includePartyNames: false }
     );
     expect(result._tag).toBe("Success");
     expect(result._tag === "Success" && result.success).toEqual({
@@ -146,7 +148,10 @@ describe("list_my_reservations", () => {
 
     await list();
 
-    expect(load).toHaveBeenCalledWith({ accountId });
+    expect(load).toHaveBeenCalledWith(
+      { accountId },
+      { includePartyNames: false }
+    );
   });
 
   test("reports reservations Dotypos can't serve as unavailable", async () => {
