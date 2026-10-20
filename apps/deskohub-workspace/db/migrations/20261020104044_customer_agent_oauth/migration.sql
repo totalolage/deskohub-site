@@ -120,6 +120,8 @@ CREATE TABLE "auth"."oauth_resource" (
 );
 --> statement-breakpoint
 ALTER TABLE "workspace_reservations" ADD COLUMN "agent_client_id" text;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD COLUMN "agent_selection_key" text;--> statement-breakpoint
+CREATE INDEX "workspace_reservations_agent_selection_idx" ON "workspace_reservations" ("agent_selection_key","created_at") WHERE "agent_selection_key" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "oauth_access_token_token_unique_idx" ON "auth"."oauth_access_token" ("token");--> statement-breakpoint
 CREATE INDEX "oauth_access_token_client_id_idx" ON "auth"."oauth_access_token" ("client_id");--> statement-breakpoint
 CREATE INDEX "oauth_access_token_session_id_idx" ON "auth"."oauth_access_token" ("session_id");--> statement-breakpoint
@@ -151,4 +153,5 @@ ALTER TABLE "auth"."oauth_consent" ADD CONSTRAINT "oauth_consent_user_id_user_id
 ALTER TABLE "auth"."oauth_refresh_token" ADD CONSTRAINT "oauth_refresh_token_client_id_oauth_client_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "auth"."oauth_client"("client_id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "auth"."oauth_refresh_token" ADD CONSTRAINT "oauth_refresh_token_session_id_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "auth"."session"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "auth"."oauth_refresh_token" ADD CONSTRAINT "oauth_refresh_token_user_id_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."user"("id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_agent_selection_check" CHECK ("agent_selection_key" is null or "agent_client_id" is not null);--> statement-breakpoint
 ALTER TABLE "customer_marketing_consents" DROP CONSTRAINT "customer_marketing_consents_grant_source_check", ADD CONSTRAINT "customer_marketing_consents_grant_source_check" CHECK ("grant_source" is null or "grant_source" in ('reservation_form', 'site_tool', 'mcp_tool', 'account', 'link'));

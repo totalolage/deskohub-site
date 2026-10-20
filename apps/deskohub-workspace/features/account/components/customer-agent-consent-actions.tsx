@@ -1,9 +1,12 @@
 "use client";
 
+import { Data, Effect } from "effect";
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { authClient } from "@/features/account/auth.client";
 import { type Locale, m } from "@/features/i18n";
+import { runWorkspaceBrowserEffectUntilAbort } from "@/shared/browser/workspace-browser-effect";
+import { reportWorkspaceBrowserFailure } from "@/shared/browser/workspace-browser-logs";
 import { Button } from "@/shared/components/ui/button";
 
 type ConsentPhase =
@@ -13,6 +16,27 @@ type ConsentPhase =
   /** The signed request expired or was altered; only the assistant can start a new one. */
   | "expired"
   | "failed";
+
+/** The OAuth server returned no redirect URL, or could not be reached. */
+class CustomerAgentConsentError extends Data.TaggedError(
+  "CustomerAgentConsentError"
+)<{ readonly status?: number; readonly cause?: unknown }> {}
+
+/** Sends the customer's answer and yields the assistant's redirect URL. */
+const submitConsent = (accept: boolean) =>
+  Effect.tryPromise({
+    try: () => authClient.oauth2.consent({ accept }),
+    catch: (cause) => new CustomerAgentConsentError({ cause }),
+  }).pipe(
+    Effect.filterOrFail(
+      ({ data }) => Boolean(data?.url),
+      ({ error }) =>
+        new CustomerAgentConsentError({ status: error?.status, cause: error })
+    ),
+    Effect.map(({ data }) => data!.url)
+  );
+
+const consentFailureCode = "account.customer-agent-consent.failed";
 
 /**
  * Allow and Deny on the consent step. The OAuth server answers both with the
@@ -27,20 +51,38 @@ export function CustomerAgentConsentActions({
 }) {
   const [phase, setPhase] = useState<ConsentPhase>("idle");
   const [answer, setAnswer] = useState<boolean>();
+  // Leaving the page drops a pending answer, so a late reply can't navigate.
+  const lifetime = useRef<AbortSignal>(undefined);
+  useEffect(() => {
+    const controller = new AbortController();
+    lifetime.current = controller.signal;
+    return () => controller.abort();
+  }, []);
 
-  const respond = async (accept: boolean) => {
+  const respond = (accept: boolean) => {
+    if (lifetime.current === undefined) return;
     setAnswer(accept);
     setPhase("submitting");
-    const { data, error } = await authClient.oauth2.consent({ accept }).then(
-      (response) => response,
-      () => ({ data: null, error: { status: 0 } })
+    void submitConsent(accept).pipe(
+      Effect.flatMap((url) =>
+        Effect.sync(() => {
+          setPhase("navigating");
+          window.location.assign(url);
+        })
+      ),
+      Effect.catch((error) =>
+        // 400: the signed request expired or was altered.
+        error.status === 400
+          ? Effect.sync(() => setPhase("expired"))
+          : reportWorkspaceBrowserFailure(consentFailureCode, error).pipe(
+              Effect.andThen(Effect.sync(() => setPhase("failed")))
+            )
+      ),
+      runWorkspaceBrowserEffectUntilAbort(
+        "account.customer-agent-consent.submit",
+        lifetime.current
+      )
     );
-    if (!data?.url) {
-      setPhase(error?.status === 400 ? "expired" : "failed");
-      return;
-    }
-    setPhase("navigating");
-    window.location.assign(data.url);
   };
 
   const busy = phase === "submitting" || phase === "navigating";

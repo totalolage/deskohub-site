@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { Effect, Layer, Option } from "effect";
 import type { CustomerAccountId } from "../../customer-account";
 import {
@@ -338,6 +339,26 @@ const userExists = async (userId: string) => {
   return result.rows.length > 0;
 };
 
+/** The provider's stored form of a token: unpadded base64url SHA-256. */
+const tokenDigest = (token: string) =>
+  createHash("sha256").update(token).digest("base64url");
+
+/** Every token value and refresh replay response persisted for an account. */
+const storedTokenMaterial = async (userId: string) => {
+  const result = await testDatabase!.pool.query(
+    `select token, null as rotation_replay_response
+       from auth.oauth_access_token where user_id = $1
+     union all
+     select token, rotation_replay_response
+       from auth.oauth_refresh_token where user_id = $1`,
+    [userId]
+  );
+  return result.rows as ReadonlyArray<{
+    readonly token: string | null;
+    readonly rotation_replay_response: string | null;
+  }>;
+};
+
 const countRows = async (table: string, userId: string) => {
   const result = await testDatabase!.pool.query(
     `select count(*)::int as count from auth.${table} where user_id = $1`,
@@ -568,6 +589,23 @@ describe.skipIf(!testDatabase)(
         (await authorizeToken(authorityOver(auth), renewed.access_token))._tag
       ).toBe("Success");
 
+      // Only token digests are persisted: refreshing stores no replayable
+      // token response, and each stored token is the SHA-256 of one issued.
+      const stored = await storedTokenMaterial(customer.accountId);
+      expect(stored.map(({ token }) => token).sort()).toEqual(
+        [
+          tokens.access_token,
+          tokens.refresh_token!,
+          renewed.access_token,
+          renewed.refresh_token!,
+        ]
+          .map(tokenDigest)
+          .sort()
+      );
+      for (const row of stored) {
+        expect(row.rotation_replay_response).toBeNull();
+      }
+
       // The code is single use, and replaying it revokes the access it
       // bought.
       const replayed = await exchangeCode(auth, {
@@ -580,6 +618,66 @@ describe.skipIf(!testDatabase)(
       expect(
         await failureReasonOf(authorityOver(auth), tokens.access_token)
       ).toBe("invalid-token");
+    });
+
+    test("ends the assistant's tokens when a rotated refresh token is reused", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const pkce = await makePkce();
+      const { consentPage, customer } = await connectToConsent(
+        auth,
+        sentLinks,
+        {
+          clientId: agent.clientId,
+          redirectUri: agent.redirectUri,
+          challenge: pkce.challenge,
+          state: crypto.randomUUID(),
+          scope: AGENT_SCOPE,
+        }
+      );
+      const callback = await answerConsent(
+        auth,
+        customer.cookie,
+        consentPage,
+        true
+      );
+      const tokens = (await (
+        await exchangeCode(auth, {
+          clientId: agent.clientId,
+          redirectUri: agent.redirectUri,
+          code: callback.searchParams.get("code")!,
+          verifier: pkce.verifier,
+        })
+      ).json()) as TokenResponse;
+      const refresh = (refreshToken: string) =>
+        requestToken(auth, {
+          grant_type: "refresh_token",
+          client_id: agent.clientId,
+          refresh_token: refreshToken,
+          resource: RESOURCE,
+        });
+      const renewed = (await (
+        await refresh(tokens.refresh_token!)
+      ).json()) as TokenResponse;
+
+      // No reuse window: the rotated token is refused at once, and the
+      // client's tokens for this customer end with it.
+      const reused = await refresh(tokens.refresh_token!);
+      expect(reused.status).toBe(400);
+      expect(((await reused.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
+      expect((await refresh(renewed.refresh_token!)).status).toBe(400);
+      expect(
+        await failureReasonOf(authorityOver(auth), renewed.access_token)
+      ).toBe("invalid-token");
+      expect(await countRows("oauth_refresh_token", customer.accountId)).toBe(
+        0
+      );
     });
 
     test("refuses a code exchanged for another resource", async () => {

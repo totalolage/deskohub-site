@@ -6,8 +6,8 @@
 
 - `ensureAvailable` and table assignment always read the providers directly. Never route them through `AdvisoryAvailabilityInventory`.
 - The expired-hold query always runs live.
-- Cache only the occupancy projection (`toOccupancyReservation`), never customer IDs or notes. Key snapshots by the normalized Prague-midnight range.
-- Every Dotypos create, update, or cancel through `WorkspaceDotyposLayer` calls `expireCacheTag` on the reservations tag. It uses `expire: 1` because `expire: 0` makes a calling Server Action re-render the page. Hold confirmation leaves occupancy unchanged and doesn't invalidate.
+- Cache only the `ReservationRecord` projection (`toReservationRecord`, `features/reservation/backend/reservation-record.ts`), never customer IDs or notes. Key snapshots by the normalized Prague-midnight range.
+- Every Dotypos create, update, or cancel through `WorkspaceDotyposLayer` calls `expireCacheTag` on the availability reservations tag and the [reservation records](#reservation-records) tag. It uses `expire: 1` because `expire: 0` makes a calling Server Action re-render the page. Hold confirmation leaves occupancy unchanged, so it expires only the reservation records tag.
 - Invalidation is best effort and never fails the write. `revalidateTag` can't run during render, so writes from render paths, or made outside the app, show up within the reservations profile lifetime.
 - Mark a failed snapshot load uncacheable with `cacheLife({ expire: 0 })` before it rejects.
 - Reference a `"use cache"` function only inside a callback, never as a value during module evaluation. The compiler turns it into a binding assigned later, so an eager reference is `undefined` and fails the build during page-data collection.
@@ -21,6 +21,16 @@ A reservation page restored from signed Pay state shows availability as it will 
 - Carry the signed restoration context separately from the public selection query. Never accept a client-authored reservation ID as the exclusion.
 - Exclude only that checkout's verified current replaceable hold, after confirming in the inventory snapshot that it's still Dotypos `NEW`. Keep every other reservation and Calendar limitation.
 - Keep `ensureAvailable` and table assignment structurally unable to receive an exclusion. Submission cancels the old hold, then runs the full availability check before creating the replacement.
+
+## Reservation records
+
+- Customer-facing reads of Dotypos reservation details go through `ReservationRecords` (`features/reservation/backend/reservation-records.ts`). `CheckoutStatusService` and `CustomerReservationHistoryService` take the records layer through `withRecords`. Their `Live` layers, which the status page and account history use, read `ReservationRecords.Live`, so a staff edit in Dotypos shows on the next load; keep browser pages live. Only the MCP read tools (`CustomerAgentToolsLive`) pass `SharedReservationRecordsLive`, because agent reads are the quota risk. Booking checks, fulfillment, cleanup, and writes read Dotypos directly.
+- `SharedReservationRecordsLive` serves `"use cache: remote"` snapshots keyed by reservation ID, Dotypos customer ID, or one sorted batch of at most 50 IDs, with the `reservationRecords` profile and `reservationRecordTags.records`. Its customer list also reads, by ID, the customer's recorded reservations a list snapshot doesn't hold yet; the live list needs no such repair.
+- Entries hold only the `ReservationRecord` projection, but a customer-keyed entry still describes that customer's bookings. Read one only after authorizing the reservation or account. Never cache an authorization result, contact details, names, or an assembled history.
+- Statuses come from Workspace rows. The status kind never reads Dotypos, and the history shows a row whose `reservationState` is `confirmed` as confirmed while a snapshot still says `NEW`.
+- Invalidation is best effort, as for availability. A write made during render or outside the app shows to agents only after a successful refresh. Refreshes are demand-driven: the first read after the 60-second `revalidate` still gets the old snapshot while it starts one. A cold entry still spends Dotypos requests.
+- The MCP read tools skip the uncached customer reads: `get_reservation_status` passes `includeSupportContact: false` and `list_my_reservations` passes `includePartyNames: false`. The browser pages keep both.
+- Build each service with one records layer per Layer build. Live and shared variants of the same service share its `Default` layer, so mixing them in one build can memoize whichever is built first.
 
 ## Page preload
 

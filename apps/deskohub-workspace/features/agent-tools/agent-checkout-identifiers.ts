@@ -2,13 +2,16 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import type { CustomerAgentGrant } from "@/features/account";
-import { payStateDefaultTtlMilliseconds } from "@/features/checkout/backend/checkout";
 import {
   type CheckoutAttemptId,
   type CheckoutSessionId,
-  checkoutAttemptIdSchema,
   checkoutSessionIdSchema,
 } from "@/features/checkout/checkout-identifiers";
+import {
+  type AgentSelectionKey,
+  agentSelectionKeySchema,
+  deriveAgentCheckoutAttemptId,
+} from "@/features/reservation/backend/booking-agent";
 import type { SelectedReservation } from "./quote-selection";
 
 /**
@@ -17,40 +20,35 @@ import type { SelectedReservation } from "./quote-selection";
  *
  * The session is one per account and agent client: a new selection
  * supersedes the client's previous hold, so it keeps at most one open. The
- * attempt is one per selection within one hold window, the Pay-state
- * lifetime, so an identical repeat reuses the live hold; a repeat in a later
- * window becomes a new attempt that supersedes it, so an expired or paid
- * attempt never blocks booking the same selection again.
+ * selection key names the request, one per session and selection, with no
+ * time component: the booking operation finds the request's latest
+ * reservation by it and continues from there, so an identical repeat reuses a
+ * live hold at any time and a repeat after the reservation ended starts a new
+ * one. The attempt is the request's first; the booking operation moves to a
+ * later attempt once the request has reservations.
  */
 export const deriveAgentCheckoutIdentifiers = ({
   grant,
   reservation,
-  now,
 }: {
   readonly grant: CustomerAgentGrant;
   readonly reservation: SelectedReservation;
-  readonly now: Temporal.Instant;
 }): {
   readonly checkoutSessionId: CheckoutSessionId;
   readonly checkoutAttemptId: CheckoutAttemptId;
+  readonly selectionKey: AgentSelectionKey;
 } => {
   const checkoutSessionId = checkoutSessionIdSchema.make(
     digest("session", grant.accountId, grant.clientId)
   );
-  const holdWindow = Math.floor(
-    now.epochMilliseconds / payStateDefaultTtlMilliseconds
+  const selectionKey = agentSelectionKeySchema.make(
+    digest("selection", checkoutSessionId, JSON.stringify(reservation))
   );
 
   return {
     checkoutSessionId,
-    checkoutAttemptId: checkoutAttemptIdSchema.make(
-      digest(
-        "attempt",
-        checkoutSessionId,
-        JSON.stringify(reservation),
-        String(holdWindow)
-      )
-    ),
+    checkoutAttemptId: deriveAgentCheckoutAttemptId(selectionKey),
+    selectionKey,
   };
 };
 

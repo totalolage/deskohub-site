@@ -164,6 +164,28 @@ describe("CustomerAgentConsent", () => {
     }
   );
 
+  test("doesn't return to the assistant after the customer left the page", async () => {
+    let answer: (response: ConsentResponse) => void = () => undefined;
+    consent.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        })
+    );
+    const locale = "en-US";
+    const view = renderConsent(locale);
+
+    await act(async () => {
+      fireEvent.click(buttons(view, locale).allow);
+    });
+    view.unmount();
+    await act(async () => {
+      answer({ data: { redirect: true, url: redirectUrl }, error: null });
+    });
+
+    expect(navigations).toEqual([]);
+  });
+
   test.each(locales)(
     "tells the customer to start again when the request expired in %s",
     async (locale) => {

@@ -6,6 +6,7 @@ import { OfficeReservationFeatureFlagService } from "@/features/office/backend/o
 import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
 import { SharedAvailabilityInventoryLive } from "@/features/reservation/backend/availability-inventory-cache.server";
 import { payStatePreparationServices } from "@/features/reservation/backend/pay-state-preparation-services";
+import { SharedReservationRecordsLive } from "@/features/reservation/backend/reservation-records-cache.server";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { AgentTool } from "./agent-tool";
@@ -20,8 +21,9 @@ import { startReservationTool } from "./start-reservation.tool";
 /**
  * The services customer tools read through. Public tools read availability
  * and office capacity only from the shared advisory snapshots, never from
- * Dotypos directly; signed-in tools book and read the customer's own
- * reservations live.
+ * Dotypos directly. Signed-in tools book live and read the customer's own
+ * reservations from the shared reservation records, which protects the
+ * Dotypos quota bookings share; browser pages read those live.
  */
 export const CustomerAgentToolsLive = Layer.mergeAll(
   WorkspaceAvailabilityService.Live,
@@ -32,8 +34,8 @@ export const CustomerAgentToolsLive = Layer.mergeAll(
   OfficeReservationFeatureFlagService.Live,
   payStatePreparationServices,
   WorkspaceReservationRepository.Live,
-  CheckoutStatusService.Live,
-  CustomerReservationHistoryService.Live
+  CheckoutStatusService.withRecords(SharedReservationRecordsLive),
+  CustomerReservationHistoryService.withRecords(SharedReservationRecordsLive)
 );
 
 /** Every tool customers' agents can call, in the order agents see them. */

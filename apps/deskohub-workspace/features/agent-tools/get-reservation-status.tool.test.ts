@@ -51,6 +51,7 @@ const getStatus = mock(
     orderId,
   }: {
     readonly orderId: WorkspaceReservationId;
+    readonly includeSupportContact?: boolean;
   }): Effect.Effect<CheckoutStatusViewModel> =>
     Effect.succeed({
       kind: "cowork",
@@ -125,6 +126,10 @@ describe("get_reservation_status", () => {
     expect(serialized).not.toContain(testEmailAddress("someone"));
     expect(serialized).not.toContain("Desk 1");
     expect(serialized).not.toContain("x-vercel-protection-bypass");
+    // The tool never returns contact details, so it skips their uncached read.
+    expect(getStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ includeSupportContact: false })
+    );
   });
 
   test("reports an order booked for the customer's linked profile", async () => {
