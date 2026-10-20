@@ -121,15 +121,20 @@ async function CustomersTable({
   readonly result: Promise<CustomersData["result"]>;
 }) {
   const [resolvedInput, resolvedResult] = await Promise.all([input, result]);
+  // Membership is unknown, so neither rows nor "no matches" would be true.
+  if (resolvedResult.dateFilterUnavailable) {
+    return (
+      <section className="mt-7">
+        <AdministrationAlert status="warning">
+          {m.administrationCustomerListDateFilterUnavailable({}, { locale })}
+        </AdministrationAlert>
+      </section>
+    );
+  }
   const params = getAdministrationCustomerListParams(resolvedInput);
 
   return (
     <section className="mt-7">
-      {resolvedResult.dateFilterUnavailable && (
-        <AdministrationAlert className="mb-4" status="warning">
-          {m.administrationCustomerListDateFilterUnavailable({}, { locale })}
-        </AdministrationAlert>
-      )}
       <AdministrationCustomerTable
         customers={resolvedResult.items}
         filtered={Boolean(

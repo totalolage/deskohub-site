@@ -157,9 +157,11 @@ describe("CustomersAdministrationPage", () => {
         "Data rezervací jsou dočasně nedostupná, proto zákazníky nelze filtrovat podle data rezervace. Zkuste to prosím znovu za chvíli."
       )
     ).toBeDefined();
+    // Membership is unknown, so the list claims neither rows nor no matches.
     expect(
-      view.getByText("Těmto filtrům neodpovídá žádný zákazník.")
-    ).toBeDefined();
+      view.queryByText("Těmto filtrům neodpovídá žádný zákazník.")
+    ).toBeNull();
+    expect(view.queryByText("Zatím žádný zákazník nemá rezervaci.")).toBeNull();
   });
 
   test("shows no warning for an unfiltered list", async () => {

@@ -43,6 +43,7 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { unstable_rethrow } from "next/navigation";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { qualifiedColumn } from "@/db/qualified-column";
 import {
   customerMarketingConsents,
   discountApplications,
@@ -954,9 +955,9 @@ const successfulReservationCount =
  * list filters and displays this one definition, so both always agree.
  */
 const customerMarketingConsentState = sql<AdministrationCustomerMarketingConsentState>`coalesce((
-  select case when ${customerMarketingConsents.withdrawnAt} is null then 'granted' else 'withdrawn' end
+  select case when ${qualifiedColumn(customerMarketingConsents.withdrawnAt)} is null then 'granted' else 'withdrawn' end
   from ${customerMarketingConsents}
-  where ${customerMarketingConsents.dotyposCustomerId} = ${workspaceReservations.dotyposCustomerId}
+  where ${qualifiedColumn(customerMarketingConsents.dotyposCustomerId)} = ${qualifiedColumn(workspaceReservations.dotyposCustomerId)}
 ), 'never')`;
 
 /**
