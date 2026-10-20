@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { $ } from "bun";
 import { Schema } from "effect";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import { config } from "@/vercel";
+import vercelConfig from "@/vercel.json";
 
 const vercelApiOrigin = "https://api.vercel.com";
 
@@ -314,7 +314,7 @@ const missingCronDefinition = (
       }[]
     | undefined
 ) =>
-  config.crons.find(
+  vercelConfig.crons.find(
     (required) =>
       !definitions?.some(
         (definition) =>

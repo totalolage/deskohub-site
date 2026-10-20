@@ -35,7 +35,7 @@ Paths are under `apps/deskohub-workspace/`.
 | Paid fulfillment | `features/checkout/backend/fulfillment/`, queue `app/api/queues/workspace/paid-fulfillment`, daily cron `app/api/cron/workspace/paid-fulfillment` |
 | Email delivery webhook | `app/api/webhooks/resend/route.ts`, `features/checkout/backend/fulfillment/resend-webhook.service.ts` |
 
-Cron schedules are in `vercel.ts`. Queue payloads are versionless; evolve their strict decoders directly and never add `schemaVersion`.
+Cron schedules are in `vercel.json`. Queue payloads are versionless; evolve their strict decoders directly and never add `schemaVersion`.
 
 ## Data ownership and PII
 

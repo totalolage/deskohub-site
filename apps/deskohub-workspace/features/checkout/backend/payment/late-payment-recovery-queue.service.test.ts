@@ -2,7 +2,6 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
-import { config } from "@/vercel";
 import {
   latePaymentRecoveryQueueTopic,
   makeLatePaymentRecoveryQueueService,
@@ -24,7 +23,10 @@ describe("late-payment recovery queue", () => {
     );
   });
 
-  test("wires the recovery topic to its queue route", () => {
+  test("wires the recovery topic to its queue route", async () => {
+    const config = await Bun.file(
+      new URL("../../../../vercel.json", import.meta.url)
+    ).json();
     expect(
       config.functions[
         "app/api/queues/workspace/late-payment-recovery/route.ts"

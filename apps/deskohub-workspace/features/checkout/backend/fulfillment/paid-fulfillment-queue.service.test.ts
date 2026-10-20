@@ -5,7 +5,6 @@ import { DuplicateMessageError } from "@vercel/queue";
 import { Effect, Layer } from "effect";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { config } from "@/vercel";
 import { WorkspacePaidFulfillmentService } from "./paid-fulfillment.service";
 import {
   makePaidFulfillmentQueueService,
@@ -160,7 +159,10 @@ describe("paid fulfillment queue", () => {
     expect(result).toEqual({ attempted: 2, failed: 1 });
   });
 
-  test("wires the fulfillment topic to its queue route", () => {
+  test("wires the fulfillment topic to its queue route", async () => {
+    const config = await Bun.file(
+      new URL("../../../../vercel.json", import.meta.url)
+    ).json();
     expect(
       config.functions["app/api/queues/workspace/paid-fulfillment/route.ts"]
         .experimentalTriggers
