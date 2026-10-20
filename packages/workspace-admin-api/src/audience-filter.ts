@@ -4,6 +4,7 @@ import {
   type AudienceAttributeKind,
   type AudienceConditionIn,
   booleanAttribute,
+  campaignSourceParam,
   choiceParam,
   countAttribute,
   dateAttribute,
@@ -84,6 +85,26 @@ export const audienceAttributeCatalogue = defineAudienceAttributeCatalogue({
     },
   }),
   /**
+   * Start of the customer's earliest booked reservation that has begun, of
+   * the product when `params.product` names one.
+   */
+  firstVisit: dateAttribute("firstVisit", {
+    label: "First visit",
+    section: "Reservations",
+    reservationProduct: true,
+    editor: { noValue: "never visited" },
+    summary: {
+      withValue: "have visited",
+      inPeriod: "first visited",
+      notInPeriod: ", with the first visit not",
+      withoutValue: "have never visited",
+    },
+    defaults: {
+      operator: "in",
+      value: { _tag: "Last", count: 30, unit: "day" },
+    },
+  }),
+  /**
    * Start of the customer's latest booked reservation that has begun, of the
    * product when `params.product` names one.
    */
@@ -105,8 +126,11 @@ export const audienceAttributeCatalogue = defineAudienceAttributeCatalogue({
   }),
   /**
    * Campaign emails Resend accepted for the customer (sent, delivered,
-   * complained, or unconfirmed), dated by dispatch. Transactional emails
-   * have no per-customer record and never count.
+   * complained, or unconfirmed), dated by dispatch within `params.period`
+   * (`Past` is any time so far). They come from any campaign of
+   * `params.purpose`, or only from the campaign `params.campaign` names, with
+   * the purpose `any`. A named campaign deleted later counts no emails.
+   * Transactional emails have no per-customer record and never count.
    */
   campaignEmailCount: countAttribute("campaignEmailCount", {
     label: "Campaign emails received",
@@ -125,7 +149,18 @@ export const audienceAttributeCatalogue = defineAudienceAttributeCatalogue({
         }
       ),
       period: periodParam,
+      campaign: campaignSourceParam,
     },
+    // One campaign has one purpose, so a purpose beside it could only
+    // contradict it.
+    paramsIssue: ({ purpose, campaign }) =>
+      campaign && purpose !== "any"
+        ? {
+            path: ["purpose"],
+            issue:
+              "Emails of one campaign count whatever its purpose. Use “any”.",
+          }
+        : undefined,
     editor: {
       lead: [{ param: "purpose" }, { text: "campaign emails received" }],
       period: "Emails received",

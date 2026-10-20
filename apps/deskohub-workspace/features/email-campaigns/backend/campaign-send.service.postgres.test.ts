@@ -31,7 +31,12 @@ import {
 import { CampaignSendStatusService } from "./campaign-send-status.service";
 import {
   campaignContentFixture,
+  deleteAutomatedCampaigns,
   everyoneFilter,
+  seedAutomatedCampaign,
+  seedAutomatedSend,
+  seedAutomationVersion,
+  seedCampaignSend,
 } from "./email-campaigns.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -74,9 +79,11 @@ describe.skipIf(!testDatabase)(
   () => {
     if (!testDatabase) return;
     const campaignIds: CampaignId[] = [];
+    const automatedCampaignIds: CampaignId[] = [];
     const audienceIds: string[] = [];
 
     afterAll(async () => {
+      await deleteAutomatedCampaigns(testDatabase.db, automatedCampaignIds);
       await testDatabase.pool.query(
         "delete from email_campaign_sends where campaign_id = any($1)",
         [campaignIds]
@@ -504,6 +511,81 @@ describe.skipIf(!testDatabase)(
         ["pending", 3],
         ["pending", 3],
         ["pending", 3],
+      ]);
+    });
+
+    const sendAttempts = async (campaignId: CampaignId) =>
+      (
+        await testDatabase.pool.query(
+          "select s.automation_version_id is null as once, s.delivery_attempt, r.status from email_campaign_sends s join email_campaign_recipients r on r.send_id = s.id where s.campaign_id = $1 order by once desc",
+          [campaignId]
+        )
+      ).rows;
+
+    test("retries only a one-off campaign's own send, never an automated send beside it", async () => {
+      const { campaignId, sendId } = await seedCampaignSend(testDatabase.db, {
+        purpose: "marketing",
+        status: "failed",
+        recipients: [
+          { dotyposCustomerId: customerId("retry-once"), status: "failed" },
+        ],
+      });
+      automatedCampaignIds.push(campaignId);
+      const versionId = await seedAutomationVersion(testDatabase.db, {
+        campaignId,
+        purpose: "marketing",
+      });
+      await seedAutomatedSend(testDatabase.db, {
+        campaignId,
+        versionId,
+        purpose: "marketing",
+        recipients: [
+          {
+            dotyposCustomerId: customerId("retry-automated"),
+            status: "failed",
+          },
+        ],
+      });
+
+      const retried = await retry(campaignId);
+
+      expect(Exit.isSuccess(retried) && retried.value).toEqual({
+        sendId,
+        retriedCount: 1,
+      });
+      expect(enqueued).toEqual([{ sendId, deliveryAttempt: 2 }]);
+      expect(await sendAttempts(campaignId)).toEqual([
+        { once: true, delivery_attempt: 2, status: "pending" },
+        { once: false, delivery_attempt: 1, status: "failed" },
+      ]);
+    });
+
+    test("refuses to retry an automated campaign's sends", async () => {
+      const campaignId = await seedAutomatedCampaign(testDatabase.db, {
+        purpose: "marketing",
+      });
+      automatedCampaignIds.push(campaignId);
+      const versionId = await seedAutomationVersion(testDatabase.db, {
+        campaignId,
+        purpose: "marketing",
+      });
+      await seedAutomatedSend(testDatabase.db, {
+        campaignId,
+        versionId,
+        purpose: "marketing",
+        recipients: [
+          { dotyposCustomerId: customerId("refused-retry"), status: "failed" },
+        ],
+      });
+
+      expect(failure(await retry(campaignId))).toMatchObject({
+        _tag: "CampaignDeliveryMismatch",
+        campaignId,
+        delivery: "automated",
+      });
+      expect(enqueued).toEqual([]);
+      expect(await sendAttempts(campaignId)).toEqual([
+        { once: false, delivery_attempt: 1, status: "failed" },
       ]);
     });
 

@@ -330,6 +330,7 @@ export const loadFixtureReservation = (
     .subtract({ minutes: 2 })
     .toString();
   return {
+    author: null,
     reservation,
     operatorNotice: null,
     canCancel: true,

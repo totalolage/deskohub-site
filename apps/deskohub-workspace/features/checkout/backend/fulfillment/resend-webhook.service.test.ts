@@ -95,6 +95,23 @@ const internalFailurePayload = {
   },
 };
 
+const authorConfirmationBouncedPayload = {
+  type: "email.bounced",
+  created_at: "2026-01-01T12:05:00.000Z",
+  data: {
+    email_id: "resend-email-id",
+    tags: [
+      { name: "source", value: "workspace-paid-fulfillment" },
+      {
+        name: "category",
+        value: "workspace-reservation-author-confirmation",
+      },
+      { name: "deploymentEnvironment", value: "development" },
+      { name: "workspaceReservationId", value: "reservation-id" },
+    ],
+  },
+};
+
 const campaignComplaintPayload = {
   type: "email.complained",
   created_at: "2026-01-01T12:05:00.000Z",
@@ -544,6 +561,27 @@ describe("ResendWebhookService", () => {
     expect(markFulfilled).toHaveBeenCalledWith(
       expect.objectContaining({ customerEmailDeliveryId })
     );
+  });
+
+  test("ignores author confirmation webhooks, which never become the active delivery", async () => {
+    verifiedPayload = authorConfirmationBouncedPayload;
+    const reservations = {
+      findByActiveCustomerEmailDeliveryId: mock(() => Effect.succeed(null)),
+      markCustomerEmailDeliveryFulfilled: mock(() =>
+        Effect.die("should not update delivery")
+      ),
+      markCustomerEmailDeliveryFailed: mock(() =>
+        Effect.die("should not update delivery")
+      ),
+    };
+
+    const result = await processWebhook({ reservations });
+
+    expect(result).toEqual({
+      status: "ignored",
+      reason: "unknown_email_delivery",
+    });
+    expect(reservations.markCustomerEmailDeliveryFailed).not.toHaveBeenCalled();
   });
 
   test("ignores webhooks for an unknown email delivery outside customer access", async () => {

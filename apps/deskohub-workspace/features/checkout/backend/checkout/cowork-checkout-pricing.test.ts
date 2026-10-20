@@ -96,7 +96,7 @@ const bookedAt = Temporal.Instant.from("2099-06-01T10:00:00Z");
 describe("cowork checkout pricing", () => {
   test("quotes the advertised catalog price with anonymous discounts", async () => {
     const discoverAdvertisedDiscounts = mock(() =>
-      Effect.succeed(advertisementQuote)
+      Effect.succeed({ quote: advertisementQuote, complete: true })
     );
 
     const result = await runWithDiscounts(
@@ -125,6 +125,7 @@ describe("cowork checkout pricing", () => {
     expect(result.kind).toBe("cowork");
     expect(result.reservation).toBe(advertisedReservation);
     expect(result.quote).toEqual(expectedQuote);
+    expect(result.discountsComplete).toBeTrue();
     expect(result.quote.payment.expectedPrice).toEqual(money(22_500));
   });
 
@@ -169,7 +170,8 @@ describe("cowork checkout pricing", () => {
         });
       }),
       DiscountServiceMock({
-        discoverAdvertisedDiscounts: () => Effect.succeed(baseQuote),
+        discoverAdvertisedDiscounts: () =>
+          Effect.succeed({ quote: baseQuote, complete: true }),
         previewDiscountCode,
       })
     );
@@ -325,7 +327,8 @@ describe("cowork checkout pricing", () => {
           });
         }),
         DiscountServiceMock({
-          discoverAdvertisedDiscounts: () => Effect.succeed(advertisementQuote),
+          discoverAdvertisedDiscounts: () =>
+            Effect.succeed({ quote: advertisementQuote, complete: true }),
           previewDiscountCode: () =>
             Effect.fail(
               new DiscountProviderError({
@@ -563,7 +566,7 @@ describe("cowork checkout pricing", () => {
       discountedSubtotal: money(41_000),
     });
     const discoverAdvertisedDiscounts = mock(() =>
-      Effect.succeed(reservedDeskQuote)
+      Effect.succeed({ quote: reservedDeskQuote, complete: true })
     );
     const withMonitor = getCoworkAdvertisedPriceReservation({
       entryTier: "reserved-desk",

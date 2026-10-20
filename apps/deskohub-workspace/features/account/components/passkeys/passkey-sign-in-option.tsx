@@ -1,7 +1,7 @@
 "use client";
 
 import { KeyRound, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { signInWithPasskey } from "@/features/account/passkey-client";
 import { type Locale, m } from "@/features/i18n";
 import { supportsPasskeyAutofill } from "@/shared/browser/webauthn-capabilities";
@@ -26,26 +26,42 @@ export function PasskeySignInOption({
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
   // An autofill request waits until the customer picks a passkey. The
-  // button's ceremony replaces it, so it is armed again once the button
-  // attempt settles. Its failures stay quiet: the customer never asked for
-  // it, and hosts that can't run passkey ceremonies reject it.
+  // button's attempt cancels it, and it starts again once that attempt
+  // settles. Its failures stay quiet: the customer never asked for it, and
+  // hosts that can't run passkey ceremonies reject it.
   useEffect(() => {
     if (pending) return;
-    let active = true;
+    const autofill = new AbortController();
     void supportsPasskeyAutofill().then((supported) => {
-      if (supported && active) {
-        void signInWithPasskey({ locale, returnTo, autoFill: true });
-      }
+      if (!supported) return;
+      void signInWithPasskey({
+        locale,
+        returnTo,
+        autoFill: true,
+        signal: autofill.signal,
+      });
     });
-    return () => {
-      active = false;
-    };
+    return () => autofill.abort();
   }, [locale, returnTo, pending]);
 
+  // A button attempt continues to the destination it started for. Another
+  // destination, or unmounting the option, cancels it.
+  const destination = useRef<{
+    readonly locale: Locale;
+    readonly returnTo?: string;
+    readonly signal: AbortSignal;
+  }>(undefined);
+  useEffect(() => {
+    const lifetime = new AbortController();
+    destination.current = { locale, returnTo, signal: lifetime.signal };
+    return () => lifetime.abort();
+  }, [locale, returnTo]);
+
   const signIn = async () => {
+    if (destination.current === undefined) return;
     setFailed(false);
     setPending(true);
-    const result = await signInWithPasskey({ locale, returnTo });
+    const result = await signInWithPasskey(destination.current);
     if (result === "signed-in") return;
     setPending(false);
     setFailed(result === "failed");

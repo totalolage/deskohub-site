@@ -69,12 +69,17 @@ type NexiHostedPaymentSession = {
   readonly session: string;
 };
 
+// How the driver answers the 3-D Secure stub. A failed authentication ends on
+// Nexi's "Payment error" page, whose Back to the shop returns to the result URL.
+export type NexiChallengeOutcome = "authenticated" | "failed";
+
 type ObservedNexiHostedPage = {
   readonly observation: NexiHostedPageObservation;
   readonly state: NexiHostedPageState;
 };
 
 export const completeNexiHostedPayment = ({
+  challengeOutcome = "authenticated",
   data,
   hostedPaymentPage,
   onPaymentAuthorizationRequested,
@@ -82,6 +87,7 @@ export const completeNexiHostedPayment = ({
   session,
   timeouts,
 }: {
+  challengeOutcome?: NexiChallengeOutcome;
   data: CheckoutData;
   hostedPaymentPage?: HostedPaymentPage;
   // Called just before the Pay activation, which is the only step that asks
@@ -140,13 +146,25 @@ export const completeNexiHostedPayment = ({
         : {}),
       transitionTimeoutMs: timeouts.providerTransition,
     });
-    yield* activateNexiControl(page, "challenge", {
-      activation: "pointer",
-      findTimeoutMs: timeouts.providerTransition,
-      skipWhenReturned: true,
-      transitionTimeoutMs: timeouts.providerTransition,
-    });
+    if (challengeOutcome === "authenticated") {
+      yield* activateNexiControl(page, "challenge", {
+        activation: "pointer",
+        findTimeoutMs: timeouts.providerTransition,
+        skipWhenReturned: true,
+        transitionTimeoutMs: timeouts.providerTransition,
+      });
+    } else {
+      // A frictionless authorization would skip the stub and pay, so the
+      // failure choice is required.
+      yield* activateNexiControl(page, "challenge_failure", {
+        activation: "pointer",
+        acceptsProviderErrorPage: true,
+        findTimeoutMs: timeouts.providerTransition,
+        transitionTimeoutMs: timeouts.providerTransition,
+      });
+    }
     yield* activateNexiControl(page, "return", {
+      acceptsProviderErrorPage: challengeOutcome === "failed",
       findTimeoutMs: timeouts.providerTransition,
       skipWhenReturned: true,
       transitionTimeoutMs: timeouts.providerTransition,
@@ -195,11 +213,15 @@ const observeNexiHostedPage = (
 const pollNexiHostedPage = <A>(
   page: NexiHostedPaymentSession,
   {
+    acceptsProviderErrorPage = false,
     label,
     select,
     step,
     timeoutMs,
   }: {
+    // The error page is the expected result of a failed authentication, not
+    // a sandbox rejection, once the driver has chosen that failure.
+    readonly acceptsProviderErrorPage?: boolean;
     readonly label: string;
     readonly select: (observed: ObservedNexiHostedPage) => A | undefined;
     readonly step: NexiHostedPaymentStep;
@@ -211,7 +233,13 @@ const pollNexiHostedPage = <A>(
     observeNexiHostedPage(page).pipe(
       Effect.flatMap((observed) => {
         latest = observed;
-        if (isTerminalNexiHostedPageState(observed.state))
+        if (
+          isTerminalNexiHostedPageState(observed.state) &&
+          !(
+            acceptsProviderErrorPage &&
+            observed.state.kind === "provider-error-page"
+          )
+        )
           return Effect.fail(
             nexiHostedPaymentError(step, label, observed, "provider failure")
           );
@@ -419,6 +447,7 @@ const cardFieldHasValue = (page: NexiHostedPaymentSession, selector: string) =>
   );
 
 type ControlActivationOptions = {
+  readonly acceptsProviderErrorPage?: boolean;
   readonly activation?: "keyboard" | "pointer";
   // Skip the control when Nexi never renders it within this window. Once
   // rendered, the control must become enabled and complete its transition.
@@ -442,6 +471,7 @@ const activateNexiControl = (
     const found = yield* pollNexiHostedPage<
       NexiControlTarget | "absent" | "returned"
     >(page, {
+      acceptsProviderErrorPage: options.acceptsProviderErrorPage ?? false,
       label,
       select: ({ observation, state }) => {
         if (state.kind === "returned")
@@ -501,6 +531,7 @@ const activateNexiControl = (
     }
 
     yield* pollNexiHostedPage(page, {
+      acceptsProviderErrorPage: options.acceptsProviderErrorPage ?? false,
       label: `${label} completion`,
       select: ({ observation, state }) => {
         if (state.kind === "returned") return true;

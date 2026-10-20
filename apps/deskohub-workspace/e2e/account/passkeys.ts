@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { type Locale, m } from "@/features/i18n";
 import { escapeRegExp } from "@/shared/utils/escape-regexp";
 import {
+  describeBrowserFailure,
   type WorkspaceE2EAccountPasskeyDiagnosticCode,
   type WorkspaceE2EError,
   workspaceE2EError,
@@ -12,6 +13,7 @@ import { waitForReactClickHandler } from "../react-handlers";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   addVirtualAuthenticator,
+  ModalCeremonyNotAlone,
   type PageVirtualAuthenticator,
   type VirtualAuthenticatorCredential,
 } from "../virtual-authenticator";
@@ -121,8 +123,9 @@ export const makeWorkspaceE2EAccountPasskeys = ({
     body: (page: Page) => Promise<A>
   ): Effect.Effect<A, WorkspaceE2EError> =>
     Effect.tryPromise({
-      // Playwright causes can carry the preview URL, so only fixed text and
-      // the closed diagnostic code leave this boundary.
+      // Playwright causes can carry the preview URL, so only fixed text, the
+      // closed diagnostic code, and a redacted first line leave this
+      // boundary.
       catch: (cause) =>
         cause instanceof errors.TimeoutError
           ? workspaceE2ETimeoutError(`${description} timed out`, {
@@ -130,12 +133,22 @@ export const makeWorkspaceE2EAccountPasskeys = ({
               operation: description,
             })
           : workspaceE2EError(
-              cause instanceof PasskeyJourneyFailure
-                ? `${description} failed: ${cause.message}`
-                : `${description} failed`,
+              `${description} failed: ${
+                cause instanceof PasskeyJourneyFailure
+                  ? cause.message
+                  : describeBrowserFailure(cause)
+              }`,
               { diagnosticCode, operation: description }
             ),
-      try: () => body(getPage()),
+      try: () => {
+        let page: Page;
+        try {
+          page = getPage();
+        } catch {
+          throw new PasskeyJourneyFailure("the lane has no single page");
+        }
+        return body(page);
+      },
     });
 
   const clickHydrated = async (
@@ -234,16 +247,28 @@ export const makeWorkspaceE2EAccountPasskeys = ({
       "account_passkey_sign_in_failed",
       "sign in with the passkey button",
       async (page) => {
-        // The ceremony would also answer an autofill request the form arms
-        // meanwhile, and the customer would be signed in without the button.
-        await requireAuthenticator().waitForConditionalRequest(uiTransition);
-        await answerCeremony(async () => {
-          await clickHydrated(page, signInPasskeySelector, uiTransition);
-          await page.waitForURL(
-            (url) => url.origin === origin && url.pathname === accountPathname,
-            { timeout: navigationTimeout }
-          );
-        });
+        // Presence answers every autofill request the form starts during the
+        // ceremony and signs the customer in without the button, but leaves
+        // one already pending. So the step waits for the form's request, and
+        // the click has to cancel it. The form starts another after a failed
+        // button ceremony, so the authenticator also checks that only the
+        // button's request signed in.
+        const installed = requireAuthenticator();
+        await installed.waitForConditionalRequest(uiTransition);
+        await installed
+          .answerModalCeremony(async () => {
+            await clickHydrated(page, signInPasskeySelector, uiTransition);
+            await page.waitForURL(
+              (url) =>
+                url.origin === origin && url.pathname === accountPathname,
+              { timeout: navigationTimeout }
+            );
+          })
+          .catch((cause: unknown) => {
+            throw cause instanceof ModalCeremonyNotAlone
+              ? new PasskeyJourneyFailure(cause.message)
+              : cause;
+          });
       }
     ),
     renameOnly: (name) =>

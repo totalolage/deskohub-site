@@ -9,6 +9,8 @@ export type {
   DotyposCustomerDiscountGroup,
   DotyposCustomerLookupData,
   FindCustomerOptions,
+  ReservationListOptions,
+  ReservationPage,
 } from "./backend/service";
 export {
   CustomerVersionSelection,
@@ -80,4 +82,9 @@ export {
   DotyposTableIdSchema,
   DotyposTableSchema,
 } from "./types";
+export { getCustomerDisplayName } from "./utils/customer-name";
+export {
+  dotyposIdFilterBatchSize,
+  readInIdFilterBatches,
+} from "./utils/id-filter-batches";
 export { normalizePhoneNumber } from "./utils/phone-formatting";

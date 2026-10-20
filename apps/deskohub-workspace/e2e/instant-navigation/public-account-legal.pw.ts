@@ -2,9 +2,9 @@ import { expect, test } from "@playwright/test";
 import { m } from "@/features/i18n";
 import { captureAccountReview } from "../account/review-screenshots";
 import { dismissLegalCookieConsent } from "../legal-cookie-consent";
+import { enablePreviewAccess } from "../preview-access";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
-  enablePreviewAccess,
   requireBaseUrl,
   reviewDestination,
   reviewScreenshots,

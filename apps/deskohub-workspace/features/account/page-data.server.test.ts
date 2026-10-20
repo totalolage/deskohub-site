@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { Context, Effect, Layer, Predicate } from "effect";
+import type { ReservationHistoryAccount } from "@/features/account/backend/customer-reservation-history.service";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
 
@@ -58,6 +59,7 @@ let resolverCalls = 0;
 let events: string[] = [];
 let profileLoadCalls = 0;
 let historyLoadCalls = 0;
+let historyLoadAccounts: ReservationHistoryAccount[] = [];
 let avatarLookupCalls = 0;
 
 const Resolver = Context.Service<
@@ -135,12 +137,15 @@ let historyEffect: Effect.Effect<
 
 const History = Context.Service<
   History,
-  { readonly load: () => typeof historyEffect }
+  {
+    readonly load: (account: ReservationHistoryAccount) => typeof historyEffect;
+  }
 >()("@test/AccountReservationHistory");
 
 const HistoryLayer = Layer.succeed(History, {
-  load: () => {
+  load: (account) => {
     historyLoadCalls += 1;
+    historyLoadAccounts.push(account);
     return historyEffect;
   },
 });
@@ -394,6 +399,7 @@ describe("loadCustomerAccountPage", () => {
     resolverCalls = 0;
     profileLoadCalls = 0;
     historyLoadCalls = 0;
+    historyLoadAccounts = [];
     avatarLookupCalls = 0;
     runtimeRuns.length = 0;
     avatarLookupEffect = Effect.succeed(null);
@@ -468,6 +474,47 @@ describe("loadCustomerAccountPage", () => {
       referralCode: "RFL12345",
     });
     expect(availableReferralCodeCalls).toEqual([{ code: "RFL12345" }]);
+  });
+
+  test("shows the reservations an account authored before completing its profile", async () => {
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "link-required",
+      linkReason: "not-found",
+    });
+    const authored = {
+      id: "workspace-reservation-1",
+      party: { kind: "booked-for", customerName: "Karla Ukázková" },
+    };
+    historyEffect = Effect.succeed({
+      kind: "available",
+      groups: { current: [authored], past: [], unavailable: [] },
+    });
+
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "completion-required",
+      referralsEnabled: true,
+      email: customerEmail,
+      history: {
+        kind: "available",
+        groups: { current: [authored], past: [], unavailable: [] },
+      },
+    });
+    expect(historyLoadAccounts).toEqual([{ accountId }]);
+  });
+
+  test("keeps an unreadable authored history as a notice on the completion state", async () => {
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "link-required",
+      linkReason: "not-found",
+    });
+    historyEffect = Effect.fail(new Error("dotypos down"));
+
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "completion-required",
+      history: { kind: "unavailable", reason: "provider-unavailable" },
+    });
   });
 
   test("silently leaves the completion referral empty when the remembered code is not usable", async () => {
@@ -735,7 +782,7 @@ describe("loadCustomerAccountPage", () => {
     expect(settledReferralCalls).toEqual([]);
   });
 
-  test("renders the support state for ambiguous, unusable, claimed, and unverified outcomes", async () => {
+  test("renders the support state without a Reservations section for ambiguous, unusable, claimed, and unverified outcomes that authored nothing", async () => {
     resolveEffect = resolverOutcome({
       kind: "failure",
       reason: "link-required",
@@ -774,6 +821,84 @@ describe("loadCustomerAccountPage", () => {
       kind: "support-required",
       email: customerEmail,
     });
+  });
+
+  test("shows the reservations an account authored while support resolves its profile", async () => {
+    const authored = {
+      id: "workspace-reservation-1",
+      party: { kind: "booked-for", customerName: "Karla Ukázková" },
+    };
+    historyEffect = Effect.succeed({
+      kind: "available",
+      groups: { current: [authored], past: [], unavailable: [] },
+    });
+
+    for (const linkReason of ["ambiguous", "unusable", "claimed"]) {
+      resolveEffect = resolverOutcome({
+        kind: "failure",
+        reason: "link-required",
+        linkReason,
+      });
+      await expect(loadPageState()).resolves.toEqual({
+        kind: "support-required",
+        email: customerEmail,
+        history: {
+          kind: "available",
+          groups: { current: [authored], past: [], unavailable: [] },
+        },
+      });
+    }
+    expect(historyLoadAccounts).toEqual([
+      { accountId },
+      { accountId },
+      { accountId },
+    ]);
+  });
+
+  test("keeps an unreadable authored history as a notice on the support state", async () => {
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "link-required",
+      linkReason: "claimed",
+    });
+    historyEffect = Effect.fail(new Error("dotypos down"));
+
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "support-required",
+      email: customerEmail,
+      history: { kind: "unavailable", reason: "provider-unavailable" },
+    });
+  });
+
+  test("reads no reservations for an unverified or deletion-requested support state", async () => {
+    historyEffect = Effect.succeed({
+      kind: "available",
+      groups: {
+        current: [{ id: "workspace-reservation-1" }],
+        past: [],
+        unavailable: [],
+      },
+    });
+
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "unverified-email",
+    });
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "support-required",
+      email: customerEmail,
+    });
+
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "link-required",
+      linkReason: "deletion-requested",
+    });
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "support-required",
+      email: customerEmail,
+    });
+    expect(historyLoadCalls).toBe(0);
   });
 
   test("renders the retryable deletion state when the durable marker is set", async () => {

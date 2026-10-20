@@ -14,7 +14,9 @@ interface IE2EDatabase {
 export class E2EDatabase extends Context.Service<E2EDatabase, IE2EDatabase>()(
   "E2EDatabase"
 ) {
-  static layer = (config: DatasourceConfig) =>
+  static layer = (
+    config: Pick<DatasourceConfig, "databaseUrlUnpooled" | "timeouts">
+  ) =>
     Layer.effect(
       this,
       Effect.acquireRelease(

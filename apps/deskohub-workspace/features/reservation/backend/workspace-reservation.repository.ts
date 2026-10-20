@@ -48,6 +48,7 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import type { ReservationPurpose } from "@/features/reservation/reservation-billing";
 import { reservationAccessProvisioningStaleAfterMilliseconds } from "@/features/reservation-access";
+import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import { supersedableReservationPaymentStates } from "./reservation-supersession";
 
 const withReservationKindFields = (reservation: WorkspaceReservationRow) => {
@@ -366,12 +367,13 @@ export interface IWorkspaceReservationRepository {
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
+  /** Records the booked customer event in the confirmation's transaction. */
   readonly markReservationConfirmed: (input: {
     readonly id: WorkspaceReservationId;
     readonly confirmedAt: Temporal.Instant;
   }) => Effect.Effect<
     void,
-    EffectDrizzleQueryError | WorkspaceReservationStateError
+    EffectDrizzleQueryError | SqlError.SqlError | WorkspaceReservationStateError
   >;
   readonly selectExpiredHolds: (input: {
     readonly now: Temporal.Instant;
@@ -1041,13 +1043,29 @@ export class WorkspaceReservationRepository extends Context.Service<
                     eq(workspaceReservations.updatedAt, input.claimedAt)
                   )
                 )
-                .returning({ id: workspaceReservations.id });
+                .returning({
+                  id: workspaceReservations.id,
+                  dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+                  reservationConfirmedAt:
+                    workspaceReservations.reservationConfirmedAt,
+                });
               yield* ensureUpdated(
                 updated,
                 "workspaceReservations.markAdministrationCancelled",
                 input.id,
                 "Only an operator-cancelled reservation can be marked cancelled."
               );
+              const [cancelled] = updated;
+              // Only a booked reservation's cancellation is a customer event;
+              // an unconfirmed one was never booked.
+              if (cancelled?.reservationConfirmedAt) {
+                yield* recordCustomerEvent(tx, {
+                  kind: "reservation-cancelled",
+                  occurredAt: input.cancelledAt,
+                  dotyposCustomerId: cancelled.dotyposCustomerId,
+                  workspaceReservationId: input.id,
+                });
+              }
               yield* tx
                 .update(paymentAttempts)
                 .set({ refundState: "required", updatedAt })
@@ -1590,28 +1608,45 @@ export class WorkspaceReservationRepository extends Context.Service<
         markReservationConfirmed: Effect.fn(
           "workspaceReservations.markReservationConfirmed"
         )(function* (input) {
-          const updated = yield* db
-            .update(workspaceReservations)
-            .set({
-              reservationState: "confirmed",
-              reservationConfirmedAt: input.confirmedAt,
-              updatedAt: Temporal.Now.instant(),
+          const transaction = db.transaction(
+            Effect.fn(function* (tx) {
+              const updated = yield* tx
+                .update(workspaceReservations)
+                .set({
+                  reservationState: "confirmed",
+                  reservationConfirmedAt: input.confirmedAt,
+                  updatedAt: Temporal.Now.instant(),
+                })
+                .where(
+                  and(
+                    eq(workspaceReservations.id, input.id),
+                    eq(workspaceReservations.reservationState, "held"),
+                    eq(workspaceReservations.paymentState, "paid"),
+                    eq(workspaceReservations.fulfillmentState, "processing")
+                  )
+                )
+                .returning({
+                  id: workspaceReservations.id,
+                  dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+                });
+              yield* ensureUpdated(
+                updated,
+                "workspaceReservations.markReservationConfirmed",
+                input.id,
+                "Only processing paid held reservations can be marked confirmed."
+              );
+              const [confirmed] = updated;
+              if (confirmed) {
+                yield* recordCustomerEvent(tx, {
+                  kind: "reservation-booked",
+                  occurredAt: input.confirmedAt,
+                  dotyposCustomerId: confirmed.dotyposCustomerId,
+                  workspaceReservationId: input.id,
+                });
+              }
             })
-            .where(
-              and(
-                eq(workspaceReservations.id, input.id),
-                eq(workspaceReservations.reservationState, "held"),
-                eq(workspaceReservations.paymentState, "paid"),
-                eq(workspaceReservations.fulfillmentState, "processing")
-              )
-            )
-            .returning({ id: workspaceReservations.id });
-          yield* ensureUpdated(
-            updated,
-            "workspaceReservations.markReservationConfirmed",
-            input.id,
-            "Only processing paid held reservations can be marked confirmed."
           );
+          yield* transaction;
         }),
         selectExpiredHolds: Effect.fn(
           "workspaceReservations.selectExpiredHolds"

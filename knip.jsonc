@@ -10,7 +10,7 @@
         "**/*.typecheck.ts",
         "**/*.rsc-fixture.ts",
         "**/*-rsc-fixture.ts",
-        "**/*.browser-harness.tsx",
+        "**/*.browser-harness.{ts,tsx}",
         "**/drizzle.config.ts",
         "playwright.*.config.ts",
         // drizzle.config.ts files load their schema by path, not by import,
@@ -26,6 +26,7 @@
         "scripts/account-sticky/browser-entry.tsx",
         "scripts/shared/command.*-fixture.{ts,mjs}",
         "e2e/coordination/hosted-payment-permit.holder-fixture.ts",
+        "shared/backend/workspace-location-map.render-fixture.ts",
         "e2e/agent-evals/harness.stub-fixture.ts",
         // Bundled by path for browser-rendered test fixtures.
         "shared/testing/posthog-identity-browser-fixture.tsx",

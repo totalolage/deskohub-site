@@ -11,8 +11,13 @@ import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option } from "effect";
 import { customerMarketingConsents } from "@/db/schema";
+import type { CampaignId } from "../campaign-identifiers";
 import {
+  deleteAutomatedCampaigns,
   deleteCampaigns,
+  seedAutomatedCampaign,
+  seedAutomatedSend,
+  seedAutomationVersion,
   seedCampaignSend,
 } from "./email-campaigns.test-utils";
 
@@ -106,6 +111,9 @@ const { CustomerMarketingConsentRepository } = await import(
 const { MarketingManagementService } = await import(
   "@/features/legal/backend/marketing-management.service"
 );
+const { AutomationRunSettlement } = await import(
+  "../automation/backend/automation-run-settlement.service"
+);
 const { CampaignDeliveryService } = await import("./campaign-delivery.service");
 const { CampaignDeliveryStatusService } = await import(
   "./campaign-delivery-status.service"
@@ -130,10 +138,12 @@ describe.skipIf(!testDatabase)(
     if (!testDatabase) return;
     const { db } = testDatabase;
     const campaignIds: string[] = [];
+    const automatedCampaignIds: CampaignId[] = [];
     const consentCustomerIds: DotyposCustomerId[] = [];
 
     afterAll(async () => {
       await deleteCampaigns(testDatabase.pool, campaignIds);
+      await deleteAutomatedCampaigns(db, automatedCampaignIds);
       await testDatabase.pool.query(
         "delete from customer_marketing_consents where dotypos_customer_id = any($1)",
         [consentCustomerIds]
@@ -189,6 +199,7 @@ describe.skipIf(!testDatabase)(
                 })
               )
             ),
+            AutomationRunSettlement.Default,
             Layer.succeed(CampaignEmailConfig, {
               deploymentEnvironment,
               from: { email: testEmailAddress("campaigns") },
@@ -504,6 +515,89 @@ describe.skipIf(!testDatabase)(
       expect(await consume({ sendId, deliveryAttempt: 2 })).toBe("sent");
       expect(await consume({ sendId, deliveryAttempt: 2 })).toBe("stale");
       expect(batchSend.mock.calls).toHaveLength(1);
+    });
+
+    /**
+     * An automated campaign whose own draft is operational and whose
+     * published version is marketing, with one send of that version.
+     */
+    const seedAutomated = async (input: {
+      readonly status?: "active" | "paused";
+      readonly recipient: DotyposCustomerId;
+    }) => {
+      const campaignId = await seedAutomatedCampaign(db, {
+        purpose: "operational",
+        status: input.status,
+      });
+      automatedCampaignIds.push(campaignId);
+      const versionId = await seedAutomationVersion(db, {
+        campaignId,
+        purpose: "marketing",
+        text: "Verze jedna",
+      });
+      const sendId = await seedAutomatedSend(db, {
+        campaignId,
+        versionId,
+        purpose: "marketing",
+        text: "Verze jedna",
+        recipients: [{ dotyposCustomerId: input.recipient }],
+      });
+      return { campaignId, versionId, sendId };
+    };
+
+    test("mails an automated send's version email and leaves its Active campaign as it is", async () => {
+      const id = customerId("automated");
+      profiles = [profile(id)];
+      await grantConsent([id]);
+      const { sendId } = await seedAutomated({ recipient: id });
+
+      expect(await consume({ sendId, deliveryAttempt: 1 })).toBe("sent");
+
+      const [message] = batchSend.mock.calls[0]![0];
+      expect(message!.headers?.["List-Unsubscribe"]).toBeDefined();
+      expect(requestPayloads()[0]).toContain("Verze jedna");
+      expect(requestPayloads()[0]).not.toContain("Rozpracovan");
+      const { recipients, campaign } = await stored(sendId);
+      expect(recipients.map((row) => row.status)).toEqual(["sent"]);
+      expect(campaign.status).toBe("active");
+      expect(campaign.completed_at).not.toBeNull();
+
+      // A completed automated send has nothing left to deliver.
+      expect(await consume({ sendId, deliveryAttempt: 1 })).toBe("stale");
+      expect(batchSend.mock.calls).toHaveLength(1);
+    });
+
+    test("settles an automated send whatever its campaign's status and leaves its runs to the run transitions", async () => {
+      batchSend = mock(async () => ({
+        data: null,
+        error: { message: "Invalid batch", statusCode: 422 },
+      }));
+      const id = customerId("automated-paused");
+      profiles = [profile(id)];
+      await grantConsent([id]);
+      const { campaignId, versionId, sendId } = await seedAutomated({
+        status: "paused",
+        recipient: id,
+      });
+      await testDatabase.pool.query(
+        `insert into email_campaign_automation_runs
+           (campaign_id, version_id, dotypos_customer_id, trigger_kind, trigger_at, status, step_id, step_entered_at, send_id)
+         values ($1, $2, $3, 'account-created', now(), 'sending', 'send', now(), $4)`,
+        [campaignId, versionId, id, sendId]
+      );
+
+      expect(await consume({ sendId, deliveryAttempt: 1 })).toBe("failed");
+
+      const { recipients, campaign, batches } = await stored(sendId);
+      expect(recipients.map((row) => row.status)).toEqual(["failed"]);
+      expect(batches.map((batch) => batch.status)).toEqual(["rejected"]);
+      expect(campaign.status).toBe("paused");
+      expect(campaign.completed_at).not.toBeNull();
+      const { rows: runs } = await testDatabase.pool.query(
+        "select status, outcome from email_campaign_automation_runs where send_id = $1",
+        [sendId]
+      );
+      expect(runs).toEqual([{ status: "sending", outcome: null }]);
     });
 
     test("skips a recipient outside the test domain before any provider request outside production", async () => {

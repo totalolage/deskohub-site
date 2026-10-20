@@ -17,6 +17,9 @@ const nexiHostedControlNames: Readonly<
   Record<NexiHostedControl, readonly string[]>
 > = {
   challenge: ["Authentication successful", "Autenticazione riuscita"],
+  // The 3-D Secure stub's failure choice, which Nexi records as a
+  // THREEDS_FAILED authorization.
+  challenge_failure: ["Authentication failed", "Autenticazione fallita"],
   continue: ["Continue", "Continua"],
   pay: ["Pay", "Paga"],
   return: ["Back to the shop", "Torna al negozio"],

@@ -8,6 +8,7 @@ import {
   HttpApiSecurity,
 } from "effect/unstable/httpapi";
 import { administrationCalendarDate } from "./calendar-date";
+import { DhwVersion } from "./dhw-version";
 import { WORKSPACE_SITE_TIME_ZONE } from "./site-time-zone";
 
 export const WORKSPACE_ADMIN_API_VERSION = "v1" as const;
@@ -156,6 +157,13 @@ export type CliClientName = typeof CliClientName.Type;
 export const AdminCliInfo = Schema.Struct({
   apiVersion: Schema.Literal(WORKSPACE_ADMIN_API_VERSION),
   service: Schema.Literal("deskohub-workspace"),
+  /**
+   * The oldest `dhw` each restricted operation accepts, keyed by
+   * `<group>.<endpoint>`, for diagnostics. Older servers omit it.
+   */
+  minimumDhwVersions: Schema.Record(Schema.String, DhwVersion).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed({}))
+  ),
 });
 export type AdminCliInfo = typeof AdminCliInfo.Type;
 
@@ -341,6 +349,16 @@ export class CliBearerAuthentication extends HttpApiMiddleware.Service<
   error: [CliSessionUnauthorized.schema, CliServiceUnavailable.schema],
   security: { bearer: HttpApiSecurity.bearer },
 }) {}
+
+/**
+ * Rejects a `dhw` older than the operation's `MinimumDhwVersion` with
+ * `CliInputInvalid`. A group that adds it must declare that error on every
+ * endpoint, so released binaries decode and print the rejection.
+ */
+export class CliClientCompatibility extends HttpApiMiddleware.Service<CliClientCompatibility>()(
+  "@deskohub/workspace-admin-api/CliClientCompatibility",
+  { error: CliInputInvalid.schema }
+) {}
 
 export const AdministrationOverviewMetric = Schema.Struct({
   completed: Schema.Number,
@@ -1284,7 +1302,32 @@ export const AdministrationStandaloneAccessCodeCreationOutcome = Schema.Union([
 export type AdministrationStandaloneAccessCodeCreationOutcome =
   typeof AdministrationStandaloneAccessCodeCreationOutcome.Type;
 
+/**
+ * The customer account that made a reservation for someone else: its own
+ * customer's name and its login email, only that it was deleted, or that it
+ * could not be read.
+ */
+export const AdministrationReservationAuthor = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("account"),
+    customerId: Schema.NullOr(AdministrationDotyposCustomerId),
+    displayName: Schema.String,
+    email: Schema.String,
+  }),
+  Schema.Struct({ kind: Schema.Literal("deleted") }),
+  Schema.Struct({ kind: Schema.Literal("unavailable") }),
+]);
+export type AdministrationReservationAuthor =
+  typeof AdministrationReservationAuthor.Type;
+
 export const AdministrationReservationDetail = Schema.Struct({
+  /**
+   * Null when the reservation is authorless or its customer booked it, and
+   * from servers that predate reservation authors.
+   */
+  author: Schema.NullOr(AdministrationReservationAuthor).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
   reservation: AdministrationReservationSummary,
   booking: Schema.NullOr(AdministrationBookingSummary),
   lifecycle: AdministrationReservationLifecycle,

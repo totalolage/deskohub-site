@@ -3,18 +3,23 @@ import { eq } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql";
-import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  WorkspaceDatabase,
+  type WorkspaceDatabaseClient,
+} from "@/db/database.service";
 import {
   type PostgresAdvisoryLockKey,
   WorkspaceDatabaseAdvisoryLock,
 } from "@/db/postgres-advisory-lock";
-import { customerAccountLinks } from "@/db/schema";
+import { customerAccountLinks, customerAccounts } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import {
   insertReferralSignupIntent,
   type ReferralSignupIntent,
 } from "@/features/referrals/signup-intent.repository";
+import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import type { CustomerAccountId } from "../customer-account";
+import { ensureCustomerAccount } from "./customer-account.repository";
 
 /**
  * `created` is true only for the claim that inserted the link; a claim that
@@ -110,13 +115,15 @@ export class CustomerAccountLinkRepository extends Context.Service<
                 .returning({
                   customerId: customerAccountLinks.dotyposCustomerId,
                 });
-              if (link && signupReferral) {
+              if (!link) return link;
+              if (signupReferral) {
                 yield* insertReferralSignupIntent(
                   tx,
                   accountId,
                   signupReferral
                 );
               }
+              yield* recordAccountCreated(tx, accountId, link.customerId);
               return link;
             })
           );
@@ -196,3 +203,30 @@ export class CustomerAccountLinkRepository extends Context.Service<
     )
   );
 }
+
+/**
+ * The first link gives the account a mailable Dotypos customer, so it is
+ * recorded as created at the durable account's creation instant. The link's
+ * transaction creates the durable account when the account has none yet.
+ */
+const recordAccountCreated = Effect.fn(function* (
+  tx: WorkspaceDatabaseClient,
+  accountId: CustomerAccountId,
+  customerId: DotyposCustomerId
+) {
+  yield* ensureCustomerAccount(tx, accountId);
+  const [account] = yield* tx
+    .select({ createdAt: customerAccounts.createdAt })
+    .from(customerAccounts)
+    .where(eq(customerAccounts.id, accountId))
+    .limit(1);
+  if (!account) {
+    return yield* Effect.die("Durable customer account is missing.");
+  }
+  yield* recordCustomerEvent(tx, {
+    kind: "account-created",
+    occurredAt: account.createdAt,
+    dotyposCustomerId: customerId,
+    customerAccountId: accountId,
+  });
+});

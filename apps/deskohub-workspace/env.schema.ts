@@ -199,6 +199,8 @@ export const workspaceServerEnvSchema = Schema.Struct({
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalStringSchema,
   VERCEL_PROJECT_PRODUCTION_URL: nonEmptyStringSchema,
   VERCEL_URL: nonEmptyStringSchema,
+  // Read by `next.config.mjs` at build time for the `Origin-Trial` header.
+  WEBMCP_ORIGIN_TRIAL_TOKENS: optionalNonEmptyStringSchema,
   WORKSPACE_E2E_BASE_URL: optionalUrlEnvSchema,
 }).check(
   postHogFeatureFlagOverridesEnvironmentCheck,

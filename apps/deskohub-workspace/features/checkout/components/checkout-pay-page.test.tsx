@@ -16,6 +16,7 @@ import {
   buildCoworkReservationQuote as buildCoworkPriceQuote,
   buildDiscountedCoworkCheckoutSummary,
 } from "@/features/checkout/checkout-quote.test-utils";
+import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { m } from "@/features/i18n";
 import {
   workspaceRouterPush,
@@ -102,7 +103,10 @@ describe("CheckoutPayPage pricing change", () => {
     expect(reviewLink.getAttribute("href")).toBe(freshPayUrl);
     expect(
       view.queryByRole("button", {
-        name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),
+        name: m.checkoutPayOrderAndPayAmountButton(
+          { amount: formatWorkspaceMoney(quote.summary.total, "en-US") },
+          { locale: "en-US" }
+        ),
       })
     ).toBeNull();
     expect(view.queryByRole("checkbox")).toBeNull();
@@ -170,7 +174,10 @@ describe("CheckoutPayPage payment navigation", () => {
     fireEvent.click(view.getByRole("checkbox"));
     fireEvent.click(
       view.getByRole("button", {
-        name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),
+        name: m.checkoutPayOrderAndPayAmountButton(
+          { amount: formatWorkspaceMoney(quote.summary.total, "en-US") },
+          { locale: "en-US" }
+        ),
       })
     );
 
@@ -334,5 +341,155 @@ describe("CheckoutPayPage payment navigation", () => {
     expect(workspaceRouterPush).toHaveBeenCalledWith(
       "/en-US/reservation/status/reservation-id?outcome=success"
     );
+    expect(
+      view.queryByText(m.checkoutPayProviderHandoff({}, { locale: "en-US" }))
+    ).toBeNull();
+  });
+});
+
+describe("CheckoutPayPage provider handoff", () => {
+  beforeAll(() => {
+    registerWorkspaceComponentTestEnv();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
+  });
+
+  test.each(["en-US", "cs-CZ"] as const)(
+    "explains the Nexi handoff and names the total on the pay button in %s",
+    async (locale) => {
+      const { CheckoutPayPage } = await import("./checkout-pay-page");
+      const quote = buildCoworkReservationQuote({
+        entryTier: "basic",
+        coffee: false,
+      });
+      const view = render(
+        <CheckoutPayPage
+          locale={locale}
+          payStateToken="signed-summary"
+          summary={quote.summary}
+          variant="pay"
+        />
+      );
+
+      expect(
+        view.getByText(m.checkoutPayProviderHandoff({}, { locale }))
+      ).toBeDefined();
+      const amount = formatWorkspaceMoney(quote.summary.total, locale);
+      expect(amount).toMatch(locale === "cs-CZ" ? /Kč/ : /CZK/);
+      const payButton = view.getByRole("button", {
+        name: m.checkoutPayOrderAndPayAmountButton({ amount }, { locale }),
+      });
+      expect(payButton).toHaveProperty("disabled", true);
+    }
+  );
+
+  test("renders the terms and early-performance consents unticked, for the customer to give", async () => {
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const amount = formatWorkspaceMoney(quote.summary.total, "en-US");
+    const payButtonName = m.checkoutPayOrderAndPayAmountButton(
+      { amount },
+      { locale: "en-US" }
+    );
+    const earlyPerformanceView = render(
+      <CheckoutPayPage
+        earlyPerformanceRequestRequired
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+    const earlyPerformanceCheckbox = earlyPerformanceView.getByRole(
+      "checkbox",
+      { name: /general terms and conditions/i }
+    );
+
+    expect(
+      earlyPerformanceView.getByRole("checkbox", {
+        name: /statutory withdrawal period/i,
+      })
+    ).toBe(earlyPerformanceCheckbox);
+    expect(earlyPerformanceCheckbox.getAttribute("aria-checked")).toBe("false");
+    expect(
+      earlyPerformanceView.getByRole("button", { name: payButtonName })
+    ).toHaveProperty("disabled", true);
+    earlyPerformanceView.unmount();
+
+    const legalOnlyView = render(
+      <CheckoutPayPage
+        earlyPerformanceRequestRequired={false}
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+    const legalConsentCheckbox = legalOnlyView.getByRole("checkbox", {
+      name: /general terms and conditions/i,
+    });
+
+    expect(legalConsentCheckbox.getAttribute("aria-checked")).toBe("false");
+    expect(
+      legalOnlyView.queryByRole("checkbox", {
+        name: /statutory withdrawal period/i,
+      })
+    ).toBeNull();
+    expect(
+      legalOnlyView.getByRole("button", { name: payButtonName })
+    ).toHaveProperty("disabled", true);
+  });
+
+  test("updates the pay button total when a discount changes it", async () => {
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const fullPrice = buildCoworkCheckoutSummary({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const discounted = buildDiscountedCoworkCheckoutSummary({
+      basisPoints: 5000,
+    });
+    const payButtonName = (summary: typeof fullPrice) =>
+      m.checkoutPayOrderAndPayAmountButton(
+        { amount: formatWorkspaceMoney(summary.total, "en-US") },
+        { locale: "en-US" }
+      );
+    expect(payButtonName(discounted)).not.toBe(payButtonName(fullPrice));
+
+    const view = render(
+      <CheckoutPayPage
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={fullPrice}
+        variant="pay"
+      />
+    );
+    expect(
+      view.getByRole("button", { name: payButtonName(fullPrice) })
+    ).toBeDefined();
+
+    view.rerender(
+      <CheckoutPayPage
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={discounted}
+        variant="pay"
+      />
+    );
+    expect(
+      view.getByRole("button", { name: payButtonName(discounted) })
+    ).toBeDefined();
+    expect(
+      view.queryByRole("button", { name: payButtonName(fullPrice) })
+    ).toBeNull();
   });
 });

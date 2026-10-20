@@ -52,7 +52,7 @@ export interface ICalendarDiscountProvider {
   ) => Effect.Effect<ActiveSaleDiscoveryResult, DiscountProviderError>;
   readonly discover: (
     input: CalendarDiscountProviderInput
-  ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderError>;
+  ) => Effect.Effect<DiscountCandidateResolution, DiscountProviderError>;
   readonly revalidate: (
     input: CalendarDiscountProviderInput
   ) => Effect.Effect<DiscountCandidateResolution, DiscountProviderError>;
@@ -141,7 +141,13 @@ function makeCalendarDiscountProviderLayer(useRemoteDiscovery: boolean) {
             ),
             Effect.let("sales", ({ resolvedSales }) => resolvedSales.sales),
             Effect.let("candidates", toEligibleCalendarCandidates),
-            Effect.map(({ candidates }) => candidates)
+            Effect.map(
+              ({ candidates, resolvedSales }) =>
+                ({
+                  candidates,
+                  complete: resolvedSales.complete,
+                }) satisfies DiscountCandidateResolution
+            )
           ),
         withProviderAnnotations("discover")
       );

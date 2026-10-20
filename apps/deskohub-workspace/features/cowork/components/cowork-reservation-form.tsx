@@ -563,6 +563,14 @@ export function CoworkReservationForm({
       form={form}
       getReservation={getCoworkCurrentReservationOrder}
       locale={locale}
+      selection={{
+        kind: "cowork",
+        fromSearchParams: (searchParams) => {
+          const { entryTier, date, coffee, monitorOption } =
+            getReservationDefaultValuesFromSearchParams(searchParams);
+          return { entryTier, date, coffee, monitorOption };
+        },
+      }}
     >
       <FormField
         control={form.control}
@@ -1047,7 +1055,6 @@ function CoworkReservationDateField({
             name={field.name}
             onBlur={field.onBlur}
             onChange={field.onChange}
-            placeholder={m.reservationDatePlaceholder({}, { locale })}
             value={field.value}
           />
           <FormMessage />

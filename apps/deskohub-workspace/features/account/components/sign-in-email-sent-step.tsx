@@ -25,7 +25,9 @@ type SignInEmailSentStepProps = {
 /**
  * What a tab shows once its sign-in email is on the way: the code entry
  * while the email carries a code (`login_email_code`), otherwise the
- * link-only inbox instructions.
+ * link-only inbox instructions. Both say which browser the sign-in continues
+ * in, because a link signs in only the browser that opens it: an assistant
+ * booking in its own browser isn't signed in by a link opened elsewhere.
  */
 export function SignInEmailSentStep({
   locale,
@@ -62,6 +64,12 @@ export function SignInEmailSentStep({
         </h2>
         <p className="mt-4 leading-7 text-navy-blue/68">
           {m.accountSignInAcceptedBody({}, { locale })}
+        </p>
+        <p className="mt-3 leading-7 text-navy-blue/68">
+          {m.accountSignInAcceptedSameBrowser({}, { locale })}
+        </p>
+        <p className="mt-3 text-sm leading-6 text-navy-blue/60">
+          {m.accountSignInAssistantBrowserHint({}, { locale })}
         </p>
         <Button
           type="button"
@@ -118,6 +126,12 @@ export function SignInEmailSentStep({
         requestNewEmail={requestNewEmail}
         onUseDifferentEmail={onUseDifferentEmail}
       />
+      <p className="mt-3 text-sm leading-6 text-navy-blue/60">
+        {m.accountSignInCodeAssistantHint({}, { locale })}
+      </p>
+      <p className="mt-3 text-sm leading-6 text-navy-blue/60">
+        {m.accountSignInAssistantBrowserHint({}, { locale })}
+      </p>
     </>
   );
 }

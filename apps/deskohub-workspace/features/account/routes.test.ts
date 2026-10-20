@@ -5,6 +5,7 @@ import {
   getAccountSectionPath,
   getAccountSignInPath,
   getAuthVerifyPath,
+  getNoLongerWaitingSignInPath,
 } from "./routes";
 import { accountSections } from "./sections";
 
@@ -125,5 +126,11 @@ describe("auth page paths", () => {
 
   test("builds the verify path for the locale", () => {
     expect(getAuthVerifyPath("en-US")).toBe("/en-US/auth/verify");
+  });
+
+  test("builds the plain sign-in path with the no-longer-waiting notice", () => {
+    expect(getNoLongerWaitingSignInPath("cs-CZ")).toBe(
+      "/cs-CZ/auth/sign-in?notice=no-longer-waiting"
+    );
   });
 });

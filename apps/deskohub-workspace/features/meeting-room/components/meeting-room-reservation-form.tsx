@@ -47,7 +47,10 @@ import {
   meetingRoomReservationSchema,
   type NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
-import { getMeetingRoomReservationSelectionSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
+import {
+  getMeetingRoomReservationDefaultValuesFromSearchParams,
+  getMeetingRoomReservationSelectionSearchParams,
+} from "@/features/reservation/meeting-room-reservation-checkout-query";
 import {
   getMeetingRoomReservationDuration,
   getMeetingRoomReservationDurationKey,
@@ -241,6 +244,16 @@ export function MeetingRoomReservationForm({
       form={form}
       getReservation={getMeetingRoomReservationOrder}
       locale={locale}
+      selection={{
+        kind: "meeting-room",
+        fromSearchParams: (searchParams) => {
+          const { startDateTime, duration } =
+            getMeetingRoomReservationDefaultValuesFromSearchParams(
+              searchParams
+            );
+          return { startDateTime, duration };
+        },
+      }}
     >
       <FormField
         control={form.control}
@@ -266,7 +279,6 @@ export function MeetingRoomReservationForm({
               name={field.name}
               onBlur={field.onBlur}
               onChange={field.onChange}
-              placeholder={m.reservationDatePlaceholder({}, { locale })}
               timeLabel={m.reservationMeetingRoomTimeLabel({}, { locale })}
               showTime={!isWholeDaySelected}
               timeStepMinutes={60}

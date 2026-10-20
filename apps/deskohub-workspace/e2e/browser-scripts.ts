@@ -202,13 +202,7 @@ export const getAssertPrefilledReservationScript = (
   const tier = document.querySelector('input[name="entryTier"]:checked');
   if (!(tier instanceof HTMLInputElement) || tier.value !== expected.entryTier) fail('entry tier');
 
-  const dateButton = document.querySelector('button[aria-haspopup="dialog"]');
-  if (!(dateButton instanceof HTMLButtonElement)) fail('date');
-  const restoredDate = new Intl.DateTimeFormat(${JSON.stringify(data.locale)}, {
-    dateStyle: 'full',
-    timeZone: 'Europe/Prague',
-  }).format(new Date(expected.date + 'T12:00:00Z'));
-  if ((dateButton.textContent ?? '').trim() !== restoredDate) fail('date');
+  if (value('input[name="date"]', 'date') !== expected.date) fail('date');
 
   const coffee = expected.coffeeSwitchLabel
     ? findSwitchByLabel(expected.coffeeSwitchLabel)
@@ -1122,7 +1116,7 @@ export const assertFulfilledStatusScript = String.raw`
       throw new Error('checkout status rendered in a reservation dialog');
     }
   }
-  if (/Your reservation is confirmed\./i.test(text) && /secure access link has been sent by email/i.test(text)) {
+  if (/Your reservation is confirmed\./i.test(text) && /emailed you the secure access link/i.test(text)) {
     return location.href;
   }
   throw new Error('fulfilled checkout status copy not visible');

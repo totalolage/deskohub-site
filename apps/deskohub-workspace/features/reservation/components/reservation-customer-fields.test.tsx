@@ -67,6 +67,14 @@ describe("ReservationCustomerFields", () => {
     expect(view.container.querySelector('input[name="phone"]')).not.toBeNull();
     expect(view.container.querySelector('input[name="name"]')).not.toBeNull();
   });
+
+  test("marks the phone input as a telephone field for autofill", () => {
+    const view = render(<Harness />);
+    const phone = view.container.querySelector('input[name="phone"]');
+
+    expect(phone?.getAttribute("type")).toBe("tel");
+    expect(phone?.getAttribute("autocomplete")).toBe("tel");
+  });
 });
 
 const existingCustomer: ReservationExistingCustomerForm = {

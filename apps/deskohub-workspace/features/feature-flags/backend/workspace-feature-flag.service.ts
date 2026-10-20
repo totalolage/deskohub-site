@@ -3,7 +3,7 @@ import type {
   PostHogFeatureFlagEvaluationOptions,
   TypedPostHogFeatureFlagEvaluationSnapshot,
 } from "@deskohub/posthog/feature-flags/node";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
 import type {
   PostHogFeatureFlagDefinitions,
   PostHogFeatureFlagKey,
@@ -25,6 +25,13 @@ export interface IWorkspaceFeatureFlagService {
   readonly isEnabled: <Key extends PostHogFeatureFlagKey>(
     key: Key
   ) => Effect.Effect<boolean, PostHogFeatureFlagEvaluationError>;
+  /**
+   * The flag's value when it is the same for every visitor, read without the
+   * request; none when the flag is decided per visitor.
+   */
+  readonly constantValue: <Key extends PostHogFeatureFlagKey>(
+    key: Key
+  ) => Effect.Effect<Option.Option<boolean>>;
 }
 
 export class WorkspaceFeatureFlagService extends Context.Service<
@@ -84,6 +91,12 @@ export class WorkspaceFeatureFlagService extends Context.Service<
                 : Effect.succeed(globalValue)
             )
           )
+        ),
+        constantValue: Effect.fn("WorkspaceFeatureFlagService.constantValue")(
+          (key) =>
+            Effect.promise(() => getGlobalWorkspaceFeatureFlagValue(key)).pipe(
+              Effect.map(Option.fromUndefinedOr)
+            )
         ),
       });
     })

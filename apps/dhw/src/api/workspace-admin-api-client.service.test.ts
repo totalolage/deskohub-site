@@ -26,9 +26,11 @@ import {
   CliSessionId,
   CliStandaloneAccessCodeCleanupRequired,
   CliStandaloneAccessCodeReconciled,
+  dhwVersionHeader,
 } from "@deskohub/workspace-admin-api";
 import { Clock, Duration, Effect, Layer, Redacted, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import { DHW_VERSION } from "../build-info";
 import { DhwConfig } from "../config/dhw-config.service";
 import {
   CliApiRequestError,
@@ -168,7 +170,7 @@ describe("WorkspaceAdminApiClient", () => {
     }
   });
 
-  test("uses the typed authentication contract and bearer header", async () => {
+  test("uses the typed authentication contract, the bearer header, and the version header on every request", async () => {
     const code = Schema.decodeUnknownSync(CliAuthenticationCode)(
       "c".repeat(43)
     );
@@ -263,6 +265,7 @@ describe("WorkspaceAdminApiClient", () => {
     });
     const requests: Array<{ readonly method: string; readonly path: string }> =
       [];
+    const clientVersions: Array<string | null> = [];
     let accessMutationAttempts = 0;
     let mutationAttempts = 0;
     const server = Bun.serve({
@@ -270,6 +273,7 @@ describe("WorkspaceAdminApiClient", () => {
       fetch: async (request) => {
         const url = new URL(request.url);
         requests.push({ method: request.method, path: url.pathname });
+        clientVersions.push(request.headers.get(dhwVersionHeader));
         if (url.pathname.endsWith("/auth")) {
           expect(await request.json()).toEqual({
             challenge,
@@ -682,6 +686,8 @@ describe("WorkspaceAdminApiClient", () => {
           reservation.id
         );
         expect(reservationDetail.reservation.purpose).toBe("business");
+        // A server that predates reservation authors omits the author.
+        expect(reservationDetail.author).toBeNull();
         yield* client.mutateReservationAccess(
           Redacted.make(accessToken),
           mutationRequestId,
@@ -756,6 +762,7 @@ describe("WorkspaceAdminApiClient", () => {
         yield* client.revokeSession(Redacted.make(accessToken), sessionId);
       }).pipe(Effect.provide(clientLayer), Effect.runPromise);
 
+      expect(clientVersions).toEqual(requests.map(() => DHW_VERSION));
       expect(requests).toEqual([
         { method: "POST", path: "/api/v1/cli/auth" },
         { method: "GET", path: "/api/v1/cli/status" },

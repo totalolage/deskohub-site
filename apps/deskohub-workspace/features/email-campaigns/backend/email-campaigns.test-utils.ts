@@ -1,18 +1,24 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
+import { inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import {
+  emailCampaignAutomationRuns,
+  emailCampaignAutomationVersions,
   emailCampaignRecipients,
   emailCampaignSends,
   emailCampaigns,
 } from "@/db/schema";
 import type { AudienceFilter } from "../audience-filter";
+import type { AutomationVersionId } from "../automation/automation-identifiers";
 import type {
   CampaignLocalizedContent,
   CampaignPurpose,
 } from "../body/campaign-content";
 import { hashCampaignContent } from "../body/campaign-content-hash";
+import type { CampaignId, CampaignSendId } from "../campaign-identifiers";
 import type {
+  automatedCampaignStatuses,
   CampaignRecipientStatus,
   CampaignStatus,
 } from "../campaign-states";
@@ -40,6 +46,57 @@ export const campaignContentFixture = (
   },
 });
 
+type SeededRecipient = {
+  readonly dotyposCustomerId: DotyposCustomerId;
+  readonly deliveryAttempt?: number;
+  readonly status?: CampaignRecipientStatus;
+  readonly providerMessageId?: string;
+};
+
+/** Inserts a send of `campaignId` with its frozen recipients. */
+const insertSend = async (
+  db: WorkspaceDatabaseClient,
+  input: {
+    readonly campaignId: CampaignId;
+    readonly automationVersionId?: AutomationVersionId;
+    readonly purpose: CampaignPurpose;
+    readonly content: CampaignLocalizedContent;
+    readonly deliveryAttempt?: number;
+    readonly recipients: readonly SeededRecipient[];
+  }
+): Promise<CampaignSendId> => {
+  const [send] = await Effect.runPromise(
+    db
+      .insert(emailCampaignSends)
+      .values({
+        campaignId: input.campaignId,
+        automationVersionId: input.automationVersionId,
+        audienceFilter: everyoneFilter,
+        contentHash: hashCampaignContent({
+          purpose: input.purpose,
+          templateKey: "workspace",
+          locales: input.content,
+        }),
+        deliveryAttempt: input.deliveryAttempt ?? 1,
+      })
+      .returning()
+  );
+  if (input.recipients.length > 0) {
+    await Effect.runPromise(
+      db.insert(emailCampaignRecipients).values(
+        input.recipients.map((recipient) => ({
+          ...recipient,
+          skipReason:
+            recipient.status === "skipped" ? ("missing-email" as const) : null,
+          sendId: send!.id,
+          locale: "cs-CZ" as const,
+        }))
+      )
+    );
+  }
+  return send!.id;
+};
+
 /**
  * Inserts a campaign in `status` with its frozen send and recipients, as a
  * confirmed send leaves them, and returns their IDs.
@@ -50,12 +107,7 @@ export const seedCampaignSend = async (
     readonly purpose: CampaignPurpose;
     readonly status?: CampaignStatus;
     readonly deliveryAttempt?: number;
-    readonly recipients: readonly {
-      readonly dotyposCustomerId: DotyposCustomerId;
-      readonly deliveryAttempt?: number;
-      readonly status?: CampaignRecipientStatus;
-      readonly providerMessageId?: string;
-    }[];
+    readonly recipients: readonly SeededRecipient[];
   }
 ) => {
   const content = campaignContentFixture();
@@ -71,34 +123,137 @@ export const seedCampaignSend = async (
       })
       .returning()
   );
-  const [send] = await Effect.runPromise(
+  const sendId = await insertSend(db, {
+    ...input,
+    campaignId: campaign!.id,
+    content,
+  });
+  return { campaignId: campaign!.id, sendId };
+};
+
+/**
+ * Inserts an automated campaign in `status` (Active by default) whose own
+ * purpose and content differ from anything its versions publish.
+ */
+export const seedAutomatedCampaign = async (
+  db: WorkspaceDatabaseClient,
+  input: {
+    readonly purpose: CampaignPurpose;
+    readonly status?: (typeof automatedCampaignStatuses)[number];
+  }
+) => {
+  const [campaign] = await Effect.runPromise(
     db
-      .insert(emailCampaignSends)
+      .insert(emailCampaigns)
       .values({
-        campaignId: campaign!.id,
-        audienceFilter: everyoneFilter,
+        title: "Come back soon",
+        purpose: input.purpose,
+        templateKey: "workspace",
+        content: campaignContentFixture("Rozpracovaný koncept"),
+        delivery: "automated",
+        status: input.status ?? "active",
+      })
+      .returning({ id: emailCampaigns.id })
+  );
+  return campaign!.id;
+};
+
+/**
+ * Publishes version `versionNumber` of `campaignId` with `purpose` and the
+ * content `text`, as activation will.
+ */
+export const seedAutomationVersion = async (
+  db: WorkspaceDatabaseClient,
+  input: {
+    readonly campaignId: CampaignId;
+    readonly purpose: CampaignPurpose;
+    readonly versionNumber?: number;
+    readonly text?: string;
+  }
+) => {
+  const content = campaignContentFixture(input.text ?? "Verze");
+  const [version] = await Effect.runPromise(
+    db
+      .insert(emailCampaignAutomationVersions)
+      .values({
+        campaignId: input.campaignId,
+        versionNumber: input.versionNumber ?? 1,
+        flow: { trigger: { _tag: "reservation-booked" }, steps: [] },
+        purpose: input.purpose,
+        templateKey: "workspace",
+        content,
         contentHash: hashCampaignContent({
           purpose: input.purpose,
           templateKey: "workspace",
           locales: content,
         }),
-        deliveryAttempt: input.deliveryAttempt ?? 1,
+        audienceFilter: everyoneFilter,
+        draftHash: `draft-${input.versionNumber ?? 1}`,
+        activatedAt: sql`now() + make_interval(secs => ${input.versionNumber ?? 1})`,
       })
-      .returning()
+      .returning({ id: emailCampaignAutomationVersions.id })
   );
-  await Effect.runPromise(
-    db.insert(emailCampaignRecipients).values(
-      input.recipients.map((recipient) => ({
-        ...recipient,
-        skipReason:
-          recipient.status === "skipped" ? ("missing-email" as const) : null,
-        sendId: send!.id,
-        locale: "cs-CZ" as const,
-      }))
+  return version!.id;
+};
+
+/**
+ * Inserts one automated send of `versionId` with its recipients, as a
+ * deliver unit will.
+ */
+export const seedAutomatedSend = (
+  db: WorkspaceDatabaseClient,
+  input: {
+    readonly campaignId: CampaignId;
+    readonly versionId: AutomationVersionId;
+    readonly purpose: CampaignPurpose;
+    readonly text?: string;
+    readonly recipients: readonly SeededRecipient[];
+  }
+) =>
+  insertSend(db, {
+    ...input,
+    automationVersionId: input.versionId,
+    content: campaignContentFixture(input.text ?? "Verze"),
+  });
+
+/**
+ * Deletes campaigns with their automation runs, sends, recipients and
+ * versions. Versions are immutable, so removing them takes the same
+ * exclusive lock and trigger toggle an operator would need.
+ */
+export const deleteAutomatedCampaigns = (
+  db: WorkspaceDatabaseClient,
+  campaignIds: readonly CampaignId[]
+) =>
+  Effect.runPromise(
+    db.transaction((tx) =>
+      Effect.gen(function* () {
+        yield* tx
+          .delete(emailCampaignAutomationRuns)
+          .where(inArray(emailCampaignAutomationRuns.campaignId, campaignIds));
+        yield* tx
+          .delete(emailCampaignSends)
+          .where(inArray(emailCampaignSends.campaignId, campaignIds));
+        yield* tx.execute(
+          sql`lock table ${emailCampaignAutomationVersions} in access exclusive mode`
+        );
+        yield* tx.execute(
+          sql`alter table ${emailCampaignAutomationVersions} disable trigger email_campaign_automation_versions_immutable`
+        );
+        yield* tx
+          .delete(emailCampaignAutomationVersions)
+          .where(
+            inArray(emailCampaignAutomationVersions.campaignId, campaignIds)
+          );
+        yield* tx.execute(
+          sql`alter table ${emailCampaignAutomationVersions} enable trigger email_campaign_automation_versions_immutable`
+        );
+        yield* tx
+          .delete(emailCampaigns)
+          .where(inArray(emailCampaigns.id, campaignIds));
+      })
     )
   );
-  return { campaignId: campaign!.id, sendId: send!.id };
-};
 
 /** Deletes campaigns with their sends and recipients. */
 export const deleteCampaigns = async (

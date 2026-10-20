@@ -6,6 +6,10 @@ import {
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
+import {
+  type AudienceCountCondition,
+  audienceAttributeCatalogue,
+} from "@deskohub/workspace-admin-api";
 import { Effect, Option } from "effect";
 import {
   customerAccountLinks,
@@ -15,15 +19,28 @@ import {
 import { authUser } from "@/db/schema/auth";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { type AudienceCondition, audienceFactKey } from "../audience-filter";
+import {
+  type AudienceCondition,
+  audienceFactKey,
+  countFactRequest,
+} from "../audience-filter";
+import type { CampaignId } from "../campaign-identifiers";
 import type { DatePeriodBounds } from "../date-period";
 import { evaluateAudienceFilter } from "./audience-evaluation";
+import { audienceEvaluationAt } from "./audience-evaluation-context";
 import {
   CampaignCandidateRepository,
   type CampaignReservationSelection,
 } from "./campaign-candidate.repository";
+import {
+  deleteAutomatedCampaigns,
+  seedAutomatedCampaign,
+  seedAutomatedSend,
+  seedAutomationVersion,
+} from "./email-campaigns.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
+const context = audienceEvaluationAt(Temporal.Now.instant());
 
 const run = crypto.randomUUID();
 const customerId = (role: string) =>
@@ -228,7 +245,10 @@ describe.skipIf(!testDatabase)(
       );
     };
 
+    const automatedCampaignIds: CampaignId[] = [];
+
     afterAll(async () => {
+      await deleteAutomatedCampaigns(db, automatedCampaignIds);
       await testDatabase.pool.query(
         "delete from email_campaign_sends where id = any($1)",
         [[marketingSend, operationalSend]]
@@ -275,6 +295,39 @@ describe.skipIf(!testDatabase)(
           ({ dotyposCustomerId }) => dotyposCustomerId
         )
       ).toEqual([consented]);
+    });
+
+    test("lists only the given customers, with the same pool rules", async () => {
+      const listed = async (
+        purpose: "marketing" | "operational",
+        ids: readonly (typeof seeded)[number][]
+      ) =>
+        (
+          await repository((candidates) =>
+            candidates.listCandidates({ purpose, ids })
+          )
+        )
+          .map(({ dotyposCustomerId }) => dotyposCustomerId)
+          .sort();
+      expect(
+        await listed("operational", [reserved, linked, withdrawn])
+      ).toEqual([reserved, linked, withdrawn].sort());
+      expect(await listed("marketing", [consented, withdrawn])).toEqual([
+        consented,
+      ]);
+      expect(await listed("operational", [])).toEqual([]);
+      const operational = await seededCandidates("operational");
+      expect(
+        (
+          await repository((candidates) =>
+            candidates.listCandidates({ purpose: "operational", ids: [linked] })
+          )
+        )[0]
+      ).toEqual(
+        operational.find(
+          ({ dotyposCustomerId }) => dotyposCustomerId === linked
+        )
+      );
     });
 
     test("collects every known customer with their locale sources", async () => {
@@ -341,10 +394,13 @@ describe.skipIf(!testDatabase)(
       const facts = {
         counts: new Map([
           [
-            audienceFactKey({
-              attribute: "reservationCount",
-              params: condition("gt").params,
-            } as never),
+            audienceFactKey(
+              countFactRequest(
+                audienceAttributeCatalogue.reservationCount,
+                condition("gt") as AudienceCountCondition,
+                context
+              )
+            ),
             await reservationCounts({ booked: {} }),
           ],
         ]),
@@ -358,6 +414,7 @@ describe.skipIf(!testDatabase)(
             locale: "en-US",
             hasAccount: false,
           },
+          context,
           facts,
           profile: Option.none(),
         });
@@ -450,6 +507,48 @@ describe.skipIf(!testDatabase)(
       expect(
         await receivedEmails({ purpose: "operational", dispatched: {} })
       ).toEqual({ [reserved]: 1 });
+    });
+
+    test("counts an automated send's recipients under its version's purpose", async () => {
+      const recipient = customerId("automated-recipient");
+      // The campaign's own draft is operational; its published version is
+      // marketing, and that is what its sends were mailed as.
+      const campaignId = await seedAutomatedCampaign(db, {
+        purpose: "operational",
+      });
+      automatedCampaignIds.push(campaignId);
+      const versionId = await seedAutomationVersion(db, {
+        campaignId,
+        purpose: "marketing",
+      });
+      for (const status of ["delivered", "unconfirmed", "failed"] as const) {
+        await seedAutomatedSend(db, {
+          campaignId,
+          versionId,
+          purpose: "marketing",
+          recipients: [{ dotyposCustomerId: recipient, status }],
+        });
+      }
+      const received = async (query: {
+        readonly purpose?: "marketing" | "operational";
+        readonly campaignId?: CampaignId;
+      }) =>
+        Object.fromEntries(
+          await repository((candidates) =>
+            candidates.countReceivedCampaignEmails({
+              ...query,
+              dispatched: {},
+              customers: [recipient],
+            })
+          )
+        );
+
+      expect(await received({ purpose: "marketing" })).toEqual({
+        [recipient]: 2,
+      });
+      expect(await received({ purpose: "operational" })).toEqual({});
+      expect(await received({})).toEqual({ [recipient]: 2 });
+      expect(await received({ campaignId })).toEqual({ [recipient]: 2 });
     });
 
     test("dates an email by the current attempt's batch, or by its status without one", async () => {

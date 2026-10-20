@@ -121,8 +121,9 @@ const discoverTestDiscounts =
       discountableSubtotal
     );
 
-    return Effect.succeed(
-      discountAdvertisementQuoteCodec.make({
+    return Effect.succeed({
+      complete: true,
+      quote: discountAdvertisementQuoteCodec.make({
         product,
         discountableSubtotal,
         discounts: amount
@@ -144,8 +145,8 @@ const discoverTestDiscounts =
           : [],
         totalDiscount: workspaceMoneyWithValue(amount, discountableSubtotal),
         discountedSubtotal: after,
-      })
-    );
+      }),
+    });
   };
 
 /**

@@ -118,6 +118,7 @@ function FormLabel({
 
 function FormControl({
   ref,
+  "aria-describedby": describedBy,
   ...props
 }: React.ComponentPropsWithoutRef<typeof Slot> & {
   ref?: React.Ref<React.ComponentRef<typeof Slot>>;
@@ -128,7 +129,10 @@ function FormControl({
     <Slot
       ref={ref}
       id={formItemId}
-      aria-describedby={error ? formMessageId : undefined}
+      aria-describedby={
+        [describedBy, error && formMessageId].filter(Boolean).join(" ") ||
+        undefined
+      }
       aria-invalid={Boolean(error)}
       aria-labelledby={formLabelId}
       {...props}
@@ -147,16 +151,17 @@ function FormMessage({
   const { error, formMessageId } = useFormField();
   const body = error ? String(error.message) : children;
 
-  if (!body) {
-    return null;
-  }
-
+  // The live region stays mounted so screen readers announce the message when
+  // it appears; while empty it leaves the item's flow and gap.
   return (
     <p
       ref={ref}
       id={formMessageId}
       aria-live="polite"
-      className={cn("text-sm font-medium text-burned-orange", className)}
+      className={cn(
+        "text-sm font-medium text-burned-orange empty:sr-only",
+        className
+      )}
       {...props}
     >
       {body}

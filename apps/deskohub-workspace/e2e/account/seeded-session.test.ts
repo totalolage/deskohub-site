@@ -19,6 +19,7 @@ import {
   resolveWorkspaceE2ESessionSigningSecret,
   signInWorkspaceE2ESyntheticAccount,
   signWorkspaceE2ESessionToken,
+  workspaceE2ESessionCookieFor,
   workspaceE2ESessionCookieName,
 } from "./seeded-session";
 
@@ -31,7 +32,12 @@ const retiredSecret = "synthetic-retired-session-signing-secret-9876543210";
  * same cookie naming, HTTPS-only prefix, signing secret selection, and
  * database session lookup the protected preview uses.
  */
-const makeDeployedShapeAuth = () => {
+const makeDeployedShapeAuth = (
+  origin: { readonly host: string; readonly protocol: "http" | "https" } = {
+    host,
+    protocol: "https",
+  }
+) => {
   const store = {
     account: [] as Account[],
     rateLimit: [] as RateLimit[],
@@ -41,7 +47,7 @@ const makeDeployedShapeAuth = () => {
   };
   const auth = betterAuth({
     ...authOptions,
-    baseURL: { allowedHosts: [host], protocol: "https" },
+    baseURL: { allowedHosts: [origin.host], protocol: origin.protocol },
     database: memoryAdapter(store),
     secrets: [
       { value: currentSecret, version: 2 },
@@ -79,13 +85,14 @@ const seedStoredSession = (
 
 const readSession = (
   auth: ReturnType<typeof makeDeployedShapeAuth>["auth"],
-  cookie: string
+  cookie: string,
+  origin = `https://${host}`
 ) =>
   auth.api.getSession({
     headers: new Headers({
       cookie,
-      host,
-      origin: `https://${host}`,
+      host: new URL(origin).host,
+      origin,
     }),
   });
 
@@ -105,6 +112,32 @@ describe("workspace e2e seeded sessions", () => {
     );
 
     expect(session?.user.id).toBe("seeded-user");
+  });
+
+  test("a local development server reads the unprefixed session cookie", async () => {
+    const origin = "http://localhost:3110";
+    const { auth, store } = makeDeployedShapeAuth({
+      host: "localhost:3110",
+      protocol: "http",
+    });
+    const token = "c".repeat(16) + "d".repeat(16);
+    seedStoredSession(store, token);
+    const cookie = workspaceE2ESessionCookieFor(origin);
+
+    const value = await signWorkspaceE2ESessionToken(token, {
+      value: currentSecret,
+    });
+    const session = await readSession(auth, `${cookie.name}=${value}`, origin);
+
+    expect(cookie.secure).toBe(false);
+    expect(session?.user.id).toBe("seeded-user");
+    expect(workspaceE2ESessionCookieFor(`https://${host}`)).toEqual({
+      name: workspaceE2ESessionCookieName,
+      secure: true,
+    });
+    expect(() => workspaceE2ESessionCookieFor(`http://${host}`)).toThrow(
+      WorkspaceE2EError
+    );
   });
 
   test("fails closed with provisioning guidance and never echoes the value", () => {

@@ -18,6 +18,10 @@ description: Dotypos API, @deskohub/dotypos, DotyposService, OpenAPI contract, g
 3. Effect service: `DotyposService` in `src/backend/service.ts`. `DotyposService.Live` wires the generated client, access token, and fetch transport.
 4. Configuration: apps decode their env into `DotyposRuntimeConfig` with `DotyposRuntimeConfigSchema` (`src/config.ts`), as `apps/deskohub-workspace/shared/backend/config/dotypos.config.ts` does.
 
+## Reading many records by id
+
+Read more ids than one `id|in|` filter should carry with `readInIdFilterBatches` (`src/utils/id-filter-batches.ts`, 50 ids per batch). It dedupes the ids and returns each batch's result; the caller's batch effect decides whether a failed batch degrades or fails the read. Don't hand-roll the dedupe and chunking.
+
 ## Add or change an operation
 
 1. Read the official API documentation.

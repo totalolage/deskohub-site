@@ -1,0 +1,13 @@
+- main:
+  - list "Kroky rezervace":
+    - listitem:
+      - link "Rezervace Dokončeno"
+  - heading "Souhrn objednávky" [level=1]
+  - textbox "Sleva, poukaz nebo doporučovací kód"
+  - button "Použít kód"
+  - checkbox "Souhlasím s dokumenty Všeobecné obchodní podmínky, Provozní řád."
+  - link "Všeobecné obchodní podmínky":
+    - /url: /cs-CZ/terms-and-conditions
+  - link "Provozní řád":
+    - /url: /cs-CZ/operating-rules
+  - button /^Objednat a zaplatit/ [disabled]

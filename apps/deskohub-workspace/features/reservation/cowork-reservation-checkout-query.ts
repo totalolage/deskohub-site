@@ -12,13 +12,17 @@ import {
   coworkReservationDefaultValues,
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
+import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import {
   decodeReservationCheckoutCustomer,
   getTrimmedSearchParam,
   hasReservationSelectionSearchParams,
   type ReservationSelectionSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
-import { isTodayOrFutureWorkspaceDate } from "@/features/reservation/reservation-date";
+import {
+  getWorkspaceDate,
+  isTodayOrFutureWorkspaceDate,
+} from "@/features/reservation/reservation-date";
 import type { CustomerLastReservationForKind } from "@/features/reservation/reservation-existing-customer";
 import type { SupportedSearchParams } from "@/shared/utils";
 
@@ -145,6 +149,25 @@ export const getCoworkReservationSelectionSearchParams = (
       ? noMonitorQueryValue
       : undefined),
 });
+
+/**
+ * A stored cowork reservation's selection as link parameters, so a retried
+ * checkout reopens the form on the same offer and date. A historical tier
+ * can't be booked again and gives no selection.
+ */
+export const getStoredCoworkReservationSelectionSearchParams = (
+  reservation: StoredCoworkReservationDetails & {
+    readonly reservedFrom: Temporal.Instant;
+  }
+): ReservationSelectionSearchParams | undefined =>
+  isWorkspaceCoworkCurrentProductTier(reservation.entryTier)
+    ? getCoworkReservationSelectionSearchParams({
+        entryTier: reservation.entryTier,
+        date: getWorkspaceDate(reservation.reservedFrom).toString(),
+        coffee: reservation.coffee,
+        monitorOption: reservation.monitorOption,
+      })
+    : undefined;
 
 /**
  * A link to a cowork tier, optionally on a date, that leaves the add-ons for
