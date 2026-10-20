@@ -1,33 +1,27 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { and, eq, isNull, ne } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
 import type { SqlError } from "effect/unstable/sql";
-import {
-  WorkspaceDatabase,
-  type WorkspaceDatabaseClient,
-} from "@/db/database.service";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type PostgresAdvisoryLockKey,
   WorkspaceDatabaseAdvisoryLock,
 } from "@/db/postgres-advisory-lock";
-import { customerAccountLinks, customerAccounts } from "@/db/schema";
+import { customerAccounts } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
+import { findViolatedConstraint } from "@/db/sql-constraint";
 import {
   insertReferralSignupIntent,
   type ReferralSignupIntent,
 } from "@/features/referrals/signup-intent.repository";
 import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import type { CustomerAccountId } from "../customer-account";
-import {
-  ensureCustomerAccount,
-  recordCustomerAccountLink,
-} from "./customer-account.repository";
-import { linkedDotyposCustomerId } from "./customer-account-dotypos-link";
 
 /**
- * `created` is true only for the claim that inserted the link; a claim that
- * found this account already linked to the customer reports false.
+ * `created` is true only for the claim that recorded the link; a claim that
+ * found this account already linked reports false with the account's own
+ * customer. `claimed` means another live account holds the customer.
  */
 export type CustomerAccountLinkClaim =
   | {
@@ -93,17 +87,12 @@ export class CustomerAccountLinkRepository extends Context.Service<
       const find = Effect.fn("CustomerAccountLinkRepository.find")(function* (
         accountId: CustomerAccountId
       ) {
-        const [link] = yield* db
-          .select({ customerId: linkedDotyposCustomerId })
-          .from(authUser)
-          .leftJoin(customerAccounts, eq(customerAccounts.id, authUser.id))
-          .leftJoin(
-            customerAccountLinks,
-            eq(customerAccountLinks.customerAccountId, authUser.id)
-          )
-          .where(eq(authUser.id, accountId))
+        const [account] = yield* db
+          .select({ customerId: customerAccounts.dotyposCustomerId })
+          .from(customerAccounts)
+          .where(eq(customerAccounts.id, accountId))
           .limit(1);
-        return link?.customerId ?? null;
+        return account?.customerId ?? null;
       });
 
       const performClaim = Effect.fn("CustomerAccountLinkRepository.claim")(
@@ -112,65 +101,53 @@ export class CustomerAccountLinkRepository extends Context.Service<
           customerId: DotyposCustomerId,
           signupReferral: ReferralSignupIntent | undefined
         ) {
-          const settled = yield* db.transaction(
-            Effect.fn(function* (tx) {
-              // The contract release (#682) links accounts through the column
-              // alone, so the column decides before the link row does. The
-              // row lock orders this claim after any claim of the account
-              // that release is committing.
-              yield* ensureCustomerAccount(tx, accountId);
-              const [account] = yield* tx
-                .select({ customerId: customerAccounts.dotyposCustomerId })
-                .from(customerAccounts)
-                .where(eq(customerAccounts.id, accountId))
-                .for("update");
-              if (account?.customerId) {
+          const settled = yield* db
+            .transaction(
+              Effect.fn(function* (tx) {
+                // Only a live account without a customer takes one; the
+                // unique customer index rejects a customer another account
+                // holds, and a concurrent claim of the same account waits on
+                // the row and then finds it linked.
+                const [link] = yield* tx
+                  .update(customerAccounts)
+                  .set({ dotyposCustomerId: customerId })
+                  .where(
+                    and(
+                      eq(customerAccounts.id, accountId),
+                      isNull(customerAccounts.dotyposCustomerId),
+                      isNull(customerAccounts.deletedAt)
+                    )
+                  )
+                  .returning({ createdAt: customerAccounts.createdAt });
+                if (!link) return undefined;
+                if (signupReferral) {
+                  yield* insertReferralSignupIntent(
+                    tx,
+                    accountId,
+                    signupReferral
+                  );
+                }
+                // The first link gives the account a mailable Dotypos
+                // customer, so the account counts as created at its creation
+                // instant.
+                yield* recordCustomerEvent(tx, {
+                  kind: "account-created",
+                  occurredAt: link.createdAt,
+                  dotyposCustomerId: customerId,
+                  customerAccountId: accountId,
+                });
                 return {
                   kind: "linked",
-                  customerId: account.customerId,
-                  created: false,
+                  customerId,
+                  created: true,
                 } as const;
-              }
-              const [holder] = yield* tx
-                .select({ id: customerAccounts.id })
-                .from(customerAccounts)
-                .where(
-                  and(
-                    eq(customerAccounts.dotyposCustomerId, customerId),
-                    ne(customerAccounts.id, accountId),
-                    isNull(customerAccounts.deletedAt)
-                  )
-                )
-                .limit(1);
-              if (holder) return { kind: "claimed" } as const;
-
-              const [link] = yield* tx
-                .insert(customerAccountLinks)
-                .values({
-                  customerAccountId: accountId,
-                  dotyposCustomerId: customerId,
-                })
-                .onConflictDoNothing()
-                .returning({
-                  customerId: customerAccountLinks.dotyposCustomerId,
-                });
-              if (!link) return link;
-              yield* recordCustomerAccountLink(tx, accountId, link.customerId);
-              if (signupReferral) {
-                yield* insertReferralSignupIntent(
-                  tx,
-                  accountId,
-                  signupReferral
-                );
-              }
-              yield* recordAccountCreated(tx, accountId, link.customerId);
-              return {
-                kind: "linked",
-                customerId: link.customerId,
-                created: true,
-              } as const;
-            })
-          );
+              })
+            )
+            .pipe(
+              Effect.catchIf(isCustomerHeldElsewhere, () =>
+                Effect.succeed(undefined)
+              )
+            );
           if (settled) return settled;
 
           const racedLink = yield* find(accountId);
@@ -242,28 +219,11 @@ export class CustomerAccountLinkRepository extends Context.Service<
   );
 }
 
-/**
- * The first link gives the account a mailable Dotypos customer, so it is
- * recorded as created at the durable account's creation instant. The link's
- * transaction has already recorded the link on the durable account.
- */
-const recordAccountCreated = Effect.fn(function* (
-  tx: WorkspaceDatabaseClient,
-  accountId: CustomerAccountId,
-  customerId: DotyposCustomerId
-) {
-  const [account] = yield* tx
-    .select({ createdAt: customerAccounts.createdAt })
-    .from(customerAccounts)
-    .where(eq(customerAccounts.id, accountId))
-    .limit(1);
-  if (!account) {
-    return yield* Effect.die("Durable customer account is missing.");
-  }
-  yield* recordCustomerEvent(tx, {
-    kind: "account-created",
-    occurredAt: account.createdAt,
-    dotyposCustomerId: customerId,
-    customerAccountId: accountId,
-  });
-});
+/** The claimed customer is already another account's. */
+const isCustomerHeldElsewhere = (error: CustomerAccountLinkError) =>
+  findViolatedConstraint(error).pipe(
+    Option.exists(
+      (constraint) =>
+        constraint === "customer_accounts_dotypos_customer_unique_idx"
+    )
+  );

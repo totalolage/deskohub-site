@@ -407,6 +407,10 @@ describe.skipIf(!testDatabase)(
     const insertLegacyAccount = async (email: string) => {
       const id = crypto.randomUUID();
       await testDatabase!.pool.query(
+        "insert into customer_accounts (id) values ($1) on conflict do nothing",
+        [id]
+      );
+      await testDatabase!.pool.query(
         `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, true)`,
         [id, email]
       );
@@ -726,10 +730,10 @@ describe.skipIf(!testDatabase)(
       expect(user.rows).toHaveLength(0);
 
       const link = await testDatabase!.pool.query(
-        `select * from customer_account_links where customer_account_id = $1`,
+        `select dotypos_customer_id from customer_accounts where id = $1`,
         [userId]
       );
-      expect(link.rows).toHaveLength(0);
+      expect(link.rows).toEqual([{ dotypos_customer_id: null }]);
 
       const sessions = await testDatabase!.pool.query(
         `select id from auth.session where user_id = $1`,
@@ -770,10 +774,11 @@ describe.skipIf(!testDatabase)(
       expect(user.rows[0]!.deletion_requested_at).not.toBeNull();
 
       const link = await testDatabase!.pool.query(
-        `select * from customer_account_links where customer_account_id = $1`,
+        `select dotypos_customer_id from customer_accounts where id = $1`,
         [userId]
       );
       expect(link.rows).toHaveLength(1);
+      expect(link.rows[0]?.dotypos_customer_id).not.toBeNull();
     });
 
     test("keeps the auth identity and link when avatar deletion has an unknown provider outcome", async () => {
@@ -809,10 +814,11 @@ describe.skipIf(!testDatabase)(
       expect(user.rows[0]!.deletion_requested_at).not.toBeNull();
 
       const link = await testDatabase!.pool.query(
-        `select * from customer_account_links where customer_account_id = $1`,
+        `select dotypos_customer_id from customer_accounts where id = $1`,
         [userId]
       );
       expect(link.rows).toHaveLength(1);
+      expect(link.rows[0]?.dotypos_customer_id).not.toBeNull();
     });
 
     test("rejects stale sessions before the deletion hook runs", async () => {

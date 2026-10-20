@@ -13,6 +13,9 @@ export const insertTestAccount = async (
 ): Promise<AdministratorAccountActor> => {
   const accountId = customerAccountIdSchema.make(crypto.randomUUID());
   const email = testEmailAddress(`${label}-${accountId}`);
+  await database.pool.query("insert into customer_accounts (id) values ($1)", [
+    accountId,
+  ]);
   await database.pool.query(
     `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, true)`,
     [accountId, email]
@@ -33,7 +36,10 @@ export const insertTestAdministrator = async (
   return administrator;
 };
 
-/** Deletes test accounts; their grants cascade and actor ids become null. */
+/**
+ * Deletes test accounts' logins; their grants cascade, actor ids become null,
+ * and the customer accounts stay as records do in production.
+ */
 export const deleteTestAccounts = async (
   database: WorkspacePostgresTestDatabase,
   accounts: readonly AdministratorAccountActor[]

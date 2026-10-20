@@ -10,15 +10,19 @@ import {
   type AudienceCountCondition,
   audienceAttributeCatalogue,
 } from "@deskohub/workspace-admin-api";
+import { eq } from "drizzle-orm";
 import { Effect, Option } from "effect";
 import {
-  customerAccountLinks,
+  customerAccounts,
   customerMarketingConsents,
   workspaceReservations,
 } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type AudienceCondition,
   audienceFactKey,
@@ -92,9 +96,16 @@ describe.skipIf(!testDatabase)(
 
     beforeAll(async () => {
       await Effect.runPromise(
+        db
+          .insert(customerAccounts)
+          .values({ id: accountId })
+          .onConflictDoNothing()
+      );
+      await Effect.runPromise(
         Effect.all([
           db.insert(workspaceReservations).values([
             {
+              authorAccountId: fixtureReservationAuthorId,
               checkoutAttemptKey: checkoutAttemptKeySchema.make(`old-${run}`),
               dotyposCustomerId: reserved,
               dotyposReservationId: DotyposReservationIdSchema.make(
@@ -108,6 +119,7 @@ describe.skipIf(!testDatabase)(
               createdAt: createdAt.subtract({ hours: 240 }),
             },
             {
+              authorAccountId: fixtureReservationAuthorId,
               checkoutAttemptKey: checkoutAttemptKeySchema.make(`new-${run}`),
               dotyposCustomerId: reserved,
               dotyposReservationId: visitedReservation,
@@ -122,6 +134,7 @@ describe.skipIf(!testDatabase)(
               createdAt,
             },
             {
+              authorAccountId: fixtureReservationAuthorId,
               checkoutAttemptKey: checkoutAttemptKeySchema.make(
                 `abandoned-${run}`
               ),
@@ -135,6 +148,7 @@ describe.skipIf(!testDatabase)(
               createdAt,
             },
             {
+              authorAccountId: fixtureReservationAuthorId,
               checkoutAttemptKey: checkoutAttemptKeySchema.make(
                 `unfulfilled-${run}`
               ),
@@ -181,8 +195,9 @@ describe.skipIf(!testDatabase)(
       );
       await Effect.runPromise(
         db
-          .insert(customerAccountLinks)
-          .values({ customerAccountId: accountId, dotyposCustomerId: linked })
+          .update(customerAccounts)
+          .set({ dotyposCustomerId: linked })
+          .where(eq(customerAccounts.id, accountId))
       );
       await seedCampaignDeliveries();
     });
@@ -269,6 +284,10 @@ describe.skipIf(!testDatabase)(
       await testDatabase.pool.query('delete from auth."user" where id = $1', [
         accountId,
       ]);
+      await testDatabase.pool.query(
+        "delete from customer_accounts where id = $1",
+        [accountId]
+      );
     });
 
     const repository = <A, E>(

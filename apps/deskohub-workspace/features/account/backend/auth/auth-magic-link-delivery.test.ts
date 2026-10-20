@@ -72,6 +72,10 @@ const uniqueEmail = (label: string) =>
 const insertVerifiedUser = async (email: string, verified: boolean) => {
   const id = crypto.randomUUID();
   await testDatabase!.pool.query(
+    "insert into customer_accounts (id) values ($1) on conflict do nothing",
+    [id]
+  );
+  await testDatabase!.pool.query(
     `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, $3)`,
     [id, email, verified]
   );

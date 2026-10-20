@@ -46,6 +46,7 @@ import {
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
   connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
@@ -201,6 +202,7 @@ const createPaidFixture = async (
     testDatabase!.db.transaction((tx) =>
       Effect.gen(function* () {
         yield* tx.insert(workspaceReservations).values({
+          authorAccountId: fixtureReservationAuthorId,
           id: reservationId,
           checkoutSessionKey: checkoutSessionKeySchema.make(randomUUID()),
           checkoutAttemptKey: checkoutAttemptKeySchema.make(randomUUID()),

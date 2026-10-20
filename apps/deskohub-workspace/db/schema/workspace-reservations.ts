@@ -101,10 +101,11 @@ export const workspaceReservations = pgTable(
       .notNull()
       .$type<DotyposCustomerId>(),
     /**
-     * The customer account that made the reservation. Null only for guest
-     * checkouts and legacy rows until the author backfill.
+     * The customer account that made the reservation. Its tombstone keeps
+     * naming it after the account is deleted.
      */
     authorAccountId: text("author_account_id")
+      .notNull()
       .references(() => customerAccounts.id, { onDelete: "restrict" })
       .$type<CustomerAccountId>(),
     reservationPurpose: text("reservation_purpose").$type<ReservationPurpose>(),

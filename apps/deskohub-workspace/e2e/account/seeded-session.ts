@@ -4,7 +4,7 @@ import { makeSignature } from "better-auth/crypto";
 import { Effect } from "effect";
 import { accountRoleGrants } from "@/db/schema/account-role-grants";
 import { authSession, authUser } from "@/db/schema/auth";
-import { customerAccountLinks } from "@/db/schema/customer-account-links";
+import { customerAccounts } from "@/db/schema/customer-accounts";
 import { parseBetterAuthSecrets } from "@/features/account/backend/auth/auth-secrets";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { AccountRole } from "@/features/administrators/account-role";
@@ -113,8 +113,8 @@ export type WorkspaceE2ESyntheticAccount = {
 };
 
 /**
- * Inserts one verified synthetic Better Auth user, its customer link when the
- * profile counts as completed, and its role grants. The caller journals the
+ * Inserts one verified synthetic customer account, linked to its customer when
+ * the profile counts as completed, its Better Auth user, and its role grants. The caller journals the
  * account id first.
  */
 export const seedWorkspaceE2ESyntheticAccount = (
@@ -127,6 +127,10 @@ export const seedWorkspaceE2ESyntheticAccount = (
       "seed synthetic account",
       db.transaction(
         Effect.fn(function* (tx) {
+          yield* tx.insert(customerAccounts).values({
+            id: accountId,
+            dotyposCustomerId: account.linkedCustomerId ?? null,
+          });
           yield* tx.insert(authUser).values({
             deletionRequestedAt: null,
             email: sensitiveDatabaseParameter(account.email),
@@ -134,12 +138,6 @@ export const seedWorkspaceE2ESyntheticAccount = (
             id: accountId,
             name: account.name,
           });
-          if (account.linkedCustomerId) {
-            yield* tx.insert(customerAccountLinks).values({
-              customerAccountId: accountId,
-              dotyposCustomerId: account.linkedCustomerId,
-            });
-          }
           if (account.roles && account.roles.length > 0) {
             yield* tx
               .insert(accountRoleGrants)

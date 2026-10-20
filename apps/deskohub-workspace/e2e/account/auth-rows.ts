@@ -1,9 +1,12 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  WorkspaceDatabase,
+  type WorkspaceDatabaseClient,
+} from "@/db/database.service";
 import { authPasskey, authSession, authUser } from "@/db/schema/auth";
-import { customerAccountLinks } from "@/db/schema/customer-account-links";
+import { customerAccounts } from "@/db/schema/customer-accounts";
 import { CustomerAccountRepository } from "@/features/account/backend/customer-account.repository";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
@@ -52,6 +55,26 @@ export const findAuthUserEmailById = (
     return rows[0] ? rows[0].email : undefined;
   });
 
+/**
+ * The author of a reservation a fixture seeds for the customer: the live
+ * account linked to it, else a new synthetic customer account without a
+ * login, since every reservation has an author.
+ */
+export const seedWorkspaceE2EReservationAuthor = Effect.fn(
+  "seedWorkspaceE2EReservationAuthor"
+)(function* (executor: WorkspaceDatabaseClient, customerId: DotyposCustomerId) {
+  const [linked] = yield* executor
+    .select({ id: customerAccounts.id })
+    .from(customerAccounts)
+    .where(eq(customerAccounts.dotyposCustomerId, customerId));
+  if (linked) return linked.id;
+  const id = customerAccountIdSchema.make(
+    `e2e-reservation-author-${crypto.randomUUID()}`
+  );
+  yield* executor.insert(customerAccounts).values({ id });
+  return id;
+});
+
 export const findLinkedDotyposCustomerId = (
   accountId: string
 ): Effect.Effect<string | undefined, WorkspaceE2EError, E2EDatabase> =>
@@ -60,13 +83,11 @@ export const findLinkedDotyposCustomerId = (
     const rows = yield* runDatabaseOperation(
       "read synthetic account link",
       db
-        .select({
-          dotyposCustomerId: customerAccountLinks.dotyposCustomerId,
-        })
-        .from(customerAccountLinks)
-        .where(eq(customerAccountLinks.customerAccountId, accountId))
+        .select({ dotyposCustomerId: customerAccounts.dotyposCustomerId })
+        .from(customerAccounts)
+        .where(eq(customerAccounts.id, customerAccountIdSchema.make(accountId)))
     );
-    return rows[0]?.dotyposCustomerId;
+    return rows[0]?.dotyposCustomerId ?? undefined;
   });
 
 export const removeSyntheticAccountLink = (
@@ -78,19 +99,18 @@ export const removeSyntheticAccountLink = (
     const rows = yield* runDatabaseOperation(
       "delete synthetic account link",
       db
-        .delete(customerAccountLinks)
+        .update(customerAccounts)
+        .set({ dotyposCustomerId: null })
         .where(
           and(
-            eq(customerAccountLinks.customerAccountId, accountId),
+            eq(customerAccounts.id, customerAccountIdSchema.make(accountId)),
             eq(
-              customerAccountLinks.dotyposCustomerId,
+              customerAccounts.dotyposCustomerId,
               customerId as DotyposCustomerId
             )
           )
         )
-        .returning({
-          customerAccountId: customerAccountLinks.customerAccountId,
-        })
+        .returning({ customerAccountId: customerAccounts.id })
     );
 
     if (rows.length !== 1 || rows[0]?.customerAccountId !== accountId) {
@@ -286,13 +306,10 @@ export const readSyntheticAccountState = (
       db
         .select({
           authUserId: authUser.id,
-          dotyposCustomerId: customerAccountLinks.dotyposCustomerId,
+          dotyposCustomerId: customerAccounts.dotyposCustomerId,
         })
         .from(authUser)
-        .leftJoin(
-          customerAccountLinks,
-          eq(customerAccountLinks.customerAccountId, authUser.id)
-        )
+        .leftJoin(customerAccounts, eq(customerAccounts.id, authUser.id))
         .where(eq(authUser.email, sensitiveDatabaseParameter(email)))
     );
     const row = rows[0];

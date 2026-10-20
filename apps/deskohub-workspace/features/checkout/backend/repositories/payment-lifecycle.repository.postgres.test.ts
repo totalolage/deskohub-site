@@ -87,7 +87,10 @@ import {
   waitForAdvisoryLockWaiter,
   waitForPostgresLockWaiter,
 } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { createHeldReservation as createSharedHeldReservation } from "./payment-lifecycle.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -770,6 +773,7 @@ describe.skipIf(!testDatabase)(
           if (alreadyPaid) {
             await Effect.runPromise(
               testDatabase!.db.insert(workspaceReservations).values({
+                authorAccountId: fixtureReservationAuthorId,
                 checkoutAttemptKey: `referral-history-${uniqueId()}`,
                 dotyposCustomerId: fixture.invitedDotyposCustomerId,
                 dotyposReservationId: ("dotypos-history-" +
@@ -1447,11 +1451,15 @@ describe.skipIf(!testDatabase)(
 
         // Once the guest signs in, the Referrals screen counts the invitation.
         await testDatabase!.pool.query(
+          `insert into customer_accounts (id) values ($1) on conflict do nothing`,
+          [inviteeAccountId]
+        );
+        await testDatabase!.pool.query(
           `insert into auth."user" (id, name, email) values ($1, '', $2)`,
           [inviteeAccountId, testEmailAddress(inviteeAccountId)]
         );
         await testDatabase!.pool.query(
-          "insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2)",
+          "update customer_accounts set dotypos_customer_id = $2 where id = $1",
           [inviteeAccountId, fixture.invitedDotyposCustomerId]
         );
         const identity = {
@@ -1481,11 +1489,11 @@ describe.skipIf(!testDatabase)(
           [issued.rows.map(({ id }) => id)]
         );
         await testDatabase!.pool.query(
-          "delete from customer_account_links where customer_account_id = $1",
+          'delete from auth."user" where id = $1',
           [inviteeAccountId]
         );
         await testDatabase!.pool.query(
-          'delete from auth."user" where id = $1',
+          "delete from customer_accounts where id = $1",
           [inviteeAccountId]
         );
       }
@@ -2222,6 +2230,10 @@ describe.skipIf(!testDatabase)(
 
         try {
           await testDatabase!.pool.query(
+            `insert into customer_accounts (id) values ($1), ($2) on conflict do nothing`,
+            [inviteeAccountId, referrerAccountId]
+          );
+          await testDatabase!.pool.query(
             `insert into auth."user" (id, name, email) values ($1, '', $2), ($3, '', $4)`,
             [
               inviteeAccountId,
@@ -2231,13 +2243,12 @@ describe.skipIf(!testDatabase)(
             ]
           );
           await testDatabase!.pool.query(
-            "insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2), ($3, $4)",
-            [
-              inviteeAccountId,
-              fixture.invitedDotyposCustomerId,
-              referrerAccountId,
-              fixture.referrerDotyposCustomerId,
-            ]
+            "update customer_accounts set dotypos_customer_id = $2 where id = $1",
+            [inviteeAccountId, fixture.invitedDotyposCustomerId]
+          );
+          await testDatabase!.pool.query(
+            "update customer_accounts set dotypos_customer_id = $2 where id = $1",
+            [referrerAccountId, fixture.referrerDotyposCustomerId]
           );
 
           const db = await Effect.runPromise(makeDatabaseClient(pool));
@@ -2343,11 +2354,11 @@ describe.skipIf(!testDatabase)(
           await Promise.allSettled(admissionPromises);
           await fixture.cleanup();
           await testDatabase!.pool.query(
-            "delete from customer_account_links where customer_account_id = any($1)",
+            'delete from auth."user" where id = any($1)',
             [[inviteeAccountId, referrerAccountId]]
           );
           await testDatabase!.pool.query(
-            'delete from auth."user" where id = any($1)',
+            "delete from customer_accounts where id = any($1)",
             [[inviteeAccountId, referrerAccountId]]
           );
           await pool.end();
@@ -2439,6 +2450,7 @@ describe.skipIf(!testDatabase)(
       reservationIds.push(reservationId);
       await Effect.runPromise(
         testDatabase.db.insert(workspaceReservations).values({
+          authorAccountId: fixtureReservationAuthorId,
           id: reservationId,
           checkoutSessionKey: `lifecycle-session-${id}`,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${id}`),
@@ -2766,9 +2778,9 @@ describe.skipIf(!testDatabase)(
       voucherIds.push(voucherId);
       reservationIds.push(workspaceReservationIdSchema.make(reservationId));
       await testDatabase.pool.query(
-        `insert into workspace_reservations (id, checkout_attempt_key, dotypos_customer_id, dotypos_reservation_id, reservation_state, payment_state, fulfillment_state, reservation_details, locale)
-         values ($1, $1, $2, $1, 'cancelled', 'expired', 'not_started', '{"kind":"cowork","entryTier":"open-space","coffee":false}', 'en-US')`,
-        [reservationId, customerId]
+        `insert into workspace_reservations (id, checkout_attempt_key, dotypos_customer_id, dotypos_reservation_id, reservation_state, payment_state, fulfillment_state, reservation_details, locale, author_account_id)
+         values ($1, $1, $2, $1, 'cancelled', 'expired', 'not_started', '{"kind":"cowork","entryTier":"open-space","coffee":false}', 'en-US', $3)`,
+        [reservationId, customerId, fixtureReservationAuthorId]
       );
       await testDatabase.pool.query(
         `insert into payment_attempts (id, workspace_reservation_id, provider, provider_order_id, state, failure_code, refund_state, amount_value, amount_exponent, currency)

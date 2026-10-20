@@ -2194,6 +2194,8 @@ mock.module("./auth-rows", () => ({
     Effect.sync(() => requireExternal().assertNoAuthRows(userId)),
   countAccountPasskeys: (userId: string) =>
     Effect.sync(() => requireExternal().passkeyCount(userId)),
+  seedWorkspaceE2EReservationAuthor: () =>
+    Effect.succeed("e2e-reservation-author"),
   findAuthUserIdByEmail: (email: string) =>
     Effect.sync(() => requireExternal().findAuthUserId(email)),
   findLinkedDotyposCustomerId: (userId: string) =>

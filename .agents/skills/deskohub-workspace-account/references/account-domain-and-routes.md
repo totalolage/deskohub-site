@@ -36,25 +36,30 @@ The domain skill's [reservation parties](../../deskohub-workspace-domain/referen
 glossary defines the customer account, reservation author, and tombstone.
 
 - `public.customer_accounts` stores the account's id, which is the Better Auth
-  user id (`CustomerAccountId`), its creation instant, and `deleted_at`. It has
-  no foreign key to `auth.user`, so it outlives the identity, and it holds no
-  personal data. While the identity exists, `customer_account_links` links the
-  account to its own Dotypos customer.
-- The row appears lazily: `ensureCustomerAccount` creates it in the
-  transaction that first writes a record naming the account, and deletion
-  creates it as a tombstone when the account never authored anything. Eager
-  creation, an `auth.user` foreign key, and folding in
-  `customer_account_links` come with the contract migration (#682).
-- `workspace_reservations.author_account_id` references it with `ON DELETE
-  RESTRICT`. Never delete a customer account row; deletion tombstones it
-  through `CustomerAccountRepository.tombstone`.
+  user id (`CustomerAccountId`), its own Dotypos customer
+  (`dotypos_customer_id`, unique, null until the profile is completed), its
+  creation instant, and `deleted_at`. It holds no personal data.
+- Every login has one. Better Auth's `user.create.before` hook creates the
+  account (`ensureCustomerAccount`) before it inserts the login, and
+  `auth.user.id` references `customer_accounts.id` with `ON DELETE RESTRICT`,
+  so the account outlives the login. Anything that inserts `auth.user` rows
+  directly, such as a test fixture, creates the account first.
+- `CustomerAccountLinkRepository.claim` links the account to its customer on
+  that row. Only a live account without a customer takes one, the unique index
+  turns a customer another account holds into `claimed`, and only the claim
+  that records the link writes the `account-created` event and the signup
+  referral.
+- `workspace_reservations.author_account_id` is `NOT NULL` and references it
+  with `ON DELETE RESTRICT`. Never delete a customer account row; deletion
+  tombstones it through `CustomerAccountRepository.tombstone`, which also
+  clears its Dotypos customer so another account can claim it.
+- `customer_account_links` is the legacy link table. Nothing reads or writes
+  it, and the next release drops it.
 - `OptionalAccountActivityGuard.guardStateCreation` hands the state-creating
   section the account it verified under the account lock. Checkout requires a
   verified session, so the submission section always gets one; it records it
-  as the author of new drafts and calls `WorkspaceReservationRepository.assignAuthor` when a
-  signed-in submission reuses an authorless draft. Payment does not set an
-  author. An authorless legacy reservation stays authorless until the #682
-  backfill.
+  as the author of new drafts and never reuses a draft another account
+  authored. Payment does not set an author.
 - `CustomerReservationHistoryService` lists the rows of the account's own
   customer and the rows it authored for other customers (fetched from Dotypos
   by reservation id through `readInIdFilterBatches`). Each summary's `party` labels the
@@ -64,9 +69,6 @@ glossary defines the customer account, reservation author, and tombstone.
   `getCustomerDisplayName` over `getCustomers` reads batched the same way. Author and
   name reads are degradable: a failure logs a fixed code and leaves the party
   unnamed (null), never failing the history.
-- `author_account_id` is null only for reservations made before authors were
-  recorded, until the legacy backfill fills them and the column becomes NOT
-  NULL.
 
 ## Error contract
 

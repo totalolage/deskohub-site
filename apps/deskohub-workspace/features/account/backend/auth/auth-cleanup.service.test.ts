@@ -12,12 +12,17 @@ import {
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
-const insertUser = (id: string) =>
-  testDatabase!.pool.query(
+const insertUser = async (id: string) => {
+  await testDatabase!.pool.query(
+    "insert into customer_accounts (id) values ($1) on conflict do nothing",
+    [id]
+  );
+  return testDatabase!.pool.query(
     `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
      values ($1, 'Cleanup Fixture', $2, true, now(), now())`,
     [id, testEmailAddress(`${id}`)]
   );
+};
 
 const insertSession = (id: string, userId: string, expiresAt: string) =>
   testDatabase!.pool.query(

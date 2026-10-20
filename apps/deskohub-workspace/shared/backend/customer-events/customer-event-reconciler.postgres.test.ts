@@ -10,7 +10,6 @@ import { eq } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import {
-  customerAccountLinks,
   customerAccounts,
   customerEvents,
   workspaceReservations,
@@ -24,7 +23,10 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { recordCustomerEvent } from "./customer-event-outbox";
 import {
   CustomerEventReconciler,
@@ -116,6 +118,7 @@ describe.skipIf(!testDatabase)(
           },
           locale: "en-US",
           ...values,
+          authorAccountId: values.authorAccountId ?? fixtureReservationAuthorId,
         } satisfies typeof workspaceReservations.$inferInsert;
       });
       await Effect.runPromise(
@@ -277,19 +280,21 @@ describe.skipIf(!testDatabase)(
       const insertAccount = async (linkedCustomer: string | null) => {
         const id = customerAccountIdSchema.make(crypto.randomUUID());
         accountIds.push(id);
+        await Effect.runPromise(
+          testDatabase.db.insert(customerAccounts).values({ id, createdAt })
+        );
         await testDatabase.pool.query(
           `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, true)`,
           [id, testEmailAddress(`reconcile-${id}`)]
         );
-        await Effect.runPromise(
-          testDatabase.db.insert(customerAccounts).values({ id, createdAt })
-        );
         if (linkedCustomer) {
           await Effect.runPromise(
-            testDatabase.db.insert(customerAccountLinks).values({
-              customerAccountId: id,
-              dotyposCustomerId: DotyposCustomerIdSchema.make(linkedCustomer),
-            })
+            testDatabase.db
+              .update(customerAccounts)
+              .set({
+                dotyposCustomerId: DotyposCustomerIdSchema.make(linkedCustomer),
+              })
+              .where(eq(customerAccounts.id, id))
           );
         }
         return id;

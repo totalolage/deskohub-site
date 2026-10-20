@@ -3,6 +3,12 @@ import { sql } from "drizzle-orm";
 import { check, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { authUser } from "./auth";
 
+/**
+ * The legacy Dotypos link. `customer_accounts.dotypos_customer_id` replaced it
+ * (#682); nothing reads or writes it, and it stays defined only so the
+ * previous deployment, which still writes it, keeps working until the next
+ * release drops it.
+ */
 export const customerAccountLinks = pgTable(
   "customer_account_links",
   {

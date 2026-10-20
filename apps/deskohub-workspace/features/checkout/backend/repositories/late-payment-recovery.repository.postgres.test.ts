@@ -36,7 +36,10 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { rejectCustomerEventInserts } from "@/shared/backend/customer-events/customer-event-outbox.test-utils";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   LatePaymentRecoveryRepository,
   LatePaymentRecoveryStateError,
@@ -132,6 +135,7 @@ describe.skipIf(!testDatabase)(
       reservationIds.push(reservationId);
       await Effect.runPromise(
         testDatabase.db.insert(workspaceReservations).values({
+          authorAccountId: fixtureReservationAuthorId,
           id: reservationId,
           checkoutSessionKey: input.checkoutSessionKey ?? `late-session-${id}`,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${id}`),

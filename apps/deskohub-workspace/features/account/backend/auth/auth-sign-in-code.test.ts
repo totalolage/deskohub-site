@@ -13,6 +13,7 @@ import {
   getSessionCookie,
   makeMemoryTestAuth,
   makeTestAuth,
+  realCreateCustomerAccount,
   type TestAuth,
   type TestAuthOptions,
   testDatabase,
@@ -594,6 +595,7 @@ describe.skipIf(!testDatabase)(
         sentLinks,
         isSignInCodeEnabled: async () => true,
         database: restore.database,
+        createCustomerAccount: realCreateCustomerAccount,
       });
       const email = uniqueEmail("code-restore-race");
 
@@ -706,6 +708,7 @@ describe.skipIf(!testDatabase)(
         sentLinks,
         isSignInCodeEnabled: async () => true,
         database: failing.database,
+        createCustomerAccount: realCreateCustomerAccount,
       });
       const email = uniqueEmail("code-claim-failure");
 
@@ -726,6 +729,7 @@ describe.skipIf(!testDatabase)(
         sentLinks,
         isSignInCodeEnabled: async () => true,
         database: failing.database,
+        createCustomerAccount: realCreateCustomerAccount,
       });
       const email = uniqueEmail("link-revoke-failure");
 

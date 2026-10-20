@@ -1,5 +1,4 @@
-import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import {
@@ -24,43 +23,13 @@ export const ensureCustomerAccount = (
     .onConflictDoNothing()
     .pipe(Effect.asVoid);
 
-/**
- * Records the account's own Dotypos customer on its durable record, in the
- * transaction that writes the matching `customer_account_links` row. A
- * tombstone that still names the customer, because a deployment that predates
- * this column deleted its account, gives it up first, so the new link never
- * conflicts with a deleted account.
- */
-export const recordCustomerAccountLink = Effect.fn(function* (
-  executor: WorkspaceDatabaseClient,
-  accountId: CustomerAccountId,
-  customerId: DotyposCustomerId
-) {
-  yield* ensureCustomerAccount(executor, accountId);
-  yield* executor
-    .update(customerAccounts)
-    .set({ dotyposCustomerId: null })
-    .where(
-      and(
-        eq(customerAccounts.dotyposCustomerId, customerId),
-        ne(customerAccounts.id, accountId),
-        isNotNull(customerAccounts.deletedAt)
-      )
-    );
-  yield* executor
-    .update(customerAccounts)
-    .set({ dotyposCustomerId: customerId })
-    .where(eq(customerAccounts.id, accountId));
-});
-
 interface ICustomerAccountRepository {
   /**
    * Leaves the deleted account's tombstone, creating the record when the
    * account never had one, so the records it authored outlive the identity
    * that Better Auth removes next. A repeated deletion keeps the first
-   * deletion instant. The tombstone gives up its Dotypos customer, as the
-   * link row does when Better Auth removes the identity. Run it under the
-   * account lock.
+   * deletion instant. The tombstone gives up its Dotypos customer, so another
+   * account can claim it. Run it under the account lock.
    */
   readonly tombstone: (
     accountId: CustomerAccountId,
