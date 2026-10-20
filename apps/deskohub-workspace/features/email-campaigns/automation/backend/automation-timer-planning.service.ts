@@ -14,8 +14,12 @@ import type {
   AutomationVersionId,
 } from "../automation-identifiers";
 import type { AutomationRunPhase } from "../automation-states";
-import { evaluateStep } from "../automation-step-evaluation";
+import {
+  automationWaitDueTolerance,
+  evaluateStep,
+} from "../automation-step-evaluation";
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
+import { enterReachedWaits } from "./automation-reached-step";
 import {
   type AutomationRunPosition,
   advanceAutomationRuns,
@@ -132,6 +136,7 @@ export class AutomationTimerPlanning extends Context.Service<
 /**
  * Due active runs of active automations, oldest due first, except `ready`
  * runs at a Condition or Send step: condition and send planning own those.
+ * A run due within `automationWaitDueTolerance` counts, as in `evaluateStep`.
  */
 const readDueRuns = (
   db: WorkspaceDatabase["Service"]["db"],
@@ -153,7 +158,7 @@ const readDueRuns = (
     .where(
       and(
         eq(runs.status, "active"),
-        lte(runs.dueAt, at),
+        lte(runs.dueAt, at.add(automationWaitDueTolerance)),
         sql`${runs.workUnitId} is null`,
         eq(campaigns.status, "active"),
         or(
@@ -227,6 +232,32 @@ const moveDueRuns = Effect.fn("AutomationTimerPlanning.moveDueRuns")(function* (
     workUnitId: null,
     at,
   });
+  // A wait the advanced runs reach is entered now, as a unit would (D36);
+  // Conditions and the Send stay `ready` for this tick's later steps.
+  const movedOn = new Set(advanced);
+  yield* Effect.forEach(
+    Map.groupBy(
+      moves.flatMap((move) =>
+        move._tag === "Advance" && movedOn.has(move.run.runId) ? [move] : []
+      ),
+      (move) => `${move.run.versionId}\u0000${move.nextStepId}`
+    ).values(),
+    (group) => {
+      const [first] = group;
+      return first === undefined
+        ? Effect.void
+        : enterReachedWaits(tx, {
+            campaignId: first.run.campaignId,
+            versionId: first.run.versionId,
+            flow: flowOf(first.run.versionId),
+            stepId: first.nextStepId,
+            runs: group.map((move) => ({ runId: move.run.runId })),
+            at,
+            chainedSteps: 1,
+          });
+    },
+    { discard: true }
+  );
   const woken = yield* wakeAutomationRuns(tx, {
     runs: moves.flatMap((move) => (move._tag === "Wake" ? [move.run] : [])),
     at,

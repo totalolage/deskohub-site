@@ -1,4 +1,3 @@
-import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Context, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -9,42 +8,23 @@ import {
 } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type { CampaignId } from "../../campaign-identifiers";
-import type {
-  AutomationRunId,
-  AutomationStepId,
-  AutomationVersionId,
-} from "../automation-identifiers";
+import type { AutomationRunId } from "../automation-identifiers";
+import {
+  type ConditionStepRuns,
+  type ConditionStepsPlan,
+  conditionStepAt,
+  planConditionSteps,
+} from "./automation-condition-units";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
-import { AutomationRunTransitions } from "./automation-run-transitions";
-import type {
-  AutomationEngineTransaction,
-  PlannedAutomationUnit,
-} from "./automation-unit-handler";
-import { planAutomationUnits } from "./automation-unit-planning";
+import type { AutomationEngineTransaction } from "./automation-unit-handler";
 import {
   automationRunStepKind,
   loadAutomationVersionFlows,
 } from "./automation-version-flows";
-import {
-  type AutomationRunTrigger,
-  automationRunEvaluationContext,
-  conditionStepAt,
-  plannedConditionUnit,
-} from "./condition";
 
 /** What planner step 6 did, for the plan summary. */
-export type AutomationConditionPlan = {
-  /** Runs given to a condition unit. */
-  readonly runsPlanned: number;
-  /** Condition units planned. */
-  readonly unitsPlanned: number;
-  /**
-   * Runs ended `failed / evaluation-unavailable` instead: their flow or step
-   * is gone, or a referenced saved audience was deleted.
-   */
-  readonly runsEnded: number;
-};
+export type AutomationConditionPlan = ConditionStepsPlan;
 
 /** The plan when nothing was due. */
 export const emptyAutomationConditionPlan: AutomationConditionPlan = {
@@ -55,29 +35,6 @@ export const emptyAutomationConditionPlan: AutomationConditionPlan = {
 
 /** The most unplanned condition runs one planner run reads. */
 const maxUnplannedRuns = 2_000;
-
-/** An unplanned run at a Condition step, locked for planning. */
-type ConditionRun = AutomationRunTrigger & {
-  readonly runId: AutomationRunId;
-  readonly versionId: AutomationVersionId;
-  readonly stepId: AutomationStepId;
-  readonly dotyposCustomerId: DotyposCustomerId;
-};
-
-/** One `(version, step)`'s runs: planned into units, or ended. */
-type StepPlan =
-  | {
-      readonly _tag: "Planned";
-      readonly units: readonly {
-        readonly unit: PlannedAutomationUnit;
-        readonly runIds: readonly AutomationRunId[];
-      }[];
-    }
-  | {
-      readonly _tag: "Unavailable";
-      readonly stepId: AutomationStepId;
-      readonly runIds: readonly AutomationRunId[];
-    };
 
 interface IAutomationConditionPlanning {
   /**
@@ -98,81 +55,6 @@ export class AutomationConditionPlanning extends Context.Service<
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
       const facts = yield* AutomationEvaluationFacts;
-
-      /**
-       * Units of at most 50 customers whose Dotypos requests fit a unit
-       * (§5.3), packed in run id order, for one step's runs. A deleted saved
-       * audience can't pass again, so those runs end instead (§2.3).
-       */
-      const planStep = (input: {
-        readonly campaignId: CampaignId;
-        readonly runs: readonly [ConditionRun, ...ConditionRun[]];
-        readonly flowOf: Effect.Success<
-          ReturnType<typeof loadAutomationVersionFlows>
-        >;
-        readonly at: Temporal.Instant;
-      }): Effect.Effect<StepPlan> => {
-        const [first] = input.runs;
-        const unavailable: StepPlan = {
-          _tag: "Unavailable",
-          stepId: first.stepId,
-          runIds: input.runs.map((run) => run.runId),
-        };
-        const runOf = new Map(
-          input.runs.map((run) => [run.dotyposCustomerId, run.runId])
-        );
-        return Option.match(
-          conditionStepAt(input.flowOf(first.versionId), first.stepId),
-          {
-            onNone: () => Effect.succeed(unavailable),
-            onSome: ({ filter }) =>
-              facts
-                .plan({
-                  filters: { condition: filter },
-                  context: automationRunEvaluationContext(first, {
-                    campaignId: input.campaignId,
-                    now: input.at,
-                  }),
-                })
-                .pipe(
-                  Effect.flatMap((plan) =>
-                    facts.pack({
-                      reads: plan.reads,
-                      customers: input.runs.map((run) => run.dotyposCustomerId),
-                    })
-                  ),
-                  Effect.flatMap((chunks) =>
-                    Effect.forEach(chunks, (chunk) =>
-                      Effect.sync(() => crypto.randomUUID()).pipe(
-                        Effect.map((id) => {
-                          const runIds = chunk.customers.flatMap((customer) =>
-                            Option.toArray(
-                              Option.fromUndefinedOr(runOf.get(customer))
-                            )
-                          );
-                          return {
-                            runIds,
-                            unit: plannedConditionUnit({
-                              id,
-                              campaignId: input.campaignId,
-                              versionId: first.versionId,
-                              stepId: first.stepId,
-                              runIds,
-                              requestCost: chunk.requestCost,
-                            }),
-                          };
-                        })
-                      )
-                    )
-                  ),
-                  Effect.map((units): StepPlan => ({ _tag: "Planned", units })),
-                  Effect.catchTag("AutomationConditionAudienceMissing", () =>
-                    Effect.succeed(unavailable)
-                  )
-                ),
-          }
-        );
-      };
 
       /**
        * One automation's unplanned condition runs, under its lifecycle lock
@@ -217,71 +99,33 @@ export class AutomationConditionPlanning extends Context.Service<
           tx,
           locked.map((run) => run.versionId)
         );
-        const stepPlans = yield* Effect.forEach(
-          [
+        return yield* planConditionSteps(tx, facts, {
+          campaignId: input.campaignId,
+          steps: [
             ...Map.groupBy(
               locked,
               (run) => `${run.versionId}\u0000${run.stepId}`
             ).values(),
-          ].flatMap((group) => {
+          ].flatMap((group): ConditionStepRuns[] => {
             const [first, ...rest] = group;
-            return first === undefined ? [] : [[first, ...rest] as const];
+            return first === undefined
+              ? []
+              : [
+                  {
+                    versionId: first.versionId,
+                    stepId: first.stepId,
+                    filter: Option.map(
+                      conditionStepAt(flowOf(first.versionId), first.stepId),
+                      ({ filter }) => filter
+                    ),
+                    runs: [first, ...rest],
+                  },
+                ];
           }),
-          (stepRuns) =>
-            planStep({
-              campaignId: input.campaignId,
-              runs: stepRuns,
-              flowOf,
-              at: input.at,
-            })
-        );
-
-        const ended = yield* Effect.forEach(stepPlans, (stepPlan) =>
-          stepPlan._tag === "Unavailable"
-            ? AutomationRunTransitions.end(tx, {
-                runIds: stepPlan.runIds,
-                expect: {
-                  status: "active",
-                  stepId: stepPlan.stepId,
-                  phase: "ready",
-                  workUnitId: null,
-                },
-                outcome: "failed",
-                reason: "evaluation-unavailable",
-                at: input.at,
-              })
-            : Effect.succeed([])
-        );
-        const planned = stepPlans.flatMap((stepPlan) =>
-          stepPlan._tag === "Planned" ? stepPlan.units : []
-        );
-        const { written } = yield* planAutomationUnits(
-          tx,
-          planned.map(({ unit }) => unit),
-          input.at
-        );
-        const runIdsOf = new Map(
-          planned.map(({ unit, runIds }) => [unit.key, runIds])
-        );
-        const owned = yield* Effect.forEach(written, ({ unitId, key }) =>
-          tx
-            .update(runs)
-            .set({ workUnitId: unitId, updatedAt: sql`now()` })
-            .where(
-              and(
-                inArray(runs.id, [...(runIdsOf.get(key) ?? [])]),
-                eq(runs.status, "active"),
-                eq(runs.phase, "ready"),
-                isNull(runs.workUnitId)
-              )
-            )
-            .returning({ runId: runs.id })
-        );
-        return {
-          runsPlanned: owned.flat().length,
-          unitsPlanned: written.length,
-          runsEnded: ended.flat().length,
-        } satisfies AutomationConditionPlan;
+          at: input.at,
+          // The planner starts every chain (D36).
+          chainedSteps: 0,
+        });
       });
 
       return {

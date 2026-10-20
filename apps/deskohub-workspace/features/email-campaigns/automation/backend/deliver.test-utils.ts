@@ -241,7 +241,7 @@ export const makeDeliverEngine = async (input: {
 
   const plan = Effect.flatMap(AutomationPlanner, (planner) => planner.plan);
 
-  /** One planner minute, then every queued unit until none is left. */
+  /** One planner run, then every queued unit until none is left. */
   const tick = (at: Temporal.Instant) =>
     runAt(plan.pipe(Effect.andThen(drainAutomationUnitQueue(queue))), at);
   const planOnly = (at: Temporal.Instant) => runAt(plan, at);

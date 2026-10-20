@@ -65,6 +65,7 @@ import {
   AutomationDraftChanged,
   AutomationFlowInvalid,
   AutomationPreviewRequired,
+  type AutomationScheduleMinutesNotAllowed,
   AutomationStatusConflict,
   AutomationVersionNotFound,
 } from "../errors";
@@ -87,6 +88,7 @@ type WorkingCopyError =
 
 type FlowValidationError =
   | AutomationFlowInvalid
+  | AutomationScheduleMinutesNotAllowed
   | AutomationCalendarNeverOccurs;
 
 type AutomationActivationError =

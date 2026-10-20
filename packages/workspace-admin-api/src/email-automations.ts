@@ -1,4 +1,4 @@
-import { Option, Schema, Struct } from "effect";
+import { Array as Arr, Option, Order, Schema, Struct } from "effect";
 import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import { ReservationProductFilter } from "./audience-attribute-kinds";
 import {
@@ -18,6 +18,7 @@ import {
   AdministrationCampaignPurpose,
 } from "./campaign-locale-and-purpose";
 import { DhwVersion, MinimumDhwVersion } from "./dhw-version";
+import { emailAutomationScheduleMinutes } from "./email-automation-cadence";
 import {
   AdministrationCampaignContent,
   AdministrationCampaignEmailPreview,
@@ -64,6 +65,22 @@ export const AutomationTrigger = Schema.Union([
     "A Prague-time calendar schedule, or a reservation booked, cancelled, started or finished (optionally for one product), or an account created.",
 });
 export type AutomationTrigger = typeof AutomationTrigger.Type;
+
+/**
+ * The minutes past the hour a schedule's calendar fires on that the engine
+ * doesn't tick on, ascending. A calendar without minutes fires on the hour.
+ * Saving a flow rejects a schedule with any, so the Admin UI, the API and
+ * dhw all apply this one rule.
+ */
+export const scheduleMinutesOffTick = (
+  calendar: CalendarExpression
+): readonly number[] =>
+  Arr.sort(
+    (calendar.minutes ?? [0]).filter(
+      (minute) => !emailAutomationScheduleMinutes.includes(minute)
+    ),
+    Order.Number
+  );
 
 /**
  * "Is (not) in saved audience". It is evaluated against the audience's
@@ -222,8 +239,8 @@ export const AutomationStatus = Schema.Literals([
 export type AutomationStatus = typeof AutomationStatus.Type;
 
 /**
- * How often a schedule can fire. A schedule may fire every minute; adapters
- * warn when `firesMoreThanHourly` instead of computing it.
+ * How often a schedule can fire: at most once per engine tick, so four times
+ * an hour. Adapters warn when `firesMoreThanHourly` instead of computing it.
  */
 export const AutomationFrequency = Schema.Struct({
   maxFiresPerHour: count,
@@ -383,15 +400,21 @@ export const AutomationDryRunRow = Schema.Struct({
   outcome: AutomationPreviewOutcome,
   /** The step the simulation stopped at. */
   stepId: nullableField(AutomationStepId),
-  /** When the email would be sent, for `would-send`. */
+  /**
+   * The engine tick the email would be sent on, for `would-send`. The
+   * engine ticks every 15 minutes, so a send waits for the next one.
+   */
   sendAt: nullableField(Instant),
   /** Evaluated after now, from facts as they are now. */
   projected: fieldWithDefault(Schema.Boolean, false),
   /**
-   * Replay only: a condition read a reservation status that changed since
-   * the trigger in a way Workspace can't date, such as a cancellation in
-   * progress or failed, or a fulfillment that failed. It read that status
-   * as it is now, or as it most likely was then.
+   * Replay only: the outcome may differ because a reservation status read
+   * for it changed since the trigger in a way Workspace can't date, such as
+   * a cancellation in progress or failed, or a fulfillment that failed. It
+   * read that status as it is now, or as it most likely was then. A row
+   * that depends on such an earlier row of the customer carries the mark
+   * too: an event its run may have held off (`already-active`) or let in,
+   * and a later decision that counts this campaign's emails.
    */
   reservationStatusesApproximate: fieldWithDefault(Schema.Boolean, false),
 });

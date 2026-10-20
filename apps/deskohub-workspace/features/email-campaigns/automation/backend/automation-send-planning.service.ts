@@ -7,10 +7,15 @@ import {
 } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type { CampaignId } from "../../campaign-identifiers";
+import type {
+  AutomationRunId,
+  AutomationVersionId,
+} from "../automation-identifiers";
+import type { AutomationTriggerKind } from "../automation-states";
 import { verifiesTriggeringVisit } from "../automation-trigger-verification";
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
+import { planAutomationRunUnits } from "./automation-run-units";
 import type { AutomationEngineTransaction } from "./automation-unit-handler";
-import { planAutomationUnits } from "./automation-unit-planning";
 import { deliverUnitRunLimit, plannedDeliverUnit } from "./deliver";
 
 /** What planner step 7 did, for the plan summary. */
@@ -27,7 +32,7 @@ export const emptyAutomationSendPlan: AutomationSendPlan = {
   unitsPlanned: 0,
 };
 
-/** Runs one planning pass packs at most; the rest wait for the next minute. */
+/** Runs one planning pass packs at most; the rest wait for the next tick. */
 const sendPlanningRunLimit = 1_000;
 
 interface IAutomationSendPlanning {
@@ -41,6 +46,54 @@ interface IAutomationSendPlanning {
     at: Temporal.Instant
   ) => Effect.Effect<AutomationSendPlan, DatabaseQueryError>;
 }
+
+/** A `ready`, unowned run at its version's Send step, row-locked by the caller. */
+export type DeliverStepRun = {
+  readonly id: AutomationRunId;
+  readonly campaignId: CampaignId;
+  readonly versionId: AutomationVersionId;
+  readonly triggerKind: AutomationTriggerKind;
+};
+
+/**
+ * Packs send-ready runs into deliver units of at most 100 runs per version,
+ * in the given order, and each unit takes its runs by compare-and-set. The
+ * caller holds the automations' lifecycle locks and the runs' row locks
+ * (§5.4): the planner after its locking read, a condition unit's commit for
+ * the runs it just passed (D36).
+ */
+export const planDeliverRuns = (
+  tx: AutomationEngineTransaction,
+  ready: readonly DeliverStepRun[],
+  at: Temporal.Instant
+) => {
+  const planned = Object.values(Arr.groupBy(ready, (run) => run.versionId))
+    .flatMap((ofVersion) => Arr.chunksOf(ofVersion, deliverUnitRunLimit))
+    .map((chunk) => {
+      const runIds = chunk.map((run) => run.id);
+      return {
+        runIds,
+        unit: plannedDeliverUnit({
+          campaignId: chunk[0].campaignId,
+          versionId: chunk[0].versionId,
+          runIds,
+          reservations: chunk.filter((run) =>
+            verifiesTriggeringVisit(run.triggerKind)
+          ).length,
+          customers: chunk.length,
+          at,
+        }),
+      };
+    });
+  return planAutomationRunUnits(tx, planned, at).pipe(
+    Effect.map(
+      (owned): AutomationSendPlan => ({
+        runsPlanned: owned.reduce((total, ofUnit) => total + ofUnit.length, 0),
+        unitsPlanned: owned.length,
+      })
+    )
+  );
+};
 
 /** An unplanned `ready` run at its version's Send step. */
 const readyToSend: SQL = and(
@@ -114,63 +167,7 @@ export class AutomationSendPlanning extends Context.Service<
               ? Effect.succeed([])
               : selectReadyRuns(tx, campaignIds)
           ),
-          Effect.map((ready) =>
-            Object.values(Arr.groupBy(ready, (run) => run.versionId)).flatMap(
-              (ofVersion) => Arr.chunksOf(ofVersion, deliverUnitRunLimit)
-            )
-          ),
-          Effect.flatMap((chunks) => {
-            const planned = chunks.map((chunk) => ({
-              unit: plannedDeliverUnit({
-                campaignId: chunk[0].campaignId,
-                versionId: chunk[0].versionId,
-                runIds: chunk.map((run) => run.id),
-                reservations: chunk.filter((run) =>
-                  verifiesTriggeringVisit(run.triggerKind)
-                ).length,
-                customers: chunk.length,
-                at,
-              }),
-              chunk,
-            }));
-            const runsByKey = new Map(
-              planned.map(({ unit, chunk }) => [unit.key, chunk])
-            );
-            return planAutomationUnits(
-              tx,
-              planned.map(({ unit }) => unit),
-              at
-            ).pipe(
-              Effect.flatMap(({ written }) =>
-                Effect.forEach(written, ({ unitId, key }) =>
-                  tx
-                    .update(runs)
-                    .set({ workUnitId: unitId, updatedAt: at })
-                    .where(
-                      and(
-                        inArray(
-                          runs.id,
-                          (runsByKey.get(key) ?? []).map((run) => run.id)
-                        ),
-                        eq(runs.status, "active"),
-                        eq(runs.phase, "ready"),
-                        isNull(runs.workUnitId)
-                      )
-                    )
-                    .returning({ id: runs.id })
-                )
-              ),
-              Effect.map(
-                (owned): AutomationSendPlan => ({
-                  runsPlanned: owned.reduce(
-                    (total, ofUnit) => total + ofUnit.length,
-                    0
-                  ),
-                  unitsPlanned: owned.length,
-                })
-              )
-            );
-          })
+          Effect.flatMap((ready) => planDeliverRuns(tx, ready, at))
         );
 
       return {

@@ -40,6 +40,7 @@ import {
 import { campaignLocales } from "../../recipient-locale";
 import type { AutomationDraftHash } from "../automation-draft-hash";
 import { automationPageCursor } from "../automation-page-cursor";
+import { automationTickAtOrAfter } from "../automation-ticks";
 import {
   automationTriggerKind,
   automationTriggerSummary,
@@ -265,6 +266,7 @@ export class AutomationDryRun extends Context.Service<
         Effect.Do.pipe(
           Effect.bind("fireAt", () =>
             nextStart(input.calendar, input.now).pipe(
+              Effect.map(automationTickAtOrAfter),
               Effect.mapError(
                 (cause) =>
                   new AutomationCalendarNeverOccurs({
@@ -751,7 +753,11 @@ const recheckCost = (
   return Math.ceil(reservations.size / dotyposIdFilterBatchSize);
 };
 
-/** `f₁ = nextStart(C, now)`, `fᵢ₊₁ = nextStart(C, fᵢ)`, within the horizon (§8.1). */
+/**
+ * `f₁ = nextStart(C, now)`, `fᵢ₊₁ = nextStart(C, fᵢ)`, within the horizon
+ * (§8.1), each on the engine tick it fires on. Saved schedules fire only on
+ * ticks, so rounding changes none of theirs.
+ */
 const nextFires = (
   calendar: Extract<
     AutomationFlow["trigger"],
@@ -764,7 +770,7 @@ const nextFires = (
   while (fires.length < previewedFires) {
     const next = nextStartWithinHorizon(calendar, after);
     if (Option.isNone(next)) break;
-    fires.push(next.value);
+    fires.push(automationTickAtOrAfter(next.value));
     after = next.value;
   }
   return fires;

@@ -230,9 +230,11 @@ describe.skipIf(!database)("the automation engine's entry", async () => {
   const settleRuns = (
     campaignId: CampaignId,
     from: Temporal.Instant,
-    until: Temporal.Instant
+    until: Temporal.Instant,
+    options: { readonly onTicks?: boolean } = {}
   ) =>
     scenario.runUntil({
+      ...options,
       from,
       until,
       settled: async () => {
@@ -264,30 +266,275 @@ describe.skipIf(!database)("the automation engine's entry", async () => {
   };
 
   /**
-   * A run started for a finished visit, whose visit Dotypos then extends by
-   * 50 minutes, so its deliver unit defers it at `endsAt + 2 min`.
+   * A run started for a finished visit, whose visit Dotypos extends by 50
+   * minutes right after intake started it, so its deliver unit, planned by
+   * intake within the same tick (D36), defers it at `endsAt + 1 min`.
    */
   const deferredRun = async (day: number, label: string) => {
     const visit = await sweptFinishedVisit(day, label);
     const { campaignId, reservationId, endsAt } = visit;
-    await scenario.tick(endsAt.add({ minutes: 1 }));
-    const [started] = await read.runs(campaignId);
+    const deferredAt = endsAt.add({ minutes: 1 });
+    await scenario.plan(deferredAt);
+    let [started] = await read.runs(campaignId);
+    while (started === undefined) {
+      const next = scenario.processNext(deferredAt);
+      expect(next).toBeDefined();
+      await next;
+      [started] = await read.runs(campaignId);
+    }
     expect(started).toMatchObject({
       status: "active",
       step_id: "send",
       phase: "ready",
     });
+    expect(started.work_unit_id).not.toBeNull();
     const newEndsAt = endsAt.add({ minutes: 50 });
     fixtures.moveVisit(reservationId, {
       startsAt: visit.at.add({ hours: 1 }),
       endsAt: newEndsAt,
     });
-    const deferredAt = endsAt.add({ minutes: 2 });
-    await scenario.tick(deferredAt);
+    await scenario.drain(deferredAt);
     return { ...visit, runId: started.id as string, newEndsAt, deferredAt };
   };
 
   describe("entry", () => {
+    /** "When a reservation is booked, unless already emailed, send": two local conditions. */
+    const bookedConditionsFlow = (
+      ...rest: Parameters<typeof automationFlowFixture>[0]["steps"]
+    ) =>
+      automationFlowFixture({
+        trigger: { _tag: "ReservationBooked" },
+        steps: [
+          ...["not-emailed", "still-not-emailed"].map((id) => ({
+            _tag: "Condition" as const,
+            id,
+            filter: {
+              _tag: "Group" as const,
+              operator: "and" as const,
+              filters: [
+                {
+                  attribute: "campaignEmailCount" as const,
+                  _tag: "Condition" as const,
+                  params: {
+                    purpose: "any" as const,
+                    period: { _tag: "AnyTime" as const },
+                    campaign: { _tag: "This" as const },
+                  },
+                  operator: "eq" as const,
+                  value: 0,
+                },
+              ],
+            },
+          })),
+          ...rest,
+          { _tag: "Send", id: "send" },
+        ],
+      });
+
+    /** A booked visit for a new customer, its event recorded `after` `at`. */
+    const bookedEvent = async (
+      at: Temporal.Instant,
+      label: string,
+      after: Temporal.DurationLike = { minutes: 1 }
+    ) => {
+      const customer = await fixtures.addCustomer(label);
+      const reservationId = await fixtures.book({
+        label,
+        customer,
+        startsAt: at.add({ hours: 4 }),
+        endsAt: at.add({ hours: 5 }),
+      });
+      const recordedAt = at.add(after);
+      await fixtures.recordEvent({
+        kind: "reservation-booked",
+        customer,
+        reservationId,
+        occurredAt: at,
+        recordedAt,
+      });
+      return { customer, recordedAt };
+    };
+
+    test("a run whose flow starts with conditions sends within the tick that took its event in", async () => {
+      const at = await begin(10);
+      const campaignId = await activate(bookedConditionsFlow(), at);
+      const { customer, recordedAt } = await bookedEvent(at, "chain-send");
+
+      // One planner run and the queue drained after it, no re-planning.
+      await scenario.tick(recordedAt);
+
+      const [run] = await read.runs(campaignId);
+      expect(run).toMatchObject({ status: "ended", outcome: "sent" });
+      expect(iso(run.ended_at)).toBe(recordedAt.toString());
+      const timeline = await read.timeline(run.id);
+      expect(timeline.map((entry) => [entry.kind, entry.step_id])).toEqual([
+        ["started", "not-emailed"],
+        ["condition-passed", "not-emailed"],
+        ["condition-passed", "still-not-emailed"],
+        ["send-queued", "send"],
+        ["sent", "send"],
+      ]);
+      expect(mailedTo(customer)).toHaveLength(1);
+
+      // Duplicate deliveries of every settled unit change nothing.
+      for (const unit of await read.units(campaignId)) {
+        await scenario.process(unit.id, recordedAt.add({ seconds: 1 }));
+      }
+      expect(await read.timeline(run.id)).toHaveLength(timeline.length);
+      expect(await read.sends(campaignId)).toHaveLength(1);
+      expect(mailedTo(customer)).toHaveLength(1);
+    });
+
+    test("a 2-hour wait entered seconds after a tick completes on the tick 2 hours later", async () => {
+      const at = await begin(11);
+      const campaignId = await activate(
+        bookedConditionsFlow({
+          _tag: "Wait",
+          id: "settle",
+          wait: { _tag: "Duration", count: 2, unit: "hour" },
+        }),
+        at
+      );
+      const { customer, recordedAt } = await bookedEvent(at, "chain-wait");
+
+      // The units run a few seconds after the planner.
+      await scenario.plan(recordedAt);
+      const enteredAt = recordedAt.add({ seconds: 5 });
+      await scenario.drain(enteredAt);
+      const [waiting] = await read.runs(campaignId);
+      expect(waiting).toMatchObject({ status: "active", step_id: "settle" });
+      expect(iso(waiting.step_entered_at)).toBe(enteredAt.toString());
+
+      const nextTick = recordedAt.add({ minutes: 15 });
+      await scenario.tick(nextTick);
+      const [entered] = await read.runs(campaignId);
+      expect(entered).toMatchObject({ status: "active", phase: "waiting" });
+      expect(iso(entered.due_at)).toBe(enteredAt.add({ hours: 2 }).toString());
+
+      // Due 5 seconds after this tick: within the tolerance, so it sends now.
+      const dueTick = recordedAt.add({ hours: 2 });
+      await scenario.tick(dueTick);
+      const [run] = await read.runs(campaignId);
+      expect(run).toMatchObject({ status: "ended", outcome: "sent" });
+      expect(iso(run.ended_at)).toBe(dueTick.toString());
+      expect(mailedTo(customer)).toHaveLength(1);
+    });
+
+    test("on the cron's ticks, an event recorded at 08:07 with a 2-hour wait sends at 10:15", async () => {
+      const at = await begin(13);
+      const campaignId = await activate(
+        bookedConditionsFlow({
+          _tag: "Wait",
+          id: "settle",
+          wait: { _tag: "Duration", count: 2, unit: "hour" },
+        }),
+        at
+      );
+      const { customer, recordedAt } = await bookedEvent(at, "chain-cron", {
+        minutes: 7,
+      });
+
+      const progress = await settleRuns(
+        campaignId,
+        recordedAt,
+        at.add({ hours: 4 }),
+        { onTicks: true }
+      );
+
+      expect(progress.settled).toBe(true);
+      const [run] = await read.runs(campaignId);
+      expect(run).toMatchObject({ status: "ended", outcome: "sent" });
+      // Entered on the 08:15 tick and due just after 10:15, within the tolerance.
+      expect(iso(run.ended_at)).toBe(
+        at.add({ hours: 2, minutes: 15 }).toString()
+      );
+      expect(mailedTo(customer)).toHaveLength(1);
+    });
+
+    test("a 7-minute wait entered just after a tick completes on the next tick", async () => {
+      const at = await begin(12);
+      const campaignId = await activate(
+        bookedConditionsFlow({
+          _tag: "Wait",
+          id: "short",
+          wait: { _tag: "Duration", count: 7, unit: "minute" },
+        }),
+        at
+      );
+      const { customer, recordedAt } = await bookedEvent(at, "chain-short");
+
+      // Entered after this tick's timers, so they first see it next tick.
+      await scenario.plan(recordedAt);
+      await scenario.drain(recordedAt.add({ seconds: 5 }));
+      const nextTick = recordedAt.add({ minutes: 15 });
+      await scenario.tick(nextTick);
+
+      const [run] = await read.runs(campaignId);
+      expect(run).toMatchObject({ status: "ended", outcome: "sent" });
+      expect(iso(run.ended_at)).toBe(nextTick.toString());
+      expect((await read.timeline(run.id)).map((entry) => entry.kind)).toEqual([
+        "started",
+        "condition-passed",
+        "condition-passed",
+        "waiting",
+        "woke",
+        "send-queued",
+        "sent",
+      ]);
+      expect(mailedTo(customer)).toHaveLength(1);
+    });
+
+    test("a wait that holds when the timers wake a run into it goes on to send on that tick", async () => {
+      const at = await begin(14);
+      const campaignId = await activate(
+        bookedConditionsFlow(
+          {
+            _tag: "Wait",
+            id: "hour",
+            wait: { _tag: "Duration", count: 1, unit: "hour" },
+          },
+          // 09:00–09:59 in Prague: holding when the hour ends at 09:15.
+          {
+            _tag: "Wait",
+            id: "nine-oclock",
+            wait: { _tag: "Calendar", expression: { hours: [9] } },
+          }
+        ),
+        at
+      );
+      const { customer, recordedAt } = await bookedEvent(at, "chain-woken");
+
+      const progress = await settleRuns(
+        campaignId,
+        recordedAt,
+        at.add({ hours: 4 }),
+        { onTicks: true }
+      );
+
+      expect(progress.settled).toBe(true);
+      const [run] = await read.runs(campaignId);
+      expect(run).toMatchObject({ status: "ended", outcome: "sent" });
+      expect(iso(run.ended_at)).toBe(
+        at.add({ hours: 1, minutes: 15 }).toString()
+      );
+      expect(
+        (await read.timeline(run.id)).map((entry) => [
+          entry.kind,
+          entry.step_id,
+        ])
+      ).toEqual([
+        ["started", "not-emailed"],
+        ["condition-passed", "not-emailed"],
+        ["condition-passed", "still-not-emailed"],
+        ["waiting", "hour"],
+        ["woke", "hour"],
+        ["woke", "nine-oclock"],
+        ["send-queued", "send"],
+        ["sent", "send"],
+      ]);
+      expect(mailedTo(customer)).toHaveLength(1);
+    });
+
     test("a customer with an open run gets an already-active receipt and no second run", async () => {
       const at = await begin(1);
       const campaignId = await activate(bookedWaitFlow, at);
@@ -770,11 +1017,11 @@ describe.skipIf(!database)("the automation engine's entry", async () => {
     test("intake marks an event no automation matches processed, and health then reports no event backlog", async () => {
       const at = await begin(11);
       const customer = await fixtures.addCustomer("unmatched");
-      // Recorded 20 minutes ago: a backlog while unprocessed.
+      // Recorded 31 minutes ago: a backlog while unprocessed.
       const eventId = await fixtures.recordEvent({
         kind: "account-created",
         customer,
-        occurredAt: at.subtract({ minutes: 20 }),
+        occurredAt: at.subtract({ minutes: 31 }),
       });
       expect((await scenario.health(at)).warnings).toContain("event-backlog");
 
@@ -933,25 +1180,13 @@ describe.skipIf(!database)(
       );
 
     /**
-     * Plans at `at`, then cuts the consumer of the enqueued deliver unit off
-     * while its batch request is with Resend, leaving it claimed with its
-     * batch persisted. The planner's other units (a sweep page) are processed.
+     * Plans at `at`, runs the intake unit that plans the deliver unit (D36),
+     * then cuts the deliver unit's consumer off while its batch request is
+     * with Resend, leaving it claimed with its batch persisted. The rest of
+     * the queue (a sweep page) is processed.
      */
     const killDeliverDuringRequest = async (at: Temporal.Instant) => {
-      const reached = scenario.resend.nextRequest();
-      await scenario.plan(at);
-      const { rows } = await pool.query<{ id: AutomationWorkUnitId }>(
-        "select id from email_campaign_automation_work_units where kind = 'deliver' and status = 'enqueued'"
-      );
-      expect(rows).toHaveLength(1);
-      const unitId = rows[0]!.id;
-      const consumer = scenario.start(unitId, at);
-      await reached;
-      await consumer.interrupt();
-      // Its message was consumed; the rest of the queue runs as usual.
-      const rest = scenario.queue.pending().filter((m) => m.unitId !== unitId);
-      scenario.queue.dropPending();
-      for (const message of rest) scenario.queue.redeliver(message);
+      const unitId = await scenario.killDuringRequest(at);
       await scenario.drain(at);
       return unitId;
     };
@@ -1029,8 +1264,6 @@ describe.skipIf(!database)(
           "killed-replay",
           start.add({ minutes: 1 })
         );
-        await scenario.tick(start.add({ minutes: 1 }));
-
         scenario.resend.respondWith(() => "accept-hang");
         await killDeliverDuringRequest(start.add({ minutes: 2 }));
         scenario.resend.respondWith(() => "accept");
@@ -1091,8 +1324,6 @@ describe.skipIf(!database)(
           );
           const first = await booking(`${label}-1`, start.add({ minutes: 1 }));
           const second = await booking(`${label}-2`, start.add({ minutes: 1 }));
-          await scenario.tick(start.add({ minutes: 1 }));
-
           scenario.resend.respondWith(() => crash);
           await killDeliverDuringRequest(start.add({ minutes: 2 }));
           scenario.resend.respondWith(() => "accept");
@@ -1178,7 +1409,7 @@ describe.skipIf(!database)(
     });
 
     describe("deliver units and the deliver slot", () => {
-      test("300 send-ready runs go out in three deliver units, never two in flight", async () => {
+      test("300 send-ready runs go out in deliver units of at most 100, never two in flight", async () => {
         const { campaignId } = await kit.seedActive(
           sendFlow("AccountCreated"),
           { at: start }
@@ -1188,13 +1419,6 @@ describe.skipIf(!database)(
             signUp(`bulk-${index}`, start.add({ minutes: 1 }))
           )
         );
-        await scenario.tick(start.add({ minutes: 1 }));
-        expect(
-          (await read.runs(campaignId)).filter(
-            (run) => run.status === "active" && run.phase === "ready"
-          )
-        ).toHaveLength(300);
-
         const inFlight: number[] = [];
         scenario.resend.beforeEachRequest(async () => {
           const { rows } = await pool.query<{ count: number }>(
@@ -1202,24 +1426,32 @@ describe.skipIf(!database)(
           );
           inFlight.push(rows[0]!.count);
         });
-        await scenario.plan(start.add({ minutes: 2 }));
+        const at = start.add({ minutes: 1 });
+        // Intake starts the runs and plans their deliver units (D36).
+        await scenario.planUntilQueued(at, "deliver");
         expect(
-          (await deliverUnits(campaignId)).map((unit) => unit.status).sort()
-        ).toEqual(["enqueued", "planned", "planned"]);
-        await scenario.drain(start.add({ minutes: 2 }));
+          (await read.runs(campaignId)).filter(
+            (run) => run.status === "active" && run.phase === "ready"
+          )
+        ).toHaveLength(300);
+        // Each intake unit plans deliver units for the runs it started; the
+        // deliver slot lets one of them in flight.
+        const planned = await deliverUnits(campaignId);
+        expect(planned.length).toBeGreaterThanOrEqual(3);
+        expect(
+          planned.filter((unit) => unit.status === "enqueued")
+        ).toHaveLength(1);
+        expect(
+          planned.every((unit) => ["enqueued", "planned"].includes(unit.status))
+        ).toBe(true);
+        await scenario.drain(at);
 
-        expect(inFlight).toEqual([1, 1, 1]);
+        expect(inFlight).toEqual(planned.map(() => 1));
         const units = await deliverUnits(campaignId);
-        expect(units.map((unit) => unit.status)).toEqual([
-          "done",
-          "done",
-          "done",
-        ]);
-        expect(
-          requests()
-            .map(({ to }) => to.length)
-            .sort()
-        ).toEqual([100, 100, 100]);
+        expect(units.every((unit) => unit.status === "done")).toBe(true);
+        const batchSizes = requests().map(({ to }) => to.length);
+        expect(batchSizes.every((size) => size <= 100)).toBe(true);
+        expect(batchSizes.reduce((total, size) => total + size, 0)).toBe(300);
         expect(mailed().sort()).toEqual(customers.map(emailOf).sort());
         const runs = await read.runs(campaignId);
         expect(
@@ -1740,9 +1972,9 @@ describe.skipIf(!database)(
           planning: ["intake", "timers", "conditions", "sends", "schedules"],
         });
 
-        await engine.tick(start);
-        const plannedAt = start.add({ minutes: 1 });
-        await engine.plan(plannedAt);
+        // Intake starts the runs and plans their deliver units (D36).
+        const plannedAt = start;
+        await engine.planUntilQueued(plannedAt, "deliver");
         const deliverUnits = async () =>
           (
             await Promise.all(
@@ -1845,9 +2077,9 @@ describe.skipIf(!database)(
           endsAt: Temporal.Instant.from("2026-10-01T15:00:00Z"),
         });
 
-        await scenario.tick(start);
-        const plannedAt = start.add({ minutes: 1 });
-        await scenario.plan(plannedAt);
+        // Intake starts the run and plans its condition unit (D36).
+        const plannedAt = start;
+        await scenario.planUntilQueued(plannedAt, "condition");
         const [unit] = await unitsOf(campaignId, "condition");
         expect(unit).toMatchObject({ status: "enqueued" });
 
@@ -2304,9 +2536,11 @@ describe.skipIf(!database)(
               key: scheduleDedupKey(secondMonday, early),
               disposition: "already-active",
             },
+            // The first run sent within the fire that entered it (D36), so the
+            // third fire starts the early customer again.
             {
               key: scheduleDedupKey(thirdMonday, early),
-              disposition: "already-active",
+              disposition: "started",
             },
             {
               key: scheduleDedupKey(secondMonday, second),
@@ -2322,18 +2556,6 @@ describe.skipIf(!database)(
             },
           ].sort((a, b) => a.key.localeCompare(b.key))
         );
-        const triggerAt = new Map(
-          (await read.runs(campaignId)).map((run) => [
-            run.dotypos_customer_id,
-            iso(run.trigger_at),
-          ])
-        );
-        expect(Object.fromEntries(triggerAt)).toEqual({
-          [early]: firstMonday.toString(),
-          [second]: secondMonday.toString(),
-          [third!]: thirdMonday.toString(),
-        });
-
         const progress = await scenario.runUntil({
           from: back,
           until: back.add({ hours: 1 }),
@@ -2341,12 +2563,62 @@ describe.skipIf(!database)(
           settled: () => allEnded(campaignId),
         });
         expect(progress.settled).toBe(true);
-        expect((await read.runs(campaignId)).map((run) => run.outcome)).toEqual(
-          ["sent", "sent", "sent"]
+        // Each run is triggered at its own fire; the early customer's second
+        // run finds the offer sent at the first fire.
+        expect(
+          (await read.runs(campaignId))
+            .map((run) => [
+              run.dotypos_customer_id,
+              iso(run.trigger_at),
+              run.outcome,
+            ])
+            .sort()
+        ).toEqual(
+          [
+            [early, firstMonday.toString(), "sent"],
+            [early, thirdMonday.toString(), "condition-failed"],
+            [second, secondMonday.toString(), "sent"],
+            [third!, thirdMonday.toString(), "sent"],
+          ].sort()
         );
         for (const customer of [early, second, third!]) {
           expect(mailedTo(customer)).toBe(1);
         }
+      });
+
+      test("a fire whose first step is a Calendar wait that holds sends on the fire's tick", async () => {
+        const { campaignId } = await kit.seedActive(
+          automationFlowFixture({
+            ...comeBackOfferFlow,
+            steps: [
+              {
+                _tag: "Wait",
+                id: "ten-oclock",
+                wait: { _tag: "Calendar", expression: { hours: [10] } },
+              },
+              { _tag: "Send", id: "send" },
+            ],
+          }),
+          { at: start, audienceFilter: lapsedRegularsFilter }
+        );
+        const customer = await lapsedRegular("holding-wait");
+
+        const progress = await scenario.runUntil({
+          from: firstMonday,
+          until: firstMonday.add({ hours: 1 }),
+          onTicks: true,
+          settled: () => allEnded(campaignId),
+        });
+
+        expect(progress.settled).toBe(true);
+        const [run] = await read.runs(campaignId);
+        expect(run).toMatchObject({ status: "ended", outcome: "sent" });
+        // The fire chunk entered the wait at 10:00, and it held.
+        expect(iso(run.ended_at)).toBe(firstMonday.toString());
+        expect(
+          (await read.timeline(run.id)).map((entry) => entry.kind)
+        ).toEqual(["started", "woke", "send-queued", "sent"]);
+        expect(mailedTo(customer)).toBe(1);
       });
 
       test("a customer sent the offer at one fire isn't offered it again at the next: condition-failed", async () => {
@@ -2558,18 +2830,32 @@ describe.skipIf(!database)(
             disposition: "already-active",
             versionId: versions.get(1),
           },
+          // The first run sent within the fire that entered it (D36), so
+          // the next fire after it starts v2's run, whose condition ends it.
           {
             key: scheduleDedupKey(firstTuesday, regular),
-            disposition: "already-active",
+            disposition: "started",
             versionId: versions.get(2),
           },
         ]);
-        const [run] = await read.runs(campaignId);
-        expect(run).toMatchObject({
-          version_id: versions.get(1),
-          outcome: "sent",
-        });
-        expect(iso(run.trigger_at)).toBe(firstMonday.toString());
+        expect(
+          (await read.runs(campaignId)).map((run) => ({
+            versionId: run.version_id,
+            triggerAt: iso(run.trigger_at),
+            outcome: run.outcome,
+          }))
+        ).toEqual([
+          {
+            versionId: versions.get(1),
+            triggerAt: firstMonday.toString(),
+            outcome: "sent",
+          },
+          {
+            versionId: versions.get(2),
+            triggerAt: firstTuesday.toString(),
+            outcome: "condition-failed",
+          },
+        ]);
       });
     });
 
@@ -2588,7 +2874,8 @@ describe.skipIf(!database)(
         const lateVisit = await visit(late, "outage-late-visit", "2026-10-12");
 
         // Monday 19 October, an hour before the offer fires: a finished
-        // visit enters the review request and reaches its condition.
+        // visit enters the review request, whose intake queues its condition
+        // unit (D36).
         const before = firstMonday.subtract({ hours: 1 });
         await fixtures.recordEvent({
           kind: "reservation-finished",
@@ -2597,7 +2884,7 @@ describe.skipIf(!database)(
           occurredAt: before,
           recordedAt: before,
         });
-        await scenario.tick(before);
+        await scenario.planUntilQueued(before, "condition");
         const [conditionRun] = await read.runs(review.campaignId);
         expect(conditionRun).toMatchObject({
           status: "active",

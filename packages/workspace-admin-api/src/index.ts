@@ -272,6 +272,7 @@ export {
   type CalendarPreviewInput as CalendarPreviewInputType,
   InSavedAudience,
   type InSavedAudience as InSavedAudienceType,
+  scheduleMinutesOffTick,
 } from "./email-automations";
 export {
   AdminCliCampaignsApi,

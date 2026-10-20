@@ -615,6 +615,7 @@ describe("holds", () => {
 describe("calendarFrequency", () => {
   test.each<[CalendarExpression, number, boolean]>([
     [{ minutes: [0, 30] }, 2, true],
+    [{ minutes: [0, 15, 30, 45] }, 4, true],
     [{ minutes: [15] }, 1, false],
     [{ hours: [9, 17] }, 1, false],
     [

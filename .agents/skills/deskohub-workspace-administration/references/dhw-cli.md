@@ -58,6 +58,7 @@ Rules:
 - `dry-run` and `activate` without `--preview` poll the dry run every two seconds through `pollUntil` (`apps/dhw/src/polling.ts`) until it settles, give up after 15 minutes, and then follow `nextCursor` to print every row. Rerunning reuses the running dry run.
 - `activate` gates only on `AutomationDetail.activation` (`Published` means nothing to activate) and the server's answer. It never checks readiness itself, so refusals such as `automation-draft-changed` reach the operator verbatim.
 - `show`, `flow set`, `dry-run`, and the activation prompt print the server's `frequency` as a red `warning:` on stderr when `firesMoreThanHourly`. `dhw` never computes frequency, and the warning never blocks.
+- A schedule may fire only on the engine's tick minutes (`emailAutomationScheduleMinutes`: :00, :15, :30, :45). `validateAutomationFlow` enforces it on every save through the contract's `scheduleMinutesOffTick`, so the Admin UI, the API and `dhw flow set` refuse the same flows with `schedule-minutes-not-allowed`. Calendar waits may use any minute. Keep the rule in that one helper rather than in the schema, so stored flows still decode.
 
 ## Reservation product-details backfill
 

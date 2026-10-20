@@ -482,15 +482,24 @@ describe.skipIf(!database)("automation facts at rest (§5.13)", async () => {
       visitTime("2026-10-08T07:00:00Z")
     );
     const triggerStart = visitTime("2026-10-22T07:00:00Z");
-    await visit("moved-2", moved, triggerStart);
+    const triggerVisit = await visit("moved-2", moved, triggerStart);
 
-    // The intake unit starts the run; the condition unit comes next.
-    const started = await scenario.runUntil({
+    // The sweep records the finished visit; the next planner run's intake
+    // unit starts the run and queues its condition unit (D36).
+    const recorded = await scenario.runUntil({
       from,
       until: instant("2026-10-22T16:00:00Z"),
-      settled: async () => (await runsOf(campaignId, moved)).length > 0,
+      settled: async () =>
+        (
+          await pool.query(
+            "select 1 from customer_events where workspace_reservation_id = $1 and kind = 'reservation-finished'",
+            [triggerVisit]
+          )
+        ).rows.length > 0,
     });
-    expect(started.settled).toBe(true);
+    expect(recorded.settled).toBe(true);
+    const started = { at: recorded.at.add({ minutes: 1 }) };
+    await scenario.planUntilQueued(started.at, "condition");
     expect(await runsOf(campaignId, moved)).toMatchObject([
       { status: "active", step_id: "second-visit-within-a-month" },
     ]);

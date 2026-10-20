@@ -64,3 +64,20 @@ Admin email campaigns live in `apps/deskohub-workspace/features/email-campaigns/
 - Campaign emails carry the Resend tags `category=email-campaign`, `campaignSendId`, `dotyposCustomerId`, and `deploymentEnvironment`. The Resend webhook routes them to `CampaignDeliveryStatusService` before the fulfillment handling. It matches the recipient by message ID, or by tags when the event beats the stored ID, and only moves status forward (`delivered`, `bounced`, `complained`). The event proves delivery, so it also settles a `failed`, `unconfirmed`, or `skipped` recipient. Bounces and complaints never touch consent; Resend's suppression list handles them.
 - Test emails go only through `EmailService.send`, with `[TEST]` subjects and the code above the body. They create no send rows. Outside production the code is also logged, because preview inboxes are Console-only.
 - `EMAIL_CAMPAIGN_FROM`, `EMAIL_CAMPAIGN_REPLY_TO`, and `EMAIL_CAMPAIGN_ADMIN_INBOX` configure the sender and the admin inbox. Production fails campaign operations with `CampaignEmailNotConfigured` until all three are set. Elsewhere unset values fall back to `@deskohub.test` addresses.
+
+## Automation engine timing
+
+- The planner ticks every `emailAutomationTickMinutes` (`@deskohub/workspace-admin-api`). Units it plans run from the queue seconds later, still within the tick.
+- Only waits take time (D36). Whatever moves a run onto a step handles that step in the same transaction through `automation/backend/automation-reached-step.ts`. That covers the unit that enters a run (`enterAutomationRuns`, from `intake` and `fire-chunk`), a condition unit's commit, and the timer pass for the step after a wait it completes.
+  - A Condition gets condition units.
+  - The Send gets deliver units. The timer pass leaves both to the same tick's condition and send planning.
+  - A wait is evaluated on entry by `evaluateStep` (`enterReachedWaits`). If it already holds or is due, the run goes on to the next step. Otherwise it is stored `waiting` with its due time.
+  - So a run goes through its conditions and due waits to a pending wait or its send within the tick it entered or woke on.
+- Steps count their depth in a chain, carried in a condition subject's `chainedSteps`. Past `maxChainedSteps`, one less than the flow step limit, runs stay `ready` for the planner. Valid flows never reach it.
+- A wait counts as due `automationWaitDueTolerance` (one minute, `automation/automation-step-evaluation.ts`) early, in both `evaluateStep` and the timer planner's due query. A wait not due on entry therefore completes on the first tick T with due ≤ T + tolerance. The dry run's simulation calls `evaluateStep`, so it agrees.
+- Engine Postgres tests drive this with `scenario.tick` (plan, then drain) or `runUntil({ onTicks: true })` (the cron's cadence). `planUntilQueued` holds units of one kind back so that a test can act between entry and the next step. Use `sameInstant` only for work that a later planner run picks up.
+
+## Automation dry run
+
+- Dry-run times are engine ticks (`automation/automation-ticks.ts`): `simulateRun` enters a run on the first tick at or after its trigger, checks a wait on the tick it enters it, and otherwise completes it on the first later tick `evaluateStep` finds it due. Replay holds off an event whose intake tick is at or before the open run's end tick.
+- A replay row is `reservationStatusesApproximate` when the entry audience or a condition decided it before the customer's latest undated status change, or when it depends on such a row: `replayCustomerEvents` keeps the latest end tick an approximate row's run could reach (every condition matching) and marks later events taken in by then, and, when the flow counts this campaign's emails, every later decided row.

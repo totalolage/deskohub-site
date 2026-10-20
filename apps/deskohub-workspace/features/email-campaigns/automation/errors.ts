@@ -47,6 +47,20 @@ export class AutomationCalendarNeverOccurs extends Data.TaggedError(
 }
 
 /**
+ * The schedule trigger fires on minutes the engine doesn't tick on: it ticks
+ * every 15 minutes, so a schedule may fire only at :00, :15, :30 and :45
+ * (D36). `minutes` are the offending minutes past the hour, ascending.
+ */
+export class AutomationScheduleMinutesNotAllowed extends Data.TaggedError(
+  "AutomationScheduleMinutesNotAllowed"
+)<{
+  readonly minutes: readonly number[];
+}> {
+  /** Stable across transports, so clients can tell this rejection apart. */
+  static readonly code = "schedule-minutes-not-allowed";
+}
+
+/**
  * Activation needs a completed dry run of this campaign's current draft:
  * the named dry run is missing, belongs to another campaign, or hasn't
  * completed (D6, D20).
