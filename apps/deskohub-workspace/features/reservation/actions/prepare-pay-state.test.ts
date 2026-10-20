@@ -324,7 +324,6 @@ const makeReusableReservation = (
     correlationId: "correlation-id",
     dotyposCustomerId: "customer-id",
     dotyposReservationId: "dotypos-reservation-id",
-    authorAccountId: null,
     agentClientId: null,
     reservationState: "held",
     paymentState: "not_started",

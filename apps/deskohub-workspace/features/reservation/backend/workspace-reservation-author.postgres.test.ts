@@ -179,7 +179,7 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
   };
 
   test("records the agent client that started a draft, and none for the site", async () => {
-    const author = newAccountId();
+    const author = await newAccountId();
 
     const agentDraft = await createDraft({
       ...draftInput(author),
@@ -198,7 +198,7 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
   });
 
   test("stores the selection key on supersession replacements", async () => {
-    const author = newAccountId();
+    const author = await newAccountId();
     const agentSelectionKey = agentSelectionKeySchema.make(
       `selection:${crypto.randomUUID()}`
     );
@@ -238,8 +238,8 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
   });
 
   test("finds an agent booking request's latest two reservations, newest first", async () => {
-    const author = newAccountId();
-    const otherAuthor = newAccountId();
+    const author = await newAccountId();
+    const otherAuthor = await newAccountId();
     const selectionKey = agentSelectionKeySchema.make(
       `selection:${crypto.randomUUID()}`
     );
@@ -307,6 +307,7 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
   });
 
   test("rejects a selection key without an agent client", async () => {
+    const author = await newAccountId();
     const agentSelectionKey = agentSelectionKeySchema.make(
       `selection:${crypto.randomUUID()}`
     );
@@ -321,8 +322,9 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
           fulfillment_state,
           reservation_details,
           locale,
+          author_account_id,
           agent_selection_key
-        ) values ($1, $2, 'draft', 'not_started', 'not_started', $3, 'en-US', $4)`,
+        ) values ($1, $2, 'draft', 'not_started', 'not_started', $3, 'en-US', $4, $5)`,
         [
           `attempt:${crypto.randomUUID()}`,
           `customer-${crypto.randomUUID()}`,
@@ -331,6 +333,7 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
             entryTier: "basic",
             coffee: false,
           }),
+          author,
           agentSelectionKey,
         ]
       )
