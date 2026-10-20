@@ -7,11 +7,7 @@ import {
   customerAgentAuthorizePath,
   resolveCustomerAgentConnectStep,
 } from "../../customer-agent-routes";
-import {
-  customerAgentTestClientId,
-  customerAgentTestClientMetadata,
-  customerAgentTestClientRedirectUri,
-} from "../../customer-agent-test-client";
+import { customerAgentTestClientMetadata } from "../../customer-agent-test-client";
 import {
   type CapturedMagicLink,
   cookieJar,
@@ -795,6 +791,10 @@ describe.skipIf(!testDatabase)(
     });
 
     test("registers the preview E2E's test agent from its published metadata document", async () => {
+      const {
+        client_id: testAgentId,
+        redirect_uris: [testAgentRedirectUri],
+      } = customerAgentTestClientMetadata;
       const metadataRequests: string[] = [];
       const sentLinks: CapturedMagicLink[] = [];
       // Answered as the site's route serves the document, so it meets the
@@ -804,7 +804,7 @@ describe.skipIf(!testDatabase)(
         clientMetadataTransport: async (input: RequestInfo | URL) => {
           const url = input instanceof Request ? input.url : String(input);
           metadataRequests.push(url);
-          return url === customerAgentTestClientId
+          return url === testAgentId
             ? Response.json(customerAgentTestClientMetadata, {
                 headers: { "cache-control": "public, max-age=60" },
               })
@@ -817,24 +817,24 @@ describe.skipIf(!testDatabase)(
         auth,
         sentLinks,
         {
-          clientId: customerAgentTestClientId,
-          redirectUri: customerAgentTestClientRedirectUri,
+          clientId: testAgentId,
+          redirectUri: testAgentRedirectUri,
           challenge: pkce.challenge,
           state: crypto.randomUUID(),
           scope: "reservations:read reservations:create offline_access",
         }
       );
 
-      expect(metadataRequests).toContain(customerAgentTestClientId);
+      expect(metadataRequests).toContain(testAgentId);
       expect(consentPage.pathname).toBe("/auth/consent");
       const client = await findClient(
         auth,
-        customerAgentTestClientId,
+        testAgentId,
         new Headers({ cookie: customer.cookie, host: HOST })
       );
       expect(client._tag === "Success" && client.success).toEqual(
         Option.some({
-          clientId: customerAgentTestClientId as never,
+          clientId: testAgentId as never,
           name: customerAgentTestClientMetadata.client_name,
           host: "workspace.deskohub.cz",
         })

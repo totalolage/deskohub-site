@@ -2,10 +2,7 @@ import type { Client } from "@modelcontextprotocol/client";
 import { type BrowserContext, expect, type Page } from "@playwright/test";
 import { Effect, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import {
-  customerAgentTestClientId,
-  customerAgentTestClientMetadata,
-} from "@/features/account/customer-agent-test-client";
+import { customerAgentTestClientMetadata } from "@/features/account/customer-agent-test-client";
 import { type Locale, m } from "@/features/i18n";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
@@ -269,7 +266,7 @@ const executeAgentBooking = Effect.fn("AgentBooking.execute")(function* (
         );
       }
       return yield* exchangeCustomerAgentCode({
-        clientId: customerAgentTestClientId,
+        clientId: customerAgentTestClientMetadata.client_id,
         code: callback.code,
         config,
         iss: callback.iss,
@@ -348,7 +345,7 @@ const answerAgentConsent = ({
 }) =>
   Effect.gen(function* () {
     const request = yield* startCustomerAgentAuthorization({
-      clientId: customerAgentTestClientId,
+      clientId: customerAgentTestClientMetadata.client_id,
       config,
       server,
     });
