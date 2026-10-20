@@ -564,5 +564,73 @@ describe.skipIf(!testDatabase)(
         expect(self?.author).toBeNull();
       });
     });
+
+    describe("reservation export", () => {
+      test("exports every reservation the list filters match, in list order", async () => {
+        const customerId = makeCustomerId("export");
+        const otherCustomerId = makeCustomerId("export-other");
+        const complete: WorkspaceReservationId[] = [];
+        for (let index = 0; index < 30; index += 1) {
+          complete.push(
+            await insertReservation({
+              customerId,
+              fulfillmentState: "fulfilled",
+              label: `export-complete-${index}`,
+              reservationState: "confirmed",
+            })
+          );
+        }
+        const cancelled = await insertReservation({
+          customerId,
+          fulfillmentState: "fulfilled",
+          label: "export-cancelled",
+          reservationState: "cancelled",
+        });
+        await insertReservation({
+          customerId: otherCustomerId,
+          fulfillmentState: "fulfilled",
+          label: "export-other-customer",
+          reservationState: "confirmed",
+        });
+        const input = {
+          customerId,
+          direction: "asc",
+          sort: "created",
+          status: "complete",
+          type: "cowork",
+        } as const;
+
+        const [exported, firstPage, secondPage, otherType] = await Promise.all([
+          run((administration) => administration.exportReservations(input)),
+          run((administration) =>
+            administration.listReservations({ ...input, page: 1 })
+          ),
+          run((administration) =>
+            administration.listReservations({ ...input, page: 2 })
+          ),
+          run((administration) =>
+            administration.exportReservations({
+              ...input,
+              type: "meeting-room",
+            })
+          ),
+        ]);
+
+        expect(exported.map(({ id }) => id)).toEqual(
+          [...firstPage.items, ...secondPage.items].map(({ id }) => id)
+        );
+        expect(exported).toHaveLength(30);
+        expect(exported.map(({ id }) => id).sort()).toEqual(complete.sort());
+        expect(exported.map(({ id }) => id)).not.toContain(cancelled);
+        expect(otherType).toEqual([]);
+        // Dotypos returned neither the bookings nor the customer, which an
+        // export keeps as empty details instead of failing.
+        expect(exported[0]?.customer).toBeNull();
+        expect(exported[0]?.startsAt).toBeNull();
+        expect(exported[0]?.dotyposReservationId).toBe(
+          DotyposReservationIdSchema.make(`booking-export-complete-0-${runId}`)
+        );
+      });
+    });
   }
 );

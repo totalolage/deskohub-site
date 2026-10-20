@@ -11,6 +11,7 @@ import { parsePlainDate } from "@/shared/utils/temporal";
 import {
   type AdministrationBookingListInput,
   type AdministrationCustomerListInput,
+  type AdministrationReservationExportInput,
   type AdministrationReservationListInput,
   AdministrationService,
   getAdministrationReservationOverview,
@@ -127,11 +128,13 @@ export const loadAdministrationReservationOverview = async () => {
   );
 };
 
-const getAdministrationReservationListInput = async (
-  searchParams: AdministrationSearchParams
+/**
+ * The reservation list input that the page and its export derive from the
+ * same URL, including the default date range.
+ */
+export const parseAdministrationReservationListSearchParams = (
+  params: Awaited<AdministrationSearchParams>
 ) => {
-  await authorizeAdministratorPage();
-  const params = await searchParams;
   const typeValue = firstParam(params.type);
   const customerId = getDotyposCustomerRouteId(firstParam(params.customerId));
   const status = parseStatus(firstParam(params.status));
@@ -156,6 +159,22 @@ const getAdministrationReservationListInput = async (
         ? typeValue
         : undefined,
   } satisfies AdministrationReservationListInput;
+};
+
+/** The reservation export reads the list's filters and order, but no page. */
+export const parseAdministrationReservationExportSearchParams = (
+  params: Awaited<AdministrationSearchParams>
+): AdministrationReservationExportInput => {
+  const { page: _, ...input } =
+    parseAdministrationReservationListSearchParams(params);
+  return input;
+};
+
+const getAdministrationReservationListInput = async (
+  searchParams: AdministrationSearchParams
+) => {
+  await authorizeAdministratorPage();
+  return parseAdministrationReservationListSearchParams(await searchParams);
 };
 
 const loadAdministrationReservationList = async (

@@ -5,16 +5,23 @@ import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Badge } from "@/shared/components/ui/badge";
 import { cn } from "@/shared/utils";
 import { formatCount } from "@/shared/utils/number";
+import { AdministrationTableExport } from "./table-export";
 
 export function AdministrationTableToolbar({
   actions,
   count,
+  exportHref,
   filters,
   label,
   search,
 }: {
   readonly actions?: ReactNode;
   readonly count: ReactNode;
+  /**
+   * The list's CSV export path for its current filters, such as one from
+   * `getAdministrationListExportHref`. Adds the export control to the actions.
+   */
+  readonly exportHref?: Promise<string>;
   readonly filters?: ReactNode;
   /** The accessible name of the controls section, such as "Order table controls". */
   readonly label: string;
@@ -34,10 +41,15 @@ export function AdministrationTableToolbar({
         {count}
         {search && <div className="w-full sm:max-w-[32rem]">{search}</div>}
       </div>
-      {(filters || actions) && (
+      {(filters || actions || exportHref) && (
         <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-end 2xl:justify-end">
           {filters}
-          {actions && <div className="self-end">{actions}</div>}
+          {(actions || exportHref) && (
+            <div className="flex items-start gap-2 self-end">
+              {actions}
+              {exportHref && <AdministrationTableExport href={exportHref} />}
+            </div>
+          )}
         </div>
       )}
     </section>

@@ -16,6 +16,8 @@ export class WorkspaceRouteFailure extends Data.TaggedError(
 )<{
   readonly statusCode: number;
   readonly publicMessage: string;
+  /** A stable, machine-readable reason a client can branch on. */
+  readonly code?: string;
   readonly cause?: unknown;
 }> {
   static internal = (publicMessage: string) => (cause: unknown) =>
@@ -24,10 +26,20 @@ export class WorkspaceRouteFailure extends Data.TaggedError(
       publicMessage,
       cause,
     });
+
+  static unavailable =
+    (publicMessage: string, code: string) => (cause: unknown) =>
+      new WorkspaceRouteFailure({
+        statusCode: 503,
+        publicMessage,
+        code,
+        cause,
+      });
 }
 
 export type WorkspaceRouteErrorResponse = NextResponse<{
   readonly error: string;
+  readonly code?: string;
 }>;
 
 export interface WorkspaceRouteOptions {
@@ -87,7 +99,10 @@ const recoverWorkspaceRouteFailure = Effect.fn("workspaceRoute.recoverFailure")(
       : Effect.logError("Workspace route request failed", annotations);
 
     return NextResponse.json(
-      { error: failure.publicMessage },
+      {
+        error: failure.publicMessage,
+        ...(failure.code && { code: failure.code }),
+      },
       { status: statusCode }
     );
   }
