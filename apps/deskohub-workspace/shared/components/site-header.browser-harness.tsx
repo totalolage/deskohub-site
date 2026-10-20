@@ -43,8 +43,6 @@ createRoot(mountPoint).render(
         visible: Promise.resolve(administrator),
         href: `/${locale}/admin`,
         label: m.siteHeaderAdminLabel({}, { locale }),
-        ribbonLabel: m.siteHeaderAdminRibbonLabel({}, { locale }),
-        ribbonActionLabel: m.siteHeaderAdminRibbonAction({}, { locale }),
       }}
       closeNavigationMenuLabel={m.closeNavigationMenuLabel({}, { locale })}
       contactHref={`/${locale}/reservation/cowork`}
