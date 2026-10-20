@@ -223,8 +223,8 @@ const executeAgentBooking = Effect.fn("AgentBooking.execute")(function* (
     timeoutMs: config.timeouts.browserAction,
   });
   // The challenge comes first, as for a real agent. The agent's client ID
-  // is the URL of its metadata document, which the deployment's OAuth server
-  // fetches from the production host on each authorization request.
+  // is the URL of its metadata document on the production host, which the
+  // deployment's OAuth server fetches when it first looks the agent up.
   const server = yield* runStep({
     execute: discoverCustomerAgentAuthorization(config),
     id: "discover-agent-authorization",

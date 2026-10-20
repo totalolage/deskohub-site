@@ -806,7 +806,7 @@ describe.skipIf(!testDatabase)(
           metadataRequests.push(url);
           return url === customerAgentTestClientId
             ? Response.json(customerAgentTestClientMetadata, {
-                headers: { "cache-control": "no-store" },
+                headers: { "cache-control": "public, max-age=60" },
               })
             : new Response("not found", { status: 404 });
         },
