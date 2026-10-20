@@ -52,6 +52,7 @@ type NavigationQuery =
   | "none"
   | "not-found-heading"
   | "reservation-id"
+  | "sign-in-heading"
   | "status-access"
   | "unavailable-heading";
 
@@ -83,6 +84,7 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
     | "access-unavailable"
     | "modal"
     | "not-found"
+    | "sign-in"
     | "status";
   type BackgroundOrigin = "account" | "standalone";
   type Entry = {
@@ -123,6 +125,10 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
       return "not-found";
     };
     const notFoundTitle = m.checkoutStatusNotFoundTitle(
+      {},
+      { locale: "en-US" }
+    );
+    const reservationSignInTitle = m.accountSignInReservationTitle(
       {},
       { locale: "en-US" }
     );
@@ -203,6 +209,8 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
           : 0;
       if (query === "not-found-heading")
         return scope === "page" && mode === "not-found" ? 1 : 0;
+      if (query === "sign-in-heading")
+        return scope === "page" && mode === "sign-in" ? 1 : 0;
       if (query === "invalid-heading")
         return scope === "page" && mode === "access-invalid" ? 1 : 0;
       if (query === "unavailable-heading")
@@ -308,6 +316,8 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
           const name = nameFromOptions(roleOptions);
           let headingQuery: NavigationQuery = "none";
           if (name === notFoundTitle) headingQuery = "not-found-heading";
+          else if (name === reservationSignInTitle)
+            headingQuery = "sign-in-heading";
           else if (name === invalidLinkTitle) headingQuery = "invalid-heading";
           else if (name === unavailableTitle)
             headingQuery = "unavailable-heading";
@@ -361,6 +371,21 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
           if (privatePage && url === urls.accessUrl)
             failFor("anonymous-access-load");
           if (url === urls.accountUrl) accountLoaded = true;
+          // A signed-out status visit streams a redirect to sign-in.
+          if (privatePage && url === urls.statusUrl) {
+            push({
+              backgroundOrigin: "standalone",
+              mode: "sign-in",
+              url: new URL(
+                `/en-US/auth/sign-in?${new URLSearchParams({
+                  returnTo: urls.statusPath,
+                  for: "reservation",
+                })}`,
+                url
+              ).toString(),
+            });
+            return { status: () => 200 };
+          }
           push({
             backgroundOrigin:
               url === urls.accountUrl ? "account" : "standalone",

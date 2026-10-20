@@ -25,6 +25,10 @@
   the claim is written in the link's transaction (referrals skill).
 - Never create a Dotypos customer from auth data alone; it needs the profile
   completion input.
+- Profile creation (`CustomerProfileService.createUnderHeldLock`) reruns the
+  locked steps (`resolveCustomerAccountLinkUnderHeldLock`) and creates only on
+  `not-found`. Because the created customer carries the verified email, a retry
+  after a failed link write links that customer instead of creating another.
 
 ## Durable customer account
 
@@ -45,9 +49,9 @@ glossary defines the customer account, reservation author, and tombstone.
   RESTRICT`. Never delete a customer account row; deletion tombstones it
   through `CustomerAccountRepository.tombstone`.
 - `OptionalAccountActivityGuard.guardStateCreation` hands the state-creating
-  section the account it verified under the account lock, or null for an
-  anonymous session. The submission section records it as the author of new
-  drafts and calls `WorkspaceReservationRepository.assignAuthor` when a
+  section the account it verified under the account lock. Checkout requires a
+  verified session, so the submission section always gets one; it records it
+  as the author of new drafts and calls `WorkspaceReservationRepository.assignAuthor` when a
   signed-in submission reuses an authorless draft. Payment does not set an
   author. An authorless legacy reservation stays authorless until the #682
   backfill.
@@ -60,9 +64,9 @@ glossary defines the customer account, reservation author, and tombstone.
   `getCustomerDisplayName` over `getCustomers` reads batched the same way. Author and
   name reads are degradable: a failure logs a fixed code and leaves the party
   unnamed (null), never failing the history.
-- `author_account_id` is null only for guest checkouts and for reservations
-  made before authors were recorded, until the legacy backfill fills them and
-  the column becomes NOT NULL.
+- `author_account_id` is null only for reservations made before authors were
+  recorded, until the legacy backfill fills them and the column becomes NOT
+  NULL.
 
 ## Error contract
 
@@ -175,11 +179,19 @@ glossary defines the customer account, reservation author, and tombstone.
   card resumes it when opened without one or for the same one, and starts
   a fresh request when opened for another, since the sent link already
   lands on the stored target.
-- State that must survive the round trip through the email, such as checkout
-  contact details, rides in the return target's query as a token from
+- State that must survive the round trip through the email, such as the
+  checkout contact step's typed details (the reservation page's `contact`
+  parameter in the checkout skill's `checkout-pages.md`), rides in the return target's query as a token from
   `makeAuthReturnState(purpose, schema)`
   (`features/account/backend/auth-return-state.ts`): sealed with the shared
   sealed-state helper, purpose-bound, compressed, and usable for 30 minutes.
+- `?for=` (`signInPurposeParam`) tells the visitor why they sign in. It only
+  changes the sign-in card's heading and description; `returnTo` alone
+  decides where sign-in continues. The status page redirects a signed-out
+  visitor whose reservation would be not found to
+  `getAccountSignInPath(locale, statusPath, "reservation")`, which shows
+  "Sign in to see your reservation" and returns to the status page. Parse the
+  parameter with `parseSignInPurpose`.
 - Return targets have a size contract. `parseSameOriginPath` accepts paths up
   to `maxSameOriginPathLength` (8 KiB), so the magic link that carries one
   base64url-encoded stays under Vercel's 14 KB URL limit. An auth return

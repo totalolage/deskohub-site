@@ -346,7 +346,9 @@ test.skipIf(!chromiumAvailable)(
           },
         ]);
         // One document load, no form submission.
-        expect(server.requests).toEqual(["GET /en-US/reservation/cowork"]);
+        expect(server.requests).toEqual([
+          "GET /en-US/reservation/cowork?step=contact",
+        ]);
       } finally {
         await browser.close();
       }

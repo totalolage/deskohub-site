@@ -8,7 +8,7 @@ import {
   test,
 } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import {
   registerWorkspaceComponentTestEnv,
@@ -69,8 +69,9 @@ test("uses a document navigation to reopen signed reservation state", async () =
       activeStepKey="pay"
       locale="en-US"
       stepLinks={{
-        order: {
-          href: reservationHref,
+        chooseSpace: { href: reservationHref, navigation: "document" },
+        contact: {
+          href: `${reservationHref}&step=contact`,
           navigation: "document",
         },
       }}
@@ -78,8 +79,40 @@ test("uses a document navigation to reopen signed reservation state", async () =
   );
 
   expect(
-    view.getByRole("link", { name: /reservation/i }).getAttribute("href")
+    view.getByRole("link", { name: /choose your space/i }).getAttribute("href")
   ).toBe(reservationHref);
+  expect(
+    view.getByRole("link", { name: /contact details/i }).getAttribute("href")
+  ).toBe(`${reservationHref}&step=contact`);
+  expect(capturedLinks).toBeEmpty();
+});
+
+test("shows every step completed once the reservation is booked", async () => {
+  const { CheckoutSteps } = await import("./checkout-flow-layout");
+
+  const view = render(
+    <CheckoutSteps activeStepKey="complete" locale="en-US" />
+  );
+
+  expect(view.getAllByRole("listitem")).toHaveLength(3);
+  expect(view.getAllByText("Completed")).toHaveLength(3);
+  expect(view.container.querySelector('[aria-current="step"]')).toBeNull();
+});
+
+test("changes a step in place without navigating", async () => {
+  const { CheckoutSteps } = await import("./checkout-flow-layout");
+  const onSelect = mock(() => undefined);
+
+  const view = render(
+    <CheckoutSteps
+      activeStepKey="contact"
+      locale="en-US"
+      stepLinks={{ chooseSpace: { onSelect } }}
+    />
+  );
+
+  fireEvent.click(view.getByRole("button", { name: /choose your space/i }));
+  expect(onSelect).toHaveBeenCalledTimes(1);
   expect(capturedLinks).toBeEmpty();
 });
 

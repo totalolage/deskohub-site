@@ -138,12 +138,6 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
     expect(await readAuthor(second.id)).toBe(author);
   });
 
-  test("leaves a guest reservation without an author", async () => {
-    const draft = await createDraft(draftInput(null));
-
-    expect(await readAuthor(draft.id)).toBeNull();
-  });
-
   const assignAuthor = (
     id: WorkspaceReservationId,
     authorAccountId: CustomerAccountId
@@ -155,9 +149,10 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
       })
     );
 
-  test("makes the signed-in account the author of a guest draft", async () => {
+  test("makes the resuming account the author of a legacy unauthored draft", async () => {
     const author = newAccountId();
     const draft = await createDraft(draftInput(null));
+    expect(await readAuthor(draft.id)).toBeNull();
 
     expect(await assignAuthor(draft.id, author)).toBe(author);
 

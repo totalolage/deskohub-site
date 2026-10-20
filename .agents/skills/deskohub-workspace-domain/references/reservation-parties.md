@@ -6,8 +6,8 @@ reference covers how these parties are stored.
 ## Glossary
 
 - **Reservation customer**: the customer the reservation is for. Dotypos owns
-  the customer's profile. The customer can be the author's own customer, a
-  different registered customer, or someone without an account.
+  the customer's profile. The customer is the author's own customer, or
+  someone else the author books for, who may or may not have an account.
 - **Customer account**: the durable Workspace record of a customer who signs
   in. It outlives the sign-in identity and holds no personal data.
 - **Reservation author**: the customer account that made the reservation. The
@@ -17,8 +17,9 @@ reference covers how these parties are stored.
 
 ## Invariants
 
-- The submission that creates a reservation records the signed-in account as
-  its author.
+- Checkout requires a signed-in account with a verified email, so the
+  submission that creates a reservation always records that account as its
+  author.
 - A signed-in submission that resumes an authorless draft records that account
   as its author. Payment does not establish authorship; an authorless legacy
   reservation stays authorless until the #682 backfill.

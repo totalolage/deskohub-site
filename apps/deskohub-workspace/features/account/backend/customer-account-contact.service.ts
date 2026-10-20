@@ -4,6 +4,7 @@ import {
   reservationCustomerNameSchema,
   reservationCustomerPhoneSchema,
 } from "@/features/reservation/reservation-contact";
+import type { CustomerProfileInput } from "../contracts";
 import {
   type CustomerAccountAccessError,
   type CustomerAccountId,
@@ -15,6 +16,7 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
+import type { CustomerProfile } from "./customer-dotypos-adapter.service";
 import { CustomerProfileService } from "./customer-profile.service";
 
 /**
@@ -25,6 +27,20 @@ import { CustomerProfileService } from "./customer-profile.service";
 export type CurrentLinkedAccount = LinkedCustomerAccount & {
   readonly email: CustomerAccountSession["email"];
 };
+
+/**
+ * The current session's account before any profile is read: signed out,
+ * signed in without a Dotypos profile linked yet, or linked. A session with
+ * deletion pending reads as signed out, since it can't book or link.
+ */
+type CurrentCustomerAccount =
+  | { readonly status: "signed-out" }
+  | {
+      readonly status: "unlinked";
+      readonly accountId: CustomerAccountId;
+      readonly email: CustomerAccountSession["email"];
+    }
+  | ({ readonly status: "linked" } & CurrentLinkedAccount);
 
 /**
  * The reservation contact a signed-in, already-linked customer books with.
@@ -45,7 +61,37 @@ const decodeContactField = <S extends Schema.Decoder<string>>(
   value: string
 ) => Option.getOrNull(Schema.decodeUnknownOption(schema)(value));
 
+/** A linked profile as the reservation contact its account books with. */
+const toContact = (
+  account: CurrentLinkedAccount,
+  profile: CustomerProfile
+): CustomerAccountContact | null => {
+  const name = decodeContactField(
+    reservationCustomerNameSchema,
+    [profile.firstName, profile.lastName]
+      .map((part) => part?.trim())
+      .filter(Boolean)
+      .join(" ")
+  );
+  if (!name) return null;
+
+  return {
+    accountId: account.accountId,
+    dotyposCustomerId: account.dotyposCustomerId,
+    name,
+    email: account.email,
+    phone: profile.phone
+      ? decodeContactField(reservationCustomerPhoneSchema, profile.phone)
+      : null,
+  } satisfies CustomerAccountContact;
+};
+
 interface ICustomerAccountContactService {
+  /** Reads the current session's account without claiming a link. */
+  readonly currentAccount: Effect.Effect<
+    CurrentCustomerAccount,
+    CustomerAccountAccessError
+  >;
   /**
    * Reads the current session's existing link without claiming one.
    * Anonymous, deletion-pending, and unlinked sessions yield null.
@@ -72,6 +118,16 @@ interface ICustomerAccountContactService {
     CustomerAccountContact | null,
     CustomerAccountAccessError
   >;
+  /**
+   * Saves the first profile of a signed-in account that has none, creating
+   * or finding its Dotypos customer, and reads it back as the reservation
+   * contact. Run it inside the account activity guard, which holds the
+   * account lock; a profile whose name can't book yields null.
+   */
+  readonly completeProfileUnderHeldLock: (
+    account: { readonly accountId: CustomerAccountId; readonly email: string },
+    profile: CustomerProfileInput
+  ) => Effect.Effect<CustomerAccountContact | null, CustomerAccountAccessError>;
 }
 
 export class CustomerAccountContactService extends Context.Service<
@@ -85,23 +141,43 @@ export class CustomerAccountContactService extends Context.Service<
       const links = yield* CustomerAccountLinkRepository;
       const profiles = yield* CustomerProfileService;
 
-      const currentLinkedAccount = Effect.gen(function* () {
+      const currentAccount = Effect.gen(function* () {
         const session = yield* authentication.currentUser;
-        if (!session || session.deletionRequested) return null;
+        if (!session || session.deletionRequested) {
+          return { status: "signed-out" } satisfies CurrentCustomerAccount;
+        }
 
         const dotyposCustomerId = yield* links
           .find(session.accountId)
           .pipe(
             Effect.mapError(mapCustomerAccountFailure("account-link.read"))
           );
-        if (!dotyposCustomerId) return null;
+        if (!dotyposCustomerId) {
+          return {
+            status: "unlinked",
+            accountId: session.accountId,
+            email: session.email,
+          } satisfies CurrentCustomerAccount;
+        }
 
         return {
+          status: "linked",
           accountId: session.accountId,
           dotyposCustomerId,
           email: session.email,
-        } satisfies CurrentLinkedAccount;
-      }).pipe(
+        } satisfies CurrentCustomerAccount;
+      }).pipe(Effect.withSpan("CustomerAccountContactService.currentAccount"));
+
+      const currentLinkedAccount = currentAccount.pipe(
+        Effect.map((account): CurrentLinkedAccount | null =>
+          account.status === "linked"
+            ? {
+                accountId: account.accountId,
+                dotyposCustomerId: account.dotyposCustomerId,
+                email: account.email,
+              }
+            : null
+        ),
         Effect.withSpan("CustomerAccountContactService.currentLinkedAccount")
       );
 
@@ -112,24 +188,27 @@ export class CustomerAccountContactService extends Context.Service<
           accountId: account.accountId,
           dotyposCustomerId: account.dotyposCustomerId,
         });
-        const name = decodeContactField(
-          reservationCustomerNameSchema,
-          [profile.firstName, profile.lastName]
-            .map((part) => part?.trim())
-            .filter(Boolean)
-            .join(" ")
-        );
-        if (!name) return null;
+        return toContact(account, profile);
+      });
 
-        return {
-          accountId: account.accountId,
-          dotyposCustomerId: account.dotyposCustomerId,
-          name,
-          email: account.email,
-          phone: profile.phone
-            ? decodeContactField(reservationCustomerPhoneSchema, profile.phone)
-            : null,
-        } satisfies CustomerAccountContact;
+      const completeProfileUnderHeldLock = Effect.fn(
+        "CustomerAccountContactService.completeProfileUnderHeldLock"
+      )(function* (
+        account: {
+          readonly accountId: CustomerAccountId;
+          readonly email: string;
+        },
+        input: CustomerProfileInput
+      ) {
+        const created = yield* profiles.createUnderHeldLock(
+          account.accountId,
+          account.email,
+          input
+        );
+        return toContact(
+          { ...created.account, email: account.email },
+          created.profile
+        );
       });
 
       const current = currentLinkedAccount.pipe(
@@ -140,6 +219,8 @@ export class CustomerAccountContactService extends Context.Service<
       );
 
       return {
+        currentAccount,
+        completeProfileUnderHeldLock,
         currentLinkedAccount,
         linkedContact,
         current,

@@ -1,6 +1,7 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { Context, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql";
+import type { ReferralSignupIntent } from "@/features/referrals/signup-intent.repository";
 import {
   CustomerAccountAccessError,
   type CustomerAccountId,
@@ -57,7 +58,8 @@ export type CustomerAccountResolutionDependencies = {
   ) => Effect.Effect<ExactEmailCustomerMatch, DotyposCustomerError>;
   readonly claimLink: (
     accountId: CustomerAccountId,
-    customerId: DotyposCustomerId
+    customerId: DotyposCustomerId,
+    signupReferral?: ReferralSignupIntent
   ) => Effect.Effect<CustomerAccountLinkClaim, CustomerAccountLinkError>;
   readonly reactivate: (
     customerId: DotyposCustomerId
@@ -78,6 +80,72 @@ export type CustomerAccountLinkResolution = {
   readonly account: LinkedCustomerAccount;
   readonly autoLinked: boolean;
 };
+
+/**
+ * Resolution steps for a verified identity whose account lock the caller
+ * already holds: an existing link wins, then one usable exact-email Dotypos
+ * customer is reactivated if expired and claimed. No match fails with
+ * `not-found`, which leaves profile creation to the caller; every other
+ * outcome is the support state. A signup referral is written with the link
+ * only when this claim creates it.
+ */
+export const resolveCustomerAccountLinkUnderHeldLock = Effect.fn(
+  "account.resolveCustomerAccountLinkUnderHeldLock"
+)(function* (
+  dependencies: Pick<
+    CustomerAccountResolutionDependencies,
+    "findLink" | "classify" | "claimLink" | "reactivate"
+  >,
+  identity: { readonly accountId: CustomerAccountId; readonly email: string },
+  signupReferral?: ReferralSignupIntent
+) {
+  const existingCustomerId = yield* dependencies
+    .findLink(identity.accountId)
+    .pipe(Effect.mapError(mapCustomerAccountFailure("account-link.read")));
+  if (existingCustomerId) {
+    return {
+      account: {
+        accountId: identity.accountId,
+        dotyposCustomerId: existingCustomerId,
+      },
+      autoLinked: false,
+    } satisfies CustomerAccountLinkResolution;
+  }
+
+  const match = yield* dependencies
+    .classify(identity.email)
+    .pipe(
+      Effect.mapError(mapCustomerAccountFailure("dotypos.customer-lookup"))
+    );
+  if (match.kind !== "matched") {
+    return yield* accessError("link-required", match.kind);
+  }
+
+  if (match.state === "expired") {
+    yield* dependencies
+      .reactivate(match.customerId)
+      .pipe(
+        Effect.mapError(
+          mapCustomerAccountFailure("dotypos.customer-expiration")
+        )
+      );
+  }
+
+  const claimed = yield* dependencies
+    .claimLink(identity.accountId, match.customerId, signupReferral)
+    .pipe(Effect.mapError(mapCustomerAccountFailure("account-link.claim")));
+  if (claimed.kind === "claimed") {
+    return yield* accessError("link-required", "claimed");
+  }
+
+  return {
+    account: {
+      accountId: identity.accountId,
+      dotyposCustomerId: claimed.customerId,
+    },
+    autoLinked: true,
+  } satisfies CustomerAccountLinkResolution;
+});
 
 export const resolveCustomerAccount = (
   dependencies: CustomerAccountResolutionDependencies
@@ -103,64 +171,10 @@ export const resolveCustomerAccountLink = (
           }
           const lockedIdentity = yield* requireVerifiedIdentity(lockedUser);
 
-          const existingCustomerId = yield* dependencies
-            .findLink(lockedIdentity.accountId)
-            .pipe(
-              Effect.mapError(mapCustomerAccountFailure("account-link.read"))
-            );
-          if (existingCustomerId) {
-            return {
-              account: {
-                accountId: lockedIdentity.accountId,
-                dotyposCustomerId: existingCustomerId,
-              },
-              autoLinked: false,
-            };
-          }
-
-          const match = yield* dependencies
-            .classify(lockedIdentity.email)
-            .pipe(
-              Effect.mapError(
-                mapCustomerAccountFailure("dotypos.customer-lookup")
-              )
-            );
-          if (match.kind === "not-found") {
-            return yield* accessError("link-required", "not-found");
-          }
-          if (match.kind === "ambiguous") {
-            return yield* accessError("link-required", "ambiguous");
-          }
-          if (match.kind === "unusable") {
-            return yield* accessError("link-required", "unusable");
-          }
-
-          if (match.state === "expired") {
-            yield* dependencies
-              .reactivate(match.customerId)
-              .pipe(
-                Effect.mapError(
-                  mapCustomerAccountFailure("dotypos.customer-expiration")
-                )
-              );
-          }
-
-          const claimed = yield* dependencies
-            .claimLink(lockedIdentity.accountId, match.customerId)
-            .pipe(
-              Effect.mapError(mapCustomerAccountFailure("account-link.claim"))
-            );
-          if (claimed.kind === "claimed") {
-            return yield* accessError("link-required", "claimed");
-          }
-
-          return {
-            account: {
-              accountId: lockedIdentity.accountId,
-              dotyposCustomerId: claimed.customerId,
-            },
-            autoLinked: true,
-          };
+          return yield* resolveCustomerAccountLinkUnderHeldLock(
+            dependencies,
+            lockedIdentity
+          );
         })
       )
       .pipe(Effect.mapError(mapCustomerAccountFailure("account-link.lock")));

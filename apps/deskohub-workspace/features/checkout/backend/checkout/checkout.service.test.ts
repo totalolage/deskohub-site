@@ -12,7 +12,10 @@ import { Data, Duration, Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
 import type { OptionalAccountActivityFixture } from "@/features/account/backend/customer-account-activity.test-utils";
 import { makeOptionalAccountActivityGuard } from "@/features/account/backend/customer-account-activity.test-utils";
-import type { CustomerAccountId } from "@/features/account/customer-account";
+import {
+  type CustomerAccountId,
+  customerAccountIdSchema,
+} from "@/features/account/customer-account";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
 import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
@@ -2530,9 +2533,11 @@ describe("CheckoutService", () => {
     expect(freshState.requestedDiscountCode).toBe(requestedCode);
   });
 
-  test("keeps anonymous checkout flowing without consulting account activity", async () => {
+  test("starts its author's checkout after the session ended without consulting account activity", async () => {
+    const author = customerAccountIdSchema.make(crypto.randomUUID());
     const harness = await createCheckoutHarness({
-      orderId: "reservation-anonymous-account-activity",
+      orderId: "reservation-signed-out-author",
+      reservationOverrides: { authorAccountId: author },
       accountAuthority: { session: null },
     });
 
@@ -2541,17 +2546,18 @@ describe("CheckoutService", () => {
     expect(result).toMatchObject({ status: "redirect" });
     expect(harness.updateReservationDetails).toHaveBeenCalledTimes(1);
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);
+    expect(harness.reservationRecord.authorAccountId).toBe(author);
     expect(harness.assignAuthor).not.toHaveBeenCalled();
     expect(harness.guardEvents).toEqual([]);
   });
 
-  test("does not make a payer the author of a reservation they did not create", async () => {
+  test("does not make a payer the author of a reservation another account created", async () => {
+    const author = customerAccountIdSchema.make(crypto.randomUUID());
     const harness = await createCheckoutHarness({
       orderId: "reservation-paid-by-another-account",
+      reservationOverrides: { authorAccountId: author },
       accountAuthority: { session: {}, activityState: "active" },
     });
-
-    expect(harness.reservationRecord.authorAccountId).toBeNull();
 
     const result = await Effect.runPromise(harness.effect);
 
@@ -2561,7 +2567,7 @@ describe("CheckoutService", () => {
     });
     expect(harness.createPendingNexiAttempt).toHaveBeenCalledTimes(1);
     expect(harness.createHostedPaymentPage).toHaveBeenCalledTimes(1);
-    expect(harness.reservationRecord.authorAccountId).toBeNull();
+    expect(harness.reservationRecord.authorAccountId).toBe(author);
     expect(harness.assignAuthor).not.toHaveBeenCalled();
   });
 

@@ -51,6 +51,7 @@ import {
 } from "@/features/referrals/referral.service.mock";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
+import type { ReservationBillingSelectionInput } from "@/features/reservation/reservation-billing";
 import { getSlowestSuccessfulCalendarLoad } from "@/shared/backend/config/google-calendar.config.test-utils";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
@@ -323,8 +324,13 @@ const makeReusableReservation = (
     ...overrides,
   }) as WorkspaceReservation;
 
+// Only a signed-in account books, so scenarios run signed in unless they
+// pass their own session authority.
 const accountAuthorityFixture = async (
-  options?: OptionalAccountActivityFixture
+  options: OptionalAccountActivityFixture = {
+    session: {},
+    activityState: "active",
+  }
 ) => {
   const { makeOptionalAccountActivityGuard } = await import(
     "@/features/account/backend/customer-account-activity.test-utils"
@@ -356,10 +362,14 @@ const runReusableReservationScenario = async (input: {
   readonly ensureAvailable?: ReturnType<typeof mock>;
   readonly grantInitialMarketingConsent?: ReturnType<typeof mock>;
   readonly findOrCreateCustomer?: ReturnType<typeof mock>;
-  readonly reservation?: typeof reservation;
+  readonly reservation?: Omit<typeof reservation, "billing"> & {
+    readonly billing: ReservationBillingSelectionInput;
+  };
   readonly accountAuthority?: Parameters<typeof accountAuthorityFixture>[0];
   readonly customer?: "account";
-  readonly accountContact?: CustomerAccountContactService["Service"]["current"];
+  readonly account?: CustomerAccountContactService["Service"]["currentAccount"];
+  readonly linkedContact?: ReturnType<typeof mock>;
+  readonly completeProfileUnderHeldLock?: ReturnType<typeof mock>;
   readonly linkedAccount?: CustomerAccountContactService["Service"]["currentLinkedAccount"];
   readonly rememberedReferralCode?: string;
   readonly evaluateCheckoutReferral?: ReturnType<typeof mock>;
@@ -448,14 +458,33 @@ const runReusableReservationScenario = async (input: {
   const accountAuthority = await accountAuthorityFixture(
     input.accountAuthority
   );
-  const readAccountContact = mock(
-    () =>
-      input.accountContact ?? Effect.die("the account contact must not be read")
-  );
-  // Without a fixture the session has no linked account, as for a guest.
+  // Without a fixture the session has no linked account.
   const readLinkedAccount = mock(
     () => input.linkedAccount ?? Effect.succeed(null)
   );
+  // Without an account fixture, the session's account follows its linked
+  // account: linked, or signed out.
+  const readAccount = mock(
+    () =>
+      input.account ??
+      readLinkedAccount().pipe(
+        Effect.map((linked) =>
+          linked
+            ? ({
+                status: "linked",
+                email: testEmailAddressForAda,
+                ...linked,
+              } as never)
+            : ({ status: "signed-out" } as never)
+        )
+      )
+  );
+  const linkedContact =
+    input.linkedContact ??
+    mock(() => Effect.die("a linked contact must not be read"));
+  const completeProfileUnderHeldLock =
+    input.completeProfileUnderHeldLock ??
+    mock(() => Effect.die("no profile may be created"));
   const evaluateCheckoutReferral =
     input.evaluateCheckoutReferral ??
     mock(() => Effect.die("a referral must not be evaluated"));
@@ -468,7 +497,9 @@ const runReusableReservationScenario = async (input: {
   const testLayer = Layer.mergeAll(
     accountAuthority.layer,
     Layer.mock(CustomerAccountContactService, {
-      current: Effect.suspend(() => readAccountContact()),
+      currentAccount: Effect.suspend(() => readAccount()),
+      linkedContact: linkedContact as never,
+      completeProfileUnderHeldLock: completeProfileUnderHeldLock as never,
       currentLinkedAccount: Effect.suspend(() => readLinkedAccount()),
     }),
     input.referralService ??
@@ -569,7 +600,9 @@ const runReusableReservationScenario = async (input: {
     affirmAdvertisement,
     quoteForCustomer,
     findOrCreateCustomer,
-    readAccountContact,
+    readAccount,
+    linkedContact,
+    completeProfileUnderHeldLock,
     readLinkedAccount,
     evaluateCheckoutReferral,
     findAvailableCode,
@@ -725,6 +758,9 @@ const runMeetingRoomNewHoldScenario = async (
       findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
       findStoredCheckoutSessionKey: mock(() => Effect.succeed(null)),
       createDraft,
+      assignAuthor: mock((author: { readonly authorAccountId: string }) =>
+        Effect.succeed(author.authorAccountId)
+      ),
       claimHoldCreation: mock(() => Effect.succeed(true)),
       attachHold,
       findById: mock(() => Effect.succeed(null)),
@@ -1163,6 +1199,9 @@ describe("prepareWorkspacePayState", () => {
         findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
         findStoredCheckoutSessionKey: mock(() => Effect.succeed(null)),
         createDraft,
+        assignAuthor: mock((author: { readonly authorAccountId: string }) =>
+          Effect.succeed(author.authorAccountId)
+        ),
         claimHoldCreation,
         attachHold,
         findById: mock(() => Effect.succeed(null)),
@@ -1657,19 +1696,86 @@ describe("prepareWorkspacePayState", () => {
     expect(scenario.createDraft).not.toHaveBeenCalled();
   });
 
+  describe("without a signed-in account", () => {
+    test.each([
+      ["an anonymous session", { session: null }],
+      [
+        "customer accounts not configured",
+        { authenticationNotConfigured: true },
+      ],
+    ] as const)(
+      "rejects %s with the expired-session message before creating any state",
+      async (_label, accountAuthority) => {
+        const { m } = await import("@/features/i18n");
+        for (const customer of [undefined, "account" as const]) {
+          const scenario = await runReusableReservationScenario({
+            findByAttemptKeys: mock(() =>
+              Effect.die("no checkout attempt may be read")
+            ),
+            createDraft: mock(() => Effect.die("no draft may be created")),
+            accountAuthority,
+            customer,
+            marketingConsent: true,
+            rememberedReferralCode: "RFL12345",
+            findAvailableCode: mock(() => Effect.succeed(undefined)),
+          });
+
+          expect(scenario.result).toBeUndefined();
+          expect(scenario.error).toMatchObject({
+            _tag: "PublicSafeActionError",
+            message: m.accountSessionExpired({}, { locale: "en-US" }),
+            cause: {
+              _tag: "CustomerAccountAccessError",
+              reason: "unauthenticated",
+            },
+          });
+          expect(scenario.guardEvents).toEqual([]);
+          expect(scenario.readAccount).not.toHaveBeenCalled();
+          expect(scenario.completeProfileUnderHeldLock).not.toHaveBeenCalled();
+          expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
+          expect(scenario.quoteForCustomer).not.toHaveBeenCalled();
+          expect(scenario.grantInitialMarketingConsent).not.toHaveBeenCalled();
+          expect(scenario.createDraft).not.toHaveBeenCalled();
+          expect(scenario.assignAuthor).not.toHaveBeenCalled();
+          expect(scenario.createReservation).not.toHaveBeenCalled();
+          expect(scenario.enqueueCleanup).not.toHaveBeenCalled();
+          expect(scenario.evaluateCheckoutReferral).not.toHaveBeenCalled();
+          expect(scenario.rememberedReferralCodeAfter).toBe("RFL12345");
+        }
+      }
+    );
+  });
+
   describe("booking as the signed-in account", () => {
+    const accountId = "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01";
     const accountDotyposCustomerId = "60111";
+    const linkedAccountState = () =>
+      Effect.succeed({
+        status: "linked",
+        accountId,
+        dotyposCustomerId: accountDotyposCustomerId,
+        email: testEmailAddressForGrace,
+      } as never);
     const accountContact = (
-      overrides: { readonly phone?: string | null } = {}
+      overrides: {
+        readonly dotyposCustomerId?: string;
+        readonly phone?: string | null;
+      } = {}
     ) =>
       Effect.succeed({
-        accountId: "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01",
+        accountId,
         dotyposCustomerId: accountDotyposCustomerId,
         name: "Grace Hopper",
         email: testEmailAddressForGrace,
         phone: "+420 602 123 456",
         ...overrides,
       } as never);
+    /** An account booking for the signed-in account's linked profile. */
+    const linkedAccountBooking = () => ({
+      customer: "account" as const,
+      account: linkedAccountState(),
+      linkedContact: mock(() => accountContact()),
+    });
     const createFreshDraft = () =>
       mock((input) =>
         Effect.succeed(
@@ -1686,23 +1792,48 @@ describe("prepareWorkspacePayState", () => {
         )
       );
 
+    // An account without a profile saves the contact and billing it books
+    // with as its first profile, creating its Dotypos customer.
+    const createdCustomerId = "60222";
+    const unlinkedAccountState = () =>
+      Effect.succeed({
+        status: "unlinked",
+        accountId,
+        email: testEmailAddressForGrace,
+      } as never);
+    const profileCompletion = () =>
+      mock(() => accountContact({ dotyposCustomerId: createdCustomerId }));
+    const billingAddress = {
+      line1: "Karlova 1",
+      city: "Praha",
+      postalCode: "110 00",
+      country: "CZ",
+    };
+
     test("books under the linked Dotypos customer without resolving one from the contact", async () => {
       const lockProbe = { held: false };
       const lockSamples: boolean[] = [];
+      const linkedContact = mock(() => accountContact());
       const scenario = await runReusableReservationScenario({
         findByAttemptKeys: mock(() => Effect.succeed(null)),
         createDraft: createFreshDraft(),
         accountAuthority: { session: {}, activityState: "active", lockProbe },
         customer: "account",
-        accountContact: Effect.suspend(() => {
+        account: Effect.suspend(() => {
           lockSamples.push(lockProbe.held);
-          return accountContact();
+          return linkedAccountState();
         }),
+        linkedContact,
       });
 
       expect(scenario.result?.status).toBe("ready");
-      expect(scenario.readAccountContact).toHaveBeenCalledTimes(1);
+      expect(scenario.readAccount).toHaveBeenCalledTimes(1);
       expect(lockSamples).toEqual([true]);
+      expect(linkedContact.mock.calls[0]?.[0]).toMatchObject({
+        accountId,
+        dotyposCustomerId: accountDotyposCustomerId,
+      });
+      expect(scenario.completeProfileUnderHeldLock).not.toHaveBeenCalled();
       expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
       expect(scenario.createDraft).toHaveBeenCalledTimes(1);
       expect(scenario.createDraft.mock.calls[0]?.[0]).toMatchObject({
@@ -1714,34 +1845,117 @@ describe("prepareWorkspacePayState", () => {
     });
 
     test.each([
+      ["no invoice", { purpose: "personal", invoice: "none" }, undefined],
       [
-        "an account booking",
+        "a personal invoice",
+        { purpose: "personal", invoice: "requested", address: billingAddress },
         {
-          customer: "account",
-          accountAuthority: { session: {}, activityState: "active" },
+          kind: "personal",
+          addressLine1: "Karlova 1",
+          city: "Praha",
+          zip: "110 00",
+          country: "CZ",
         },
-        "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01",
       ],
       [
-        "a signed-in contact booking",
-        { accountAuthority: { session: {}, activityState: "active" } },
-        "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01",
+        "a business invoice",
+        {
+          purpose: "business",
+          invoice: "required",
+          buyer: {
+            kind: "business",
+            legalName: "Hopper Computing s.r.o.",
+            companyId: "12345678",
+            vatId: "CZ12345678",
+            address: { ...billingAddress, line2: "Floor 2" },
+          },
+        },
+        {
+          kind: "business",
+          companyName: "Hopper Computing s.r.o.",
+          companyId: "12345678",
+          vatId: "CZ12345678",
+          addressLine1: "Karlova 1",
+          addressLine2: "Floor 2",
+          city: "Praha",
+          zip: "110 00",
+          country: "CZ",
+        },
       ],
-      ["an anonymous guest", { accountAuthority: { session: null } }, null],
     ] as const)(
-      "records the signed-in account as the author of %s",
-      async (_label, booking, expectedAuthor) => {
+      "saves the first profile with %s under the held lock and books as its new customer",
+      async (_label, billing, profileBilling) => {
+        const lockProbe = { held: false };
+        const lockSamples: boolean[] = [];
+        const completeProfileUnderHeldLock = mock(() =>
+          Effect.suspend(() => {
+            lockSamples.push(lockProbe.held);
+            return accountContact({ dotyposCustomerId: createdCustomerId });
+          })
+        );
         const scenario = await runReusableReservationScenario({
           findByAttemptKeys: mock(() => Effect.succeed(null)),
           createDraft: createFreshDraft(),
-          accountContact: accountContact(),
-          ...booking,
+          accountAuthority: { session: {}, activityState: "active", lockProbe },
+          reservation: {
+            ...reservation,
+            name: "Grace Hopper",
+            email: testEmailAddressForGrace,
+            phone: "+420 602 123 456",
+            billing,
+          },
+          customer: "account",
+          account: unlinkedAccountState(),
+          completeProfileUnderHeldLock,
+        });
+
+        expect(scenario.error).toBeUndefined();
+        expect(scenario.result?.status).toBe("ready");
+        expect(lockSamples).toEqual([true]);
+        expect(completeProfileUnderHeldLock.mock.calls).toEqual([
+          [
+            { status: "unlinked", accountId, email: testEmailAddressForGrace },
+            {
+              firstName: "Grace",
+              lastName: "Hopper",
+              phone: "+420 602 123 456",
+              ...(profileBilling && { billing: profileBilling }),
+            },
+          ],
+        ]);
+        expect(scenario.linkedContact).not.toHaveBeenCalled();
+        expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
+        expect(scenario.quoteForCustomer.mock.calls[0]?.[0]).toMatchObject({
+          dotyposCustomerId: createdCustomerId,
+        });
+        expect(scenario.createDraft).toHaveBeenCalledTimes(1);
+        expect(scenario.createDraft.mock.calls[0]?.[0]).toMatchObject({
+          dotyposCustomerId: createdCustomerId,
+          authorAccountId: accountId,
+        });
+        expect(scenario.assignAuthor).toHaveBeenCalledWith({
+          id: "account-reservation-id",
+          authorAccountId: accountId,
+        });
+      }
+    );
+
+    test.each([
+      ["an account booking", () => linkedAccountBooking()],
+      ["a signed-in contact booking", () => ({})],
+    ] as const)(
+      "records the signed-in account as the author of %s",
+      async (_label, booking) => {
+        const scenario = await runReusableReservationScenario({
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          createDraft: createFreshDraft(),
+          ...booking(),
         });
 
         expect(scenario.result?.status).toBe("ready");
         expect(scenario.createDraft).toHaveBeenCalledTimes(1);
         expect(scenario.createDraft.mock.calls[0]?.[0]).toMatchObject({
-          authorAccountId: expectedAuthor,
+          authorAccountId: accountId,
         });
       }
     );
@@ -1750,18 +1964,16 @@ describe("prepareWorkspacePayState", () => {
       ["a draft", makeReusableReservation({ reservationState: "draft" })],
       ["a held retry", makeReusableReservation()],
     ] as const)(
-      "makes the signed-in account the author of %s started before sign-in",
+      "makes the signed-in account the author of a legacy %s started before sign-in",
       async (_label, startedAsGuest) => {
         const scenario = await runReusableReservationScenario({
           findByAttemptKeys: mock(() => Effect.succeed(startedAsGuest)),
-          accountAuthority: { session: {}, activityState: "active" },
-          accountContact: accountContact(),
         });
 
         expect(scenario.result?.status).toBe("ready");
         expect(scenario.assignAuthor).toHaveBeenCalledWith({
           id: startedAsGuest.id,
-          authorAccountId: "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01",
+          authorAccountId: accountId,
         });
       }
     );
@@ -1775,8 +1987,6 @@ describe("prepareWorkspacePayState", () => {
           Effect.succeed("0d9c6a2e-7f41-4b8a-a6e3-2c5d9b1f4e70")
         ),
         claimHoldCreation: mock(() => Effect.die("no hold may be claimed")),
-        accountAuthority: { session: {}, activityState: "active" },
-        accountContact: accountContact(),
       });
 
       expect(scenario.error).toMatchObject({
@@ -1785,7 +1995,7 @@ describe("prepareWorkspacePayState", () => {
       });
     });
 
-    test("leaves a guest's resumed draft without an author", async () => {
+    test("does not resume a guest's draft for an anonymous session", async () => {
       const scenario = await runReusableReservationScenario({
         findByAttemptKeys: mock(() =>
           Effect.succeed(makeReusableReservation({ reservationState: "draft" }))
@@ -1793,23 +2003,28 @@ describe("prepareWorkspacePayState", () => {
         accountAuthority: { session: null },
       });
 
-      expect(scenario.result?.status).toBe("ready");
+      expect(scenario.error).toMatchObject({
+        _tag: "PublicSafeActionError",
+        cause: {
+          _tag: "CustomerAccountAccessError",
+          reason: "unauthenticated",
+        },
+      });
       expect(scenario.assignAuthor).not.toHaveBeenCalled();
+      expect(scenario.claimHoldCreation).not.toHaveBeenCalled();
     });
 
     test("prices the reservation with the account contact instead of the submitted one", async () => {
       const scenario = await runReusableReservationScenario({
         findByAttemptKeys: mock(() => Effect.succeed(null)),
         createDraft: createFreshDraft(),
-        accountAuthority: { session: {}, activityState: "active" },
         reservation: {
           ...reservation,
           name: "Someone Else",
           email: testEmailAddress("someone.else"),
           phone: "+420 777 777 777",
         },
-        customer: "account",
-        accountContact: accountContact(),
+        ...linkedAccountBooking(),
       });
 
       expect(scenario.result?.status).toBe("ready");
@@ -1824,27 +2039,32 @@ describe("prepareWorkspacePayState", () => {
 
     test.each([
       [
-        "an anonymous session has no account contact",
-        undefined,
-        Effect.succeed(null),
+        "the session ends before the account is read",
+        () => ({ account: Effect.succeed({ status: "signed-out" } as never) }),
       ],
       [
-        "customer accounts are not configured",
-        undefined,
-        Effect.fail(
-          new CustomerAccountAccessError({ reason: "not-configured" })
-        ),
+        "the linked profile has no name to book with",
+        () => ({
+          account: linkedAccountState(),
+          linkedContact: mock(() => Effect.succeed(null)),
+        }),
       ],
-    ])(
+      [
+        "the saved first profile has no name to book with",
+        () => ({
+          account: unlinkedAccountState(),
+          completeProfileUnderHeldLock: mock(() => Effect.succeed(null)),
+        }),
+      ],
+    ] as const)(
       "reports an expired session when %s",
-      async (_label, accountAuthority, contact) => {
+      async (_label, account) => {
         const { m } = await import("@/features/i18n");
         const scenario = await runReusableReservationScenario({
           findByAttemptKeys: mock(() => Effect.succeed(null)),
           createDraft: createFreshDraft(),
-          accountAuthority,
           customer: "account",
-          accountContact: contact,
+          ...account(),
         });
 
         expect(scenario.result).toBeUndefined();
@@ -1856,39 +2076,58 @@ describe("prepareWorkspacePayState", () => {
             reason: "unauthenticated",
           },
         });
-        expect(scenario.readAccountContact).toHaveBeenCalledTimes(1);
+        expect(scenario.readAccount).toHaveBeenCalledTimes(1);
         expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
         expect(scenario.quoteForCustomer).not.toHaveBeenCalled();
         expect(scenario.createDraft).not.toHaveBeenCalled();
       }
     );
 
-    test("reports an unavailable account contact as a generic reservation error", async () => {
-      const { m } = await import("@/features/i18n");
-      const scenario = await runReusableReservationScenario({
-        findByAttemptKeys: mock(() => Effect.succeed(null)),
-        createDraft: createFreshDraft(),
-        accountAuthority: { session: {}, activityState: "active" },
-        customer: "account",
-        accountContact: Effect.fail(
-          new CustomerAccountAccessError({ reason: "unavailable" })
-        ),
-      });
+    test.each([
+      [
+        "the account cannot be read",
+        () => ({
+          account: Effect.fail(
+            new CustomerAccountAccessError({ reason: "unavailable" })
+          ),
+        }),
+      ],
+      [
+        "the first profile cannot be saved",
+        () => ({
+          account: unlinkedAccountState(),
+          completeProfileUnderHeldLock: mock(() =>
+            Effect.fail(
+              new CustomerAccountAccessError({ reason: "unavailable" })
+            )
+          ),
+        }),
+      ],
+    ] as const)(
+      "reports a generic reservation error when %s",
+      async (_label, account) => {
+        const { m } = await import("@/features/i18n");
+        const scenario = await runReusableReservationScenario({
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          createDraft: createFreshDraft(),
+          customer: "account",
+          ...account(),
+        });
 
-      expect(scenario.error).toMatchObject({
-        _tag: "PublicSafeActionError",
-        message: m.reservationErrorMessage({}, { locale: "en-US" }),
-        cause: {
-          _tag: "CustomerAccountAccessError",
-          reason: "unavailable",
-        },
-      });
-      expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
-      expect(scenario.createDraft).not.toHaveBeenCalled();
-    });
+        expect(scenario.error).toMatchObject({
+          _tag: "PublicSafeActionError",
+          message: m.reservationErrorMessage({}, { locale: "en-US" }),
+          cause: {
+            _tag: "CustomerAccountAccessError",
+            reason: "unavailable",
+          },
+        });
+        expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
+        expect(scenario.createDraft).not.toHaveBeenCalled();
+      }
+    );
 
     describe("with a remembered referral code", () => {
-      const accountId = "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01";
       const linkedAccount = () =>
         Effect.succeed({
           accountId,
@@ -1938,8 +2177,7 @@ describe("prepareWorkspacePayState", () => {
               activityState: "active",
               lockProbe,
             },
-            customer: "account",
-            accountContact: accountContact(),
+            ...linkedAccountBooking(),
             linkedAccount: linkedAccount(),
             rememberedReferralCode: "RFL12345",
             evaluateCheckoutReferral,
@@ -1960,7 +2198,7 @@ describe("prepareWorkspacePayState", () => {
             code: "RFL12345",
             dotyposCustomerId: accountDotyposCustomerId,
           });
-          expect(order).toEqual(["evaluate:unlocked", "quote"]);
+          expect(order).toEqual(["evaluate:locked", "quote"]);
           const carried = kind === "eligible" ? "RFL12345" : undefined;
           expect(quotedReferralCodes).toEqual([carried]);
           expect((await signedStateOf(scenario.result))?.referralCode).toBe(
@@ -1976,15 +2214,53 @@ describe("prepareWorkspacePayState", () => {
         }
       );
 
+      test("carries an eligible referral for the customer a first profile saved at checkout created", async () => {
+        const order: string[] = [];
+        const completeProfileUnderHeldLock = mock(() =>
+          Effect.sync(() => order.push("profile")).pipe(
+            Effect.andThen(
+              accountContact({ dotyposCustomerId: createdCustomerId })
+            )
+          )
+        );
+        const evaluateCheckoutReferral = mock(() =>
+          Effect.sync(() => {
+            order.push("evaluate");
+            return { kind: "eligible" as const, code: "RFL12345" };
+          })
+        );
+        const scenario = await runReusableReservationScenario({
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          createDraft: createFreshDraft(),
+          customer: "account",
+          account: unlinkedAccountState(),
+          completeProfileUnderHeldLock,
+          rememberedReferralCode: "RFL12345",
+          evaluateCheckoutReferral,
+        });
+
+        expect(scenario.result?.status).toBe("ready");
+        expect(order).toEqual(["profile", "evaluate"]);
+        expect(evaluateCheckoutReferral.mock.calls).toEqual([
+          [{ code: "RFL12345", dotyposCustomerId: createdCustomerId }],
+        ]);
+        expect(scenario.quoteForCustomer.mock.calls[0]?.[0]).toMatchObject({
+          dotyposCustomerId: createdCustomerId,
+          referralCode: "RFL12345",
+        });
+        expect((await signedStateOf(scenario.result))?.referralCode).toBe(
+          "RFL12345"
+        );
+        expect(scenario.findAvailableCode).not.toHaveBeenCalled();
+      });
+
       test.each(["already_attributed"] as const)(
         "continues checkout silently without the code when evaluation fails as %s",
         async (reason) => {
           const scenario = await runReusableReservationScenario({
             findByAttemptKeys: mock(() => Effect.succeed(null)),
             createDraft: createFreshDraft(),
-            accountAuthority: { session: {}, activityState: "active" },
-            customer: "account",
-            accountContact: accountContact(),
+            ...linkedAccountBooking(),
             linkedAccount: linkedAccount(),
             rememberedReferralCode: "RFL12345",
             evaluateCheckoutReferral: mock(() =>
@@ -2008,22 +2284,24 @@ describe("prepareWorkspacePayState", () => {
         }
       );
 
-      test("continues checkout when the linked account cannot be read", async () => {
+      test("continues checkout and keeps the code when the booker's settlement cannot be read", async () => {
         const scenario = await runReusableReservationScenario({
           findByAttemptKeys: mock(() => Effect.succeed(null)),
           createDraft: createFreshDraft(),
-          accountAuthority: { session: {}, activityState: "active" },
-          customer: "account",
-          accountContact: accountContact(),
-          linkedAccount: Effect.fail(
-            new CustomerAccountAccessError({ reason: "unavailable" })
-          ),
+          ...linkedAccountBooking(),
           rememberedReferralCode: "RFL12345",
+          evaluateCheckoutReferral: mock(() =>
+            Effect.succeed({ kind: "already_accepted" as const })
+          ),
+          hasSettledReferral: mock(() =>
+            Effect.fail(new ReferralError({ reason: "unavailable" }))
+          ),
         });
 
         expect(scenario.result?.status).toBe("ready");
-        expect(scenario.evaluateCheckoutReferral).not.toHaveBeenCalled();
         expect(scenario.createDraft).toHaveBeenCalledTimes(1);
+        expect(scenario.hasSettledReferral).toHaveBeenCalledTimes(1);
+        expect(scenario.rememberedReferralCodeAfter).toBe("RFL12345");
       });
 
       type PreparedResult = Awaited<
@@ -2042,31 +2320,22 @@ describe("prepareWorkspacePayState", () => {
         return Effect.runSync(openPayState(token ?? "")).requestedDiscountCode;
       };
 
-      test.each([
-        ["an anonymous guest", { session: null }],
-        ["a contact booking", { session: {}, activityState: "active" }],
-      ] as const)(
-        "prefills a usable code for %s without accepting it",
-        async (_label, accountAuthority) => {
-          const findAvailableCode = mock(() => Effect.succeed("RFL12345"));
-          const scenario = await runReusableReservationScenario({
-            findByAttemptKeys: mock(() => Effect.succeed(null)),
-            createDraft: createFreshDraft(),
-            accountAuthority,
-            rememberedReferralCode: "RFL12345",
-            findAvailableCode,
-          });
+      test("prefills a usable code for a contact booking without accepting it", async () => {
+        const findAvailableCode = mock(() => Effect.succeed("RFL12345"));
+        const scenario = await runReusableReservationScenario({
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          createDraft: createFreshDraft(),
+          rememberedReferralCode: "RFL12345",
+          findAvailableCode,
+        });
 
-          expect(scenario.result?.status).toBe("ready");
-          expect(findAvailableCode.mock.calls).toEqual([
-            [{ code: "RFL12345" }],
-          ]);
-          expect(scenario.evaluateCheckoutReferral).not.toHaveBeenCalled();
-          expect(await requestedCodeOf(scenario.result)).toBe("RFL12345");
-          expect(redirectUrlOf(scenario.result)).not.toContain("RFL12345");
-          expect(referralAppliedOf(redirectUrlOf(scenario.result))).toBeNull();
-        }
-      );
+        expect(scenario.result?.status).toBe("ready");
+        expect(findAvailableCode.mock.calls).toEqual([[{ code: "RFL12345" }]]);
+        expect(scenario.evaluateCheckoutReferral).not.toHaveBeenCalled();
+        expect(await requestedCodeOf(scenario.result)).toBe("RFL12345");
+        expect(redirectUrlOf(scenario.result)).not.toContain("RFL12345");
+        expect(referralAppliedOf(redirectUrlOf(scenario.result))).toBeNull();
+      });
 
       test.each([
         ["unusable", () => Effect.succeed(undefined)],
@@ -2075,12 +2344,11 @@ describe("prepareWorkspacePayState", () => {
           () => Effect.fail(new ReferralError({ reason: "unavailable" })),
         ],
       ] as const)(
-        "continues a guest checkout without a prefill for an %s code",
+        "continues a contact booking without a prefill for an %s code",
         async (_label, lookup) => {
           const scenario = await runReusableReservationScenario({
             findByAttemptKeys: mock(() => Effect.succeed(null)),
             createDraft: createFreshDraft(),
-            accountAuthority: { session: null },
             rememberedReferralCode: "RFL12345",
             findAvailableCode: mock(lookup),
           });
@@ -2095,7 +2363,6 @@ describe("prepareWorkspacePayState", () => {
         const scenario = await runReusableReservationScenario({
           findByAttemptKeys: mock(() => Effect.succeed(null)),
           createDraft: createFreshDraft(),
-          accountAuthority: { session: null },
           advertisedPriceToken: await buildAdvertisedPriceToken(
             undefined,
             undefined,
@@ -2114,9 +2381,7 @@ describe("prepareWorkspacePayState", () => {
         const scenario = await runReusableReservationScenario({
           findByAttemptKeys: mock(() => Effect.succeed(null)),
           createDraft: createFreshDraft(),
-          accountAuthority: { session: {}, activityState: "active" },
-          customer: "account",
-          accountContact: accountContact(),
+          ...linkedAccountBooking(),
           linkedAccount: linkedAccount(),
           rememberedReferralCode: "RFL12345",
           evaluateCheckoutReferral: mock(() =>
@@ -2131,25 +2396,35 @@ describe("prepareWorkspacePayState", () => {
 
       test.each([
         [
-          "a guest",
-          {
-            accountAuthority: { session: null },
-            findAvailableCode: mock(() => Effect.succeed(undefined)),
-          },
-          "customer-id",
+          "the signed-in account",
+          () => ({
+            ...linkedAccountBooking(),
+            linkedAccount: linkedAccount(),
+          }),
+          accountDotyposCustomerId,
         ],
         [
-          "the signed-in account",
-          {
-            accountAuthority: { session: {}, activityState: "active" },
-            customer: "account" as const,
-            accountContact: accountContact(),
-            linkedAccount: linkedAccount(),
-            evaluateCheckoutReferral: mock(() =>
-              Effect.succeed({ kind: "already_accepted" as const })
-            ),
+          "an account whose first profile this checkout saved",
+          () => {
+            // The claimed link is read back once the state is created.
+            let reads = 0;
+            const unlinked = unlinkedAccountState();
+            return {
+              customer: "account" as const,
+              account: Effect.suspend(() =>
+                reads++ === 0
+                  ? unlinked
+                  : Effect.succeed({
+                      status: "linked",
+                      accountId,
+                      dotyposCustomerId: createdCustomerId,
+                      email: testEmailAddressForGrace,
+                    } as never)
+              ),
+              completeProfileUnderHeldLock: profileCompletion(),
+            };
           },
-          accountDotyposCustomerId,
+          createdCustomerId,
         ],
       ] as const)(
         "forgets the remembered code once %s booked customer is settled",
@@ -2158,7 +2433,10 @@ describe("prepareWorkspacePayState", () => {
           const scenario = await runReusableReservationScenario({
             findByAttemptKeys: mock(() => Effect.succeed(null)),
             createDraft: createFreshDraft(),
-            ...booking,
+            ...booking(),
+            evaluateCheckoutReferral: mock(() =>
+              Effect.succeed({ kind: "already_accepted" as const })
+            ),
             rememberedReferralCode: "RFL12345",
             hasSettledReferral,
           });
@@ -2190,7 +2468,6 @@ describe("prepareWorkspacePayState", () => {
           const scenario = await runReusableReservationScenario({
             findByAttemptKeys: mock(() => Effect.succeed(null)),
             createDraft: createFreshDraft(),
-            accountAuthority: { session: {}, activityState: "active" },
             linkedAccount: linkedAccount(),
             rememberedReferralCode: "RFL12345",
             findAvailableCode: mock(() => Effect.succeed(undefined)),
@@ -2214,12 +2491,12 @@ describe("prepareWorkspacePayState", () => {
           () => Effect.fail(new ReferralError({ reason: "unavailable" })),
         ],
       ] as const)(
-        "keeps the remembered code while the booked customer is %s",
+        "keeps the remembered code while the booker's customer is %s",
         async (_label, settled) => {
           const scenario = await runReusableReservationScenario({
             findByAttemptKeys: mock(() => Effect.succeed(null)),
             createDraft: createFreshDraft(),
-            accountAuthority: { session: null },
+            linkedAccount: linkedAccount(),
             rememberedReferralCode: "RFL12345",
             findAvailableCode: mock(() => Effect.succeed("RFL12345")),
             hasSettledReferral: mock(settled),
@@ -2235,15 +2512,13 @@ describe("prepareWorkspacePayState", () => {
       // The remembered-code reader already reports nothing while the program
       // is withheld; even a code that still reaches preparation stays inert.
       test.each([
-        ["an anonymous guest", { accountAuthority: { session: null } }],
+        ["a contact booking", () => ({})],
         [
           "the signed-in account",
-          {
-            accountAuthority: { session: {}, activityState: "active" },
-            customer: "account" as const,
-            accountContact: accountContact(),
+          () => ({
+            ...linkedAccountBooking(),
             linkedAccount: linkedAccount(),
-          },
+          }),
         ],
       ] as const)(
         "carries, prefills, and forgets nothing for %s while referrals are withheld",
@@ -2251,7 +2526,7 @@ describe("prepareWorkspacePayState", () => {
           const scenario = await runReusableReservationScenario({
             findByAttemptKeys: mock(() => Effect.succeed(null)),
             createDraft: createFreshDraft(),
-            ...booking,
+            ...booking(),
             rememberedReferralCode: "RFL12345",
             referralService: WithheldReferralService,
           });
@@ -2271,11 +2546,10 @@ describe("prepareWorkspacePayState", () => {
       const scenario = await runReusableReservationScenario({
         findByAttemptKeys: mock(() => Effect.succeed(null)),
         createDraft: createFreshDraft(),
-        accountAuthority: { session: {}, activityState: "active" },
       });
 
       expect(scenario.result?.status).toBe("ready");
-      expect(scenario.readAccountContact).not.toHaveBeenCalled();
+      expect(scenario.readAccount).not.toHaveBeenCalled();
       expect(scenario.findOrCreateCustomer).toHaveBeenCalledTimes(1);
       expect(scenario.findOrCreateCustomer.mock.calls[0]?.[0]).toMatchObject({
         email: reservation.email,
@@ -2360,15 +2634,22 @@ describe("prepareWorkspacePayState", () => {
             })
           )
         ),
-        accountAuthority: { session: {}, activityState: "active" },
         customer: "account",
-        accountContact: Effect.succeed({
+        account: Effect.succeed({
+          status: "linked",
           accountId: "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01",
           dotyposCustomerId: "60111",
-          name: "Grace Hopper",
           email: testEmailAddress("grace"),
-          phone: "+420 602 123 456",
         } as never),
+        linkedContact: mock(() =>
+          Effect.succeed({
+            accountId: "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01",
+            dotyposCustomerId: "60111",
+            name: "Grace Hopper",
+            email: testEmailAddress("grace"),
+            phone: "+420 602 123 456",
+          } as never)
+        ),
         checkContactEmailDomain,
       });
 

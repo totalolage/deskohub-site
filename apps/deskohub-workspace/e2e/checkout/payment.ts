@@ -5,6 +5,7 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import {
   activateHydratedBrowserElement,
+  evalBrowserScript,
   focusBrowserElement,
   openBrowserPage,
   pressBrowserKey,
@@ -44,7 +45,11 @@ const reservationStartRetryableErrorMessages = [
   "Platbu se nepodařilo spustit.",
 ] as const;
 const reservationSubmitAttemptCount = 2;
+const reservationContinueSelector = "#reservation-continue";
 const reservationSubmitSelector = "#reservation-submit";
+// The form's one action button: Continue on the selection step, submit on
+// the contact step.
+const reservationActionSelector = `${reservationContinueSelector}, ${reservationSubmitSelector}`;
 const reservationPreparationStateKey = "__deskohubWorkspaceE2EPreparation";
 const decodeWorkspaceReservationId = Schema.decodeUnknownSync(
   workspaceReservationIdSchema
@@ -132,6 +137,61 @@ export const submitReservationForPayPage = ({
       submitReservationScript,
       timeouts,
     });
+    return yield* readPayPageOrderIdFrom({
+      onOrderId,
+      payPageUrl,
+      run,
+      session,
+    });
+  });
+
+/**
+ * Waits for a reservation page that continues to the checkout pay page on
+ * its own, without a submit from the runner, and reads the started order id.
+ * The reservation a signed-out customer verified the email for does this
+ * once the sign-in lands back on it.
+ */
+export const waitForReservationPayPage = ({
+  onOrderId,
+  run,
+  session,
+  timeouts,
+}: {
+  readonly onOrderId?: (orderId: WorkspaceReservationId) => void;
+  readonly run: Runner;
+  readonly session: string;
+  readonly timeouts: WorkspaceE2ETimeouts;
+}): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const result = yield* waitForReservationStart(
+      run,
+      session,
+      timeouts.checkoutStart
+    );
+    const payPageUrl = yield* requireReservationPayPage(result, {
+      onOrderId,
+      retryableErrorMessage: "Checkout reservation preparation failed",
+    });
+    return yield* readPayPageOrderIdFrom({
+      onOrderId,
+      payPageUrl,
+      run,
+      session,
+    });
+  });
+
+const readPayPageOrderIdFrom = ({
+  onOrderId,
+  payPageUrl,
+  run,
+  session,
+}: {
+  readonly onOrderId?: (orderId: WorkspaceReservationId) => void;
+  readonly payPageUrl: string;
+  readonly run: Runner;
+  readonly session: string;
+}): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
+  Effect.gen(function* () {
     const searchOrderId = yield* tryWorkspaceE2ESync(
       "decode checkout pay page order id",
       () => {
@@ -193,6 +253,17 @@ const submitReservationAndWaitForPayPage = ({
           timeoutMs,
           timeouts,
         });
+        // The same script fills the contact step once Continue opens it.
+        if (yield* isReservationSelectionStep(run, session, timeouts)) {
+          yield* continueToReservationContactStep({ run, session, timeouts });
+          yield* prepareReservationSelection({
+            prepareScript: submitReservationScript,
+            run,
+            session,
+            timeoutMs,
+            timeouts,
+          });
+        }
         yield* activateHydratedBrowserElement(
           run,
           session,
@@ -215,6 +286,29 @@ const submitReservationAndWaitForPayPage = ({
       });
 
     const result = yield* submitAttempt(1);
+    return yield* requireReservationPayPage(result, {
+      onOrderId,
+      retryableErrorMessage:
+        "Checkout reservation preparation failed after one retry",
+    });
+  });
+
+/**
+ * The pay page URL a reservation start reached. A start that did not reach
+ * it still reports any order id its URL carries, so cleanup releases the
+ * hold, and fails with the browser diagnostics.
+ */
+const requireReservationPayPage = (
+  result: ReservationStartResult,
+  {
+    onOrderId,
+    retryableErrorMessage,
+  }: {
+    readonly onOrderId?: (orderId: WorkspaceReservationId) => void;
+    readonly retryableErrorMessage: string;
+  }
+): Effect.Effect<string, WorkspaceE2EError> =>
+  Effect.gen(function* () {
     if (result.status === "ready") return result.url;
 
     const orderId = yield* tryWorkspaceE2ESync(
@@ -232,7 +326,7 @@ const submitReservationAndWaitForPayPage = ({
         throw new Error(
           [
             result.status === "retryable_error"
-              ? "Checkout reservation preparation failed after one retry"
+              ? retryableErrorMessage
               : "Timed out waiting for checkout pay page",
             result.diagnostics
               ? `Browser diagnostics:\n${result.diagnostics}`
@@ -242,6 +336,48 @@ const submitReservationAndWaitForPayPage = ({
             .join("\n")
         );
       }
+    );
+  });
+
+const isReservationSelectionStep = (
+  run: Runner,
+  session: string,
+  timeouts: WorkspaceE2ETimeouts
+): Effect.Effect<boolean, WorkspaceE2EError> =>
+  evalBrowserScript(
+    "read reservation checkout step",
+    run,
+    session,
+    `document.querySelector(${JSON.stringify(reservationContinueSelector)}) !== null`,
+    { logOutput: false, timeoutMs: timeouts.browserAction }
+  ).pipe(Effect.map((result) => result.stdout.trim() === "true"));
+
+/**
+ * Activates the selection step's Continue natively and waits for the
+ * hydrated contact step. Continue changes only the URL's `step`, so the
+ * page keeps its selection and nothing is submitted.
+ */
+export const continueToReservationContactStep = ({
+  run,
+  session,
+  timeouts,
+}: {
+  readonly run: Runner;
+  readonly session: string;
+  readonly timeouts: WorkspaceE2ETimeouts;
+}): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    yield* activateHydratedBrowserElement(
+      run,
+      session,
+      reservationContinueSelector,
+      { timeoutMs: timeouts.browserAction }
+    );
+    yield* waitForBrowserReactHydration(
+      run,
+      session,
+      reservationSubmitSelector,
+      { timeoutMs: timeouts.browserAction }
     );
   });
 
@@ -267,7 +403,7 @@ export const prepareReservationSelection = ({
     yield* waitForBrowserReactHydration(
       run,
       session,
-      reservationSubmitSelector,
+      reservationActionSelector,
       { timeoutMs: timeouts.browserAction }
     );
     yield* startReservationPreparation(

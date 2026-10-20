@@ -208,6 +208,8 @@ const completionLayer = (options: {
     billing: null,
   };
   const dotyposAdapter = Layer.mock(CustomerDotyposAdapter, {
+    // Every completion here starts from an email no Dotypos customer has.
+    classifyExactEmailCustomers: () => Effect.succeed({ kind: "not-found" }),
     createCustomerProfile: () =>
       passGate(options.createGate).pipe(
         Effect.as({ customerId: uniqueDotyposId(), profile }),
