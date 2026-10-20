@@ -20,7 +20,7 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import type { WorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import type { WorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   seedAutomatedCampaign,
   seedAutomation,
@@ -212,7 +212,7 @@ export const seedDeliverReservations = async (
  * stand-in. A failed delivery is redelivered at once, within the same drain.
  */
 export const makeDeliverEngine = async (input: {
-  readonly database: WorkspacePostgresTestDatabase;
+  readonly database: WorkspacePostgresSuiteDatabase;
   readonly customers: readonly DotyposCustomer[];
   readonly deploymentEnvironment?: "production" | "development";
 }) => {

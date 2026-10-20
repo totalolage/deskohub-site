@@ -34,11 +34,18 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { seedAutomationUnit } from "./automation-engine.test-utils";
 import { AutomationEngineHealth } from "./automation-engine-health.service";
 
-const testDatabase = await connectWorkspacePostgresTestDatabase();
+/**
+ * The health report counts every unit and sweep cursor, so the suite runs
+ * on a database of its own.
+ */
+const testDatabase = await createWorkspacePostgresSuiteDatabase(
+  "automation_engine_health"
+);
+afterAll(() => testDatabase?.close());
 
 const suite = crypto.randomUUID().slice(0, 8);
 const now = Temporal.Instant.from("2026-10-19T12:00:00Z");

@@ -23,7 +23,7 @@ import {
 } from "@/db/schema";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AudienceCondition, AudienceFilter } from "../../audience-filter";
 import {
   type AudienceEvaluationContext,
@@ -36,7 +36,14 @@ import type { DatePeriod } from "../../date-period";
 import { AutomationConditionEvaluation } from "./automation-condition-evaluation.service";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 
-const testDatabase = await connectWorkspacePostgresTestDatabase();
+/**
+ * Live facts read the earliest of all reservations, so the suite runs on a
+ * database of its own.
+ */
+const testDatabase = await createWorkspacePostgresSuiteDatabase(
+  "automation_condition_evaluation"
+);
+afterAll(() => testDatabase?.close());
 const now = Temporal.Instant.from("2026-10-19T10:00:00Z");
 const runId = crypto.randomUUID();
 

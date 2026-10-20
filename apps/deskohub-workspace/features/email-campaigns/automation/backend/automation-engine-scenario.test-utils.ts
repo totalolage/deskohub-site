@@ -45,7 +45,10 @@ import type {
   CustomerEventKind,
 } from "@/shared/backend/customer-events/customer-event";
 import { CustomerEventReconciler } from "@/shared/backend/customer-events/customer-event-reconciler";
-import type { WorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import type {
+  WorkspacePostgresSuiteDatabase,
+  WorkspacePostgresTestDatabase,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { AudienceFactsService } from "../../backend/audience-facts.service";
 import { CampaignCandidateRepository } from "../../backend/campaign-candidate.repository";
 import { CampaignDeliveryService } from "../../backend/campaign-delivery.service";
@@ -447,15 +450,16 @@ const idleReconciler = Layer.succeed(CustomerEventReconciler, {
 });
 
 /**
- * The real engine over the test database: the planner, the processor and
- * the handlers of `kinds` (default: every kind, as `AutomationUnitHandlers.Live`)
- * with the planner steps in `planning` (default: all) live, plus
- * `AutomationLifecycle` and `AutomationEngineHealth`. Dotypos, Resend and the
- * queue are the given fakes. The sweep's capture reconcile is idle unless
- * `reconcile` is set, since it reads every Workspace reservation.
+ * The real engine over the suite's own database: the planner, the
+ * processor and the handlers of `kinds` (default: every kind, as
+ * `AutomationUnitHandlers.Live`) with the planner steps in `planning`
+ * (default: all) live, plus `AutomationLifecycle` and
+ * `AutomationEngineHealth`. Dotypos, Resend and the queue are the given
+ * fakes. The sweep's capture reconcile is idle unless `reconcile` is set,
+ * since it reads every Workspace reservation.
  */
 export const automationScenarioLayer = async (input: {
-  readonly database: WorkspacePostgresTestDatabase;
+  readonly database: WorkspacePostgresSuiteDatabase;
   readonly dotypos: Pick<EngineDotypos, "layer">;
   readonly queue: AutomationUnitQueueFake;
   readonly resend?: ResendFake;
@@ -576,11 +580,11 @@ export const automationScenarioLayer = async (input: {
 
 /**
  * The engine with the real intake and fire-chunk handlers and planner
- * steps 4 and 8 over the test database and `dotypos`; every other step is
- * idle.
+ * steps 4 and 8 over the suite's own database and `dotypos`; every other
+ * step is idle.
  */
 export const entryEngineLayer = (input: {
-  readonly database: WorkspacePostgresTestDatabase;
+  readonly database: WorkspacePostgresSuiteDatabase;
   readonly dotypos: Pick<EngineDotypos, "layer">;
   readonly queue: AutomationUnitQueueFake;
   readonly limits?: { readonly total: number; readonly deliver: number };
@@ -878,7 +882,7 @@ export type AutomationScenarioProgress = {
  * moves the sweep cursors to `at`) and `cleanup()` in `afterAll`.
  */
 export const makeAutomationEngineScenario = async (input: {
-  readonly database: WorkspacePostgresTestDatabase;
+  readonly database: WorkspacePostgresSuiteDatabase;
   /** The instant lifecycle operations default to. */
   readonly now: Temporal.Instant;
   readonly prefix?: string;
@@ -1208,19 +1212,11 @@ export const makeAutomationEngineScenario = async (input: {
     return { at, ticks: maxTicks, settled: false };
   };
 
-  /** Clears every unit and points the sweep at `at`, saving the cursors. */
-  let savedSweeps: ReadonlyArray<{
-    readonly source: string;
-    readonly swept_until: Date;
-    readonly window_starts_at: Date | null;
-    readonly window_ends_at: Date | null;
-    readonly next_page: number | null;
-  }> = [];
+  /**
+   * Clears every unit and points the sweep at `at`. The whole-table writes
+   * reach only this suite's rows, since the database is its own.
+   */
   const prepare = async (at: Temporal.Instant) => {
-    if (savedSweeps.length === 0) {
-      savedSweeps = (await pool.query("select * from customer_event_sweeps"))
-        .rows;
-    }
     await resetUnits();
     await pool.query(
       "update customer_event_sweeps set swept_until = $1, window_starts_at = null, window_ends_at = null, next_page = null",
@@ -1313,18 +1309,6 @@ export const makeAutomationEngineScenario = async (input: {
     await resetUnits();
     await kit.cleanup();
     await fixtures.cleanup();
-    for (const sweep of savedSweeps) {
-      await pool.query(
-        "update customer_event_sweeps set swept_until = $2, window_starts_at = $3, window_ends_at = $4, next_page = $5 where source = $1",
-        [
-          sweep.source,
-          sweep.swept_until,
-          sweep.window_starts_at,
-          sweep.window_ends_at,
-          sweep.next_page,
-        ]
-      );
-    }
   };
 
   return {

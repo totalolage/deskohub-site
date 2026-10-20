@@ -11,7 +11,7 @@ import {
   holdPostgresTransaction,
   waitForAdvisoryLockWaiter,
 } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   campaignContentFixture,
   deleteAutomatedCampaigns,
@@ -57,7 +57,14 @@ import {
   makeAutomationUnitQueueFake,
 } from "./automation-unit-queue.test-utils";
 
-const database = await connectWorkspacePostgresTestDatabase();
+/**
+ * Settling a unit promotes planned units of any automation into free slots,
+ * so the suite runs on a database of its own.
+ */
+const database = await createWorkspacePostgresSuiteDatabase(
+  "automation_unit_processor"
+);
+afterAll(() => database?.close());
 const startedAt = Temporal.Instant.from("2026-10-19T10:00:00Z");
 
 type EngineLayer = ReturnType<typeof automationEngineTestLayer>;

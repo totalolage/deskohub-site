@@ -17,7 +17,7 @@ import {
   seedCampaignSend,
 } from "@/features/email-campaigns/backend/email-campaigns.test-utils";
 import type { CampaignId } from "@/features/email-campaigns/campaign-identifiers";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type {
   AutomationRunId,
   AutomationStepId,
@@ -26,7 +26,12 @@ import type {
 import type { AutomationRunOutcome } from "../automation-states";
 import { AutomationRunLog } from "./automation-run-log.service";
 
-const testDatabase = await connectWorkspacePostgresTestDatabase();
+/**
+ * The suite swaps a table constraint, so it runs on a database of its own.
+ */
+const testDatabase =
+  await createWorkspacePostgresSuiteDatabase("automation_run_log");
+afterAll(() => testDatabase?.close());
 
 const suite = crypto.randomUUID().slice(0, 8);
 const customerId = (name: string) =>

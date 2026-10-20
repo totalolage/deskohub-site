@@ -12,7 +12,7 @@ import {
   customerMarketingConsents,
   emailCampaignAutomationScheduleFires as firesTable,
 } from "@/db/schema";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AudienceFilter } from "../../audience-filter";
 import {
   deleteAutomatedCampaigns,
@@ -39,7 +39,14 @@ import {
 } from "./automation-schedule-fires";
 import { makeAutomationUnitQueueFake } from "./automation-unit-queue.test-utils";
 
-const database = await connectWorkspacePostgresTestDatabase();
+/**
+ * The engine plans over whole tables, so the suite runs on a database of
+ * its own.
+ */
+const database = await createWorkspacePostgresSuiteDatabase(
+  "automation_schedule_planning"
+);
+afterAll(() => database?.close());
 // 12:00 in Prague (CEST).
 const now = Temporal.Instant.from("2026-10-19T10:00:00Z");
 const prefix = `schedule-planning-${crypto.randomUUID()}`;

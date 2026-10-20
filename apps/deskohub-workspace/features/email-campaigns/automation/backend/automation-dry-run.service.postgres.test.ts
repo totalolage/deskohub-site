@@ -36,7 +36,7 @@ import {
 } from "@/db/schema";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AudienceCondition, AudienceFilter } from "../../audience-filter";
 import { AudienceFactsService } from "../../backend/audience-facts.service";
 import { CampaignCandidateRepository } from "../../backend/campaign-candidate.repository";
@@ -74,7 +74,13 @@ import {
 import { AutomationUnitProcessor } from "./automation-unit-processor.service";
 import { makeAutomationUnitQueueFake } from "./automation-unit-queue.test-utils";
 
-const testDatabase = await connectWorkspacePostgresTestDatabase();
+/**
+ * A dry run reads every active consent, so the suite runs on a database of
+ * its own.
+ */
+const testDatabase =
+  await createWorkspacePostgresSuiteDatabase("automation_dry_run");
+afterAll(() => testDatabase?.close());
 const runId = crypto.randomUUID().slice(0, 8);
 const now = Temporal.Now.instant().round({
   smallestUnit: "second",

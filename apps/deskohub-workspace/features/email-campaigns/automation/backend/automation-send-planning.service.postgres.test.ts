@@ -4,7 +4,7 @@ import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { deleteAutomatedCampaigns } from "../../backend/email-campaigns.test-utils";
 import type { CampaignId } from "../../campaign-identifiers";
 import { AutomationSendPlanning } from "./automation-send-planning.service";
@@ -15,7 +15,14 @@ import {
   seedSendReadyRuns,
 } from "./deliver.test-utils";
 
-const database = await connectWorkspacePostgresTestDatabase();
+/**
+ * The engine plans over whole tables, so the suite runs on a database of
+ * its own.
+ */
+const database = await createWorkspacePostgresSuiteDatabase(
+  "automation_send_planning"
+);
+afterAll(() => database?.close());
 
 const startedAt = Temporal.Instant.from("2026-10-19T10:00:00Z");
 const runKey = crypto.randomUUID().slice(0, 8);

@@ -16,7 +16,7 @@ import {
   emailCampaignAudiences,
   emailCampaignAutomationWorkUnits as units,
 } from "@/db/schema";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { canonicalJson } from "@/shared/utils/canonical-json";
 import type { AudienceCondition, AudienceFilter } from "../../audience-filter";
 import { AudienceFactsService } from "../../backend/audience-facts.service";
@@ -55,7 +55,14 @@ import {
 } from "./automation-unit-queue.test-utils";
 import { makeConditionHandler } from "./condition";
 
-const database = await connectWorkspacePostgresTestDatabase();
+/**
+ * The engine plans over whole tables, so the suite runs on a database of
+ * its own.
+ */
+const database = await createWorkspacePostgresSuiteDatabase(
+  "automation_condition"
+);
+afterAll(() => database?.close());
 const customer = testCustomerId(
   `automation-condition-unit-${crypto.randomUUID()}`
 );

@@ -13,7 +13,7 @@ import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import type { AutomationFlowType } from "@deskohub/workspace-admin-api";
 import { Effect } from "effect";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { campaignContentFixture } from "../../backend/email-campaigns.test-utils";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
@@ -33,7 +33,13 @@ import {
   reviewRequestFlow,
 } from "./automation-stories.test-utils";
 
-const database = await connectWorkspacePostgresTestDatabase();
+/**
+ * The engine plans over whole tables, so the suite runs on a database of
+ * its own.
+ */
+const database =
+  await createWorkspacePostgresSuiteDatabase("automation_engine");
+afterAll(() => database?.close());
 
 describe.skipIf(!database)("the automation engine end to end", async () => {
   if (!database) return;

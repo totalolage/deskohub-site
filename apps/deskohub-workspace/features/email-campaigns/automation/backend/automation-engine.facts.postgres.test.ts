@@ -12,7 +12,7 @@ import { is } from "drizzle-orm";
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import * as workspaceSchema from "@/db/schema";
 import * as authSchema from "@/db/schema/auth";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AudienceFilter } from "../../audience-filter";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationPreviewId } from "../automation-identifiers";
@@ -28,7 +28,14 @@ import {
   reviewRequestFlow,
 } from "./automation-stories.test-utils";
 
-const database = await connectWorkspacePostgresTestDatabase();
+/**
+ * The engine plans over whole tables, so the suite runs on a database of
+ * its own.
+ */
+const database = await createWorkspacePostgresSuiteDatabase(
+  "automation_engine_facts"
+);
+afterAll(() => database?.close());
 
 /** Tuesday 13 October 2026, 08:00 in Prague. */
 const start = Temporal.Instant.from("2026-10-13T06:00:00Z");

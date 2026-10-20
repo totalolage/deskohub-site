@@ -1,7 +1,7 @@
 import type { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
-import type { WorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import type { WorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { AudienceFactsService } from "../../backend/audience-facts.service";
 import { CampaignCandidateRepository } from "../../backend/campaign-candidate.repository";
 import { CampaignRecipientService } from "../../backend/campaign-recipient.service";
@@ -11,12 +11,13 @@ import { AutomationDryRun } from "./automation-dry-run.service";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 
 /**
- * `AutomationDryRun` over the test database and `dotypos`, with each call
- * on a `TestClock` at the instant it's given, so a dry run and an engine
- * scenario can share one Dotypos fake and one clock.
+ * `AutomationDryRun` over `dotypos` and the suite's own database, since a
+ * dry run reads every active consent, with each call on a `TestClock` at
+ * the instant it's given, so a dry run and an engine scenario can share one
+ * Dotypos fake and one clock.
  */
 export const makeAutomationDryRunner = (input: {
-  readonly database: WorkspacePostgresTestDatabase;
+  readonly database: WorkspacePostgresSuiteDatabase;
   readonly dotypos: Layer.Layer<DotyposService>;
 }) => {
   const candidates = CampaignCandidateRepository.Default.pipe(

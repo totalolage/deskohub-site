@@ -3,7 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { deleteAutomatedCampaigns } from "../../backend/email-campaigns.test-utils";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
@@ -19,7 +19,13 @@ import {
   sendOnlyFlow,
 } from "./deliver.test-utils";
 
-const database = await connectWorkspacePostgresTestDatabase();
+/**
+ * The engine plans over whole tables, so the suite runs on a database of
+ * its own.
+ */
+const database =
+  await createWorkspacePostgresSuiteDatabase("automation_deliver");
+afterAll(() => database?.close());
 
 /** Monday 19 October 2026, 12:00 in Prague. */
 const startedAt = Temporal.Instant.from("2026-10-19T10:00:00Z");
