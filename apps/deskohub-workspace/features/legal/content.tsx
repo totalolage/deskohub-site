@@ -611,7 +611,7 @@ const legalDocuments = {
     "privacy-policy": {
       title: "Privacy Policy",
       lead: "This page explains how Desktechub s.r.o. handles personal data on the Deskohub Workspace website, including customer accounts, contact forms, and reservations.",
-      updatedAt: "19 October 2026",
+      updatedAt: "20 October 2026",
       sections: [
         {
           heading: "1. Controller",
@@ -663,6 +663,15 @@ const legalDocuments = {
               email links, so we never collect a password.
             </>,
             <>
+              If you connect an AI assistant, such as ChatGPT or Claude, to your
+              customer account, we process the assistant's client identifier and
+              the name its provider publishes, the permissions you granted and
+              when you granted them, and the access and refresh tokens the
+              assistant uses, which we store only in hashed form. When the
+              assistant starts a reservation for you, we record that assistant's
+              client identifier with the reservation.
+            </>,
+            <>
               For website operation and abuse prevention, we may also process
               limited technical data such as IP address, User-Agent, origin or
               host information where available, and short-lived rate-limit or
@@ -698,12 +707,13 @@ const legalDocuments = {
               also process your name, email address, preferred language, consent
               time, and the version of the marketing notice you accepted. The
               record also notes where you gave consent: in the reservation form,
-              through a browser assistant using this site's tools, in your
-              account settings, or through an email link. We record this choice
-              with the relevant customer record. The choice belongs to that
-              customer record, not to the email address. If the customer's email
-              address changes, the choice follows that customer record. Customer
-              records that use the same email address have separate choices.
+              through a browser assistant using this site's tools, through an AI
+              assistant connected to your customer account, in your account
+              settings, or through an email link. We record this choice with the
+              relevant customer record. The choice belongs to that customer
+              record, not to the email address. If the customer's email address
+              changes, the choice follows that customer record. Customer records
+              that use the same email address have separate choices.
             </>,
           ],
         },
@@ -723,6 +733,15 @@ const legalDocuments = {
               your profile, and connect the account with reservations made using
               the same verified email address. The Workspace application stores
               only opaque account and customer identifiers for this connection.
+            </>,
+            <>
+              If you connect an AI assistant, we use the connection data to let
+              that assistant, on your instructions, look up our offers, start a
+              reservation hold that you then confirm and pay for on our website,
+              and show you your reservations and their status. A connected
+              assistant cannot pay, cancel a reservation, or delete your
+              account, and you accept the reservation terms yourself on our
+              website.
             </>,
             <>
               We do not use reservation or enquiry data for marketing unless you
@@ -773,6 +792,11 @@ const legalDocuments = {
               and, where applicable, to perform or prepare the related
               reservation contract. Account security, session integrity, and
               abuse prevention are based on our legitimate interests.
+            </>,
+            <>
+              Connecting an AI assistant and handling its requests is processed
+              to provide the account service you request and, where applicable,
+              to prepare the related reservation contract at your request.
             </>,
             <>
               For website security, abuse and fraud prevention, reliable payment
@@ -828,6 +852,15 @@ const legalDocuments = {
               retention period.
             </>,
             <>
+              A connected assistant's access tokens are valid for one hour and
+              its refresh tokens for 30 days, and expired tokens are removed
+              automatically every day. The permission you granted lasts until
+              you delete your account or ask us to disconnect the assistant.
+              Deleting the account disconnects every assistant and removes its
+              tokens and permissions. The assistant identifier recorded with a
+              reservation stays with that reservation record.
+            </>,
+            <>
               Analytics and campaign measurement data, including customer data
               sent to our analytics provider, is retained according to the
               applicable analytics and technical provider settings and only as
@@ -863,6 +896,13 @@ const legalDocuments = {
               are processed in our booking-system provider Dotypos. Each
               provider may process only the account, session, delivery, profile,
               or technical data needed to perform its role on our behalf.
+            </>,
+            <>
+              If you connect an AI assistant, the information it retrieves at
+              your request, such as our offers and your reservations, is sent to
+              that assistant's provider, which processes it under its own terms
+              as a recipient you chose. The assistant's provider is not our
+              processor.
             </>,
             <>
               If we send marketing communications in the future, our email
@@ -1100,7 +1140,7 @@ const legalDocuments = {
     "privacy-policy": {
       title: "Zásady ochrany osobních údajů",
       lead: "Na této stránce vysvětlujeme, jak Desktechub s.r.o. nakládá s osobními údaji zaslanými přes veřejný web Deskohub Workspace, včetně kontaktního a rezervačního formuláře.",
-      updatedAt: "19. října 2026",
+      updatedAt: "20. října 2026",
       sections: [
         {
           heading: "1. Správce",
@@ -1146,6 +1186,15 @@ const legalDocuments = {
               úplné údaje vaší platební karty.
             </>,
             <>
+              Pokud ke svému zákaznickému účtu připojíte AI asistenta, například
+              ChatGPT nebo Claude, zpracováváme identifikátor klienta asistenta
+              a název, který zveřejňuje jeho poskytovatel, oprávnění, která jste
+              mu udělili, a kdy jste je udělili, a přístupové a obnovovací
+              tokeny, které asistent používá; tokeny ukládáme pouze v hašované
+              podobě. Když asistent vaším jménem zahájí rezervaci, zaznamenáme k
+              ní identifikátor klienta tohoto asistenta.
+            </>,
+            <>
               Pro provoz webu a ochranu před zneužitím můžeme zpracovávat také
               omezené technické údaje, například IP adresu, User-Agent,
               informace o originu nebo hostu, pokud jsou dostupné, a krátkodobé
@@ -1183,7 +1232,8 @@ const legalDocuments = {
               preferovaný jazyk, čas souhlasu a verzi marketingového oznámení,
               které jste přijali. Záznam také uvádí, kde jste souhlas udělili: v
               rezervačním formuláři, prostřednictvím asistenta v prohlížeči,
-              který používá nástroje tohoto webu, v nastavení účtu nebo přes
+              který používá nástroje tohoto webu, prostřednictvím AI asistenta
+              připojeného k vašemu zákaznickému účtu, v nastavení účtu nebo přes
               odkaz v e-mailu. Tuto volbu zaznamenáváme k příslušnému záznamu
               zákazníka. Volba patří záznamu zákazníka, nikoli e-mailové adrese.
               Pokud se e-mailová adresa tohoto záznamu změní, volba zůstává u
@@ -1208,6 +1258,14 @@ const legalDocuments = {
               profilu a propojení účtu s rezervacemi vytvořenými se stejnou
               ověřenou e-mailovou adresou. Aplikace Workspace ukládá pro toto
               propojení pouze neprůhledné identifikátory účtu a zákazníka.
+            </>,
+            <>
+              Pokud připojíte AI asistenta, používáme údaje o připojení k tomu,
+              aby tento asistent podle vašich pokynů mohl vyhledat naši nabídku,
+              zahájit dočasné držení rezervace, které pak potvrdíte a zaplatíte
+              na našem webu, a zobrazit vám vaše rezervace a jejich stav.
+              Připojený asistent nemůže platit, rušit rezervace ani smazat váš
+              účet a obchodní podmínky rezervace přijímáte sami na našem webu.
             </>,
             <>
               Rezervační ani poptávkové údaje nepoužíváme pro marketing, pokud k
@@ -1258,6 +1316,12 @@ const legalDocuments = {
               podle okolností také plnili nebo připravovali související
               rezervační smlouvu. Zabezpečení účtu, integrita relací a ochrana
               před zneužitím vycházejí z našich oprávněných zájmů.
+            </>,
+            <>
+              Připojení AI asistenta a vyřizování jeho požadavků zpracováváme,
+              abychom poskytli službu účtu, o kterou si žádáte, a podle
+              okolností na vaši žádost připravili související rezervační
+              smlouvu.
             </>,
             <>
               Pro zabezpečení webu, prevenci zneužití a podvodů, spolehlivé
@@ -1313,6 +1377,15 @@ const legalDocuments = {
               nebo oprávněnou dobu uchování.
             </>,
             <>
+              Přístupové tokeny připojeného asistenta platí jednu hodinu a
+              obnovovací tokeny 30 dní; expirované tokeny odstraňujeme každý den
+              automaticky. Udělené oprávnění trvá, dokud účet nesmažete nebo nás
+              nepožádáte o odpojení asistenta. Smazáním účtu se odpojí všichni
+              asistenti a odstraní se jejich tokeny a oprávnění. Identifikátor
+              asistenta zaznamenaný u rezervace zůstává u záznamu této
+              rezervace.
+            </>,
+            <>
               Analytické údaje a údaje pro kampanové měření, včetně zákaznických
               údajů předaných analytickému poskytovateli, uchováváme podle
               nastavení příslušných analytických a technických poskytovatelů a
@@ -1348,6 +1421,13 @@ const legalDocuments = {
               rezervační systém Dotypos. Každý poskytovatel může zpracovávat
               pouze účetní, relacyjní, doručovací, profilové nebo technické
               údaje nutné k výkonu své role naším jménem.
+            </>,
+            <>
+              Pokud připojíte AI asistenta, informace, které na vaši žádost
+              získá, například naši nabídku a vaše rezervace, se předávají
+              poskytovateli tohoto asistenta, který je zpracovává podle
+              vlastních podmínek jako příjemce, kterého jste si zvolili.
+              Poskytovatel asistenta není naším zpracovatelem.
             </>,
             <>
               Pokud budeme v budoucnu zasílat marketingová sdělení, může náš
