@@ -611,7 +611,7 @@ const legalDocuments = {
     "privacy-policy": {
       title: "Privacy Policy",
       lead: "This page explains how Desktechub s.r.o. handles personal data on the Deskohub Workspace website, including customer accounts, contact forms, and reservations.",
-      updatedAt: "19 October 2026",
+      updatedAt: "20 October 2026",
       sections: [
         {
           heading: "1. Controller",
@@ -649,61 +649,44 @@ const legalDocuments = {
             <>
               When you continue to checkout, we also process the quoted and paid
               amount, currency, applied discounts, payment and reservation
-              identifiers and status, accepted legal-document references and
-              hashes, related checkout acknowledgements, access and fulfillment
-              status, and any optional billing details you request us to use for
-              an accounting document. We do not receive your complete
+              identifiers and status, which terms you accepted and when, whether
+              access was issued, and any optional billing details you request us
+              to use for an accounting document. We do not receive your complete
               payment-card details from the payment provider.
             </>,
             <>
-              If you create a customer account, we process an authentication
-              identifier, your profile details, your verified email address, and
-              the session and single-use sign-in link data needed to sign you in
-              and operate the account securely. The account works with one-time
-              email links, so we never collect a password.
+              If you create a customer account, we process your verified email
+              address, your profile details, and the sign-in data needed to keep
+              the account secure. We never ask for a password.
             </>,
             <>
-              For website operation and abuse prevention, we may also process
-              limited technical data such as IP address, User-Agent, origin or
-              host information where available, and short-lived rate-limit or
-              anti-spam signals connected with a submission.
+              To run the website and prevent spam and abuse, we may also briefly
+              process technical data such as your IP address and browser
+              information.
             </>,
             <>
-              To understand how search engines, AI assistants, and other
-              automated clients use the website, our server sorts requests into
-              broad traffic categories, such as AI assistant or search engine
-              crawler, based on the User-Agent and similar request headers. We
-              send our analytics provider only the category, the operator of a
-              recognized automated client (for example ChatGPT), the page and
-              website language requested, for a call to our booking tools for AI
-              assistants which tool was called and whether it succeeded, and,
-              for a request blocked as automated, which form or sign-in step
-              blocked it. We do not send the IP address, the User-Agent or other
-              header values, cookies, or any identifier of a person, and this
-              measurement does not depend on analytics consent. Our server-side
-              reservation and payment measurement events also carry the
-              category.
+              To understand how search engines and AI assistants use the
+              website, we sort requests into broad traffic categories based on
+              browser information. We tell our analytics provider only the
+              category, the page and language, and, for our booking tools for AI
+              assistants, which tool was used and whether it worked. We send
+              nothing that identifies you, and this does not depend on analytics
+              consent.
             </>,
             <>
               If you consent to analytics cookies or similar technologies, we
               and our analytics service providers may process website usage and
               campaign measurement data, such as pageviews, browser and device
               information, IP-derived technical data, event types, and standard
-              campaign parameters from URLs. These campaign parameters are
-              limited to utm_source, utm_medium, utm_campaign, utm_content, and
-              utm_term.
+              campaign parameters from links.
             </>,
             <>
               If you separately opt in to future marketing communications, we
               also process your name, email address, preferred language, consent
-              time, and the version of the marketing notice you accepted. The
-              record also notes where you gave consent: in the reservation form,
-              through a browser assistant using this site's tools, in your
-              account settings, or through an email link. We record this choice
-              with the relevant customer record. The choice belongs to that
-              customer record, not to the email address. If the customer's email
-              address changes, the choice follows that customer record. Customer
-              records that use the same email address have separate choices.
+              time, and the version of the marketing notice you accepted. We
+              also record where you gave consent, for example in the reservation
+              form, in your account, or through an assistant, and keep your
+              choice with your customer record.
             </>,
           ],
         },
@@ -721,8 +704,7 @@ const legalDocuments = {
             <>
               We use customer account data to authenticate you, let you manage
               your profile, and connect the account with reservations made using
-              the same verified email address. The Workspace application stores
-              only opaque account and customer identifiers for this connection.
+              the same verified email address.
             </>,
             <>
               We do not use reservation or enquiry data for marketing unless you
@@ -737,11 +719,8 @@ const legalDocuments = {
             <>
               With your analytics consent, we use analytics and external
               measurement services to understand site usage, reservation
-              submission performance, and campaign effectiveness. Reservation
-              submitted conversion events are used only at category and purpose
-              level and do not include reservation form values or personal
-              details such as name, email, phone, message, reservation date,
-              selected tier, coffee preference, or monitor preference.
+              submission performance, and campaign effectiveness. These
+              measurements don't include what you enter in the reservation form.
             </>,
             <>
               We also send selected customer data from our booking system
@@ -817,15 +796,13 @@ const legalDocuments = {
               claims. Technical abuse-prevention signals are short-lived.
             </>,
             <>
-              We keep the customer account profile and authentication sessions
-              while the account is active, and expired sessions and unused
-              sign-in links are removed automatically every day. Deleting the
-              account removes its login identity, sessions, and the Workspace
-              account-to-customer link, and expires the linked customer profile.
-              Reservation, payment, accounting, fraud-prevention, and legal
-              evidence records are not erased with the login account and remain
-              only for the applicable service, statutory, or legitimate
-              retention period.
+              We keep the customer account while it is active; sign-in sessions
+              and links expire automatically and are deleted regularly. Deleting
+              the account deletes your login and sign-in data and deactivates
+              the linked customer profile. Reservation, payment, accounting,
+              fraud-prevention, and legal evidence records are not erased with
+              the login account and remain only for the applicable service,
+              statutory, or legitimate retention period.
             </>,
             <>
               Analytics and campaign measurement data, including customer data
@@ -834,10 +811,9 @@ const legalDocuments = {
               long as necessary for the stated measurement purposes.
             </>,
             <>
-              The customer-level marketing consent record remains tied to the
-              relevant customer record when you withdraw consent. A withdrawal
-              changes only that customer record. Customer records that use the
-              same email address have separate choices.
+              We keep the record of your marketing consent, including any
+              withdrawal, with your customer record so that we can show what you
+              chose.
             </>,
           ],
         },
@@ -855,14 +831,8 @@ const legalDocuments = {
               technical safeguards for provider access.
             </>,
             <>
-              Customer accounts run inside our application with the open-source
-              Better Auth authentication library; we do not use a separate
-              managed authentication provider. The account database is hosted by
-              our database provider, magic-link emails are delivered by our
-              email delivery provider, and customer profiles and reservations
-              are processed in our booking-system provider Dotypos. Each
-              provider may process only the account, session, delivery, profile,
-              or technical data needed to perform its role on our behalf.
+              Customer profiles and reservations are kept in our booking system,
+              Dotypos.
             </>,
             <>
               If we send marketing communications in the future, our email
@@ -890,12 +860,9 @@ const legalDocuments = {
               .
             </>,
             <>
-              You can opt in to or withdraw marketing consent on the privacy
-              page in your account when you are signed in with a verified
-              account linked to the relevant customer record. A dedicated
-              customer-specific link in a future marketing message can also let
-              you opt in or withdraw. If neither option is available, contact
-              our support team at{" "}
+              You can give or withdraw marketing consent at any time on the
+              privacy page in your account, through the link in any marketing
+              email, or by writing to us at{" "}
               <a
                 className="text-burned-orange underline underline-offset-4"
                 href={`mailto:${contactEmail}`}
@@ -1099,8 +1066,8 @@ const legalDocuments = {
   "cs-CZ": {
     "privacy-policy": {
       title: "Zásady ochrany osobních údajů",
-      lead: "Na této stránce vysvětlujeme, jak Desktechub s.r.o. nakládá s osobními údaji zaslanými přes veřejný web Deskohub Workspace, včetně kontaktního a rezervačního formuláře.",
-      updatedAt: "19. října 2026",
+      lead: "Na této stránce vysvětlujeme, jak Desktechub s.r.o. nakládá s osobními údaji na webu Deskohub Workspace, včetně zákaznických účtů, kontaktního formuláře a rezervací.",
+      updatedAt: "20. října 2026",
       sections: [
         {
           heading: "1. Správce",
@@ -1139,34 +1106,29 @@ const legalDocuments = {
             <>
               Při pokračování k objednávce zpracováváme také nabízenou a
               zaplacenou částku, měnu, použité slevy, identifikátory a stav
-              platby a rezervace, odkazy a otisky přijatých právních dokumentů,
-              související potvrzení učiněná při objednávce, stav přístupu a
-              dokončení Služby a volitelné fakturační údaje, které požadujete
+              platby a rezervace, které podmínky jste přijali a kdy, zda byl
+              vydán přístup, a volitelné fakturační údaje, které požadujete
               použít na účetním dokladu. Od poskytovatele plateb nezískáváme
               úplné údaje vaší platební karty.
             </>,
             <>
-              Pro provoz webu a ochranu před zneužitím můžeme zpracovávat také
-              omezené technické údaje, například IP adresu, User-Agent,
-              informace o originu nebo hostu, pokud jsou dostupné, a krátkodobé
-              signály pro rate limiting nebo ochranu proti spamu související s
-              odesláním formuláře.
+              Pokud si vytvoříte zákaznický účet, zpracováváme vaši ověřenou
+              e-mailovou adresu, údaje profilu a přihlašovací údaje potřebné k
+              zabezpečení účtu. Heslo po vás nikdy nechceme.
             </>,
             <>
-              Abychom porozuměli tomu, jak web používají vyhledávače, AI
-              asistenti a další automatizovaní klienti, náš server řadí
-              požadavky do obecných kategorií provozu, například AI asistent
-              nebo robot vyhledávače, podle hlavičky User-Agent a obdobných
-              hlaviček požadavku. Poskytovateli analytických služeb předáváme
-              pouze tuto kategorii, provozovatele rozpoznaného automatizovaného
-              klienta (například ChatGPT), požadovanou stránku a jazyk webu, u
-              volání našich rezervačních nástrojů pro AI asistenty to, který
-              nástroj byl volán a zda uspěl, a u požadavku zablokovaného jako
-              automatizovaný také to, který formulář nebo krok přihlášení jej
-              zablokoval. Nepředáváme IP adresu, User-Agent ani jiné hodnoty
-              hlaviček, cookies ani žádný identifikátor osoby a toto měření
-              nezávisí na souhlasu s analytikou. Kategorii nesou také naše
-              serverové události měření rezervací a plateb.
+              Pro provoz webu a ochranu před spamem a zneužitím můžeme
+              krátkodobě zpracovávat také technické údaje, například vaši IP
+              adresu a údaje o prohlížeči.
+            </>,
+            <>
+              Abychom porozuměli tomu, jak web používají vyhledávače a AI
+              asistenti, řadíme požadavky podle údajů o prohlížeči do obecných
+              kategorií provozu. Poskytovateli analytických služeb sdělujeme
+              pouze tuto kategorii, stránku a jazyk a u našich rezervačních
+              nástrojů pro AI asistenty to, který nástroj byl použit a zda
+              uspěl. Nepředáváme nic, co by vás identifikovalo, a toto měření
+              nezávisí na souhlasu s analytikou.
             </>,
             <>
               Pokud udělíte souhlas s analytickými cookies nebo obdobnými
@@ -1174,21 +1136,16 @@ const legalDocuments = {
               zpracovávat údaje o používání webu a měření kampaní, například
               zobrazení stránek, informace o prohlížeči a zařízení, technické
               údaje odvozené z IP adresy, typy událostí a standardní kampanové
-              parametry z URL. Tyto kampanové parametry jsou omezené na
-              utm_source, utm_medium, utm_campaign, utm_content a utm_term.
+              parametry z odkazů.
             </>,
             <>
               Pokud se samostatně přihlásíte k odběru budoucích marketingových
               sdělení, zpracováváme také vaše jméno, e-mailovou adresu,
               preferovaný jazyk, čas souhlasu a verzi marketingového oznámení,
-              které jste přijali. Záznam také uvádí, kde jste souhlas udělili: v
-              rezervačním formuláři, prostřednictvím asistenta v prohlížeči,
-              který používá nástroje tohoto webu, v nastavení účtu nebo přes
-              odkaz v e-mailu. Tuto volbu zaznamenáváme k příslušnému záznamu
-              zákazníka. Volba patří záznamu zákazníka, nikoli e-mailové adrese.
-              Pokud se e-mailová adresa tohoto záznamu změní, volba zůstává u
-              tohoto záznamu. Záznamy zákazníků se stejnou e-mailovou adresou
-              mají samostatné volby.
+              které jste přijali. Zaznamenáváme také, kde jste souhlas udělili,
+              například v rezervačním formuláři, ve svém účtu nebo
+              prostřednictvím asistenta, a vaši volbu uchováváme u vašeho
+              zákaznického záznamu.
             </>,
           ],
         },
@@ -1206,8 +1163,7 @@ const legalDocuments = {
             <>
               Údaje zákaznického účtu používáme k vašemu ověření, správě vašeho
               profilu a propojení účtu s rezervacemi vytvořenými se stejnou
-              ověřenou e-mailovou adresou. Aplikace Workspace ukládá pro toto
-              propojení pouze neprůhledné identifikátory účtu a zákazníka.
+              ověřenou e-mailovou adresou.
             </>,
             <>
               Rezervační ani poptávkové údaje nepoužíváme pro marketing, pokud k
@@ -1222,11 +1178,8 @@ const legalDocuments = {
             <>
               S vaším analytickým souhlasem používáme analytické a externí
               měřicí služby, abychom porozuměli používání webu, výkonu odeslání
-              rezervací a účinnosti kampaní. Konverzní události o odeslání
-              rezervace používáme pouze na úrovni kategorie a účelu a neobsahují
-              hodnoty z rezervačního formuláře ani osobní údaje, jako je jméno,
-              e-mail, telefon, zpráva, datum rezervace, vybraný tarif,
-              preference kávy nebo preference monitorů.
+              rezervací a účinnosti kampaní. Toto měření nezahrnuje údaje, které
+              zadáte do rezervačního formuláře.
             </>,
             <>
               Vybrané zákaznické údaje z našeho rezervačního systému Dotypos
@@ -1302,15 +1255,13 @@ const legalDocuments = {
               signály pro ochranu před zneužitím jsou krátkodobé.
             </>,
             <>
-              Profil zákaznického účtu a autentizační relace uchováváme po dobu
-              aktivního účtu; expirované relace a nepoužité přihlašovací odkazy
-              odstraňujeme každý den automaticky. Smazáním účtu dojde k
-              odstranění přihlašovací identity, relací a propojení účtu se
-              zákazníkem ve Workspace a k deaktivaci propojeného zákaznického
-              profilu. Rezervační, platební, účetní záznamy a záznamy potřebné
-              pro prevenci podvodů nebo právní důkazy se spolu s přihlašovacím
-              účtem nemažou a zůstávají pouze po příslušnou smluvní, zákonnou
-              nebo oprávněnou dobu uchování.
+              Zákaznický účet uchováváme po dobu jeho používání; přihlašovací
+              relace a odkazy automaticky vyprší a pravidelně je mažeme.
+              Smazáním účtu smažeme vaše přihlašovací údaje a deaktivujeme
+              propojený zákaznický profil. Rezervační, platební, účetní záznamy
+              a záznamy potřebné pro prevenci podvodů nebo právní důkazy se
+              spolu s přihlašovacím účtem nemažou a zůstávají pouze po
+              příslušnou smluvní, zákonnou nebo oprávněnou dobu uchování.
             </>,
             <>
               Analytické údaje a údaje pro kampanové měření, včetně zákaznických
@@ -1319,10 +1270,9 @@ const legalDocuments = {
               pouze po dobu potřebnou pro uvedené účely měření.
             </>,
             <>
-              Záznam marketingového souhlasu zůstává při jeho odvolání spojený s
-              příslušným záznamem zákazníka. Odvolání mění pouze tento záznam
-              zákazníka. Záznamy zákazníků se stejnou e-mailovou adresou mají
-              samostatné volby.
+              Záznam o vašem marketingovém souhlasu, včetně jeho odvolání,
+              uchováváme u vašeho zákaznického záznamu, abychom mohli doložit,
+              jak jste se rozhodli.
             </>,
           ],
         },
@@ -1340,14 +1290,8 @@ const legalDocuments = {
               technické záruky.
             </>,
             <>
-              Zákaznické účty běží v naší aplikaci s otevřenou autentizační
-              knihovnou Better Auth; nepoužíváme samostatnou spravovanou
-              autentizační službu. Databázi účtů hostuje náš poskytovatel
-              databáze, přihlašovací odkazy doručuje náš poskytovatel
-              e-mailových služeb a zákaznické profily a rezervace zpracovává náš
-              rezervační systém Dotypos. Každý poskytovatel může zpracovávat
-              pouze účetní, relacyjní, doručovací, profilové nebo technické
-              údaje nutné k výkonu své role naším jménem.
+              Zákaznické profily a rezervace vedeme v našem rezervačním systému
+              Dotypos.
             </>,
             <>
               Pokud budeme v budoucnu zasílat marketingová sdělení, může náš
@@ -1375,20 +1319,16 @@ const legalDocuments = {
               .
             </>,
             <>
-              Marketingový souhlas můžete udělit nebo odvolat na stránce ochrany
-              osobních údajů ve svém účtu, pokud jste přihlášeni ověřeným účtem
-              propojeným s příslušným záznamem zákazníka. Vyhrazený odkaz pro
-              konkrétního zákazníka v budoucím marketingovém sdělení vám může
-              také umožnit udělení nebo odvolání souhlasu. Pokud žádná z těchto
-              možností není dostupná, kontaktujte naši podporu na{" "}
+              Marketingový souhlas můžete kdykoli udělit nebo odvolat na stránce
+              ochrany osobních údajů ve svém účtu, odkazem v kterémkoli
+              marketingovém e-mailu nebo napsáním na{" "}
               <a
                 className="text-burned-orange underline underline-offset-4"
                 href={`mailto:${contactEmail}`}
               >
                 {contactEmail}
               </a>
-              . Odvolání nemá vliv na zpracování, které proběhlo před jeho
-              odvoláním.
+              . Odvolání nemá vliv na zpracování, které proběhlo před ním.
             </>,
             <>
               Zákaznický účet můžete smazat na stránce svého profilu. Tato

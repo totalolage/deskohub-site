@@ -18,8 +18,20 @@ what the privacy copy promises. Privacy copy lives in
 
 ## Rules
 
-- State retention as a scheduled cleanup, not as instant deletion on expiry.
-  Current settings: 30-day rolling sessions refreshed at most daily, 10-minute
+- Keep privacy copy to what GDPR Art. 13 requires, in plain customer
+  language: which data, purposes, legal basis, recipients and transfers,
+  retention period or the criteria for it, and rights. State retention as
+  criteria ("expire automatically and are deleted regularly", "until you
+  delete your account"), never as instant deletion on expiry, token lifetimes,
+  or a cleanup cadence. Security mechanics (hashing, encryption, replay
+  windows), library names, and data-model details belong in this reference,
+  not in the notice. The details the notice leaves out are recorded in the
+  table above, in [Better Auth configuration](better-auth-configuration.md),
+  in [PostHog identity and privacy](posthog-identity-privacy.md) (agent-traffic
+  fields, campaign parameters, checkout events), and in the checkout skill's
+  lifecycle reference (legal-document hashes, and consent keyed per Dotypos
+  customer, so a changed or shared email never moves or merges a choice).
+- Current settings: 30-day rolling sessions refreshed at most daily, 10-minute
   magic-link validity, daily cleanup of expired rows, identity rows kept until
   the customer deletes the account.
 - Account deletion expires the Dotypos profile and removes the live login
