@@ -24,6 +24,7 @@ class AllocationStoreError extends Data.TaggedError("AllocationStoreError")<{
 interface AcquireAllocationInput {
   readonly owner: AllocationOwner;
   readonly preferredShard: number;
+  readonly previewBranch: string;
   readonly terminalOwners: readonly AllocationOwner[];
 }
 
@@ -52,6 +53,7 @@ interface PoolRow {
 interface RequestRow {
   readonly allocatedShard: number | null;
   readonly preferredShard: number;
+  readonly previewBranch: string | null;
   readonly queuePosition: number;
   readonly repository: string;
   readonly runAttempt: number;
@@ -90,13 +92,15 @@ export class AllocationRepository extends Context.Service<
                   repository,
                   run_id,
                   run_attempt,
-                  preferred_shard
+                  preferred_shard,
+                  preview_branch
                 ) values (
                   ${allocationPoolName},
                   ${input.owner.repository},
                   ${input.owner.runId},
                   ${input.owner.runAttempt},
-                  ${input.preferredShard}
+                  ${input.preferredShard},
+                  ${input.previewBranch}
                 )
                 on conflict (pool_name, repository, run_id, run_attempt)
                 do update set last_observed_at = clock_timestamp()
@@ -203,6 +207,7 @@ const listRequests = (sql: PgClient.PgClient) =>
     select
       allocated_shard as "allocatedShard",
       preferred_shard as "preferredShard",
+      preview_branch as "previewBranch",
       queue_position::double precision as "queuePosition",
       repository,
       run_attempt as "runAttempt",
