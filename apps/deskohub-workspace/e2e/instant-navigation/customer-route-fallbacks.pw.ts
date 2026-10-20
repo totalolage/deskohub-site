@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { m } from "@/features/i18n";
-import { enablePreviewAccess } from "./navigation-test-helpers";
+import { enablePreviewAccess } from "../preview-access";
 import { preparePublicLegalBrowser } from "./public-account-legal-assertions";
 
 const locale = "en-US" as const;

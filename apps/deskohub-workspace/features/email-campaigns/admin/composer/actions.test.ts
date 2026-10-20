@@ -6,6 +6,7 @@ import type { ICampaignService } from "../../backend/campaign.service";
 import { campaignContentFixture } from "../../backend/email-campaigns.test-utils";
 import { campaignIdSchema } from "../../campaign-identifiers";
 import {
+  AudienceFilterContextInvalid,
   CampaignAudienceArchived,
   CampaignAudienceNotFound,
   CampaignContentInvalid,
@@ -114,6 +115,15 @@ const saveErrorCases = [
       audienceId: campaignId as never,
     }),
     serverError: "The selected audience is archived. Choose another audience.",
+  },
+  {
+    name: "audience with filters only automation conditions can use",
+    operation: "update",
+    error: new AudienceFilterContextInvalid({
+      uses: { attributes: [], periods: ["TriggerWindow"], campaignSources: [] },
+    }),
+    serverError:
+      "The selected audience uses filters only automation conditions can use. Choose another audience.",
   },
   {
     name: "missing audience",

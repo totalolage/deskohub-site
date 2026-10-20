@@ -67,6 +67,14 @@ describe("ReservationCustomerFields", () => {
     expect(view.container.querySelector('input[name="phone"]')).not.toBeNull();
     expect(view.container.querySelector('input[name="name"]')).not.toBeNull();
   });
+
+  test("marks the phone input as a telephone field for autofill", () => {
+    const view = render(<Harness />);
+    const phone = view.container.querySelector('input[name="phone"]');
+
+    expect(phone?.getAttribute("type")).toBe("tel");
+    expect(phone?.getAttribute("autocomplete")).toBe("tel");
+  });
 });
 
 const existingCustomer: ReservationExistingCustomerForm = {
@@ -108,8 +116,12 @@ function SectionHarness({
       <form>
         {showSection && (
           <ReservationCustomerSection
+            checkoutCustomer={{
+              status: "linked",
+              existingCustomer: customer,
+              replacesTypedContact: false,
+            }}
             customer={reservationCustomer}
-            existingCustomer={customer}
             locale="en-US"
           />
         )}
@@ -130,15 +142,22 @@ const renderSection = (customer = existingCustomer) => {
     />
   );
   const view = render(harness(true));
-  const getValues = () => {
+  const getFormValues = () => {
     if (!form) throw new Error("form was not rendered");
-    return form.getValues();
+    return form.getValues() as ReservationContactValues & {
+      readonly emailConfirmation?: string;
+    };
+  };
+  // The contact the reservation books, without its repeated email.
+  const getValues = () => {
+    const { emailConfirmation: _, ...contact } = getFormValues();
+    return contact;
   };
   const remountSection = () => {
     view.rerender(harness(false));
     view.rerender(harness(true));
   };
-  return { getValues, remountSection, view };
+  return { getFormValues, getValues, remountSection, view };
 };
 
 describe("ReservationCustomerSection", () => {
@@ -153,7 +172,7 @@ describe("ReservationCustomerSection", () => {
   });
 
   test("keeps each mode's contact across switches", () => {
-    const { getValues, view } = renderSection();
+    const { getFormValues, getValues, view } = renderSection();
 
     fireEvent.click(
       view.getByRole("button", {
@@ -162,6 +181,11 @@ describe("ReservationCustomerSection", () => {
     );
     expect(view.queryByRole("region", { name: "Booking as" })).toBeNull();
     expect(getValues()).toEqual(existingCustomer.otherContact);
+    // A contact carried in from a link or a restored checkout opens
+    // confirmed; the account card asks for no repeated email.
+    expect(getFormValues().emailConfirmation).toBe(
+      existingCustomer.otherContact.email
+    );
 
     const name = view.container.querySelector(
       'input[name="name"]'

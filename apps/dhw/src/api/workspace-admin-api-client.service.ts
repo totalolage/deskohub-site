@@ -1,5 +1,7 @@
 import {
   type AdminCliInfoType,
+  type AdministrationAccountBackfillInputType,
+  type AdministrationAccountBackfillReportType,
   type AdministrationBookingDetailType,
   type AdministrationBookingPageType,
   type AdministrationBookingQueryType,
@@ -91,6 +93,7 @@ import {
   CliSessionUnauthorized,
   CliStandaloneAccessCodeCleanupRequired,
   CliStandaloneAccessCodeReconciled,
+  dhwVersionHeader,
   type ExchangeCliGrantType,
   type GrantedCliSessionType,
   type RenameCliSessionType,
@@ -114,6 +117,7 @@ import {
   HttpClientRequest,
 } from "effect/unstable/http";
 import { HttpApiClient } from "effect/unstable/httpapi";
+import { DHW_VERSION } from "../build-info";
 import { DhwConfig } from "../config/dhw-config.service";
 
 interface IWorkspaceAdminApiClient {
@@ -167,6 +171,13 @@ interface IWorkspaceAdminApiClient {
     | CliResourceNotFound
     | CliSessionUnauthorized
     | CliServiceUnavailable
+  >;
+  readonly backfillAccounts: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    input: AdministrationAccountBackfillInputType
+  ) => Effect.Effect<
+    AdministrationAccountBackfillReportType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
   readonly backfillReservationProductDetails: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
@@ -579,6 +590,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
       transformClient: HttpClient.mapRequest(
         HttpClientRequest.setHeaders({
           ...requestHeaders,
+          [dhwVersionHeader]: DHW_VERSION,
           ...(accessToken && {
             authorization: `Bearer ${Redacted.value(accessToken)}`,
           }),
@@ -818,6 +830,18 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
         ),
         Effect.mapError(sanitizeSessionError)
       )
+    ),
+    backfillAccounts: Effect.fn("WorkspaceAdminApiClient.backfillAccounts")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        input: AdministrationAccountBackfillInputType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.accounts.backfillAccounts({ payload: input })
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
     ),
     backfillReservationProductDetails: Effect.fn(
       "WorkspaceAdminApiClient.backfillReservationProductDetails"

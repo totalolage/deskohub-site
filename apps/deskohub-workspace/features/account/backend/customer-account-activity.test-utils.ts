@@ -19,6 +19,8 @@ export type OptionalAccountActivityFixture = {
   readonly activityState?: "active" | "deletion-requested" | "missing";
   /** Fails the session authority with the fail-closed `unavailable` reason. */
   readonly sessionUnavailable?: boolean;
+  /** Fails the session authority as Better Auth not being configured. */
+  readonly authenticationNotConfigured?: boolean;
   /** Mutated by the fake advisory lock so tests can sample lock state mid-section. */
   readonly lockProbe?: { held: boolean };
 };
@@ -64,6 +66,11 @@ export const makeOptionalAccountActivityGuard = (
     if (fixture.sessionUnavailable === true) {
       return Effect.fail(
         new CustomerAccountAccessError({ reason: "unavailable" })
+      );
+    }
+    if (fixture.authenticationNotConfigured === true) {
+      return Effect.fail(
+        new CustomerAccountAccessError({ reason: "not-configured" })
       );
     }
     if (session === null) return Effect.succeed(null);

@@ -1,5 +1,5 @@
 import { equal } from "node:assert/strict";
-import type { Browser, BrowserContext, Page } from "@playwright/test";
+import type { Browser, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { Data } from "effect";
 import { type Locale, m } from "@/features/i18n";
@@ -9,6 +9,7 @@ import {
   reservationStatusPath,
 } from "@/features/reservation/routes";
 import { workspaceE2EError } from "../errors";
+import { primePreviewAccess } from "../preview-access";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { WorkspaceE2EReservationHistoryFixture } from "./reservation-history-fixture";
 
@@ -257,19 +258,44 @@ const waitForReservationStatusLinkHydration = async (
   );
 };
 
-const expectWorkspaceE2EReservationNotFound = async (
+/**
+ * A signed-out visitor of a status link signs in first and comes back to it;
+ * the sign-in page shows nothing of the reservation.
+ */
+const expectWorkspaceE2EReservationSignIn = async (
   page: Page,
-  reservationId: WorkspaceReservationId
+  {
+    reservationId,
+    statusPath,
+  }: {
+    readonly reservationId: WorkspaceReservationId;
+    readonly statusPath: string;
+  }
 ) => {
-  const notFoundTitle = m.checkoutStatusNotFoundTitle(
-    {},
-    { locale: "en-US" satisfies Locale }
+  // The status page streams its redirect, so it lands after the load.
+  await page.waitForURL((url) => url.pathname === "/en-US/auth/sign-in", {
+    timeout: workspaceE2ETimeouts.browserNavigation,
+  });
+  const signInUrl = new URL(page.url());
+  equal(
+    signInUrl.pathname,
+    "/en-US/auth/sign-in",
+    "status did not ask to sign in"
   );
+  equal(
+    signInUrl.searchParams.get("returnTo"),
+    statusPath,
+    "sign-in does not return to the status page"
+  );
+  equal(signInUrl.searchParams.get("for"), "reservation");
   await expect(
     page.getByRole("heading", {
       exact: true,
       level: 1,
-      name: notFoundTitle,
+      name: m.accountSignInReservationTitle(
+        {},
+        { locale: "en-US" satisfies Locale }
+      ),
     })
   ).toBeVisible();
   await expect(page.getByText(reservationId, { exact: true })).toHaveCount(0);
@@ -319,30 +345,6 @@ const expectInvalidAccess = async (
   await expect(page.locator("[data-reservation-access-code]")).toHaveCount(0);
 };
 
-const primePreviewAccess = async (
-  context: BrowserContext,
-  baseUrl: string,
-  bypassSecret: string | undefined
-) => {
-  if (!bypassSecret) return;
-
-  const response = await context.request.get(
-    new URL("/favicon.svg", baseUrl).toString(),
-    {
-      headers: {
-        "x-vercel-protection-bypass": bypassSecret,
-        "x-vercel-set-bypass-cookie": "true",
-      },
-      maxRedirects: 3,
-    }
-  );
-  try {
-    equal(response.ok(), true, "preview access could not be primed");
-  } finally {
-    await response.dispose();
-  }
-};
-
 const runReservationHistoryNavigationPair = async ({
   action,
   actionStage,
@@ -389,10 +391,10 @@ const verifyPrivateRoutes = async (
           200,
           "private status route did not load"
         );
-        await expectWorkspaceE2EReservationNotFound(
-          page,
-          input.fixture.reservationId
-        );
+        await expectWorkspaceE2EReservationSignIn(page, {
+          reservationId: input.fixture.reservationId,
+          statusPath: urls.statusPath,
+        });
       },
       "assertion"
     );

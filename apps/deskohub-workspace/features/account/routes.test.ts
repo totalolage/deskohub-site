@@ -6,6 +6,7 @@ import {
   getAccountSignInPath,
   getAuthVerifyPath,
   getNoLongerWaitingSignInPath,
+  parseSignInPurpose,
 } from "./routes";
 import { accountSections } from "./sections";
 
@@ -122,6 +123,46 @@ describe("auth page paths", () => {
     expect(url.searchParams.get("returnTo")).toBe(
       "/en-US/reservation?date=2026-10-20"
     );
+  });
+
+  test("names the sign-in purpose next to the return path", () => {
+    const url = new URL(
+      getAccountSignInPath(
+        "en-US",
+        "/en-US/reservation/status/order-1?outcome=success",
+        "reservation"
+      ),
+      "https://site.invalid"
+    );
+
+    expect(url.pathname).toBe("/en-US/auth/sign-in");
+    expect(url.searchParams.get("returnTo")).toBe(
+      "/en-US/reservation/status/order-1?outcome=success"
+    );
+    expect(url.searchParams.get("for")).toBe("reservation");
+  });
+
+  test("names the sign-in purpose without a return path", () => {
+    expect(getAccountSignInPath("cs-CZ", undefined, "reservation")).toBe(
+      "/cs-CZ/auth/sign-in?for=reservation"
+    );
+  });
+
+  test.each(["https://evil.invalid/en-US/account", "//evil.invalid/x"])(
+    "keeps the sign-in purpose when it leaves out the return path %s",
+    (returnTo) => {
+      expect(getAccountSignInPath("en-US", returnTo, "reservation")).toBe(
+        "/en-US/auth/sign-in?for=reservation"
+      );
+    }
+  );
+
+  test("reads only a known sign-in purpose", () => {
+    expect(parseSignInPurpose("reservation")).toBe("reservation");
+    expect(parseSignInPurpose("account")).toBeUndefined();
+    expect(parseSignInPurpose("")).toBeUndefined();
+    expect(parseSignInPurpose(null)).toBeUndefined();
+    expect(parseSignInPurpose(undefined)).toBeUndefined();
   });
 
   test("builds the verify path for the locale", () => {

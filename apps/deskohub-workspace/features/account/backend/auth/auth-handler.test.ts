@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { NetworkError } from "@deskohub/dotypos";
 import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
@@ -11,6 +11,11 @@ import {
   withPostgresAdvisoryLock,
 } from "@/db/postgres-advisory-lock";
 import type { CustomerAccountId } from "../../customer-account";
+import {
+  encodeAuthCallbackReturn,
+  readAuthCallbackReturnTo,
+  signInCallbackReturnParam,
+} from "../../routes";
 import { CustomerAccountRepository } from "../customer-account.repository";
 import { CustomerAccountDeletionService } from "../customer-account-deletion";
 import { CustomerAccountLinkRepository } from "../customer-account-link.repository";
@@ -43,6 +48,7 @@ import {
   userIdForEmail,
   verifyMagicLink,
 } from "./auth-handler.test-utils";
+import { betterAuthMagicLinkOptions } from "./auth-options";
 
 const makeFailingVerificationDatabase = (
   email: string,
@@ -200,6 +206,47 @@ test("stores neither the emailed magic-link token nor its plain digest", async (
   expect(stored).not.toContain(await sha256Base64Url(rawToken));
 });
 
+test("sends an expired link to the same rejected-link callback as a replayed one", async () => {
+  // A browser cannot wait out the real ten-minute expiry, so this proves an
+  // expired link lands on the callback's rejected-link card, with the same
+  // URL as a replayed link and the return target its new sign-in keeps.
+  const sentLinks: CapturedMagicLink[] = [];
+  const { auth } = makeMemoryTestAuth({ sentLinks });
+  const returnTo =
+    "/cs-CZ/reservation/cowork?entryTier=open-space&date=2026-12-01&coffee=false";
+  const callbackURL = `/cs-CZ/auth/callback?${signInCallbackReturnParam}=${encodeAuthCallbackReturn(returnTo)}`;
+  await signInForMagicLink(auth, uniqueEmail("expired-link"), callbackURL);
+  await signInForMagicLink(auth, uniqueEmail("replayed-link"), callbackURL);
+  const [expiring, replayed] = sentLinks;
+  const firstUse = await verifyMagicLink(auth, replayed!);
+  expect(getSessionCookie(firstUse)).toBeDefined();
+
+  try {
+    setSystemTime(
+      new Date(Date.now() + (betterAuthMagicLinkOptions.expiresIn + 1) * 1000)
+    );
+    const expired = await verifyMagicLink(auth, expiring!);
+    const replay = await verifyMagicLink(auth, replayed!);
+
+    expect(getSessionCookie(expired)).toBeUndefined();
+    expect(expired.status).toBe(302);
+    expect(expired.headers.get("location")).toBe(
+      replay.headers.get("location")
+    );
+    const location = new URL(expired.headers.get("location") ?? "");
+    expect(location.origin).toBe(`https://${HOST}`);
+    expect(location.pathname).toBe("/cs-CZ/auth/callback");
+    expect(location.searchParams.get("error")).toBe("INVALID_TOKEN");
+    expect(
+      readAuthCallbackReturnTo(
+        location.searchParams.get(signInCallbackReturnParam)
+      )
+    ).toBe(returnTo);
+  } finally {
+    setSystemTime();
+  }
+});
+
 const postJson = (
   auth: TestAuth,
   path: string,
@@ -317,6 +364,23 @@ describe.skipIf(!testDatabase)(
         )
       ).rows[0]?.locale;
 
+    const readCreatedUser = async (id: string) => {
+      const { rows } = await testDatabase!.pool.query<{
+        id: string;
+        locale: string | null;
+        email_verified: boolean;
+        customer_account_id: string | null;
+      }>(
+        `select auth_user.id, auth_user.locale, auth_user.email_verified,
+                customer_accounts.id as customer_account_id
+         from auth."user" as auth_user
+         left join customer_accounts on customer_accounts.id = auth_user.id
+         where auth_user.id = $1`,
+        [id]
+      );
+      return rows[0];
+    };
+
     test("sets the locale preference from the initiating site locale in the account-creation insert", async () => {
       const sentLinks: CapturedMagicLink[] = [];
       const auth = makeTestAuth({ sentLinks });
@@ -341,6 +405,106 @@ describe.skipIf(!testDatabase)(
       await signInForMagicLink(auth, emailDefault);
       await verifyMagicLink(auth, sentLinks[2]!);
       expect(await createdLocaleFor(emailDefault)).toBe("en-US");
+    });
+
+    test("creates the durable account for a magic-link sign-up", async () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({ sentLinks });
+      const email = uniqueEmail("account-sign-up");
+
+      await signInForMagicLink(auth, email);
+      const verified = await verifyMagicLink(auth, sentLinks[0]!);
+      expect(getSessionCookie(verified)).toBeTruthy();
+
+      const userId = (await userIdForEmail(email))!;
+      const { rows } = await testDatabase!.pool.query<{
+        user_id: string;
+        customer_account_id: string | null;
+      }>(
+        `select auth_user.id as user_id, customer_accounts.id as customer_account_id
+         from auth."user" as auth_user
+         left join customer_accounts on customer_accounts.id = auth_user.id
+         where auth_user.id = $1`,
+        [userId]
+      );
+
+      expect(rows).toEqual([
+        {
+          user_id: userId,
+          customer_account_id: userId,
+        },
+      ]);
+    });
+
+    test("creates a durable account for internal user creation with a supplied locale", async () => {
+      const auth = makeTestAuth();
+      const context = await auth.$context;
+      const id = context.generateId({ model: "user" });
+      const { internalAdapter } = context;
+      const user = await internalAdapter.createUser({
+        id,
+        email: uniqueEmail("internal-account-locale"),
+        name: "",
+        emailVerified: false,
+        locale: "cs-CZ",
+      });
+
+      expect(user.id).toBe(id);
+      expect(await readCreatedUser(id)).toEqual({
+        id,
+        locale: "cs-CZ",
+        email_verified: false,
+        customer_account_id: id,
+      });
+    });
+
+    test("uses the default locale for internal user creation without one", async () => {
+      const auth = makeTestAuth();
+      const context = await auth.$context;
+      const id = context.generateId({ model: "user" });
+      const { internalAdapter } = context;
+      const user = await internalAdapter.createUser({
+        id,
+        email: uniqueEmail("internal-account-default-locale"),
+        name: "",
+        emailVerified: false,
+      });
+
+      expect(user.id).toBe(id);
+      expect(await readCreatedUser(id)).toEqual({
+        id,
+        locale: "en-US",
+        email_verified: false,
+        customer_account_id: id,
+      });
+    });
+
+    test("rejects internal user creation without an id and creates no rows", async () => {
+      const auth = makeTestAuth();
+      const { internalAdapter } = await auth.$context;
+      const email = uniqueEmail("internal-account-missing-id");
+      const before = await testDatabase!.pool.query<{ count: string }>(
+        `select count(*)::text as count from customer_accounts`
+      );
+
+      await expect(
+        internalAdapter.createUser({
+          email,
+          name: "",
+          emailVerified: false,
+        })
+      ).rejects.toThrow(/valid account identifier/);
+
+      const users = await testDatabase!.pool.query(
+        `select id from auth."user" where email = $1`,
+        [email]
+      );
+      const after = await testDatabase!.pool.query<{ count: string }>(
+        `select count(*)::text as count from customer_accounts`
+      );
+
+      expect(users.rows).toHaveLength(0);
+      expect(after.rows[0]?.count).toBe(before.rows[0]?.count);
     });
 
     test("keeps the creation locale when a later sign-in carries another one", async () => {

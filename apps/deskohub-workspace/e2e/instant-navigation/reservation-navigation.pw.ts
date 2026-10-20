@@ -1,13 +1,14 @@
 import { instant } from "@next/playwright";
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 import { isNotFoundPage } from "../not-found-page";
-import {
-  enablePreviewAccess,
-  hasLoadedResource,
-  requireBaseUrl,
-} from "./navigation-test-helpers";
+import { enablePreviewAccess } from "../preview-access";
+import { hasLoadedResource, requireBaseUrl } from "./navigation-test-helpers";
 
 const reservationStepsName = "Reservation steps";
+// The date field's calendar button carries the date label in every family;
+// the text field takes the form's visible label, which varies by duration.
+const calendarButtonName = (dateLabel: string) =>
+  `${dateLabel}: choose from the calendar`;
 
 test.beforeEach(async ({ baseURL, context }) => {
   await enablePreviewAccess(context, baseURL);
@@ -58,12 +59,16 @@ for (const navigation of directNavigationCases) {
         await expect(
           page.getByRole("region", { name: shellName })
         ).toHaveAttribute("aria-busy", "true");
-        await expect(page.getByLabel(contentName)).toHaveCount(0);
+        await expect(
+          page.getByRole("button", { name: calendarButtonName(contentName) })
+        ).toHaveCount(0);
       },
       { baseURL: requireBaseUrl(baseURL) }
     );
 
-    await expect(page.getByLabel(contentName)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: calendarButtonName(contentName) })
+    ).toBeVisible();
   });
 }
 
@@ -196,10 +201,18 @@ test.describe("client navigation", () => {
         await expect(
           page.getByRole("region", { name: navigation.shellName })
         ).toHaveAttribute("aria-busy", "true");
-        await expect(page.getByLabel(navigation.contentName)).toHaveCount(0);
+        await expect(
+          page.getByRole("button", {
+            name: calendarButtonName(navigation.contentName),
+          })
+        ).toHaveCount(0);
       });
 
-      await expect(page.getByLabel(navigation.contentName)).toBeVisible();
+      await expect(
+        page.getByRole("button", {
+          name: calendarButtonName(navigation.contentName),
+        })
+      ).toBeVisible();
     });
   }
 });

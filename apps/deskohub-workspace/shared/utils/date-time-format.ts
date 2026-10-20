@@ -1,3 +1,4 @@
+import { Option } from "effect";
 import { temporalInstantToDate, temporalPlainDateToDate } from "./temporal";
 
 interface DateFormatOptions {
@@ -20,6 +21,14 @@ const makeDateFormatter = ({
   timeZone,
 }: InstantDateTimeFormatOptions) =>
   new Intl.DateTimeFormat(locale, { dateStyle, timeStyle, timeZone });
+
+/**
+ * Replaces the narrow no-break and thin spaces that Node's ICU puts in times
+ * and ranges with the plain spaces Chromium renders, so text formatted on
+ * both the server and the client hydrates.
+ */
+export const withPlainSpaces = (text: string) =>
+  text.replace(/[\u202F\u2009]/g, " ");
 
 export const formatInstantDate = ({
   instant,
@@ -114,3 +123,91 @@ export const formatWeekday = ({
       Temporal.PlainDate.from({ year: 2024, month: 1, day: isoDay })
     )
   );
+
+const makeNumericDateFormatter = (locale: Intl.LocalesArgument) =>
+  new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "numeric",
+    timeZone: "UTC",
+    year: "numeric",
+  });
+
+type NumericDateField = "day" | "month" | "year";
+
+const isNumericDateField = (type: string): type is NumericDateField =>
+  type === "day" || type === "month" || type === "year";
+
+/** The locale's all-numeric date, such as 11/15/2026 (en-US) or 15. 11. 2026 (cs-CZ). */
+export const formatNumericPlainDate = ({
+  date,
+  locale,
+}: {
+  readonly date: Temporal.PlainDate;
+  readonly locale: Intl.LocalesArgument;
+}) => makeNumericDateFormatter(locale).format(plainDateToDate(date));
+
+/**
+ * The locale's all-numeric date pattern spelled with the given field tokens,
+ * such as MM/DD/YYYY (en-US) or DD. MM. RRRR (cs-CZ).
+ */
+export const formatNumericPlainDatePattern = ({
+  locale,
+  tokens,
+}: {
+  readonly locale: Intl.LocalesArgument;
+  readonly tokens: Readonly<Record<NumericDateField, string>>;
+}) =>
+  makeNumericDateFormatter(locale)
+    .formatToParts(plainDateToDate(Temporal.PlainDate.from("2024-01-01")))
+    .map((part) =>
+      isNumericDateField(part.type) ? tokens[part.type] : part.value
+    )
+    .join("");
+
+const getNumericDateFieldOrder = (locale: Intl.LocalesArgument) =>
+  makeNumericDateFormatter(locale)
+    .formatToParts(plainDateToDate(Temporal.PlainDate.from("2024-01-01")))
+    .map((part) => part.type)
+    .filter(isNumericDateField);
+
+/**
+ * Reads a typed all-numeric date. A four-digit first number reads as ISO
+ * year, month, day; otherwise the numbers follow the locale's order, such as
+ * month, day, year in en-US. Dots, slashes, hyphens and spaces separate them,
+ * and the year must have four digits so no century is guessed.
+ */
+export const parseNumericPlainDate = ({
+  locale,
+  text,
+}: {
+  readonly locale: Intl.LocalesArgument;
+  readonly text: string;
+}): Option.Option<Temporal.PlainDate> => {
+  const numbers = text
+    .trim()
+    .replace(/[.\s]+$/, "")
+    .split(/\s*[./-]\s*|\s+/);
+  if (numbers.length !== 3 || !numbers.every((value) => /^\d+$/.test(value))) {
+    return Option.none();
+  }
+
+  const order: readonly NumericDateField[] =
+    numbers[0]?.length === 4
+      ? ["year", "month", "day"]
+      : getNumericDateFieldOrder(locale);
+  const read = (field: NumericDateField) => numbers[order.indexOf(field)] ?? "";
+  const [year, month, day] = [read("year"), read("month"), read("day")];
+  if (year.length !== 4 || month.length > 2 || day.length > 2) {
+    return Option.none();
+  }
+
+  const yearMonth = { year: Number(year), month: Number(month) };
+  const dayOfMonth = Number(day);
+  return yearMonth.year >= 1 &&
+    yearMonth.month >= 1 &&
+    yearMonth.month <= 12 &&
+    dayOfMonth >= 1 &&
+    dayOfMonth <= Temporal.PlainYearMonth.from(yearMonth).daysInMonth
+    ? Option.some(Temporal.PlainDate.from({ ...yearMonth, day: dayOfMonth }))
+    : Option.none();
+};

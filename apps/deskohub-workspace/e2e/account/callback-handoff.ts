@@ -1,25 +1,46 @@
 import type * as Playwright from "@playwright/test";
+import { getAccountPath } from "@/features/account/routes";
+import type { Locale } from "@/features/i18n";
+import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   type CallbackDocumentReview,
   callbackDocumentReviewViewport,
   prepareCallbackDocumentReview,
 } from "./callback-document-review";
-import { isExactCallbackUrl } from "./callback-url";
+import { isExactCallbackUrl, signedInCallbackCopy } from "./callback-url";
 import {
   type AccountReviewDestination,
-  captureAccountReview,
+  type BoundedLocatorOperation,
+  type CallbackHandoffReviewTarget,
+  captureCallbackHandoffReview,
   persistCallbackDocumentReview,
+  showsSignedInCallbackCopy,
 } from "./review-screenshots";
 
-const accountPath = "/en-US/account";
-const callbackLoadingName = "Loading sign-in…";
+/**
+ * The signed-in callback a case expects to hand off: the locale it is shown
+ * in, where it leaves for, and the review capture it is photographed as.
+ */
+export type CallbackHandoffExpectation = {
+  readonly locale: Locale;
+  /** The same-origin path and query the callback carries as `return` and leaves for; absent means the account page `/${locale}/account`. */
+  readonly returnTo?: string;
+  readonly reviewTarget: CallbackHandoffReviewTarget;
+};
+
+/** The English callback of a sign-in without a return target, leaving for the account. */
+export const accountCallbackHandoff: CallbackHandoffExpectation = {
+  locale: "en-US",
+  reviewTarget: "callback-signed-in-desktop",
+};
+
 const callbackLoadingSelector =
   '[data-slot="auth-callback-loading"][role="status"][aria-busy="true"]';
 const callbackHandoffFailureMessage =
   "Account callback handoff verification failed";
 
-type AccountRouteHandler = Parameters<Playwright.Page["route"]>[1];
+type DestinationRouteHandler = Parameters<Playwright.Page["route"]>[1];
 
 const callbackHandoffFailure = () => new Error(callbackHandoffFailureMessage);
 
@@ -94,7 +115,7 @@ const isMainDocumentRequest = (request: Playwright.Request): boolean =>
  * POST, prefetches, subframe documents, plain fetches without `rsc`, and
  * contradictory shapes such as an RSC navigation document.
  */
-const isQualifyingAccountRequest = (
+const isQualifyingDestinationRequest = (
   request: Playwright.Request,
   page: Playwright.Page
 ): boolean => {
@@ -119,21 +140,44 @@ const isQualifyingAccountRequest = (
   );
 };
 
+/**
+ * The path and query a qualifying request leaves for. The client router's RSC
+ * fetch appends its `_rsc` cache key, which is not part of the destination.
+ */
+const requestDestination = (request: Playwright.Request): string => {
+  const url = new URL(request.url());
+  if (request.headers().rsc === undefined)
+    return `${url.pathname}${url.search}`;
+  const query = url.search
+    .slice(1)
+    .split("&")
+    .filter((parameter) => parameter !== "" && !parameter.startsWith("_rsc="))
+    .join("&");
+  return query === "" ? url.pathname : `${url.pathname}?${query}`;
+};
+
 const waitForCallbackLoading = async (
   page: Playwright.Page,
   baseOrigin: string,
+  expectation: CallbackHandoffExpectation,
   deadline: number,
   signal: AbortSignal
 ): Promise<Playwright.ElementHandle<HTMLElement | SVGElement>> => {
-  if (!isExactCallbackUrl(page, baseOrigin)) throw callbackHandoffFailure();
+  if (!isExactCallbackUrl(page, baseOrigin, expectation))
+    throw callbackHandoffFailure();
 
+  const bounded: BoundedLocatorOperation = (operation) =>
+    waitForCallbackOperation(
+      () => operation(remainingBrowserActionBudget(deadline)),
+      deadline,
+      signal
+    );
   const main = page.locator("main");
   const loadingCard = page.locator(callbackLoadingSelector);
   const loadingStatus = page.getByRole("status", {
     exact: true,
-    name: callbackLoadingName,
+    name: signedInCallbackCopy(expectation).label,
   });
-  const loadingSkeleton = loadingCard.locator('[data-slot="skeleton"]').first();
   const banner = page.getByRole("banner");
   const footer = page.getByRole("contentinfo");
 
@@ -163,15 +207,8 @@ const waitForCallbackLoading = async (
     deadline,
     signal
   );
-  await waitForCallbackOperation(
-    () =>
-      loadingSkeleton.waitFor({
-        state: "visible",
-        timeout: remainingBrowserActionBudget(deadline),
-      }),
-    deadline,
-    signal
-  );
+  if (!(await showsSignedInCallbackCopy(loadingCard, expectation, bounded)))
+    throw callbackHandoffFailure();
   await waitForCallbackOperation(
     () =>
       banner.waitFor({
@@ -214,7 +251,8 @@ const waitForCallbackLoading = async (
   ) {
     throw callbackHandoffFailure();
   }
-  if (!isExactCallbackUrl(page, baseOrigin)) throw callbackHandoffFailure();
+  if (!isExactCallbackUrl(page, baseOrigin, expectation))
+    throw callbackHandoffFailure();
 
   const loadingElement = await waitForCallbackOperation(
     () =>
@@ -244,26 +282,38 @@ const loadingElementIsVisible = async (
   });
 
 /**
- * Holds the first qualifying account request and verifies that the callback
- * document still shows its loading state when it hands off. The hold is E2E
- * evidence, so it runs on every pass; only the review screenshot and its
- * capture viewport depend on the review screenshot opt-in.
+ * Holds the first qualifying request for the callback's destination and
+ * verifies that the callback document still shows the expected signed-in
+ * card when it hands off. With a return target, only a request for exactly
+ * that path and query qualifies, which proves the query survived the
+ * callback. The hold is E2E evidence, so it runs on every pass; only the
+ * review screenshot and its capture viewport depend on the review screenshot
+ * opt-in.
  */
 export const withCallbackHandoffReview = async (
   page: Playwright.Page,
   destination: AccountReviewDestination,
-  runCase: () => Promise<void>
+  runCase: () => Promise<void>,
+  expectation: CallbackHandoffExpectation = accountCallbackHandoff
 ): Promise<void> => {
   const { baseUrl, screenshots: captureEnabled } = destination;
+  const { returnTo, reviewTarget } = expectation;
   let baseOrigin: string;
+  let destinationPath: string;
   try {
     baseOrigin = new URL(baseUrl).origin;
+    if (returnTo !== undefined && parseSameOriginPath(returnTo) !== returnTo)
+      throw callbackHandoffFailure();
+    destinationPath =
+      returnTo === undefined
+        ? getAccountPath(expectation.locale)
+        : new URL(returnTo, baseOrigin).pathname;
   } catch {
     throw callbackHandoffFailure();
   }
 
-  const accountRouteMatcher = (url: URL) =>
-    url.origin === baseOrigin && url.pathname === accountPath;
+  const destinationRouteMatcher = (url: URL) =>
+    url.origin === baseOrigin && url.pathname === destinationPath;
   const abortController = new AbortController();
   let observedQualifyingRequest = false;
   let reviewFailed = false;
@@ -303,10 +353,12 @@ export const withCallbackHandoffReview = async (
     return continuationPromise;
   };
 
-  const handleAccountRoute: AccountRouteHandler = (route, request) => {
+  const handleDestinationRoute: DestinationRouteHandler = (route, request) => {
     let isQualifying = false;
     try {
-      isQualifying = isQualifyingAccountRequest(request, page);
+      isQualifying =
+        isQualifyingDestinationRequest(request, page) &&
+        (returnTo === undefined || requestDestination(request) === returnTo);
     } catch {
       reviewFailed = true;
     }
@@ -341,10 +393,12 @@ export const withCallbackHandoffReview = async (
           await persistCallbackDocumentReview(
             page,
             destination,
+            reviewTarget,
+            expectation,
             pixels,
             () => {
               review.validate();
-              if (!isExactCallbackUrl(page, baseOrigin))
+              if (!isExactCallbackUrl(page, baseOrigin, expectation))
                 throw callbackHandoffFailure();
             },
             { deadline, signal: abortController.signal }
@@ -353,19 +407,21 @@ export const withCallbackHandoffReview = async (
           const loadingElement = await waitForCallbackLoading(
             page,
             baseOrigin,
+            expectation,
             deadline,
             abortController.signal
           );
-          await captureAccountReview(
+          await captureCallbackHandoffReview(
             page,
             destination,
-            "callback-loading-desktop",
+            reviewTarget,
+            expectation,
             {
               deadline,
               signal: abortController.signal,
             }
           );
-          if (!isExactCallbackUrl(page, baseOrigin))
+          if (!isExactCallbackUrl(page, baseOrigin, expectation))
             throw callbackHandoffFailure();
           if (
             !(await waitForCallbackOperation(
@@ -390,7 +446,7 @@ export const withCallbackHandoffReview = async (
   try {
     routeCleanupOwed = true;
     await waitForCallbackOperation(
-      () => page.route(accountRouteMatcher, handleAccountRoute),
+      () => page.route(destinationRouteMatcher, handleDestinationRoute),
       Date.now() + workspaceE2ETimeouts.browserAction
     );
     // The document review adapter is prepared before the case can navigate so
@@ -398,6 +454,7 @@ export const withCallbackHandoffReview = async (
     documentReview = await prepareCallbackDocumentReview(
       page,
       baseUrl,
+      expectation,
       captureEnabled ? { ...callbackDocumentReviewViewport } : null,
       {
         deadline: Date.now() + workspaceE2ETimeouts.browserAction,
@@ -419,7 +476,7 @@ export const withCallbackHandoffReview = async (
     if (routeCleanupOwed) {
       try {
         await waitForCallbackOperation(
-          () => page.unroute(accountRouteMatcher, handleAccountRoute),
+          () => page.unroute(destinationRouteMatcher, handleDestinationRoute),
           sharedCleanupDeadline
         );
       } catch {

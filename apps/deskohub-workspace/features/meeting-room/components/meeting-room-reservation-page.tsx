@@ -12,11 +12,13 @@ import {
   getMeetingRoomReservationDefaultValuesFromSearchParams,
   getMeetingRoomRestoredReservationValues,
 } from "@/features/reservation/meeting-room-reservation-checkout-query";
+import type { ReservationCheckoutContact } from "@/features/reservation/reservation-checkout-contact";
 import { getReservationCustomerQueryMode } from "@/features/reservation/reservation-checkout-query";
 import {
   type CustomerLastReservationForKind,
-  getReservationExistingCustomerForm,
-  type ReservationExistingCustomer,
+  getCheckoutAccountLastReservation,
+  getReservationCheckoutCustomerForm,
+  type ReservationCheckoutAccount,
 } from "@/features/reservation/reservation-existing-customer";
 import { getMeetingRoomPageOfferings } from "@/features/reservation/reservation-page-offerings";
 import { meetingRoomReservationPath } from "@/features/reservation/routes";
@@ -66,7 +68,8 @@ const getMeetingRoomQueryValues = async (
 
 export async function renderMeetingRoomReservationContent({
   checkoutSessionId,
-  existingCustomer,
+  checkoutAccount,
+  checkoutContact,
   initialReservation,
   locale,
   replacementToken,
@@ -74,7 +77,8 @@ export async function renderMeetingRoomReservationContent({
   submittedCode,
 }: {
   readonly checkoutSessionId?: CheckoutSessionId;
-  readonly existingCustomer?: ReservationExistingCustomer<"meeting-room">;
+  readonly checkoutAccount: ReservationCheckoutAccount<"meeting-room">;
+  readonly checkoutContact?: ReservationCheckoutContact;
   readonly initialReservation?: NormalizedMeetingRoomReservationOrder;
   readonly locale: Locale;
   readonly replacementToken?: string;
@@ -90,20 +94,18 @@ export async function renderMeetingRoomReservationContent({
     restoredInitialValues ??
     (await getMeetingRoomQueryValues(
       initialReservation ? {} : searchParams,
-      existingCustomer?.lastReservation
+      getCheckoutAccountLastReservation(checkoutAccount)
     ));
-  const { existingCustomer: existingCustomerForm, initialValues } =
-    existingCustomer
-      ? getReservationExistingCustomerForm({
-          contact: existingCustomer.contact,
-          hasMarketingConsent: existingCustomer.hasMarketingConsent,
-          queryMode: initialReservation
-            ? undefined
-            : getReservationCustomerQueryMode(searchParams),
-          restored: Boolean(restoredInitialValues),
-          values: restoredOrQueryValues,
-        })
-      : { existingCustomer: undefined, initialValues: restoredOrQueryValues };
+  const { checkoutCustomer, initialValues } =
+    getReservationCheckoutCustomerForm({
+      account: checkoutAccount,
+      checkoutContact,
+      queryMode: initialReservation
+        ? undefined
+        : getReservationCustomerQueryMode(searchParams),
+      restored: Boolean(restoredInitialValues),
+      values: restoredOrQueryValues,
+    });
   const initialAvailabilityQuery =
     getMeetingRoomSelectionAvailabilityQuery(initialValues);
   const [initialAdvertisedPrices, initialAvailability] = await Promise.all([
@@ -138,7 +140,7 @@ export async function renderMeetingRoomReservationContent({
       />
       <MeetingRoomReservationForm
         checkoutSessionId={checkoutSessionId}
-        existingCustomer={existingCustomerForm}
+        checkoutCustomer={checkoutCustomer}
         initialAdvertisedPrices={initialAdvertisedPrices}
         initialAvailability={initialAvailability}
         initialReservation={

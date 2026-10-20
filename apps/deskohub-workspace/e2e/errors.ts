@@ -1,5 +1,5 @@
 import { Data, Effect } from "effect";
-import { redact } from "./runtime";
+import { redact, redactDiagnosticText } from "./runtime";
 
 const nexiWebhookDiagnosticCodes = [
   "nexi_webhook_parse_failed",
@@ -375,6 +375,19 @@ const formatUnknownFailure = (cause: unknown, seen: Set<unknown>): string => {
 
 const getCauseMessage = (cause: unknown) =>
   cause instanceof Error ? cause.message : String(cause);
+
+/**
+ * The first line of a browser failure, with registered secrets, URLs, and
+ * token-like runs redacted, so a boundary that keeps Playwright messages out
+ * of its reports can still say which failure it met.
+ */
+export const describeBrowserFailure = (cause: unknown) => {
+  const name = cause instanceof Error ? cause.name : "failure";
+  const [firstLine = ""] = redactDiagnosticText(getCauseMessage(cause)).split(
+    "\n"
+  );
+  return `${name}: ${firstLine.slice(0, 200)}`;
+};
 
 const indent = (value: string) =>
   value

@@ -9967,7 +9967,7 @@ var runMain = /* @__PURE__ */ makeRunMain(({
   process.on("SIGTERM", onSigint);
 });
 
-// ../../node_modules/.bun/@effect+platform-node@4.0.0-beta.85+b7ec1a65732bfd14/node_modules/@effect/platform-node/dist/NodeRuntime.js
+// ../../node_modules/.bun/@effect+platform-node@4.0.0-beta.85+2edc8a5f9182791f/node_modules/@effect/platform-node/dist/NodeRuntime.js
 var runMain2 = runMain;
 // ../../node_modules/.bun/effect@4.0.0-beta.85/node_modules/effect/dist/Fiber.js
 var TypeId8 = `~effect/Fiber/${version}`;

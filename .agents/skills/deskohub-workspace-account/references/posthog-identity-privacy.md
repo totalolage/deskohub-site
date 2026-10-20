@@ -114,10 +114,9 @@ non-production traffic apart:
   Customer contact data reaches PostHog only as rows of the Dotypos customer
   warehouse table (see below), joined to persons at query time, never as
   person or event properties.
-- Guest checkouts create or reuse a Dotypos customer found by the entered
-  email, so a guest browser isn't linked to it: anyone can type another
-  customer's email, and linking would need a person profile for an
-  `identified_only` anonymous visitor. Join guest activity through the
+- Booking for someone else creates or reuses a Dotypos customer found by the
+  typed email, so the booker's browser isn't linked to it: anyone can type
+  another customer's email. Join that customer's activity through the
   reservation ID on server events and `workspace_reservations` instead.
 - Server events set `$process_person_profile: false` and may keep the
   reservation and payment operational IDs that existing durable metrics need.

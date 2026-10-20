@@ -6,6 +6,10 @@ import {
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
+import {
+  type AudienceCountCondition,
+  audienceAttributeCatalogue,
+} from "@deskohub/workspace-admin-api";
 import { Effect, Option } from "effect";
 import {
   customerAccountLinks,
@@ -15,15 +19,28 @@ import {
 import { authUser } from "@/db/schema/auth";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { type AudienceCondition, audienceFactKey } from "../audience-filter";
+import {
+  type AudienceCondition,
+  audienceFactKey,
+  countFactRequest,
+} from "../audience-filter";
+import type { CampaignId } from "../campaign-identifiers";
 import type { DatePeriodBounds } from "../date-period";
 import { evaluateAudienceFilter } from "./audience-evaluation";
+import { audienceEvaluationAt } from "./audience-evaluation-context";
 import {
   CampaignCandidateRepository,
   type CampaignReservationSelection,
 } from "./campaign-candidate.repository";
+import {
+  deleteAutomatedCampaigns,
+  seedAutomatedCampaign,
+  seedAutomatedSend,
+  seedAutomationVersion,
+} from "./email-campaigns.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
+const context = audienceEvaluationAt(Temporal.Now.instant());
 
 const run = crypto.randomUUID();
 const customerId = (role: string) =>
@@ -32,14 +49,24 @@ const reserved = customerId("reserved");
 const abandoned = customerId("abandoned");
 const unfulfilled = customerId("unfulfilled");
 const linked = customerId("linked");
+const unverifiedLinked = customerId("unverified-linked");
 const consented = customerId("consented");
 const withdrawn = customerId("withdrawn");
-const seeded = [reserved, abandoned, unfulfilled, linked, consented, withdrawn];
+const seeded = [
+  reserved,
+  abandoned,
+  unfulfilled,
+  linked,
+  unverifiedLinked,
+  consented,
+  withdrawn,
+];
 const visitedReservation = DotyposReservationIdSchema.make(`booking-${run}`);
 const abandonedReservation = DotyposReservationIdSchema.make(
   `abandoned-${run}`
 );
 const accountId = `campaign-account-${run}`;
+const unverifiedAccountId = `campaign-unverified-account-${run}`;
 /** 23:50 on March 10 in Prague. */
 const createdAt = Temporal.Instant.from("2026-03-10T22:50:00Z");
 /** 00:30 on March 11 in Prague. */
@@ -136,14 +163,42 @@ describe.skipIf(!testDatabase)(
               locale: "en-US",
               createdAt,
             },
+            {
+              checkoutAttemptKey: checkoutAttemptKeySchema.make(
+                `unverified-linked-${run}`
+              ),
+              dotyposCustomerId: unverifiedLinked,
+              dotyposReservationId: DotyposReservationIdSchema.make(
+                `unverified-linked-${run}`
+              ),
+              reservationState: "confirmed",
+              reservationConfirmedAt: confirmedAt,
+              paymentState: "paid",
+              paidAt: confirmedAt,
+              fulfillmentState: "not_started",
+              reservationDetails,
+              locale: "en-US",
+              createdAt,
+            },
           ]),
-          db.insert(authUser).values({
-            id: accountId,
-            name: "Campaign test",
-            email: testEmailAddress(`campaign-${run}`),
-            locale: "en-US",
-            createdAt: new Date(accountCreatedAt.epochMilliseconds),
-          }),
+          db.insert(authUser).values([
+            {
+              id: accountId,
+              name: "Campaign test",
+              email: testEmailAddress(`campaign-${run}`),
+              emailVerified: true,
+              locale: "en-US",
+              createdAt: new Date(accountCreatedAt.epochMilliseconds),
+            },
+            {
+              id: unverifiedAccountId,
+              name: "Unverified campaign test",
+              email: testEmailAddress(`campaign-unverified-${run}`),
+              emailVerified: false,
+              locale: "en-US",
+              createdAt: new Date(accountCreatedAt.epochMilliseconds),
+            },
+          ]),
           db.insert(customerMarketingConsents).values([
             {
               dotyposCustomerId: consented,
@@ -162,9 +217,13 @@ describe.skipIf(!testDatabase)(
         ])
       );
       await Effect.runPromise(
-        db
-          .insert(customerAccountLinks)
-          .values({ customerAccountId: accountId, dotyposCustomerId: linked })
+        db.insert(customerAccountLinks).values([
+          { customerAccountId: accountId, dotyposCustomerId: linked },
+          {
+            customerAccountId: unverifiedAccountId,
+            dotyposCustomerId: unverifiedLinked,
+          },
+        ])
       );
       await seedCampaignDeliveries();
     });
@@ -228,7 +287,10 @@ describe.skipIf(!testDatabase)(
       );
     };
 
+    const automatedCampaignIds: CampaignId[] = [];
+
     afterAll(async () => {
+      await deleteAutomatedCampaigns(db, automatedCampaignIds);
       await testDatabase.pool.query(
         "delete from email_campaign_sends where id = any($1)",
         [[marketingSend, operationalSend]]
@@ -245,9 +307,10 @@ describe.skipIf(!testDatabase)(
         "delete from customer_marketing_consents where dotypos_customer_id = any($1)",
         [seeded]
       );
-      await testDatabase.pool.query('delete from auth."user" where id = $1', [
-        accountId,
-      ]);
+      await testDatabase.pool.query(
+        'delete from auth."user" where id = any($1)',
+        [[accountId, unverifiedAccountId]]
+      );
     });
 
     const repository = <A, E>(
@@ -277,6 +340,39 @@ describe.skipIf(!testDatabase)(
       ).toEqual([consented]);
     });
 
+    test("lists only the given customers, with the same pool rules", async () => {
+      const listed = async (
+        purpose: "marketing" | "operational",
+        ids: readonly (typeof seeded)[number][]
+      ) =>
+        (
+          await repository((candidates) =>
+            candidates.listCandidates({ purpose, ids })
+          )
+        )
+          .map(({ dotyposCustomerId }) => dotyposCustomerId)
+          .sort();
+      expect(
+        await listed("operational", [reserved, linked, withdrawn])
+      ).toEqual([reserved, linked, withdrawn].sort());
+      expect(await listed("marketing", [consented, withdrawn])).toEqual([
+        consented,
+      ]);
+      expect(await listed("operational", [])).toEqual([]);
+      const operational = await seededCandidates("operational");
+      expect(
+        (
+          await repository((candidates) =>
+            candidates.listCandidates({ purpose: "operational", ids: [linked] })
+          )
+        )[0]
+      ).toEqual(
+        operational.find(
+          ({ dotyposCustomerId }) => dotyposCustomerId === linked
+        )
+      );
+    });
+
     test("collects every known customer with their locale sources", async () => {
       const candidates = await seededCandidates("operational");
       expect(candidates).toEqual(
@@ -297,13 +393,21 @@ describe.skipIf(!testDatabase)(
             latestReservationAt: null,
             consentLocale: null,
           },
+          {
+            dotyposCustomerId: unverifiedLinked,
+            hasAccount: false,
+            accountLocale: null,
+            latestReservationLocale: "en-US",
+            latestReservationAt: createdAt,
+            consentLocale: null,
+          },
           expect.objectContaining({
             dotyposCustomerId: withdrawn,
             consentLocale: "en-US",
           }),
         ])
       );
-      expect(candidates).toHaveLength(6);
+      expect(candidates).toHaveLength(7);
     });
 
     const reservationCounts = (selection: CampaignReservationSelection) =>
@@ -341,10 +445,13 @@ describe.skipIf(!testDatabase)(
       const facts = {
         counts: new Map([
           [
-            audienceFactKey({
-              attribute: "reservationCount",
-              params: condition("gt").params,
-            } as never),
+            audienceFactKey(
+              countFactRequest(
+                audienceAttributeCatalogue.reservationCount,
+                condition("gt") as AudienceCountCondition,
+                context
+              )
+            ),
             await reservationCounts({ booked: {} }),
           ],
         ]),
@@ -358,6 +465,7 @@ describe.skipIf(!testDatabase)(
             locale: "en-US",
             hasAccount: false,
           },
+          context,
           facts,
           profile: Option.none(),
         });
@@ -452,6 +560,48 @@ describe.skipIf(!testDatabase)(
       ).toEqual({ [reserved]: 1 });
     });
 
+    test("counts an automated send's recipients under its version's purpose", async () => {
+      const recipient = customerId("automated-recipient");
+      // The campaign's own draft is operational; its published version is
+      // marketing, and that is what its sends were mailed as.
+      const campaignId = await seedAutomatedCampaign(db, {
+        purpose: "operational",
+      });
+      automatedCampaignIds.push(campaignId);
+      const versionId = await seedAutomationVersion(db, {
+        campaignId,
+        purpose: "marketing",
+      });
+      for (const status of ["delivered", "unconfirmed", "failed"] as const) {
+        await seedAutomatedSend(db, {
+          campaignId,
+          versionId,
+          purpose: "marketing",
+          recipients: [{ dotyposCustomerId: recipient, status }],
+        });
+      }
+      const received = async (query: {
+        readonly purpose?: "marketing" | "operational";
+        readonly campaignId?: CampaignId;
+      }) =>
+        Object.fromEntries(
+          await repository((candidates) =>
+            candidates.countReceivedCampaignEmails({
+              ...query,
+              dispatched: {},
+              customers: [recipient],
+            })
+          )
+        );
+
+      expect(await received({ purpose: "marketing" })).toEqual({
+        [recipient]: 2,
+      });
+      expect(await received({ purpose: "operational" })).toEqual({});
+      expect(await received({})).toEqual({ [recipient]: 2 });
+      expect(await received({ campaignId })).toEqual({ [recipient]: 2 });
+    });
+
     test("dates an email by the current attempt's batch, or by its status without one", async () => {
       const october = Temporal.Instant.from("2026-10-01T12:00:00Z");
       expect(
@@ -477,6 +627,8 @@ describe.skipIf(!testDatabase)(
       expect(before.withValue.has(linked)).toBe(true);
       expect(before.inPeriod.has(linked)).toBe(false);
       expect(before.withValue.has(reserved)).toBe(false);
+      expect(before.withValue.has(unverifiedLinked)).toBe(false);
+      expect(before.inPeriod.has(unverifiedLinked)).toBe(false);
     });
 
     test("finds when the earliest reservation was created", async () => {

@@ -30,7 +30,10 @@ import {
   reuseCoworkCheckoutContact,
   selectCoworkDates,
 } from "../checkout/data";
-import { prepareReservationSelection } from "../checkout/payment";
+import {
+  continueToReservationContactStep,
+  prepareReservationSelection,
+} from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -287,9 +290,25 @@ const assertCoworkUrlState = (
       id: "select-open-space-date",
       timeoutMs: config.timeouts.uiTransition,
     });
+    // The contact step keeps the selection URL; typing there and returning
+    // must not write the contact into it.
+    yield* runStep({
+      execute: continueToReservationContactStep({
+        run,
+        session,
+        timeouts: config.timeouts,
+      }),
+      id: "continue-to-cowork-contact",
+      timeoutMs: config.timeouts.browserAction,
+    });
     yield* runStep({
       execute: typeContact(context, openSpaceData),
       id: "type-cowork-contact",
+      timeoutMs: config.timeouts.browserAction,
+    });
+    yield* runStep({
+      execute: returnToReservationSelection(context),
+      id: "return-to-cowork-selection",
       timeoutMs: config.timeouts.browserAction,
     });
     yield* runStep({
@@ -593,6 +612,39 @@ const typeContact = (
     });
   });
 
+const selectionSummaryChangeSelector =
+  'section[aria-labelledby="reservation-selection-summary-heading"] button';
+
+// The summary's Change button returns to the selection step in place.
+const returnToReservationSelection = ({
+  config,
+  run,
+  session,
+}: UrlStateCaseContext): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const options = { timeoutMs: config.timeouts.browserAction };
+    yield* waitForBrowserReactHandler(
+      run,
+      session,
+      selectionSummaryChangeSelector,
+      "onClick",
+      options
+    );
+    yield* clickBrowserElement(
+      run,
+      session,
+      selectionSummaryChangeSelector,
+      options
+    );
+    yield* waitForBrowserCondition(
+      run,
+      session,
+      "reservation selection step",
+      `document.querySelector('#reservation-continue') !== null`,
+      options
+    );
+  });
+
 const switchCoffeeOn = ({
   config,
   run,
@@ -752,7 +804,7 @@ type OfficeSelectionDisplay = {
 
 /**
  * Waits for the office access and selected-seat prices to be ready, then
- * reads them with the start date field's visible text.
+ * reads them with the start date field's committed value.
  */
 const readOfficeSelectionDisplay = (
   { config, run, session }: UrlStateCaseContext,
@@ -762,8 +814,8 @@ const readOfficeSelectionDisplay = (
     const elements = `
   const basePrice = document.querySelector('[data-office-base-price]');
   const seatPrice = document.querySelector(${JSON.stringify(officeSeatPriceSelector(seats))});
-  const startDate = document.querySelector('button[aria-label^="Office reservation start date"]');
-  const submit = document.querySelector('#reservation-submit');
+  const startDate = document.querySelector('input[name="startsOn"]');
+  const submit = document.querySelector('#reservation-continue');
   const text = (element) => (element?.textContent ?? '').replace(/\\s+/g, ' ').trim();
 `;
     yield* waitForBrowserCondition(
@@ -777,7 +829,7 @@ const readOfficeSelectionDisplay = (
     basePrice.querySelector('[data-slot="skeleton"]') === null &&
     seatPrice instanceof HTMLElement &&
     seatPrice.dataset.reservationTypePriceReady === 'true' &&
-    startDate instanceof HTMLButtonElement &&
+    startDate instanceof HTMLInputElement &&
     submit instanceof HTMLButtonElement &&
     submit.dataset.reservationPriceLoading === 'false' &&
     submit.dataset.reservationPriceError !== 'true';
@@ -795,7 +847,7 @@ const readOfficeSelectionDisplay = (
   return {
     basePrice: text(basePrice),
     seatPrice: text(seatPrice),
-    startDate: text(startDate),
+    startDate: startDate.value,
   };
 })()
 `,

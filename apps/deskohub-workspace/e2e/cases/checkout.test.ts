@@ -282,8 +282,8 @@ test("runs the post-fulfillment paths only for an opted-in case, after every ful
   expect(defaultSteps).not.toContain(
     "mark-fulfillment-failed-for-support-path"
   );
-  // Cookie isolation starts from the support path's failed-fulfillment state.
-  expect(optedInSteps.indexOf("assert-reservation-cookie-isolation")).toBe(
+  // Status isolation starts from the support path's failed-fulfillment state.
+  expect(optedInSteps.indexOf("assert-reservation-status-isolation")).toBe(
     optedInSteps.length - 1
   );
   expect(

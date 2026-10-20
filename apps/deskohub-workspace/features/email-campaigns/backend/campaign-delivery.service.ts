@@ -13,6 +13,7 @@ import {
   eq,
   gt,
   inArray,
+  isNotNull,
   isNull,
   lte,
   notExists,
@@ -34,8 +35,8 @@ import {
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
-  type CampaignRow,
   customerMarketingConsents,
+  emailCampaignAutomationVersions,
   emailCampaignDeliveryBatches,
   emailCampaignRecipients,
   emailCampaignSends,
@@ -45,7 +46,14 @@ import { type Locale, locales } from "@/features/i18n";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { currentInstant } from "@/shared/utils/temporal";
-import type { CampaignLocaleContent } from "../body/campaign-content";
+import type { AutomationVersionId } from "../automation/automation-identifiers";
+import { AutomationRunSettlement } from "../automation/backend/automation-run-settlement.service";
+import type {
+  CampaignLocaleContent,
+  CampaignLocalizedContent,
+  CampaignPurpose,
+  CampaignTemplateKey,
+} from "../body/campaign-content";
 import {
   CampaignEmailFooter,
   renderCampaignEmail,
@@ -57,12 +65,13 @@ import {
   campaignDeliveryPayloadHash,
 } from "../campaign-delivery-batches";
 import { campaignDeliveryMessage } from "../campaign-email-message";
-import type { CampaignSendId } from "../campaign-identifiers";
+import type { CampaignId, CampaignSendId } from "../campaign-identifiers";
 import type { CampaignRecipientSkipReason } from "../campaign-states";
 import { campaignFallbackLocale } from "../recipient-locale";
 import { CampaignEmailConfig } from "./campaign-email.config";
 import { reachableCampaignEmail } from "./campaign-recipient.service";
 import type { CampaignDeliveryAttempt } from "./campaign-send-queue.service";
+import { sendAutomationVersion } from "./campaign-send-selection";
 import { CampaignUnsubscribeService } from "./campaign-unsubscribe.service";
 
 /**
@@ -109,17 +118,19 @@ class UnreplayableBatch extends Data.TaggedError("UnreplayableBatch")<{
 }> {}
 
 /**
- * What delivering an attempt left the campaign as. `stale` is a message for
- * an attempt that is no longer current or a campaign that is no longer
+ * What delivering an attempt left the send as. `stale` is a message for an
+ * attempt that is no longer current or a one-off campaign that is no longer
  * Sending.
  */
 type CampaignDeliveryOutcome = "sent" | "failed" | "stale";
 
 export interface ICampaignDeliveryService {
   /**
-   * Delivers one attempt of a frozen send in provider batches, then marks
-   * the campaign Sent, or Failed when any recipient wasn't delivered. One
-   * run at a time owns the send. Each recipient's email (and, for
+   * Delivers one attempt of a frozen send in provider batches. A one-off
+   * send then marks its campaign Sent, or Failed when any recipient wasn't
+   * delivered; an automated send completes and settles its runs, leaving
+   * its campaign's status to the automation's lifecycle. One run at a time
+   * owns the send. Each recipient's email (and, for
    * marketing, consent) is re-read first; one who lost it, or who is
    * outside the email test domain outside production, is `skipped`. A batch
    * whose outcome is unknown is replayed with its identical payload under
@@ -134,9 +145,23 @@ export interface ICampaignDeliveryService {
   >;
 }
 
+/**
+ * The campaign email an attempt mails: an automated send's version pinned
+ * its purpose, template and content, while a one-off send mails its
+ * campaign's.
+ */
+type DeliveredCampaign = {
+  readonly id: CampaignId;
+  /** Null for a one-off send. */
+  readonly automationVersionId: AutomationVersionId | null;
+  readonly purpose: CampaignPurpose;
+  readonly templateKey: CampaignTemplateKey;
+  readonly content: CampaignLocalizedContent;
+};
+
 /** The current attempt as one run that holds the send's lease delivers it. */
 type AttemptContext = CampaignDeliveryAttempt & {
-  readonly campaign: CampaignRow;
+  readonly campaign: DeliveredCampaign;
   readonly startedAt: Temporal.Instant;
   readonly leaseId: string;
 };
@@ -199,27 +224,53 @@ export class CampaignDeliveryService extends Context.Service<
       const email = yield* EmailServiceTag;
       const config = yield* CampaignEmailConfig;
       const unsubscribe = yield* CampaignUnsubscribeService;
+      const runSettlement = yield* AutomationRunSettlement;
 
       type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+      /**
+       * The current attempt's campaign email. A one-off campaign must still
+       * be Sending. An automated send must not be complete yet, and its
+       * persisted batch settles whatever its campaign's status.
+       */
       const findCurrentAttempt = (attempt: CampaignDeliveryAttempt) =>
         db
-          .select({ campaign: emailCampaigns })
+          .select({
+            campaign: {
+              id: emailCampaigns.id,
+              purpose: emailCampaigns.purpose,
+              templateKey: emailCampaigns.templateKey,
+              content: emailCampaigns.content,
+            },
+            version: {
+              id: emailCampaignAutomationVersions.id,
+              purpose: emailCampaignAutomationVersions.purpose,
+              templateKey: emailCampaignAutomationVersions.templateKey,
+              content: emailCampaignAutomationVersions.content,
+            },
+          })
           .from(emailCampaignSends)
           .innerJoin(
             emailCampaigns,
             eq(emailCampaigns.id, emailCampaignSends.campaignId)
           )
+          .leftJoin(emailCampaignAutomationVersions, sendAutomationVersion)
           .where(
             and(
               eq(emailCampaignSends.id, attempt.sendId),
               eq(emailCampaignSends.deliveryAttempt, attempt.deliveryAttempt),
-              eq(emailCampaigns.status, "sending")
+              or(
+                eq(emailCampaigns.status, "sending"),
+                and(
+                  isNotNull(emailCampaignSends.automationVersionId),
+                  isNull(emailCampaignSends.completedAt)
+                )
+              )
             )
           )
           .pipe(
             Effect.map(([row]) =>
-              Option.fromNullishOr(row).pipe(Option.map((r) => r.campaign))
+              Option.fromNullishOr(row).pipe(Option.map(deliveredCampaign))
             )
           );
 
@@ -438,7 +489,7 @@ export class CampaignDeliveryService extends Context.Service<
 
       /** The recipients who may receive the campaign's purpose of email. */
       const loadConsenting = (input: {
-        readonly campaign: CampaignRow;
+        readonly campaign: DeliveredCampaign;
         readonly customerIds: readonly DotyposCustomerId[];
       }) =>
         Match.value(input.campaign.purpose).pipe(
@@ -1131,14 +1182,13 @@ export class CampaignDeliveryService extends Context.Service<
           )
           .pipe(Effect.map(([row]) => row?.count ?? 0));
 
-      const recordCampaignStatus = (
-        tx: Transaction,
-        input: {
-          readonly context: AttemptContext;
-          readonly status: "sent" | "failed";
-          readonly now: Temporal.Instant;
-        }
-      ) =>
+      type SendSettlement = {
+        readonly context: AttemptContext;
+        readonly status: "sent" | "failed";
+        readonly now: Temporal.Instant;
+      };
+
+      const recordCampaignStatus = (tx: Transaction, input: SendSettlement) =>
         tx
           .update(emailCampaigns)
           .set({ status: input.status, updatedAt: input.now })
@@ -1159,7 +1209,31 @@ export class CampaignDeliveryService extends Context.Service<
             )
           );
 
-      /** Marks the campaign Sent, or Failed when anyone wasn't delivered. */
+      /**
+       * An automated send is never retried, so it completes however its
+       * batch settled, and its runs end with it. Its campaign's status
+       * belongs to the automation's lifecycle and stays as it is.
+       */
+      const completeAutomatedSend = (tx: Transaction, input: SendSettlement) =>
+        tx
+          .update(emailCampaignSends)
+          .set({ completedAt: input.now })
+          .where(eq(emailCampaignSends.id, input.context.sendId))
+          .pipe(
+            Effect.andThen(
+              runSettlement.settle(tx, { sendId: input.context.sendId })
+            )
+          );
+
+      const recordSendOutcome = (tx: Transaction, input: SendSettlement) =>
+        input.context.campaign.automationVersionId === null
+          ? recordCampaignStatus(tx, input)
+          : completeAutomatedSend(tx, input);
+
+      /**
+       * Settles the send: a one-off campaign becomes Sent, or Failed when
+       * anyone wasn't delivered; an automated send completes.
+       */
       const settle = (context: AttemptContext) =>
         currentInstant.pipe(
           Effect.flatMap((now) =>
@@ -1169,7 +1243,7 @@ export class CampaignDeliveryService extends Context.Service<
                   undelivered > 0 ? ("failed" as const) : ("sent" as const)
                 ),
                 Effect.tap((status) =>
-                  recordCampaignStatus(tx, { context, status, now })
+                  recordSendOutcome(tx, { context, status, now })
                 )
               )
             )
@@ -1189,7 +1263,7 @@ export class CampaignDeliveryService extends Context.Service<
        */
       const deliverLeased = (
         input: CampaignDeliveryAttempt & {
-          readonly campaign: CampaignRow;
+          readonly campaign: DeliveredCampaign;
           readonly startedAt: Temporal.Instant;
         }
       ) =>
@@ -1233,6 +1307,7 @@ export class CampaignDeliveryService extends Context.Service<
       Layer.mergeAll(
         CampaignEmailConfig.Default,
         CampaignUnsubscribeService.Live,
+        AutomationRunSettlement.Default,
         WorkspaceDotyposLayer,
         EmailServiceTag.RecipientRouted.pipe(Layer.provide(EmailConfigLayer))
       )
@@ -1254,6 +1329,24 @@ const requestedDeliveryBatch = (
   dotyposCustomerIds: requested.dotyposCustomerIds,
 });
 
+type CampaignEmail = Pick<
+  DeliveredCampaign,
+  "purpose" | "templateKey" | "content"
+>;
+
+const deliveredCampaign = ({
+  campaign,
+  version,
+}: {
+  readonly campaign: CampaignEmail & { readonly id: CampaignId };
+  readonly version:
+    | (CampaignEmail & { readonly id: AutomationVersionId })
+    | null;
+}): DeliveredCampaign =>
+  version === null
+    ? { ...campaign, automationVersionId: null }
+    : { ...version, id: campaign.id, automationVersionId: version.id };
+
 const incomplete = (attempt: CampaignDeliveryAttempt) =>
   Effect.fail(
     new CampaignDeliveryIncomplete({
@@ -1267,7 +1360,7 @@ const incomplete = (attempt: CampaignDeliveryAttempt) =>
  * campaign's only locale (an audience restricted to it).
  */
 const campaignContentFor = (
-  campaign: CampaignRow,
+  campaign: DeliveredCampaign,
   locale: Locale
 ): { readonly locale: Locale; readonly content: CampaignLocaleContent } => {
   const candidates = [locale, campaignFallbackLocale, ...localesOf(campaign)];
@@ -1275,5 +1368,5 @@ const campaignContentFor = (
   return { locale: chosen!, content: campaign.content[chosen!]! };
 };
 
-const localesOf = (campaign: CampaignRow) =>
+const localesOf = (campaign: DeliveredCampaign) =>
   locales.filter((locale) => campaign.content[locale] !== undefined);

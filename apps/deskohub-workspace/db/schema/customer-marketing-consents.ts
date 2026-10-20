@@ -2,6 +2,10 @@ import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { sql } from "drizzle-orm";
 import { check, pgTable, text } from "drizzle-orm/pg-core";
 import type { Locale } from "@/features/i18n";
+import {
+  type MarketingConsentGrantSource,
+  marketingConsentGrantSources,
+} from "@/features/legal/marketing-consent-grant-source";
 import inlangSettings from "../../project.inlang/settings.json" with {
   type: "json",
 };
@@ -18,6 +22,11 @@ export const customerMarketingConsents = pgTable(
     locale: text("locale").notNull().$type<Locale>(),
     grantedAt: instant("granted_at").notNull(),
     withdrawnAt: instant("withdrawn_at"),
+    /**
+     * Where the current grant was given. NULL marks grants recorded before the
+     * source was persisted, whose source is unknown.
+     */
+    grantSource: text("grant_source").$type<MarketingConsentGrantSource>(),
   },
   (t) => [
     check(
@@ -31,6 +40,10 @@ export const customerMarketingConsents = pgTable(
     check(
       "customer_marketing_consents_withdrawal_check",
       sql`${t.withdrawnAt} is null or ${t.withdrawnAt} >= ${t.grantedAt}`
+    ),
+    check(
+      "customer_marketing_consents_grant_source_check",
+      sql`${t.grantSource} is null or ${t.grantSource} in (${quotedSqlList(marketingConsentGrantSources)})`
     ),
   ]
 );

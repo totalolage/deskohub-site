@@ -1,5 +1,6 @@
 import { type ReactNode, Suspense } from "react";
 import { env } from "@/env";
+import { SiteToolsWhenEnabled } from "@/features/agent-tools/site-tools-when-enabled";
 import { ConsentAwareAnalytics } from "@/features/cookie-consent/components/consent-aware-analytics";
 import { CookieConsentProvider } from "@/features/cookie-consent/components/cookie-consent-provider";
 import { DeferredTagManager } from "@/features/cookie-consent/components/deferred-tag-manager";
@@ -30,6 +31,7 @@ export default async function SiteLayout({
       <PostHogProvider>
         <CookieConsentProvider locale={locale} />
         <RememberSharedReferralCodeWhenEnabled />
+        <SiteToolsWhenEnabled locale={locale} />
         <Suspense fallback={null}>
           <ConsentAwareAnalytics
             featureFlagOverrides={postHogRuntimeConfig.featureFlagOverrides}

@@ -29,7 +29,7 @@ For every open PostHog issue with a recorded worker thread, leave it alone when 
 
 - Its latest human-needed question has no consumed response.
 - Its worker has a pending interaction.
-- It has a linked open pull request with auto-merge enabled, and GitHub reports that pull request mergeable and current with `main`, every required check succeeds, and no review is unresolved.
+- It has a linked open pull request with auto-merge enabled, and GitHub reports that pull request mergeable, every required check succeeds, and no review is unresolved.
 
 A `<!-- posthog-agent:worker-complete:<current-head-sha> -->` marker is current only when it matches the exact pull request head and those merge-readiness conditions still hold.
 

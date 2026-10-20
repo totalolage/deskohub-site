@@ -292,6 +292,7 @@ function ContactFormBody({
             error={formState.errors.phone?.message ?? state.fieldErrors?.phone}
             autoComplete="tel"
             maxLength={20}
+            type="tel"
           />
         </div>
 

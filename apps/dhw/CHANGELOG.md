@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.22.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.21.0...dhw-v1.22.0) (2026-10-20)
+
+
+### Features
+
+* **account:** link column, eager customer accounts and account backfill ([#682](https://github.com/totalolage/deskohub-site/issues/682) release A) ([c763766](https://github.com/totalolage/deskohub-site/commit/c7637666798d73dd21000931dd2902a67d6d2c97))
+* **dhw:** add accounts backfill command ([6e76dbc](https://github.com/totalolage/deskohub-site/commit/6e76dbc65fc1f6363fd19b54f50f6a2e90e1716a))
+* **dhw:** label the account backfill's deleted-account step ([15776e2](https://github.com/totalolage/deskohub-site/commit/15776e2e8ce6c925ac343b02d403ea0ffaa1a2ae))
+
+## [1.21.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.20.0...dhw-v1.21.0) (2026-10-19)
+
+
+### Features
+
+* **workspace:** let saved audiences count one campaign's emails, first visits and "any time so far" ([194a13f](https://github.com/totalolage/deskohub-site/commit/194a13fc965b65485e807a1d01f7ff37f76bb0f0))
+
+## [1.20.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.19.0...dhw-v1.20.0) (2026-10-19)
+
+
+### Features
+
+* **dhw:** decode upcoming audience attributes ([1a7e3c5](https://github.com/totalolage/deskohub-site/commit/1a7e3c5e9e274469acb8db8345ef191db10dc34d))
+* **dhw:** send client version ([a138e31](https://github.com/totalolage/deskohub-site/commit/a138e313727940dc7777ea98918aa9d28a88bdee))
+* **email-campaigns:** calendar expressions, trigger periods and campaign-scoped email counts (readers) ([6c3e43c](https://github.com/totalolage/deskohub-site/commit/6c3e43c1377e734bdb2d1312275e18d9fdea3447))
+
 ## [1.19.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.18.0...dhw-v1.19.0) (2026-10-19)
 
 

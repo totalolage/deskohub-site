@@ -11,9 +11,10 @@ import {
   type AudienceFacts,
   type AudienceFilter,
   audienceFactKey,
+  type ConcreteCountParams,
   collectAudienceFactRequests,
 } from "../audience-filter";
-import { type DatePeriodBounds, datePeriodBounds } from "../date-period";
+import type { DatePeriodBounds } from "../date-period";
 import { CampaignRecipientResolutionError } from "../errors";
 import {
   type AudienceCountParams,
@@ -21,6 +22,10 @@ import {
   type AudienceResolution,
   audienceAttributeResolvers,
 } from "./audience-attribute-resolvers";
+import {
+  type AudienceEvaluationContext,
+  AudienceScope,
+} from "./audience-evaluation-context";
 import { CampaignCandidateRepository } from "./campaign-candidate.repository";
 
 /**
@@ -32,15 +37,17 @@ const visitLowerBoundMargin = { days: 7 } as const;
 
 export interface IAudienceFactsService {
   /**
-   * Resolves every count and date attribute the filter uses, as of `now`,
-   * through each attribute's resolver. Visit dates come only from bounded
+   * Resolves every count and date attribute the filter uses in each of the
+   * contexts, through each attribute's resolver, for the customers in
+   * `scope` (everyone by default). Visit dates come only from bounded
    * Dotypos range queries: each starts at the period's own start or, when it
-   * has none, just before the earliest Workspace reservation, and last-visit
-   * queries end at `now`, inclusive.
+   * has none, just before the earliest Workspace reservation, and visit-date
+   * queries end at the evaluation time, inclusive.
    */
   readonly resolve: (input: {
     readonly filter: AudienceFilter;
-    readonly now: Temporal.Instant;
+    readonly contexts: readonly AudienceEvaluationContext[];
+    readonly scope?: AudienceScope;
   }) => Effect.Effect<AudienceFacts, CampaignRecipientResolutionError>;
 }
 
@@ -75,23 +82,16 @@ const countResolvers: {
 const resolveCount = <Attribute extends AudienceAttributeOfKind<"count">>(
   request: {
     readonly attribute: Attribute;
-    readonly params: AudienceCountParams<Attribute>;
+    readonly params: ConcreteCountParams<AudienceCountParams<Attribute>>;
   },
   resolution: AudienceResolution
-) => countResolvers[request.attribute].count(request.params, resolution);
+) => countResolvers[request.attribute].count(request, resolution);
 
 /** Dates through the request's attribute resolver. */
 const resolveDates = (
-  { attribute, period, product }: AudienceDateRequest,
+  request: AudienceDateRequest,
   resolution: AudienceResolution
-) =>
-  audienceAttributeResolvers[attribute].dates(
-    {
-      bounds: datePeriodBounds(period, resolution.now),
-      ...(product && { product }),
-    },
-    resolution
-  );
+) => audienceAttributeResolvers[request.attribute].dates(request, resolution);
 
 export class AudienceFactsService extends Context.Service<
   AudienceFactsService,
@@ -139,9 +139,9 @@ export class AudienceFactsService extends Context.Service<
           )
         );
 
-      /** Every visit that has begun by `now`, with its start, in one query. */
-      const pastVisits = (now: Temporal.Instant) =>
-        visitsIn({ startsAtOrBefore: now }).pipe(
+      /** Every visit that has begun by `asOf`, with its start, in one query. */
+      const visitsBegunBy = (asOf: Temporal.Instant) =>
+        visitsIn({ startsAtOrBefore: asOf }).pipe(
           Effect.flatMap((visits) =>
             Effect.forEach(visits, (visit) =>
               visitStart(visit).pipe(
@@ -157,6 +157,25 @@ export class AudienceFactsService extends Context.Service<
                 )
               )
           )
+        );
+
+      /**
+       * The past visits of each request's evaluation time, each read at most
+       * once and only if a resolver asks.
+       */
+      const pastVisitsOf = (dates: readonly AudienceDateRequest[]) =>
+        Effect.forEach(
+          new Map(dates.map(({ asOf }) => [asOf.toString(), asOf])),
+          ([key, asOf]) =>
+            Effect.cached(visitsBegunBy(asOf)).pipe(
+              Effect.map((visits) => [key, visits] as const)
+            )
+        ).pipe(
+          Effect.map((entries) => {
+            const byInstant = new Map(entries);
+            return (asOf: Temporal.Instant) =>
+              byInstant.get(asOf.toString()) ?? visitsBegunBy(asOf);
+          })
         );
 
       const keyed = <
@@ -175,15 +194,19 @@ export class AudienceFactsService extends Context.Service<
         ).pipe(Effect.map((entries) => new Map(entries)));
 
       return {
-        resolve: ({ filter, now }) =>
+        resolve: ({ filter, contexts, scope = AudienceScope.All() }) =>
           Effect.Do.pipe(
-            Effect.let("requests", () => collectAudienceFactRequests(filter)),
-            Effect.bind("pastVisits", () => Effect.cached(pastVisits(now))),
+            Effect.let("requests", () =>
+              collectAudienceFactRequests(filter, contexts)
+            ),
+            Effect.bind("pastVisits", ({ requests }) =>
+              pastVisitsOf(requests.dates)
+            ),
             Effect.let(
               "resolution",
               ({ pastVisits }): AudienceResolution => ({
-                now,
                 candidates,
+                scope,
                 visitsIn,
                 pastVisits,
               })

@@ -2,14 +2,25 @@ import "server-only";
 
 import { Effect, Layer, Result } from "effect";
 import { cache } from "react";
-import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
+import {
+  type CurrentLinkedAccount,
+  CustomerAccountContactService,
+} from "@/features/account/backend/customer-account-contact.service";
+import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
+import {
+  isCustomerAccountSupportRequired,
+  isCustomerProfileMissing,
+} from "@/features/account/customer-account";
 import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
 import { getMarketingPreferenceStatus } from "@/features/legal/marketing-preferences";
 import type { CoworkReservationInput } from "@/features/reservation/cowork-reservation";
 import type { MeetingRoomReservationInput } from "@/features/reservation/meeting-room-reservation";
 import { getMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
-import type { ReservationExistingCustomer } from "@/features/reservation/reservation-existing-customer";
+import type {
+  ReservationCheckoutAccount,
+  ReservationExistingCustomer,
+} from "@/features/reservation/reservation-existing-customer";
 import type { WorkspaceReservationKind } from "@/features/reservation/reservation-kind";
 import {
   getMeetingRoomAvailabilityQuery,
@@ -22,18 +33,22 @@ import { CustomerLastReservationService } from "./customer-last-reservation.serv
 import { WorkspaceAvailabilityService } from "./workspace-availability.service";
 
 /**
- * The signed-in, linked customer a reservation page books for by default,
- * with their latest reservation of the page's family. Anonymous visits and
- * any account failure render the anonymous form.
+ * Who reaches a reservation page's contact-details step: signed out, signed
+ * in without a usable profile, signed in with an email only support can link,
+ * or the linked customer the page books for by default, with their latest
+ * reservation of the page's family. An account that can't be read is
+ * `unavailable`, so the page offers a retry instead of booking as someone it
+ * doesn't know; without account configuration, every visitor is signed out.
  */
-export const loadReservationExistingCustomer = cache(
+export const loadReservationCheckoutAccount = cache(
   async <Kind extends WorkspaceReservationKind>(
     kind: Kind
-  ): Promise<ReservationExistingCustomer<Kind> | undefined> => {
-    const existingCustomer = await loadLinkedExistingCustomer(kind).pipe(
+  ): Promise<ReservationCheckoutAccount<Kind>> => {
+    const account = await loadCheckoutAccount(kind).pipe(
       Effect.provide(
         Layer.mergeAll(
           CustomerAccountContactService.Live,
+          CustomerAccountResolver.Live,
           CustomerLastReservationService.Live,
           CustomerMarketingConsentRepository.Live
         )
@@ -50,11 +65,83 @@ export const loadReservationExistingCustomer = cache(
       runWorkspaceEffect("reservation.existing-customer", { boundary: "page" })
     );
 
-    return Result.isSuccess(existingCustomer)
-      ? existingCustomer.success
-      : undefined;
+    if (Result.isSuccess(account)) return account.success;
+    return account.failure._tag === "CustomerAccountAccessError" &&
+      account.failure.reason === "not-configured"
+      ? { status: "signed-out" }
+      : { status: "unavailable" };
   }
 );
+
+const loadCheckoutAccount = Effect.fn("reservation.loadCheckoutAccount")(
+  function* <Kind extends WorkspaceReservationKind>(kind: Kind) {
+    const contacts = yield* CustomerAccountContactService;
+    const account = yield* contacts.currentAccount;
+    if (account.status === "signed-out") {
+      return {
+        status: "signed-out",
+      } satisfies ReservationCheckoutAccount<Kind>;
+    }
+    if (account.status === "linked") {
+      return yield* loadLinkedCheckoutAccount(account, kind);
+    }
+
+    // As on the account page, an account without a link first claims its
+    // exact-email Dotypos customer, so a returning customer books with the
+    // saved profile instead of creating another one.
+    const resolution = yield* CustomerAccountResolver.pipe(
+      Effect.flatMap((resolver) => resolver.resolve),
+      Effect.result
+    );
+    if (Result.isSuccess(resolution)) {
+      return yield* loadLinkedCheckoutAccount(
+        { ...resolution.success, email: account.email },
+        kind
+      );
+    }
+
+    const failure = resolution.failure;
+    if (isCustomerProfileMissing(failure)) {
+      return {
+        status: "profile-missing",
+        email: account.email,
+      } satisfies ReservationCheckoutAccount<Kind>;
+    }
+    if (isCustomerAccountSupportRequired(failure)) {
+      return {
+        status: "support-required",
+      } satisfies ReservationCheckoutAccount<Kind>;
+    }
+    // The session ended or requested deletion since it was read.
+    if (
+      failure.reason === "unauthenticated" ||
+      failure.reason === "link-required"
+    ) {
+      return {
+        status: "signed-out",
+      } satisfies ReservationCheckoutAccount<Kind>;
+    }
+    return yield* failure;
+  }
+);
+
+const loadLinkedCheckoutAccount = Effect.fn(
+  "reservation.loadLinkedCheckoutAccount"
+)(function* <Kind extends WorkspaceReservationKind>(
+  account: CurrentLinkedAccount,
+  kind: Kind
+) {
+  const customer = yield* loadLinkedExistingCustomer(account, kind);
+  return customer
+    ? ({
+        status: "linked",
+        customer,
+      } satisfies ReservationCheckoutAccount<Kind>)
+    : ({
+        status: "profile-missing",
+        email: account.email,
+      } satisfies ReservationCheckoutAccount<Kind>);
+});
 
 /**
  * The profile, last-reservation, and marketing-consent reads each issue a
@@ -70,10 +157,11 @@ const linkedCustomerReadConcurrency = 3;
  */
 export const loadLinkedExistingCustomer = Effect.fn(
   "reservation.loadLinkedExistingCustomer"
-)(function* <Kind extends WorkspaceReservationKind>(kind: Kind) {
+)(function* <Kind extends WorkspaceReservationKind>(
+  account: CurrentLinkedAccount,
+  kind: Kind
+) {
   const contacts = yield* CustomerAccountContactService;
-  const account = yield* contacts.currentLinkedAccount;
-  if (!account) return undefined;
 
   const lastReservations = yield* CustomerLastReservationService;
   const marketingConsents = yield* CustomerMarketingConsentRepository;

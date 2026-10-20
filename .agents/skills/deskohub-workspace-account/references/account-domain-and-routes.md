@@ -25,6 +25,10 @@
   the claim is written in the link's transaction (referrals skill).
 - Never create a Dotypos customer from auth data alone; it needs the profile
   completion input.
+- Profile creation (`CustomerProfileService.createUnderHeldLock`) reruns the
+  locked steps (`resolveCustomerAccountLinkUnderHeldLock`) and creates only on
+  `not-found`. Because the created customer carries the verified email, a retry
+  after a failed link write links that customer instead of creating another.
 
 ## Durable customer account
 
@@ -32,22 +36,33 @@ The domain skill's [reservation parties](../../deskohub-workspace-domain/referen
 glossary defines the customer account, reservation author, and tombstone.
 
 - `public.customer_accounts` stores the account's id, which is the Better Auth
-  user id (`CustomerAccountId`), its creation instant, and `deleted_at`. It has
-  no foreign key to `auth.user`, so it outlives the identity, and it holds no
-  personal data. While the identity exists, `customer_account_links` links the
-  account to its own Dotypos customer.
-- The row appears lazily: `ensureCustomerAccount` creates it in the
-  transaction that first writes a record naming the account, and deletion
-  creates it as a tombstone when the account never authored anything. Eager
-  creation, an `auth.user` foreign key, and folding in
-  `customer_account_links` come with the contract migration (#682).
+  user id (`CustomerAccountId`), its own Dotypos customer
+  (`dotypos_customer_id`, unique), its creation instant, and `deleted_at`. It
+  has no foreign key to `auth.user`, so it outlives the identity, and it holds
+  no personal data.
+- The account's Dotypos customer is moving from `customer_account_links` onto
+  the column (#682 expand/contract). Until the contract release, the claim
+  writes both, readers prefer the column and fall back to the link row
+  (`customer-account-dotypos-link.ts`), and a tombstone gives up the column as
+  the link row goes with the identity.
+- The Better Auth `user.create.before` hook creates the row before the login
+  insert, so every new login has one; a server-side `createUser` must pass the
+  id from `generateId`. Logins from before the hook get theirs from the
+  account backfill. `ensureCustomerAccount` still creates a missing row in the
+  transaction that names the account, and deletion creates a tombstone when
+  none exists. Better Auth can't run the hook and the login insert in one
+  transaction (its magic-link `createUser` isn't transaction-wrapped), so a
+  failed insert leaves an account without a login. The daily auth cleanup
+  cron tombstones live accounts whose login is gone once they are a day old
+  (`tombstoneOrphanedAccounts`); account deletion tombstones before it
+  deletes the login, so the sweep only catches interrupted flows.
 - `workspace_reservations.author_account_id` references it with `ON DELETE
   RESTRICT`. Never delete a customer account row; deletion tombstones it
   through `CustomerAccountRepository.tombstone`.
 - `OptionalAccountActivityGuard.guardStateCreation` hands the state-creating
-  section the account it verified under the account lock, or null for an
-  anonymous session. The submission section records it as the author of new
-  drafts and calls `WorkspaceReservationRepository.assignAuthor` when a
+  section the account it verified under the account lock. Checkout requires a
+  verified session, so the submission section always gets one; it records it
+  as the author of new drafts and calls `WorkspaceReservationRepository.assignAuthor` when a
   signed-in submission reuses an authorless draft. Payment does not set an
   author. An authorless legacy reservation stays authorless until the #682
   backfill.
@@ -60,9 +75,20 @@ glossary defines the customer account, reservation author, and tombstone.
   `getCustomerDisplayName` over `getCustomers` reads batched the same way. Author and
   name reads are degradable: a failure logs a fixed code and leaves the party
   unnamed (null), never failing the history.
-- `author_account_id` is null only for guest checkouts and for reservations
-  made before authors were recorded, until the legacy backfill fills them and
-  the column becomes NOT NULL.
+- `author_account_id` is null only for reservations made before authors were
+  recorded, until the legacy backfill fills them and the column becomes NOT
+  NULL.
+- `CustomerAccountBackfill` (`dhw accounts backfill`, see the administration
+  skill's [dhw-cli.md](../../deskohub-workspace-administration/references/dhw-cli.md#customer-account-backfill))
+  gives a legacy customer with no linked account a silent login: an
+  unverified `auth.user` row for its Dotypos email, created through
+  `UnverifiedLogins` (`backend/auth/unverified-logins.service.ts`, Better
+  Auth's `internalAdapter.createUser` with a generated id) without sending
+  email, then linked to the customer without an `account-created` event or
+  referral. Workspace rejects its sessions until the owner signs in by link
+  or code to that email, which verifies the same row. Account-created
+  reconciliation and campaign audiences count only verified logins. Nothing
+  else creates unverified logins.
 
 ## Error contract
 
@@ -175,11 +201,19 @@ glossary defines the customer account, reservation author, and tombstone.
   card resumes it when opened without one or for the same one, and starts
   a fresh request when opened for another, since the sent link already
   lands on the stored target.
-- State that must survive the round trip through the email, such as checkout
-  contact details, rides in the return target's query as a token from
+- State that must survive the round trip through the email, such as the
+  checkout contact step's typed details (the reservation page's `contact`
+  parameter in the checkout skill's `checkout-pages.md`), rides in the return target's query as a token from
   `makeAuthReturnState(purpose, schema)`
   (`features/account/backend/auth-return-state.ts`): sealed with the shared
   sealed-state helper, purpose-bound, compressed, and usable for 30 minutes.
+- `?for=` (`signInPurposeParam`) tells the visitor why they sign in. It only
+  changes the sign-in card's heading and description; `returnTo` alone
+  decides where sign-in continues. The status page redirects a signed-out
+  visitor whose reservation would be not found to
+  `getAccountSignInPath(locale, statusPath, "reservation")`, which shows
+  "Sign in to see your reservation" and returns to the status page. Parse the
+  parameter with `parseSignInPurpose`.
 - Return targets have a size contract. `parseSameOriginPath` accepts paths up
   to `maxSameOriginPathLength` (8 KiB), so the magic link that carries one
   base64url-encoded stays under Vercel's 14 KB URL limit. An auth return

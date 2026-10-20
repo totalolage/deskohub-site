@@ -3,10 +3,12 @@ import "server-only";
 import { Effect, Option, Schema } from "effect";
 import { notFound } from "next/navigation";
 import { cache } from "react";
-import type { CampaignRow } from "@/db/schema";
 import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import { CampaignService } from "../backend/campaign.service";
+import {
+  CampaignService,
+  type OnceCampaign,
+} from "../backend/campaign.service";
 import { CampaignAudienceService } from "../backend/campaign-audience.service";
 import {
   type CampaignAudienceId,
@@ -14,6 +16,7 @@ import {
   campaignAudienceIdSchema,
   campaignIdSchema,
 } from "../campaign-identifiers";
+import { isOnceCampaign } from "../campaign-states";
 
 /** Decodes a campaign route segment, or renders the not-found page. */
 export const requireCampaignRouteId = (value: string): CampaignId =>
@@ -59,12 +62,18 @@ const findAudience = cache(
   )
 );
 
-/** The campaign a campaign route shows, after the admin page check. */
+/**
+ * The one-off campaign a campaign route shows, after the admin page check.
+ * Automated campaigns have no admin pages yet, so they aren't found.
+ */
 export const loadAdminCampaign = async (
   campaignId: CampaignId
-): Promise<CampaignRow> => {
+): Promise<OnceCampaign> => {
   await authorizeAdministratorPage();
-  return Option.getOrElse(await findCampaign(campaignId), () => notFound());
+  return Option.getOrElse(
+    Option.filter(await findCampaign(campaignId), isOnceCampaign),
+    () => notFound()
+  );
 };
 
 export const loadCampaignBreadcrumbLabel = async (campaignId: string) => {

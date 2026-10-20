@@ -986,10 +986,12 @@ const returnToReservationWithConflictingQuery = ({
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const reservationPath = `/${locale}/reservation/meeting-room`;
+    // The Pay page links back to both reservation steps; the selection
+    // step's link carries no `step`.
     yield* activateHydratedBrowserElement(
       run,
       session,
-      `a[href^="${reservationPath}?payState="]`,
+      `a[href^="${reservationPath}?payState="]:not([href*="step="])`,
       { timeoutMs: config.timeouts.browserAction }
     );
     yield* waitForBrowserUrl({

@@ -1,15 +1,17 @@
 "use client";
 
-import type {
-  AudienceBooleanCondition,
-  AudienceChoiceParam,
-  AudienceCountAttributeDefinition,
-  AudienceCountCondition,
-  AudienceDateAttributeDefinition,
-  AudienceDateCondition,
-  AudienceSetAttributeDefinition,
-  AudienceSetCondition,
-  DatePeriodUnitType,
+import {
+  AdministrationCampaignId,
+  type AudienceBooleanCondition,
+  type AudienceChoiceParam,
+  type AudienceCountAttributeDefinition,
+  type AudienceCountCondition,
+  type AudienceDateAttributeDefinition,
+  type AudienceDateCondition,
+  type AudienceSetAttributeDefinition,
+  type AudienceSetCondition,
+  type CampaignEmailSourceType,
+  type DatePeriodUnitType,
 } from "@deskohub/workspace-admin-api";
 import { Match } from "effect";
 import { ChevronDown } from "lucide-react";
@@ -21,12 +23,26 @@ import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/shared/components/ui/command";
+import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
+import { fieldTriggerVariants } from "@/shared/components/ui/field-trigger";
 import { Input } from "@/shared/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/shared/components/ui/popover";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import {
   Select,
@@ -38,11 +54,14 @@ import {
 import { cn } from "@/shared/utils";
 import type { DatePeriod } from "../../date-period";
 import type {
+  AudienceCampaignOption,
   AudienceValueLookups,
   AudienceValueOption,
 } from "../audience-filter-summary";
+import { CampaignStateBadge } from "../campaign-list/campaign-badges";
 import type {
   AudienceBooleanWording,
+  AudienceCampaignSourceWording,
   AudienceChoiceWording,
   AudienceCountWording,
   AudienceDateWording,
@@ -74,8 +93,10 @@ import {
 } from "./audience-filter-editing";
 import { ProductFilterControl } from "./reservation-product-filter-control";
 
+/** The periods a saved audience can hold; trigger windows are flow-only. */
 const datePeriodKinds: readonly DatePeriodKind[] = [
   "AnyTime",
+  "Past",
   "Last",
   "Range",
   "Since",
@@ -105,8 +126,9 @@ const datePeriodUnit = (
 const today = () => getCurrentWorkspaceDate().toString();
 
 /**
- * Any time, the last N days/weeks/months/years, from–to, since, or until. The
- * same control picks every period an audience condition uses.
+ * Any time, any time so far, the last N days/weeks/months/years, from–to,
+ * since, or until. The same control picks every period an audience
+ * condition uses.
  */
 function DatePeriodControl({
   value,
@@ -331,6 +353,116 @@ function ChoiceParamControl({
 const absentValue = "absent";
 
 /**
+ * Whose emails count: any campaign, or one picked by name, searchable and
+ * badged with each campaign's state. A chosen campaign missing from the list,
+ * such as a deleted one, stays chosen under the wording's label for it.
+ * "This campaign" is for automation conditions only, so saved audiences don't
+ * offer it.
+ */
+function CampaignSourceControl({
+  wording,
+  campaigns = [],
+  value,
+  onChange,
+}: {
+  readonly wording: AudienceCampaignSourceWording;
+  readonly campaigns: readonly AudienceCampaignOption[] | undefined;
+  readonly value: CampaignEmailSourceType | undefined;
+  readonly onChange: (value: CampaignEmailSourceType | undefined) => void;
+}) {
+  const locale = useRouteLocale();
+  const [open, setOpen] = useState(false);
+  const chosen = value?._tag === "Specific" ? value.campaignId : undefined;
+  const chosenCampaign = campaigns.find(({ id }) => id === chosen);
+  const lost = chosen !== undefined && chosenCampaign === undefined;
+  const pick = (next: CampaignEmailSourceType | undefined) => {
+    onChange(next);
+    setOpen(false);
+  };
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          role="combobox"
+          aria-expanded={open}
+          aria-label={wording.label}
+          className={cn(
+            fieldTriggerVariants(),
+            compactSelectClassName,
+            "max-w-72 justify-between"
+          )}
+        >
+          <span className="min-w-0 truncate">
+            {chosenCampaign?.name ?? (lost ? wording.unknown : wording.absent)}
+          </span>
+          <ChevronDown
+            className="h-4 w-4 shrink-0 text-navy-blue/60"
+            aria-hidden
+          />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-[min(22rem,calc(100vw-2rem))] overflow-hidden p-0"
+      >
+        <Command label={wording.search}>
+          <CommandInput placeholder={wording.search} />
+          <CommandList>
+            <CommandGroup>
+              <CommandItem
+                value={absentValue}
+                keywords={[wording.absent]}
+                selected={chosen === undefined}
+                onSelect={() => pick(undefined)}
+              >
+                {wording.absent}
+              </CommandItem>
+              {lost && (
+                <CommandItem
+                  value={chosen}
+                  keywords={[wording.unknown]}
+                  selected
+                  onSelect={() => setOpen(false)}
+                >
+                  {wording.unknown}
+                </CommandItem>
+              )}
+              {campaigns.map((campaign) => (
+                <CommandItem
+                  key={campaign.id}
+                  value={campaign.id}
+                  keywords={[campaign.name]}
+                  selected={campaign.id === chosen}
+                  onSelect={() =>
+                    pick({
+                      _tag: "Specific",
+                      campaignId: AdministrationCampaignId.make(campaign.id),
+                    })
+                  }
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    {campaign.name}
+                  </span>
+                  <CampaignStateBadge locale={locale} campaign={campaign} />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+          <CommandEmpty>{wording.empty}</CommandEmpty>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * One campaign's emails count whatever their purpose, so while a campaign
+ * param is set, a choice offering "any" holds it and is hidden.
+ */
+const pinnedChoice = "any";
+
+/**
  * "Number of <lead>", the reservation product for reservation-based
  * attributes, then "<period> is <comparison>". Every count attribute edits
  * through it: its catalogue entry gives the parameters, its wording the words.
@@ -343,15 +475,22 @@ export function CountConditionControls<
   value: condition,
   onChange,
   errorAt,
+  lookups,
 }: ControlProps<Condition> & {
   readonly entry: AudienceCountAttributeDefinition;
   readonly wording: AudienceCountWording;
+  readonly lookups: AudienceValueLookups;
 }) {
   const locale = useRouteLocale();
   const { params } = condition;
   const changeParams = (next: AudienceCountCondition["params"]) =>
     // The entry's params keep the condition's own shape.
     onChange({ ...condition, params: next } as Condition);
+  const campaignChosen = Object.entries(entry.params).some(
+    ([name, param]) => param.part === "campaign" && params[name] !== undefined
+  );
+  const pinsChoice = (param: AudienceChoiceParam) =>
+    campaignChosen && Object.hasOwn(param.options, pinnedChoice);
   const periodErrorAt = withPath(errorAt, "params.period");
   return (
     <div className="space-y-2">
@@ -364,8 +503,40 @@ export function CountConditionControls<
             return <ConditionText key={token.text}>{token.text}</ConditionText>;
           }
           const param = entry.params[token.param];
+          const sourceWording = wording.campaignSources?.[token.param];
+          if (param?.part === "campaign" && sourceWording) {
+            return (
+              <CampaignSourceControl
+                key={token.param}
+                wording={sourceWording}
+                campaigns={lookups.campaigns}
+                value={params[token.param] as CampaignEmailSourceType}
+                onChange={(source) => {
+                  const { [token.param]: _, ...rest } = params;
+                  if (source === undefined) {
+                    changeParams({ ...rest, period: params.period });
+                    return;
+                  }
+                  const pinned = Object.fromEntries(
+                    Object.entries(entry.params).flatMap(([name, other]) =>
+                      other.part === "choice" &&
+                      Object.hasOwn(other.options, pinnedChoice)
+                        ? [[name, pinnedChoice]]
+                        : []
+                    )
+                  );
+                  changeParams({
+                    ...params,
+                    ...pinned,
+                    [token.param]: source,
+                  });
+                }}
+              />
+            );
+          }
           return (
-            param?.part === "choice" && (
+            param?.part === "choice" &&
+            !pinsChoice(param) && (
               <ChoiceParamControl
                 key={token.param}
                 param={param}

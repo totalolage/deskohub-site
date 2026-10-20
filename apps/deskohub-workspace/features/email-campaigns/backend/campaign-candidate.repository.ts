@@ -10,6 +10,7 @@ import {
   count,
   eq,
   inArray,
+  isNotNull,
   max,
   min,
   type SQL,
@@ -21,7 +22,9 @@ import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   customerAccountLinks,
+  customerAccounts,
   customerMarketingConsents,
+  emailCampaignAutomationVersions,
   emailCampaignDeliveryBatches,
   emailCampaignRecipients,
   emailCampaignSends,
@@ -29,6 +32,7 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
+import { linkedDotyposCustomerId } from "@/features/account/backend/customer-account-dotypos-link";
 import type { AdministrationReservationStatusFilter } from "@/features/administration/administration.service";
 import {
   bookedReservationCondition,
@@ -37,7 +41,9 @@ import {
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 import type { AudienceDateFacts } from "../audience-filter";
 import type { CampaignPurpose } from "../body/campaign-content";
+import type { CampaignId } from "../campaign-identifiers";
 import type { DatePeriodBounds } from "../date-period";
+import { sendAutomationVersion, sendPurpose } from "./campaign-send-selection";
 import { reservationProductCondition } from "./reservation-product-condition";
 
 /** What Workspace stores about one customer it knows. */
@@ -64,6 +70,8 @@ export type CampaignReservationSelection = {
   readonly dotyposReservationIds?: readonly DotyposReservationId[];
   /** Limits the count to one product family and its catalog properties. */
   readonly product?: ReservationProductFilterType;
+  /** Limits the count to these customers' reservations. */
+  readonly customers?: readonly DotyposCustomerId[];
 };
 
 /** A booked reservation's Dotypos ID and customer. */
@@ -82,6 +90,22 @@ const receivedCampaignEmailStatuses = [
   "complained",
   "unconfirmed",
 ] as const;
+
+/**
+ * The joined login is verified. The account backfill creates unverified
+ * logins for legacy customers silently; they count as accounts only once
+ * their owner signs in.
+ */
+const verifiedLogin = eq(authUser.emailVerified, true);
+
+/** The linked customer of an account, where the query keeps linked accounts only. */
+const accountCustomerId = sql<DotyposCustomerId>`${linkedDotyposCustomerId}`;
+
+/** A customer column among the customers, when the query is limited to some. */
+const ofCustomers = (
+  column: SQLWrapper,
+  customers: readonly DotyposCustomerId[] | undefined
+): SQL | undefined => customers && inArray(column, [...customers]);
 
 /** An instant column or expression within the bounds; open bounds add nothing. */
 const withinBounds = (
@@ -102,8 +126,10 @@ const reservationSelection = ({
   booked,
   dotyposReservationIds,
   product,
+  customers,
 }: CampaignReservationSelection): SQL | undefined =>
   and(
+    ofCustomers(workspaceReservations.dotyposCustomerId, customers),
     product && reservationProductCondition(product),
     status ? reservationStatusCondition(status) : bookedReservationCondition,
     booked &&
@@ -118,10 +144,11 @@ export interface ICampaignCandidateRepository {
   /**
    * The customers Workspace knows: everyone with a reservation, a linked
    * account, or a marketing consent row. Marketing campaigns reach only
-   * customers whose consent is active.
+   * customers whose consent is active. With `ids`, only those of them.
    */
   readonly listCandidates: (input: {
     readonly purpose: CampaignPurpose;
+    readonly ids?: readonly DotyposCustomerId[];
   }) => Effect.Effect<
     readonly CampaignCandidateFacts[],
     EffectDrizzleQueryError
@@ -143,16 +170,23 @@ export interface ICampaignCandidateRepository {
    * of the batch that carried them. Customers without any are absent.
    */
   readonly countReceivedCampaignEmails: (query: {
-    /** Without a purpose every campaign counts. */
+    /**
+     * Without a purpose every campaign counts. An automated send counts under
+     * the purpose its version pinned.
+     */
     readonly purpose?: CampaignPurpose;
+    /** Only this campaign's emails count. */
+    readonly campaignId?: CampaignId;
     readonly dispatched: DatePeriodBounds;
+    readonly customers?: readonly DotyposCustomerId[];
   }) => Effect.Effect<
     ReadonlyMap<DotyposCustomerId, number>,
     EffectDrizzleQueryError
   >;
   /** Customers with a linked account, and those whose account was created in the bounds. */
   readonly accountCreations: (
-    created: DatePeriodBounds
+    created: DatePeriodBounds,
+    customers?: readonly DotyposCustomerId[]
   ) => Effect.Effect<AudienceDateFacts, EffectDrizzleQueryError>;
   /**
    * When the earliest Workspace reservation was created, if there is one. No
@@ -162,10 +196,10 @@ export interface ICampaignCandidateRepository {
     Temporal.Instant | null,
     EffectDrizzleQueryError
   >;
-  /** The booked reservations among these Dotypos reservations, of the product if given. */
+  /** The booked reservations among these Dotypos reservations, of the product and customers if given. */
   readonly listBookedReservations: (
     dotyposReservationIds: readonly DotyposReservationId[],
-    product?: ReservationProductFilterType
+    selection?: Pick<CampaignReservationSelection, "product" | "customers">
   ) => Effect.Effect<
     readonly CampaignBookedReservation[],
     EffectDrizzleQueryError
@@ -181,41 +215,59 @@ export class CampaignCandidateRepository extends Context.Service<
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
 
-      const latestReservations = db
-        .select({
-          dotyposCustomerId: workspaceReservations.dotyposCustomerId,
-          locale: sql<string>`(array_agg(${workspaceReservations.locale} order by ${workspaceReservations.createdAt} desc))[1]`,
-          createdAt: max(workspaceReservations.createdAt),
-        })
-        .from(workspaceReservations)
-        .groupBy(workspaceReservations.dotyposCustomerId);
+      const latestReservations = (customers?: readonly DotyposCustomerId[]) =>
+        db
+          .select({
+            dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+            locale: sql<string>`(array_agg(${workspaceReservations.locale} order by ${workspaceReservations.createdAt} desc))[1]`,
+            createdAt: max(workspaceReservations.createdAt),
+          })
+          .from(workspaceReservations)
+          .where(
+            ofCustomers(workspaceReservations.dotyposCustomerId, customers)
+          )
+          .groupBy(workspaceReservations.dotyposCustomerId);
 
-      const accounts = db
-        .select({
-          dotyposCustomerId: customerAccountLinks.dotyposCustomerId,
-          locale: authUser.locale,
-        })
-        .from(customerAccountLinks)
-        .innerJoin(
-          authUser,
-          eq(authUser.id, customerAccountLinks.customerAccountId)
-        );
+      const accounts = (customers?: readonly DotyposCustomerId[]) =>
+        db
+          .select({
+            dotyposCustomerId: accountCustomerId,
+            locale: authUser.locale,
+          })
+          .from(authUser)
+          .leftJoin(customerAccounts, eq(customerAccounts.id, authUser.id))
+          .leftJoin(
+            customerAccountLinks,
+            eq(customerAccountLinks.customerAccountId, authUser.id)
+          )
+          .where(
+            and(
+              verifiedLogin,
+              isNotNull(linkedDotyposCustomerId),
+              ofCustomers(linkedDotyposCustomerId, customers)
+            )
+          );
 
-      const consents = db
-        .select({
-          dotyposCustomerId: customerMarketingConsents.dotyposCustomerId,
-          locale: customerMarketingConsents.locale,
-          active: sql<boolean>`${customerMarketingConsents.withdrawnAt} is null`,
-        })
-        .from(customerMarketingConsents);
+      const consents = (customers?: readonly DotyposCustomerId[]) =>
+        db
+          .select({
+            dotyposCustomerId: customerMarketingConsents.dotyposCustomerId,
+            locale: customerMarketingConsents.locale,
+            active: sql<boolean>`${customerMarketingConsents.withdrawnAt} is null`,
+          })
+          .from(customerMarketingConsents)
+          .where(
+            ofCustomers(customerMarketingConsents.dotyposCustomerId, customers)
+          );
 
       return {
         listCandidates: Effect.fn("CampaignCandidateRepository.listCandidates")(
-          function* ({ purpose }) {
+          function* ({ purpose, ids }) {
             const [reservationRows, accountRows, consentRows] =
-              yield* Effect.all([latestReservations, accounts, consents], {
-                concurrency: "inherit",
-              });
+              yield* Effect.all(
+                [latestReservations(ids), accounts(ids), consents(ids)],
+                { concurrency: "inherit" }
+              );
             const reservationsById = new Map(
               reservationRows.map((row) => [row.dotyposCustomerId, row])
             );
@@ -273,7 +325,7 @@ export class CampaignCandidateRepository extends Context.Service<
         }),
         countReceivedCampaignEmails: Effect.fn(
           "CampaignCandidateRepository.countReceivedCampaignEmails"
-        )(function* ({ purpose, dispatched }) {
+        )(function* ({ purpose, campaignId, dispatched, customers }) {
           // A recipient a webhook settled without a batch in its current
           // attempt is dated by its status change instead.
           const dispatchedAt = sql`coalesce(${emailCampaignDeliveryBatches.requestedAt}, ${emailCampaignRecipients.statusUpdatedAt})`;
@@ -291,6 +343,7 @@ export class CampaignCandidateRepository extends Context.Service<
               emailCampaigns,
               eq(emailCampaigns.id, emailCampaignSends.campaignId)
             )
+            .leftJoin(emailCampaignAutomationVersions, sendAutomationVersion)
             .leftJoin(
               emailCampaignDeliveryBatches,
               and(
@@ -310,7 +363,12 @@ export class CampaignCandidateRepository extends Context.Service<
                 inArray(emailCampaignRecipients.status, [
                   ...receivedCampaignEmailStatuses,
                 ]),
-                purpose && eq(emailCampaigns.purpose, purpose),
+                purpose && eq(sendPurpose, purpose),
+                campaignId && eq(emailCampaignSends.campaignId, campaignId),
+                ofCustomers(
+                  emailCampaignRecipients.dotyposCustomerId,
+                  customers
+                ),
                 withinBounds(dispatchedAt, dispatched)
               )
             )
@@ -321,19 +379,27 @@ export class CampaignCandidateRepository extends Context.Service<
         }),
         accountCreations: Effect.fn(
           "CampaignCandidateRepository.accountCreations"
-        )(function* (created) {
+        )(function* (created, customers) {
           const rows = yield* db
             .select({
-              dotyposCustomerId: customerAccountLinks.dotyposCustomerId,
+              dotyposCustomerId: accountCustomerId,
               inPeriod: sql<boolean>`${and(
                 sql`true`,
                 withinBounds(authUser.createdAt, created)
               )}`,
             })
-            .from(customerAccountLinks)
-            .innerJoin(
-              authUser,
-              eq(authUser.id, customerAccountLinks.customerAccountId)
+            .from(authUser)
+            .leftJoin(customerAccounts, eq(customerAccounts.id, authUser.id))
+            .leftJoin(
+              customerAccountLinks,
+              eq(customerAccountLinks.customerAccountId, authUser.id)
+            )
+            .where(
+              and(
+                verifiedLogin,
+                isNotNull(linkedDotyposCustomerId),
+                ofCustomers(linkedDotyposCustomerId, customers)
+              )
             );
           return {
             withValue: new Set(rows.map((row) => row.dotyposCustomerId)),
@@ -350,7 +416,7 @@ export class CampaignCandidateRepository extends Context.Service<
           .pipe(Effect.map(([row]) => row?.createdAt ?? null)),
         listBookedReservations: Effect.fn(
           "CampaignCandidateRepository.listBookedReservations"
-        )(function* (dotyposReservationIds, product) {
+        )(function* (dotyposReservationIds, selection) {
           if (dotyposReservationIds.length === 0) return [];
           const rows = yield* db
             .select({
@@ -359,10 +425,7 @@ export class CampaignCandidateRepository extends Context.Service<
             })
             .from(workspaceReservations)
             .where(
-              reservationSelection({
-                dotyposReservationIds,
-                ...(product && { product }),
-              })
+              reservationSelection({ ...selection, dotyposReservationIds })
             );
           return rows.flatMap(({ dotyposReservationId, dotyposCustomerId }) =>
             dotyposReservationId === null

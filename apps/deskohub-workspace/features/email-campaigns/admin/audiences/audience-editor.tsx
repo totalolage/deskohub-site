@@ -30,7 +30,7 @@ import { audienceSingleLocale } from "../../audience-filter";
 import type { CampaignAudienceId } from "../../campaign-identifiers";
 import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
 import {
-  type DiscountGroupOption,
+  type AudienceValueLookups,
   describeAudienceFilter,
 } from "../audience-filter-summary";
 import {
@@ -63,11 +63,11 @@ type Feedback = {
 
 export function AudienceEditorPage({
   audience,
-  discountGroups,
+  lookups = {},
 }: {
   /** Omitted when creating a new audience. */
   readonly audience?: AudienceEditorData;
-  readonly discountGroups?: readonly DiscountGroupOption[];
+  readonly lookups?: AudienceValueLookups;
 }) {
   const locale = useRouteLocale();
   return (
@@ -98,17 +98,17 @@ export function AudienceEditorPage({
           {m.emailCampaignsAudienceEditorArchivedNotice({}, { locale })}
         </AdministrationAlert>
       ) : null}
-      <AudienceForm audience={audience} discountGroups={discountGroups} />
+      <AudienceForm audience={audience} lookups={lookups} />
     </AdministrationPage>
   );
 }
 
 function AudienceForm({
   audience,
-  discountGroups,
+  lookups,
 }: {
   readonly audience: AudienceEditorData | undefined;
-  readonly discountGroups: readonly DiscountGroupOption[] | undefined;
+  readonly lookups: AudienceValueLookups;
 }) {
   const router = useRouter();
   const locale = useRouteLocale();
@@ -222,7 +222,7 @@ function AudienceForm({
                 onChange={field.onChange}
                 path="filter"
                 errorAt={errorAt}
-                lookups={{ discountGroups }}
+                lookups={lookups}
               />
             )}
           />
@@ -233,9 +233,7 @@ function AudienceForm({
             <p className="mt-1 text-sm leading-6">
               {m.emailCampaignsAudienceEditorSummary(
                 {
-                  summary: describeAudienceFilter(filter, locale, {
-                    discountGroups,
-                  }),
+                  summary: describeAudienceFilter(filter, locale, lookups),
                 },
                 { locale }
               )}

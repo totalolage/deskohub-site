@@ -31,7 +31,10 @@ export async function AdministrationOverview() {
       <Suspense fallback={null}>
         <RefundAttention count={refundAttention} />
       </Suspense>
-      <section aria-labelledby="reservation-activity-heading">
+      <section
+        aria-labelledby="reservation-activity-heading"
+        className="@container"
+      >
         <div className="mb-3">
           <h1 className="text-xl" id="reservation-activity-heading">
             {m.administrationOverviewReservationActivityTitle({}, { locale })}
@@ -42,7 +45,10 @@ export async function AdministrationOverview() {
         </Suspense>
       </section>
 
-      <section aria-labelledby="customer-activity-heading" className="mt-8">
+      <section
+        aria-labelledby="customer-activity-heading"
+        className="@container mt-8"
+      >
         <div className="mb-3">
           <h2 className="text-xl" id="customer-activity-heading">
             {m.administrationOverviewCustomerActivityTitle({}, { locale })}

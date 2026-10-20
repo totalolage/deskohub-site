@@ -20,6 +20,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { drizzleAuthTables } from "@/db/schema/auth";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { ensureCustomerAccount } from "../customer-account.repository";
 import { captureAccountLocalePreference } from "../customer-locale-preference";
 import type {
   MagicLinkSendFunction,
@@ -76,6 +77,7 @@ export type TestAuthOptions = {
   readonly verifyHuman?: WorkspaceAuthConfig["verifyHuman"];
   readonly beforeDeleteUser?: WorkspaceAuthConfig["beforeDeleteUser"];
   readonly captureAccountLocalePreference?: WorkspaceAuthConfig["captureAccountLocalePreference"];
+  readonly createCustomerAccount?: WorkspaceAuthConfig["createCustomerAccount"];
 };
 
 /** The real sign-in capture against the migrated disposable database. */
@@ -91,6 +93,10 @@ const realCapture: WorkspaceAuthConfig["captureAccountLocalePreference"] = (
       )
     )
   );
+
+/** The real durable-account creation against the migrated disposable database. */
+const realCreateCustomerAccount: WorkspaceAuthConfig["createCustomerAccount"] =
+  (accountId) => ensureCustomerAccount(testDatabase!.db, accountId);
 
 /** The production advisory lock on the migrated disposable database. */
 const realSignInEmailLock: WorkspaceAuthConfig["withSignInEmailLock"] = (
@@ -147,6 +153,12 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
     withSignInEmailLock,
     sendMagicLink,
     beforeDeleteUser: options.beforeDeleteUser ?? (() => Effect.void),
+    createCustomerAccount:
+      options.createCustomerAccount ??
+      // Memory-backed instances have no customer_accounts table.
+      (testDatabase && !options.database
+        ? realCreateCustomerAccount
+        : () => Effect.void),
     captureAccountLocalePreference,
   });
 };

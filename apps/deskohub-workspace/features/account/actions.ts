@@ -28,6 +28,7 @@ import {
 import {
   CustomerAccountAccessError,
   type CustomerAccountId,
+  isCustomerProfileMissing,
   type LinkedCustomerAccount,
   mapCustomerAccountFailure,
 } from "@/features/account/customer-account";
@@ -93,10 +94,7 @@ const saveCustomerProfile = Effect.fn(
     }
 
     const failure = resolution.failure;
-    if (
-      failure.reason === "link-required" &&
-      failure.linkReason === "not-found"
-    ) {
+    if (isCustomerProfileMissing(failure)) {
       return yield* completeNewCustomerProfile(
         user,
         input,
