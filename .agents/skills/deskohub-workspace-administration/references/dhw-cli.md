@@ -94,7 +94,8 @@ Administrators sign in with their customer accounts; the `administrator` grant a
 
 ## Configuration
 
-- `DHW_BASE`: Workspace origin. Must be an HTTPS origin, or an HTTP origin on `localhost` or `127.0.0.1`.
+- `DHW_BASE`: Workspace origin. Must be an HTTPS origin, or an HTTP origin on `localhost` or `127.0.0.1`. Only release-target binaries (published releases and PR artifacts; `__DHW_BUILD_TARGET__` stamped by `build.ts`, see `isReleaseBuild`) default to `https://workspace.deskohub.cz`. Source runs and development builds fail closed without it, except `--help` and `--version`; point them at a local or preview Workspace, and pass the production origin only to work against production on purpose.
+- `DHW_CREDENTIAL_STORE`: `system` (default) uses the operating-system credential store, keyed by Workspace origin. `memory` keeps credentials for one process only.
 - `DHW_REQUEST_HEADERS`: JSON object of extra API headers, such as a Vercel protection-bypass header. Values are redacted, can't override headers that `dhw` manages, and are never sent to GitHub.
 - `DHW_STATE_DIR`: overrides the state directory for updater state and access-code attempt reservations.
 - `DHW_NO_UPDATE_CHECK=true` disables automatic update checks. They also never run for `--json`, under `CI`, or without a TTY.
@@ -112,8 +113,10 @@ bun --cwd apps/dhw test
 bun test packages/workspace-admin-api
 bun turbo test:admin-cli --filter=./apps/deskohub-workspace
 bun apps/dhw/src/build.ts development
-apps/dhw/dist/dhw version --json
+DHW_BASE=http://localhost:3000 apps/dhw/dist/dhw version --json
 ```
+
+`apps/dhw` tests preload `src/testing/test-isolation.preload.ts`, which replaces `Bun.secrets` and sends non-local requests to an unreachable proxy. Start `dhw` subprocesses only through `runDhw` (`src/testing/dhw-process.ts`): it passes an environment built from scratch with the memory credential store, a fresh home, no `.env` loading, and a trap that records and refuses every request outside localhost. It rejects the production origin, and the system credential store for compiled executables, which skip the preload. Never run `dhw` against production or with the system credential store in tests.
 
 Development builds report `<version>+development`, and PR artifacts report `<version>+pr.<number>.<head-sha>`. Published releases use the plain package version.
 

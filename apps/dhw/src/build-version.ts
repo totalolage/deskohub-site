@@ -18,3 +18,18 @@ export const makeDhwBuildVersion = (
     ? packageVersion
     : `${packageVersion}+${Schema.decodeUnknownSync(BuildVersionTag)(tag)}`;
 };
+
+/**
+ * The compile-time constants `build-info.ts` reads. A release build target
+ * makes the binary default to the production Workspace.
+ */
+export const makeDhwBuildDefinitions = (
+  packageVersion: string,
+  buildTarget: BuildTarget,
+  configuredTag?: string
+) => ({
+  __DHW_VERSION__: JSON.stringify(
+    makeDhwBuildVersion(packageVersion, buildTarget, configuredTag)
+  ),
+  __DHW_BUILD_TARGET__: JSON.stringify(buildTarget),
+});
