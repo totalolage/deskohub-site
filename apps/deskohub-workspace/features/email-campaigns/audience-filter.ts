@@ -116,7 +116,7 @@ type CountRequestOf<Condition extends AudienceCountCondition> =
     ? {
         readonly attribute: Condition["attribute"];
         readonly params: ConcreteCountParams<Condition["params"]>;
-        readonly bookedBy?: Temporal.Instant;
+        readonly existedBy?: Temporal.Instant;
       }
     : never;
 
@@ -139,8 +139,8 @@ export type AudienceDateRequest<
   readonly asOf: Temporal.Instant;
   /** Only reservations of this product count (reservation-based dates). */
   readonly product?: ReservationProductFilterType;
-  /** Only reservations booked by then count (reservation-based dates). */
-  readonly bookedBy?: Temporal.Instant;
+  /** Only reservations that existed by then count (reservation-based dates). */
+  readonly existedBy?: Temporal.Instant;
 };
 
 /** Customers whose date attribute has a value, and whose value is in the period. */
@@ -209,12 +209,12 @@ export const occurrenceBounds = (
 };
 
 /**
- * A replayed moment, by which a reservation must have been booked to count
- * by its visit: the visit may lie anywhere, but a later booking hadn't
- * happened yet. The present leaves it unset, as nothing is booked after it.
+ * A replayed moment, by which a reservation must have existed to count by
+ * its visit: the visit may lie anywhere, but a later booking hadn't happened
+ * yet. Live evaluations leave it unset and count what exists now.
  */
-const bookedByReplayed = ({ now, replayed }: AudienceEvaluationContext) =>
-  replayed ? { bookedBy: now } : {};
+const existedByReplayed = ({ now, replayed }: AudienceEvaluationContext) =>
+  replayed ? { existedBy: now } : {};
 
 /** One param value fixed by the context, by its param's part. */
 const concreteParam = (
@@ -248,7 +248,7 @@ const datesOccurrences = ({ attribute, params }: AudienceCountCondition) =>
 /**
  * The count condition's request in one evaluation context, with each param
  * fixed by its part in the condition's catalogue entry. A count by visit
- * date in a replay counts only the reservations booked by then.
+ * date in a replay counts only the reservations that existed by then.
  */
 export const countFactRequest = <Condition extends AudienceCountCondition>(
   entry: Pick<AudienceCountAttributeDefinition, "params">,
@@ -271,7 +271,7 @@ export const countFactRequest = <Condition extends AudienceCountCondition>(
       )
     ),
     // Occurrence bounds already end by a replayed moment.
-    ...(!occurrences && bookedByReplayed(context)),
+    ...(!occurrences && existedByReplayed(context)),
   } as CountRequestOf<Condition>;
 };
 
@@ -287,7 +287,7 @@ export const dateFactRequest = <Condition extends AudienceDateCondition>(
   ),
   asOf: context.now,
   ...(condition.params && { product: condition.params.product }),
-  ...bookedByReplayed(context),
+  ...existedByReplayed(context),
 });
 
 export const audienceConditionsOf = (

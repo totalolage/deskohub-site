@@ -473,7 +473,7 @@ describe("collectAudienceFactRequests", () => {
     ).toEqual({ startsAtOrAfter: march });
   });
 
-  test("counts and dates visits booked by a replayed moment", () => {
+  test("counts and dates visits that existed by a replayed moment", () => {
     const replayed = { ...context, replayed: true };
     const { reservationCount, campaignEmailCount } = audienceAttributeCatalogue;
     const visitsAnyTime = {
@@ -486,23 +486,32 @@ describe("collectAudienceFactRequests", () => {
     } as const satisfies AudienceCondition;
 
     expect(
-      countFactRequest(reservationCount, visitsAnyTime, replayed).bookedBy
+      countFactRequest(reservationCount, visitsAnyTime, replayed).existedBy
     ).toEqual(now);
-    expect(dateFactRequest(lastVisitNotRecent, replayed).bookedBy).toEqual(now);
-    // The present has no later bookings, and occurrence bounds already end
-    // by the replayed moment.
+    expect(dateFactRequest(lastVisitNotRecent, replayed).existedBy).toEqual(
+      now
+    );
+    // Live evaluations count what exists now, and occurrence bounds already
+    // end by the replayed moment.
     expect(
       countFactRequest(reservationCount, visitsAnyTime, context)
-    ).not.toHaveProperty("bookedBy");
+    ).not.toHaveProperty("existedBy");
     expect(dateFactRequest(lastVisitNotRecent, context)).not.toHaveProperty(
-      "bookedBy"
+      "existedBy"
     );
     expect(
       countFactRequest(reservationCount, bookingsAnyTime, replayed)
-    ).not.toHaveProperty("bookedBy");
+    ).not.toHaveProperty("existedBy");
     expect(
       countFactRequest(campaignEmailCount, marketingEmailsLastTenDays, replayed)
-    ).not.toHaveProperty("bookedBy");
+    ).not.toHaveProperty("existedBy");
+    // A live and a replayed evaluation at the same moment look up apart.
+    expect(
+      collectAudienceFactRequests(group("and", [visitsAnyTime]), [
+        context,
+        replayed,
+      ]).counts
+    ).toHaveLength(2);
   });
 });
 

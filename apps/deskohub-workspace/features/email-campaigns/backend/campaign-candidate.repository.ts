@@ -67,6 +67,11 @@ export type CampaignReservationSelection = {
   readonly status?: AdministrationReservationStatusFilter;
   /** Booking (confirmation) instant bounds. */
   readonly booked?: DatePeriodBounds;
+  /**
+   * Only reservations that existed by then: booked by then, or created by
+   * then if they never confirmed, as an explicit status may select.
+   */
+  readonly existedBy?: Temporal.Instant;
   /** Limits the count to these Dotypos reservations (visit-date periods). */
   readonly dotyposReservationIds?: readonly DotyposReservationId[];
   /** Limits the count to one product family and its catalog properties. */
@@ -115,6 +120,7 @@ const withinBounds = (
 const reservationSelection = ({
   status,
   booked,
+  existedBy,
   dotyposReservationIds,
   product,
   customers,
@@ -125,6 +131,8 @@ const reservationSelection = ({
     status ? reservationStatusCondition(status) : bookedReservationCondition,
     booked &&
       withinBounds(workspaceReservations.reservationConfirmedAt, booked),
+    existedBy &&
+      sql`coalesce(${workspaceReservations.reservationConfirmedAt}, ${workspaceReservations.createdAt}) <= ${temporalInstantToDate(existedBy)}`,
     dotyposReservationIds &&
       inArray(workspaceReservations.dotyposReservationId, [
         ...dotyposReservationIds,
@@ -187,12 +195,12 @@ export interface ICampaignCandidateRepository {
     Temporal.Instant | null,
     EffectDrizzleQueryError
   >;
-  /** The booked reservations among these Dotypos reservations, of the product, booking bounds and customers if given. */
+  /** The booked reservations among these Dotypos reservations, of the product and customers, and existing by the instant, if given. */
   readonly listBookedReservations: (
     dotyposReservationIds: readonly DotyposReservationId[],
     selection?: Pick<
       CampaignReservationSelection,
-      "product" | "booked" | "customers"
+      "product" | "existedBy" | "customers"
     >
   ) => Effect.Effect<
     readonly CampaignBookedReservation[],
