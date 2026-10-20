@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import {
   CustomerAgentAuthorizationError,
   type CustomerAgentClientId,
@@ -25,6 +25,11 @@ const publicClientSchema = Schema.Struct({
   client_name: Schema.optional(Schema.String),
   client_uri: Schema.optional(Schema.String),
 });
+
+/** The server doesn't know the client or won't serve it. */
+class UnknownCustomerAgentClient extends Data.TaggedError(
+  "UnknownCustomerAgentClient"
+) {}
 
 const decodePublicClient = Schema.decodeUnknownOption(publicClientSchema);
 const decodeClientId = Schema.decodeUnknownOption(customerAgentClientIdSchema);
@@ -89,15 +94,14 @@ export class CustomerAgentClientDirectory extends Context.Service<
       ) {
         const found = yield* Effect.tryPromise({
           try: () => authority.findPublicClient(clientId),
-          catch: (cause) => cause,
+          catch: (cause) =>
+            isProviderRejection(cause)
+              ? new UnknownCustomerAgentClient()
+              : new CustomerAgentAuthorizationError({ reason: "unavailable" }),
         }).pipe(
           Effect.map(Option.some),
-          Effect.catch((cause) =>
-            isProviderRejection(cause)
-              ? Effect.succeed(Option.none<unknown>())
-              : Effect.fail(
-                  new CustomerAgentAuthorizationError({ reason: "unavailable" })
-                )
+          Effect.catchTag("UnknownCustomerAgentClient", () =>
+            Effect.succeed(Option.none<unknown>())
           )
         );
         return Option.flatMap(found, decodePublicClient).pipe(
