@@ -36,15 +36,21 @@ The domain skill's [reservation parties](../../deskohub-workspace-domain/referen
 glossary defines the customer account, reservation author, and tombstone.
 
 - `public.customer_accounts` stores the account's id, which is the Better Auth
-  user id (`CustomerAccountId`), its creation instant, and `deleted_at`. It has
-  no foreign key to `auth.user`, so it outlives the identity, and it holds no
-  personal data. While the identity exists, `customer_account_links` links the
-  account to its own Dotypos customer.
-- The row appears lazily: `ensureCustomerAccount` creates it in the
-  transaction that first writes a record naming the account, and deletion
-  creates it as a tombstone when the account never authored anything. Eager
-  creation, an `auth.user` foreign key, and folding in
-  `customer_account_links` come with the contract migration (#682).
+  user id (`CustomerAccountId`), its own Dotypos customer
+  (`dotypos_customer_id`, unique), its creation instant, and `deleted_at`. It
+  has no foreign key to `auth.user`, so it outlives the identity, and it holds
+  no personal data.
+- The account's Dotypos customer is moving from `customer_account_links` onto
+  the column (#682 expand/contract). Until the contract release, the claim
+  writes both, readers prefer the column and fall back to the link row
+  (`customer-account-dotypos-link.ts`), and a tombstone gives up the column as
+  the link row goes with the identity.
+- The Better Auth `user.create.before` hook creates the row before the login
+  insert, so every new login has one; a server-side `createUser` must pass the
+  id from `generateId`. Logins from before the hook get theirs from the
+  account backfill. `ensureCustomerAccount` still creates a missing row in the
+  transaction that names the account, and deletion creates a tombstone when
+  none exists.
 - `workspace_reservations.author_account_id` references it with `ON DELETE
   RESTRICT`. Never delete a customer account row; deletion tombstones it
   through `CustomerAccountRepository.tombstone`.
