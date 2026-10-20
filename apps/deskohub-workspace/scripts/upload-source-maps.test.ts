@@ -1,5 +1,12 @@
-import { describe, expect, test } from "bun:test";
-import { runSourceMapUpload, sourceMapUpload } from "./upload-source-maps";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Cause, Effect, Exit, Option } from "effect";
+import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
+import type { CommandResult } from "./shared/command";
+import { skippedSourceMapUploadMarker } from "./source-map-upload-failure";
+import { sourceMapUpload, uploadSourceMaps } from "./upload-source-maps";
 
 const productionEnv = {
   POSTHOG_API_HOST: "https://posthog.example",
@@ -50,69 +57,244 @@ describe("sourceMapUpload", () => {
       ).toThrow(`${name} is required`);
     }
   );
+});
 
-  test("withholds failed CLI output and reports failure", async () => {
-    const credential = 'phx_TEST_ONLY_not_a_secret/"\\';
-    const credentialForms = [
-      "phx_TEST_ONLY_not_a_secret",
-      "Bearer phx_TEST_ONLY_not_a_secret",
-      encodeURIComponent(credential),
-      JSON.stringify(credential).slice(1, -1),
-    ];
-    const upload = sourceMapUpload(
+const credential = 'phx_TEST_ONLY_not_a_secret/"\\';
+const credentialForms = [
+  "phx_TEST_ONLY_not_a_secret",
+  "Bearer phx_TEST_ONLY_not_a_secret",
+  encodeURIComponent(credential),
+  JSON.stringify(credential).slice(1, -1),
+];
+
+const uploaded: CommandResult = {
+  exitCode: 0,
+  signalCode: null,
+  stdout: "",
+  stderr: "",
+  timedOut: false,
+};
+
+const failedWith = (stderr: string): CommandResult => ({
+  exitCode: 1,
+  signalCode: null,
+  // The CLI's output can echo every credential form.
+  stdout: `${credentialForms.join("\n")}\n`,
+  stderr: `${credentialForms.join("\n")}\n${stderr}\n`,
+  timedOut: false,
+});
+
+const transientFailure = failedWith(
+  "Oops! Failed to start upload\n\nCaused by:\n    0: API error: status='503' url='https://posthog.example/api' message='busy'"
+);
+const permanentFailure = failedWith(
+  "Oops! Failed to create release\n\nCaused by:\n    0: API error: status='401' url='https://posthog.example/api' message='no'"
+);
+const unknownFailure = failedWith("Oops! something new");
+const timedOut: CommandResult = {
+  ...uploaded,
+  exitCode: null,
+  signalCode: "SIGKILL",
+  timedOut: true,
+};
+
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true }))
+  );
+});
+
+/** A build output with public and server source maps. */
+const buildOutput = async () => {
+  const distDir = await mkdtemp(join(tmpdir(), "source-map-upload-"));
+  temporaryDirectories.push(distDir);
+  await mkdir(join(distDir, "static", "chunks"), { recursive: true });
+  await mkdir(join(distDir, "static", "css"), { recursive: true });
+  await mkdir(join(distDir, "server"), { recursive: true });
+  await Promise.all([
+    writeFile(join(distDir, "static", "chunks", "app.js"), "app();"),
+    writeFile(join(distDir, "static", "chunks", "app.js.map"), "{}"),
+    writeFile(join(distDir, "static", "css", "app.css.map"), "{}"),
+    writeFile(join(distDir, "server", "page.js.map"), "{}"),
+  ]);
+  return distDir;
+};
+
+/** Runs the upload against scripted CLI results and captures its log lines. */
+const runUpload = async (
+  results: readonly CommandResult[],
+  distDir = "/app/.next"
+) => {
+  const upload = sourceMapUpload(
+    { ...productionEnv, POSTHOG_API_KEY: credential },
+    distDir
+  );
+  if (!upload) throw new Error("Expected a production source-map upload");
+  const logged: string[] = [];
+  const capture = (...parts: unknown[]) => {
+    logged.push(parts.join(" "));
+  };
+  const log = spyOn(console, "log").mockImplementation(capture);
+  const error = spyOn(console, "error").mockImplementation(capture);
+  const calls: { command: readonly string[]; timeoutMs?: number }[] = [];
+  try {
+    const exit = await Effect.runPromiseExit(
+      withInstantSleeps(
+        uploadSourceMaps({
+          upload,
+          posthogCli: "/fake/posthog-cli",
+          distDir,
+          commandRunner: async (command, options) => {
+            expect(options.env?.POSTHOG_CLI_API_KEY).toBe(credential);
+            calls.push({ command, timeoutMs: options.timeoutMs });
+            const result = results[calls.length - 1];
+            if (!result) throw new Error("Unexpected extra CLI run");
+            return result;
+          },
+        })
+      )
+    );
+    return {
+      calls,
+      failure: Exit.isFailure(exit)
+        ? Option.getOrUndefined(Cause.findErrorOption(exit.cause))
+        : undefined,
+      logged: logged.join("\n"),
+      succeeded: Exit.isSuccess(exit),
+    };
+  } finally {
+    log.mockRestore();
+    error.mockRestore();
+  }
+};
+
+const expectNoCredential = (logged: string) => {
+  for (const form of credentialForms) expect(logged).not.toContain(form);
+  expect(logged).not.toContain("TEST_ONLY_not_a_secret");
+  expect(logged).not.toContain("posthog.example");
+};
+
+describe("uploadSourceMaps", () => {
+  test("bounds each CLI run", async () => {
+    const { calls, succeeded } = await runUpload([uploaded]);
+
+    expect(succeeded).toBe(true);
+    expect(calls).toEqual([
       {
-        ...productionEnv,
-        POSTHOG_API_KEY: credential,
+        command: [
+          "/fake/posthog-cli",
+          ...(sourceMapUpload(productionEnv, "/app/.next")?.args ?? []),
+        ],
+        timeoutMs: 600_000,
       },
-      "/app/.next"
+    ]);
+  });
+
+  test("retries a transient failure and logs only its summary", async () => {
+    const { calls, logged, succeeded } = await runUpload([
+      transientFailure,
+      uploaded,
+    ]);
+
+    expect(succeeded).toBe(true);
+    expect(calls).toHaveLength(2);
+    expect(logged).toBe(
+      "PostHog source-map upload attempt failed (transient): posthog-cli exited with code 1 while starting the upload: HTTP 503. CLI output is withheld because it can echo credentials."
     );
-    if (!upload) throw new Error("Expected a production source-map upload");
+    expectNoCredential(logged);
+  });
 
-    const stdout: string[] = [];
-    const stderr: string[] = [];
-    const previousStdout = process.stdout.write;
-    const previousStderr = process.stderr.write;
-    process.stdout.write = ((chunk: string) => {
-      stdout.push(chunk);
-      return true;
-    }) as typeof process.stdout.write;
-    process.stderr.write = ((chunk: string) => {
-      stderr.push(chunk);
-      return true;
-    }) as typeof process.stderr.write;
+  test("fails a permanent failure without retrying", async () => {
+    const { calls, failure, logged } = await runUpload([permanentFailure]);
 
-    let failure: unknown;
-    try {
-      await runSourceMapUpload(
-        upload,
-        "/fake/posthog-cli",
-        async (command, options) => {
-          expect(command[0]).toBe("/fake/posthog-cli");
-          expect(options.env?.POSTHOG_CLI_API_KEY).toBe(credential);
-          return {
-            exitCode: 1,
-            signalCode: null,
-            stdout: `${credentialForms.join("\n")}\n`,
-            stderr: `${credentialForms.join("\n")}\n`,
-            timedOut: false,
-          };
-        }
-      );
-    } catch (error) {
-      failure = error;
-    } finally {
-      process.stdout.write = previousStdout;
-      process.stderr.write = previousStderr;
-    }
-
-    expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toContain("exited with code 1");
-    const printedOutput = `${stdout.join("")}${stderr.join("")}`;
-    expect(printedOutput).toBe(
-      "PostHog source-map upload failed (exited with code 1). CLI output is withheld because it can echo credentials; rerun `posthog-cli sourcemap process` locally with the same environment to see details.\n"
+    expect(calls).toHaveLength(1);
+    expect(failure).toEqual(
+      expect.objectContaining({
+        _tag: "SourceMapUploadFailed",
+        kind: "permanent",
+        summary:
+          "posthog-cli exited with code 1 while creating the release: HTTP 401",
+      })
     );
-    for (const form of credentialForms)
-      expect(printedOutput).not.toContain(form);
-    expect(printedOutput).not.toContain("TEST_ONLY_not_a_secret");
+    expectNoCredential(logged);
+  });
+
+  test("fails without retrying when the CLI can't start", async () => {
+    // With no scripted result, the runner rejects as a failed spawn would.
+    const { calls, failure } = await runUpload([]);
+
+    expect(calls).toHaveLength(1);
+    expect(failure).toEqual(
+      expect.objectContaining({
+        _tag: "SourceMapUploadFailed",
+        kind: "permanent",
+        summary: "posthog-cli could not be started",
+      })
+    );
+  });
+
+  test("fails an interrupted run without retrying", async () => {
+    const { calls, failure } = await runUpload([timedOut]);
+
+    expect(calls).toHaveLength(1);
+    expect(failure).toEqual(expect.objectContaining({ kind: "interrupted" }));
+  });
+
+  test("fails after retrying an unrecognised failure twice", async () => {
+    const { calls, failure, logged } = await runUpload([
+      unknownFailure,
+      unknownFailure,
+      unknownFailure,
+    ]);
+
+    expect(calls).toHaveLength(3);
+    expect(failure).toEqual(
+      expect.objectContaining({
+        kind: "unknown",
+        summary:
+          "posthog-cli exited with code 1: no recognised error in its output",
+      })
+    );
+    expectNoCredential(logged);
+  });
+
+  test("ships without public source maps when PostHog stays unavailable", async () => {
+    const distDir = await buildOutput();
+
+    const { calls, logged, succeeded } = await runUpload(
+      [transientFailure, unknownFailure, transientFailure],
+      distDir
+    );
+
+    expect(succeeded).toBe(true);
+    expect(calls).toHaveLength(3);
+    expect(logged).toContain(
+      `${skippedSourceMapUploadMarker} posthog-cli exited with code 1 while starting the upload: HTTP 503. Deleted 2 public source maps;`
+    );
+    expectNoCredential(logged);
+    expect(await readdir(join(distDir, "static"), { recursive: true })).toEqual(
+      expect.arrayContaining(["chunks/app.js"])
+    );
+    expect(
+      (await readdir(join(distDir, "static"), { recursive: true })).filter(
+        (path) => path.endsWith(".map")
+      )
+    ).toEqual([]);
+    expect(await readdir(join(distDir, "server"))).toEqual(["page.js.map"]);
+  });
+
+  test("fails when the public source maps can't be deleted", async () => {
+    const { failure } = await runUpload(
+      [transientFailure, transientFailure, transientFailure],
+      "/nonexistent/.next"
+    );
+
+    expect(failure).toEqual(
+      expect.objectContaining({ _tag: "SourceMapCleanupFailed" })
+    );
   });
 });
