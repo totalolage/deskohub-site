@@ -24,9 +24,9 @@ reference covers how these parties are stored.
 - Checkout requires a signed-in account with a verified email, so the
   submission that creates a reservation always records that account as its
   author.
-- A signed-in submission that resumes an authorless draft records that account
-  as its author. Payment does not establish authorship; an authorless legacy
-  reservation stays authorless until the #682 backfill.
+- Every reservation has an author, including those made before authors were
+  recorded, which the #682 backfill attributed. Payment does not establish
+  authorship.
 - A reservation's author never changes once recorded. Any account can pay a
   reservation without becoming its author, but another account can't resume
   its draft or supersede it from the same checkout session.

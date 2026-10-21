@@ -9,7 +9,6 @@ export {
   cliMutationRequests,
   cliSessions,
 } from "./cli-authentication";
-export { customerAccountLinks } from "./customer-account-links";
 export { customerAccounts } from "./customer-accounts";
 export { customerEventSweeps, customerEvents } from "./customer-events";
 export { customerMarketingConsents } from "./customer-marketing-consents";

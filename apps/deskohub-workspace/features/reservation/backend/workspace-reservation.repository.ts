@@ -31,7 +31,6 @@ import {
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
 import type { CustomerAgentClientId } from "@/features/account";
-import { ensureCustomerAccount } from "@/features/account/backend/customer-account.repository";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { releaseCodeClaim } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
 import type {
@@ -98,8 +97,8 @@ export interface CreateWorkspaceReservationInput {
   readonly checkoutSessionKey: CheckoutSessionKey;
   readonly checkoutAttemptKey: CheckoutAttemptKey;
   readonly dotyposCustomerId: DotyposCustomerId;
-  /** The signed-in account making the reservation; null for a guest. */
-  readonly authorAccountId: CustomerAccountId | null;
+  /** The signed-in account making the reservation. */
+  readonly authorAccountId: CustomerAccountId;
   /** The customer's AI agent that started the reservation, if one did. */
   readonly agentClientId?: CustomerAgentClientId;
   /** The agent booking request the reservation answers, if an agent made it. */
@@ -185,19 +184,6 @@ export interface IWorkspaceReservationRepository {
     | EffectDrizzleQueryError
     | WorkspaceReservationDetailsMalformedError
     | WorkspaceReservationStateError
-  >;
-  /**
-   * Records the signed-in account as the author of a reservation that has
-   * none, such as a guest draft its customer resumes after signing in. An
-   * established author is never replaced. Returns the author the reservation
-   * has afterwards, or null when the reservation doesn't exist.
-   */
-  readonly assignAuthor: (input: {
-    readonly id: WorkspaceReservationId;
-    readonly authorAccountId: CustomerAccountId;
-  }) => Effect.Effect<
-    CustomerAccountId | null,
-    EffectDrizzleQueryError | SqlError.SqlError
   >;
   readonly claimHoldCreation: (
     id: WorkspaceReservationId
@@ -537,9 +523,6 @@ export class WorkspaceReservationRepository extends Context.Service<
                   return yield* decodeWorkspaceReservation(currentSessionRow);
                 }
 
-                if (input.authorAccountId) {
-                  yield* ensureCustomerAccount(tx, input.authorAccountId);
-                }
                 const [inserted] = yield* tx
                   .insert(workspaceReservations)
                   .values({
@@ -716,35 +699,6 @@ export class WorkspaceReservationRepository extends Context.Service<
           }
           return yield* decodeWorkspaceReservation(updated[0]);
         }),
-        assignAuthor: Effect.fn("workspaceReservations.assignAuthor")(
-          function* (input) {
-            return yield* db.transaction(
-              Effect.fn(function* (tx) {
-                const [current] = yield* tx
-                  .select({
-                    authorAccountId: workspaceReservations.authorAccountId,
-                  })
-                  .from(workspaceReservations)
-                  .where(eq(workspaceReservations.id, input.id))
-                  .for("update");
-                if (!current) return null;
-                if (current.authorAccountId) return current.authorAccountId;
-
-                yield* ensureCustomerAccount(tx, input.authorAccountId);
-                yield* tx
-                  .update(workspaceReservations)
-                  .set({
-                    authorAccountId: input.authorAccountId,
-                    updatedAt: Temporal.Now.instant(),
-                  })
-                  .where(eq(workspaceReservations.id, input.id));
-                return input.authorAccountId;
-              })
-            );
-          },
-          (effect, input) =>
-            effect.pipe(Effect.annotateLogs({ reservationId: input.id }))
-        ),
         claimHoldCreation: Effect.fn("workspaceReservations.claimHoldCreation")(
           function* (id) {
             const updated = yield* db
@@ -1156,12 +1110,6 @@ export class WorkspaceReservationRepository extends Context.Service<
                 });
               }
 
-              if (input.replacement.authorAccountId) {
-                yield* ensureCustomerAccount(
-                  tx,
-                  input.replacement.authorAccountId
-                );
-              }
               const [replacement] = yield* tx
                 .insert(workspaceReservations)
                 .values({

@@ -1,4 +1,4 @@
-import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { workspaceSiteOrigin } from "@/shared/utils/site-constants";
 
 /**
  * Where the synthetic test agent publishes its Client ID Metadata Document.
@@ -11,7 +11,8 @@ export const customerAgentTestClientPathname = "/oauth/clients/e2e-agent.json";
  * Preview deployments sit behind deployment protection, so their OAuth
  * server can fetch the document only from the public production host.
  */
-const clientId = `https://${workspaceSiteConstants.brand.domain}${customerAgentTestClientPathname}`;
+const clientId = new URL(customerAgentTestClientPathname, workspaceSiteOrigin)
+  .href;
 
 /**
  * The redirect URI's host never resolves. The preview E2E's browser answers

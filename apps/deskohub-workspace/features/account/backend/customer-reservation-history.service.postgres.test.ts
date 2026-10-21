@@ -24,7 +24,10 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type CustomerAccountId,
   customerAccountIdSchema,
@@ -79,6 +82,10 @@ const makeDotyposCustomer = (
 
 const insertAuthUser = async (id: string, email: string) => {
   await testDatabase!.pool.query(
+    "insert into customer_accounts (id) values ($1) on conflict do nothing",
+    [id]
+  );
+  await testDatabase!.pool.query(
     `insert into auth."user" (id, name, email) values ($1, '', $2)`,
     [id, email]
   );
@@ -89,15 +96,17 @@ const insertCustomerAccount = async (input: {
   readonly deleted?: boolean;
   readonly dotyposCustomerId?: DotyposCustomerId;
 }) => {
-  await testDatabase!.pool.query(
-    `insert into customer_accounts (id, deleted_at) values ($1, $2)`,
-    [input.id, input.deleted ? new Date() : null]
-  );
-  if (input.deleted) return;
+  if (input.deleted) {
+    await testDatabase!.pool.query(
+      `insert into customer_accounts (id, deleted_at) values ($1, $2)`,
+      [input.id, new Date()]
+    );
+    return;
+  }
   await insertAuthUser(input.id, testEmailAddress(`h-${input.id}`));
   if (input.dotyposCustomerId) {
     await testDatabase!.pool.query(
-      `insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2)`,
+      `update customer_accounts set dotypos_customer_id = $2 where id = $1`,
       [input.id, input.dotyposCustomerId]
     );
   }
@@ -107,7 +116,7 @@ const insertWorkspaceReservation = async (input: {
   readonly id: WorkspaceReservationId;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly dotyposReservationId: DotyposReservationId;
-  readonly authorAccountId?: CustomerAccountId;
+  readonly authorAccountId: CustomerAccountId;
   readonly reservationState?: "held" | "confirmed";
 }) => {
   await Effect.runPromise(
@@ -118,7 +127,7 @@ const insertWorkspaceReservation = async (input: {
       ),
       dotyposCustomerId: input.dotyposCustomerId,
       dotyposReservationId: input.dotyposReservationId,
-      authorAccountId: input.authorAccountId ?? null,
+      authorAccountId: input.authorAccountId,
       reservationState: input.reservationState ?? "confirmed",
       paymentState: "not_started",
       fulfillmentState: "not_started",
@@ -255,7 +264,7 @@ describe.skipIf(!testDatabase)(
       const dotyposCustomerId = uniqueDotyposId();
       await insertAuthUser(account, testEmailAddress(`h-${account}`));
       await testDatabase!.pool.query(
-        `insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2)`,
+        `update customer_accounts set dotypos_customer_id = $2 where id = $1`,
         [account, dotyposCustomerId]
       );
 
@@ -323,18 +332,20 @@ describe.skipIf(!testDatabase)(
 
       await insertAuthUser(account, testEmailAddress(`h-${account}`));
       await testDatabase!.pool.query(
-        `insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2)`,
+        `update customer_accounts set dotypos_customer_id = $2 where id = $1`,
         [account, dotyposCustomerId]
       );
       await insertWorkspaceReservation({
         id: matchedWorkspaceReservationId,
         dotyposCustomerId,
         dotyposReservationId: matchedDotyposReservationId,
+        authorAccountId: account,
       });
       await insertWorkspaceReservation({
         id: foreignWorkspaceReservationId,
         dotyposCustomerId: foreignCustomerId,
         dotyposReservationId: foreignDotyposReservationId,
+        authorAccountId: fixtureReservationAuthorId,
       });
 
       const history = await Effect.runPromise(
@@ -418,7 +429,6 @@ describe.skipIf(!testDatabase)(
 
       const seeded = [
         { key: "own", customer: customerId, author: account },
-        { key: "authorless", customer: customerId, author: undefined },
         { key: "booked-for", customer: bookedForCustomerId, author: account },
         { key: "booked-by", customer: customerId, author: otherAuthor },
         { key: "deleted-author", customer: customerId, author: deletedAuthor },
@@ -448,7 +458,7 @@ describe.skipIf(!testDatabase)(
           id: workspace,
           dotyposCustomerId: entry.customer,
           dotyposReservationId: dotypos,
-          ...(entry.author && { authorAccountId: entry.author }),
+          authorAccountId: entry.author,
         });
         reservations.push(
           makeDotyposReservation({
@@ -522,11 +532,6 @@ describe.skipIf(!testDatabase)(
           party: { kind: "booked-for", customerName: "Karla Ukázková" },
         },
         {
-          id: seeded.ids("authorless").workspace,
-          workspaceReservationId: seeded.ids("authorless").workspace,
-          party: undefined,
-        },
-        {
           id: seeded.ids("own").workspace,
           workspaceReservationId: seeded.ids("own").workspace,
           party: undefined,
@@ -578,7 +583,6 @@ describe.skipIf(!testDatabase)(
         { kind: "booked-by", authorName: null },
         { kind: "booked-for", customerName: null },
         undefined,
-        undefined,
       ]);
     });
 
@@ -597,7 +601,6 @@ describe.skipIf(!testDatabase)(
         { kind: "booked-by", authorName: null },
         { kind: "booked-for", customerName: null },
         undefined,
-        undefined,
       ]);
     });
 
@@ -613,7 +616,6 @@ describe.skipIf(!testDatabase)(
       const seeded = [
         { key: "booked-for", author: account },
         { key: "other-author", author: otherAuthor },
-        { key: "authorless", author: undefined },
       ] as const;
       const reservations: DotyposReservation[] = [];
       const workspaceIds = new Map<string, WorkspaceReservationId>();
@@ -629,7 +631,7 @@ describe.skipIf(!testDatabase)(
           id: workspace,
           dotyposCustomerId: bookedForCustomerId,
           dotyposReservationId: dotypos,
-          ...(entry.author && { authorAccountId: entry.author }),
+          authorAccountId: entry.author,
         });
         reservations.push(
           makeDotyposReservation({

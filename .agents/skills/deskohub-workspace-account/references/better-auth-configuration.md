@@ -27,7 +27,7 @@
   session settings, and `advanced.database.joins`. When you add a user field
   there, update `db/schema/auth.ts` and `db/schema/auth.test.ts` in the same
   change.
-- Generate the auth tables, `customer_account_links`, and `customer_accounts` with Drizzle tooling
+- Generate the auth tables and `customer_accounts` with Drizzle tooling
   from the checked-in schema; never hand-edit snapshots. Better Auth's own
   `migrate` command doesn't apply to this setup. Follow the migration process
   in the `deskohub-workspace-operations` skill.
@@ -135,8 +135,10 @@ Better Auth only removes expired rows when a later request happens to touch
 them. The daily `auth-cleanup` cron (scheduled in `vercel.json`, authorized
 with `CRON_SECRET`) deletes expired sessions and verifications, rate-limit
 rows older than the longest configured window, and expired agent access
-tokens, refresh tokens, and client-assertion records, using plain set-based
-SQL. It only cleans its own deployment's database.
+tokens, refresh tokens, and client-assertion records, and clears agent
+refresh replay copies whose reuse window has passed, using plain set-based
+SQL. It also tombstones customer accounts whose login is gone and that are
+more than a day old. It only cleans its own deployment's database.
 
 ## Secrets and release
 

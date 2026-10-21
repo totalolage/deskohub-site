@@ -77,6 +77,10 @@ const makeRepositoryLayer = () => {
 
 const insertAuthUser = async (id: string, email: string) => {
   await testDatabase!.pool.query(
+    "insert into customer_accounts (id) values ($1) on conflict do nothing",
+    [id]
+  );
+  await testDatabase!.pool.query(
     `insert into auth."user" (id, name, email) values ($1, '', $2)`,
     [id, email]
   );

@@ -94,7 +94,6 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
         reservation: Pick<WorkspaceReservation, "authorAccountId" | "id">
       ) {
         const { authorAccountId } = reservation;
-        if (!authorAccountId) return null;
         return yield* reservationAuthors.describe([authorAccountId]).pipe(
           Effect.map((authors) => authors.get(authorAccountId) ?? null),
           Effect.catch((error) =>

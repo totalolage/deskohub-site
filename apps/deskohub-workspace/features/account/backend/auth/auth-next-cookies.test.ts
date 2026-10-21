@@ -14,6 +14,7 @@ import {
   authVerification,
 } from "@/db/schema/auth";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { ensureCustomerAccount } from "../customer-account.repository";
 import { captureAccountLocalePreference } from "../customer-locale-preference";
 import { type MagicLinkSendFunction, makeWorkspaceAuth } from "./auth-server";
 
@@ -87,6 +88,8 @@ const makeTestAuth = (sentMagicLinks: { url: string }[] = []) => {
     sendMagicLink,
     verifyHuman: () => Effect.void,
     beforeDeleteUser: () => Effect.void,
+    createCustomerAccount: (accountId) =>
+      ensureCustomerAccount(testDatabase!.db, accountId),
     captureAccountLocalePreference: captureLocalePreference,
   });
 };

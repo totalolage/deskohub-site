@@ -145,6 +145,17 @@ describe("Better Auth schema", () => {
     }
   });
 
+  test("roots every login in its durable customer account", () => {
+    const [foreignKey] = getTableConfig(authUser).foreignKeys;
+    expect(
+      foreignKey?.reference().columns.map((column) => column.name)
+    ).toEqual(["id"]);
+    expect(getTableConfig(foreignKey!.reference().foreignTable).name).toBe(
+      "customer_accounts"
+    );
+    expect(foreignKey!.onDelete).toBe("restrict");
+  });
+
   test("carries deletionRequestedAt as nullable server-owned user state", () => {
     const fields = authTables.user!.fields as Record<string, BetterAuthField>;
     expect(fields.deletionRequestedAt).toMatchObject({

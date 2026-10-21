@@ -16,7 +16,10 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   ReservationVisits,
   ReservationVisitsUnavailable,
@@ -65,6 +68,7 @@ describe.skipIf(!testDatabase)(
         const id = workspaceId(label);
         insertedIds.push(id);
         return {
+          authorAccountId: fixtureReservationAuthorId,
           id,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
           dotyposCustomerId: customer,

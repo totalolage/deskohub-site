@@ -14,6 +14,10 @@ const testDatabase = await connectWorkspacePostgresTestDatabase();
 
 const insertAuthUser = async (id: string) => {
   await testDatabase!.pool.query(
+    "insert into customer_accounts (id) values ($1) on conflict do nothing",
+    [id]
+  );
+  await testDatabase!.pool.query(
     `insert into auth."user" (id, name, email) values ($1, '', $2)`,
     [id, testEmailAddress(`auth-rows-${id}`)]
   );
@@ -53,10 +57,6 @@ describe.skipIf(!testDatabase)(
     test("tombstones the customer account and deletes the Better Auth user", async () => {
       const accountId = `agent-eval-${crypto.randomUUID()}`;
       await insertAuthUser(accountId);
-      await testDatabase!.pool.query(
-        "insert into customer_accounts (id) values ($1)",
-        [accountId]
-      );
       expect(await readDeletedAt(accountId)).toBeNull();
 
       await removeAccount(accountId);
@@ -65,7 +65,7 @@ describe.skipIf(!testDatabase)(
       expect(await authUserExists(accountId)).toBe(false);
     });
 
-    test("leaves a tombstone for an account that never had a record", async () => {
+    test("leaves a tombstone for an unlinked account", async () => {
       const accountId = crypto.randomUUID();
       await insertAuthUser(accountId);
 

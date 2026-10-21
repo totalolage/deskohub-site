@@ -10,7 +10,6 @@ import { eq } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import {
-  customerAccountLinks,
   customerAccounts,
   customerEvents,
   workspaceReservations,
@@ -24,7 +23,10 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { recordCustomerEvent } from "./customer-event-outbox";
 import {
   CustomerEventReconciler,
@@ -116,6 +118,7 @@ describe.skipIf(!testDatabase)(
           },
           locale: "en-US",
           ...values,
+          authorAccountId: values.authorAccountId ?? fixtureReservationAuthorId,
         } satisfies typeof workspaceReservations.$inferInsert;
       });
       await Effect.runPromise(
@@ -274,29 +277,36 @@ describe.skipIf(!testDatabase)(
     test("records account creation for a linked account at its creation time", async () => {
       const now = nowInYear(2095);
       const createdAt = now.subtract({ hours: 5 });
-      const insertAccount = async (linkedCustomer: string | null) => {
+      const insertAccount = async (
+        linkedCustomer: string | null,
+        emailVerified: boolean
+      ) => {
         const id = customerAccountIdSchema.make(crypto.randomUUID());
         accountIds.push(id);
-        await testDatabase.pool.query(
-          `insert into auth."user" (id, name, email) values ($1, '', $2)`,
-          [id, testEmailAddress(`reconcile-${id}`)]
-        );
         await Effect.runPromise(
           testDatabase.db.insert(customerAccounts).values({ id, createdAt })
         );
+        await testDatabase.pool.query(
+          `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, $3)`,
+          [id, testEmailAddress(`reconcile-${id}`), emailVerified]
+        );
         if (linkedCustomer) {
           await Effect.runPromise(
-            testDatabase.db.insert(customerAccountLinks).values({
-              customerAccountId: id,
-              dotyposCustomerId: DotyposCustomerIdSchema.make(linkedCustomer),
-            })
+            testDatabase.db
+              .update(customerAccounts)
+              .set({
+                dotyposCustomerId: DotyposCustomerIdSchema.make(linkedCustomer),
+              })
+              .where(eq(customerAccounts.id, id))
           );
         }
         return id;
       };
-      const linkedCustomer = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
-      const linked = await insertAccount(linkedCustomer);
-      const unlinked = await insertAccount(null);
+      const linkedCustomer = crypto.randomUUID();
+      const unverifiedCustomer = crypto.randomUUID();
+      const linked = await insertAccount(linkedCustomer, true);
+      const unverified = await insertAccount(unverifiedCustomer, false);
+      const unlinked = await insertAccount(null, true);
       const readAccountEvents = (id: CustomerAccountId) =>
         Effect.runPromise(
           testDatabase.db
@@ -321,6 +331,7 @@ describe.skipIf(!testDatabase)(
           dotyposCustomerId: DotyposCustomerIdSchema.make(linkedCustomer),
         },
       ]);
+      expect(await readAccountEvents(unverified)).toEqual([]);
       expect(await readAccountEvents(unlinked)).toEqual([]);
     });
   }

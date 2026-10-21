@@ -17,6 +17,7 @@ import type { DiscountCandidate } from "@/features/discounts/provider";
 import { type Locale, m } from "@/features/i18n";
 import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
 import { referralInvitationDiscountBasisPoints } from "@/features/referrals/program";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { IPaymentLifecycleRepository } from "./payment-lifecycle.repository";
 
 type Reservation = typeof workspaceReservations.$inferSelect;
@@ -37,6 +38,7 @@ export const createHeldReservation = (
   db
     .insert(workspaceReservations)
     .values({
+      authorAccountId: fixtureReservationAuthorId,
       checkoutAttemptKey: checkoutAttemptKeySchema.make(
         `payment-${crypto.randomUUID()}`
       ),
