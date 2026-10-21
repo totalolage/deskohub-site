@@ -79,7 +79,10 @@ in-app. Re-check this table whenever a provider, plan, or region changes.
   immediately and being deleted. Keep each token bound to the consent that
   authorized it, so deleting the consent deletes its tokens (the
   oauth-provider patch and the `consent_id` cascade), and keep the Connected
-  assistants section name in step with the copy.
+  assistants section name in step with the copy. Tokens issued before the
+  binding reference no consent and never work again for a client that asks
+  for consent, so they can't outlive a disconnect; the assistant connects
+  once more. Never bind existing tokens to a consent after the fact.
 - Account deletion expires the Dotypos profile and removes the live login
   account. Don't promise automatic Dotypos deletion after any period: the
   Dotypos Customer API documents no retention or anonymization behavior for
