@@ -1,12 +1,10 @@
 export { splitCustomerName } from "./dotypos-customer-policy";
 export { createWorkspaceDotyposReservation } from "./dotypos-reservation.adapter";
 export { WorkspaceTableAssignmentService } from "./workspace-table-assignment.service";
-export type { OccupancyReservation } from "./workspace-table-occupancy";
 export {
   excludeDotyposReservationsById,
   getOccupancyWindow,
   getTableBookingOccupancyById,
-  toOccupancyReservation,
   toTableBookings,
   workspaceBookingSeatCount,
 } from "./workspace-table-occupancy";

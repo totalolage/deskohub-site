@@ -1,6 +1,6 @@
 ---
 name: deskohub-workspace-e2e
-description: Workspace E2E, Playwright, protected preview, exact-SHA run, checkout or account lane, Nexi sandbox, webhook replay, E2E fixtures, date shard, E2E failure triage, flaky E2E, agent task evals, browser agent harness, agent eval results.
+description: Workspace E2E, Playwright, protected preview, exact-SHA run, checkout or account lane, Nexi sandbox, webhook replay, E2E fixtures, MCP OAuth agent booking, CIMD test agent, date shard, E2E failure triage, flaky E2E, agent task evals, browser agent harness, agent eval results.
 ---
 
 # Deskohub Workspace E2E
@@ -20,7 +20,7 @@ If a reference disagrees with the runner, follow the runner and fix the referenc
 
 - Running E2E, CI workflow, preview target, environment variables, preview database, local checks: [preview workflow](references/preview-workflow.md).
 - Playwright projects, case pool, account lane, workers, hosted-payment permit, fail-fast cleanup, date shards, coordination database, webhook replay permit, Dotypos capacity, trace contract: [suite orchestration](references/suite-orchestration.md).
-- Discount, Calendar, customer, account, email, admin, access-code, or email-campaign fixtures and synthetic data: [fixtures](references/fixtures.md).
+- Discount, Calendar, customer, account, email, admin, access-code, email-campaign, or customer agent OAuth client fixtures and synthetic data: [fixtures](references/fixtures.md).
 - Writing browser steps (hydration, forms, tooltips, streamed pages, assertions): [browser driving](references/browser-driving.md).
 - Diagnosing a failed run or a known provider failure: [failure triage](references/failure-triage.md).
 - Hosted payment page, sandbox restart, currency override: [Nexi sandbox](references/nexi-sandbox.md).

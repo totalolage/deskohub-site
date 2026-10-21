@@ -34,6 +34,7 @@ import {
 } from "@/features/feature-flags/backend";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { SharedAvailabilityInventoryLive } from "@/features/reservation/backend/availability-inventory-cache.server";
+import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
 import {
   type CustomerReservationTable,
   getCustomerReservationTable,
@@ -183,11 +184,21 @@ type CheckoutStatusError =
   | PaymentLifecycleRepositoryError
   | WorkspaceReservationDetailsMalformedError;
 
+type CheckoutStatusLookup = {
+  readonly orderId: WorkspaceReservationId;
+  readonly returnOutcome: CheckoutStatusReturnOutcome;
+  /**
+   * Whether to read the customer's contact details from Dotypos for the
+   * statuses that show them. Defaults to true; a caller that never shows them
+   * passes false to skip the read.
+   */
+  readonly includeSupportContact?: boolean;
+};
+
 export interface ICheckoutStatusService {
-  readonly getStatus: (input: {
-    readonly orderId: WorkspaceReservationId;
-    readonly returnOutcome: CheckoutStatusReturnOutcome;
-  }) => Effect.Effect<CheckoutStatusViewModel, CheckoutStatusError>;
+  readonly getStatus: (
+    input: CheckoutStatusLookup
+  ) => Effect.Effect<CheckoutStatusViewModel, CheckoutStatusError>;
   readonly refreshStatus: (input: {
     readonly orderId: WorkspaceReservationId;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
@@ -417,6 +428,7 @@ const implementation = Effect.gen(function* () {
   const latePaymentVerification = yield* LatePaymentVerificationService;
   const paymentAttempts = yield* PaymentAttemptRepository;
   const dotypos = yield* DotyposService;
+  const records = yield* ReservationRecords;
   const inventory = yield* AdvisoryAvailabilityInventory;
   const finalization = yield* ProviderPaymentFinalizationService;
   const seatingMapFeatureFlag = yield* SeatingMapFeatureFlagService;
@@ -441,7 +453,7 @@ const implementation = Effect.gen(function* () {
 
       const dotyposReservationId = reservation.dotyposReservationId;
       const loadDotyposReservation = Effect.suspend(() =>
-        dotypos.getReservationWithoutCustomer(dotyposReservationId)
+        records.get(dotyposReservationId)
       ).pipe(
         Effect.tapError((cause) =>
           Effect.logWarning("Checkout status summary reservation load failed", {
@@ -652,7 +664,7 @@ const implementation = Effect.gen(function* () {
     }) =>
       Effect.succeed(input).pipe(
         Effect.bind("dotyposReservation", ({ dotyposReservationId }) =>
-          dotypos.getReservationWithoutCustomer(dotyposReservationId)
+          records.get(dotyposReservationId)
         ),
         Effect.bind("timing", ({ reservation, dotyposReservation }) =>
           getDotyposReservationTiming({
@@ -721,7 +733,10 @@ const implementation = Effect.gen(function* () {
   /** Derives the customer status and its support contact prefill. */
   const resolveStatusKind = Effect.fn(
     "CheckoutStatusService.resolveStatusKind"
-  )(function* (reservation: WorkspaceReservation) {
+  )(function* (
+    reservation: WorkspaceReservation,
+    includeSupportContact: boolean
+  ) {
     const latePaymentRecovery =
       yield* latePaymentRecoveries.findLatestByWorkspaceReservationId(
         reservation.id
@@ -738,19 +753,15 @@ const implementation = Effect.gen(function* () {
       (yield* isPendingPaymentOverdue(reservation, now))
         ? "payment_pending_delayed"
         : reservationStatusKind);
-    const supportContactPrefill = yield* loadSupportContactPrefill(
-      reservation,
-      statusKind
-    );
+    const supportContactPrefill = includeSupportContact
+      ? yield* loadSupportContactPrefill(reservation, statusKind)
+      : undefined;
 
     return { latePaymentStatusKind, statusKind, supportContactPrefill };
   });
 
   const getStatus = Effect.fn("CheckoutStatusService.getStatus")(
-    function* (input: {
-      readonly orderId: WorkspaceReservationId;
-      readonly returnOutcome: CheckoutStatusReturnOutcome;
-    }) {
+    function* (input: CheckoutStatusLookup) {
       yield* Effect.logInfo("Checkout status lookup started");
 
       const reservation = yield* reservations.findById(input.orderId);
@@ -780,7 +791,7 @@ const implementation = Effect.gen(function* () {
         retrySearchParams,
       ] = yield* Effect.all(
         [
-          resolveStatusKind(reservation),
+          resolveStatusKind(reservation, input.includeSupportContact ?? true),
           reconstructSummary(reservation).pipe(
             Effect.timeoutOrElse({
               duration: summaryTimeout,
@@ -928,19 +939,27 @@ export class CheckoutStatusService extends Context.Service<
 >()("@deskohub-workspace/checkout/CheckoutStatusService") {
   static Default = Layer.effect(this, implementation);
 
-  static Live = this.Default.pipe(
-    Layer.provide(ProviderPaymentFinalizationService.Live),
-    Layer.provide(LatePaymentVerificationService.Live),
-    Layer.provide(LatePaymentRecoveryRepository.Default),
-    Layer.provide(PaymentAttemptRepository.Default),
-    Layer.provide(WorkspaceReservationRepository.Default),
-    Layer.provide(WorkspaceDatabase.Default),
-    Layer.provide(WorkspaceDotyposLayer),
-    Layer.provide(SharedAvailabilityInventoryLive),
-    Layer.provide(
-      SeatingMapFeatureFlagService.Default.pipe(
-        Layer.provide(WorkspaceFeatureFlagService.Default)
+  /**
+   * The status service wired to read reservation details from `records`:
+   * live for the status page, shared snapshots for customers' AI agents.
+   */
+  static withRecords = <E>(records: Layer.Layer<ReservationRecords, E>) =>
+    this.Default.pipe(
+      Layer.provide(records),
+      Layer.provide(ProviderPaymentFinalizationService.Live),
+      Layer.provide(LatePaymentVerificationService.Live),
+      Layer.provide(LatePaymentRecoveryRepository.Default),
+      Layer.provide(PaymentAttemptRepository.Default),
+      Layer.provide(WorkspaceReservationRepository.Default),
+      Layer.provide(WorkspaceDatabase.Default),
+      Layer.provide(WorkspaceDotyposLayer),
+      Layer.provide(SharedAvailabilityInventoryLive),
+      Layer.provide(
+        SeatingMapFeatureFlagService.Default.pipe(
+          Layer.provide(WorkspaceFeatureFlagService.Default)
+        )
       )
-    )
-  );
+    );
+
+  static Live = this.withRecords(ReservationRecords.Live);
 }

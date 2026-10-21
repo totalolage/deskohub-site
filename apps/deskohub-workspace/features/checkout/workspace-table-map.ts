@@ -20,7 +20,7 @@ const getTableRoomName = (table: Pick<DotyposTable, "locationName">) => {
 };
 
 export const getWorkspaceTableMap = (
-  reservation: DotyposReservation,
+  reservation: Pick<DotyposReservation, "_tableId">,
   tables: readonly DotyposTable[]
 ): WorkspaceTableMap | undefined => {
   const assignedTableId = Option.getOrUndefined(

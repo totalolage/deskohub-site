@@ -20,6 +20,7 @@ import type {
   PaymentAttemptId,
 } from "@/features/checkout/checkout-identifiers";
 import type { Locale } from "@/features/i18n";
+import type { AgentSelectionKey } from "@/features/reservation/backend/booking-agent";
 import type {
   StoredWorkspaceReservationDetails,
   WorkspaceReservationId,
@@ -108,6 +109,19 @@ export const workspaceReservations = pgTable(
       .notNull()
       .references(() => customerAccounts.id, { onDelete: "restrict" })
       .$type<CustomerAccountId>(),
+    /**
+     * The OAuth client ID of the customer's AI agent that started this
+     * reservation through the customer MCP server; null for reservations made
+     * on the site.
+     */
+    agentClientId: text("agent_client_id"),
+    /**
+     * The agent booking request this reservation answers: a digest of the
+     * account, the agent client, and the complete selection. An identical
+     * repeated request finds its reservation by it. Null for reservations made
+     * on the site and for agent reservations made before the column.
+     */
+    agentSelectionKey: text("agent_selection_key").$type<AgentSelectionKey>(),
     reservationPurpose: text("reservation_purpose").$type<ReservationPurpose>(),
     dotyposReservationId: text(
       "dotypos_reservation_id"
@@ -175,6 +189,10 @@ export const workspaceReservations = pgTable(
       sql`${t.paymentState} <> 'paid' or ${t.paidAt} is not null`
     ),
     check(
+      "workspace_reservations_agent_selection_check",
+      sql`${t.agentSelectionKey} is null or ${t.agentClientId} is not null`
+    ),
+    check(
       "workspace_reservations_fulfilled_check",
       sql`${t.fulfillmentState} <> 'fulfilled' or ${t.fulfilledAt} is not null`
     ),
@@ -204,6 +222,9 @@ export const workspaceReservations = pgTable(
       .on(t.checkoutSessionKey)
       .where(sql`${t.reservationState} <> 'cancelled'`),
     index("workspace_reservations_author_account_idx").on(t.authorAccountId),
+    index("workspace_reservations_agent_selection_idx")
+      .on(t.agentSelectionKey, t.createdAt)
+      .where(sql`${t.agentSelectionKey} is not null`),
     index("workspace_reservations_checkout_session_idx").on(
       t.checkoutSessionKey,
       t.createdAt

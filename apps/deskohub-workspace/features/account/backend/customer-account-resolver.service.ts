@@ -200,11 +200,14 @@ const resolutionDependencies: Effect.Effect<
   };
 });
 
-const resolutionDependenciesLive = Layer.mergeAll(
-  CustomerAuthentication.Default,
-  CustomerAccountLinkRepository.Live,
-  CustomerDotyposAdapter.Live
-);
+const resolutionDependenciesWith = <E, R>(
+  authentication: Layer.Layer<CustomerAuthentication, E, R>
+) =>
+  Layer.mergeAll(
+    authentication,
+    CustomerAccountLinkRepository.Live,
+    CustomerDotyposAdapter.Live
+  );
 
 interface ICustomerAccountResolver {
   readonly resolve: Effect.Effect<
@@ -227,7 +230,18 @@ export class CustomerAccountResolver extends Context.Service<
     )
   );
 
-  static Live = this.Default.pipe(Layer.provide(resolutionDependenciesLive));
+  /**
+   * The service reading the customer through this authentication, such as
+   * an agent's access token instead of the browser session.
+   */
+  static withAuthentication = <E, R>(
+    authentication: Layer.Layer<CustomerAuthentication, E, R>
+  ) =>
+    this.Default.pipe(
+      Layer.provide(resolutionDependenciesWith(authentication))
+    );
+
+  static Live = this.withAuthentication(CustomerAuthentication.Default);
 }
 
 /**
@@ -238,6 +252,6 @@ export const resolveCurrentCustomerAccount: Effect.Effect<
   CustomerAccountLinkResolution,
   CustomerAccountAccessError
 > = Effect.flatMap(resolutionDependencies, resolveCustomerAccountLink).pipe(
-  Effect.provide(resolutionDependenciesLive),
+  Effect.provide(resolutionDependenciesWith(CustomerAuthentication.Default)),
   Effect.mapError(mapCustomerAccountFailure("account-link.lock"))
 );
