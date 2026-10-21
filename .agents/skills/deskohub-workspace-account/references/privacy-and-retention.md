@@ -42,7 +42,7 @@ collect signed per-account copies.
 | OpenStreetMap Foundation (UK) via Fastly (US) | Visitor IP and origin referrer from map tiles, loaded without consent (`landing-page-interactive-map.tsx`) | Fastly edge worldwide; the [OSMF privacy policy](https://osmfoundation.org/wiki/Privacy_Policy) excludes tile requests from its UK/NL storage statement | UK adequacy (renewed to 2031). Fastly has DPF and SCCs ([DPT](https://www.fastly.com/data-processing)), but OSMF's tile-log location and onward safeguard are **unpublished** |
 | Nexi Central Europe a.s. (EU) | Name, email, phone, amount, order IDs; card data on the hosted page | EEA (live host `xpay.nexigroup.com`) | Not our transfer: the checkout notice names Nexi as an independent controller for payments, covering its own onward transfers (adequacy or SCCs). The merchant contract is unconfirmed |
 | Dotykačka ČR s.r.o. (EU) | Customer profiles, reservations | Dotypos Cloud, CZ/EU per public statements; provider unpublished | No transfer known; no DPA or subprocessor list is public |
-| Customer's AI assistant provider | Offerings, the customer's reservations, created bookings (PR #767) | Wherever the provider the customer chose runs | Disclosure at the customer's request to a recipient they chose, not our processor. The notice says the provider may be outside the EU and that data goes there at the customer's request (owner decision, 2026-10-21) |
+| Customer's AI assistant provider | Offerings, the customer's reservations, created bookings (PR #767) | Wherever the provider the customer chose runs | Disclosure at the customer's request to a recipient they chose, not our processor. §6 Recipients says the provider may be outside the EU, for example in the US, and that data goes there because the customer asked; §7 doesn't cover it (owner decision, 2026-10-21) |
 
 Not a transfer: Google Calendar (calendar ID and time bounds only), Google
 Maps (a static directions link), and accounting documents, which are rendered
@@ -78,6 +78,9 @@ in-app. Re-check this table whenever a provider, plan, or region changes.
   named) and state transfers outside the EU in general terms, in §7 of the
   notice: the countries, the type of safeguard (adequacy, including the DPF,
   or SCCs; Art. 49(1)(b) for the door-lock provider), and how to get a copy.
+  A customer's AI assistant provider is a recipient the customer chose, so its
+  possible location outside the EU is stated in §6 beside that recipient, not
+  in §7.
   Provider names, regions, retention, and safeguards stay in the tables above.
 - Whenever a provider, plan, or region changes, update the transfers table and
   check that §7 still holds. For example, a new country without an adequacy

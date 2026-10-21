@@ -866,7 +866,9 @@ const legalDocuments = {
               If you connect an AI assistant, what it retrieves at your request,
               such as our offers and your reservations, goes to that assistant's
               provider, which handles it under its own terms as a recipient you
-              chose.
+              chose. That provider may be outside the European Union, for
+              example in the United States, and your data goes there because you
+              asked for it.
             </>,
             <>
               If we send marketing communications in the future, our email
@@ -1392,7 +1394,10 @@ const legalDocuments = {
               Pokud připojíte AI asistenta, informace, které na vaši žádost
               získá, například naši nabídku a vaše rezervace, předáváme
               poskytovateli tohoto asistenta, který s nimi nakládá podle
-              vlastních podmínek jako příjemce, kterého jste si zvolili.
+              vlastních podmínek jako příjemce, kterého jste si zvolili. Tento
+              poskytovatel může sídlit mimo Evropskou unii, například ve
+              Spojených státech, a vaše údaje se tam dostanou proto, že jste o
+              to požádali.
             </>,
             <>
               Pokud budeme v budoucnu zasílat marketingová sdělení, může náš
