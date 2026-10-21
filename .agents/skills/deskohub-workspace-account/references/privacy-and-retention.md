@@ -17,6 +17,7 @@ what the privacy copy promises. Privacy copy lives in
 | Resend | Sent message, recipient, delivery metadata | Provider retention only, and Workspace keeps no copy: 30 days for email and log data on Free, Pro, and Scale plans, plus seven-day backups. Resend publishes no sent-message delete API, so account deletion can't erase an email already sent; an exceptional early removal goes through Resend's contact process |
 | Cloudinary | Avatar asset | Destroyed before identity removal |
 | PostHog warehouse | Allowlisted Dotypos customer fields in `custom.dotypos_customers` | PostHog retention settings; a Dotypos deletion arrives as `deleted: true`, not erasure |
+| PostHog events | Reservation and payment step records keyed by the reservation ID, with no contact data ([lifecycle events](posthog-identity-privacy.md#reservation-and-payment-lifecycle-events)) | PostHog retention settings; an objection is handled by a manual deletion request |
 
 ## Transfers outside the EU
 
@@ -100,3 +101,9 @@ in-app. Re-check this table whenever a provider, plan, or region changes.
 - Avatars never enter Neon. See [avatar media storage](avatar-media-storage.md).
 - PostHog has its own retention and erasure limits. See
   [PostHog identity and privacy](posthog-identity-privacy.md).
+- The privacy policy discloses the consent-free reservation and payment step
+  records in section 3, their agent fields in section 2, and their
+  legitimate-interest basis and the right to object in section 4. Keep those lines in sync with the lifecycle event
+  contract in
+  [PostHog identity and privacy](posthog-identity-privacy.md#reservation-and-payment-lifecycle-events):
+  a payload change that sends a new kind of data changes the notice too.

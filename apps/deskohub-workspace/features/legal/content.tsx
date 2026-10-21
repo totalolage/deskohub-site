@@ -680,8 +680,8 @@ const legalDocuments = {
               use, and, for our booking tools for AI assistants, which tool was
               used and whether it worked. We send nothing that identifies you,
               and this does not depend on analytics consent. We also add the
-              category to the reservation and payment records we send to our
-              analytics provider.
+              category and the name of a recognized assistant to the reservation
+              and payment records described in section 3.
             </>,
             <>
               If you consent to analytics cookies or similar technologies, we
@@ -739,6 +739,14 @@ const legalDocuments = {
               measurements don't include what you enter in the reservation form.
             </>,
             <>
+              Whether or not you give analytics consent, we also send our
+              analytics provider a record of each reservation and payment step,
+              such as a started, completed, failed, or abandoned payment and its
+              amount. We use these records to measure how reservations and
+              payments go and to spot payment problems. They are linked to your
+              reservation but don't include your name or contact details.
+            </>,
+            <>
               We also send selected customer data from our booking system
               Dotypos to our analytics provider to understand how customers use
               our services and how that relates to their activity on the
@@ -782,14 +790,21 @@ const legalDocuments = {
             </>,
             <>
               Optional non-essential cookies are processed only on the basis of
-              your consent. Analytics and campaign measurement processing is
-              based on consent, which you can withdraw or change at any time via
-              cookie settings.
+              your consent. Analytics of your website use and campaign
+              measurement are based on consent, which you can withdraw or change
+              at any time via cookie settings.
             </>,
             <>
               Measuring automated traffic by category is based on our legitimate
               interest in operating the website and improving it for search
               engines and AI assistants. It uses no data that identifies you.
+            </>,
+            <>
+              Recording reservation and payment steps is based on our legitimate
+              interest in measuring how reservations and payments go and
+              spotting failed or abandoned payments, where that interest is not
+              overridden by your rights. You can object to this processing at
+              any time.
             </>,
             <>
               Sending customer data from our booking system to our analytics
@@ -1204,9 +1219,9 @@ const legalDocuments = {
               automatizovaný požadavek pokusil použít, a u našich rezervačních
               nástrojů pro AI asistenty to, který nástroj byl použit a zda
               uspěl. Nepředáváme nic, co by vás identifikovalo, a toto měření
-              nezávisí na souhlasu s analytikou. Tuto kategorii připojujeme také
-              k údajům o rezervacích a platbách, které předáváme poskytovateli
-              analytických služeb.
+              nezávisí na souhlasu s analytikou. Tuto kategorii a název
+              rozpoznaného asistenta připojujeme také k záznamům o rezervacích a
+              platbách popsaným v bodě 3.
             </>,
             <>
               Pokud udělíte souhlas s analytickými cookies nebo obdobnými
@@ -1266,6 +1281,15 @@ const legalDocuments = {
               zadáte do rezervačního formuláře.
             </>,
             <>
+              Bez ohledu na analytický souhlas také předáváme poskytovateli
+              analytických služeb záznam o jednotlivých krocích rezervace a
+              platby, například o zahájené, dokončené, neúspěšné nebo opuštěné
+              platbě a její částce. Tyto záznamy používáme k měření průběhu
+              rezervací a plateb a k odhalování problémů s platbami. Jsou
+              spojené s vaší rezervací, ale neobsahují vaše jméno ani kontaktní
+              údaje.
+            </>,
+            <>
               Vybrané zákaznické údaje z našeho rezervačního systému Dotypos
               také předáváme našemu analytickému poskytovateli, abychom
               porozuměli tomu, jak zákazníci využívají naše služby a jak to
@@ -1310,14 +1334,21 @@ const legalDocuments = {
             </>,
             <>
               Nepovinné cookies zpracováváme pouze na základě vašeho souhlasu.
-              Analytické a kampanové měření je založené na souhlasu, který
-              můžete kdykoli odvolat nebo změnit v nastavení cookies.
+              Analytika vašeho používání webu a měření kampaní jsou založené na
+              souhlasu, který můžete kdykoli odvolat nebo změnit v nastavení
+              cookies.
             </>,
             <>
               Měření automatizovaného provozu podle kategorií vychází z našeho
               oprávněného zájmu na provozu webu a jeho zlepšování pro
               vyhledávače a AI asistenty. Nepoužívá žádné údaje, které by vás
               identifikovaly.
+            </>,
+            <>
+              Zaznamenávání kroků rezervace a platby vychází z našeho
+              oprávněného zájmu měřit průběh rezervací a plateb a odhalovat
+              neúspěšné nebo opuštěné platby, nepřevažují-li nad ním vaše práva.
+              Proti tomuto zpracování můžete kdykoli vznést námitku.
             </>,
             <>
               Předávání zákaznických údajů z našeho rezervačního systému
