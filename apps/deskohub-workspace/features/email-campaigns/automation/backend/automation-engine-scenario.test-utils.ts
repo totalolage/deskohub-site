@@ -1147,17 +1147,22 @@ export const makeAutomationEngineScenario = async (input: {
 
   /**
    * The next instant something falls due for the planner or the queue. A
-   * run's due time counts from the tick it falls due on: one due after the
-   * tick `at` falls in completes on the tick at or after it.
+   * run's due time, or an unprocessed event's occurrence, counts from the
+   * tick it falls on: one after the tick `at` falls in is due on the tick
+   * at or after it.
    */
   const nextDue = async (at: Temporal.Instant) => {
     const { rows } = await pool.query<{
-      run_due: Date | string | null;
+      tick_due: Date | string | null;
       next: Date | string | null;
     }>(
       `select
-         (select min(due_at) from email_campaign_automation_runs
-           where status = 'active' and due_at > $2) as run_due,
+         least(
+           (select min(due_at) from email_campaign_automation_runs
+             where status = 'active' and due_at > $2),
+           (select min(occurred_at) from customer_events
+             where automation_processed_at is null and occurred_at > $2)
+         ) as tick_due,
          least(
            (select min(next_fire_at) from email_campaign_automations
              where next_fire_at > $1),
@@ -1166,9 +1171,9 @@ export const makeAutomationEngineScenario = async (input: {
          ) as next`,
       [at.toString(), automationTickAtOrBefore(at).toString()]
     );
-    const runDue = databaseInstant(rows[0]?.run_due);
+    const tickDue = databaseInstant(rows[0]?.tick_due);
     const candidates = [
-      runDue === null ? null : automationTickAtOrAfter(runDue),
+      tickDue === null ? null : automationTickAtOrAfter(tickDue),
       databaseInstant(rows[0]?.next),
       ...delayed.map((entry) => entry.availableAt),
       // The sweep records a started or finished event once its time
@@ -1198,15 +1203,16 @@ export const makeAutomationEngineScenario = async (input: {
 
   /**
    * Whether the next planner minute has work: open units, events intake
-   * hasn't processed, ready runs of an active automation, or its waiting
-   * runs due by the tick `at` falls in.
+   * hasn't processed that occurred by the tick `at` falls in, ready runs of
+   * an active automation, or its waiting runs due by that tick.
    */
   const hasPendingWork = async (at: Temporal.Instant) => {
     const { rows } = await pool.query<{ pending: boolean }>(
       `select exists (select 1 from email_campaign_automation_work_units
                        where status in ('planned', 'enqueued'))
            or exists (select 1 from customer_events
-                       where automation_processed_at is null)
+                       where automation_processed_at is null
+                         and occurred_at <= $2)
            or exists (select 1 from email_campaign_automation_runs r
                         join email_campaigns c on c.id = r.campaign_id
                        where r.status = 'active' and c.status = 'active'

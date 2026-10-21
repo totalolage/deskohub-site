@@ -128,6 +128,14 @@ describe("simulateRun on engine ticks", () => {
     expect(end.at).toEqual(at("2026-10-21T12:15:00Z"));
   });
 
+  test("an event just after a tick waits two hours from the next tick", () => {
+    const { end } = simulate(
+      [wait({ _tag: "Duration", count: 2, unit: "hour" })],
+      "2026-10-21T12:00:20Z"
+    );
+    expect(end.at).toEqual(at("2026-10-21T14:15:00Z"));
+  });
+
   test("a two-hour delay entered on a tick sends two hours later", () => {
     const { end } = simulate(
       [wait({ _tag: "Duration", count: 2, unit: "hour" })],

@@ -38,11 +38,10 @@ export type SimulatedRunEnd = {
 };
 
 /**
- * Walks a flow's steps from `triggerAt` as live execution would on
- * punctual ticks, through the same `evaluateStep` the engine uses (design
- * §5.8, §8, D36). The run enters on the first tick at or after the trigger
- * (live, a late planner may take in an event just after its tick's instant,
- * one tick sooner); Condition steps and the send happen on the tick the run reaches
+ * Walks a flow's steps from `triggerAt` as live execution would, on the
+ * engine's ticks and through the same `evaluateStep` the engine uses
+ * (design §5.8, §8, D36). The run enters on the first tick at or after the
+ * trigger; Condition steps and the send happen on the tick the run reaches
  * them, a Condition asking `evaluateCondition` for its outcome there. A wait
  * is checked on the tick it's entered, then on the first tick at or after
  * its due time, where `evaluateStep` completes it. There is no pause, so no
