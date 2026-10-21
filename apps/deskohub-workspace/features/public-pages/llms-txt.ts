@@ -24,6 +24,7 @@ import {
   publicPageMarkdown,
 } from "./public-page-markdown";
 import type { PublicPagePathname } from "./public-pages";
+import { getWorkspaceSummary } from "./workspace-summary";
 
 /** `llms.txt` is written in English and links every locale of each page. */
 export const llmsTxtLocale: Locale = "en-US";
@@ -95,9 +96,7 @@ export const llmsTxtMarkdown = ({
 }): MarkdownBlocks => [
   markdownHeading(1, workspaceSiteConstants.brand.name),
   markdownBlockquote(
-    markdownParagraph(
-      m.workspaceMetadataDescription({}, { locale: llmsTxtLocale })
-    )
+    markdownParagraph(getWorkspaceSummary({ locale: llmsTxtLocale, offerings }))
   ),
   markdownParagraph(getPublicOpeningHours(llmsTxtLocale)),
   ...topicSections.flatMap(([topic, heading]) => {

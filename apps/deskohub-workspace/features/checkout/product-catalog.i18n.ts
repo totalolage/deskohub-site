@@ -11,12 +11,27 @@ import {
   type MeetingRoomReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 type WorkspaceProductMessage = (
   inputs: Record<string, never>,
   options: { readonly locale: Locale }
 ) => string;
 type WorkspaceProductTierPerkMarker = "bullet" | "plus";
+
+/** A message naming the Open Space cut-off, filled in from the site constants. */
+const withOpenSpaceUsableUntil =
+  (
+    message: (
+      inputs: { readonly until: string },
+      options: { readonly locale: Locale }
+    ) => string
+  ): WorkspaceProductMessage =>
+  (_inputs, options) =>
+    message(
+      { until: workspaceSiteConstants.openingHours.openSpaceUsableUntil },
+      options
+    );
 
 export type WorkspaceProductTierCardMessages = {
   readonly description: WorkspaceProductMessage;
@@ -31,7 +46,7 @@ export type WorkspaceProductTierCardMessages = {
 export const workspaceProductTierMessages = {
   "open-space": {
     title: m.reservationOpenSpaceTitle,
-    description: m.reservationOpenSpaceDescription,
+    description: withOpenSpaceUsableUntil(m.reservationOpenSpaceDescription),
   },
   "reserved-desk": {
     title: m.reservationReservedDeskTitle,
@@ -59,7 +74,7 @@ export const workspaceProductTierMessages = {
 
 export const workspaceProductTierCardMessages = {
   "open-space": {
-    description: m.reservationOpenSpaceBulletDesk,
+    description: withOpenSpaceUsableUntil(m.reservationOpenSpaceBulletDesk),
     perksLabel: m.reservationTierPerksLabel,
     perks: [{ message: m.reservationOpenSpacePerkWifi }],
   },
