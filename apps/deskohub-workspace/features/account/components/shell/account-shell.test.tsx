@@ -21,6 +21,7 @@ const sectionKeys: readonly AccountSection[] = [
   "referrals",
   "profile",
   "security",
+  "assistants",
   "billing",
   "legal",
   "danger",
@@ -37,6 +38,7 @@ const labels: AccountShellProps["labels"] = {
     referrals: "Referrals",
     reservations: "Reservations",
     security: "Sign-in & security",
+    assistants: "Connected assistants",
   },
 };
 
@@ -686,13 +688,14 @@ describe("AccountShell", () => {
     expect(
       getDesktopNavigation(view)
         .getAllByRole("link")
-        .map((b) => b.textContent)
+        .map((link) => link.getAttribute("data-account-sidebar-section"))
     ).toEqual([
-      "Reservations",
-      "Profile & identity",
-      "Billing & invoices",
-      "Legal & privacy",
-      "Danger zone",
+      "reservations",
+      "profile",
+      "assistants",
+      "billing",
+      "legal",
+      "danger",
     ]);
   });
 });

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { Context, Effect, Layer, Predicate } from "effect";
 import type { ReservationHistoryAccount } from "@/features/account/backend/customer-reservation-history.service";
 import type { CustomerAccountId } from "@/features/account/customer-account";
+import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
 
 const customerEmail = testEmailAddress("ada");
@@ -373,6 +374,27 @@ mock.module(
   "@/features/account/backend/auth/customer-passkeys.service",
   () => ({ CustomerPasskeys: Passkeys })
 );
+let assistantListEffect: Effect.Effect<
+  readonly CustomerAgentConnection[],
+  unknown
+>;
+let assistantListCalls = 0;
+const Assistants = Context.Service<
+  Assistants,
+  { readonly list: typeof assistantListEffect }
+>()("@test/CustomerAgentConnections");
+Object.assign(Assistants, {
+  Default: Layer.succeed(Assistants, {
+    list: Effect.suspend(() => {
+      assistantListCalls += 1;
+      return assistantListEffect;
+    }),
+  }),
+});
+mock.module(
+  "@/features/account/backend/auth/customer-agent-connections.service",
+  () => ({ CustomerAgentConnections: Assistants })
+);
 const areReferralsEnabled = mock(() => Promise.resolve(true));
 mock.module("@/features/referrals/referral-feature-flag.server", () => ({
   areReferralsEnabled,
@@ -421,6 +443,8 @@ describe("loadCustomerAccountPage", () => {
     arePasskeysEnabled.mockResolvedValue(false);
     passkeyListEffect = Effect.succeed([accountPasskey]);
     passkeyListCalls = 0;
+    assistantListEffect = Effect.succeed([]);
+    assistantListCalls = 0;
     areReferralsEnabled.mockReset();
     areReferralsEnabled.mockResolvedValue(true);
     historyEffect = Effect.succeed({
@@ -469,6 +493,7 @@ describe("loadCustomerAccountPage", () => {
 
     await expect(loadPageState("RFL12345")).resolves.toEqual({
       kind: "completion-required",
+      assistants: [],
       referralsEnabled: true,
       email: customerEmail,
       referralCode: "RFL12345",
@@ -493,6 +518,7 @@ describe("loadCustomerAccountPage", () => {
 
     await expect(loadPageState()).resolves.toEqual({
       kind: "completion-required",
+      assistants: [],
       referralsEnabled: true,
       email: customerEmail,
       history: {
@@ -527,6 +553,7 @@ describe("loadCustomerAccountPage", () => {
     availableReferralCodeEffect = Effect.succeed(undefined);
     await expect(loadPageState("RFLGONE1")).resolves.toEqual({
       kind: "completion-required",
+      assistants: [],
       referralsEnabled: true,
       email: customerEmail,
     });
@@ -534,6 +561,7 @@ describe("loadCustomerAccountPage", () => {
     availableReferralCodeEffect = Effect.fail(new Error("database down"));
     await expect(loadPageState("RFL12345")).resolves.toEqual({
       kind: "completion-required",
+      assistants: [],
       referralsEnabled: true,
       email: customerEmail,
     });
@@ -790,6 +818,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      assistants: [],
       email: customerEmail,
     });
 
@@ -800,6 +829,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      assistants: [],
       email: customerEmail,
     });
 
@@ -810,6 +840,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      assistants: [],
       email: customerEmail,
     });
 
@@ -819,6 +850,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      assistants: [],
       email: customerEmail,
     });
   });
@@ -841,6 +873,7 @@ describe("loadCustomerAccountPage", () => {
       });
       await expect(loadPageState()).resolves.toEqual({
         kind: "support-required",
+        assistants: [],
         email: customerEmail,
         history: {
           kind: "available",
@@ -865,6 +898,7 @@ describe("loadCustomerAccountPage", () => {
 
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      assistants: [],
       email: customerEmail,
       history: { kind: "unavailable", reason: "provider-unavailable" },
     });
@@ -886,6 +920,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      assistants: [],
       email: customerEmail,
     });
 
@@ -896,6 +931,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      assistants: [],
       email: customerEmail,
     });
     expect(historyLoadCalls).toBe(0);
@@ -916,6 +952,7 @@ describe("loadCustomerAccountPage", () => {
   test("renders the linked account with profile and grouped history, in one page-boundary run", async () => {
     await expect(loadPageState()).resolves.toEqual({
       kind: "linked",
+      assistants: [],
       referralsEnabled: true,
       email: customerEmail,
       profile: {
@@ -978,6 +1015,7 @@ describe("loadCustomerAccountPage", () => {
 
     await expect(loadPageState()).resolves.toEqual({
       kind: "linked",
+      assistants: [],
       referralsEnabled: true,
       email: customerEmail,
       profile: {
@@ -1049,6 +1087,7 @@ describe("loadCustomerAccountPage", () => {
     Object.assign(Profile, { Live: failingProfileLayer });
     await expect(loadPageState()).resolves.toEqual({
       kind: "authenticated-unavailable",
+      assistants: [],
       email: customerEmail,
       passkeys,
     });
@@ -1071,6 +1110,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      assistants: [],
       email: customerEmail,
       passkeys,
     });
@@ -1089,6 +1129,77 @@ describe("loadCustomerAccountPage", () => {
     expect(passkeyListCalls).toBe(4);
   });
 
+  test("lists connected assistants in every signed-in state except a pending deletion", async () => {
+    const assistant: CustomerAgentConnection = {
+      id: "consent-synthetic",
+      name: "Synthetic Assistant",
+      host: "assistant.invalid",
+      scopes: ["reservations:read"],
+      connectedAt: "2026-10-01T08:00:00.000Z",
+    };
+    assistantListEffect = Effect.succeed([assistant]);
+
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "linked",
+      assistants: [assistant],
+    });
+
+    const failingProfileLayer = Layer.succeed(Profile, {
+      load: () => Effect.fail(new Error("profile gone")),
+    });
+    Object.assign(Profile, { Live: failingProfileLayer });
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "authenticated-unavailable",
+      email: customerEmail,
+      assistants: [assistant],
+    });
+    Object.assign(Profile, { Live: ProfileLayer });
+
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "link-required",
+      linkReason: "not-found",
+    });
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "completion-required",
+      assistants: [assistant],
+    });
+
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "link-required",
+      linkReason: "ambiguous",
+    });
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "support-required",
+      email: customerEmail,
+      assistants: [assistant],
+    });
+    expect(assistantListCalls).toBe(4);
+
+    // A pending deletion's grants no longer authorize, and deleting the
+    // account removes them.
+    currentUserEffect = Effect.succeed({
+      ...activeSession,
+      deletionRequested: true,
+    });
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "deletion-pending",
+      email: customerEmail,
+    });
+    expect(assistantListCalls).toBe(4);
+  });
+
+  test("keeps the page with an unavailable assistant list", async () => {
+    assistantListEffect = Effect.fail(new Error("consents down"));
+
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "linked",
+      profile: { firstName: "Ada" },
+      assistants: null,
+    });
+  });
+
   test("lists no passkeys once resolution finds no session", async () => {
     arePasskeysEnabled.mockResolvedValue(true);
     resolveEffect = resolverOutcome({
@@ -1100,6 +1211,7 @@ describe("loadCustomerAccountPage", () => {
       kind: "unauthenticated",
     });
     expect(passkeyListCalls).toBe(0);
+    expect(assistantListCalls).toBe(0);
   });
 
   test("renders the authenticated unavailable state when the profile read fails after a successful link", async () => {
@@ -1110,6 +1222,7 @@ describe("loadCustomerAccountPage", () => {
 
     await expect(loadPageState()).resolves.toEqual({
       kind: "authenticated-unavailable",
+      assistants: [],
       email: customerEmail,
     });
 
@@ -1135,6 +1248,7 @@ describe("loadCustomerAccountPage", () => {
 
       await expect(loadPageState("RFL12345")).resolves.toEqual({
         kind: "completion-required",
+        assistants: [],
         referralsEnabled: false,
         email: customerEmail,
       });
@@ -1160,6 +1274,7 @@ describe("loadCustomerAccountPage", () => {
 
       expect(state).toEqual({
         kind: "linked",
+        assistants: [],
         email: customerEmail,
         profile: {
           firstName: "Ada",

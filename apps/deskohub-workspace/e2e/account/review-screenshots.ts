@@ -45,6 +45,7 @@ export type AccountReviewTarget =
   | "locale-preference-redirect-desktop"
   | "locale-switcher-saved-desktop"
   | "linked-security-desktop"
+  | "linked-assistants-desktop"
   | "linked-billing-desktop"
   | "linked-billing-mobile"
   | "linked-legal-desktop"
@@ -299,6 +300,11 @@ const accountReviewTargetMetadata = {
   "linked-security-desktop": {
     filename: "linked-security-desktop.png",
     path: enAccountSectionPath("security"),
+    viewport: { height: 1000, width: 1440 },
+  },
+  "linked-assistants-desktop": {
+    filename: "linked-assistants-desktop.png",
+    path: enAccountSectionPath("assistants"),
     viewport: { height: 1000, width: 1440 },
   },
   "linked-danger-desktop": {

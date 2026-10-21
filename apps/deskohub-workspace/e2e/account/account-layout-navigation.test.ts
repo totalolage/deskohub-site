@@ -48,6 +48,7 @@ const sections = [
   "reservations",
   "referrals",
   "security",
+  "assistants",
   "billing",
   "legal",
   "danger",
@@ -90,6 +91,12 @@ const sectionPanel = (section: AccountSection) => {
         "h2",
         { id: "account-security-passkeys-title" },
         "Passkeys"
+      );
+    case "assistants":
+      return createElement(
+        "h2",
+        { id: "account-assistants-title" },
+        "Connected assistants"
       );
     case "billing":
       return createElement(
