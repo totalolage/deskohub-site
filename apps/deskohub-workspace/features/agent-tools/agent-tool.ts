@@ -65,6 +65,16 @@ export type AgentTool<R> = AgentToolAuthorization & {
    * state is transactional.
    */
   readonly readOnly: boolean;
+  /**
+   * Whether a call can cancel or replace state the customer made before.
+   * Defaults to false.
+   */
+  readonly destructive?: boolean;
+  /**
+   * Whether repeating a call with the same arguments changes nothing more.
+   * Defaults to `readOnly`.
+   */
+  readonly idempotent?: boolean;
   /** The code an unexpected failure is reported with. */
   readonly unavailableCode: AgentToolUnavailableCode;
   /** The MCP Apps view the tool's result renders in, if any. */
@@ -155,6 +165,8 @@ type AgentToolDefinition<
   readonly title: string;
   readonly description: string;
   readonly readOnly: boolean;
+  readonly destructive?: boolean;
+  readonly idempotent?: boolean;
   /** The code an unexpected failure is reported with. */
   readonly unavailableCode: AgentToolUnavailableCode;
   /** The MCP Apps view the tool's result renders in, if any. */
@@ -240,6 +252,12 @@ const makeAgentTool = <
     title: definition.title,
     description: definition.description,
     readOnly: definition.readOnly,
+    ...(definition.destructive !== undefined && {
+      destructive: definition.destructive,
+    }),
+    ...(definition.idempotent !== undefined && {
+      idempotent: definition.idempotent,
+    }),
     unavailableCode: definition.unavailableCode,
     ...(definition.view && { view: definition.view }),
     input: Schema.toStandardJSONSchemaV1(definition.input),

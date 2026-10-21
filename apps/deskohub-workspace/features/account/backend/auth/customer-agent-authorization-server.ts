@@ -5,6 +5,7 @@ import { getOAuthProviderApi } from "@better-auth/oauth-provider";
 import type { BetterAuthPlugin } from "better-auth";
 import { createAuthEndpoint } from "better-auth/api";
 import { Schema } from "effect";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   customerAgentConsentPath,
   customerAgentSignInPath,
@@ -39,6 +40,56 @@ export type CustomerAgentClientMetadataTransport =
  * discloses it.
  */
 export const customerAgentRefreshTokenReuseSeconds = 30;
+
+const decodeResourceMetadata = Schema.decodeUnknownSync(
+  Schema.Record(Schema.String, Schema.Json)
+);
+
+/**
+ * Adds what the MCP plugin leaves out of the protected-resource metadata
+ * (RFC 9728): the server's name and the site pages that document it, its
+ * privacy policy, and its terms. App directories show them to customers.
+ * The pages are locale-agnostic; the proxy opens them in the visitor's
+ * language.
+ */
+const describeProtectedResource =
+  (
+    onRequest: NonNullable<ReturnType<typeof mcp>["onRequest"]>,
+    resource: string
+  ): typeof onRequest =>
+  async (request, ctx) => {
+    const handled = await onRequest(request, ctx);
+    if (
+      !handled ||
+      !("response" in handled) ||
+      request.method !== "GET" ||
+      !handled.response.ok ||
+      !new URL(request.url).pathname.startsWith(
+        "/.well-known/oauth-protected-resource"
+      )
+    ) {
+      return handled;
+    }
+    const metadata = decodeResourceMetadata(await handled.response.json());
+    return {
+      response: Response.json(
+        {
+          ...metadata,
+          resource_name: workspaceSiteConstants.brand.name,
+          resource_documentation: new URL(
+            "/ai-assistants",
+            resource
+          ).toString(),
+          resource_policy_uri: new URL("/privacy-policy", resource).toString(),
+          resource_tos_uri: new URL(
+            "/terms-and-conditions",
+            resource
+          ).toString(),
+        },
+        { headers: handled.response.headers }
+      ),
+    };
+  };
 
 const accessTokenVerificationBody = Schema.toStandardSchemaV1(
   Schema.Struct({ token: Schema.String })
@@ -78,7 +129,7 @@ export const makeCustomerAgentAuthorizationPlugins = ({
    */
   readonly clientMetadataTransport?: CustomerAgentClientMetadataTransport;
 }) => {
-  const provider = mcp({
+  const mcpProvider = mcp({
     resource,
     loginPage: customerAgentSignInPath,
     consentPage: customerAgentConsentPath,
@@ -90,6 +141,10 @@ export const makeCustomerAgentAuthorizationPlugins = ({
       customerAgentOfflineAccessScope,
     ],
   });
+  const provider = {
+    ...mcpProvider,
+    onRequest: describeProtectedResource(mcpProvider.onRequest, resource),
+  };
 
   const accessTokenVerification = {
     id: "customer-agent-access-token",

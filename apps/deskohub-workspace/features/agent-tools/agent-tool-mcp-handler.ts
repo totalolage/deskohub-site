@@ -1,6 +1,7 @@
 import {
   type CallToolResult,
   createMcpHandler,
+  type ListToolsResult,
   McpServer,
   originValidationResponse,
   type StandardSchemaWithJSON,
@@ -25,11 +26,17 @@ import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { currentInstant } from "@/shared/utils/temporal";
 import {
   type AgentTool,
+  type AgentToolAuthorization,
   CallableAgentTools,
   getRequestedAgentToolLocale,
 } from "./agent-tool";
 import { AgentToolAdmission } from "./agent-tool-admission.service";
 import { spendSignedInCallBudgets } from "./agent-tool-call-budget";
+import {
+  type AgentToolClient,
+  admitsCheckout,
+  CurrentAgentToolClient,
+} from "./agent-tool-client";
 import {
   AgentToolError,
   type AgentToolErrorCode,
@@ -39,7 +46,10 @@ import {
   authorizeAgentToolRequest,
   isAgentToolGranted,
 } from "./agent-tool-mcp-authorization";
-import { agentToolAccessMetaKey } from "./agent-tool-metadata";
+import {
+  agentToolAccessMetaKey,
+  getAgentToolSecuritySchemes,
+} from "./agent-tool-metadata";
 import {
   agentToolViewMimeType,
   getAgentToolViews,
@@ -53,13 +63,31 @@ const agentToolServerVersion = "1.0.0";
 
 const { address } = workspaceSiteConstants.location;
 
-const agentToolServerInstructions = [
-  `${workspaceSiteConstants.brand.name} is a coworking space at ${address.street}, ${address.postalCode} ${address.city}, open 24/7.`,
-  "It offers cowork desks by the day, a meeting room by the hour or the day, and a private office for whole days.",
-  "Use list_offerings for products with their regular and today's advertised prices, check_availability to see whether a selection looks free, and get_quote for the exact price of a selection.",
-  "Bookings are made and paid on the website: give the customer the reservation_url from a result to finish there. Availability and price are confirmed on the website before payment.",
-  "With the customer signed in, start_reservation holds a selection for them and returns a pay_url where they accept the terms and pay; get_reservation_status and list_my_reservations show their own reservations. The tools can't pay, cancel, or change a reservation.",
-].join(" ");
+/**
+ * The server instructions for the client and the tools it sees. Directory
+ * apps see no signed-in tools, and a client whose directory admits no
+ * checkout reads nothing about paying.
+ */
+const getAgentToolServerInstructions = ({
+  client,
+  tools,
+}: {
+  readonly client: AgentToolClient;
+  readonly tools: ReadonlyArray<AgentToolAuthorization>;
+}) =>
+  [
+    `${workspaceSiteConstants.brand.name} is a coworking space at ${address.street}, ${address.postalCode} ${address.city}, open 24/7.`,
+    "It offers cowork desks by the day, a meeting room by the hour or the day, and a private office for whole days.",
+    "Use list_offerings for products with their regular price and today's price including any public sale, check_availability to see whether a selection looks free, and get_quote for the exact price of a selection.",
+    admitsCheckout(client)
+      ? "Bookings are made and paid on the website: give the customer the reservation_url from a result to finish there. Availability and price are confirmed on the website before payment."
+      : "Customers book on the website, which confirms availability and the price.",
+    ...(tools.some(({ access }) => access === "signed-in")
+      ? [
+          "With the customer signed in, start_reservation holds a selection for them and returns a pay_url where they accept the terms and pay; get_reservation_status and list_my_reservations show their own reservations. The tools can't pay, cancel, or change a reservation.",
+        ]
+      : []),
+  ].join(" ");
 
 /**
  * Answers one MCP request with a set of agent tools: stateless Streamable
@@ -73,6 +101,10 @@ const agentToolServerInstructions = [
  * deployment serves its own pages. That guards against DNS rebinding only
  * where the platform routes no foreign hostname to the deployment, as Vercel
  * routes only a project's own domains.
+ *
+ * The tools are the ones the request's client may see
+ * (`selectAgentToolsForClient`), and the client also chooses the server
+ * instructions and the view's `_meta`.
  *
  * An agent may send an OAuth bearer token. A token that grants nothing,
  * or a signed-in tool called without a token granting its scope, is answered
@@ -89,9 +121,11 @@ const agentToolServerInstructions = [
  */
 export const answerAgentToolMcpRequest = <R>({
   tools,
+  client,
   request,
 }: {
   readonly tools: ReadonlyArray<AgentTool<R>>;
+  readonly client: AgentToolClient;
   readonly request: Request;
 }) =>
   Option.fromNullishOr(
@@ -105,7 +139,7 @@ export const answerAgentToolMcpRequest = <R>({
       onNone: () =>
         authorizeAgentToolRequest({ tools, request }).pipe(
           Effect.flatMap((caller) =>
-            serveAgentToolMcpRequest({ tools, request, caller })
+            serveAgentToolMcpRequest({ tools, client, request, caller })
           ),
           Effect.catchTag("AgentToolRequestRefused", ({ response }) =>
             Effect.succeed(response)
@@ -136,17 +170,19 @@ const serveAgentToolMcpRequest = <R>(exchange: McpExchange<R>) =>
 /** One MCP request and the tools and caller it is served with. */
 type McpExchange<R> = {
   readonly tools: ReadonlyArray<AgentTool<R>>;
+  readonly client: AgentToolClient;
   readonly request: Request;
   readonly caller: Option.Option<CustomerAgentCaller>;
 };
 
 type ToolCallServices<R> =
-  | Exclude<R, CallableAgentTools>
+  | Exclude<R, CallableAgentTools | CurrentAgentToolClient>
   | AgentToolAdmission
   | RequestBudget;
 
 const exchangeAgentToolMcpRequest = <R>({
   tools,
+  client,
   request,
   caller,
 }: McpExchange<R>) =>
@@ -162,6 +198,7 @@ const exchangeAgentToolMcpRequest = <R>({
             () =>
               makeAgentToolMcpServer({
                 tools,
+                client,
                 headers: request.headers,
                 caller,
                 siteOrigin: siteOrigin.origin,
@@ -218,12 +255,14 @@ type RequestRunner<R> = <A>(
 
 const makeAgentToolMcpServer = <R>({
   tools,
+  client,
   headers,
   caller,
   siteOrigin,
   runInRequest,
 }: {
   readonly tools: ReadonlyArray<AgentTool<R>>;
+  readonly client: AgentToolClient;
   readonly headers: Headers;
   readonly caller: Option.Option<CustomerAgentCaller>;
   readonly siteOrigin: string;
@@ -234,11 +273,24 @@ const makeAgentToolMcpServer = <R>({
       name: "dh-workspace",
       title: workspaceSiteConstants.brand.name,
       version: agentToolServerVersion,
+      websiteUrl: siteOrigin,
+      icons: [
+        {
+          src: new URL("/favicon.png", siteOrigin).toString(),
+          mimeType: "image/png",
+          sizes: ["512x512"],
+        },
+        {
+          src: new URL("/favicon.svg", siteOrigin).toString(),
+          mimeType: "image/svg+xml",
+          sizes: ["any"],
+        },
+      ],
     },
-    { instructions: agentToolServerInstructions }
+    { instructions: getAgentToolServerInstructions({ client, tools }) }
   );
-  const resourceMeta = getViewResourceMeta(siteOrigin);
   for (const view of getAgentToolViews(tools)) {
+    const resourceMeta = getViewResourceMeta({ view, siteOrigin, client });
     server.registerResource(
       view.name,
       view.uri,
@@ -274,22 +326,49 @@ const makeAgentToolMcpServer = <R>({
         annotations: {
           title: tool.title,
           readOnlyHint: tool.readOnly,
-          destructiveHint: false,
-          idempotentHint: tool.readOnly,
+          destructiveHint: tool.destructive ?? false,
+          idempotentHint: tool.idempotent ?? tool.readOnly,
           openWorldHint: false,
         },
         _meta: {
           [agentToolAccessMetaKey]: tool.access,
+          securitySchemes: getAgentToolSecuritySchemes(tool),
           ...(tool.view && getViewLinkMeta(tool.view)),
         },
       },
       (args, context) =>
-        runInRequest(callAgentTool({ tool, args, headers, caller, callable }), {
-          signal: context.mcpReq.signal,
-        })
+        runInRequest(
+          callAgentTool({ tool, args, headers, caller, client, callable }),
+          { signal: context.mcpReq.signal }
+        )
     );
   }
+  listSecuritySchemes(server);
   return server;
+};
+
+/**
+ * Lists each tool's `securitySchemes` beside its definition as well as in
+ * its `_meta`, where ChatGPT reads it: the SDK's `tools/list` keeps only
+ * the definition fields it knows, so the listing is wrapped. The SDK keeps
+ * the stored handler protected; a route test pins both protocol eras.
+ */
+const listSecuritySchemes = (server: McpServer) => {
+  const listTools = server.server["_getRequestHandler"]("tools/list");
+  if (listTools === undefined) return;
+  server.server.setRequestHandler("tools/list", async (request, context) => {
+    const listed = (await listTools(
+      { jsonrpc: "2.0", id: 0, ...request },
+      context
+    )) as ListToolsResult;
+    return {
+      ...listed,
+      tools: listed.tools.map((tool) => ({
+        ...tool,
+        securitySchemes: tool._meta?.["securitySchemes"],
+      })),
+    };
+  });
 };
 
 const toName = ({ name }: { readonly name: string }) => name;
@@ -317,12 +396,14 @@ const callAgentTool = <R>({
   args,
   headers,
   caller,
+  client,
   callable,
 }: {
   readonly tool: AgentTool<R>;
   readonly args: Schema.Json;
   readonly headers: Headers;
   readonly caller: Option.Option<CustomerAgentCaller>;
+  readonly client: AgentToolClient;
   readonly callable: ReadonlySet<string>;
 }): Effect.Effect<CallToolResult, never, ToolCallServices<R>> =>
   AgentToolAdmission.pipe(
@@ -336,7 +417,13 @@ const callAgentTool = <R>({
     Effect.flatMap(() =>
       tool
         .call(args, caller)
-        .pipe(Effect.provideService(CallableAgentTools, callable))
+        .pipe(
+          Effect.provideContext(
+            Context.make(CallableAgentTools, callable).pipe(
+              Context.add(CurrentAgentToolClient, client)
+            )
+          )
+        )
     ),
     Effect.map(
       (result): CallToolResult => ({

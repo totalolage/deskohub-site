@@ -1175,7 +1175,7 @@
   "agentToolErrorRateLimited": "Too many requests. Wait a minute and try again.",
   "agentToolErrorServiceUnavailable": "The tools are temporarily unavailable. Try again later or use the website.",
   "agentToolAvailabilityAdvisoryNote": "Availability is an estimate from recent data. It is confirmed when the booking is made on the website.",
-  "agentToolQuoteNote": "This is the current price for the selection. It is confirmed on the website before payment, where the booking is made and paid.",
+  "agentToolQuoteNote": "This is the current price for the selection. The website confirms it when the booking is made there.",
   "agentToolBookingHandoff": "Bookings are made on the website. Open the reservation link to choose the details and finish there.",
   "agentToolErrorProfileIncomplete": "Finish your profile on the website first: add your name and phone number on your account page, then try again.",
   "agentToolErrorSelectionUnavailable": "This selection is no longer available. Check availability and choose another option.",

@@ -66,7 +66,19 @@ resource.
   `/.well-known/oauth-protected-resource/api/mcp` (RFC 9728) are Next route
   handlers that pass the request to `auth.handler`. Better Auth runs plugin
   `onRequest` hooks before base-path matching, so the provider and `mcp()`
-  answer from their own builders. Never hand-build the JSON.
+  answer from their own builders. Never hand-build the JSON. The one
+  addition is `describeProtectedResource` in
+  `customer-agent-authorization-server.ts`, which wraps the `mcp()`
+  `onRequest` to add RFC 9728's `resource_name`, `resource_documentation`
+  (`/ai-assistants`), `resource_policy_uri`, and `resource_tos_uri`, which
+  the plugin can't configure. `scopes_supported` stays per resource, never
+  per client.
+- The MCP route answers a refused `tools/call` with the HTTP challenge and,
+  in the body, a JSON-RPC error result per call whose
+  `_meta["mcp/www_authenticate"]` repeats the challenge with `error` and
+  `error_description`, the form ChatGPT reads for per-tool sign-in. Tools
+  publish `securitySchemes` (`noauth`, or `oauth2` with the tool's scope) in
+  their definition and `_meta`.
 - `createResourceServerChallenge(error, resource)` points
   `resource_metadata` at `<resource origin>/.well-known/oauth-protected-resource<resource path>`.
   Pass `customerMcpResource`, not a request-derived URL, so the challenge,

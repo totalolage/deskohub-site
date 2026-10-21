@@ -18,7 +18,7 @@ export type BookingMode = (typeof bookingModes)[number];
 export const showBookingResultSchema = Schema.Struct({
   booking_mode: Schema.Literals(bookingModes).annotate({
     description:
-      "How the customer finishes in the view. reserve: the customer starts the booking in the view through start_reservation. reservation_page: the view links to the reservation page, prefilled with the selection. website: the view links to the product's page on the website, listed in offering_pages.",
+      "How the customer finishes in the view. reserve: the customer starts the booking in the view. reservation_page: the view links to the reservation page, prefilled with the selection. website: the view links to the product's page on the website, listed in offering_pages.",
   }),
   locale: Schema.Literals(locales).annotate({
     description: "Language of the names and the note in the result.",

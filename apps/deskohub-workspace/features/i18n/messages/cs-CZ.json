@@ -1184,7 +1184,7 @@
   "agentToolErrorRateLimited": "Příliš mnoho požadavků. Počkej minutu a zkus to znovu.",
   "agentToolErrorServiceUnavailable": "Nástroje jsou dočasně nedostupné. Zkus to později nebo použij web.",
   "agentToolAvailabilityAdvisoryNote": "Dostupnost je odhad z nedávných dat. Potvrdí se až při rezervaci na webu.",
-  "agentToolQuoteNote": "Toto je aktuální cena za výběr. Před platbou se potvrdí na webu, kde se rezervace dokončí a zaplatí.",
+  "agentToolQuoteNote": "Toto je aktuální cena za výběr. Web ji potvrdí při dokončení rezervace.",
   "agentToolBookingHandoff": "Rezervace se vytváří na webu. Otevři odkaz na rezervaci, vyber podrobnosti a dokonči ji tam.",
   "agentToolErrorProfileIncomplete": "Nejdřív dokonči profil na webu: na stránce účtu doplň jméno a telefon a pak to zkus znovu.",
   "agentToolErrorSelectionUnavailable": "Tento výběr už není volný. Ověř dostupnost a vyber jinou možnost.",

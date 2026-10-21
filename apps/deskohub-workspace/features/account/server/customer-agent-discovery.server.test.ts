@@ -91,6 +91,12 @@ describe("customer agent OAuth discovery", () => {
         authorization_servers: [issuer],
       });
       expect(metadata.scopes_supported).toEqual([...customerAgentScopes]);
+      expect(metadata).toMatchObject({
+        resource_name: expect.any(String),
+        resource_documentation: `${origin}/ai-assistants`,
+        resource_policy_uri: `${origin}/privacy-policy`,
+        resource_tos_uri: `${origin}/terms-and-conditions`,
+      });
     }
   );
 
