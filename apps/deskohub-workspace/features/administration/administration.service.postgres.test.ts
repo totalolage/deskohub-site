@@ -571,8 +571,14 @@ describe.skipIf(!testDatabase)(
       });
     });
 
-    test("shows the access name stored on the grant, or the grant's own before its first request", async () => {
-      const insertGrant = async (label: string, accessName: string | null) => {
+    test("shows the access name stored on the grant, or the name of its first or legacy request", async () => {
+      const insertGrant = async (
+        label: string,
+        values: Pick<
+          typeof reservationAccessGrants.$inferInsert,
+          "state" | "accessName" | "failureCode" | "provisioningStartedAt"
+        >
+      ) => {
         // Without a Dotypos booking, the detail loads from Neon alone.
         const reservationId = workspaceReservationIdSchema.make(
           `admin-${label}-${runId}`
@@ -604,10 +610,7 @@ describe.skipIf(!testDatabase)(
             .values({
               workspaceReservationId: reservationId,
               deviceId: IgloohomeDeviceIdSchema.make("EK1"),
-              state: accessName === null ? "pending" : "uncertain",
-              accessName,
-              failureCode:
-                accessName === null ? null : "provider_outcome_ambiguous",
+              ...values,
               scheduledAccessStartsAt: startsAt,
               accessStartsAt: startsAt,
               accessEndsAt: startsAt.add({ hours: 8 }),
@@ -616,20 +619,57 @@ describe.skipIf(!testDatabase)(
         );
         return { reservationId, grantId: grant?.id };
       };
-      const legacy = await insertGrant("access-legacy", "Deskohub legacy-name");
-      const unrequested = await insertGrant("access-unrequested", null);
+      const stored = await insertGrant("access-stored", {
+        state: "uncertain",
+        accessName: "Deskohub stored-name",
+        failureCode: "provider_outcome_ambiguous",
+      });
+      const unrequested = await insertGrant("access-unrequested", {
+        state: "pending",
+        accessName: null,
+      });
+      // A deployment that predates stored names claimed these grants.
+      const legacyUncertain = await insertGrant("access-legacy-uncertain", {
+        state: "uncertain",
+        accessName: null,
+        failureCode: "provider_outcome_ambiguous",
+      });
+      const legacyStaleProvisioning = await insertGrant(
+        "access-legacy-provisioning",
+        {
+          state: "provisioning",
+          accessName: null,
+          provisioningStartedAt: Temporal.Now.instant().subtract({
+            hours: 1,
+          }),
+        }
+      );
 
-      const [legacyDetail, unrequestedDetail] = await Promise.all(
-        [legacy, unrequested].map(({ reservationId }) =>
-          run((administration) => administration.loadReservation(reservationId))
+      const [
+        storedDetail,
+        unrequestedDetail,
+        legacyUncertainDetail,
+        legacyStaleProvisioningDetail,
+      ] = await Promise.all(
+        [stored, unrequested, legacyUncertain, legacyStaleProvisioning].map(
+          ({ reservationId }) =>
+            run((administration) =>
+              administration.loadReservation(reservationId)
+            )
         )
       );
 
-      expect(legacyDetail?.accessGrant?.accessName).toBe(
-        "Deskohub legacy-name"
+      expect(storedDetail?.accessGrant?.accessName).toBe(
+        "Deskohub stored-name"
       );
       expect(unrequestedDetail?.accessGrant?.accessName).toBe(
         `Deskohub ${unrequested.grantId}`
+      );
+      expect(legacyUncertainDetail?.accessGrant?.accessName).toBe(
+        `Deskohub ${legacyUncertain.reservationId}`.slice(0, 60)
+      );
+      expect(legacyStaleProvisioningDetail?.accessGrant?.accessName).toBe(
+        `Deskohub ${legacyStaleProvisioning.reservationId}`.slice(0, 60)
       );
     });
   }

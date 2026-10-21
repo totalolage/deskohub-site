@@ -2056,7 +2056,10 @@ export class AdministrationService extends Context.Service<
           })),
           accessGrant: accessGrant && {
             ...accessGrant,
-            accessName: getReservationAccessName(accessGrant),
+            accessName: getReservationAccessName({
+              ...accessGrant,
+              reservationId: row.id,
+            }),
             scheduledStartsAt: accessGrant.scheduledStartsAt.toString(),
             startsAt: accessGrant.startsAt.toString(),
             endsAt: accessGrant.endsAt.toString(),

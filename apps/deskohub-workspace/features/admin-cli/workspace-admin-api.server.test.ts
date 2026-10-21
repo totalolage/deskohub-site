@@ -463,10 +463,19 @@ describe("Workspace Admin API", () => {
     let retryableExecutions = 0;
     let staleExecutions = 0;
     const reservationAccess = Layer.succeed(ReservationAccessAdministration, {
+      // A deployment that predates stored access names left the grant
+      // provisioning.
       resumeInterruptedMutation: () =>
         Effect.sync(() => {
           staleExecutions += 1;
-          return grant;
+          return {
+            ...grant,
+            reservationId: "stale-reservation",
+            state: "provisioning" as const,
+            providerCredentialId: null,
+            accessName: null,
+            issuedAt: null,
+          };
         }),
       mutate: (mutation) => {
         if (mutation.reservationId === "transient-reservation") {
@@ -625,7 +634,8 @@ describe("Workspace Admin API", () => {
     expect(result.retryable).toBeInstanceOf(CliServiceUnavailable);
     expect(result.retried.state).toBe("issued");
     expect(retryableExecutions).toBe(2);
-    expect(result.reclaimed.state).toBe("issued");
+    expect(result.reclaimed.state).toBe("provisioning");
+    expect(result.reclaimed.accessName).toBe("Deskohub stale-reservation");
     expect(staleExecutions).toBe(1);
     expect(result.current).toBeInstanceOf(CliMutationInProgress);
   });

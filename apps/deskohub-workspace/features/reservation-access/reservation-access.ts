@@ -47,12 +47,21 @@ export const makeReservationAccessName = (grantId: ReservationAccessGrantId) =>
 
 /**
  * The name of the grant's Igloohome credential: the stored name of its latest
- * request, or the name its first request will use. Grants issued before names
- * were stored keep `Deskohub <reservation-id>` until their next request.
+ * request, or the name its first request will use. A requested grant without a
+ * stored name was requested by a deployment that predates stored names, which
+ * sent `Deskohub <reservation-id>`.
  */
 export const getReservationAccessName = (
-  grant: Pick<ReservationAccessGrant, "id" | "accessName">
-) => grant.accessName ?? makeReservationAccessName(grant.id);
+  grant: Pick<
+    ReservationAccessGrant,
+    "id" | "reservationId" | "state" | "accessName"
+  >
+) => {
+  if (grant.accessName !== null) return grant.accessName;
+  return grant.state === "pending"
+    ? makeReservationAccessName(grant.id)
+    : `Deskohub ${grant.reservationId}`.slice(0, 60);
+};
 
 export interface ReservationAccessGrant {
   readonly id: ReservationAccessGrantId;
