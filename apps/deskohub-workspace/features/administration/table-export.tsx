@@ -12,12 +12,16 @@ import { m } from "./i18n";
 import { administrationListSourceUnavailableCode } from "./list-export";
 import { AdministrationAlert } from "./notice";
 
-type ExportFailureReason = "failed" | "signed-out" | "source-unavailable";
+/** Why a list export failed. */
+export type AdministrationListExportFailure =
+  | "failed"
+  | "signed-out"
+  | "source-unavailable";
 
 class AdministrationListExportError extends Data.TaggedError(
   "AdministrationListExportError"
 )<{
-  readonly reason: ExportFailureReason;
+  readonly reason: AdministrationListExportFailure;
   readonly cause?: unknown;
   readonly status?: number;
 }> {}
@@ -67,10 +71,10 @@ const isSourceUnavailableBody = Schema.is(
 const failedExport = (response: Response) =>
   Effect.tryPromise(() => response.json()).pipe(
     Effect.map(
-      (body): ExportFailureReason =>
+      (body): AdministrationListExportFailure =>
         isSourceUnavailableBody(body) ? "source-unavailable" : "failed"
     ),
-    Effect.orElseSucceed((): ExportFailureReason => "failed"),
+    Effect.orElseSucceed((): AdministrationListExportFailure => "failed"),
     Effect.flatMap((reason) =>
       Effect.fail(
         new AdministrationListExportError({ reason, status: response.status })
@@ -117,7 +121,7 @@ const downloadListExport = (href: string) =>
     ),
     Effect.catchDefect((defect) =>
       reportWorkspaceBrowserFailure(exportFailureCode, defect).pipe(
-        Effect.as<ExportFailureReason>("failed")
+        Effect.as<AdministrationListExportFailure>("failed")
       )
     )
   );
@@ -126,16 +130,44 @@ const downloadListExport = (href: string) =>
  * Downloads every row of an administration list that matches its current
  * filters as CSV. `href` is the unprefixed export path, resolved once the
  * list's filters are known. Without JavaScript, the link opens the file.
+ * Each attempt reports its outcome through `onFailureChange`, so the caller
+ * can show it with `AdministrationTableExportAlert` outside the controls.
  */
 export function AdministrationTableExport({
   href,
+  onFailureChange,
 }: {
   readonly href: Promise<string>;
+  readonly onFailureChange: (
+    failure: AdministrationListExportFailure | null
+  ) => void;
 }) {
   return (
     <Suspense fallback={<ExportButtonPlaceholder />}>
-      <ExportControl href={href} />
+      <ExportControl href={href} onFailureChange={onFailureChange} />
     </Suspense>
+  );
+}
+
+/** Announces why the last export failed; stays mounted while it's empty. */
+export function AdministrationTableExportAlert({
+  failure,
+}: {
+  readonly failure: AdministrationListExportFailure | null;
+}) {
+  const locale = useRouteLocale();
+  return (
+    <div role="alert">
+      {failure && (
+        <AdministrationAlert className="mt-4" status="error">
+          {{
+            failed: m.administrationListExportFailed,
+            "signed-out": m.administrationListExportSignedOut,
+            "source-unavailable": m.administrationListExportSourceUnavailable,
+          }[failure]({}, { locale })}
+        </AdministrationAlert>
+      )}
+    </div>
   );
 }
 
@@ -149,51 +181,45 @@ function ExportButtonPlaceholder() {
   );
 }
 
-function ExportControl({ href }: { readonly href: Promise<string> }) {
+function ExportControl({
+  href,
+  onFailureChange,
+}: {
+  readonly href: Promise<string>;
+  readonly onFailureChange: (
+    failure: AdministrationListExportFailure | null
+  ) => void;
+}) {
   const locale = useRouteLocale();
   const exportHref = localizeAdministrationHref(use(href), locale);
   const [pending, setPending] = useState(false);
-  const [failure, setFailure] = useState<ExportFailureReason | null>(null);
 
   const startExport = (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     if (pending) return;
     setPending(true);
-    setFailure(null);
+    onFailureChange(null);
     void downloadListExport(exportHref)
       .pipe(runWorkspaceBrowserEffect("administration.list-export"))
       .then((reason) => {
-        setFailure(reason);
+        onFailureChange(reason);
         setPending(false);
       });
   };
 
   return (
-    <div className="flex flex-col items-end gap-2">
-      <Button asChild size="sm" variant="secondary">
-        <a
-          aria-disabled={pending}
-          className={pending ? "pointer-events-none opacity-60" : undefined}
-          href={exportHref}
-          onClick={startExport}
-        >
-          <Download aria-hidden className="size-4" />
-          {pending
-            ? m.administrationListExportPending({}, { locale })
-            : m.administrationListExportButton({}, { locale })}
-        </a>
-      </Button>
-      <div role="alert">
-        {failure && (
-          <AdministrationAlert className="max-w-md" status="error">
-            {{
-              failed: m.administrationListExportFailed,
-              "signed-out": m.administrationListExportSignedOut,
-              "source-unavailable": m.administrationListExportSourceUnavailable,
-            }[failure]({}, { locale })}
-          </AdministrationAlert>
-        )}
-      </div>
-    </div>
+    <Button asChild size="sm" variant="secondary">
+      <a
+        aria-disabled={pending}
+        className={pending ? "pointer-events-none opacity-60" : undefined}
+        href={exportHref}
+        onClick={startExport}
+      >
+        <Download aria-hidden className="size-4" />
+        {pending
+          ? m.administrationListExportPending({}, { locale })
+          : m.administrationListExportButton({}, { locale })}
+      </a>
+    </Button>
   );
 }

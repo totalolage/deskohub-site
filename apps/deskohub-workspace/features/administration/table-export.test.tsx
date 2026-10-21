@@ -14,12 +14,14 @@ import {
   render,
   waitFor,
 } from "@testing-library/react";
+import { useState } from "react";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import { m } from "./i18n";
+import type { AdministrationListExportFailure } from "./table-export";
 
 const exportPath = "/admin/reservations/export?status=complete";
 const csvText = `${String.fromCodePoint(0xfe_ff)}Reservation ID\r\nr-1\r\n`;
@@ -70,12 +72,24 @@ afterAll(async () => {
 });
 
 const renderExport = async () => {
-  const { AdministrationTableExport } = await import("./table-export");
+  const { AdministrationTableExport, AdministrationTableExportAlert } =
+    await import("./table-export");
+  const href = Promise.resolve(exportPath);
+  const ExportWithAlert = () => {
+    const [failure, setFailure] =
+      useState<AdministrationListExportFailure | null>(null);
+    return (
+      <>
+        <AdministrationTableExport href={href} onFailureChange={setFailure} />
+        <AdministrationTableExportAlert failure={failure} />
+      </>
+    );
+  };
   // The export path arrives as a promise, so let React settle the Suspense.
   const view = await act(async () =>
     render(
       <RouteLocaleProvider locale="en-US">
-        <AdministrationTableExport href={Promise.resolve(exportPath)} />
+        <ExportWithAlert />
       </RouteLocaleProvider>
     )
   );

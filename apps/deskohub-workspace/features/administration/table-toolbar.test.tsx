@@ -6,7 +6,14 @@ import {
   expect,
   test,
 } from "bun:test";
-import { act, cleanup, render, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   registerWorkspaceComponentTestEnv,
@@ -18,8 +25,11 @@ beforeAll(() => {
   registerWorkspaceComponentTestEnv();
 });
 
+const originalFetch = globalThis.fetch;
+
 afterEach(() => {
   cleanup();
+  globalThis.fetch = originalFetch;
 });
 
 afterAll(async () => {
@@ -76,5 +86,59 @@ describe("AdministrationTableToolbar", () => {
         exportLabel
       )
     ).toBeNull();
+  });
+
+  test("shows a failed export below the controls until the next attempt", async () => {
+    const unavailable = () =>
+      Response.json(
+        { code: "administration_list_source_unavailable", error: "x" },
+        { status: 503 }
+      );
+    globalThis.fetch = (async () => unavailable()) as typeof fetch;
+    const { AdministrationTableToolbar } = await import("./table-toolbar");
+    const view = await act(async () =>
+      render(
+        <RouteLocaleProvider locale="en-US">
+          <AdministrationTableToolbar
+            count={null}
+            exportHref={Promise.resolve("/admin/customers/export")}
+            filters={<div>Filters</div>}
+            label="Customer table controls"
+            search={<input aria-label="Search" />}
+          />
+        </RouteLocaleProvider>
+      )
+    );
+    const region = view.getByRole("region", {
+      name: "Customer table controls",
+    });
+    const alert = within(region).getByRole("alert");
+    const link = await within(region).findByRole("link", {
+      name: m.administrationListExportButton({}, { locale: "en-US" }),
+    });
+    const controls = region.firstElementChild;
+
+    fireEvent.click(link);
+
+    await waitFor(() => expect(alert.textContent).not.toBe(""));
+    expect(controls?.contains(link)).toBe(true);
+    expect(controls?.contains(view.getByLabelText("Search"))).toBe(true);
+    expect(controls?.contains(alert)).toBe(false);
+    expect(region.lastElementChild).toBe(alert);
+
+    let finish!: () => void;
+    globalThis.fetch = (() =>
+      new Promise<Response>((resolve) => {
+        finish = () => resolve(unavailable());
+      })) as typeof fetch;
+    fireEvent.click(link);
+
+    await waitFor(() =>
+      expect(link.getAttribute("aria-disabled")).toBe("true")
+    );
+    expect(alert.textContent).toBe("");
+    finish();
+    await waitFor(() => expect(alert.textContent).not.toBe(""));
+    expect(within(region).getByRole("alert")).toBe(alert);
   });
 });
