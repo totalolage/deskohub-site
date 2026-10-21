@@ -65,7 +65,11 @@ const slowTool = defineAgentTool({
 
 const answer = (request: Request, admitted = true) =>
   Effect.runPromise(
-    answerAgentToolMcpRequest({ tools: [slowTool], client: "other", request }).pipe(
+    answerAgentToolMcpRequest({
+      tools: [slowTool],
+      client: "other",
+      request,
+    }).pipe(
       Effect.provide(
         Layer.succeed(AgentToolAdmission, {
           isCallAllowed: () => Effect.succeed(admitted),

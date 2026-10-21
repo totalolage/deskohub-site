@@ -82,9 +82,7 @@ const decodeClientInfoMessage = Schema.decodeUnknownOption(
   clientInfoMessageSchema
 );
 
-const getClientInfoName = ({
-  params,
-}: typeof clientInfoMessageSchema.Type) =>
+const getClientInfoName = ({ params }: typeof clientInfoMessageSchema.Type) =>
   "clientInfo" in params
     ? params.clientInfo.name
     : params._meta["io.modelcontextprotocol/clientInfo"].name;
@@ -98,20 +96,23 @@ const getClientInfoName = ({
 export const identifyAgentToolClient = Effect.fn("agentTools.identifyClient")(
   function* (request: Request) {
     const messages = yield* readMcpMessages(request);
-    return Option.match(Option.firstSomeOf(
+    return Option.match(
+      Option.firstSomeOf(
         messages.map((message) =>
           Option.map(decodeClientInfoMessage(message), getClientInfoName)
         )
-      ), {
-      onSome: (name) => clientInfoNames.get(name.toLowerCase()) ?? "other",
-      onNone: () => {
-        const userAgent =
-          request.headers.get("user-agent")?.toLowerCase() ?? "";
-        return (
-          userAgentTokens.find(([token]) => userAgent.includes(token))?.[1] ??
-          "other"
-        );
-      },
-    });
+      ),
+      {
+        onSome: (name) => clientInfoNames.get(name.toLowerCase()) ?? "other",
+        onNone: () => {
+          const userAgent =
+            request.headers.get("user-agent")?.toLowerCase() ?? "";
+          return (
+            userAgentTokens.find(([token]) => userAgent.includes(token))?.[1] ??
+            "other"
+          );
+        },
+      }
+    );
   }
 );

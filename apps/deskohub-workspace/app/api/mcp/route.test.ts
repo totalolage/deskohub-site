@@ -1047,7 +1047,10 @@ describe("customer MCP route per client", () => {
     return result.tools;
   };
 
-  /** What a directory reviewer reads: instructions, tool and view copy. */
+  /**
+   * What a directory reviewer reads: the instructions, the tools as listed,
+   * and the view's copy.
+   */
   const readListingCopy = async (
     headers: Record<string, string>,
     clientName: string
@@ -1067,7 +1070,6 @@ describe("customer MCP route per client", () => {
       await postRpc("resources/list", {}, headers)
     );
     const tools = await listToolsAs(headers);
-    const showBooking = tools.find(({ name }) => name === "show_booking");
     return [
       initialize.result.instructions,
       ...tools.flatMap(({ title, description }) => [title, description]),
@@ -1078,7 +1080,7 @@ describe("customer MCP route per client", () => {
           _meta?.["openai/widgetDescription"],
         ]
       ),
-      JSON.stringify(showBooking?.outputSchema?.properties?.booking_mode),
+      JSON.stringify(tools),
     ].join("\n");
   };
 
@@ -1154,14 +1156,17 @@ describe("customer MCP route per client", () => {
     // Claude Code through Anthropic's gateway shares the Claude apps'
     // User-Agent but names itself.
     ["Claude Code", "claude-code", claudeApp, 8],
-  ])("identifies %s by the clientInfo a 2026-era request carries", async (_, name, headers, count) => {
-    const response = await postModernRpc("tools/list", name, headers);
-    expect(response.status).toBe(200);
-    const { result } = await readJsonRpc(response);
+  ])(
+    "identifies %s by the clientInfo a 2026-era request carries",
+    async (_, name, headers, count) => {
+      const response = await postModernRpc("tools/list", name, headers);
+      expect(response.status).toBe(200);
+      const { result } = await readJsonRpc(response);
 
-    expect(result.tools).toHaveLength(count);
-    expect(result.tools[0].securitySchemes).toEqual([{ type: "noauth" }]);
-  });
+      expect(result.tools).toHaveLength(count);
+      expect(result.tools[0].securitySchemes).toEqual([{ type: "noauth" }]);
+    }
+  );
 
   test("answers a directory app's call of an unlisted tool as unknown, not with a sign-in challenge", async () => {
     const response = await postRpc(
@@ -1178,7 +1183,7 @@ describe("customer MCP route per client", () => {
   test("tells ChatGPT nothing about paying or holds", async () => {
     const copy = await readListingCopy(chatGpt, "openai-mcp");
 
-    expect(copy).not.toMatch(/\bpa(y|id|ys|ying|yment)\b|pay_url|\bhold/i);
+    expect(copy).not.toMatch(/\bpa(y|id)|\bhold/i);
     expect(copy).not.toContain("start_reservation");
   });
 

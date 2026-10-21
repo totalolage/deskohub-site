@@ -18,6 +18,7 @@ import {
   AgentToolError,
   type AgentToolUnavailableCode,
   agentToolErrorResultSchema,
+  publicAgentToolErrorResultSchema,
 } from "./agent-tool-error";
 import type { AgentToolAccess } from "./agent-tool-metadata";
 import type { AgentToolView } from "./agent-tool-view";
@@ -263,7 +264,12 @@ const makeAgentTool = <
     input: Schema.toStandardJSONSchemaV1(definition.input),
     output: Schema.toStandardJSONSchemaV1(
       Schema.toStandardSchemaV1(
-        Schema.Union([definition.output, agentToolErrorResultSchema])
+        Schema.Union([
+          definition.output,
+          authorization.access === "public"
+            ? publicAgentToolErrorResultSchema
+            : agentToolErrorResultSchema,
+        ])
       )
     ),
     call: (args, caller = Option.none()) =>
