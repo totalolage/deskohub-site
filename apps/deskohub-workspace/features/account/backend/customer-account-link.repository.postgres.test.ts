@@ -356,6 +356,33 @@ describe.skipIf(!testDatabase)(
       expect(await accountCreatedEvents(account)).toEqual([]);
     });
 
+    test("links an unlinked existing customer's account without recording its creation", async () => {
+      const account = customerAccountIdSchema.make(uniqueId());
+      const customer = uniqueDotyposId();
+      // #764 made the silent login but lost the link to a conflict; once the
+      // customer is free, its owner signs in and claims it.
+      await insertAuthUser(account, testEmailAddress(`u-${account}`));
+      await testDatabase!.pool.query(
+        `update customer_accounts set legacy = true where id = $1`,
+        [account]
+      );
+
+      const claimed = await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          return yield* links.claim(account, customer);
+        }).pipe(Effect.provide(makeRepositoryLayer()))
+      );
+
+      expect(claimed).toEqual({
+        kind: "linked",
+        customerId: customer,
+        created: true,
+      });
+      expect(await accountDotyposCustomerId(account)).toBe(customer);
+      expect(await accountCreatedEvents(account)).toEqual([]);
+    });
+
     test("lets exactly one of two accounts racing for a customer link it", async () => {
       const layer = makeRepositoryLayer();
       const first = customerAccountIdSchema.make(uniqueId());

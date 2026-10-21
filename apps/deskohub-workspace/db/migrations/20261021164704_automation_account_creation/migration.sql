@@ -2,41 +2,52 @@ ALTER TABLE "email_campaign_automation_preview_rows" ADD COLUMN IF NOT EXISTS "r
 --> statement-breakpoint
 ALTER TABLE "customer_accounts" ADD COLUMN IF NOT EXISTS "legacy" boolean DEFAULT false NOT NULL;
 --> statement-breakpoint
--- #764's backfill gave each existing customer a silent login linked to its
--- customer, dated when the backfill ran. Those customers aren't new accounts
--- (D37), so their accounts become legacy. The backfill kept no record of the
--- logins it made, but it made one only for a customer with Workspace
--- reservations nobody authored, and made the login their author in the
--- transaction that linked it. So a linked login created since #764 merged
--- that authors a reservation older than itself is one; a sign-up authors
--- only the reservations it books, unless the backfill gave it its earlier
--- guest bookings, which makes it an existing customer too. This holds
--- whether or not the account has an event: the capture reconciler records
--- one once the login is verified, and an earlier version of the repair below
--- recorded one on preview databases.
--- A linked login since then without an account-created event is one too:
--- since a day before #764, a sign-in claim records the event in the
--- transaction that links the account. An older login predates #764, however
--- late its account was backfilled.
+-- #764's backfill gave each existing customer a silent login, dated when the
+-- backfill ran. Those customers aren't new accounts (D37), so their accounts
+-- become legacy, linked or not: a link the backfill lost to a conflict is
+-- claimed at a later sign-in, and that claim records no account creation for
+-- a legacy account. The backfill kept no record of the logins it made, but
+-- since #764 merged every other login is made by its owner's verified
+-- sign-in, which opens its first session as it creates it. The backfill's
+-- logins were unverified and had no session, and one verified later opens
+-- its first session at that later sign-in. So a login since then that is
+-- unverified, or has no session from its first ten seconds, is one. A
+-- sign-up whose first session has since ended counts too: it misses only a
+-- welcome, while a customer counted as new would be welcomed as one.
+-- A linked login since then is also one if it authors a reservation older
+-- than itself, which only the backfill assigned it, or has no
+-- account-created event, which a sign-in claim records in the transaction
+-- that links the account. An older login predates #764, however late its
+-- account was backfilled.
 -- This runs before the repair below, which records events without a claim.
 -- A second run finds every such account already legacy.
 UPDATE "customer_accounts" SET "legacy" = true
 FROM "auth"."user"
 WHERE "auth"."user"."id" = "customer_accounts"."id"
   AND "auth"."user"."created_at" >= '2026-10-20T17:32:49Z'
-  AND "customer_accounts"."dotypos_customer_id" IS NOT NULL
   AND "customer_accounts"."deleted_at" IS NULL
   AND NOT "customer_accounts"."legacy"
   AND (
-    EXISTS (
-      SELECT 1 FROM "workspace_reservations"
-      WHERE "workspace_reservations"."author_account_id" = "customer_accounts"."id"
-        AND "workspace_reservations"."created_at" < "auth"."user"."created_at"
-    )
+    NOT "auth"."user"."email_verified"
     OR NOT EXISTS (
-      SELECT 1 FROM "customer_events"
-      WHERE "customer_events"."kind" = 'account-created'
-        AND "customer_events"."customer_account_id" = "customer_accounts"."id"
+      SELECT 1 FROM "auth"."session"
+      WHERE "auth"."session"."user_id" = "auth"."user"."id"
+        AND "auth"."session"."created_at" < "auth"."user"."created_at" + interval '10 seconds'
+    )
+    OR (
+      "customer_accounts"."dotypos_customer_id" IS NOT NULL
+      AND (
+        EXISTS (
+          SELECT 1 FROM "workspace_reservations"
+          WHERE "workspace_reservations"."author_account_id" = "customer_accounts"."id"
+            AND "workspace_reservations"."created_at" < "auth"."user"."created_at"
+        )
+        OR NOT EXISTS (
+          SELECT 1 FROM "customer_events"
+          WHERE "customer_events"."kind" = 'account-created'
+            AND "customer_events"."customer_account_id" = "customer_accounts"."id"
+        )
+      )
     )
   );
 --> statement-breakpoint

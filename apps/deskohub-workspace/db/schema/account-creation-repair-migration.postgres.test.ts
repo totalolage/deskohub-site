@@ -5,6 +5,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { EMAIL_TEST_DOMAIN, testEmailAddress } from "@deskohub/test-email";
+import { inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Effect, Layer } from "effect";
@@ -12,6 +13,11 @@ import { TestClock } from "effect/testing";
 import type { Pool } from "pg";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { makeDatabaseClient, makeDatabasePool } from "@/db/database-client";
+import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
+import { customerEvents } from "@/db/schema";
+import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { triggeringCustomerEvent } from "@/features/email-campaigns/automation/backend/automation-triggering-events";
 import { CampaignCandidateRepository } from "@/features/email-campaigns/backend/campaign-candidate.repository";
 import { CustomerEventReconciler } from "@/shared/backend/customer-events/customer-event-reconciler";
 import { createScratchPostgresDatabase } from "@/shared/testing/postgres-scratch-database.test-utils";
@@ -136,13 +142,23 @@ const insertAccount = (
     ]
   );
 
-const insertLogin = (
+/**
+ * A login, opening its first session at `signedInAt`: a sign-in creates a
+ * login with its session, while #764's backfill left its logins without one.
+ */
+const insertLogin = async (
   pool: Pool,
   id: string,
   createdAt: Temporal.Instant,
-  verified = true
-) =>
-  pool.query(
+  {
+    verified = true,
+    signedInAt,
+  }: {
+    readonly verified?: boolean;
+    readonly signedInAt?: Temporal.Instant;
+  } = {}
+) => {
+  await pool.query(
     `insert into auth."user" (id, name, email, email_verified, created_at)
      values ($1, '', $2, $3, $4)`,
     [
@@ -152,6 +168,14 @@ const insertLogin = (
       instantParameter(createdAt),
     ]
   );
+  if (signedInAt) {
+    await pool.query(
+      `insert into auth.session (id, expires_at, token, created_at, updated_at, user_id)
+       values ($1, $2::timestamptz + interval '7 days', $1, $2, $2, $3)`,
+      [`session-${id}`, instantParameter(signedInAt), id]
+    );
+  }
+};
 
 const insertAccountCreatedEvent = (
   pool: Pool,
@@ -255,6 +279,7 @@ const daysBefore = (days: number) => now.subtract({ hours: days * 24 });
 const silentLoginAt = backfilledAt.subtract({ milliseconds: 3 });
 const reconciledAt = backfilledAt.add({ hours: 20 });
 const repairedAt = backfilledAt.add({ hours: 30 });
+const lateSignUpAt = backfilledAt.add({ hours: 2 });
 
 const customerId = (name: string) =>
   DotyposCustomerIdSchema.make(`repair-${name}`);
@@ -294,7 +319,7 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
           createdAt: backfilledAt,
           customerId: customerId("unverified"),
         });
-        await insertLogin(pool, "unverified", recentLogin, false);
+        await insertLogin(pool, "unverified", recentLogin, { verified: false });
         // Backfilled without a customer: it can't have an event.
         await insertAccount(pool, "unlinked", { createdAt: backfilledAt });
         await insertLogin(pool, "unlinked", recentLogin);
@@ -335,16 +360,54 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
         });
         await insertLogin(pool, "tombstone", recentLogin);
         // Existing customers' silent logins, one already signed in to.
-        for (const [id, verified] of [
-          ["legacy", false],
-          ["legacy-verified", true],
-        ] as const) {
-          await insertAccount(pool, id, {
-            createdAt: backfilledAt,
-            customerId: customerId(id),
-          });
-          await insertLogin(pool, id, silentLoginAt, verified);
-        }
+        await insertAccount(pool, "legacy", {
+          createdAt: backfilledAt,
+          customerId: customerId("legacy"),
+        });
+        await insertLogin(pool, "legacy", silentLoginAt, { verified: false });
+        await insertAccount(pool, "legacy-verified", {
+          createdAt: backfilledAt,
+          customerId: customerId("legacy-verified"),
+        });
+        await insertLogin(pool, "legacy-verified", silentLoginAt, {
+          signedInAt: reconciledAt,
+        });
+        // Silent logins whose link #764 lost to a conflict: one never signed
+        // in to, two signed in to while the customer was still held (one
+        // seconds after the backfill made it), and one that claimed its
+        // customer at a sign-in once it was free.
+        await insertAccount(pool, "legacy-unlinked", {
+          createdAt: backfilledAt,
+        });
+        await insertLogin(pool, "legacy-unlinked", silentLoginAt, {
+          verified: false,
+        });
+        await insertAccount(pool, "legacy-unlinked-verified", {
+          createdAt: backfilledAt,
+        });
+        await insertLogin(pool, "legacy-unlinked-verified", silentLoginAt, {
+          signedInAt: reconciledAt,
+        });
+        await insertAccount(pool, "legacy-quickly-verified", {
+          createdAt: backfilledAt,
+        });
+        await insertLogin(pool, "legacy-quickly-verified", silentLoginAt, {
+          signedInAt: silentLoginAt.add({ seconds: 15 }),
+        });
+        await insertAccount(pool, "legacy-claimed", {
+          createdAt: backfilledAt,
+          customerId: customerId("legacy-claimed"),
+        });
+        await insertLogin(pool, "legacy-claimed", silentLoginAt, {
+          signedInAt: reconciledAt,
+        });
+        await insertAccountCreatedEvent(
+          pool,
+          "legacy-claimed",
+          customerId("legacy-claimed"),
+          backfilledAt,
+          reconciledAt
+        );
         // Existing customers' silent logins that already have an event. The
         // backfill made each the author of the guest bookings it was for.
         // The reconciler recorded one's event once its owner signed in, at
@@ -389,29 +452,39 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
           repairedAt
         );
         // Sign-ups after #764 merged: one claimed its customer, one hasn't.
-        const lateSignUp = backfilledAt.add({ hours: 2 });
         await insertAccount(pool, "late-signup", {
-          createdAt: lateSignUp,
+          createdAt: lateSignUpAt,
           customerId: customerId("late-signup"),
         });
-        await insertLogin(pool, "late-signup", lateSignUp);
+        await insertLogin(pool, "late-signup", lateSignUpAt, {
+          signedInAt: lateSignUpAt,
+        });
         await insertAccountCreatedEvent(
           pool,
           "late-signup",
           customerId("late-signup"),
-          lateSignUp
+          lateSignUpAt
         );
         await insertAuthoredReservation(
           pool,
           "late-signup",
           customerId("late-signup"),
-          lateSignUp.add({ minutes: 10 })
+          lateSignUpAt.add({ minutes: 10 })
         );
-        await insertAccount(pool, "late-pending", { createdAt: lateSignUp });
-        await insertLogin(pool, "late-pending", lateSignUp);
+        await insertAccount(pool, "late-pending", { createdAt: lateSignUpAt });
+        // Its sign-in opened the session a moment after making the login.
+        await insertLogin(pool, "late-pending", lateSignUpAt, {
+          signedInAt: lateSignUpAt.add({ seconds: 2 }),
+        });
       },
       check: async ({ pool, layer }) => {
-        for (const id of ["legacy", "legacy-verified"]) {
+        for (const id of [
+          "legacy",
+          "legacy-verified",
+          "legacy-unlinked",
+          "legacy-unlinked-verified",
+          "legacy-quickly-verified",
+        ]) {
           expect(await isLegacy(pool, id)).toBe(true);
           // No real creation time exists to repair to.
           expect(await accountCreatedAt(pool, id)).toBe(
@@ -426,6 +499,17 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
           backfilledAt.epochMilliseconds
         );
         expect(await accountCreatedEvents(pool, "legacy-reconciled")).toEqual([
+          {
+            occurredAt: backfilledAt.epochMilliseconds,
+            recordedAt: reconciledAt.epochMilliseconds,
+            processed: false,
+          },
+        ]);
+        expect(await isLegacy(pool, "legacy-claimed")).toBe(true);
+        expect(await accountCreatedAt(pool, "legacy-claimed")).toBe(
+          backfilledAt.epochMilliseconds
+        );
+        expect(await accountCreatedEvents(pool, "legacy-claimed")).toEqual([
           {
             occurredAt: backfilledAt.epochMilliseconds,
             recordedAt: reconciledAt.epochMilliseconds,
@@ -546,6 +630,75 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
           expect(await accountCreatedEvents(pool, id)).toEqual([]);
         }
 
+        // Once its customer is free, the unlinked one's owner signs in and
+        // claims it: it stays an existing customer and records nothing. A
+        // sign-up claiming its customer records its creation.
+        await pool.query(
+          `update auth."user" set email_verified = true
+           where id = 'legacy-unlinked'`
+        );
+        const claim = (id: string) =>
+          Effect.runPromise(
+            Effect.flatMap(CustomerAccountLinkRepository, (links) =>
+              links.claim(customerAccountIdSchema.make(id), customerId(id))
+            ).pipe(
+              Effect.provide(
+                CustomerAccountLinkRepository.Default.pipe(
+                  Layer.provide(
+                    Layer.merge(
+                      layer,
+                      WorkspaceDatabaseAdvisoryLock.makeLayer(pool)
+                    )
+                  )
+                )
+              )
+            )
+          );
+        for (const id of ["legacy-unlinked", "late-pending"]) {
+          expect(await claim(id)).toEqual({
+            kind: "linked",
+            customerId: customerId(id),
+            created: true,
+          });
+        }
+        expect(await isLegacy(pool, "legacy-unlinked")).toBe(true);
+        expect(await accountCreatedEvents(pool, "legacy-unlinked")).toEqual([]);
+        expect(await isLegacy(pool, "late-pending")).toBe(false);
+        expect(await accountCreatedEvents(pool, "late-pending")).toEqual([
+          {
+            occurredAt: lateSignUpAt.epochMilliseconds,
+            recordedAt: expect.any(Number),
+            processed: false,
+          },
+        ]);
+
+        // A legacy account's event starts nothing.
+        const db = await Effect.runPromise(
+          Effect.map(WorkspaceDatabase, ({ db }) => db).pipe(
+            Effect.provide(layer)
+          )
+        );
+        expect(
+          await Effect.runPromise(
+            db
+              .select({
+                accountId: customerEvents.customerAccountId,
+                triggering: triggeringCustomerEvent,
+              })
+              .from(customerEvents)
+              .where(
+                inArray(customerEvents.customerAccountId, [
+                  customerAccountIdSchema.make("legacy-claimed"),
+                  customerAccountIdSchema.make("late-pending"),
+                ])
+              )
+              .orderBy(customerEvents.customerAccountId)
+          )
+        ).toEqual([
+          { accountId: "late-pending", triggering: true },
+          { accountId: "legacy-claimed", triggering: false },
+        ]);
+
         // An old login backfilled an hour ago wasn't created this week.
         const lastWeek = await Effect.runPromise(
           CampaignCandidateRepository.pipe(
@@ -565,10 +718,13 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
         expect(lastWeek.inPeriod.has(customerId("signup"))).toBe(true);
         expect(lastWeek.inPeriod.has(customerId("fresh"))).toBe(true);
         expect(lastWeek.inPeriod.has(customerId("late-signup"))).toBe(true);
+        expect(lastWeek.inPeriod.has(customerId("late-pending"))).toBe(true);
         // A legacy customer verified a day after the backfill is old.
         for (const id of [
           "legacy",
           "legacy-verified",
+          "legacy-unlinked",
+          "legacy-claimed",
           "legacy-reconciled",
           "legacy-repaired",
         ]) {
@@ -657,10 +813,11 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
     async () => {
       // About 47k Dotypos customers got silent logins in #764, beside the
       // logins that were backfilled accounts. Every fifth login here predates
-      // its account; the rest are stamped as a silent login is. Every second
-      // account is linked, so most linked ones are legacy. Each of those
-      // authors a guest booking from before the backfill and already has
-      // the event the reconciler recorded once its owner signed in.
+      // its account; the rest are stamped as a silent login is, without a
+      // session, so they are legacy whether linked or not. Every second
+      // account is linked; each linked silent login authors a guest booking
+      // from before the backfill and already has the event the reconciler
+      // recorded once its owner signed in.
       const logins = 50_000;
       const oldLogin = daysBefore(400);
       await migrateAcross({
@@ -731,7 +888,7 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
           );
           expect(rows[0]).toEqual({
             repaired: logins / 5,
-            legacy: logins / 2 - logins / 10,
+            legacy: logins - logins / 5,
             events: logins / 10,
           });
         },

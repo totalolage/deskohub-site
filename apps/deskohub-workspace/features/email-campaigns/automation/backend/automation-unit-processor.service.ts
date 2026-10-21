@@ -343,23 +343,7 @@ export class AutomationUnitProcessor extends Context.Service<
                 Effect.tap((expiry) =>
                   expiry === "settled"
                     ? settleClaimed(tx, unit, "done", at)
-                    : tx
-                        .select({ id: units.id })
-                        .from(units)
-                        .where(
-                          and(
-                            eq(units.id, unit.id),
-                            eq(units.claimId, unit.claimId),
-                            isNull(units.cancelRequestedAt)
-                          )
-                        )
-                        .for("update")
-                        .pipe(
-                          Effect.filterOrFail(
-                            (held) => held.length > 0,
-                            () => new AutomationUnitClaimLost()
-                          )
-                        )
+                    : lockHeldClaim(tx, unit)
                 )
               )
             );
@@ -469,18 +453,12 @@ const missedRequeue = (
     : Effect.fail(new AutomationUnitClaimLost());
 
 /**
- * Settles a committed unit `done` by CAS on the caller's claim, unless its
- * commit persisted a send (set `send_id`): then the unit stays claimed,
- * holding its slot until the send settles, and its send's id is returned.
- * Either way the claim must still hold and the unit be unmarked.
+ * Locks the unit row while the caller's claim holds and the unit is
+ * unmarked, or fails with `AutomationUnitClaimLost`.
  */
-const holdOrSettle = (
-  tx: AutomationEngineTransaction,
-  unit: ClaimedUnit,
-  at: Temporal.Instant
-) =>
+const lockHeldClaim = (tx: AutomationEngineTransaction, unit: ClaimedUnit) =>
   tx
-    .select({ sendId: units.sendId })
+    .select({ id: units.id })
     .from(units)
     .where(
       and(
@@ -491,15 +469,36 @@ const holdOrSettle = (
     )
     .for("update")
     .pipe(
-      Effect.flatMap(([held]) =>
-        held === undefined
-          ? Effect.fail(new AutomationUnitClaimLost())
-          : Effect.succeed(Option.fromNullishOr(held.sendId))
+      Effect.filterOrFail(
+        (held) => held.length > 0,
+        () => new AutomationUnitClaimLost()
       ),
+      Effect.asVoid
+    );
+
+/**
+ * Settles a committed unit `done` by CAS on the caller's claim, unless its
+ * commit persisted a send (set `send_id`): then the unit stays claimed,
+ * holding its slot until the send settles, and its send's id is returned.
+ * Either way the claim must still hold and the unit be unmarked. Only this
+ * transaction's commit sets `send_id`, so it reads without a lock: settling
+ * frees the run rows before its CAS locks the unit row (§5.4).
+ */
+const holdOrSettle = (
+  tx: AutomationEngineTransaction,
+  unit: ClaimedUnit,
+  at: Temporal.Instant
+) =>
+  tx
+    .select({ sendId: units.sendId })
+    .from(units)
+    .where(eq(units.id, unit.id))
+    .pipe(
+      Effect.map(([unitRow]) => Option.fromNullishOr(unitRow?.sendId)),
       Effect.tap(
         Option.match({
           onNone: () => settleClaimed(tx, unit, "done", at),
-          onSome: () => Effect.void,
+          onSome: () => lockHeldClaim(tx, unit),
         })
       )
     );

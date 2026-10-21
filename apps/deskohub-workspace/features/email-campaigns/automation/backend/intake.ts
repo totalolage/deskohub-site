@@ -37,6 +37,7 @@ import {
   loadAutomationEntryVersions,
   takenReceiptKeys,
 } from "./automation-run-entry";
+import { lockTriggeringCustomerEvents } from "./automation-triggering-events";
 import { lockTriggeringReservations } from "./automation-triggering-reservations";
 import {
   type AutomationEngineTransaction,
@@ -189,11 +190,13 @@ const isWithdrawable = (decision: IntakeDecision) =>
   decision.event.kind !== "reservation-cancelled";
 
 /**
- * Writes intake decisions in the caller's transaction, one automation at a
- * time under its lifecycle lock (§5.4): a paused or archived automation, or
- * an event before `accepting_since`, processes the event with no receipt;
- * an event whose version in force changed is released for replanning.
- * Then the triggering reservations are locked: an event whose reservation
+ * Writes intake decisions in the caller's transaction. First the events'
+ * accounts are locked: an event that no longer triggers, a legacy
+ * account's since intake read it (D37), is processed with no receipt. Then
+ * one automation at a time under its lifecycle lock (§5.4): a paused or
+ * archived automation, or an event before `accepting_since`, processes the
+ * event with no receipt; an event whose version in force changed is
+ * released for replanning. Then the triggering reservations are locked: an event whose reservation
  * Workspace cancelled is withdrawn, since that cancellation's event may
  * already be processed with no run to withdraw, and a later cancellation
  * waits for the commit and withdraws the runs it wrote (§5.6). Otherwise
@@ -212,6 +215,10 @@ const commitIntakeDecisions = Effect.fn("automationIntake.commit")(function* (
   }
 ) {
   const released = new Set<CustomerEventId>();
+  const retired = yield* lockTriggeringCustomerEvents(
+    tx,
+    input.decisions.map(({ event }) => event)
+  );
   const byCampaign = [
     ...Map.groupBy(input.decisions, ({ campaignId }) => campaignId),
   ].sort(([left], [right]) => left.localeCompare(right));
@@ -222,7 +229,10 @@ const commitIntakeDecisions = Effect.fn("automationIntake.commit")(function* (
     if (state.status !== "active" || acceptingSince === null) continue;
     const versions = yield* loadAutomationVersionActivations(tx, campaignId);
     const accepted = decisions.filter((decision) => {
-      if (!isAfterOrAt(decision.event.occurredAt, acceptingSince)) {
+      if (
+        retired.has(decision.event.id) ||
+        !isAfterOrAt(decision.event.occurredAt, acceptingSince)
+      ) {
         return false;
       }
       const inForce = versionInForce(versions, decision.event.occurredAt);

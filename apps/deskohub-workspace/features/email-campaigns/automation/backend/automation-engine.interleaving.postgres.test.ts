@@ -15,6 +15,7 @@ import {
   waitForPostgresLockWaiter,
 } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import type { AudienceFilter } from "../../audience-filter";
 import type { CampaignId } from "../../campaign-identifiers";
 import type {
   AutomationVersionId,
@@ -62,20 +63,18 @@ const scheduleFlow = automationFlowFixture({
   steps: [{ _tag: "Send", id: "send" }],
 });
 
+const vipCustomers: AudienceFilter = {
+  _tag: "Condition",
+  attribute: "dotyposTags",
+  operator: "anyOf",
+  value: ["vip"],
+};
+
 /** "When a reservation is booked, send if the customer is tagged vip." */
 const vipFlow = automationFlowFixture({
   trigger: { _tag: "ReservationBooked" },
   steps: [
-    {
-      _tag: "Condition",
-      id: "vip",
-      filter: {
-        _tag: "Condition",
-        attribute: "dotyposTags",
-        operator: "anyOf",
-        value: ["vip"],
-      },
-    },
+    { _tag: "Condition", id: "vip", filter: vipCustomers },
     { _tag: "Send", id: "send" },
   ],
 });
@@ -1366,6 +1365,87 @@ describe.skipIf(!database)(
         expect(await runStates(campaignId)).toEqual([endedAs("sent")]);
         expect(mailedTo(email)).toBe(1);
       });
+    });
+
+    // The legacy marking (D37) writes the account row intake locks
+    // `FOR SHARE` after the lifecycle lock, so it races intake's profile
+    // fetch like a lifecycle operation.
+    describe("legacy marking × intake", () => {
+      const named = {
+        "commit-between": "marked first: no run",
+        "lifecycle-holds": "marking holding its row while intake waits: no run",
+        "lock-wait": "intake first: its run exists",
+      } as const satisfies Record<Order, string>;
+      for (const order of orders) {
+        test(`${order}, ${named[order]}`, async () => {
+          const { campaignId } = await kit.seedActive(
+            automationFlowFixture({
+              trigger: { _tag: "AccountCreated" },
+              steps: [{ _tag: "Send", id: "send" }],
+            }),
+            {
+              at: start,
+              // The audience reads the customer's profile, so intake fetches.
+              audienceFilter: vipCustomers,
+            }
+          );
+          opened.push(campaignId);
+          const customer = await fixtures.addCustomer(`legacy-${order}`, {
+            profile: { tags: ["vip"] },
+          });
+          const eventId = await fixtures.recordEvent({
+            kind: "account-created",
+            customer,
+            occurredAt,
+            legacy: false,
+          });
+          await scenario.plan(at);
+          const { rows } = await pool.query<{
+            unitId: AutomationWorkUnitId;
+            accountId: string;
+          }>(
+            `select u.id as "unitId", e.customer_account_id as "accountId"
+             from email_campaign_automation_work_units u, customer_events e
+             where u.kind = 'intake' and u.subject->'eventIds' ? e.id::text
+               and e.id = $1`,
+            [eventId]
+          );
+          const { unitId, accountId } = rows[0]!;
+          const marking = [
+            "update customer_accounts set legacy = true where id = $1",
+            [accountId],
+          ] as const;
+
+          const outcome = await raceUnit({
+            unitId,
+            campaignId,
+            order,
+            gate: () => scenario.dotypos.gate("getCustomersPage"),
+            operation: () => pool.query(...marking),
+            hold: async () => {
+              const held = await hold(...marking);
+              return {
+                unitWaits: () =>
+                  blockedBy(held, "intake waiting for the marking"),
+                finish: () => held.commit(),
+              };
+            },
+          });
+
+          expect(outcome).toBe("done");
+          const [event] = await read.events([eventId]);
+          expect(event!.automation_processed_at).not.toBeNull();
+          expect(event!.automation_unit_id).toBeNull();
+          const receipts = await read.receipts(campaignId);
+          if (order === "lock-wait") {
+            expect(receipts.map((r) => r.disposition)).toEqual(["started"]);
+            expect(await read.runs(campaignId)).toHaveLength(1);
+          } else {
+            expect(receipts).toEqual([]);
+            expect(await read.runs(campaignId)).toEqual([]);
+          }
+        });
+      }
     });
 
     describe("reaper re-claim × any unit commit", () => {

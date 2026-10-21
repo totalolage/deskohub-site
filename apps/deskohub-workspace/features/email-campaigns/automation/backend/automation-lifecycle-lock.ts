@@ -15,7 +15,10 @@ import type { AutomationEngineTransaction } from "./automation-unit-handler";
  * rows `FOR SHARE`; (3) run rows by compare-and-set, in id order; (4) send,
  * recipient and batch rows; (5) unit rows; (6) the slot lock, under which
  * promotion locks only `planned` rows no one holds (`SKIP LOCKED`). Take it
- * first in the transaction.
+ * first in the transaction. Intake alone takes one lock before it: all its
+ * events' `customer_accounts` rows `FOR SHARE`, in id order, in one
+ * statement. Their writers (a claim, a deletion, the legacy marking) take
+ * no lock here and nothing holding one waits for an account row.
  */
 
 /**
