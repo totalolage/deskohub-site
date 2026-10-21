@@ -8,7 +8,7 @@ index a12d50e19d1fa726246f9a2fbe6f76d07471c0ee..1e247f18e654a184abf3253a6ea79484
  			signal,
 -			lookup: (_hostname, _options, callback) => {
 -				callback(null, pinnedAddress.address, pinnedAddress.family);
-+			// Workspace patch, backported from @better-auth/cimd 1.7.12: Node
++			// Workspace patch, backported from @better-auth/cimd 1.7.3: Node
 +			// requests all lookup results when automatic address-family
 +			// selection is on (the default since Node 20) and then expects an
 +			// array, so the single-address form failed every metadata fetch.
