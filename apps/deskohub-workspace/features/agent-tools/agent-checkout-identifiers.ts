@@ -19,7 +19,8 @@ import type { SelectedReservation } from "./quote-selection";
  * repeated call reuses the checkout's idempotency and supersession.
  *
  * The session is one per account and agent client: a new selection
- * supersedes the client's previous hold, so it keeps at most one open. The
+ * supersedes the client's previous hold, in this session or one the booking
+ * operation rotated into, so it leaves no earlier unpaid hold open. The
  * selection key names the request, one per session and selection, with no
  * time component: the booking operation finds the request's latest
  * reservation by it and continues from there, so an identical repeat reuses a

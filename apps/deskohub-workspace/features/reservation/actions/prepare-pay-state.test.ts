@@ -389,6 +389,7 @@ const loadReservationFormPreparation = async () => {
 const runReusableReservationScenario = async (input: {
   readonly findByAttemptKeys: ReturnType<typeof mock>;
   readonly findLatestByAgentSelectionKey?: ReturnType<typeof mock>;
+  readonly findSupersedableByAgentClient?: ReturnType<typeof mock>;
   readonly findCurrentByCheckoutSessionKey?: ReturnType<typeof mock>;
   readonly findStoredCheckoutSessionKey?: ReturnType<typeof mock>;
   readonly createDraft?: ReturnType<typeof mock>;
@@ -399,6 +400,7 @@ const runReusableReservationScenario = async (input: {
   readonly cancelReservation?: ReturnType<typeof mock>;
   readonly createReservation?: ReturnType<typeof mock>;
   readonly getReservationStatus?: ReturnType<typeof mock>;
+  readonly markCancelled?: ReturnType<typeof mock>;
   readonly markCancellationFailed?: ReturnType<typeof mock>;
   readonly advertisedPriceToken?: string;
   readonly checkoutSessionId?: string;
@@ -474,6 +476,8 @@ const runReusableReservationScenario = async (input: {
   const verifyHuman = mock(() => Effect.void);
   const findLatestByAgentSelectionKey =
     input.findLatestByAgentSelectionKey ?? mock(() => Effect.succeed([]));
+  const findSupersedableByAgentClient =
+    input.findSupersedableByAgentClient ?? mock(() => Effect.succeed([]));
   const createDraft = input.createDraft ?? mock(() => Effect.die("unused"));
   const claimHoldCreation =
     input.claimHoldCreation ?? mock(() => Effect.succeed(true));
@@ -489,6 +493,7 @@ const runReusableReservationScenario = async (input: {
     mock(() => Effect.succeed({ id: "new-dotypos-reservation-id" } as never));
   const getReservationStatus =
     input.getReservationStatus ?? mock(() => Effect.succeed("NEW" as const));
+  const markCancelled = input.markCancelled ?? mock(() => Effect.void);
   const markCancellationFailed =
     input.markCancellationFailed ?? mock(() => Effect.void);
   const affirmAdvertisement =
@@ -580,6 +585,7 @@ const runReusableReservationScenario = async (input: {
     Layer.mock(WorkspaceReservationRepository, {
       findByAttemptKeys: input.findByAttemptKeys,
       findLatestByAgentSelectionKey,
+      findSupersedableByAgentClient,
       findCurrentByCheckoutSessionKey:
         input.findCurrentByCheckoutSessionKey ??
         mock(() => Effect.succeed(null)),
@@ -594,7 +600,7 @@ const runReusableReservationScenario = async (input: {
       markAttachFailedCancellationRequired: mock(() => Effect.void),
       claimSupersessionCancellation,
       completeSupersessionAndCreateDraft,
-      markCancelled: mock(() => Effect.void),
+      markCancelled,
       markCancellationFailed,
     }),
     input.marketingConsentRepository ??
@@ -668,6 +674,7 @@ const runReusableReservationScenario = async (input: {
     withdrawActiveMarketingConsent,
     ensureAvailable,
     findLatestByAgentSelectionKey,
+    findSupersedableByAgentClient,
     createDraft,
     claimHoldCreation,
     findById,
@@ -676,6 +683,7 @@ const runReusableReservationScenario = async (input: {
     cancelReservation,
     createReservation,
     getReservationStatus,
+    markCancelled,
     markCancellationFailed,
     verifyHuman,
     affirmAdvertisement,
@@ -2370,6 +2378,143 @@ describe("prepareWorkspacePayState", () => {
         expect(scenario.claimSupersessionCancellation).not.toHaveBeenCalled();
         expect(scenario.cancelReservation).not.toHaveBeenCalled();
         expect(scenario.createDraft).toHaveBeenCalledTimes(1);
+      });
+
+      describe("once the agent session holds a paid booking", () => {
+        const paidBooking = agentHold({
+          id: "paid-agent-booking-id",
+          reservationState: "confirmed",
+          paymentState: "paid",
+          paidAt: Temporal.Instant.from("2026-07-01T10:00:00Z"),
+        });
+        const rotatedHold = agentHold({
+          id: "rotated-agent-hold-id",
+          checkoutSessionKey: "rotated-session-key" as never,
+          dotyposReservationId: "rotated-dotypos-reservation-id",
+        });
+        // The paid booking stays the agent session's reservation, so a new
+        // selection rotates into a session that has none.
+        const paidAgentSession = () =>
+          mock()
+            .mockReturnValueOnce(Effect.succeed(paidBooking))
+            .mockReturnValue(Effect.succeed(null));
+
+        test("cancels the client's hold in a rotated session once and holds the new selection", async () => {
+          const claimSupersessionCancellation = mock()
+            .mockReturnValueOnce(
+              Effect.succeed({ ...rotatedHold, reservationState: "cancelling" })
+            )
+            .mockReturnValue(Effect.succeed(null));
+          const scenario = await runReusableReservationScenario({
+            ...agentBooking(),
+            findByAttemptKeys: mock(() => Effect.succeed(null)),
+            findCurrentByCheckoutSessionKey: paidAgentSession(),
+            findSupersedableByAgentClient: mock(() =>
+              Effect.succeed([rotatedHold])
+            ),
+            claimSupersessionCancellation,
+            createDraft: createFreshDraft(),
+          });
+
+          expect(scenario.result?.status).toBe("ready");
+          expect(scenario.findSupersedableByAgentClient).toHaveBeenCalledWith({
+            authorAccountId: accountId,
+            agentClientId: bookingAgent.clientId,
+          });
+          expect(claimSupersessionCancellation).toHaveBeenCalledTimes(1);
+          expect(claimSupersessionCancellation).toHaveBeenCalledWith(
+            "rotated-agent-hold-id"
+          );
+          expect(scenario.cancelReservation).toHaveBeenCalledTimes(1);
+          expect(scenario.cancelReservation).toHaveBeenCalledWith(
+            "rotated-dotypos-reservation-id"
+          );
+          expect(scenario.markCancelled).toHaveBeenCalledTimes(1);
+          expect(scenario.markCancelled.mock.calls[0]?.[0]).toMatchObject({
+            id: "rotated-agent-hold-id",
+          });
+          expect(
+            scenario.completeSupersessionAndCreateDraft
+          ).not.toHaveBeenCalled();
+          expect(scenario.createDraft).toHaveBeenCalledTimes(1);
+        });
+
+        test("keeps a rotated hold whose payment started before it was claimed", async () => {
+          const scenario = await runReusableReservationScenario({
+            ...agentBooking(),
+            findByAttemptKeys: mock(() => Effect.succeed(null)),
+            findCurrentByCheckoutSessionKey: paidAgentSession(),
+            findSupersedableByAgentClient: mock(() =>
+              Effect.succeed([rotatedHold])
+            ),
+            // The claim only takes a hold with no payment pending or made.
+            claimSupersessionCancellation: mock(() => Effect.succeed(null)),
+            createDraft: createFreshDraft(),
+          });
+
+          expect(scenario.result?.status).toBe("ready");
+          expect(scenario.getReservationStatus).not.toHaveBeenCalled();
+          expect(scenario.cancelReservation).not.toHaveBeenCalled();
+          expect(scenario.markCancelled).not.toHaveBeenCalled();
+          expect(scenario.createDraft).toHaveBeenCalledTimes(1);
+        });
+
+        test("books the new selection when the rotated hold's cancellation fails", async () => {
+          const scenario = await runReusableReservationScenario({
+            ...agentBooking(),
+            findByAttemptKeys: mock(() => Effect.succeed(null)),
+            findCurrentByCheckoutSessionKey: paidAgentSession(),
+            findSupersedableByAgentClient: mock(() =>
+              Effect.succeed([rotatedHold])
+            ),
+            claimSupersessionCancellation: mock(() =>
+              Effect.succeed({ ...rotatedHold, reservationState: "cancelling" })
+            ),
+            getReservationStatus: mock(() =>
+              Effect.succeed("CONFIRMED" as const)
+            ),
+            createDraft: createFreshDraft(),
+          });
+
+          expect(scenario.result?.status).toBe("ready");
+          expect(scenario.cancelReservation).not.toHaveBeenCalled();
+          expect(scenario.markCancelled).not.toHaveBeenCalled();
+          expect(scenario.markCancellationFailed).toHaveBeenCalledWith({
+            id: "rotated-agent-hold-id",
+            failureCode: "checkout_supersession_cancel_failed",
+          });
+          expect(scenario.createDraft).toHaveBeenCalledTimes(1);
+        });
+      });
+
+      test("leaves the agent session's own hold to the session's supersession", async () => {
+        const { held } = await makeInitialAgentHold();
+        const claimSupersessionCancellation = mock(() => Effect.succeed(held));
+        const scenario = await runAgentAt(
+          Temporal.Instant.from("2026-10-20T12:12:00Z"),
+          {
+            findByAttemptKeys: mock(() => Effect.succeed(null)),
+            findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(held)),
+            findSupersedableByAgentClient: mock(() => Effect.succeed([held])),
+            claimSupersessionCancellation,
+            completeSupersessionAndCreateDraft: mock((input) =>
+              Effect.succeed(
+                agentHold({
+                  id: "replacement-agent-hold-id",
+                  checkoutSessionKey: input.replacement.checkoutSessionKey,
+                  checkoutAttemptKey: input.replacement.checkoutAttemptKey,
+                  dotyposReservationId: null,
+                  reservationState: "draft",
+                })
+              )
+            ),
+          }
+        );
+
+        expect(scenario.result?.orderId).toBe("replacement-agent-hold-id");
+        expect(claimSupersessionCancellation).toHaveBeenCalledTimes(1);
+        expect(scenario.cancelReservation).toHaveBeenCalledTimes(1);
+        expect(scenario.markCancelled).not.toHaveBeenCalled();
       });
 
       test("labels the customer's marketing opt-in with the MCP channel", async () => {

@@ -306,6 +306,102 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
     expect(latest.map(({ id }) => id)).not.toContain(first.id);
   });
 
+  test("finds only the account's holds through one agent client that a new booking may supersede", async () => {
+    const author = await newAccountId();
+    const otherAuthor = await newAccountId();
+    const otherAgentClientId = customerAgentClientIdSchema.make(
+      "https://other-assistant.example/oauth-client.json"
+    );
+
+    const createReservation = async (input: {
+      readonly authorAccountId: CustomerAccountId;
+      readonly agentClientId?: typeof agentClientId;
+      readonly reservationState: "draft" | "held" | "confirmed";
+      readonly paymentState: "not_started" | "failed" | "pending" | "paid";
+    }) => {
+      const draft = await createDraft({
+        ...draftInput(input.authorAccountId),
+        agentClientId: input.agentClientId,
+      });
+      if (input.reservationState !== "draft") {
+        await postgres.db
+          .update(workspaceReservations)
+          .set({
+            reservationState: input.reservationState,
+            paymentState: input.paymentState,
+            dotyposReservationId: `dotypos-${crypto.randomUUID()}` as never,
+            paidAt:
+              input.paymentState === "paid" ? Temporal.Now.instant() : null,
+          })
+          .where(eq(workspaceReservations.id, draft.id))
+          .pipe(Effect.runPromise);
+      }
+      return draft;
+    };
+
+    const unpaidHold = await createReservation({
+      authorAccountId: author,
+      agentClientId,
+      reservationState: "held",
+      paymentState: "not_started",
+    });
+    const failedPaymentHold = await createReservation({
+      authorAccountId: author,
+      agentClientId,
+      reservationState: "held",
+      paymentState: "failed",
+    });
+    await createReservation({
+      authorAccountId: author,
+      agentClientId,
+      reservationState: "held",
+      paymentState: "pending",
+    });
+    await createReservation({
+      authorAccountId: author,
+      agentClientId,
+      reservationState: "confirmed",
+      paymentState: "paid",
+    });
+    await createReservation({
+      authorAccountId: author,
+      agentClientId,
+      reservationState: "draft",
+      paymentState: "not_started",
+    });
+    await createReservation({
+      authorAccountId: author,
+      agentClientId: otherAgentClientId,
+      reservationState: "held",
+      paymentState: "not_started",
+    });
+    await createReservation({
+      authorAccountId: otherAuthor,
+      agentClientId,
+      reservationState: "held",
+      paymentState: "not_started",
+    });
+    await createReservation({
+      authorAccountId: author,
+      reservationState: "held",
+      paymentState: "not_started",
+    });
+
+    const holds = await run(
+      Effect.gen(function* () {
+        const reservations = yield* WorkspaceReservationRepository;
+        return yield* reservations.findSupersedableByAgentClient({
+          authorAccountId: author,
+          agentClientId,
+        });
+      })
+    );
+
+    expect(holds.map(({ id }) => id).sort()).toEqual(
+      [unpaidHold.id, failedPaymentHold.id].sort()
+    );
+  });
+
   test("rejects a selection key without an agent client", async () => {
     const author = await newAccountId();
     const agentSelectionKey = agentSelectionKeySchema.make(
