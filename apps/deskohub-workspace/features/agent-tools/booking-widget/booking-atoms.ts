@@ -15,7 +15,7 @@ const bookingRuntime = Atom.runtime(BookingHost.Live);
 
 /** The `show_booking` result the view opens with. */
 export const bookingStartAtom = bookingRuntime
-  .atom(BookingHost.use((host) => host.start))
+  .atom(Effect.service(BookingHost).pipe(Effect.flatMap((host) => host.start)))
   .pipe(Atom.keepAlive);
 
 /**
