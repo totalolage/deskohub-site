@@ -729,7 +729,10 @@ describe.skipIf(!testDatabase)(
             .returning({ id: customerEvents.id })
         );
         const campaignId = await seedAutomation({
-          flow: decodeFlow({ trigger: { _tag: "AccountCreated" }, steps: [send] }),
+          flow: decodeFlow({
+            trigger: { _tag: "AccountCreated" },
+            steps: [send],
+          }),
         });
 
         const started = await start(campaignId);
@@ -737,9 +740,7 @@ describe.skipIf(!testDatabase)(
         await processAll(started.previewId);
 
         const rows = await rowsOf(started.previewId);
-        expect(rows.map((row) => row.customerEventId)).toEqual([
-          events[0]!.id,
-        ]);
+        expect(rows.map((row) => row.customerEventId)).toEqual([events[0]!.id]);
         expect((await read(started.previewId)).eventsTotal).toBe(1);
       } finally {
         // Their events go with the accounts.
