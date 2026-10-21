@@ -93,7 +93,6 @@ test("attributes a payment the page refresh finalizes to the page request's agen
         id: "019edbd2-82f7-7cc0-8536-f2b3874d62d5",
         workspaceReservationId: "019edbcf-5026-7ecc-821b-eda46998eaaa",
         provider: "nexi",
-        providerOrderId: "provider-order-id",
         amount: { value: 35_000, exponent: 2, currency: "CZK" },
       },
       timestamp: Temporal.Instant.from("2026-06-17T12:00:00.000Z"),

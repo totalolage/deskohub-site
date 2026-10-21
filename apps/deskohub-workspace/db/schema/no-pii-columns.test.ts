@@ -51,6 +51,11 @@ const allowedColumns = new Map([
     "auth.passkey.name",
     "Better Auth passkey label, covered by the preview-PII exception",
   ],
+  // The display name an AI agent's provider publishes in its Client ID
+  // Metadata Document, such as "Claude"; not customer data.
+  ["auth.oauth_client.name", "published AI agent client name"],
+  // The label of the customer MCP server as an OAuth protected resource.
+  ["auth.oauth_resource.name", "OAuth protected resource label"],
   // An email delivery identifier, explicitly allowed by the No-PII policy.
   [
     "public.workspace_reservations.active_customer_email_delivery_id",

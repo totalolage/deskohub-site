@@ -142,6 +142,19 @@ describe("auth page paths", () => {
     expect(url.searchParams.get("for")).toBe("reservation");
   });
 
+  test("returns an assistant connection to its full request", () => {
+    const returnTo =
+      "/cs-CZ/auth/connect?client_id=https%3A%2F%2Fassistant.invalid%2Fclient.json&scope=offerings%3Aread&signed_in=1";
+    const url = new URL(
+      getAccountSignInPath("cs-CZ", returnTo, "assistant"),
+      "https://site.invalid"
+    );
+
+    expect(url.pathname).toBe("/cs-CZ/auth/sign-in");
+    expect(url.searchParams.get("returnTo")).toBe(returnTo);
+    expect(url.searchParams.get("for")).toBe("assistant");
+  });
+
   test("names the sign-in purpose without a return path", () => {
     expect(getAccountSignInPath("cs-CZ", undefined, "reservation")).toBe(
       "/cs-CZ/auth/sign-in?for=reservation"
@@ -159,6 +172,7 @@ describe("auth page paths", () => {
 
   test("reads only a known sign-in purpose", () => {
     expect(parseSignInPurpose("reservation")).toBe("reservation");
+    expect(parseSignInPurpose("assistant")).toBe("assistant");
     expect(parseSignInPurpose("account")).toBeUndefined();
     expect(parseSignInPurpose("")).toBeUndefined();
     expect(parseSignInPurpose(null)).toBeUndefined();

@@ -14,6 +14,10 @@ reference covers how these parties are stored.
   author and the customer differ when an account books for someone else.
 - **Deleted-account tombstone**: a customer account that was deleted. It stays
   so the reservations it authored keep their author.
+- **Booking agent**: the customer's AI agent, by OAuth client ID
+  (`agent_client_id`), that started a reservation through the customer MCP
+  server for its author. It records the channel, not a party: the author is
+  still the signed-in account.
 
 ## Invariants
 
@@ -25,6 +29,6 @@ reference covers how these parties are stored.
   authorship.
 - A reservation's author never changes once recorded. Any account can pay a
   reservation without becoming its author, but another account can't resume
-  its draft.
+  its draft or supersede it from the same checkout session.
 - Account deletion turns the customer account into a tombstone; it never
   removes it.

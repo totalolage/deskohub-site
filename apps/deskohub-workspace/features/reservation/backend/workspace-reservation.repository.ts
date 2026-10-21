@@ -30,6 +30,7 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
+import type { CustomerAgentClientId } from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { releaseCodeClaim } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
 import type {
@@ -39,6 +40,7 @@ import type {
 } from "@/features/checkout/checkout-identifiers";
 import type { DiscountClaimError } from "@/features/discounts/errors";
 import type { Locale } from "@/features/i18n";
+import type { AgentSelectionKey } from "@/features/reservation/backend/booking-agent";
 import { withCoworkProductFields } from "@/features/reservation/cowork-reservation-product";
 import {
   type StoredWorkspaceReservationDetails,
@@ -97,6 +99,10 @@ export interface CreateWorkspaceReservationInput {
   readonly dotyposCustomerId: DotyposCustomerId;
   /** The signed-in account making the reservation. */
   readonly authorAccountId: CustomerAccountId;
+  /** The customer's AI agent that started the reservation, if one did. */
+  readonly agentClientId?: CustomerAgentClientId;
+  /** The agent booking request the reservation answers, if an agent made it. */
+  readonly agentSelectionKey?: AgentSelectionKey;
   readonly reservationPurpose: ReservationPurpose;
   readonly reservationDetails: StoredWorkspaceReservationDetails;
   readonly locale: string;
@@ -152,6 +158,28 @@ export interface IWorkspaceReservationRepository {
   readonly findStoredCheckoutSessionKey: (
     checkoutSessionKeys: readonly CheckoutSessionKey[]
   ) => Effect.Effect<CheckoutSessionKey | null, EffectDrizzleQueryError>;
+  /**
+   * The latest two reservations the account's agent booking request created,
+   * newest first: the request's current reservation and the one before it.
+   */
+  readonly findLatestByAgentSelectionKey: (input: {
+    readonly authorAccountId: CustomerAccountId;
+    readonly agentSelectionKey: AgentSelectionKey;
+  }) => Effect.Effect<
+    readonly WorkspaceReservation[],
+    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
+  /**
+   * The account's holds through one agent client that a new booking may
+   * still supersede: held, with no payment pending or completed.
+   */
+  readonly findSupersedableByAgentClient: (input: {
+    readonly authorAccountId: CustomerAccountId;
+    readonly agentClientId: CustomerAgentClientId;
+  }) => Effect.Effect<
+    readonly WorkspaceReservation[],
+    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
   readonly findCurrentByCheckoutSessionKey: (
     checkoutSessionKey: CheckoutSessionKey
   ) => Effect.Effect<
@@ -515,6 +543,8 @@ export class WorkspaceReservationRepository extends Context.Service<
                     correlationId: postgresUuidV7,
                     dotyposCustomerId: input.dotyposCustomerId,
                     authorAccountId: input.authorAccountId,
+                    agentClientId: input.agentClientId ?? null,
+                    agentSelectionKey: input.agentSelectionKey ?? null,
                     reservationPurpose: input.reservationPurpose,
                     reservationState: "draft",
                     paymentState: "not_started",
@@ -605,6 +635,54 @@ export class WorkspaceReservationRepository extends Context.Service<
               })
             )
         ),
+        findLatestByAgentSelectionKey: Effect.fn(
+          "workspaceReservations.findLatestByAgentSelectionKey"
+        )(function* (input) {
+          const rows = yield* db
+            .select()
+            .from(workspaceReservations)
+            .where(
+              and(
+                eq(
+                  workspaceReservations.agentSelectionKey,
+                  input.agentSelectionKey
+                ),
+                eq(workspaceReservations.authorAccountId, input.authorAccountId)
+              )
+            )
+            .orderBy(
+              desc(workspaceReservations.createdAt),
+              desc(workspaceReservations.id)
+            )
+            .limit(2);
+          return yield* Effect.forEach(rows, decodeWorkspaceReservation);
+        }),
+        findSupersedableByAgentClient: Effect.fn(
+          "workspaceReservations.findSupersedableByAgentClient"
+        )(function* (input) {
+          const rows = yield* db
+            .select()
+            .from(workspaceReservations)
+            .where(
+              and(
+                eq(
+                  workspaceReservations.authorAccountId,
+                  input.authorAccountId
+                ),
+                eq(workspaceReservations.agentClientId, input.agentClientId),
+                eq(workspaceReservations.reservationState, "held"),
+                inArray(
+                  workspaceReservations.paymentState,
+                  supersedableReservationPaymentStates
+                )
+              )
+            )
+            .orderBy(
+              desc(workspaceReservations.createdAt),
+              desc(workspaceReservations.id)
+            );
+          return yield* Effect.forEach(rows, decodeWorkspaceReservation);
+        }),
         findCurrentByCheckoutSessionKey: Effect.fn(
           "workspaceReservations.findCurrentByCheckoutSessionKey"
         )(
@@ -1078,6 +1156,9 @@ export class WorkspaceReservationRepository extends Context.Service<
                   correlationId: postgresUuidV7,
                   dotyposCustomerId: input.replacement.dotyposCustomerId,
                   authorAccountId: input.replacement.authorAccountId,
+                  agentClientId: input.replacement.agentClientId ?? null,
+                  agentSelectionKey:
+                    input.replacement.agentSelectionKey ?? null,
                   reservationPurpose: input.replacement.reservationPurpose,
                   reservationState: "draft",
                   paymentState: "not_started",

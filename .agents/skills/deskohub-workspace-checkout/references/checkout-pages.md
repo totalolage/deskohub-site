@@ -6,8 +6,8 @@
 
 - `ensureAvailable` and table assignment always read the providers directly. Never route them through `AdvisoryAvailabilityInventory`.
 - The expired-hold query always runs live.
-- Cache only the occupancy projection (`toOccupancyReservation`), never customer IDs or notes. Key snapshots by the normalized Prague-midnight range.
-- Every Dotypos create, update, or cancel through `WorkspaceDotyposLayer` calls `expireCacheTag` on the reservations tag. It uses `expire: 1` because `expire: 0` makes a calling Server Action re-render the page. Hold confirmation leaves occupancy unchanged and doesn't invalidate.
+- Cache only the `ReservationRecord` projection (`toReservationRecord`, `features/reservation/backend/reservation-record.ts`), never customer IDs or notes. Key snapshots by the normalized Prague-midnight range.
+- Every Dotypos create, update, or cancel through `WorkspaceDotyposLayer` calls `expireCacheTag` on the availability reservations tag and the [reservation records](#reservation-records) tag. It uses `expire: 1` because `expire: 0` makes a calling Server Action re-render the page. Hold confirmation leaves occupancy unchanged, so it expires only the reservation records tag.
 - Invalidation is best effort and never fails the write. `revalidateTag` can't run during render, so writes from render paths, or made outside the app, show up within the reservations profile lifetime.
 - Mark a failed snapshot load uncacheable with `cacheLife({ expire: 0 })` before it rejects.
 - Reference a `"use cache"` function only inside a callback, never as a value during module evaluation. The compiler turns it into a binding assigned later, so an eager reference is `undefined` and fails the build during page-data collection.
@@ -21,6 +21,16 @@ A reservation page restored from signed Pay state shows availability as it will 
 - Carry the signed restoration context separately from the public selection query. Never accept a client-authored reservation ID as the exclusion.
 - Exclude only that checkout's verified current replaceable hold, after confirming in the inventory snapshot that it's still Dotypos `NEW`. Keep every other reservation and Calendar limitation.
 - Keep `ensureAvailable` and table assignment structurally unable to receive an exclusion. Submission cancels the old hold, then runs the full availability check before creating the replacement.
+
+## Reservation records
+
+- Customer-facing reads of Dotypos reservation details go through `ReservationRecords` (`features/reservation/backend/reservation-records.ts`). `CheckoutStatusService` and `CustomerReservationHistoryService` take the records layer through `withRecords`. Their `Live` layers, which the status page and account history use, read `ReservationRecords.Live`, so a staff edit in Dotypos shows on the next load; keep browser pages live. Only the MCP read tools (`CustomerAgentToolsLive`) pass `SharedReservationRecordsLive`, because agent reads are the quota risk. Booking checks, fulfillment, cleanup, and writes read Dotypos directly.
+- `SharedReservationRecordsLive` serves `"use cache: remote"` snapshots keyed by reservation ID, Dotypos customer ID, or one sorted batch of at most 50 IDs, with the `reservationRecords` profile and `reservationRecordTags.records`. Its customer list also reads, by ID, the customer's recorded reservations a list snapshot doesn't hold yet; the live list needs no such repair.
+- Entries hold only the `ReservationRecord` projection, but a customer-keyed entry still describes that customer's bookings. Read one only after authorizing the reservation or account. Never cache an authorization result, contact details, names, or an assembled history.
+- Statuses come from Workspace rows. The status kind never reads Dotypos, and the history shows a row whose `reservationState` is `confirmed` as confirmed while a snapshot still says `NEW`.
+- Invalidation is best effort, as for availability. A write made during render or outside the app shows to agents only after a successful refresh. Refreshes are demand-driven: the first read after the 60-second `revalidate` still gets the old snapshot while it starts one. A cold entry still spends Dotypos requests.
+- The MCP read tools skip the uncached customer reads: `get_reservation_status` passes `includeSupportContact: false` and `list_my_reservations` passes `includePartyNames: false`. The browser pages keep both.
+- Build each service with one records layer per Layer build. Live and shared variants of the same service share its `Default` layer, so mixing them in one build can memoize whichever is built first.
 
 ## Page preload
 
@@ -93,6 +103,7 @@ Customer-visible status wording and the support-request rules are in the [checko
 
 ## Browser site tools
 
+- The customer MCP server (`app/api/mcp/route.ts`) serves the public tools to anyone and the signed-in tools (`defineSignedInAgentTool`) to agents with a Workspace OAuth access token. `authorizeAgentToolRequest` answers before the MCP server runs: a token that grants nothing gets a 401 `invalid_token` challenge, a signed-in `tools/call` without a token a 401 challenge naming the tool's scope, and a token without it a 403 `insufficient_scope` challenge. Challenges come from `customerAgentChallenge` in the account auth boundary; never import Better Auth into `features/agent-tools`. A signed-in tool reads the customer only through `CurrentCustomerAgentGrant` and the token-backed account services (`customerAgentAccountServices`), never the browser session, and spends the per-grant and per-account `RequestBudget` (`agent-tool-call-budget.ts`) plus any tool `accountBudget`. Signed-in results never carry access PINs, contact details, or other people's names, and status links never carry the preview bypass secret.
 - `features/agent-tools/webmcp/` registers the public agent tools as WebMCP site tools behind the `webmcp_site_tools` release gate (`SiteToolsWhenEnabled` in the site layout). Keep it a removable client-only leaf: feature detection of `document.modelContext` is the only browser branch, registration code loads with `import()` after it, and nothing outside the module depends on it. Never branch on a user agent.
 - Read tools come from `/api/mcp` `tools/list` and run through `tools/call`. Never redefine a tool's schema, copy, or logic in the browser.
 - `prepare_reservation` exists only while a reservation form is mounted. It quotes through `get_quote`, applies the quote link's selection with the family's link parser (`selection.fromSearchParams`), waits for the form's availability and price, then submits through `ReservationCheckoutForm`'s own `submit` path. Never give it a server path that skips the form's checks or `preparePayState`. Signed out, that path starts the email verification and the tool returns `email_verification_required`; checkout continues once the customer verifies.
