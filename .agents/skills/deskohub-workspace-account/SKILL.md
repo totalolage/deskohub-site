@@ -1,6 +1,6 @@
 ---
 name: deskohub-workspace-account
-description: Workspace customer account, Better Auth, magic link, sign-in, session, auth persistence, customer account link, durable customer account, customer_accounts, deleted-account tombstone, reservation author storage, profile, avatar, account deletion, reservation history, saved language preference, signed-in locale, auth retention or PII, PostHog identity.
+description: Workspace customer account, Better Auth, magic link, sign-in, session, auth persistence, customer account link, durable customer account, customer_accounts, deleted-account tombstone, reservation author storage, profile, avatar, account deletion, reservation history, saved language preference, signed-in locale, auth retention or PII, PostHog identity, OAuth server, MCP authorization, AI agent or assistant connection, consent page, CIMD, access token, well-known discovery, data transfers outside the EU, third-country transfer, DPF, SCC, provider region.
 ---
 
 # Workspace customer accounts
@@ -17,9 +17,9 @@ Paths are relative to `apps/deskohub-workspace` unless they start with
   abstraction.
 - Dotypos owns the customer profile (required first name, optional last name,
   phone, and personal or business billing) and live reservation facts.
-- Workspace stores only the one-to-one opaque link in
-  `public.customer_account_links` and the durable customer account in
-  `public.customer_accounts` (id and deletion instant; see
+- Workspace stores only the durable customer account in
+  `public.customer_accounts` (id, the opaque id of its own Dotypos customer,
+  and deletion instant; see
   [durable customer account](references/account-domain-and-routes.md#durable-customer-account)). Never
   copy profile or auth data anywhere else. The one exception is an administrator account actor: records an
   administrator writes keep the account's login-email snapshot as provenance
@@ -75,9 +75,12 @@ Read the reference that matches your change before editing:
 - [Magic-link delivery and account E2E](references/magic-link-delivery-and-e2e.md):
   email routing, the Preview and development log lines, Vercel log retrieval,
   and required account test coverage.
+- [Customer agent OAuth](references/customer-agent-oauth.md): the OAuth
+  2.1 server for customers' AI agents, discovery routes, the connect and
+  consent pages, the token-to-customer adapter, revocation, and cleanup.
 - [Privacy and retention](references/privacy-and-retention.md): what each
-  system retains, Neon preview copies, Resend, Dotypos expiry, and privacy-copy
-  obligations.
+  system retains, the transfers-outside-the-EU inventory, Neon preview copies,
+  Resend, Dotypos expiry, and privacy-copy obligations.
 - [Avatar media storage](references/avatar-media-storage.md): Cloudinary
   staging, promotion, recovery, and deletion ordering.
 - [PostHog identity and privacy](references/posthog-identity-privacy.md):

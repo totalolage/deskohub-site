@@ -12,7 +12,10 @@ import { Effect } from "effect";
 import { workspaceReservations } from "@/db/schema";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { cleanupCheckoutFlowStates } from "./cleanup";
 import type { DatasourceConfig } from "./config";
 import {
@@ -86,6 +89,7 @@ describe.skipIf(!testDatabase)(
               reservationDetails: stored,
               reservationCreatedAt: Temporal.Now.instant(),
               locale: "en-US",
+              authorAccountId: fixtureReservationAuthorId,
             }))
           )
         )

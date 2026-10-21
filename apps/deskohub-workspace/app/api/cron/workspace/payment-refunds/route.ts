@@ -30,10 +30,11 @@ const lookupBudget = Duration.millis(
 );
 
 /**
- * Runs hourly. At about 100 paid attempts a day, the 30-day window holds about
- * 3,000 recent payments; 150 checks an hour (3,600 a day) re-check each of
- * them within a day while Nexi answers normally (four lookups of about a
- * second each run at a time). While every lookup times out, a production
+ * Runs hourly, at :30 with an email automation engine tick so both share one
+ * production database wake-up. At about 100 paid attempts a day, the 30-day
+ * window holds about 3,000 recent payments; 150 checks an hour (3,600 a day)
+ * re-check each of them within a day while Nexi answers normally (four
+ * lookups of about a second each run at a time). While every lookup times out, a production
  * lookup takes up to about 21 seconds with retries, so a run checks about 44
  * attempts and leaves the rest unclaimed for the next run.
  */

@@ -2,6 +2,7 @@ import "@/shared/polyfills/temporal";
 
 import { describe, test } from "bun:test";
 import { AlgoPinSchema } from "@deskohub/igloohome";
+import { NodeCrypto } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import {
   collectDatabaseQueryLogs,
@@ -28,7 +29,7 @@ describe("ReservationAccessRepository query logging", () => {
       }).pipe(
         Effect.provide(
           ReservationAccessRepository.Default.pipe(
-            Layer.provide(recording.layer)
+            Layer.provide(Layer.mergeAll(recording.layer, NodeCrypto.layer))
           )
         )
       )

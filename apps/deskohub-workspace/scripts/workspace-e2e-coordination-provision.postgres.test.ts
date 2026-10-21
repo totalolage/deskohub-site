@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { readdir } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import * as PgClient from "@effect/sql-pg/PgClient";
 import { Data, Effect, Exit, Redacted } from "effect";
 import { normalizePostgresConnectionUrl } from "@/db/postgres-connection-url";
+import { coordinationMigrationStatements } from "@/e2e/coordination/coordination-migrations.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { provisionWorkspaceE2ECoordination } from "./workspace-e2e-coordination-provision";
 
@@ -12,32 +11,11 @@ const postgresDatabase = await connectWorkspacePostgresTestDatabase();
 const allocatorRole = "workspace_e2e_allocator";
 const providerPermitRole = "workspace_e2e_provider_permit";
 
-const coordinationMigrationsDirectory = fileURLToPath(
-  new URL("../e2e/coordination/migrations", import.meta.url)
-);
-
 class DisposableTransactionRollback extends Data.TaggedError(
   "DisposableTransactionRollback"
 ) {}
 
 class RoleProbeRollback extends Data.TaggedError("RoleProbeRollback") {}
-
-const coordinationMigrationStatements = async (): Promise<string[]> => {
-  const migrations = (await readdir(coordinationMigrationsDirectory)).sort();
-  const statements: string[] = [];
-  for (const migration of migrations) {
-    const text = await Bun.file(
-      `${coordinationMigrationsDirectory}/${migration}/migration.sql`
-    ).text();
-    statements.push(
-      ...text
-        .split("--> statement-breakpoint")
-        .map((statement) => statement.trim())
-        .filter(Boolean)
-    );
-  }
-  return statements;
-};
 
 const createLoginRole = (sql: PgClient.PgClient, role: string) =>
   sql.unsafe(`

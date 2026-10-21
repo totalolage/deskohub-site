@@ -10,6 +10,13 @@ Every Workspace Effect runs through one runner or boundary. Server runners live 
 - Keep status codes and public messages out of domain and Layer errors. Before you return the route handler Effect, provide all capabilities and map the final error channel to `WorkspaceRouteFailure`, keeping the original error as `cause`. Map unexpected errors with `WorkspaceRouteFailure.internal(publicMessage)`.
 - An Effect HTTP API served through `HttpRouter.toWebHandler` has its own runtime. Merge `WorkspaceObservabilityLive` into its Layer and pass `memoMap: workspaceMemoMap`, as `features/admin-cli/workspace-admin-api.server.ts` does. When a handler maps a failure to a cause-less public error, log the original cause first.
 
+## Queue consumers
+
+Define every Vercel Queue route with `defineQueueConsumer(operation, consume, redelivery)` from `shared/backend/queue/queue-consumer.ts`. It runs the task, logs a failure once with its cause through the censored logger, and hands the SDK only a `QueueDeliveryFailure` carrying the `retry` directive. The SDK `console.error`s a rethrown handler error outside censorship, so never let a raw cause escape a queue route.
+
+- The consumer's `redelivery` classifies only its own lone typed failure: `QueueRedelivery.Never` acknowledges, `WithBackoff` redelivers after 60 s doubling to 15 min, `At` redelivers at a known instant (up to the 1 h visibility limit), and `Default` keeps the trigger's `retryAfterSeconds`.
+- Only `VERCEL_ENV === "preview"` acknowledges a message whose database is gone (SQLSTATE class 28, 3D000, Neon endpoint not found) or that reached `previewQueueDeliveryLimit` deliveries. Elsewhere an unavailable database backs off and wins over any consumer classification, so nothing is dropped without one.
+
 ## Shared runtime
 
 `NextEffect.make({ layer })` builds its Layer once per process, on the first run, and all server boundaries share it. Each run forks the runtime's memo map. Providing a Layer the runtime already built reuses its shared instance; any other Layer a handler provides with `Effect.provide` builds per run and never leaks between concurrent requests.

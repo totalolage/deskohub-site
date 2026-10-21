@@ -518,7 +518,7 @@ export const loadFixtureReservation = (
             credentialType: "algopin_hourly",
             deviceId: "EK1X16f8898a",
             providerCredentialId: null,
-            accessName: `Deskohub ${reservation.id}`,
+            accessName: "Deskohub fixture-access-grant",
             scheduledStartsAt: reservation.startsAt ?? startedAt,
             startsAt: reservation.startsAt ?? startedAt,
             endsAt: reservation.endsAt ?? reservation.updatedAt,

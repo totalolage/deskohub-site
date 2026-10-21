@@ -51,6 +51,11 @@ const allowedColumns = new Map([
     "auth.passkey.name",
     "Better Auth passkey label, covered by the preview-PII exception",
   ],
+  // The display name an AI agent's provider publishes in its Client ID
+  // Metadata Document, such as "Claude"; not customer data.
+  ["auth.oauth_client.name", "published AI agent client name"],
+  // The label of the customer MCP server as an OAuth protected resource.
+  ["auth.oauth_resource.name", "OAuth protected resource label"],
   // An email delivery identifier, explicitly allowed by the No-PII policy.
   [
     "public.workspace_reservations.active_customer_email_delivery_id",
@@ -85,6 +90,10 @@ const allowedColumns = new Map([
   [
     "public.standalone_access_code_attempt_events.name",
     "operator-entered access code label",
+  ],
+  [
+    "public.reservation_access_grants.access_name",
+    "Igloohome credential label built from the grant ID",
   ],
 ]);
 

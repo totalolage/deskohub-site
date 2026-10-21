@@ -9,6 +9,16 @@ import {
 } from "@/db/database.service";
 import { makeDatabaseClient, makeDatabasePool } from "@/db/database-client";
 import { databasePoolTimeouts } from "@/db/database-pool-timeouts";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
+
+/**
+ * The customer account that authors a fixture reservation naming no author of
+ * its own. Every reservation has an author, and the test database always holds
+ * this one.
+ */
+export const fixtureReservationAuthorId = customerAccountIdSchema.make(
+  "fixture-reservation-author"
+);
 
 export interface WorkspacePostgresTestDatabase {
   readonly db: WorkspaceDatabaseClient;
@@ -54,6 +64,11 @@ const connectWorkspacePostgres =
     } catch (cause) {
       return failClosed("migration failed", cause);
     }
+
+    await pool.query(
+      "insert into customer_accounts (id) values ($1) on conflict do nothing",
+      [fixtureReservationAuthorId]
+    );
 
     const db = await Effect.runPromise(makeDatabaseClient(pool));
 

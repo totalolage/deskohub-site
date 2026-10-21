@@ -30,7 +30,10 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import type { CustomerEventSweepSource } from "@/shared/backend/customer-events/customer-event";
 import { CustomerEventReconciler } from "@/shared/backend/customer-events/customer-event-reconciler";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { ReservationActivitySweep } from "./reservation-activity-sweep.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -175,6 +178,7 @@ describe.skipIf(!testDatabase)(
           const id = workspaceId(label);
           insertedIds.push(id);
           return {
+            authorAccountId: fixtureReservationAuthorId,
             id,
             checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
             dotyposCustomerId: customerId(label),
@@ -706,7 +710,7 @@ describe.skipIf(!testDatabase)(
       });
     });
 
-    test("reconciles captured events on every tenth minute only", async () => {
+    test("reconciles captured events on every planner run, whatever its minute", async () => {
       const dotypos = activityDotypos(100);
       const now = at("2027-03-05T08:07:00Z");
       await resetSweeps({ activity: now.subtract({ minutes: 1 }) });
@@ -730,8 +734,8 @@ describe.skipIf(!testDatabase)(
       await runEngine(dotypos, (tick) =>
         Effect.gen(function* () {
           yield* tick(now);
-          expect(yield* bookedEvents()).toBe(0);
-          yield* tick(at("2027-03-05T08:10:00Z"));
+          expect(yield* bookedEvents()).toBe(1);
+          yield* tick(now.add({ minutes: 15 }));
           expect(yield* bookedEvents()).toBe(1);
         })
       );

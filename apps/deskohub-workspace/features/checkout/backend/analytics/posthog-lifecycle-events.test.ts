@@ -17,6 +17,31 @@ import {
 const consentCookie = (categories: readonly string[]) =>
   `cc_cookie=${encodeURIComponent(JSON.stringify({ categories }))}`;
 
+// The event service drops undefined values before sending, so they aren't sent keys.
+const sentPropertyKeys = (capture: CapturePostHogEventInput | undefined) =>
+  Object.entries(capture?.properties ?? {})
+    .filter(([, value]) => value !== undefined)
+    .map(([key]) => key)
+    .sort();
+
+const reservationEventKeys = [
+  "$process_person_profile",
+  "agent_category",
+  "agent_name",
+  "reservation_id",
+];
+
+const paymentEventKeys = [
+  "$process_person_profile",
+  "agent_category",
+  "agent_name",
+  "currency",
+  "payment_attempt_id",
+  "provider",
+  "reservation_id",
+  "revenue",
+];
+
 describe("PostHog lifecycle events", () => {
   test("captures payment revenue fields with deterministic UUID", async () => {
     const { capturePaymentCompleted } = await import(
@@ -36,7 +61,6 @@ describe("PostHog lifecycle events", () => {
           id: attemptId,
           workspaceReservationId: reservationId,
           provider: "nexi",
-          providerOrderId: "provider-order-id",
           amount: {
             value: 35_000,
             exponent: 2,
@@ -69,11 +93,12 @@ describe("PostHog lifecycle events", () => {
       timestamp,
       uuid: `${attemptId}:payment completed`,
     });
-    expect(captures[0].properties).toMatchObject({
+    expect(captures[0].properties).toEqual({
+      $process_person_profile: false,
+      agent_category: "unclassified",
       currency: "CZK",
       payment_attempt_id: attemptId,
       provider: "nexi",
-      provider_order_id: "provider-order-id",
       reservation_id: reservationId,
       revenue: 350,
     });
@@ -124,7 +149,6 @@ describe("PostHog lifecycle events", () => {
       id: attemptId,
       workspaceReservationId: reservationId,
       provider: "nexi" as const,
-      providerOrderId: "synthetic-provider-order-id",
       amount: { value: 35_000, exponent: 2, currency: "CZK" },
     };
 
@@ -146,34 +170,21 @@ describe("PostHog lifecycle events", () => {
           timestamp,
         });
         yield* captureReservationStarted({
-          reservation: {
-            id: reservationId,
-            dotyposReservationId: "synthetic-dotypos-reservation-id",
-          },
+          reservation: { id: reservationId },
           timestamp,
         });
         yield* capturePaymentStarted({ attempt: paymentAttempt, timestamp });
         yield* capturePaymentCompleted({ attempt: paymentAttempt, timestamp });
         yield* captureReservationCompleted({
-          reservation: {
-            id: reservationId,
-            dotyposReservationId: "synthetic-dotypos-reservation-id",
-          },
+          reservation: { id: reservationId },
           timestamp,
         });
         yield* captureReservationFulfilled({
-          reservation: {
-            id: reservationId,
-            dotyposCustomerId: "synthetic-dotypos-customer-id",
-            dotyposReservationId: "synthetic-dotypos-reservation-id",
-          },
+          reservation: { id: reservationId },
           timestamp,
         });
         yield* captureReservationAbandoned({
-          reservation: {
-            id: reservationId,
-            dotyposReservationId: "synthetic-dotypos-reservation-id",
-          },
+          reservation: { id: reservationId },
           timestamp,
         });
       }).pipe(
@@ -236,7 +247,13 @@ describe("PostHog lifecycle events", () => {
     for (const capture of captures.slice(3)) {
       expect(capture.properties).toMatchObject({
         $process_person_profile: false,
+        reservation_id: reservationId,
       });
+      expect(sentPropertyKeys(capture)).toEqual(
+        capture.event.startsWith("payment ")
+          ? paymentEventKeys
+          : reservationEventKeys
+      );
     }
     for (const capture of captures) {
       expect(capture.properties).toMatchObject({
@@ -248,13 +265,70 @@ describe("PostHog lifecycle events", () => {
         expect(String(value)).not.toContain("chatgpt.com");
       }
     }
-    const fulfilledCapture = captures.find(
-      ({ event }) => event === "reservation fulfilled"
+  });
+
+  test("sends only the allowed properties on failed and abandoned payments", async () => {
+    const { capturePaymentAbandoned, capturePaymentFailed } = await import(
+      "./posthog-lifecycle-events"
     );
-    expect(fulfilledCapture).toBeDefined();
-    expect(fulfilledCapture?.properties).not.toHaveProperty(
-      "dotypos_customer_id"
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
     );
+    const captures: CapturePostHogEventInput[] = [];
+    const attempt = {
+      id: "synthetic-failed-payment-attempt-id",
+      workspaceReservationId: "synthetic-failed-reservation-id",
+      provider: "nexi" as const,
+      amount: { value: 12_500, exponent: 2, currency: "CZK" },
+    };
+    const timestamp = Temporal.Instant.from("2099-06-17T12:00:00.000Z");
+    const requestHeaders = new Headers({
+      "user-agent":
+        "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot",
+    });
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* capturePaymentFailed({
+          attempt,
+          failureReason: "nexi_payment_failed",
+          timestamp,
+        });
+        yield* capturePaymentAbandoned({ attempt, timestamp });
+      }).pipe(
+        Effect.provide(
+          Layer.succeed(PostHogEventService, {
+            alias: () => Effect.void,
+            capture: (input) =>
+              Effect.sync(() => {
+                captures.push(input);
+              }),
+          })
+        ),
+        withWorkspaceRequestContext(
+          requestHeaders,
+          classifyAgentTraffic(requestHeaders)
+        )
+      )
+    );
+
+    expect(captures.map(({ event }) => event)).toEqual([
+      "payment failed",
+      "payment abandoned",
+    ]);
+    expect(captures[0]?.distinctId).toBe(attempt.workspaceReservationId);
+    expect(captures[0]?.properties).toEqual({
+      $process_person_profile: false,
+      agent_category: "ai_user_agent",
+      agent_name: "chatgpt",
+      currency: "CZK",
+      failure_reason: "nexi_payment_failed",
+      payment_attempt_id: attempt.id,
+      provider: "nexi",
+      reservation_id: attempt.workspaceReservationId,
+      revenue: 125,
+    });
+    expect(sentPropertyKeys(captures[1])).toEqual(paymentEventKeys);
   });
 
   test("skips request events without a consented browser identity", async () => {

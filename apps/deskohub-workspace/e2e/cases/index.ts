@@ -26,6 +26,7 @@ import type {
   CheckoutFlowState,
   WorkspaceE2ECase,
 } from "../types";
+import { planAgentBookingCase } from "./agent-booking";
 import { executeCheckoutFlow } from "./checkout";
 import { executeZeroTotalCheckout } from "./checkout-zero-total";
 import { assertContactForm } from "./contact";
@@ -396,6 +397,15 @@ export const makeWorkspaceE2ECases = ({
 
       cases.push(
         yield* planSignedOutVerificationCase({
+          allocation,
+          availableBasicDates: discountPreparation.availableBasicDates,
+          config,
+          flowStates,
+        })
+      );
+
+      cases.push(
+        yield* planAgentBookingCase({
           allocation,
           availableBasicDates: discountPreparation.availableBasicDates,
           config,

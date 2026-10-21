@@ -1,7 +1,14 @@
-import { lt, lte, sql } from "drizzle-orm";
+import { and, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { authRateLimit, authSession, authVerification } from "@/db/schema/auth";
+import {
+  authOauthAccessToken,
+  authOauthClientAssertion,
+  authOauthRefreshToken,
+  authRateLimit,
+  authSession,
+  authVerification,
+} from "@/db/schema/auth";
 import { tombstoneOrphanedAccounts } from "../customer-account.repository";
 import { betterAuthMagicLinkOptions } from "./auth-options";
 
@@ -9,6 +16,11 @@ type DeletedAuthRowCounts = {
   readonly sessions: number;
   readonly verifications: number;
   readonly rateLimitRows: number;
+  readonly agentAccessTokens: number;
+  readonly agentRefreshTokens: number;
+  readonly agentClientAssertions: number;
+  /** Rotated refresh tokens whose encrypted replay response was cleared. */
+  readonly agentRefreshReplays: number;
   /** Customer accounts marked deleted because their login is gone. */
   readonly orphanedAccounts: number;
 };
@@ -34,10 +46,15 @@ interface IAuthCleanupService {
 
 /**
  * Daily maintenance of the authentication schema: ordinary set-based
- * deletion of expired sessions and verifications, plus rate-limit rows whose
+ * deletion of expired sessions and verifications, rate-limit rows whose
  * last request is older than the longest configured rate-limit window, and
- * tombstoning of customer accounts whose login is gone. No queue, archive,
- * lock, or provider cleanup runs here.
+ * the expired access tokens, refresh tokens, and client-assertion replay
+ * records of customers' AI agents. Revoked agent tokens stay until they
+ * expire, since refresh-token replay detection reads them, but the
+ * encrypted token response a rotated refresh token keeps for its reuse
+ * window is cleared once that window has passed. It also tombstones
+ * customer accounts whose login is gone. No queue, archive, lock, or
+ * provider cleanup runs here.
  */
 export class AuthCleanupService extends Context.Service<
   AuthCleanupService,
@@ -67,13 +84,47 @@ export class AuthCleanupService extends Context.Service<
             .delete(authRateLimit)
             .where(lt(authRateLimit.lastRequest, rateLimitCutoffMs))
             .returning({ id: authRateLimit.id });
-          const orphanedAccounts = yield* tombstoneOrphanedAccounts(db, {
-            now: sql`${input.now.toISOString()}::timestamptz`,
-          });
+          const agentAccessTokens = yield* db
+            .delete(authOauthAccessToken)
+            .where(lte(authOauthAccessToken.expiresAt, input.now))
+            .returning({ id: authOauthAccessToken.id });
+          // An expired refresh token's remaining access tokens go with it
+          // (ON DELETE CASCADE); they expire long before it does.
+          const agentRefreshTokens = yield* db
+            .delete(authOauthRefreshToken)
+            .where(lte(authOauthRefreshToken.expiresAt, input.now))
+            .returning({ id: authOauthRefreshToken.id });
+          const agentClientAssertions = yield* db
+            .delete(authOauthClientAssertion)
+            .where(lte(authOauthClientAssertion.expiresAt, input.now))
+            .returning({ id: authOauthClientAssertion.id });
+          // The provider replays this response only while its expiry is
+          // still ahead (`>= now`); past it, the copy serves no purpose.
+          const agentRefreshReplays = yield* db
+            .update(authOauthRefreshToken)
+            .set({ rotationReplayResponse: null })
+            .where(
+              and(
+                isNotNull(authOauthRefreshToken.rotationReplayResponse),
+                or(
+                  isNull(authOauthRefreshToken.rotationReplayExpiresAt),
+                  lt(authOauthRefreshToken.rotationReplayExpiresAt, input.now)
+                )
+              )
+            )
+            .returning({ id: authOauthRefreshToken.id });
+          const orphanedAccounts = yield* tombstoneOrphanedAccounts(
+            db,
+            sql`${input.now.toISOString()}::timestamptz`
+          );
           return {
             sessions: sessions.length,
             verifications: verifications.length,
             rateLimitRows: rateLimitRows.length,
+            agentAccessTokens: agentAccessTokens.length,
+            agentRefreshTokens: agentRefreshTokens.length,
+            agentClientAssertions: agentClientAssertions.length,
+            agentRefreshReplays: agentRefreshReplays.length,
             orphanedAccounts,
           } satisfies DeletedAuthRowCounts;
         }).pipe(

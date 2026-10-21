@@ -13,7 +13,10 @@ import type {
   IssuedReservationAccess,
   ReservationAccessGrant,
 } from "../reservation-access";
-import { reservationAccessProvisioningStaleAfterMilliseconds } from "../reservation-access";
+import {
+  makeReservationAccessName,
+  reservationAccessProvisioningStaleAfterMilliseconds,
+} from "../reservation-access";
 import {
   ReservationAccessRepository,
   type ReservationAccessStorageError,
@@ -332,10 +335,14 @@ export class ReservationAccessService extends Context.Service<
           }
 
           const claimedAt = Temporal.Now.instant();
+          // Claiming records the name before the request, so an operator can
+          // find a credential whose issuance outcome is unknown.
+          const accessName = makeReservationAccessName(grant.id);
           const claimed = yield* repository
             .claim({
               id: grant.id,
               reservationId: input.reservationId,
+              accessName,
               startedAt: claimedAt,
             })
             .pipe(
@@ -362,7 +369,7 @@ export class ReservationAccessService extends Context.Service<
               variance: 1,
               startsAt: interval.providerStartsAt,
               endsAt: interval.providerEndsAt,
-              accessName: `Deskohub ${input.reservationId}`.slice(0, 60),
+              accessName,
             })
             .pipe(
               Effect.catch(

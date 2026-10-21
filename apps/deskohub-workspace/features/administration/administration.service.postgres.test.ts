@@ -8,6 +8,7 @@ import {
   ExternalAPIError,
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { IgloohomeDeviceIdSchema } from "@deskohub/igloohome";
 import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
@@ -16,6 +17,7 @@ import {
   type FulfillmentState,
   paymentAttempts,
   type ReservationState,
+  reservationAccessGrants,
   workspaceReservations,
 } from "@/db/schema";
 import { ReservationAuthorDirectory } from "@/features/account";
@@ -31,7 +33,10 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type AdministrationCustomerExportInput,
   type AdministrationCustomerListInput,
@@ -63,16 +68,16 @@ describe.skipIf(!testDatabase)(
         [reservationIds]
       );
       await testDatabase.pool.query(
+        "delete from reservation_access_grants where workspace_reservation_id = any($1)",
+        [reservationIds]
+      );
+      await testDatabase.pool.query(
         "delete from workspace_reservations where id = any($1)",
         [reservationIds]
       );
       await testDatabase.pool.query(
         "delete from customer_marketing_consents where dotypos_customer_id like $1",
         [`%-customer-${runId}`]
-      );
-      await testDatabase.pool.query(
-        "delete from customer_account_links where customer_account_id = any($1)",
-        [accountIds]
       );
       await testDatabase.pool.query(
         `delete from auth."user" where id = any($1)`,
@@ -157,6 +162,7 @@ describe.skipIf(!testDatabase)(
       const now = Temporal.Now.instant();
       await Effect.runPromise(
         testDatabase.db.insert(workspaceReservations).values({
+          authorAccountId: fixtureReservationAuthorId,
           id: reservationId,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${id}`),
           dotyposCustomerId: customerId,
@@ -1021,7 +1027,7 @@ describe.skipIf(!testDatabase)(
           [accountId, testEmailAddress(`admin-author-${accountId}`)]
         );
         await testDatabase.pool.query(
-          "insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2)",
+          "update customer_accounts set dotypos_customer_id = $2 where id = $1",
           [accountId, linkedCustomer]
         );
         return accountId;
@@ -1088,6 +1094,108 @@ describe.skipIf(!testDatabase)(
         });
         expect(self?.author).toBeNull();
       });
+    });
+
+    test("shows the access name stored on the grant, or the reservation-built name of a grant created before names were stored", async () => {
+      const insertGrant = async (
+        label: string,
+        values: Pick<
+          typeof reservationAccessGrants.$inferInsert,
+          "state" | "accessName" | "failureCode" | "provisioningStartedAt"
+        >
+      ) => {
+        // Without a Dotypos booking, the detail loads from Neon alone.
+        const reservationId = workspaceReservationIdSchema.make(
+          `admin-${label}-${runId}`
+        );
+        reservationIds.push(reservationId);
+        await Effect.runPromise(
+          testDatabase.db.insert(workspaceReservations).values({
+            authorAccountId: fixtureReservationAuthorId,
+            id: reservationId,
+            checkoutAttemptKey: checkoutAttemptKeySchema.make(
+              `attempt-${label}-${runId}`
+            ),
+            dotyposCustomerId: makeCustomerId(label),
+            reservationState: "draft",
+            paymentState: "not_started",
+            fulfillmentState: "not_started",
+            reservationDetails: {
+              kind: "cowork",
+              entryTier: "open-space",
+              coffee: false,
+            },
+            locale: "en-US",
+          })
+        );
+        const startsAt = Temporal.Instant.from("2099-07-01T08:00:00Z");
+        const [grant] = await Effect.runPromise(
+          testDatabase.db
+            .insert(reservationAccessGrants)
+            .values({
+              workspaceReservationId: reservationId,
+              deviceId: IgloohomeDeviceIdSchema.make("EK1"),
+              ...values,
+              scheduledAccessStartsAt: startsAt,
+              accessStartsAt: startsAt,
+              accessEndsAt: startsAt.add({ hours: 8 }),
+            })
+            .returning({ id: reservationAccessGrants.id })
+        );
+        return { reservationId, grantId: grant?.id };
+      };
+      const stored = await insertGrant("access-stored", {
+        state: "uncertain",
+        accessName: "Deskohub stored-name",
+        failureCode: "provider_outcome_ambiguous",
+      });
+      // A deployment that predates stored names created these grants.
+      const legacyPending = await insertGrant("access-legacy-pending", {
+        state: "pending",
+        accessName: null,
+      });
+      const legacyUncertain = await insertGrant("access-legacy-uncertain", {
+        state: "uncertain",
+        accessName: null,
+        failureCode: "provider_outcome_ambiguous",
+      });
+      const legacyStaleProvisioning = await insertGrant(
+        "access-legacy-provisioning",
+        {
+          state: "provisioning",
+          accessName: null,
+          provisioningStartedAt: Temporal.Now.instant().subtract({
+            hours: 1,
+          }),
+        }
+      );
+
+      const [
+        storedDetail,
+        legacyPendingDetail,
+        legacyUncertainDetail,
+        legacyStaleProvisioningDetail,
+      ] = await Promise.all(
+        [stored, legacyPending, legacyUncertain, legacyStaleProvisioning].map(
+          ({ reservationId }) =>
+            run((administration) =>
+              administration.loadReservation(reservationId)
+            )
+        )
+      );
+
+      expect(storedDetail?.accessGrant?.accessName).toBe(
+        "Deskohub stored-name"
+      );
+      expect(legacyPendingDetail?.accessGrant?.accessName).toBe(
+        `Deskohub ${legacyPending.reservationId}`.slice(0, 60)
+      );
+      expect(legacyUncertainDetail?.accessGrant?.accessName).toBe(
+        `Deskohub ${legacyUncertain.reservationId}`.slice(0, 60)
+      );
+      expect(legacyStaleProvisioningDetail?.accessGrant?.accessName).toBe(
+        `Deskohub ${legacyStaleProvisioning.reservationId}`.slice(0, 60)
+      );
     });
 
     describe("reservation export", () => {
@@ -1168,16 +1276,20 @@ describe.skipIf(!testDatabase)(
         // would itself pass the parameter limit.
         await testDatabase.pool.query(
           `insert into workspace_reservations (
-            id, checkout_attempt_key, dotypos_customer_id, dotypos_reservation_id,
-            reservation_state, payment_state, paid_at, fulfillment_state,
-            fulfilled_at, reservation_details, locale
+            id, checkout_attempt_key, author_account_id, dotypos_customer_id,
+            dotypos_reservation_id, reservation_state, payment_state, paid_at,
+            fulfillment_state, fulfilled_at, reservation_details, locale
           )
-          select 'admin-' || label, 'attempt-' || label, $2, 'booking-' || label,
-            'confirmed', 'paid', now(), 'fulfilled', now(),
+          select 'admin-' || label, 'attempt-' || label, $3, $2,
+            'booking-' || label, 'confirmed', 'paid', now(), 'fulfilled', now(),
             '{"kind":"cowork","entryTier":"open-space","coffee":false}'::jsonb,
             'en-US'
           from unnest($1::text[]) as label`,
-          [labels.map((label) => `${label}-${runId}`), customerId]
+          [
+            labels.map((label) => `${label}-${runId}`),
+            customerId,
+            fixtureReservationAuthorId,
+          ]
         );
         reservationIds.push(
           ...labels.map((label) =>

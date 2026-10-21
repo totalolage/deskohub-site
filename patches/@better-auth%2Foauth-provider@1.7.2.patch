@@ -1,0 +1,37 @@
+diff --git a/dist/introspect-C6P1zrTr.mjs b/dist/introspect-C6P1zrTr.mjs
+index 0b3934dd6724d408a84624a3fb0215f6d3274fea..fad7a3bd7d3b2dd7c371fc1a51ca6e04bce2eb5c 100644
+--- a/dist/introspect-C6P1zrTr.mjs
++++ b/dist/introspect-C6P1zrTr.mjs
+@@ -802,6 +802,14 @@ function getSeedState(ctx) {
+ *
+ * @internal
+ */
++// Workspace patch: ORM adapters such as Drizzle wrap the driver error and
++// keep the database message in `cause`, so the missing-table check reads the
++// whole cause chain.
++function describeSeedError(err) {
++	const messages = [];
++	for (let current = err; current != null && messages.length < 5; current = current instanceof Error ? current.cause : void 0) messages.push(current instanceof Error ? current.message : String(current));
++	return messages.join("\n");
++}
+ async function seedResources(ctx, opts) {
+ 	const inputs = collectResourceInputs(opts);
+ 	if (inputs.length === 0) return;
+@@ -829,7 +837,7 @@ async function seedResources(ctx, opts) {
+ 				}]
+ 			});
+ 		} catch (err) {
+-			const message = err instanceof Error ? err.message : String(err);
++			const message = describeSeedError(err);
+ 			if (MISSING_TABLE_PATTERN.test(message)) {
+ 				logger.debug("oauth-provider: oauthResource table not yet created; deferring resource seed to first access.");
+ 				return;
+@@ -844,7 +852,7 @@ async function seedResources(ctx, opts) {
+ 					data: buildSeedRow(input, now)
+ 				});
+ 			} catch (err) {
+-				const message = err instanceof Error ? err.message : String(err);
++				const message = describeSeedError(err);
+ 				if (/unique|duplicate|UNIQUE/i.test(message)) {
+ 					logger.debug(`oauth-provider: resource ${input.identifier} already inserted by a concurrent process — skipping.`);
+ 					continue;

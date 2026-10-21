@@ -12,12 +12,17 @@ import {
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
-const insertUser = (id: string) =>
-  testDatabase!.pool.query(
+const insertUser = async (id: string) => {
+  await testDatabase!.pool.query(
+    "insert into customer_accounts (id) values ($1) on conflict do nothing",
+    [id]
+  );
+  return testDatabase!.pool.query(
     `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
      values ($1, 'Cleanup Fixture', $2, true, now(), now())`,
     [id, testEmailAddress(`${id}`)]
   );
+};
 
 const insertSession = (id: string, userId: string, expiresAt: string) =>
   testDatabase!.pool.query(
@@ -38,6 +43,85 @@ const insertRateLimitRow = (id: string, lastRequestEpochMs: string) =>
     `insert into auth.rate_limit (id, key, count, last_request)
      values ($1, $2, 3, $3::bigint)`,
     [id, `key-${id}`, lastRequestEpochMs]
+  );
+
+const insertAgentClient = (id: string) =>
+  testDatabase!.pool.query(
+    `insert into auth.oauth_client (id, client_id, redirect_uris, created_at, updated_at)
+     values ($1, $2, array['https://agent.example/callback'], now(), now())`,
+    [id, `https://agent.example/${id}`]
+  );
+
+const insertAgentRefreshToken = (
+  id: string,
+  clientId: string,
+  userId: string,
+  expiresAt: string
+) =>
+  testDatabase!.pool.query(
+    `insert into auth.oauth_refresh_token (id, token, client_id, user_id, scopes, expires_at, created_at)
+     values ($1, $2, $3, $4, array['reservations:read'], $5::timestamptz, now())`,
+    [id, `hash-${id}`, `https://agent.example/${clientId}`, userId, expiresAt]
+  );
+
+/**
+ * A rotated, unexpired refresh token that keeps an encrypted replay response
+ * until `replayExpiresAt`; it stays for reuse detection.
+ */
+const insertRotatedAgentRefreshToken = (
+  id: string,
+  clientId: string,
+  userId: string,
+  expiresAt: string,
+  replayExpiresAt: string | null
+) =>
+  testDatabase!.pool.query(
+    `insert into auth.oauth_refresh_token (id, token, client_id, user_id, scopes, expires_at, created_at, revoked, rotated_at, rotation_replay_response, rotation_replay_expires_at)
+     values ($1, $2, $3, $4, array['reservations:read'], $5::timestamptz, now(), now(), now(), 'encrypted-replay', $6::timestamptz)`,
+    [
+      id,
+      `hash-${id}`,
+      `https://agent.example/${clientId}`,
+      userId,
+      expiresAt,
+      replayExpiresAt,
+    ]
+  );
+
+const countStoredReplays = async (runId: string) => {
+  const result = await testDatabase!.pool.query(
+    `select count(*)::int as count from auth.oauth_refresh_token
+     where id like $1 and rotation_replay_response is not null`,
+    [`%${runId}`]
+  );
+  return result.rows[0]!.count as number;
+};
+
+const insertAgentAccessToken = (
+  id: string,
+  clientId: string,
+  userId: string,
+  expiresAt: string,
+  refreshId: string | null = null
+) =>
+  testDatabase!.pool.query(
+    `insert into auth.oauth_access_token (id, token, client_id, user_id, refresh_id, scopes, expires_at, created_at)
+     values ($1, $2, $3, $4, $5, array['reservations:read'], $6::timestamptz, now())`,
+    [
+      id,
+      `hash-${id}`,
+      `https://agent.example/${clientId}`,
+      userId,
+      refreshId,
+      expiresAt,
+    ]
+  );
+
+const insertAgentClientAssertion = (id: string, expiresAt: string) =>
+  testDatabase!.pool.query(
+    `insert into auth.oauth_client_assertion (id, expires_at)
+     values ($1, $2::timestamptz)`,
+    [id, expiresAt]
   );
 
 const insertCustomerAccount = (id: string, createdAt: string) =>
@@ -73,7 +157,16 @@ const countSweepRows = async (runId: string) => {
     sessions: await count("session"),
     verifications: await count("verification"),
     rateLimitRows: await count("rate_limit"),
+    agentAccessTokens: await count("oauth_access_token"),
+    agentRefreshTokens: await count("oauth_refresh_token"),
+    agentClientAssertions: await count("oauth_client_assertion"),
   };
+};
+
+const noAgentRows = {
+  agentAccessTokens: 0,
+  agentRefreshTokens: 0,
+  agentClientAssertions: 0,
 };
 
 const runSweep = (now: Date) =>
@@ -145,6 +238,8 @@ describe.skipIf(!testDatabase)("AuthCleanupService", () => {
       sessions: 1,
       verifications: 1,
       rateLimitRows: 1,
+      ...noAgentRows,
+      agentRefreshReplays: 0,
       orphanedAccounts: 1,
     });
     expect(await readAccountDeletions(runId)).toEqual({
@@ -156,7 +251,121 @@ describe.skipIf(!testDatabase)("AuthCleanupService", () => {
       sessions: 1,
       verifications: 1,
       rateLimitRows: 1,
+      ...noAgentRows,
     });
+  });
+
+  test("deletes exactly the expired agent tokens and client assertions", async () => {
+    const runId = crypto.randomUUID();
+    const nowMs = 1_800_000_000_000;
+    const expired = new Date(nowMs - 1).toISOString();
+    const atNow = new Date(nowMs).toISOString();
+    const live = new Date(nowMs + 3_600_000).toISOString();
+    const userId = `agent-user-${runId}`;
+    const clientId = `agent-client-${runId}`;
+
+    await runSweep(preSweepNow);
+
+    await insertUser(userId);
+    await insertAgentClient(clientId);
+    await insertAgentRefreshToken(
+      `expired-refresh-${runId}`,
+      clientId,
+      userId,
+      expired
+    );
+    await insertAgentRefreshToken(
+      `live-refresh-${runId}`,
+      clientId,
+      userId,
+      live
+    );
+    await insertAgentAccessToken(
+      `expired-access-${runId}`,
+      clientId,
+      userId,
+      expired
+    );
+    await insertAgentAccessToken(
+      `boundary-access-${runId}`,
+      clientId,
+      userId,
+      atNow
+    );
+    await insertAgentAccessToken(
+      `live-access-${runId}`,
+      clientId,
+      userId,
+      live,
+      `live-refresh-${runId}`
+    );
+    await insertAgentClientAssertion(`expired-assertion-${runId}`, expired);
+    await insertAgentClientAssertion(`live-assertion-${runId}`, live);
+
+    const counts = await runSweep(new Date(nowMs));
+
+    expect(counts).toMatchObject({
+      agentAccessTokens: 2,
+      agentRefreshTokens: 1,
+      agentClientAssertions: 1,
+    });
+    expect(await countSweepRows(runId)).toMatchObject({
+      agentAccessTokens: 1,
+      agentRefreshTokens: 1,
+      agentClientAssertions: 1,
+    });
+  });
+
+  test("clears refresh replay responses whose reuse window has passed, keeping the rotated tokens", async () => {
+    const runId = crypto.randomUUID();
+    const nowMs = 1_800_000_000_000;
+    const live = new Date(nowMs + 30 * 86_400_000).toISOString();
+    const userId = `replay-user-${runId}`;
+    const clientId = `replay-client-${runId}`;
+
+    await runSweep(preSweepNow);
+
+    await insertUser(userId);
+    await insertAgentClient(clientId);
+    await insertRotatedAgentRefreshToken(
+      `past-replay-${runId}`,
+      clientId,
+      userId,
+      live,
+      new Date(nowMs - 1).toISOString()
+    );
+    await insertRotatedAgentRefreshToken(
+      `undated-replay-${runId}`,
+      clientId,
+      userId,
+      live,
+      null
+    );
+    await insertRotatedAgentRefreshToken(
+      `boundary-replay-${runId}`,
+      clientId,
+      userId,
+      live,
+      new Date(nowMs).toISOString()
+    );
+    await insertRotatedAgentRefreshToken(
+      `open-replay-${runId}`,
+      clientId,
+      userId,
+      live,
+      new Date(nowMs + 30_000).toISOString()
+    );
+
+    const counts = await runSweep(new Date(nowMs));
+
+    expect(counts).toMatchObject({
+      agentRefreshTokens: 0,
+      agentRefreshReplays: 2,
+    });
+    expect(await countSweepRows(runId)).toMatchObject({
+      agentRefreshTokens: 4,
+    });
+    expect(await countStoredReplays(runId)).toBe(2);
   });
 });
 

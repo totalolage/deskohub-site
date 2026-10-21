@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   type BetterAuthHostEnvironment,
   resolveBetterAuthAllowedHosts,
+  resolveCustomerMcpResource,
   resolvePasskeyRelyingParty,
 } from "./auth-hosts";
 
@@ -211,6 +212,68 @@ describe("passkey relying party resolution", () => {
     ).toBe("The canonical production host is not configured for Better Auth.");
     expect(
       relyingParty({
+        vercelEnv: "preview",
+        ...vercelHosts,
+        deploymentUrl: "*.vercel.app",
+      })
+    ).toBe("Wildcard hosts are not allowed for Better Auth.");
+  });
+});
+
+describe("customer MCP resource resolution", () => {
+  const vercelHosts = {
+    customerFacingHost: "workspace.deskohub.cz",
+    projectProductionUrl: "deskohub-workspace.vercel.app",
+    deploymentUrl: "deskohub-workspace-abc123.vercel.app",
+    branchUrl: "deskohub-git-feature-git-team.vercel.app",
+  } as const;
+
+  const resource = (environment: BetterAuthHostEnvironment) => {
+    const result = resolveCustomerMcpResource(environment, "/api/mcp");
+    return result.kind === "valid" ? result.resource : result.message;
+  };
+
+  test("binds production to the canonical customer-facing host", () => {
+    expect(
+      resource({
+        vercelEnv: "production",
+        ...vercelHosts,
+        customerFacingHost: "https://Workspace.Deskohub.cz/",
+      })
+    ).toBe("https://workspace.deskohub.cz/api/mcp");
+  });
+
+  test("binds a preview to its immutable deployment host, not the branch alias", () => {
+    expect(resource({ vercelEnv: "preview", ...vercelHosts })).toBe(
+      "https://deskohub-workspace-abc123.vercel.app/api/mcp"
+    );
+  });
+
+  test("fails closed on a preview without a deployment host", () => {
+    expect(
+      resource({
+        vercelEnv: "preview",
+        ...vercelHosts,
+        deploymentUrl: undefined,
+      })
+    ).toBe("The preview deployment host is not configured for the MCP server.");
+  });
+
+  test("uses localhost over HTTP in development", () => {
+    expect(
+      resource({
+        vercelEnv: "development",
+        customerFacingHost: "workspace.deskohub.cz",
+        projectProductionUrl: undefined,
+        deploymentUrl: undefined,
+        branchUrl: undefined,
+      })
+    ).toBe("http://localhost:3000/api/mcp");
+  });
+
+  test("fails closed with the allowed-hosts errors", () => {
+    expect(
+      resource({
         vercelEnv: "preview",
         ...vercelHosts,
         deploymentUrl: "*.vercel.app",

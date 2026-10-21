@@ -1,7 +1,6 @@
 import { DuplicateMessageError, send } from "@vercel/queue";
 import { Context, Data, Effect, Layer } from "effect";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { serializeErrorForLog } from "@/shared/utils/error-formatting";
 
 export const paidFulfillmentQueueTopic = "workspace-paid-fulfillment";
 
@@ -47,7 +46,7 @@ export const makePaidFulfillmentQueueService = (
           ? new DuplicatePaidFulfillmentMessageError()
           : new PaidFulfillmentQueueError({
               message: "Paid fulfillment could not be enqueued.",
-              cause: serializeErrorForLog(cause),
+              cause,
             }),
     }).pipe(
       Effect.catchTag("DuplicatePaidFulfillmentMessageError", () => Effect.void)

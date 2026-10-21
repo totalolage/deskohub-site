@@ -35,6 +35,7 @@ export const reservationAccessGrants = pgTable(
       "provider_credential_id"
     ).$type<IgloohomePinId>(),
     accessCode: text("access_code").$type<AlgoPin>(),
+    accessName: text("access_name"),
     scheduledAccessStartsAt: instant("reservation_starts_at").notNull(),
     accessStartsAt: instant("access_starts_at").notNull(),
     accessEndsAt: instant("access_ends_at").notNull(),

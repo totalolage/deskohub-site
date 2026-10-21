@@ -15,11 +15,26 @@
 `.github/workflows/workspace-e2e.yml` runs on the Vercel `repository_dispatch` events for the Workspace project's Preview environment:
 
 1. Vercel builds the protected Git preview, and the Neon integration creates its database branch.
-2. On `vercel.deployment.success`, the `resolve-target` job checks the project, environment, SHA, PR, and URL. It accepts only an open, internal, non-draft, non-Dependabot PR whose head is the target SHA.
+2. On `vercel.deployment.success`, the `resolve-target` job checks the project, environment, SHA, PR, and URL. It accepts only an open, internal, non-draft, non-Dependabot PR whose head is the target SHA, and resolves that PR before it checks the preview.
 3. The `test-e2e` job leases a date shard, installs dependencies, resolves and migrates the preview's Neon branch, validates Dotypos capacity, and runs `bun turbo test:e2e --filter=deskohub-workspace`.
 4. `publish-final-status` publishes the commit status.
 
-On `vercel.deployment.skipped`, `publish-skipped-status` checks the exact-SHA skipped deployment and carries the nearest earlier Workspace E2E status forward. No earlier status or an earlier success becomes success; anything else stays failure. Never infer a skip from changed paths or reuse an older preview.
+A `Workspace E2E` success means E2E ran against that commit's code. For a deployment E2E doesn't run against, `resolve-target` checks the exact-SHA deployment status, decides the status in `Decide status without an E2E run`, and `publish-status-without-run` publishes it:
+
+- `vercel.deployment.failed`: failure, asking for a fix or redeploy.
+- `vercel.deployment.skipped`: Vercel compares a commit only with its parent, so a skip after a failed, unreported, or multi-commit push says nothing about tested code. The step reuses the result of the nearest other PR commit with the identical Git tree whose status a real run published (running, passed, or failed). A status an earlier skip carried forward doesn't count. A passed run becomes success, a failed run failure, and a run still in progress a failure that asks for a rerun of this check. With no such commit, the status is failure until a Workspace preview of that exact SHA builds in Vercel; its success event then runs E2E.
+
+Once the target SHA is an eligible PR head, every outcome publishes a `Workspace E2E` status. When `resolve-target` fails after that, for example because GitHub has no deployment record matching the preview yet or the head is missing from the PR's commit list (GitHub lists at most 250), `publish-status-without-run` publishes a failure whose description says how to recover, usually by re-running the failed jobs. Statuses for skipped commits trust a run's description from `github-actions[bot]`. Any workflow allowed to write statuses could forge one, but it could as well post a passing `Workspace E2E` directly, so this trusts no more than the required status does.
+
+Only `test-e2e` has a concurrency group, keyed by PR and SHA with `cancel-in-progress`, so only a duplicate run for the same SHA cancels another. Runs for different SHAs never cancel each other: a run can resolve its SHA as the head, stall, and reach `test-e2e` after a newer head's run started, and a group keyed by PR alone would then let it cancel the newer run. A superseded run stops itself instead, since every SHA of a PR shares its Neon preview branch:
+
+- Before it leases a shard or migrates, `test-e2e` checks that its SHA is still the PR head. If it isn't, the job waits for the run to be cancelled.
+- The date shard lease also holds the branch's preview database exclusively, from before the migration until the release step at the end of `test-e2e`. Cancellation is asynchronous, so a newer head's run waits in the allocator until the older run releases the lease or GitHub reports its attempt completed. A run waiting for its branch doesn't hold back other PRs. See [lease rules](suite-orchestration.md#date-shards-and-the-coordination-database).
+- After the lease, `test-e2e` checks the head again. A run superseded while it waited fails at once, so its release step frees the database for the newer head's run.
+- `cancel-superseded-run` runs beside `test-e2e`, polls the PR head, and cancels its own run once the head moves. It holds `actions: write`, so `test-e2e`, which runs exact-SHA code, doesn't. It doesn't rerun with "Re-run failed jobs", so a rerun attempt stops only at the start check.
+- `publish-final-status` publishes a failed run's status as `Superseded by a newer PR head before E2E finished` when its SHA is no longer the head. Statuses are per SHA, so this never touches the newer head's status. A skip reusing a same-tree commit's result passes over such a run.
+
+Never add a workflow-level group: it would cancel at scheduling time, before eligibility is known. Never infer a skip from changed paths or reuse an older preview.
 
 The target is always the immutable `.vercel.app` deployment origin for the exact SHA, taken from the dispatch payload. Never scrape the Vercel PR comment or use a branch alias or custom domain.
 
@@ -89,7 +104,7 @@ Runtime traffic uses the pooled URL; migrations, assertions, and the allowlist u
 
 The preview is Ready before CI migrates it. Keep the Workspace build database-independent, and make schema changes compatible with that order. Don't add migrations to the Vercel build.
 
-Production-derived preview branches may hold only the inherited Better Auth login email, pending-verification email, short-lived rate-limit IP keys, passkey rows (including customer-written labels), administrator role grants, and the administrator login-email snapshots in administrator provenance records. Everything else, including every fixture and all Dotypos profile and reservation data, is synthetic. Don't add a branch scrubber or an alternate parent branch.
+Production-derived preview branches may hold only the inherited Better Auth login email, pending-verification email, short-lived rate-limit IP keys, passkey rows (including customer-written labels), customer AI-agent OAuth consent, client, and token rows (including hashed tokens and the encrypted refresh replay copy), administrator role grants, and the administrator login-email snapshots in administrator provenance records. Everything else, including every fixture and all Dotypos profile and reservation data, is synthetic. Don't add a branch scrubber or an alternate parent branch.
 
 Put database integration assertions inside the normal E2E runner and use its scoped `E2EDatabase` service. Don't add a dedicated script, Turbo task, file-naming convention, environment switch, or per-case database allowlist for them. Repository-level proofs that need no deployed app, such as invoice issuance, numbering, and immutability, belong in the owning repository's colocated `*.postgres.test.ts` instead: they need an exclusive database, and the shared preview branch can give them one only by serializing them after every paid case. E2E code may reuse application repositories only through their injectable service contracts; importing a contract must not initialize the app database pool, load the app keyring, or validate unrelated app variables.
 

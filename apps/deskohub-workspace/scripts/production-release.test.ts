@@ -4,6 +4,7 @@ import { appendFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import vercelConfig from "@/vercel.json";
 import {
   assertAuthSessionReady,
   assertCanonicalLandingReady,
@@ -587,20 +588,7 @@ describe("workspace production release checks", () => {
             target: "production",
             readyState: "READY",
             url: "workspace-staged.vercel.app",
-            crons: [
-              {
-                path: "/api/cron/workspace/reservation-holds",
-                schedule: "0 0 * * *",
-              },
-              {
-                path: "/api/cron/workspace/auth-cleanup",
-                schedule: "17 3 * * *",
-              },
-              {
-                path: "/api/cron/workspace/payment-refunds",
-                schedule: "37 * * * *",
-              },
-            ],
+            crons: vercelConfig.crons,
           })
         );
       }
@@ -1110,20 +1098,7 @@ describe("workspace production release checks", () => {
           target: "production",
           readyState: "READY",
           url: "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
-          crons: [
-            {
-              path: "/api/cron/workspace/reservation-holds",
-              schedule: "0 0 * * *",
-            },
-            {
-              path: "/api/cron/workspace/auth-cleanup",
-              schedule: "17 3 * * *",
-            },
-            {
-              path: "/api/cron/workspace/payment-refunds",
-              schedule: "37 * * * *",
-            },
-          ],
+          crons: vercelConfig.crons,
         })
       );
     });
@@ -1159,20 +1134,7 @@ describe("workspace production release checks", () => {
             ...identity,
             readyState: "READY",
             url: "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
-            crons: [
-              {
-                path: "/api/cron/workspace/reservation-holds",
-                schedule: "0 0 * * *",
-              },
-              {
-                path: "/api/cron/workspace/auth-cleanup",
-                schedule: "17 3 * * *",
-              },
-              {
-                path: "/api/cron/workspace/payment-refunds",
-                schedule: "37 * * * *",
-              },
-            ],
+            crons: vercelConfig.crons,
           })
         )
       );
@@ -1223,6 +1185,32 @@ describe("workspace production release checks", () => {
     ).rejects.toThrow("17 3 * * *");
   });
 
+  test("rejects a staged deployment missing any configured cron", async () => {
+    for (const missing of vercelConfig.crons) {
+      mockGlobalFetch(() =>
+        Promise.resolve(
+          jsonResponse({
+            id: "dpl_staged",
+            projectId: "prj_test",
+            target: "production",
+            readyState: "READY",
+            url: "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
+            crons: vercelConfig.crons.filter((cron) => cron !== missing),
+          })
+        )
+      );
+
+      await expect(
+        assertStagedDeploymentCrons(
+          stagedDeploymentUrl,
+          "prj_test",
+          "token",
+          undefined
+        )
+      ).rejects.toThrow(`${missing.path} (${missing.schedule})`);
+    }
+  });
+
   test("rejects a staged deployment lookup that does not match the exact URL", async () => {
     mockGlobalFetch(() =>
       Promise.resolve(
@@ -1232,20 +1220,7 @@ describe("workspace production release checks", () => {
           target: "production",
           readyState: "READY",
           url: "another-deployment.vercel.app",
-          crons: [
-            {
-              path: "/api/cron/workspace/reservation-holds",
-              schedule: "0 0 * * *",
-            },
-            {
-              path: "/api/cron/workspace/auth-cleanup",
-              schedule: "17 3 * * *",
-            },
-            {
-              path: "/api/cron/workspace/payment-refunds",
-              schedule: "37 * * * *",
-            },
-          ],
+          crons: vercelConfig.crons,
         })
       )
     );
@@ -1275,20 +1250,7 @@ describe("workspace production release checks", () => {
           crons: {
             deploymentId: updated ? "dpl_staged" : "dpl_baseline",
             definitions: updated
-              ? [
-                  {
-                    path: "/api/cron/workspace/reservation-holds",
-                    schedule: "0 0 * * *",
-                  },
-                  {
-                    path: "/api/cron/workspace/auth-cleanup",
-                    schedule: "17 3 * * *",
-                  },
-                  {
-                    path: "/api/cron/workspace/payment-refunds",
-                    schedule: "37 * * * *",
-                  },
-                ]
+              ? vercelConfig.crons
               : [
                   {
                     path: "/api/cron/workspace/reservation-holds",
@@ -1426,20 +1388,7 @@ describe("workspace production release checks", () => {
           id: "prj_test",
           crons: {
             deploymentId: "dpl_staged",
-            definitions: [
-              {
-                path: "/api/cron/workspace/reservation-holds",
-                schedule: "0 0 * * *",
-              },
-              {
-                path: "/api/cron/workspace/auth-cleanup",
-                schedule: "17 3 * * *",
-              },
-              {
-                path: "/api/cron/workspace/payment-refunds",
-                schedule: "37 * * * *",
-              },
-            ],
+            definitions: vercelConfig.crons,
           },
         })
       );

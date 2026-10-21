@@ -76,7 +76,7 @@ type CreatedCustomerProfile = {
   readonly profile: CustomerProfile;
 };
 
-export const isCustomerProfileExpired = (
+const isCustomerProfileExpired = (
   customer: DotyposCustomer,
   now: Date = new Date()
 ): boolean =>

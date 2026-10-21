@@ -107,6 +107,12 @@ non-production traffic apart:
   `$session_entry_*` variants, including session-entry campaign fields;
   disabled replay doesn't suppress session metadata. Drop malformed metadata,
   and remove saved UTM and click metadata.
+- Browser checkout events carry no reservation form values (name, email,
+  phone, message, date, tier, or coffee and monitor preferences). The
+  PostHog `pre-payment outcome` event's only custom property is its outcome;
+  the Vercel Analytics `workspace_checkout_started` event's custom properties
+  are only the five `utm_*` keys allowlisted in `features/reservation/reservation-analytics.ts`, each
+  trimmed to 128 characters.
 - Don't describe network IP handling as disabled.
 - Person properties never include email, name, phone, billing, reservation
   IDs, or raw auth data. The signed-in account's `dotypos_customer_id` is the
@@ -118,10 +124,13 @@ non-production traffic apart:
   typed email, so the booker's browser isn't linked to it: anyone can type
   another customer's email. Join that customer's activity through the
   reservation ID on server events and `workspace_reservations` instead.
-- Server events set `$process_person_profile: false` and may keep the
-  reservation and payment operational IDs that existing durable metrics need.
-  Consented request events use the browser's `distinct_id` and `$session_id`.
-  Webhooks can't join a browser without an approved persisted consent link.
+- Server events set `$process_person_profile: false`. The reservation and
+  payment lifecycle events follow the contract in
+  [Reservation and payment lifecycle events](#reservation-and-payment-lifecycle-events).
+  The consented request events (`availability result`, `pre-payment outcome`)
+  use the browser's `distinct_id` and `$session_id`, and are skipped without
+  analytics consent. Webhooks can't join a browser without an approved
+  persisted consent link.
 - Sign-in analytics live in `features/account/sign-in-analytics.ts`:
   `sign-in completed` with `method: "link" | "code" | "passkey"`, `sign-in
   code rejected` with `reason`, `passkey added` with `source: "prompt" |
@@ -141,6 +150,56 @@ non-production traffic apart:
   and go out once analytics is ready, under whichever distinct ID is ready
   then. Every reconcile without consent or with an unsafe telemetry host
   discards them. They don't survive a page load.
+
+## Reservation and payment lifecycle events
+
+`features/checkout/backend/analytics/posthog-lifecycle-events.ts` sends
+`reservation started`, `reservation completed`, `reservation fulfilled`,
+`reservation abandoned`, `payment started`, `payment completed`,
+`payment failed`, and `payment abandoned` regardless of consent. Their legal
+basis is legitimate interest in measuring the reservation and payment funnel
+and detecting failed or abandoned payments. The privacy policy discloses them
+in section 3 and their basis and the right to object in section 4
+(`features/legal/content.tsx`, both locales). The notice promises that the
+records are linked to the reservation and hold no name or contact details.
+Section 2's automated-traffic paragraph also discloses that they carry the
+traffic category and the name of a recognized assistant.
+
+- The distinct ID is the Workspace reservation ID, and every event sets
+  `$process_person_profile: false`. The event UUID is
+  `<reservation or payment attempt ID>:<event>`.
+- Allowed properties: `reservation_id`; on payment events also
+  `payment_attempt_id`, `revenue` (major units), `currency`, and `provider`;
+  `failure_reason` on `payment failed`; `agent_category` and, when
+  recognized, `agent_name` (from `agentTrafficProperties()`, disclosed in
+  section 2). The event service adds
+  `deployment.environment.name`, `service.name`, `service.namespace`,
+  `effect.trace_id`, and `effect.span_id`, and the SDK adds its `$lib` fields
+  and `$geoip_disable`. The colocated tests pin the exact key sets.
+- Never send provider order IDs, Dotypos reservation or customer IDs,
+  account IDs, browser distinct IDs or `$session_id`, `$set` or other person
+  properties, URLs, or UTM and click parameters. The input types take only
+  the reservation ID and the attempt fields above, so callers can't pass
+  another identifier through.
+- GeoIP stays disabled through the `posthog-node` default (`disableGeoip`
+  defaults to true and each capture gets `$geoip_disable: true`). Don't add
+  an explicit option; never set `disableGeoip: false` on the server client.
+- Before adding a property, check it against the notice's promise. A new
+  identifier, contact field, or other kind of data needs a matching
+  privacy-policy change and the user's approval. If the agent fields change,
+  such as dropping `agent_name` or adding another one, change the section 2
+  wording to match.
+- Objections are handled manually; there's no opt-out code path. A customer
+  objects by email to the controller's contact address with their
+  reservation. An operator then has the reservation's events deleted in
+  PostHog. These events have no person profile, so the Persons UI and the
+  person delete API (`delete_events=true`) can't reach them, and PostHog
+  documents no self-serve deletion of personless events. Ask PostHog support
+  to delete events with `distinct_id` equal to the reservation ID in project
+  `204184`, then confirm with a HogQL count of `events` for that
+  `distinct_id` once the deletion has run (PostHog deletes event data
+  asynchronously, on weekends on Cloud). Recheck after the reservation
+  settles, since an open reservation can still emit events.
 
 ## Agent traffic
 
@@ -165,7 +224,8 @@ non-production traffic apart:
   `verified_bot`. The page route is a template Next generated from the app
   directory (`AppRoutes`) without its locale segment; a path no page matches
   is `unknown`, so a requested path value never reaches PostHog. The privacy
-  policy discloses this; a new property needs a matching policy change.
+  policy describes these events in plain terms; a property that sends a new
+  kind of data needs a matching policy change.
 - Checkout lifecycle events carry the agent fields of the request that
   emitted them. Actions and `client` routes provide request context
   themselves; a page whose run can emit one, such as the checkout status

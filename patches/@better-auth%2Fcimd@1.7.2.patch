@@ -1,0 +1,20 @@
+diff --git a/dist/node.mjs b/dist/node.mjs
+index a12d50e19d1fa726246f9a2fbe6f76d07471c0ee..1e247f18e654a184abf3253a6ea7948480a6c3b0 100644
+--- a/dist/node.mjs
++++ b/dist/node.mjs
+@@ -46,8 +46,13 @@ const fetchClientMetadataResource = async (input, init) => {
+ 			method: webRequest.method,
+ 			servername: isIP(url.hostname.replace(/^\[|\]$/g, "")) === 0 ? url.hostname : void 0,
+ 			signal,
+-			lookup: (_hostname, _options, callback) => {
+-				callback(null, pinnedAddress.address, pinnedAddress.family);
++			// Workspace patch, backported from @better-auth/cimd 1.7.3: Node
++			// requests all lookup results when automatic address-family
++			// selection is on (the default since Node 20) and then expects an
++			// array, so the single-address form failed every metadata fetch.
++			lookup: (_hostname, options, callback) => {
++				if (options.all) callback(null, [pinnedAddress]);
++				else callback(null, pinnedAddress.address, pinnedAddress.family);
+ 			}
+ 		}, (response) => {
+ 			const status = response.statusCode ?? 500;

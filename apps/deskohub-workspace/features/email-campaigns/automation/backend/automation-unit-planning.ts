@@ -11,7 +11,8 @@ import type {
 /**
  * How long a unit that failed n times waits before it is replanned: 1, 2,
  * 4, … minutes, then hourly. The exponent is capped so the interval never
- * overflows.
+ * overflows. Replanning runs on planner ticks, so a backoff shorter than the
+ * cron interval waits for the next tick.
  */
 const replanBackoff = sql`least(interval '1 minute' * power(2, least(${units.failures} - 1, 6)), interval '1 hour')`;
 

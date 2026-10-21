@@ -28,6 +28,8 @@
         "e2e/coordination/hosted-payment-permit.holder-fixture.ts",
         "shared/backend/workspace-location-map.render-fixture.ts",
         "e2e/agent-evals/harness.stub-fixture.ts",
+        // Bundled by path from the booking view's index.html.
+        "features/agent-tools/booking-widget/booking-widget.tsx",
         // Bundled by path for browser-rendered test fixtures.
         "shared/testing/posthog-identity-browser-fixture.tsx",
         "types/*.d.ts"

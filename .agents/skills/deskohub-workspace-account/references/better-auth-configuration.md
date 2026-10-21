@@ -12,6 +12,7 @@
 | Drizzle auth schema and its test | `db/schema/auth.ts`, `db/schema/auth.test.ts` |
 | node-postgres facade over the shared pool | `db/auth-database-client.ts` |
 | Expired-row cleanup | `features/account/backend/auth/auth-cleanup.service.ts`, `app/api/cron/workspace/auth-cleanup/route.ts` |
+| OAuth server for customers' AI agents | [customer agent OAuth](customer-agent-oauth.md) |
 
 ## Persistence
 
@@ -26,7 +27,7 @@
   session settings, and `advanced.database.joins`. When you add a user field
   there, update `db/schema/auth.ts` and `db/schema/auth.test.ts` in the same
   change.
-- Generate the auth tables, `customer_account_links`, and `customer_accounts` with Drizzle tooling
+- Generate the auth tables and `customer_accounts` with Drizzle tooling
   from the checked-in schema; never hand-edit snapshots. Better Auth's own
   `migrate` command doesn't apply to this setup. Follow the migration process
   in the `deskohub-workspace-operations` skill.
@@ -118,7 +119,9 @@ Keep these settings unless a reviewed decision changes them:
 - Don't pass a name or image to Better Auth, so `auth.user.name` stays the
   empty string. Never fill `auth.user.image`; avatars live in Cloudinary.
 - `auth.account` stays empty: the magic-link flow creates no account rows, and
-  passwords, OAuth, and social providers stay disabled.
+  passwords, OAuth sign-in providers, and social providers stay disabled. The
+  OAuth server for AI agents is a separate concern: its client, consent, and
+  token tables are covered in [customer agent OAuth](customer-agent-oauth.md).
 - What remains in Neon is the login email, the email inside each pending
   verification row, raw `IP|path` rate-limit keys, and `auth.passkey` rows
   (credential ID, public key, AAGUID, and the customer-written label). Sign-in code, claim, current-claim,
@@ -130,10 +133,12 @@ Keep these settings unless a reviewed decision changes them:
 
 Better Auth only removes expired rows when a later request happens to touch
 them. The daily `auth-cleanup` cron (scheduled in `vercel.json`, authorized
-with `CRON_SECRET`) deletes expired sessions and verifications, and rate-limit
-rows older than the longest configured window, using plain set-based SQL. It
-also tombstones customer accounts whose login is gone and that are more than
-a day old. It only cleans its own deployment's database.
+with `CRON_SECRET`) deletes expired sessions and verifications, rate-limit
+rows older than the longest configured window, and expired agent access
+tokens, refresh tokens, and client-assertion records, and clears agent
+refresh replay copies whose reuse window has passed, using plain set-based
+SQL. It also tombstones customer accounts whose login is gone and that are
+more than a day old. It only cleans its own deployment's database.
 
 ## Secrets and release
 

@@ -1,13 +1,9 @@
 import {
   type DotyposCustomerId,
-  type DotyposReservation,
   type DotyposReservationId,
   DotyposService,
-  type ExternalAPIError,
   getCustomerDisplayName,
-  type NetworkError,
   readInIdFilterBatches,
-  type ValidationError,
 } from "@deskohub/dotypos";
 import { desc, eq, or } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
@@ -15,6 +11,11 @@ import { Context, Effect, Layer, Option } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { workspaceReservations } from "@/db/schema";
+import type { ReservationRecord } from "@/features/reservation/backend/reservation-record";
+import {
+  ReservationRecords,
+  type ReservationRecordsError,
+} from "@/features/reservation/backend/reservation-records";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type {
   CustomerReservationHistory,
@@ -39,9 +40,7 @@ import {
 type CustomerReservationHistoryError =
   | EffectDrizzleQueryError
   | SqlError.SqlError
-  | ExternalAPIError
-  | NetworkError
-  | ValidationError;
+  | ReservationRecordsError;
 
 /**
  * The account whose history loads. The history always holds the reservations
@@ -56,7 +55,7 @@ export type ReservationHistoryAccount = {
 type ReservationRow = {
   readonly id: (typeof workspaceReservations.$inferSelect)["id"];
   readonly dotyposCustomerId: DotyposCustomerId;
-  readonly authorAccountId: CustomerAccountId | null;
+  readonly authorAccountId: CustomerAccountId;
   readonly dotyposReservationId: DotyposReservationId | null;
   readonly reservationDetails: (typeof workspaceReservations.$inferSelect)["reservationDetails"];
   readonly reservationState: (typeof workspaceReservations.$inferSelect)["reservationState"];
@@ -79,7 +78,7 @@ const getReservationProduct = (
 };
 
 const getReservationStatus = (
-  reservation: DotyposReservation,
+  reservation: ReservationRecord,
   row: ReservationRow | undefined
 ): CustomerReservationStatus => {
   if (
@@ -95,10 +94,15 @@ const getReservationStatus = (
   ) {
     return "requires-attention";
   }
-  return reservation.status === "CONFIRMED" ? "confirmed" : "pending";
+  // Workspace records a paid hold's confirmation itself, so a shared
+  // snapshot taken before it can't show a paid booking as pending.
+  return reservation.status === "CONFIRMED" ||
+    row?.reservationState === "confirmed"
+    ? "confirmed"
+    : "pending";
 };
 
-const startInstantOrder = (reservation: DotyposReservation) => {
+const startInstantOrder = (reservation: ReservationRecord) => {
   const time = Date.parse(reservation.startDate ?? "");
   return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
 };
@@ -108,8 +112,8 @@ const startInstantOrder = (reservation: DotyposReservation) => {
  * for other customers, newest start first. An unparseable start sorts last.
  */
 const mergeByStartDescending = (
-  own: readonly DotyposReservation[],
-  bookedForOthers: readonly DotyposReservation[]
+  own: readonly ReservationRecord[],
+  bookedForOthers: readonly ReservationRecord[]
 ) => {
   const ownIds = new Set(own.flatMap((reservation) => reservation.id ?? []));
   return [
@@ -139,7 +143,7 @@ const getPartyRelation = (
   if (row.dotyposCustomerId !== account.dotyposCustomerId) {
     return { kind: "booked-for", customerId: row.dotyposCustomerId };
   }
-  if (!row.authorAccountId || row.authorAccountId === account.accountId) {
+  if (row.authorAccountId === account.accountId) {
     return undefined;
   }
   const author = authors.get(row.authorAccountId) ?? null;
@@ -170,7 +174,7 @@ const toReservationParty = (
 };
 
 const toReservationSummary = (
-  reservation: DotyposReservation,
+  reservation: ReservationRecord,
   row: ReservationRow | undefined,
   party: CustomerReservationParty | undefined,
   index: number
@@ -187,13 +191,13 @@ const toReservationSummary = (
 
 /** The provider reservations and authors the account history describes. */
 type ReservationSources = {
-  readonly own: readonly DotyposReservation[];
-  readonly bookedForOthers: readonly DotyposReservation[];
+  readonly own: readonly ReservationRecord[];
+  readonly bookedForOthers: readonly ReservationRecord[];
   readonly authors: ReadonlyMap<CustomerAccountId, ReservationAuthor>;
 };
 
 type HistoryEntry = {
-  readonly reservation: DotyposReservation;
+  readonly reservation: ReservationRecord;
   readonly row: ReservationRow | undefined;
   readonly relation: PartyRelation | undefined;
 };
@@ -255,9 +259,20 @@ const toReservationHistory = ({
   ),
 });
 
+/** What a history load includes beyond the reservations themselves. */
+export type ReservationHistoryOptions = {
+  /**
+   * Whether to read the other party's name from Dotypos for reservations
+   * booked for or by someone else. Defaults to true; a caller that never shows
+   * names passes false to skip the read.
+   */
+  readonly includePartyNames?: boolean;
+};
+
 interface ICustomerReservationHistoryService {
   readonly load: (
-    account: ReservationHistoryAccount
+    account: ReservationHistoryAccount,
+    options?: ReservationHistoryOptions
   ) => Effect.Effect<
     CustomerReservationHistory,
     CustomerAccountAccessError | CustomerReservationHistoryError
@@ -273,6 +288,7 @@ export class CustomerReservationHistoryService extends Context.Service<
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
       const dotypos = yield* DotyposService;
+      const records = yield* ReservationRecords;
       const links = yield* CustomerAccountLinkRepository;
       const authorDirectory = yield* ReservationAuthorDirectory;
 
@@ -314,32 +330,40 @@ export class CustomerReservationHistoryService extends Context.Service<
           )
           .orderBy(desc(workspaceReservations.createdAt));
 
-      const listBookedForOthers = (rows: readonly ReservationRow[]) =>
-        readInIdFilterBatches(
+      const listRecorded = (rows: readonly ReservationRow[]) =>
+        records.listByIds(
           rows.flatMap((row) =>
             row.dotyposReservationId ? [row.dotyposReservationId] : []
+          )
+        );
+
+      const listOwn = ({
+        customerId,
+        rows,
+      }: {
+        readonly customerId: DotyposCustomerId;
+        readonly rows: readonly ReservationRow[];
+      }) =>
+        records.listForCustomer({
+          customerId,
+          recordedIds: rows.flatMap((row) =>
+            row.dotyposCustomerId === customerId && row.dotyposReservationId
+              ? [row.dotyposReservationId]
+              : []
           ),
-          (ids) =>
-            dotypos.listReservations({ ids, order: "startDateDescending" })
-        ).pipe(Effect.map((batches) => batches.flat()));
+        });
 
       // Names only label a reservation, so a failed read leaves the party
       // unnamed instead of failing the history.
       const describeAuthors = (rows: readonly ReservationRow[]) =>
-        authorDirectory
-          .describe(
-            rows.flatMap((row) =>
-              row.authorAccountId ? [row.authorAccountId] : []
-            )
+        authorDirectory.describe(rows.map((row) => row.authorAccountId)).pipe(
+          Effect.tapError(() =>
+            logUnavailableParty("account.reservation-history.authors")
+          ),
+          Effect.orElseSucceed(
+            () => new Map<CustomerAccountId, ReservationAuthor>()
           )
-          .pipe(
-            Effect.tapError(() =>
-              logUnavailableParty("account.reservation-history.authors")
-            ),
-            Effect.orElseSucceed(
-              () => new Map<CustomerAccountId, ReservationAuthor>()
-            )
-          );
+        );
 
       const readReservationSources = ({
         account,
@@ -354,14 +378,10 @@ export class CustomerReservationHistoryService extends Context.Service<
               Option.fromUndefinedOr(account.dotyposCustomerId),
               {
                 onNone: () => Effect.succeed([]),
-                onSome: (customerId) =>
-                  dotypos.listReservations({
-                    customerId,
-                    order: "startDateDescending",
-                  }),
+                onSome: (customerId) => listOwn({ customerId, rows }),
               }
             ),
-            bookedForOthers: listBookedForOthers(
+            bookedForOthers: listRecorded(
               rows.filter((row) => isBookedForOtherCustomer(account, row))
             ),
             authors: describeAuthors(
@@ -377,9 +397,16 @@ export class CustomerReservationHistoryService extends Context.Service<
 
       const readPartyNames = ({
         entries,
+        includePartyNames,
       }: {
         readonly entries: readonly HistoryEntry[];
+        readonly includePartyNames: boolean;
       }) =>
+        includePartyNames
+          ? readPartyNamesOf(entries)
+          : Effect.succeed(new Map<DotyposCustomerId, string>());
+
+      const readPartyNamesOf = (entries: readonly HistoryEntry[]) =>
         readInIdFilterBatches(
           entries.flatMap(({ relation }) => getNamedCustomerId(relation) ?? []),
           (ids) => dotypos.getCustomers({ ids })
@@ -401,8 +428,14 @@ export class CustomerReservationHistoryService extends Context.Service<
           Effect.orElseSucceed(() => new Map<DotyposCustomerId, string>())
         );
 
-      const load = (account: ReservationHistoryAccount) =>
-        Effect.succeed({ account }).pipe(
+      const load = (
+        account: ReservationHistoryAccount,
+        options: ReservationHistoryOptions = {}
+      ) =>
+        Effect.succeed({
+          account,
+          includePartyNames: options.includePartyNames ?? true,
+        }).pipe(
           Effect.tap(() => requireAccountActivity(links, account.accountId)),
           Effect.bind("rows", selectReservationRows),
           Effect.bind("sources", readReservationSources),
@@ -416,14 +449,22 @@ export class CustomerReservationHistoryService extends Context.Service<
     })
   );
 
-  static Live = this.Default.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        WorkspaceDatabase.Default,
-        WorkspaceDotyposLayer,
-        CustomerAccountLinkRepository.Live,
-        ReservationAuthorDirectory.Live
+  /**
+   * The history wired to read reservation details from `records`: live for
+   * the account page, shared snapshots for customers' AI agents.
+   */
+  static withRecords = <E>(records: Layer.Layer<ReservationRecords, E>) =>
+    this.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          WorkspaceDatabase.Default,
+          WorkspaceDotyposLayer,
+          records,
+          CustomerAccountLinkRepository.Live,
+          ReservationAuthorDirectory.Live
+        )
       )
-    )
-  );
+    );
+
+  static Live = this.withRecords(ReservationRecords.Live);
 }

@@ -29,7 +29,6 @@ import {
   type StandaloneAccessCodeCreationError,
   standaloneAccessCodeAttemptStaleAfterMilliseconds,
 } from "@/features/access-codes";
-import { CustomerAccountBackfill } from "@/features/account";
 import { InvoiceAdministrationService } from "@/features/accounting/admin/invoice-administration.service";
 import { InvoiceAdministrationNotFoundError } from "@/features/accounting/admin/invoice-administration-identifier";
 import { AdministrationService } from "@/features/administration/administration.service";
@@ -63,6 +62,7 @@ import { executeDiscountAdminMutation } from "@/features/discounts/admin/execute
 import { ReservationProductDetailsBackfill } from "@/features/reservation/backend/reservation-product-details-backfill.service";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import {
+  getReservationAccessName,
   type ReservationAccessGrant,
   reservationAccessProvisioningStaleAfterMilliseconds,
 } from "@/features/reservation-access";
@@ -70,7 +70,6 @@ import {
   WorkspaceObservabilityLive,
   workspaceMemoMap,
 } from "@/shared/backend/workspace-effect";
-import { AdminCliAccountsApiHandlers } from "./accounts-api.server";
 import {
   makeServiceUnavailable,
   mapAdministrationApiFailure,
@@ -842,7 +841,7 @@ const toCliReservationAccessGrant = (grant: ReservationAccessGrant) => ({
   credentialType: grant.credentialType,
   deviceId: grant.deviceId,
   providerCredentialId: grant.providerCredentialId,
-  accessName: `Deskohub ${grant.reservationId}`.slice(0, 60),
+  accessName: getReservationAccessName(grant),
   scheduledStartsAt: grant.scheduledAccessStartsAt.toString(),
   startsAt: grant.accessStartsAt.toString(),
   endsAt: grant.accessEndsAt.toString(),
@@ -935,14 +934,12 @@ const WorkspaceAdminApiLive = Layer.mergeAll(
     Layer.provide(AdminCliAdministrationApiHandlers),
     Layer.provide(AdminCliCampaignsApiHandlers),
     Layer.provide(AdminCliAdministratorsApiHandlers),
-    Layer.provide(AdminCliAccountsApiHandlers),
     Layer.provide(CliBearerAuthenticationLive),
     Layer.provide(CliClientCompatibilityLive),
     Layer.provide(AdministrationService.Live),
     Layer.provide(ReservationAdministrationService.Live),
     Layer.provide(ReservationProductDetailsBackfill.Live),
     Layer.provide(LegacyAdministratorBackfill.Live),
-    Layer.provide(CustomerAccountBackfill.Live),
     Layer.provide(ReservationAccessAdministration.Live),
     Layer.provide(DiscountAdministration.Live),
     Layer.provide(InvoiceAdministrationService.Live),

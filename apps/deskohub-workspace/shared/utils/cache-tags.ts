@@ -10,3 +10,8 @@ export const availabilityTags = {
   reservations: "workspace-availability-reservations",
   calendar: "workspace-availability-calendar",
 } as const;
+
+/** Shared snapshots of the reservation details customers see. */
+export const reservationRecordTags = {
+  records: "workspace-reservation-records",
+} as const;

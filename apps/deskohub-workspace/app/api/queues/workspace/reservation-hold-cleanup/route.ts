@@ -1,12 +1,12 @@
-import { handleCallback } from "@vercel/queue";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   processReservationHoldCleanupScheduleMessage,
   ReservationHoldCleanupService,
+  reservationHoldCleanupRedelivery,
 } from "@/features/checkout/backend/holds";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { defineWorkspaceTask } from "@/shared/backend/workspace-effect";
+import { defineQueueConsumer } from "@/shared/backend/queue/queue-consumer";
 
 const ReservationHoldCleanupScheduleConsumerLive = Layer.mergeAll(
   ReservationHoldCleanupService.Live,
@@ -15,17 +15,11 @@ const ReservationHoldCleanupScheduleConsumerLive = Layer.mergeAll(
   )
 );
 
-const processCleanupMessage = defineWorkspaceTask(
+export const POST = defineQueueConsumer(
   "reservationHoldCleanupSchedule",
-  (
-    message: Parameters<typeof processReservationHoldCleanupScheduleMessage>[0]
-  ) =>
+  (message) =>
     processReservationHoldCleanupScheduleMessage(message).pipe(
-      Effect.asVoid,
       Effect.provide(ReservationHoldCleanupScheduleConsumerLive)
-    )
-);
-
-export const POST = handleCallback((message, _metadata) =>
-  processCleanupMessage(message)
+    ),
+  reservationHoldCleanupRedelivery
 );

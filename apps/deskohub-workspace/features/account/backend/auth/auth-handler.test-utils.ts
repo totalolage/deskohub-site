@@ -77,6 +77,7 @@ export type TestAuthOptions = {
   readonly verifyHuman?: WorkspaceAuthConfig["verifyHuman"];
   readonly beforeDeleteUser?: WorkspaceAuthConfig["beforeDeleteUser"];
   readonly captureAccountLocalePreference?: WorkspaceAuthConfig["captureAccountLocalePreference"];
+  readonly clientMetadataTransport?: WorkspaceAuthConfig["clientMetadataTransport"];
   readonly createCustomerAccount?: WorkspaceAuthConfig["createCustomerAccount"];
 };
 
@@ -94,8 +95,11 @@ const realCapture: WorkspaceAuthConfig["captureAccountLocalePreference"] = (
     )
   );
 
-/** The real durable-account creation against the migrated disposable database. */
-const realCreateCustomerAccount: WorkspaceAuthConfig["createCustomerAccount"] =
+/**
+ * The real durable-account creation against the migrated disposable database,
+ * which an adapter wrapping the Postgres one needs before every login insert.
+ */
+export const realCreateCustomerAccount: WorkspaceAuthConfig["createCustomerAccount"] =
   (accountId) => ensureCustomerAccount(testDatabase!.db, accountId);
 
 /** The production advisory lock on the migrated disposable database. */
@@ -146,6 +150,8 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
     secrets: options.secrets ?? [{ version: 1, value: SECRET_V1 }],
     allowedHosts: [HOST],
     passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
+    customerMcpResource: `https://${HOST}/api/mcp`,
+    clientMetadataTransport: options.clientMetadataTransport,
     httpsOnly: true,
     isSignInCodeEnabled: options.isSignInCodeEnabled ?? (async () => false),
     arePasskeysEnabled: options.arePasskeysEnabled ?? (async () => true),
@@ -170,19 +176,40 @@ type MemoryAuthStore = {
   readonly verification: Verification[];
   readonly rateLimit: RateLimit[];
   readonly passkey: Passkey[];
+  readonly oauthClient: unknown[];
+  readonly oauthResource: unknown[];
+  readonly oauthClientResource: unknown[];
+  readonly oauthRefreshToken: unknown[];
+  readonly oauthAccessToken: unknown[];
+  readonly oauthConsent: unknown[];
+  readonly oauthClientAssertion: unknown[];
 };
+
+/**
+ * An empty in-memory store with every model the Workspace instance uses. The
+ * OAuth provider seeds the MCP resource when the instance starts, so the
+ * store needs its models even in tests that never authorize an agent.
+ */
+export const makeMemoryAuthStore = (): MemoryAuthStore => ({
+  user: [],
+  session: [],
+  account: [],
+  verification: [],
+  rateLimit: [],
+  passkey: [],
+  oauthClient: [],
+  oauthResource: [],
+  oauthClientResource: [],
+  oauthRefreshToken: [],
+  oauthAccessToken: [],
+  oauthConsent: [],
+  oauthClientAssertion: [],
+});
 
 export const makeMemoryTestAuth = (
   options: Omit<TestAuthOptions, "database"> = {}
 ) => {
-  const store: MemoryAuthStore = {
-    user: [],
-    session: [],
-    account: [],
-    verification: [],
-    rateLimit: [],
-    passkey: [],
-  };
+  const store = makeMemoryAuthStore();
   const auth = makeTestAuth({
     ...options,
     database: memoryAdapter(store),
@@ -257,7 +284,7 @@ export const linkAccount = async (
   dotyposCustomerId: string
 ) => {
   await testDatabase!.pool.query(
-    `insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2)`,
+    `update customer_accounts set dotypos_customer_id = $2 where id = $1`,
     [userId, dotyposCustomerId]
   );
 };

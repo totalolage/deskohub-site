@@ -8,6 +8,7 @@ import type { Customer } from "@deskohub/dotypos/generated";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import "@/shared/polyfills/temporal";
 import { testEmailAddress } from "@deskohub/test-email";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 
 const mockDate = Temporal.Instant.from("2026-06-12T09:00:00.000+02:00");
@@ -33,7 +34,7 @@ export const createWorkspaceReservationEmailPreviewReservation = (
 ): WorkspaceReservationDetails => ({
   id: workspaceReservationIdSchema.make("workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C"),
   dotyposCustomerId: DotyposCustomerIdSchema.make("987654321"),
-  authorAccountId: null,
+  authorAccountId: customerAccountIdSchema.make("email-preview-author"),
   dotyposReservationId: DotyposReservationIdSchema.make("123456789"),
   reservationDetails: {
     kind: "cowork",
