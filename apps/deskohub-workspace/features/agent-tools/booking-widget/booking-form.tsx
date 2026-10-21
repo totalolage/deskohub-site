@@ -280,7 +280,7 @@ export function BookingForm({
               </Field>
               <Field
                 error={fieldError("seats")}
-                label={m.bookingWidgetSeatCountLabel({}, { locale })}
+                label={m.reservationOfficeSeatCountLabel({}, { locale })}
                 locale={locale}
               >
                 {(props) => (

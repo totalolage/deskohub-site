@@ -144,7 +144,6 @@
     "pg": "^8.23.1",
     "posthog-js": "1.438.1",
     "posthog-node": "^5.55.1",
-    "preact": "^10.29.8",
     "react": "19.3.0",
     "react-day-picker": "^9.14.0",
     "react-dom": "19.3.0",

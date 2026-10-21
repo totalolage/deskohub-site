@@ -1238,7 +1238,6 @@
   "bookingWidgetLinkFailed": "The link couldn't be opened. Copy the address below into your browser.",
   "bookingWidgetRequestFailed": "The booking view couldn't reach DH Workspace. Try again in a moment.",
   "bookingWidgetPriceChanged": "The price changed since the check. New total: {price}.",
-  "bookingWidgetSeatCountLabel": "How many office seats do you need?",
   "bookingWidgetErrorDateOutOfRange": "Choose a date from {earliest} to {latest}.",
   "bookingWidgetErrorRateLimited": "Too many requests. Wait a minute and try again.",
   "bookingWidgetErrorSelectionUnavailable": "This option is no longer free. Try another date or option.",
