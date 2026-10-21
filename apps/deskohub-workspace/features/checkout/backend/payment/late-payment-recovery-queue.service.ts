@@ -1,7 +1,6 @@
 import { DuplicateMessageError, send } from "@vercel/queue";
 import { Context, Data, Effect, Layer } from "effect";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
-import { serializeErrorForLog } from "@/shared/utils/error-formatting";
 
 export const latePaymentRecoveryQueueTopic = "workspace-late-payment-recovery";
 
@@ -41,7 +40,7 @@ export const makeLatePaymentRecoveryQueueService = (
           ? new DuplicateLatePaymentRecoveryMessageError()
           : new LatePaymentRecoveryQueueError({
               message: "Late-payment recovery could not be enqueued.",
-              cause: serializeErrorForLog(cause),
+              cause,
             }),
     }).pipe(
       Effect.catchTag(

@@ -427,9 +427,8 @@ describe("ProviderPaymentFinalizationService", () => {
   }
 
   test("returns the empty-order abandonment state and keeps orders with activity pending", async () => {
-    const { ProviderPaymentFinalizationService } = await import(
-      "./provider-payment-finalization.service"
-    );
+    const { ProviderPaymentDeferral, ProviderPaymentFinalizationService } =
+      await import("./provider-payment-finalization.service");
     const { PaymentAttemptRepository } = await import(
       "../repositories/payment-attempt.repository"
     );
@@ -446,6 +445,14 @@ describe("ProviderPaymentFinalizationService", () => {
 
     const providerOrderCreatedAt = pendingAttempt.providerOrderCreatedAt;
     const scenarios = [
+      {
+        name: "before cutoff",
+        checkedAt: providerOrderCreatedAt.add({ minutes: 29 }),
+        verification: emptyPendingVerification,
+        expected: new ProviderPaymentDeferral({
+          abandonmentCutoff: providerOrderCreatedAt.add({ minutes: 30 }),
+        }),
+      },
       {
         name: "at cutoff",
         checkedAt: providerOrderCreatedAt.add({ minutes: 30 }),
@@ -505,7 +512,7 @@ describe("ProviderPaymentFinalizationService", () => {
         Effect.runPromise
       );
 
-      expect(result, scenario.name).toBe(scenario.expected);
+      expect(result, scenario.name).toEqual(scenario.expected);
     }
   });
 
@@ -761,7 +768,12 @@ describe("ProviderPaymentFinalizationService unattached provider sessions", () =
       abandonmentCheckedAt: attemptCreatedAt.add({ minutes: 29, seconds: 59 }),
     });
 
-    expect(result).toBe("deferred");
+    const { ProviderPaymentDeferral } = await import(
+      "./provider-payment-finalization.service"
+    );
+    expect(result).toEqual(
+      new ProviderPaymentDeferral({ abandonmentCutoff: afterCutoff })
+    );
     expect(getOrder).not.toHaveBeenCalled();
     expect(markTerminal).not.toHaveBeenCalled();
   });

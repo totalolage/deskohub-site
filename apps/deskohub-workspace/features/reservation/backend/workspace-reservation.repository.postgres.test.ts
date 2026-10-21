@@ -158,7 +158,7 @@ describe.skipIf(!testDatabase)(
     const insertLatePaymentRecovery = async (
       reservationId: WorkspaceReservationId,
       paymentAttemptId: PaymentAttemptId,
-      state: "pending" | "recovered"
+      state: "pending" | "recovered" | "refund_required"
     ) => {
       await Effect.runPromise(
         testDatabase.db.insert(latePaymentRecoveries).values({
@@ -174,6 +174,10 @@ describe.skipIf(!testDatabase)(
             recoveredDotyposReservationId: DotyposReservationIdSchema.make(
               `dotypos-recovered-${crypto.randomUUID()}`
             ),
+          }),
+          ...(state === "refund_required" && {
+            completedAt: at(1),
+            failureCode: "late_payment_snapshot_unavailable",
           }),
         })
       );
@@ -379,6 +383,49 @@ describe.skipIf(!testDatabase)(
 
         expect(await claim(underRecovery)).toBeNull();
         expect((await claim(recovered))?.id).toBe(recovered);
+      });
+
+      test("reports the late-payment recovery that blocks the claim", async () => {
+        const refundRequired = await insertReservation({ ...paid });
+        await insertLatePaymentRecovery(
+          refundRequired,
+          await insertActivePaymentAttempt(refundRequired),
+          "refund_required"
+        );
+        const recovered = await insertReservation({ ...paid });
+        await insertLatePaymentRecovery(
+          recovered,
+          await insertActivePaymentAttempt(recovered),
+          "recovered"
+        );
+        const supersededRecovery = await insertReservation({ ...paid });
+        await insertLatePaymentRecovery(
+          supersededRecovery,
+          await insertActivePaymentAttempt(supersededRecovery),
+          "pending"
+        );
+        await insertActivePaymentAttempt(supersededRecovery);
+        const progress = (id: WorkspaceReservationId) =>
+          run((repository) => repository.findPaidFulfillmentProgress(id));
+
+        expect(await claim(refundRequired)).toBeNull();
+        expect(await progress(refundRequired)).toEqual({
+          paymentState: "paid",
+          reservationState: "held",
+          fulfillmentState: "not_started",
+          latePaymentRecoveryState: "refund_required",
+        });
+        expect(await progress(recovered)).toMatchObject({
+          latePaymentRecoveryState: null,
+        });
+        expect(await progress(supersededRecovery)).toMatchObject({
+          latePaymentRecoveryState: null,
+        });
+        expect(
+          await progress(
+            workspaceReservationIdSchema.make("reservation-missing")
+          )
+        ).toBeNull();
       });
 
       test("marks only a processing paid booking fulfilled", async () => {

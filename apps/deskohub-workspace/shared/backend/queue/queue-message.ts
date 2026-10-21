@@ -1,6 +1,5 @@
 import { DuplicateMessageError, send } from "@vercel/queue";
 import { Data, Effect } from "effect";
-import { serializeErrorForLog } from "@/shared/utils/error-formatting";
 
 export class QueueMessageSendError extends Data.TaggedError(
   "QueueMessageSendError"
@@ -37,7 +36,7 @@ export const publishQueueMessage = <Payload>(
         ? new DuplicateQueueMessageError()
         : new QueueMessageSendError({
             topic,
-            cause: serializeErrorForLog(cause),
+            cause,
           }),
   }).pipe(
     Effect.asVoid,
