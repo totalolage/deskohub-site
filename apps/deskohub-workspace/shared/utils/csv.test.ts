@@ -61,23 +61,26 @@ describe("serializeCsv", () => {
           "\rlead",
           "\n=SUM(A1)",
           "+",
+          "-1-2",
+          "+(1)",
+          "+420-777-123-456",
+          "+420 777 123 456",
+          "-1.",
           "a=b",
         ]
       )
     ).toBe(
-      "Value\r\n'=SUM(A1)\r\n'+cmd|' /C calc'!A0\r\n'-2+3+cmd|' /C calc'!A0\r\n'@cmd\r\n'\tindent\r\n\"'\rlead\"\r\n\"'\n=SUM(A1)\"\r\n'+\r\na=b\r\n"
+      "Value\r\n'=SUM(A1)\r\n'+cmd|' /C calc'!A0\r\n'-2+3+cmd|' /C calc'!A0\r\n'@cmd\r\n'\tindent\r\n\"'\rlead\"\r\n\"'\n=SUM(A1)\"\r\n'+\r\n'-1-2\r\n'+(1)\r\n'+420-777-123-456\r\n'+420 777 123 456\r\n'-1.\r\na=b\r\n"
     );
   });
 
-  test("keeps signed numbers and phone numbers as written", () => {
+  test("keeps plain signed numbers as written", () => {
     expect(
       serializeCsv(
         [{ header: "Value", value: (value: string) => value }],
-        ["+420 777 123 456", "+420726101229", "-12", "+1 (555) 010-0199"]
+        ["+420726101229", "-12", "-12.5", "+0.25"]
       )
-    ).toBe(
-      "Value\r\n+420 777 123 456\r\n+420726101229\r\n-12\r\n+1 (555) 010-0199\r\n"
-    );
+    ).toBe("Value\r\n+420726101229\r\n-12\r\n-12.5\r\n+0.25\r\n");
   });
 
   test("defuses formula headers too", () => {

@@ -153,8 +153,9 @@ describe("GET /[locale]/admin/reservations/export", () => {
         "dotypos-customer-1",
         "Jana Nováková",
         testEmailAddress("export-jana"),
-        // A phone number keeps its leading "+": it can't run as a formula.
-        "+420 777 000 000",
+        // Only a plain number keeps its sign; a spaced phone number gets the
+        // formula guard.
+        "'+420 777 000 000",
         "Meeting Room",
         "2026-08-01 09:30",
         "Paid",

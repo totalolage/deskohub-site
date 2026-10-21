@@ -11,9 +11,10 @@ export type CsvColumn<Row> = {
 
 // Spreadsheets run a cell that starts with one of these as a formula.
 const formulaPrefix = /^[=+\-@\t\r\n]/;
-// A signed number or phone number, such as `+420 777 123 456`, can't call a
-// function, so it keeps its sign instead of gaining a visible `'`.
-const numericText = /^[+-][\d ().-]*\d[\d ().-]*$/;
+// A plain signed number, such as `-12.5` or `+420726101229`, can't call a
+// function, so it keeps its sign instead of gaining a visible `'`. Anything
+// with operators or separators, such as `+420 777 123 456`, gets the guard.
+const numericText = /^[+-]\d+(\.\d+)?$/;
 const quotedCharacters = /[",\r\n]/;
 
 // Written as a code point because formatters turn the escape into an invisible
