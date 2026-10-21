@@ -22,6 +22,10 @@ export const workspaceE2ETimeouts = {
   // Dotypos (one full Dotypos request timeout).
   customerMcpRequest: 60 * SECOND,
   customerMcpCase: 4 * MINUTE,
+  // One agent authorization round in the browser: the authorize redirect,
+  // the consent page in the customer's locale, and the redirect back to the
+  // agent.
+  customerAgentConsent: 90 * SECOND,
   // The site tools register after hydration, the release gate's streamed
   // boundary, and one `tools/list` exchange.
   siteToolsRegistration: 60 * SECOND,

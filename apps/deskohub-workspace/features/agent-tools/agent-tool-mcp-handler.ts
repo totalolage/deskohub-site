@@ -11,22 +11,27 @@ import {
   Effect,
   Exit,
   FiberSet,
+  Match,
   Option,
   Schema,
   Scope,
   Stream,
 } from "effect";
 import { scheduleAgentTrafficEvent } from "@/shared/backend/agent-traffic/agent-traffic-events";
+import type { RequestBudget } from "@/shared/backend/request-budget/request-budget.service";
 import { CurrentAgentTraffic } from "@/shared/backend/workspace-request-context";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { currentInstant } from "@/shared/utils/temporal";
 import { type AgentTool, getRequestedAgentToolLocale } from "./agent-tool";
 import { AgentToolAdmission } from "./agent-tool-admission.service";
+import { spendSignedInCallBudgets } from "./agent-tool-call-budget";
 import {
   AgentToolError,
   type AgentToolErrorCode,
   toAgentToolErrorResult,
 } from "./agent-tool-error";
+import { authorizeAgentToolRequest } from "./agent-tool-mcp-authorization";
+import type { CustomerAgentCaller } from "./customer-agent-caller";
 
 /** The version of the tool contract agents see; bump it on breaking changes. */
 const agentToolServerVersion = "1.0.0";
@@ -38,6 +43,7 @@ const agentToolServerInstructions = [
   "It offers cowork desks by the day, a meeting room by the hour or the day, and a private office for whole days.",
   "Use list_offerings for products with their regular and today's advertised prices, check_availability to see whether a selection looks free, and get_quote for the exact price of a selection.",
   "Bookings are made and paid on the website: give the customer the reservation_url from a result to finish there. Availability and price are confirmed on the website before payment.",
+  "With the customer signed in, start_reservation holds a selection for them and returns a pay_url where they accept the terms and pay; get_reservation_status and list_my_reservations show their own reservations. The tools can't pay, cancel, or change a reservation.",
 ].join(" ");
 
 /**
@@ -52,6 +58,10 @@ const agentToolServerInstructions = [
  * deployment serves its own pages. That guards against DNS rebinding only
  * where the platform routes no foreign hostname to the deployment, as Vercel
  * routes only a project's own domains.
+ *
+ * An agent may send an OAuth bearer token. A token that grants nothing,
+ * or a signed-in tool called without a token granting its scope, is answered
+ * with a 401 or 403 OAuth challenge before the MCP server runs.
  *
  * Tool calls run as fibers of the returned Effect, so they share its
  * services, request context, and trace, and are interrupted with it.
@@ -71,7 +81,15 @@ export const answerAgentToolMcpRequest = <R>({
         Effect.logWarning(
           "Agent tool MCP request from another origin was rejected"
         ).pipe(Effect.as(rejection)),
-      onNone: () => serveAgentToolMcpRequest({ tools, request }),
+      onNone: () =>
+        authorizeAgentToolRequest({ tools, request }).pipe(
+          Effect.flatMap((caller) =>
+            serveAgentToolMcpRequest({ tools, request, caller })
+          ),
+          Effect.catchTag("AgentToolRequestRefused", ({ response }) =>
+            Effect.succeed(response)
+          )
+        ),
     })
   );
 
@@ -80,17 +98,11 @@ export const answerAgentToolMcpRequest = <R>({
  * or the client cancels it: a 2025-era call answers with an event stream
  * before the tool has finished, and closing the scope interrupts the tool.
  */
-const serveAgentToolMcpRequest = <R>({
-  tools,
-  request,
-}: {
-  readonly tools: ReadonlyArray<AgentTool<R>>;
-  readonly request: Request;
-}) =>
+const serveAgentToolMcpRequest = <R>(exchange: McpExchange<R>) =>
   Effect.Do.pipe(
     Effect.bind("scope", () => Scope.make()),
     Effect.bind("response", ({ scope }) =>
-      exchangeAgentToolMcpRequest({ tools, request }).pipe(
+      exchangeAgentToolMcpRequest(exchange).pipe(
         Scope.provide(scope),
         Effect.onExit((exit) =>
           Exit.isSuccess(exit) ? Effect.void : Scope.close(scope, exit)
@@ -100,16 +112,23 @@ const serveAgentToolMcpRequest = <R>({
     Effect.flatMap(closeScopeAfterBody)
   );
 
+/** One MCP request and the tools and caller it is served with. */
+type McpExchange<R> = {
+  readonly tools: ReadonlyArray<AgentTool<R>>;
+  readonly request: Request;
+  readonly caller: Option.Option<CustomerAgentCaller>;
+};
+
+type ToolCallServices<R> = R | AgentToolAdmission | RequestBudget;
+
 const exchangeAgentToolMcpRequest = <R>({
   tools,
   request,
-}: {
-  readonly tools: ReadonlyArray<AgentTool<R>>;
-  readonly request: Request;
-}) =>
+  caller,
+}: McpExchange<R>) =>
   Effect.Do.pipe(
     Effect.bind("runInRequest", () =>
-      FiberSet.makeRuntimePromise<R | AgentToolAdmission>()
+      FiberSet.makeRuntimePromise<ToolCallServices<R>>()
     ),
     Effect.bind("handler", ({ runInRequest }) =>
       Effect.acquireRelease(
@@ -119,6 +138,7 @@ const exchangeAgentToolMcpRequest = <R>({
               makeAgentToolMcpServer({
                 tools,
                 headers: request.headers,
+                caller,
                 runInRequest,
               }),
             {
@@ -173,11 +193,13 @@ type RequestRunner<R> = <A>(
 const makeAgentToolMcpServer = <R>({
   tools,
   headers,
+  caller,
   runInRequest,
 }: {
   readonly tools: ReadonlyArray<AgentTool<R>>;
   readonly headers: Headers;
-  readonly runInRequest: RequestRunner<R | AgentToolAdmission>;
+  readonly caller: Option.Option<CustomerAgentCaller>;
+  readonly runInRequest: RequestRunner<ToolCallServices<R>>;
 }) => {
   const server = new McpServer(
     {
@@ -204,7 +226,7 @@ const makeAgentToolMcpServer = <R>({
         },
       },
       (args, context) =>
-        runInRequest(callAgentTool({ tool, args, headers }), {
+        runInRequest(callAgentTool({ tool, args, headers, caller }), {
           signal: context.mcpReq.signal,
         })
     );
@@ -234,11 +256,13 @@ const callAgentTool = <R>({
   tool,
   args,
   headers,
+  caller,
 }: {
   readonly tool: AgentTool<R>;
   readonly args: Schema.Json;
   readonly headers: Headers;
-}): Effect.Effect<CallToolResult, never, R | AgentToolAdmission> =>
+  readonly caller: Option.Option<CustomerAgentCaller>;
+}): Effect.Effect<CallToolResult, never, ToolCallServices<R>> =>
   AgentToolAdmission.pipe(
     Effect.flatMap((admission) => admission.isCallAllowed(headers)),
     Effect.mapError(() => AgentToolError.serviceUnavailable()),
@@ -246,7 +270,8 @@ const callAgentTool = <R>({
       (allowed) => allowed,
       () => AgentToolError.rateLimited()
     ),
-    Effect.flatMap(() => tool.call(args)),
+    Effect.andThen(spendCallBudgets({ tool, caller })),
+    Effect.flatMap(() => tool.call(args, caller)),
     Effect.map(
       (result): CallToolResult => ({
         content: [{ type: "text", text: JSON.stringify(result) }],
@@ -262,6 +287,29 @@ const callAgentTool = <R>({
     ),
     Effect.annotateLogs({ agentTool: tool.name }),
     Effect.withSpan(`agentTools.${tool.name}`)
+  );
+
+/**
+ * A signed-in call spends its grant's and account's budgets; public tools
+ * stay bounded by the per-IP rule alone.
+ */
+const spendCallBudgets = <R>({
+  tool,
+  caller,
+}: {
+  readonly tool: AgentTool<R>;
+  readonly caller: Option.Option<CustomerAgentCaller>;
+}) =>
+  Match.value(tool).pipe(
+    Match.discriminatorsExhaustive("access")({
+      public: () => Effect.void,
+      "signed-in": (signedInTool) =>
+        Option.match(caller, {
+          onNone: () => Effect.void,
+          onSome: ({ grant }) =>
+            spendSignedInCallBudgets({ grant, tool: signedInTool }),
+        }),
+    })
   );
 
 /** Counts the call by the caller's agent category, after the response. */

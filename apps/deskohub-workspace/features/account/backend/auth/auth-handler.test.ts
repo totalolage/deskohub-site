@@ -35,6 +35,7 @@ import {
   getSessionCookie,
   HOST,
   linkAccount,
+  makeMemoryAuthStore,
   makeMemoryTestAuth,
   makeTestAuth,
   SECRET_V1,
@@ -54,13 +55,7 @@ const makeFailingVerificationDatabase = (
   email: string,
   sessionToken: string
 ) => {
-  const baseDatabase = memoryAdapter({
-    user: [],
-    session: [],
-    account: [],
-    verification: [],
-    rateLimit: [],
-  });
+  const baseDatabase = memoryAdapter(makeMemoryAuthStore());
 
   return (options: Parameters<typeof baseDatabase>[0]) => {
     const adapter = baseDatabase(options);
