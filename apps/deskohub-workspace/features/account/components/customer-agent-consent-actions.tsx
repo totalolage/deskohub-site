@@ -28,12 +28,16 @@ const submitConsent = (accept: boolean) =>
     try: () => authClient.oauth2.consent({ accept }),
     catch: (cause) => new CustomerAgentConsentError({ cause }),
   }).pipe(
-    Effect.filterOrFail(
-      ({ data }) => Boolean(data?.url),
-      ({ error }) =>
-        new CustomerAgentConsentError({ status: error?.status, cause: error })
-    ),
-    Effect.map(({ data }) => data!.url)
+    Effect.flatMap(({ data, error }) =>
+      data?.url
+        ? Effect.succeed(data.url)
+        : Effect.fail(
+            new CustomerAgentConsentError({
+              status: error?.status,
+              cause: error,
+            })
+          )
+    )
   );
 
 const consentFailureCode = "account.customer-agent-consent.failed";
