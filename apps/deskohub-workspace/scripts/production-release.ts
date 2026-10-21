@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { $ } from "bun";
 import { Schema } from "effect";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import vercelConfig from "@/vercel.json";
 
 const vercelApiOrigin = "https://api.vercel.com";
 
@@ -21,21 +22,6 @@ const immutableWorkspaceDeploymentHost =
 
 const defaultPollDeadlineMilliseconds = 10 * 60_000;
 const defaultPollIntervalMilliseconds = 15_000;
-
-const requiredCronDefinitions = [
-  {
-    path: "/api/cron/workspace/reservation-holds",
-    schedule: "0 0 * * *",
-  },
-  {
-    path: "/api/cron/workspace/auth-cleanup",
-    schedule: "17 3 * * *",
-  },
-  {
-    path: "/api/cron/workspace/payment-refunds",
-    schedule: "37 * * * *",
-  },
-] as const;
 
 const canonicalAliasResponse = Schema.Struct({
   projectId: Schema.optional(Schema.NullOr(Schema.String)),
@@ -328,7 +314,7 @@ const missingCronDefinition = (
       }[]
     | undefined
 ) =>
-  requiredCronDefinitions.find(
+  vercelConfig.crons.find(
     (required) =>
       !definitions?.some(
         (definition) =>

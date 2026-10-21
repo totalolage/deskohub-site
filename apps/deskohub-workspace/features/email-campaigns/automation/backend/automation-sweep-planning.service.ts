@@ -1,9 +1,8 @@
-import { Context, Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import { ReservationActivitySweep } from "@/features/reservation/backend/reservation-activity-sweep.service";
 import { CustomerEventReconciler } from "@/shared/backend/customer-events/customer-event-reconciler";
-import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { planAutomationUnits } from "./automation-unit-planning";
 import { plannedSweepPage } from "./sweep-page";
 
@@ -19,9 +18,8 @@ interface IAutomationSweepPlanning {
   /**
    * Planner step 3: plans a sweep page for each source with none open
    * (`planAutomationUnits`), replanning a failed page after its backoff,
-   * and, every 10th minute, reconciles captured
-   * events. Runs its own short idempotent transactions, so overlapping
-   * planners are harmless.
+   * and reconciles captured events. Runs its own short idempotent
+   * transactions, so overlapping planners are harmless.
    */
   readonly plan: (
     at: Temporal.Instant
@@ -58,9 +56,7 @@ export class AutomationSweepPlanning extends Context.Service<
                 Effect.map(
                   ({ booked, cancelled, accountCreated }) =>
                     booked + cancelled + accountCreated
-                ),
-                Effect.when(Effect.succeed(isReconcileMinute(at))),
-                Effect.map(Option.getOrElse(() => 0))
+                )
               )
             ),
             Effect.map(
@@ -86,14 +82,3 @@ export class AutomationSweepPlanning extends Context.Service<
     )
   );
 }
-
-/**
- * The capture reconcile runs on planner runs whose Workspace-local minute is
- * a multiple of ten. The minute cron hits each such minute once; overlapping
- * or repeated runs in that minute are harmless because the reconcile is
- * idempotent, and a skipped minute only delays it to the next tenth.
- */
-const isReconcileMinute = (at: Temporal.Instant) =>
-  at.toZonedDateTimeISO(workspaceSiteConstants.location.timeZone).minute %
-    10 ===
-  0;

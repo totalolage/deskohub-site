@@ -2,8 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
-
-process.env.CRON_SECRET = "cron-secret-for-auth-cleanup-test";
+import { env } from "@/env";
 
 const cleanupCalls: { readonly now: Date }[] = [];
 
@@ -93,7 +92,7 @@ describe("auth cleanup cron route", () => {
     };
     const response = await GET(
       new Request("https://workspace.test/api/cron/workspace/auth-cleanup", {
-        headers: { authorization: "Bearer cron-secret-for-auth-cleanup-test" },
+        headers: { authorization: `Bearer ${env.CRON_SECRET}` },
       })
     );
 

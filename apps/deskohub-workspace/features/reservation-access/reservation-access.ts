@@ -36,6 +36,25 @@ export const isReservationAccessProvisioningStale = (
     })
   ) <= 0;
 
+/**
+ * Igloohome access name for a grant's credential. Operators find a credential
+ * in the Igloohome app by this name, so it stays unique per grant, and it
+ * carries no reservation or customer identifier because Igloohome processes it
+ * outside the EU.
+ */
+export const makeReservationAccessName = (grantId: ReservationAccessGrantId) =>
+  `Deskohub ${grantId}`;
+
+/**
+ * The name of the grant's Igloohome credential: the stored name of its latest
+ * request, or the name its first request will use. A grant without a stored
+ * name was created by a deployment that predates stored names, which named its
+ * credential `Deskohub <reservation-id>`.
+ */
+export const getReservationAccessName = (
+  grant: Pick<ReservationAccessGrant, "reservationId" | "accessName">
+) => grant.accessName ?? `Deskohub ${grant.reservationId}`.slice(0, 60);
+
 export interface ReservationAccessGrant {
   readonly id: ReservationAccessGrantId;
   readonly reservationId: string;
@@ -44,6 +63,11 @@ export interface ReservationAccessGrant {
   readonly deviceId: string;
   readonly state: ReservationAccessGrantState;
   readonly providerCredentialId: string | null;
+  /**
+   * Name sent with the latest Igloohome request, or the name the first request
+   * will use. Null on grants created before names were stored.
+   */
+  readonly accessName: string | null;
   readonly scheduledAccessStartsAt: Temporal.Instant;
   readonly accessStartsAt: Temporal.Instant;
   readonly accessEndsAt: Temporal.Instant;

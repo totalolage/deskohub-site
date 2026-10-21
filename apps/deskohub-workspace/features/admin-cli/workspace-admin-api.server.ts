@@ -62,6 +62,7 @@ import { executeDiscountAdminMutation } from "@/features/discounts/admin/execute
 import { ReservationProductDetailsBackfill } from "@/features/reservation/backend/reservation-product-details-backfill.service";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import {
+  getReservationAccessName,
   type ReservationAccessGrant,
   reservationAccessProvisioningStaleAfterMilliseconds,
 } from "@/features/reservation-access";
@@ -840,7 +841,7 @@ const toCliReservationAccessGrant = (grant: ReservationAccessGrant) => ({
   credentialType: grant.credentialType,
   deviceId: grant.deviceId,
   providerCredentialId: grant.providerCredentialId,
-  accessName: `Deskohub ${grant.reservationId}`.slice(0, 60),
+  accessName: getReservationAccessName(grant),
   scheduledStartsAt: grant.scheduledAccessStartsAt.toString(),
   startsAt: grant.accessStartsAt.toString(),
   endsAt: grant.accessEndsAt.toString(),
