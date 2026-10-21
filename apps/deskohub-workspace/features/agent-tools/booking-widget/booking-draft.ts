@@ -22,13 +22,18 @@ export interface BookingStart {
   readonly today: string;
   readonly offerings: ReadonlyArray<AgentOffering>;
   readonly selection: ShowBookingResult["selection"];
+  /** The website page of each family, where website mode sends the customer. */
+  readonly offeringPages: Partial<
+    NonNullable<ShowBookingResult["offering_pages"]>
+  >;
   /** Whether the host opens site links for the view. */
   readonly opensLinks: boolean;
 }
 
 /**
  * The view's language: the agent's `locale` argument, then the host's
- * language, where any Czech locale picks Czech, then English.
+ * language (from its context, else ChatGPT's bridge), where any Czech locale
+ * picks Czech, then English.
  */
 export const getBookingLocale = ({
   requested,

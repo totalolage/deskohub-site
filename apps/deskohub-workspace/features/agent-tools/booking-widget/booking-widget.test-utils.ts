@@ -91,6 +91,13 @@ export const bookingOfferings = (): ReadonlyArray<AgentOffering> => [
   },
 ];
 
+/** The website page of each family, as website mode lists them. */
+export const bookingOfferingPages = () => ({
+  cowork: `${siteOrigin}/pricing#pricing-cowork-title`,
+  "meeting-room": `${siteOrigin}/meeting-room`,
+  office: `${siteOrigin}/pricing#pricing-office-title`,
+});
+
 export const showBookingResult = ({
   mode,
   locale,
@@ -105,6 +112,7 @@ export const showBookingResult = ({
   selection,
   advertised_on: bookingToday,
   offerings: bookingOfferings(),
+  ...(mode === "website" && { offering_pages: bookingOfferingPages() }),
   note: m.agentToolBookingViewReservationPageNote({}, { locale }),
 });
 
@@ -124,6 +132,7 @@ export const bookingStart = ({
   today: bookingToday,
   offerings: bookingOfferings(),
   selection,
+  offeringPages: mode === "website" ? bookingOfferingPages() : {},
   opensLinks,
 });
 
