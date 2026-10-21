@@ -276,15 +276,15 @@ const serveAgents =
 
 /**
  * Starts an agent's authorization for a customer who is already signed in
- * and hasn't connected it: the request goes straight to consent.
+ * and returns where the authorization endpoint sends them.
  */
-const requestConsent = async (
+const startAuthorization = async (
   auth: TestAuth,
   cookie: string,
   agent: ReturnType<typeof makeAgent>
 ) => {
   const pkce = await makePkce();
-  const consentPage = redirectOf(
+  const redirect = redirectOf(
     await request(
       auth,
       authorizePath({
@@ -297,8 +297,65 @@ const requestConsent = async (
       { cookie }
     )
   );
+  return { redirect, pkce };
+};
+
+/**
+ * Starts an agent's authorization for a customer who is already signed in
+ * and hasn't connected it: the request goes straight to consent.
+ */
+const requestConsent = async (
+  auth: TestAuth,
+  cookie: string,
+  agent: ReturnType<typeof makeAgent>
+) => {
+  const { redirect: consentPage, pkce } = await startAuthorization(
+    auth,
+    cookie,
+    agent
+  );
   expect(consentPage.pathname).toBe("/auth/consent");
   return { consentPage, pkce };
+};
+
+/** The code an agent's callback carries, as the agent exchanges it. */
+const receivedCode = (
+  agent: ReturnType<typeof makeAgent>,
+  callback: URL,
+  { verifier }: Awaited<ReturnType<typeof makePkce>>
+) => {
+  expect(callback.href.startsWith(agent.redirectUri)).toBe(true);
+  expect(callback.searchParams.get("code")).toBeTruthy();
+  return {
+    clientId: agent.clientId,
+    redirectUri: agent.redirectUri,
+    code: callback.searchParams.get("code")!,
+    verifier,
+  };
+};
+
+/**
+ * Authorizes an agent for a customer who is already signed in and returns
+ * the code it receives, without exchanging it. Without a consent on record
+ * the request goes to the consent page and the customer allows it; with one
+ * the agent gets its code straight away.
+ */
+const authorizeSignedIn = async (
+  auth: TestAuth,
+  cookie: string,
+  agent: ReturnType<typeof makeAgent>,
+  consent: "asks" | "granted"
+) => {
+  if (consent === "granted") {
+    const { redirect, pkce } = await startAuthorization(auth, cookie, agent);
+    return receivedCode(agent, redirect, pkce);
+  }
+  const { consentPage, pkce } = await requestConsent(auth, cookie, agent);
+  return receivedCode(
+    agent,
+    await answerConsent(auth, cookie, consentPage, true),
+    pkce
+  );
 };
 
 /** The customer allows a consent page, and the agent exchanges its code. */
@@ -308,13 +365,14 @@ const allowConsent = async (
   agent: ReturnType<typeof makeAgent>,
   { consentPage, pkce }: Awaited<ReturnType<typeof requestConsent>>
 ) => {
-  const callback = await answerConsent(auth, cookie, consentPage, true);
-  const response = await exchangeCode(auth, {
-    clientId: agent.clientId,
-    redirectUri: agent.redirectUri,
-    code: callback.searchParams.get("code")!,
-    verifier: pkce.verifier,
-  });
+  const response = await exchangeCode(
+    auth,
+    receivedCode(
+      agent,
+      await answerConsent(auth, cookie, consentPage, true),
+      pkce
+    )
+  );
   expect(response.status).toBe(200);
   return (await response.json()) as TokenResponse;
 };
@@ -386,6 +444,18 @@ const storedTokenMaterial = async (userId: string) => {
   }>;
 };
 
+/** How many access and refresh tokens an account holds for one client. */
+const countClientTokens = async (userId: string, clientId: string) => {
+  const result = await testDatabase!.pool.query(
+    `select (select count(*)::int from auth.oauth_access_token
+              where user_id = $1 and client_id = $2)
+          + (select count(*)::int from auth.oauth_refresh_token
+              where user_id = $1 and client_id = $2) as count`,
+    [userId, clientId]
+  );
+  return result.rows[0]!.count as number;
+};
+
 /** The encrypted refresh replay responses still stored for an account. */
 const storedReplays = async (userId: string) =>
   (await storedTokenMaterial(userId)).flatMap(
@@ -417,6 +487,32 @@ const countRows = async (table: string, userId: string) => {
     [userId]
   );
   return result.rows[0]!.count as number;
+};
+
+/**
+ * Strips the consent binding from an account's one pending authorization
+ * code, as codes issued before the Workspace oauth-provider patch lack it,
+ * and dates the account's consent a minute before the code.
+ */
+const unbindPendingCode = async (userId: string) => {
+  const unbound = await testDatabase!.pool.query(
+    `update auth.verification
+        set value = (value::jsonb - 'consentId')::text
+      where case when value like '{"type":%'
+                 then value::jsonb ->> 'type' = 'authorization_code'
+                  and value::jsonb ->> 'userId' = $1
+                  and value::jsonb ->> 'consentId' is not null
+                 else false end`,
+    [userId]
+  );
+  expect(unbound.rowCount).toBe(1);
+  const dated = await testDatabase!.pool.query(
+    `update auth.oauth_consent
+        set created_at = created_at - interval '1 minute'
+      where user_id = $1`,
+    [userId]
+  );
+  expect(dated.rowCount).toBe(1);
 };
 
 /**
@@ -1171,9 +1267,194 @@ describe.skipIf(!testDatabase)(
       expect(reconnect.pathname).toBe("/auth/consent");
     });
 
+    // Guards the Workspace oauth-provider patch (better-auth#11318): upstream
+    // consent deletion leaves codes already issued under it redeemable.
+    test("disconnects one assistant: its codes from before the disconnect no longer exchange, other codes do", async () => {
+      const agent = makeAgent();
+      const other = makeAgent("Other Agent");
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: serveAgents(agent, other),
+      });
+      const customer = await signIn(auth, sentLinks);
+      const neighbour = await signIn(auth, sentLinks);
+
+      // Codes the assistants hold but haven't exchanged yet: two from the
+      // disconnecting assistant, one from the customer's other assistant,
+      // and one the neighbour issued to the same assistant.
+      const firstPending = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "asks"
+      );
+      const secondPending = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "granted"
+      );
+      const otherAssistant = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        other,
+        "asks"
+      );
+      const neighbours = await authorizeSignedIn(
+        auth,
+        neighbour.cookie,
+        agent,
+        "asks"
+      );
+
+      const connection = (await listConnections(auth, customer.cookie)).find(
+        ({ name }) => name === CLIENT_NAME
+      )!;
+      const disconnected = await request(auth, "/oauth2/delete-consent", {
+        method: "POST",
+        cookie: customer.cookie,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: connection.id }),
+      });
+      expect(disconnected.status).toBe(200);
+
+      const refused = await exchangeCode(auth, firstPending);
+      expect(refused.status).toBe(400);
+      expect(((await refused.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
+      expect(await countClientTokens(customer.accountId, agent.clientId)).toBe(
+        0
+      );
+
+      // The customer's other assistant and the neighbour's grant to the same
+      // assistant still exchange their codes.
+      expect((await exchangeCode(auth, otherAssistant)).status).toBe(200);
+      expect((await exchangeCode(auth, neighbours)).status).toBe(200);
+
+      // Reconnecting creates a new consent: a code issued under it
+      // exchanges, and a code from before the disconnect stays refused.
+      const reconnected = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "asks"
+      );
+      const stale = await exchangeCode(auth, secondPending);
+      expect(stale.status).toBe(400);
+      expect(((await stale.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
+      expect(await countClientTokens(customer.accountId, agent.clientId)).toBe(
+        0
+      );
+      expect((await exchangeCode(auth, reconnected)).status).toBe(200);
+    });
+
+    // Guards the Workspace oauth-provider patch: a code issued before it
+    // carries no consent id, so no consent can vouch for it, even one that
+    // still stands.
+    test("refuses a code without a consent binding while its consent stands", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const customer = await signIn(auth, sentLinks);
+      const unbound = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "asks"
+      );
+      await unbindPendingCode(customer.accountId);
+      const bound = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "granted"
+      );
+
+      const refused = await exchangeCode(auth, unbound);
+      expect(refused.status).toBe(400);
+      expect(((await refused.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
+      expect(await countClientTokens(customer.accountId, agent.clientId)).toBe(
+        0
+      );
+      expect(await countRows("oauth_consent", customer.accountId)).toBe(1);
+
+      const tokens = await exchangeCode(auth, bound);
+      expect(tokens.status).toBe(200);
+      const { access_token } = (await tokens.json()) as TokenResponse;
+      expect(await failureReasonOf(authorityOver(auth), access_token)).toBe(
+        "Success"
+      );
+    });
+
+    /**
+     * Issues one pending code under a fresh consent, narrows that consent
+     * with `narrow`, and expects the code's exchange to be refused while the
+     * narrowed consent still stands.
+     */
+    const expectRefusedAfterNarrowing = async (
+      narrow: (accountId: string) => Promise<{ readonly rowCount: unknown }>
+    ) => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const customer = await signIn(auth, sentLinks);
+      const pending = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "asks"
+      );
+      expect((await narrow(customer.accountId)).rowCount).toBe(1);
+
+      const refused = await exchangeCode(auth, pending);
+      expect(refused.status).toBe(400);
+      expect(((await refused.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
+      expect(await countClientTokens(customer.accountId, agent.clientId)).toBe(
+        0
+      );
+      expect(await countRows("oauth_consent", customer.accountId)).toBe(1);
+    };
+
+    // Guards the Workspace oauth-provider patch: the consent row a code is
+    // bound to can stand while it stops covering what the code was issued
+    // for, so only the coverage check keeps the code from redeeming.
+    test("refuses a code whose consent no longer grants one of its scopes", () =>
+      expectRefusedAfterNarrowing((accountId) =>
+        testDatabase!.pool.query(
+          `update auth.oauth_consent
+              set scopes = array_remove(scopes, $2)
+            where user_id = $1 and $2 = any(scopes)`,
+          [accountId, "reservations:create"]
+        )
+      ));
+
+    test("refuses a code whose consent no longer covers its resource", () =>
+      expectRefusedAfterNarrowing((accountId) =>
+        testDatabase!.pool.query(
+          `update auth.oauth_consent
+              set resources = array_remove(resources, $2)
+            where user_id = $1 and $2 = any(resources)`,
+          [accountId, RESOURCE]
+        )
+      ));
+
     /**
      * Connects one assistant through an adapter that lets a test interleave
-     * its refresh with its disconnect.
+     * its refresh or code exchange with its disconnect.
      */
     const connectForRace = async () => {
       const agent = makeAgent();
@@ -1227,11 +1508,17 @@ describe.skipIf(!testDatabase)(
           expect((await refresh(refresh_token!)).status).toBe(400);
         }
       };
+      const authorize = () =>
+        authorizeSignedIn(auth, customer.cookie, agent, "granted");
+      const exchange = (code: Awaited<ReturnType<typeof authorize>>) =>
+        exchangeCode(auth, code);
       return {
         interleaving,
         agent,
         tokens,
         refresh,
+        authorize,
+        exchange,
         disconnect,
         reconnect,
         expectRevoked,
@@ -1330,6 +1617,24 @@ describe.skipIf(!testDatabase)(
         race.tokens,
         (await response.json()) as TokenResponse,
       ]);
+    });
+
+    // Guards the Workspace oauth-provider patch: a disconnect that lands
+    // after a code exchange checked the code's consent but before it wrote
+    // the tokens leaves them no consent to reference, so none are written.
+    test("refuses a code exchange that a disconnect overtakes before its tokens are written", async () => {
+      const race = await connectForRace();
+      const pending = await race.authorize();
+      race.interleaving.before("create", "oauthRefreshToken", async () => {
+        expect((await race.disconnect()).status).toBe(200);
+      });
+
+      const exchanged = await race.exchange(pending);
+      expect(exchanged.status).toBe(400);
+      expect(((await exchanged.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
+      await race.expectRevoked([race.tokens]);
     });
 
     // Guards the Workspace oauth-provider patch: the consent delete is the
@@ -1519,28 +1824,10 @@ describe.skipIf(!testDatabase)(
     // disconnected buys none.
     test("refuses a code redeemed after the assistant was disconnected", async () => {
       const race = await connectForRace();
-      const pkce = await makePkce();
-      const callback = redirectOf(
-        await request(
-          race.auth,
-          authorizePath({
-            clientId: race.agent.clientId,
-            redirectUri: race.agent.redirectUri,
-            challenge: pkce.challenge,
-            state: crypto.randomUUID(),
-            scope: AGENT_SCOPE,
-          }),
-          { cookie: race.cookie }
-        )
-      );
+      const pending = await race.authorize();
       expect((await race.disconnect()).status).toBe(200);
 
-      const exchanged = await exchangeCode(race.auth, {
-        clientId: race.agent.clientId,
-        redirectUri: race.agent.redirectUri,
-        code: callback.searchParams.get("code")!,
-        verifier: pkce.verifier,
-      });
+      const exchanged = await race.exchange(pending);
       expect(exchanged.status).toBe(400);
       expect(((await exchanged.json()) as { error: string }).error).toBe(
         "invalid_grant"

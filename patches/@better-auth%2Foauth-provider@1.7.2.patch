@@ -1,5 +1,5 @@
 diff --git a/dist/authorize-BmTe2VYG.mjs b/dist/authorize-BmTe2VYG.mjs
-index 42c943dd45aa3d297a14edcc056a14e7ddd54680..25c93384415b96959890d588fa7baeee84e6cd6a 100644
+index 42c943dd45aa3d297a14edcc056a14e7ddd54680..dc6684f3e1858dba59d63d63cd84633420384253 100644
 --- a/dist/authorize-BmTe2VYG.mjs
 +++ b/dist/authorize-BmTe2VYG.mjs
 @@ -3000,11 +3000,22 @@ async function deleteConsentEndpoint(ctx, opts) {
@@ -66,8 +66,31 @@ index 42c943dd45aa3d297a14edcc056a14e7ddd54680..25c93384415b96959890d588fa7baeee
  			expiresAt: { type: "date" },
  			createdAt: { type: "date" },
  			revoked: {
+@@ -5646,7 +5681,11 @@ async function authorizeEndpoint(ctx, opts, settings) {
+ 		sessionId: session.session.id,
+ 		authTime: new Date(session.session.createdAt).getTime(),
+ 		referenceId,
+-		resource: requestedResources
++		resource: requestedResources,
++		// Workspace patch (better-auth/better-auth#11318, change from open PR
++		// better-auth/better-auth#11345): bind the code to the consent that
++		// authorized it, so deleting that consent also invalidates the code.
++		consentId: consent.id
+ 	});
+ }
+ function serializeAuthorizationQuery(query) {
+@@ -5674,7 +5713,8 @@ async function redirectWithAuthorizationCode(ctx, opts, verificationValue) {
+ 			sessionId: verificationValue?.sessionId,
+ 			referenceId: verificationValue.referenceId,
+ 			authTime: verificationValue.authTime,
+-			resource: verificationValue.resource
++			resource: verificationValue.resource,
++			consentId: verificationValue.consentId
+ 		})
+ 	};
+ 	await ctx.context.internalAdapter.createVerificationValue({
 diff --git a/dist/introspect-C6P1zrTr.mjs b/dist/introspect-C6P1zrTr.mjs
-index 0b3934dd6724d408a84624a3fb0215f6d3274fea..7782b967b5538e4acd67920c929e7ed21f43e0ba 100644
+index 0b3934dd6724d408a84624a3fb0215f6d3274fea..6d1fb63b2a8454884340a63197c707b9a7145309 100644
 --- a/dist/introspect-C6P1zrTr.mjs
 +++ b/dist/introspect-C6P1zrTr.mjs
 @@ -802,6 +802,14 @@ function getSeedState(ctx) {
@@ -103,7 +126,17 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..7782b967b5538e4acd67920c929e7ed2
  				if (/unique|duplicate|UNIQUE/i.test(message)) {
  					logger.debug(`oauth-provider: resource ${input.identifier} already inserted by a concurrent process — skipping.`);
  					continue;
-@@ -1454,7 +1462,7 @@ async function decodeRefreshToken(opts, token) {
+@@ -1067,7 +1075,8 @@ const verificationValueSchema = z.object({
+ 	userId: z.string(),
+ 	referenceId: z.string().optional(),
+ 	authTime: z.number().optional(),
+-	resource: z.array(z.string()).optional()
++	resource: z.array(z.string()).optional(),
++	consentId: z.string().optional()
+ }).passthrough();
+ /**
+ * Request body accepted at `POST /oauth2/register` (RFC 7591 §2 client
+@@ -1454,7 +1463,7 @@ async function decodeRefreshToken(opts, token) {
  	});
  	return opts.formatRefreshToken?.decrypt ? opts.formatRefreshToken?.decrypt(token) : { token };
  }
@@ -112,7 +145,7 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..7782b967b5538e4acd67920c929e7ed2
  	const iat = payload.iat ?? Math.floor(Date.now() / 1e3);
  	const exp = payload?.exp ?? iat + (opts.accessTokenExpiresIn ?? 3600);
  	const token = opts.generateOpaqueAccessToken ? await opts.generateOpaqueAccessToken() : generateRandomString(32, "A-Z", "a-z");
-@@ -1471,6 +1479,7 @@ async function createOpaqueAccessToken(ctx, opts, user, client, scopes, payload,
+@@ -1471,6 +1480,7 @@ async function createOpaqueAccessToken(ctx, opts, user, client, scopes, payload,
  			refreshId,
  			confirmation,
  			requestedUserInfoClaims: requestedUserInfoClaims?.length ? requestedUserInfoClaims : void 0,
@@ -120,7 +153,7 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..7782b967b5538e4acd67920c929e7ed2
  			scopes,
  			createdAt: /* @__PURE__ */ new Date(iat * 1e3),
  			expiresAt: /* @__PURE__ */ new Date(exp * 1e3)
-@@ -1525,6 +1534,47 @@ async function invalidateRefreshFamily(ctx, clientId, userId) {
+@@ -1525,6 +1535,47 @@ async function invalidateRefreshFamily(ctx, clientId, userId) {
  		}]
  	});
  }
@@ -168,7 +201,7 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..7782b967b5538e4acd67920c929e7ed2
  async function revokeTokensIssuedForAuthorizationCode(ctx, authorizationCodeId) {
  	const deleteIssuedTokens = async (model) => {
  		try {
-@@ -1542,7 +1592,7 @@ async function revokeTokensIssuedForAuthorizationCode(ctx, authorizationCodeId)
+@@ -1542,7 +1593,7 @@ async function revokeTokensIssuedForAuthorizationCode(ctx, authorizationCodeId)
  	await deleteIssuedTokens("oauthAccessToken");
  	await deleteIssuedTokens("oauthRefreshToken");
  }
@@ -177,7 +210,7 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..7782b967b5538e4acd67920c929e7ed2
  	const iat = payload.iat ?? Math.floor(Date.now() / 1e3);
  	const exp = payload?.exp ?? iat + (opts.refreshTokenExpiresIn ?? 2592e3);
  	const token = opts.generateRefreshToken ? await opts.generateRefreshToken() : generateRandomString(32, "A-Z", "a-z");
-@@ -1557,6 +1607,7 @@ async function createRefreshToken(ctx, opts, user, referenceId, authorizationCod
+@@ -1557,6 +1608,7 @@ async function createRefreshToken(ctx, opts, user, referenceId, authorizationCod
  		authTime,
  		confirmation,
  		requestedUserInfoClaims: requestedUserInfoClaims?.length ? requestedUserInfoClaims : void 0,
@@ -185,7 +218,7 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..7782b967b5538e4acd67920c929e7ed2
  		scopes,
  		resources,
  		createdAt: /* @__PURE__ */ new Date(iat * 1e3),
-@@ -1830,11 +1881,14 @@ async function createUserTokens(ctx, opts, params) {
+@@ -1830,11 +1882,14 @@ async function createUserTokens(ctx, opts, params) {
  		refreshToken: existingRefreshToken
  	});
  	const requestedUserInfoClaims = params.requestedUserInfoClaims ?? existingRefreshToken?.requestedUserInfoClaims ?? [];
@@ -201,7 +234,7 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..7782b967b5538e4acd67920c929e7ed2
  	const accessTokenClaims = isJwtAccessToken ? await resolveAccessTokenClaims({
  		ctx,
  		opts,
-@@ -1861,11 +1915,11 @@ async function createUserTokens(ctx, opts, params) {
+@@ -1861,11 +1916,11 @@ async function createUserTokens(ctx, opts, params) {
  		iat,
  		exp,
  		sid: sessionId
@@ -215,34 +248,79 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..7782b967b5538e4acd67920c929e7ed2
  	const idToken = isIdToken ? await createIdToken(ctx, opts, user, client, effectiveScopes, nonce, sessionId, authTime, accessToken, additionalIdTokenClaims) : void 0;
  	const responseBody = {
  		...customFields,
-@@ -2032,6 +2086,26 @@ async function handleAuthorizationCodeGrant(ctx, opts) {
+@@ -1889,6 +1944,31 @@ async function createUserTokens(ctx, opts, params) {
+ 	}
+ 	return ctx.json(responseBody);
+ }
++// Workspace patch (better-auth/better-auth#11318, change from open PR
++// better-auth/better-auth#11345): a code redeems only while the consent that
++// authorized it exists and still covers its scopes and resources. A reconnect
++// creates a new consent row, so it doesn't revive older codes.
++async function refuseAuthorizationCodeConsent(ctx, clientId, verificationValue) {
++	const consent = await ctx.context.adapter.findOne({
++		model: "oauthConsent",
++		where: [{
++			field: "id",
++			value: verificationValue.consentId
++		}]
++	});
++	if (!consent || consent.clientId !== clientId || consent.userId !== verificationValue.userId) return new APIError("BAD_REQUEST", {
++		error_description: "consent revoked",
++		error: "invalid_grant"
++	});
++	const consentedScopes = consent.scopes ?? [];
++	const consentedResources = consent.resources ?? [];
++	const codeScopes = (verificationValue.query.scope?.split(" ") ?? []).filter(Boolean);
++	const codeResources = verificationValue.resource ?? [];
++	if (!codeScopes.every((scope) => consentedScopes.includes(scope)) || !codeResources.every((codeResource) => consentedResources.includes(codeResource))) return new APIError("BAD_REQUEST", {
++		error_description: "consent no longer covers this authorization",
++		error: "invalid_grant"
++	});
++}
+ /** Checks verification value */
+ async function checkVerificationValue(ctx, opts, code, client_id, redirect_uri, resource) {
+ 	const authorizationCodeId = await storeToken(opts.storeTokens, code, "authorization_code");
+@@ -1919,6 +1999,14 @@ async function checkVerificationValue(ctx, opts, code, client_id, redirect_uri,
+ 		error_description: "invalid client_id",
+ 		error: "invalid_grant"
+ 	});
++	// Workspace patch (better-auth/better-auth#11318, change from open PR
++	// better-auth/better-auth#11345): refuse a code whose consent is gone.
++	// Codes of `skipConsent` clients carry no consent id, and other unbound
++	// codes are refused once the client is known.
++	if (verificationValue.consentId) {
++		const refusal = await refuseAuthorizationCodeConsent(ctx, client_id, verificationValue);
++		if (refusal) throw refusal;
++	}
+ 	const boundRedirectUri = verificationValue.query.redirect_uri;
+ 	if (boundRedirectUri) {
+ 		if (!redirect_uri) throw new APIError("BAD_REQUEST", {
+@@ -1980,6 +2068,13 @@ async function handleAuthorizationCodeGrant(ctx, opts) {
+ 	});
+ 	/** Verify Client */
+ 	const client = await validateClientCredentials(ctx, opts, client_id, client_secret, scopes, preVerified, "authorization_code", authMethod);
++	// Workspace patch (better-auth/better-auth#11318): a client that asks for
++	// consent gets codes bound to that consent. A code without one was issued
++	// before the binding existed, so no consent can vouch for it.
++	if (!client.skipConsent && !verificationValue.consentId) throw new APIError("BAD_REQUEST", {
++		error_description: "authorization code not bound to a consent",
++		error: "invalid_grant"
++	});
+ 	if (isPKCERequired(client, {
+ 		scopes: (verificationValue.query?.scope)?.split(" ") || [],
+ 		nonce: verificationValue.query?.nonce
+@@ -2032,6 +2127,10 @@ async function handleAuthorizationCodeGrant(ctx, opts) {
  	});
  	const authTime = verificationValue.authTime != null ? normalizeTimestampValue(verificationValue.authTime) : resolveSessionAuthTime(session);
  	const requestedUserInfoClaims = getRequestedUserInfoClaims(verificationValue.query.claims, getSupportedClaims(opts));
 +	// Workspace patch: the tokens reference the consent the code is bound to
-+	// (better-auth/better-auth#11345), or else the client's consent for the
-+	// customer. A client that asks for consent gets no tokens without one.
-+	const consentId = client.skipConsent ? void 0 : verificationValue.consentId ?? (await ctx.context.adapter.findOne({
-+		model: "oauthConsent",
-+		where: [{
-+			field: "clientId",
-+			value: client.clientId
-+		}, {
-+			field: "userId",
-+			value: user.id
-+		}, {
-+			field: "referenceId",
-+			value: verificationValue.referenceId ?? null
-+		}]
-+	}))?.id;
-+	if (!client.skipConsent && !consentId) throw new APIError("BAD_REQUEST", {
-+		error_description: "consent revoked",
-+		error: "invalid_grant"
-+	});
++	// (better-auth/better-auth#11345), checked above, so deleting it deletes
++	// them too, or refuses their write.
++	const consentId = client.skipConsent ? void 0 : verificationValue.consentId;
  	return createUserTokens(ctx, opts, {
  		client,
  		scopes: verificationValue.query.scope?.split(" ") ?? [],
-@@ -2045,7 +2119,8 @@ async function handleAuthorizationCodeGrant(ctx, opts) {
+@@ -2045,7 +2144,8 @@ async function handleAuthorizationCodeGrant(ctx, opts) {
  		authorizationCodeId,
  		requestedUserInfoClaims,
  		resources: effectiveResources,
@@ -252,7 +330,7 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..7782b967b5538e4acd67920c929e7ed2
  	});
  }
  /**
-@@ -2143,6 +2218,15 @@ async function handleRefreshTokenGrant(ctx, opts) {
+@@ -2143,6 +2243,15 @@ async function handleRefreshTokenGrant(ctx, opts) {
  		});
  	}
  	const client = await validateClientCredentials(ctx, opts, client_id, client_secret, requestedScopes ?? scopes, preVerified, "refresh_token", authMethod);
@@ -268,7 +346,7 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..7782b967b5538e4acd67920c929e7ed2
  	if (refreshToken.revoked) {
  		if (isWithinRefreshTokenReuseInterval(refreshToken)) {
  			const replay = await getRefreshTokenRotationReplay(ctx, refreshToken, await resolveRefreshTokenRotationReplayRequest(ctx, opts, {
-@@ -2320,6 +2404,16 @@ async function validateOpaqueAccessToken(ctx, opts, token, clientId) {
+@@ -2320,6 +2429,16 @@ async function validateOpaqueAccessToken(ctx, opts, token, clientId) {
  			issuerClientId: accessToken.clientId,
  			audienceResources: resources ?? []
  		})) return inactiveAccessToken();

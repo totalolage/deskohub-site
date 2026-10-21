@@ -139,9 +139,9 @@ resource.
   patched dependencies) binds every access and refresh token of a client
   that asks for consent to the consent that authorized it: `consent_id` on
   both token tables references `oauth_consent` with `ON DELETE CASCADE`. The
-  code exchange takes the consent from the code (once codes carry one,
-  #778) or else the client's consent for the customer, and refuses the code
-  without one; a refresh carries the consent of the token it rotates.
+  code exchange takes the consent the code is bound to (below) and refuses
+  a code without one; a refresh carries the consent of the token it
+  rotates.
 - So a disconnect is one statement: it deletes every consent of the client,
   customer, and reference (a concurrent consent can record a duplicate),
   and the database deletes their tokens with them. A token can't outlive its
@@ -165,9 +165,12 @@ resource.
 - Two approvals of the assistant at once can both record a consent. One
   recorded after a disconnect leaves the assistant listed as connected
   under that approval; tokens of the disconnected consent stay revoked.
-  Authorization codes issued before a disconnect stay redeemable until they
-  expire if the customer connects the assistant again by then
-  (better-auth#11318, handled in #778).
+- The patch also binds each authorization code to the consent that
+  authorized it, so a code issued before the disconnect and redeemed after
+  it gets `invalid_grant`, even after the customer reconnects. Codes issued
+  before the patch carry no consent id and get `invalid_grant` from
+  assistants that ask for consent, so an authorization in flight at the
+  deploy is refused once and the assistant authorizes again.
 
 ## Account-boundary adapter
 

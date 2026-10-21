@@ -76,10 +76,11 @@ in-app. Re-check this table whenever a provider, plan, or region changes.
   permissions last until the customer disconnects the assistant in Connected
   assistants or deletes the account, and that either ends the connection and
   its permissions right away, with the access credentials stopping working
-  immediately and being deleted. Keep each token bound to the consent that
-  authorized it, so deleting the consent deletes its tokens (the
-  oauth-provider patch and the `consent_id` cascade), and keep the Connected
-  assistants section name in step with the copy. Tokens issued before the
+  immediately and being deleted. Keep each token and unexchanged code bound to
+  the consent that authorized it, so deleting the consent deletes its tokens
+  and voids its codes (the oauth-provider patch and the `consent_id`
+  cascade), and keep the Connected assistants section name in step with the
+  copy. Tokens issued before the
   binding reference no consent and never work again for a client that asks
   for consent, so they can't outlive a disconnect; the assistant connects
   once more. Never bind existing tokens to a consent after the fact.
