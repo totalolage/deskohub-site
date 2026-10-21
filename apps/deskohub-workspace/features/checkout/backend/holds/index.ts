@@ -2,4 +2,5 @@ export { ReservationHoldCleanupService } from "./reservation-hold-cleanup.servic
 export {
   processReservationHoldCleanupScheduleMessage,
   ReservationHoldCleanupScheduleService,
+  reservationHoldCleanupRedelivery,
 } from "./reservation-hold-cleanup-queue.service";

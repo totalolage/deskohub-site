@@ -2,8 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Duration, Effect, Layer } from "effect";
-
-process.env.CRON_SECRET = "cron-secret-for-payment-refund-test";
+import { env } from "@/env";
 
 const reconcileCalls: { readonly limit: number }[] = [];
 
@@ -71,7 +70,7 @@ describe("payment refund reconciliation cron route", () => {
     const response = await GET(
       new Request(requestUrl, {
         headers: {
-          authorization: "Bearer cron-secret-for-payment-refund-test",
+          authorization: `Bearer ${env.CRON_SECRET}`,
         },
       })
     );
@@ -98,7 +97,7 @@ describe("payment refund reconciliation cron route", () => {
     const response = await GET(
       new Request(requestUrl, {
         headers: {
-          authorization: "Bearer cron-secret-for-payment-refund-test",
+          authorization: `Bearer ${env.CRON_SECRET}`,
         },
       })
     );

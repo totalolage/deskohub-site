@@ -7,9 +7,10 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
+import { QueueRedelivery } from "@/shared/backend/queue/queue-consumer";
 import { clamp } from "@/shared/utils";
-import { serializeErrorForLog } from "@/shared/utils/error-formatting";
 import { instantStringSchema } from "@/shared/utils/temporal";
+import { ProviderPaymentDeferral } from "../payment/provider-payment-finalization.service";
 import {
   type ReservationHoldCleanupOutcome,
   ReservationHoldCleanupService,
@@ -63,12 +64,16 @@ class ReservationHoldCleanupScheduleError extends Data.TaggedError(
 }> {
   static fromError(message: string) {
     return (cause: unknown) =>
-      new ReservationHoldCleanupScheduleError({
-        message,
-        cause: serializeErrorForLog(cause),
-      });
+      new ReservationHoldCleanupScheduleError({ message, cause });
   }
 }
+
+/** Redelivers the message once the provider's abandonment window ends. */
+class ReservationHoldCleanupDeferredError extends Data.TaggedError(
+  "ReservationHoldCleanupDeferredError"
+)<{
+  readonly abandonmentCutoff: Temporal.Instant;
+}> {}
 
 class ReservationHoldCleanupQueueDuplicateError extends Data.TaggedError(
   "ReservationHoldCleanupQueueDuplicateError"
@@ -249,16 +254,21 @@ export const processReservationHoldCleanupScheduleMessage = Effect.fn(
       )
     );
 
-  if (outcome === "deferred") {
+  if (outcome instanceof ProviderPaymentDeferral) {
     yield* Effect.logInfo(
       "Reservation hold cleanup queue message deferred until provider cutoff",
-      { payload }
+      { payload, abandonmentCutoff: outcome.abandonmentCutoff }
     );
-    return yield* new ReservationHoldCleanupScheduleError({
-      message:
-        "Reservation hold cleanup is waiting for the provider abandonment cutoff.",
+    return yield* new ReservationHoldCleanupDeferredError({
+      abandonmentCutoff: outcome.abandonmentCutoff,
     });
   }
 
   return outcome satisfies ReservationHoldCleanupOutcome;
 });
+
+/** Classifies a failed delivery; the route's Layer failures stay unclassified. */
+export const reservationHoldCleanupRedelivery = (cause: unknown) =>
+  cause instanceof ReservationHoldCleanupDeferredError
+    ? QueueRedelivery.At({ instant: cause.abandonmentCutoff })
+    : QueueRedelivery.Default();

@@ -14,7 +14,15 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { EffectLogger } from "drizzle-orm/effect-postgres";
-import { Cause, type Context, Effect, Layer, Logger, References } from "effect";
+import {
+  Cause,
+  type Context,
+  Data,
+  Effect,
+  Layer,
+  Logger,
+  References,
+} from "effect";
 import { SqlError } from "effect/unstable/sql";
 import { createTracingLive } from "../observability/otel-tracing";
 
@@ -413,6 +421,42 @@ describe("censorLogValue", () => {
     expect(serialized).not.toContain("driver echoed");
     expect(serialized).not.toContain("socket echoed");
     expect(serialized).not.toContain("acquisition echoed");
+  });
+
+  test("keeps the SQLSTATE of a database failure a queue error wraps", () => {
+    const privateValue = testEmailAddress("queue-private");
+    class QueueTestScheduleError extends Data.TaggedError(
+      "QueueTestScheduleError"
+    )<{ readonly message: string; readonly cause: unknown }> {}
+    const error = new QueueTestScheduleError({
+      message: "Queued reservation hold cleanup state could not be loaded.",
+      cause: new EffectDrizzleQueryError({
+        query: "select /* deskohub:sensitive */ $1",
+        params: [privateValue],
+        cause: Cause.fail(
+          new SqlError.SqlError({
+            reason: new SqlError.AuthenticationError({
+              cause: Object.assign(
+                new Error(`password authentication failed for ${privateValue}`),
+                { code: "28P01" }
+              ),
+              message: `Failed to acquire connection for ${privateValue}`,
+              operation: "acquireConnection",
+            }),
+          })
+        ),
+      }),
+    });
+
+    const serialized = JSON.stringify(censorLogValue({ cause: error }));
+
+    expect(serialized).toContain("QueueTestScheduleError");
+    expect(serialized).toContain("EffectDrizzleQueryError");
+    expect(serialized).toContain("AuthenticationError");
+    expect(serialized).toContain("acquireConnection");
+    expect(serialized).toContain("28P01");
+    expect(serialized).not.toContain("[object Object]");
+    expect(serialized).not.toContain(privateValue);
   });
 
   test("projects errors with recursively censored causes", () => {

@@ -25,16 +25,17 @@ import { CurrentAgentTraffic } from "@/shared/backend/workspace-request-context"
 
 type LifecycleEventTimestamp = WorkspaceReservation["createdAt"];
 
+type LifecycleReservation = Pick<WorkspaceReservation, "id">;
+
 const reservationProperties = (
-  reservation: Pick<WorkspaceReservation, "id">
+  reservation: LifecycleReservation
 ): PostHogEventProperties => ({
   reservation_id: reservation.id,
-  workspace_reservation_id: reservation.id,
 });
 
 type PaymentLifecycleAttempt = Pick<
   PaymentAttempt,
-  "amount" | "id" | "provider" | "providerOrderId" | "workspaceReservationId"
+  "amount" | "id" | "provider" | "workspaceReservationId"
 >;
 
 const paymentProperties = (
@@ -45,7 +46,6 @@ const paymentProperties = (
   reservation_id: attempt.workspaceReservationId,
   payment_attempt_id: attempt.id,
   provider: attempt.provider,
-  provider_order_id: attempt.providerOrderId ?? undefined,
 });
 
 const captureLifecycleEvent = Effect.fn("posthog.captureLifecycleEvent")(
@@ -75,21 +75,14 @@ const captureLifecycleEvent = Effect.fn("posthog.captureLifecycleEvent")(
 export const captureReservationStarted = Effect.fn(
   "posthog.captureReservationStarted"
 )(function* (input: {
-  readonly reservation: Pick<
-    WorkspaceReservation,
-    "id" | "dotyposReservationId"
-  >;
+  readonly reservation: LifecycleReservation;
   readonly timestamp: LifecycleEventTimestamp;
 }) {
   yield* captureLifecycleEvent({
     distinctId: input.reservation.id,
     event: "reservation started",
     id: input.reservation.id,
-    properties: {
-      ...reservationProperties(input.reservation),
-      dotypos_reservation_id:
-        input.reservation.dotyposReservationId ?? undefined,
-    },
+    properties: reservationProperties(input.reservation),
     timestamp: input.timestamp,
   });
 });
@@ -150,10 +143,7 @@ export const capturePrePaymentOutcome = (input: {
   });
 
 export const captureReservationAbandoned = (input: {
-  readonly reservation: Pick<
-    WorkspaceReservation,
-    "id" | "dotyposReservationId"
-  >;
+  readonly reservation: LifecycleReservation;
   readonly timestamp: LifecycleEventTimestamp;
 }) =>
   captureLifecycleEvent({
@@ -165,40 +155,26 @@ export const captureReservationAbandoned = (input: {
   });
 
 export const captureReservationCompleted = (input: {
-  readonly reservation: Pick<
-    WorkspaceReservation,
-    "id" | "dotyposReservationId"
-  >;
+  readonly reservation: LifecycleReservation;
   readonly timestamp: LifecycleEventTimestamp;
 }) =>
   captureLifecycleEvent({
     distinctId: input.reservation.id,
     event: "reservation completed",
     id: input.reservation.id,
-    properties: {
-      ...reservationProperties(input.reservation),
-      dotypos_reservation_id:
-        input.reservation.dotyposReservationId ?? undefined,
-    },
+    properties: reservationProperties(input.reservation),
     timestamp: input.timestamp,
   });
 
 export const captureReservationFulfilled = (input: {
-  readonly reservation: Pick<
-    WorkspaceReservation,
-    "id" | "dotyposCustomerId" | "dotyposReservationId"
-  >;
+  readonly reservation: LifecycleReservation;
   readonly timestamp: LifecycleEventTimestamp;
 }) =>
   captureLifecycleEvent({
     distinctId: input.reservation.id,
     event: "reservation fulfilled",
     id: input.reservation.id,
-    properties: {
-      ...reservationProperties(input.reservation),
-      dotypos_reservation_id:
-        input.reservation.dotyposReservationId ?? undefined,
-    },
+    properties: reservationProperties(input.reservation),
     timestamp: input.timestamp,
   });
 

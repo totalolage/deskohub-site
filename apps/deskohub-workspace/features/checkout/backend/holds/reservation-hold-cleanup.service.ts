@@ -6,7 +6,10 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { captureReservationAbandoned } from "../analytics/posthog-lifecycle-events";
-import { ProviderPaymentFinalizationService } from "../payment/provider-payment-finalization.service";
+import {
+  ProviderPaymentDeferral,
+  ProviderPaymentFinalizationService,
+} from "../payment/provider-payment-finalization.service";
 import { PaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 
 class ReservationHoldCleanupError extends Data.TaggedError(
@@ -23,7 +26,7 @@ class ReservationHoldCleanupError extends Data.TaggedError(
 
 export type ReservationHoldCleanupOutcome =
   | "cancelled"
-  | "deferred"
+  | ProviderPaymentDeferral
   | "skipped";
 
 export interface IReservationHoldCleanupService {
@@ -153,11 +156,12 @@ function makeReservationHoldCleanupServiceLayer(
               );
               return "skipped";
             }
-            if (result === "deferred") {
+            if (result instanceof ProviderPaymentDeferral) {
               yield* Effect.logInfo(
-                "Reservation hold cancellation deferred: empty provider order is inside abandonment window"
+                "Reservation hold cancellation deferred: empty provider order is inside abandonment window",
+                { abandonmentCutoff: result.abandonmentCutoff }
               );
-              return "deferred";
+              return result;
             }
             if (result === "abandoned") {
               yield* Effect.logInfo(

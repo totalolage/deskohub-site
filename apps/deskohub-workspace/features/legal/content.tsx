@@ -680,8 +680,8 @@ const legalDocuments = {
               use, and, for our booking tools for AI assistants, which tool was
               used and whether it worked. We send nothing that identifies you,
               and this does not depend on analytics consent. We also add the
-              category to the reservation and payment records we send to our
-              analytics provider.
+              category and the name of a recognized assistant to the reservation
+              and payment records described in section 3.
             </>,
             <>
               If you consent to analytics cookies or similar technologies, we
@@ -739,6 +739,14 @@ const legalDocuments = {
               measurements don't include what you enter in the reservation form.
             </>,
             <>
+              Whether or not you give analytics consent, we also send our
+              analytics provider a record of each reservation and payment step,
+              such as a started, completed, failed, or abandoned payment and its
+              amount. We use these records to measure how reservations and
+              payments go and to spot payment problems. They are linked to your
+              reservation but don't include your name or contact details.
+            </>,
+            <>
               We also send selected customer data from our booking system
               Dotypos to our analytics provider to understand how customers use
               our services and how that relates to their activity on the
@@ -782,14 +790,21 @@ const legalDocuments = {
             </>,
             <>
               Optional non-essential cookies are processed only on the basis of
-              your consent. Analytics and campaign measurement processing is
-              based on consent, which you can withdraw or change at any time via
-              cookie settings.
+              your consent. Analytics of your website use and campaign
+              measurement are based on consent, which you can withdraw or change
+              at any time via cookie settings.
             </>,
             <>
               Measuring automated traffic by category is based on our legitimate
               interest in operating the website and improving it for search
               engines and AI assistants. It uses no data that identifies you.
+            </>,
+            <>
+              Recording reservation and payment steps is based on our legitimate
+              interest in measuring how reservations and payments go and
+              spotting failed or abandoned payments, where that interest is not
+              overridden by your rights. You can object to this processing at
+              any time.
             </>,
             <>
               Sending customer data from our booking system to our analytics
@@ -866,7 +881,9 @@ const legalDocuments = {
               If you connect an AI assistant, what it retrieves at your request,
               such as our offers and your reservations, goes to that assistant's
               provider, which handles it under its own terms as a recipient you
-              chose.
+              chose. That provider may be outside the European Union, for
+              example in the United States, and your data goes there because you
+              asked for it.
             </>,
             <>
               If we send marketing communications in the future, our email
@@ -876,7 +893,38 @@ const legalDocuments = {
           ],
         },
         {
-          heading: "7. Your rights",
+          heading: "7. Transfers outside the EU",
+          body: [
+            <>
+              Some of our providers, or companies working for them, are outside
+              the European Union, so your data may be processed there. In the
+              United States, we use only companies certified under the EU–US
+              Data Privacy Framework or bound by the European Commission's
+              standard contractual clauses. The map on our website comes from a
+              provider in the United Kingdom. The European Commission has
+              decided that the United Kingdom, and US companies certified under
+              the framework, protect personal data adequately. To learn more
+              about these transfers or get a copy of the safeguards, write to us
+              at{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              .
+            </>,
+            <>
+              Our door-lock provider is in Singapore, which has no such
+              decision. To give you door access for your reservation, it
+              receives details of your door code, such as when the code is
+              valid. We send them only because they are needed to provide the
+              service you booked.
+            </>,
+          ],
+        },
+        {
+          heading: "8. Your rights",
           body: [
             <>
               Under applicable data protection law, you may request access,
@@ -1171,9 +1219,9 @@ const legalDocuments = {
               automatizovaný požadavek pokusil použít, a u našich rezervačních
               nástrojů pro AI asistenty to, který nástroj byl použit a zda
               uspěl. Nepředáváme nic, co by vás identifikovalo, a toto měření
-              nezávisí na souhlasu s analytikou. Tuto kategorii připojujeme také
-              k údajům o rezervacích a platbách, které předáváme poskytovateli
-              analytických služeb.
+              nezávisí na souhlasu s analytikou. Tuto kategorii a název
+              rozpoznaného asistenta připojujeme také k záznamům o rezervacích a
+              platbách popsaným v bodě 3.
             </>,
             <>
               Pokud udělíte souhlas s analytickými cookies nebo obdobnými
@@ -1233,6 +1281,15 @@ const legalDocuments = {
               zadáte do rezervačního formuláře.
             </>,
             <>
+              Bez ohledu na analytický souhlas také předáváme poskytovateli
+              analytických služeb záznam o jednotlivých krocích rezervace a
+              platby, například o zahájené, dokončené, neúspěšné nebo opuštěné
+              platbě a její částce. Tyto záznamy používáme k měření průběhu
+              rezervací a plateb a k odhalování problémů s platbami. Jsou
+              spojené s vaší rezervací, ale neobsahují vaše jméno ani kontaktní
+              údaje.
+            </>,
+            <>
               Vybrané zákaznické údaje z našeho rezervačního systému Dotypos
               také předáváme našemu analytickému poskytovateli, abychom
               porozuměli tomu, jak zákazníci využívají naše služby a jak to
@@ -1277,14 +1334,21 @@ const legalDocuments = {
             </>,
             <>
               Nepovinné cookies zpracováváme pouze na základě vašeho souhlasu.
-              Analytické a kampanové měření je založené na souhlasu, který
-              můžete kdykoli odvolat nebo změnit v nastavení cookies.
+              Analytika vašeho používání webu a měření kampaní jsou založené na
+              souhlasu, který můžete kdykoli odvolat nebo změnit v nastavení
+              cookies.
             </>,
             <>
               Měření automatizovaného provozu podle kategorií vychází z našeho
               oprávněného zájmu na provozu webu a jeho zlepšování pro
               vyhledávače a AI asistenty. Nepoužívá žádné údaje, které by vás
               identifikovaly.
+            </>,
+            <>
+              Zaznamenávání kroků rezervace a platby vychází z našeho
+              oprávněného zájmu měřit průběh rezervací a plateb a odhalovat
+              neúspěšné nebo opuštěné platby, nepřevažují-li nad ním vaše práva.
+              Proti tomuto zpracování můžete kdykoli vznést námitku.
             </>,
             <>
               Předávání zákaznických údajů z našeho rezervačního systému
@@ -1361,7 +1425,10 @@ const legalDocuments = {
               Pokud připojíte AI asistenta, informace, které na vaši žádost
               získá, například naši nabídku a vaše rezervace, předáváme
               poskytovateli tohoto asistenta, který s nimi nakládá podle
-              vlastních podmínek jako příjemce, kterého jste si zvolili.
+              vlastních podmínek jako příjemce, kterého jste si zvolili. Tento
+              poskytovatel může sídlit mimo Evropskou unii, například ve
+              Spojených státech, a vaše údaje se tam dostanou proto, že jste o
+              to požádali.
             </>,
             <>
               Pokud budeme v budoucnu zasílat marketingová sdělení, může náš
@@ -1371,7 +1438,37 @@ const legalDocuments = {
           ],
         },
         {
-          heading: "7. Vaše práva",
+          heading: "7. Předávání mimo EU",
+          body: [
+            <>
+              Někteří naši poskytovatelé nebo firmy, které pro ně pracují, sídlí
+              mimo Evropskou unii, a vaše údaje se proto mohou zpracovávat i
+              tam. Ve Spojených státech využíváme jen firmy certifikované podle
+              rámce EU–USA pro ochranu údajů nebo vázané standardními smluvními
+              doložkami Evropské komise. Mapa na našem webu se načítá od
+              poskytovatele ve Spojeném království. Evropská komise rozhodla, že
+              Spojené království a americké firmy certifikované podle tohoto
+              rámce zajišťují odpovídající ochranu osobních údajů. Informace o
+              předávání nebo kopii příslušných záruk si můžete vyžádat na{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              .
+            </>,
+            <>
+              Náš poskytovatel dveřních zámků sídlí v Singapuru, pro který
+              takové rozhodnutí neexistuje. Kvůli přístupu do prostor během vaší
+              rezervace dostává údaje o vašem přístupovém kódu, například dobu
+              jeho platnosti. Předáváme je jen proto, že jsou nezbytné k
+              poskytnutí služby, kterou jste si rezervovali.
+            </>,
+          ],
+        },
+        {
+          heading: "8. Vaše práva",
           body: [
             <>
               Podle platných předpisů můžete požadovat přístup, opravu, výmaz,
