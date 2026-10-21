@@ -13,7 +13,8 @@ import type { AutomationEngineTransaction } from "./automation-unit-handler";
  * The automation row is the lifecycle lock. Lock order, so no wait cycle
  * can form (§5.4): (1) this lock; (2) triggering `workspace_reservations`
  * rows `FOR SHARE`; (3) run rows by compare-and-set, in id order; (4) send,
- * recipient and batch rows; (5) the unit row; (6) the slot lock. Take it
+ * recipient and batch rows; (5) unit rows; (6) the slot lock, under which
+ * promotion locks only `planned` rows no one holds (`SKIP LOCKED`). Take it
  * first in the transaction.
  */
 

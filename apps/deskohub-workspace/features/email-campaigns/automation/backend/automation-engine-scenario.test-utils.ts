@@ -776,6 +776,8 @@ export const makeEngineFixtures = (
     readonly occurredAt: Temporal.Instant;
     readonly reservationId?: WorkspaceReservationId;
     readonly recordedAt?: Temporal.Instant;
+    /** An account-created event's account is an existing customer's (D37). */
+    readonly legacy?: boolean;
   }) => {
     let customerAccountId: CustomerAccountId | null = null;
     if (input.kind === "account-created") {
@@ -783,7 +785,9 @@ export const makeEngineFixtures = (
         `${prefix}-account-${created.accounts.length}` as CustomerAccountId;
       created.accounts.push(customerAccountId);
       await Effect.runPromise(
-        db.insert(customerAccounts).values({ id: customerAccountId })
+        db
+          .insert(customerAccounts)
+          .values({ id: customerAccountId, legacy: input.legacy ?? false })
       );
     }
     const [event] = await Effect.runPromise(

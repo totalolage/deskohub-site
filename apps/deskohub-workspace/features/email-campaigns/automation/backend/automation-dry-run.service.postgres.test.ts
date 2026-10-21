@@ -24,6 +24,7 @@ import {
 import { and, asc, eq, inArray, like } from "drizzle-orm";
 import { Effect, Exit, Layer, Schema } from "effect";
 import {
+  customerAccounts,
   customerEvents,
   emailCampaignAudiences,
   emailCampaignAutomationPreviewRows,
@@ -34,6 +35,7 @@ import {
   emailCampaigns,
   workspaceReservations,
 } from "@/db/schema";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
@@ -697,6 +699,59 @@ describe.skipIf(!testDatabase)(
       expect(dryRun.nextFires).toEqual([]);
       expect(dryRun.frequency).toBeNull();
       expect(dryRun.truncated).toBe(false);
+    });
+
+    test("replays a sign-up's account creation but never an existing customer's", async () => {
+      const [newcomer, existing] = ["d37-signup", "d37-legacy"].map(
+        customerId
+      ) as [DotyposCustomerId, DotyposCustomerId];
+      dotyposState.customers.push(profile(newcomer), profile(existing));
+      // The capture reconciler recorded the existing customer's event before
+      // it skipped legacy accounts (D37).
+      const accounts = [
+        { id: `${newcomer}-account` as CustomerAccountId, legacy: false },
+        { id: `${existing}-account` as CustomerAccountId, legacy: true },
+      ];
+      await query(db.insert(customerAccounts).values(accounts));
+      try {
+        const events = await query(
+          db
+            .insert(customerEvents)
+            .values(
+              [newcomer, existing].map((customer, index) => ({
+                kind: "account-created" as const,
+                occurredAt: ago({ hours: 24 * 3 }),
+                recordedAt: ago({ hours: 24 * 3 }),
+                dotyposCustomerId: customer,
+                customerAccountId: accounts[index]!.id,
+              }))
+            )
+            .returning({ id: customerEvents.id })
+        );
+        const campaignId = await seedAutomation({
+          flow: decodeFlow({ trigger: { _tag: "AccountCreated" }, steps: [send] }),
+        });
+
+        const started = await start(campaignId);
+        expect(started.kind).toBe("replay");
+        await processAll(started.previewId);
+
+        const rows = await rowsOf(started.previewId);
+        expect(rows.map((row) => row.customerEventId)).toEqual([
+          events[0]!.id,
+        ]);
+        expect((await read(started.previewId)).eventsTotal).toBe(1);
+      } finally {
+        // Their events go with the accounts.
+        await query(
+          db.delete(customerAccounts).where(
+            inArray(
+              customerAccounts.id,
+              accounts.map(({ id }) => id)
+            )
+          )
+        );
+      }
     });
 
     describe("counts as of the replayed moment", () => {

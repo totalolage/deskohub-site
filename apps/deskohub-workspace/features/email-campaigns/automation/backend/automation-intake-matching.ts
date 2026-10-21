@@ -25,6 +25,7 @@ import {
   versionInForce,
 } from "../automation-versions";
 import { takenReceiptKeys } from "./automation-run-entry";
+import { triggeringCustomerEvent } from "./automation-triggering-events";
 import type { AutomationEngineTransaction } from "./automation-unit-handler";
 import { loadAutomationVersionActivations } from "./automation-version-activations";
 
@@ -37,6 +38,8 @@ export type IntakeEvent = {
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly workspaceReservationId: WorkspaceReservationId | null;
   readonly customerAccountId: CustomerAccountId | null;
+  /** False for an event no automation takes in (`triggeringCustomerEvent`). */
+  readonly triggering: boolean;
 };
 
 /** The columns `IntakeEvent` reads. */
@@ -48,6 +51,7 @@ export const intakeEventColumns = {
   dotyposCustomerId: customerEvents.dotyposCustomerId,
   workspaceReservationId: customerEvents.workspaceReservationId,
   customerAccountId: customerEvents.customerAccountId,
+  triggering: triggeringCustomerEvent,
 };
 
 /** One event an automation's version in force at its occurrence takes. */
@@ -75,9 +79,10 @@ const intakeDedupKey = (event: IntakeEvent) =>
 
 /**
  * Matches events to the active automations that take them (§5.6): the
- * version in force at the occurrence has a trigger of the event's kind, the
- * event occurred at or after `accepting_since` (D21, D12), the receipt key
- * is free, and the trigger's product filter holds on the reservation.
+ * event can trigger at all (D37), the version in force at the occurrence
+ * has a trigger of the event's kind, the event occurred at or after
+ * `accepting_since` (D21, D12), the receipt key is free, and the trigger's
+ * product filter holds on the reservation.
  * Reads only; the caller's transaction gives it one snapshot.
  */
 export const matchIntakeEvents = Effect.fn("automationIntake.match")(function* (
@@ -86,9 +91,10 @@ export const matchIntakeEvents = Effect.fn("automationIntake.match")(function* (
 ) {
   if (events.length === 0) return [];
   const accepting = yield* acceptingAutomations(tx);
+  const triggering = events.filter((event) => event.triggering);
 
   const candidates = accepting.flatMap((automation) =>
-    events.flatMap((event) =>
+    triggering.flatMap((event) =>
       Option.match(versionInForce(automation.versions, event.occurredAt), {
         onNone: () => [],
         onSome: (version) =>

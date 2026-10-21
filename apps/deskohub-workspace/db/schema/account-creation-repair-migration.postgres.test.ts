@@ -158,17 +158,42 @@ const insertAccountCreatedEvent = (
   accountId: string,
   customerId: string,
   occurredAt: Temporal.Instant,
-  recordedAt = occurredAt
+  recordedAt = occurredAt,
+  processedAt?: Temporal.Instant
 ) =>
   pool.query(
     `insert into customer_events
-       (kind, occurred_at, recorded_at, dotypos_customer_id, customer_account_id)
-     values ('account-created', $1, $2, $3, $4)`,
+       (kind, occurred_at, recorded_at, dotypos_customer_id, customer_account_id,
+        automation_processed_at)
+     values ('account-created', $1, $2, $3, $4, $5)`,
     [
       instantParameter(occurredAt),
       instantParameter(recordedAt),
       customerId,
       accountId,
+      processedAt ? instantParameter(processedAt) : null,
+    ]
+  );
+
+/** A Workspace reservation the account authors, booked at `createdAt`. */
+const insertAuthoredReservation = (
+  pool: Pool,
+  accountId: string,
+  customerId: string,
+  createdAt: Temporal.Instant
+) =>
+  pool.query(
+    `insert into workspace_reservations
+       (checkout_attempt_key, dotypos_customer_id, author_account_id,
+        reservation_state, payment_state, fulfillment_state,
+        reservation_details, locale, created_at)
+     values ($1, $2, $3, 'draft', 'not_started', 'not_started',
+       '{"kind":"cowork","entryTier":"basic","coffee":false}', 'en-US', $4)`,
+    [
+      `attempt:${crypto.randomUUID()}`,
+      customerId,
+      accountId,
+      instantParameter(createdAt),
     ]
   );
 
@@ -228,6 +253,8 @@ const now = backfilledAt.add({ hours: 40 });
 const daysBefore = (days: number) => now.subtract({ hours: days * 24 });
 // Better Auth stamps a login before its hook inserts the account.
 const silentLoginAt = backfilledAt.subtract({ milliseconds: 3 });
+const reconciledAt = backfilledAt.add({ hours: 20 });
+const repairedAt = backfilledAt.add({ hours: 30 });
 
 const customerId = (name: string) =>
   DotyposCustomerIdSchema.make(`repair-${name}`);
@@ -318,6 +345,49 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
           });
           await insertLogin(pool, id, silentLoginAt, verified);
         }
+        // Existing customers' silent logins that already have an event. The
+        // backfill made each the author of the guest bookings it was for.
+        // The reconciler recorded one's event once its owner signed in, at
+        // the backfill time.
+        await insertAccount(pool, "legacy-reconciled", {
+          createdAt: backfilledAt,
+          customerId: customerId("legacy-reconciled"),
+        });
+        await insertLogin(pool, "legacy-reconciled", silentLoginAt);
+        await insertAuthoredReservation(
+          pool,
+          "legacy-reconciled",
+          customerId("legacy-reconciled"),
+          daysBefore(60)
+        );
+        await insertAccountCreatedEvent(
+          pool,
+          "legacy-reconciled",
+          customerId("legacy-reconciled"),
+          backfilledAt,
+          reconciledAt
+        );
+        // An earlier version of the repair, on a preview database, dated
+        // the other's account from its login and recorded a processed event.
+        await insertAccount(pool, "legacy-repaired", {
+          createdAt: silentLoginAt,
+          customerId: customerId("legacy-repaired"),
+        });
+        await insertLogin(pool, "legacy-repaired", silentLoginAt);
+        await insertAuthoredReservation(
+          pool,
+          "legacy-repaired",
+          customerId("legacy-repaired"),
+          daysBefore(90)
+        );
+        await insertAccountCreatedEvent(
+          pool,
+          "legacy-repaired",
+          customerId("legacy-repaired"),
+          silentLoginAt,
+          repairedAt,
+          repairedAt
+        );
         // Sign-ups after #764 merged: one claimed its customer, one hasn't.
         const lateSignUp = backfilledAt.add({ hours: 2 });
         await insertAccount(pool, "late-signup", {
@@ -331,6 +401,12 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
           customerId("late-signup"),
           lateSignUp
         );
+        await insertAuthoredReservation(
+          pool,
+          "late-signup",
+          customerId("late-signup"),
+          lateSignUp.add({ minutes: 10 })
+        );
         await insertAccount(pool, "late-pending", { createdAt: lateSignUp });
         await insertLogin(pool, "late-pending", lateSignUp);
       },
@@ -343,6 +419,30 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
           );
           expect(await accountCreatedEvents(pool, id)).toEqual([]);
         }
+        // An event doesn't make an existing customer new; it keeps its
+        // account's time, and intake and replay never take it in.
+        expect(await isLegacy(pool, "legacy-reconciled")).toBe(true);
+        expect(await accountCreatedAt(pool, "legacy-reconciled")).toBe(
+          backfilledAt.epochMilliseconds
+        );
+        expect(await accountCreatedEvents(pool, "legacy-reconciled")).toEqual([
+          {
+            occurredAt: backfilledAt.epochMilliseconds,
+            recordedAt: reconciledAt.epochMilliseconds,
+            processed: false,
+          },
+        ]);
+        expect(await isLegacy(pool, "legacy-repaired")).toBe(true);
+        expect(await accountCreatedAt(pool, "legacy-repaired")).toBe(
+          silentLoginAt.epochMilliseconds
+        );
+        expect(await accountCreatedEvents(pool, "legacy-repaired")).toEqual([
+          {
+            occurredAt: silentLoginAt.epochMilliseconds,
+            recordedAt: repairedAt.epochMilliseconds,
+            processed: true,
+          },
+        ]);
         for (const id of [
           "recorded",
           "unrecorded",
@@ -466,7 +566,12 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
         expect(lastWeek.inPeriod.has(customerId("fresh"))).toBe(true);
         expect(lastWeek.inPeriod.has(customerId("late-signup"))).toBe(true);
         // A legacy customer verified a day after the backfill is old.
-        for (const id of ["legacy", "legacy-verified"]) {
+        for (const id of [
+          "legacy",
+          "legacy-verified",
+          "legacy-reconciled",
+          "legacy-repaired",
+        ]) {
           expect(lastWeek.withValue.has(customerId(id))).toBe(true);
           expect(lastWeek.inPeriod.has(customerId(id))).toBe(false);
         }
@@ -553,7 +658,9 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
       // About 47k Dotypos customers got silent logins in #764, beside the
       // logins that were backfilled accounts. Every fifth login here predates
       // its account; the rest are stamped as a silent login is. Every second
-      // account is linked, so most linked ones are legacy.
+      // account is linked, so most linked ones are legacy. Each of those
+      // authors a guest booking from before the backfill and already has
+      // the event the reconciler recorded once its owner signed in.
       const logins = 50_000;
       const oldLogin = daysBefore(400);
       await migrateAcross({
@@ -576,6 +683,33 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
               instantParameter(silentLoginAt),
               logins,
               EMAIL_TEST_DOMAIN,
+            ]
+          );
+          await pool.query(
+            `insert into workspace_reservations
+               (checkout_attempt_key, dotypos_customer_id, author_account_id,
+                reservation_state, payment_state, fulfillment_state,
+                reservation_details, locale, created_at)
+             select 'scale-attempt-' || g, 'scale-customer-' || g, 'scale-' || g,
+                    'draft', 'not_started', 'not_started',
+                    '{"kind":"cowork","entryTier":"basic","coffee":false}',
+                    'en-US', $1::timestamptz
+             from generate_series(1, $2::int) g
+             where g % 2 = 0 and g % 5 <> 0`,
+            [instantParameter(oldLogin), logins]
+          );
+          await pool.query(
+            `insert into customer_events
+               (kind, occurred_at, recorded_at, dotypos_customer_id,
+                customer_account_id)
+             select 'account-created', $1::timestamptz, $2::timestamptz,
+                    'scale-customer-' || g, 'scale-' || g
+             from generate_series(1, $3::int) g
+             where g % 2 = 0 and g % 5 <> 0`,
+            [
+              instantParameter(backfilledAt),
+              instantParameter(reconciledAt),
+              logins,
             ]
           );
         },

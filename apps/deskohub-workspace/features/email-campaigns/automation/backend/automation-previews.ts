@@ -46,6 +46,7 @@ import {
   type AutomationPreviewOutcome,
   automationPreviewOutcomes,
 } from "../automation-states";
+import { triggeringCustomerEvent } from "./automation-triggering-events";
 import type { AutomationEngineTransaction } from "./automation-unit-handler";
 
 export type AutomationPreviewRow = typeof previews.$inferSelect;
@@ -123,6 +124,7 @@ const replayEventCondition = (scope: ReplayEventScope): SQL =>
     gte(customerEvents.occurredAt, scope.asOf.subtract(replayWindow)),
     lt(customerEvents.occurredAt, scope.asOf),
     lte(customerEvents.recordedAt, scope.recordedBy),
+    triggeringCustomerEvent,
     Option.match(scope.product, {
       onNone: () => undefined,
       onSome: reservationProductCondition,

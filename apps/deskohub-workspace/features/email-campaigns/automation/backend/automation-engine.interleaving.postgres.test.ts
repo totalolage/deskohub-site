@@ -1528,5 +1528,85 @@ describe.skipIf(!database)(
         }
       }
     });
+
+    describe("slot promotion × a hand-off holding planned units", () => {
+      test("the top-up skips a planned unit another transaction holds, so it never waits for that transaction while holding the slot lock", async () => {
+        const { rows: seeded } = await pool.query<{
+          id: AutomationWorkUnitId;
+        }>(
+          `insert into email_campaign_automation_work_units
+             (kind, priority, key, subject, request_cost, status, created_at)
+           select 'intake', 2, 'slot-order:' || n, '{}'::jsonb, 1, 'planned',
+                  $1::timestamptz + n * interval '1 second'
+           from generate_series(1, 2) as n
+           returning id`,
+          [start.toString()]
+        );
+        const [held, free] = seeded.map(({ id }) => id) as [
+          AutomationWorkUnitId,
+          AutomationWorkUnitId,
+        ];
+        const statusOf = async (unitId: AutomationWorkUnitId) =>
+          (
+            await pool.query<{ status: string }>(
+              "select status from email_campaign_automation_work_units where id = $1",
+              [unitId]
+            )
+          ).rows[0]?.status;
+
+        // A hand-off first writes its planned units, as a preview that
+        // drops its siblings does, then asks for the slot lock at its fill.
+        const handOff = await pool.connect();
+        try {
+          const {
+            rows: [{ pid }],
+          } = await handOff.query("select pg_backend_pid() as pid");
+          await handOff.query("begin");
+          await handOff.query(
+            "update email_campaign_automation_work_units set status = status where id = $1",
+            [held]
+          );
+
+          let settled = false;
+          const topUp = background(
+            scenario.plan(at).finally(() => {
+              settled = true;
+            })
+          );
+          // Until the fix, the top-up took the slot lock and then waited
+          // for the held row.
+          let waited = false;
+          for (const deadline = Date.now() + 5_000; !settled; ) {
+            const { rows } = await pool.query(
+              "select 1 from pg_locks where not granted and $1::int = any(pg_blocking_pids(pid))",
+              [pid]
+            );
+            if (rows.length > 0) {
+              waited = true;
+              break;
+            }
+            if (Date.now() > deadline) break;
+            await Bun.sleep(10);
+          }
+          // Taking the slot lock now formed the deadlock with a waiting
+          // top-up; it is free once the top-up commits.
+          await handOff.query(
+            "select pg_advisory_xact_lock(hashtext($1), hashtext($2))",
+            ["email-automation-unit-slots", "engine"]
+          );
+          await handOff.query("commit");
+          await topUp();
+          expect(waited).toBe(false);
+        } finally {
+          handOff.release();
+        }
+
+        expect(await statusOf(free)).toBe("enqueued");
+        expect(await statusOf(held)).toBe("planned");
+        // The next top-up promotes the unit it skipped.
+        await scenario.plan(at);
+        expect(await statusOf(held)).toBe("enqueued");
+      });
+    });
   }
 );

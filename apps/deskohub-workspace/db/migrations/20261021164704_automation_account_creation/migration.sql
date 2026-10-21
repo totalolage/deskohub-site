@@ -4,12 +4,20 @@ ALTER TABLE "customer_accounts" ADD COLUMN IF NOT EXISTS "legacy" boolean DEFAUL
 --> statement-breakpoint
 -- #764's backfill gave each existing customer a silent login linked to its
 -- customer, dated when the backfill ran. Those customers aren't new accounts
--- (D37), so their accounts become legacy. Nothing else can look like one:
--- - the backfill couldn't run before #764 merged, and it is gone from `dhw`;
--- - since a day before that, a sign-in claim records the account-created
---   event in the transaction that links the account, and the backfill linked
---   its own logins without one;
--- - an older login predates #764, however late its account was backfilled.
+-- (D37), so their accounts become legacy. The backfill kept no record of the
+-- logins it made, but it made one only for a customer with Workspace
+-- reservations nobody authored, and made the login their author in the
+-- transaction that linked it. So a linked login created since #764 merged
+-- that authors a reservation older than itself is one; a sign-up authors
+-- only the reservations it books, unless the backfill gave it its earlier
+-- guest bookings, which makes it an existing customer too. This holds
+-- whether or not the account has an event: the capture reconciler records
+-- one once the login is verified, and an earlier version of the repair below
+-- recorded one on preview databases.
+-- A linked login since then without an account-created event is one too:
+-- since a day before #764, a sign-in claim records the event in the
+-- transaction that links the account. An older login predates #764, however
+-- late its account was backfilled.
 -- This runs before the repair below, which records events without a claim.
 -- A second run finds every such account already legacy.
 UPDATE "customer_accounts" SET "legacy" = true
@@ -19,10 +27,17 @@ WHERE "auth"."user"."id" = "customer_accounts"."id"
   AND "customer_accounts"."dotypos_customer_id" IS NOT NULL
   AND "customer_accounts"."deleted_at" IS NULL
   AND NOT "customer_accounts"."legacy"
-  AND NOT EXISTS (
-    SELECT 1 FROM "customer_events"
-    WHERE "customer_events"."kind" = 'account-created'
-      AND "customer_events"."customer_account_id" = "customer_accounts"."id"
+  AND (
+    EXISTS (
+      SELECT 1 FROM "workspace_reservations"
+      WHERE "workspace_reservations"."author_account_id" = "customer_accounts"."id"
+        AND "workspace_reservations"."created_at" < "auth"."user"."created_at"
+    )
+    OR NOT EXISTS (
+      SELECT 1 FROM "customer_events"
+      WHERE "customer_events"."kind" = 'account-created'
+        AND "customer_events"."customer_account_id" = "customer_accounts"."id"
+    )
   );
 --> statement-breakpoint
 -- #764's account backfill gave every login without a customer account one

@@ -1610,6 +1610,43 @@ describe.skipIf(!database)(
         });
         expect(mailed()).toEqual([emailOf(insider)]);
       });
+
+      test("an existing customer's account-created event recorded after activation starts no run, while a sign-up's does", async () => {
+        const { campaignId } = await kit.seedActive(
+          sendFlow("AccountCreated"),
+          { at: start }
+        );
+        const newcomer = await signUp("d37-signup", start.add({ minutes: 1 }));
+        // A deployment whose capture reconciler predates D37 records the
+        // event once a legacy account's owner signs in.
+        const existing = await fixtures.addCustomer("d37-legacy");
+        const legacyEvent = await fixtures.recordEvent({
+          kind: "account-created",
+          customer: existing,
+          occurredAt: start.add({ minutes: 1 }),
+          legacy: true,
+        });
+
+        const progress = await settleRuns(
+          campaignId,
+          start.add({ minutes: 1 }),
+          start.add({ hours: 1 })
+        );
+
+        expect(progress.settled).toBe(true);
+        expect(await outcomes(campaignId)).toEqual({
+          [newcomer]: ["ended", "sent", null],
+        });
+        const [event] = await read.events([legacyEvent]);
+        expect(event.automation_processed_at).not.toBeNull();
+        expect(event.automation_unit_id).toBeNull();
+        const { rows: receipts } = await pool.query(
+          "select 1 from email_campaign_automation_trigger_receipts where customer_event_id = $1",
+          [legacyEvent]
+        );
+        expect(receipts).toEqual([]);
+        expect(mailed()).toEqual([emailOf(newcomer)]);
+      });
     });
 
     describe("version-pinned content", () => {
