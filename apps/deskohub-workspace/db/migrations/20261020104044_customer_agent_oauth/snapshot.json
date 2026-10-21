@@ -1,10 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "e934239a-4747-407b-98c0-7e4380352ded",
+  "id": "26edd693-4409-4c5e-b7f9-e616f9ec176c",
   "prevIds": [
-    "9f943b09-cac1-4cf8-b33a-54bfc6e182f0",
-    "d9495005-587d-48f2-af0f-74773702df90"
+    "d00224b0-4933-46ff-a5ce-e01bbb8c6b71"
   ],
   "ddl": [
     {
@@ -1026,6 +1025,19 @@
       "generated": null,
       "identity": null,
       "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "customer_accounts"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "dotypos_customer_id",
       "entityType": "columns",
       "schema": "public",
       "table": "customer_accounts"
@@ -9259,6 +9271,27 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "dotypos_customer_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "customer_accounts_dotypos_customer_unique_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "customer_accounts"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "kind",
           "isExpression": false,
           "asc": true,
@@ -14440,6 +14473,13 @@
       "entityType": "checks",
       "schema": "public",
       "table": "customer_account_links"
+    },
+    {
+      "value": "btrim(\"dotypos_customer_id\") <> ''",
+      "name": "customer_accounts_dotypos_customer_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "customer_accounts"
     },
     {
       "value": "\"source\" in ('reservation-activity', 'reservation-activity-reconcile')",

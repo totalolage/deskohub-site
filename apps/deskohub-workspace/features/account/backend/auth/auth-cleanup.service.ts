@@ -1,4 +1,4 @@
-import { and, isNotNull, isNull, lt, lte, or } from "drizzle-orm";
+import { and, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -9,6 +9,7 @@ import {
   authSession,
   authVerification,
 } from "@/db/schema/auth";
+import { tombstoneOrphanedAccounts } from "../customer-account.repository";
 import { betterAuthMagicLinkOptions } from "./auth-options";
 
 type DeletedAuthRowCounts = {
@@ -20,6 +21,8 @@ type DeletedAuthRowCounts = {
   readonly agentClientAssertions: number;
   /** Rotated refresh tokens whose encrypted replay response was cleared. */
   readonly agentRefreshReplays: number;
+  /** Customer accounts marked deleted because their login is gone. */
+  readonly orphanedAccounts: number;
 };
 
 /**
@@ -49,8 +52,9 @@ interface IAuthCleanupService {
  * records of customers' AI agents. Revoked agent tokens stay until they
  * expire, since refresh-token replay detection reads them, but the
  * encrypted token response a rotated refresh token keeps for its reuse
- * window is cleared once that window has passed. No queue, archive, lock,
- * or provider cleanup runs here.
+ * window is cleared once that window has passed. It also tombstones
+ * customer accounts whose login is gone. No queue, archive, lock, or
+ * provider cleanup runs here.
  */
 export class AuthCleanupService extends Context.Service<
   AuthCleanupService,
@@ -109,6 +113,10 @@ export class AuthCleanupService extends Context.Service<
               )
             )
             .returning({ id: authOauthRefreshToken.id });
+          const orphanedAccounts = yield* tombstoneOrphanedAccounts(
+            db,
+            sql`${input.now.toISOString()}::timestamptz`
+          );
           return {
             sessions: sessions.length,
             verifications: verifications.length,
@@ -117,6 +125,7 @@ export class AuthCleanupService extends Context.Service<
             agentRefreshTokens: agentRefreshTokens.length,
             agentClientAssertions: agentClientAssertions.length,
             agentRefreshReplays: agentRefreshReplays.length,
+            orphanedAccounts,
           } satisfies DeletedAuthRowCounts;
         }).pipe(
           Effect.mapError(

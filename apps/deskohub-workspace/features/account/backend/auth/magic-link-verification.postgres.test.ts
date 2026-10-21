@@ -39,6 +39,24 @@ const expireMagicLink = async (link: CapturedMagicLink) => {
 describe.skipIf(!testDatabase)(
   "Magic-link verification on the migrated disposable Postgres",
   () => {
+    test("creates the customer account of a login a magic link signs up", async () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({ sentLinks });
+      const email = uniqueEmail("sign-up-account");
+      await signInForMagicLink(auth, email, getAuthCallbackPath("en-US"));
+      const [link] = sentLinks;
+      const signedIn = await verifyMagicLink(auth, link!);
+      expect(getSessionCookie(signedIn)).toBeDefined();
+
+      const accountId = await userIdForEmail(email);
+      expect(accountId).toBeDefined();
+      const { rows } = await testDatabase!.pool.query(
+        `select dotypos_customer_id, deleted_at from customer_accounts where id = $1`,
+        [accountId]
+      );
+      expect(rows).toEqual([{ dotypos_customer_id: null, deleted_at: null }]);
+    });
+
     test("sends an expired link to the same rejected-link callback as a used one", async () => {
       // A browser cannot wait out the real ten-minute expiry, so this proves
       // on the real verification table that an expired link lands on the

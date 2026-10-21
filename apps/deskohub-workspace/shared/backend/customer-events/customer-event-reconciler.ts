@@ -1,13 +1,14 @@
+import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, asc, eq, gte, isNotNull, notExists, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
-  customerAccountLinks,
   customerAccounts,
   customerEvents,
   workspaceReservations,
 } from "@/db/schema";
+import { authUser } from "@/db/schema/auth";
 import { currentInstant } from "@/shared/utils/temporal";
 import type { CustomerEventKind } from "./customer-event";
 
@@ -129,17 +130,20 @@ export class CustomerEventReconciler extends Context.Service<
               .select({
                 kind: eventKind("account-created"),
                 occurredAt: customerAccounts.createdAt,
-                dotyposCustomerId: customerAccountLinks.dotyposCustomerId,
+                dotyposCustomerId:
+                  sql<DotyposCustomerId>`${customerAccounts.dotyposCustomerId}`.as(
+                    "dotypos_customer_id"
+                  ),
                 customerAccountId: customerAccounts.id,
               })
-              .from(customerAccountLinks)
-              .innerJoin(
-                customerAccounts,
-                eq(customerAccounts.id, customerAccountLinks.customerAccountId)
-              )
+              .from(customerAccounts)
+              // A backfilled login stays silent until its owner verifies it.
+              .innerJoin(authUser, eq(authUser.id, customerAccounts.id))
               .where(
                 and(
+                  isNotNull(customerAccounts.dotyposCustomerId),
                   gte(customerAccounts.createdAt, since),
+                  eq(authUser.emailVerified, true),
                   notExists(
                     db
                       .select({ id: customerEvents.id })

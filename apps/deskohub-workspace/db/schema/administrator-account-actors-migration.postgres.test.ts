@@ -195,6 +195,10 @@ describe.skipIf(!testDatabaseUrl)(
 
               const accountId = crypto.randomUUID();
               await pool.query(
+                `insert into customer_accounts (id) values ($1) on conflict do nothing`,
+                [accountId]
+              );
+              await pool.query(
                 `insert into auth."user" (id, name, email)
                  values ($1, '', $2)`,
                 [

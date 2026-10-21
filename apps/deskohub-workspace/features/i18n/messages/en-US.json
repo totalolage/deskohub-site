@@ -892,8 +892,6 @@
   "galleryErrorDescription": "Photos could not be loaded. Please try again later.",
   "accountNavLabel": "Account",
   "siteHeaderAdminLabel": "Admin",
-  "siteHeaderAdminRibbonLabel": "Signed in as administrator",
-  "siteHeaderAdminRibbonAction": "Open admin",
   "accountSignInMetadataTitle": "Sign in | Deskohub Workspace",
   "accountSignInMetadataDescription": "Sign in to your Deskohub Workspace customer account with a secure, single-use magic link.",
   "accountSignInEyebrow": "Account access",

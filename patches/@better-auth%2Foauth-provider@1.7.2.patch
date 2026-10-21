@@ -1,20 +1,30 @@
 diff --git a/dist/authorize-BmTe2VYG.mjs b/dist/authorize-BmTe2VYG.mjs
-index 42c943dd45aa3d297a14edcc056a14e7ddd54680..31e87ea81d1e1c24d327a9f04cd9108be39d6f2d 100644
+index 42c943dd45aa3d297a14edcc056a14e7ddd54680..d9a57aefd5a344e34da22e0ab8cf6e62b3542ae0 100644
 --- a/dist/authorize-BmTe2VYG.mjs
 +++ b/dist/authorize-BmTe2VYG.mjs
-@@ -3007,6 +3007,11 @@ async function deleteConsentEndpoint(ctx, opts) {
+@@ -3000,6 +3000,13 @@ async function deleteConsentEndpoint(ctx, opts) {
+ 		error: "not_found"
+ 	});
+ 	if (consent.userId !== session.user.id) throw new APIError("UNAUTHORIZED");
++	// Workspace patch (better-auth/better-auth#11056): disconnecting a client
++	// revokes the tokens it holds for the user. The tokens go before the
++	// consent, so a disconnect that fails before the consent is gone can be
++	// retried. They go again after it, so a refresh rotating concurrently
++	// either sees the consent gone and revokes its own tokens, or wrote them
++	// before the second delete starts.
++	await invalidateRefreshFamily(ctx, consent.clientId, consent.userId, consent.referenceId);
+ 	await ctx.context.adapter.delete({
+ 		model: "oauthConsent",
+ 		where: [{
+@@ -3007,6 +3014,7 @@ async function deleteConsentEndpoint(ctx, opts) {
  			value: id
  		}]
  	});
-+	// Workspace patch (better-auth/better-auth#11056): disconnecting a client
-+	// revokes the tokens it holds for the user. The consent goes first, so a
-+	// refresh rotating concurrently either sees it gone and revokes its own
-+	// tokens, or wrote them before this delete starts.
 +	await invalidateRefreshFamily(ctx, consent.clientId, consent.userId, consent.referenceId);
  }
  async function updateConsentEndpoint(ctx, opts) {
  	const session = await getSessionFromCtx(ctx);
-@@ -5646,7 +5651,11 @@ async function authorizeEndpoint(ctx, opts, settings) {
+@@ -5646,7 +5654,11 @@ async function authorizeEndpoint(ctx, opts, settings) {
  		sessionId: session.session.id,
  		authTime: new Date(session.session.createdAt).getTime(),
  		referenceId,
@@ -27,7 +37,7 @@ index 42c943dd45aa3d297a14edcc056a14e7ddd54680..31e87ea81d1e1c24d327a9f04cd9108b
  	});
  }
  function serializeAuthorizationQuery(query) {
-@@ -5674,7 +5683,8 @@ async function redirectWithAuthorizationCode(ctx, opts, verificationValue) {
+@@ -5674,7 +5686,8 @@ async function redirectWithAuthorizationCode(ctx, opts, verificationValue) {
  			sessionId: verificationValue?.sessionId,
  			referenceId: verificationValue.referenceId,
  			authTime: verificationValue.authTime,
@@ -38,7 +48,7 @@ index 42c943dd45aa3d297a14edcc056a14e7ddd54680..31e87ea81d1e1c24d327a9f04cd9108b
  	};
  	await ctx.context.internalAdapter.createVerificationValue({
 diff --git a/dist/introspect-C6P1zrTr.mjs b/dist/introspect-C6P1zrTr.mjs
-index 0b3934dd6724d408a84624a3fb0215f6d3274fea..5d1e5b7cce7a2969227b5172ffa2b8c80209fa60 100644
+index 0b3934dd6724d408a84624a3fb0215f6d3274fea..cc54a9bfd58b15606496ef99efe5f51dd1124d5f 100644
 --- a/dist/introspect-C6P1zrTr.mjs
 +++ b/dist/introspect-C6P1zrTr.mjs
 @@ -802,6 +802,14 @@ function getSeedState(ctx) {
@@ -130,8 +140,8 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..5d1e5b7cce7a2969227b5172ffa2b8c8
 +}
 +// Workspace patch (better-auth/better-auth#11056): a rotation that wrote its
 +// tokens after a concurrent consent delete revokes them. The consent delete
-+// runs before the token deletes, so either this lookup misses the consent or
-+// the token deletes start after these tokens were written. Only the consent
++// runs before the last token delete, so either this lookup misses the consent
++// or that delete starts after these tokens were written. Only the consent
 +// with the token's own reference counts.
 +async function revokeRotationWithoutConsent(ctx, clientId, userId, referenceId) {
 +	if ((await ctx.context.adapter.findMany({
@@ -253,10 +263,10 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..5d1e5b7cce7a2969227b5172ffa2b8c8
  		originalResources: authorizedResources
  	});
 +	// Workspace patch (better-auth/better-auth#11318): check the consent again
-+	// once the tokens exist. A disconnect deletes the consent before the
-+	// client's tokens, so either this misses the consent and revokes the
-+	// tokens issued for the code, or the disconnect's token deletes start
-+	// after these tokens were written.
++	// once the tokens exist. A disconnect deletes the consent before its last
++	// delete of the client's tokens, so either this misses the consent and
++	// revokes the tokens issued for the code, or that delete starts after
++	// these tokens were written.
 +	if (verificationValue.consentId || !client.skipConsent) {
 +		const refusal = await refuseAuthorizationCodeConsent(ctx, client_id, verificationValue, issuedAt);
 +		if (refusal) {

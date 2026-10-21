@@ -45,6 +45,7 @@ import { E2EDatabase } from "../integrations/database.service";
 import { runDatabaseOperation } from "../integrations/database-operation";
 import { getDotyposLayer } from "../integrations/dotypos";
 import { assert } from "../runtime";
+import { seedWorkspaceE2EReservationAuthor } from "./auth-rows";
 
 const fixtureAmount = {
   exponent: 2,
@@ -67,7 +68,11 @@ export type WorkspaceE2EReservationHistoryFixture = {
 type WorkspaceE2EReservationHistoryRows = {
   readonly accessGrant: typeof reservationAccessGrants.$inferInsert;
   readonly paymentAttempt: typeof paymentAttempts.$inferInsert;
-  readonly reservation: typeof workspaceReservations.$inferInsert;
+  /** Inserted with its customer's author account. */
+  readonly reservation: Omit<
+    typeof workspaceReservations.$inferInsert,
+    "authorAccountId"
+  >;
 };
 
 export type WorkspaceE2EReservationHistoryProviderProjection = {
@@ -154,7 +159,13 @@ const makeReservationHistoryDatabase = (
   transaction: (rows) =>
     db.transaction((tx) =>
       Effect.gen(function* () {
-        yield* tx.insert(workspaceReservations).values(rows.reservation);
+        const authorAccountId = yield* seedWorkspaceE2EReservationAuthor(
+          tx,
+          rows.reservation.dotyposCustomerId
+        );
+        yield* tx
+          .insert(workspaceReservations)
+          .values({ ...rows.reservation, authorAccountId });
         yield* tx.insert(paymentAttempts).values(rows.paymentAttempt);
         yield* tx.insert(reservationAccessGrants).values(rows.accessGrant);
       })

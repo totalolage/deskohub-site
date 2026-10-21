@@ -45,8 +45,6 @@ const administratorEntry = (
   visible,
   href: `/${locale}/admin`,
   label: m.siteHeaderAdminLabel({}, { locale }),
-  ribbonLabel: m.siteHeaderAdminRibbonLabel({}, { locale }),
-  ribbonActionLabel: m.siteHeaderAdminRibbonAction({}, { locale }),
 });
 
 const siteHeaderProps = {
@@ -92,19 +90,13 @@ afterAll(() => {
   unregisterWorkspaceComponentTestEnv();
 });
 
-test("shows an administrator the header button, the menu button, and the ribbon", async () => {
+test("shows an administrator the header button and the menu button", async () => {
   const view = await renderSiteHeader(
     administratorEntry(Promise.resolve(true))
   );
 
-  // The header button, the menu button, and the ribbon action.
-  expect(adminLinks(view)).toHaveLength(3);
+  expect(adminLinks(view)).toHaveLength(2);
   expect(view.getAllByRole("link", { name: "Admin" })).toHaveLength(2);
-  expect(view.getByRole("link", { name: "Otevřít administraci" })).toBeTruthy();
-  expect(view.getByText("Přihlášeni jako administrátor")).toBeTruthy();
-  expect(
-    view.container.querySelector("[data-site-header-admin-ribbon]")
-  ).not.toBeNull();
 });
 
 test("shows a customer who is not an administrator no admin entry", async () => {
@@ -113,9 +105,6 @@ test("shows a customer who is not an administrator no admin entry", async () => 
   );
 
   expect(adminLinks(view)).toHaveLength(0);
-  expect(
-    view.container.querySelector("[data-site-header-admin-ribbon]")
-  ).toBeNull();
 });
 
 test("shows no admin entry while the administrator check is pending", async () => {

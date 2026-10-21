@@ -29,7 +29,10 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type AdministrationCustomerListInput,
   AdministrationService,
@@ -58,10 +61,6 @@ describe.skipIf(!testDatabase)(
       await testDatabase.pool.query(
         "delete from workspace_reservations where id = any($1)",
         [reservationIds]
-      );
-      await testDatabase.pool.query(
-        "delete from customer_account_links where customer_account_id = any($1)",
-        [accountIds]
       );
       await testDatabase.pool.query(
         `delete from auth."user" where id = any($1)`,
@@ -143,6 +142,7 @@ describe.skipIf(!testDatabase)(
       const now = Temporal.Now.instant();
       await Effect.runPromise(
         testDatabase.db.insert(workspaceReservations).values({
+          authorAccountId: fixtureReservationAuthorId,
           id: reservationId,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${id}`),
           dotyposCustomerId: customerId,
@@ -496,7 +496,7 @@ describe.skipIf(!testDatabase)(
           [accountId, testEmailAddress(`admin-author-${accountId}`)]
         );
         await testDatabase.pool.query(
-          "insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2)",
+          "update customer_accounts set dotypos_customer_id = $2 where id = $1",
           [accountId, linkedCustomer]
         );
         return accountId;

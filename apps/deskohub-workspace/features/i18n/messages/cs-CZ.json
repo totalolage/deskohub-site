@@ -900,8 +900,6 @@
   "galleryErrorDescription": "Fotky se nepodařilo načíst. Zkuste to prosím později.",
   "accountNavLabel": "Účet",
   "siteHeaderAdminLabel": "Admin",
-  "siteHeaderAdminRibbonLabel": "Přihlášeni jako administrátor",
-  "siteHeaderAdminRibbonAction": "Otevřít administraci",
   "accountSignInMetadataTitle": "Přihlášení | Deskohub Workspace",
   "accountSignInMetadataDescription": "Přihlaste se ke svému zákaznickému účtu Deskohub Workspace bezpečným jednorázovým odkazem.",
   "accountSignInEyebrow": "Přístup k účtu",

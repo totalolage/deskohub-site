@@ -20,7 +20,10 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   ReservationProductDetailsBackfill,
   type ReservationProductDetailsBackfillBatch,
@@ -74,6 +77,7 @@ describe.skipIf(!testDatabase)(
       }
       await Effect.runPromise(
         testDatabase.db.insert(workspaceReservations).values({
+          authorAccountId: fixtureReservationAuthorId,
           id,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
           dotyposCustomerId: DotyposCustomerIdSchema.make(`customer-${runId}`),

@@ -10,6 +10,7 @@ import {
   count,
   eq,
   inArray,
+  isNotNull,
   max,
   min,
   type SQL,
@@ -20,7 +21,7 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
-  customerAccountLinks,
+  customerAccounts,
   customerMarketingConsents,
   emailCampaignAutomationVersions,
   emailCampaignDeliveryBatches,
@@ -87,6 +88,12 @@ const receivedCampaignEmailStatuses = [
   "complained",
   "unconfirmed",
 ] as const;
+
+/** Only verified logins may receive campaigns. */
+const verifiedLogin = eq(authUser.emailVerified, true);
+
+/** The linked customer of an account, where the query keeps linked accounts only. */
+const accountCustomerId = sql<DotyposCustomerId>`${customerAccounts.dotyposCustomerId}`;
 
 /** A customer column among the customers, when the query is limited to some. */
 const ofCustomers = (
@@ -218,16 +225,17 @@ export class CampaignCandidateRepository extends Context.Service<
       const accounts = (customers?: readonly DotyposCustomerId[]) =>
         db
           .select({
-            dotyposCustomerId: customerAccountLinks.dotyposCustomerId,
+            dotyposCustomerId: accountCustomerId,
             locale: authUser.locale,
           })
-          .from(customerAccountLinks)
-          .innerJoin(
-            authUser,
-            eq(authUser.id, customerAccountLinks.customerAccountId)
-          )
+          .from(customerAccounts)
+          .innerJoin(authUser, eq(authUser.id, customerAccounts.id))
           .where(
-            ofCustomers(customerAccountLinks.dotyposCustomerId, customers)
+            and(
+              verifiedLogin,
+              isNotNull(customerAccounts.dotyposCustomerId),
+              ofCustomers(customerAccounts.dotyposCustomerId, customers)
+            )
           );
 
       const consents = (customers?: readonly DotyposCustomerId[]) =>
@@ -364,19 +372,20 @@ export class CampaignCandidateRepository extends Context.Service<
         )(function* (created, customers) {
           const rows = yield* db
             .select({
-              dotyposCustomerId: customerAccountLinks.dotyposCustomerId,
+              dotyposCustomerId: accountCustomerId,
               inPeriod: sql<boolean>`${and(
                 sql`true`,
                 withinBounds(authUser.createdAt, created)
               )}`,
             })
-            .from(customerAccountLinks)
-            .innerJoin(
-              authUser,
-              eq(authUser.id, customerAccountLinks.customerAccountId)
-            )
+            .from(customerAccounts)
+            .innerJoin(authUser, eq(authUser.id, customerAccounts.id))
             .where(
-              ofCustomers(customerAccountLinks.dotyposCustomerId, customers)
+              and(
+                verifiedLogin,
+                isNotNull(customerAccounts.dotyposCustomerId),
+                ofCustomers(customerAccounts.dotyposCustomerId, customers)
+              )
             );
           return {
             withValue: new Set(rows.map((row) => row.dotyposCustomerId)),

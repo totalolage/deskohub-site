@@ -30,7 +30,10 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import type { CustomerEventSweepSource } from "@/shared/backend/customer-events/customer-event";
 import { CustomerEventReconciler } from "@/shared/backend/customer-events/customer-event-reconciler";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { ReservationActivitySweep } from "./reservation-activity-sweep.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -175,6 +178,7 @@ describe.skipIf(!testDatabase)(
           const id = workspaceId(label);
           insertedIds.push(id);
           return {
+            authorAccountId: fixtureReservationAuthorId,
             id,
             checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
             dotyposCustomerId: customerId(label),

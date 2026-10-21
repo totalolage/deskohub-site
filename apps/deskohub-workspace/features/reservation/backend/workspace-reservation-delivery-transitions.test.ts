@@ -16,6 +16,7 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import {
   connectWorkspacePostgresTestDatabase,
+  fixtureReservationAuthorId,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
@@ -53,6 +54,7 @@ describe.skipIf(!postgresDatabase)(
           `reservation-${crypto.randomUUID()}`
         );
         yield* postgres.db.insert(workspaceReservations).values({
+          authorAccountId: fixtureReservationAuthorId,
           id,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(
             `attempt-${crypto.randomUUID()}`

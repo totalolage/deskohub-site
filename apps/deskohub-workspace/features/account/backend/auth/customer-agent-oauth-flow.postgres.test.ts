@@ -18,6 +18,7 @@ import {
   getSessionCookie,
   HOST,
   makeTestAuth,
+  realCreateCustomerAccount,
   signInForMagicLink,
   type TestAuth,
   testDatabase,
@@ -461,7 +462,7 @@ const predateConsentBinding = async (userId: string) => {
  */
 const makeInterleavingDatabase = () => {
   const base = buildDatabaseAdapter();
-  type Write = "create" | "delete";
+  type Write = "create" | "delete" | "deleteMany";
   let next:
     | {
         readonly write: Write;
@@ -486,10 +487,17 @@ const makeInterleavingDatabase = () => {
         await beforeWrite("delete", input.model);
         return adapter.delete(input);
       };
+      const removeMany = async (
+        input: Parameters<typeof adapter.deleteMany>[0]
+      ) => {
+        await beforeWrite("deleteMany", input.model);
+        return adapter.deleteMany(input);
+      };
       return {
         ...adapter,
         create: create as typeof adapter.create,
         delete: remove as typeof adapter.delete,
+        deleteMany: removeMany as typeof adapter.deleteMany,
       };
     },
     /** Runs `step` before the next `write` to `model`, which then goes on. */
@@ -1361,6 +1369,7 @@ describe.skipIf(!testDatabase)(
         sentLinks,
         clientMetadataTransport: agent.clientMetadataTransport,
         database: interleaving.database,
+        createCustomerAccount: realCreateCustomerAccount,
       });
       const customer = await signIn(auth, sentLinks);
       const tokens = await connectSignedIn(auth, customer.cookie, agent);
@@ -1379,20 +1388,23 @@ describe.skipIf(!testDatabase)(
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ id: connection!.id }),
         });
-      /** No issued token works any more, and none is left stored. */
+      /**
+       * None is left stored, and no issued token works any more. The rows
+       * are counted first, since a refresh attempt could delete leftovers.
+       */
       const expectRevoked = async (issued: readonly TokenResponse[]) => {
-        for (const { access_token, refresh_token } of issued) {
-          expect(await failureReasonOf(authorityOver(auth), access_token)).toBe(
-            "invalid-token"
-          );
-          expect((await refresh(refresh_token!)).status).toBe(400);
-        }
         for (const table of [
           "oauth_access_token",
           "oauth_refresh_token",
           "oauth_consent",
         ]) {
           expect(await countRows(table, customer.accountId)).toBe(0);
+        }
+        for (const { access_token, refresh_token } of issued) {
+          expect(await failureReasonOf(authorityOver(auth), access_token)).toBe(
+            "invalid-token"
+          );
+          expect((await refresh(refresh_token!)).status).toBe(400);
         }
       };
       const authorize = () =>
@@ -1428,8 +1440,8 @@ describe.skipIf(!testDatabase)(
     });
 
     // Guards the Workspace oauth-provider patch: the disconnect deletes the
-    // consent before the tokens, so a refresh that still saw the consent
-    // wrote its tokens before the token deletes started.
+    // tokens again after the consent, so a refresh that still saw the consent
+    // wrote its tokens before that delete started.
     test("revokes the tokens of a refresh that finishes while a disconnect is under way", async () => {
       const race = await connectForRace();
       let rotated: Promise<Response> | undefined;
@@ -1474,6 +1486,23 @@ describe.skipIf(!testDatabase)(
       );
       await race.expectRevoked([race.tokens]);
     });
+
+    // Guards the Workspace oauth-provider patch: the disconnect deletes the
+    // tokens before the consent, so one that fails there keeps the consent
+    // and a retry revokes the tokens instead of finding nothing to delete.
+    test.each(["oauthAccessToken", "oauthRefreshToken"])(
+      "revokes the tokens when a disconnect that failed deleting %s is retried",
+      async (model) => {
+        const race = await connectForRace();
+        race.interleaving.before("deleteMany", model, async () => {
+          throw new Error("Injected token delete failure");
+        });
+
+        expect((await race.disconnect()).status).toBe(500);
+        expect((await race.disconnect()).status).toBe(200);
+        await race.expectRevoked([race.tokens]);
+      }
+    );
 
     test("deletes a connected account with its grants, and its tokens stop authorizing", async () => {
       const agent = makeAgent();

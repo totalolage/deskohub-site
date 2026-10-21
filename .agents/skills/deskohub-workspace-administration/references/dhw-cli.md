@@ -62,6 +62,10 @@ Meeting-room and office snapshots (`workspace_reservations.reservation_details`)
 
 Don't run it in production while a deployment that predates the optional snapshot fields can still read reservations: those deployments decode snapshots strictly and reject the new keys. That includes Skew Protection, pinned late-payment recovery queue messages, and an instant rollback target. See [database-and-releases.md](../../deskohub-workspace-operations/references/database-and-releases.md).
 
+## Customer account backfill (removed)
+
+Release A of #682 shipped `dhw accounts backfill` (`POST /accounts/backfill`) to give every login a durable customer account, copy Dotypos links onto the accounts, and give authorless reservations an author, creating silent unverified logins for unlinked legacy customers. Release B's migration enforces all of it (the `auth.user` foreign key to `customer_accounts` and `NOT NULL` reservation authors) and fails if the backfill didn't run, so B removed the command and the endpoint; a released `dhw` that still calls it fails against B.
+
 ## Administrator role grants and legacy actor backfill
 
 Administrators sign in with their customer accounts; the `administrator` grant authorizes the administration, the API, and CLI sessions. Records written before the switch carry a legacy Basic-auth username instead of an account actor.
