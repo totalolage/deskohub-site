@@ -61,6 +61,7 @@ const anonymousDisabledSections = [
   "referrals",
   "profile",
   "security",
+  "assistants",
   "billing",
   "danger",
 ] as const;

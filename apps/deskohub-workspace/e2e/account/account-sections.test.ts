@@ -25,6 +25,7 @@ const sections = [
   "reservations",
   "referrals",
   "profile",
+  "assistants",
   "billing",
   "legal",
   "danger",
@@ -65,6 +66,12 @@ const sectionPanel = (section: AccountSection, includeLegalLink: boolean) => {
         "section",
         { "data-screen": "profile-screen" },
         createElement("input", { id: "account-profile-first-name" })
+      );
+    case "assistants":
+      return createElement(
+        "h2",
+        { id: "account-assistants-title" },
+        "Connected assistants"
       );
     case "billing":
       return createElement(

@@ -14,6 +14,8 @@ resource.
 | Login, consent, MCP and authorize paths; the connect-step resolver | `features/account/customer-agent-routes.ts` |
 | Token → customer identity adapter | `features/account/backend/auth/customer-agent-authorization.service.ts` |
 | Client name and host for the consent page | `features/account/backend/auth/customer-agent-client-directory.service.ts` |
+| The customer's connected assistants (consents named by the client directory) | `features/account/backend/auth/customer-agent-connections.service.ts` |
+| Connected assistants section and Disconnect | `features/account/components/customer-agent-connections/`, `features/account/customer-agent-connection-client.ts` |
 | Discovery handler and its tests | `features/account/server/customer-agent-discovery.server.ts` (+ `.test.ts`) |
 | Discovery routes | `app/.well-known/oauth-authorization-server/api/auth`, `app/.well-known/oauth-protected-resource` (root and `/api/mcp`) |
 | Pages | `app/[locale]/(site)/(minimal-header)/auth/connect`, `.../auth/consent` |
@@ -117,6 +119,56 @@ resource.
 - Terms acceptance and legal consent evidence stay on the Pay step; the
   consent page records only the OAuth grant.
 
+## Connected assistants
+
+- The account's `assistants` section lists the customer's consents
+  (`getOAuthConsents`), each named and hosted through
+  `CustomerAgentClientDirectory`, with the granted scopes in the consent
+  page's words (`describeCustomerAgentScope`) and the consent's creation
+  time. Better Auth records no last-use time.
+- The list needs only the session, so every signed-in state except a pending
+  deletion carries it, with or without a Dotypos profile. An unreadable list
+  shows an unavailable notice; a client whose metadata can't be read stays
+  listed without a name, so it can still be disconnected.
+- Disconnect calls `authClient.oauth2.deleteConsent({ id })` from the
+  browser, as passkey deletion does; Better Auth checks the session and that
+  the consent is the customer's. A consent that is already gone counts as
+  disconnected. Reconnecting asks for consent again.
+- Upstream Better Auth deletes only the consent row. The Workspace
+  `@better-auth/oauth-provider` patch (see the `deskohub-repository` skill's
+  patched dependencies) binds every access and refresh token of a client
+  that asks for consent to the consent that authorized it: `consent_id` on
+  both token tables references `oauth_consent` with `ON DELETE CASCADE`. The
+  code exchange takes the consent from the code (once codes carry one,
+  #778) or else the client's consent for the customer, and refuses the code
+  without one; a refresh carries the consent of the token it rotates.
+- So a disconnect is one statement: it deletes every consent of the client,
+  customer, and reference (a concurrent consent can record a duplicate),
+  and the database deletes their tokens with them. A token can't outlive its
+  consent, and no other consent, newer or recorded late, can keep it
+  working. A disconnect that fails deletes nothing and keeps the assistant
+  listed, so a retry still works. A refresh or code exchange that a
+  disconnect overtakes can't write its tokens and answers `invalid_grant`;
+  one that finishes first has its tokens deleted with the consent, so at
+  most it hands out tokens that never work.
+- A token of a client that asks for consent without a consent predates
+  the binding. The migration binds no existing token: timestamps can't
+  tell a token that outlived a disconnect from one a consent recorded in
+  the same instant issued, so a backfill could revive a disconnected
+  assistant. Such a token, including any the previous deployment issued
+  during the release, is refused when presented (the assistant connects
+  again once) and deleted then, or by the daily auth cleanup once it
+  expires. Tokens of a client that skips consent reference no consent and
+  keep working; deleting a consent never touches them. Guards:
+  `oauth-token-consent-binding-migration.postgres.test.ts` beside the flow
+  test.
+- Two approvals of the assistant at once can both record a consent. One
+  recorded after a disconnect leaves the assistant listed as connected
+  under that approval; tokens of the disconnected consent stay revoked.
+  Authorization codes issued before a disconnect stay redeemable until they
+  expire if the customer connects the assistant again by then
+  (better-auth#11318, handled in #778).
+
 ## Account-boundary adapter
 
 - `CustomerAgentAuthorization.authorize(token)` validates the token, requires
@@ -139,18 +191,19 @@ resource.
   refresh tokens (their access tokens cascade), and expired client-assertion
   records. Revoked tokens stay until they expire because refresh-token replay
   detection reads them. Consents and CIMD client rows have no expiry; consents
-  last until account deletion.
+  last until the customer disconnects the assistant or deletes the account.
 - Refresh tokens rotate with a 30-second reuse window
-  (`customerAgentRefreshTokenReuseSeconds`, set explicitly because the
-  privacy notice discloses it). The provider stores the replacement token
-  response in `rotation_replay_response` on the rotated row, encrypted with
-  the Better Auth secret, and replays it (with `expires_in` recounted) for a
+  (`customerAgentRefreshTokenReuseSeconds`, set explicitly so the retention
+  settings in `privacy-and-retention.md` stay true if the provider default
+  changes; the privacy notice doesn't state it). The provider stores the
+  replacement token response in `rotation_replay_response` on the rotated
+  row, encrypted with the Better Auth secret, and replays it (with `expires_in` recounted) for a
   matching repeat refresh until `rotation_replay_expires_at`. Truly
   concurrent refreshes still race; the loser gets `invalid_grant` without
   ending the grant. Reuse after the window deletes the client's tokens for
   the customer. The provider never clears the copy, so `auth-cleanup`
   nulls it once the window has passed; deleting the row (expiry, account
-  deletion, reuse) removes it too.
+  deletion, reuse, disconnect) removes it too.
 - Lifetimes: access tokens 1 hour, refresh tokens 30 days (rotated on use),
   signed authorization requests and codes 10 minutes. Replaying a used code
   fails and revokes the tokens it bought.

@@ -21,6 +21,7 @@ const accountSections = [
   "reservations",
   "referrals",
   "security",
+  "assistants",
   "billing",
   "legal",
   "danger",

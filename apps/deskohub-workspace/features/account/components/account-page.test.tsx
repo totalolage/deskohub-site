@@ -805,6 +805,88 @@ describe("AccountPage states", () => {
     expect(unavailableTitle.closest("[hidden]")).not.toBeNull();
   });
 
+  const openSection = (
+    view: Awaited<ReturnType<typeof renderState>>,
+    locale: "en-US" | "cs-CZ",
+    name: string
+  ) =>
+    fireEvent.click(
+      within(
+        view.getByRole("group", {
+          name: m.accountSectionLabel({}, { locale }),
+        })
+      ).getByRole("link", { name })
+    );
+
+  test("lists connected assistants while the profile needs completion", async () => {
+    const cs = { locale: "cs-CZ" } as const;
+    const view = await renderState(
+      {
+        kind: "completion-required",
+        email: adaAddress,
+        referralsEnabled: false,
+        assistants: [
+          {
+            id: "consent-1",
+            name: "Synthetic Assistant",
+            host: "assistant.invalid",
+            scopes: ["reservations:read"],
+            connectedAt: "2026-10-14T16:40:00.000Z",
+          },
+        ],
+      },
+      "cs-CZ"
+    );
+    const completion = view.container.querySelector(
+      "#account-completion-required"
+    );
+    expect(completion).toBeTruthy();
+    expect(completion?.closest("[hidden]")).toBeNull();
+
+    openSection(view, "cs-CZ", m.accountSectionAssistants({}, cs));
+
+    const list = view.container.querySelector<HTMLElement>(
+      "ul[aria-labelledby='account-assistants-title']"
+    );
+    expect(list).toBeTruthy();
+    expect(within(list!).getByText("Synthetic Assistant")).toBeTruthy();
+    expect(list?.closest("[hidden]")).toBeNull();
+    expect(within(list!).getByRole("button")).toBeTruthy();
+    expect(completion?.closest("[hidden]")).not.toBeNull();
+  });
+
+  test("shows no connected assistants while the profile is unavailable", async () => {
+    const view = await renderState({
+      kind: "authenticated-unavailable",
+      email: adaAddress,
+      assistants: [],
+    });
+
+    openSection(view, "en-US", m.accountSectionAssistants({}, en));
+
+    const empty = view.container.querySelector("#account-assistants-empty");
+    expect(empty).toBeTruthy();
+    expect(empty?.closest("[hidden]")).toBeNull();
+    const unavailable = view.container.querySelector(
+      "#account-profile-unavailable"
+    );
+    expect(unavailable).toBeTruthy();
+    expect(unavailable?.closest("[hidden]")).not.toBeNull();
+  });
+
+  test("lists connected assistants for a linked account", async () => {
+    const view = await renderState({
+      ...linkedState,
+      assistants: [],
+    });
+
+    openSection(view, "en-US", m.accountSectionAssistants({}, en));
+
+    const empty = view.container.querySelector("#account-assistants-empty");
+    expect(empty).toBeTruthy();
+    expect(empty?.closest("[hidden]")).toBeNull();
+  });
+
   const withEmailSignInOnCapableBrowser = async () => {
     Object.defineProperty(globalThis, "PublicKeyCredential", {
       configurable: true,

@@ -1,5 +1,73 @@
+diff --git a/dist/authorize-BmTe2VYG.mjs b/dist/authorize-BmTe2VYG.mjs
+index 42c943dd45aa3d297a14edcc056a14e7ddd54680..25c93384415b96959890d588fa7baeee84e6cd6a 100644
+--- a/dist/authorize-BmTe2VYG.mjs
++++ b/dist/authorize-BmTe2VYG.mjs
+@@ -3000,11 +3000,22 @@ async function deleteConsentEndpoint(ctx, opts) {
+ 		error: "not_found"
+ 	});
+ 	if (consent.userId !== session.user.id) throw new APIError("UNAUTHORIZED");
+-	await ctx.context.adapter.delete({
++	// Workspace patch (better-auth/better-auth#10386): the client's tokens
++	// reference the consent that authorized them, and the database deletes
++	// them with it. Every consent of the client, user, and reference goes, so
++	// a duplicate that a concurrent consent wrote doesn't keep the client
++	// connected.
++	await ctx.context.adapter.deleteMany({
+ 		model: "oauthConsent",
+ 		where: [{
+-			field: "id",
+-			value: id
++			field: "clientId",
++			value: consent.clientId
++		}, {
++			field: "userId",
++			value: consent.userId
++		}, {
++			field: "referenceId",
++			value: consent.referenceId ?? null
+ 		}]
+ 	});
+ }
+@@ -3957,6 +3968,18 @@ const schema = {
+ 			type: "string[]",
+ 			required: false
+ 		},
++		// Workspace patch: the consent that authorized the token. Deleting
++		// the consent deletes the token.
++		consentId: {
++			type: "string",
++			required: false,
++			references: {
++				model: "oauthConsent",
++				field: "id",
++				onDelete: "cascade"
++			},
++			index: true
++		},
+ 		expiresAt: { type: "date" },
+ 		createdAt: { type: "date" },
+ 		revoked: {
+@@ -4061,6 +4084,18 @@ const schema = {
+ 				},
+ 				index: true
+ 			},
++			// Workspace patch: the consent that authorized the token. Deleting
++			// the consent deletes the token.
++			consentId: {
++				type: "string",
++				required: false,
++				references: {
++					model: "oauthConsent",
++					field: "id",
++					onDelete: "cascade"
++				},
++				index: true
++			},
+ 			expiresAt: { type: "date" },
+ 			createdAt: { type: "date" },
+ 			revoked: {
 diff --git a/dist/introspect-C6P1zrTr.mjs b/dist/introspect-C6P1zrTr.mjs
-index 0b3934dd6724d408a84624a3fb0215f6d3274fea..fad7a3bd7d3b2dd7c371fc1a51ca6e04bce2eb5c 100644
+index 0b3934dd6724d408a84624a3fb0215f6d3274fea..7782b967b5538e4acd67920c929e7ed21f43e0ba 100644
 --- a/dist/introspect-C6P1zrTr.mjs
 +++ b/dist/introspect-C6P1zrTr.mjs
 @@ -802,6 +802,14 @@ function getSeedState(ctx) {
@@ -35,3 +103,185 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..fad7a3bd7d3b2dd7c371fc1a51ca6e04
  				if (/unique|duplicate|UNIQUE/i.test(message)) {
  					logger.debug(`oauth-provider: resource ${input.identifier} already inserted by a concurrent process — skipping.`);
  					continue;
+@@ -1454,7 +1462,7 @@ async function decodeRefreshToken(opts, token) {
+ 	});
+ 	return opts.formatRefreshToken?.decrypt ? opts.formatRefreshToken?.decrypt(token) : { token };
+ }
+-async function createOpaqueAccessToken(ctx, opts, user, client, scopes, payload, resources, referenceId, authorizationCodeId, refreshId, confirmation, requestedUserInfoClaims) {
++async function createOpaqueAccessToken(ctx, opts, user, client, scopes, payload, resources, referenceId, authorizationCodeId, refreshId, confirmation, requestedUserInfoClaims, consentId) {
+ 	const iat = payload.iat ?? Math.floor(Date.now() / 1e3);
+ 	const exp = payload?.exp ?? iat + (opts.accessTokenExpiresIn ?? 3600);
+ 	const token = opts.generateOpaqueAccessToken ? await opts.generateOpaqueAccessToken() : generateRandomString(32, "A-Z", "a-z");
+@@ -1471,6 +1479,7 @@ async function createOpaqueAccessToken(ctx, opts, user, client, scopes, payload,
+ 			refreshId,
+ 			confirmation,
+ 			requestedUserInfoClaims: requestedUserInfoClaims?.length ? requestedUserInfoClaims : void 0,
++			consentId,
+ 			scopes,
+ 			createdAt: /* @__PURE__ */ new Date(iat * 1e3),
+ 			expiresAt: /* @__PURE__ */ new Date(exp * 1e3)
+@@ -1525,6 +1534,47 @@ async function invalidateRefreshFamily(ctx, clientId, userId) {
+ 		}]
+ 	});
+ }
++// Workspace patch: a customer's token of a client that asks for consent
++// references the consent that authorized it, and the database deletes it
++// with that consent, so deleting the consent revokes it in the same
++// statement and no other consent can keep it working. A token without the
++// reference predates it and no longer works.
++function isUnboundConsentToken(client, token) {
++	return !client.skipConsent && token.userId != null && token.consentId == null;
++}
++// Workspace patch: once the consent is gone, writing a token that references
++// it fails, and the grant answers that as revoked.
++async function refuseRevokedConsent(ctx, consentId, error) {
++	if (consentId && !await ctx.context.adapter.findOne({
++		model: "oauthConsent",
++		where: [{
++			field: "id",
++			value: consentId
++		}]
++	})) throw new APIError("BAD_REQUEST", {
++		error_description: "consent revoked",
++		error: "invalid_grant"
++	});
++	throw error;
++}
++// Workspace patch: deletes a refresh token and the access tokens bought with
++// it, and only those, so a newer grant of the same client stays.
++async function deleteRefreshToken(ctx, id) {
++	await ctx.context.adapter.deleteMany({
++		model: "oauthAccessToken",
++		where: [{
++			field: "refreshId",
++			value: id
++		}]
++	});
++	await ctx.context.adapter.delete({
++		model: "oauthRefreshToken",
++		where: [{
++			field: "id",
++			value: id
++		}]
++	});
++}
+ async function revokeTokensIssuedForAuthorizationCode(ctx, authorizationCodeId) {
+ 	const deleteIssuedTokens = async (model) => {
+ 		try {
+@@ -1542,7 +1592,7 @@ async function revokeTokensIssuedForAuthorizationCode(ctx, authorizationCodeId)
+ 	await deleteIssuedTokens("oauthAccessToken");
+ 	await deleteIssuedTokens("oauthRefreshToken");
+ }
+-async function createRefreshToken(ctx, opts, user, referenceId, authorizationCodeId, client, scopes, payload, originalRefresh, authTime, resources, confirmation, requestedUserInfoClaims) {
++async function createRefreshToken(ctx, opts, user, referenceId, authorizationCodeId, client, scopes, payload, originalRefresh, authTime, resources, confirmation, requestedUserInfoClaims, consentId) {
+ 	const iat = payload.iat ?? Math.floor(Date.now() / 1e3);
+ 	const exp = payload?.exp ?? iat + (opts.refreshTokenExpiresIn ?? 2592e3);
+ 	const token = opts.generateRefreshToken ? await opts.generateRefreshToken() : generateRandomString(32, "A-Z", "a-z");
+@@ -1557,6 +1607,7 @@ async function createRefreshToken(ctx, opts, user, referenceId, authorizationCod
+ 		authTime,
+ 		confirmation,
+ 		requestedUserInfoClaims: requestedUserInfoClaims?.length ? requestedUserInfoClaims : void 0,
++		consentId,
+ 		scopes,
+ 		resources,
+ 		createdAt: /* @__PURE__ */ new Date(iat * 1e3),
+@@ -1830,11 +1881,14 @@ async function createUserTokens(ctx, opts, params) {
+ 		refreshToken: existingRefreshToken
+ 	});
+ 	const requestedUserInfoClaims = params.requestedUserInfoClaims ?? existingRefreshToken?.requestedUserInfoClaims ?? [];
++	// Workspace patch: the tokens reference the consent of the code they were
++	// bought with, or of the refresh token they rotate.
++	const consentId = params.consentId ?? existingRefreshToken?.consentId;
+ 	const earlyRefreshToken = isRefreshToken && user && !isJwtAccessToken ? await createRefreshToken(ctx, opts, user, referenceId, params.authorizationCodeId, client, effectiveScopes, {
+ 		iat,
+ 		exp: refreshTokenExp,
+ 		sid: sessionId
+-	}, existingRefreshToken, authTime, refreshResources, confirmation, requestedUserInfoClaims) : void 0;
++	}, existingRefreshToken, authTime, refreshResources, confirmation, requestedUserInfoClaims, consentId).catch((error) => refuseRevokedConsent(ctx, consentId, error)) : void 0;
+ 	const accessTokenClaims = isJwtAccessToken ? await resolveAccessTokenClaims({
+ 		ctx,
+ 		opts,
+@@ -1861,11 +1915,11 @@ async function createUserTokens(ctx, opts, params) {
+ 		iat,
+ 		exp,
+ 		sid: sessionId
+-	}, params?.resources, referenceId, params.authorizationCodeId, earlyRefreshToken?.id, confirmation, requestedUserInfoClaims), earlyRefreshToken ? earlyRefreshToken : isRefreshToken && user ? createRefreshToken(ctx, opts, user, referenceId, params.authorizationCodeId, client, effectiveScopes, {
++	}, params?.resources, referenceId, params.authorizationCodeId, earlyRefreshToken?.id, confirmation, requestedUserInfoClaims, consentId), earlyRefreshToken ? earlyRefreshToken : isRefreshToken && user ? createRefreshToken(ctx, opts, user, referenceId, params.authorizationCodeId, client, effectiveScopes, {
+ 		iat,
+ 		exp: refreshTokenExp,
+ 		sid: sessionId
+-	}, existingRefreshToken, authTime, refreshResources, confirmation, requestedUserInfoClaims) : void 0]);
++	}, existingRefreshToken, authTime, refreshResources, confirmation, requestedUserInfoClaims, consentId) : void 0]).catch((error) => refuseRevokedConsent(ctx, consentId, error));
+ 	const idToken = isIdToken ? await createIdToken(ctx, opts, user, client, effectiveScopes, nonce, sessionId, authTime, accessToken, additionalIdTokenClaims) : void 0;
+ 	const responseBody = {
+ 		...customFields,
+@@ -2032,6 +2086,26 @@ async function handleAuthorizationCodeGrant(ctx, opts) {
+ 	});
+ 	const authTime = verificationValue.authTime != null ? normalizeTimestampValue(verificationValue.authTime) : resolveSessionAuthTime(session);
+ 	const requestedUserInfoClaims = getRequestedUserInfoClaims(verificationValue.query.claims, getSupportedClaims(opts));
++	// Workspace patch: the tokens reference the consent the code is bound to
++	// (better-auth/better-auth#11345), or else the client's consent for the
++	// customer. A client that asks for consent gets no tokens without one.
++	const consentId = client.skipConsent ? void 0 : verificationValue.consentId ?? (await ctx.context.adapter.findOne({
++		model: "oauthConsent",
++		where: [{
++			field: "clientId",
++			value: client.clientId
++		}, {
++			field: "userId",
++			value: user.id
++		}, {
++			field: "referenceId",
++			value: verificationValue.referenceId ?? null
++		}]
++	}))?.id;
++	if (!client.skipConsent && !consentId) throw new APIError("BAD_REQUEST", {
++		error_description: "consent revoked",
++		error: "invalid_grant"
++	});
+ 	return createUserTokens(ctx, opts, {
+ 		client,
+ 		scopes: verificationValue.query.scope?.split(" ") ?? [],
+@@ -2045,7 +2119,8 @@ async function handleAuthorizationCodeGrant(ctx, opts) {
+ 		authorizationCodeId,
+ 		requestedUserInfoClaims,
+ 		resources: effectiveResources,
+-		originalResources: authorizedResources
++		originalResources: authorizedResources,
++		consentId
+ 	});
+ }
+ /**
+@@ -2143,6 +2218,15 @@ async function handleRefreshTokenGrant(ctx, opts) {
+ 		});
+ 	}
+ 	const client = await validateClientCredentials(ctx, opts, client_id, client_secret, requestedScopes ?? scopes, preVerified, "refresh_token", authMethod);
++	// Workspace patch: a refresh token that references no consent fails,
++	// including inside the reuse window.
++	if (isUnboundConsentToken(client, refreshToken)) {
++		await deleteRefreshToken(ctx, refreshToken.id);
++		throw new APIError("BAD_REQUEST", {
++			error_description: "invalid refresh token",
++			error: "invalid_grant"
++		});
++	}
+ 	if (refreshToken.revoked) {
+ 		if (isWithinRefreshTokenReuseInterval(refreshToken)) {
+ 			const replay = await getRefreshTokenRotationReplay(ctx, refreshToken, await resolveRefreshTokenRotationReplayRequest(ctx, opts, {
+@@ -2320,6 +2404,16 @@ async function validateOpaqueAccessToken(ctx, opts, token, clientId) {
+ 			issuerClientId: accessToken.clientId,
+ 			audienceResources: resources ?? []
+ 		})) return inactiveAccessToken();
++		if (isUnboundConsentToken(client, accessToken)) {
++			await ctx.context.adapter.delete({
++				model: "oauthAccessToken",
++				where: [{
++					field: "id",
++					value: accessToken.id
++				}]
++			});
++			return inactiveAccessToken();
++		}
+ 	}
+ 	const sessionId = accessToken.sessionId ?? void 0;
+ 	if (sessionId) {

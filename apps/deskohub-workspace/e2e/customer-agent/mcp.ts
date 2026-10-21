@@ -49,6 +49,57 @@ const previewFetch =
 const protectedResourceMetadataPath =
   "/.well-known/oauth-protected-resource/api/mcp";
 
+/**
+ * Calls a signed-in tool with a raw request, so the response status stays
+ * readable; the body is discarded.
+ */
+const callSignedInTool = async (
+  fetchFn: FetchLike,
+  resource: string,
+  accessToken?: string
+) => {
+  const response = await fetchFn(resource, {
+    body: JSON.stringify({
+      id: 1,
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: { arguments: {}, name: "list_my_reservations" },
+    }),
+    headers: {
+      accept: "application/json, text/event-stream",
+      "content-type": "application/json",
+      "mcp-protocol-version": "2025-11-25",
+      ...(accessToken && { authorization: `Bearer ${accessToken}` }),
+    },
+    method: "POST",
+  });
+  await response.body?.cancel();
+  return response;
+};
+
+/**
+ * An access token the customer revoked gets the same 401 challenge as no
+ * token at all.
+ */
+export const expectCustomerMcpRejection = ({
+  accessToken,
+  config,
+}: {
+  readonly accessToken: string;
+  readonly config: WorkspaceE2EConfig;
+}): Effect.Effect<void, WorkspaceE2EError> =>
+  tryWorkspaceE2EPromise("call MCP with a revoked token", async (signal) => {
+    const response = await callSignedInTool(
+      previewFetch(config, signal),
+      customerMcpResourceFor(config.baseUrl),
+      accessToken
+    );
+    assert(
+      response.status === 401,
+      `A revoked agent token answered ${response.status}, not 401`
+    );
+  });
+
 export type CustomerAgentAuthorizationServer = {
   readonly metadata: AuthorizationServerMetadata;
   readonly url: string;
@@ -68,21 +119,7 @@ export const discoverCustomerAgentAuthorization = (
     async (signal) => {
       const fetchFn = previewFetch(config, signal);
       const resource = customerMcpResourceFor(config.baseUrl);
-      const challenge = await fetchFn(resource, {
-        body: JSON.stringify({
-          id: 1,
-          jsonrpc: "2.0",
-          method: "tools/call",
-          params: { arguments: {}, name: "list_my_reservations" },
-        }),
-        headers: {
-          accept: "application/json, text/event-stream",
-          "content-type": "application/json",
-          "mcp-protocol-version": "2025-11-25",
-        },
-        method: "POST",
-      });
-      await challenge.body?.cancel();
+      const challenge = await callSignedInTool(fetchFn, resource);
       assert(
         challenge.status === 401,
         `A signed-in tool without a token answered ${challenge.status}, not 401`

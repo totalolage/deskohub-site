@@ -21,6 +21,7 @@ export const accountSectionLabels = {
   referrals: "Referrals",
   profile: "Profile & Identity",
   security: "Sign-in & security",
+  assistants: "Connected assistants",
   billing: "Billing & Invoices",
   legal: "Legal & Privacy",
   danger: "Danger zone",
@@ -36,6 +37,7 @@ export const accountSectionLandmarks = {
   referrals: "[data-screen='referrals-screen']",
   profile: "[data-screen='profile-screen']",
   security: "#account-security-passkeys-title",
+  assistants: "#account-assistants-title",
   billing: "#account-profile-billing-kind",
   legal: "main a[href$='/privacy-policy']",
   danger: "#delete-account-trigger",
@@ -182,6 +184,7 @@ const accountSectionHydrationAnchors: Readonly<
   referrals: accountSectionLandmarks.referrals,
   profile: accountSectionLandmarks.profile,
   security: accountSectionLandmarks.security,
+  assistants: accountSectionLandmarks.assistants,
   billing: accountSectionLandmarks.profile,
   danger: accountSectionLandmarks.danger,
 };

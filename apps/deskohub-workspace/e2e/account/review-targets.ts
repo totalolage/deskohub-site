@@ -15,6 +15,7 @@ export const accountReviewTargetBySection = {
   referrals: "linked-referrals-desktop",
   profile: "linked-profile-desktop",
   security: "linked-security-desktop",
+  assistants: "linked-assistants-desktop",
   billing: "linked-billing-desktop",
   legal: "linked-legal-desktop",
   danger: "linked-danger-desktop",
@@ -29,6 +30,7 @@ export const mobileAccountReviewTargetBySection: Readonly<
   danger: "linked-danger-mobile",
   profile: "linked-profile-language-mobile",
   security: undefined,
+  assistants: undefined,
   legal: undefined,
 };
 
