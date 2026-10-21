@@ -1,4 +1,10 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  hkdfSync,
+  randomBytes,
+} from "node:crypto";
 import { deflateRawSync, inflateRawSync } from "node:zlib";
 import { Config, Data, Effect, Schema } from "effect";
 
@@ -10,6 +16,7 @@ import { Config, Data, Effect, Schema } from "effect";
  */
 
 const ivByteLength = 12;
+const syntheticIvKeyInfo = "deskohub sealed-state synthetic IV";
 const authTagByteLength = 16;
 const keyByteLength = 32;
 // Far above any state that fits a URL, so a crafted token can't inflate into
@@ -52,6 +59,13 @@ export type SealedStateCryptoOptions = {
   readonly keys?: readonly SealedStateKey[];
   readonly now?: () => Date;
   readonly randomBytes?: (size: number) => Buffer;
+  /**
+   * Seals equal state under one key to the same token, for a link a repeated
+   * request must return unchanged. The IV is a 96-bit MAC of the header and
+   * plaintext (a synthetic IV, as in SIV), so different states get unrelated
+   * IVs; the token reveals only that two seals carried equal state.
+   */
+  readonly syntheticIv?: boolean;
 };
 
 export type SealedStateOptions = SealedStateCryptoOptions & {
@@ -300,6 +314,23 @@ const decodeProtectedHeader = Schema.decodeUnknownEffect(
   { onExcessProperty: "error" }
 );
 
+const deriveSyntheticIv = (
+  key: Buffer,
+  encodedHeader: string,
+  plaintext: Buffer
+) =>
+  createHmac(
+    "sha256",
+    Buffer.from(
+      hkdfSync("sha256", key, Buffer.alloc(0), syntheticIvKeyInfo, 32)
+    )
+  )
+    .update(encodedHeader)
+    .update(".")
+    .update(plaintext)
+    .digest()
+    .subarray(0, ivByteLength);
+
 export const sealState = Effect.fn("sealedState.seal")(function* <T>(
   state: T,
   keyId: SealedStateKeyId,
@@ -323,8 +354,9 @@ export const sealState = Effect.fn("sealedState.seal")(function* <T>(
   return yield* Effect.try({
     try: () => {
       const encodedHeader = base64UrlEncode(headerJson);
-      const iv =
-        options.randomBytes?.(ivByteLength) ?? randomBytes(ivByteLength);
+      const iv = options.syntheticIv
+        ? deriveSyntheticIv(key.key, encodedHeader, plaintext)
+        : (options.randomBytes?.(ivByteLength) ?? randomBytes(ivByteLength));
       const cipher = createCipheriv("aes-256-gcm", key.key, iv, {
         authTagLength: authTagByteLength,
       });

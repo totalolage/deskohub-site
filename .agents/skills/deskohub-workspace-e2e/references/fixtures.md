@@ -8,10 +8,11 @@
 - [Discount fixtures](#discount-fixtures)
 - [Calendar sale event](#calendar-sale-event)
 - [Administrator sessions](#administrator-sessions)
+- [Customer agent OAuth clients](#customer-agent-oauth-clients)
 - [Access-code idempotency](#access-code-idempotency)
 - [Email campaign recipient preview](#email-campaign-recipient-preview)
 
-Every case uses a unique synthetic customer. Submitting checkout cases use case-owned identities: the default booker is a verified account linked to its own synthetic Dotypos profile, while referral and signed-out-verification cases bind their own identities. Each has a journal owner that `checkout-cleanup` reconciles; non-submitting checkout cases stay signed out. Never make an edge case mutate a fixture another case reads.
+Every case uses a unique synthetic customer. Submitting checkout cases use case-owned identities: the default booker is a verified account linked to its own synthetic Dotypos profile, while referral, signed-out-verification, and agent-booking cases bind their own identities. Each has a journal owner that `checkout-cleanup` reconciles; non-submitting checkout cases stay signed out. Never make an edge case mutate a fixture another case reads.
 
 ## Synthetic recipients and email
 
@@ -87,6 +88,16 @@ Admin pages accept only a verified Better Auth session whose account holds an `a
 - Each case owns a closed set of recipient labels in `workspaceE2EAdministrationRecipientLabels`; `checkout-cleanup` reconciles those journals with the others. Deleting the user cascades its sessions and grant. Seed the administrator only after the bypass is primed, right before the first admin page.
 - Grant nothing to an account a case didn't seed, and never copy a real administrator into a preview. Production-derived preview branches may hold inherited grants; E2E never reads or relies on them.
 - `create-access-code` asserts every attempt event names the seeded account (`actor_account_id`, `actor_account_email`).
+
+## Customer agent OAuth clients
+
+`checkout-agent-booking` (`e2e/cases/agent-booking.ts`) books as an AI agent: OAuth authorization code with PKCE, consent in both locales, then the signed-in MCP tools with the bearer token.
+
+- The agent registers through its Client ID Metadata Document, as a real agent does. Its client ID is `https://workspace.deskohub.cz/oauth/clients/e2e-agent.json`: the production route `app/oauth/clients/e2e-agent.json/route.ts` serves the synthetic document from `features/account/customer-agent-test-client.ts` with `max-age=60`. A protected preview can't serve the document to its own OAuth server, so the preview fetches it from production with its real metadata transport. A change to the document reaches preview E2E only after it deploys to production.
+- The OAuth server resolves the agent on nearly every client lookup (authorize, consent, token exchange, access-token checks on each MCP call) and refetches only a stale copy, so production must stay reachable for the whole case. Keep a short `max-age` rather than `no-store`: the CIMD fetch policy refuses a second fetch of one client within a second, so an uncached document fails back-to-back lookups.
+- Never seed `auth.oauth_client` rows or override the metadata transport for the case. The first authorization request registers the client row; it is shared by every run against that preview database and never deleted. The consents and tokens belong to the case's journaled account, so journal reconciliation cascades them away.
+- The redirect URI `https://e2e-agent.invalid/callback` never resolves. The case's browser context fulfills it with an empty page (`context.route`), and the step reads `code`, `state`, and `iss` from the URL. Register the code, the PKCE verifier, the tokens, and the Pay link's `payState` with the redactor before any log line can carry them.
+- Drive OAuth with the MCP SDK's own client helpers (`discoverOAuthServerInfo`, `startAuthorization`, `exchangeAuthorization`) and send agent requests with plain `fetch` plus the bypass header, never through the browser context, so the bearer token is their only credential.
 
 ## Access-code idempotency
 

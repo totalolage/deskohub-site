@@ -8,6 +8,7 @@ import { Duration, Effect, Fiber, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
+import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
 import { LatePaymentVerificationService } from "../payment/late-payment-verification.service";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "../payment/provider-payment-finalization.service";
 import { LatePaymentRecoveryRepository } from "../repositories/late-payment-recovery.repository";
@@ -107,7 +108,9 @@ const makeDotypos = <Overrides extends object>(overrides?: Overrides) => ({
 /** Serves the status page's table inventory from the mocked Dotypos tables. */
 const dotyposLayer = (dotypos: ReturnType<typeof makeDotypos>) =>
   Layer.mergeAll(
-    Layer.mock(DotyposService, dotypos),
+    ReservationRecords.Provider.pipe(
+      Layer.provideMerge(Layer.mock(DotyposService, dotypos))
+    ),
     Layer.mock(AdvisoryAvailabilityInventory, {
       tables: Effect.suspend(() => dotypos.getTables()),
     })
@@ -800,9 +803,28 @@ describe("CheckoutStatusService", () => {
   describe("a paid reservation whose fulfillment has not completed", () => {
     const paidAt = testInstant("2026-06-01T10:00:00.000Z");
 
+    const makeContactDotypos = () =>
+      makeDotypos({
+        getCustomer: mock(() =>
+          Effect.succeed({
+            id: "customer-id",
+            firstName: "Ada",
+            lastName: "Lovelace",
+            email: testEmailAddress("ada"),
+          })
+        ),
+      });
+
     const getPaidStatus = async (
       now: Temporal.Instant,
-      overrides: Partial<ReturnType<typeof makeReservation>> = {}
+      overrides: Partial<ReturnType<typeof makeReservation>> = {},
+      {
+        dotypos = makeContactDotypos(),
+        includeSupportContact,
+      }: {
+        readonly dotypos?: ReturnType<typeof makeDotypos>;
+        readonly includeSupportContact?: boolean;
+      } = {}
     ) => {
       const { CheckoutStatusService } = await import(
         "./checkout-status.service"
@@ -823,6 +845,7 @@ describe("CheckoutStatusService", () => {
         return yield* service.getStatus({
           orderId: "reservation-provider-return",
           returnOutcome: "success",
+          ...(includeSupportContact !== undefined && { includeSupportContact }),
         });
       }).pipe(
         Effect.provide(
@@ -862,18 +885,7 @@ describe("CheckoutStatusService", () => {
                     )
                   ),
                 }),
-                dotyposLayer(
-                  makeDotypos({
-                    getCustomer: mock(() =>
-                      Effect.succeed({
-                        id: "customer-id",
-                        firstName: "Ada",
-                        lastName: "Lovelace",
-                        email: testEmailAddress("ada"),
-                      })
-                    ),
-                  })
-                ),
+                dotyposLayer(dotypos),
                 noLatePaymentLayer(),
                 SeatingMapFeatureFlagServiceMock({
                   isEnabled: Effect.succeed(false),
@@ -894,6 +906,51 @@ describe("CheckoutStatusService", () => {
         status: "paid_awaiting_delivery",
         supportContactPrefill: { email: testEmailAddress("ada") },
       });
+    });
+
+    test("skips the contact read for a caller that never shows it", async () => {
+      const dotypos = makeContactDotypos();
+
+      const status = await getPaidStatus(
+        paidAt.add({ minutes: 2 }),
+        {},
+        { dotypos, includeSupportContact: false }
+      );
+
+      expect(status).toMatchObject({
+        status: "paid_awaiting_delivery",
+        supportContactPrefill: undefined,
+      });
+      expect(dotypos.getCustomer).not.toHaveBeenCalled();
+    });
+
+    // The reservation details may come from a shared snapshot taken before
+    // the hold was confirmed; the status comes from the Workspace rows.
+    test("reports a paid booking from Workspace rows even when its reservation details still say NEW", async () => {
+      const dotypos = makeContactDotypos();
+      dotypos.getReservationWithoutCustomer.mockImplementation(() =>
+        Effect.succeed({
+          id: "dotypos-reservation-id",
+          _customerId: "customer-id",
+          startDate: "2026-06-20T00:00:00.000+02:00",
+          endDate: "2026-06-21T00:00:00.000+02:00",
+          seats: "1",
+          status: "NEW",
+        })
+      );
+
+      const status = await getPaidStatus(
+        paidAt.add({ minutes: 2 }),
+        { fulfillmentState: "fulfilled", fulfilledAt: paidAt },
+        { dotypos }
+      );
+
+      expect(status).toMatchObject({
+        status: "fulfilled",
+        paymentStatus: "paid",
+        summary: { price: { value: 55_000 } },
+      });
+      expect(dotypos.getReservationWithoutCustomer).toHaveBeenCalledTimes(1);
     });
 
     test("does not call a reservation confirmed before Dotypos confirms it", async () => {

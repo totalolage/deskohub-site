@@ -41,6 +41,9 @@ const nextConfig = {
       expire: 60 * 60 * 6,
     },
     availabilityReservations: { stale: 30, revalidate: 60, expire: 60 * 10 },
+    // Reservation details customers and their agents read; statuses come from
+    // Workspace rows, so a stale entry only delays a provider-side change.
+    reservationRecords: { stale: 30, revalidate: 60, expire: 60 * 5 },
   },
   cacheComponents: true,
   experimental: {

@@ -8,6 +8,7 @@ import { Effect, Layer } from "effect";
 import type { LatePaymentRecoveryState } from "@/db/schema";
 import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
+import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { LatePaymentVerificationService } from "../payment/late-payment-verification.service";
 import { ProviderPaymentFinalizationService } from "../payment/provider-payment-finalization.service";
@@ -109,25 +110,29 @@ const makeHarness = (options: {
           ),
         }),
         Layer.mock(LatePaymentVerificationService, { startRecoveryIfSettled }),
-        Layer.mock(DotyposService, {
-          getReservationWithoutCustomer: mock(() =>
-            Effect.succeed({
-              id: "dotypos-original",
-              _customerId: "customer-id",
-              _tableId: "open-table",
-              startDate: "2026-06-20T00:00:00.000+02:00",
-              endDate: "2026-06-20T17:00:00.000+02:00",
-              seats: "1",
-              status: "CANCELLED",
-            } as never)
-          ),
-          getCustomer: mock(() =>
-            Effect.succeed({
-              id: "customer-id",
-              email: testEmailAddressForLate,
-            } as never)
-          ),
-        }),
+        ReservationRecords.Provider.pipe(
+          Layer.provideMerge(
+            Layer.mock(DotyposService, {
+              getReservationWithoutCustomer: mock(() =>
+                Effect.succeed({
+                  id: "dotypos-original",
+                  _customerId: "customer-id",
+                  _tableId: "open-table",
+                  startDate: "2026-06-20T00:00:00.000+02:00",
+                  endDate: "2026-06-20T17:00:00.000+02:00",
+                  seats: "1",
+                  status: "CANCELLED",
+                } as never)
+              ),
+              getCustomer: mock(() =>
+                Effect.succeed({
+                  id: "customer-id",
+                  email: testEmailAddressForLate,
+                } as never)
+              ),
+            })
+          )
+        ),
         Layer.mock(AdvisoryAvailabilityInventory, {
           tables: Effect.succeed(tables as never),
         }),

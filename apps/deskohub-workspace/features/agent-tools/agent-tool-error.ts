@@ -10,12 +10,22 @@ export type AgentToolErrorCode =
   | "quote_unavailable"
   | "offerings_unavailable"
   | "rate_limited"
-  | "service_unavailable";
+  | "service_unavailable"
+  | "profile_incomplete"
+  | "selection_unavailable"
+  | "reservation_conflict"
+  | "payment_in_progress"
+  | "reservation_unavailable"
+  | "account_unavailable"
+  | "reservation_not_found"
+  | "reservations_unavailable";
 
 export type AgentToolUnavailableCode =
   | "availability_unavailable"
   | "quote_unavailable"
-  | "offerings_unavailable";
+  | "offerings_unavailable"
+  | "reservation_unavailable"
+  | "reservations_unavailable";
 
 type AgentToolErrorDetails =
   | { readonly code: "invalid_input"; readonly field?: string }
@@ -68,6 +78,14 @@ export const agentToolErrorResultSchema = Schema.Struct({
         "offerings_unavailable",
         "rate_limited",
         "service_unavailable",
+        "profile_incomplete",
+        "selection_unavailable",
+        "reservation_conflict",
+        "payment_in_progress",
+        "reservation_unavailable",
+        "account_unavailable",
+        "reservation_not_found",
+        "reservations_unavailable",
       ]),
       message: agentToolErrorMessageField,
     }),
@@ -101,6 +119,29 @@ export class AgentToolError extends Data.TaggedError("AgentToolError")<{
   static serviceUnavailable = () =>
     new AgentToolError({ details: { code: "service_unavailable" } });
 
+  /** Calls can't be admitted because a safeguard failed with this cause. */
+  static unavailableService = (cause: unknown) =>
+    new AgentToolError({ details: { code: "service_unavailable" }, cause });
+
+  /**
+   * A refusal the customer resolves on the website, such as completing the
+   * profile; `cause` keeps the domain error it maps.
+   */
+  static refused =
+    (
+      code: Extract<
+        AgentToolErrorCode,
+        | "profile_incomplete"
+        | "selection_unavailable"
+        | "reservation_conflict"
+        | "payment_in_progress"
+        | "account_unavailable"
+        | "reservation_not_found"
+      >
+    ) =>
+    (cause?: unknown) =>
+      new AgentToolError({ details: { code }, cause });
+
   /** Wraps an unexpected failure as the tool's unavailable code. */
   static unavailable = (code: AgentToolUnavailableCode) => (cause: unknown) =>
     new AgentToolError({ details: { code }, cause });
@@ -133,6 +174,22 @@ export const getAgentToolErrorMessage = (
       rate_limited: () => m.agentToolErrorRateLimited({}, { locale }),
       service_unavailable: () =>
         m.agentToolErrorServiceUnavailable({}, { locale }),
+      profile_incomplete: () =>
+        m.agentToolErrorProfileIncomplete({}, { locale }),
+      selection_unavailable: () =>
+        m.agentToolErrorSelectionUnavailable({}, { locale }),
+      reservation_conflict: () =>
+        m.agentToolErrorReservationConflict({}, { locale }),
+      payment_in_progress: () =>
+        m.agentToolErrorPaymentInProgress({}, { locale }),
+      reservation_unavailable: () =>
+        m.agentToolErrorReservationUnavailable({}, { locale }),
+      account_unavailable: () =>
+        m.agentToolErrorAccountUnavailable({}, { locale }),
+      reservation_not_found: () =>
+        m.agentToolErrorReservationNotFound({}, { locale }),
+      reservations_unavailable: () =>
+        m.agentToolErrorReservationsUnavailable({}, { locale }),
     })
   );
 
