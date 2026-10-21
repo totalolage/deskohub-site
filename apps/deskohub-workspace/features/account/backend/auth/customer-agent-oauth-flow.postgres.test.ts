@@ -1396,6 +1396,63 @@ describe.skipIf(!testDatabase)(
     });
 
     /**
+     * Issues one pending code under a fresh consent, narrows that consent
+     * with `narrow`, and expects the code's exchange to be refused while the
+     * narrowed consent still stands.
+     */
+    const expectRefusedAfterNarrowing = async (
+      narrow: (accountId: string) => Promise<{ readonly rowCount: unknown }>
+    ) => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const customer = await signIn(auth, sentLinks);
+      const pending = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "asks"
+      );
+      expect((await narrow(customer.accountId)).rowCount).toBe(1);
+
+      const refused = await exchangeCode(auth, pending);
+      expect(refused.status).toBe(400);
+      expect(((await refused.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
+      expect(await countClientTokens(customer.accountId, agent.clientId)).toBe(
+        0
+      );
+      expect(await countRows("oauth_consent", customer.accountId)).toBe(1);
+    };
+
+    // Guards the Workspace oauth-provider patch: the consent row a code is
+    // bound to can stand while it stops covering what the code was issued
+    // for, so only the coverage check keeps the code from redeeming.
+    test("refuses a code whose consent no longer grants one of its scopes", () =>
+      expectRefusedAfterNarrowing((accountId) =>
+        testDatabase!.pool.query(
+          `update auth.oauth_consent
+              set scopes = array_remove(scopes, $2)
+            where user_id = $1 and $2 = any(scopes)`,
+          [accountId, "reservations:create"]
+        )
+      ));
+
+    test("refuses a code whose consent no longer covers its resource", () =>
+      expectRefusedAfterNarrowing((accountId) =>
+        testDatabase!.pool.query(
+          `update auth.oauth_consent
+              set resources = array_remove(resources, $2)
+            where user_id = $1 and $2 = any(resources)`,
+          [accountId, RESOURCE]
+        )
+      ));
+
+    /**
      * Connects one assistant through an adapter that lets a test interleave
      * its refresh or code exchange with its disconnect.
      */
