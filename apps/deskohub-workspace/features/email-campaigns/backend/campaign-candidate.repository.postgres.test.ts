@@ -89,8 +89,8 @@ const bookedOnPragueDay = (day: string) => ({
   },
 });
 const accountCreatedAt = Temporal.Instant.from("2026-09-15T10:00:00Z");
-// The login predates its account, as a login the account backfill gave an
-// account does; the account's own creation is the one that counts.
+// The login predates its account so the two dates differ; the account's own
+// creation is the one that counts.
 const loginCreatedAt = Temporal.Instant.from("2026-08-01T10:00:00Z");
 const marketingCampaign = `campaign-marketing-${run}`;
 const operationalCampaign = `campaign-operational-${run}`;
