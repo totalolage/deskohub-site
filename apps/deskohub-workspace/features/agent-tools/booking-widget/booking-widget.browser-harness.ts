@@ -26,6 +26,8 @@ declare global {
     ) => Promise<CallToolResult>;
     /** Records the view's `ui/open-link`; the test exposes it. */
     readonly openBookingLink: (url: string) => Promise<void>;
+    /** Records the view's `window.openai.openExternal`; the test exposes it. */
+    readonly openBookingExternal: NonNullable<Window["openai"]>["openExternal"];
   }
 }
 

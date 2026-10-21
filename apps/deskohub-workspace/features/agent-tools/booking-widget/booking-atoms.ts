@@ -13,6 +13,11 @@ import { BookingHost } from "./booking-host";
 
 const bookingRuntime = Atom.runtime(BookingHost.Live);
 
+/** The view's language, for every message it shows, startup failures included. */
+export const bookingLocaleAtom = bookingRuntime
+  .atom(BookingHost.use((host) => host.locale))
+  .pipe(Atom.keepAlive);
+
 /** The `show_booking` result the view opens with. */
 export const bookingStartAtom = bookingRuntime
   .atom(Effect.service(BookingHost).pipe(Effect.flatMap((host) => host.start)))

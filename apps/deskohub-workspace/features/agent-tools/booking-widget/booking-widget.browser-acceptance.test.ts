@@ -101,6 +101,9 @@ const openBookingView = async ({
   requestedLocale = locale as Locale | null,
   resultLocale = locale,
   answers = {},
+  opensLinks = true,
+  chatgptBridge = false,
+  waitForForm = true,
 }: {
   readonly mode: BookingMode;
   readonly locale: Locale;
@@ -109,6 +112,12 @@ const openBookingView = async ({
   readonly requestedLocale?: Locale | null;
   readonly resultLocale?: Locale;
   readonly answers?: ToolAnswers;
+  /** Whether the host declares `openLinks`. */
+  readonly opensLinks?: boolean;
+  /** Whether the view gets ChatGPT's `window.openai` bridge. */
+  readonly chatgptBridge?: boolean;
+  /** Whether to wait until the view shows the booking form. */
+  readonly waitForForm?: boolean;
 }) => {
   if (!browser) throw new Error("The browser has not been launched.");
   const page = await browser.newPage({
@@ -129,6 +138,19 @@ const openBookingView = async ({
   await page.exposeFunction("openBookingLink", (url: string) => {
     linkOpened.resolve(url);
   });
+  const externalOpened = Promise.withResolvers<Schema.Json>();
+  if (chatgptBridge) {
+    await page.exposeFunction("openBookingExternal", (options: Schema.Json) => {
+      externalOpened.resolve(options);
+    });
+    // ChatGPT injects its bridge into the view's frame before the view runs.
+    await page.addInitScript(() => {
+      if (window === window.top) return;
+      Object.assign(window, {
+        openai: { openExternal: window.openBookingExternal },
+      });
+    });
+  }
   await page.setContent(
     "<!doctype html><html><head><meta charset='utf-8'></head><body style='margin:0'></body></html>"
   );
@@ -139,17 +161,25 @@ const openBookingView = async ({
     {
       html: widgetHtml,
       hostLocale,
-      opensLinks: true,
+      opensLinks,
       toolArguments: requestedLocale ? { locale: requestedLocale } : {},
       toolResult: toolResult(showBookingResult({ mode, locale: resultLocale })),
     }
   );
   await page.addScriptTag({ path: harnessPath });
   const view = page.frameLocator("iframe");
-  await view
-    .getByRole("heading", { name: m.bookingWidgetTitle({}, { locale }) })
-    .waitFor();
-  return { page, view, calls, linkOpened: linkOpened.promise };
+  if (waitForForm) {
+    await view
+      .getByRole("heading", { name: m.bookingWidgetTitle({}, { locale }) })
+      .waitFor();
+  }
+  return {
+    page,
+    view,
+    calls,
+    linkOpened: linkOpened.promise,
+    externalOpened: externalOpened.promise,
+  };
 };
 
 const capture = async (page: Page, name: string) => {
@@ -395,6 +425,87 @@ describe.skipIf(!chromiumAvailable)("booking view", () => {
         "true"
       );
       expect(calls).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("words a startup failure in the view's language", async () => {
+    const { page, view } = await openBookingView({
+      mode: "reservation_page",
+      locale: "cs-CZ",
+      hostLocale: "cs-CZ",
+      requestedLocale: null,
+      resultLocale: "en-US",
+      answers: {
+        list_offerings: () =>
+          toolResult(
+            {
+              error: {
+                code: "rate_limited",
+                message: m.agentToolErrorRateLimited({}, { locale: "cs-CZ" }),
+              },
+            },
+            true
+          ),
+      },
+      waitForForm: false,
+    });
+    try {
+      await view
+        .getByRole("alert")
+        .getByText(m.bookingWidgetStartFailed({}, { locale: "cs-CZ" }))
+        .waitFor();
+      await expect(view.locator("html").getAttribute("lang")).resolves.toBe(
+        "cs-CZ"
+      );
+      await capture(page, "startup-error-cs-CZ");
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("opens links through ChatGPT's bridge when the host doesn't declare openLinks", async () => {
+    const { page, view, externalOpened } = await openBookingView({
+      mode: "reservation_page",
+      locale: "en-US",
+      opensLinks: false,
+      chatgptBridge: true,
+    });
+    try {
+      await checkAvailability(view, "en-US");
+      await view
+        .getByRole("link", {
+          name: m.bookingWidgetOpenReservationPage({}, { locale: "en-US" }),
+        })
+        .click();
+      await expect(externalOpened).resolves.toEqual({
+        href: quoteResult().reservation_url,
+        redirectUrl: false,
+      });
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("leaves a plain link with its address when the host can't open links", async () => {
+    const { page, view } = await openBookingView({
+      mode: "reservation_page",
+      locale: "en-US",
+      opensLinks: false,
+    });
+    try {
+      await checkAvailability(view, "en-US");
+      const link = view.getByRole("link", {
+        name: m.bookingWidgetOpenReservationPage({}, { locale: "en-US" }),
+      });
+      await expect(link.getAttribute("href")).resolves.toBe(
+        quoteResult().reservation_url
+      );
+      await expect(link.getAttribute("target")).resolves.toBe("_blank");
+      await view
+        .getByText(quoteResult().reservation_url, { exact: true })
+        .waitFor();
     } finally {
       await page.close();
     }

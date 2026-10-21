@@ -8,6 +8,7 @@ import { defaultLocale, m } from "@/features/i18n";
 import {
   bookingCheckAtom,
   bookingLinkAtom,
+  bookingLocaleAtom,
   bookingReserveAtom,
   bookingStartAtom,
 } from "./booking-atoms";
@@ -21,10 +22,20 @@ import { BookingForm } from "./booking-form";
 
 /**
  * The booking view's root: waits for the `show_booking` result, then keeps
- * the customer's draft and the results of the tool calls it makes.
+ * the results of the tool calls the view makes. Every message, startup
+ * failures included, is in the view's language once the host has sent the
+ * result.
  */
 function BookingWidget() {
+  const locale = AsyncResult.getOrElse(
+    useAtomValue(bookingLocaleAtom),
+    () => defaultLocale
+  );
   const start = useAtomValue(bookingStartAtom);
+  // Assistive technology reads the copy in the view's language.
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
 
   return AsyncResult.match(start, {
     onInitial: () => (
@@ -33,12 +44,12 @@ function BookingWidget() {
         className="p-4 text-sm text-navy-blue"
         role="status"
       >
-        {m.bookingWidgetLoading({}, { locale: defaultLocale })}
+        {m.bookingWidgetLoading({}, { locale })}
       </p>
     ),
     onFailure: () => (
       <p className="p-4 text-sm text-burned-orange-ink" role="alert">
-        {m.bookingWidgetStartFailed({}, { locale: defaultLocale })}
+        {m.bookingWidgetStartFailed({}, { locale })}
       </p>
     ),
     onSuccess: ({ value }) => <BookingSession start={value} />,
@@ -51,11 +62,6 @@ function BookingSession({ start }: { readonly start: BookingStart }) {
   const [check, setCheck] = useAtom(bookingCheckAtom);
   const [reservation, setReservation] = useAtom(bookingReserveAtom);
   const [link, openLink] = useAtom(bookingLinkAtom);
-  // Assistive technology reads the copy in the view's language.
-  useEffect(() => {
-    document.documentElement.lang = start.locale;
-  }, [start.locale]);
-
   return (
     <BookingForm
       check={check}

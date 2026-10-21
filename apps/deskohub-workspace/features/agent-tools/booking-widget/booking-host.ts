@@ -1,6 +1,6 @@
 import { App } from "@modelcontextprotocol/ext-apps";
 import { Context, Data, Deferred, Effect, Layer, Option, Schema } from "effect";
-import { locales } from "@/features/i18n";
+import { type Locale, locales } from "@/features/i18n";
 import {
   type AgentToolErrorResult,
   agentToolErrorResultSchema,
@@ -46,6 +46,11 @@ type ResultSchema<A> = Schema.Codec<A, unknown> & {
 export class BookingHost extends Context.Service<
   BookingHost,
   {
+    /**
+     * The view's language, known once the host sends the `show_booking`
+     * result, whether or not the view can start from it.
+     */
+    readonly locale: Effect.Effect<Locale>;
     /** The `show_booking` result the view renders, in the view's language. */
     readonly start: Effect.Effect<
       BookingStart,
@@ -124,29 +129,29 @@ const connectBookingHost = Effect.fn("bookingWidget.connect")(function* (
       catch: (cause) => new BookingRequestFailed({ cause }),
     }).pipe(Effect.flatMap(decodeToolResult(schema)));
 
+  // Hosts send the arguments before the result, if at all.
+  const locale = Deferred.await(toolResult).pipe(
+    Effect.andThen(Deferred.poll(toolInput)),
+    Effect.flatMap(Effect.transposeOption),
+    Effect.map((input) =>
+      getBookingLocale({
+        requested: Option.getOrUndefined(
+          Option.flatMap(input, ({ arguments: args }) =>
+            Schema.decodeUnknownOption(toolInputSchema)(args)
+          )
+        )?.locale,
+        hostLocale: app.getHostContext()?.locale,
+      })
+    )
+  );
+
   const start = Effect.Do.pipe(
     Effect.bind("result", () =>
       Deferred.await(toolResult).pipe(
         Effect.flatMap(decodeToolResult(showBookingResultSchema))
       )
     ),
-    // Hosts send the arguments before the result, if at all.
-    Effect.bind("requested", () =>
-      Deferred.poll(toolInput).pipe(
-        Effect.flatMap(Effect.transposeOption),
-        Effect.map(
-          (input) =>
-            Option.getOrUndefined(
-              Option.flatMap(input, ({ arguments: args }) =>
-                Schema.decodeUnknownOption(toolInputSchema)(args)
-              )
-            )?.locale
-        )
-      )
-    ),
-    Effect.let("locale", ({ requested }) =>
-      getBookingLocale({ requested, hostLocale: app.getHostContext()?.locale })
-    ),
+    Effect.bind("locale", () => locale),
     // Offering names come in the result's language; a view in another
     // language lists them again in its own.
     Effect.bind(
@@ -203,5 +208,5 @@ const connectBookingHost = Effect.fn("bookingWidget.connect")(function* (
       });
     });
 
-  return BookingHost.of({ start, callTool, openLink });
+  return BookingHost.of({ locale, start, callTool, openLink });
 });
