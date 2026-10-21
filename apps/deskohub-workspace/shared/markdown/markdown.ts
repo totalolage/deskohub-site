@@ -3,6 +3,7 @@ import type {
   BlockContent,
   Blockquote,
   Heading,
+  InlineCode,
   Link,
   List,
   ListItem,
@@ -41,6 +42,11 @@ export const markdownStrong = (
 ): Strong => ({
   type: "strong",
   children: toPhrasing(content),
+});
+
+export const markdownInlineCode = (value: string): InlineCode => ({
+  type: "inlineCode",
+  value,
 });
 
 export const markdownLink = (

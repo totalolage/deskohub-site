@@ -1,14 +1,12 @@
 import type { ListItem } from "mdast";
+import {
+  type AgentInterfaces,
+  agentInterfacesMarkdown,
+} from "@/features/agent-tools/agent-interfaces-markdown";
 import type { PublicOffering } from "@/features/checkout/public-offerings";
 import { getPublicOpeningHours } from "@/features/checkout/public-offerings";
 import { publicOfferingsMarkdown } from "@/features/checkout/public-offerings-markdown";
-import {
-  getWorkspaceAlternates,
-  type Locale,
-  locales,
-  m,
-} from "@/features/i18n";
-import { getLanguageLabels } from "@/features/i18n/language-labels";
+import { getWorkspacePageUrl, type Locale, m } from "@/features/i18n";
 import {
   type MarkdownBlocks,
   markdownBlockquote,
@@ -25,40 +23,34 @@ import {
 } from "./public-page-markdown";
 import type { PublicPagePathname } from "./public-pages";
 
-/** `llms.txt` is written in English and links every locale of each page. */
+/**
+ * `llms.txt` is written in English and links each page by its locale-agnostic
+ * URL, which opens in the reader's language.
+ */
 export const llmsTxtLocale: Locale = "en-US";
 
-/** Sections in the order `llms.txt` lists them, with their headings. */
+type TopicSection = readonly [PublicPageTopic, (locale: Locale) => string];
+
+/** Page sections in the order `llms.txt` lists them, with their headings. */
 const topicSections = [
   ["offer", (locale) => m.publicPageTopicOffer({}, { locale })],
   ["booking", (locale) => m.publicPageTopicBooking({}, { locale })],
   ["prices", (locale) => m.landingNavPricing({}, { locale })],
   ["contact", (locale) => m.landingNavContactLabel({}, { locale })],
   ["legal", (locale) => m.footerLegalLabel({}, { locale })],
-  // The llms.txt format names this section: readers may skip what it lists.
-  ["optional", () => "Optional"],
-] as const satisfies ReadonlyArray<
-  readonly [PublicPageTopic, (locale: Locale) => string]
->;
+] as const satisfies ReadonlyArray<TopicSection>;
 
-const pageUrl = (locale: Locale, pathname: PublicPagePathname) =>
-  getWorkspaceAlternates(locale, pathname).canonical;
+// The llms.txt format names this section: readers may skip what it lists.
+// It comes last.
+const optionalSection: TopicSection = ["optional", () => "Optional"];
 
-const pageLink = (pathname: PublicPagePathname): ListItem => {
-  const languageLabels = getLanguageLabels(llmsTxtLocale);
-  const otherLocales = locales.filter((locale) => locale !== llmsTxtLocale);
-
-  return markdownListItem(
+const pageLink = (pathname: PublicPagePathname): ListItem =>
+  markdownListItem(
     markdownLink(
-      pageUrl(llmsTxtLocale, pathname),
+      getWorkspacePageUrl(pathname),
       publicPageMarkdown[pathname].title(llmsTxtLocale)
-    ),
-    ...otherLocales.flatMap((locale, index) => [
-      index === 0 ? ": " : ", ",
-      markdownLink(pageUrl(locale, pathname), languageLabels[locale]),
-    ])
+    )
   );
-};
 
 /**
  * What a section lists after its pages, in the same list, so every bullet
@@ -81,26 +73,13 @@ const sectionItems = (
   ];
 };
 
-/**
- * `llms.txt` (https://llmstxt.org/): the business, a summary, the opening
- * hours, and its published public pages by topic, with the current prices.
- */
-export const llmsTxtMarkdown = ({
-  pages,
-  offerings,
-}: {
-  /** The published public pages, in registry order. */
-  readonly pages: ReadonlyArray<PublicPagePathname>;
-  readonly offerings: ReadonlyArray<PublicOffering>;
-}): MarkdownBlocks => [
-  markdownHeading(1, workspaceSiteConstants.brand.name),
-  markdownBlockquote(
-    markdownParagraph(
-      m.workspaceMetadataDescription({}, { locale: llmsTxtLocale })
-    )
-  ),
-  markdownParagraph(getPublicOpeningHours(llmsTxtLocale)),
-  ...topicSections.flatMap(([topic, heading]) => {
+/** A topic's section: its heading and list, or nothing without items. */
+const topicSectionBlocks =
+  (
+    pages: ReadonlyArray<PublicPagePathname>,
+    offerings: ReadonlyArray<PublicOffering>
+  ) =>
+  ([topic, heading]: TopicSection): MarkdownBlocks => {
     const items = [
       ...pages
         .filter((pathname) => publicPageMarkdown[pathname].topic === topic)
@@ -110,5 +89,31 @@ export const llmsTxtMarkdown = ({
     return items.length > 0
       ? [markdownHeading(2, heading(llmsTxtLocale)), markdownList(items)]
       : [];
-  }),
+  };
+
+/**
+ * `llms.txt` (https://llmstxt.org/): the business, a summary, the opening
+ * hours, its published public pages by topic with the current prices, and
+ * the agent interfaces.
+ */
+export const llmsTxtMarkdown = ({
+  pages,
+  offerings,
+  agentInterfaces,
+}: {
+  /** The published public pages, in registry order. */
+  readonly pages: ReadonlyArray<PublicPagePathname>;
+  readonly offerings: ReadonlyArray<PublicOffering>;
+  readonly agentInterfaces: AgentInterfaces;
+}): MarkdownBlocks => [
+  markdownHeading(1, workspaceSiteConstants.brand.name),
+  markdownBlockquote(
+    markdownParagraph(
+      m.workspaceMetadataDescription({}, { locale: llmsTxtLocale })
+    )
+  ),
+  markdownParagraph(getPublicOpeningHours(llmsTxtLocale)),
+  ...topicSections.flatMap(topicSectionBlocks(pages, offerings)),
+  ...agentInterfacesMarkdown(agentInterfaces),
+  ...topicSectionBlocks(pages, offerings)(optionalSection),
 ];

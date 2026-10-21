@@ -1,5 +1,5 @@
 import { getPublicOpeningHours } from "@/features/checkout/public-offerings";
-import { getWorkspaceAlternates, type Locale } from "@/features/i18n";
+import { getWorkspacePageUrl, type Locale } from "@/features/i18n";
 import {
   type MarkdownBlocks,
   markdownHeading,
@@ -30,10 +30,5 @@ export const reservationPageMarkdown = ({
   markdownParagraph(summary),
   markdownParagraph(getPublicOpeningHours(locale)),
   ...products,
-  markdownParagraph(
-    markdownLink(
-      getWorkspaceAlternates(locale, pathname).canonical,
-      bookingLabel
-    )
-  ),
+  markdownParagraph(markdownLink(getWorkspacePageUrl(pathname), bookingLabel)),
 ];

@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { agentInterfacesHeading } from "@/features/agent-tools/agent-interfaces-markdown";
+import { publishedCustomerAgentTools } from "@/features/agent-tools/customer-agent-tools";
 import { getPublicOpeningHours } from "@/features/checkout/public-offerings";
 import { advertisedCatalogOfferings } from "@/features/checkout/public-offerings.test-utils";
 import { locales, m } from "@/features/i18n";
@@ -9,7 +11,6 @@ import {
 } from "@/shared/markdown/markdown.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { llmsTxtMarkdown } from "./llms-txt";
-import { findLocalizedPublicPage } from "./page-markdown-negotiation";
 import { publicPageMarkdown } from "./public-page-markdown";
 import { type PublicPagePathname, publicPages } from "./public-pages";
 
@@ -27,8 +28,19 @@ const renderLlmsTxt = (
         locale,
         ...(officeOpen && { office: {} }),
       }),
+      agentInterfaces: {
+        tools: publishedCustomerAgentTools,
+        siteToolsRelease: "on",
+      },
     })
   );
+
+/** The paths of the linked site pages, leaving out the agent endpoints. */
+const sitePagePaths = (urls: ReadonlyArray<string>) =>
+  urls
+    .filter((url) => url.startsWith("https://"))
+    .map((url) => new URL(url).pathname)
+    .filter((path) => !path.startsWith("/api/") && !path.startsWith("/."));
 
 const headings = (markdown: string, depth: number) =>
   markdown
@@ -48,7 +60,7 @@ describe("llmsTxtMarkdown", () => {
     );
   });
 
-  test("lists pages by topic in English section order", () => {
+  test("lists pages by topic in English section order, then the agent interfaces", () => {
     const markdown = renderLlmsTxt();
 
     // One list per section keeps every bullet a `-`, as llms.txt shows them.
@@ -59,31 +71,24 @@ describe("llmsTxtMarkdown", () => {
       m.landingNavPricing({}, { locale }),
       m.landingNavContactLabel({}, { locale }),
       m.footerLegalLabel({}, { locale }),
+      agentInterfacesHeading,
       "Optional",
     ]);
   });
 
-  test("links each listed page in every locale with absolute URLs", () => {
+  test("links each listed page once by its locale-agnostic absolute URL", () => {
     const urls = markdownLinkUrls(renderLlmsTxt());
-    const pageUrls = urls.filter((url) => !url.startsWith("mailto:"));
+    const pagePaths = sitePagePaths(urls);
 
     for (const url of urls) {
       expect(url).toMatch(/^(https:\/\/workspace\.deskohub\.cz\/|mailto:)/);
     }
-    expect(pageUrls).toHaveLength(allPages.length * locales.length);
-    for (const pathname of allPages) {
+    for (const path of pagePaths) {
       for (const pageLocale of locales) {
-        expect(
-          pageUrls.filter(
-            (url) =>
-              findLocalizedPublicPage(new URL(url).pathname)?.pathname ===
-                pathname &&
-              findLocalizedPublicPage(new URL(url).pathname)?.locale ===
-                pageLocale
-          )
-        ).toHaveLength(1);
+        expect(path.split("/")).not.toContain(pageLocale);
       }
     }
+    expect([...pagePaths].sort()).toEqual([...allPages].sort());
   });
 
   test("names each page by its English title", () => {
@@ -99,14 +104,8 @@ describe("llmsTxtMarkdown", () => {
       (pathname) =>
         pathname !== "/meeting-room" && pathname !== "/reservation/office"
     );
-    const pageUrls = markdownLinkUrls(renderLlmsTxt(published, false)).filter(
-      (url) => url.startsWith("https://")
-    );
-
-    const listed = new Set(
-      pageUrls.map(
-        (url) => findLocalizedPublicPage(new URL(url).pathname)?.pathname
-      )
+    const listed = sitePagePaths(
+      markdownLinkUrls(renderLlmsTxt(published, false))
     );
 
     expect([...listed].sort()).toEqual([...published].sort());

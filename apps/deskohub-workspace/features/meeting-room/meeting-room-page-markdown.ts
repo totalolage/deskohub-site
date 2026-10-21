@@ -1,6 +1,6 @@
 import { Effect } from "effect";
-import { type Locale, m } from "@/features/i18n";
-import { getMeetingRoomReservationPath } from "@/features/reservation/routes";
+import { getWorkspacePageUrl, type Locale, m } from "@/features/i18n";
+import { meetingRoomReservationPath } from "@/features/reservation/routes";
 import {
   type MarkdownBlocks,
   markdownHeading,
@@ -9,7 +9,6 @@ import {
   markdownListItem,
   markdownParagraph,
 } from "@/shared/markdown/markdown";
-import { getWorkspaceCanonicalUrl } from "@/shared/utils/site-constants";
 import { getMeetingRoomSpecifications } from "./meeting-room-specifications";
 
 /**
@@ -34,7 +33,7 @@ export const meetingRoomPageMarkdown = (
     ]),
     markdownParagraph(
       markdownLink(
-        getWorkspaceCanonicalUrl(getMeetingRoomReservationPath(locale)),
+        getWorkspacePageUrl(meetingRoomReservationPath),
         m.meetingRoomReservationCta({}, { locale })
       )
     ),

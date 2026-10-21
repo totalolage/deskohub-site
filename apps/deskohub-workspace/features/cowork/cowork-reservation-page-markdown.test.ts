@@ -100,7 +100,7 @@ describe.each(locales)("coworkReservationPageMarkdown in %s", (locale) => {
 
   test("links to the cowork reservation page", () => {
     expect(markdownLinkUrls(render(locale))).toEqual([
-      `https://workspace.deskohub.cz/${locale}/reservation/cowork`,
+      "https://workspace.deskohub.cz/reservation/cowork",
     ]);
   });
 });

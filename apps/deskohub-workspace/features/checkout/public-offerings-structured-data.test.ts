@@ -14,7 +14,7 @@ import {
 import { type Locale, m } from "@/features/i18n";
 import { getPublicOfferingsStructuredData } from "./public-offerings-structured-data";
 
-const url = "https://workspace.deskohub.cz/en-US/reservation/cowork";
+const url = "https://workspace.deskohub.cz/reservation/cowork";
 const business = { "@id": "https://workspace.deskohub.cz/#business" };
 
 const getServices = (locale: Locale = "en-US") =>
