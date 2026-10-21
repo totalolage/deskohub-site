@@ -157,24 +157,44 @@ describe("Duration wait", () => {
     ).toEqual(advance(tick));
   });
 
-  test("counts a wait due within the tolerance as due", () => {
-    const tick = prague("2026-11-16T12:15");
-    expect(
-      evaluateStep(
-        waiting(durationStep(2, "hour"), prague("2026-11-16T12:15:59"), tick)
-      )
-    ).toEqual(advance(tick));
-    expect(
-      evaluateStep(
-        ready(durationStep(2, "hour"), tick, {
-          stepEnteredAt: prague("2026-11-16T10:15:05"),
-        })
-      )
-    ).toEqual(advance(tick));
-    const later = prague("2026-11-16T12:16:01");
-    expect(evaluateStep(waiting(durationStep(2, "hour"), later, tick))).toEqual(
-      wait(later)
+  test("a one-minute wait entered on a tick completes on the next, not at once", () => {
+    const tick = Temporal.Instant.from("2026-10-21T12:00:00Z");
+    const dueAt = Temporal.Instant.from("2026-10-21T12:01:00Z");
+    expect(evaluateStep(ready(durationStep(1, "minute"), tick))).toEqual(
+      wait(dueAt)
     );
+    expect(
+      evaluateStep(waiting(durationStep(1, "minute"), dueAt, tick))
+    ).toEqual(wait(dueAt));
+    const nextTick = Temporal.Instant.from("2026-10-21T12:15:00Z");
+    expect(
+      evaluateStep(waiting(durationStep(1, "minute"), dueAt, nextTick))
+    ).toEqual(advance(nextTick));
+  });
+
+  test("a wait entered late in a tick counts from that tick", () => {
+    // The 12:00 tick's planner started at 12:00:40, and a unit ran at 12:09.
+    for (const enteredAt of ["2026-10-21T12:00:40Z", "2026-10-21T12:09:00Z"]) {
+      const entry = Temporal.Instant.from(enteredAt);
+      expect(evaluateStep(ready(durationStep(1, "minute"), entry))).toEqual(
+        wait(Temporal.Instant.from("2026-10-21T12:01:00Z"))
+      );
+      expect(evaluateStep(ready(durationStep(2, "hour"), entry))).toEqual(
+        wait(Temporal.Instant.from("2026-10-21T14:00:00Z"))
+      );
+    }
+  });
+
+  test("a wait is due by the tick a late planner is processing, not its clock", () => {
+    const dueAt = Temporal.Instant.from("2026-10-21T14:00:30Z");
+    const jittered = Temporal.Instant.from("2026-10-21T14:00:40Z");
+    expect(
+      evaluateStep(waiting(durationStep(2, "hour"), dueAt, jittered))
+    ).toEqual(wait(dueAt));
+    const onTime = Temporal.Instant.from("2026-10-21T14:00:00Z");
+    expect(
+      evaluateStep(waiting(durationStep(2, "hour"), onTime, jittered))
+    ).toEqual(advance(jittered));
   });
 
   test("advances at the transition time once due", () => {
@@ -226,6 +246,15 @@ describe("Duration wait", () => {
   });
 
   describe("across the 2026 autumn overlap (25 October)", () => {
+    test("a day entered late in a tick keeps the tick's wall time", () => {
+      // Entered during the 00:00 CEST tick, due at 00:00 CET a day later.
+      expect(
+        evaluateStep(
+          ready(durationStep(1, "day"), offsetTime("2026-10-25T00:00:40+02:00"))
+        )
+      ).toEqual(wait(offsetTime("2026-10-26T00:00+01:00")));
+    });
+
     test("a day keeps the wall time, 25 hours later", () => {
       expect(
         evaluateStep(ready(durationStep(1, "day"), prague("2026-10-24T10:00")))
@@ -256,12 +285,36 @@ describe("Duration wait", () => {
 describe("Calendar wait", () => {
   const mondayMorning = calendarStep({ weekdays: ["monday"], hours: [10] });
 
-  test("advances at once when the next start is within the tolerance", () => {
-    const tick = prague("2026-11-16T09:59:30");
-    expect(evaluateStep(ready(mondayMorning, tick))).toEqual(advance(tick));
-    expect(
-      evaluateStep(waiting(mondayMorning, prague("2026-11-16T10:00"), tick))
-    ).toEqual(advance(tick));
+  test("a start a minute after the tick completes on the next tick", () => {
+    const minuteOne = calendarStep({ minutes: [1] });
+    const tick = Temporal.Instant.from("2026-10-21T12:00:00Z");
+    const start = Temporal.Instant.from("2026-10-21T12:01:00Z");
+    expect(evaluateStep(ready(minuteOne, tick))).toEqual(wait(start));
+    const nextTick = Temporal.Instant.from("2026-10-21T12:15:00Z");
+    expect(evaluateStep(waiting(minuteOne, start, nextTick))).toEqual(
+      advance(nextTick)
+    );
+  });
+
+  test("a start just after a late planner's clock still waits", () => {
+    // The 09:45 tick's planner ran at 09:59:30.
+    const late = prague("2026-11-16T09:59:30");
+    const start = prague("2026-11-16T10:00");
+    expect(evaluateStep(ready(mondayMorning, late))).toEqual(wait(start));
+    expect(evaluateStep(waiting(mondayMorning, start, late))).toEqual(
+      wait(start)
+    );
+  });
+
+  test("is evaluated at the tick, not when a unit committed", () => {
+    // Holds from 10:05, but the unit ran late in the 10:00 tick.
+    const fromFive = calendarStep({
+      hours: [10],
+      minutes: [5, 6, 7, 8, 9, 10],
+    });
+    expect(evaluateStep(ready(fromFive, prague("2026-11-16T10:06")))).toEqual(
+      wait(prague("2026-11-16T10:05"))
+    );
   });
 
   test("advances at once while the expression holds", () => {
@@ -331,6 +384,26 @@ describe("Calendar wait", () => {
           })
         )
       ).toEqual(wait(prague("2026-11-23T10:00")));
+    });
+
+    test("a tick processed late, after the resume, doesn't revive the start", () => {
+      // Due at 12:00 while paused; resumed at 12:02 before the 12:00 tick's
+      // planner ran at 12:03.
+      const topOfHour = calendarStep({ minutes: [0] });
+      expect(
+        evaluateStep(
+          waiting(
+            topOfHour,
+            Temporal.Instant.from("2026-10-21T12:00:00Z"),
+            Temporal.Instant.from("2026-10-21T12:03:00Z"),
+            {
+              resumedAt: Option.some(
+                Temporal.Instant.from("2026-10-21T12:02:00Z")
+              ),
+            }
+          )
+        )
+      ).toEqual(wait(Temporal.Instant.from("2026-10-21T13:00:00Z")));
     });
 
     test("advances when the expression holds again at resume", () => {

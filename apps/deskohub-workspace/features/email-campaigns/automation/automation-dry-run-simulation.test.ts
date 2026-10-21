@@ -110,6 +110,41 @@ describe("simulateRun on engine ticks", () => {
     expect(asked).toEqual(["after@2026-10-21T11:00:00Z"]);
   });
 
+  test("a one-minute wait entered on a tick sends on the next tick", () => {
+    const { end } = simulate(
+      [wait({ _tag: "Duration", count: 1, unit: "minute" })],
+      "2026-10-21T12:00:00Z"
+    );
+    expect(end).toMatchObject({ outcome: "would-send" });
+    expect(end.at).toEqual(at("2026-10-21T12:15:00Z"));
+  });
+
+  test("a calendar wait for a minute after the tick sends on the next tick", () => {
+    const { end } = simulate(
+      [wait({ _tag: "Calendar", expression: { minutes: [1] } })],
+      "2026-10-21T12:00:00Z"
+    );
+    expect(end).toMatchObject({ outcome: "would-send" });
+    expect(end.at).toEqual(at("2026-10-21T12:15:00Z"));
+  });
+
+  test("a two-hour delay entered on a tick sends two hours later", () => {
+    const { end } = simulate(
+      [wait({ _tag: "Duration", count: 2, unit: "hour" })],
+      "2026-10-21T12:00:00Z"
+    );
+    expect(end.at).toEqual(at("2026-10-21T14:00:00Z"));
+  });
+
+  test("a day's wait across the autumn DST change keeps Prague's wall time", () => {
+    // Taken in on the 00:00 CEST tick, sent at 00:00 CET, 25 hours later.
+    const { end } = simulate(
+      [wait({ _tag: "Duration", count: 1, unit: "day" })],
+      "2026-10-24T21:52:00Z"
+    );
+    expect(end.at).toEqual(at("2026-10-25T23:00:00Z"));
+  });
+
   test("a 7-minute wait entered at 10:15 completes at 10:30", () => {
     const { end } = simulate(
       [wait({ _tag: "Duration", count: 7, unit: "minute" })],

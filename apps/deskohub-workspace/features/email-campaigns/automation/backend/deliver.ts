@@ -39,6 +39,7 @@ import {
   automationVersionIdSchema,
 } from "../automation-identifiers";
 import type { AutomationTriggerKind } from "../automation-states";
+import { automationTickAtOrBefore } from "../automation-ticks";
 import {
   type AutomationTriggerVerdict,
   stillHolds,
@@ -61,7 +62,10 @@ import {
 /** A deliver unit holds at most this many runs of one version (§1.2.13). */
 export const deliverUnitRunLimit = 100;
 
-/** A deferred run is verified live again this long after (§5.9). */
+/**
+ * A deferred run is verified live again this long after the tick that
+ * deferred it (§5.9), however late in that tick its unit committed.
+ */
 const deferredRecheck = { minutes: 15 } as const;
 
 const deliverSubjectSchema = Schema.Struct({
@@ -369,7 +373,7 @@ export const makeDeliverHandler = Effect.gen(function* () {
       readonly at: Temporal.Instant;
     }
   ) => {
-    const recheckAt = input.at.add(deferredRecheck);
+    const recheckAt = automationTickAtOrBefore(input.at).add(deferredRecheck);
     return tx
       .update(runs)
       .set({

@@ -385,7 +385,7 @@ describe.skipIf(!database)("the automation engine's entry", async () => {
       expect(mailedTo(customer)).toHaveLength(1);
     });
 
-    test("a 2-hour wait entered seconds after a tick completes on the tick 2 hours later", async () => {
+    test("a 2-hour wait entered seconds after a tick counts from the tick and completes 2 hours later", async () => {
       const at = await begin(11);
       const campaignId = await activate(
         bookedConditionsFlow({
@@ -409,9 +409,9 @@ describe.skipIf(!database)("the automation engine's entry", async () => {
       await scenario.tick(nextTick);
       const [entered] = await read.runs(campaignId);
       expect(entered).toMatchObject({ status: "active", phase: "waiting" });
-      expect(iso(entered.due_at)).toBe(enteredAt.add({ hours: 2 }).toString());
+      // The planner started at `recordedAt`, a minute into the `at` tick.
+      expect(iso(entered.due_at)).toBe(at.add({ hours: 2 }).toString());
 
-      // Due 5 seconds after this tick: within the tolerance, so it sends now.
       const dueTick = recordedAt.add({ hours: 2 });
       await scenario.tick(dueTick);
       const [run] = await read.runs(campaignId);
@@ -444,7 +444,7 @@ describe.skipIf(!database)("the automation engine's entry", async () => {
       expect(progress.settled).toBe(true);
       const [run] = await read.runs(campaignId);
       expect(run).toMatchObject({ status: "ended", outcome: "sent" });
-      // Entered on the 08:15 tick and due just after 10:15, within the tolerance.
+      // Entered on the 08:15 tick, so due at 10:15.
       expect(iso(run.ended_at)).toBe(
         at.add({ hours: 2, minutes: 15 }).toString()
       );
@@ -481,6 +481,43 @@ describe.skipIf(!database)("the automation engine's entry", async () => {
         "send-queued",
         "sent",
       ]);
+      expect(mailedTo(customer)).toHaveLength(1);
+    });
+
+    test("a 1-minute wait entered during a late planner's tick completes on the next tick, not at once", async () => {
+      const at = await begin(15);
+      const campaignId = await activate(
+        bookedConditionsFlow({
+          _tag: "Wait",
+          id: "minute",
+          wait: { _tag: "Duration", count: 1, unit: "minute" },
+        }),
+        at
+      );
+      const { customer } = await bookedEvent(at, "chain-minute", {
+        seconds: 10,
+      });
+
+      // The cron started the `at` tick 40 seconds late; a second planner
+      // overlaps it 10 seconds after the units entered the wait.
+      const jittered = at.add({ seconds: 40 });
+      await scenario.plan(jittered);
+      await scenario.drain(jittered.add({ seconds: 5 }));
+      await scenario.tick(jittered.add({ seconds: 15 }));
+      const [waiting] = await read.runs(campaignId);
+      expect(waiting).toMatchObject({
+        status: "active",
+        phase: "waiting",
+        step_id: "minute",
+      });
+      expect(iso(waiting.due_at)).toBe(at.add({ minutes: 1 }).toString());
+      expect(mailedTo(customer)).toHaveLength(0);
+
+      const nextTick = at.add({ minutes: 15, seconds: 40 });
+      await scenario.tick(nextTick);
+      const [run] = await read.runs(campaignId);
+      expect(run).toMatchObject({ status: "ended", outcome: "sent" });
+      expect(iso(run.ended_at)).toBe(nextTick.toString());
       expect(mailedTo(customer)).toHaveLength(1);
     });
 
@@ -754,11 +791,13 @@ describe.skipIf(!database)("the automation engine's entry", async () => {
         customer,
         reservationId,
         runId,
+        endsAt,
         newEndsAt,
         deferredAt,
       } = await deferredRun(6, "extended-deferred");
 
-      // Deferred with a recheck instant only: no visit time is stored.
+      // Deferred with a recheck instant only: no visit time is stored. It
+      // was deferred during the `endsAt` tick, so it's rechecked on the next.
       const [deferred] = await read.runs(campaignId);
       expect(deferred).toMatchObject({
         status: "active",
@@ -766,7 +805,7 @@ describe.skipIf(!database)("the automation engine's entry", async () => {
         phase: "waiting",
         work_unit_id: null,
       });
-      const recheckAt = deferredAt.add({ minutes: 15 });
+      const recheckAt = endsAt.add({ minutes: 15 });
       expect(iso(deferred.due_at)).toBe(recheckAt.toString());
       const timeline = await read.timeline(runId);
       expect(timeline.map((entry) => entry.kind)).toEqual([
@@ -800,19 +839,19 @@ describe.skipIf(!database)("the automation engine's entry", async () => {
         "send-queued",
         "sent",
       ]);
-      // Verified at +0, +15, +30 and +45 minutes; the new end is at +48.
+      // Verified on the deferring tick, then on the next three; the new end
+      // is 50 minutes after that tick.
       expect(
         after
           .filter((entry) => entry.kind === "deferred")
           .map((entry) => iso(entry.at))
-      ).toEqual(
-        [0, 15, 30, 45].map((minutes) => deferredAt.add({ minutes }).toString())
-      );
+      ).toEqual([
+        deferredAt.toString(),
+        ...[15, 30, 45].map((minutes) => endsAt.add({ minutes }).toString()),
+      ]);
       const [run] = await read.runs(campaignId);
       expect(run).toMatchObject({ status: "ended", outcome: "sent" });
-      expect(iso(run.ended_at)).toBe(
-        deferredAt.add({ minutes: 60 }).toString()
-      );
+      expect(iso(run.ended_at)).toBe(endsAt.add({ minutes: 60 }).toString());
       expect(mailedTo(customer)).toHaveLength(1);
       // The sweep's finished event at the new end found the receipt taken.
       const events = await finishedEvents(reservationId);
@@ -823,7 +862,7 @@ describe.skipIf(!database)("the automation engine's entry", async () => {
     });
 
     test("a deferred run whose visit is cancelled in Dotypos is withdrawn at its next verification", async () => {
-      const { campaignId, customer, reservationId, runId, deferredAt } =
+      const { campaignId, customer, reservationId, runId, endsAt, deferredAt } =
         await deferredRun(7, "extended-cancelled");
       fixtures.cancelVisit(reservationId);
 
@@ -836,9 +875,8 @@ describe.skipIf(!database)("the automation engine's entry", async () => {
       expect(progress.settled).toBe(true);
       const [run] = await read.runs(campaignId);
       expect(run).toMatchObject({ status: "ended", outcome: "withdrawn" });
-      expect(iso(run.ended_at)).toBe(
-        deferredAt.add({ minutes: 15 }).toString()
-      );
+      // Rechecked on the tick after the one that deferred it.
+      expect(iso(run.ended_at)).toBe(endsAt.add({ minutes: 15 }).toString());
       expect((await read.timeline(runId)).map((entry) => entry.kind)).toEqual([
         "started",
         "deferred",
@@ -850,7 +888,7 @@ describe.skipIf(!database)("the automation engine's entry", async () => {
     });
 
     test("a deferred run whose visit is deleted from Dotypos is withdrawn at its next verification", async () => {
-      const { campaignId, customer, reservationId, runId, deferredAt } =
+      const { campaignId, customer, reservationId, runId, endsAt, deferredAt } =
         await deferredRun(8, "extended-deleted");
       fixtures.deleteVisit(reservationId);
 
@@ -863,9 +901,8 @@ describe.skipIf(!database)("the automation engine's entry", async () => {
       expect(progress.settled).toBe(true);
       const [run] = await read.runs(campaignId);
       expect(run).toMatchObject({ status: "ended", outcome: "withdrawn" });
-      expect(iso(run.ended_at)).toBe(
-        deferredAt.add({ minutes: 15 }).toString()
-      );
+      // Rechecked on the tick after the one that deferred it.
+      expect(iso(run.ended_at)).toBe(endsAt.add({ minutes: 15 }).toString());
       expect((await read.timeline(runId)).map((entry) => entry.kind)).toEqual([
         "started",
         "deferred",
@@ -1542,11 +1579,12 @@ describe.skipIf(!database)(
         await writeContent(campaignId, "Verze 2");
         const v2 = await activate(campaignId, start.add({ minutes: 10 }));
         expect([v1.versionNumber, v2.versionNumber]).toEqual([1, 2]);
-        const late = await signUp("version-late", start.add({ minutes: 11 }));
+        // On the next tick, so its wait ends a tick after the early run's.
+        const late = await signUp("version-late", start.add({ minutes: 16 }));
 
         const progress = await settleRuns(
           campaignId,
-          start.add({ minutes: 11 }),
+          start.add({ minutes: 16 }),
           start.add({ hours: 3 })
         );
 
@@ -2129,12 +2167,13 @@ describe.skipIf(!database)(
         const sending = await bookingCustomer("archive-sending", start);
         await scenario.tick(start);
         await scenario.tick(start.add({ minutes: 1 }));
+        // On the next tick, so its hour ends a tick after the first run's.
         const deliverPlanned = await bookingCustomer(
           "archive-planned",
-          start.add({ minutes: 2 })
+          start.add({ minutes: 15 })
         );
-        await scenario.tick(start.add({ minutes: 2 }));
-        await scenario.tick(start.add({ minutes: 3 }));
+        await scenario.tick(start.add({ minutes: 15 }));
+        await scenario.tick(start.add({ minutes: 16 }));
         const waiting = await bookingCustomer(
           "archive-waiting",
           start.add({ minutes: 30 })
@@ -2143,7 +2182,8 @@ describe.skipIf(!database)(
         await scenario.tick(start.add({ minutes: 31 }));
 
         // The first run's batch is persisted and with Resend when its consumer
-        // is cut off: the unit stays claimed, holding the deliver slot.
+        // is cut off: the unit stays claimed, holding the deliver slot. Its
+        // consumer claims it late in the tick, so the claim outlasts the next.
         const sendingDue = start.add({ hours: 1 });
         expect(iso((await runOf(campaignId, sending.customer)).due_at)).toBe(
           sendingDue.toString()
@@ -2153,7 +2193,8 @@ describe.skipIf(!database)(
         takeMessage(persisted.id);
         scenario.resend.respondWith(() => "accept-hang");
         const reached = scenario.resend.nextRequest();
-        const consumer = scenario.start(persisted.id, sendingDue);
+        const claimedAt = sendingDue.add({ minutes: 14 });
+        const consumer = scenario.start(persisted.id, claimedAt);
         const cutOff = consumer.done.then(
           () => "finished",
           () => "cut off"
@@ -2162,10 +2203,10 @@ describe.skipIf(!database)(
         await consumer.interrupt();
         expect(await cutOff).toBe("cut off");
         scenario.resend.respondWith(() => "accept");
-        await scenario.drain(sendingDue);
+        await scenario.drain(claimedAt);
 
         // The second run reaches its send step while the slot is held.
-        const plannedDue = start.add({ hours: 1, minutes: 2 });
+        const plannedDue = start.add({ hours: 1, minutes: 15 });
         await scenario.tick(plannedDue);
         const units = await unitsOf(campaignId, "deliver");
         expect(units.map((unit) => unit.status)).toEqual([
@@ -2176,7 +2217,7 @@ describe.skipIf(!database)(
           status: "sending",
         });
 
-        const archivedAt = start.add({ hours: 1, minutes: 3 });
+        const archivedAt = start.add({ hours: 1, minutes: 16 });
         await archive(campaignId, archivedAt);
 
         const afterArchive = await unitsOf(campaignId, "deliver");

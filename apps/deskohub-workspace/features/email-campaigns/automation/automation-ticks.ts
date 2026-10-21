@@ -12,10 +12,14 @@ export const automationTickAtOrAfter = (at: Temporal.Instant) =>
     roundingMode: "ceil",
   });
 
-/** The engine tick after the one at or after `at`. */
-export const automationTickAfter = (at: Temporal.Instant) =>
-  automationTickAtOrAfter(at).add({ minutes: emailAutomationTickMinutes });
-
-/** The engine tick before the one at or after `at`. */
-export const automationTickBefore = (at: Temporal.Instant) =>
-  automationTickAtOrAfter(at).subtract({ minutes: emailAutomationTickMinutes });
+/**
+ * The engine tick at or before `at`: the tick a planner or work unit
+ * running at `at` is processing, whatever the cron's jitter or the unit's
+ * lag (D36). Never after `at`, so nothing due later than `at` is due on it.
+ */
+export const automationTickAtOrBefore = (at: Temporal.Instant) =>
+  at.round({
+    smallestUnit: "minute",
+    roundingIncrement: emailAutomationTickMinutes,
+    roundingMode: "floor",
+  });

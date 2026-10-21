@@ -61,6 +61,10 @@ import { campaignDeliveryPayloadHash } from "../../campaign-delivery-batches";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
 import {
+  automationTickAtOrAfter,
+  automationTickAtOrBefore,
+} from "../automation-ticks";
+import {
   type AutomationWorkUnitKind,
   automationWorkUnitKinds,
 } from "../automation-work-units";
@@ -1141,20 +1145,30 @@ export const makeAutomationEngineScenario = async (input: {
 
   const engine = await deployment({});
 
-  /** The next instant something falls due for the planner or the queue. */
+  /**
+   * The next instant something falls due for the planner or the queue. A
+   * run's due time counts from the tick it falls due on: one due after the
+   * tick `at` falls in completes on the tick at or after it.
+   */
   const nextDue = async (at: Temporal.Instant) => {
-    const { rows } = await pool.query<{ next: Date | string | null }>(
-      `select least(
+    const { rows } = await pool.query<{
+      run_due: Date | string | null;
+      next: Date | string | null;
+    }>(
+      `select
          (select min(due_at) from email_campaign_automation_runs
-           where status = 'active' and due_at > $1),
-         (select min(next_fire_at) from email_campaign_automations
-           where next_fire_at > $1),
-         (select min(claim_expires_at) from email_campaign_automation_work_units
-           where status = 'claimed' and claim_expires_at > $1)
-       ) as next`,
-      [at.toString()]
+           where status = 'active' and due_at > $2) as run_due,
+         least(
+           (select min(next_fire_at) from email_campaign_automations
+             where next_fire_at > $1),
+           (select min(claim_expires_at) from email_campaign_automation_work_units
+             where status = 'claimed' and claim_expires_at > $1)
+         ) as next`,
+      [at.toString(), automationTickAtOrBefore(at).toString()]
     );
+    const runDue = databaseInstant(rows[0]?.run_due);
     const candidates = [
+      runDue === null ? null : automationTickAtOrAfter(runDue),
       databaseInstant(rows[0]?.next),
       ...delayed.map((entry) => entry.availableAt),
       // The sweep records a started or finished event once its time
@@ -1184,7 +1198,8 @@ export const makeAutomationEngineScenario = async (input: {
 
   /**
    * Whether the next planner minute has work: open units, events intake
-   * hasn't processed, or due runs of an active automation.
+   * hasn't processed, ready runs of an active automation, or its waiting
+   * runs due by the tick `at` falls in.
    */
   const hasPendingWork = async (at: Temporal.Instant) => {
     const { rows } = await pool.query<{ pending: boolean }>(
@@ -1195,9 +1210,10 @@ export const makeAutomationEngineScenario = async (input: {
            or exists (select 1 from email_campaign_automation_runs r
                         join email_campaigns c on c.id = r.campaign_id
                        where r.status = 'active' and c.status = 'active'
-                         and r.due_at <= $1)
+                         and r.due_at <= $1
+                         and (r.phase = 'ready' or r.due_at <= $2))
            as pending`,
-      [at.toString()]
+      [at.toString(), automationTickAtOrBefore(at).toString()]
     );
     return rows[0]!.pending || queue.pending().length > 0;
   };
@@ -1231,13 +1247,9 @@ export const makeAutomationEngineScenario = async (input: {
     readonly onTicks?: boolean;
   }): Promise<AutomationScenarioProgress> => {
     const maxTicks = options.maxTicks ?? 500;
-    const tickAtOrAfter = (instant: Temporal.Instant) =>
-      instant.round({
-        smallestUnit: "minute",
-        roundingIncrement: emailAutomationTickMinutes,
-        roundingMode: "ceil",
-      });
-    let at = options.onTicks ? tickAtOrAfter(options.from) : options.from;
+    let at = options.onTicks
+      ? automationTickAtOrAfter(options.from)
+      : options.from;
     let repeats = 0;
     for (let ticks = 0; ticks < maxTicks; ) {
       await engine.tick(at);
@@ -1256,7 +1268,7 @@ export const makeAutomationEngineScenario = async (input: {
       });
       const due = pending ? step : await nextDue(at);
       if (due === undefined) return { at, ticks, settled: !options.settled };
-      const dueAt = options.onTicks ? tickAtOrAfter(due) : due;
+      const dueAt = options.onTicks ? automationTickAtOrAfter(due) : due;
       const next = Temporal.Instant.compare(dueAt, step) < 0 ? step : dueAt;
       if (Temporal.Instant.compare(next, options.until) > 0) {
         return { at, ticks, settled: false };
