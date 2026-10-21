@@ -1,0 +1,62 @@
+/* Brand tokens: colours, type, radii and button lighting. The site and
+   standalone surfaces such as the agent booking widget share them. */
+@theme inline {
+  --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial,
+    sans-serif;
+  --font-subheading: var(--font-sculpin), "Avenir Next", "Segoe UI",
+    "Helvetica Neue", Arial, sans-serif;
+  --font-body: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue",
+    Arial, sans-serif;
+  --color-navy-blue: var(--brand-navy-blue);
+  --color-silver: var(--brand-silver);
+  --color-sunset-yellow: var(--brand-sunset-yellow);
+  --color-sunset-yellow-ink: var(--brand-sunset-yellow-ink);
+  --color-chilean-fire: var(--brand-chilean-fire);
+  --color-burned-orange: var(--brand-burned-orange);
+  --color-burned-orange-ink: var(--brand-burned-orange-ink);
+  --color-aquamarine-green: var(--brand-aquamarine-green);
+  --color-aquamarine-ink: var(--brand-aquamarine-ink);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  /* Buttons are lit from above: top highlight, bottom shade, contact shadow,
+     and a glow in the button's own colour. Pressing removes the lighting. */
+  --shadow-button-raised: inset 0 1px 0 #ffffff59, inset 0 -2px 0 #0003,
+    0 1px 2px #0006,
+    0 8px 24px -6px
+      color-mix(
+        in oklab,
+        var(--button-tint, var(--brand-burned-orange)) 60%,
+        transparent
+      );
+  --shadow-button-raised-subtle: inset 0 -1px 0
+      color-mix(in oklab, var(--brand-navy-blue) 8%, transparent),
+    0 1px 2px color-mix(in oklab, var(--brand-navy-blue) 14%, transparent);
+  --shadow-button-pressed: inset 0 2px 4px #0004;
+  --shadow-button-pressed-subtle: inset 0 2px 3px
+    color-mix(in oklab, var(--brand-navy-blue) 14%, transparent);
+}
+
+:root {
+  --brand-navy-blue: #00024f;
+  --brand-silver: #d8d8d8;
+  --brand-sunset-yellow: #eca423;
+  --brand-sunset-yellow-ink: #8a5d00;
+  --brand-chilean-fire: #f57c00;
+  --brand-burned-orange: #b83b06;
+  --brand-burned-orange-ink: #7a2e0a;
+  --brand-aquamarine-green: #00df99;
+  --brand-aquamarine-ink: #004c3b;
+
+  --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI",
+    "Helvetica Neue", Arial, sans-serif;
+  --font-subheading: var(--font-sculpin), "Avenir Next", "Segoe UI",
+    "Helvetica Neue", Arial, sans-serif;
+  --font-body: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue",
+    Arial, sans-serif;
+  --font-heading-weight: 400;
+  --font-subheading-weight: 400;
+  --font-body-weight: 400;
+
+  --radius: 0.65rem;
+}

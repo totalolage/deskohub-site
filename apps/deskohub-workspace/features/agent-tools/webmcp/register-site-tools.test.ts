@@ -92,6 +92,16 @@ describe("registerReadSiteTools", () => {
     ]);
   });
 
+  test("registers neither signed-in tools, which need a token the page doesn't send, nor a tool that renders an MCP Apps view", async () => {
+    await register();
+
+    expect(
+      publishedAgentTools
+        .map(({ name }) => name)
+        .filter((name) => !modelContext.registered.has(name))
+    ).toEqual(["start_reservation", "show_booking"]);
+  });
+
   test("unregisters every tool when the registration aborts", async () => {
     const registration = new AbortController();
     await register(registration.signal);

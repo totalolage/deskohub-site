@@ -1,0 +1,22 @@
+@import "tailwindcss" source(none);
+@import "../../../shared/styles/brand-theme.css";
+
+@source "./*.tsx";
+@source "../../../shared/components/ui/{button,choice-card,input,label,segmented-control}.tsx";
+
+/* The brand font isn't inlined: the stack falls back to system fonts. */
+:root {
+  --font-sculpin: "Sculpin";
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-weight: var(--font-body-weight);
+  color: var(--brand-navy-blue);
+}
+
+h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+}

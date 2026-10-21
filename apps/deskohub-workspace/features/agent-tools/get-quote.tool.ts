@@ -3,7 +3,6 @@ import { buildAdvertisedPrice } from "@/features/checkout/backend/checkout/adver
 import { getReservationQuoteDiscount } from "@/features/checkout/reservation-quote-schema";
 import { m } from "@/features/i18n";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
-import { workspaceReservationKindSchema } from "@/features/reservation/reservation-kind";
 import { currentInstant } from "@/shared/utils/temporal";
 import {
   agentToolLocaleField,
@@ -11,7 +10,8 @@ import {
   getAgentToolLocale,
 } from "./agent-tool";
 import { AgentToolError } from "./agent-tool-error";
-import { agentToolMoneySchema, toAgentToolMoney } from "./agent-tool-money";
+import { toAgentToolMoney } from "./agent-tool-money";
+import { type GetQuoteResult, getQuoteResultSchema } from "./get-quote.schema";
 import {
   completeSelectionFields,
   type QuoteSelection,
@@ -25,22 +25,6 @@ const inputSchema = Schema.Struct({
 
 type GetQuoteInput = typeof inputSchema.Type;
 
-const outputSchema = Schema.Struct({
-  family: workspaceReservationKindSchema,
-  total: agentToolMoneySchema.annotate({
-    description: "The price the customer pays for the selection.",
-  }),
-  regular_price: agentToolMoneySchema,
-  discount: agentToolMoneySchema.annotate({
-    description: "Anonymous sale discount included in total; zero without one.",
-  }),
-  quoted_at: Schema.String,
-  note: Schema.String,
-  reservation_url: Schema.String,
-});
-
-export type GetQuoteResult = typeof outputSchema.Type;
-
 export const getQuoteTool = defineAgentTool({
   name: "get_quote",
   title: "Quote a DH Workspace booking",
@@ -50,7 +34,7 @@ export const getQuoteTool = defineAgentTool({
   readOnly: true,
   unavailableCode: "quote_unavailable",
   input: inputSchema,
-  output: outputSchema,
+  output: getQuoteResultSchema,
   run: Effect.fn("agentTools.getQuote")((input) =>
     Effect.succeed({ input }).pipe(
       Effect.let("locale", ({ input }) => getAgentToolLocale(input)),

@@ -13,7 +13,14 @@ declare global {
   }
 }
 
-const readToolNames = ["list_offerings", "check_availability", "get_quote"];
+// Exactly the public read tools: `/api/mcp` also lists the signed-in tools
+// and the booking view's tool, which a page can't use.
+const siteToolNames = [
+  "list_offerings",
+  "check_availability",
+  "get_quote",
+  "prepare_reservation",
+].sort();
 
 type FakeSiteTools = {
   readonly names: () => string[];
@@ -124,11 +131,10 @@ test("registers the public agent tools as site tools and runs one through /api/m
     () =>
       page
         .waitForFunction(
-          (names) => {
-            const tools = window.__fakeSiteTools?.names();
-            return names.every((name) => tools?.includes(name));
-          },
-          [...readToolNames, "prepare_reservation"],
+          (names) =>
+            JSON.stringify(window.__fakeSiteTools?.names().sort()) ===
+            JSON.stringify(names),
+          siteToolNames,
           { timeout: workspaceE2ETimeouts.siteToolsRegistration }
         )
         .then(
@@ -172,6 +178,10 @@ test("registers the public agent tools as site tools and runs one through /api/m
     },
     { timeout: workspaceE2ETimeouts.customerMcpRequest }
   );
+  // No other tool registered while the call ran.
+  expect(
+    Object.keys((await fakeSiteTools(page).titles()) ?? {}).sort()
+  ).toEqual(siteToolNames);
 });
 
 test("makes no /api/mcp request in a browser without document.modelContext", async ({

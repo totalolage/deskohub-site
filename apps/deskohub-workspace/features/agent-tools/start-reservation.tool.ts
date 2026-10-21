@@ -9,7 +9,6 @@ import {
 } from "@/features/reservation/actions/prepare-pay-state.schema";
 import { BookingAgent } from "@/features/reservation/backend/booking-agent";
 import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
-import { workspaceReservationKindSchema } from "@/features/reservation/reservation-kind";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import { currentInstant } from "@/shared/utils/temporal";
 import { deriveAgentCheckoutIdentifiers } from "./agent-checkout-identifiers";
@@ -19,13 +18,17 @@ import {
   getAgentToolLocale,
 } from "./agent-tool";
 import { AgentToolError } from "./agent-tool-error";
-import { agentToolMoneySchema, toAgentToolMoney } from "./agent-tool-money";
+import { toAgentToolMoney } from "./agent-tool-money";
 import { CurrentCustomerAgentGrant } from "./customer-agent-caller";
 import {
   completeSelectionFields,
   type QuoteSelection,
   resolveQuoteSelection,
 } from "./quote-selection";
+import {
+  type StartReservationResult,
+  startReservationResultSchema,
+} from "./start-reservation.schema";
 
 const inputSchema = Schema.Struct({
   ...completeSelectionFields,
@@ -39,32 +42,6 @@ const inputSchema = Schema.Struct({
 });
 
 type StartReservationInput = typeof inputSchema.Type;
-
-const outputSchema = Schema.Struct({
-  order_id: Schema.String.annotate({
-    description: "The order ID; get_reservation_status reports on it.",
-  }),
-  pay_url: Schema.String.annotate({
-    description:
-      "The Pay page for the held order. Give it to the customer, who checks the order, accepts the terms, and pays there.",
-  }),
-  pay_url_expires_at: Schema.String.annotate({
-    description:
-      "When the Pay link expires, as an ISO 8601 instant, together with the hold. After it, call start_reservation again with the same selection for a new hold.",
-  }),
-  family: workspaceReservationKindSchema,
-  total: agentToolMoneySchema.annotate({
-    description:
-      "The price quoted for the selection; the Pay page shows the confirmed price.",
-  }),
-  price_changed: Schema.Boolean.annotate({
-    description:
-      "Whether the price changed since the quote; the Pay page shows the new price.",
-  }),
-  note: Schema.String,
-});
-
-type StartReservationResult = typeof outputSchema.Type;
 
 /**
  * Starts at most five bookings per account in 30 minutes. Each start calls
@@ -88,7 +65,7 @@ export const startReservationTool = defineSignedInAgentTool({
   readOnly: false,
   unavailableCode: "reservation_unavailable",
   input: inputSchema,
-  output: outputSchema,
+  output: startReservationResultSchema,
   run: Effect.fn("agentTools.startReservation")((input) =>
     Effect.succeed({ input }).pipe(
       Effect.let("locale", ({ input }) => getAgentToolLocale(input)),

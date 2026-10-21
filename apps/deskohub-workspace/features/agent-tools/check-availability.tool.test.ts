@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, type Schema } from "effect";
 import { m } from "@/features/i18n";
 import { getMeetingRoomReservationDefaultValuesFromSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
-import type { CheckAvailabilityResult } from "./check-availability.tool";
+import type { CheckAvailabilityResult } from "./check-availability.schema";
 
 const {
   atInstant,
