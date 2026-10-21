@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { getPublicCatalogOfferings } from "@/features/checkout/public-offerings";
-import { locales } from "@/features/i18n";
+import { locales, m } from "@/features/i18n";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { getWorkspaceSummary } from "./workspace-summary";
 
@@ -36,8 +36,11 @@ describe("getWorkspaceSummary", () => {
         openingHours: { alwaysOpen: false },
       });
 
+      const statement = m.workspaceMetadataAlwaysOpen({}, { locale });
+
+      expect(alwaysOpen).toContain(statement);
+      expect(limited).not.toContain(statement);
       expect(alwaysOpen).toStartWith(limited);
-      expect(alwaysOpen.length).toBeGreaterThan(limited.length);
       expect(getWorkspaceSummary({ locale, offerings })).toBe(
         workspaceSiteConstants.openingHours.alwaysOpen ? alwaysOpen : limited
       );
