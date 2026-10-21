@@ -1373,7 +1373,7 @@ const makeCommandLayer = ({
           credentialType: "algopin-hourly",
           deviceId: "EK1X16f8898a",
           providerCredentialId: "pin-1",
-          accessName: "Deskohub access-1",
+          accessName: `Deskohub ${reservationId}`,
           scheduledStartsAt: timestamp,
           startsAt: timestamp,
           endsAt: timestamp,

@@ -491,7 +491,7 @@ describe("administration contract", () => {
       credentialType: "algopin_hourly",
       deviceId: "EK1",
       providerCredentialId: "pin-id",
-      accessName: "Deskohub grant-id",
+      accessName: "Deskohub reservation-id",
       scheduledStartsAt: "2099-07-01T08:00:00Z",
       startsAt: "2099-07-01T08:00:00Z",
       endsAt: "2099-07-01T16:00:00Z",
