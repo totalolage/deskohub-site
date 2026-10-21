@@ -1557,6 +1557,7 @@ describe.skipIf(!database)(
         // A hand-off first writes its planned units, as a preview that
         // drops its siblings does, then asks for the slot lock at its fill.
         const handOff = await pool.connect();
+        let topUp: (() => Promise<unknown>) | undefined;
         try {
           const {
             rows: [{ pid }],
@@ -1568,7 +1569,7 @@ describe.skipIf(!database)(
           );
 
           let settled = false;
-          const topUp = background(
+          topUp = background(
             scenario.plan(at).finally(() => {
               settled = true;
             })
@@ -1598,7 +1599,11 @@ describe.skipIf(!database)(
           await topUp();
           expect(waited).toBe(false);
         } finally {
+          // A failure leaves the transaction open; end it before the
+          // connection goes back, then let the top-up finish.
+          await handOff.query("rollback").catch(() => undefined);
           handOff.release();
+          await topUp?.().catch(() => undefined);
         }
 
         expect(await statusOf(free)).toBe("enqueued");

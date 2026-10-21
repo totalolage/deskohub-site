@@ -1647,6 +1647,40 @@ describe.skipIf(!database)(
         expect(receipts).toEqual([]);
         expect(mailed()).toEqual([emailOf(newcomer)]);
       });
+
+      test("an intake unit that took in an account-created event before its account became legacy starts no run", async () => {
+        const { campaignId } = await kit.seedActive(
+          sendFlow("AccountCreated"),
+          { at: start }
+        );
+        const existing = await fixtures.addCustomer("d37-owned");
+        const eventId = await fixtures.recordEvent({
+          kind: "account-created",
+          customer: existing,
+          occurredAt: start.add({ minutes: 1 }),
+        });
+        const tick = start.add({ minutes: 15 });
+        await scenario.plan(tick);
+        const [owned] = await read.events([eventId]);
+        expect(owned.automation_unit_id).not.toBeNull();
+        // The migration marks the account legacy while the unit is queued.
+        await pool.query(
+          "update customer_accounts set legacy = true where id = $1",
+          [owned.customer_account_id]
+        );
+
+        await scenario.drain(tick);
+
+        expect(await read.runs(campaignId)).toEqual([]);
+        const [event] = await read.events([eventId]);
+        expect(event.automation_processed_at).not.toBeNull();
+        const { rows: receipts } = await pool.query(
+          "select 1 from email_campaign_automation_trigger_receipts where customer_event_id = $1",
+          [eventId]
+        );
+        expect(receipts).toEqual([]);
+        expect(mailed()).toEqual([]);
+      });
     });
 
     describe("version-pinned content", () => {
