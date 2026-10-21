@@ -32,7 +32,7 @@
     },
     {
       "path": "/api/cron/workspace/payment-refunds",
-      "schedule": "37 * * * *"
+      "schedule": "30 * * * *"
     },
     {
       "path": "/api/cron/workspace/paid-fulfillment",
@@ -40,7 +40,7 @@
     },
     {
       "path": "/api/cron/workspace/email-automations",
-      "schedule": "* * * * *"
+      "schedule": "*/15 * * * *"
     }
   ],
   "functions": {
