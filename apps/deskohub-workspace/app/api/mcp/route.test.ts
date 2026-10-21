@@ -9,6 +9,7 @@ import type {
 } from "@modelcontextprotocol/client";
 import { DateTime, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { m } from "@/features/i18n";
 import type { AgentTrafficEvent } from "@/shared/backend/agent-traffic/agent-traffic-events";
 import type { RequestBudgetPolicy } from "@/shared/backend/request-budget/request-budget.service";
 
@@ -122,6 +123,9 @@ const { checkAvailabilityTool } = await import(
   "@/features/agent-tools/check-availability.tool"
 );
 const { getQuoteTool } = await import("@/features/agent-tools/get-quote.tool");
+const { showBookingTool } = await import(
+  "@/features/agent-tools/show-booking.tool"
+);
 const { startReservationTool } = await import(
   "@/features/agent-tools/start-reservation.tool"
 );
@@ -167,6 +171,7 @@ mock.module("@/features/agent-tools/customer-agent-tools", () => ({
     listOfferingsTool,
     checkAvailabilityTool,
     getQuoteTool,
+    showBookingTool,
     startReservationTool,
     getReservationStatusTool,
     listMyReservationsTool,
@@ -304,6 +309,29 @@ describe("customer MCP route", () => {
     expect(result?.instructions).toContain("paid on the website");
   });
 
+  test("publishes each tool's access, so the site registers only the public read tools", async () => {
+    const { isSiteTool, listAgentTools } = await import(
+      "@/features/agent-tools/webmcp/agent-tool-mcp-client"
+    );
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = Object.assign(
+      (input: string | URL | Request, init?: RequestInit) =>
+        route.POST(new Request(new URL(String(input), mcpResource), init)),
+      { preconnect: originalFetch.preconnect }
+    );
+    try {
+      const tools = await Effect.runPromise(listAgentTools);
+
+      expect(tools.filter(isSiteTool).map(({ name }) => name)).toEqual([
+        "list_offerings",
+        "check_availability",
+        "get_quote",
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("lists the public and signed-in tools with schemas and annotations", async () => {
     const { result } = await rpc<ListToolsResult>("tools/list");
     const tools = result?.tools ?? [];
@@ -312,11 +340,29 @@ describe("customer MCP route", () => {
       "list_offerings",
       "check_availability",
       "get_quote",
+      "show_booking",
       "start_reservation",
       "get_reservation_status",
       "list_my_reservations",
       "whoami",
     ]);
+    expect(
+      Object.fromEntries(
+        tools.map(({ name, _meta }) => [
+          name,
+          _meta?.["cz.deskohub.workspace/access"],
+        ])
+      )
+    ).toEqual({
+      list_offerings: "public",
+      check_availability: "public",
+      get_quote: "public",
+      show_booking: "public",
+      start_reservation: "signed-in",
+      get_reservation_status: "signed-in",
+      list_my_reservations: "signed-in",
+      whoami: "signed-in",
+    });
     expect(
       tools.find(({ name }) => name === "start_reservation")?.annotations
     ).toMatchObject({ readOnlyHint: false, destructiveHint: false });
@@ -788,5 +834,158 @@ describe("customer MCP route for signed-in tools", () => {
     const response = await callToolAs("whoami", {}, bearer("valid"));
 
     expect(response.status).toBeGreaterThanOrEqual(500);
+  });
+});
+
+describe("customer MCP route booking view", () => {
+  const bookingViewUri = "ui://dh-workspace/booking-v1.html";
+  const viewMimeType = "text/html;profile=mcp-app";
+
+  beforeEach(() => {
+    rateLimit = { rateLimited: false };
+    authorizationServerReachable = true;
+    accessTokens.clear();
+  });
+
+  test("links only show_booking to the booking view", async () => {
+    const { result } = await rpc<ListToolsResult>("tools/list");
+
+    const linked = (result?.tools ?? []).filter(
+      ({ _meta }) => _meta?.ui !== undefined
+    );
+    expect(linked.map(({ name, _meta }) => ({ name, _meta }))).toEqual([
+      {
+        name: "show_booking",
+        _meta: {
+          "cz.deskohub.workspace/access": "public",
+          ui: { resourceUri: bookingViewUri },
+          "ui/resourceUri": bookingViewUri,
+          "openai/outputTemplate": bookingViewUri,
+        },
+      },
+    ]);
+  });
+
+  test("lists the booking view as an MCP Apps resource", async () => {
+    const client = await connectClient();
+    try {
+      const { resources } = await client.listResources();
+
+      expect(resources).toEqual([
+        expect.objectContaining({
+          uri: bookingViewUri,
+          mimeType: viewMimeType,
+          _meta: expect.objectContaining({
+            ui: expect.objectContaining({ prefersBorder: true }),
+          }),
+        }),
+      ]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("serves one self-contained document that declares no network origin", async () => {
+    const client = await connectClient();
+    try {
+      const { contents } = await client.readResource({ uri: bookingViewUri });
+      const [view] = contents;
+
+      expect(contents).toHaveLength(1);
+      expect(view).toMatchObject({
+        uri: bookingViewUri,
+        mimeType: viewMimeType,
+        _meta: {
+          ui: {
+            csp: { connectDomains: [], resourceDomains: [] },
+            prefersBorder: true,
+          },
+          "openai/widgetCSP": {
+            connect_domains: [],
+            resource_domains: [],
+            redirect_domains: ["http://deskohub.test"],
+          },
+        },
+      });
+      const html = view && "text" in view ? view.text : "";
+      // Compared as booleans: a failure would print the whole document.
+      expect(/^<!doctype html>/i.test(html)).toBe(true);
+      // Scripts and styles are inline: nothing loads from an origin.
+      expect(/<(?:script|link|img)[^>]+(?:src|href)=/i.test(html)).toBe(false);
+      // The copy of both locales is compiled in.
+      expect(
+        [
+          m.bookingWidgetCheck({}, { locale: "en-US" }),
+          m.bookingWidgetCheck({}, { locale: "cs-CZ" }),
+        ].map((copy) => html.includes(copy))
+      ).toEqual([true, true]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("reads the booking view without a token", async () => {
+    const { result } = await rpc<{
+      readonly contents: ReadonlyArray<{ readonly mimeType: string }>;
+    }>("resources/read", { uri: bookingViewUri });
+
+    expect(result?.contents[0]?.mimeType).toBe(viewMimeType);
+  });
+
+  const showBookingAs = async (headers: Record<string, string>) => {
+    const response = await postRpc(
+      "tools/call",
+      { name: "show_booking", arguments: { family: "office", seats: 2 } },
+      headers
+    );
+    expect(response.status).toBe(200);
+    const { result } = (await readJsonRpc(response)) as {
+      readonly result?: CallToolResult;
+    };
+    expect(await validateStructuredContent("show_booking", result)).toEqual({
+      valid: true,
+      data: result?.structuredContent,
+      errorMessage: undefined,
+    });
+    return result;
+  };
+
+  test("hands an agent without a token off to the reservation page, with the offerings as text", async () => {
+    const result = await showBookingAs({});
+
+    expect(result?.structuredContent).toMatchObject({
+      booking_mode: "reservation_page",
+      locale: "en-US",
+      selection: { family: "office", seats: 2 },
+      offerings: expect.arrayContaining([
+        expect.objectContaining({ family: "cowork" }),
+      ]),
+    });
+    // Hosts without MCP Apps get the whole result as text.
+    const [text] = result?.content ?? [];
+    expect(text?.type).toBe("text");
+    expect(JSON.parse(text && "text" in text ? text.text : "null")).toEqual(
+      result?.structuredContent
+    );
+  });
+
+  test("lets an agent whose token grants reservations:create reserve in the view", async () => {
+    accessTokens.set("create", "reservations:create");
+
+    const result = await showBookingAs({ authorization: "Bearer create" });
+
+    expect(result?.structuredContent).toMatchObject({
+      booking_mode: "reserve",
+    });
+  });
+
+  test("hands off an agent whose token only reads reservations", async () => {
+    accessTokens.set("read", "reservations:read");
+
+    const result = await showBookingAs({ authorization: "Bearer read" });
+
+    expect(result?.structuredContent).toMatchObject({
+      booking_mode: "reservation_page",
+    });
   });
 });

@@ -18,11 +18,16 @@ import {
   Stream,
 } from "effect";
 import { scheduleAgentTrafficEvent } from "@/shared/backend/agent-traffic/agent-traffic-events";
+import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import type { RequestBudget } from "@/shared/backend/request-budget/request-budget.service";
 import { CurrentAgentTraffic } from "@/shared/backend/workspace-request-context";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { currentInstant } from "@/shared/utils/temporal";
-import { type AgentTool, getRequestedAgentToolLocale } from "./agent-tool";
+import {
+  type AgentTool,
+  CallableAgentTools,
+  getRequestedAgentToolLocale,
+} from "./agent-tool";
 import { AgentToolAdmission } from "./agent-tool-admission.service";
 import { spendSignedInCallBudgets } from "./agent-tool-call-budget";
 import {
@@ -30,7 +35,17 @@ import {
   type AgentToolErrorCode,
   toAgentToolErrorResult,
 } from "./agent-tool-error";
-import { authorizeAgentToolRequest } from "./agent-tool-mcp-authorization";
+import {
+  authorizeAgentToolRequest,
+  isAgentToolGranted,
+} from "./agent-tool-mcp-authorization";
+import { agentToolAccessMetaKey } from "./agent-tool-metadata";
+import {
+  agentToolViewMimeType,
+  getAgentToolViews,
+  getViewLinkMeta,
+  getViewResourceMeta,
+} from "./agent-tool-view";
 import type { CustomerAgentCaller } from "./customer-agent-caller";
 
 /** The version of the tool contract agents see; bump it on breaking changes. */
@@ -61,7 +76,13 @@ const agentToolServerInstructions = [
  *
  * An agent may send an OAuth bearer token. A token that grants nothing,
  * or a signed-in tool called without a token granting its scope, is answered
- * with a 401 or 403 OAuth challenge before the MCP server runs.
+ * with a 401 or 403 OAuth challenge before the MCP server runs. Every tool
+ * publishes its access in `_meta`, and a call can read which tools its
+ * caller may call through `CallableAgentTools`.
+ *
+ * The views tools render in are served as MCP Apps `ui://` resources. The
+ * server can't see which clients render them, so tools always link their
+ * view, and every result stays complete without it.
  *
  * Tool calls run as fibers of the returned Effect, so they share its
  * services, request context, and trace, and are interrupted with it.
@@ -119,7 +140,10 @@ type McpExchange<R> = {
   readonly caller: Option.Option<CustomerAgentCaller>;
 };
 
-type ToolCallServices<R> = R | AgentToolAdmission | RequestBudget;
+type ToolCallServices<R> =
+  | Exclude<R, CallableAgentTools>
+  | AgentToolAdmission
+  | RequestBudget;
 
 const exchangeAgentToolMcpRequest = <R>({
   tools,
@@ -130,7 +154,8 @@ const exchangeAgentToolMcpRequest = <R>({
     Effect.bind("runInRequest", () =>
       FiberSet.makeRuntimePromise<ToolCallServices<R>>()
     ),
-    Effect.bind("handler", ({ runInRequest }) =>
+    Effect.bind("siteOrigin", () => getWorkspaceRuntimeCallbackOrigin),
+    Effect.bind("handler", ({ runInRequest, siteOrigin }) =>
       Effect.acquireRelease(
         Effect.sync(() =>
           createMcpHandler(
@@ -139,6 +164,7 @@ const exchangeAgentToolMcpRequest = <R>({
                 tools,
                 headers: request.headers,
                 caller,
+                siteOrigin: siteOrigin.origin,
                 runInRequest,
               }),
             {
@@ -194,11 +220,13 @@ const makeAgentToolMcpServer = <R>({
   tools,
   headers,
   caller,
+  siteOrigin,
   runInRequest,
 }: {
   readonly tools: ReadonlyArray<AgentTool<R>>;
   readonly headers: Headers;
   readonly caller: Option.Option<CustomerAgentCaller>;
+  readonly siteOrigin: string;
   readonly runInRequest: RequestRunner<ToolCallServices<R>>;
 }) => {
   const server = new McpServer(
@@ -208,6 +236,32 @@ const makeAgentToolMcpServer = <R>({
       version: agentToolServerVersion,
     },
     { instructions: agentToolServerInstructions }
+  );
+  const resourceMeta = getViewResourceMeta(siteOrigin);
+  for (const view of getAgentToolViews(tools)) {
+    server.registerResource(
+      view.name,
+      view.uri,
+      {
+        title: view.title,
+        description: view.description,
+        mimeType: agentToolViewMimeType,
+        _meta: resourceMeta,
+      },
+      () => ({
+        contents: [
+          {
+            uri: view.uri,
+            mimeType: agentToolViewMimeType,
+            text: view.html,
+            _meta: resourceMeta,
+          },
+        ],
+      })
+    );
+  }
+  const callable = new Set(
+    tools.filter((tool) => isAgentToolGranted(tool, caller)).map(toName)
   );
   for (const tool of tools) {
     server.registerTool(
@@ -224,15 +278,21 @@ const makeAgentToolMcpServer = <R>({
           idempotentHint: tool.readOnly,
           openWorldHint: false,
         },
+        _meta: {
+          [agentToolAccessMetaKey]: tool.access,
+          ...(tool.view && getViewLinkMeta(tool.view)),
+        },
       },
       (args, context) =>
-        runInRequest(callAgentTool({ tool, args, headers, caller }), {
+        runInRequest(callAgentTool({ tool, args, headers, caller, callable }), {
           signal: context.mcpReq.signal,
         })
     );
   }
   return server;
 };
+
+const toName = ({ name }: { readonly name: string }) => name;
 
 const jsonArguments = Schema.toStandardSchemaV1(Schema.Json);
 
@@ -257,11 +317,13 @@ const callAgentTool = <R>({
   args,
   headers,
   caller,
+  callable,
 }: {
   readonly tool: AgentTool<R>;
   readonly args: Schema.Json;
   readonly headers: Headers;
   readonly caller: Option.Option<CustomerAgentCaller>;
+  readonly callable: ReadonlySet<string>;
 }): Effect.Effect<CallToolResult, never, ToolCallServices<R>> =>
   AgentToolAdmission.pipe(
     Effect.flatMap((admission) => admission.isCallAllowed(headers)),
@@ -271,7 +333,11 @@ const callAgentTool = <R>({
       () => AgentToolError.rateLimited()
     ),
     Effect.andThen(spendCallBudgets({ tool, caller })),
-    Effect.flatMap(() => tool.call(args, caller)),
+    Effect.flatMap(() =>
+      tool
+        .call(args, caller)
+        .pipe(Effect.provideService(CallableAgentTools, callable))
+    ),
     Effect.map(
       (result): CallToolResult => ({
         content: [{ type: "text", text: JSON.stringify(result) }],

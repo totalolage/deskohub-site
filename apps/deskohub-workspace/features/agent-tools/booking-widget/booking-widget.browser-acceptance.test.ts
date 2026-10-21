@@ -1,0 +1,396 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { type Browser, chromium, type Page } from "@playwright/test";
+import type { Schema } from "effect";
+import { type Locale, m } from "@/features/i18n";
+import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
+import type { BookingMode } from "../show-booking.schema";
+import {
+  availabilityResult,
+  bookingOfferings,
+  bookingToday,
+  quoteResult,
+  reservationResult,
+  showBookingResult,
+} from "./booking-widget.test-utils";
+import { buildBookingWidget } from "./build-booking-widget";
+
+// Set to a directory to keep a screenshot of each state the suite reaches.
+const screenshotDirectory = process.env.BOOKING_WIDGET_SCREENSHOT_DIRECTORY;
+
+const chromiumAvailable = await playwrightChromiumAvailable();
+let browser: Browser | undefined;
+let widgetHtml = "";
+let buildDirectory = "";
+let harnessPath = "";
+
+beforeAll(async () => {
+  if (!chromiumAvailable) return;
+  widgetHtml = await buildBookingWidget();
+  buildDirectory = await mkdtemp(join(tmpdir(), "booking-widget-browser-"));
+  const build = await Bun.build({
+    entrypoints: [join(import.meta.dir, "booking-widget.browser-harness.ts")],
+    format: "iife",
+    outdir: buildDirectory,
+    target: "browser",
+  });
+  if (!build.success) {
+    throw new Error(build.logs.map(({ message }) => message).join("\n"));
+  }
+  harnessPath = build.outputs[0]?.path ?? "";
+  if (screenshotDirectory)
+    await mkdir(screenshotDirectory, { recursive: true });
+  browser = await chromium.launch({ headless: true });
+});
+
+afterAll(async () => {
+  await browser?.close();
+  if (buildDirectory) {
+    await rm(buildDirectory, { force: true, recursive: true });
+  }
+});
+
+type ToolCall = { readonly name: string; readonly args: Schema.JsonObject };
+
+const toolResult = (structuredContent: object, isError = false) => ({
+  ...(isError && { isError }),
+  content: [{ type: "text", text: JSON.stringify(structuredContent) }],
+  structuredContent,
+});
+
+type ToolAnswers = Partial<
+  Record<string, (args: Schema.JsonObject) => ReturnType<typeof toolResult>>
+>;
+
+const toLocale = (locale: Schema.Json | undefined): Locale =>
+  locale === "cs-CZ" ? "cs-CZ" : "en-US";
+
+const defaultAnswers: ToolAnswers = {
+  list_offerings: () =>
+    toolResult({
+      business: {
+        name: "DH Workspace",
+        address: "Synthetic street 1, Prague",
+        opening_hours: "Open 24/7.",
+        booking: "Book on the website.",
+      },
+      advertised_on: bookingToday,
+      offerings: bookingOfferings(),
+    }),
+  check_availability: ({ locale }) =>
+    toolResult(availabilityResult(true, toLocale(locale))),
+  get_quote: ({ locale }) => toolResult(quoteResult(toLocale(locale))),
+  start_reservation: ({ locale }) =>
+    toolResult(reservationResult(toLocale(locale))),
+};
+
+/**
+ * Opens the built view in a host page whose bridge answers `tools/call`
+ * with `answers` and records every call and opened link.
+ */
+const openBookingView = async ({
+  mode,
+  locale,
+  hostLocale = locale,
+  requestedLocale = locale as Locale | null,
+  resultLocale = locale,
+  answers = {},
+}: {
+  readonly mode: BookingMode;
+  readonly locale: Locale;
+  readonly hostLocale?: string;
+  /** The agent's `locale` argument; `null` when it sends none. */
+  readonly requestedLocale?: Locale | null;
+  readonly resultLocale?: Locale;
+  readonly answers?: ToolAnswers;
+}) => {
+  if (!browser) throw new Error("The browser has not been launched.");
+  const page = await browser.newPage({
+    viewport: { width: 560, height: 900 },
+    timezoneId: "Europe/Prague",
+  });
+  const calls: ToolCall[] = [];
+  const linkOpened = Promise.withResolvers<string>();
+  await page.exposeFunction(
+    "callBookingTool",
+    (name: string, args: Schema.JsonObject) => {
+      calls.push({ name, args });
+      const answer = { ...defaultAnswers, ...answers }[name];
+      if (!answer) throw new Error(`Unexpected tool call ${name}`);
+      return answer(args);
+    }
+  );
+  await page.exposeFunction("openBookingLink", (url: string) => {
+    linkOpened.resolve(url);
+  });
+  await page.setContent(
+    "<!doctype html><html><head><meta charset='utf-8'></head><body style='margin:0'></body></html>"
+  );
+  await page.evaluate(
+    (harness) => {
+      Object.assign(window, { bookingHarness: harness });
+    },
+    {
+      html: widgetHtml,
+      hostLocale,
+      opensLinks: true,
+      toolArguments: requestedLocale ? { locale: requestedLocale } : {},
+      toolResult: toolResult(showBookingResult({ mode, locale: resultLocale })),
+    }
+  );
+  await page.addScriptTag({ path: harnessPath });
+  const view = page.frameLocator("iframe");
+  await view
+    .getByRole("heading", { name: m.bookingWidgetTitle({}, { locale }) })
+    .waitFor();
+  return { page, view, calls, linkOpened: linkOpened.promise };
+};
+
+const capture = async (page: Page, name: string) => {
+  if (!screenshotDirectory) return;
+  await page.screenshot({
+    fullPage: true,
+    path: join(screenshotDirectory, `${name}.png`),
+  });
+};
+
+/** Formats in the page, whose ICU the view's own formatting uses. */
+const formatPrice = (page: Page, amount: number, locale: Locale) =>
+  page.evaluate(
+    ([amount, locale]) =>
+      new Intl.NumberFormat(locale, {
+        style: "currency",
+        currency: "CZK",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(amount),
+    [amount, locale] as const
+  );
+
+const checkAvailability = async (
+  view: ReturnType<Page["frameLocator"]>,
+  locale: Locale
+) => {
+  await view
+    .getByRole("button", { name: m.bookingWidgetCheck({}, { locale }) })
+    .click();
+  await view
+    .getByRole("status")
+    .getByText(m.bookingWidgetAvailable({}, { locale }))
+    .waitFor();
+};
+
+describe.skipIf(!chromiumAvailable)("booking view", () => {
+  for (const locale of ["en-US", "cs-CZ"] as const) {
+    test(`reserve mode in ${locale}: quotes, starts the booking, and opens the Pay page`, async () => {
+      const { page, view, calls, linkOpened } = await openBookingView({
+        mode: "reserve",
+        locale,
+      });
+      try {
+        await checkAvailability(view, locale);
+        await view
+          .getByRole("status")
+          .getByText(
+            m.bookingWidgetTotal(
+              {
+                price: await formatPrice(
+                  page,
+                  quoteResult().total.amount,
+                  locale
+                ),
+              },
+              { locale }
+            )
+          )
+          .waitFor();
+        expect(calls.map(({ name }) => name)).toEqual([
+          "check_availability",
+          "get_quote",
+        ]);
+        expect(calls[0]?.args).toEqual({
+          family: "cowork",
+          date: bookingToday,
+          tier: "open-space",
+          locale,
+        });
+        await capture(page, `reserve-${locale}`);
+
+        await view
+          .getByRole("button", { name: m.bookingWidgetReserve({}, { locale }) })
+          .click();
+        const payLink = view.getByRole("link", {
+          name: m.bookingWidgetOpenPaymentPage({}, { locale }),
+        });
+        await payLink.waitFor();
+        expect(calls.at(-1)).toEqual({
+          name: "start_reservation",
+          args: {
+            family: "cowork",
+            date: bookingToday,
+            tier: "open-space",
+            locale,
+          },
+        });
+        const expiresAt = await page.evaluate(
+          ([instant, locale]) =>
+            new Intl.DateTimeFormat(locale, {
+              dateStyle: "medium",
+              timeStyle: "short",
+            }).format(Date.parse(instant)),
+          [reservationResult().pay_url_expires_at, locale] as const
+        );
+        await view
+          .getByRole("status")
+          .getByText(m.bookingWidgetHeld({ expiresAt }, { locale }))
+          .waitFor();
+        await expect(
+          view.getByText(reservationResult().pay_url, { exact: true }).count()
+        ).resolves.toBe(1);
+        await capture(page, `reserve-held-${locale}`);
+
+        await payLink.click();
+        await expect(linkOpened).resolves.toBe(reservationResult().pay_url);
+      } finally {
+        await page.close();
+      }
+    });
+
+    test(`reservation page mode in ${locale}: links the prefilled reservation page without a Reserve button`, async () => {
+      const { page, view, calls } = await openBookingView({
+        mode: "reservation_page",
+        locale,
+      });
+      try {
+        await checkAvailability(view, locale);
+        await view
+          .getByRole("link", {
+            name: m.bookingWidgetOpenReservationPage({}, { locale }),
+          })
+          .waitFor();
+        await expect(
+          view
+            .getByRole("button", {
+              name: m.bookingWidgetReserve({}, { locale }),
+            })
+            .count()
+        ).resolves.toBe(0);
+        await expect(
+          view.getByText(quoteResult().reservation_url, { exact: true }).count()
+        ).resolves.toBe(1);
+        expect(calls.map(({ name }) => name)).not.toContain(
+          "start_reservation"
+        );
+        await capture(page, `reservation-page-${locale}`);
+      } finally {
+        await page.close();
+      }
+    });
+  }
+
+  test("follows a Czech host when the agent asks for no locale, listing the offerings again in Czech", async () => {
+    const { page, view, calls } = await openBookingView({
+      mode: "reservation_page",
+      locale: "cs-CZ",
+      hostLocale: "cs",
+      requestedLocale: null,
+      resultLocale: "en-US",
+    });
+    try {
+      expect(calls[0]).toEqual({
+        name: "list_offerings",
+        args: { locale: "cs-CZ" },
+      });
+      await view
+        .getByRole("group", {
+          name: m.bookingWidgetFamilyLabel({}, { locale: "cs-CZ" }),
+        })
+        .waitFor();
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("shows the booking error and falls back to the reservation page", async () => {
+    const { page, view } = await openBookingView({
+      mode: "reserve",
+      locale: "en-US",
+      answers: {
+        start_reservation: () =>
+          toolResult(
+            {
+              error: {
+                code: "profile_incomplete",
+                message: m.agentToolErrorProfileIncomplete(
+                  {},
+                  { locale: "en-US" }
+                ),
+              },
+            },
+            true
+          ),
+      },
+    });
+    try {
+      await checkAvailability(view, "en-US");
+      await view
+        .getByRole("button", {
+          name: m.bookingWidgetReserve({}, { locale: "en-US" }),
+        })
+        .click();
+      await view
+        .getByRole("alert")
+        .getByText(m.agentToolErrorProfileIncomplete({}, { locale: "en-US" }))
+        .waitFor();
+      await view
+        .getByRole("link", {
+          name: m.bookingWidgetOpenReservationPage({}, { locale: "en-US" }),
+        })
+        .waitFor();
+      await capture(page, "reserve-failed-en-US");
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("asks for a meeting room start time before calling any tool", async () => {
+    const { page, view, calls } = await openBookingView({
+      mode: "reserve",
+      locale: "en-US",
+    });
+    try {
+      // The segment's radio is visually hidden; customers click its label.
+      await view
+        .getByText(m.bookingWidgetFamilyMeetingRoom({}, { locale: "en-US" }), {
+          exact: true,
+        })
+        .click();
+      await expect(
+        view
+          .getByRole("radio", {
+            name: m.bookingWidgetFamilyMeetingRoom({}, { locale: "en-US" }),
+          })
+          .isChecked()
+      ).resolves.toBe(true);
+      await view
+        .getByRole("button", {
+          name: m.bookingWidgetCheck({}, { locale: "en-US" }),
+        })
+        .click();
+      const startTime = view.getByLabel(
+        m.bookingWidgetStartTimeLabel({}, { locale: "en-US" })
+      );
+      await view
+        .getByText(m.bookingWidgetStartTimeRequired({}, { locale: "en-US" }))
+        .waitFor();
+      await expect(startTime.getAttribute("aria-invalid")).resolves.toBe(
+        "true"
+      );
+      expect(calls).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  });
+});

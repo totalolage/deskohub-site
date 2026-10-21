@@ -12,7 +12,6 @@ import { getMeetingRoomReservationSelectionSearchParams } from "@/features/reser
 import { getOfficeReservationSelectionSearchParams } from "@/features/reservation/office-reservation-checkout-query";
 import type { ReservationSelectionSearchParams } from "@/features/reservation/reservation-checkout-query";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
-import { workspaceReservationKindSchema } from "@/features/reservation/reservation-kind";
 import {
   getCoworkAvailabilityQueries,
   getMeetingRoomAvailabilityQuery,
@@ -33,6 +32,10 @@ import {
   getAgentToolLocale,
 } from "./agent-tool";
 import { AgentToolError } from "./agent-tool-error";
+import {
+  type CheckAvailabilityResult,
+  checkAvailabilityResultSchema,
+} from "./check-availability.schema";
 import {
   ensureOfficeOpen,
   getRequestedCoworkTiers,
@@ -56,49 +59,8 @@ const inputSchema = Schema.Struct({
 
 type CheckAvailabilityInput = typeof inputSchema.Type;
 
-const outputSchema = Schema.Struct({
-  family: workspaceReservationKindSchema,
-  available: Schema.Boolean.annotate({
-    description:
-      "Whether the whole selection looked free: every date for cowork (some requested offer on each) and office, the interval for the meeting room.",
-  }),
-  days: Schema.Array(
-    Schema.Struct({
-      date: Schema.String,
-      available: Schema.Boolean,
-      offers: Schema.optionalKey(
-        Schema.Array(
-          Schema.Struct({
-            tier: Schema.Literals(workspaceCoworkCurrentTiers),
-            available: Schema.Boolean,
-            workstation_required: Schema.Boolean,
-          })
-        )
-      ),
-    })
-  ),
-  meeting_room: Schema.optionalKey(
-    Schema.Struct({
-      duration: Schema.String,
-      starts_at: Schema.String,
-      ends_at: Schema.String,
-    })
-  ),
-  office: Schema.optionalKey(
-    Schema.Struct({
-      seats: Schema.Int,
-      max_seats: Schema.Int,
-    })
-  ),
-  checked_at: Schema.String,
-  note: Schema.String,
-  reservation_url: Schema.String,
-});
-
-export type CheckAvailabilityResult = typeof outputSchema.Type;
-
 type AvailabilityResult = Omit<
-  typeof outputSchema.Type,
+  CheckAvailabilityResult,
   "checked_at" | "note" | "reservation_url"
 > & { readonly reservationSearchParams: ReservationSelectionSearchParams };
 
@@ -111,7 +73,7 @@ export const checkAvailabilityTool = defineAgentTool({
   readOnly: true,
   unavailableCode: "availability_unavailable",
   input: inputSchema,
-  output: outputSchema,
+  output: checkAvailabilityResultSchema,
   run: Effect.fn("agentTools.checkAvailability")((input) =>
     Effect.succeed({ input }).pipe(
       Effect.let("locale", ({ input }) => getAgentToolLocale(input)),

@@ -1,0 +1,513 @@
+import { formatCurrencyAmount } from "@deskohub/i18n/currency";
+import { Cause, Option } from "effect";
+import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
+import { type ReactNode, useId } from "react";
+import { type Locale, m } from "@/features/i18n";
+import { Button } from "@/shared/components/ui/button";
+import { ChoiceCard } from "@/shared/components/ui/choice-card";
+import { Input } from "@/shared/components/ui/input";
+import { Label } from "@/shared/components/ui/label";
+import { SegmentedControl } from "@/shared/components/ui/segmented-control";
+import type { AgentToolMoney } from "../agent-tool-money";
+import type { CheckAvailabilityResult } from "../check-availability.schema";
+import type { GetQuoteResult } from "../get-quote.schema";
+import type { AgentOffering } from "../list-offerings.schema";
+import type { StartReservationResult } from "../start-reservation.schema";
+import {
+  type BookingDraft,
+  type BookingFieldError,
+  type BookingSelection,
+  type BookingStart,
+  getBookingFamilies,
+  getFamilyOfferings,
+} from "./booking-draft";
+import type { BookingRequestFailed, BookingToolFailed } from "./booking-host";
+
+/** An availability check, with the quote when the selection looked free. */
+type BookingCheck = {
+  readonly availability: CheckAvailabilityResult;
+  readonly quote?: GetQuoteResult;
+  /** The selection as quoted, which a booking reuses. */
+  readonly selection?: BookingSelection;
+};
+
+type BookingFailure = BookingToolFailed | BookingRequestFailed;
+
+type BookingFormProps = {
+  readonly start: BookingStart;
+  readonly draft: BookingDraft;
+  /** Field errors from the last attempt to check the draft. */
+  readonly errors: ReadonlyArray<BookingFieldError>;
+  readonly check: AsyncResult.AsyncResult<BookingCheck, BookingFailure>;
+  readonly reservation: AsyncResult.AsyncResult<
+    StartReservationResult,
+    BookingFailure
+  >;
+  /** Whether the host failed to open the last link. */
+  readonly linkFailed: boolean;
+  readonly onDraftChange: (draft: BookingDraft) => void;
+  readonly onCheck: () => void;
+  readonly onReserve: (selection: BookingSelection) => void;
+  readonly onOpenLink: (url: string) => void;
+};
+
+const formatMoney = ({ amount, currency }: AgentToolMoney, locale: Locale) =>
+  formatCurrencyAmount({ amount, currency, locale });
+
+// The view runs in the customer's browser, so the time is in their zone.
+const formatExpiry = (instant: string, locale: Locale) =>
+  new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(Date.parse(instant));
+
+const getFailureMessage = (
+  cause: Cause.Cause<BookingFailure>,
+  locale: Locale
+) =>
+  Option.match(Cause.findErrorOption(cause), {
+    onNone: () => m.bookingWidgetRequestFailed({}, { locale }),
+    onSome: (failure) =>
+      failure._tag === "BookingToolFailed"
+        ? failure.message
+        : m.bookingWidgetRequestFailed({}, { locale }),
+  });
+
+const getFieldErrorMessage = (error: BookingFieldError, locale: Locale) => {
+  switch (error.field) {
+    case "date":
+      return {
+        required: m.bookingWidgetDateRequired,
+        passed: m.bookingWidgetDatePassed,
+      }[error.reason]({}, { locale });
+    case "startTime":
+      return {
+        required: m.bookingWidgetStartTimeRequired,
+        "whole-hour": m.reservationValidationMeetingRoomStartWholeHour,
+      }[error.reason]({}, { locale });
+    case "dayCount":
+      return m.bookingWidgetDayCountRange({ max: error.max }, { locale });
+    case "seats":
+      return m.bookingWidgetSeatCountRange({ max: error.max }, { locale });
+  }
+};
+
+/**
+ * The booking view: the customer picks a family, its options and a date,
+ * checks availability and the price, and continues on the site, either
+ * through the Pay page of a booking started here or the prefilled
+ * reservation page. Results are announced through live regions that stay
+ * mounted.
+ */
+export function BookingForm({
+  start,
+  draft,
+  errors,
+  check,
+  reservation,
+  linkFailed,
+  onDraftChange,
+  onCheck,
+  onReserve,
+  onOpenLink,
+}: BookingFormProps) {
+  const { locale } = start;
+  const familyOfferings = getFamilyOfferings(start.offerings, draft.family);
+  const checked = AsyncResult.isSuccess(check) ? check.value : undefined;
+  const reserved = AsyncResult.isSuccess(reservation)
+    ? reservation.value
+    : undefined;
+  const update = (change: Partial<BookingDraft>) =>
+    onDraftChange({ ...draft, ...change });
+  const fieldError = (field: BookingFieldError["field"]) =>
+    errors.find((error) => error.field === field);
+  const link = (url: string, label: string) => (
+    <SiteLink
+      label={label}
+      onOpenLink={onOpenLink}
+      opensLinks={start.opensLinks}
+      url={url}
+    />
+  );
+
+  return (
+    <main className="space-y-5 p-4 text-navy-blue">
+      <h1 className="text-xl">{m.bookingWidgetTitle({}, { locale })}</h1>
+      {/* Not a form: hosts sandbox the view without `allow-forms`, so the
+          browser blocks a submission before its submit event. */}
+      <div className="space-y-5">
+        <div className="space-y-2">
+          {/* The group's legend names it for assistive technology. */}
+          <p aria-hidden="true" className="text-sm font-medium">
+            {m.bookingWidgetFamilyLabel({}, { locale })}
+          </p>
+          <SegmentedControl
+            label={m.bookingWidgetFamilyLabel({}, { locale })}
+            name="family"
+            onValueChange={(family) => update({ family })}
+            options={getBookingFamilies(start.offerings).map((family) => ({
+              value: family,
+              label: {
+                cowork: m.bookingWidgetFamilyCowork,
+                "meeting-room": m.bookingWidgetFamilyMeetingRoom,
+                office: m.bookingWidgetFamilyOffice,
+              }[family]({}, { locale }),
+            }))}
+            value={draft.family}
+          />
+        </div>
+
+        {draft.family === "cowork" && (
+          <OfferingChoices
+            label={m.bookingWidgetTierLabel({}, { locale })}
+            locale={locale}
+            name="tier"
+            offerings={familyOfferings}
+            onSelect={({ tier }) => tier && update({ tier })}
+            selected={(offering) => offering.tier === draft.tier}
+          />
+        )}
+        {draft.family === "meeting-room" && (
+          <OfferingChoices
+            label={m.reservationMeetingRoomDurationLabel({}, { locale })}
+            locale={locale}
+            name="duration"
+            offerings={familyOfferings}
+            onSelect={({ duration }) => duration && update({ duration })}
+            selected={(offering) => offering.duration === draft.duration}
+          />
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            error={fieldError("date")}
+            label={
+              draft.family === "office"
+                ? m.bookingWidgetFirstDayLabel({}, { locale })
+                : m.bookingWidgetDateLabel({}, { locale })
+            }
+            locale={locale}
+          >
+            {(props) => (
+              <Input
+                {...props}
+                min={start.today}
+                onChange={(event) => update({ date: event.target.value })}
+                type="date"
+                value={draft.date}
+              />
+            )}
+          </Field>
+          {draft.family === "meeting-room" && draft.duration !== "day:1" && (
+            <Field
+              error={fieldError("startTime")}
+              label={m.bookingWidgetStartTimeLabel({}, { locale })}
+              locale={locale}
+            >
+              {(props) => (
+                <Input
+                  {...props}
+                  onChange={(event) =>
+                    update({ startTime: event.target.value })
+                  }
+                  step={3600}
+                  type="time"
+                  value={draft.startTime}
+                />
+              )}
+            </Field>
+          )}
+          {draft.family === "office" && (
+            <>
+              <Field
+                error={fieldError("dayCount")}
+                label={m.reservationOfficeDayCountLabel({}, { locale })}
+                locale={locale}
+              >
+                {(props) => (
+                  <Input
+                    {...props}
+                    inputMode="numeric"
+                    min={1}
+                    onChange={(event) =>
+                      update({ dayCount: event.target.value })
+                    }
+                    type="number"
+                    value={draft.dayCount}
+                  />
+                )}
+              </Field>
+              <Field
+                error={fieldError("seats")}
+                label={m.reservationOfficeSeatCountLabel({}, { locale })}
+                locale={locale}
+              >
+                {(props) => (
+                  <Input
+                    {...props}
+                    inputMode="numeric"
+                    min={1}
+                    onChange={(event) => update({ seats: event.target.value })}
+                    type="number"
+                    value={draft.seats}
+                  />
+                )}
+              </Field>
+            </>
+          )}
+        </div>
+
+        <Button
+          onClick={onCheck}
+          pending={AsyncResult.isWaiting(check)}
+          type="button"
+        >
+          {m.bookingWidgetCheck({}, { locale })}
+        </Button>
+      </div>
+
+      <div aria-live="polite" className="space-y-2 text-sm" role="status">
+        {AsyncResult.isWaiting(check) && (
+          <p>{m.bookingWidgetChecking({}, { locale })}</p>
+        )}
+        {checked && !AsyncResult.isWaiting(check) && (
+          <CheckSummary check={checked} locale={locale} />
+        )}
+        {AsyncResult.isWaiting(reservation) && (
+          <p>{m.bookingWidgetReserving({}, { locale })}</p>
+        )}
+        {reserved && !AsyncResult.isWaiting(reservation) && (
+          <>
+            <p className="font-semibold">
+              {m.bookingWidgetHeld(
+                {
+                  expiresAt: formatExpiry(reserved.pay_url_expires_at, locale),
+                },
+                { locale }
+              )}
+            </p>
+            {reserved.price_changed && (
+              <p>
+                {m.bookingWidgetTotal(
+                  { price: formatMoney(reserved.total, locale) },
+                  { locale }
+                )}
+              </p>
+            )}
+            <p className="text-navy-blue/70">{reserved.note}</p>
+          </>
+        )}
+      </div>
+
+      <div className="space-y-2 text-sm text-burned-orange-ink" role="alert">
+        {AsyncResult.isFailure(check) && (
+          <p>{getFailureMessage(check.cause, locale)}</p>
+        )}
+        {AsyncResult.isFailure(reservation) && (
+          <>
+            <p>{getFailureMessage(reservation.cause, locale)}</p>
+            <p>{m.bookingWidgetReserveFallback({}, { locale })}</p>
+          </>
+        )}
+        {linkFailed && <p>{m.bookingWidgetLinkFailed({}, { locale })}</p>}
+      </div>
+
+      {checked?.quote && checked.selection && (
+        <div className="space-y-4">
+          {reserved
+            ? link(
+                reserved.pay_url,
+                m.bookingWidgetOpenPaymentPage({}, { locale })
+              )
+            : start.mode === "reserve" && (
+                <Button
+                  onClick={() =>
+                    checked.selection && onReserve(checked.selection)
+                  }
+                  pending={AsyncResult.isWaiting(reservation)}
+                  type="button"
+                >
+                  {m.bookingWidgetReserve({}, { locale })}
+                </Button>
+              )}
+          {(start.mode === "reservation_page" ||
+            AsyncResult.isFailure(reservation)) && (
+            <div className="space-y-2">
+              <p className="text-sm">
+                {m.bookingWidgetReservationPageHint({}, { locale })}
+              </p>
+              {link(
+                checked.quote.reservation_url,
+                m.bookingWidgetOpenReservationPage({}, { locale })
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </main>
+  );
+}
+
+function CheckSummary({
+  check: { availability, quote },
+  locale,
+}: {
+  readonly check: BookingCheck;
+  readonly locale: Locale;
+}) {
+  return (
+    <>
+      <p className="font-semibold">
+        {availability.available
+          ? m.bookingWidgetAvailable({}, { locale })
+          : m.bookingWidgetNotAvailable({}, { locale })}
+      </p>
+      {quote && (
+        <>
+          <p className="text-base font-semibold">
+            {m.bookingWidgetTotal(
+              { price: formatMoney(quote.total, locale) },
+              { locale }
+            )}
+          </p>
+          {quote.discount.amount > 0 && (
+            <p>
+              {m.bookingWidgetDiscount(
+                {
+                  discount: formatMoney(quote.discount, locale),
+                  price: formatMoney(quote.regular_price, locale),
+                },
+                { locale }
+              )}
+            </p>
+          )}
+        </>
+      )}
+      <p className="text-navy-blue/70">{availability.note}</p>
+    </>
+  );
+}
+
+function OfferingChoices({
+  label,
+  locale,
+  name,
+  offerings,
+  onSelect,
+  selected,
+}: {
+  readonly label: string;
+  readonly locale: Locale;
+  readonly name: string;
+  readonly offerings: ReadonlyArray<AgentOffering>;
+  readonly onSelect: (offering: AgentOffering) => void;
+  readonly selected: (offering: AgentOffering) => boolean;
+}) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="mb-2 text-sm font-medium">{label}</legend>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {offerings.map((offering) => (
+          <ChoiceCard align="center" key={offering.name} tone="plain">
+            <input
+              checked={selected(offering)}
+              name={name}
+              onChange={() => onSelect(offering)}
+              type="radio"
+              value={offering.tier ?? offering.duration}
+            />
+            <span className="flex flex-col gap-0.5">
+              <span className="font-semibold">
+                {offering.duration_label ?? offering.name}
+              </span>
+              <span className="text-sm text-navy-blue/70">
+                {{
+                  day: m.bookingWidgetPricePerDay,
+                  booking: m.bookingWidgetPricePerBooking,
+                }[offering.price_unit](
+                  { price: formatMoney(offering.advertised_price, locale) },
+                  { locale }
+                )}
+              </span>
+            </span>
+          </ChoiceCard>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/** A labelled input with its validation message. */
+function Field({
+  children,
+  error,
+  label,
+  locale,
+}: {
+  readonly children: (props: {
+    readonly id: string;
+    readonly "aria-invalid": boolean;
+    readonly "aria-describedby"?: string;
+    readonly variant: "default" | "error";
+  }) => ReactNode;
+  readonly error: BookingFieldError | undefined;
+  readonly label: string;
+  readonly locale: Locale;
+}) {
+  const id = useId();
+  const errorId = `${id}-error`;
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      {children({
+        id,
+        "aria-invalid": error !== undefined,
+        ...(error && { "aria-describedby": errorId }),
+        variant: error ? "error" : "default",
+      })}
+      {error && (
+        <p className="text-xs text-burned-orange-ink" id={errorId}>
+          {getFieldErrorMessage(error, locale)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A site page link. A click asks the host to open it in the customer's
+ * browser; the address stays visible, so the customer can copy it when
+ * the host can't.
+ */
+function SiteLink({
+  label,
+  onOpenLink,
+  opensLinks,
+  url,
+}: {
+  readonly label: string;
+  readonly onOpenLink: (url: string) => void;
+  readonly opensLinks: boolean;
+  readonly url: string;
+}) {
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <Button asChild>
+        <a
+          href={url}
+          onClick={(event) => {
+            if (!opensLinks) return;
+            event.preventDefault();
+            onOpenLink(url);
+          }}
+          rel="noreferrer"
+          target="_blank"
+        >
+          {label}
+        </a>
+      </Button>
+      <span className="break-all text-xs text-navy-blue/70">{url}</span>
+    </div>
+  );
+}
