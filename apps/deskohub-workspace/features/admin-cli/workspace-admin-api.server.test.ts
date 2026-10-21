@@ -448,6 +448,7 @@ describe("Workspace Admin API", () => {
       deviceId: "EK1X16f8898a",
       state: "issued" as const,
       providerCredentialId: "pin-1",
+      accessName: "Deskohub reservation-1",
       scheduledAccessStartsAt: instant,
       accessStartsAt: instant,
       accessEndsAt: instant,
@@ -616,6 +617,7 @@ describe("Workspace Admin API", () => {
     );
 
     expect(result.recovered.state).toBe("issued");
+    expect(result.recovered.accessName).toBe("Deskohub reservation-1");
     expect(result.replayed).toEqual(result.recovered);
     expect(executions).toBe(1);
     expect("accessCode" in result.recovered).toBe(false);

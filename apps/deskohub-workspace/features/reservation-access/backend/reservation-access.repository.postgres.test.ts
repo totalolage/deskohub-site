@@ -98,10 +98,16 @@ describe.skipIf(!testDatabase)(
       const grant = await run((repository) =>
         repository.ensure({ reservationId, ...target })
       );
+      expect(grant.accessName).toBeNull();
       const startedAt = Temporal.Now.instant();
       expect(
         await run((repository) =>
-          repository.claim({ id: grant.id, reservationId, startedAt })
+          repository.claim({
+            id: grant.id,
+            reservationId,
+            accessName: `Deskohub ${grant.id}`,
+            startedAt,
+          })
         )
       ).toBe(true);
       await run((repository) =>
@@ -128,6 +134,7 @@ describe.skipIf(!testDatabase)(
 
       expect(ensured.id).toBe(grant.id);
       expect(ensured.state).toBe("issued");
+      expect(ensured.accessName).toBe(`Deskohub ${grant.id}`);
       expect(
         await run((repository) =>
           repository.loadIssuedCode({ id: grant.id, reservationId })
@@ -153,6 +160,9 @@ describe.skipIf(!testDatabase)(
       expect(
         ensured.scheduledAccessStartsAt.equals(moved.scheduledAccessStartsAt)
       ).toBe(true);
+      // The replaced credential stays findable in the Igloohome app until the
+      // replacement's request records its own name.
+      expect(ensured.accessName).toBe(`Deskohub ${ensured.id}`);
     });
   }
 );

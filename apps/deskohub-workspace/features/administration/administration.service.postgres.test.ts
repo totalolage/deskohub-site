@@ -7,6 +7,7 @@ import {
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { IgloohomeDeviceIdSchema } from "@deskohub/igloohome";
 import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
@@ -14,6 +15,7 @@ import {
   type FulfillmentState,
   paymentAttempts,
   type ReservationState,
+  reservationAccessGrants,
   workspaceReservations,
 } from "@/db/schema";
 import { ReservationAuthorDirectory } from "@/features/account";
@@ -56,6 +58,10 @@ describe.skipIf(!testDatabase)(
     afterAll(async () => {
       await testDatabase.pool.query(
         "delete from payment_attempts where workspace_reservation_id = any($1)",
+        [reservationIds]
+      );
+      await testDatabase.pool.query(
+        "delete from reservation_access_grants where workspace_reservation_id = any($1)",
         [reservationIds]
       );
       await testDatabase.pool.query(
@@ -563,6 +569,68 @@ describe.skipIf(!testDatabase)(
         });
         expect(self?.author).toBeNull();
       });
+    });
+
+    test("shows the access name stored on the grant, or the grant's own before its first request", async () => {
+      const insertGrant = async (label: string, accessName: string | null) => {
+        // Without a Dotypos booking, the detail loads from Neon alone.
+        const reservationId = workspaceReservationIdSchema.make(
+          `admin-${label}-${runId}`
+        );
+        reservationIds.push(reservationId);
+        await Effect.runPromise(
+          testDatabase.db.insert(workspaceReservations).values({
+            authorAccountId: fixtureReservationAuthorId,
+            id: reservationId,
+            checkoutAttemptKey: checkoutAttemptKeySchema.make(
+              `attempt-${label}-${runId}`
+            ),
+            dotyposCustomerId: makeCustomerId(label),
+            reservationState: "draft",
+            paymentState: "not_started",
+            fulfillmentState: "not_started",
+            reservationDetails: {
+              kind: "cowork",
+              entryTier: "open-space",
+              coffee: false,
+            },
+            locale: "en-US",
+          })
+        );
+        const startsAt = Temporal.Instant.from("2099-07-01T08:00:00Z");
+        const [grant] = await Effect.runPromise(
+          testDatabase.db
+            .insert(reservationAccessGrants)
+            .values({
+              workspaceReservationId: reservationId,
+              deviceId: IgloohomeDeviceIdSchema.make("EK1"),
+              state: accessName === null ? "pending" : "uncertain",
+              accessName,
+              failureCode:
+                accessName === null ? null : "provider_outcome_ambiguous",
+              scheduledAccessStartsAt: startsAt,
+              accessStartsAt: startsAt,
+              accessEndsAt: startsAt.add({ hours: 8 }),
+            })
+            .returning({ id: reservationAccessGrants.id })
+        );
+        return { reservationId, grantId: grant?.id };
+      };
+      const legacy = await insertGrant("access-legacy", "Deskohub legacy-name");
+      const unrequested = await insertGrant("access-unrequested", null);
+
+      const [legacyDetail, unrequestedDetail] = await Promise.all(
+        [legacy, unrequested].map(({ reservationId }) =>
+          run((administration) => administration.loadReservation(reservationId))
+        )
+      );
+
+      expect(legacyDetail?.accessGrant?.accessName).toBe(
+        "Deskohub legacy-name"
+      );
+      expect(unrequestedDetail?.accessGrant?.accessName).toBe(
+        `Deskohub ${unrequested.grantId}`
+      );
     });
   }
 );

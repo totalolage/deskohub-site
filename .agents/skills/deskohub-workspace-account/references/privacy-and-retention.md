@@ -13,6 +13,7 @@ what the privacy copy promises. Privacy copy lives in
 | Neon administrator records (`account_role_grants`, account actors on CLI authentication requests and sessions, standalone access-code events, and `manual_invoice_actors`) | Account ID, role, and the administrator's login-email snapshot as provenance | Grants cascade with the auth user; actor account IDs are set to null and the email snapshot stays with the audit record |
 | Dotypos | Profile and reservation history | Account deletion sets the profile's expiry; retained records stay |
 | Resend | Sent message, recipient, delivery metadata | Provider retention only; Workspace keeps no copy |
+| Igloohome (Singapore) | Per door-code grant: the access name `Deskohub <grant-id>` (older grants: `Deskohub <reservation-id>`), validity window, and device ID; no customer identity | Provider retention only; transfer relies on GDPR Art. 49(1)(b), so keep reservation and customer identifiers out of the access name |
 | Cloudinary | Avatar asset | Destroyed before identity removal |
 | PostHog warehouse | Allowlisted Dotypos customer fields in `custom.dotypos_customers` | PostHog retention settings; a Dotypos deletion arrives as `deleted: true`, not erasure |
 

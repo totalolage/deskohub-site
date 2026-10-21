@@ -23,6 +23,7 @@ const reservationAccessGrantSelection = {
   deviceId: reservationAccessGrants.deviceId,
   state: reservationAccessGrants.state,
   providerCredentialId: reservationAccessGrants.providerCredentialId,
+  accessName: reservationAccessGrants.accessName,
   scheduledAccessStartsAt: reservationAccessGrants.scheduledAccessStartsAt,
   accessStartsAt: reservationAccessGrants.accessStartsAt,
   accessEndsAt: reservationAccessGrants.accessEndsAt,
@@ -66,6 +67,7 @@ export interface IReservationAccessRepository {
   readonly claim: (input: {
     readonly id: ReservationAccessGrantId;
     readonly reservationId: WorkspaceReservationId;
+    readonly accessName: string;
     readonly startedAt: Temporal.Instant;
   }) => Effect.Effect<boolean, ReservationAccessStorageError>;
   readonly markIssued: (input: {
@@ -226,6 +228,7 @@ export class ReservationAccessRepository extends Context.Service<
               .update(reservationAccessGrants)
               .set({
                 state: "provisioning",
+                accessName: input.accessName,
                 provisioningStartedAt: input.startedAt,
                 failedAt: null,
                 failureCode: null,

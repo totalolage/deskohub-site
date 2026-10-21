@@ -403,7 +403,7 @@ describe("WorkspaceAdminApiClient", () => {
             credentialType: "algopin-hourly",
             deviceId: "EK1X16f8898a",
             providerCredentialId: "pin-1",
-            accessName: "Deskohub reservation-1",
+            accessName: "Deskohub access-1",
             scheduledStartsAt: expiresAt,
             startsAt: expiresAt,
             endsAt: expiresAt,
