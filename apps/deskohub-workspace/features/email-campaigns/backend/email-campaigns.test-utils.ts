@@ -65,7 +65,7 @@ export const campaignContentFixture = (
 export const audienceConditionFlowFixture = (
   audienceId: CampaignAudienceId
 ) => ({
-  trigger: { _tag: "reservation-booked" },
+  trigger: { _tag: "ReservationBooked" },
   steps: [
     {
       _tag: "Condition",
@@ -73,7 +73,7 @@ export const audienceConditionFlowFixture = (
       filter: {
         _tag: "Group",
         operator: "and",
-        filters: [{ _tag: "InAudience", audienceId }],
+        filters: [{ _tag: "InAudience", audienceId, operator: "in" }],
       },
     },
     { _tag: "Send", id: "step-send" },

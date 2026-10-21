@@ -18,7 +18,10 @@ import {
   type AutomationDraftHash,
   hashAutomationDraft,
 } from "../automation-draft-hash";
-import { automationFlowSchema } from "../automation-flow";
+import {
+  automationFlowSchema,
+  validateAutomationFlow,
+} from "../automation-flow";
 import { AutomationFlowInvalid } from "../errors";
 import type { AutomationEngineTransaction } from "./automation-unit-handler";
 
@@ -158,3 +161,20 @@ const decodeStoredFlow = (flow: AutomationRow["flow"]) =>
             })
         )
       );
+
+/**
+ * A stored flow held to every rule a save applies, for a path that writes
+ * it again (duplicating its campaign). A flow saved before a rule existed,
+ * such as a schedule off the engine ticks, fails here rather than being
+ * copied. None stays none.
+ */
+export const validateStoredAutomationFlow = (flow: AutomationRow["flow"]) =>
+  decodeStoredFlow(flow).pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: () => Effect.succeed(Option.none<AutomationFlow>()),
+        onSome: (decoded) =>
+          validateAutomationFlow(decoded).pipe(Effect.map(Option.some)),
+      })
+    )
+  );

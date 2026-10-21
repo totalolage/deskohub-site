@@ -18,6 +18,12 @@ import {
   ensureSavedAudienceFilter,
   isSavedAudienceFilter,
 } from "../audience-filter-usage";
+import { validateStoredAutomationFlow } from "../automation/backend/automation-working-copy";
+import type {
+  AutomationCalendarNeverOccurs,
+  AutomationFlowInvalid,
+  AutomationScheduleMinutesNotAllowed,
+} from "../automation/errors";
 import {
   CampaignLocalizedContent,
   type CampaignPurpose,
@@ -163,13 +169,21 @@ export interface ICampaignService {
   /**
    * Copies a campaign of any status into a new Draft titled "Copy of …" with
    * the same delivery mode; an automated copy also gets the working copy of
-   * the flow, step ids included. The copy keeps the source's audience only
-   * while it exists, isn't archived, and holds a filter a campaign can use;
-   * otherwise the admin picks one.
+   * the flow, step ids included, once it passes the rules a save applies.
+   * The copy keeps the source's audience only while it exists, isn't
+   * archived, and holds a filter a campaign can use; otherwise the admin
+   * picks one.
    */
   readonly duplicate: (
     campaignId: CampaignId
-  ) => Effect.Effect<Campaign, CampaignNotFound | CampaignTransactionError>;
+  ) => Effect.Effect<
+    Campaign,
+    | CampaignNotFound
+    | AutomationFlowInvalid
+    | AutomationScheduleMinutesNotAllowed
+    | AutomationCalendarNeverOccurs
+    | CampaignTransactionError
+  >;
 }
 
 /** Campaign drafts and the read-only record of sent campaigns. */
@@ -289,12 +303,21 @@ export class CampaignService extends Context.Service<
         yield* ensureSavedAudienceFilter(audience.value.filter);
       });
 
-      /** Keeps the source's audience only if it's still assignable. */
+      /**
+       * Keeps the source's audience only if it's still assignable; its flow
+       * must pass the rules a save applies.
+       */
       const insertCopy = Effect.fn("CampaignService.insertCopy")(function* (
         tx: Transaction,
         source: Campaign,
         automation: Option.Option<AutomationWorkingCopy>
       ) {
+        const flow = yield* validateStoredAutomationFlow(
+          automation.pipe(
+            Option.map(({ flow }) => flow),
+            Option.getOrNull
+          )
+        );
         const audience =
           source.audienceId === null
             ? Option.none()
@@ -319,10 +342,7 @@ export class CampaignService extends Context.Service<
         if (source.delivery === "automated") {
           yield* tx.insert(emailCampaignAutomations).values({
             campaignId: campaign!.id,
-            flow: automation.pipe(
-              Option.map(({ flow }) => flow),
-              Option.getOrNull
-            ),
+            flow: Option.getOrNull(flow),
           });
         }
         return campaign!;

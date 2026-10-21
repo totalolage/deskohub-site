@@ -588,6 +588,38 @@ describe.skipIf(!testDatabase)("CampaignService on disposable Postgres", () => {
     ]);
   });
 
+  test("refuses to duplicate a draft whose saved flow breaks a save rule", async () => {
+    const campaignId = await createAutomated("draft");
+    // Saved before schedules had to fire on engine ticks (D36).
+    await pool.query(
+      "update email_campaign_automations set flow = $2 where campaign_id = $1",
+      [
+        campaignId,
+        {
+          trigger: {
+            _tag: "Schedule",
+            calendar: { hours: [10], minutes: [7] },
+          },
+          steps: [{ _tag: "Send", id: "step-send" }],
+        },
+      ]
+    );
+    const copies = async () => {
+      const { rows } = await pool.query(
+        "select count(*)::int as copies from email_campaigns where title = 'Copy of Weekly come-back'"
+      );
+      return rows[0].copies;
+    };
+    const before = await copies();
+
+    expect(
+      failure(
+        await withCampaigns((campaigns) => campaigns.duplicate(campaignId))
+      )
+    ).toMatchObject({ _tag: "AutomationScheduleMinutesNotAllowed" });
+    expect(await copies()).toBe(before);
+  });
+
   test("deletes an automated draft until it publishes a version", async () => {
     const draftId = await createAutomated("draft");
     succeeded(await withCampaigns((campaigns) => campaigns.delete(draftId)));
