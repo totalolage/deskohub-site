@@ -64,8 +64,8 @@ what the privacy copy promises. Privacy copy lives in
 - PostHog has its own retention and erasure limits. See
   [PostHog identity and privacy](posthog-identity-privacy.md).
 - The privacy policy discloses the consent-free reservation and payment step
-  records in section 3 and their legitimate-interest basis and the right to
-  object in section 4. Keep those lines in sync with the lifecycle event
+  records in section 3, their agent fields in section 2, and their
+  legitimate-interest basis and the right to object in section 4. Keep those lines in sync with the lifecycle event
   contract in
   [PostHog identity and privacy](posthog-identity-privacy.md#reservation-and-payment-lifecycle-events):
   a payload change that sends a new kind of data changes the notice too.

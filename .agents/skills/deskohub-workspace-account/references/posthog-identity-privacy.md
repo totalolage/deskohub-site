@@ -162,6 +162,8 @@ and detecting failed or abandoned payments. The privacy policy discloses them
 in section 3 and their basis and the right to object in section 4
 (`features/legal/content.tsx`, both locales). The notice promises that the
 records are linked to the reservation and hold no name or contact details.
+Section 2's automated-traffic paragraph also discloses that they carry the
+traffic category and the name of a recognized assistant.
 
 - The distinct ID is the Workspace reservation ID, and every event sets
   `$process_person_profile: false`. The event UUID is
@@ -169,7 +171,8 @@ records are linked to the reservation and hold no name or contact details.
 - Allowed properties: `reservation_id`; on payment events also
   `payment_attempt_id`, `revenue` (major units), `currency`, and `provider`;
   `failure_reason` on `payment failed`; `agent_category` and, when
-  recognized, `agent_name`. The event service adds
+  recognized, `agent_name` (from `agentTrafficProperties()`, disclosed in
+  section 2). The event service adds
   `deployment.environment.name`, `service.name`, `service.namespace`,
   `effect.trace_id`, and `effect.span_id`, and the SDK adds its `$lib` fields
   and `$geoip_disable`. The colocated tests pin the exact key sets.
@@ -183,7 +186,9 @@ records are linked to the reservation and hold no name or contact details.
   an explicit option; never set `disableGeoip: false` on the server client.
 - Before adding a property, check it against the notice's promise. A new
   identifier, contact field, or other kind of data needs a matching
-  privacy-policy change and the user's approval.
+  privacy-policy change and the user's approval. If the agent fields change,
+  such as dropping `agent_name` or adding another one, change the section 2
+  wording to match.
 - Objections are handled manually; there's no opt-out code path. A customer
   objects by email to the controller's contact address with their
   reservation. An operator then has the reservation's events deleted in

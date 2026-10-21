@@ -673,8 +673,8 @@ const legalDocuments = {
               use, and, for our booking tools for AI assistants, which tool was
               used and whether it worked. We send nothing that identifies you,
               and this does not depend on analytics consent. We also add the
-              category to the reservation and payment records described in
-              section 3.
+              category and the name of a recognized assistant to the reservation
+              and payment records described in section 3.
             </>,
             <>
               If you consent to analytics cookies or similar technologies, we
@@ -1148,8 +1148,9 @@ const legalDocuments = {
               automatizovaný požadavek pokusil použít, a u našich rezervačních
               nástrojů pro AI asistenty to, který nástroj byl použit a zda
               uspěl. Nepředáváme nic, co by vás identifikovalo, a toto měření
-              nezávisí na souhlasu s analytikou. Tuto kategorii připojujeme také
-              k záznamům o rezervacích a platbách popsaným v bodě 3.
+              nezávisí na souhlasu s analytikou. Tuto kategorii a název
+              rozpoznaného asistenta připojujeme také k záznamům o rezervacích a
+              platbách popsaným v bodě 3.
             </>,
             <>
               Pokud udělíte souhlas s analytickými cookies nebo obdobnými
