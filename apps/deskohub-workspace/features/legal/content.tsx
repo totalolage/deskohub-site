@@ -611,7 +611,7 @@ const legalDocuments = {
     "privacy-policy": {
       title: "Privacy Policy",
       lead: "This page explains how Desktechub s.r.o. handles personal data on the Deskohub Workspace website, including customer accounts, contact forms, and reservations.",
-      updatedAt: "20 October 2026",
+      updatedAt: "21 October 2026",
       sections: [
         {
           heading: "1. Controller",
@@ -668,11 +668,13 @@ const legalDocuments = {
               To understand how search engines and AI assistants use the
               website, we sort requests into broad traffic categories based on
               browser information. We tell our analytics provider only the
-              category, the name of a recognised assistant, the page and
-              language, which form a blocked automated request tried to use,
-              and, for our booking tools for AI assistants, which tool was used
-              and whether it worked. We send nothing that identifies you, and
-              this does not depend on analytics consent.
+              category, the name of a recognized assistant or search engine, the
+              page and language, which form a blocked automated request tried to
+              use, and, for our booking tools for AI assistants, which tool was
+              used and whether it worked. We send nothing that identifies you,
+              and this does not depend on analytics consent. We also add the
+              category to the reservation and payment records we send to our
+              analytics provider.
             </>,
             <>
               If you consent to analytics cookies or similar technologies, we
@@ -1068,7 +1070,7 @@ const legalDocuments = {
     "privacy-policy": {
       title: "Zásady ochrany osobních údajů",
       lead: "Na této stránce vysvětlujeme, jak Desktechub s.r.o. nakládá s osobními údaji na webu Deskohub Workspace, včetně zákaznických účtů, kontaktního formuláře a rezervací.",
-      updatedAt: "20. října 2026",
+      updatedAt: "21. října 2026",
       sections: [
         {
           heading: "1. Správce",
@@ -1126,12 +1128,14 @@ const legalDocuments = {
               Abychom porozuměli tomu, jak web používají vyhledávače a AI
               asistenti, řadíme požadavky podle údajů o prohlížeči do obecných
               kategorií provozu. Poskytovateli analytických služeb sdělujeme
-              pouze tuto kategorii, název rozpoznaného asistenta, stránku a
-              jazyk, formulář, který se pokusil použít zablokovaný
-              automatizovaný požadavek, a u našich rezervačních nástrojů pro AI
-              asistenty to, který nástroj byl použit a zda uspěl. Nepředáváme
-              nic, co by vás identifikovalo, a toto měření nezávisí na souhlasu
-              s analytikou.
+              pouze tuto kategorii, název rozpoznaného asistenta nebo
+              vyhledávače, stránku a jazyk, formulář, který se zablokovaný
+              automatizovaný požadavek pokusil použít, a u našich rezervačních
+              nástrojů pro AI asistenty to, který nástroj byl použit a zda
+              uspěl. Nepředáváme nic, co by vás identifikovalo, a toto měření
+              nezávisí na souhlasu s analytikou. Tuto kategorii připojujeme také
+              k údajům o rezervacích a platbách, které předáváme poskytovateli
+              analytických služeb.
             </>,
             <>
               Pokud udělíte souhlas s analytickými cookies nebo obdobnými
