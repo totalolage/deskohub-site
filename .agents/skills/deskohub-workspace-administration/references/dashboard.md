@@ -61,7 +61,7 @@ Derive every payment summary's status from `getAdministrationPaymentStatus` and 
 ## Reservation access recovery
 
 - Retry automatically only from `failed`, a definitive provider rejection.
-- For `uncertain`, direct the operator to the Igloohome app over Bluetooth at the lock to find `Deskohub <reservation-id>` and remove it or verify it's absent. Require explicit confirmation before changing `uncertain` to `failed` and retrying. Without confirmation, don't retry; let the possible credential expire.
+- For `uncertain`, direct the operator to the Igloohome app over Bluetooth at the lock to find the access name the detail view shows and remove it or verify it's absent. Require explicit confirmation before changing `uncertain` to `failed` and retrying. Without confirmation, don't retry; let the possible credential expire.
 - Treat a `provisioning` claim older than one minute as ambiguous, with the same workflow. Offer no recovery for a fresh claim.
 
 ## Standalone access codes

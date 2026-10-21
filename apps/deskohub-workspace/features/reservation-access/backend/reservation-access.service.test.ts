@@ -143,6 +143,7 @@ describe("ReservationAccessService", () => {
     deviceId,
     state: "issued" as const,
     providerCredentialId: pinId,
+    accessName: `Deskohub ${grantId}`,
     scheduledAccessStartsAt: reservation.reservedFrom,
     accessStartsAt: reservation.reservedFrom,
     accessEndsAt: reservation.reservedUntil,
@@ -250,12 +251,16 @@ describe("ReservationAccessService", () => {
       ...reservation,
       reservedUntil: reservation.reservedUntil.add({ hours: 1 }),
     };
+    // A grant issued before access names were stored keeps the name built
+    // from its reservation until its next Igloohome request.
     const replacementGrant = {
       ...grant,
       state: "pending" as const,
+      accessName: `Deskohub ${reservationId}`,
       accessEndsAt: movedReservation.reservedUntil,
     };
     const ensure = mock(() => Effect.succeed(replacementGrant));
+    const claim = mock(() => Effect.succeed(true));
     const markIssued = mock(() => Effect.void);
     const markUncertain = mock(() => Effect.void);
     const issueHourlyAlgoPin = mock(() =>
@@ -273,7 +278,7 @@ describe("ReservationAccessService", () => {
               Layer.mock(ReservationAccessRepository, {
                 findByReservationId: mock(() => Effect.succeed(grant)),
                 ensure,
-                claim: mock(() => Effect.succeed(true)),
+                claim,
                 markIssued,
                 markUncertain,
               }),
@@ -297,8 +302,11 @@ describe("ReservationAccessService", () => {
       variance: 1,
       startsAt: "2099-07-01T10:00:00+02:00",
       endsAt: "2099-07-01T19:00:00+02:00",
-      accessName: `Deskohub ${reservationId}`,
+      accessName: `Deskohub ${grantId}`,
     });
+    expect(claim).toHaveBeenCalledWith(
+      expect.objectContaining({ accessName: `Deskohub ${grantId}` })
+    );
     expect(markIssued).toHaveBeenCalledWith(
       expect.objectContaining({
         accessCode: replacementAccessCode,
@@ -347,6 +355,58 @@ describe("ReservationAccessService", () => {
     expect(loadIssuedCode).not.toHaveBeenCalled();
     expect(markUncertain).toHaveBeenCalledTimes(1);
     expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
+  });
+
+  test("names a new credential by its grant, not its reservation", async () => {
+    const claim = mock(() => Effect.succeed(true));
+    const issueHourlyAlgoPin = mock(() =>
+      Effect.succeed({ pin: accessCode, pinId })
+    );
+
+    await Effect.gen(function* () {
+      const service = yield* ReservationAccessService;
+      return yield* service.issueForReservation(reservation);
+    }).pipe(
+      Effect.provide(
+        ReservationAccessService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ReservationAccessRepository, {
+                findByReservationId: mock(() => Effect.succeed(null)),
+                ensure: mock(() =>
+                  Effect.succeed({
+                    ...grant,
+                    state: "pending" as const,
+                    accessName: null,
+                  })
+                ),
+                claim,
+                markIssued: mock(() => Effect.void),
+              }),
+              Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    // The name is stored before the request, so an operator can find a
+    // credential whose issuance outcome is unknown.
+    expect(claim).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: grantId,
+        accessName: `Deskohub ${grantId}`,
+      })
+    );
+    expect(issueHourlyAlgoPin).toHaveBeenCalledWith(
+      expect.objectContaining({ accessName: `Deskohub ${grantId}` })
+    );
+    expect(issueHourlyAlgoPin).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessName: expect.stringContaining(reservationId),
+      })
+    );
   });
 
   test("records an ambiguous provider result and never retries it", async () => {
