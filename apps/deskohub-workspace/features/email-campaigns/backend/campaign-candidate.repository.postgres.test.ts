@@ -719,9 +719,7 @@ describe.skipIf(!testDatabase)(
           startsAtOrAfter: asOf.subtract({ hours: 7 * 24 }),
           startsAtOrBefore: asOf,
         });
-        expect([...lastWeek.withValue].sort()).toEqual(
-          [legacy, signup].sort()
-        );
+        expect([...lastWeek.withValue].sort()).toEqual([legacy, signup].sort());
         expect([...lastWeek.inPeriod]).toEqual([signup]);
         expect(await matches({})).toEqual([legacy, signup].sort());
         expect(await matches({ startsAtOrBefore: asOf })).toEqual(
@@ -739,7 +737,10 @@ describe.skipIf(!testDatabase)(
         ).toEqual([legacy]);
         // Any period that holds records' first moment or later excludes it.
         expect(
-          await matches({ startsAtOrAfter: year, startsAtOrBefore: backfilledAt })
+          await matches({
+            startsAtOrAfter: year,
+            startsAtOrBefore: backfilledAt,
+          })
         ).toEqual([]);
         expect(await matches({ startsAtOrAfter: year })).toEqual([signup]);
         // A replayed moment before the backfill still knows the account.
