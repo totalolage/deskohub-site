@@ -1372,8 +1372,8 @@ const legalDocuments = {
               asistenta neodpojíte v sekci Připojení asistenti ve svém účtu nebo
               dokud nesmažete účet. Odpojením asistenta nebo smazáním účtu se
               připojení a oprávnění okamžitě ukončí: přístupové údaje asistenta
-              okamžitě přestanou fungovat a smažou se. Údaj o tom, který asistent
-              rezervaci zahájil, zůstává u záznamu rezervace.
+              okamžitě přestanou fungovat a smažou se. Údaj o tom, který
+              asistent rezervaci zahájil, zůstává u záznamu rezervace.
             </>,
             <>
               Analytické údaje a údaje pro kampanové měření, včetně zákaznických

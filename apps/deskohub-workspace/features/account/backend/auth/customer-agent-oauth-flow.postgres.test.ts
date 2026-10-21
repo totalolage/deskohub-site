@@ -328,7 +328,8 @@ const connectSignedIn = async (
   auth: TestAuth,
   cookie: string,
   agent: ReturnType<typeof makeAgent>
-) => allowConsent(auth, cookie, agent, await requestConsent(auth, cookie, agent));
+) =>
+  allowConsent(auth, cookie, agent, await requestConsent(auth, cookie, agent));
 
 /** The customer's connections, as the account page lists them. */
 const listConnections = (auth: TestAuth, cookie: string) => {
@@ -1244,8 +1245,10 @@ describe.skipIf(!testDatabase)(
      * Interleaves a refresh with a disconnect the way review found a token
      * that outlived its consent: the refresh writes its tokens while the
      * disconnect is about to delete the consent, and a token delete that the
-     * disconnect makes after deleting the consent fails. Answers the
-     * refresh's tokens once both requests are done.
+     * disconnect makes after deleting the consent fails. The disconnect makes
+     * no such delete now, and its answer isn't checked, so the test still
+     * reaches the revived token if one comes back. Answers the refresh's
+     * tokens once both requests are done.
      */
     const refreshDuringDisconnect = async (
       race: Awaited<ReturnType<typeof connectForRace>>,
@@ -1341,8 +1344,12 @@ describe.skipIf(!testDatabase)(
       expect((await race.disconnect()).status).toBe(500);
       expect(await listConnections(race.auth, race.cookie)).toHaveLength(1);
       expect(
-        (await authorizeToken(authorityOver(race.auth), race.tokens.access_token))
-          ._tag
+        (
+          await authorizeToken(
+            authorityOver(race.auth),
+            race.tokens.access_token
+          )
+        )._tag
       ).toBe("Success");
       expect((await race.disconnect()).status).toBe(200);
       await race.expectRevoked([race.tokens]);
@@ -1457,11 +1464,18 @@ describe.skipIf(!testDatabase)(
         "invalid_grant"
       );
       expect(
-        await failureReasonOf(authorityOver(race.auth), race.tokens.access_token)
+        await failureReasonOf(
+          authorityOver(race.auth),
+          race.tokens.access_token
+        )
       ).toBe("invalid-token");
       expect(
-        (await authorizeToken(authorityOver(race.auth), reconnected!.access_token))
-          ._tag
+        (
+          await authorizeToken(
+            authorityOver(race.auth),
+            reconnected!.access_token
+          )
+        )._tag
       ).toBe("Success");
       expect(await countRows("oauth_access_token", race.accountId)).toBe(1);
       expect(await countRows("oauth_refresh_token", race.accountId)).toBe(1);
@@ -1485,10 +1499,19 @@ describe.skipIf(!testDatabase)(
 
       const refreshed = await race.refresh(narrowed.refresh_token!);
       expect(refreshed.status).toBe(400);
+      expect(((await refreshed.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
       expect(
-        (await authorizeToken(authorityOver(race.auth), reconnected!.access_token))
-          ._tag
+        (
+          await authorizeToken(
+            authorityOver(race.auth),
+            reconnected!.access_token
+          )
+        )._tag
       ).toBe("Success");
+      expect(await countRows("oauth_access_token", race.accountId)).toBe(1);
+      expect(await countRows("oauth_refresh_token", race.accountId)).toBe(1);
     });
 
     // Guards the Workspace oauth-provider patch: tokens are bought with the
