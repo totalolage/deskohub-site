@@ -148,7 +148,9 @@ const getCoworkReservationDateIssues = (data: {
     ? [
         {
           path: ["date"],
-          issue: m.reservationValidationOpenSpaceDayEnded(),
+          issue: m.reservationValidationOpenSpaceDayEnded({
+            until: workspaceSiteConstants.openingHours.openSpaceUsableUntil,
+          }),
         },
       ]
     : [];

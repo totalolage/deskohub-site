@@ -1,5 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import { createElement } from "react";
+import { getPublicCatalogOfferings } from "@/features/checkout/public-offerings";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 mock.module("next/font/local", () => ({
   default: () => ({ variable: "--font-sculpin" }),
@@ -21,11 +23,28 @@ describe("localized route layout", () => {
       expect(metadata.metadataBase?.href).toBe(
         "https://workspace.deskohub.cz/"
       );
-      expect(metadata.description).toContain("Turnovská 430/10");
+      expect(metadata.description).toContain(
+        workspaceSiteConstants.location.address.street
+      );
       expect(metadata.description).not.toContain("shell application");
     }
-    expect(english.description).toContain("Open Space, Reserved Desk");
-    expect(czech.description).toContain("vyhrazené místo");
+    for (const [locale, metadata] of [
+      ["en-US", english],
+      ["cs-CZ", czech],
+    ] as const) {
+      // Office reservations open by a release gate the layout does not read.
+      for (const { kind, name } of getPublicCatalogOfferings({
+        locale,
+        office: {},
+      })) {
+        if (kind === "office") {
+          expect(metadata.description).not.toContain(name);
+        } else {
+          expect(metadata.description).toContain(name);
+        }
+      }
+    }
+    expect(czech.description).not.toEqual(english.description);
     expect(czech.title).not.toEqual(english.title);
   });
 

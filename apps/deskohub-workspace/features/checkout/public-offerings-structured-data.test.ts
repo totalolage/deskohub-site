@@ -172,7 +172,10 @@ describe("getPublicOfferingsStructuredData", () => {
 
     expect(openSpace).toMatchObject({
       name: m.reservationOpenSpaceTitle({}, { locale: "cs-CZ" }),
-      description: m.reservationOpenSpaceDescription({}, { locale: "cs-CZ" }),
+      description: m.reservationOpenSpaceDescription(
+        { until: "17:00" },
+        { locale: "cs-CZ" }
+      ),
       offers: {
         description: m.publicOfferingOpenSpaceUsage(
           { until: "17:00" },

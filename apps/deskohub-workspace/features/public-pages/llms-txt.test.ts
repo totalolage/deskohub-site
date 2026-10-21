@@ -13,6 +13,7 @@ import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { llmsTxtMarkdown } from "./llms-txt";
 import { publicPageMarkdown } from "./public-page-markdown";
 import { type PublicPagePathname, publicPages } from "./public-pages";
+import { getWorkspaceSummary } from "./workspace-summary";
 
 const allPages = publicPages.map(({ pathname }) => pathname);
 const locale = "en-US";
@@ -54,7 +55,12 @@ describe("llmsTxtMarkdown", () => {
     const [title, summary, openingHours] = markdown.split("\n\n");
 
     expect(title).toBe(`# ${workspaceSiteConstants.brand.name}`);
-    expect(summary).toBe(`> ${m.workspaceMetadataDescription({}, { locale })}`);
+    expect(summary).toBe(
+      `> ${getWorkspaceSummary({
+        locale,
+        offerings: advertisedCatalogOfferings({ locale, office: {} }),
+      })}`
+    );
     expect(markdownPlainText(openingHours ?? "")).toBe(
       getPublicOpeningHours(locale)
     );
@@ -119,6 +125,58 @@ describe("llmsTxtMarkdown", () => {
     }
     expect(markdownLinkUrls(renderLlmsTxt())).toContain(
       `mailto:${workspaceSiteConstants.contact.infoEmail}`
+    );
+  });
+});
+
+describe("llms.txt facts", () => {
+  const summaryAndOpeningHours = (officeOpen: boolean) => {
+    const [, summary = "", openingHours = ""] = renderLlmsTxt(
+      allPages,
+      officeOpen
+    ).split("\n\n");
+    return {
+      summary: markdownPlainText(summary),
+      openingHours: markdownPlainText(openingHours),
+    };
+  };
+
+  test("summarizes the address from the site constants", () => {
+    const { summary } = summaryAndOpeningHours(true);
+    const { street, cityDistrict, city, postalCode } =
+      workspaceSiteConstants.location.address;
+
+    for (const field of [street, cityDistrict, city, postalCode]) {
+      expect(summary).toContain(field);
+    }
+  });
+
+  test("names each offered product once, and no other", () => {
+    const productNames = (officeOpen: boolean) =>
+      new Set(
+        advertisedCatalogOfferings({
+          locale,
+          ...(officeOpen && { office: {} }),
+        }).map(({ name }) => name)
+      );
+    const allNames = productNames(true);
+
+    for (const officeOpen of [true, false]) {
+      const { summary } = summaryAndOpeningHours(officeOpen);
+      const offered = productNames(officeOpen);
+
+      for (const name of allNames) {
+        expect(summary.split(name)).toHaveLength(offered.has(name) ? 2 : 1);
+      }
+    }
+    expect(productNames(false).size).toBeLessThan(allNames.size);
+  });
+
+  test("states the Open Space cut-off from the site constants", () => {
+    const { openingHours } = summaryAndOpeningHours(true);
+
+    expect(openingHours).toContain(
+      workspaceSiteConstants.openingHours.openSpaceUsableUntil
     );
   });
 });

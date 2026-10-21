@@ -40,8 +40,14 @@ const pageFacts = (locale: Locale) => [
   m.checkoutOrderMetadataTitle({}, { locale }),
   m.checkoutOrderMetadataDescription({}, { locale }),
   m.reservationOpenSpaceTitle({}, { locale }),
-  m.reservationOpenSpaceDescription({}, { locale }),
-  m.reservationOpenSpaceBulletDesk({}, { locale }),
+  m.reservationOpenSpaceDescription(
+    { until: workspaceSiteConstants.openingHours.openSpaceUsableUntil },
+    { locale }
+  ),
+  m.reservationOpenSpaceBulletDesk(
+    { until: workspaceSiteConstants.openingHours.openSpaceUsableUntil },
+    { locale }
+  ),
   m.reservationOpenSpacePerkWifi({}, { locale }),
   m.publicOfferingOpenSpaceUsage(
     { until: workspaceSiteConstants.openingHours.openSpaceUsableUntil },
@@ -54,6 +60,9 @@ const pageFacts = (locale: Locale) => [
   m.reservationReservedDeskPerkCoffee({}, { locale }),
   m.reservationReservedDeskPerkMonitor({}, { locale }),
   m.publicOfferingReservedDeskUsage({}, { locale }),
+  ...(workspaceSiteConstants.openingHours.alwaysOpen
+    ? [m.publicOfferingReservedDeskAlwaysOpenAccess({}, { locale })]
+    : []),
   m.reservationTierPerksLabel({}, { locale }),
   m.reservationCoffeeLabel({}, { locale }),
   m.reservationWorkstationLabel({}, { locale }),
