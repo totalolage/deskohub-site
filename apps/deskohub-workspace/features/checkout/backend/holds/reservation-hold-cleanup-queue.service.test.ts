@@ -262,20 +262,37 @@ describe("ReservationHoldCleanupScheduleService", () => {
     }
   });
 
-  test("retries cleanup while an empty provider order is inside the cutoff", async () => {
-    const cancelOrderHold = mock(() => Effect.succeed("deferred" as const));
+  test("redelivers cleanup at the provider cutoff while an empty order is inside it", async () => {
+    const { ProviderPaymentDeferral } = await import(
+      "../payment/provider-payment-finalization.service"
+    );
+    const { reservationHoldCleanupRedelivery } = await import(
+      "./reservation-hold-cleanup-queue.service"
+    );
+    const { QueueRedelivery } = await import(
+      "@/shared/backend/queue/queue-consumer"
+    );
+    const abandonmentCutoff = dueNow.add({ minutes: 25 });
+    const cancelOrderHold = mock(() =>
+      Effect.succeed(new ProviderPaymentDeferral({ abandonmentCutoff }))
+    );
     const retryNow = dueNow.add({ minutes: 20 });
 
-    await expect(
-      runProcessMessage(duePayload, {
-        cancelOrderHold,
-        now: retryNow,
-      })
-    ).rejects.toMatchObject({
-      _tag: "ReservationHoldCleanupScheduleError",
-      message:
-        "Reservation hold cleanup is waiting for the provider abandonment cutoff.",
+    const failure = await runProcessMessage(duePayload, {
+      cancelOrderHold,
+      now: retryNow,
+    }).then(
+      () => undefined,
+      (cause: unknown) => cause
+    );
+
+    expect(failure).toMatchObject({
+      _tag: "ReservationHoldCleanupDeferredError",
+      abandonmentCutoff,
     });
+    expect(reservationHoldCleanupRedelivery(failure)).toEqual(
+      QueueRedelivery.At({ instant: abandonmentCutoff })
+    );
     expect(cancelOrderHold).toHaveBeenCalledWith({
       orderId: "order-id",
       checkedAt: retryNow,
