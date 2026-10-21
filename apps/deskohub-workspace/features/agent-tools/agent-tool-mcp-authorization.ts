@@ -59,6 +59,22 @@ export const authorizeAgentToolRequest = Effect.fn(
   return caller;
 });
 
+/**
+ * Whether the caller may call the tool: any caller a public one, and an
+ * agent whose token grants its scope a signed-in one.
+ */
+export const isAgentToolGranted = (
+  tool: AgentToolAuthorization,
+  caller: Option.Option<CustomerAgentCaller>
+) =>
+  Match.value(tool).pipe(
+    Match.discriminatorsExhaustive("access")({
+      public: () => true,
+      "signed-in": ({ scope }) =>
+        Option.exists(caller, ({ grant }) => grant.scopes.has(scope)),
+    })
+  );
+
 /** The caller behind the request's bearer token, if it sent one. */
 const authorizeBearerToken = (request: Request) =>
   Option.match(readAgentAccessToken(request.headers), {

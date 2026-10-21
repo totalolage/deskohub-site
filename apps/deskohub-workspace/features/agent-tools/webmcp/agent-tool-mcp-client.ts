@@ -1,4 +1,5 @@
 import { Data, Effect, Exit, Schema } from "effect";
+import { agentToolAccessMetaKey } from "../agent-tool-metadata";
 
 const agentToolEndpoint = "/api/mcp";
 
@@ -19,10 +20,27 @@ const publishedAgentToolSchema = Schema.Struct({
   title: Schema.optionalKey(Schema.String),
   description: Schema.String,
   inputSchema: publishedInputSchemaSchema,
+  _meta: Schema.optionalKey(
+    Schema.Struct({
+      [agentToolAccessMetaKey]: Schema.optionalKey(Schema.String),
+      ui: Schema.optionalKey(
+        Schema.Struct({ resourceUri: Schema.optionalKey(Schema.String) })
+      ),
+    })
+  ),
 });
 
-/** A public agent tool as `/api/mcp` publishes it in `tools/list`. */
+/** An agent tool as `/api/mcp` publishes it in `tools/list`. */
 export type PublishedAgentTool = typeof publishedAgentToolSchema.Type;
+
+/**
+ * Whether the site registers a published tool. The page sends no access
+ * token, so only public tools answer it, and a tool whose result renders an
+ * MCP Apps view needs a host that renders the view.
+ */
+export const isSiteTool = ({ _meta }: PublishedAgentTool) =>
+  _meta?.[agentToolAccessMetaKey] === "public" &&
+  _meta.ui?.resourceUri === undefined;
 
 const toolsListResponseSchema = Schema.Struct({
   result: Schema.Struct({ tools: Schema.Array(publishedAgentToolSchema) }),

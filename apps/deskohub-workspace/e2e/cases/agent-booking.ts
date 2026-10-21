@@ -284,6 +284,15 @@ const executeAgentBooking = Effect.fn("AgentBooking.execute")(function* (
     id: "connect-agent-mcp-client",
     timeoutMs: config.timeouts.customerMcpRequest,
   });
+  yield* runStep({
+    execute: verifyAgentBookingView({
+      config,
+      locale: booking.state.data.locale,
+      mcp,
+    }),
+    id: "open-agent-booking-view",
+    timeoutMs: config.timeouts.customerMcpRequest,
+  });
 
   yield* executeCheckoutFlow({
     afterFulfillment: (orderId) =>
@@ -485,6 +494,59 @@ const singlePage = (context: BrowserContext): Page => {
   }
   return only;
 };
+
+const reserveBookingViewSchema = Schema.Struct({
+  booking_mode: Schema.Literal("reserve"),
+});
+
+/** The tool `_meta` that links a tool to its MCP Apps view. */
+const viewLinkSchema = Schema.Struct({
+  ui: Schema.Struct({ resourceUri: Schema.String }),
+});
+
+/**
+ * The signed-in agent's booking view starts bookings itself, and the view
+ * it links reads back as an MCP Apps document.
+ */
+const verifyAgentBookingView = ({
+  config,
+  locale,
+  mcp,
+}: {
+  readonly config: AgentBookingContext["config"];
+  readonly locale: Locale;
+  readonly mcp: Client;
+}) =>
+  Effect.gen(function* () {
+    yield* callCustomerMcpTool({
+      arguments: { family: "cowork", locale },
+      client: mcp,
+      config,
+      name: "show_booking",
+      schema: reserveBookingViewSchema,
+    });
+    const view = yield* tryWorkspaceE2EPromise(
+      "read agent booking view",
+      async () => {
+        const { tools } = await mcp.listTools(undefined, {
+          timeout: config.timeouts.customerMcpRequest,
+        });
+        const { ui } = Schema.decodeUnknownSync(viewLinkSchema)(
+          tools.find(({ name }) => name === "show_booking")?._meta
+        );
+        return mcp.readResource(
+          { uri: ui.resourceUri },
+          { timeout: config.timeouts.customerMcpRequest }
+        );
+      }
+    );
+    yield* tryWorkspaceE2ESync("check agent booking view", () =>
+      assert(
+        view.contents[0]?.mimeType === "text/html;profile=mcp-app",
+        "The booking view isn't an MCP Apps document"
+      )
+    );
+  });
 
 const startedReservationSchema = Schema.Struct({
   order_id: workspaceReservationIdSchema,

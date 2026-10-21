@@ -8,6 +8,7 @@ import { reportWorkspaceBrowserFailure } from "@/shared/browser/workspace-browse
 import {
   type AgentToolRequestError,
   callAgentTool,
+  isSiteTool,
   listAgentTools,
   type PublishedAgentTool,
 } from "./agent-tool-mcp-client";
@@ -51,8 +52,8 @@ export const registerSiteTool = (
   );
 
 /**
- * Lists the public agent tools on `/api/mcp` once and registers each as a
- * read-only site tool until `signal` aborts. The quote tool is published for
+ * Lists the agent tools on `/api/mcp` once and registers each public read
+ * tool as a site tool until `signal` aborts. The quote tool is published for
  * page tools that build on its input.
  */
 export const registerReadSiteTools = ({
@@ -65,6 +66,7 @@ export const registerReadSiteTools = ({
   readonly signal: AbortSignal;
 }) =>
   listAgentTools.pipe(
+    Effect.map((tools) => tools.filter(isSiteTool)),
     Effect.tap((tools) =>
       Effect.forEach(
         tools,

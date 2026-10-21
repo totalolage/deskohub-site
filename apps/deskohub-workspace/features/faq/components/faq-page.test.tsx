@@ -54,7 +54,7 @@ test("FAQ focus indicator has at least 3:1 contrast against its navy offset", as
   }
 
   const styles = await readFile(
-    join(import.meta.dir, "../../../app/globals.css"),
+    join(import.meta.dir, "../../../shared/styles/brand-theme.css"),
     "utf8"
   );
   expect(styles).toContain(

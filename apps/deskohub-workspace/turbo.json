@@ -12,7 +12,7 @@
       "inputs": ["$TURBO_DEFAULT$"]
     },
     "lint:knip": {
-      "dependsOn": ["i18n:compile"],
+      "dependsOn": ["i18n:compile", "booking-widget:build"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "../../knip.jsonc",
@@ -28,6 +28,7 @@
         "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
         "i18n:compile",
+        "booking-widget:build",
         "typecheck"
       ],
       "passThroughEnv": ["BETTER_AUTH_SECRETS"]
@@ -82,7 +83,8 @@
         "@deskohub/dotypos#generate",
         "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
-        "i18n:compile"
+        "i18n:compile",
+        "booking-widget:build"
       ]
     },
     "test": {
@@ -92,7 +94,8 @@
         "@deskohub/dotypos#generate",
         "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
-        "i18n:compile"
+        "i18n:compile",
+        "booking-widget:build"
       ],
       "passThroughEnv": ["WORKSPACE_TEST_DATABASE_URL"]
     },
@@ -119,6 +122,18 @@
     },
     "typegen": {
       "outputs": [".next/types/**"]
+    },
+    "booking-widget:build": {
+      "dependsOn": ["i18n:compile"],
+      "env": ["!NEXT_PUBLIC_VERCEL_*"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!**/*.test.{ts,tsx}",
+        "!**/*.test-utils.ts",
+        "!e2e/**",
+        "!**/generated/**"
+      ],
+      "outputs": ["features/agent-tools/booking-widget/generated/**"]
     }
   }
 }

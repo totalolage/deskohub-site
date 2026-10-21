@@ -1185,6 +1185,8 @@
   "agentToolErrorAccountUnavailable": "Your account can't make bookings right now. Sign in on the website to check it.",
   "agentToolErrorReservationNotFound": "No reservation with this order ID was found in your account.",
   "agentToolErrorReservationsUnavailable": "Your reservations can't be loaded right now. Try again shortly or check your account on the website.",
+  "agentToolBookingViewReserveNote": "In the booking view, the customer checks availability and the price and starts the booking. They then accept the terms and pay on the website.",
+  "agentToolBookingViewReservationPageNote": "In the booking view, the customer checks availability and the price, then opens the prefilled reservation page to book and pay on the website.",
   "agentToolStartReservationNote": "The reservation is held until the Pay link expires. Open the link to check the order, accept the terms and pay on the website.",
   "agentToolStartReservationPriceChangedNote": "The price changed since the quote. The Pay page shows the confirmed price; open the link to check it, accept the terms and pay on the website.",
   "publicOfferingOpeningHours": "The space is open 24/7. Open Space desks are usable until {until}.",
@@ -1224,5 +1226,66 @@
   "siteToolRequestFailed": "The site tool couldn’t reach DH Workspace. Try again in a moment.",
   "siteToolContactDetailsRequired": "Fill in the missing contact details in the reservation form, then try again.",
   "siteToolEmailVerificationRequired": "We emailed a sign-in link to the address in the reservation form. Confirm it there, and the reservation continues to payment.",
-  "siteToolFormNotReady": "The reservation form is still loading the price or availability. Try again in a moment."
+  "siteToolFormNotReady": "The reservation form is still loading the price or availability. Try again in a moment.",
+  "bookingWidgetTitle": "Book at DH Workspace",
+  "bookingWidgetLoading": "Loading the booking options.",
+  "bookingWidgetStartFailed": "The booking options couldn't be loaded. Ask the assistant to try again, or book on the website.",
+  "bookingWidgetFamilyLabel": "What would you like to book?",
+  "bookingWidgetFamilyCowork": "Cowork desk",
+  "bookingWidgetFamilyMeetingRoom": "Meeting room",
+  "bookingWidgetFamilyOffice": "Private office",
+  "bookingWidgetTierLabel": "Desk",
+  "bookingWidgetDateLabel": "Date",
+  "bookingWidgetStartTimeLabel": "Start time",
+  "bookingWidgetFirstDayLabel": "First day",
+  "bookingWidgetPricePerDay": "{price} per day",
+  "bookingWidgetPricePerBooking": "{price} per booking",
+  "bookingWidgetCheck": "Check availability and price",
+  "bookingWidgetChecking": "Checking availability and the price.",
+  "bookingWidgetAvailable": "It looks available.",
+  "bookingWidgetNotAvailable": "It doesn't look available. Try another date or option.",
+  "bookingWidgetTotal": "Total: {price}",
+  "bookingWidgetDiscount": "Includes a discount of {discount} off the regular {price}.",
+  "bookingWidgetWorkstationIncluded": "Only desks with a monitor workstation are left on this date, so the price includes the {monitors} setup.",
+  "bookingWidgetReserve": "Reserve",
+  "bookingWidgetReserving": "Starting the booking.",
+  "bookingWidgetHeld": "Your booking is held until {expiresAt}. Open the payment page to accept the terms and pay.",
+  "bookingWidgetOpenPaymentPage": "Open payment page",
+  "bookingWidgetReservationPageHint": "Finish the booking and pay on the reservation page.",
+  "bookingWidgetOpenReservationPage": "Open the reservation page",
+  "bookingWidgetReserveFallback": "You can finish the booking on the reservation page instead.",
+  "bookingWidgetLinkFailed": "The link couldn't be opened. Copy the address below into your browser.",
+  "bookingWidgetRequestFailed": "The booking view couldn't reach DH Workspace. Try again in a moment.",
+  "bookingWidgetPriceChanged": "The price changed since the check. New total: {price}.",
+  "bookingWidgetErrorDateOutOfRange": "Choose a date from {earliest} to {latest}.",
+  "bookingWidgetErrorRateLimited": "Too many requests. Wait a minute and try again.",
+  "bookingWidgetErrorSelectionUnavailable": "This option is no longer free. Try another date or option.",
+  "bookingWidgetErrorProfileIncomplete": "Complete your profile on the website first: add your name and phone number on the account page, then try again.",
+  "bookingWidgetErrorAccountUnavailable": "Your account can't make bookings right now. Sign in on the website to check it.",
+  "bookingWidgetErrorReservationConflict": "This booking is already being processed. Try again in a minute.",
+  "bookingWidgetErrorPaymentInProgress": "A payment for this booking is still being processed. Check the booking's status in your account on the website.",
+  "bookingWidgetErrorUnavailable": "This can't be done right now. Try again in a moment, or book on the website.",
+  "bookingWidgetDateRequired": "Choose a date.",
+  "bookingWidgetDatePassed": "Choose today or a later date.",
+  "bookingWidgetStartTimeRequired": "Choose a start time.",
+  "bookingWidgetDayCountRange": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Choose 1 day.",
+        "maxPlural=other": "Choose from 1 to {max} days."
+      }
+    }
+  ],
+  "bookingWidgetSeatCountRange": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Choose 1 seat.",
+        "maxPlural=other": "Choose from 1 to {max} seats."
+      }
+    }
+  ]
 }

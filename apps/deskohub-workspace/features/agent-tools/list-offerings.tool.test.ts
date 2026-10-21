@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { Effect, type Schema } from "effect";
 import { m } from "@/features/i18n";
-import type { ListOfferingsResult } from "./list-offerings.tool";
+import type { ListOfferingsResult } from "./list-offerings.schema";
 
 const { makeAgentToolTestServices, workspaceDateFromToday } = await import(
   "./agent-tools.test-utils"

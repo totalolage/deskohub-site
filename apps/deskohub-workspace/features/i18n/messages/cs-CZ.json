@@ -1194,6 +1194,8 @@
   "agentToolErrorAccountUnavailable": "Tvůj účet teď nemůže rezervovat. Přihlas se na webu a zkontroluj ho.",
   "agentToolErrorReservationNotFound": "Rezervace s tímto číslem objednávky ve tvém účtu není.",
   "agentToolErrorReservationsUnavailable": "Tvoje rezervace teď nejde načíst. Zkus to za chvíli znovu nebo se podívej do účtu na webu.",
+  "agentToolBookingViewReserveNote": "V rezervačním okně zákazník ověří dostupnost a cenu a založí rezervaci. Pak na webu přijme podmínky a zaplatí.",
+  "agentToolBookingViewReservationPageNote": "V rezervačním okně zákazník ověří dostupnost a cenu a pak otevře předvyplněnou rezervační stránku, kde rezervaci dokončí a zaplatí.",
   "agentToolStartReservationNote": "Rezervace je blokovaná, dokud nevyprší odkaz na platbu. Otevři ho, zkontroluj objednávku, potvrď podmínky a zaplať na webu.",
   "agentToolStartReservationPriceChangedNote": "Cena se od nabídky změnila. Stránka platby ukazuje potvrzenou cenu; otevři odkaz, zkontroluj ji, potvrď podmínky a zaplať na webu.",
   "publicOfferingOpeningHours": "Prostor je otevřený nonstop. Místa v Open Space lze využívat do {until}.",
@@ -1233,5 +1235,68 @@
   "siteToolRequestFailed": "Nástroj webu se nepodařilo spojit s DH Workspace. Zkus to prosím za chvíli znovu.",
   "siteToolContactDetailsRequired": "Doplň prosím v rezervačním formuláři chybějící kontaktní údaje a zkus to znovu.",
   "siteToolEmailVerificationRequired": "Na e-mail z rezervačního formuláře jsme poslali odkaz pro přihlášení. Po jeho potvrzení rezervace pokračuje k platbě.",
-  "siteToolFormNotReady": "Rezervační formulář ještě načítá cenu nebo dostupnost. Zkus to prosím za chvíli znovu."
+  "siteToolFormNotReady": "Rezervační formulář ještě načítá cenu nebo dostupnost. Zkus to prosím za chvíli znovu.",
+  "bookingWidgetTitle": "Rezervace v DH Workspace",
+  "bookingWidgetLoading": "Načítáme možnosti rezervace.",
+  "bookingWidgetStartFailed": "Možnosti rezervace se nepodařilo načíst. Požádej asistenta o nový pokus, nebo si rezervuj na webu.",
+  "bookingWidgetFamilyLabel": "Co si chceš rezervovat?",
+  "bookingWidgetFamilyCowork": "Místo v coworku",
+  "bookingWidgetFamilyMeetingRoom": "Zasedací místnost",
+  "bookingWidgetFamilyOffice": "Soukromá kancelář",
+  "bookingWidgetTierLabel": "Typ místa",
+  "bookingWidgetDateLabel": "Datum",
+  "bookingWidgetStartTimeLabel": "Čas začátku",
+  "bookingWidgetFirstDayLabel": "První den",
+  "bookingWidgetPricePerDay": "{price} za den",
+  "bookingWidgetPricePerBooking": "{price} za rezervaci",
+  "bookingWidgetCheck": "Ověřit dostupnost a cenu",
+  "bookingWidgetChecking": "Ověřujeme dostupnost a cenu.",
+  "bookingWidgetAvailable": "Vypadá to, že je volno.",
+  "bookingWidgetNotAvailable": "Vypadá to, že je obsazeno. Zkus jiné datum nebo jinou možnost.",
+  "bookingWidgetTotal": "Celkem: {price}",
+  "bookingWidgetDiscount": "Včetně slevy {discount} z běžné ceny {price}.",
+  "bookingWidgetWorkstationIncluded": "Na tento den zbývají jen místa s monitory, proto cena zahrnuje sestavu {monitors}.",
+  "bookingWidgetReserve": "Rezervovat",
+  "bookingWidgetReserving": "Zakládáme rezervaci.",
+  "bookingWidgetHeld": "Rezervaci ti držíme do {expiresAt}. Na platební stránce přijmi podmínky a zaplať.",
+  "bookingWidgetOpenPaymentPage": "Otevřít platební stránku",
+  "bookingWidgetReservationPageHint": "Rezervaci dokončíš a zaplatíš na rezervační stránce.",
+  "bookingWidgetOpenReservationPage": "Otevřít rezervační stránku",
+  "bookingWidgetReserveFallback": "Rezervaci můžeš místo toho dokončit na rezervační stránce.",
+  "bookingWidgetLinkFailed": "Odkaz se nepodařilo otevřít. Zkopíruj adresu níže do prohlížeče.",
+  "bookingWidgetRequestFailed": "Rezervační okno se nemohlo spojit s DH Workspace. Zkus to za chvíli znovu.",
+  "bookingWidgetPriceChanged": "Cena se od ověření změnila. Nově celkem: {price}.",
+  "bookingWidgetErrorDateOutOfRange": "Vyber datum od {earliest} do {latest}.",
+  "bookingWidgetErrorRateLimited": "Příliš mnoho požadavků. Počkej minutu a zkus to znovu.",
+  "bookingWidgetErrorSelectionUnavailable": "Tento výběr už není volný. Zkus jiné datum nebo jinou možnost.",
+  "bookingWidgetErrorProfileIncomplete": "Nejdřív na webu dokonči profil: na stránce účtu doplň jméno a telefon a pak to zkus znovu.",
+  "bookingWidgetErrorAccountUnavailable": "Tvůj účet teď nemůže rezervovat. Přihlas se na webu a zkontroluj ho.",
+  "bookingWidgetErrorReservationConflict": "Tato rezervace se už zpracovává. Zkus to za minutu znovu.",
+  "bookingWidgetErrorPaymentInProgress": "Platba za tuto rezervaci se ještě zpracovává. Stav rezervace zkontroluj ve svém účtu na webu.",
+  "bookingWidgetErrorUnavailable": "Teď to nejde. Zkus to za chvíli znovu, nebo si rezervuj na webu.",
+  "bookingWidgetDateRequired": "Vyber datum.",
+  "bookingWidgetDatePassed": "Vyber dnešek nebo pozdější datum.",
+  "bookingWidgetStartTimeRequired": "Vyber čas začátku.",
+  "bookingWidgetDayCountRange": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Zvol 1 den.",
+        "maxPlural=few": "Zvol 1 až {max} dny.",
+        "maxPlural=other": "Zvol 1 až {max} dní."
+      }
+    }
+  ],
+  "bookingWidgetSeatCountRange": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Zvol 1 místo.",
+        "maxPlural=few": "Zvol 1 až {max} místa.",
+        "maxPlural=other": "Zvol 1 až {max} míst."
+      }
+    }
+  ]
 }
