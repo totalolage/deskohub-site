@@ -82,7 +82,7 @@ export const startReservationTool = defineSignedInAgentTool({
   name: "start_reservation",
   title: "Start a DH Workspace booking",
   description:
-    "Holds a complete selection for the signed-in customer, with the same arguments as get_quote, and returns a pay_url. Give the pay_url to the customer: they check the order, accept the terms, and pay on the website before the link expires; this tool can't pay. The customer's account profile is the contact. Calling again with the same selection returns the same held order and pay_url until the link expires; a different selection replaces the previous hold.",
+    "Holds a complete selection for the signed-in customer, with the same arguments as get_quote, and returns a pay_url. Give the pay_url to the customer: they check the order, accept the terms, and pay on the website before the link expires; this tool can't pay. The customer's account profile is the contact. Calling again with the same selection returns the same held order and pay_url until the link expires; a different selection replaces the unpaid hold you made before. A hold whose payment has started is kept, and holds made by other assistants are not affected.",
   scope: "reservations:create",
   accountBudget: startReservationAccountBudget,
   readOnly: false,

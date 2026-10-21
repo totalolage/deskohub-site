@@ -169,6 +169,17 @@ export interface IWorkspaceReservationRepository {
     readonly WorkspaceReservation[],
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
+  /**
+   * The account's holds through one agent client that a new booking may
+   * still supersede: held, with no payment pending or completed.
+   */
+  readonly findSupersedableByAgentClient: (input: {
+    readonly authorAccountId: CustomerAccountId;
+    readonly agentClientId: CustomerAgentClientId;
+  }) => Effect.Effect<
+    readonly WorkspaceReservation[],
+    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
   readonly findCurrentByCheckoutSessionKey: (
     checkoutSessionKey: CheckoutSessionKey
   ) => Effect.Effect<
@@ -644,6 +655,32 @@ export class WorkspaceReservationRepository extends Context.Service<
               desc(workspaceReservations.id)
             )
             .limit(2);
+          return yield* Effect.forEach(rows, decodeWorkspaceReservation);
+        }),
+        findSupersedableByAgentClient: Effect.fn(
+          "workspaceReservations.findSupersedableByAgentClient"
+        )(function* (input) {
+          const rows = yield* db
+            .select()
+            .from(workspaceReservations)
+            .where(
+              and(
+                eq(
+                  workspaceReservations.authorAccountId,
+                  input.authorAccountId
+                ),
+                eq(workspaceReservations.agentClientId, input.agentClientId),
+                eq(workspaceReservations.reservationState, "held"),
+                inArray(
+                  workspaceReservations.paymentState,
+                  supersedableReservationPaymentStates
+                )
+              )
+            )
+            .orderBy(
+              desc(workspaceReservations.createdAt),
+              desc(workspaceReservations.id)
+            );
           return yield* Effect.forEach(rows, decodeWorkspaceReservation);
         }),
         findCurrentByCheckoutSessionKey: Effect.fn(

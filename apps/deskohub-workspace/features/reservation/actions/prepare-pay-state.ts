@@ -1,6 +1,7 @@
 "use server";
 
 import {
+  type DotyposReservationId,
   DotyposReservationIdSchema,
   DotyposService,
   ValidationError as DotyposValidationError,
@@ -23,6 +24,7 @@ import { env } from "@/env";
 import {
   CustomerAccountAccessError,
   CustomerAccountContactService,
+  type CustomerAgentClientId,
   OptionalAccountActivityGuard,
 } from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
@@ -517,6 +519,64 @@ const ensureReservationAvailable = (input: {
     })
   );
 
+/**
+ * Cancels the Dotypos hold of a reservation claimed for supersession. A hold
+ * Dotypos no longer keeps pending is never cancelled. A failed cancellation
+ * is recorded on the reservation and yields false.
+ */
+const cancelSupersededHold = Effect.fn("preparePayState.cancelSupersededHold")(
+  function* (input: {
+    readonly reservationId: WorkspaceReservationId;
+    readonly dotyposReservationId: DotyposReservationId;
+  }) {
+    const reservations = yield* WorkspaceReservationRepository;
+    const dotypos = yield* DotyposService;
+    const { reservationId, dotyposReservationId } = input;
+    const cancelled = yield* Effect.gen(function* () {
+      const status = yield* dotypos.getReservationStatus(dotyposReservationId);
+      if (status === "CANCELLED") return true;
+      if (status !== "NEW") {
+        yield* Effect.logError(
+          "Checkout supersession refused to cancel a non-pending Dotypos reservation",
+          { reservationId, dotyposReservationId, status }
+        );
+        return false;
+      }
+
+      yield* dotypos.cancelReservation(dotyposReservationId);
+      return true;
+    }).pipe(
+      Effect.catch(
+        Effect.fn(function* (cause) {
+          yield* Effect.logError(
+            "Checkout supersession Dotypos cancellation failed",
+            { reservationId, dotyposReservationId, cause }
+          );
+          return false;
+        })
+      )
+    );
+
+    if (!cancelled) {
+      yield* reservations
+        .markCancellationFailed({
+          id: reservationId,
+          failureCode: "checkout_supersession_cancel_failed",
+        })
+        .pipe(
+          Effect.tapError((cause) =>
+            Effect.logError(
+              "Checkout supersession cancellation failure marker failed",
+              { reservationId, cause }
+            )
+          ),
+          Effect.ignore
+        );
+    }
+    return cancelled;
+  }
+);
+
 const prepareReservationDraft = Effect.fn(
   "preparePayState.prepareReservationDraft"
 )(function* (input: {
@@ -529,7 +589,6 @@ const prepareReservationDraft = Effect.fn(
   >;
 }) {
   const reservations = yield* WorkspaceReservationRepository;
-  const dotypos = yield* DotyposService;
   const availability = yield* WorkspaceAvailabilityService;
   let checkoutSessionId = input.checkoutSessionId;
 
@@ -672,55 +731,11 @@ const prepareReservationDraft = Effect.fn(
         });
       }
 
-      const cancelled = yield* Effect.gen(function* () {
-        const status =
-          yield* dotypos.getReservationStatus(dotyposReservationId);
-        if (status === "CANCELLED") return true;
-        if (status !== "NEW") {
-          yield* Effect.logError(
-            "Checkout supersession refused to cancel a non-pending Dotypos reservation",
-            {
-              reservationId: claimed.id,
-              dotyposReservationId,
-              status,
-            }
-          );
-          return false;
-        }
-
-        yield* dotypos.cancelReservation(dotyposReservationId);
-        return true;
-      }).pipe(
-        Effect.catch(
-          Effect.fn(function* (cause) {
-            yield* Effect.logError(
-              "Checkout supersession Dotypos cancellation failed",
-              {
-                reservationId: claimed.id,
-                dotyposReservationId,
-                cause,
-              }
-            );
-            return false;
-          })
-        )
-      );
-
+      const cancelled = yield* cancelSupersededHold({
+        reservationId: claimed.id,
+        dotyposReservationId,
+      });
       if (!cancelled) {
-        yield* reservations
-          .markCancellationFailed({
-            id: claimed.id,
-            failureCode: "checkout_supersession_cancel_failed",
-          })
-          .pipe(
-            Effect.tapError((cause) =>
-              Effect.logError(
-                "Checkout supersession cancellation failure marker failed",
-                { reservationId: claimed.id, cause }
-              )
-            ),
-            Effect.ignore
-          );
         if (
           checkoutSessionId ===
           promoteCheckoutAttemptToSessionId(input.checkoutAttemptId)
@@ -804,6 +819,64 @@ const getAgentHoldBookedAt = (reservation: WorkspaceReservation) =>
     milliseconds: payStateDefaultTtlMilliseconds,
   }) ?? null;
 
+/**
+ * Cancels the agent client's holds outside its own session before a request
+ * starts a new attempt. The agent session's current hold is superseded as
+ * usual, but once that session's reservation can't be superseded, such as a
+ * paid one, every new request rotates into a fresh session, which would leave
+ * the client's previous hold open beside the new one. A hold with a pending
+ * or completed payment is never cancelled, nor is another client's or another
+ * account's.
+ */
+const supersedeRotatedAgentHolds = Effect.fn(
+  "preparePayState.supersedeRotatedAgentHolds"
+)(function* (input: {
+  readonly authorAccountId: CustomerAccountId;
+  readonly agentClientId: CustomerAgentClientId;
+  readonly agentCheckoutSessionId: CheckoutSessionId;
+}) {
+  const reservations = yield* WorkspaceReservationRepository;
+  const agentSessionKeys = yield* deriveCheckoutSessionKeys(
+    input.agentCheckoutSessionId
+  );
+  const holds = yield* reservations.findSupersedableByAgentClient({
+    authorAccountId: input.authorAccountId,
+    agentClientId: input.agentClientId,
+  });
+  const rotatedHolds = holds.filter(
+    (hold) =>
+      !hold.checkoutSessionKey ||
+      !agentSessionKeys.accepted.includes(hold.checkoutSessionKey)
+  );
+
+  yield* Effect.forEach(
+    rotatedHolds,
+    Effect.fn(function* (hold) {
+      const claimed = yield* reservations.claimSupersessionCancellation(
+        hold.id
+      );
+      // A held reservation always carries its Dotypos hold.
+      if (!claimed?.dotyposReservationId) return;
+
+      yield* Effect.logInfo(
+        "Agent client's hold in a rotated checkout session superseded",
+        { reservationId: claimed.id }
+      );
+      const cancelled = yield* cancelSupersededHold({
+        reservationId: claimed.id,
+        dotyposReservationId: claimed.dotyposReservationId,
+      });
+      if (cancelled) {
+        yield* reservations.markCancelled({
+          id: claimed.id,
+          cancelledAt: Temporal.Now.instant(),
+        });
+      }
+    }),
+    { discard: true }
+  );
+});
+
 type AgentCheckout =
   | {
       readonly kind: "attempt";
@@ -826,7 +899,9 @@ type AgentCheckout =
  *   request is refused.
  * - Any other ended, and the request starts its next attempt in the agent's
  *   session, which supersedes or rotates past the session's current
- *   reservation as usual.
+ *   reservation as usual. Before it does, the client's holds in rotated
+ *   sessions are cancelled, so a new selection replaces the previous hold
+ *   even after the agent session holds a paid reservation.
  * An open reservation whose attempt no longer matches, such as after the
  * customer edited the profile, counts as ended when the agent session holds
  * it, and is refused until it ends when it sits in a rotated session.
@@ -834,6 +909,7 @@ type AgentCheckout =
 const resolveAgentCheckout = Effect.fn("preparePayState.resolveAgentCheckout")(
   function* (input: {
     readonly selectionKey: AgentSelectionKey;
+    readonly clientId: CustomerAgentClientId;
     readonly authorAccountId: CustomerAccountId;
     readonly checkoutSessionId: CheckoutSessionId;
     readonly reservation: PreparePayStateInput["reservation"];
@@ -844,15 +920,22 @@ const resolveAgentCheckout = Effect.fn("preparePayState.resolveAgentCheckout")(
         authorAccountId: input.authorAccountId,
         agentSelectionKey: input.selectionKey,
       });
-    const nextAttempt = (latest?: WorkspaceReservation): AgentCheckout => ({
-      kind: "attempt",
-      checkoutSessionId: input.checkoutSessionId,
-      checkoutAttemptId: deriveAgentCheckoutAttemptId(
-        input.selectionKey,
-        latest?.id
-      ),
-    });
-    if (!latestFound) return nextAttempt();
+    const startNextAttempt = (latest?: WorkspaceReservation) =>
+      supersedeRotatedAgentHolds({
+        authorAccountId: input.authorAccountId,
+        agentClientId: input.clientId,
+        agentCheckoutSessionId: input.checkoutSessionId,
+      }).pipe(
+        Effect.as({
+          kind: "attempt",
+          checkoutSessionId: input.checkoutSessionId,
+          checkoutAttemptId: deriveAgentCheckoutAttemptId(
+            input.selectionKey,
+            latest?.id
+          ),
+        } satisfies AgentCheckout)
+      );
+    if (!latestFound) return yield* startNextAttempt();
 
     const latest =
       latestFound.reservationState === "creating_hold" ||
@@ -910,7 +993,7 @@ const resolveAgentCheckout = Effect.fn("preparePayState.resolveAgentCheckout")(
       latest.reservationState === "creating_hold" ||
       latest.reservationState === "cancelling" ||
       isReusableSubmissionReservation(latest);
-    if (!open) return nextAttempt(latest);
+    if (!open) return yield* startNextAttempt(latest);
 
     const attemptKeys = yield* deriveCheckoutAttemptKeys({
       checkoutSessionId,
@@ -934,7 +1017,7 @@ const resolveAgentCheckout = Effect.fn("preparePayState.resolveAgentCheckout")(
         reservation: latest,
       });
     }
-    return nextAttempt(latest);
+    return yield* startNextAttempt(latest);
   }
 );
 
@@ -1330,9 +1413,10 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
               checkoutSessionId: input.checkoutSessionId,
               checkoutAttemptId: input.checkoutAttemptId,
             } satisfies AgentCheckout),
-          onSome: ({ selectionKey }) =>
+          onSome: ({ clientId, selectionKey }) =>
             resolveAgentCheckout({
               selectionKey,
+              clientId,
               authorAccountId: accountId,
               checkoutSessionId: input.checkoutSessionId,
               reservation,
