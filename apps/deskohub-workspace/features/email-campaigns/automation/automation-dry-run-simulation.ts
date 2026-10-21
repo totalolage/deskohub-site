@@ -21,11 +21,7 @@ import {
   type StepState,
   type StepTransition,
 } from "./automation-step-evaluation";
-import {
-  automationTickAfter,
-  automationTickAtOrAfter,
-  automationTickBefore,
-} from "./automation-ticks";
+import { automationTickAtOrAfter } from "./automation-ticks";
 
 type ConditionStep = Extract<AutomationStep, { readonly _tag: "Condition" }>;
 
@@ -47,9 +43,9 @@ export type SimulatedRunEnd = {
  * (design §5.8, §8, D36). The run enters on the first tick at or after the
  * trigger; Condition steps and the send happen on the tick the run reaches
  * them, a Condition asking `evaluateCondition` for its outcome there. A wait
- * is checked on the tick it's entered, then on later ticks until
- * `evaluateStep` finds it due, so it completes on a tick too. There is no
- * pause, so no resume overshoot.
+ * is checked on the tick it's entered, then on the first tick at or after
+ * its due time, where `evaluateStep` completes it. There is no pause, so no
+ * resume overshoot.
  */
 export const simulateRun = <E, R>(input: {
   readonly steps: readonly AutomationStep[];
@@ -103,7 +99,7 @@ export const simulateRun = <E, R>(input: {
             {
               ...state,
               phase: "waiting",
-              at: nextWaitCheck(state.at, dueAt),
+              at: automationTickAtOrAfter(dueAt),
               dueAt: Option.some(dueAt),
             },
             rest
@@ -127,22 +123,6 @@ export const simulateRun = <E, R>(input: {
     );
 
   return enter(input.steps, automationTickAtOrAfter(input.triggerAt));
-};
-
-/**
- * The tick to check a wait again after `checkedAt` found it not yet due at
- * `dueAt`:
- * the next tick, or the one before `dueAt`'s tick if that's later, where
- * `evaluateStep`'s due tolerance may already complete it. Failing that, the
- * check after it is on `dueAt`'s tick.
- */
-const nextWaitCheck = (
-  checkedAt: Temporal.Instant,
-  dueAt: Temporal.Instant
-) => {
-  const next = automationTickAfter(checkedAt);
-  const beforeDue = automationTickBefore(dueAt);
-  return Temporal.Instant.compare(beforeDue, next) > 0 ? beforeDue : next;
 };
 
 /** What replaying one event did for its customer. */

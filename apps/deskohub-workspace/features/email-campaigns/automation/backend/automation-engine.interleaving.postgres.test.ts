@@ -20,6 +20,7 @@ import type {
   AutomationVersionId,
   AutomationWorkUnitId,
 } from "../automation-identifiers";
+import { automationTickAtOrBefore } from "../automation-ticks";
 import type { AutomationWorkUnitKind } from "../automation-work-units";
 import {
   databaseInstant,
@@ -47,8 +48,11 @@ afterAll(() => database?.close());
 const start = Temporal.Instant.from("2026-10-13T06:00:00Z");
 /** When triggers occur and runs become ready. */
 const occurredAt = start.add({ minutes: 1 });
-/** When units are planned and processed. */
-const at = start.add({ minutes: 2 });
+/**
+ * When units are planned and processed: two minutes into the tick after the
+ * occurrence, the first that takes it in.
+ */
+const at = start.add({ minutes: 17 });
 /** 10:00 in Prague that day, a schedule's first fire. */
 const fireAt = Temporal.Instant.from("2026-10-13T08:00:00Z");
 
@@ -710,7 +714,10 @@ describe.skipIf(!database)(
           )
         ).rows[0]!;
 
-      /** The intake unit planned for a fresh booking of `campaignId` at `when`. */
+      /**
+       * The intake unit planned at `when` for a fresh booking of `campaignId`,
+       * which occurred on the tick `when` falls in.
+       */
       const competingIntake = async (
         engine: Pick<typeof scenario, "plan">,
         label: string,
@@ -721,7 +728,7 @@ describe.skipIf(!database)(
         const eventId = await fixtures.recordEvent({
           kind: "reservation-booked",
           customer,
-          occurredAt: when,
+          occurredAt: automationTickAtOrBefore(when),
           reservationId: reservation,
         });
         await engine.plan(when);
@@ -1053,7 +1060,8 @@ describe.skipIf(!database)(
             start.add({ minutes: 3 })
           );
           const previewId = await draftV2(campaignId, settleFlow);
-          const plannedAt = start.add({ minutes: 4 });
+          // The tick after both occurrences takes them in.
+          const plannedAt = start.add({ minutes: 15 });
           await scenario.plan(plannedAt);
           const { rows: intake } = await pool.query<{
             id: AutomationWorkUnitId;
@@ -1071,7 +1079,7 @@ describe.skipIf(!database)(
             previewId,
             activatedAt: start.add({ minutes: 2 }),
             ...(order === "lock-wait" && {
-              waitedUntil: start.add({ minutes: 5 }),
+              waitedUntil: plannedAt.add({ minutes: 1 }),
             }),
           });
           const outcome = await raceUnit({
@@ -1084,7 +1092,7 @@ describe.skipIf(!database)(
           });
           expect(outcome).toBe("done");
           // A released event is replanned with the version now in force.
-          await scenario.tick(start.add({ minutes: 6 }));
+          await scenario.tick(plannedAt.add({ minutes: 2 }));
 
           const automation = await read.automation(campaignId);
           const v2 = automation.active_version_id as AutomationVersionId;

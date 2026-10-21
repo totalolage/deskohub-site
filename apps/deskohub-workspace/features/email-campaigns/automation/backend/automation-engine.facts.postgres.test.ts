@@ -16,6 +16,7 @@ import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace
 import type { AudienceFilter } from "../../audience-filter";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationPreviewId } from "../automation-identifiers";
+import { automationTickAtOrAfter } from "../automation-ticks";
 import { makeAutomationDryRunner } from "./automation-dry-run.test-utils";
 import {
   databaseInstant,
@@ -484,8 +485,9 @@ describe.skipIf(!database)("automation facts at rest (§5.13)", async () => {
     const triggerStart = visitTime("2026-10-22T07:00:00Z");
     const triggerVisit = await visit("moved-2", moved, triggerStart);
 
-    // The sweep records the finished visit; the next planner run's intake
-    // unit starts the run and queues its condition unit (D36).
+    // The sweep records the finished visit; the planner on the next tick
+    // takes it in, and its intake unit starts the run and queues its
+    // condition unit (D36).
     const recorded = await scenario.runUntil({
       from,
       until: instant("2026-10-22T16:00:00Z"),
@@ -498,7 +500,7 @@ describe.skipIf(!database)("automation facts at rest (§5.13)", async () => {
         ).rows.length > 0,
     });
     expect(recorded.settled).toBe(true);
-    const started = { at: recorded.at.add({ minutes: 1 }) };
+    const started = { at: automationTickAtOrAfter(recorded.at) };
     await scenario.planUntilQueued(started.at, "condition");
     expect(await runsOf(campaignId, moved)).toMatchObject([
       { status: "active", step_id: "second-visit-within-a-month" },

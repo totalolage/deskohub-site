@@ -74,7 +74,7 @@ describe.skipIf(!database)("AutomationTimerPlanning on Postgres", () => {
 
   afterAll(() => deleteAutomatedCampaigns(postgres.db, campaignIds));
 
-  test("a run reaching a Duration wait waits until the delay from entering it", async () => {
+  test("a run reaching a Duration wait waits the delay from the tick it entered in", async () => {
     const seeded = await automation(waitStep("delay", oneDay));
     const enteredAt = at.subtract({ minutes: 5 });
     const runId = await seedAutomationRun(postgres.db, {
@@ -89,7 +89,8 @@ describe.skipIf(!database)("AutomationTimerPlanning on Postgres", () => {
     await plan();
 
     const run = await readAutomationRun(postgres.db, runId);
-    const dueAt = enteredAt.add({ hours: 24 });
+    // Entered at 09:55, during the 09:45 tick.
+    const dueAt = at.subtract({ minutes: 15 }).add({ hours: 24 });
     expect(run).toMatchObject({
       status: "active",
       stepId: "delay",

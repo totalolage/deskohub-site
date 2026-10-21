@@ -1,6 +1,16 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { dotyposIdFilterBatchSize } from "@deskohub/dotypos";
-import { and, asc, eq, inArray, isNull, ne, notExists, or } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNull,
+  lte,
+  ne,
+  notExists,
+  or,
+} from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -11,6 +21,7 @@ import type { DatabaseQueryError } from "@/db/sql-constraint";
 import { audienceEvaluationAt } from "../../backend/audience-evaluation-context";
 import type { AudienceDotyposReads } from "../../backend/audience-facts.service";
 import type { AutomationRunId } from "../automation-identifiers";
+import { automationTickAtOrBefore } from "../automation-ticks";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import {
   type IntakeMatch,
@@ -231,9 +242,10 @@ export class AutomationIntakePlanning extends Context.Service<
       };
 
       /**
-       * One transaction: locks up to 2,000 unplanned events (skipping those
-       * an overlapping planner holds, and cancellations with runs still to
-       * withdraw), marks those no automation takes processed, and plans
+       * One transaction: locks up to 2,000 unplanned events that occurred
+       * by the tick `at` falls in (skipping those an overlapping planner
+       * holds, and cancellations with runs still to withdraw), marks those
+       * no automation takes processed, and plans
        * units for the rest, owning their events by compare-and-set. Unit
        * keys include the planner instant, so events a dropped unit released
        * are planned again under a new key.
@@ -249,6 +261,13 @@ export class AutomationIntakePlanning extends Context.Service<
                   and(
                     isNull(customerEvents.automationProcessedAt),
                     isNull(customerEvents.automationUnitId),
+                    // A late planner leaves events after its tick's instant
+                    // to the next tick, so no run's waits count from a tick
+                    // before its event, as in the dry run (D36).
+                    lte(
+                      customerEvents.occurredAt,
+                      automationTickAtOrBefore(at)
+                    ),
                     or(
                       ne(customerEvents.kind, "reservation-cancelled"),
                       notExists(
