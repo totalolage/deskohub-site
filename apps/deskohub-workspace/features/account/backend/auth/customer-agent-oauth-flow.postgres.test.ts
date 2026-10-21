@@ -435,7 +435,8 @@ const countRows = async (table: string, userId: string) => {
 
 /**
  * Strips the consent binding from an account's one pending authorization
- * code, as codes issued before the Workspace oauth-provider patch lack it.
+ * code, as codes issued before the Workspace oauth-provider patch lack it,
+ * and dates the account's consent a minute before the code.
  */
 const unbindPendingCode = async (userId: string) => {
   const unbound = await testDatabase!.pool.query(
@@ -449,6 +450,13 @@ const unbindPendingCode = async (userId: string) => {
     [userId]
   );
   expect(unbound.rowCount).toBe(1);
+  const dated = await testDatabase!.pool.query(
+    `update auth.oauth_consent
+        set created_at = created_at - interval '1 minute'
+      where user_id = $1`,
+    [userId]
+  );
+  expect(dated.rowCount).toBe(1);
 };
 
 /**
