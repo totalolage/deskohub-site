@@ -11,11 +11,11 @@ import type {
   GoogleCalendarEventQuery,
 } from "@deskohub/google-calendar";
 import { Context, Effect, Layer } from "effect";
-import type { OccupancyReservation } from "@/features/checkout/backend/reservation";
 import {
   GoogleCalendarWorkspaceLimitationsService,
   type WorkspaceCalendarLimitation,
 } from "./google-calendar-workspace-limitations.service";
+import type { ReservationRecord } from "./reservation-record";
 
 export type AvailabilityInventoryError =
   | ExternalAPIError
@@ -31,10 +31,7 @@ export interface AvailabilityInventory {
   >;
   readonly listActiveReservationsOverlapping: (
     interval: DotyposReservationInterval
-  ) => Effect.Effect<
-    readonly OccupancyReservation[],
-    AvailabilityInventoryError
-  >;
+  ) => Effect.Effect<readonly ReservationRecord[], AvailabilityInventoryError>;
   readonly listLimitations: (
     query: GoogleCalendarEventQuery
   ) => Effect.Effect<

@@ -5,6 +5,7 @@ import type {
   DotyposTableId,
 } from "@deskohub/dotypos";
 import { Option, Schema } from "effect";
+import type { ReservationRecord } from "@/features/reservation/backend/reservation-record";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval";
 import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -14,29 +15,6 @@ export const workspaceBookingSeatCount = 1;
 const decodeReservationSeats = Schema.decodeUnknownOption(
   dotyposReservationSeatsSchema
 );
-
-/** The Dotypos reservation fields occupancy and replacement checks read. */
-export type OccupancyReservation = Pick<
-  DotyposReservation,
-  "id" | "status" | "_tableId" | "startDate" | "endDate" | "seats"
->;
-
-/** Drops customer links and free-text notes before sharing a reservation. */
-export const toOccupancyReservation = ({
-  id,
-  status,
-  _tableId,
-  startDate,
-  endDate,
-  seats,
-}: OccupancyReservation): OccupancyReservation => ({
-  ...(id !== undefined && { id }),
-  status,
-  ...(_tableId !== undefined && { _tableId }),
-  startDate,
-  endDate,
-  seats,
-});
 
 /** An active Dotypos reservation's table hold, parsed once for occupancy. */
 export type TableBooking = {
@@ -53,7 +31,7 @@ export type OccupancyWindow = {
 };
 
 export const getWorkspaceTableOccupancyById = (
-  reservations: readonly OccupancyReservation[],
+  reservations: readonly ReservationRecord[],
   input: ReservationInterval | Temporal.PlainDate
 ) =>
   getTableBookingOccupancyById(
@@ -66,7 +44,7 @@ export const getWorkspaceTableOccupancyById = (
  * a table, and with parseable bounds. Unparseable seat counts hold one seat.
  */
 export const toTableBookings = (
-  reservations: readonly OccupancyReservation[]
+  reservations: readonly ReservationRecord[]
 ): readonly TableBooking[] => {
   const bookings: TableBooking[] = [];
 

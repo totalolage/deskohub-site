@@ -1,18 +1,14 @@
 import "server-only";
 
-import {
-  DotyposService,
-  type DotyposTable,
-  ExternalAPIError,
-} from "@deskohub/dotypos";
+import { DotyposService, type DotyposTable } from "@deskohub/dotypos";
 import type { GoogleCalendarEventQuery } from "@deskohub/google-calendar";
-import { Effect, Exit, Layer } from "effect";
+import { Effect, Layer } from "effect";
 import { cacheLife, cacheTag } from "next/cache";
-import {
-  type OccupancyReservation,
-  toOccupancyReservation,
-} from "@/features/checkout/backend/reservation";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import {
+  cachedOnSuccess,
+  fromSharedSnapshot,
+} from "@/shared/backend/shared-snapshot";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { availabilityTags } from "@/shared/utils/cache-tags";
 import { AdvisoryAvailabilityInventory } from "./availability-inventory";
@@ -20,6 +16,10 @@ import {
   GoogleCalendarWorkspaceLimitationsService,
   type WorkspaceCalendarLimitation,
 } from "./google-calendar-workspace-limitations.service";
+import {
+  type ReservationRecord,
+  toReservationRecord,
+} from "./reservation-record";
 
 /**
  * Serves advisory availability from cross-request snapshots. Each snapshot is
@@ -32,16 +32,16 @@ import {
 export const SharedAvailabilityInventoryLive = Layer.succeed(
   AdvisoryAvailabilityInventory,
   {
-    tables: fromSharedSnapshot("getTables", () => loadSharedTables()),
+    tables: fromAvailabilitySnapshot("getTables", () => loadSharedTables()),
     listActiveReservationsOverlapping: ({ startDate, endDate }) =>
-      fromSharedSnapshot("listActiveReservationsOverlapping", () =>
+      fromAvailabilitySnapshot("listActiveReservationsOverlapping", () =>
         loadSharedActiveReservations({
           startsAt: startDate.toISOString(),
           endsAt: endDate.toISOString(),
         })
       ),
     listLimitations: ({ from, to }) =>
-      fromSharedSnapshot("listLimitations", () =>
+      fromAvailabilitySnapshot("listLimitations", () =>
         loadSharedLimitations({ from, to })
       ),
   }
@@ -69,7 +69,7 @@ export async function loadSharedTables(): Promise<readonly DotyposTable[]> {
 export async function loadSharedActiveReservations(interval: {
   readonly startsAt: string;
   readonly endsAt: string;
-}): Promise<readonly OccupancyReservation[]> {
+}): Promise<readonly ReservationRecord[]> {
   "use cache: remote";
 
   return await Effect.flatMap(DotyposService, (dotypos) =>
@@ -78,7 +78,7 @@ export async function loadSharedActiveReservations(interval: {
       endDate: new Date(interval.endsAt),
     })
   ).pipe(
-    Effect.map((reservations) => reservations.map(toOccupancyReservation)),
+    Effect.map((reservations) => reservations.map(toReservationRecord)),
     Effect.provide(WorkspaceDotyposLayer),
     cachedOnSuccess(() => {
       cacheLife("availabilityReservations");
@@ -106,30 +106,13 @@ export async function loadSharedLimitations(
   );
 }
 
-/**
- * Applies a snapshot's lifetime and tag once it loads, and marks any failed
- * load uncacheable so the failure is never shared.
- */
-function cachedOnSuccess(applyLifetime: () => void) {
-  return <A, E, R>(load: Effect.Effect<A, E, R>) =>
-    load.pipe(
-      Effect.onExit((exit) =>
-        Effect.sync(() =>
-          Exit.isSuccess(exit) ? applyLifetime() : cacheLife({ expire: 0 })
-        )
-      )
-    );
-}
-
-function fromSharedSnapshot<A>(operation: string, load: () => Promise<A>) {
-  return Effect.tryPromise({
-    try: load,
-    catch: (cause) =>
-      new ExternalAPIError({
-        service: "availability-inventory",
-        operation,
-        message: "Shared availability inventory could not be loaded",
-        cause,
-      }),
+function fromAvailabilitySnapshot<A>(
+  operation: string,
+  load: () => Promise<A>
+) {
+  return fromSharedSnapshot({
+    service: "availability-inventory",
+    operation,
+    load,
   });
 }

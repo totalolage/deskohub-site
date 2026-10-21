@@ -75,6 +75,46 @@ export const resolveBetterAuthAllowedHosts = (
   return { kind: "valid", hosts };
 };
 
+type CustomerMcpResourceMessage =
+  | BetterAuthHostsMessage
+  | "The preview deployment host is not configured for the MCP server.";
+
+export type CustomerMcpResourceResult =
+  | { readonly kind: "valid"; readonly resource: string }
+  | { readonly kind: "invalid"; readonly message: CustomerMcpResourceMessage };
+
+/**
+ * The OAuth protected-resource identifier of this deployment's customer MCP
+ * server, which every agent access token is bound to. It is one URL, like the
+ * passkey RP ID: production uses the canonical customer-facing host, a
+ * preview its immutable deployment host, and local development
+ * `localhost:3000` over plain HTTP.
+ */
+export const resolveCustomerMcpResource = (
+  environment: BetterAuthHostEnvironment,
+  path: string
+): CustomerMcpResourceResult => {
+  const allowedHosts = resolveBetterAuthAllowedHosts(environment);
+  if (allowedHosts.kind === "invalid") return allowedHosts;
+
+  if (environment.vercelEnv === "development") {
+    return { kind: "valid", resource: `http://${localDevelopmentHost}${path}` };
+  }
+
+  const resourceUrl =
+    environment.vercelEnv === "production"
+      ? environment.customerFacingHost
+      : environment.deploymentUrl;
+  if (!resourceUrl) {
+    return {
+      kind: "invalid",
+      message:
+        "The preview deployment host is not configured for the MCP server.",
+    };
+  }
+  return { kind: "valid", resource: `https://${toHost(resourceUrl)}${path}` };
+};
+
 /**
  * The WebAuthn relying party of one deployment: the RP ID every passkey is
  * scoped to and the exact origins its ceremonies may come from.

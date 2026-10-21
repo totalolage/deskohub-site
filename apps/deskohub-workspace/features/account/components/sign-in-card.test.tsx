@@ -280,6 +280,22 @@ describe("account components", () => {
     }
   );
 
+  test.each(["en-US", "cs-CZ"] as const)(
+    "sign-in card tells a visitor connecting an AI assistant why they sign in in %s",
+    async (locale) => {
+      const { SignInCard } = await import("./sign-in-card");
+      const view = render(<SignInCard locale={locale} purpose="assistant" />);
+
+      expect(view.getByRole("heading", { level: 1 }).textContent).toBe(
+        m.customerAgentSignInTitle({}, { locale })
+      );
+      expect(
+        view.getByText(m.customerAgentSignInDescription({}, { locale }))
+      ).toBeTruthy();
+      cleanup();
+    }
+  );
+
   test("sign-in card shows the no-longer-waiting notice above the email field until a new email is sent", async () => {
     const { SignInCard } = await import("./sign-in-card");
 

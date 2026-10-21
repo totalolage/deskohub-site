@@ -26,8 +26,8 @@ import { checkoutFlows } from "./data";
  * checkout flows, which book as the account.
  *
  * Cases that never submit a reservation stay signed out, and referral cases,
- * the someone-else referral payment, and the signed-out verification case
- * own their identities.
+ * the someone-else referral payment, the signed-out verification case, and
+ * the agent booking own their identities.
  */
 const signedOutCaseIds = [
   "contact-form",
@@ -39,6 +39,7 @@ const signedOutCaseIds = [
 ] as const satisfies readonly WorkspaceE2ECaseId[];
 
 const ownIdentityCaseIds = [
+  "checkout-agent-booking",
   "checkout-referral-someone-else",
   "checkout-signed-out-verification",
 ] as const satisfies readonly WorkspaceE2ECaseId[];
