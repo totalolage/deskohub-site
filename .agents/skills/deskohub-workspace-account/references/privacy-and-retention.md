@@ -12,7 +12,7 @@ what the privacy copy promises. Privacy copy lives in
 | Neon `public.customer_accounts` | Account ID, its Dotypos customer ID, deletion instant | Kept as a deleted-account tombstone so reservations keep their author; deletion clears the Dotypos customer ID |
 | Neon administrator records (`account_role_grants`, account actors on CLI authentication requests and sessions, standalone access-code events, and `manual_invoice_actors`) | Account ID, role, and the administrator's login-email snapshot as provenance | Grants cascade with the auth user; actor account IDs are set to null and the email snapshot stays with the audit record |
 | Dotypos | Profile and reservation history | Account deletion sets the profile's expiry; retained records stay |
-| Resend | Sent message, recipient, delivery metadata | Provider retention only; Workspace keeps no copy |
+| Resend | Sent message, recipient, delivery metadata | Provider retention only, and Workspace keeps no copy: 30 days for email and log data on Free, Pro, and Scale plans, plus seven-day backups. Resend publishes no sent-message delete API, so account deletion can't erase an email already sent; an exceptional early removal goes through Resend's contact process |
 | Cloudinary | Avatar asset | Destroyed before identity removal |
 | PostHog warehouse | Allowlisted Dotypos customer fields in `custom.dotypos_customers` | PostHog retention settings; a Dotypos deletion arrives as `deleted: true`, not erasure |
 
@@ -36,7 +36,7 @@ collect signed per-account copies.
 | PostHog Inc (US) | Consented events, logs, warehouse copy of Dotypos customers | EU Cloud, Frankfurt: `t.workspace.deskohub.cz` is a CNAME to `cf-prod-eu-proxy.europehog.com`; `.env.example` uses `eu.posthog.com` | Transfer (DPA allows US processing). DPF active ([2915](https://www.dataprivacyframework.gov/participant/2915)) and DPA SCC Module 2 |
 | Cloudinary Inc. / Ltd. (US, Israel) | Avatar image | Treated as US (owner decision): the default unless an Enterprise data-residency add-on is bought; the config in `packages/cloudinary/src/config.ts` doesn't set a region | Transfer. DPF active ([6136](https://www.dataprivacyframework.gov/participant/6136)); Israel is adequate; the DPA has SCCs |
 | Google (GTM, GA4, Ads) | IP and browser data from the GTM script request, which loads on idle or interaction regardless of consent (`features/cookie-consent/utils/tag-manager.ts`); measurement tags follow consent mode, default denied; the app sends no `user_data` or enhanced conversions | Global; Google Ireland is the EEA counterparty | Transfer to Google LLC. DPF active ([5780](https://www.dataprivacyframework.gov/participant/5780)), SCC fallback ([transfers page](https://business.safety.google/adsdatatransfers/)). GTM and GA4 are processors; Ads conversions are controller-to-controller |
-| Igloocompany Pte. Ltd. (Singapore) | PIN validity window, device ID, the access name, and any lock activity Igloohome syncs. The access name must not carry the reservation ID; it still does until the access-name change lands (`features/reservation-access/backend/reservation-access.service.ts`) | AWS outside the EEA, region unpublished ([data-act page](https://www.igloohome.co/legal/eu-data-act-compliance)) | Transfer. Singapore has no adequacy decision and Igloohome publishes no DPA or SCCs. Relies on Art. 49(1)(b): door access is necessary to perform the reservation contract (owner decision, 2026-10-21). Send only what issuing the PIN needs |
+| Igloocompany Pte. Ltd. (Singapore) | PIN validity window, device ID, the access name, and any lock activity Igloohome syncs. The access name must not carry the reservation ID; it still does until the access-name change lands (`features/reservation-access/backend/reservation-access.service.ts`) | AWS outside the EEA, region unpublished ([data-act page](https://www.igloohome.co/legal/eu-data-act-compliance)) | Transfer. Singapore has no adequacy decision and Igloohome publishes no DPA or SCCs. Relies on Art. 49(1)(b): door access is necessary to perform the reservation contract (owner decision, 2026-10-21). Send only what issuing the PIN needs; removing the reservation ID is tracked in #780 |
 | OpenStreetMap Foundation (UK) via Fastly (US) | Visitor IP and origin referrer from map tiles, loaded without consent (`landing-page-interactive-map.tsx`) | Fastly edge worldwide; the [OSMF privacy policy](https://osmfoundation.org/wiki/Privacy_Policy) excludes tile requests from its UK/NL storage statement | UK adequacy (renewed to 2031). Fastly has DPF and SCCs ([DPT](https://www.fastly.com/data-processing)), but OSMF's tile-log location and onward safeguard are **unpublished** |
 | Nexi Central Europe a.s. (EU) | Name, email, phone, amount, order IDs; card data on the hosted page | EEA (live host `xpay.nexigroup.com`) | Not our transfer: the checkout notice names Nexi as an independent controller for payments, covering its own onward transfers (adequacy or SCCs). The merchant contract is unconfirmed |
 | Dotykačka ČR s.r.o. (EU) | Customer profiles, reservations | Dotypos Cloud, CZ/EU per public statements; provider unpublished | No transfer known; no DPA or subprocessor list is public |
@@ -69,14 +69,14 @@ in-app. Re-check this table whenever a provider, plan, or region changes.
   Dotypos Customer API documents no retention or anonymization behavior for
   `expireDate`. Never delete or anonymize the Dotypos customer or its
   reservation, payment, invoice, or legal records.
-- In privacy copy, name Resend as the email processor and disclose:
-  - The recipient address, message content including the magic link, and
-    delivery metadata.
-  - Storage in the United States.
-  - The applicable 30-day active-account retention and seven-day backups.
-  - That account deletion can't erase an already-sent email (Resend publishes
-    no sent-message delete API), and that an exceptional early-removal request
-    goes through Resend's contact process.
+- In privacy copy, name recipients by category (Dotypos is the one provider
+  named) and state transfers outside the EU in general terms, in §7 of the
+  notice: the countries, the type of safeguard (adequacy, including the DPF,
+  or SCCs; Art. 49(1)(b) for the door-lock provider), and how to get a copy.
+  Provider names, regions, retention, and safeguards stay in the tables above.
+- Whenever a provider, plan, or region changes, update the transfers table and
+  check that §7 still holds. For example, a new country without an adequacy
+  decision or SCCs would make "we use only…" false.
 - Don't mirror Resend message bodies or delivery events into Workspace.
 - Neon preview branches copy production data at the branch point, and later
   production deletions don't reach existing branches. The allowed contents,
