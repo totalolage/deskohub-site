@@ -1,10 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "b8a0d225-334b-4770-8236-53551e9cfb2e",
+  "id": "33b93b90-6495-4ff6-a492-6f75b188eaaa",
   "prevIds": [
-    "26edd693-4409-4c5e-b7f9-e616f9ec176c",
-    "78322a3d-e9ae-4284-983d-12b3884eb0f0"
+    "fa81efd2-bd12-42e5-b6e5-cab8fe72958a"
   ],
   "ddl": [
     {
@@ -5911,6 +5910,19 @@
       "generated": null,
       "identity": null,
       "name": "access_code",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "access_name",
       "entityType": "columns",
       "schema": "public",
       "table": "reservation_access_grants"

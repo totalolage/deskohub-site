@@ -91,6 +91,10 @@ const allowedColumns = new Map([
     "public.standalone_access_code_attempt_events.name",
     "operator-entered access code label",
   ],
+  [
+    "public.reservation_access_grants.access_name",
+    "Igloohome credential label built from the grant ID",
+  ],
 ]);
 
 const containsWordRun = (

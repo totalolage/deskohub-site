@@ -1,4 +1,3 @@
-import { handleCallback } from "@vercel/queue";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { AccountingDocumentSnapshotRepository } from "@/features/accounting/backend/accounting-document-snapshot.repository";
@@ -13,7 +12,7 @@ import { WorkspaceTableAssignmentService } from "@/features/checkout/backend/res
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import { defineWorkspaceTask } from "@/shared/backend/workspace-effect";
+import { defineQueueConsumer } from "@/shared/backend/queue/queue-consumer";
 
 export const maxDuration = 300;
 
@@ -43,15 +42,6 @@ const ConsumerLive = LatePaymentRecoveryService.Default.pipe(
   Layer.provide(WorkspaceDotyposLayer)
 );
 
-const processMessage = defineWorkspaceTask(
-  "latePaymentRecoveryQueue",
-  (message: Parameters<typeof processLatePaymentRecoveryMessage>[0]) =>
-    processLatePaymentRecoveryMessage(message).pipe(
-      Effect.asVoid,
-      Effect.provide(ConsumerLive)
-    )
-);
-
-export const POST = handleCallback((message, _metadata) =>
-  processMessage(message)
+export const POST = defineQueueConsumer("latePaymentRecoveryQueue", (message) =>
+  processLatePaymentRecoveryMessage(message).pipe(Effect.provide(ConsumerLive))
 );

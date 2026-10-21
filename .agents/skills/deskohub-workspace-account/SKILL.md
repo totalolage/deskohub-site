@@ -1,6 +1,6 @@
 ---
 name: deskohub-workspace-account
-description: Workspace customer account, Better Auth, magic link, sign-in, session, auth persistence, customer account link, durable customer account, customer_accounts, deleted-account tombstone, reservation author storage, profile, avatar, account deletion, reservation history, saved language preference, signed-in locale, auth retention or PII, PostHog identity, OAuth server, MCP authorization, AI agent or assistant connection, consent page, CIMD, access token, well-known discovery.
+description: Workspace customer account, Better Auth, magic link, sign-in, session, auth persistence, customer account link, durable customer account, customer_accounts, deleted-account tombstone, reservation author storage, profile, avatar, account deletion, reservation history, saved language preference, signed-in locale, auth retention or PII, PostHog identity, OAuth server, MCP authorization, AI agent or assistant connection, consent page, CIMD, access token, well-known discovery, data transfers outside the EU, third-country transfer, DPF, SCC, provider region.
 ---
 
 # Workspace customer accounts
@@ -79,8 +79,8 @@ Read the reference that matches your change before editing:
   2.1 server for customers' AI agents, discovery routes, the connect and
   consent pages, the token-to-customer adapter, revocation, and cleanup.
 - [Privacy and retention](references/privacy-and-retention.md): what each
-  system retains, Neon preview copies, Resend, Dotypos expiry, and privacy-copy
-  obligations.
+  system retains, the transfers-outside-the-EU inventory, Neon preview copies,
+  Resend, Dotypos expiry, and privacy-copy obligations.
 - [Avatar media storage](references/avatar-media-storage.md): Cloudinary
   staging, promotion, recovery, and deletion ordering.
 - [PostHog identity and privacy](references/posthog-identity-privacy.md):

@@ -855,7 +855,8 @@ const supersedeRotatedAgentHolds = Effect.fn(
       const claimed = yield* reservations.claimSupersessionCancellation(
         hold.id
       );
-      // A held reservation always carries its Dotypos hold.
+      // workspace_reservations_hold_id_check rejects a held or cancelling
+      // row without its Dotypos hold, so a claimed row always carries one.
       if (!claimed?.dotyposReservationId) return;
 
       yield* Effect.logInfo(
@@ -1704,10 +1705,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           reservationHoldExpiresAt: holdExpiresAt,
         });
         yield* captureReservationStarted({
-          reservation: {
-            id: reservationDraft.id,
-            dotyposReservationId,
-          },
+          reservation: { id: reservationDraft.id },
           timestamp: reservationCreatedAt,
         });
 
