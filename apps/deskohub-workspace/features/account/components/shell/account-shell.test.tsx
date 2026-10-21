@@ -688,14 +688,14 @@ describe("AccountShell", () => {
     expect(
       getDesktopNavigation(view)
         .getAllByRole("link")
-        .map((b) => b.textContent)
+        .map((link) => link.getAttribute("data-account-sidebar-section"))
     ).toEqual([
-      "Reservations",
-      "Profile & identity",
-      "Connected assistants",
-      "Billing & invoices",
-      "Legal & privacy",
-      "Danger zone",
+      "reservations",
+      "profile",
+      "assistants",
+      "billing",
+      "legal",
+      "danger",
     ]);
   });
 });

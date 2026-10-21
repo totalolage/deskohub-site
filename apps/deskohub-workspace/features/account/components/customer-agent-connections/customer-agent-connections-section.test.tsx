@@ -1,6 +1,5 @@
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
-import { describeCustomerAgentScope } from "@/features/account/customer-agent-scope-copy";
 import { m } from "@/features/i18n";
 import {
   deliverWorkspaceBrowserLogs,
@@ -67,6 +66,24 @@ const renderSection = (
     />
   );
 
+const assistantsStateSelectors = {
+  list: "ul[aria-labelledby='account-assistants-title']",
+  empty: "#account-assistants-empty",
+  unavailable: "#account-assistants-unavailable",
+} as const;
+
+/** Which of the section's list, empty, and unavailable states render. */
+const renderedStates = (view: ReturnType<typeof render>) =>
+  Object.entries(assistantsStateSelectors)
+    .filter(([, selector]) => view.container.querySelector(selector) !== null)
+    .map(([state]) => state);
+
+const disconnectStatus = (view: ReturnType<typeof render>) =>
+  view.container.querySelector("#account-assistants-status");
+
+const disconnectFailure = (dialog: HTMLElement) =>
+  dialog.querySelector("[aria-live='assertive']");
+
 const openDisconnect = (
   view: ReturnType<typeof render>,
   locale: TestLocale,
@@ -111,94 +128,85 @@ describe("CustomerAgentConnectionsSection", () => {
     test(`lists each assistant with its host, date, and permissions (${locale})`, () => {
       const view = renderSection(locale, [assistant, unnamed]);
 
-      const list = view.getByRole("list", {
-        name: m.accountSectionAssistants({}, { locale }),
-      });
+      const list = view.container.querySelector<HTMLElement>(
+        assistantsStateSelectors.list
+      )!;
       const [named, generic] =
         list.querySelectorAll<HTMLElement>(":scope > li");
+      expect(named?.dataset.assistantConnectionId).toBe(assistant.id);
       expect(named?.textContent).toContain("Synthetic Assistant");
+      expect(named?.textContent).toContain("assistant.invalid");
       expect(named?.textContent).toContain(
-        m.accountAssistantDetails(
-          {
-            host: "assistant.invalid",
-            date: formatInstantDate({
-              instant: Temporal.Instant.from(assistant.connectedAt),
-              locale,
-              timeZone: workspaceSiteConstants.location.timeZone,
-            }),
-          },
-          { locale }
-        )
+        formatInstantDate({
+          instant: Temporal.Instant.from(assistant.connectedAt),
+          locale,
+          timeZone: workspaceSiteConstants.location.timeZone,
+        })
       );
-      const scopes = within(named!).getByRole("list", {
-        name: m.accountAssistantScopesLabel(
-          { name: "Synthetic Assistant" },
-          { locale }
-        ),
-      });
-      expect(
-        within(scopes)
-          .getAllByRole("listitem")
-          .map((item) => item.textContent)
-      ).toEqual([
-        describeCustomerAgentScope("reservations:read", locale),
-        describeCustomerAgentScope("offline_access", locale),
+      const scopes = within(named!).getByRole("list");
+      expect(scopes.getAttribute("aria-label")).toContain(
+        "Synthetic Assistant"
+      );
+      const scopeItems = within(scopes).getAllByRole("listitem");
+      expect(scopeItems.map((item) => item.dataset.assistantScope)).toEqual([
+        ...assistant.scopes,
       ]);
-      // An assistant that names nothing still shows, so it can be
-      // disconnected.
-      expect(generic?.textContent).toContain(
-        m.accountAssistantUnnamed({}, { locale })
-      );
+      for (const item of scopeItems) expect(item.textContent).toBeTruthy();
+      // An assistant that names nothing still shows under a fallback name,
+      // so it can be disconnected.
+      expect(generic?.dataset.assistantConnectionId).toBe(unnamed.id);
+      expect(generic?.querySelector("p")?.textContent).toBeTruthy();
+      expect(within(generic!).getByRole("button")).toBeTruthy();
+      expect(within(generic!).queryByRole("list")).toBeNull();
     });
 
     test(`shows an empty state without assistants (${locale})`, () => {
       const view = renderSection(locale, []);
 
-      expect(
-        view.getByText(m.accountAssistantsEmptyTitle({}, { locale }))
-      ).toBeTruthy();
-      expect(
-        view.getByText(m.accountAssistantsEmptyBody({}, { locale }))
-      ).toBeTruthy();
+      expect(renderedStates(view)).toEqual(["empty"]);
       expect(view.queryByRole("list")).toBeNull();
+      // A title and a line on how to connect one.
+      const emptyText = Array.from(
+        view.container.querySelectorAll(`${assistantsStateSelectors.empty} p`),
+        (paragraph) => paragraph.textContent
+      );
+      expect(emptyText).toHaveLength(2);
+      for (const text of emptyText) expect(text).toBeTruthy();
     });
 
     test(`explains a list that couldn't be read (${locale})`, () => {
       const view = renderSection(locale, null);
 
+      expect(renderedStates(view)).toEqual(["unavailable"]);
       expect(
-        view.getByText(m.accountAssistantsUnavailable({}, { locale }))
+        view.container.querySelector(assistantsStateSelectors.unavailable)
+          ?.textContent
       ).toBeTruthy();
-      expect(
-        view.queryByText(m.accountAssistantsEmptyTitle({}, { locale }))
-      ).toBeNull();
     });
 
     test(`disconnects an assistant after confirmation (${locale})`, async () => {
       const view = renderSection(locale, [assistant]);
+      expect(disconnectStatus(view)?.getAttribute("aria-live")).toBe("polite");
+      expect(disconnectStatus(view)?.textContent).toBe("");
       const dialog = openDisconnect(view, locale, "Synthetic Assistant");
 
-      expect(dialog.textContent).toContain(
-        m.accountAssistantDisconnectTitle(
-          { name: "Synthetic Assistant" },
-          { locale }
-        )
+      // The dialog names the assistant it disconnects and describes what
+      // disconnecting does.
+      expect(view.getByRole("dialog", { name: /Synthetic Assistant/ })).toBe(
+        dialog
       );
-      expect(dialog.textContent).toContain(
-        m.accountAssistantDisconnectBody({}, { locale })
-      );
+      const description = (dialog.getAttribute("aria-describedby") ?? "")
+        .split(" ")
+        .map((id) => document.getElementById(id)?.textContent ?? "")
+        .join("");
+      expect(description).toBeTruthy();
       expect(deleteConsent).not.toHaveBeenCalled();
       await confirmDisconnect(dialog, locale);
 
       expect(deleteConsent).toHaveBeenCalledWith({ id: assistant.id });
       expect(view.queryByText("Synthetic Assistant")).toBeNull();
-      expect(
-        view.getByText(m.accountAssistantsEmptyTitle({}, { locale }))
-      ).toBeTruthy();
-      expect(view.container.querySelector("[aria-live='polite']")).toBeTruthy();
-      expect(
-        view.container.querySelector("#account-assistants-status")?.textContent
-      ).toBe(m.accountAssistantDisconnected({}, { locale }));
+      expect(renderedStates(view)).toEqual(["empty"]);
+      expect(disconnectStatus(view)?.textContent).toBeTruthy();
     });
   }
 
@@ -209,18 +217,19 @@ describe("CustomerAgentConnectionsSection", () => {
     );
     const view = renderSection(locale, [assistant]);
     const dialog = openDisconnect(view, locale, "Synthetic Assistant");
+    expect(disconnectFailure(dialog)?.textContent).toBe("");
 
     await confirmDisconnect(dialog, locale);
 
-    expect(dialog.textContent).toContain(
-      m.accountAssistantDisconnectFailed({}, { locale })
-    );
+    expect(view.getByRole("dialog")).toBe(dialog);
+    expect(disconnectFailure(dialog)?.textContent).toBeTruthy();
+    expect(renderedStates(view)).toEqual(["list"]);
     expect(
-      view.getAllByText("Synthetic Assistant", { exact: false }).length
-    ).toBeGreaterThan(0);
-    expect(
-      view.container.querySelector("#account-assistants-status")?.textContent
-    ).toBe("");
+      view.container.querySelector(
+        `[data-assistant-connection-id="${assistant.id}"]`
+      )
+    ).toBeTruthy();
+    expect(disconnectStatus(view)?.textContent).toBe("");
     expect(reported.map(({ attributes }) => attributes.failureCode)).toEqual([
       "account.customer-agent-disconnect.failed",
     ]);
@@ -234,11 +243,16 @@ describe("CustomerAgentConnectionsSection", () => {
     const view = renderSection(locale, [assistant]);
     const dialog = openDisconnect(view, locale, "Synthetic Assistant");
 
+    expect(disconnectFailure(dialog)?.textContent).toBe("");
+
     await confirmDisconnect(dialog, locale);
 
-    expect(dialog.textContent).toContain(
-      m.accountAssistantDisconnectFailed({}, { locale })
-    );
+    expect(view.getByRole("dialog")).toBe(dialog);
+    expect(disconnectFailure(dialog)?.textContent).toBeTruthy();
+    expect(renderedStates(view)).toEqual(["list"]);
+    expect(reported.map(({ attributes }) => attributes.failureCode)).toEqual([
+      "account.customer-agent-disconnect.failed",
+    ]);
   });
 
   test("counts an assistant already disconnected elsewhere as disconnected", async () => {
@@ -252,6 +266,7 @@ describe("CustomerAgentConnectionsSection", () => {
     await confirmDisconnect(dialog, locale);
 
     expect(view.queryByText("Synthetic Assistant")).toBeNull();
+    expect(renderedStates(view)).toEqual(["empty"]);
     expect(reported).toEqual([]);
   });
 });

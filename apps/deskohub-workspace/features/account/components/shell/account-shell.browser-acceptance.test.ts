@@ -20,6 +20,9 @@ const sectionLabels = {
   danger: m.accountSectionDanger({}, { locale }),
 } as const satisfies Readonly<Record<AccountSection, string>>;
 const sections = Object.keys(sectionLabels) as AccountSection[];
+// Matches the harness's section links.
+const sectionHref = (section: AccountSection) =>
+  `/${locale}/account/${section}`;
 
 const chromiumAvailable = await playwrightChromiumAvailable();
 let browser: Browser | undefined;
@@ -84,11 +87,11 @@ const readShellLayout = (page: Page) =>
     const contentRect = content.getBoundingClientRect();
 
     return {
-      activeItemLabels: Array.from(
+      activeItemHrefs: Array.from(
         navigation.querySelectorAll('a[aria-current="page"]')
       )
         .filter(isRendered)
-        .map((link) => link.textContent?.trim() ?? ""),
+        .map((link) => link.getAttribute("href")),
       contentLeft: contentRect.left,
       contentTop: contentRect.top,
       contentWidth: contentRect.width,
@@ -124,8 +127,7 @@ test.skipIf(!chromiumAvailable)(
         expect(layout.navigationWidth).toBeGreaterThan(0);
         expect(layout.contentWidth).toBeGreaterThan(0);
         expect(layout.navigationRight).toBeLessThanOrEqual(layout.contentLeft);
-        expect(layout.activeItemLabels).toHaveLength(1);
-        expect(layout.activeItemLabels[0]).toStartWith(sectionLabels[section]);
+        expect(layout.activeItemHrefs).toEqual([sectionHref(section)]);
       }
     } finally {
       await page.close();
@@ -145,7 +147,7 @@ test.skipIf(!chromiumAvailable)(
         expect(layout.horizontalOverflow).toBeLessThanOrEqual(1);
         expect(layout.contentWidth).toBeGreaterThan(0);
         expect(layout.navigationBottom).toBeLessThanOrEqual(layout.contentTop);
-        expect(layout.activeItemLabels).toEqual([sectionLabels[section]]);
+        expect(layout.activeItemHrefs).toEqual([sectionHref(section)]);
       }
     } finally {
       await page.close();

@@ -150,7 +150,10 @@ const authoredReservations = (
 
 function UnavailableCard({ locale }: { readonly locale: Locale }) {
   return (
-    <Card className="mx-auto max-w-xl p-8 text-center">
+    <Card
+      className="mx-auto max-w-xl p-8 text-center"
+      id="account-profile-unavailable"
+    >
       <h2 className="text-3xl text-navy-blue">
         {m.accountUnavailableTitle({}, { locale })}
       </h2>
@@ -173,7 +176,10 @@ function CompletionCard({
   readonly referralsEnabled: boolean;
 }) {
   return (
-    <Card className={`mx-auto max-w-2xl ${cardClassName}`}>
+    <Card
+      className={`mx-auto max-w-2xl ${cardClassName}`}
+      id="account-completion-required"
+    >
       <CardContent className="p-6 @xl:p-10">
         <h2 className="text-3xl text-navy-blue @xl:text-4xl">
           {m.accountCompletionTitle({}, { locale })}
