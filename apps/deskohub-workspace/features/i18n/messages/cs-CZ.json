@@ -1237,6 +1237,7 @@
   "bookingWidgetNotAvailable": "Vypadá to, že je obsazeno. Zkus jiné datum nebo jinou možnost.",
   "bookingWidgetTotal": "Celkem: {price}",
   "bookingWidgetDiscount": "Včetně slevy {discount} z běžné ceny {price}.",
+  "bookingWidgetWorkstationIncluded": "Na tento den zbývají jen místa s monitory, proto cena zahrnuje sestavu {monitors}.",
   "bookingWidgetReserve": "Rezervovat",
   "bookingWidgetReserving": "Zakládáme rezervaci.",
   "bookingWidgetHeld": "Rezervaci ti držíme do {expiresAt}. Na platební stránce přijmi podmínky a zaplať.",

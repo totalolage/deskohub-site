@@ -1,7 +1,7 @@
 import { RegistryProvider, useAtom, useAtomValue } from "@effect/atom-react";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import * as Atom from "effect/unstable/reactivity/Atom";
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import "./booking-widget.css";
 import { defaultLocale, m } from "@/features/i18n";
@@ -12,12 +12,7 @@ import {
   bookingReserveAtom,
   bookingStartAtom,
 } from "./booking-atoms";
-import {
-  type BookingFieldError,
-  type BookingStart,
-  getInitialDraft,
-  validateBookingDraft,
-} from "./booking-draft";
+import type { BookingStart } from "./booking-draft";
 import { BookingForm } from "./booking-form";
 
 /**
@@ -57,37 +52,28 @@ function BookingWidget() {
 }
 
 function BookingSession({ start }: { readonly start: BookingStart }) {
-  const [draft, setDraft] = useState(() => getInitialDraft(start));
-  const [errors, setErrors] = useState<ReadonlyArray<BookingFieldError>>([]);
   const [check, setCheck] = useAtom(bookingCheckAtom);
   const [reservation, setReservation] = useAtom(bookingReserveAtom);
   const [link, openLink] = useAtom(bookingLinkAtom);
+  // A changed or invalid selection makes earlier results stale.
+  const clearResults = () => {
+    setCheck(Atom.Reset);
+    setReservation(Atom.Reset);
+  };
+
   return (
     <BookingForm
       check={check}
-      draft={draft}
-      errors={errors}
       linkFailed={AsyncResult.isFailure(link)}
-      onCheck={() => {
-        const validation = validateBookingDraft(draft, start);
-        setErrors(validation.valid ? [] : validation.errors);
+      onCheck={(selection) => {
         setReservation(Atom.Reset);
-        if (validation.valid) {
-          setCheck({ selection: validation.selection, start });
-        } else {
-          setCheck(Atom.Reset);
-        }
-      }}
-      onDraftChange={(next) => {
-        // A changed selection makes earlier results stale.
-        setDraft(next);
-        setCheck(Atom.Reset);
-        setReservation(Atom.Reset);
+        setCheck({ selection, start });
       }}
       onOpenLink={openLink}
       onReserve={(selection) =>
         setReservation({ selection, locale: start.locale })
       }
+      onSelectionChange={clearResults}
       reservation={reservation}
       start={start}
     />

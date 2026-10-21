@@ -1,14 +1,5 @@
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test";
+import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import { formatCurrencyAmount } from "@deskohub/i18n/currency";
-import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { Cause, Exit } from "effect";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import type { ComponentProps } from "react";
@@ -18,15 +9,23 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import type { BookingMode } from "../show-booking.schema";
-import { getInitialDraft } from "./booking-draft";
-import { BookingForm } from "./booking-form";
 import { BookingRequestFailed, BookingToolFailed } from "./booking-host";
 import {
   availabilityResult,
+  bookingOfferings,
   bookingStart,
+  bookingToday,
   quoteResult,
   reservationResult,
 } from "./booking-widget.test-utils";
+
+registerWorkspaceComponentTestEnv();
+// React DOM picks the input events it handles when it loads, so it loads
+// after the DOM exists.
+const { cleanup, fireEvent, render, waitFor, within } = await import(
+  "@testing-library/react"
+);
+const { BookingForm } = await import("./booking-form");
 
 type FormProps = ComponentProps<typeof BookingForm>;
 
@@ -58,16 +57,18 @@ const renderForm = ({
 } = {}) => {
   const start = bookingStart({ mode, locale, opensLinks });
   const handlers = {
-    onCheck: mock(() => undefined),
-    onDraftChange: mock((_draft: FormProps["draft"]) => undefined),
-    onReserve: mock((_selection: FormProps["selection"]) => undefined),
+    onCheck: mock(
+      (_selection: Parameters<FormProps["onCheck"]>[0]) => undefined
+    ),
+    onSelectionChange: mock(() => undefined),
+    onReserve: mock(
+      (_selection: Parameters<FormProps["onReserve"]>[0]) => undefined
+    ),
     onOpenLink: mock((_url: string) => undefined),
   };
   render(
     <BookingForm
       check={AsyncResult.initial()}
-      draft={getInitialDraft(start)}
-      errors={[]}
       linkFailed={false}
       reservation={AsyncResult.initial()}
       start={start}
@@ -86,13 +87,20 @@ const screen = {
 };
 
 const status = () => screen.queries.getByRole("status");
+const checkButton = (locale: Locale = "en-US") =>
+  screen.queries.getByRole("button", {
+    name: m.bookingWidgetCheck({}, { locale }),
+  });
+/** Picks a radio option, such as a family, by the start of its label. */
+const choose = (label: string) =>
+  fireEvent.click(
+    screen.queries.getByRole("radio", {
+      name: (name) => name.startsWith(label),
+    })
+  );
 const alert = () => screen.queries.getByRole("alert");
 
 describe("BookingForm", () => {
-  beforeAll(() => {
-    registerWorkspaceComponentTestEnv();
-  });
-
   afterEach(() => {
     cleanup();
   });
@@ -382,52 +390,123 @@ describe("BookingForm", () => {
     );
   });
 
-  test("marks an invalid field and describes it with its message", () => {
-    renderForm({ errors: [{ field: "date", reason: "passed" }] });
-
+  test("marks an invalid field and describes it with its message", async () => {
+    const { onCheck, onSelectionChange } = renderForm();
     const date = screen.queries.getByLabelText(
       m.bookingWidgetDateLabel({}, { locale: "en-US" })
     );
-    expect(date.getAttribute("aria-invalid")).toBe("true");
+
+    fireEvent.input(date, { target: { value: "2099-07-27" } });
+    expect(onSelectionChange).toHaveBeenCalledTimes(1);
+    fireEvent.click(checkButton());
+
+    await waitFor(() => expect(date.getAttribute("aria-invalid")).toBe("true"));
     expect(
-      document.getElementById(date.getAttribute("aria-describedby") ?? "")
-        ?.textContent
-    ).toBe(m.bookingWidgetDatePassed({}, { locale: "en-US" }));
+      date
+        .getAttribute("aria-describedby")
+        ?.split(" ")
+        .map((id) => document.getElementById(id)?.textContent)
+    ).toContain(m.bookingWidgetDatePassed({}, { locale: "en-US" }));
+    expect(onCheck).not.toHaveBeenCalled();
+    // An invalid selection clears earlier results too.
+    expect(onSelectionChange).toHaveBeenCalledTimes(2);
   });
 
-  test("names the office range limits in Czech", () => {
-    const start = bookingStart({ mode: "reserve", locale: "cs-CZ" });
-    renderForm({
-      locale: "cs-CZ",
-      draft: { ...getInitialDraft(start), family: "office" },
-      errors: [
-        { field: "dayCount", max: 28 },
-        { field: "seats", max: 4 },
-      ],
-    });
+  test("names the office range limits in Czech", async () => {
+    renderForm({ locale: "cs-CZ" });
 
+    choose(m.bookingWidgetFamilyOffice({}, { locale: "cs-CZ" }));
+    fireEvent.input(
+      screen.queries.getByLabelText(
+        m.reservationOfficeDayCountLabel({}, { locale: "cs-CZ" })
+      ),
+      { target: { value: "29" } }
+    );
+    fireEvent.input(
+      screen.queries.getByLabelText(
+        m.reservationOfficeSeatCountLabel({}, { locale: "cs-CZ" })
+      ),
+      { target: { value: "7" } }
+    );
+    fireEvent.click(checkButton("cs-CZ"));
+
+    await waitFor(() =>
+      expect(
+        screen.queries.getByText(
+          m.bookingWidgetDayCountRange({ max: 28 }, { locale: "cs-CZ" })
+        )
+      ).toBeDefined()
+    );
     expect(
       screen.queries.getByText(
-        m.bookingWidgetDayCountRange({ max: 28 }, { locale: "cs-CZ" })
-      )
-    ).toBeDefined();
-    expect(
-      screen.queries.getByText(
-        m.bookingWidgetSeatCountRange({ max: 4 }, { locale: "cs-CZ" })
+        m.bookingWidgetSeatCountRange({ max: 6 }, { locale: "cs-CZ" })
       )
     ).toBeDefined();
   });
 
-  test("checks the draft from the button, not a form submission", () => {
+  test("drops a start time error once the meeting room takes the whole day", async () => {
     const { onCheck } = renderForm();
 
-    fireEvent.click(
-      screen.queries.getByRole("button", {
-        name: m.bookingWidgetCheck({}, { locale: "en-US" }),
-      })
+    choose(m.bookingWidgetFamilyMeetingRoom({}, { locale: "en-US" }));
+    fireEvent.click(checkButton());
+    const required = m.bookingWidgetStartTimeRequired({}, { locale: "en-US" });
+    await waitFor(() =>
+      expect(screen.queries.getByText(required)).toBeDefined()
     );
 
-    expect(onCheck).toHaveBeenCalledTimes(1);
+    const wholeDay = bookingOfferings().find(
+      ({ duration }) => duration === "day:1"
+    );
+    choose(wholeDay?.duration_label ?? "");
+    expect(screen.queries.queryByText(required)).toBeNull();
+    fireEvent.click(checkButton());
+
+    await waitFor(() =>
+      expect(onCheck).toHaveBeenCalledWith({
+        family: "meeting-room",
+        date: bookingToday,
+        duration: "day:1",
+      })
+    );
+  });
+
+  test("names the monitor setup the view picked when only workstation desks are left", () => {
+    const monitors = bookingOfferings()
+      .find(({ tier }) => tier === "reserved-desk")
+      ?.add_ons.find(({ id }) => id === "workstation")?.options?.[0];
+    renderForm({
+      check: AsyncResult.success({
+        availability: availabilityResult(true),
+        quote: quoteResult(),
+        selection: {
+          family: "cowork",
+          date: bookingToday,
+          tier: "reserved-desk",
+          monitor_option: "2x27-qhd",
+        },
+      }),
+    });
+
+    expect(monitors?.id).toBe("2x27-qhd");
+    expect(status().textContent).toContain(
+      m.bookingWidgetWorkstationIncluded(
+        { monitors: monitors?.name ?? "" },
+        { locale: "en-US" }
+      )
+    );
+  });
+
+  test("checks the draft from the button, not a form submission", async () => {
+    const { onCheck } = renderForm();
+
+    fireEvent.click(checkButton());
+
+    await waitFor(() => expect(onCheck).toHaveBeenCalledTimes(1));
+    expect(onCheck).toHaveBeenCalledWith({
+      family: "cowork",
+      date: bookingToday,
+      tier: "open-space",
+    });
     expect(document.querySelector("form")).toBeNull();
   });
 });

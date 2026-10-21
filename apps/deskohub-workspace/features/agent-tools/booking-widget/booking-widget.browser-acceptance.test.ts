@@ -496,6 +496,9 @@ describe.skipIf(!chromiumAvailable)("booking view", () => {
     });
     try {
       await checkAvailability(view, "en-US");
+      // The harness's sandbox blocks popups, as some hosts' do, so this
+      // checks that the view leaves the anchor and its address to the
+      // browser rather than following the link.
       const link = view.getByRole("link", {
         name: m.bookingWidgetOpenReservationPage({}, { locale: "en-US" }),
       });

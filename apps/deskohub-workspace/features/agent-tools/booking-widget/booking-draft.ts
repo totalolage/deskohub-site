@@ -1,8 +1,15 @@
-import type { Schema } from "effect";
-import type { WorkspaceCoworkCurrentTier } from "@/features/checkout/product-catalog";
-import type { Locale } from "@/features/i18n";
-import type { MeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
-import type { WorkspaceReservationKind } from "@/features/reservation/reservation-kind";
+import { Schema, SchemaGetter } from "effect";
+import {
+  workspaceCoworkCurrentTiers,
+  workspaceProductMonitorOptions,
+} from "@/features/checkout/product-catalog";
+import { type Locale, m } from "@/features/i18n";
+import { meetingRoomReservationDurationKeySchema } from "@/features/reservation/meeting-room-reservation-duration";
+import {
+  type WorkspaceReservationKind,
+  workspaceReservationKindSchema,
+} from "@/features/reservation/reservation-kind";
+import { isPlainDateString } from "@/shared/utils/temporal";
 import type { CheckAvailabilityResult } from "../check-availability.schema";
 import type { AgentOffering } from "../list-offerings.schema";
 import type { BookingMode, ShowBookingResult } from "../show-booking.schema";
@@ -32,17 +39,6 @@ export const getBookingLocale = ({
 }): Locale =>
   requested ?? (hostLocale?.toLowerCase().startsWith("cs") ? "cs-CZ" : "en-US");
 
-/** The customer's choices as the form holds them; numbers stay as typed. */
-export interface BookingDraft {
-  readonly family: WorkspaceReservationKind;
-  readonly tier: WorkspaceCoworkCurrentTier;
-  readonly duration: MeetingRoomReservationDurationKey;
-  readonly date: string;
-  readonly startTime: string;
-  readonly dayCount: string;
-  readonly seats: string;
-}
-
 /** The families the offerings include, in the order they're listed. */
 export const getBookingFamilies = (
   offerings: ReadonlyArray<AgentOffering>
@@ -56,16 +52,6 @@ export const getFamilyOfferings = (
 ) => offerings.filter((offering) => offering.family === family);
 
 const hoursPerDay = 24;
-
-const getOfficeLimits = (offerings: ReadonlyArray<AgentOffering>) => {
-  const office = getFamilyOfferings(offerings, "office")[0];
-  return {
-    maxDays: Math.floor(
-      (office?.max_duration_hours ?? hoursPerDay) / hoursPerDay
-    ),
-    maxSeats: office?.max_seats,
-  };
-};
 
 /** Days from `from` to `to`, both `YYYY-MM-DD`. */
 const daysBetween = (from: string, to: string) =>
@@ -107,105 +93,169 @@ export const getInitialDraft = ({
   };
 };
 
-/** Why a field can't be booked as entered. */
-export type BookingFieldError =
-  | { readonly field: "date"; readonly reason: "required" | "passed" }
-  | {
-      readonly field: "startTime";
-      readonly reason: "required" | "whole-hour";
-    }
-  | { readonly field: "dayCount" | "seats"; readonly max: number };
-
 /** The selection as tool arguments shared by availability, quote, and booking. */
-export type BookingSelection = Schema.JsonObject & {
-  readonly family: WorkspaceReservationKind;
-};
+const bookingSelectionSchema = Schema.Union([
+  Schema.Struct({
+    family: Schema.Literal("cowork"),
+    date: Schema.String,
+    tier: Schema.Literals(workspaceCoworkCurrentTiers),
+    monitor_option: Schema.optionalKey(
+      Schema.Literals(workspaceProductMonitorOptions)
+    ),
+  }),
+  Schema.Struct({
+    family: Schema.Literal("meeting-room"),
+    date: Schema.String,
+    duration: meetingRoomReservationDurationKeySchema,
+    start_time: Schema.optionalKey(Schema.String),
+  }),
+  Schema.Struct({
+    family: Schema.Literal("office"),
+    date: Schema.String,
+    end_date: Schema.optionalKey(Schema.String),
+    seats: Schema.Int,
+  }),
+]);
 
-export type BookingDraftValidation =
-  | { readonly valid: true; readonly selection: BookingSelection }
-  | {
-      readonly valid: false;
-      readonly errors: ReadonlyArray<BookingFieldError>;
-    };
+export type BookingSelection = typeof bookingSelectionSchema.Type;
 
-const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+/** The customer's choices as the form holds them; numbers stay as typed. */
+const bookingDraftSchema = Schema.Struct({
+  family: workspaceReservationKindSchema,
+  tier: Schema.Literals(workspaceCoworkCurrentTiers),
+  duration: meetingRoomReservationDurationKeySchema,
+  date: Schema.String,
+  startTime: Schema.String,
+  dayCount: Schema.String,
+  seats: Schema.String,
+});
+
+export type BookingDraft = typeof bookingDraftSchema.Type;
+
+const wholeMeetingRoomDay = "day:1";
+
 const wholeHourPattern = /^\d{2}:00$/;
 
-const parseCount = (value: string, max: number | undefined) => {
-  const count = Number(value);
-  return Number.isInteger(count) && count >= 1 && count <= (max ?? count)
-    ? count
-    : undefined;
-};
+// The view only reads the form; nothing turns tool arguments back into it.
+const formOnly = <T, E>() =>
+  SchemaGetter.forbidden<T, E>(
+    () => "The booking view doesn't encode a selection into its form."
+  );
+
+/** A whole count from a number field, from 1 to `max`. */
+const countFromInput = (max: number | undefined, message: string) =>
+  Schema.FiniteFromString.check(
+    Schema.isInt({ message }),
+    max === undefined
+      ? Schema.isGreaterThanOrEqualTo(1, { message })
+      : Schema.isBetween({ minimum: 1, maximum: max }, { message })
+  );
 
 /**
- * Checks the draft the way the tools would reject it, so the customer fixes
- * a field before anything is sent, and builds the tool arguments.
+ * Validates the draft the way the tools would reject it, in the view's
+ * language, so the customer fixes a field before anything is sent. Only the
+ * chosen family's fields count; the draft keeps the others for when the
+ * customer switches back. Decodes to the tool arguments.
  */
-export const validateBookingDraft = (
-  draft: BookingDraft,
-  { offerings, today }: Pick<BookingStart, "offerings" | "today">
-): BookingDraftValidation => {
-  const errors: BookingFieldError[] = [];
-  if (!datePattern.test(draft.date)) {
-    errors.push({ field: "date", reason: "required" });
-  } else if (draft.date < today) {
-    errors.push({ field: "date", reason: "passed" });
-  }
+export const makeBookingDraftSchema = ({
+  locale,
+  offerings,
+  today,
+}: Pick<BookingStart, "locale" | "offerings" | "today">) => {
+  const date = Schema.String.check(
+    isPlainDateString({ message: m.bookingWidgetDateRequired({}, { locale }) }),
+    Schema.makeFilter((value: string) => value >= today, {
+      message: m.bookingWidgetDatePassed({}, { locale }),
+    })
+  );
+  const office = getFamilyOfferings(offerings, "office")[0];
+  const maxDays = Math.floor(
+    (office?.max_duration_hours ?? hoursPerDay) / hoursPerDay
+  );
+  const maxSeats = office?.max_seats;
 
-  switch (draft.family) {
-    case "cowork":
-      return errors.length > 0
-        ? { valid: false, errors }
-        : {
-            valid: true,
-            selection: { family: "cowork", date: draft.date, tier: draft.tier },
-          };
-    case "meeting-room": {
-      const wholeDay = draft.duration === "day:1";
-      if (!wholeDay && draft.startTime === "") {
-        errors.push({ field: "startTime", reason: "required" });
-      } else if (!wholeDay && !wholeHourPattern.test(draft.startTime)) {
-        errors.push({ field: "startTime", reason: "whole-hour" });
-      }
-      return errors.length > 0
-        ? { valid: false, errors }
-        : {
-            valid: true,
-            selection: {
-              family: "meeting-room",
-              date: draft.date,
-              duration: draft.duration,
-              ...(!wholeDay && { start_time: draft.startTime }),
-            },
-          };
-    }
-    case "office": {
-      const { maxDays, maxSeats } = getOfficeLimits(offerings);
-      const dayCount = parseCount(draft.dayCount, maxDays);
-      const seats = parseCount(draft.seats, maxSeats);
-      if (dayCount === undefined) {
-        errors.push({ field: "dayCount", max: maxDays });
-      }
-      if (seats === undefined) {
-        errors.push({ field: "seats", max: maxSeats ?? 1 });
-      }
-      return errors.length > 0 || dayCount === undefined || seats === undefined
-        ? { valid: false, errors }
-        : {
-            valid: true,
-            selection: {
-              family: "office",
-              date: draft.date,
-              ...(dayCount > 1 && {
-                end_date: addDays(draft.date, dayCount - 1),
+  return Schema.Union([
+    Schema.Struct({
+      ...bookingDraftSchema.fields,
+      family: Schema.Literal("cowork"),
+      date,
+    }).pipe(
+      Schema.decodeTo(bookingSelectionSchema.members[0], {
+        decode: SchemaGetter.transform(({ family, date, tier }) => ({
+          family,
+          date,
+          tier,
+        })),
+        encode: formOnly(),
+      })
+    ),
+    Schema.Struct({
+      ...bookingDraftSchema.fields,
+      family: Schema.Literal("meeting-room"),
+      date,
+    })
+      .check(
+        Schema.makeFilter(({ duration, startTime }) => {
+          if (duration === wholeMeetingRoomDay) return undefined;
+          if (startTime === "") {
+            return {
+              path: ["startTime"],
+              issue: m.bookingWidgetStartTimeRequired({}, { locale }),
+            };
+          }
+          return (
+            wholeHourPattern.test(startTime) || {
+              path: ["startTime"],
+              issue: m.reservationValidationMeetingRoomStartWholeHour(
+                {},
+                { locale }
+              ),
+            }
+          );
+        })
+      )
+      .pipe(
+        Schema.decodeTo(bookingSelectionSchema.members[1], {
+          decode: SchemaGetter.transform(
+            ({ family, date, duration, startTime }) => ({
+              family,
+              date,
+              duration,
+              ...(duration !== wholeMeetingRoomDay && {
+                start_time: startTime,
               }),
-              seats,
-            },
-          };
-    }
-  }
+            })
+          ),
+          encode: formOnly(),
+        })
+      ),
+    Schema.Struct({
+      ...bookingDraftSchema.fields,
+      family: Schema.Literal("office"),
+      date,
+      dayCount: countFromInput(
+        maxDays,
+        m.bookingWidgetDayCountRange({ max: maxDays }, { locale })
+      ),
+      seats: countFromInput(
+        maxSeats,
+        m.bookingWidgetSeatCountRange({ max: maxSeats ?? 1 }, { locale })
+      ),
+    }).pipe(
+      Schema.decodeTo(bookingSelectionSchema.members[2], {
+        decode: SchemaGetter.transform(({ family, date, dayCount, seats }) => ({
+          family,
+          date,
+          ...(dayCount > 1 && { end_date: addDays(date, dayCount - 1) }),
+          seats,
+        })),
+        encode: formOnly(),
+      })
+    ),
+  ]);
 };
+
+export type BookingDraftSchema = ReturnType<typeof makeBookingDraftSchema>;
 
 /**
  * The selection to quote and book after an availability check. A Reserved
@@ -218,6 +268,7 @@ export const withRequiredWorkstation = (
   availability: CheckAvailabilityResult,
   offerings: ReadonlyArray<AgentOffering>
 ): BookingSelection => {
+  if (selection.family !== "cowork") return selection;
   const required = availability.days.some(({ offers }) =>
     offers?.some(
       (offer) => offer.tier === selection.tier && offer.workstation_required

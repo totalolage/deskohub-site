@@ -129,8 +129,12 @@ const connectBookingHost = Effect.fn("bookingWidget.connect")(function* (
       catch: (cause) => new BookingRequestFailed({ cause }),
     }).pipe(Effect.flatMap(decodeToolResult(schema)));
 
-  // Hosts send the arguments before the result, if at all.
-  const locale = Deferred.await(toolResult).pipe(
+  // Hosts send the arguments before the result, if at all, so the language
+  // is known once either arrives.
+  const locale = Effect.raceFirst(
+    Deferred.await(toolInput),
+    Deferred.await(toolResult)
+  ).pipe(
     Effect.andThen(Deferred.poll(toolInput)),
     Effect.flatMap(Effect.transposeOption),
     Effect.map((input) =>

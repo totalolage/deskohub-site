@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
+import { type Locale, m } from "@/features/i18n";
 import {
   type BookingDraft,
   getBookingLocale,
   getInitialDraft,
-  validateBookingDraft,
+  makeBookingDraftSchema,
   withRequiredWorkstation,
 } from "./booking-draft";
 import {
@@ -77,123 +79,109 @@ describe("getInitialDraft", () => {
   });
 });
 
-describe("validateBookingDraft", () => {
-  test("builds the cowork arguments for one date and tier", () => {
-    expect(
-      validateBookingDraft(draft({ tier: "reserved-desk" }), start)
-    ).toEqual({
-      valid: true,
-      selection: {
-        family: "cowork",
-        date: bookingToday,
-        tier: "reserved-desk",
-      },
+/** Validates the draft as the form's resolver does. */
+const resolve = (change: Partial<BookingDraft>, locale: Locale = "en-US") =>
+  effectSchemaResolver(makeBookingDraftSchema({ ...start, locale }))(
+    draft(change),
+    undefined,
+    { fields: {}, shouldUseNativeValidation: false }
+  );
+
+/** Each invalid field's message. */
+const messages = async (
+  change: Partial<BookingDraft>,
+  locale: Locale = "en-US"
+) =>
+  Object.fromEntries(
+    Object.entries((await resolve(change, locale)).errors).map(
+      ([field, error]) => [field, error?.message]
+    )
+  );
+
+describe("makeBookingDraftSchema", () => {
+  test("builds the cowork arguments for one date and tier", async () => {
+    expect(await resolve({ tier: "reserved-desk" })).toEqual({
+      values: { family: "cowork", date: bookingToday, tier: "reserved-desk" },
+      errors: {},
     });
   });
 
-  test("rejects a missing or past date", () => {
-    expect(validateBookingDraft(draft({ date: "" }), start)).toEqual({
-      valid: false,
-      errors: [{ field: "date", reason: "required" }],
+  test("rejects a missing or past date", async () => {
+    expect(await messages({ date: "" })).toEqual({
+      date: m.bookingWidgetDateRequired({}, { locale: "en-US" }),
     });
-    expect(validateBookingDraft(draft({ date: "2099-07-27" }), start)).toEqual({
-      valid: false,
-      errors: [{ field: "date", reason: "passed" }],
+    expect(await messages({ date: "2099-07-27" }, "cs-CZ")).toEqual({
+      date: m.bookingWidgetDatePassed({}, { locale: "cs-CZ" }),
     });
   });
 
-  test("asks an hourly meeting room for a start time on the hour", () => {
+  test("asks an hourly meeting room for a start time on the hour", async () => {
     const meetingRoom = { family: "meeting-room", duration: "hour:4" } as const;
 
-    expect(validateBookingDraft(draft(meetingRoom), start)).toEqual({
-      valid: false,
-      errors: [{ field: "startTime", reason: "required" }],
+    expect(await messages(meetingRoom)).toEqual({
+      startTime: m.bookingWidgetStartTimeRequired({}, { locale: "en-US" }),
+    });
+    expect(await messages({ ...meetingRoom, startTime: "09:30" })).toEqual({
+      startTime: m.reservationValidationMeetingRoomStartWholeHour(
+        {},
+        { locale: "en-US" }
+      ),
     });
     expect(
-      validateBookingDraft(draft({ ...meetingRoom, startTime: "09:30" }), start)
+      (await resolve({ ...meetingRoom, startTime: "09:00" })).values
     ).toEqual({
-      valid: false,
-      errors: [{ field: "startTime", reason: "whole-hour" }],
-    });
-    expect(
-      validateBookingDraft(draft({ ...meetingRoom, startTime: "09:00" }), start)
-    ).toEqual({
-      valid: true,
-      selection: {
-        family: "meeting-room",
-        date: bookingToday,
-        duration: "hour:4",
-        start_time: "09:00",
-      },
+      family: "meeting-room",
+      date: bookingToday,
+      duration: "hour:4",
+      start_time: "09:00",
     });
   });
 
-  test("books a whole meeting-room day without a start time", () => {
+  test("books a whole meeting-room day without a start time", async () => {
     expect(
-      validateBookingDraft(
-        draft({
+      (
+        await resolve({
           family: "meeting-room",
           duration: "day:1",
           startTime: "09:30",
-        }),
-        start
-      )
+        })
+      ).values
     ).toEqual({
-      valid: true,
-      selection: {
-        family: "meeting-room",
-        date: bookingToday,
-        duration: "day:1",
-      },
+      family: "meeting-room",
+      date: bookingToday,
+      duration: "day:1",
     });
   });
 
-  test("turns office days into an end date and keeps days and seats within the office limits", () => {
+  test("ignores the fields of the families not chosen", async () => {
+    expect(
+      (await resolve({ startTime: "09:30", dayCount: "", seats: "99" })).errors
+    ).toEqual({});
+  });
+
+  test("turns office days into an end date and keeps days and seats within the office limits", async () => {
     const office = { family: "office" } as const;
 
     expect(
-      validateBookingDraft(
-        draft({ ...office, dayCount: "3", seats: "2" }),
-        start
-      )
+      (await resolve({ ...office, dayCount: "3", seats: "2" })).values
     ).toEqual({
-      valid: true,
-      selection: {
-        family: "office",
-        date: bookingToday,
-        end_date: "2099-07-30",
-        seats: 2,
-      },
+      family: "office",
+      date: bookingToday,
+      end_date: "2099-07-30",
+      seats: 2,
     });
     expect(
-      validateBookingDraft(
-        draft({ ...office, dayCount: "1", seats: "1" }),
-        start
-      )
-    ).toEqual({
-      valid: true,
-      selection: { family: "office", date: bookingToday, seats: 1 },
-    });
+      (await resolve({ ...office, dayCount: "1", seats: "1" })).values
+    ).toEqual({ family: "office", date: bookingToday, seats: 1 });
     expect(
-      validateBookingDraft(
-        draft({ ...office, dayCount: "29", seats: "7" }),
-        start
-      )
+      await messages({ ...office, dayCount: "29", seats: "7" }, "cs-CZ")
     ).toEqual({
-      valid: false,
-      errors: [
-        { field: "dayCount", max: 28 },
-        { field: "seats", max: 6 },
-      ],
+      dayCount: m.bookingWidgetDayCountRange({ max: 28 }, { locale: "cs-CZ" }),
+      seats: m.bookingWidgetSeatCountRange({ max: 6 }, { locale: "cs-CZ" }),
     });
-    expect(
-      validateBookingDraft(
-        draft({ ...office, dayCount: "1.5", seats: "" }),
-        start
-      )
-    ).toMatchObject({
-      valid: false,
-      errors: [{ field: "dayCount" }, { field: "seats" }],
+    expect(await messages({ ...office, dayCount: "1.5", seats: "" })).toEqual({
+      dayCount: m.bookingWidgetDayCountRange({ max: 28 }, { locale: "en-US" }),
+      seats: m.bookingWidgetSeatCountRange({ max: 6 }, { locale: "en-US" }),
     });
   });
 });

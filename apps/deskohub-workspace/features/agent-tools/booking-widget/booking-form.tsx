@@ -1,12 +1,20 @@
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { formatCurrencyAmount } from "@deskohub/i18n/currency";
 import { Cause, Match, Option } from "effect";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
-import { type ReactNode, useId } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
-import { Label } from "@/shared/components/ui/label";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import type { AgentToolErrorResult } from "../agent-tool-error";
 import type { AgentToolMoney } from "../agent-tool-money";
@@ -15,12 +23,13 @@ import type { GetQuoteResult } from "../get-quote.schema";
 import type { AgentOffering } from "../list-offerings.schema";
 import type { StartReservationResult } from "../start-reservation.schema";
 import {
-  type BookingDraft,
-  type BookingFieldError,
+  type BookingDraftSchema,
   type BookingSelection,
   type BookingStart,
   getBookingFamilies,
   getFamilyOfferings,
+  getInitialDraft,
+  makeBookingDraftSchema,
 } from "./booking-draft";
 import type { BookingRequestFailed, BookingToolFailed } from "./booking-host";
 
@@ -36,9 +45,6 @@ type BookingFailure = BookingToolFailed | BookingRequestFailed;
 
 type BookingFormProps = {
   readonly start: BookingStart;
-  readonly draft: BookingDraft;
-  /** Field errors from the last attempt to check the draft. */
-  readonly errors: ReadonlyArray<BookingFieldError>;
   readonly check: AsyncResult.AsyncResult<BookingCheck, BookingFailure>;
   readonly reservation: AsyncResult.AsyncResult<
     StartReservationResult,
@@ -46,8 +52,10 @@ type BookingFormProps = {
   >;
   /** Whether the host failed to open the last link. */
   readonly linkFailed: boolean;
-  readonly onDraftChange: (draft: BookingDraft) => void;
-  readonly onCheck: () => void;
+  /** Called on each change to the selection, which makes results stale. */
+  readonly onSelectionChange: () => void;
+  /** Called with the tool arguments when the selection is valid. */
+  readonly onCheck: (selection: BookingSelection) => void;
   readonly onReserve: (selection: BookingSelection) => void;
   readonly onOpenLink: (url: string) => void;
 };
@@ -114,25 +122,6 @@ const getFailureMessage = (
         : m.bookingWidgetRequestFailed({}, { locale }),
   });
 
-const getFieldErrorMessage = (error: BookingFieldError, locale: Locale) => {
-  switch (error.field) {
-    case "date":
-      return {
-        required: m.bookingWidgetDateRequired,
-        passed: m.bookingWidgetDatePassed,
-      }[error.reason]({}, { locale });
-    case "startTime":
-      return {
-        required: m.bookingWidgetStartTimeRequired,
-        "whole-hour": m.reservationValidationMeetingRoomStartWholeHour,
-      }[error.reason]({}, { locale });
-    case "dayCount":
-      return m.bookingWidgetDayCountRange({ max: error.max }, { locale });
-    case "seats":
-      return m.bookingWidgetSeatCountRange({ max: error.max }, { locale });
-  }
-};
-
 /**
  * The booking view: the customer picks a family, its options and a date,
  * checks availability and the price, and continues on the site, either
@@ -142,26 +131,38 @@ const getFieldErrorMessage = (error: BookingFieldError, locale: Locale) => {
  */
 export function BookingForm({
   start,
-  draft,
-  errors,
   check,
   reservation,
   linkFailed,
-  onDraftChange,
+  onSelectionChange,
   onCheck,
   onReserve,
   onOpenLink,
 }: BookingFormProps) {
   const { locale } = start;
-  const familyOfferings = getFamilyOfferings(start.offerings, draft.family);
+  const form = useForm<
+    BookingDraftSchema["Encoded"],
+    unknown,
+    BookingDraftSchema["Type"]
+  >({
+    defaultValues: getInitialDraft(start),
+    resolver: effectSchemaResolver(makeBookingDraftSchema(start)),
+  });
+  const [family, duration] = useWatch({
+    control: form.control,
+    name: ["family", "duration"],
+  });
+  // Another family or duration asks for other fields, so earlier field
+  // errors no longer apply.
+  const changeOption = () => {
+    form.clearErrors();
+    onSelectionChange();
+  };
+  const familyOfferings = getFamilyOfferings(start.offerings, family);
   const checked = AsyncResult.isSuccess(check) ? check.value : undefined;
   const reserved = AsyncResult.isSuccess(reservation)
     ? reservation.value
     : undefined;
-  const update = (change: Partial<BookingDraft>) =>
-    onDraftChange({ ...draft, ...change });
-  const fieldError = (field: BookingFieldError["field"]) =>
-    errors.find((error) => error.field === field);
   const link = (url: string, label: string) => (
     <SiteLink
       label={label}
@@ -174,145 +175,191 @@ export function BookingForm({
   return (
     <main className="space-y-5 p-4 text-navy-blue">
       <h1 className="text-xl">{m.bookingWidgetTitle({}, { locale })}</h1>
-      {/* Not a form: hosts sandbox the view without `allow-forms`, so the
-          browser blocks a submission before its submit event. */}
-      <div className="space-y-5">
-        <div className="space-y-2">
-          {/* The group's legend names it for assistive technology. */}
-          <p aria-hidden="true" className="text-sm font-medium">
-            {m.bookingWidgetFamilyLabel({}, { locale })}
-          </p>
-          <SegmentedControl
-            label={m.bookingWidgetFamilyLabel({}, { locale })}
-            name="family"
-            onValueChange={(family) => update({ family })}
-            options={getBookingFamilies(start.offerings).map((family) => ({
-              value: family,
-              label: {
-                cowork: m.bookingWidgetFamilyCowork,
-                "meeting-room": m.bookingWidgetFamilyMeetingRoom,
-                office: m.bookingWidgetFamilyOffice,
-              }[family]({}, { locale }),
-            }))}
-            value={draft.family}
-          />
-        </div>
-
-        {draft.family === "cowork" && (
-          <OfferingChoices
-            label={m.bookingWidgetTierLabel({}, { locale })}
-            locale={locale}
-            name="tier"
-            offerings={familyOfferings}
-            onSelect={({ tier }) => tier && update({ tier })}
-            selected={(offering) => offering.tier === draft.tier}
-          />
-        )}
-        {draft.family === "meeting-room" && (
-          <OfferingChoices
-            label={m.reservationMeetingRoomDurationLabel({}, { locale })}
-            locale={locale}
-            name="duration"
-            offerings={familyOfferings}
-            onSelect={({ duration }) => duration && update({ duration })}
-            selected={(offering) => offering.duration === draft.duration}
-          />
-        )}
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            error={fieldError("date")}
-            label={
-              draft.family === "office"
-                ? m.bookingWidgetFirstDayLabel({}, { locale })
-                : m.bookingWidgetDateLabel({}, { locale })
-            }
-            locale={locale}
-          >
-            {(props) => (
-              <Input
-                {...props}
-                min={start.today}
-                onChange={(event) => update({ date: event.target.value })}
-                type="date"
-                value={draft.date}
-              />
-            )}
-          </Field>
-          {draft.family === "meeting-room" && draft.duration !== "day:1" && (
-            <Field
-              error={fieldError("startTime")}
-              label={m.bookingWidgetStartTimeLabel({}, { locale })}
-              locale={locale}
-            >
-              {(props) => (
-                <Input
-                  {...props}
-                  onChange={(event) =>
-                    update({ startTime: event.target.value })
-                  }
-                  step={3600}
-                  type="time"
-                  value={draft.startTime}
+      {/* Not a form element: hosts sandbox the view without `allow-forms`,
+          so the browser blocks a submission before its submit event. */}
+      <Form {...form}>
+        <div className="space-y-5">
+          <div className="space-y-2">
+            {/* The group's legend names it for assistive technology. */}
+            <p aria-hidden="true" className="text-sm font-medium">
+              {m.bookingWidgetFamilyLabel({}, { locale })}
+            </p>
+            <FormField
+              control={form.control}
+              name="family"
+              render={({ field }) => (
+                <SegmentedControl
+                  label={m.bookingWidgetFamilyLabel({}, { locale })}
+                  name={field.name}
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    changeOption();
+                  }}
+                  options={getBookingFamilies(start.offerings).map((value) => ({
+                    value,
+                    label: {
+                      cowork: m.bookingWidgetFamilyCowork,
+                      "meeting-room": m.bookingWidgetFamilyMeetingRoom,
+                      office: m.bookingWidgetFamilyOffice,
+                    }[value]({}, { locale }),
+                  }))}
+                  value={field.value}
                 />
               )}
-            </Field>
-          )}
-          {draft.family === "office" && (
-            <>
-              <Field
-                error={fieldError("dayCount")}
-                label={m.reservationOfficeDayCountLabel({}, { locale })}
-                locale={locale}
-              >
-                {(props) => (
-                  <Input
-                    {...props}
-                    inputMode="numeric"
-                    min={1}
-                    onChange={(event) =>
-                      update({ dayCount: event.target.value })
-                    }
-                    type="number"
-                    value={draft.dayCount}
-                  />
-                )}
-              </Field>
-              <Field
-                error={fieldError("seats")}
-                label={m.reservationOfficeSeatCountLabel({}, { locale })}
-                locale={locale}
-              >
-                {(props) => (
-                  <Input
-                    {...props}
-                    inputMode="numeric"
-                    min={1}
-                    onChange={(event) => update({ seats: event.target.value })}
-                    type="number"
-                    value={draft.seats}
-                  />
-                )}
-              </Field>
-            </>
-          )}
-        </div>
+            />
+          </div>
 
-        <Button
-          onClick={onCheck}
-          pending={AsyncResult.isWaiting(check)}
-          type="button"
-        >
-          {m.bookingWidgetCheck({}, { locale })}
-        </Button>
-      </div>
+          {family === "cowork" && (
+            <FormField
+              control={form.control}
+              name="tier"
+              render={({ field }) => (
+                <OfferingChoices
+                  label={m.bookingWidgetTierLabel({}, { locale })}
+                  locale={locale}
+                  name={field.name}
+                  offerings={familyOfferings}
+                  onSelect={({ tier }) => {
+                    if (!tier) return;
+                    field.onChange(tier);
+                    onSelectionChange();
+                  }}
+                  selected={(offering) => offering.tier === field.value}
+                />
+              )}
+            />
+          )}
+          {family === "meeting-room" && (
+            <FormField
+              control={form.control}
+              name="duration"
+              render={({ field }) => (
+                <OfferingChoices
+                  label={m.reservationMeetingRoomDurationLabel({}, { locale })}
+                  locale={locale}
+                  name={field.name}
+                  offerings={familyOfferings}
+                  onSelect={(offering) => {
+                    if (!offering.duration) return;
+                    field.onChange(offering.duration);
+                    changeOption();
+                  }}
+                  selected={(offering) => offering.duration === field.value}
+                />
+              )}
+            />
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="date"
+              render={({ field, fieldState }) => (
+                <FormItem>
+                  <FormLabel>
+                    {family === "office"
+                      ? m.bookingWidgetFirstDayLabel({}, { locale })
+                      : m.bookingWidgetDateLabel({}, { locale })}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      min={start.today}
+                      onChange={(event) => {
+                        field.onChange(event);
+                        onSelectionChange();
+                      }}
+                      type="date"
+                      variant={fieldState.invalid ? "error" : "default"}
+                    />
+                  </FormControl>
+                  <FieldMessage />
+                </FormItem>
+              )}
+            />
+            {family === "meeting-room" && duration !== "day:1" && (
+              <FormField
+                control={form.control}
+                name="startTime"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {m.bookingWidgetStartTimeLabel({}, { locale })}
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        onChange={(event) => {
+                          field.onChange(event);
+                          onSelectionChange();
+                        }}
+                        step={3600}
+                        type="time"
+                        variant={fieldState.invalid ? "error" : "default"}
+                      />
+                    </FormControl>
+                    <FieldMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+            {family === "office" &&
+              (
+                [
+                  ["dayCount", m.reservationOfficeDayCountLabel],
+                  ["seats", m.reservationOfficeSeatCountLabel],
+                ] as const
+              ).map(([name, label]) => (
+                <FormField
+                  control={form.control}
+                  key={name}
+                  name={name}
+                  render={({ field, fieldState }) => (
+                    <FormItem>
+                      <FormLabel>{label({}, { locale })}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          inputMode="numeric"
+                          min={1}
+                          onChange={(event) => {
+                            field.onChange(event);
+                            onSelectionChange();
+                          }}
+                          type="number"
+                          variant={fieldState.invalid ? "error" : "default"}
+                        />
+                      </FormControl>
+                      <FieldMessage />
+                    </FormItem>
+                  )}
+                />
+              ))}
+          </div>
+
+          <Button
+            onClick={form.handleSubmit(
+              (selection) => onCheck(selection),
+              () => onSelectionChange()
+            )}
+            pending={AsyncResult.isWaiting(check)}
+            type="button"
+          >
+            {m.bookingWidgetCheck({}, { locale })}
+          </Button>
+        </div>
+      </Form>
 
       <div aria-live="polite" className="space-y-2 text-sm" role="status">
         {AsyncResult.isWaiting(check) && (
           <p>{m.bookingWidgetChecking({}, { locale })}</p>
         )}
         {checked && !AsyncResult.isWaiting(check) && (
-          <CheckSummary check={checked} locale={locale} />
+          <CheckSummary
+            check={checked}
+            locale={locale}
+            offerings={start.offerings}
+          />
         )}
         {AsyncResult.isWaiting(reservation) && (
           <p>{m.bookingWidgetReserving({}, { locale })}</p>
@@ -392,12 +439,24 @@ export function BookingForm({
 }
 
 function CheckSummary({
-  check: { availability, quote },
+  check: { availability, quote, selection },
   locale,
+  offerings,
 }: {
   readonly check: BookingCheck;
   readonly locale: Locale;
+  readonly offerings: ReadonlyArray<AgentOffering>;
 }) {
+  // The quote includes the workstation the view picked when only
+  // workstation desks were left.
+  const monitors =
+    selection?.family === "cowork" && selection.monitor_option
+      ? offerings
+          .find(({ tier }) => tier === selection.tier)
+          ?.add_ons.find(({ id }) => id === "workstation")
+          ?.options?.find(({ id }) => id === selection.monitor_option)?.name
+      : undefined;
+
   return (
     <>
       <p className="font-semibold">
@@ -413,6 +472,11 @@ function CheckSummary({
               { locale }
             )}
           </p>
+          {monitors && (
+            <p>
+              {m.bookingWidgetWorkstationIncluded({ monitors }, { locale })}
+            </p>
+          )}
           {quote.discount.amount > 0 && (
             <p>
               {m.bookingWidgetDiscount(
@@ -450,7 +514,12 @@ function OfferingChoices({
       <legend className="mb-2 text-sm font-medium">{label}</legend>
       <div className="grid gap-2 sm:grid-cols-2">
         {offerings.map((offering) => (
-          <ChoiceCard align="center" key={offering.name} tone="plain">
+          <ChoiceCard
+            align="center"
+            // Meeting-room durations share a name.
+            key={offering.tier ?? offering.duration ?? offering.name}
+            tone="plain"
+          >
             <input
               checked={selected(offering)}
               name={name}
@@ -479,42 +548,9 @@ function OfferingChoices({
   );
 }
 
-/** A labelled input with its validation message. */
-function Field({
-  children,
-  error,
-  label,
-  locale,
-}: {
-  readonly children: (props: {
-    readonly id: string;
-    readonly "aria-invalid": boolean;
-    readonly "aria-describedby"?: string;
-    readonly variant: "default" | "error";
-  }) => ReactNode;
-  readonly error: BookingFieldError | undefined;
-  readonly label: string;
-  readonly locale: Locale;
-}) {
-  const id = useId();
-  const errorId = `${id}-error`;
-
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      {children({
-        id,
-        "aria-invalid": error !== undefined,
-        ...(error && { "aria-describedby": errorId }),
-        variant: error ? "error" : "default",
-      })}
-      {error && (
-        <p className="text-xs text-burned-orange-ink" id={errorId}>
-          {getFieldErrorMessage(error, locale)}
-        </p>
-      )}
-    </div>
-  );
+/** A field's validation message, in the view's small alert style. */
+function FieldMessage() {
+  return <FormMessage className="text-xs text-burned-orange-ink" />;
 }
 
 /**

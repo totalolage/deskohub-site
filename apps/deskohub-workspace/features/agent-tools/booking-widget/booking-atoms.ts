@@ -15,7 +15,7 @@ const bookingRuntime = Atom.runtime(BookingHost.Live);
 
 /** The view's language, for every message it shows, startup failures included. */
 export const bookingLocaleAtom = bookingRuntime
-  .atom(BookingHost.use((host) => host.locale))
+  .atom(Effect.service(BookingHost).pipe(Effect.flatMap((host) => host.locale)))
   .pipe(Atom.keepAlive);
 
 /** The `show_booking` result the view opens with. */
