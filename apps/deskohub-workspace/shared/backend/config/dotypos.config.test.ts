@@ -3,7 +3,10 @@ import "@/shared/testing/workspace-test-env";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { DotyposService, ExternalAPIError } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
-import { availabilityTags } from "@/shared/utils/cache-tags";
+import {
+  availabilityTags,
+  reservationRecordTags,
+} from "@/shared/utils/cache-tags";
 
 const revalidateTag = mock(
   (_tag: string, _profile: { readonly expire: number }) => undefined
@@ -11,9 +14,7 @@ const revalidateTag = mock(
 
 mock.module("next/cache", () => ({ revalidateTag }));
 
-const { ReservationWritesExpireAvailability } = await import(
-  "./dotypos.config"
-);
+const { ReservationWritesExpireSharedReads } = await import("./dotypos.config");
 
 const failure = new ExternalAPIError({
   service: "dotypos",
@@ -36,7 +37,7 @@ const runWithDotypos = <A, E>(
     Effect.result(
       Effect.flatMap(DotyposService, use).pipe(
         Effect.provide(
-          ReservationWritesExpireAvailability.pipe(Layer.provide(dotypos))
+          ReservationWritesExpireSharedReads.pipe(Layer.provide(dotypos))
         )
       )
     )
@@ -48,7 +49,7 @@ beforeEach(() => {
 });
 
 describe("Dotypos reservation writes", () => {
-  test("expire shared availability reservations after each occupancy write", async () => {
+  test("expire shared availability and reservation records after each occupancy write", async () => {
     await runWithDotypos((service) =>
       Effect.all([
         service.createReservation({} as never),
@@ -58,7 +59,17 @@ describe("Dotypos reservation writes", () => {
 
     expect(revalidateTag.mock.calls).toEqual([
       [availabilityTags.reservations, { expire: 1 }],
+      [reservationRecordTags.records, { expire: 1 }],
       [availabilityTags.reservations, { expire: 1 }],
+      [reservationRecordTags.records, { expire: 1 }],
+    ]);
+  });
+
+  test("expire only the reservation records when a hold is confirmed", async () => {
+    await runWithDotypos((service) => service.confirmReservation({} as never));
+
+    expect(revalidateTag.mock.calls).toEqual([
+      [reservationRecordTags.records, { expire: 1 }],
     ]);
   });
 
@@ -68,7 +79,7 @@ describe("Dotypos reservation writes", () => {
     );
 
     expect(result._tag).toBe("Failure");
-    expect(revalidateTag).toHaveBeenCalledTimes(1);
+    expect(revalidateTag).toHaveBeenCalledTimes(2);
   });
 
   test("keep the write result when cache invalidation throws", async () => {
@@ -83,10 +94,8 @@ describe("Dotypos reservation writes", () => {
     expect(result).toMatchObject({ _tag: "Success", success: "created" });
   });
 
-  test("leave reads and confirmations untouched", async () => {
-    await runWithDotypos((service) =>
-      Effect.all([service.getTables(), service.confirmReservation({} as never)])
-    );
+  test("leave reads untouched", async () => {
+    await runWithDotypos((service) => service.getTables());
 
     expect(getTables).toHaveBeenCalledTimes(1);
     expect(revalidateTag).not.toHaveBeenCalled();

@@ -30,3 +30,13 @@ export const getSearchParam = (
   const value = searchParams[key];
   return Array.isArray(value) ? value[0] : value;
 };
+
+/** The record as query parameters, keeping every value of a repeated key. */
+export const toURLSearchParams = (
+  searchParams: SearchParamsRecord
+): URLSearchParams =>
+  new URLSearchParams(
+    Object.entries(searchParams).flatMap(([key, value]) =>
+      [value ?? []].flat().map((item) => [key, item])
+    )
+  );

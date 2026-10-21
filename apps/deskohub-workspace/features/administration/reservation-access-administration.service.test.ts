@@ -26,6 +26,7 @@ const baseGrant = {
   deviceId: "EK1",
   state: "failed",
   providerCredentialId: null,
+  accessName: "Deskohub grant-id",
   scheduledAccessStartsAt: Temporal.Instant.from("2099-07-01T08:00:00Z"),
   accessStartsAt: Temporal.Instant.from("2099-07-01T08:00:00Z"),
   accessEndsAt: Temporal.Instant.from("2099-07-01T16:00:00Z"),

@@ -81,7 +81,7 @@ type AutomationPlanSummary = {
 
 interface IAutomationPlanner {
   /**
-   * One minute's planning. Every step is its own short idempotent
+   * One cron tick's planning. Every step is its own short idempotent
    * transaction, so overlapping runs are harmless and need no lease.
    */
   readonly plan: Effect.Effect<AutomationPlanSummary, DatabaseQueryError>;

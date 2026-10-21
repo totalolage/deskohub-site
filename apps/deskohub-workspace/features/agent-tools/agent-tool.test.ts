@@ -4,33 +4,42 @@ import { Effect, Schema } from "effect";
 import {
   agentToolLocaleField,
   defineAgentTool,
+  defineSignedInAgentTool,
   getRequestedAgentToolLocale,
   selectAgentTools,
 } from "./agent-tool";
 
 const makeTool = (
   name: string,
-  options: {
+  {
+    access,
+    readOnly,
+  }: {
     readonly access: "public" | "signed-in";
     readonly readOnly: boolean;
   }
-) =>
-  defineAgentTool({
+) => {
+  const definition = {
     name,
     title: name,
     description: name,
-    ...options,
+    readOnly,
     unavailableCode: "quote_unavailable",
     input: Schema.Struct({
       seats: Schema.Int,
       locale: agentToolLocaleField,
     }),
     output: Schema.Struct({ seats: Schema.Int }),
-    run: ({ seats }) =>
+    run: ({ seats }: { readonly seats: number }) =>
       seats < 0
         ? Effect.die(new Error("negative seats"))
         : Effect.succeed({ seats }),
-  });
+  } as const;
+
+  return access === "public"
+    ? defineAgentTool({ ...definition, access })
+    : defineSignedInAgentTool({ ...definition, scope: "reservations:read" });
+};
 
 const tools = [
   makeTool("public_read", { access: "public", readOnly: true }),

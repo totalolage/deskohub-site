@@ -1,13 +1,16 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import type {
   CallToolResult,
   InitializeResult,
   ListToolsResult,
 } from "@modelcontextprotocol/client";
-import { Effect, type Schema } from "effect";
+import { DateTime, Effect, Layer, Schema } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import type { AgentTrafficEvent } from "@/shared/backend/agent-traffic/agent-traffic-events";
+import type { RequestBudgetPolicy } from "@/shared/backend/request-budget/request-budget.service";
 
 const agentTrafficEvents = await import(
   "@/shared/backend/agent-traffic/agent-traffic-events"
@@ -28,6 +31,86 @@ let rateLimit: { rateLimited: boolean; error?: "not-found" | "blocked" } = {
 const checkRateLimit = mock(async () => rateLimit);
 mock.module("@vercel/firewall", () => ({ checkRateLimit }));
 
+const mcpResource = "http://deskohub.test/api/mcp";
+const resourceMetadata =
+  "http://deskohub.test/.well-known/oauth-protected-resource/api/mcp";
+const agentAccountId = "agent-test-account";
+const agentClientId = "https://agent.example/oauth-client.json";
+
+/** Access tokens the fake authorization server knows, with their scopes. */
+const accessTokens = new Map<string, string>();
+let authorizationServerReachable = true;
+mock.module("@/features/account/server/auth.server", () => ({
+  customerMcpResource: mcpResource,
+  auth: {
+    api: {
+      verifyCustomerAgentAccessToken: async ({
+        body,
+      }: {
+        readonly body: { readonly token: string };
+      }) => {
+        if (!authorizationServerReachable) {
+          throw new Error("Authorization server is unreachable");
+        }
+        const scope = accessTokens.get(body.token);
+        if (scope === undefined) {
+          throw Object.assign(new Error("Unknown token"), { name: "APIError" });
+        }
+        return {
+          active: true,
+          sub: agentAccountId,
+          client_id: agentClientId,
+          scope,
+          aud: mcpResource,
+        };
+      },
+    },
+    $context: Promise.resolve({
+      internalAdapter: {
+        findUserById: async (id: string) => ({
+          id,
+          email: testEmailAddress("mcp-agent"),
+          emailVerified: true,
+          name: "Agent Customer",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      },
+    }),
+  },
+}));
+
+// Signed-in calls build their account services, which never query here.
+mock.module("@/db/database-provider.server", () => ({
+  workspaceDatabaseLayer: Layer.succeed(WorkspaceDatabase, {
+    db: {} as WorkspaceDatabase["Service"]["db"],
+  }),
+  workspaceDatabasePool: { options: { max: 4 } },
+}));
+
+const requestBudget = await import(
+  "@/shared/backend/request-budget/request-budget.service"
+);
+const budgetSpends: RequestBudgetPolicy[] = [];
+let exhaustedBudget: ((key: string) => boolean) | undefined;
+class TestRequestBudget extends requestBudget.RequestBudget {
+  static override Live = Layer.succeed(requestBudget.RequestBudget, {
+    spend: (policy) =>
+      Effect.sync(() => {
+        budgetSpends.push(policy);
+        return exhaustedBudget?.(policy.key)
+          ? requestBudget.RequestBudgetSpend.Exhausted({
+              retryAt: DateTime.nowUnsafe(),
+            })
+          : requestBudget.RequestBudgetSpend.Granted();
+      }),
+  });
+}
+mock.module("@/shared/backend/request-budget/request-budget.service", () => ({
+  ...requestBudget,
+  RequestBudget: TestRequestBudget,
+}));
+
 const { makeAgentToolTestServices, workspaceDateFromToday } = await import(
   "@/features/agent-tools/agent-tools.test-utils"
 );
@@ -39,8 +122,56 @@ const { checkAvailabilityTool } = await import(
   "@/features/agent-tools/check-availability.tool"
 );
 const { getQuoteTool } = await import("@/features/agent-tools/get-quote.tool");
+const { startReservationTool } = await import(
+  "@/features/agent-tools/start-reservation.tool"
+);
+const { getReservationStatusTool } = await import(
+  "@/features/agent-tools/get-reservation-status.tool"
+);
+const { listMyReservationsTool } = await import(
+  "@/features/agent-tools/list-my-reservations.tool"
+);
+const { agentToolLocaleField, defineSignedInAgentTool } = await import(
+  "@/features/agent-tools/agent-tool"
+);
+const { CurrentCustomerAgentGrant } = await import(
+  "@/features/agent-tools/customer-agent-caller"
+);
+
+/** A signed-in tool that answers with the grant it runs for. */
+const whoamiTool = defineSignedInAgentTool({
+  name: "whoami",
+  title: "Who am I",
+  description: "Answers with the grant of the calling agent.",
+  scope: "reservations:read",
+  readOnly: true,
+  unavailableCode: "reservations_unavailable",
+  input: Schema.Struct({ locale: agentToolLocaleField }),
+  output: Schema.Struct({
+    account_id: Schema.String,
+    client_id: Schema.String,
+    scopes: Schema.Array(Schema.String),
+  }),
+  run: () =>
+    CurrentCustomerAgentGrant.pipe(
+      Effect.map((grant) => ({
+        account_id: grant.accountId,
+        client_id: grant.clientId,
+        scopes: [...grant.scopes],
+      }))
+    ),
+});
+
 mock.module("@/features/agent-tools/customer-agent-tools", () => ({
-  customerAgentTools: [listOfferingsTool, checkAvailabilityTool, getQuoteTool],
+  customerAgentTools: [
+    listOfferingsTool,
+    checkAvailabilityTool,
+    getQuoteTool,
+    startReservationTool,
+    getReservationStatusTool,
+    listMyReservationsTool,
+    whoamiTool,
+  ],
   CustomerAgentToolsLive: services.layer,
 }));
 
@@ -56,7 +187,6 @@ const route = (await import("./route")) as Record<
   (request: Request) => Promise<Response>
 >;
 
-const endpoint = "http://deskohub.test/api/mcp";
 const legacyProtocolVersion = "2025-11-25";
 
 let requestId = 0;
@@ -68,7 +198,7 @@ const postRpc = (
   headers: Record<string, string> = {}
 ) =>
   route.POST(
-    new Request(endpoint, {
+    new Request(mcpResource, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -117,7 +247,7 @@ const callTool = (name: string, args: Schema.JsonObject) =>
 const connectClient = async (headers: Record<string, string> = {}) => {
   const client = new Client({ name: "route-test", version: "1.0.0" });
   await client.connect(
-    new StreamableHTTPClientTransport(new URL(endpoint), {
+    new StreamableHTTPClientTransport(new URL(mcpResource), {
       fetch: (input: string | URL | Request, init?: RequestInit) => {
         const request = new Request(input, init);
         for (const [name, value] of Object.entries(headers)) {
@@ -153,6 +283,10 @@ describe("customer MCP route", () => {
     rateLimit = { rateLimited: false };
     checkRateLimit.mockClear();
     scheduledEvents.length = 0;
+    budgetSpends.length = 0;
+    exhaustedBudget = undefined;
+    authorizationServerReachable = true;
+    accessTokens.clear();
   });
 
   test("initializes as the DH Workspace server with booking instructions", async () => {
@@ -170,7 +304,7 @@ describe("customer MCP route", () => {
     expect(result?.instructions).toContain("paid on the website");
   });
 
-  test("lists the public read-only tools with schemas and annotations", async () => {
+  test("lists the public and signed-in tools with schemas and annotations", async () => {
     const { result } = await rpc<ListToolsResult>("tools/list");
     const tools = result?.tools ?? [];
 
@@ -178,10 +312,17 @@ describe("customer MCP route", () => {
       "list_offerings",
       "check_availability",
       "get_quote",
+      "start_reservation",
+      "get_reservation_status",
+      "list_my_reservations",
+      "whoami",
     ]);
+    expect(
+      tools.find(({ name }) => name === "start_reservation")?.annotations
+    ).toMatchObject({ readOnlyHint: false, destructiveHint: false });
     for (const tool of tools) {
       expect(tool.annotations).toMatchObject({
-        readOnlyHint: true,
+        readOnlyHint: tool.name !== "start_reservation",
         destructiveHint: false,
         openWorldHint: false,
       });
@@ -385,9 +526,9 @@ describe("customer MCP route", () => {
   });
 
   test("answers session requests with 405", async () => {
-    const get = await route.GET(new Request(endpoint, { method: "GET" }));
+    const get = await route.GET(new Request(mcpResource, { method: "GET" }));
     const remove = await route.DELETE(
-      new Request(endpoint, { method: "DELETE" })
+      new Request(mcpResource, { method: "DELETE" })
     );
 
     expect(get.status).toBe(405);
@@ -477,5 +618,175 @@ describe("customer MCP route", () => {
         timestamp: expect.any(Temporal.Instant),
       },
     ]);
+  });
+});
+
+describe("customer MCP route for signed-in tools", () => {
+  beforeEach(() => {
+    rateLimit = { rateLimited: false };
+    checkRateLimit.mockClear();
+    budgetSpends.length = 0;
+    exhaustedBudget = undefined;
+    authorizationServerReachable = true;
+    accessTokens.clear();
+  });
+
+  const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+
+  const callToolAs = (
+    name: string,
+    args: Schema.JsonObject,
+    headers: Record<string, string>
+  ) => postRpc("tools/call", { name, arguments: args }, headers);
+
+  test("answers a signed-in tool call without a token with a 401 challenge", async () => {
+    const response = await callToolAs(
+      "start_reservation",
+      { family: "cowork", date: workspaceDateFromToday(2), tier: "open-space" },
+      {}
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toBe(
+      `Bearer resource_metadata="${resourceMetadata}", scope="reservations:create"`
+    );
+    expect(checkRateLimit).not.toHaveBeenCalled();
+  });
+
+  test("answers a request with an unknown token with an invalid_token challenge", async () => {
+    const response = await postRpc("tools/list", {}, bearer("unknown-token"));
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toBe(
+      `Bearer resource_metadata="${resourceMetadata}", error="invalid_token"`
+    );
+  });
+
+  test("answers a token without the tool's scope with a 403 insufficient_scope challenge", async () => {
+    accessTokens.set("create-only", "reservations:create");
+
+    const response = await callToolAs("whoami", {}, bearer("create-only"));
+
+    expect(response.status).toBe(403);
+    const challenge = response.headers.get("www-authenticate");
+    expect(challenge).toStartWith('Bearer error="insufficient_scope"');
+    expect(challenge).toContain('scope="reservations:read"');
+    expect(challenge).toContain(`resource_metadata="${resourceMetadata}"`);
+  });
+
+  test("checks each tool's own scope", async () => {
+    accessTokens.set("read-only", "reservations:read");
+
+    const start = await callToolAs(
+      "start_reservation",
+      { family: "cowork", date: workspaceDateFromToday(2), tier: "open-space" },
+      bearer("read-only")
+    );
+    const status = await callToolAs(
+      "get_reservation_status",
+      { order_id: "missing" },
+      {}
+    );
+    const list = await callToolAs("list_my_reservations", {}, {});
+
+    expect(start.status).toBe(403);
+    expect(start.headers.get("www-authenticate")).toContain(
+      'scope="reservations:create"'
+    );
+    expect(status.status).toBe(401);
+    expect(status.headers.get("www-authenticate")).toContain(
+      'scope="reservations:read"'
+    );
+    expect(list.status).toBe(401);
+  });
+
+  test("runs a signed-in tool for the grant behind a valid token", async () => {
+    accessTokens.set("valid", "reservations:read reservations:create");
+
+    const response = await callToolAs("whoami", {}, bearer("valid"));
+
+    expect(response.status).toBe(200);
+    const { result } = (await readJsonRpc(response)) as {
+      readonly result?: CallToolResult;
+    };
+    expect(result?.isError).toBeFalsy();
+    expect(result?.structuredContent).toEqual({
+      account_id: agentAccountId,
+      client_id: agentClientId,
+      scopes: ["reservations:read", "reservations:create"],
+    });
+    expect(budgetSpends.map(({ key }) => key.split(":").slice(0, 2))).toEqual([
+      ["agent-tool", "grant"],
+      ["agent-tool", "account"],
+    ]);
+    expect(
+      budgetSpends.every(
+        ({ key }) =>
+          !key.includes(agentAccountId) && !key.includes(agentClientId)
+      )
+    ).toBe(true);
+    expect(checkRateLimit).toHaveBeenCalledTimes(1);
+  });
+
+  test("spends a tool's own account budget on top of the signed-in budgets", async () => {
+    accessTokens.set("valid", "reservations:create");
+    exhaustedBudget = (key) => key.startsWith("agent-tool:start_reservation:");
+
+    const response = await callToolAs(
+      "start_reservation",
+      { family: "cowork", date: workspaceDateFromToday(2), tier: "open-space" },
+      bearer("valid")
+    );
+    const { result } = (await readJsonRpc(response)) as {
+      readonly result?: CallToolResult;
+    };
+
+    expect(result).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: "rate_limited" } },
+    });
+    expect(
+      budgetSpends.map(({ key, limit }) => [key.split(":")[1], limit])
+    ).toEqual([
+      ["grant", 10],
+      ["account", 20],
+      ["start_reservation", 5],
+    ]);
+  });
+
+  test("refuses a signed-in call over the account budget as rate limited", async () => {
+    accessTokens.set("valid", "reservations:read");
+    exhaustedBudget = (key) => key.startsWith("agent-tool:account:");
+
+    const response = await callToolAs("whoami", {}, bearer("valid"));
+    const { result } = (await readJsonRpc(response)) as {
+      readonly result?: CallToolResult;
+    };
+
+    expect(result).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: "rate_limited" } },
+    });
+  });
+
+  test("serves public tools to an agent with a valid token without spending its budgets", async () => {
+    accessTokens.set("valid", "reservations:read");
+
+    const response = await callToolAs("list_offerings", {}, bearer("valid"));
+    const { result } = (await readJsonRpc(response)) as {
+      readonly result?: CallToolResult;
+    };
+
+    expect(result?.isError).toBeFalsy();
+    expect(budgetSpends).toEqual([]);
+  });
+
+  test("fails the request while the authorization server is unreachable", async () => {
+    accessTokens.set("valid", "reservations:read");
+    authorizationServerReachable = false;
+
+    const response = await callToolAs("whoami", {}, bearer("valid"));
+
+    expect(response.status).toBeGreaterThanOrEqual(500);
   });
 });

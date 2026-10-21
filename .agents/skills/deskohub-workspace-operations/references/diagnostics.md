@@ -19,6 +19,7 @@ Before you diagnose from PostHog Logs, confirm that service `deskohub-workspace`
 - Don't add, enable, fetch, or quote raw Dotypos request and response logging without explicit redaction. It carries Authorization headers, refresh tokens, bearer tokens, and token response bodies.
 - Don't fetch or quote full Cloudinary search payloads. Report the result count, public IDs, status, and error code.
 - Never fetch, print, or quote a signed Cloudinary tag list URL. Its `s--…--` segment derives from the API secret. For the gallery data source and Admin API quota, load `$deskohub-repository`.
+- Never print or quote raw `posthog-cli` output. It can carry the project API URL, response bodies, and presigned S3 URLs. `build:source-maps` logs a fixed-vocabulary summary of each failed attempt from `describeSourceMapUploadFailure` in `apps/deskohub-workspace/scripts/source-map-upload-failure.ts`. When a failure shows up as unrecognised, extend those vocabularies, and recheck them after a CLI upgrade.
 - Run ad-hoc Workspace status or service scripts only when you need them. They can print raw reservation annotations, including customer access codes.
 
 ## Verify integration identity first

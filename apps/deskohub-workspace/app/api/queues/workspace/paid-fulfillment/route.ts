@@ -1,12 +1,12 @@
-import { handleCallback } from "@vercel/queue";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
+  paidFulfillmentRedelivery,
   processPaidFulfillmentMessage,
   WorkspacePaidFulfillmentService,
 } from "@/features/checkout/backend/fulfillment";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { defineWorkspaceTask } from "@/shared/backend/workspace-effect";
+import { defineQueueConsumer } from "@/shared/backend/queue/queue-consumer";
 
 export const maxDuration = 300;
 
@@ -17,15 +17,9 @@ const ConsumerLive = Layer.mergeAll(
   )
 );
 
-const processMessage = defineWorkspaceTask(
+export const POST = defineQueueConsumer(
   "paidFulfillmentQueue",
-  (message: Parameters<typeof processPaidFulfillmentMessage>[0]) =>
-    processPaidFulfillmentMessage(message).pipe(
-      Effect.asVoid,
-      Effect.provide(ConsumerLive)
-    )
-);
-
-export const POST = handleCallback((message, _metadata) =>
-  processMessage(message)
+  (message) =>
+    processPaidFulfillmentMessage(message).pipe(Effect.provide(ConsumerLive)),
+  paidFulfillmentRedelivery
 );

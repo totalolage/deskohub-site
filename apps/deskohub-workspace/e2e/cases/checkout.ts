@@ -92,12 +92,13 @@ export const executeCheckoutFlow = ({
   payPageSteps,
   beforeReservationSubmit,
   expectedDiscounts,
+  afterFulfillment,
   verifyPostFulfillmentPaths = false,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
-  flow: Pick<CheckoutFlow, "id" | "submitReservationScript">;
+  flow: CheckoutFlowStart;
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
   session: string;
@@ -107,6 +108,11 @@ export const executeCheckoutFlow = ({
   ) => readonly WorkspaceE2EStep<void>[];
   beforeReservationSubmit?: Effect.Effect<void, WorkspaceE2EError>;
   expectedDiscounts?: readonly ExpectedDiscountApplication[];
+  // Checks on the fulfilled reservation beyond the status page, before any
+  // post-fulfillment path changes it.
+  afterFulfillment?: (
+    orderId: CheckoutRow["reservation_id"]
+  ) => Effect.Effect<void, WorkspaceE2EError, E2EDatabase>;
   // The reserve-again restart, the fulfillment-failed support path, and the
   // reservation status isolation that starts from that support path do not
   // depend on the product, so one paid case opts in instead of every case.
@@ -121,25 +127,28 @@ export const executeCheckoutFlow = ({
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
     state.startedAt = new Date();
-    const orderId = yield* runStep({
-      execute: Effect.gen(function* () {
-        yield* openBrowserPage(config, run, session, data.checkoutUrl, {
-          timeoutMs: config.timeouts.browserNavigation,
-        });
-        if (beforeReservationSubmit) yield* beforeReservationSubmit;
-        return yield* submitReservationForPayPage({
-          onOrderId: (startedOrderId) => {
-            state.orderId = startedOrderId;
-          },
-          run,
-          session,
-          submitReservationScript: flow.submitReservationScript(data),
-          timeouts: config.timeouts,
-        });
-      }),
-      id: "prepare-checkout-pay-page",
-      timeoutMs: config.timeouts.checkoutStart,
-    });
+    const orderId =
+      "startReservation" in flow
+        ? yield* flow.startReservation
+        : yield* runStep({
+            execute: Effect.gen(function* () {
+              yield* openBrowserPage(config, run, session, data.checkoutUrl, {
+                timeoutMs: config.timeouts.browserNavigation,
+              });
+              if (beforeReservationSubmit) yield* beforeReservationSubmit;
+              return yield* submitReservationForPayPage({
+                onOrderId: (startedOrderId) => {
+                  state.orderId = startedOrderId;
+                },
+                run,
+                session,
+                submitReservationScript: flow.submitReservationScript(data),
+                timeouts: config.timeouts,
+              });
+            }),
+            id: "prepare-checkout-pay-page",
+            timeoutMs: config.timeouts.checkoutStart,
+          });
     if (payPageSteps) {
       for (const step of payPageSteps(orderId)) yield* runStep(step);
     }
@@ -206,6 +215,7 @@ export const executeCheckoutFlow = ({
       id: "assert-fulfilled-status-page",
       timeoutMs: config.timeouts.uiTransition,
     });
+    if (afterFulfillment) yield* afterFulfillment(orderId);
     if (verifyPostFulfillmentPaths) {
       yield* runStep({
         execute: restartReservationAfterFulfillment({
@@ -265,6 +275,23 @@ export const executeCheckoutFlow = ({
 
     log(`${flow.id} checkout e2e passed for order ${orderId}`);
   });
+
+/**
+ * How a checkout reaches its pay page: by submitting the flow's reservation
+ * form, or through `startReservation`, which starts the reservation some
+ * other way, captures its order for cleanup, and leaves the browser on the
+ * pay page.
+ */
+export type CheckoutFlowStart =
+  | Pick<CheckoutFlow, "id" | "submitReservationScript">
+  | {
+      readonly id: CheckoutFlow["id"];
+      readonly startReservation: Effect.Effect<
+        CheckoutRow["reservation_id"],
+        WorkspaceE2EError,
+        E2EDatabase | HttpClient.HttpClient
+      >;
+    };
 
 export type HostedCheckoutPaymentOptions = {
   // Defaults to an authenticated payment.

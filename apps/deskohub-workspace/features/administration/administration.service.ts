@@ -85,6 +85,7 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { WorkspaceReservationKind } from "@/features/reservation/reservation-kind";
+import { getReservationAccessName } from "@/features/reservation-access";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
@@ -1870,6 +1871,7 @@ export class AdministrationService extends Context.Service<
                 deviceId: reservationAccessGrants.deviceId,
                 providerCredentialId:
                   reservationAccessGrants.providerCredentialId,
+                accessName: reservationAccessGrants.accessName,
                 scheduledStartsAt:
                   reservationAccessGrants.scheduledAccessStartsAt,
                 startsAt: reservationAccessGrants.accessStartsAt,
@@ -2054,7 +2056,10 @@ export class AdministrationService extends Context.Service<
           })),
           accessGrant: accessGrant && {
             ...accessGrant,
-            accessName: `Deskohub ${row.id}`.slice(0, 60),
+            accessName: getReservationAccessName({
+              ...accessGrant,
+              reservationId: row.id,
+            }),
             scheduledStartsAt: accessGrant.scheduledStartsAt.toString(),
             startsAt: accessGrant.startsAt.toString(),
             endsAt: accessGrant.endsAt.toString(),
