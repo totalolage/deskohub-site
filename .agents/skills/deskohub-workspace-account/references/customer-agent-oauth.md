@@ -149,8 +149,8 @@ resource.
   The code exchange checks the consent again after writing its tokens and
   revokes them when it is gone, so an exchange in flight during the
   disconnect leaves no usable tokens either. Codes issued before the patch
-  carry no consent id; they redeem only under a consent created no later
-  than them, to the second.
+  carry no consent id; they redeem only under a consent created in an
+  earlier second, so a reconnect never revives them.
 
 ## Account-boundary adapter
 

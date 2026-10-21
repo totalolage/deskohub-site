@@ -178,9 +178,9 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..cc54a9bfd58b15606496ef99efe5f51d
 +// authorized it exists and still covers its scopes and resources. A reconnect
 +// creates a new consent row, so it doesn't revive older codes. A code issued
 +// before this patch carries no consent id, so it redeems under the client's
-+// consent for the user only if that consent existed when the code was
-+// issued. Both `createdAt` values have whole seconds, so a consent from the
-+// code's second counts; one without a `createdAt` doesn't.
++// consent for the user only if that consent is older than the code. Both
++// `createdAt` values have whole seconds, so a consent from the code's own
++// second doesn't count, nor does one without a `createdAt`.
 +async function refuseAuthorizationCodeConsent(ctx, clientId, verificationValue, issuedAt) {
 +	const consent = verificationValue.consentId ? await ctx.context.adapter.findOne({
 +		model: "oauthConsent",
@@ -197,7 +197,7 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..cc54a9bfd58b15606496ef99efe5f51d
 +			field: "userId",
 +			value: verificationValue.userId
 +		}]
-+	})).find((candidate) => (candidate.referenceId ?? null) === (verificationValue.referenceId ?? null) && candidate.createdAt != null && new Date(candidate.createdAt).getTime() <= issuedAt);
++	})).find((candidate) => (candidate.referenceId ?? null) === (verificationValue.referenceId ?? null) && candidate.createdAt != null && new Date(candidate.createdAt).getTime() < issuedAt);
 +	if (!consent || consent.clientId !== clientId || consent.userId !== verificationValue.userId) return new APIError("BAD_REQUEST", {
 +		error_description: "consent revoked",
 +		error: "invalid_grant"

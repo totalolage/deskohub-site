@@ -456,6 +456,27 @@ const predateConsentBinding = async (userId: string) => {
 };
 
 /**
+ * Dates an account's consents to the issue time of its one pending code from
+ * before the consent binding, as a reconnect in the second the code was
+ * issued would.
+ */
+const dateConsentsAtPredatedCode = async (userId: string) => {
+  await testDatabase!.pool.query(
+    `update auth.oauth_consent
+        set created_at = (
+          select created_at
+            from (select created_at,
+                         case when value like '{"type":"authorization_code"%'
+                              then value::jsonb end as code
+                    from auth.verification) as codes
+           where code ->> 'userId' = $1
+             and code ->> 'consentId' is null)
+      where user_id = $1`,
+    [userId]
+  );
+};
+
+/**
  * The test database adapter, with a hook that runs one step of a test just
  * before the plugin's next write of a given kind to a given model. It forces
  * two concurrent requests to interleave at that write.
@@ -1355,6 +1376,60 @@ describe.skipIf(!testDatabase)(
         0
       );
       expect((await exchangeCode(auth, reconnected)).status).toBe(200);
+    });
+
+    // Guards the Workspace oauth-provider patch: consent and code timestamps
+    // have whole seconds, so a consent from the code's own second must not
+    // count as given before it.
+    test("refuses a code from before the consent binding after a reconnect in the second it was issued", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const customer = await signIn(auth, sentLinks);
+      const beforeDisconnect = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "asks"
+      );
+      await predateConsentBinding(customer.accountId);
+
+      const [connection] = await listConnections(auth, customer.cookie);
+      const disconnected = await request(auth, "/oauth2/delete-consent", {
+        method: "POST",
+        cookie: customer.cookie,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: connection!.id }),
+      });
+      expect(disconnected.status).toBe(200);
+      const reconnected = await authorizeSignedIn(
+        auth,
+        customer.cookie,
+        agent,
+        "asks"
+      );
+      await dateConsentsAtPredatedCode(customer.accountId);
+
+      const stale = await exchangeCode(auth, beforeDisconnect);
+      expect(stale.status).toBe(400);
+      expect(((await stale.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
+      expect(await countClientTokens(customer.accountId, agent.clientId)).toBe(
+        0
+      );
+
+      // The reconnect's own code is bound to its consent, whatever the
+      // consent's timestamp.
+      const tokens = await exchangeCode(auth, reconnected);
+      expect(tokens.status).toBe(200);
+      const { access_token } = (await tokens.json()) as TokenResponse;
+      expect(await failureReasonOf(authorityOver(auth), access_token)).toBe(
+        "Success"
+      );
     });
 
     /**
