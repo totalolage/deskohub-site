@@ -31,6 +31,20 @@ export const getSearchParam = (
   return Array.isArray(value) ? value[0] : value;
 };
 
+/**
+ * Search params in the shape Next.js passes to a page, so a route handler can
+ * share a page's parser: a repeated key becomes an array.
+ */
+export const getSearchParamsRecord = (
+  searchParams: URLSearchParams
+): SearchParamsRecord =>
+  Object.fromEntries(
+    [...new Set(searchParams.keys())].map((key) => {
+      const values = searchParams.getAll(key);
+      return [key, values.length === 1 ? values[0] : values];
+    })
+  );
+
 /** The record as query parameters, keeping every value of a repeated key. */
 export const toURLSearchParams = (
   searchParams: SearchParamsRecord

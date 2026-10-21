@@ -13,8 +13,10 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import { getAdministrationCustomerListParams } from "./customer-list-filters";
 import {
   BookingsAdministrationFilterForm,
+  CustomersAdministrationFilterForm,
   OperationsAdministrationFilterForm,
   OrdersAdministrationFilterForm,
   ReservationsAdministrationFilterForm,
@@ -57,6 +59,18 @@ const reservationFilterForm = (input: ReservationFilterInput) => (
   <ReservationsAdministrationFilterForm
     defaultFrom="2026-01-01"
     input={input}
+    shortcuts={reservationShortcuts}
+  />
+);
+
+type CustomerFilterInput = Parameters<
+  typeof CustomersAdministrationFilterForm
+>[0]["input"];
+
+const customerFilterForm = (input: CustomerFilterInput) => (
+  <CustomersAdministrationFilterForm
+    input={input}
+    params={getAdministrationCustomerListParams(input)}
     shortcuts={reservationShortcuts}
   />
 );
@@ -312,6 +326,111 @@ describe("administration filter forms", () => {
       await expectNativeGetSubmission(form);
     });
   });
+  describe("customers", () => {
+    test("submits the date range and consent state as GET and keeps the sort", async () => {
+      const view = render(
+        customerFilterForm({
+          direction: "asc",
+          from: "2026-10-01",
+          marketingConsent: "granted",
+          sort: "reservations",
+          to: "2026-10-31",
+        })
+      );
+      const form = getForm(view.container);
+      const consent = view.getByLabelText(
+        "Marketing consent"
+      ) as HTMLSelectElement;
+
+      expect(form.getAttribute("method")).toBe("get");
+      expect(form.getAttribute("action")).toBe("/en-US/admin/customers");
+      expect(view.getByLabelText("Reservation start from")).toHaveProperty(
+        "type",
+        "date"
+      );
+      expect(view.getByLabelText("Reservation start to")).toHaveProperty(
+        "type",
+        "date"
+      );
+      expect(
+        Array.from(consent.options).map(({ textContent, value }) => [
+          value,
+          textContent,
+        ])
+      ).toEqual([
+        ["", "All consent states"],
+        ["granted", "Granted"],
+        ["withdrawn", "Withdrawn"],
+        ["never", "Never granted"],
+      ]);
+      expect(formEntries(form)).toEqual([
+        ["marketingConsent", "granted"],
+        ["from", "2026-10-01"],
+        ["to", "2026-10-31"],
+        ["sort", "reservations"],
+        ["direction", "asc"],
+      ]);
+      await expectNativeGetSubmission(form);
+    });
+
+    test("keeps filters and sort in date shortcuts and clears them all", () => {
+      const view = render(
+        customerFilterForm({
+          direction: "asc",
+          from: "2026-10-01",
+          marketingConsent: "withdrawn",
+          sort: "reservations",
+        })
+      );
+
+      expect(
+        view.getByRole("navigation", { name: "Reservation date shortcuts" })
+      ).toBeDefined();
+      expect(
+        ["Today", "Upcoming", "Past"].map((name) =>
+          view.getByRole("link", { name }).getAttribute("href")
+        )
+      ).toEqual([
+        "/en-US/admin/customers?direction=asc&from=2026-08-12&marketingConsent=withdrawn&sort=reservations&to=2026-08-12",
+        "/en-US/admin/customers?direction=asc&from=2026-08-13&marketingConsent=withdrawn&sort=reservations",
+        "/en-US/admin/customers?direction=asc&marketingConsent=withdrawn&sort=reservations&to=2026-08-11",
+      ]);
+      expect(
+        view.getByRole("link", { name: "Clear" }).getAttribute("href")
+      ).toBe("/en-US/admin/customers");
+    });
+
+    test("offers Clear only when a filter is active", () => {
+      const view = render(
+        customerFilterForm({ direction: "desc", sort: "activity" })
+      );
+      expect(view.queryByRole("link", { name: "Clear" })).toBeNull();
+      expect(formEntries(getForm(view.container))).toEqual([
+        ["marketingConsent", ""],
+        ["from", ""],
+        ["to", ""],
+        ["sort", "activity"],
+        ["direction", "desc"],
+      ]);
+    });
+
+    test("labels the customer filters in Czech", () => {
+      const view = render(
+        <RouteLocaleProvider locale="cs-CZ">
+          {customerFilterForm({ marketingConsent: "never" })}
+        </RouteLocaleProvider>
+      );
+
+      expect(view.getByLabelText("Marketingový souhlas")).toBeDefined();
+      expect(view.getByLabelText("Začátek rezervace od")).toBeDefined();
+      expect(view.getByLabelText("Začátek rezervace do")).toBeDefined();
+      expect(
+        (view.getByLabelText("Marketingový souhlas") as HTMLSelectElement)
+          .selectedOptions[0]?.textContent
+      ).toBe("Nikdy neudělen");
+    });
+  });
+
   // The server renders without an ambient locale, so a message that falls
   // back to it would differ from the hydrated client on a Czech route.
   test("names reservation types in the route locale", () => {

@@ -6,6 +6,10 @@ import { Pagination } from "./components";
 import { ReservationsAdministrationFilterForm } from "./filter-forms";
 import { m } from "./i18n";
 import {
+  getAdministrationListExportHref,
+  getAdministrationListHref,
+} from "./list-href";
+import {
   AdministrationCollectionLoading,
   AdministrationCountLoading,
   AdministrationFiltersLoading,
@@ -22,6 +26,7 @@ import {
   getAdministrationReservationDateShortcuts,
   getAdministrationReservationListDefaultDateRange,
 } from "./reservation-date-range";
+import { getAdministrationReservationListParams } from "./reservation-list-params";
 import { ReservationLookup } from "./reservation-lookup";
 import { ReservationTable } from "./reservation-table";
 import {
@@ -76,6 +81,12 @@ export async function AdministrationReservationList({
             <ReservationFiltersContent input={input} />
           </Suspense>
         }
+        exportHref={input.then((resolvedInput) =>
+          getAdministrationListExportHref(
+            "/admin/reservations",
+            getAdministrationReservationListParams(resolvedInput)
+          )
+        )}
         label={m.administrationReservationListToolbarLabel({}, { locale })}
         search={<ReservationLookup variant="toolbar" />}
       />
@@ -165,21 +176,7 @@ function ReservationResults({
   locale,
   result,
 }: ReservationsData & { readonly locale: Locale }) {
-  const clearCustomerSearch = new URLSearchParams();
-  for (const [key, value] of Object.entries({
-    direction: input.direction,
-    from: input.from,
-    sort: input.sort,
-    status: input.status,
-    to: input.to,
-    type: input.type,
-  })) {
-    if (value) clearCustomerSearch.set(key, value);
-  }
-  const clearCustomerQuery = clearCustomerSearch.toString();
-  const clearCustomerHref = clearCustomerQuery
-    ? `/admin/reservations?${clearCustomerQuery}`
-    : "/admin/reservations";
+  const listParams = getAdministrationReservationListParams(input);
   return (
     <>
       {input.customerId && (
@@ -187,7 +184,10 @@ function ReservationResults({
           <p>{m.administrationReservationListCustomerNotice({}, { locale })}</p>
           <Link
             className="font-semibold hover:underline"
-            href={clearCustomerHref}
+            href={getAdministrationListHref("/admin/reservations", {
+              ...listParams,
+              customerId: undefined,
+            })}
           >
             {m.administrationReservationListCustomerClear({}, { locale })}
           </Link>
@@ -209,13 +209,7 @@ function ReservationResults({
           basePath: "/admin/reservations",
           direction: input.direction ?? "desc",
           field: input.sort ?? "created",
-          params: {
-            from: input.from,
-            to: input.to,
-            customerId: input.customerId,
-            status: input.status,
-            type: input.type,
-          },
+          params: listParams,
         }}
       />
       <Pagination
@@ -223,15 +217,7 @@ function ReservationResults({
         locale={locale}
         page={result.page}
         pageCount={result.pageCount}
-        params={{
-          customerId: input.customerId,
-          direction: input.direction,
-          from: input.from,
-          sort: input.sort,
-          status: input.status,
-          to: input.to,
-          type: input.type,
-        }}
+        params={listParams}
       />
     </>
   );

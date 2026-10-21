@@ -40,9 +40,11 @@ import {
   sum,
 } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { unstable_rethrow } from "next/navigation";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { equalsAny } from "@/db/equals-any";
+import { qualifiedColumn } from "@/db/qualified-column";
 import {
   customerMarketingConsents,
   discountApplications,
@@ -89,6 +91,7 @@ import { getReservationAccessName } from "@/features/reservation-access";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
+import type { AdministrationCustomerMarketingConsentState } from "./customer-list-filters";
 import {
   type AdministrationCustomerName,
   unnamedCustomerDisplayName,
@@ -187,11 +190,49 @@ type ReservationListInput = AdministrationReservationListInput & {
   readonly pageSize?: number;
 };
 
+/** The list filters and order of a reservation export, which has no pages. */
+export type AdministrationReservationExportInput = Omit<
+  AdministrationReservationListInput,
+  "page"
+>;
+
+/** The Dotypos data a list export can't do without. */
+type AdministrationListSource =
+  | "booking-dates"
+  | "booking-details"
+  | "customer-details";
+
+/**
+ * A list export couldn't read Dotypos details its rows need. Pages show such
+ * details as unavailable instead; an export fails rather than leave them out.
+ */
+export class AdministrationListSourceUnavailableError extends Data.TaggedError(
+  "AdministrationListSourceUnavailableError"
+)<{
+  readonly source: AdministrationListSource;
+  readonly cause: unknown;
+}> {}
+
+/**
+ * The customer list's criteria. `from` and `to` are inclusive Workspace
+ * calendar dates: a customer belongs to the list only with a successful
+ * reservation whose booking starts in the range. `marketingConsent` keeps
+ * customers in that current consent state.
+ */
 export type AdministrationCustomerListInput = {
   readonly direction?: AdministrationSortDirection;
+  readonly from?: string;
+  readonly marketingConsent?: AdministrationCustomerMarketingConsentState;
   readonly page?: number;
   readonly sort?: AdministrationCustomerSort;
+  readonly to?: string;
 };
+
+/** The list filters and order of a customer export, which has no pages. */
+export type AdministrationCustomerExportInput = Omit<
+  AdministrationCustomerListInput,
+  "page"
+>;
 
 export type AdministrationCustomerSort = "reservations" | "activity";
 
@@ -216,6 +257,7 @@ type AdministrationCustomer = {
 
 export type AdministrationReservationSummary = {
   readonly id: WorkspaceReservationId;
+  readonly dotyposReservationId: DotyposReservationId | null;
   readonly customerId: DotyposCustomerId;
   readonly customer: AdministrationCustomer | null;
   readonly liveDetailsAvailable: boolean;
@@ -464,6 +506,7 @@ export type AdministrationReservationAccessGrant = {
 export type AdministrationCustomerSummary = {
   readonly customer: AdministrationCustomer | null;
   readonly customerId: DotyposCustomerId;
+  readonly marketingConsent: AdministrationCustomerMarketingConsentState;
   readonly reservationCount: number;
   readonly lastActivityAt: string;
 };
@@ -823,6 +866,7 @@ const toReservationSummary = ({
 }): AdministrationReservationSummary => {
   return {
     id: row.id,
+    dotyposReservationId: row.dotyposReservationId,
     customerId: row.dotyposCustomerId,
     customer: live.customer
       ? toCustomer(live.customer, row.dotyposCustomerId)
@@ -938,6 +982,35 @@ const successfulReservationCount =
   sql<number>`count(*) filter (where ${successfulReservationCondition})`.mapWith(
     Number
   );
+
+/**
+ * The reservation's customer's current marketing consent state. The customer
+ * list filters and displays this one definition, so both always agree.
+ */
+const customerMarketingConsentState = sql<AdministrationCustomerMarketingConsentState>`coalesce((
+  select case when ${qualifiedColumn(customerMarketingConsents.withdrawnAt)} is null then 'granted' else 'withdrawn' end
+  from ${customerMarketingConsents}
+  where ${qualifiedColumn(customerMarketingConsents.dotyposCustomerId)} = ${qualifiedColumn(workspaceReservations.dotyposCustomerId)}
+), 'never')`;
+
+/**
+ * Selects every reservation of a customer who has a successful reservation
+ * among the given Dotypos bookings, so the customer's aggregates keep their
+ * full history.
+ */
+const customerWithSuccessfulReservationAmong = (
+  reservationIds: readonly DotyposReservationId[]
+): SQL =>
+  reservationIds.length === 0
+    ? sql`false`
+    : sql`${workspaceReservations.dotyposCustomerId} in (
+        select ${workspaceReservations.dotyposCustomerId}
+        from ${workspaceReservations}
+        where ${and(
+          equalsAny(workspaceReservations.dotyposReservationId, reservationIds),
+          successfulReservationCondition
+        )}
+      )`;
 
 const reservationStatusSort = sql<string>`case
   when ${workspaceReservations.fulfillmentState} = 'failed' then 'Confirmation issue'
@@ -1113,7 +1186,7 @@ const latePaymentCondition = (
   reservationIds: readonly WorkspaceReservationId[]
 ) =>
   and(
-    inArray(paymentAttempts.workspaceReservationId, [...reservationIds]),
+    equalsAny(paymentAttempts.workspaceReservationId, reservationIds),
     eq(webhookEvents.errorCode, "nexi_webhook_late_payment")
   );
 
@@ -1242,6 +1315,54 @@ const getReservationOperatorNotice = ({
   return null;
 };
 
+type ProviderReadFailure = {
+  /** What a failed read logs beside the cause, such as its date range. */
+  readonly annotations?: Readonly<Record<string, string | undefined>>;
+  readonly cause: unknown;
+  /** The warning a degrading read logs. */
+  readonly message: string;
+  readonly source: AdministrationListSource;
+};
+
+/**
+ * How a list read treats a failed Dotypos read. A page degrades: it logs and
+ * shows the details as unavailable. An export fails fast with
+ * `AdministrationListSourceUnavailableError`. A read that succeeds without some
+ * record isn't a failure under either.
+ */
+type ProviderFailurePolicy<E> = {
+  readonly recover: <A>(
+    failure: ProviderReadFailure,
+    fallback: A
+  ) => Effect.Effect<A, E>;
+};
+
+const degradeOnProviderFailure: ProviderFailurePolicy<never> = {
+  recover: ({ annotations, cause, message }, fallback) =>
+    Effect.logWarning(message, { cause, ...annotations }).pipe(
+      Effect.as(fallback)
+    ),
+};
+
+const failOnProviderFailure: ProviderFailurePolicy<AdministrationListSourceUnavailableError> =
+  {
+    recover: ({ cause, source }) =>
+      Effect.fail(
+        new AdministrationListSourceUnavailableError({ cause, source })
+      ),
+  };
+
+const recoverProviderRead =
+  <A, E>(
+    policy: ProviderFailurePolicy<E>,
+    failure: Omit<ProviderReadFailure, "cause">,
+    fallback: A
+  ) =>
+  (cause: unknown) => {
+    unstable_rethrow(cause);
+    return policy.recover({ ...failure, cause }, fallback);
+  };
+
 export class AdministrationService extends Context.Service<
   AdministrationService,
   {
@@ -1265,6 +1386,17 @@ export class AdministrationService extends Context.Service<
         readonly dateSortUnavailable: boolean;
       },
       EffectDrizzleQueryError
+    >;
+    /**
+     * Every reservation the list filters match, in list order, for a file
+     * export. Where the list would show Dotypos details as unavailable, the
+     * export fails with `AdministrationListSourceUnavailableError`.
+     */
+    readonly exportReservations: (
+      input: AdministrationReservationExportInput
+    ) => Effect.Effect<
+      readonly AdministrationReservationSummary[],
+      EffectDrizzleQueryError | AdministrationListSourceUnavailableError
     >;
     readonly loadReservation: (
       id: WorkspaceReservationId
@@ -1309,12 +1441,24 @@ export class AdministrationService extends Context.Service<
       input: AdministrationCustomerListInput
     ) => Effect.Effect<
       {
+        readonly dateFilterUnavailable: boolean;
         readonly items: readonly AdministrationCustomerSummary[];
         readonly page: number;
         readonly pageCount: number;
         readonly total: number;
       },
       EffectDrizzleQueryError
+    >;
+    /**
+     * Every customer the list filters match, in list order, for a file export.
+     * Where the list would show Dotypos details as unavailable, the export
+     * fails with `AdministrationListSourceUnavailableError`.
+     */
+    readonly exportCustomers: (
+      input: AdministrationCustomerExportInput
+    ) => Effect.Effect<
+      readonly AdministrationCustomerSummary[],
+      EffectDrizzleQueryError | AdministrationListSourceUnavailableError
     >;
     readonly loadCustomerReservations: (input: {
       readonly customerId: DotyposCustomerId;
@@ -1383,7 +1527,10 @@ export class AdministrationService extends Context.Service<
       });
 
       const loadCustomers = Effect.fn("AdministrationService.loadCustomers")(
-        function* (ids: readonly DotyposCustomerId[]) {
+        function* <E = never>(
+          ids: readonly DotyposCustomerId[],
+          policy: ProviderFailurePolicy<E> = degradeOnProviderFailure
+        ) {
           yield* Effect.annotateCurrentSpan({
             uniqueCustomerCount: new Set(ids).size,
           });
@@ -1395,37 +1542,53 @@ export class AdministrationService extends Context.Service<
                   customers,
                   ids: batchIds,
                 })),
-                Effect.catch((cause) => {
-                  unstable_rethrow(cause);
-                  return Effect.logWarning(
-                    "Batch customer details unavailable",
-                    { cause }
-                  ).pipe(
-                    Effect.as({
-                      customers: [] as const,
-                      ids: batchIds,
-                    })
-                  );
-                })
+                Effect.catch(
+                  recoverProviderRead(
+                    policy,
+                    {
+                      message: "Batch customer details unavailable",
+                      source: "customer-details",
+                    },
+                    { customers: [] as const, ids: batchIds }
+                  )
+                )
               ),
             { concurrency: 3 }
           );
           const customersById = indexCustomersById(
             batches.flatMap(({ customers }) => customers)
           );
+          // A batch can leave out a customer that a single read still
+          // returns, so every customer a batch didn't return is read alone:
+          // under an export only those of successful batches, since a failed
+          // batch already failed it. Only a customer Dotypos doesn't know
+          // stays absent without a failure.
+          const unreturnedIds = batches
+            .flatMap(({ ids: batchIds }) => batchIds)
+            .filter((id) => !customersById.has(id));
           const missingCustomers = yield* Effect.all(
-            batches
-              .flatMap(({ ids: batchIds }) => batchIds)
-              .filter((id) => !customersById.has(id))
-              .map((id) =>
-                dotypos.getCustomer(id).pipe(
-                  Effect.map((customer) => [id, customer] as const),
-                  Effect.catch((cause) => {
-                    unstable_rethrow(cause);
-                    return Effect.succeed(null);
-                  })
+            unreturnedIds.map((id) =>
+              dotypos.getCustomer(id).pipe(
+                Effect.map((customer) => [id, customer] as const),
+                Effect.catchIf(
+                  (error) =>
+                    error._tag === "ExternalAPIError" &&
+                    error.statusCode === 404,
+                  () => Effect.succeed(null)
+                ),
+                Effect.catch(
+                  recoverProviderRead(
+                    policy,
+                    {
+                      annotations: { customerId: id },
+                      message: "Customer details unavailable",
+                      source: "customer-details",
+                    },
+                    null
+                  )
                 )
-              ),
+              )
+            ),
             { concurrency: 5 }
           );
           for (const customer of missingCustomers) {
@@ -1477,12 +1640,12 @@ export class AdministrationService extends Context.Service<
 
       const loadLiveReservations = Effect.fn(
         "AdministrationService.loadLiveReservations"
-      )(function* (
+      )(function* <E = never>(
         rows: readonly SafeReservationRow[],
-        knownReservations?: ReadonlyMap<
-          DotyposReservationId,
-          DotyposReservation
-        >
+        knownReservations:
+          | ReadonlyMap<DotyposReservationId, DotyposReservation>
+          | undefined,
+        policy: ProviderFailurePolicy<E>
       ) {
         const missingReservationIds = rows.flatMap((row) =>
           row.dotyposReservationId &&
@@ -1490,18 +1653,25 @@ export class AdministrationService extends Context.Service<
             ? [row.dotyposReservationId]
             : []
         );
-        const reservations = yield* dotypos
-          .listReservations({ ids: missingReservationIds })
-          .pipe(
-            Effect.catch((cause) => {
-              unstable_rethrow(cause);
-              return Effect.logWarning("Live booking details unavailable", {
-                cause,
-              }).pipe(Effect.as([] as const));
-            })
-          );
+        const reservationBatches = yield* readInIdFilterBatches(
+          missingReservationIds,
+          (batchIds) =>
+            dotypos.listReservations({ ids: batchIds }).pipe(
+              Effect.catch(
+                recoverProviderRead(
+                  policy,
+                  {
+                    message: "Live booking details unavailable",
+                    source: "booking-details",
+                  },
+                  [] as const
+                )
+              )
+            ),
+          { concurrency: 3 }
+        );
         const reservationsById = new Map(knownReservations);
-        for (const reservation of reservations) {
+        for (const reservation of reservationBatches.flat()) {
           const id = Option.getOrUndefined(
             decodeDotyposReservationId(reservation.id)
           );
@@ -1521,7 +1691,7 @@ export class AdministrationService extends Context.Service<
             })
           ),
         ];
-        const customersById = yield* loadCustomers(customerIds);
+        const customersById = yield* loadCustomers(customerIds, policy);
 
         return rows.map((row) => {
           const reservation = row.dotyposReservationId
@@ -1542,12 +1712,13 @@ export class AdministrationService extends Context.Service<
       });
 
       const enrichRows = Effect.fn("AdministrationService.enrichRows")(
-        function* (
+        function* <E = never>(
           rows: readonly SafeReservationRow[],
           knownReservations?: ReadonlyMap<
             DotyposReservationId,
             DotyposReservation
-          >
+          >,
+          policy: ProviderFailurePolicy<E> = degradeOnProviderFailure
         ) {
           if (rows.length === 0) return [];
           const { attemptRows, latePaymentRows, liveRows, recoveryRows } =
@@ -1557,7 +1728,7 @@ export class AdministrationService extends Context.Service<
                   .select(safePaymentAttemptSelection)
                   .from(paymentAttempts)
                   .where(
-                    inArray(
+                    equalsAny(
                       paymentAttempts.workspaceReservationId,
                       rows.map(({ id }) => id)
                     )
@@ -1575,13 +1746,13 @@ export class AdministrationService extends Context.Service<
                   .select(latePaymentRecoverySelection)
                   .from(latePaymentRecoveries)
                   .where(
-                    inArray(
+                    equalsAny(
                       latePaymentRecoveries.workspaceReservationId,
                       rows.map(({ id }) => id)
                     )
                   )
                   .orderBy(asc(latePaymentRecoveries.createdAt)),
-                liveRows: loadLiveReservations(rows, knownReservations),
+                liveRows: loadLiveReservations(rows, knownReservations, policy),
               },
               { concurrency: 3 }
             );
@@ -1645,8 +1816,9 @@ export class AdministrationService extends Context.Service<
           })
         );
 
-      const loadReservationRangeMap = (
-        range: AdministrationReservationDateRange | undefined
+      const loadReservationRangeMap = <E = never>(
+        range: AdministrationReservationDateRange | undefined,
+        policy: ProviderFailurePolicy<E> = degradeOnProviderFailure
       ) => {
         if (!range) return Effect.succeed(undefined);
         return dotypos
@@ -1668,25 +1840,30 @@ export class AdministrationService extends Context.Service<
                   })
                 )
             ),
-            Effect.catch((cause) => {
-              unstable_rethrow(cause);
-              return Effect.logWarning("Reservation date filter unavailable", {
-                cause,
-                ...range,
-              }).pipe(Effect.as(null));
-            })
+            Effect.catch(
+              recoverProviderRead(
+                policy,
+                {
+                  annotations: range,
+                  message: "Reservation date filter unavailable",
+                  source: "booking-dates",
+                },
+                null
+              )
+            )
           );
       };
 
       const loadReservationDateOrder = Effect.fn(
         "AdministrationService.loadReservationDateOrder"
-      )(function* (
-        input: AdministrationReservationListInput,
+      )(function* <E>(
+        input: AdministrationReservationExportInput,
         hasDateRange: boolean,
         dateReservations:
           | ReadonlyMap<DotyposReservationId, DotyposReservation>
           | null
-          | undefined
+          | undefined,
+        policy: ProviderFailurePolicy<E>
       ) {
         if (hasDateRange) {
           if (!dateReservations) return null;
@@ -1712,12 +1889,16 @@ export class AdministrationService extends Context.Service<
                 return reservationId ? [reservationId] : [];
               })
             ),
-            Effect.catch((cause) => {
-              unstable_rethrow(cause);
-              return Effect.logWarning("Reservation date sorting unavailable", {
-                cause,
-              }).pipe(Effect.as(null));
-            })
+            Effect.catch(
+              recoverProviderRead(
+                policy,
+                {
+                  message: "Reservation date sorting unavailable",
+                  source: "booking-dates",
+                },
+                null
+              )
+            )
           );
       });
 
@@ -1733,12 +1914,21 @@ export class AdministrationService extends Context.Service<
         return Number(row?.value ?? 0);
       });
 
-      const listReservations = Effect.fn(
-        "AdministrationService.listReservations"
-      )(function* (input: ReservationListInput) {
-        const pageSize = input.pageSize ?? reservationPageSize;
+      /**
+       * The SQL condition of the list filters, with the Dotypos bookings that
+       * decide date filtering and, for the date sort, the provider order.
+       */
+      const loadReservationListScope = Effect.fn(
+        "AdministrationService.loadReservationListScope"
+      )(function* <E = never>(
+        input: AdministrationReservationExportInput,
+        policy: ProviderFailurePolicy<E> = degradeOnProviderFailure
+      ) {
         const dateRange = getAdministrationReservationDateRange(input);
-        const dateReservations = yield* loadReservationRangeMap(dateRange);
+        const dateReservations = yield* loadReservationRangeMap(
+          dateRange,
+          policy
+        );
         const conditions: SQL[] = [];
         if (input.customerId) {
           conditions.push(
@@ -1756,11 +1946,96 @@ export class AdministrationService extends Context.Service<
           const ids = dateReservations ? [...dateReservations.keys()] : [];
           conditions.push(
             ids.length > 0
-              ? inArray(workspaceReservations.dotyposReservationId, ids)
+              ? equalsAny(workspaceReservations.dotyposReservationId, ids)
               : sql`false`
           );
         }
-        const where = conditions.length > 0 ? and(...conditions) : undefined;
+        const orderedProviderIds =
+          input.sort === "date"
+            ? yield* loadReservationDateOrder(
+                input,
+                Boolean(dateRange),
+                dateReservations,
+                policy
+              )
+            : undefined;
+        return {
+          dateRange,
+          dateReservations,
+          orderedProviderIds,
+          where: conditions.length > 0 ? and(...conditions) : undefined,
+        };
+      });
+
+      /**
+       * The matching rows in list order: one page of them, or every row when
+       * no page is given.
+       */
+      const selectReservationListRows = Effect.fn(
+        "AdministrationService.selectReservationListRows"
+      )(function* ({
+        direction,
+        orderedProviderIds,
+        page,
+        sort,
+        where,
+      }: Pick<AdministrationReservationExportInput, "direction" | "sort"> & {
+        readonly orderedProviderIds:
+          | readonly DotyposReservationId[]
+          | null
+          | undefined;
+        readonly page?: { readonly offset: number; readonly pageSize: number };
+        readonly where: SQL | undefined;
+      }) {
+        if (orderedProviderIds) {
+          const references = yield* db
+            .select({
+              id: workspaceReservations.id,
+              externalId: workspaceReservations.dotyposReservationId,
+            })
+            .from(workspaceReservations)
+            .where(where);
+          const pageIds = getAdministrationExternalOrderPageIds({
+            offset: page?.offset ?? 0,
+            orderedExternalIds: orderedProviderIds,
+            pageSize: page?.pageSize ?? references.length,
+            references,
+          });
+          const pageRows =
+            pageIds.length === 0
+              ? []
+              : yield* db
+                  .select(safeReservationSelection)
+                  .from(workspaceReservations)
+                  .where(equalsAny(workspaceReservations.id, pageIds));
+          const rowById = new Map(pageRows.map((row) => [row.id, row]));
+          return pageIds.flatMap((id) => {
+            const row = rowById.get(id);
+            return row ? [row] : [];
+          });
+        }
+        const rows = db
+          .select(safeReservationSelection)
+          .from(workspaceReservations)
+          .where(where)
+          .orderBy(
+            ...getReservationOrderBy({
+              direction,
+              sort: sort === "date" ? "created" : sort,
+            })
+          );
+        const selected: readonly SafeReservationRow[] = yield* page
+          ? rows.limit(page.pageSize).offset(page.offset)
+          : rows;
+        return selected;
+      });
+
+      const listReservations = Effect.fn(
+        "AdministrationService.listReservations"
+      )(function* (input: ReservationListInput) {
+        const pageSize = input.pageSize ?? reservationPageSize;
+        const { dateRange, dateReservations, orderedProviderIds, where } =
+          yield* loadReservationListScope(input);
 
         const countRows = yield* db
           .select({ value: count() })
@@ -1772,55 +2047,13 @@ export class AdministrationService extends Context.Service<
           requestedPage: input.page,
           total,
         });
-        const orderedProviderIds =
-          input.sort === "date"
-            ? yield* loadReservationDateOrder(
-                input,
-                Boolean(dateRange),
-                dateReservations
-              )
-            : undefined;
-        let rows: readonly SafeReservationRow[];
-        if (orderedProviderIds) {
-          const references = yield* db
-            .select({
-              id: workspaceReservations.id,
-              externalId: workspaceReservations.dotyposReservationId,
-            })
-            .from(workspaceReservations)
-            .where(where);
-          const pageIds = getAdministrationExternalOrderPageIds({
-            offset: pagination.offset,
-            orderedExternalIds: orderedProviderIds,
-            pageSize,
-            references,
-          });
-          const pageRows =
-            pageIds.length === 0
-              ? []
-              : yield* db
-                  .select(safeReservationSelection)
-                  .from(workspaceReservations)
-                  .where(inArray(workspaceReservations.id, pageIds));
-          const rowById = new Map(pageRows.map((row) => [row.id, row]));
-          rows = pageIds.flatMap((id) => {
-            const row = rowById.get(id);
-            return row ? [row] : [];
-          });
-        } else {
-          rows = yield* db
-            .select(safeReservationSelection)
-            .from(workspaceReservations)
-            .where(where)
-            .orderBy(
-              ...getReservationOrderBy({
-                direction: input.direction,
-                sort: input.sort === "date" ? "created" : input.sort,
-              })
-            )
-            .limit(pageSize)
-            .offset(pagination.offset);
-        }
+        const rows = yield* selectReservationListRows({
+          direction: input.direction,
+          orderedProviderIds,
+          page: { offset: pagination.offset, pageSize },
+          sort: input.sort,
+          where,
+        });
         return {
           items: yield* enrichRows(rows, dateReservations ?? undefined),
           page: pagination.page,
@@ -1832,6 +2065,25 @@ export class AdministrationService extends Context.Service<
           dateSortUnavailable:
             input.sort === "date" && orderedProviderIds === null,
         };
+      });
+
+      const exportReservations = Effect.fn(
+        "AdministrationService.exportReservations"
+      )(function* (input: AdministrationReservationExportInput) {
+        const { dateReservations, orderedProviderIds, where } =
+          yield* loadReservationListScope(input, failOnProviderFailure);
+        const rows = yield* selectReservationListRows({
+          direction: input.direction,
+          orderedProviderIds,
+          sort: input.sort,
+          where,
+        });
+        yield* Effect.annotateCurrentSpan({ reservationCount: rows.length });
+        return yield* enrichRows(
+          rows,
+          dateReservations ?? undefined,
+          failOnProviderFailure
+        );
       });
 
       const loadReservation = Effect.fn(
@@ -2473,61 +2725,149 @@ export class AdministrationService extends Context.Service<
         return { startsAt: details.reservation.startDate, tableName };
       });
 
+      /**
+       * The customer list's filter. A booking-date range Dotypos can't answer
+       * selects no customers and reports `dateFilterUnavailable`, so the list
+       * never broadens to customers outside the range.
+       */
+      const getCustomerListFilter = Effect.fn(
+        "AdministrationService.getCustomerListFilter"
+      )(function* <E = never>(
+        input: AdministrationCustomerExportInput,
+        policy: ProviderFailurePolicy<E> = degradeOnProviderFailure
+      ) {
+        const dateRange = getAdministrationReservationDateRange({
+          from: input.from,
+          to: input.to,
+        });
+        const dateReservations = yield* loadReservationRangeMap(
+          dateRange,
+          policy
+        );
+        const conditions: SQL[] = [];
+        if (dateRange) {
+          // A booking Dotypos cancelled doesn't count, even when Deskohub
+          // still records it as fulfilled.
+          conditions.push(
+            customerWithSuccessfulReservationAmong(
+              [...(dateReservations ?? [])].flatMap(([id, reservation]) =>
+                reservation.status === "CANCELLED" ? [] : [id]
+              )
+            )
+          );
+        }
+        if (input.marketingConsent) {
+          conditions.push(
+            sql`${customerMarketingConsentState} = ${input.marketingConsent}`
+          );
+        }
+        return {
+          dateFilterUnavailable: Boolean(dateRange && !dateReservations),
+          where: conditions.length > 0 ? and(...conditions) : undefined,
+        };
+      });
+
+      /**
+       * One row per customer matching `where`, in the list's sort order, with
+       * full-history aggregates. Callers add paging.
+       */
+      const selectCustomerSummaryRows = (
+        input: Pick<AdministrationCustomerListInput, "direction" | "sort">,
+        where: SQL | undefined
+      ) => {
+        const lastActivityAt = max(workspaceReservations.updatedAt);
+        const order = input.direction === "asc" ? asc : desc;
+        return db
+          .select({
+            customerId: workspaceReservations.dotyposCustomerId,
+            marketingConsent: customerMarketingConsentState,
+            reservationCount: successfulReservationCount,
+            lastActivityAt,
+          })
+          .from(workspaceReservations)
+          .where(where)
+          .groupBy(workspaceReservations.dotyposCustomerId)
+          .orderBy(
+            order(
+              input.sort === "reservations"
+                ? successfulReservationCount
+                : lastActivityAt
+            ),
+            asc(workspaceReservations.dotyposCustomerId)
+          );
+      };
+
+      const toCustomerSummaries = Effect.fn(
+        "AdministrationService.toCustomerSummaries"
+      )(function* <E = never>(
+        rows: readonly {
+          readonly customerId: DotyposCustomerId;
+          readonly marketingConsent: AdministrationCustomerMarketingConsentState;
+          readonly reservationCount: number;
+          readonly lastActivityAt: Temporal.Instant | null;
+        }[],
+        policy: ProviderFailurePolicy<E> = degradeOnProviderFailure
+      ) {
+        const customersById = yield* loadCustomers(
+          rows.map(({ customerId }) => customerId),
+          policy
+        );
+        return rows.map((row): AdministrationCustomerSummary => {
+          const customer = customersById.get(row.customerId);
+          return {
+            customer: customer ? toCustomer(customer, row.customerId) : null,
+            customerId: row.customerId,
+            marketingConsent: row.marketingConsent,
+            reservationCount: Number(row.reservationCount),
+            lastActivityAt: row.lastActivityAt
+              ? toIsoString(row.lastActivityAt)
+              : Temporal.Instant.fromEpochMilliseconds(0).toString(),
+          };
+        });
+      });
+
       const listCustomers = Effect.fn("AdministrationService.listCustomers")(
         function* (input: AdministrationCustomerListInput) {
+          const { dateFilterUnavailable, where } =
+            yield* getCustomerListFilter(input);
           const countRows = yield* db
             .select({
               value: countDistinct(workspaceReservations.dotyposCustomerId),
             })
-            .from(workspaceReservations);
+            .from(workspaceReservations)
+            .where(where);
           const total = Number(countRows[0]?.value ?? 0);
           const pagination = getAdministrationPagination({
             pageSize: customerPageSize,
             requestedPage: input.page,
             total,
           });
-          const lastActivityAt = max(workspaceReservations.updatedAt);
-          const order = input.direction === "asc" ? asc : desc;
-          const rows = yield* db
-            .select({
-              customerId: workspaceReservations.dotyposCustomerId,
-              reservationCount: successfulReservationCount,
-              lastActivityAt,
-            })
-            .from(workspaceReservations)
-            .groupBy(workspaceReservations.dotyposCustomerId)
-            .orderBy(
-              order(
-                input.sort === "reservations"
-                  ? successfulReservationCount
-                  : lastActivityAt
-              ),
-              asc(workspaceReservations.dotyposCustomerId)
-            )
+          const rows = yield* selectCustomerSummaryRows(input, where)
             .limit(customerPageSize)
             .offset(pagination.offset);
-          const customersById = yield* loadCustomers(
-            rows.map(({ customerId }) => customerId)
-          );
-          const items = rows.map((row) => {
-            const customer = customersById.get(row.customerId);
-            return {
-              customer: customer ? toCustomer(customer, row.customerId) : null,
-              customerId: row.customerId,
-              reservationCount: Number(row.reservationCount),
-              lastActivityAt: row.lastActivityAt
-                ? toIsoString(row.lastActivityAt)
-                : Temporal.Instant.fromEpochMilliseconds(0).toString(),
-            };
-          });
           return {
-            items,
+            dateFilterUnavailable,
+            items: yield* toCustomerSummaries(rows),
             page: pagination.page,
             pageCount: pagination.pageCount,
             total,
           };
         }
       );
+
+      const exportCustomers = Effect.fn(
+        "AdministrationService.exportCustomers"
+      )(function* (input: AdministrationCustomerExportInput) {
+        // A failed range read fails the export, so the filter is never left
+        // unavailable here.
+        const { where } = yield* getCustomerListFilter(
+          input,
+          failOnProviderFailure
+        );
+        const rows = yield* selectCustomerSummaryRows(input, where);
+        yield* Effect.annotateCurrentSpan({ customerCount: rows.length });
+        return yield* toCustomerSummaries(rows, failOnProviderFailure);
+      });
 
       const loadCustomerReservations = Effect.fn(
         "AdministrationService.loadCustomerReservations"
@@ -3056,6 +3396,7 @@ export class AdministrationService extends Context.Service<
         loadOverview,
         countReservationsNeedingRefund,
         listReservations,
+        exportReservations,
         loadReservation,
         loadReservationProduct,
         findReservationId,
@@ -3063,6 +3404,7 @@ export class AdministrationService extends Context.Service<
         loadBooking,
         loadBookingBreadcrumb,
         listCustomers,
+        exportCustomers,
         loadCustomerReservations,
         loadCustomerActivity,
         loadCustomerReservationActivity,

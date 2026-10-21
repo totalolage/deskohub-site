@@ -11,6 +11,9 @@ import type { CampaignAudienceId } from "../../campaign-identifiers";
 mock.module("next/navigation", () => ({
   useParams: () => ({ locale: "cs-CZ" }),
   useRouter: () => ({ push: () => undefined }),
+  // The administration's export control runs browser Effects, whose runner
+  // rethrows only Next control flow, which these tests never raise.
+  unstable_rethrow: () => {},
 }));
 
 const { AudienceList } = await import("./audience-list");

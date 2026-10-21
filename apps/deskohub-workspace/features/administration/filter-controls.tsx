@@ -10,16 +10,21 @@ const controlClassName =
 
 export function AdministrationFilterField({
   children,
+  className,
   htmlFor,
   label,
 }: {
   readonly children: ReactNode;
+  readonly className?: string;
   readonly htmlFor: string;
   readonly label: string;
 }) {
   return (
     <label
-      className="grid gap-1.5 text-xs font-semibold text-navy-blue/65"
+      className={cn(
+        "grid gap-1.5 text-xs font-semibold text-navy-blue/65",
+        className
+      )}
       htmlFor={htmlFor}
     >
       {label}

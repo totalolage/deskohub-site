@@ -1,6 +1,10 @@
 import { formatCurrencyAmount } from "@deskohub/i18n/currency";
 import type { Locale } from "@/features/i18n";
-import { temporalInstantToDate, workspaceSiteConstants } from "@/shared/utils";
+import {
+  temporalInstantToDate,
+  temporalInstantToLocalDateTimeString,
+  workspaceSiteConstants,
+} from "@/shared/utils";
 import { formatPlainDate } from "@/shared/utils/date-time-format";
 import type {
   AdministrationMoney,
@@ -21,6 +25,16 @@ export const formatAdministrationDateTime = (value: string, locale: Locale) =>
     hourCycle: "h23",
     timeZone: workspaceSiteConstants.location.timeZone,
   }).format(temporalInstantToDate(Temporal.Instant.from(value)));
+
+/**
+ * A Prague date-time for a file export, such as `2026-10-20 14:30`, which
+ * spreadsheets read as a date in every locale.
+ */
+export const formatAdministrationExportDateTime = (value: string) =>
+  temporalInstantToLocalDateTimeString({
+    instant: Temporal.Instant.from(value),
+    timeZone: workspaceSiteConstants.location.timeZone,
+  }).replace("T", " ");
 
 export const formatAdministrationPlainDate = (value: string, locale: Locale) =>
   formatPlainDate({ date: Temporal.PlainDate.from(value), locale });
@@ -43,15 +57,21 @@ export const formatAdministrationReservationDate = (
     : null;
 };
 
+/** The amount in currency units, such as 125.5 for 12550 with exponent 2. */
+export const getAdministrationMoneyAmount = ({
+  exponent,
+  value,
+}: AdministrationMoney) => value / 10 ** exponent;
+
 export const formatAdministrationMoney = (
-  { currency, exponent, value }: AdministrationMoney,
+  money: AdministrationMoney,
   locale: Locale
 ) =>
   formatCurrencyAmount({
-    amount: value / 10 ** exponent,
-    currency,
+    amount: getAdministrationMoneyAmount(money),
+    currency: money.currency,
     locale,
-    fractionDigits: exponent,
+    fractionDigits: money.exponent,
   });
 
 export type AdministrationPaymentStatus = {
