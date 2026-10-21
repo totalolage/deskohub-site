@@ -151,15 +151,15 @@ resource.
   disconnect overtakes can't write its tokens and answers `invalid_grant`;
   one that finishes first has its tokens deleted with the consent, so at
   most it hands out tokens that never work.
-- A token without a consent predates the binding. The migration binds no
-  existing token: timestamps can't tell a token that outlived a disconnect
-  from one a consent recorded in the same instant issued, so a backfill
-  could revive a disconnected assistant. An unbound token of a client that
-  asks for consent, including any the previous deployment issued during
-  the release, is refused when presented (the assistant connects again
-  once) and deleted then, or by the daily auth cleanup once it expires.
-  Tokens of a client that skips consent reference no consent and keep
-  working; deleting a consent never touches them. Guards:
+- A token of a client that asks for consent without a consent predates
+  the binding. The migration binds no existing token: timestamps can't
+  tell a token that outlived a disconnect from one a consent recorded in
+  the same instant issued, so a backfill could revive a disconnected
+  assistant. Such a token, including any the previous deployment issued
+  during the release, is refused when presented (the assistant connects
+  again once) and deleted then, or by the daily auth cleanup once it
+  expires. Tokens of a client that skips consent reference no consent and
+  keep working; deleting a consent never touches them. Guards:
   `oauth-token-consent-binding-migration.postgres.test.ts` beside the flow
   test.
 - Two approvals of the assistant at once can both record a consent. One
