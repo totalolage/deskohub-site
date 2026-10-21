@@ -18,6 +18,7 @@ import {
   getSessionCookie,
   HOST,
   makeTestAuth,
+  realCreateCustomerAccount,
   signInForMagicLink,
   type TestAuth,
   testDatabase,
@@ -1156,6 +1157,7 @@ describe.skipIf(!testDatabase)(
         sentLinks,
         clientMetadataTransport: agent.clientMetadataTransport,
         database: interleaving.database,
+        createCustomerAccount: realCreateCustomerAccount,
       });
       const customer = await signIn(auth, sentLinks);
       const tokens = await connectSignedIn(auth, customer.cookie, agent);
