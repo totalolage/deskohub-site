@@ -90,7 +90,7 @@ index 42c943dd45aa3d297a14edcc056a14e7ddd54680..dc6684f3e1858dba59d63d63cd846334
  	};
  	await ctx.context.internalAdapter.createVerificationValue({
 diff --git a/dist/introspect-C6P1zrTr.mjs b/dist/introspect-C6P1zrTr.mjs
-index 0b3934dd6724d408a84624a3fb0215f6d3274fea..c9d54ad7864277a7bc815cfdaf1c0a67f0b5c3bd 100644
+index 0b3934dd6724d408a84624a3fb0215f6d3274fea..6d1fb63b2a8454884340a63197c707b9a7145309 100644
 --- a/dist/introspect-C6P1zrTr.mjs
 +++ b/dist/introspect-C6P1zrTr.mjs
 @@ -802,6 +802,14 @@ function getSeedState(ctx) {
@@ -309,34 +309,18 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..c9d54ad7864277a7bc815cfdaf1c0a67
  	if (isPKCERequired(client, {
  		scopes: (verificationValue.query?.scope)?.split(" ") || [],
  		nonce: verificationValue.query?.nonce
-@@ -2032,6 +2127,26 @@ async function handleAuthorizationCodeGrant(ctx, opts) {
+@@ -2032,6 +2127,10 @@ async function handleAuthorizationCodeGrant(ctx, opts) {
  	});
  	const authTime = verificationValue.authTime != null ? normalizeTimestampValue(verificationValue.authTime) : resolveSessionAuthTime(session);
  	const requestedUserInfoClaims = getRequestedUserInfoClaims(verificationValue.query.claims, getSupportedClaims(opts));
 +	// Workspace patch: the tokens reference the consent the code is bound to
-+	// (better-auth/better-auth#11345), or else the client's consent for the
-+	// customer. A client that asks for consent gets no tokens without one.
-+	const consentId = client.skipConsent ? void 0 : verificationValue.consentId ?? (await ctx.context.adapter.findOne({
-+		model: "oauthConsent",
-+		where: [{
-+			field: "clientId",
-+			value: client.clientId
-+		}, {
-+			field: "userId",
-+			value: user.id
-+		}, {
-+			field: "referenceId",
-+			value: verificationValue.referenceId ?? null
-+		}]
-+	}))?.id;
-+	if (!client.skipConsent && !consentId) throw new APIError("BAD_REQUEST", {
-+		error_description: "consent revoked",
-+		error: "invalid_grant"
-+	});
++	// (better-auth/better-auth#11345), checked above, so deleting it deletes
++	// them too, or refuses their write.
++	const consentId = client.skipConsent ? void 0 : verificationValue.consentId;
  	return createUserTokens(ctx, opts, {
  		client,
  		scopes: verificationValue.query.scope?.split(" ") ?? [],
-@@ -2045,7 +2160,8 @@ async function handleAuthorizationCodeGrant(ctx, opts) {
+@@ -2045,7 +2144,8 @@ async function handleAuthorizationCodeGrant(ctx, opts) {
  		authorizationCodeId,
  		requestedUserInfoClaims,
  		resources: effectiveResources,
@@ -346,7 +330,7 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..c9d54ad7864277a7bc815cfdaf1c0a67
  	});
  }
  /**
-@@ -2143,6 +2259,15 @@ async function handleRefreshTokenGrant(ctx, opts) {
+@@ -2143,6 +2243,15 @@ async function handleRefreshTokenGrant(ctx, opts) {
  		});
  	}
  	const client = await validateClientCredentials(ctx, opts, client_id, client_secret, requestedScopes ?? scopes, preVerified, "refresh_token", authMethod);
@@ -362,7 +346,7 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..c9d54ad7864277a7bc815cfdaf1c0a67
  	if (refreshToken.revoked) {
  		if (isWithinRefreshTokenReuseInterval(refreshToken)) {
  			const replay = await getRefreshTokenRotationReplay(ctx, refreshToken, await resolveRefreshTokenRotationReplayRequest(ctx, opts, {
-@@ -2320,6 +2445,16 @@ async function validateOpaqueAccessToken(ctx, opts, token, clientId) {
+@@ -2320,6 +2429,16 @@ async function validateOpaqueAccessToken(ctx, opts, token, clientId) {
  			issuerClientId: accessToken.clientId,
  			audienceResources: resources ?? []
  		})) return inactiveAccessToken();
