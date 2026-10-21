@@ -6,7 +6,7 @@ import { m } from "@/features/i18n";
 import { getReservationDefaultValuesFromSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
 import { getMeetingRoomReservationDefaultValuesFromSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
 import { getOfficeReservationDefaultValuesFromSearchParams } from "@/features/reservation/office-reservation-checkout-query";
-import type { GetQuoteResult } from "./get-quote.tool";
+import type { GetQuoteResult } from "./get-quote.schema";
 
 const {
   atInstant,

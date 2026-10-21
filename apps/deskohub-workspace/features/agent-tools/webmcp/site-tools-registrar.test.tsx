@@ -24,7 +24,9 @@ import {
   recordUnhandledRejections,
 } from "./webmcp.test-utils";
 
-const toolNames = publishedAgentTools.map(({ name }) => name);
+// The listing also has a signed-in tool and the booking view's tool, which
+// the site never registers.
+const toolNames = ["list_offerings", "check_availability", "get_quote"];
 
 /** A `tools/list` answer the test releases when it chooses. */
 const pendingToolsList = () => {
