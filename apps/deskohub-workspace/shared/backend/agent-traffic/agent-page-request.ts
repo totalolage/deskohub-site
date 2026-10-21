@@ -30,6 +30,8 @@ const agentPageRoutes = {
   "/[locale]/account/deleted": true,
   "/[locale]/account/legal": true,
   "/[locale]/auth/callback": true,
+  "/[locale]/auth/connect": true,
+  "/[locale]/auth/consent": true,
   "/[locale]/auth/sign-in": true,
   "/[locale]/auth/verify": true,
   "/[locale]/checkout-status-preview": true,

@@ -1,9 +1,26 @@
 import { appendFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { $ } from "bun";
+import { skippedSourceMapUploadMarker } from "./source-map-upload-failure";
 
 export const findDeploymentUrl = (output: string) =>
   output.match(/https:\/\/[^\s]+\.vercel\.app/g)?.at(-1);
+
+/**
+ * GitHub warning annotations for a build that shipped without uploading its
+ * source maps, so the release run shows it.
+ */
+export const skippedSourceMapUploadWarnings = (output: string) =>
+  output.split("\n").flatMap((line) => {
+    const markerAt = line.indexOf(skippedSourceMapUploadMarker);
+    if (markerAt === -1) return [];
+    const reason = line
+      .slice(markerAt + skippedSourceMapUploadMarker.length)
+      .trim()
+      .replaceAll("%", "%25")
+      .replaceAll("\r", "%0D");
+    return [`::warning title=Source maps not uploaded to PostHog::${reason}\n`];
+  });
 
 const buildStagedProductionDeployment = async () => {
   const githubOutput = process.env.GITHUB_OUTPUT;
@@ -24,6 +41,11 @@ const buildStagedProductionDeployment = async () => {
   const deploymentOutput = deployment.stdout.toString();
   process.stdout.write(deploymentOutput);
   process.stderr.write(deployment.stderr);
+  for (const warning of skippedSourceMapUploadWarnings(
+    `${deploymentOutput}\n${deployment.stderr.toString()}`
+  )) {
+    process.stdout.write(warning);
+  }
 
   if (deployment.exitCode !== 0) {
     throw new Error(

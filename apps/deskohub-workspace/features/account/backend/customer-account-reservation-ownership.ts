@@ -61,13 +61,22 @@ export class CustomerAccountReservationOwnership extends Context.Service<
     })
   );
 
-  static Live = this.Default.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        CustomerAuthentication.Default,
-        CustomerAccountResolver.Live,
-        CustomerAccountLinkRepository.Live
+  /**
+   * The service reading the customer through this authentication, such as
+   * an agent's access token instead of the browser session.
+   */
+  static withAuthentication = <E, R>(
+    authentication: Layer.Layer<CustomerAuthentication, E, R>
+  ) =>
+    this.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          authentication,
+          CustomerAccountResolver.withAuthentication(authentication),
+          CustomerAccountLinkRepository.Live
+        )
       )
-    )
-  );
+    );
+
+  static Live = this.withAuthentication(CustomerAuthentication.Default);
 }

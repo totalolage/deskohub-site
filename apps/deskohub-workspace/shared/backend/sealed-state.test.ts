@@ -49,6 +49,79 @@ const contactState = makeSealedState({
   maxTokenLength,
 });
 
+const syntheticIvStateSchema = Schema.Struct({
+  kid: sealedStateClaimsSchema.fields.kid,
+  iat: sealedStateClaimsSchema.fields.iat,
+  exp: sealedStateClaimsSchema.fields.exp,
+  selection: Schema.String,
+});
+
+const syntheticIvState = {
+  kid: activeKey.kid,
+  iat: Math.floor(now.getTime() / 1000),
+  exp: Math.floor(now.getTime() / 1000) + 600,
+  selection: "cowork",
+};
+
+describe("synthetic IV sealed state", () => {
+  test("seals equal state to an identical token that opens to the state", () => {
+    const first = runSync(
+      sealState(syntheticIvState, activeKey.kid, {
+        keys: [activeKey],
+        now: at(0),
+        syntheticIv: true,
+      })
+    );
+    const retry = runSync(
+      sealState(syntheticIvState, activeKey.kid, {
+        keys: [activeKey],
+        now: at(0),
+        syntheticIv: true,
+      })
+    );
+
+    expect(retry).toBe(first);
+    expect(
+      runSync(
+        openSealedState(first, syntheticIvStateSchema, {
+          keys: [activeKey],
+          now: at(0),
+        })
+      )
+    ).toEqual(syntheticIvState);
+  });
+
+  test("gives different state a different token and IV", () => {
+    const first = runSync(
+      sealState(syntheticIvState, activeKey.kid, {
+        keys: [activeKey],
+        syntheticIv: true,
+      })
+    );
+    const otherState = { ...syntheticIvState, selection: "meeting-room" };
+    const other = runSync(
+      sealState(otherState, activeKey.kid, {
+        keys: [activeKey],
+        syntheticIv: true,
+      })
+    );
+
+    expect(other).not.toBe(first);
+    expect(other.split(".")[1]).not.toBe(first.split(".")[1]);
+  });
+
+  test("uses a random IV when synthetic IVs are not requested", () => {
+    const first = runSync(
+      sealState(syntheticIvState, activeKey.kid, { keys: [activeKey] })
+    );
+    const retry = runSync(
+      sealState(syntheticIvState, activeKey.kid, { keys: [activeKey] })
+    );
+
+    expect(retry).not.toBe(first);
+  });
+});
+
 describe("purpose-bound sealed state", () => {
   test("opens the sealed value until it expires", () => {
     const token = runSync(

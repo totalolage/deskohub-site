@@ -10,13 +10,18 @@ import {
   type NextRequest,
   NextResponse,
 } from "next/server";
+import { resolveCustomerAgentConnectStep } from "@/features/account/customer-agent-routes";
 import {
   findLegacyAccountSectionRedirect,
   getAccountSignInPath,
 } from "@/features/account/routes";
 import { administrationRequestPathHeader } from "@/features/administrators/administration-request-path";
 import { resolveWorkspaceLocale } from "@/features/i18n/locale-resolution";
-import { localeCookieName, locales } from "@/features/i18n/routing";
+import {
+  getLocalizedPagePath,
+  localeCookieName,
+  locales,
+} from "@/features/i18n/routing";
 import {
   findLocalizedPublicPage,
   getPageMarkdownRoutePath,
@@ -362,6 +367,34 @@ async function administrationResponse(request: NextRequest) {
   return localizedPageResponse(request, { forwardRequestHeaders: true });
 }
 
+// Sends a signed-out visitor of the AI assistant sign-in step straight to
+// sign-in with an HTTP redirect. The page streams behind its shell, so its
+// own redirect would run in the browser as a client navigation, which the
+// site's modal slot intercepts and shows over an empty page.
+const customerAgentSignInRedirect = (request: NextRequest) => {
+  if (request.method !== "GET" && request.method !== "HEAD") return;
+  if (getSessionCookie(request)) return;
+  const locale = getLocaleFromRequestPathname(request, locales);
+  if (!locale) return;
+  const connectPath = getLocalizedPagePath(locale, "/[locale]/auth/connect");
+  if (request.nextUrl.pathname !== connectPath) return;
+
+  const step = resolveCustomerAgentConnectStep({
+    connectPath,
+    query: request.nextUrl.searchParams,
+    signedIn: false,
+  });
+  if (step.step !== "sign-in") return;
+  return markPrivateResponse(
+    NextResponse.redirect(
+      new URL(
+        getAccountSignInPath(locale, step.returnTo, "assistant"),
+        request.nextUrl
+      )
+    )
+  );
+};
+
 export async function proxy(request: NextRequest) {
   if (isAdministrationPath(request.nextUrl.pathname)) {
     return markAdministrationResponse(await administrationResponse(request));
@@ -390,7 +423,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  return localizedPageResponse(request);
+  return customerAgentSignInRedirect(request) ?? localizedPageResponse(request);
 }
 
 // Every account route, dotted segments included, passes through the proxy: the

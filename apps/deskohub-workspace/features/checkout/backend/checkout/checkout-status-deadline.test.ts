@@ -8,6 +8,7 @@ import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
 import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
+import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
@@ -162,10 +163,14 @@ const loadStatusPageOnTestClock = (options: {
               start: options.startRecovery,
             }),
             Layer.mock(LatePaymentRecoveryQueueService, {}),
-            Layer.mock(DotyposService, {
-              getReservationWithoutCustomer: () => Effect.never,
-              getCustomer: () => Effect.never,
-            }),
+            ReservationRecords.Provider.pipe(
+              Layer.provideMerge(
+                Layer.mock(DotyposService, {
+                  getReservationWithoutCustomer: () => Effect.never,
+                  getCustomer: () => Effect.never,
+                })
+              )
+            ),
             Layer.mock(AdvisoryAvailabilityInventory, {
               tables: Effect.never,
             }),

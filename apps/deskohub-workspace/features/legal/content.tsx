@@ -660,6 +660,13 @@ const legalDocuments = {
               the account secure. We never ask for a password.
             </>,
             <>
+              If you connect an AI assistant, such as ChatGPT or Claude, to your
+              customer account, we process which assistant it is, the
+              permissions you gave it and when, and the access credentials it
+              uses. When the assistant starts a reservation for you, we record
+              which assistant started it.
+            </>,
+            <>
               To run the website and prevent spam and abuse, we may also briefly
               process technical data such as your IP address and browser
               information.
@@ -710,6 +717,12 @@ const legalDocuments = {
               the same verified email address.
             </>,
             <>
+              If you connect an AI assistant, we use the connection so that, on
+              your instructions, it can look up our offers, start a reservation
+              that you then confirm and pay for on our website, and show you
+              your reservations.
+            </>,
+            <>
               We do not use reservation or enquiry data for marketing unless you
               separately consent to receive marketing communication.
             </>,
@@ -755,6 +768,11 @@ const legalDocuments = {
               and, where applicable, to perform or prepare the related
               reservation contract. Account security, session integrity, and
               abuse prevention are based on our legitimate interests.
+            </>,
+            <>
+              Connecting an AI assistant and handling its requests is processed
+              to provide the account service you request and, where applicable,
+              to prepare the related reservation contract at your request.
             </>,
             <>
               For website security, abuse and fraud prevention, reliable payment
@@ -808,6 +826,13 @@ const legalDocuments = {
               statutory, or legitimate retention period.
             </>,
             <>
+              A connected assistant's access credentials expire automatically
+              and are deleted regularly. The connection and the permissions you
+              gave last until the assistant is disconnected at your request or
+              you delete your account, which also deletes them. The record of
+              which assistant started a reservation stays with that reservation.
+            </>,
+            <>
               Analytics and campaign measurement data, including customer data
               sent to our analytics provider, is retained according to the
               applicable analytics and technical provider settings and only as
@@ -836,6 +861,12 @@ const legalDocuments = {
             <>
               Customer profiles and reservations are kept in our booking system,
               Dotypos.
+            </>,
+            <>
+              If you connect an AI assistant, what it retrieves at your request,
+              such as our offers and your reservations, goes to that assistant's
+              provider, which handles it under its own terms as a recipient you
+              chose.
             </>,
             <>
               If we send marketing communications in the future, our email
@@ -1120,6 +1151,13 @@ const legalDocuments = {
               zabezpečení účtu. Heslo po vás nikdy nechceme.
             </>,
             <>
+              Pokud ke svému zákaznickému účtu připojíte AI asistenta, například
+              ChatGPT nebo Claude, zpracováváme údaje o tom, o kterého asistenta
+              jde, jaká oprávnění jste mu udělili a kdy, a přístupové údaje,
+              které asistent používá. Když asistent vaším jménem zahájí
+              rezervaci, zaznamenáme k ní, který asistent ji zahájil.
+            </>,
+            <>
               Pro provoz webu a ochranu před spamem a zneužitím můžeme
               krátkodobě zpracovávat také technické údaje, například vaši IP
               adresu a údaje o prohlížeči.
@@ -1173,6 +1211,12 @@ const legalDocuments = {
               ověřenou e-mailovou adresou.
             </>,
             <>
+              Pokud připojíte AI asistenta, používáme jeho připojení k tomu, aby
+              podle vašich pokynů mohl vyhledat naši nabídku, zahájit rezervaci,
+              kterou pak potvrdíte a zaplatíte na našem webu, a zobrazit vám
+              vaše rezervace.
+            </>,
+            <>
               Rezervační ani poptávkové údaje nepoužíváme pro marketing, pokud k
               tomu neudělíte samostatný souhlas.
             </>,
@@ -1218,6 +1262,12 @@ const legalDocuments = {
               podle okolností také plnili nebo připravovali související
               rezervační smlouvu. Zabezpečení účtu, integrita relací a ochrana
               před zneužitím vycházejí z našich oprávněných zájmů.
+            </>,
+            <>
+              Připojení AI asistenta a vyřizování jeho požadavků zpracováváme,
+              abychom poskytli službu účtu, o kterou si žádáte, a podle
+              okolností na vaši žádost připravili související rezervační
+              smlouvu.
             </>,
             <>
               Pro zabezpečení webu, prevenci zneužití a podvodů, spolehlivé
@@ -1271,6 +1321,13 @@ const legalDocuments = {
               příslušnou smluvní, zákonnou nebo oprávněnou dobu uchování.
             </>,
             <>
+              Přístupové údaje připojeného asistenta automaticky vyprší a
+              pravidelně je mažeme. Připojení a udělená oprávnění trvají, dokud
+              asistent nebude na vaši žádost odpojen nebo dokud nesmažete účet,
+              čímž se také smažou. Údaj o tom, který asistent rezervaci zahájil,
+              zůstává u záznamu rezervace.
+            </>,
+            <>
               Analytické údaje a údaje pro kampanové měření, včetně zákaznických
               údajů předaných analytickému poskytovateli, uchováváme podle
               nastavení příslušných analytických a technických poskytovatelů a
@@ -1299,6 +1356,12 @@ const legalDocuments = {
             <>
               Zákaznické profily a rezervace vedeme v našem rezervačním systému
               Dotypos.
+            </>,
+            <>
+              Pokud připojíte AI asistenta, informace, které na vaši žádost
+              získá, například naši nabídku a vaše rezervace, předáváme
+              poskytovateli tohoto asistenta, který s nimi nakládá podle
+              vlastních podmínek jako příjemce, kterého jste si zvolili.
             </>,
             <>
               Pokud budeme v budoucnu zasílat marketingová sdělení, může náš

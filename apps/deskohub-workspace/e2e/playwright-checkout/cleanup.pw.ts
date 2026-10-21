@@ -4,6 +4,7 @@ import {
   workspaceE2EAccountLaneJournalOwner,
 } from "../account/reconcile";
 import { workspaceE2EAdministrationJournalOwners } from "../administrators/identities";
+import { agentBookingJournalOwner } from "../cases/agent-booking";
 import { referralSomeoneElsePaymentJournalOwner } from "../cases/referral-someone-else-payment";
 import { signedOutVerificationJournalOwner } from "../cases/signed-out-verification";
 import { workspaceE2ECheckoutBookerJournalOwners } from "../checkout/booker";
@@ -38,6 +39,7 @@ test("reconcile workspace checkout reservations", async ({
             ...workspaceE2EReferralJournalOwners,
             referralSomeoneElsePaymentJournalOwner,
             signedOutVerificationJournalOwner,
+            agentBookingJournalOwner,
             ...workspaceE2ECheckoutBookerJournalOwners,
             ...workspaceE2EAdministrationJournalOwners,
           ]

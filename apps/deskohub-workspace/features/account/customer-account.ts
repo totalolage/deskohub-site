@@ -40,6 +40,7 @@ export type CustomerAccountFailureCode =
   | "account-locale-preference.read"
   | "account-locale-preference.write"
   | "account.deletion-state"
+  | "authentication.agent-token"
   | "authentication.passkeys"
   | "authentication.session"
   | "dotypos.customer-expiration"

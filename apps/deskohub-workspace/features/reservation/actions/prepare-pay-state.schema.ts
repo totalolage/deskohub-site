@@ -6,11 +6,14 @@ import {
   preparePayStateCommonSchema,
 } from "./prepare-pay-state-common.schema";
 
+/** One reservation submission the booking operation prepares Pay for. */
+export const preparePayStateInputSchema = Schema.Struct({
+  ...preparePayStateCommonSchema.fields,
+  reservation: reservationOrderIssuanceSchema,
+}).check(marketingConsentSourceRequiresConsent);
+
 export const preparePayStateSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    ...preparePayStateCommonSchema.fields,
-    reservation: reservationOrderIssuanceSchema,
-  }).check(marketingConsentSourceRequiresConsent),
+  preparePayStateInputSchema,
   { parseOptions: { onExcessProperty: "error" } }
 );
 
