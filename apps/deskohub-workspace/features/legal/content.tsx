@@ -881,7 +881,9 @@ const legalDocuments = {
               If you connect an AI assistant, what it retrieves at your request,
               such as our offers and your reservations, goes to that assistant's
               provider, which handles it under its own terms as a recipient you
-              chose.
+              chose. That provider may be outside the European Union, for
+              example in the United States, and your data goes there because you
+              asked for it.
             </>,
             <>
               If we send marketing communications in the future, our email
@@ -891,7 +893,38 @@ const legalDocuments = {
           ],
         },
         {
-          heading: "7. Your rights",
+          heading: "7. Transfers outside the EU",
+          body: [
+            <>
+              Some of our providers, or companies working for them, are outside
+              the European Union, so your data may be processed there. In the
+              United States, we use only companies certified under the EU–US
+              Data Privacy Framework or bound by the European Commission's
+              standard contractual clauses. The map on our website comes from a
+              provider in the United Kingdom. The European Commission has
+              decided that the United Kingdom, and US companies certified under
+              the framework, protect personal data adequately. To learn more
+              about these transfers or get a copy of the safeguards, write to us
+              at{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              .
+            </>,
+            <>
+              Our door-lock provider is in Singapore, which has no such
+              decision. To give you door access for your reservation, it
+              receives details of your door code, such as when the code is
+              valid. We send them only because they are needed to provide the
+              service you booked.
+            </>,
+          ],
+        },
+        {
+          heading: "8. Your rights",
           body: [
             <>
               Under applicable data protection law, you may request access,
@@ -1392,7 +1425,10 @@ const legalDocuments = {
               Pokud připojíte AI asistenta, informace, které na vaši žádost
               získá, například naši nabídku a vaše rezervace, předáváme
               poskytovateli tohoto asistenta, který s nimi nakládá podle
-              vlastních podmínek jako příjemce, kterého jste si zvolili.
+              vlastních podmínek jako příjemce, kterého jste si zvolili. Tento
+              poskytovatel může sídlit mimo Evropskou unii, například ve
+              Spojených státech, a vaše údaje se tam dostanou proto, že jste o
+              to požádali.
             </>,
             <>
               Pokud budeme v budoucnu zasílat marketingová sdělení, může náš
@@ -1402,7 +1438,37 @@ const legalDocuments = {
           ],
         },
         {
-          heading: "7. Vaše práva",
+          heading: "7. Předávání mimo EU",
+          body: [
+            <>
+              Někteří naši poskytovatelé nebo firmy, které pro ně pracují, sídlí
+              mimo Evropskou unii, a vaše údaje se proto mohou zpracovávat i
+              tam. Ve Spojených státech využíváme jen firmy certifikované podle
+              rámce EU–USA pro ochranu údajů nebo vázané standardními smluvními
+              doložkami Evropské komise. Mapa na našem webu se načítá od
+              poskytovatele ve Spojeném království. Evropská komise rozhodla, že
+              Spojené království a americké firmy certifikované podle tohoto
+              rámce zajišťují odpovídající ochranu osobních údajů. Informace o
+              předávání nebo kopii příslušných záruk si můžete vyžádat na{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              .
+            </>,
+            <>
+              Náš poskytovatel dveřních zámků sídlí v Singapuru, pro který
+              takové rozhodnutí neexistuje. Kvůli přístupu do prostor během vaší
+              rezervace dostává údaje o vašem přístupovém kódu, například dobu
+              jeho platnosti. Předáváme je jen proto, že jsou nezbytné k
+              poskytnutí služby, kterou jste si rezervovali.
+            </>,
+          ],
+        },
+        {
+          heading: "8. Vaše práva",
           body: [
             <>
               Podle platných předpisů můžete požadovat přístup, opravu, výmaz,
