@@ -150,7 +150,8 @@ resource.
   revokes them when it is gone, so an exchange in flight during the
   disconnect leaves no usable tokens either. Codes issued before the patch
   carry no consent id; they redeem only under a consent created in an
-  earlier second, so a reconnect never revives them.
+  earlier second, so a reconnect doesn't revive them, and a code issued in
+  the second of its first consent is refused too.
 
 ## Account-boundary adapter
 

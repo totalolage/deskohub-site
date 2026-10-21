@@ -461,19 +461,23 @@ const predateConsentBinding = async (userId: string) => {
  * issued would.
  */
 const dateConsentsAtPredatedCode = async (userId: string) => {
-  await testDatabase!.pool.query(
-    `update auth.oauth_consent
-        set created_at = (
-          select created_at
-            from (select created_at,
-                         case when value like '{"type":"authorization_code"%'
-                              then value::jsonb end as code
-                    from auth.verification) as codes
-           where code ->> 'userId' = $1
-             and code ->> 'consentId' is null)
-      where user_id = $1`,
+  const codes = await testDatabase!.pool.query(
+    `select created_at
+       from (select created_at,
+                    case when value like '{"type":%' then value::jsonb end
+                      as value
+               from auth.verification) as verification
+      where value ->> 'type' = 'authorization_code'
+        and value ->> 'userId' = $1
+        and value ->> 'consentId' is null`,
     [userId]
   );
+  expect(codes.rows).toHaveLength(1);
+  const dated = await testDatabase!.pool.query(
+    `update auth.oauth_consent set created_at = $2 where user_id = $1`,
+    [userId, codes.rows[0]!.created_at]
+  );
+  expect(dated.rowCount).toBe(1);
 };
 
 /**
