@@ -2485,6 +2485,60 @@ describe("prepareWorkspacePayState", () => {
           });
           expect(scenario.createDraft).toHaveBeenCalledTimes(1);
         });
+
+        test("reuses the hold of an identical retry in its rotated session without superseding it", async () => {
+          const bookedAt = Temporal.Instant.from("2026-10-20T12:09:59Z");
+          const createDraft = makeAgentDraft("rotated-live-hold-id");
+          const createReservation = mock(() =>
+            Effect.succeed({ id: "dotypos-rotated-live-hold-id" } as never)
+          );
+          const firstAgentSession = paidAgentSession();
+          const first = await runAgentAt(bookedAt, {
+            findByAttemptKeys: mock(() => Effect.succeed(null)),
+            findCurrentByCheckoutSessionKey: firstAgentSession,
+            createDraft,
+            createReservation,
+          });
+          const held = makeAgentHoldFromDraft(
+            "rotated-live-hold-id",
+            createDraft.mock.calls[0]![0],
+            bookedAt
+          );
+          const claimSupersessionCancellation = mock(() =>
+            Effect.die("an identical retry must not cancel its own hold")
+          );
+          const cancelReservation = mock(() => Effect.void);
+          const retry = await runAgentAt(
+            Temporal.Instant.from("2026-10-20T12:12:00Z"),
+            {
+              findLatestByAgentSelectionKey: mock(() => Effect.succeed([held])),
+              findByAttemptKeys: mock((keys: readonly string[]) =>
+                Effect.succeed(
+                  keys.includes(held.checkoutAttemptKey) ? held : null
+                )
+              ),
+              findCurrentByCheckoutSessionKey: paidAgentSession(),
+              findSupersedableByAgentClient: mock(() => Effect.succeed([held])),
+              claimSupersessionCancellation,
+              cancelReservation,
+              createDraft,
+              createReservation,
+            }
+          );
+
+          expect(first.result?.status).toBe("ready");
+          // The hold sits in a session rotated past the agent session's
+          // paid booking.
+          expect(held.checkoutSessionKey).not.toBe(
+            firstAgentSession.mock.calls[0]?.[0]
+          );
+          expect(retry.result?.orderId).toBe("rotated-live-hold-id");
+          expect(retry.result?.redirectUrl).toBe(first.result?.redirectUrl);
+          expect(claimSupersessionCancellation).not.toHaveBeenCalled();
+          expect(cancelReservation).not.toHaveBeenCalled();
+          expect(createDraft).toHaveBeenCalledTimes(1);
+          expect(createReservation).toHaveBeenCalledTimes(1);
+        });
       });
 
       test("leaves the agent session's own hold to the session's supersession", async () => {

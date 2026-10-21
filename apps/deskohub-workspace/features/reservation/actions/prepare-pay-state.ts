@@ -855,7 +855,8 @@ const supersedeRotatedAgentHolds = Effect.fn(
       const claimed = yield* reservations.claimSupersessionCancellation(
         hold.id
       );
-      // A held reservation always carries its Dotypos hold.
+      // workspace_reservations_hold_id_check rejects a held or cancelling
+      // row without its Dotypos hold, so a claimed row always carries one.
       if (!claimed?.dotyposReservationId) return;
 
       yield* Effect.logInfo(
