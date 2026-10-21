@@ -136,36 +136,35 @@ resource.
   disconnected. Reconnecting asks for consent again.
 - Upstream Better Auth deletes only the consent row. The Workspace
   `@better-auth/oauth-provider` patch (see the `deskohub-repository` skill's
-  patched dependencies) makes the consent the revocation state: an access
-  token or refresh of a client that asks for consent works only while a
-  consent with the token's reference exists that is no newer than the token.
-  So once the consent is gone, the assistant's next MCP call gets the 401
-  challenge and its refresh fails, even for a token that outlived the
-  disconnect, and connecting the assistant again in a later second doesn't
-  bring such a token back. Presenting such a token deletes it.
-- The disconnect also deletes the client's access and refresh tokens for
-  that customer right away: the tokens, then every consent of the client
-  (a concurrent consent can record a duplicate), then the tokens again. A
-  disconnect that fails before the consent is gone keeps the assistant
-  listed, so retrying it still deletes the tokens. A refresh checks the
-  consent before it answers and again after writing its tokens, so one whose
-  consent goes away while it runs answers `invalid_grant` without handing
-  them out. A failure after the consent delete, or a rotation that wrote
-  its tokens between the deletes, leaves rows behind that no longer work,
-  and a refresh refused after writing can leave an access token row it
-  never handed out; presenting a token, or the daily auth cleanup once it
-  expires, removes it. A consent the customer approved twice at once whose
-  second insert stalls past a whole disconnect would cover older tokens
-  again; the assistant then shows as connected.
+  patched dependencies) binds every access and refresh token of a client
+  that asks for consent to the consent that authorized it: `consent_id` on
+  both token tables references `oauth_consent` with `ON DELETE CASCADE`. The
+  code exchange takes the consent the code is bound to (below) and refuses
+  a code without one; a refresh carries the consent of the token it
+  rotates.
+- So a disconnect is one statement: it deletes every consent of the client,
+  customer, and reference (a concurrent consent can record a duplicate),
+  and the database deletes their tokens with them. A token can't outlive its
+  consent, and no other consent, newer or recorded late, can keep it
+  working. A disconnect that fails deletes nothing and keeps the assistant
+  listed, so a retry still works. A refresh or code exchange that a
+  disconnect overtakes can't write its tokens and answers `invalid_grant`;
+  one that finishes first has its tokens deleted with the consent, so at
+  most it hands out tokens that never work.
+- A token without a consent predates the binding. The migration bound
+  existing tokens to their client's only consent no newer than them; the
+  rest, and any the previous deployment issued during the release, are
+  refused when presented (the assistant connects again) and deleted then,
+  or by the daily auth cleanup once they expire.
+- Two approvals of the assistant at once can both record a consent. One
+  recorded after a disconnect leaves the assistant listed as connected
+  under that approval; tokens of the disconnected consent stay revoked.
 - The patch also binds each authorization code to the consent that
   authorized it, so a code issued before the disconnect and redeemed after
-  it gets `invalid_grant`, even after the customer reconnects. The code
-  exchange checks the consent again after writing its tokens and revokes
-  them when it is gone, so an exchange in flight during the disconnect
-  leaves no usable tokens either. Codes issued before the patch carry no
-  consent id and get `invalid_grant` from assistants that ask for consent,
-  so an authorization in flight at the deploy is refused once and the
-  assistant authorizes again.
+  it gets `invalid_grant`, even after the customer reconnects. Codes issued
+  before the patch carry no consent id and get `invalid_grant` from
+  assistants that ask for consent, so an authorization in flight at the
+  deploy is refused once and the assistant authorizes again.
 
 ## Account-boundary adapter
 

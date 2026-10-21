@@ -851,9 +851,10 @@ const legalDocuments = {
               and are deleted regularly. The connection and the permissions you
               gave last until you disconnect the assistant in Connected
               assistants in your account or delete your account. Disconnecting
-              the assistant or deleting your account deletes the connection, its
-              permissions and its access credentials right away. The record of
-              which assistant started a reservation stays with that reservation.
+              the assistant or deleting your account ends the connection and its
+              permissions right away: the assistant's access credentials stop
+              working immediately and are deleted. The record of which assistant
+              started a reservation stays with that reservation.
             </>,
             <>
               Analytics and campaign measurement data, including customer data
@@ -1370,9 +1371,9 @@ const legalDocuments = {
               pravidelně je mažeme. Připojení a udělená oprávnění trvají, dokud
               asistenta neodpojíte v sekci Připojení asistenti ve svém účtu nebo
               dokud nesmažete účet. Odpojením asistenta nebo smazáním účtu se
-              připojení, oprávnění i přístupové údaje okamžitě smažou. Údaj o
-              tom, který asistent rezervaci zahájil, zůstává u záznamu
-              rezervace.
+              připojení a oprávnění okamžitě ukončí: přístupové údaje asistenta
+              okamžitě přestanou fungovat a smažou se. Údaj o tom, který
+              asistent rezervaci zahájil, zůstává u záznamu rezervace.
             </>,
             <>
               Analytické údaje a údaje pro kampanové měření, včetně zákaznických
