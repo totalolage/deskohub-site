@@ -127,16 +127,13 @@ const connectBookingHost = Effect.fn("bookingWidget.connect")(function* (
     // Hosts send the arguments before the result, if at all.
     Effect.bind("requested", () =>
       Deferred.poll(toolInput).pipe(
-        Effect.flatMap(
-          Option.match({
-            onNone: () => Effect.succeed(undefined),
-            onSome: (input) => input,
-          })
-        ),
+        Effect.flatMap(Effect.transposeOption),
         Effect.map(
           (input) =>
             Option.getOrUndefined(
-              Schema.decodeUnknownOption(toolInputSchema)(input?.arguments)
+              Option.flatMap(input, ({ arguments: args }) =>
+                Schema.decodeUnknownOption(toolInputSchema)(args)
+              )
             )?.locale
         )
       )

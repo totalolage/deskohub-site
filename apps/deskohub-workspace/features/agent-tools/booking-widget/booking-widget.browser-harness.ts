@@ -1,8 +1,8 @@
+import type { CallToolResult } from "@modelcontextprotocol/client";
 import {
   AppBridge,
   PostMessageTransport,
 } from "@modelcontextprotocol/ext-apps/app-bridge";
-import type { CallToolResult } from "@modelcontextprotocol/client";
 import type { Schema } from "effect";
 
 /** What the test hands the host page before this script runs. */

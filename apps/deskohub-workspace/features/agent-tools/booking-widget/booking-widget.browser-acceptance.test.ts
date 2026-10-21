@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { CallToolResult } from "@modelcontextprotocol/client";
 import { type Browser, chromium, type Page } from "@playwright/test";
 import type { Schema } from "effect";
 import { type Locale, m } from "@/features/i18n";
@@ -54,7 +55,10 @@ afterAll(async () => {
 
 type ToolCall = { readonly name: string; readonly args: Schema.JsonObject };
 
-const toolResult = (structuredContent: object, isError = false) => ({
+const toolResult = (
+  structuredContent: CallToolResult["structuredContent"],
+  isError = false
+) => ({
   ...(isError && { isError }),
   content: [{ type: "text", text: JSON.stringify(structuredContent) }],
   structuredContent,
