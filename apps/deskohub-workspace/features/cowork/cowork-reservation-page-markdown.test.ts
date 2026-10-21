@@ -60,7 +60,9 @@ const pageFacts = (locale: Locale) => [
   m.reservationReservedDeskPerkCoffee({}, { locale }),
   m.reservationReservedDeskPerkMonitor({}, { locale }),
   m.publicOfferingReservedDeskUsage({}, { locale }),
-  m.publicOfferingReservedDeskAlwaysOpenAccess({}, { locale }),
+  ...(workspaceSiteConstants.openingHours.alwaysOpen
+    ? [m.publicOfferingReservedDeskAlwaysOpenAccess({}, { locale })]
+    : []),
   m.reservationTierPerksLabel({}, { locale }),
   m.reservationCoffeeLabel({}, { locale }),
   m.reservationWorkstationLabel({}, { locale }),
