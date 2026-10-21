@@ -12,6 +12,7 @@ import { AccountShell, type AccountShellProps } from "./shell/account-shell";
 const disabledAccountSections = [
   "reservations",
   "profile",
+  "assistants",
   "billing",
   "legal",
   "danger",

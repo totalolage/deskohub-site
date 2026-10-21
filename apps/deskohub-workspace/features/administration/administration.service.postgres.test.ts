@@ -5,6 +5,7 @@ import {
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
+  ExternalAPIError,
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { IgloohomeDeviceIdSchema } from "@deskohub/igloohome";
@@ -12,6 +13,7 @@ import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import {
+  customerMarketingConsents,
   type FulfillmentState,
   paymentAttempts,
   type ReservationState,
@@ -36,6 +38,7 @@ import {
   fixtureReservationAuthorId,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
+  type AdministrationCustomerExportInput,
   type AdministrationCustomerListInput,
   AdministrationService,
 } from "./administration.service";
@@ -43,6 +46,10 @@ import { PaymentAdministrationServiceMock } from "./payment-administration.servi
 import { PostHogReservationHistory } from "./posthog-reservation-history";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
+
+type DotyposServiceOverrides = NonNullable<
+  Parameters<typeof DotyposServiceMock>[0]
+>;
 
 describe.skipIf(!testDatabase)(
   "AdministrationService on disposable Postgres",
@@ -69,6 +76,10 @@ describe.skipIf(!testDatabase)(
         [reservationIds]
       );
       await testDatabase.pool.query(
+        "delete from customer_marketing_consents where dotypos_customer_id like $1",
+        [`%-customer-${runId}`]
+      );
+      await testDatabase.pool.query(
         `delete from auth."user" where id = any($1)`,
         [accountIds]
       );
@@ -81,7 +92,10 @@ describe.skipIf(!testDatabase)(
     const run = <A, E>(
       operation: (
         administration: typeof AdministrationService.Service
-      ) => Effect.Effect<A, E>
+      ) => Effect.Effect<A, E>,
+      {
+        listReservations = () => Effect.succeed([]),
+      }: Pick<DotyposServiceOverrides, "listReservations"> = {}
     ) =>
       Effect.runPromise(
         Effect.gen(function* () {
@@ -107,7 +121,7 @@ describe.skipIf(!testDatabase)(
                           : []
                       ),
                     getTables: () => Effect.succeed([]),
-                    listReservations: () => Effect.succeed([]),
+                    listReservations,
                   }),
                   Layer.succeed(
                     PostHogReservationHistory,
@@ -400,6 +414,517 @@ describe.skipIf(!testDatabase)(
       ).toEqual(payments.map(() => ({ kind: "cowork", tier: "open-space" })));
     });
 
+    describe("customer list filters", () => {
+      const range = { from: "2026-10-01", to: "2026-10-31" } as const;
+      const bookingId = (label: string) =>
+        DotyposReservationIdSchema.make(`booking-${label}-${runId}`);
+      const booking = (label: string) => ({
+        _branchId: "branch",
+        _cloudId: "cloud",
+        _customerId: "dotypos-customer",
+        endDate: "2026-10-10T10:00:00Z",
+        id: bookingId(label),
+        seats: "1",
+        startDate: "2026-10-10T08:00:00Z",
+        status: "CONFIRMED" as const,
+      });
+      const twice = makeCustomerId("filter-twice");
+      const unsuccessfulInRange = makeCustomerId("filter-unsuccessful");
+      const outOfRange = makeCustomerId("filter-out-of-range");
+      const withdrawn = makeCustomerId("filter-withdrawn");
+      const never = makeCustomerId("filter-never");
+      const seededCustomers = new Set<string>([
+        twice,
+        unsuccessfulInRange,
+        outOfRange,
+        withdrawn,
+        never,
+      ]);
+      const inRangeLabels: string[] = [];
+      const withdrawnLatestActivity = Temporal.Instant.from(
+        "2098-06-01T00:00:00Z"
+      );
+
+      const seed = async ({
+        customerId,
+        fulfillmentState = "fulfilled",
+        inRange,
+        label,
+        reservationState = "confirmed",
+        updatedAt,
+      }: {
+        readonly customerId: DotyposCustomerId;
+        readonly fulfillmentState?: Exclude<
+          FulfillmentState,
+          "awaiting_delivery"
+        >;
+        readonly inRange: boolean;
+        readonly label: string;
+        readonly reservationState?: ReservationState;
+        readonly updatedAt?: Temporal.Instant;
+      }) => {
+        await insertReservation({
+          customerId,
+          fulfillmentState,
+          label,
+          reservationState,
+          updatedAt,
+        });
+        if (inRange) inRangeLabels.push(label);
+      };
+
+      const grantConsent = (
+        dotyposCustomerId: DotyposCustomerId,
+        withdrawnAt?: Temporal.Instant
+      ) =>
+        Effect.runPromise(
+          testDatabase.db.insert(customerMarketingConsents).values({
+            dotyposCustomerId,
+            documentHash: "hash",
+            locale: "cs-CZ",
+            grantedAt: Temporal.Instant.from("2026-01-01T00:00:00Z"),
+            ...(withdrawnAt && { withdrawnAt }),
+          })
+        );
+
+      beforeAll(async () => {
+        await seed({ customerId: twice, inRange: true, label: "twice-1" });
+        await seed({ customerId: twice, inRange: true, label: "twice-2" });
+        await grantConsent(twice);
+        // Its only booking in the range was cancelled.
+        await seed({
+          customerId: unsuccessfulInRange,
+          fulfillmentState: "fulfilled",
+          inRange: true,
+          label: "unsuccessful-cancelled",
+          reservationState: "cancelled",
+        });
+        await seed({
+          customerId: unsuccessfulInRange,
+          inRange: false,
+          label: "unsuccessful-elsewhere",
+        });
+        await grantConsent(
+          unsuccessfulInRange,
+          Temporal.Instant.from("2026-02-01T00:00:00Z")
+        );
+        await seed({
+          customerId: outOfRange,
+          inRange: false,
+          label: "out-of-range",
+        });
+        await seed({
+          customerId: withdrawn,
+          inRange: true,
+          label: "withdrawn-in-range",
+        });
+        // Outside the range, but still part of the customer's aggregates.
+        await seed({
+          customerId: withdrawn,
+          inRange: false,
+          label: "withdrawn-elsewhere",
+          updatedAt: withdrawnLatestActivity,
+        });
+        await grantConsent(
+          withdrawn,
+          Temporal.Instant.from("2026-03-01T00:00:00Z")
+        );
+        await seed({ customerId: never, inRange: true, label: "never" });
+      });
+
+      const listInRange = (
+        input: AdministrationCustomerListInput,
+        bookings = inRangeLabels.map(booking)
+      ) =>
+        run((administration) => administration.listCustomers(input), {
+          listReservations: () => Effect.succeed(bookings),
+        });
+
+      /** Lists every customer page and keeps only this suite's customers. */
+      const listSeeded = async (input: AdministrationCustomerListInput) => {
+        const items = [];
+        for (let page = 1; ; page += 1) {
+          const result = await run((administration) =>
+            administration.listCustomers({ ...input, page })
+          );
+          items.push(
+            ...result.items.filter(({ customerId }) =>
+              seededCustomers.has(customerId)
+            )
+          );
+          if (page >= result.pageCount) return items;
+        }
+      };
+
+      test("keeps customers with a successful reservation starting in the range, once each", async () => {
+        const listInputs: unknown[] = [];
+        const result = await run(
+          (administration) => administration.listCustomers(range),
+          {
+            listReservations: (input) =>
+              Effect.sync(() => {
+                listInputs.push(input);
+                return inRangeLabels.map(booking);
+              }),
+          }
+        );
+
+        expect(listInputs).toEqual([
+          {
+            order: "startDateAscending",
+            startsAtOrAfter: "2026-09-30T22:00:00Z",
+            startsBefore: "2026-10-31T23:00:00Z",
+          },
+        ]);
+        expect(result.dateFilterUnavailable).toBe(false);
+        expect(result.total).toBe(3);
+        expect(result.pageCount).toBe(1);
+        expect(result.items.map(({ customerId }) => customerId).sort()).toEqual(
+          [never, twice, withdrawn].sort()
+        );
+        // The range decides membership; the aggregates keep full history.
+        const withdrawnItem = result.items.find(
+          ({ customerId }) => customerId === withdrawn
+        );
+        expect(withdrawnItem?.reservationCount).toBe(2);
+        expect(withdrawnItem?.lastActivityAt).toBe(
+          withdrawnLatestActivity.toString()
+        );
+        expect(
+          result.items.find(({ customerId }) => customerId === twice)
+            ?.reservationCount
+        ).toBe(2);
+      });
+
+      test("normalizes a reversed range", async () => {
+        const result = await listInRange({ from: range.to, to: range.from });
+        expect(result.total).toBe(3);
+      });
+
+      test("counts only bookings successful in Deskohub and not cancelled in Dotypos", async () => {
+        const dotyposCancelled = makeCustomerId("filter-dotypos-cancelled");
+        // Deskohub records it as fulfilled, whatever Dotypos reports.
+        await insertReservation({
+          customerId: dotyposCancelled,
+          fulfillmentState: "fulfilled",
+          label: "dotypos-cancelled",
+          reservationState: "confirmed",
+        });
+        const bookings = (status: "CANCELLED" | "CONFIRMED" | "NEW") =>
+          [...inRangeLabels, "dotypos-cancelled"].map((label) => ({
+            ...booking(label),
+            ...((label === "dotypos-cancelled" || label === "twice-1") && {
+              status,
+            }),
+          }));
+        const customerIds = (items: readonly { customerId: string }[]) =>
+          items.map(({ customerId }) => customerId).sort();
+
+        const cancelled = await listInRange(range, bookings("CANCELLED"));
+        // `twice` still has a booking Dotypos kept; the locally cancelled
+        // booking of `unsuccessfulInRange` never counts.
+        expect(customerIds(cancelled.items)).toEqual(
+          [never, twice, withdrawn].sort()
+        );
+        expect(cancelled.total).toBe(3);
+        expect(
+          customerIds(
+            await run(
+              (administration) => administration.exportCustomers(range),
+              { listReservations: () => Effect.succeed(bookings("CANCELLED")) }
+            )
+          )
+        ).toEqual(customerIds(cancelled.items));
+
+        for (const status of ["CONFIRMED", "NEW"] as const) {
+          const kept = await listInRange(range, bookings(status));
+          expect(customerIds(kept.items)).toEqual(
+            [dotyposCancelled, never, twice, withdrawn].sort()
+          );
+          expect(kept.total).toBe(4);
+        }
+      });
+
+      test("filters by a range holding more bookings than Postgres's parameter limit", async () => {
+        const bookings = [
+          ...Array.from({ length: 70_000 }, (_, index) =>
+            booking(`filter-unlinked-${index}`)
+          ),
+          ...inRangeLabels.map(booking),
+        ];
+        const result = await listInRange(range, bookings);
+        expect(result.total).toBe(3);
+        expect(result.items.map(({ customerId }) => customerId).sort()).toEqual(
+          [never, twice, withdrawn].sort()
+        );
+      });
+
+      test("filters by current marketing consent and projects it", async () => {
+        const states = async (
+          marketingConsent?: AdministrationCustomerListInput["marketingConsent"]
+        ) =>
+          (await listSeeded({ marketingConsent }))
+            .map(({ customerId, marketingConsent }) => [
+              customerId,
+              marketingConsent,
+            ])
+            .sort();
+
+        expect(await states("granted")).toEqual([[twice, "granted"]]);
+        expect(await states("withdrawn")).toEqual(
+          [
+            [unsuccessfulInRange, "withdrawn"],
+            [withdrawn, "withdrawn"],
+          ].sort()
+        );
+        expect(await states("never")).toEqual(
+          [
+            [never, "never"],
+            [outOfRange, "never"],
+          ].sort()
+        );
+        expect(await states()).toEqual(
+          [
+            [never, "never"],
+            [outOfRange, "never"],
+            [twice, "granted"],
+            [unsuccessfulInRange, "withdrawn"],
+            [withdrawn, "withdrawn"],
+          ].sort()
+        );
+      });
+
+      test("combines the date range with the consent filter", async () => {
+        for (const [marketingConsent, expected] of [
+          ["granted", twice],
+          ["withdrawn", withdrawn],
+          ["never", never],
+        ] as const) {
+          const result = await listInRange({ ...range, marketingConsent });
+          expect(result.total).toBe(1);
+          expect(result.items.map(({ customerId }) => customerId)).toEqual([
+            expected,
+          ]);
+        }
+      });
+
+      test("selects no customers when Dotypos can't answer the range", async () => {
+        const result = await run(
+          (administration) =>
+            administration.listCustomers({
+              ...range,
+              marketingConsent: "never",
+            }),
+          {
+            listReservations: () =>
+              Effect.fail(
+                new ExternalAPIError({
+                  operation: "listReservations",
+                  service: "Dotypos",
+                  statusCode: 503,
+                })
+              ),
+          }
+        );
+        expect(result).toEqual({
+          dateFilterUnavailable: true,
+          items: [],
+          page: 1,
+          pageCount: 1,
+          total: 0,
+        });
+      });
+
+      describe("export", () => {
+        const exportInRange = (
+          input: AdministrationCustomerExportInput,
+          bookings = inRangeLabels.map(booking)
+        ) =>
+          run((administration) => administration.exportCustomers(input), {
+            listReservations: () => Effect.succeed(bookings),
+          });
+
+        test("exports the customers the list shows under each filter", async () => {
+          for (const marketingConsent of [
+            undefined,
+            "granted",
+            "withdrawn",
+            "never",
+          ] as const) {
+            const exported = await run((administration) =>
+              administration.exportCustomers({ marketingConsent })
+            );
+            expect(
+              exported.filter(({ customerId }) =>
+                seededCustomers.has(customerId)
+              )
+            ).toEqual(await listSeeded({ marketingConsent }));
+
+            const exportedInRange = await exportInRange({
+              ...range,
+              marketingConsent,
+            });
+            expect(exportedInRange).toEqual(
+              (await listInRange({ ...range, marketingConsent })).items
+            );
+          }
+        });
+
+        test("fails instead of exporting no customers when Dotypos can't answer the range", async () => {
+          const failure = await run(
+            (administration) =>
+              administration.exportCustomers(range).pipe(Effect.flip),
+            {
+              listReservations: () =>
+                Effect.fail(
+                  new ExternalAPIError({
+                    operation: "listReservations",
+                    service: "Dotypos",
+                    statusCode: 503,
+                  })
+                ),
+            }
+          );
+          expect(failure).toMatchObject({
+            _tag: "AdministrationListSourceUnavailableError",
+            source: "booking-dates",
+          });
+        });
+      });
+
+      test("doesn't read Dotypos without a range", async () => {
+        const result = await run(
+          (administration) =>
+            administration.listCustomers({ marketingConsent: "granted" }),
+          {
+            listReservations: () =>
+              Effect.die(new Error("Dotypos must not be read")),
+          }
+        );
+        expect(result.dateFilterUnavailable).toBe(false);
+      });
+
+      describe("paging", () => {
+        // More customers than one page holds, each with a successful booking
+        // in the range and 1–3 successful reservations in total.
+        const pagedCustomers = Array.from({ length: 26 }, (_, index) => ({
+          customerId: makeCustomerId(
+            `filter-page-${String(index).padStart(2, "0")}`
+          ),
+          reservationCount: 1 + (index % 3),
+          lastActivityAt: Temporal.Instant.from("2097-01-01T00:00:00Z").add({
+            hours: (index * 7) % 26,
+          }),
+        }));
+        const pagedLabels: string[] = [];
+
+        beforeAll(async () => {
+          for (const customer of pagedCustomers) {
+            for (let index = 0; index < customer.reservationCount; index += 1) {
+              const label = `${customer.customerId}-${index}`;
+              await insertReservation({
+                customerId: customer.customerId,
+                fulfillmentState: "fulfilled",
+                label,
+                reservationState: "confirmed",
+                updatedAt: customer.lastActivityAt.subtract({ minutes: index }),
+              });
+              if (index === 0) pagedLabels.push(label);
+            }
+          }
+        });
+
+        const listAllPages = async (input: AdministrationCustomerListInput) => {
+          const pages = [];
+          for (let page = 1; ; page += 1) {
+            const result = await listInRange(
+              { ...range, ...input, page },
+              pagedLabels.map(booking)
+            );
+            pages.push(result);
+            if (page >= result.pageCount) return pages;
+          }
+        };
+
+        test("counts, pages and sorts the filtered set", async () => {
+          const byCustomerId = (
+            left: (typeof pagedCustomers)[number],
+            right: (typeof pagedCustomers)[number]
+          ) => left.customerId.localeCompare(right.customerId);
+          for (const [input, expected] of [
+            [
+              {},
+              pagedCustomers.toSorted(
+                (left, right) =>
+                  Temporal.Instant.compare(
+                    right.lastActivityAt,
+                    left.lastActivityAt
+                  ) || byCustomerId(left, right)
+              ),
+            ],
+            [
+              { sort: "reservations", direction: "asc" },
+              pagedCustomers.toSorted(
+                (left, right) =>
+                  left.reservationCount - right.reservationCount ||
+                  byCustomerId(left, right)
+              ),
+            ],
+            [
+              { sort: "reservations", direction: "desc" },
+              pagedCustomers.toSorted(
+                (left, right) =>
+                  right.reservationCount - left.reservationCount ||
+                  byCustomerId(left, right)
+              ),
+            ],
+          ] as const) {
+            const pages = await listAllPages(input);
+            expect(
+              pages.map(({ total, pageCount }) => [total, pageCount])
+            ).toEqual([
+              [26, 2],
+              [26, 2],
+            ]);
+            expect(pages.map(({ items }) => items.length)).toEqual([24, 2]);
+            expect(
+              pages.flatMap(({ items }) =>
+                items.map(({ customerId, reservationCount }) => [
+                  customerId,
+                  reservationCount,
+                ])
+              )
+            ).toEqual(
+              expected.map(({ customerId, reservationCount }) => [
+                customerId,
+                reservationCount,
+              ])
+            );
+          }
+        });
+
+        test("exports every customer of the filtered set in list order, without pages", async () => {
+          for (const input of [
+            {},
+            { sort: "reservations", direction: "asc" },
+            { sort: "activity", direction: "asc" },
+          ] as const) {
+            const pages = await listAllPages(input);
+            const exported = await run(
+              (administration) =>
+                administration.exportCustomers({ ...range, ...input }),
+              {
+                listReservations: () =>
+                  Effect.succeed(pagedLabels.map(booking)),
+              }
+            );
+            expect(exported).toHaveLength(26);
+            expect(exported).toEqual(pages.flatMap(({ items }) => items));
+          }
+        });
+      });
+    });
+
     describe("refund attention", () => {
       const customerId = makeCustomerId("refund");
 
@@ -671,6 +1196,140 @@ describe.skipIf(!testDatabase)(
       expect(legacyStaleProvisioningDetail?.accessGrant?.accessName).toBe(
         `Deskohub ${legacyStaleProvisioning.reservationId}`.slice(0, 60)
       );
+    });
+
+    describe("reservation export", () => {
+      test("exports every reservation the list filters match, in list order", async () => {
+        const customerId = makeCustomerId("export");
+        const otherCustomerId = makeCustomerId("export-other");
+        const complete: WorkspaceReservationId[] = [];
+        for (let index = 0; index < 30; index += 1) {
+          complete.push(
+            await insertReservation({
+              customerId,
+              fulfillmentState: "fulfilled",
+              label: `export-complete-${index}`,
+              reservationState: "confirmed",
+            })
+          );
+        }
+        const cancelled = await insertReservation({
+          customerId,
+          fulfillmentState: "fulfilled",
+          label: "export-cancelled",
+          reservationState: "cancelled",
+        });
+        await insertReservation({
+          customerId: otherCustomerId,
+          fulfillmentState: "fulfilled",
+          label: "export-other-customer",
+          reservationState: "confirmed",
+        });
+        const input = {
+          customerId,
+          direction: "asc",
+          sort: "created",
+          status: "complete",
+          type: "cowork",
+        } as const;
+
+        const [exported, firstPage, secondPage, otherType] = await Promise.all([
+          run((administration) => administration.exportReservations(input)),
+          run((administration) =>
+            administration.listReservations({ ...input, page: 1 })
+          ),
+          run((administration) =>
+            administration.listReservations({ ...input, page: 2 })
+          ),
+          run((administration) =>
+            administration.exportReservations({
+              ...input,
+              type: "meeting-room",
+            })
+          ),
+        ]);
+
+        expect(exported.map(({ id }) => id)).toEqual(
+          [...firstPage.items, ...secondPage.items].map(({ id }) => id)
+        );
+        expect(exported).toHaveLength(30);
+        expect(exported.map(({ id }) => id).sort()).toEqual(complete.sort());
+        expect(exported.map(({ id }) => id)).not.toContain(cancelled);
+        expect(otherType).toEqual([]);
+        // Dotypos returned neither the bookings nor the customer, which an
+        // export keeps as empty details instead of failing.
+        expect(exported[0]?.customer).toBeNull();
+        expect(exported[0]?.startsAt).toBeNull();
+        expect(exported[0]?.dotyposReservationId).toBe(
+          DotyposReservationIdSchema.make(`booking-export-complete-0-${runId}`)
+        );
+      });
+
+      test("exports more reservations than Postgres's parameter limit, in date order", async () => {
+        const customerId = makeCustomerId("export-large");
+        const reservationCount = 65_600;
+        const labels = Array.from(
+          { length: reservationCount },
+          (_, index) => `export-large-${index}`
+        );
+        // One statement, since an insert of this many rows through Drizzle
+        // would itself pass the parameter limit.
+        await testDatabase.pool.query(
+          `insert into workspace_reservations (
+            id, checkout_attempt_key, author_account_id, dotypos_customer_id,
+            dotypos_reservation_id, reservation_state, payment_state, paid_at,
+            fulfillment_state, fulfilled_at, reservation_details, locale
+          )
+          select 'admin-' || label, 'attempt-' || label, $3, $2,
+            'booking-' || label, 'confirmed', 'paid', now(), 'fulfilled', now(),
+            '{"kind":"cowork","entryTier":"open-space","coffee":false}'::jsonb,
+            'en-US'
+          from unnest($1::text[]) as label`,
+          [
+            labels.map((label) => `${label}-${runId}`),
+            customerId,
+            fixtureReservationAuthorId,
+          ]
+        );
+        reservationIds.push(
+          ...labels.map((label) =>
+            workspaceReservationIdSchema.make(`admin-${label}-${runId}`)
+          )
+        );
+        // Dotypos orders the bookings in the reverse of their insertion.
+        const expected = labels
+          .toReversed()
+          .map((label) =>
+            DotyposReservationIdSchema.make(`booking-${label}-${runId}`)
+          );
+        const bookings = expected.map((id, index) => ({
+          _branchId: "branch",
+          _cloudId: "cloud",
+          _customerId: "dotypos-customer",
+          endDate: "2026-10-10T10:00:00Z",
+          id,
+          seats: "1",
+          startDate: Temporal.Instant.from("2026-10-01T08:00:00Z")
+            .add({ seconds: index })
+            .toString(),
+          status: "CONFIRMED" as const,
+        }));
+        const exported = await run(
+          (administration) =>
+            administration.exportReservations({
+              customerId,
+              direction: "asc",
+              from: "2026-10-01",
+              sort: "date",
+              to: "2026-10-31",
+            }),
+          { listReservations: () => Effect.succeed(bookings) }
+        );
+
+        expect(
+          exported.map(({ dotyposReservationId }) => dotyposReservationId)
+        ).toEqual(expected);
+      });
     });
   }
 );

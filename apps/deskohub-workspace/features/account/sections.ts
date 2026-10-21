@@ -10,6 +10,7 @@ export const accountSections = [
   "referrals",
   "profile",
   "security",
+  "assistants",
   "billing",
   "legal",
   "danger",

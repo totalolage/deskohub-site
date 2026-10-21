@@ -4,12 +4,17 @@ import Interpolate from "@doist/react-interpolate";
 import { useMemo } from "react";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { AdministrationLink as Link } from "./admin-link";
 import type {
   AdministrationCustomerSort,
   AdministrationCustomerSummary,
 } from "./administration.service";
-import { getAdministrationCustomerName } from "./customer-presentation";
+import type { AdministrationCustomerMarketingConsentState } from "./customer-list-filters";
+import {
+  getAdministrationCustomerMarketingConsentLabel,
+  getAdministrationCustomerName,
+} from "./customer-presentation";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
@@ -59,6 +64,22 @@ const getColumns = (
     meta: { cellClassName: "text-navy-blue/68" },
   },
   {
+    accessorFn: (item) =>
+      getAdministrationCustomerMarketingConsentLabel(
+        item.marketingConsent,
+        locale
+      ),
+    cell: ({ row }) => (
+      <CustomerMarketingConsentBadge
+        locale={locale}
+        state={row.original.marketingConsent}
+      />
+    ),
+    enableSorting: false,
+    header: m.administrationCustomerTableMarketingConsent({}, { locale }),
+    id: "marketingConsent",
+  },
+  {
     accessorKey: "reservationCount",
     cell: ({ row }) => (
       <span className="text-navy-blue/60">
@@ -88,18 +109,51 @@ const getColumns = (
   },
 ];
 
+function CustomerMarketingConsentBadge({
+  locale,
+  state,
+}: {
+  readonly locale: Locale;
+  readonly state: AdministrationCustomerMarketingConsentState;
+}) {
+  return (
+    <StatusBadge
+      tone={
+        (
+          {
+            granted: "positive",
+            never: "neutral",
+            withdrawn: "attention",
+          } as const
+        )[state]
+      }
+    >
+      {getAdministrationCustomerMarketingConsentLabel(state, locale)}
+    </StatusBadge>
+  );
+}
+
 export function AdministrationCustomerTable({
   customers,
+  filtered = false,
   sorting,
 }: {
   readonly customers: readonly AdministrationCustomerSummary[];
+  /** Whether filters narrowed the list, which changes the empty message. */
+  readonly filtered?: boolean;
   readonly sorting?: AdministrationTableSorting<AdministrationCustomerSort>;
 }) {
   const locale = useRouteLocale();
   const columns = useMemo(() => getColumns(locale), [locale]);
   if (customers.length === 0) {
     return (
-      <EmptyState message={m.administrationCustomerListEmpty({}, { locale })} />
+      <EmptyState
+        message={
+          filtered
+            ? m.administrationCustomerListEmptyFiltered({}, { locale })
+            : m.administrationCustomerListEmpty({}, { locale })
+        }
+      />
     );
   }
   return (
@@ -140,7 +194,17 @@ export function AdministrationCustomerTable({
                     item.customer?.phone ??
                     m.administrationCustomerContactUnavailable({}, { locale })}
                 </p>
-                <p className="mt-3 text-xs text-navy-blue/60">
+                <p className="mt-3 flex flex-wrap items-center gap-2 text-xs text-navy-blue/60">
+                  {m.administrationCustomerTableMarketingConsent(
+                    {},
+                    { locale }
+                  )}
+                  <CustomerMarketingConsentBadge
+                    locale={locale}
+                    state={item.marketingConsent}
+                  />
+                </p>
+                <p className="mt-2 text-xs text-navy-blue/60">
                   {m.administrationCustomerListItemSummary(
                     {
                       count: item.reservationCount,
@@ -162,7 +226,7 @@ export function AdministrationCustomerTable({
           ? [{ id: sorting.field, desc: sorting.direction === "desc" }]
           : undefined
       }
-      tableClassName="min-w-[860px]"
+      tableClassName="min-w-[1000px]"
     />
   );
 }

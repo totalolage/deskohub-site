@@ -9,7 +9,7 @@ what the privacy copy promises. Privacy copy lives in
 | System | Holds | Removal |
 | --- | --- | --- |
 | Neon `auth` schema | Login email, hashed verification token with the email in its value, sessions without IP or user agent, `IP\|path` rate-limit keys | Better Auth deletes identity rows on account deletion; the daily `auth-cleanup` cron removes expired sessions, verifications, and stale rate-limit rows |
-| Neon `auth` OAuth tables | Connected AI agents: client ID (its metadata URL), name, and redirect URIs; the customer's consent (client, scopes); hashed access and refresh tokens; on a rotated refresh token, the replacing token response encrypted with the Better Auth secret for the 30-second reuse window | Consents and tokens cascade with the auth user on account deletion; the daily `auth-cleanup` cron removes expired tokens and client-assertion records and clears replay copies whose window has passed; client rows stay |
+| Neon `auth` OAuth tables | Connected AI agents: client ID (its metadata URL), name, and redirect URIs; the customer's consent (client, scopes); hashed access and refresh tokens; on a rotated refresh token, the replacing token response encrypted with the Better Auth secret for the 30-second reuse window | Disconnecting an assistant removes its consent and tokens, replay copies included; consents and tokens cascade with the auth user on account deletion; the daily `auth-cleanup` cron removes expired tokens and client-assertion records and clears replay copies whose window has passed; client rows stay |
 | Neon `public.customer_accounts` | Account ID, its Dotypos customer ID, deletion instant | Kept as a deleted-account tombstone so reservations keep their author; deletion clears the Dotypos customer ID |
 | Neon administrator records (`account_role_grants`, account actors on CLI authentication requests and sessions, standalone access-code events, and `manual_invoice_actors`) | Account ID, role, and the administrator's login-email snapshot as provenance | Grants cascade with the auth user; actor account IDs are set to null and the email snapshot stays with the audit record |
 | Vercel runtime cache | Reservation details (time, table, seats, status) that customers' AI agents read, without customer fields or notes, keyed by reservation or Dotypos customer ID | Not served more than 5 minutes after its last refresh, and reservation writes expire it sooner; Vercel deletes stored entries on its own schedule |
@@ -69,8 +69,21 @@ in-app. Re-check this table whenever a provider, plan, or region changes.
   magic-link validity, daily cleanup of expired rows, identity rows kept until
   the customer deletes the account. Connected AI agents: 1-hour access tokens,
   30-day refresh tokens rotated on use with a 30-second reuse window whose
-  encrypted replay copy the daily cleanup clears, consents kept until account
-  deletion.
+  encrypted replay copy the daily cleanup clears, consents kept until the
+  customer disconnects the assistant or deletes the account.
+- The notice promises that connected assistants' access credentials expire
+  automatically and are deleted regularly, that the connection and its
+  permissions last until the customer disconnects the assistant in Connected
+  assistants or deletes the account, and that either ends the connection and
+  its permissions right away, with the access credentials stopping working
+  immediately and being deleted. Keep each token and unexchanged code bound to
+  the consent that authorized it, so deleting the consent deletes its tokens
+  and voids its codes (the oauth-provider patch and the `consent_id`
+  cascade), and keep the Connected assistants section name in step with the
+  copy. Tokens issued before the
+  binding reference no consent and never work again for a client that asks
+  for consent, so they can't outlive a disconnect; the assistant connects
+  once more. Never bind existing tokens to a consent after the fact.
 - Account deletion expires the Dotypos profile and removes the live login
   account. Don't promise automatic Dotypos deletion after any period: the
   Dotypos Customer API documents no retention or anonymization behavior for

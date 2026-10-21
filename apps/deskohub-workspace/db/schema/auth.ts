@@ -299,6 +299,10 @@ export const authOauthRefreshToken = authSchema.table(
     authorizationCodeId: text("authorization_code_id"),
     resources: text("resources").array(),
     requestedUserInfoClaims: text("requested_user_info_claims").array(),
+    /** The consent that authorized the token; deleting it revokes the token. */
+    consentId: text("consent_id").references(() => authOauthConsent.id, {
+      onDelete: "cascade",
+    }),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }),
     revoked: timestamp("revoked", { withTimezone: true }),
@@ -319,6 +323,7 @@ export const authOauthRefreshToken = authSchema.table(
     index("oauth_refresh_token_authorization_code_id_idx").on(
       t.authorizationCodeId
     ),
+    index("oauth_refresh_token_consent_id_idx").on(t.consentId),
   ]
 );
 
@@ -341,6 +346,10 @@ export const authOauthAccessToken = authSchema.table(
     authorizationCodeId: text("authorization_code_id"),
     resources: text("resources").array(),
     requestedUserInfoClaims: text("requested_user_info_claims").array(),
+    /** The consent that authorized the token; deleting it revokes the token. */
+    consentId: text("consent_id").references(() => authOauthConsent.id, {
+      onDelete: "cascade",
+    }),
     refreshId: text("refresh_id").references(() => authOauthRefreshToken.id, {
       onDelete: "cascade",
     }),
@@ -359,6 +368,7 @@ export const authOauthAccessToken = authSchema.table(
       t.authorizationCodeId
     ),
     index("oauth_access_token_refresh_id_idx").on(t.refreshId),
+    index("oauth_access_token_consent_id_idx").on(t.consentId),
   ]
 );
 

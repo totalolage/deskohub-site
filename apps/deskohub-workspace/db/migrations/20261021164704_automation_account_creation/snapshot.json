@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "a2973d69-d35d-4247-aac8-a7030d3d5321",
+  "id": "ba5ccd23-0f7e-467a-8782-4a42d4712de6",
   "prevIds": [
-    "fa81efd2-bd12-42e5-b6e5-cab8fe72958a"
+    "33b93b90-6495-4ff6-a492-6f75b188eaaa"
   ],
   "ddl": [
     {
@@ -7430,6 +7430,19 @@
       "default": null,
       "generated": null,
       "identity": null,
+      "name": "consent_id",
+      "entityType": "columns",
+      "schema": "auth",
+      "table": "oauth_access_token"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
       "name": "refresh_id",
       "entityType": "columns",
       "schema": "auth",
@@ -8289,6 +8302,19 @@
       "generated": null,
       "identity": null,
       "name": "requested_user_info_claims",
+      "entityType": "columns",
+      "schema": "auth",
+      "table": "oauth_refresh_token"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "consent_id",
       "entityType": "columns",
       "schema": "auth",
       "table": "oauth_refresh_token"
@@ -11546,6 +11572,27 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "consent_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "oauth_access_token_consent_id_idx",
+      "entityType": "indexes",
+      "schema": "auth",
+      "table": "oauth_access_token"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "client_id",
           "isExpression": false,
           "asc": true,
@@ -11797,6 +11844,27 @@
       "method": "btree",
       "concurrently": false,
       "name": "oauth_refresh_token_authorization_code_id_idx",
+      "entityType": "indexes",
+      "schema": "auth",
+      "table": "oauth_refresh_token"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "consent_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "oauth_refresh_token_consent_id_idx",
       "entityType": "indexes",
       "schema": "auth",
       "table": "oauth_refresh_token"
@@ -13353,6 +13421,23 @@
     {
       "nameExplicit": false,
       "columns": [
+        "consent_id"
+      ],
+      "schemaTo": "auth",
+      "tableTo": "oauth_consent",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "oauth_access_token_consent_id_oauth_consent_id_fkey",
+      "entityType": "fks",
+      "schema": "auth",
+      "table": "oauth_access_token"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
         "refresh_id"
       ],
       "schemaTo": "auth",
@@ -13499,6 +13584,23 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "oauth_refresh_token_user_id_user_id_fkey",
+      "entityType": "fks",
+      "schema": "auth",
+      "table": "oauth_refresh_token"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "consent_id"
+      ],
+      "schemaTo": "auth",
+      "tableTo": "oauth_consent",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "oauth_refresh_token_consent_id_oauth_consent_id_fkey",
       "entityType": "fks",
       "schema": "auth",
       "table": "oauth_refresh_token"

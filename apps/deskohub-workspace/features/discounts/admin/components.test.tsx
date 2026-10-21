@@ -48,6 +48,9 @@ mock.module("next/navigation", () => ({
     refresh,
     replace,
   }),
+  // The administration's export control runs browser Effects, whose runner
+  // rethrows only Next control flow, which these tests never raise.
+  unstable_rethrow: () => {},
 }));
 
 mock.module("./actions", () => ({

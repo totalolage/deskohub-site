@@ -3,6 +3,7 @@ import { type BrowserContext, expect, type Page } from "@playwright/test";
 import { Effect, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { customerAgentTestClientMetadata } from "@/features/account/customer-agent-test-client";
+import { getAccountSectionPath } from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
@@ -38,6 +39,7 @@ import {
   connectCustomerMcp,
   discoverCustomerAgentAuthorization,
   exchangeCustomerAgentCode,
+  expectCustomerMcpRejection,
   startCustomerAgentAuthorization,
 } from "../customer-agent/mcp";
 import {
@@ -307,7 +309,64 @@ const executeAgentBooking = Effect.fn("AgentBooking.execute")(function* (
     session,
     state: booking.state,
   });
+
+  // Disconnecting the agent from the account revokes its token at once.
+  yield* runStep({
+    execute: disconnectAgentInAccount(booking),
+    id: "disconnect-agent-in-account",
+    timeoutMs: config.timeouts.customerAgentConsent,
+  });
+  yield* runStep({
+    execute: expectCustomerMcpRejection({ accessToken, config }),
+    id: "reject-disconnected-agent",
+    timeoutMs: config.timeouts.customerMcpRequest,
+  });
 });
+
+/**
+ * The customer disconnects the agent under Connected assistants in their
+ * account and confirms it.
+ */
+const disconnectAgentInAccount = Effect.fn("AgentBooking.disconnect")(
+  function* ({ config, context, run, session, state }: AgentBookingContext) {
+    const { locale } = state.data;
+    yield* openBrowserPage(
+      config,
+      run,
+      session,
+      new URL(
+        getAccountSectionPath(locale, "assistants"),
+        config.baseUrl
+      ).toString(),
+      { timeoutMs: config.timeouts.browserNavigation }
+    );
+    yield* tryWorkspaceE2EPromise("disconnect agent in account", async () => {
+      const page = singlePage(context());
+      const disconnect = page.getByRole("button", {
+        exact: true,
+        name: m.accountAssistantDisconnectLabel(
+          { name: customerAgentTestClientMetadata.client_name },
+          { locale }
+        ),
+      });
+      await waitForReactClickHandler(page, disconnect);
+      await disconnect.click({ timeout: config.timeouts.browserAction });
+      await page
+        .getByRole("dialog")
+        .getByRole("button", {
+          exact: true,
+          name: m.accountAssistantDisconnectConfirm({}, { locale }),
+        })
+        .click({ timeout: config.timeouts.browserAction });
+      await expect(page.locator("#account-assistants-status")).not.toBeEmpty({
+        timeout: config.timeouts.uiTransition,
+      });
+      await expect(disconnect).toHaveCount(0, {
+        timeout: config.timeouts.uiTransition,
+      });
+    });
+  }
+);
 
 /**
  * The agent's redirect URI never resolves; the case's browser context

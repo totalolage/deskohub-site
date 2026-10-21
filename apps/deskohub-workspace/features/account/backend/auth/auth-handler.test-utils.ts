@@ -61,8 +61,9 @@ export interface CapturedMagicLink {
 
 export type TestAuth = ReturnType<typeof makeTestAuth>;
 
-export const buildDatabaseAdapter = () =>
-  drizzleAdapter(makeAuthDatabase(testDatabase!.pool), {
+/** The Postgres adapter, on the migrated disposable database by default. */
+export const buildDatabaseAdapter = (pool = testDatabase!.pool) =>
+  drizzleAdapter(makeAuthDatabase(pool), {
     provider: "pg",
     schema: drizzleAuthTables,
     schemaName: "auth",

@@ -78,6 +78,7 @@ test("does not prefetch live administration routes", async () => {
             customer: null,
             customerId,
             lastActivityAt: "2026-08-14T12:00:00Z",
+            marketingConsent: "never",
             reservationCount: 1,
           },
         ]}

@@ -2,6 +2,7 @@ import { Check, X } from "lucide-react";
 import { AuthCard } from "@/features/account/components/auth-card";
 import { CustomerAgentConsentActions } from "@/features/account/components/customer-agent-consent-actions";
 import type { CustomerAgentConsentScope } from "@/features/account/customer-agent-routes";
+import { describeCustomerAgentScope } from "@/features/account/customer-agent-scope-copy";
 import { type Locale, m } from "@/features/i18n";
 
 /**
@@ -41,12 +42,7 @@ export function CustomerAgentConsent({
               aria-hidden="true"
               className="mt-1 size-4 shrink-0 text-emerald-600"
             />
-            {{
-              "offerings:read": m.customerAgentScopeOfferingsRead,
-              "reservations:read": m.customerAgentScopeReservationsRead,
-              "reservations:create": m.customerAgentScopeReservationsCreate,
-              offline_access: m.customerAgentScopeOfflineAccess,
-            }[scope]({}, { locale })}
+            {describeCustomerAgentScope(scope, locale)}
           </li>
         ))}
       </ul>

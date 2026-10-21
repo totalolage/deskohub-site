@@ -843,9 +843,12 @@ const legalDocuments = {
             <>
               A connected assistant's access credentials expire automatically
               and are deleted regularly. The connection and the permissions you
-              gave last until the assistant is disconnected at your request or
-              you delete your account, which also deletes them. The record of
-              which assistant started a reservation stays with that reservation.
+              gave last until you disconnect the assistant in Connected
+              assistants in your account or delete your account. Disconnecting
+              the assistant or deleting your account ends the connection and its
+              permissions right away: the assistant's access credentials stop
+              working immediately and are deleted. The record of which assistant
+              started a reservation stays with that reservation.
             </>,
             <>
               Analytics and campaign measurement data, including customer data
@@ -1387,9 +1390,11 @@ const legalDocuments = {
             <>
               Přístupové údaje připojeného asistenta automaticky vyprší a
               pravidelně je mažeme. Připojení a udělená oprávnění trvají, dokud
-              asistent nebude na vaši žádost odpojen nebo dokud nesmažete účet,
-              čímž se také smažou. Údaj o tom, který asistent rezervaci zahájil,
-              zůstává u záznamu rezervace.
+              asistenta neodpojíte v sekci Připojení asistenti ve svém účtu nebo
+              dokud nesmažete účet. Odpojením asistenta nebo smazáním účtu se
+              připojení a oprávnění okamžitě ukončí: přístupové údaje asistenta
+              okamžitě přestanou fungovat a smažou se. Údaj o tom, který
+              asistent rezervaci zahájil, zůstává u záznamu rezervace.
             </>,
             <>
               Analytické údaje a údaje pro kampanové měření, včetně zákaznických

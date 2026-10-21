@@ -103,6 +103,9 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
   return [
     {
       id: fixtureReservationId("0198-admin-fixture-attention"),
+      dotyposReservationId: fixtureBookingId(
+        "live-0198-admin-fixture-attention"
+      ),
       customerId: fixtureCustomers["customer-alex"].id,
       customer: fixtureCustomers["customer-alex"],
       liveDetailsAvailable: true,
@@ -129,6 +132,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
     },
     {
       id: fixtureReservationId("0198-admin-fixture-pending"),
+      dotyposReservationId: fixtureBookingId("live-0198-admin-fixture-pending"),
       customerId: fixtureCustomers["customer-jordan"].id,
       customer: fixtureCustomers["customer-jordan"],
       liveDetailsAvailable: true,
@@ -159,6 +163,9 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
     },
     {
       id: fixtureReservationId("0198-admin-fixture-confirming"),
+      dotyposReservationId: fixtureBookingId(
+        "live-0198-admin-fixture-confirming"
+      ),
       customerId: fixtureCustomers["customer-sam"].id,
       customer: fixtureCustomers["customer-sam"],
       liveDetailsAvailable: true,
@@ -181,6 +188,9 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
     },
     {
       id: fixtureReservationId("0198-admin-fixture-complete"),
+      dotyposReservationId: fixtureBookingId(
+        "live-0198-admin-fixture-complete"
+      ),
       customerId: fixtureCustomers["customer-alex"].id,
       customer: fixtureCustomers["customer-alex"],
       liveDetailsAvailable: true,
@@ -203,6 +213,9 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
     },
     {
       id: fixtureReservationId("0198-admin-fixture-cancelled"),
+      dotyposReservationId: fixtureBookingId(
+        "live-0198-admin-fixture-cancelled"
+      ),
       customerId: fixtureCustomers["customer-jordan"].id,
       customer: fixtureCustomers["customer-jordan"],
       liveDetailsAvailable: true,

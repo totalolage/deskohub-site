@@ -3,16 +3,22 @@ import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { AdministrationCustomerTable, Pagination } from "./components";
+import { getAdministrationCustomerListParams } from "./customer-list-filters";
+import { CustomersAdministrationFilterForm } from "./filter-forms";
 import { m } from "./i18n";
+import { getAdministrationListExportHref } from "./list-href";
 import {
   AdministrationCollectionLoading,
   AdministrationCountLoading,
+  AdministrationFiltersLoading,
 } from "./loading";
+import { AdministrationAlert } from "./notice";
 import {
   type AdministrationSearchParams,
   loadAdministrationCustomersPage,
 } from "./page-data.server";
 import { AdministrationPage } from "./page-frame";
+import { getAdministrationReservationDateShortcuts } from "./reservation-date-range";
 import {
   AdministrationTableCount,
   AdministrationTableToolbar,
@@ -26,7 +32,7 @@ type CustomersData = {
 
 /**
  * The customer list screen. It awaits only the route locale, which
- * prerendering knows, and streams the count and table separately.
+ * prerendering knows, and streams the count, filters and table separately.
  */
 export async function AdministrationCustomerList({
   searchParams,
@@ -53,6 +59,17 @@ export async function AdministrationCustomerList({
             <CustomerCount locale={locale} result={result} />
           </Suspense>
         }
+        filters={
+          <Suspense fallback={<AdministrationFiltersLoading fields={3} />}>
+            <CustomerFilters input={input} />
+          </Suspense>
+        }
+        exportHref={input.then((resolvedInput) =>
+          getAdministrationListExportHref(
+            "/admin/customers",
+            getAdministrationCustomerListParams(resolvedInput)
+          )
+        )}
         label={m.administrationCustomerTableControls({}, { locale })}
         search={<CustomerSearch variant="toolbar" />}
       />
@@ -86,6 +103,21 @@ async function CustomerCount({
   );
 }
 
+async function CustomerFilters({
+  input,
+}: {
+  readonly input: Promise<CustomersData["input"]>;
+}) {
+  const resolvedInput = await input;
+  return (
+    <CustomersAdministrationFilterForm
+      input={resolvedInput}
+      params={getAdministrationCustomerListParams(resolvedInput)}
+      shortcuts={getAdministrationReservationDateShortcuts()}
+    />
+  );
+}
+
 async function CustomersTable({
   input,
   locale,
@@ -96,14 +128,31 @@ async function CustomersTable({
   readonly result: Promise<CustomersData["result"]>;
 }) {
   const [resolvedInput, resolvedResult] = await Promise.all([input, result]);
+  // Membership is unknown, so neither rows nor "no matches" would be true.
+  if (resolvedResult.dateFilterUnavailable) {
+    return (
+      <section className="mt-7">
+        <AdministrationAlert status="warning">
+          {m.administrationCustomerListDateFilterUnavailable({}, { locale })}
+        </AdministrationAlert>
+      </section>
+    );
+  }
+  const params = getAdministrationCustomerListParams(resolvedInput);
 
   return (
     <section className="mt-7">
       <AdministrationCustomerTable
         customers={resolvedResult.items}
+        filtered={Boolean(
+          resolvedInput.from ||
+            resolvedInput.to ||
+            resolvedInput.marketingConsent
+        )}
         sorting={{
           direction: resolvedInput.direction ?? "desc",
           field: resolvedInput.sort ?? "activity",
+          params,
         }}
       />
       <Pagination
@@ -111,10 +160,7 @@ async function CustomersTable({
         locale={locale}
         page={resolvedResult.page}
         pageCount={resolvedResult.pageCount}
-        params={{
-          direction: resolvedInput.direction,
-          sort: resolvedInput.sort,
-        }}
+        params={params}
       />
     </section>
   );
