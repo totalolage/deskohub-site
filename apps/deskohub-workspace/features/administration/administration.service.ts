@@ -43,6 +43,7 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { unstable_rethrow } from "next/navigation";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { equalsAny } from "@/db/equals-any";
 import { qualifiedColumn } from "@/db/qualified-column";
 import {
   customerMarketingConsents,
@@ -1005,9 +1006,7 @@ const customerWithSuccessfulReservationAmong = (
         select ${workspaceReservations.dotyposCustomerId}
         from ${workspaceReservations}
         where ${and(
-          inArray(workspaceReservations.dotyposReservationId, [
-            ...reservationIds,
-          ]),
+          equalsAny(workspaceReservations.dotyposReservationId, reservationIds),
           successfulReservationCondition
         )}
       )`;
@@ -1186,7 +1185,7 @@ const latePaymentCondition = (
   reservationIds: readonly WorkspaceReservationId[]
 ) =>
   and(
-    inArray(paymentAttempts.workspaceReservationId, [...reservationIds]),
+    equalsAny(paymentAttempts.workspaceReservationId, reservationIds),
     eq(webhookEvents.errorCode, "nexi_webhook_late_payment")
   );
 
@@ -1728,7 +1727,7 @@ export class AdministrationService extends Context.Service<
                   .select(safePaymentAttemptSelection)
                   .from(paymentAttempts)
                   .where(
-                    inArray(
+                    equalsAny(
                       paymentAttempts.workspaceReservationId,
                       rows.map(({ id }) => id)
                     )
@@ -1746,7 +1745,7 @@ export class AdministrationService extends Context.Service<
                   .select(latePaymentRecoverySelection)
                   .from(latePaymentRecoveries)
                   .where(
-                    inArray(
+                    equalsAny(
                       latePaymentRecoveries.workspaceReservationId,
                       rows.map(({ id }) => id)
                     )
@@ -1946,7 +1945,7 @@ export class AdministrationService extends Context.Service<
           const ids = dateReservations ? [...dateReservations.keys()] : [];
           conditions.push(
             ids.length > 0
-              ? inArray(workspaceReservations.dotyposReservationId, ids)
+              ? equalsAny(workspaceReservations.dotyposReservationId, ids)
               : sql`false`
           );
         }
@@ -2007,7 +2006,7 @@ export class AdministrationService extends Context.Service<
               : yield* db
                   .select(safeReservationSelection)
                   .from(workspaceReservations)
-                  .where(inArray(workspaceReservations.id, pageIds));
+                  .where(equalsAny(workspaceReservations.id, pageIds));
           const rowById = new Map(pageRows.map((row) => [row.id, row]));
           return pageIds.flatMap((id) => {
             const row = rowById.get(id);
@@ -2744,9 +2743,13 @@ export class AdministrationService extends Context.Service<
         );
         const conditions: SQL[] = [];
         if (dateRange) {
+          // A booking Dotypos cancelled doesn't count, even when Deskohub
+          // still records it as fulfilled.
           conditions.push(
             customerWithSuccessfulReservationAmong(
-              dateReservations ? [...dateReservations.keys()] : []
+              [...(dateReservations ?? [])].flatMap(([id, reservation]) =>
+                reservation.status === "CANCELLED" ? [] : [id]
+              )
             )
           );
         }

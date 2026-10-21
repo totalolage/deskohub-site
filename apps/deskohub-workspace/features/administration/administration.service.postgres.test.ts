@@ -595,6 +595,64 @@ describe.skipIf(!testDatabase)(
         expect(result.total).toBe(3);
       });
 
+      test("counts only bookings successful in Deskohub and not cancelled in Dotypos", async () => {
+        const dotyposCancelled = makeCustomerId("filter-dotypos-cancelled");
+        // Deskohub records it as fulfilled, whatever Dotypos reports.
+        await insertReservation({
+          customerId: dotyposCancelled,
+          fulfillmentState: "fulfilled",
+          label: "dotypos-cancelled",
+          reservationState: "confirmed",
+        });
+        const bookings = (status: "CANCELLED" | "CONFIRMED" | "NEW") =>
+          [...inRangeLabels, "dotypos-cancelled"].map((label) => ({
+            ...booking(label),
+            ...((label === "dotypos-cancelled" || label === "twice-1") && {
+              status,
+            }),
+          }));
+        const customerIds = (items: readonly { customerId: string }[]) =>
+          items.map(({ customerId }) => customerId).sort();
+
+        const cancelled = await listInRange(range, bookings("CANCELLED"));
+        // `twice` still has a booking Dotypos kept; the locally cancelled
+        // booking of `unsuccessfulInRange` never counts.
+        expect(customerIds(cancelled.items)).toEqual(
+          [never, twice, withdrawn].sort()
+        );
+        expect(cancelled.total).toBe(3);
+        expect(
+          customerIds(
+            await run(
+              (administration) => administration.exportCustomers(range),
+              { listReservations: () => Effect.succeed(bookings("CANCELLED")) }
+            )
+          )
+        ).toEqual(customerIds(cancelled.items));
+
+        for (const status of ["CONFIRMED", "NEW"] as const) {
+          const kept = await listInRange(range, bookings(status));
+          expect(customerIds(kept.items)).toEqual(
+            [dotyposCancelled, never, twice, withdrawn].sort()
+          );
+          expect(kept.total).toBe(4);
+        }
+      });
+
+      test("filters by a range holding more bookings than Postgres's parameter limit", async () => {
+        const bookings = [
+          ...Array.from({ length: 70_000 }, (_, index) =>
+            booking(`filter-unlinked-${index}`)
+          ),
+          ...inRangeLabels.map(booking),
+        ];
+        const result = await listInRange(range, bookings);
+        expect(result.total).toBe(3);
+        expect(result.items.map(({ customerId }) => customerId).sort()).toEqual(
+          [never, twice, withdrawn].sort()
+        );
+      });
+
       test("filters by current marketing consent and projects it", async () => {
         const states = async (
           marketingConsent?: AdministrationCustomerListInput["marketingConsent"]
@@ -1097,6 +1155,68 @@ describe.skipIf(!testDatabase)(
         expect(exported[0]?.dotyposReservationId).toBe(
           DotyposReservationIdSchema.make(`booking-export-complete-0-${runId}`)
         );
+      });
+
+      test("exports more reservations than Postgres's parameter limit, in date order", async () => {
+        const customerId = makeCustomerId("export-large");
+        const reservationCount = 65_600;
+        const labels = Array.from(
+          { length: reservationCount },
+          (_, index) => `export-large-${index}`
+        );
+        // One statement, since an insert of this many rows through Drizzle
+        // would itself pass the parameter limit.
+        await testDatabase.pool.query(
+          `insert into workspace_reservations (
+            id, checkout_attempt_key, dotypos_customer_id, dotypos_reservation_id,
+            reservation_state, payment_state, paid_at, fulfillment_state,
+            fulfilled_at, reservation_details, locale
+          )
+          select 'admin-' || label, 'attempt-' || label, $2, 'booking-' || label,
+            'confirmed', 'paid', now(), 'fulfilled', now(),
+            '{"kind":"cowork","entryTier":"open-space","coffee":false}'::jsonb,
+            'en-US'
+          from unnest($1::text[]) as label`,
+          [labels.map((label) => `${label}-${runId}`), customerId]
+        );
+        reservationIds.push(
+          ...labels.map((label) =>
+            workspaceReservationIdSchema.make(`admin-${label}-${runId}`)
+          )
+        );
+        // Dotypos orders the bookings in the reverse of their insertion.
+        const expected = labels
+          .toReversed()
+          .map((label) =>
+            DotyposReservationIdSchema.make(`booking-${label}-${runId}`)
+          );
+        const bookings = expected.map((id, index) => ({
+          _branchId: "branch",
+          _cloudId: "cloud",
+          _customerId: "dotypos-customer",
+          endDate: "2026-10-10T10:00:00Z",
+          id,
+          seats: "1",
+          startDate: Temporal.Instant.from("2026-10-01T08:00:00Z")
+            .add({ seconds: index })
+            .toString(),
+          status: "CONFIRMED" as const,
+        }));
+        const exported = await run(
+          (administration) =>
+            administration.exportReservations({
+              customerId,
+              direction: "asc",
+              from: "2026-10-01",
+              sort: "date",
+              to: "2026-10-31",
+            }),
+          { listReservations: () => Effect.succeed(bookings) }
+        );
+
+        expect(
+          exported.map(({ dotyposReservationId }) => dotyposReservationId)
+        ).toEqual(expected);
       });
     });
   }
