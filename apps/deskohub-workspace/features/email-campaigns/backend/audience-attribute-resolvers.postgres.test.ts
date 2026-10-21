@@ -488,7 +488,7 @@ describe.skipIf(!testDatabase)(
           email: testEmailAddress(`resolver-${run}`),
           emailVerified: true,
           locale: "cs-CZ",
-          // A backfilled login predates its account; the account's date counts.
+          // An earlier login doesn't count; the resolver reads the account's date.
           createdAt: new Date(
             accountCreatedAt.subtract({ hours: 30 * 24 }).epochMilliseconds
           ),
