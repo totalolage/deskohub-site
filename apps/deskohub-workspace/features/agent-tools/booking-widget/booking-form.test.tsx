@@ -12,6 +12,7 @@ import type { BookingMode } from "../show-booking.schema";
 import { BookingRequestFailed, BookingToolFailed } from "./booking-host";
 import {
   availabilityResult,
+  bookingOfferingPages,
   bookingOfferings,
   bookingStart,
   bookingToday,
@@ -318,6 +319,60 @@ describe("BookingForm", () => {
         m.bookingWidgetReservationPageHint({}, { locale: "cs-CZ" })
       )
     ).toBeDefined();
+  });
+
+  test("in website mode, opens the family's website page and links no booking", () => {
+    const { onOpenLink, onReserve } = renderForm({
+      mode: "website",
+      locale: "cs-CZ",
+      check: quotedCheck("cs-CZ"),
+    });
+
+    const links = screen.queries.getAllByRole("link");
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      bookingOfferingPages().cowork,
+    ]);
+    expect(links[0]?.textContent).toBe(
+      m.bookingWidgetOpenWebsite({}, { locale: "cs-CZ" })
+    );
+    expect(
+      screen.queries.getByText(
+        m.bookingWidgetWebsiteHint({}, { locale: "cs-CZ" })
+      )
+    ).toBeDefined();
+    expect(document.body.textContent).not.toContain(
+      quoteResult().reservation_url
+    );
+    expect(screen.queries.getAllByRole("button")).toEqual([
+      checkButton("cs-CZ"),
+    ]);
+
+    expect(fireEvent.click(links[0] as HTMLElement)).toBe(false);
+    expect(onOpenLink).toHaveBeenCalledWith(bookingOfferingPages().cowork);
+    expect(onReserve).not.toHaveBeenCalled();
+  });
+
+  test("in website mode, links the website page only once a check settles", () => {
+    const linkedPages = () =>
+      screen.queries
+        .queryAllByRole("link")
+        .map((link) => link.getAttribute("href"));
+    for (const [check, pages] of [
+      [AsyncResult.initial(), []],
+      [AsyncResult.initial(true), []],
+      [
+        AsyncResult.success({ availability: availabilityResult(false) }),
+        [bookingOfferingPages().cowork],
+      ],
+      [
+        AsyncResult.failure(Cause.fail(new BookingRequestFailed({}))),
+        [bookingOfferingPages().cowork],
+      ],
+    ] as const) {
+      renderForm({ mode: "website", check });
+      expect(linkedPages()).toEqual([...pages]);
+      cleanup();
+    }
   });
 
   test("leaves the link to the browser when the host can't open links", () => {
