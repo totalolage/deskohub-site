@@ -270,9 +270,9 @@ describe("renderPublicPageMarkdown", () => {
 describe("renderLlmsTxt", () => {
   test("does not share prices while Calendar sales are unavailable, and shares them once they load", async () => {
     calendarAnswers = false;
-    const failed = await renderLlmsTxt(releases());
+    const failed = await renderLlmsTxt(releases(), "on");
     calendarAnswers = true;
-    const recovered = await renderLlmsTxt(releases());
+    const recovered = await renderLlmsTxt(releases(), "on");
 
     expect(recovered).not.toBe(failed);
     expect(sharedRenders()).toEqual([false, true]);
