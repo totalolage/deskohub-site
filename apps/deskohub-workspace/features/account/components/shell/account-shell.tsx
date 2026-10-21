@@ -225,6 +225,7 @@ export function AccountShell({
                   <NavItem
                     active={isActive}
                     asChild={!disabledSections.includes(section.key)}
+                    data-account-sidebar-section={section.key}
                     disabled={disabledSections.includes(section.key)}
                     key={section.key}
                     tone={section.key === "danger" ? "danger" : "neutral"}

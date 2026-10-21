@@ -110,7 +110,11 @@ export function CustomerAgentConnectionsSection({
                         className="mt-2 space-y-1 text-sm leading-6 text-navy-blue/78"
                       >
                         {connection.scopes.map((scope) => (
-                          <li className="flex gap-2" key={scope}>
+                          <li
+                            className="flex gap-2"
+                            data-assistant-scope={scope}
+                            key={scope}
+                          >
                             <Check
                               aria-hidden
                               className="mt-1 size-4 shrink-0 text-emerald-600"
@@ -147,7 +151,10 @@ export function CustomerAgentConnectionsSection({
           </ul>
         )}
         {connections?.length === 0 && (
-          <div className="mt-5 flex flex-col items-center rounded-xl border border-dashed border-[#cfd6e0] bg-[#fbfcfd] px-6 py-8 text-center">
+          <div
+            className="mt-5 flex flex-col items-center rounded-xl border border-dashed border-[#cfd6e0] bg-[#fbfcfd] px-6 py-8 text-center"
+            id="account-assistants-empty"
+          >
             <span className="flex size-12 items-center justify-center rounded-2xl bg-white text-burned-orange shadow-[0_12px_28px_-18px_rgba(0,2,79,0.45)]">
               <Bot aria-hidden className="size-6" />
             </span>

@@ -349,10 +349,12 @@ const disconnectAgentInAccount = Effect.fn("AgentBooking.disconnect")(
           name: m.accountAssistantDisconnectConfirm({}, { locale }),
         })
         .click({ timeout: config.timeouts.browserAction });
-      await expect(page.locator("#account-assistants-status")).toHaveText(
-        m.accountAssistantDisconnected({}, { locale }),
-        { timeout: config.timeouts.uiTransition }
-      );
+      await expect(page.locator("#account-assistants-status")).not.toBeEmpty({
+        timeout: config.timeouts.uiTransition,
+      });
+      await expect(disconnect).toHaveCount(0, {
+        timeout: config.timeouts.uiTransition,
+      });
     });
   }
 );

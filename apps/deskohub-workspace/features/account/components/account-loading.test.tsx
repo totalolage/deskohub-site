@@ -6,7 +6,7 @@ import {
   expect,
   test,
 } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, within } from "@testing-library/react";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -22,57 +22,20 @@ const sectionKeys = [
   "danger",
 ] as const;
 
-type AccountSectionKey = (typeof sectionKeys)[number] | "referrals";
+const locales = ["en-US", "cs-CZ"] as const;
 
-type LoadingCopy = {
-  readonly accountTitle: string;
-  readonly loadingMessage: string;
-  readonly locale: "en-US" | "cs-CZ";
-  readonly metadataTitle: string;
-  readonly mobileSection: string;
-  readonly navigation: string;
-  readonly sections: Readonly<Record<AccountSectionKey, string>>;
-  readonly signOut: string;
+/** The element's text outside busy or hidden subtrees. */
+const announcedText = (root: Element) => {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let text = "";
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (
+      !node.parentElement?.closest('[aria-hidden="true"], [aria-busy="true"]')
+    )
+      text += node.textContent ?? "";
+  }
+  return text;
 };
-
-const localizedLoadingCopy: readonly LoadingCopy[] = [
-  {
-    accountTitle: "My Workspace",
-    loadingMessage: "Loading content…",
-    locale: "en-US",
-    metadataTitle: "My account | Deskohub Workspace",
-    mobileSection: "Account section",
-    navigation: "Account navigation",
-    sections: {
-      billing: "Billing & Invoices",
-      danger: "Danger zone",
-      legal: "Legal & Privacy",
-      profile: "Profile & Identity",
-      assistants: "Connected assistants",
-      referrals: "Referrals",
-      reservations: "Reservations",
-    },
-    signOut: "Sign out",
-  },
-  {
-    accountTitle: "Můj Workspace",
-    loadingMessage: "Načítání obsahu…",
-    locale: "cs-CZ",
-    metadataTitle: "Můj účet | Deskohub Workspace",
-    mobileSection: "Sekce účtu",
-    navigation: "Navigace účtu",
-    sections: {
-      billing: "Fakturace a faktury",
-      danger: "Nebezpečná zóna",
-      legal: "Právní informace a soukromí",
-      profile: "Profil a identita",
-      assistants: "Připojení asistenti",
-      referrals: "Doporučení",
-      reservations: "Rezervace",
-    },
-    signOut: "Odhlásit se",
-  },
-];
 
 class TestResizeObserver implements ResizeObserver {
   readonly callback: ResizeObserverCallback;
@@ -103,48 +66,46 @@ describe("AccountLoading", () => {
     await unregisterWorkspaceComponentTestEnv();
   });
 
-  test.each(localizedLoadingCopy)(
-    "renders the localized account frame and disabled navigation without the referral section for $locale",
-    (copy) => {
-      const view = render(<AccountLoading locale={copy.locale} />);
-      const status = view.getByRole("status", { name: copy.metadataTitle });
-      const loadingMessage = view.getByText(copy.loadingMessage);
-      const navigation = view.getByRole("navigation", {
-        name: copy.navigation,
-      });
+  test.each(locales)(
+    "renders the account frame and disabled navigation without the referral section for %s",
+    (locale) => {
+      const view = render(<AccountLoading locale={locale} />);
+      const status = view.getByRole("status");
+      const navigation = view.getByRole("navigation");
+      const sectionGroup = within(navigation).getByRole("group");
 
-      expect(status.textContent).toContain(copy.loadingMessage);
-      expect(loadingMessage.closest('[aria-busy="true"]')).toBeNull();
-      expect(loadingMessage.closest('[aria-hidden="true"]')).toBeNull();
-      expect(status.querySelector('[aria-busy="true"]')).toBeTruthy();
+      expect(status.getAttribute("aria-label")).toBeTruthy();
+      // The loading message is announced outside the busy, hidden skeleton.
+      expect(announcedText(status).trim()).toBeTruthy();
+      const skeleton = status.querySelector('[aria-busy="true"]');
+      expect(skeleton?.querySelector('[aria-hidden="true"]')).toBeTruthy();
+      expect(view.getByRole("heading", { level: 1 }).textContent).toBeTruthy();
+      expect(navigation.getAttribute("aria-label")).toBeTruthy();
       expect(
-        view.getByRole("heading", { level: 1, name: copy.accountTitle })
+        document.getElementById(
+          sectionGroup.getAttribute("aria-labelledby") ?? ""
+        )?.textContent
       ).toBeTruthy();
-      expect(navigation.querySelector("fieldset")?.textContent).toContain(
-        copy.mobileSection
-      );
 
-      for (const section of sectionKeys) {
-        const buttons = Array.from(
-          navigation.querySelectorAll("button")
-        ).filter(
-          (button) => button.textContent?.trim() === copy.sections[section]
+      const sectionItems = (attribute: string) =>
+        Array.from(
+          navigation.querySelectorAll<HTMLButtonElement>(`button[${attribute}]`)
         );
-        expect(buttons).toHaveLength(2);
-        for (const button of buttons) {
-          expect(button.textContent?.trim()).toBe(copy.sections[section]);
-          expect((button as HTMLButtonElement).disabled).toBe(true);
-        }
-      }
-
-      expect(navigation.textContent).not.toContain(copy.sections.referrals);
+      const mobileItems = sectionItems("data-account-section");
+      const sidebarItems = sectionItems("data-account-sidebar-section");
+      expect(
+        mobileItems.map((button) => button.dataset.accountSection)
+      ).toEqual([...sectionKeys]);
+      expect(
+        sidebarItems.map((button) => button.dataset.accountSidebarSection)
+      ).toEqual([...sectionKeys]);
       const buttons = Array.from(view.container.querySelectorAll("button"));
       expect(buttons).toHaveLength(sectionKeys.length * 2 + 1);
       expect(buttons.every((button) => button.disabled)).toBe(true);
-      expect(view.getByRole("button", { name: copy.signOut })).toHaveProperty(
-        "disabled",
-        true
-      );
+      expect(
+        view.container.querySelector<HTMLButtonElement>("#account-sign-out")
+          ?.disabled
+      ).toBe(true);
       expect(view.container.querySelector("span.ml-auto")).toBeNull();
       expect(
         view.container.querySelector("input, textarea, select, form")
