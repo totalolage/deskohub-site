@@ -434,50 +434,21 @@ const countRows = async (table: string, userId: string) => {
 };
 
 /**
- * Turns an account's pending authorization codes into codes issued before the
- * Workspace oauth-provider patch bound codes to their consent: they carry no
- * consent id, were issued a minute ago, under a consent given before them.
+ * Strips the consent binding from an account's one pending authorization
+ * code, as codes issued before the Workspace oauth-provider patch lack it.
  */
-const predateConsentBinding = async (userId: string) => {
-  await testDatabase!.pool.query(
+const unbindPendingCode = async (userId: string) => {
+  const unbound = await testDatabase!.pool.query(
     `update auth.verification
-        set value = (value::jsonb - 'consentId')::text,
-            created_at = created_at - interval '1 minute'
-      where case when value like '{"type":"authorization_code"%'
-                 then value::jsonb ->> 'userId' end = $1`,
+        set value = (value::jsonb - 'consentId')::text
+      where case when value like '{"type":%'
+                 then value::jsonb ->> 'type' = 'authorization_code'
+                  and value::jsonb ->> 'userId' = $1
+                  and value::jsonb ->> 'consentId' is not null
+                 else false end`,
     [userId]
   );
-  await testDatabase!.pool.query(
-    `update auth.oauth_consent
-        set created_at = created_at - interval '2 minutes'
-      where user_id = $1`,
-    [userId]
-  );
-};
-
-/**
- * Dates an account's consents to the issue time of its one pending code from
- * before the consent binding, as a reconnect in the second the code was
- * issued would.
- */
-const dateConsentsAtPredatedCode = async (userId: string) => {
-  const codes = await testDatabase!.pool.query(
-    `select created_at
-       from (select created_at,
-                    case when value like '{"type":%' then value::jsonb end
-                      as value
-               from auth.verification) as verification
-      where value ->> 'type' = 'authorization_code'
-        and value ->> 'userId' = $1
-        and value ->> 'consentId' is null`,
-    [userId]
-  );
-  expect(codes.rows).toHaveLength(1);
-  const dated = await testDatabase!.pool.query(
-    `update auth.oauth_consent set created_at = $2 where user_id = $1`,
-    [userId, codes.rows[0]!.created_at]
-  );
-  expect(dated.rowCount).toBe(1);
+  expect(unbound.rowCount).toBe(1);
 };
 
 /**
@@ -1312,9 +1283,10 @@ describe.skipIf(!testDatabase)(
       expect((await exchangeCode(auth, reconnected)).status).toBe(200);
     });
 
-    // Guards the Workspace oauth-provider patch: codes issued before it carry
-    // no consent id, and must stop at a disconnect all the same.
-    test("refuses codes from before the consent binding once their assistant is disconnected", async () => {
+    // Guards the Workspace oauth-provider patch: a code issued before it
+    // carries no consent id, so no consent can vouch for it, even one that
+    // still stands.
+    test("refuses a code without a consent binding while its consent stands", async () => {
       const agent = makeAgent();
       const sentLinks: CapturedMagicLink[] = [];
       const auth = makeTestAuth({
@@ -1322,39 +1294,21 @@ describe.skipIf(!testDatabase)(
         clientMetadataTransport: agent.clientMetadataTransport,
       });
       const customer = await signIn(auth, sentLinks);
-      const connected = await authorizeSignedIn(
+      const unbound = await authorizeSignedIn(
         auth,
         customer.cookie,
         agent,
         "asks"
       );
-      const beforeDisconnect = await authorizeSignedIn(
+      await unbindPendingCode(customer.accountId);
+      const bound = await authorizeSignedIn(
         auth,
         customer.cookie,
         agent,
         "granted"
       );
-      const beforeReconnect = await authorizeSignedIn(
-        auth,
-        customer.cookie,
-        agent,
-        "granted"
-      );
-      await predateConsentBinding(customer.accountId);
 
-      // While the assistant stays connected, such a code still exchanges.
-      expect((await exchangeCode(auth, connected)).status).toBe(200);
-
-      const [connection] = await listConnections(auth, customer.cookie);
-      const disconnected = await request(auth, "/oauth2/delete-consent", {
-        method: "POST",
-        cookie: customer.cookie,
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: connection!.id }),
-      });
-      expect(disconnected.status).toBe(200);
-
-      const refused = await exchangeCode(auth, beforeDisconnect);
+      const refused = await exchangeCode(auth, unbound);
       expect(refused.status).toBe(400);
       expect(((await refused.json()) as { error: string }).error).toBe(
         "invalid_grant"
@@ -1362,73 +1316,9 @@ describe.skipIf(!testDatabase)(
       expect(await countClientTokens(customer.accountId, agent.clientId)).toBe(
         0
       );
+      expect(await countRows("oauth_consent", customer.accountId)).toBe(1);
 
-      // The consent a reconnect gives is newer than the code, so the code
-      // stays refused while a code issued under it exchanges.
-      const reconnected = await authorizeSignedIn(
-        auth,
-        customer.cookie,
-        agent,
-        "asks"
-      );
-      const stale = await exchangeCode(auth, beforeReconnect);
-      expect(stale.status).toBe(400);
-      expect(((await stale.json()) as { error: string }).error).toBe(
-        "invalid_grant"
-      );
-      expect(await countClientTokens(customer.accountId, agent.clientId)).toBe(
-        0
-      );
-      expect((await exchangeCode(auth, reconnected)).status).toBe(200);
-    });
-
-    // Guards the Workspace oauth-provider patch: consent and code timestamps
-    // have whole seconds, so a consent from the code's own second must not
-    // count as given before it.
-    test("refuses a code from before the consent binding after a reconnect in the second it was issued", async () => {
-      const agent = makeAgent();
-      const sentLinks: CapturedMagicLink[] = [];
-      const auth = makeTestAuth({
-        sentLinks,
-        clientMetadataTransport: agent.clientMetadataTransport,
-      });
-      const customer = await signIn(auth, sentLinks);
-      const beforeDisconnect = await authorizeSignedIn(
-        auth,
-        customer.cookie,
-        agent,
-        "asks"
-      );
-      await predateConsentBinding(customer.accountId);
-
-      const [connection] = await listConnections(auth, customer.cookie);
-      const disconnected = await request(auth, "/oauth2/delete-consent", {
-        method: "POST",
-        cookie: customer.cookie,
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: connection!.id }),
-      });
-      expect(disconnected.status).toBe(200);
-      const reconnected = await authorizeSignedIn(
-        auth,
-        customer.cookie,
-        agent,
-        "asks"
-      );
-      await dateConsentsAtPredatedCode(customer.accountId);
-
-      const stale = await exchangeCode(auth, beforeDisconnect);
-      expect(stale.status).toBe(400);
-      expect(((await stale.json()) as { error: string }).error).toBe(
-        "invalid_grant"
-      );
-      expect(await countClientTokens(customer.accountId, agent.clientId)).toBe(
-        0
-      );
-
-      // The reconnect's own code is bound to its consent, whatever the
-      // consent's timestamp.
-      const tokens = await exchangeCode(auth, reconnected);
+      const tokens = await exchangeCode(auth, bound);
       expect(tokens.status).toBe(200);
       const { access_token } = (await tokens.json()) as TokenResponse;
       expect(await failureReasonOf(authorityOver(auth), access_token)).toBe(

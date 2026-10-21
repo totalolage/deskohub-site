@@ -149,10 +149,9 @@ resource.
   The code exchange checks the consent again after writing its tokens and
   revokes them when it is gone, so an exchange in flight during the
   disconnect leaves no usable tokens either. Codes issued before the patch
-  carry no consent id; they redeem only under a consent created in an
-  earlier second, so a reconnect doesn't revive them while the server clocks
-  keep the code's issue and the reconnect in order. A code issued in the
-  second of its first consent is refused too.
+  carry no consent id and get `invalid_grant` from assistants that ask for
+  consent, so an authorization in flight at the deploy is refused once and
+  the assistant authorizes again.
 
 ## Account-boundary adapter
 
