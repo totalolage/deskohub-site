@@ -9,13 +9,14 @@ import { payStatePreparationServices } from "@/features/reservation/backend/pay-
 import { SharedReservationRecordsLive } from "@/features/reservation/backend/reservation-records-cache.server";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { AgentTool } from "./agent-tool";
+import type { AgentTool, CallableAgentTools } from "./agent-tool";
 import { checkAvailabilityTool } from "./check-availability.tool";
 import type { SignedInAgentToolRequirements } from "./customer-agent-caller";
 import { getQuoteTool } from "./get-quote.tool";
 import { getReservationStatusTool } from "./get-reservation-status.tool";
 import { listMyReservationsTool } from "./list-my-reservations.tool";
 import { listOfferingsTool } from "./list-offerings.tool";
+import { showBookingTool } from "./show-booking.tool";
 import { startReservationTool } from "./start-reservation.tool";
 
 /**
@@ -41,12 +42,15 @@ export const CustomerAgentToolsLive = Layer.mergeAll(
 /** Every tool customers' agents can call, in the order agents see them. */
 export const customerAgentTools: ReadonlyArray<
   AgentTool<
-    Layer.Success<typeof CustomerAgentToolsLive> | SignedInAgentToolRequirements
+    | Layer.Success<typeof CustomerAgentToolsLive>
+    | SignedInAgentToolRequirements
+    | CallableAgentTools
   >
 > = [
   listOfferingsTool,
   checkAvailabilityTool,
   getQuoteTool,
+  showBookingTool,
   startReservationTool,
   getReservationStatusTool,
   listMyReservationsTool,

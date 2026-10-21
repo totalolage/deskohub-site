@@ -2,7 +2,15 @@ import type {
   StandardJSONSchemaV1,
   StandardSchemaV1,
 } from "@standard-schema/spec";
-import { Effect, Layer, Option, Predicate, Schema, SchemaIssue } from "effect";
+import {
+  Context,
+  Effect,
+  Layer,
+  Option,
+  Predicate,
+  Schema,
+  SchemaIssue,
+} from "effect";
 import type { CustomerAgentScope } from "@/features/account";
 import { defaultLocale, type Locale, locales } from "@/features/i18n";
 import type { AgentToolAccountBudget } from "./agent-tool-call-budget";
@@ -11,18 +19,14 @@ import {
   type AgentToolUnavailableCode,
   agentToolErrorResultSchema,
 } from "./agent-tool-error";
+import type { AgentToolAccess } from "./agent-tool-metadata";
+import type { AgentToolView } from "./agent-tool-view";
 import {
   type CustomerAgentCaller,
   customerAgentCallServices,
   type SignedInAgentToolRequirements,
   type SignedInAgentToolServices,
 } from "./customer-agent-caller";
-
-/**
- * Who may call a tool: anyone, or a customer who signed in through the
- * Workspace OAuth server.
- */
-type AgentToolAccess = "public" | "signed-in";
 
 /**
  * Who may call a tool. A signed-in tool also names the OAuth scope the
@@ -63,6 +67,8 @@ export type AgentTool<R> = AgentToolAuthorization & {
   readonly readOnly: boolean;
   /** The code an unexpected failure is reported with. */
   readonly unavailableCode: AgentToolUnavailableCode;
+  /** The MCP Apps view the tool's result renders in, if any. */
+  readonly view?: AgentToolView;
   readonly input: StandardJSONSchemaV1;
   /**
    * Every structured result the tool answers with: its success result, or
@@ -85,6 +91,15 @@ export interface AgentToolExposure {
   /** Whether tools that create state are published, not only reads. */
   readonly transactional: boolean;
 }
+
+/**
+ * The names of the published tools the calling agent may call in this
+ * request: every public tool, and the signed-in tools its token grants.
+ */
+export class CallableAgentTools extends Context.Service<
+  CallableAgentTools,
+  ReadonlySet<string>
+>()("@deskohub-workspace/agent-tools/CallableAgentTools") {}
 
 export const selectAgentTools = <R>(
   tools: ReadonlyArray<AgentTool<R>>,
@@ -142,6 +157,8 @@ type AgentToolDefinition<
   readonly readOnly: boolean;
   /** The code an unexpected failure is reported with. */
   readonly unavailableCode: AgentToolUnavailableCode;
+  /** The MCP Apps view the tool's result renders in, if any. */
+  readonly view?: AgentToolView;
   readonly input: Input;
   readonly output: Output;
   readonly run: (
@@ -224,6 +241,7 @@ const makeAgentTool = <
     description: definition.description,
     readOnly: definition.readOnly,
     unavailableCode: definition.unavailableCode,
+    ...(definition.view && { view: definition.view }),
     input: Schema.toStandardJSONSchemaV1(definition.input),
     output: Schema.toStandardJSONSchemaV1(
       Schema.toStandardSchemaV1(

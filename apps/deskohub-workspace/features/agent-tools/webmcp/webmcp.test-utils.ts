@@ -4,7 +4,15 @@ import type { ModelContextTool } from "./webmcp";
 
 const localeProperty = { type: "string", enum: ["en-US", "cs-CZ"] };
 
-/** The public tools as `/api/mcp` lists them, trimmed to what tests read. */
+const accessMetaKey = "cz.deskohub.workspace/access";
+
+const publicTool = { [accessMetaKey]: "public" } as const;
+
+/**
+ * The tools as `/api/mcp` lists them without a token, trimmed to what tests
+ * read: the public read tools first, then a signed-in tool and the booking
+ * view's tool, which the site never registers.
+ */
 export const publishedAgentTools = [
   {
     name: "list_offerings",
@@ -15,6 +23,7 @@ export const publishedAgentTools = [
       properties: { locale: localeProperty },
       additionalProperties: false,
     },
+    _meta: publicTool,
   },
   {
     name: "check_availability",
@@ -30,6 +39,7 @@ export const publishedAgentTools = [
       required: ["family", "date"],
       additionalProperties: false,
     },
+    _meta: publicTool,
   },
   {
     name: "get_quote",
@@ -46,6 +56,32 @@ export const publishedAgentTools = [
       },
       required: ["family", "date"],
       additionalProperties: false,
+    },
+    _meta: publicTool,
+  },
+  {
+    name: "start_reservation",
+    title: "Start a DH Workspace booking",
+    description: "Holds a complete selection for the signed-in customer.",
+    inputSchema: {
+      type: "object",
+      properties: { locale: localeProperty },
+      additionalProperties: false,
+    },
+    _meta: { [accessMetaKey]: "signed-in" },
+  },
+  {
+    name: "show_booking",
+    title: "Show the DH Workspace booking view",
+    description: "Shows the customer an interactive booking view.",
+    inputSchema: {
+      type: "object",
+      properties: { locale: localeProperty },
+      additionalProperties: false,
+    },
+    _meta: {
+      [accessMetaKey]: "public",
+      ui: { resourceUri: "ui://dh-workspace/booking-v1.html" },
     },
   },
 ] as const;

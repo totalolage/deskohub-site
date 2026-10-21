@@ -23,7 +23,14 @@ mock.module("@/shared/backend/agent-traffic/agent-traffic-events", () => ({
     }),
 }));
 
-const { agentToolLocaleField, defineAgentTool } = await import("./agent-tool");
+const {
+  agentToolLocaleField,
+  CallableAgentTools,
+  defineAgentTool,
+  defineSignedInAgentTool,
+  selectAgentTools,
+} = await import("./agent-tool");
+const { CustomerAgentAuthorization } = await import("@/features/account");
 const { AgentToolAdmission } = await import("./agent-tool-admission.service");
 const { answerAgentToolMcpRequest } = await import("./agent-tool-mcp-handler");
 
@@ -252,5 +259,125 @@ describe("answerAgentToolMcpRequest", () => {
     expect(scheduledEvents).toMatchObject([
       { properties: { tool: "slow_echo", outcome: "rate_limited" } },
     ]);
+  });
+});
+
+describe("tools a call's caller may call", () => {
+  /** Answers with the names `CallableAgentTools` holds for its call. */
+  const callableTool = defineAgentTool({
+    name: "callable_tools",
+    title: "Callable tools",
+    description: "Lists the tools the caller may call.",
+    access: "public",
+    readOnly: true,
+    unavailableCode: "offerings_unavailable",
+    input: Schema.Struct({ locale: agentToolLocaleField }),
+    output: Schema.Struct({ names: Schema.Array(Schema.String) }),
+    run: () =>
+      CallableAgentTools.pipe(
+        Effect.map((names) => ({ names: [...names].sort() }))
+      ),
+  });
+  const signedInTool = (
+    name: string,
+    scope: "reservations:create" | "reservations:read",
+    readOnly: boolean
+  ) =>
+    defineSignedInAgentTool({
+      name,
+      title: name,
+      description: name,
+      scope,
+      readOnly,
+      unavailableCode: "reservation_unavailable",
+      input: Schema.Struct({ locale: agentToolLocaleField }),
+      output: Schema.Struct({}),
+      run: () => Effect.succeed({}),
+    });
+  const tools = [
+    callableTool,
+    signedInTool("book", "reservations:create", false),
+    signedInTool("read_bookings", "reservations:read", true),
+  ];
+
+  const callCallableTools = async ({
+    scopes,
+    transactional = true,
+  }: {
+    readonly scopes?: ReadonlyArray<
+      "reservations:create" | "reservations:read"
+    >;
+    readonly transactional?: boolean;
+  }) => {
+    const response = await Effect.runPromise(
+      answerAgentToolMcpRequest({
+        tools: selectAgentTools(tools, {
+          access: ["public", "signed-in"],
+          transactional,
+        }),
+        request: new Request(endpoint, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            accept: "application/json, text/event-stream",
+            "mcp-protocol-version": "2025-11-25",
+            ...(scopes && { authorization: "Bearer synthetic-token" }),
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: { name: "callable_tools", arguments: {} },
+          }),
+        }),
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.succeed(AgentToolAdmission, {
+              isCallAllowed: () => Effect.succeed(true),
+            }),
+            Layer.succeed(CustomerAgentAuthorization, {
+              authorize: () =>
+                Effect.succeed({
+                  accountId: "synthetic-account",
+                  clientId: "https://agent.example/client.json",
+                  scopes: new Set(scopes),
+                }),
+            } as never)
+          )
+        ),
+        Effect.provideService(CurrentAgentTraffic, {
+          category: "ai_user_agent",
+          name: "claude",
+        })
+      )
+    );
+    return (await readEventStreamResult(response))?.structuredContent;
+  };
+
+  test("holds only the public tools without a token", async () => {
+    await expect(callCallableTools({})).resolves.toEqual({
+      names: ["callable_tools"],
+    });
+  });
+
+  test("adds the signed-in tools the token's scopes grant", async () => {
+    await expect(
+      callCallableTools({ scopes: ["reservations:create"] })
+    ).resolves.toEqual({ names: ["book", "callable_tools"] });
+    await expect(
+      callCallableTools({
+        scopes: ["reservations:create", "reservations:read"],
+      })
+    ).resolves.toEqual({ names: ["book", "callable_tools", "read_bookings"] });
+  });
+
+  test("leaves out tools a read-only deployment doesn't publish, whatever the token grants", async () => {
+    await expect(
+      callCallableTools({
+        scopes: ["reservations:create", "reservations:read"],
+        transactional: false,
+      })
+    ).resolves.toEqual({ names: ["callable_tools", "read_bookings"] });
   });
 });
