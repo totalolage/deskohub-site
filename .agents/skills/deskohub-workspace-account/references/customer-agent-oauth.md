@@ -136,15 +136,30 @@ resource.
   disconnected. Reconnecting asks for consent again.
 - Upstream Better Auth deletes only the consent row. The Workspace
   `@better-auth/oauth-provider` patch (see the `deskohub-repository` skill's
-  patched dependencies) also deletes the client's access and refresh tokens
-  for that customer, so its next MCP call gets the 401 challenge and its
-  refresh fails. It deletes the tokens, then the consent, then the tokens
-  again. A disconnect that fails before the consent is gone keeps the
-  assistant listed, so retrying it still revokes the tokens. A refresh
-  rotation that finds the consent gone after writing its tokens revokes them
-  and answers `invalid_grant`, so a refresh in flight during the disconnect
-  leaves no usable tokens. Authorization codes issued before the disconnect stay
-  redeemable until they expire (better-auth#11318).
+  patched dependencies) makes the consent the revocation state: an access
+  token or refresh of a client that asks for consent works only while a
+  consent with the token's reference exists that is no newer than the token.
+  So once the consent is gone, the assistant's next MCP call gets the 401
+  challenge and its refresh fails, even for a token that outlived the
+  disconnect, and connecting the assistant again in a later second doesn't
+  bring such a token back. Presenting such a token deletes it.
+- The disconnect also deletes the client's access and refresh tokens for
+  that customer right away: the tokens, then every consent of the client
+  (a concurrent consent can record a duplicate), then the tokens again. A
+  disconnect that fails before the consent is gone keeps the assistant
+  listed, so retrying it still deletes the tokens. A refresh checks the
+  consent before it answers and again after writing its tokens, so one whose
+  consent goes away while it runs answers `invalid_grant` without handing
+  them out. A failure after the consent delete, or a rotation that wrote
+  its tokens between the deletes, leaves rows behind that no longer work,
+  and a refresh refused after writing can leave an access token row it
+  never handed out; presenting a token, or the daily auth cleanup once it
+  expires, removes it. A consent the customer approved twice at once whose
+  second insert stalls past a whole disconnect would cover older tokens
+  again; the assistant then shows as connected.
+  Authorization codes issued before the disconnect stay redeemable until
+  they expire (better-auth#11318), but their tokens work only if the
+  customer has connected the assistant again by then.
 
 ## Account-boundary adapter
 

@@ -1,23 +1,34 @@
 diff --git a/dist/authorize-BmTe2VYG.mjs b/dist/authorize-BmTe2VYG.mjs
-index 42c943dd45aa3d297a14edcc056a14e7ddd54680..b681f5555e89da4f08f3fd19934b9e98a19834fe 100644
+index 42c943dd45aa3d297a14edcc056a14e7ddd54680..52f697d250d67eaeb8429770bfbbc5b345adabac 100644
 --- a/dist/authorize-BmTe2VYG.mjs
 +++ b/dist/authorize-BmTe2VYG.mjs
-@@ -3000,6 +3000,13 @@ async function deleteConsentEndpoint(ctx, opts) {
+@@ -3000,13 +3000,29 @@ async function deleteConsentEndpoint(ctx, opts) {
  		error: "not_found"
  	});
  	if (consent.userId !== session.user.id) throw new APIError("UNAUTHORIZED");
+-	await ctx.context.adapter.delete({
 +	// Workspace patch (better-auth/better-auth#11056): disconnecting a client
-+	// revokes the tokens it holds for the user. The tokens go before the
-+	// consent, so a disconnect that fails before the consent is gone can be
-+	// retried. They go again after it, so a refresh rotating concurrently
-+	// either sees the consent gone and revokes its own tokens, or wrote them
-+	// before the second delete starts.
++	// deletes the tokens it holds for the user. Without the consent they stop
++	// working anyway (see `hasConsentFor`); the deletes remove them right
++	// away. The tokens go before the consent, so a disconnect that fails
++	// before the consent is gone can be retried, and again after it, for
++	// those a refresh rotating concurrently wrote. Every consent of the
++	// client, user, and reference goes, so a duplicate that a concurrent
++	// consent wrote doesn't keep the client connected.
 +	await invalidateRefreshFamily(ctx, consent.clientId, consent.userId, consent.referenceId);
- 	await ctx.context.adapter.delete({
++	await ctx.context.adapter.deleteMany({
  		model: "oauthConsent",
  		where: [{
-@@ -3007,6 +3014,7 @@ async function deleteConsentEndpoint(ctx, opts) {
- 			value: id
+-			field: "id",
+-			value: id
++			field: "clientId",
++			value: consent.clientId
++		}, {
++			field: "userId",
++			value: consent.userId
++		}, {
++			field: "referenceId",
++			value: consent.referenceId ?? null
  		}]
  	});
 +	await invalidateRefreshFamily(ctx, consent.clientId, consent.userId, consent.referenceId);
@@ -25,7 +36,7 @@ index 42c943dd45aa3d297a14edcc056a14e7ddd54680..b681f5555e89da4f08f3fd19934b9e98
  async function updateConsentEndpoint(ctx, opts) {
  	const session = await getSessionFromCtx(ctx);
 diff --git a/dist/introspect-C6P1zrTr.mjs b/dist/introspect-C6P1zrTr.mjs
-index 0b3934dd6724d408a84624a3fb0215f6d3274fea..c14e564efa6f72b4d22c8ec64b833dd793cbf44e 100644
+index 0b3934dd6724d408a84624a3fb0215f6d3274fea..3947d8cf9a0b581c034624e45b0a57dcdaa80551 100644
 --- a/dist/introspect-C6P1zrTr.mjs
 +++ b/dist/introspect-C6P1zrTr.mjs
 @@ -802,6 +802,14 @@ function getSeedState(ctx) {
@@ -61,22 +72,12 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..c14e564efa6f72b4d22c8ec64b833dd7
  				if (/unique|duplicate|UNIQUE/i.test(message)) {
  					logger.debug(`oauth-provider: resource ${input.identifier} already inserted by a concurrent process — skipping.`);
  					continue;
-@@ -1495,27 +1503,37 @@ async function createOpaqueAccessToken(ctx, opts, user, client, scopes, payload,
+@@ -1495,36 +1503,76 @@ async function createOpaqueAccessToken(ctx, opts, user, client, scopes, payload,
  *
  * @internal
  */
 -async function invalidateRefreshFamily(ctx, clientId, userId) {
 -	const refreshTokens = await ctx.context.adapter.findMany({
--		model: "oauthRefreshToken",
--		where: [{
--			field: "clientId",
--			value: clientId
--		}, {
--			field: "userId",
--			value: userId
--		}]
--	});
--	if (refreshTokens.length) await ctx.context.adapter.deleteMany({
 +// Workspace patch (better-auth/better-auth#11056): a consent delete calls
 +// this too, so it removes every access token of the client and user, not
 +// only those bought with a refresh token.
@@ -92,47 +93,114 @@ index 0b3934dd6724d408a84624a3fb0215f6d3274fea..c14e564efa6f72b4d22c8ec64b833dd7
 +		value: referenceId
 +	}] : []];
 +	await ctx.context.adapter.deleteMany({
- 		model: "oauthAccessToken",
--		where: [{
--			field: "refreshId",
--			operator: "in",
--			value: refreshTokens.map((r) => r.id)
--		}]
++		model: "oauthAccessToken",
 +		where
- 	});
- 	await ctx.context.adapter.deleteMany({
++	});
++	await ctx.context.adapter.deleteMany({
  		model: "oauthRefreshToken",
 +		where
 +	});
 +}
-+// Workspace patch (better-auth/better-auth#11056): a rotation that wrote its
-+// tokens after a concurrent consent delete revokes them. The consent delete
-+// runs before the last token delete, so either this lookup misses the consent
-+// or that delete starts after these tokens were written. Only the consent
-+// with the token's own reference counts.
-+async function revokeRotationWithoutConsent(ctx, clientId, userId, referenceId) {
-+	if ((await ctx.context.adapter.findMany({
++// Workspace patch: the consent is what keeps a token of a client that asks
++// for consent working. A token works only while a consent with its reference
++// exists that is no newer than the token, so one that outlives a disconnect,
++// whether a delete failed or a rotation raced it, stops working, and stays
++// so when the customer connects the client again in a later second.
++async function hasConsentFor(ctx, token) {
++	return (await ctx.context.adapter.findMany({
 +		model: "oauthConsent",
  		where: [{
  			field: "clientId",
- 			value: clientId
-@@ -1523,6 +1541,11 @@ async function invalidateRefreshFamily(ctx, clientId, userId) {
+-			value: clientId
++			value: token.clientId
+ 		}, {
  			field: "userId",
- 			value: userId
+-			value: userId
++			value: token.userId
  		}]
-+	})).some((consent) => (consent.referenceId ?? null) === (referenceId ?? null))) return;
-+	await invalidateRefreshFamily(ctx, clientId, userId, referenceId);
+-	});
+-	if (refreshTokens.length) await ctx.context.adapter.deleteMany({
++	})).some((consent) => (consent.referenceId ?? null) === (token.referenceId ?? null) && (consent.createdAt == null || consent.createdAt <= token.createdAt));
++}
++// Workspace patch: deletes a refresh token and the access tokens bought with
++// it, and only those, so a newer grant of the same client stays.
++async function deleteRefreshToken(ctx, id) {
++	await ctx.context.adapter.deleteMany({
+ 		model: "oauthAccessToken",
+ 		where: [{
+ 			field: "refreshId",
+-			operator: "in",
+-			value: refreshTokens.map((r) => r.id)
++			value: id
+ 		}]
+ 	});
+-	await ctx.context.adapter.deleteMany({
++	await ctx.context.adapter.delete({
+ 		model: "oauthRefreshToken",
+ 		where: [{
+-			field: "clientId",
+-			value: clientId
+-		}, {
+-			field: "userId",
+-			value: userId
++			field: "id",
++			value: id
+ 		}]
+ 	});
+ }
++// Workspace patch: a refresh whose consent went away while it ran fails
++// before it hands out the tokens it wrote, and deletes the refresh token it
++// wrote. The check reads the refresh token it was given, which no consent
++// given after it covers.
++async function revokeRotationWithoutConsent(ctx, presentedRefreshToken, refreshId) {
++	if (await hasConsentFor(ctx, presentedRefreshToken)) return;
++	if (refreshId) await deleteRefreshToken(ctx, refreshId);
 +	throw new APIError("BAD_REQUEST", {
 +		error_description: "invalid refresh token",
 +		error: "invalid_grant"
- 	});
- }
++	});
++}
  async function revokeTokensIssuedForAuthorizationCode(ctx, authorizationCodeId) {
-@@ -1866,6 +1889,7 @@ async function createUserTokens(ctx, opts, params) {
+ 	const deleteIssuedTokens = async (model) => {
+ 		try {
+@@ -1866,6 +1914,7 @@ async function createUserTokens(ctx, opts, params) {
  		exp: refreshTokenExp,
  		sid: sessionId
  	}, existingRefreshToken, authTime, refreshResources, confirmation, requestedUserInfoClaims) : void 0]);
-+	if (existingRefreshToken?.id && refreshToken?.id && !client.skipConsent) await revokeRotationWithoutConsent(ctx, client.clientId, user.id, referenceId);
++	if (existingRefreshToken?.id && !client.skipConsent) await revokeRotationWithoutConsent(ctx, existingRefreshToken, refreshToken?.id);
  	const idToken = isIdToken ? await createIdToken(ctx, opts, user, client, effectiveScopes, nonce, sessionId, authTime, accessToken, additionalIdTokenClaims) : void 0;
  	const responseBody = {
  		...customFields,
+@@ -2143,6 +2192,15 @@ async function handleRefreshTokenGrant(ctx, opts) {
+ 		});
+ 	}
+ 	const client = await validateClientCredentials(ctx, opts, client_id, client_secret, requestedScopes ?? scopes, preVerified, "refresh_token", authMethod);
++	// Workspace patch: a refresh token its consent no longer covers fails,
++	// including inside the reuse window.
++	if (!client.skipConsent && !await hasConsentFor(ctx, refreshToken)) {
++		await deleteRefreshToken(ctx, refreshToken.id);
++		throw new APIError("BAD_REQUEST", {
++			error_description: "invalid refresh token",
++			error: "invalid_grant"
++		});
++	}
+ 	if (refreshToken.revoked) {
+ 		if (isWithinRefreshTokenReuseInterval(refreshToken)) {
+ 			const replay = await getRefreshTokenRotationReplay(ctx, refreshToken, await resolveRefreshTokenRotationReplayRequest(ctx, opts, {
+@@ -2320,6 +2378,16 @@ async function validateOpaqueAccessToken(ctx, opts, token, clientId) {
+ 			issuerClientId: accessToken.clientId,
+ 			audienceResources: resources ?? []
+ 		})) return inactiveAccessToken();
++		if (!client.skipConsent && accessToken.userId && !await hasConsentFor(ctx, accessToken)) {
++			await ctx.context.adapter.delete({
++				model: "oauthAccessToken",
++				where: [{
++					field: "id",
++					value: accessToken.id
++				}]
++			});
++			return inactiveAccessToken();
++		}
+ 	}
+ 	const sessionId = accessToken.sessionId ?? void 0;
+ 	if (sessionId) {

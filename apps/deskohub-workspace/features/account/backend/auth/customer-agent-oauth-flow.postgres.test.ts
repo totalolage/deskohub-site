@@ -400,21 +400,21 @@ const countRows = async (table: string, userId: string) => {
 
 /**
  * The test database adapter, with a hook that runs one step of a test just
- * before the plugin's next write of a given kind to a given model. It forces
- * two concurrent requests to interleave at that write.
+ * before the plugin's next call of a given kind on a given model. It forces
+ * two concurrent requests to interleave at that call.
  */
 const makeInterleavingDatabase = () => {
   const base = buildDatabaseAdapter();
-  type Write = "create" | "delete" | "deleteMany";
+  type Call = "findOne" | "create" | "delete" | "deleteMany";
   let next:
     | {
-        readonly write: Write;
+        readonly call: Call;
         readonly model: string;
         readonly step: () => Promise<unknown>;
       }
     | undefined;
-  const beforeWrite = async (write: Write, model: string) => {
-    if (next?.write !== write || next.model !== model) return;
+  const beforeCall = async (call: Call, model: string) => {
+    if (next?.call !== call || next.model !== model) return;
     const { step } = next;
     next = undefined;
     await step();
@@ -422,30 +422,35 @@ const makeInterleavingDatabase = () => {
   return {
     database: (options: Parameters<typeof base>[0]) => {
       const adapter = base(options);
+      const findOne = async (input: Parameters<typeof adapter.findOne>[0]) => {
+        await beforeCall("findOne", input.model);
+        return adapter.findOne(input);
+      };
       const create = async (input: Parameters<typeof adapter.create>[0]) => {
-        await beforeWrite("create", input.model);
+        await beforeCall("create", input.model);
         return adapter.create(input);
       };
       const remove = async (input: Parameters<typeof adapter.delete>[0]) => {
-        await beforeWrite("delete", input.model);
+        await beforeCall("delete", input.model);
         return adapter.delete(input);
       };
       const removeMany = async (
         input: Parameters<typeof adapter.deleteMany>[0]
       ) => {
-        await beforeWrite("deleteMany", input.model);
+        await beforeCall("deleteMany", input.model);
         return adapter.deleteMany(input);
       };
       return {
         ...adapter,
+        findOne: findOne as typeof adapter.findOne,
         create: create as typeof adapter.create,
         delete: remove as typeof adapter.delete,
         deleteMany: removeMany as typeof adapter.deleteMany,
       };
     },
-    /** Runs `step` before the next `write` to `model`, which then goes on. */
-    before: (write: Write, model: string, step: () => Promise<unknown>) => {
-      next = { write, model, step };
+    /** Runs `step` before the next `call` on `model`, which then goes on. */
+    before: (call: Call, model: string, step: () => Promise<unknown>) => {
+      next = { call, model, step };
     },
   };
 };
@@ -1162,12 +1167,16 @@ describe.skipIf(!testDatabase)(
       const customer = await signIn(auth, sentLinks);
       const tokens = await connectSignedIn(auth, customer.cookie, agent);
       const [connection] = await listConnections(auth, customer.cookie);
-      const refresh = (refreshToken: string) =>
+      const refresh = (
+        refreshToken: string,
+        form: Record<string, string> = {}
+      ) =>
         requestToken(auth, {
           grant_type: "refresh_token",
           client_id: agent.clientId,
           refresh_token: refreshToken,
           resource: RESOURCE,
+          ...form,
         });
       const disconnect = () =>
         request(auth, "/oauth2/delete-consent", {
@@ -1176,6 +1185,11 @@ describe.skipIf(!testDatabase)(
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ id: connection!.id }),
         });
+      /** Connects the assistant again, one second after the last connect. */
+      const reconnect = () => {
+        setSystemTime(new Date(Date.now() + 1000));
+        return connectSignedIn(auth, customer.cookie, agent);
+      };
       /**
        * None is left stored, and no issued token works any more. The rows
        * are counted first, since a refresh attempt could delete leftovers.
@@ -1195,7 +1209,16 @@ describe.skipIf(!testDatabase)(
           expect((await refresh(refresh_token!)).status).toBe(400);
         }
       };
-      return { interleaving, tokens, refresh, disconnect, expectRevoked };
+      return {
+        interleaving,
+        tokens,
+        refresh,
+        disconnect,
+        reconnect,
+        expectRevoked,
+        auth,
+        accountId: customer.accountId,
+      };
     };
 
     // Guards the Workspace oauth-provider patch: a disconnect that lands
@@ -1227,7 +1250,7 @@ describe.skipIf(!testDatabase)(
         "oauthRefreshToken",
         () =>
           new Promise<void>((resume) => {
-            race.interleaving.before("delete", "oauthConsent", async () => {
+            race.interleaving.before("deleteMany", "oauthConsent", async () => {
               resume();
               await rotated;
             });
@@ -1261,6 +1284,209 @@ describe.skipIf(!testDatabase)(
         await race.expectRevoked([race.tokens]);
       }
     );
+
+    /**
+     * Leaves the tokens of a refresh stored past a disconnect: the refresh
+     * finishes between the first token delete and the consent delete, and
+     * the second token delete fails. The retry then finds nothing to
+     * disconnect. With `refreshAgain`, the assistant also refreshes the
+     * renewed token in that gap, which leaves a replay copy on it.
+     */
+    const outliveDisconnect = async (
+      race: Awaited<ReturnType<typeof connectForRace>>,
+      { refreshAgain = false } = {}
+    ) => {
+      let rotated: Promise<Response> | undefined;
+      let disconnected: Promise<Response> | undefined;
+      race.interleaving.before(
+        "create",
+        "oauthRefreshToken",
+        () =>
+          new Promise<void>((resume) => {
+            race.interleaving.before("deleteMany", "oauthConsent", async () => {
+              resume();
+              const response = await rotated!;
+              if (refreshAgain) {
+                const renewed = (await response
+                  .clone()
+                  .json()) as TokenResponse;
+                expect(
+                  (await race.refresh(renewed.refresh_token!)).status
+                ).toBe(200);
+              }
+              race.interleaving.before(
+                "deleteMany",
+                "oauthAccessToken",
+                async () => {
+                  throw new Error("Injected token delete failure");
+                }
+              );
+            });
+            disconnected = race.disconnect();
+          })
+      );
+
+      rotated = race.refresh(race.tokens.refresh_token!);
+      const response = await rotated;
+      expect(response.status).toBe(200);
+      expect((await disconnected!).status).toBe(500);
+      expect((await race.disconnect()).status).toBe(404);
+      const left = refreshAgain ? 2 : 1;
+      expect(await countRows("oauth_consent", race.accountId)).toBe(0);
+      expect(await countRows("oauth_access_token", race.accountId)).toBe(left);
+      expect(await countRows("oauth_refresh_token", race.accountId)).toBe(left);
+      return (await response.json()) as TokenResponse;
+    };
+
+    // Guards the Workspace oauth-provider patch: once the consent is gone, a
+    // token it covered stops working even when its row outlives the
+    // disconnect, and presenting it deletes it.
+    test("revokes the tokens of a refresh when a disconnect fails after deleting the consent", async () => {
+      const race = await connectForRace();
+      const renewed = await outliveDisconnect(race);
+
+      expect(
+        await failureReasonOf(authorityOver(race.auth), renewed.access_token)
+      ).toBe("invalid-token");
+      expect(await countRows("oauth_access_token", race.accountId)).toBe(0);
+      expect((await race.refresh(renewed.refresh_token!)).status).toBe(400);
+      await race.expectRevoked([race.tokens, renewed]);
+    });
+
+    // Guards the Workspace oauth-provider patch: only a consent no newer than
+    // a token keeps it working, so connecting the assistant again doesn't
+    // bring back a token that outlived its disconnect.
+    test("keeps a token that outlived a disconnect revoked after the assistant connects again", async () => {
+      const race = await connectForRace();
+      try {
+        const renewed = await outliveDisconnect(race);
+        const reconnected = await race.reconnect();
+
+        expect(
+          await failureReasonOf(authorityOver(race.auth), renewed.access_token)
+        ).toBe("invalid-token");
+        expect((await race.refresh(renewed.refresh_token!)).status).toBe(400);
+        expect(
+          (
+            await authorizeToken(
+              authorityOver(race.auth),
+              reconnected.access_token
+            )
+          )._tag
+        ).toBe("Success");
+        expect((await race.refresh(reconnected.refresh_token!)).status).toBe(
+          200
+        );
+      } finally {
+        setSystemTime();
+      }
+    });
+
+    // Guards the Workspace oauth-provider patch: a rotation checks the consent
+    // against the refresh token it rotated, so one that a disconnect and a
+    // new connection overtake fails instead of handing out tokens that the
+    // new consent doesn't cover.
+    test("refuses a refresh that a disconnect and a new connection overtake mid-rotation", async () => {
+      const race = await connectForRace();
+      try {
+        let reconnected: TokenResponse | undefined;
+        race.interleaving.before("create", "oauthRefreshToken", async () => {
+          expect((await race.disconnect()).status).toBe(200);
+          reconnected = await race.reconnect();
+        });
+
+        const rotated = await race.refresh(race.tokens.refresh_token!);
+        expect(rotated.status).toBe(400);
+        expect(((await rotated.json()) as { error: string }).error).toBe(
+          "invalid_grant"
+        );
+        expect(
+          await failureReasonOf(
+            authorityOver(race.auth),
+            race.tokens.access_token
+          )
+        ).toBe("invalid-token");
+        expect(
+          (
+            await authorizeToken(
+              authorityOver(race.auth),
+              reconnected!.access_token
+            )
+          )._tag
+        ).toBe("Success");
+        expect(await countRows("oauth_access_token", race.accountId)).toBe(1);
+        expect(await countRows("oauth_refresh_token", race.accountId)).toBe(1);
+      } finally {
+        setSystemTime();
+      }
+    });
+
+    // Guards the Workspace oauth-provider patch: a refresh token checks its
+    // consent before the reuse window answers, so one that outlived a
+    // disconnect can't replay the response stored on it.
+    test("refuses to replay a refresh whose token outlived a disconnect", async () => {
+      const race = await connectForRace();
+      const renewed = await outliveDisconnect(race, { refreshAgain: true });
+
+      const replayed = await race.refresh(renewed.refresh_token!);
+      expect(replayed.status).toBe(400);
+      expect(((await replayed.json()) as { error: string }).error).toBe(
+        "invalid_grant"
+      );
+    });
+
+    // Guards the Workspace oauth-provider patch: every refresh checks its
+    // consent after writing, also one that issues no new refresh token
+    // because it no longer asks for offline access.
+    test("refuses a refresh without offline access that a disconnect and a new connection overtake", async () => {
+      const race = await connectForRace();
+      try {
+        const narrowedResponse = await race.refresh(
+          race.tokens.refresh_token!,
+          { scope: "offerings:read reservations:read reservations:create" }
+        );
+        expect(narrowedResponse.status).toBe(200);
+        const narrowed = (await narrowedResponse.json()) as TokenResponse;
+        let reconnected: TokenResponse | undefined;
+        race.interleaving.before("findOne", "user", async () => {
+          expect((await race.disconnect()).status).toBe(200);
+          reconnected = await race.reconnect();
+        });
+
+        const refreshed = await race.refresh(narrowed.refresh_token!);
+        expect(refreshed.status).toBe(400);
+        expect(
+          (
+            await authorizeToken(
+              authorityOver(race.auth),
+              reconnected!.access_token
+            )
+          )._tag
+        ).toBe("Success");
+      } finally {
+        setSystemTime();
+      }
+    });
+
+    // Guards the Workspace oauth-provider patch: a disconnect deletes every
+    // consent of the assistant, so a duplicate written by a concurrent consent
+    // doesn't keep it connected.
+    test("disconnects an assistant whose consent was recorded twice", async () => {
+      const race = await connectForRace();
+      await testDatabase!.pool.query(
+        `insert into auth.oauth_consent
+           (id, client_id, user_id, reference_id, resources,
+            requested_user_info_claims, scopes, created_at, updated_at)
+         select $2, client_id, user_id, reference_id, resources,
+           requested_user_info_claims, scopes, created_at, updated_at
+         from auth.oauth_consent where user_id = $1`,
+        [race.accountId, crypto.randomUUID()]
+      );
+      expect(await countRows("oauth_consent", race.accountId)).toBe(2);
+
+      expect((await race.disconnect()).status).toBe(200);
+      await race.expectRevoked([race.tokens]);
+    });
 
     test("deletes a connected account with its grants, and its tokens stop authorizing", async () => {
       const agent = makeAgent();
