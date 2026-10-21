@@ -571,7 +571,7 @@ describe.skipIf(!testDatabase)(
       });
     });
 
-    test("shows the access name stored on the grant, or the name of its first or legacy request", async () => {
+    test("shows the access name stored on the grant, or the reservation-built name of a grant created before names were stored", async () => {
       const insertGrant = async (
         label: string,
         values: Pick<
@@ -624,11 +624,11 @@ describe.skipIf(!testDatabase)(
         accessName: "Deskohub stored-name",
         failureCode: "provider_outcome_ambiguous",
       });
-      const unrequested = await insertGrant("access-unrequested", {
+      // A deployment that predates stored names created these grants.
+      const legacyPending = await insertGrant("access-legacy-pending", {
         state: "pending",
         accessName: null,
       });
-      // A deployment that predates stored names claimed these grants.
       const legacyUncertain = await insertGrant("access-legacy-uncertain", {
         state: "uncertain",
         accessName: null,
@@ -647,11 +647,11 @@ describe.skipIf(!testDatabase)(
 
       const [
         storedDetail,
-        unrequestedDetail,
+        legacyPendingDetail,
         legacyUncertainDetail,
         legacyStaleProvisioningDetail,
       ] = await Promise.all(
-        [stored, unrequested, legacyUncertain, legacyStaleProvisioning].map(
+        [stored, legacyPending, legacyUncertain, legacyStaleProvisioning].map(
           ({ reservationId }) =>
             run((administration) =>
               administration.loadReservation(reservationId)
@@ -662,8 +662,8 @@ describe.skipIf(!testDatabase)(
       expect(storedDetail?.accessGrant?.accessName).toBe(
         "Deskohub stored-name"
       );
-      expect(unrequestedDetail?.accessGrant?.accessName).toBe(
-        `Deskohub ${unrequested.grantId}`
+      expect(legacyPendingDetail?.accessGrant?.accessName).toBe(
+        `Deskohub ${legacyPending.reservationId}`.slice(0, 60)
       );
       expect(legacyUncertainDetail?.accessGrant?.accessName).toBe(
         `Deskohub ${legacyUncertain.reservationId}`.slice(0, 60)

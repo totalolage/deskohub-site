@@ -47,21 +47,13 @@ export const makeReservationAccessName = (grantId: ReservationAccessGrantId) =>
 
 /**
  * The name of the grant's Igloohome credential: the stored name of its latest
- * request, or the name its first request will use. A requested grant without a
- * stored name was requested by a deployment that predates stored names, which
- * sent `Deskohub <reservation-id>`.
+ * request, or the name its first request will use. A grant without a stored
+ * name was created by a deployment that predates stored names, which named its
+ * credential `Deskohub <reservation-id>`.
  */
 export const getReservationAccessName = (
-  grant: Pick<
-    ReservationAccessGrant,
-    "id" | "reservationId" | "state" | "accessName"
-  >
-) => {
-  if (grant.accessName !== null) return grant.accessName;
-  return grant.state === "pending"
-    ? makeReservationAccessName(grant.id)
-    : `Deskohub ${grant.reservationId}`.slice(0, 60);
-};
+  grant: Pick<ReservationAccessGrant, "reservationId" | "accessName">
+) => grant.accessName ?? `Deskohub ${grant.reservationId}`.slice(0, 60);
 
 export interface ReservationAccessGrant {
   readonly id: ReservationAccessGrantId;
@@ -71,7 +63,10 @@ export interface ReservationAccessGrant {
   readonly deviceId: string;
   readonly state: ReservationAccessGrantState;
   readonly providerCredentialId: string | null;
-  /** Name sent with the latest Igloohome request; null before the first. */
+  /**
+   * Name sent with the latest Igloohome request, or the name the first request
+   * will use. Null on grants created before names were stored.
+   */
   readonly accessName: string | null;
   readonly scheduledAccessStartsAt: Temporal.Instant;
   readonly accessStartsAt: Temporal.Instant;

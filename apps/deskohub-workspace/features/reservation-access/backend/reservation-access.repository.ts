@@ -4,15 +4,18 @@ import type {
   IgloohomePinId,
 } from "@deskohub/igloohome";
 import { AlgoPinSchema } from "@deskohub/igloohome";
+import { NodeCrypto } from "@effect/platform-node";
 import { and, eq, inArray, lte, ne, or } from "drizzle-orm";
-import { Context, Data, Effect, Layer, Schema } from "effect";
+import { Context, Crypto, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { reservationAccessGrants } from "@/db/schema";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
-import type {
-  ReservationAccessGrant,
-  ReservationAccessGrantId,
+import {
+  makeReservationAccessName,
+  type ReservationAccessGrant,
+  type ReservationAccessGrantId,
+  reservationAccessGrantIdSchema,
 } from "../reservation-access";
 
 const reservationAccessGrantSelection = {
@@ -108,6 +111,7 @@ export class ReservationAccessRepository extends Context.Service<
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
+      const crypto = yield* Crypto.Crypto;
 
       const findByReservationId = Effect.fn(
         "ReservationAccessRepository.findByReservationId"
@@ -136,9 +140,26 @@ export class ReservationAccessRepository extends Context.Service<
         findByReservationId,
         ensure: Effect.fn("ReservationAccessRepository.ensure")(
           function* (input) {
+            const id = yield* crypto.randomUUIDv7.pipe(
+              Effect.map(reservationAccessGrantIdSchema.make),
+              Effect.mapError(
+                () =>
+                  new ReservationAccessStorageError({
+                    operation: "ensure",
+                    reservationId: input.reservationId,
+                    message:
+                      "Reservation access grant ID could not be generated.",
+                  })
+              )
+            );
             yield* db
               .insert(reservationAccessGrants)
               .values({
+                id,
+                // A new grant carries the name its first request will use. A
+                // grant created by a deployment that predates stored names
+                // has none, and a reset keeps the name of the latest request.
+                accessName: makeReservationAccessName(id),
                 workspaceReservationId: input.reservationId,
                 deviceId: input.deviceId,
                 state: "pending",
@@ -466,5 +487,7 @@ export class ReservationAccessRepository extends Context.Service<
     })
   );
 
-  static Live = this.Default.pipe(Layer.provide(WorkspaceDatabase.Default));
+  static Live = this.Default.pipe(
+    Layer.provide(Layer.mergeAll(WorkspaceDatabase.Default, NodeCrypto.layer))
+  );
 }

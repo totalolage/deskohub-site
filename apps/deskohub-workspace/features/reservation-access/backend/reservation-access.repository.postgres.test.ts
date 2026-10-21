@@ -10,8 +10,9 @@ import {
   IgloohomeDeviceIdSchema,
   IgloohomePinIdSchema,
 } from "@deskohub/igloohome";
+import { NodeCrypto } from "@effect/platform-node";
 import { Effect } from "effect";
-import { workspaceReservations } from "@/db/schema";
+import { reservationAccessGrants, workspaceReservations } from "@/db/schema";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import {
   type WorkspaceReservationId,
@@ -89,6 +90,7 @@ describe.skipIf(!testDatabase)(
           return yield* operation(yield* ReservationAccessRepository);
         }).pipe(
           Effect.provide(ReservationAccessRepository.Default),
+          Effect.provide(NodeCrypto.layer),
           Effect.provide(testDatabase.layer)
         )
       );
@@ -98,7 +100,7 @@ describe.skipIf(!testDatabase)(
       const grant = await run((repository) =>
         repository.ensure({ reservationId, ...target })
       );
-      expect(grant.accessName).toBeNull();
+      expect(grant.accessName).toBe(`Deskohub ${grant.id}`);
       const startedAt = Temporal.Now.instant();
       expect(
         await run((repository) =>
@@ -121,6 +123,39 @@ describe.skipIf(!testDatabase)(
       );
       return { accessCode, grant };
     };
+
+    test("keeps a grant created before names were stored unnamed until its next request", async () => {
+      const reservationId = await insertReservation();
+      // The previous deployment inserts grants without a name.
+      await Effect.runPromise(
+        testDatabase.db.insert(reservationAccessGrants).values({
+          workspaceReservationId: reservationId,
+          state: "failed",
+          failedAt: Temporal.Now.instant(),
+          failureCode: "provider_request_rejected",
+          ...target,
+        })
+      );
+
+      const ensured = await run((repository) =>
+        repository.ensure({ reservationId, ...target })
+      );
+      expect(ensured.state).toBe("pending");
+      expect(ensured.accessName).toBeNull();
+
+      await run((repository) =>
+        repository.claim({
+          id: ensured.id,
+          reservationId,
+          accessName: `Deskohub ${ensured.id}`,
+          startedAt: Temporal.Now.instant(),
+        })
+      );
+      const claimed = await run((repository) =>
+        repository.findByReservationId(reservationId)
+      );
+      expect(claimed?.accessName).toBe(`Deskohub ${ensured.id}`);
+    });
 
     test("keeps an issued grant when a concurrent request ensures the same target", async () => {
       const reservationId = await insertReservation();
