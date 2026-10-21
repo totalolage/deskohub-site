@@ -7,8 +7,7 @@ import { defineWorkspaceRoute } from "@/shared/backend/workspace-route";
 export const maxDuration = 300;
 
 /**
- * The automation engine's tick, every `emailAutomationTickMinutes`; it plans
- * units and makes no Dotypos call.
+ * The automation engine tick plans units and makes no Dotypos call.
  */
 export const GET = defineWorkspaceRoute(
   {
