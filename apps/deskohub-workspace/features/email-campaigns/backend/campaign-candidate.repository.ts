@@ -14,6 +14,7 @@ import {
   isNull,
   max,
   min,
+  or,
   type SQL,
   type SQLWrapper,
   sql,
@@ -129,6 +130,26 @@ const withinBounds = (
       sql`${instant} <= ${temporalInstantToDate(bounds.startsAtOrBefore)}`
   );
 
+/**
+ * Whether a legacy account, created at an unknown time before records began,
+ * counts as created in the bounds (D37): it does when they have no start, or
+ * when they end before records began, and never when they hold any later
+ * time. Its stored creation time is when records began for it.
+ */
+const legacyCreationWithin = (
+  recordsBegan: SQLWrapper,
+  bounds: DatePeriodBounds
+): SQL => {
+  if (bounds.startsAtOrAfter === undefined) return sql`true`;
+  if (bounds.startsBefore) {
+    return sql`${temporalInstantToDate(bounds.startsBefore)} <= ${recordsBegan}`;
+  }
+  if (bounds.startsAtOrBefore) {
+    return sql`${temporalInstantToDate(bounds.startsAtOrBefore)} < ${recordsBegan}`;
+  }
+  return sql`false`;
+};
+
 const reservationSelection = ({
   status,
   booked,
@@ -200,7 +221,9 @@ export interface ICampaignCandidateRepository {
   /**
    * Customers with a linked account created by `asOf`, and those whose
    * account was created in the bounds. An account created later doesn't
-   * exist yet at a replayed moment.
+   * exist yet at a replayed moment. A legacy account was created before
+   * records began, so it exists at every moment and falls only in bounds
+   * without a start or that end before records began.
    */
   readonly accountCreations: (query: {
     readonly created: DatePeriodBounds;
@@ -415,10 +438,12 @@ export class CampaignCandidateRepository extends Context.Service<
           const rows = yield* db
             .select({
               dotyposCustomerId: accountCustomerId,
-              inPeriod: sql<boolean>`${and(
-                sql`true`,
-                withinBounds(customerAccounts.createdAt, created)
-              )}`,
+              inPeriod: sql<boolean>`case when ${customerAccounts.legacy}
+                then ${legacyCreationWithin(customerAccounts.createdAt, created)}
+                else ${and(
+                  sql`true`,
+                  withinBounds(customerAccounts.createdAt, created)
+                )} end`,
             })
             .from(customerAccounts)
             .innerJoin(authUser, eq(authUser.id, customerAccounts.id))
@@ -427,7 +452,11 @@ export class CampaignCandidateRepository extends Context.Service<
                 verifiedLogin,
                 isNotNull(customerAccounts.dotyposCustomerId),
                 ofCustomers(customerAccounts.dotyposCustomerId, customers),
-                sql`${customerAccounts.createdAt} <= ${temporalInstantToDate(asOf)}`
+                // A legacy account predates every replayed moment.
+                or(
+                  customerAccounts.legacy,
+                  sql`${customerAccounts.createdAt} <= ${temporalInstantToDate(asOf)}`
+                )
               )
             );
           return {

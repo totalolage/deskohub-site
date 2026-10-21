@@ -665,6 +665,99 @@ describe.skipIf(!testDatabase)(
       );
     });
 
+    test("dates a legacy account before records began", async () => {
+      const backfilledAt = Temporal.Instant.from("2026-10-20T18:00:00Z");
+      const verifiedAt = backfilledAt.add({ hours: 24 });
+      const asOf = verifiedAt.add({ hours: 1 });
+      const legacy = customerId("legacy");
+      const signup = customerId("legacy-signup");
+      const legacyAccountId = `campaign-legacy-account-${run}`;
+      const signupAccountId = `campaign-legacy-signup-account-${run}`;
+      const ids = [legacyAccountId, signupAccountId];
+      await Effect.runPromise(
+        db.insert(customerAccounts).values([
+          {
+            id: customerAccountIdSchema.make(legacyAccountId),
+            dotyposCustomerId: legacy,
+            createdAt: backfilledAt,
+            legacy: true,
+          },
+          // A sign-up the day after the backfill, as the legacy customer
+          // first verifies.
+          {
+            id: customerAccountIdSchema.make(signupAccountId),
+            dotyposCustomerId: signup,
+            createdAt: verifiedAt,
+          },
+        ])
+      );
+      try {
+        await Effect.runPromise(
+          db.insert(authUser).values(
+            ids.map((id) => ({
+              id,
+              name: "",
+              email: testEmailAddress(id),
+              emailVerified: true,
+              locale: "en-US",
+              createdAt: new Date(backfilledAt.epochMilliseconds),
+            }))
+          )
+        );
+        const facts = (created: DatePeriodBounds, at = asOf) =>
+          repository((candidates) =>
+            candidates.accountCreations({
+              created,
+              asOf: at,
+              customers: [legacy, signup],
+            })
+          );
+        const matches = async (created: DatePeriodBounds, at = asOf) =>
+          [...(await facts(created, at)).inPeriod].sort();
+
+        const lastWeek = await facts({
+          startsAtOrAfter: asOf.subtract({ hours: 7 * 24 }),
+          startsAtOrBefore: asOf,
+        });
+        expect([...lastWeek.withValue].sort()).toEqual(
+          [legacy, signup].sort()
+        );
+        expect([...lastWeek.inPeriod]).toEqual([signup]);
+        expect(await matches({})).toEqual([legacy, signup].sort());
+        expect(await matches({ startsAtOrBefore: asOf })).toEqual(
+          [legacy, signup].sort()
+        );
+        // Until a day before records began, and a period that ends then.
+        const dayBefore = backfilledAt.subtract({ hours: 24 });
+        expect(await matches({ startsBefore: dayBefore })).toEqual([legacy]);
+        const year = Temporal.Instant.from("2026-01-01T00:00:00Z");
+        expect(
+          await matches({ startsAtOrAfter: year, startsBefore: dayBefore })
+        ).toEqual([legacy]);
+        expect(
+          await matches({ startsAtOrAfter: year, startsBefore: backfilledAt })
+        ).toEqual([legacy]);
+        // Any period that holds records' first moment or later excludes it.
+        expect(
+          await matches({ startsAtOrAfter: year, startsAtOrBefore: backfilledAt })
+        ).toEqual([]);
+        expect(await matches({ startsAtOrAfter: year })).toEqual([signup]);
+        // A replayed moment before the backfill still knows the account.
+        const replayed = await facts({}, dayBefore);
+        expect([...replayed.withValue]).toEqual([legacy]);
+        expect([...replayed.inPeriod]).toEqual([legacy]);
+      } finally {
+        await testDatabase.pool.query(
+          'delete from auth."user" where id = any($1)',
+          [ids]
+        );
+        await testDatabase.pool.query(
+          "delete from customer_accounts where id = any($1)",
+          [ids]
+        );
+      }
+    });
+
     test("finds when the earliest reservation was created", async () => {
       const earliest = await repository(
         (candidates) => candidates.earliestReservationAt

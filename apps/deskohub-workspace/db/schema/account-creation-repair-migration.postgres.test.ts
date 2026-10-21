@@ -24,7 +24,7 @@ import {
   workspaceMigrationsFolder,
 } from "../migration-scratch-database.test-utils";
 
-const MIGRATION_DIR = "20261020192606_automation_preview_status_approximation";
+const MIGRATION_DIR = "20261021164704_automation_account_creation";
 
 const testDatabaseUrl = process.env.WORKSPACE_TEST_DATABASE_URL;
 
@@ -175,6 +175,14 @@ const insertAccountCreatedEvent = (
 const epochMillisecondsOf = (column: string) =>
   `(extract(epoch from ${column}) * 1000)::float8`;
 
+const isLegacy = async (pool: Pool, id: string) => {
+  const { rows } = await pool.query<{ legacy: boolean }>(
+    "select legacy from customer_accounts where id = $1",
+    [id]
+  );
+  return rows[0]?.legacy;
+};
+
 const accountCreatedAt = async (pool: Pool, id: string) => {
   const { rows } = await pool.query<{ createdAt: number }>(
     `select ${epochMillisecondsOf("created_at")} as "createdAt"
@@ -213,10 +221,13 @@ const storedState = async (pool: Pool) => {
   return rows[0]?.state;
 };
 
-// Millisecond instants, so stored timestamps compare exactly.
-const now = Temporal.Instant.fromEpochMilliseconds(Date.now());
+// Fixed millisecond instants, so stored timestamps compare exactly and
+// every login stays on its side of #764's merge (2026-10-20T17:32:49Z).
+const backfilledAt = Temporal.Instant.from("2026-10-20T18:30:00Z");
+const now = backfilledAt.add({ hours: 40 });
 const daysBefore = (days: number) => now.subtract({ hours: days * 24 });
-const backfilledAt = now.subtract({ hours: 1 });
+// Better Auth stamps a login before its hook inserts the account.
+const silentLoginAt = backfilledAt.subtract({ milliseconds: 3 });
 
 const customerId = (name: string) =>
   DotyposCustomerIdSchema.make(`repair-${name}`);
@@ -296,8 +307,56 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
           deletedAt: backfilledAt,
         });
         await insertLogin(pool, "tombstone", recentLogin);
+        // Existing customers' silent logins, one already signed in to.
+        for (const [id, verified] of [
+          ["legacy", false],
+          ["legacy-verified", true],
+        ] as const) {
+          await insertAccount(pool, id, {
+            createdAt: backfilledAt,
+            customerId: customerId(id),
+          });
+          await insertLogin(pool, id, silentLoginAt, verified);
+        }
+        // Sign-ups after #764 merged: one claimed its customer, one hasn't.
+        const lateSignUp = backfilledAt.add({ hours: 2 });
+        await insertAccount(pool, "late-signup", {
+          createdAt: lateSignUp,
+          customerId: customerId("late-signup"),
+        });
+        await insertLogin(pool, "late-signup", lateSignUp);
+        await insertAccountCreatedEvent(
+          pool,
+          "late-signup",
+          customerId("late-signup"),
+          lateSignUp
+        );
+        await insertAccount(pool, "late-pending", { createdAt: lateSignUp });
+        await insertLogin(pool, "late-pending", lateSignUp);
       },
       check: async ({ pool, layer }) => {
+        for (const id of ["legacy", "legacy-verified"]) {
+          expect(await isLegacy(pool, id)).toBe(true);
+          // No real creation time exists to repair to.
+          expect(await accountCreatedAt(pool, id)).toBe(
+            backfilledAt.epochMilliseconds
+          );
+          expect(await accountCreatedEvents(pool, id)).toEqual([]);
+        }
+        for (const id of [
+          "recorded",
+          "unrecorded",
+          "unverified",
+          "unlinked",
+          "signup",
+          "stamped",
+          "fresh",
+          "tombstone",
+          "late-signup",
+          "late-pending",
+        ]) {
+          expect(await isLegacy(pool, id)).toBe(false);
+        }
         expect(await accountCreatedAt(pool, "recorded")).toBe(
           oldLogin.epochMilliseconds
         );
@@ -375,11 +434,16 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
         expect((await reconcile()).accountCreated).toBe(1);
         expect(await accountCreatedEvents(pool, "fresh")).toHaveLength(1);
         await pool.query(
-          `update auth."user" set email_verified = true where id = 'unverified'`
+          `update auth."user" set email_verified = true
+           where id in ('unverified', 'legacy')`
         );
         expect((await reconcile()).accountCreated).toBe(0);
         for (const id of ["unrecorded", "unverified"]) {
           expect(await accountCreatedEvents(pool, id)).toHaveLength(1);
+        }
+        // An existing customer's first sign-in records no account creation.
+        for (const id of ["legacy", "legacy-verified"]) {
+          expect(await accountCreatedEvents(pool, id)).toEqual([]);
         }
 
         // An old login backfilled an hour ago wasn't created this week.
@@ -400,10 +464,16 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
         expect(lastWeek.inPeriod.has(customerId("unrecorded"))).toBe(false);
         expect(lastWeek.inPeriod.has(customerId("signup"))).toBe(true);
         expect(lastWeek.inPeriod.has(customerId("fresh"))).toBe(true);
+        expect(lastWeek.inPeriod.has(customerId("late-signup"))).toBe(true);
+        // A legacy customer verified a day after the backfill is old.
+        for (const id of ["legacy", "legacy-verified"]) {
+          expect(lastWeek.withValue.has(customerId(id))).toBe(true);
+          expect(lastWeek.inPeriod.has(customerId(id))).toBe(false);
+        }
 
         // Running the migration again changes nothing.
         const repaired = await storedState(pool);
-        expect((await rerunMigration(pool)).at(-1)).toBe(0);
+        expect((await rerunMigration(pool)).slice(2)).toEqual([0, 0]);
         expect(await storedState(pool)).toEqual(repaired);
       },
     });
@@ -478,11 +548,12 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
   });
 
   test(
-    "repairs a production-sized account table in one statement",
+    "repairs and marks a production-sized account table",
     async () => {
       // About 47k Dotypos customers got silent logins in #764, beside the
       // logins that were backfilled accounts. Every fifth login here predates
-      // its account, and every second of those is linked.
+      // its account; the rest are stamped as a silent login is. Every second
+      // account is linked, so most linked ones are legacy.
       const logins = 50_000;
       const oldLogin = daysBefore(400);
       await migrateAcross({
@@ -490,7 +561,7 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
           await pool.query(
             `insert into customer_accounts (id, created_at, dotypos_customer_id)
              select 'scale-' || g, $1::timestamptz,
-                    case when g % 10 = 0 then 'scale-customer-' || g end
+                    case when g % 2 = 0 then 'scale-customer-' || g end
              from generate_series(1, $2::int) g`,
             [instantParameter(backfilledAt), logins]
           );
@@ -502,7 +573,7 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
              from generate_series(1, $3::int) g`,
             [
               instantParameter(oldLogin),
-              instantParameter(backfilledAt.add({ seconds: 1 })),
+              instantParameter(silentLoginAt),
               logins,
               EMAIL_TEST_DOMAIN,
             ]
@@ -511,11 +582,14 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
         check: async ({ pool }) => {
           const { rows } = await pool.query<{
             repaired: number;
+            legacy: number;
             events: number;
           }>(
             `select
                (select count(*)::int from customer_accounts
                 where created_at = $1::timestamptz) as repaired,
+               (select count(*)::int from customer_accounts
+                where legacy) as legacy,
                (select count(*)::int from customer_events
                 where kind = 'account-created' and occurred_at = $1::timestamptz
                   and automation_processed_at is not null) as events`,
@@ -523,6 +597,7 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
           );
           expect(rows[0]).toEqual({
             repaired: logins / 5,
+            legacy: logins / 2 - logins / 10,
             events: logins / 10,
           });
         },

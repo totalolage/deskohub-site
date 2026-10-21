@@ -325,6 +325,37 @@ describe.skipIf(!testDatabase)(
       expect(await accountCreatedEvents(account)).toHaveLength(0);
     });
 
+    test("records no account creation when an existing customer first signs in", async () => {
+      const account = customerAccountIdSchema.make(uniqueId());
+      const customer = uniqueDotyposId();
+      // #764 linked the silent login to its customer; its owner then
+      // verifies it and completes the profile.
+      await insertAuthUser(account, testEmailAddress(`l-${account}`));
+      await testDatabase!.pool.query(
+        `update customer_accounts set dotypos_customer_id = $2, legacy = true
+         where id = $1`,
+        [account, customer]
+      );
+      await testDatabase!.pool.query(
+        `update auth."user" set email_verified = true where id = $1`,
+        [account]
+      );
+
+      const claimed = await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          return yield* links.claim(account, customer);
+        }).pipe(Effect.provide(makeRepositoryLayer()))
+      );
+
+      expect(claimed).toEqual({
+        kind: "linked",
+        customerId: customer,
+        created: false,
+      });
+      expect(await accountCreatedEvents(account)).toEqual([]);
+    });
+
     test("lets exactly one of two accounts racing for a customer link it", async () => {
       const layer = makeRepositoryLayer();
       const first = customerAccountIdSchema.make(uniqueId());
