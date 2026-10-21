@@ -132,6 +132,10 @@ describe("BookingForm", () => {
   test("announces the availability and the quoted total", () => {
     renderForm({ check: quotedCheck() });
 
+    // The tools' notes are written for the agent.
+    expect(status().textContent).not.toContain(availabilityResult(true).note);
+    expect(status().textContent).not.toContain(quoteResult().note);
+
     expect(status().textContent).toContain(
       m.bookingWidgetAvailable({}, { locale: "en-US" })
     );
@@ -220,18 +224,48 @@ describe("BookingForm", () => {
 
     fireEvent.click(payLink);
     expect(onOpenLink).toHaveBeenCalledWith(reservation.pay_url);
+    expect(status().textContent).not.toContain(reservation.note);
+    expect(status().textContent).not.toContain(
+      m.bookingWidgetPriceChanged(
+        { price: czk(reservation.total.amount) },
+        { locale: "en-US" }
+      )
+    );
   });
 
-  test("shows a failed booking's message and falls back to the reservation page", () => {
+  test("announces a total that changed since the quote", () => {
+    const reservation = {
+      ...reservationResult(),
+      total: { amount: 270, currency: "CZK" },
+      price_changed: true,
+    };
+    renderForm({
+      check: quotedCheck(),
+      reservation: AsyncResult.success(reservation),
+    });
+
+    expect(status().textContent).toContain(
+      m.bookingWidgetPriceChanged({ price: czk(270) }, { locale: "en-US" })
+    );
+  });
+
+  test("words a failed booking from its code and falls back to the reservation page", () => {
     const message = m.agentToolErrorProfileIncomplete({}, { locale: "en-US" });
     renderForm({
       check: quotedCheck(),
       reservation: AsyncResult.fromExit(
-        Exit.fail(new BookingToolFailed({ message }))
+        Exit.fail(
+          new BookingToolFailed({
+            error: { code: "profile_incomplete", message },
+          })
+        )
       ),
     });
 
-    expect(alert().textContent).toContain(message);
+    expect(alert().textContent).not.toContain(message);
+    expect(alert().textContent).toContain(
+      m.bookingWidgetErrorProfileIncomplete({}, { locale: "en-US" })
+    );
     expect(alert().textContent).toContain(
       m.bookingWidgetReserveFallback({}, { locale: "en-US" })
     );
@@ -242,6 +276,11 @@ describe("BookingForm", () => {
         })
         .getAttribute("href")
     ).toBe(quoteResult().reservation_url);
+    expect(
+      screen.queries.queryByText(
+        m.bookingWidgetReservationPageHint({}, { locale: "en-US" })
+      )
+    ).toBeNull();
   });
 
   test("in reservation page mode, links the prefilled reservation page instead of Reserve", () => {
@@ -266,6 +305,11 @@ describe("BookingForm", () => {
     expect(
       screen.queries.getByText(quoteResult().reservation_url)
     ).toBeDefined();
+    expect(
+      screen.queries.getByText(
+        m.bookingWidgetReservationPageHint({}, { locale: "cs-CZ" })
+      )
+    ).toBeDefined();
   });
 
   test("leaves the link to the browser when the host can't open links", () => {
@@ -280,6 +324,52 @@ describe("BookingForm", () => {
     });
     expect(fireEvent.click(link)).toBe(true);
     expect(onOpenLink).not.toHaveBeenCalled();
+  });
+
+  test("names the bookable dates of an out-of-range check", () => {
+    renderForm({
+      locale: "cs-CZ",
+      check: AsyncResult.failure(
+        Cause.fail(
+          new BookingToolFailed({
+            error: {
+              code: "date_out_of_range",
+              earliest: "2099-07-28",
+              latest: "2099-10-26",
+              message: "",
+            },
+          })
+        )
+      ),
+    });
+
+    const format = (date: string) =>
+      new Intl.DateTimeFormat("cs-CZ", {
+        dateStyle: "medium",
+        timeZone: "UTC",
+      }).format(Date.parse(date));
+    expect(alert().textContent).toBe(
+      m.bookingWidgetErrorDateOutOfRange(
+        { earliest: format("2099-07-28"), latest: format("2099-10-26") },
+        { locale: "cs-CZ" }
+      )
+    );
+  });
+
+  test("reports a tool error the customer can't act on as unavailable", () => {
+    renderForm({
+      check: AsyncResult.failure(
+        Cause.fail(
+          new BookingToolFailed({
+            error: { code: "quote_unavailable", message: "" },
+          })
+        )
+      ),
+    });
+
+    expect(alert().textContent).toBe(
+      m.bookingWidgetErrorUnavailable({}, { locale: "en-US" })
+    );
   });
 
   test("reports a request the host couldn't carry", () => {

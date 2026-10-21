@@ -1,5 +1,5 @@
 import { formatCurrencyAmount } from "@deskohub/i18n/currency";
-import { Cause, Option } from "effect";
+import { Cause, Match, Option } from "effect";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import { type ReactNode, useId } from "react";
 import { type Locale, m } from "@/features/i18n";
@@ -8,6 +8,7 @@ import { ChoiceCard } from "@/shared/components/ui/choice-card";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
+import type { AgentToolErrorResult } from "../agent-tool-error";
 import type { AgentToolMoney } from "../agent-tool-money";
 import type { CheckAvailabilityResult } from "../check-availability.schema";
 import type { GetQuoteResult } from "../get-quote.schema";
@@ -61,6 +62,46 @@ const formatExpiry = (instant: string, locale: Locale) =>
     timeStyle: "short",
   }).format(Date.parse(instant));
 
+// A bookable date, `YYYY-MM-DD`, in the customer's language.
+const formatDate = (date: string, locale: Locale) =>
+  new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(Date.parse(date));
+
+/**
+ * The view's own wording for a tool error. The customer can act on a few
+ * codes; the rest can only be retried or booked on the site.
+ */
+const getToolErrorMessage = (
+  error: AgentToolErrorResult["error"],
+  locale: Locale
+) =>
+  Match.value(error).pipe(
+    Match.discriminators("code")({
+      date_out_of_range: ({ earliest, latest }) =>
+        m.bookingWidgetErrorDateOutOfRange(
+          {
+            earliest: formatDate(earliest, locale),
+            latest: formatDate(latest, locale),
+          },
+          { locale }
+        ),
+      rate_limited: () => m.bookingWidgetErrorRateLimited({}, { locale }),
+      selection_unavailable: () =>
+        m.bookingWidgetErrorSelectionUnavailable({}, { locale }),
+      profile_incomplete: () =>
+        m.bookingWidgetErrorProfileIncomplete({}, { locale }),
+      account_unavailable: () =>
+        m.bookingWidgetErrorAccountUnavailable({}, { locale }),
+      reservation_conflict: () =>
+        m.bookingWidgetErrorReservationConflict({}, { locale }),
+      payment_in_progress: () =>
+        m.bookingWidgetErrorPaymentInProgress({}, { locale }),
+    }),
+    Match.orElse(() => m.bookingWidgetErrorUnavailable({}, { locale }))
+  );
+
 const getFailureMessage = (
   cause: Cause.Cause<BookingFailure>,
   locale: Locale
@@ -69,7 +110,7 @@ const getFailureMessage = (
     onNone: () => m.bookingWidgetRequestFailed({}, { locale }),
     onSome: (failure) =>
       failure._tag === "BookingToolFailed"
-        ? failure.message
+        ? getToolErrorMessage(failure.error, locale)
         : m.bookingWidgetRequestFailed({}, { locale }),
   });
 
@@ -239,7 +280,7 @@ export function BookingForm({
               </Field>
               <Field
                 error={fieldError("seats")}
-                label={m.reservationOfficeSeatCountLabel({}, { locale })}
+                label={m.bookingWidgetSeatCountLabel({}, { locale })}
                 locale={locale}
               >
                 {(props) => (
@@ -288,13 +329,12 @@ export function BookingForm({
             </p>
             {reserved.price_changed && (
               <p>
-                {m.bookingWidgetTotal(
+                {m.bookingWidgetPriceChanged(
                   { price: formatMoney(reserved.total, locale) },
                   { locale }
                 )}
               </p>
             )}
-            <p className="text-navy-blue/70">{reserved.note}</p>
           </>
         )}
       </div>
@@ -333,9 +373,12 @@ export function BookingForm({
           {(start.mode === "reservation_page" ||
             AsyncResult.isFailure(reservation)) && (
             <div className="space-y-2">
-              <p className="text-sm">
-                {m.bookingWidgetReservationPageHint({}, { locale })}
-              </p>
+              {/* After a failed booking, the alert already offers the page. */}
+              {start.mode === "reservation_page" && (
+                <p className="text-sm">
+                  {m.bookingWidgetReservationPageHint({}, { locale })}
+                </p>
+              )}
               {link(
                 checked.quote.reservation_url,
                 m.bookingWidgetOpenReservationPage({}, { locale })
@@ -383,7 +426,6 @@ function CheckSummary({
           )}
         </>
       )}
-      <p className="text-navy-blue/70">{availability.note}</p>
     </>
   );
 }

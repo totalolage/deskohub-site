@@ -1,7 +1,10 @@
 import { App } from "@modelcontextprotocol/ext-apps";
 import { Context, Data, Deferred, Effect, Layer, Option, Schema } from "effect";
 import { locales } from "@/features/i18n";
-import { agentToolErrorResultSchema } from "../agent-tool-error";
+import {
+  type AgentToolErrorResult,
+  agentToolErrorResultSchema,
+} from "../agent-tool-error";
 import {
   type ListOfferingsResult,
   listOfferingsResultSchema,
@@ -9,9 +12,12 @@ import {
 import { showBookingResultSchema } from "../show-booking.schema";
 import { type BookingStart, getBookingLocale } from "./booking-draft";
 
-/** A tool answered with its own error; `message` is localized for the customer. */
+/**
+ * A tool answered with its own error. The view words it from the code: the
+ * tool's `message` is written for the agent.
+ */
 export class BookingToolFailed extends Data.TaggedError("BookingToolFailed")<{
-  readonly message: string;
+  readonly error: AgentToolErrorResult["error"];
 }> {}
 
 /** The host couldn't carry the request, or answered with something unreadable. */
@@ -70,7 +76,7 @@ const toolInputSchema = Schema.Struct({
 
 /**
  * A tool result's structured content, decoded with the tool's published
- * schema; an error result fails with the tool's localized message.
+ * schema; an error result fails with the tool's error.
  */
 const decodeToolResult =
   <A>(schema: ResultSchema<A>) =>
@@ -81,7 +87,7 @@ const decodeToolResult =
         ).pipe(
           Effect.mapError((cause) => new BookingRequestFailed({ cause })),
           Effect.flatMap(({ error }) =>
-            Effect.fail(new BookingToolFailed({ message: error.message }))
+            Effect.fail(new BookingToolFailed({ error }))
           )
         )
       : Schema.decodeUnknownEffect(schema)(result.structuredContent).pipe(

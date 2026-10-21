@@ -317,7 +317,7 @@ describe.skipIf(!chromiumAvailable)("booking view", () => {
     }
   });
 
-  test("shows the booking error and falls back to the reservation page", async () => {
+  test("words the booking error itself and falls back to the reservation page", async () => {
     const { page, view } = await openBookingView({
       mode: "reserve",
       locale: "en-US",
@@ -346,7 +346,9 @@ describe.skipIf(!chromiumAvailable)("booking view", () => {
         .click();
       await view
         .getByRole("alert")
-        .getByText(m.agentToolErrorProfileIncomplete({}, { locale: "en-US" }))
+        .getByText(
+          m.bookingWidgetErrorProfileIncomplete({}, { locale: "en-US" })
+        )
         .waitFor();
       await view
         .getByRole("link", {

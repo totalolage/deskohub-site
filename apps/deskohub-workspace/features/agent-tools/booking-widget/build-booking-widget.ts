@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/postcss";
 import type { BunPlugin } from "bun";
 import postcss from "postcss";
@@ -25,8 +26,34 @@ const tailwindStylesheet: BunPlugin = {
 };
 
 /**
+ * The Preact modules that stand in for React's: react-dom alone would be a
+ * third of the document. The shared UI primitives and Effect Atom use only
+ * APIs that `preact/compat` provides.
+ */
+const preactModules: Readonly<Record<string, string>> = {
+  react: import.meta.resolve("preact/compat"),
+  "react-dom": import.meta.resolve("preact/compat"),
+  "react-dom/client": import.meta.resolve("preact/compat/client"),
+  "react/jsx-runtime": import.meta.resolve("preact/compat/jsx-runtime"),
+};
+
+/** Renders the view with Preact; any other React module fails the build. */
+const preactCompat: BunPlugin = {
+  name: "booking-widget-preact",
+  setup(build) {
+    build.onResolve({ filter: /^react(-dom)?(\/.*)?$/ }, ({ path }) => {
+      const module = preactModules[path];
+      if (module === undefined) {
+        throw new Error(`The booking view has no Preact module for ${path}.`);
+      }
+      return { path: fileURLToPath(module) };
+    });
+  },
+};
+
+/**
  * Bundles the booking view into one self-contained HTML document: its
- * script, styles, and copy inlined, with React's production build. Hosts
+ * script, styles, and copy inlined, rendered with Preact. Hosts
  * render it in a sandbox that loads nothing from other origins.
  */
 export const buildBookingWidget = async () => {
@@ -36,7 +63,7 @@ export const buildBookingWidget = async () => {
     target: "browser",
     minify: true,
     define: { "process.env.NODE_ENV": '"production"' },
-    plugins: [tailwindStylesheet],
+    plugins: [tailwindStylesheet, preactCompat],
   });
   const [document] = build.outputs;
   if (!build.success || document === undefined) {
