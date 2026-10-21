@@ -1319,10 +1319,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           reservationHoldExpiresAt: holdExpiresAt,
         });
         yield* captureReservationStarted({
-          reservation: {
-            id: reservationDraft.id,
-            dotyposReservationId,
-          },
+          reservation: { id: reservationDraft.id },
           timestamp: reservationCreatedAt,
         });
 
