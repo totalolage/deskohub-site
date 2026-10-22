@@ -137,6 +137,8 @@ const campaignSaveFailureCopy: CampaignOperationFailureCopy = {
       m.emailCampaignsComposerSaveContentInvalid({}, { locale }),
     "content-markdown-invalid": (locale) =>
       m.emailCampaignsComposerSaveContentInvalid({}, { locale }),
+    "content-document-invalid": (locale) =>
+      m.emailCampaignsComposerSaveContentInvalid({}, { locale }),
     "content-locale-missing": (locale) =>
       m.emailCampaignsComposerSaveContentInvalid({}, { locale }),
     "audience-filter-context": (locale) =>
@@ -191,6 +193,11 @@ export function CampaignComposer({
   const [saveError, setSaveError] = useState<string>();
   /** Chosen while creating; a saved campaign's delivery never changes. */
   const [newDelivery, setNewDelivery] = useState<CampaignDelivery>("once");
+  /** Set once a new campaign is created, while its page opens. */
+  const [created, setCreated] = useState(false);
+  /** The fields of the save in flight, which its success marks saved. */
+  const [submittedFields, setSubmittedFields] =
+    useState<CampaignComposerFields>(initialFields);
   const delivery = campaign?.delivery ?? newDelivery;
   const savedOnce = campaign?.delivery === "once" ? campaign : undefined;
 
@@ -207,13 +214,11 @@ export function CampaignComposer({
 
   const create = useCampaignOperation("createCampaign", {
     failureCopy: campaignSaveFailureCopy,
-    onSuccess: (created) => {
+    onSuccess: ({ id }) => {
+      setCreated(true);
       form.reset(form.getValues());
       router.push(
-        localizeAdministrationHref(
-          `/admin/email-campaigns/${created.id}`,
-          routeLocale
-        )
+        localizeAdministrationHref(`/admin/email-campaigns/${id}`, routeLocale)
       );
     },
     onFailure: setSaveError,
@@ -224,7 +229,8 @@ export function CampaignComposer({
         ? automatedEmailSaveFailureCopy
         : campaignSaveFailureCopy,
     onSuccess: () => {
-      form.reset(form.getValues());
+      // Edits made while the save ran stay unsaved.
+      form.reset(submittedFields, { keepValues: true });
       router.refresh();
     },
     onFailure: setSaveError,
@@ -233,7 +239,11 @@ export function CampaignComposer({
   const unsavedChanges = form.formState.isDirty;
 
   const save = form.handleSubmit((values) => {
+    // A created campaign's page is opening; another submit would create a
+    // second one.
+    if (created) return;
     setSaveError(undefined);
+    setSubmittedFields(values);
     const fields = {
       title: values.title.trim(),
       purpose: values.purpose,
@@ -244,11 +254,7 @@ export function CampaignComposer({
       update.execute({
         ...fields,
         campaignId: campaign.id,
-        content: toAdministrationCampaignContentChange(
-          values,
-          editable,
-          campaign.contentLocales
-        ),
+        content: toAdministrationCampaignContentChange(values, editable),
       });
     } else {
       create.execute({
@@ -281,7 +287,9 @@ export function CampaignComposer({
   );
   const saveButton = !campaign?.readOnly && (
     <Button
-      disabled={saving || (campaign !== undefined && !unsavedChanges)}
+      disabled={
+        saving || created || (campaign !== undefined && !unsavedChanges)
+      }
       form="campaign-composer"
       size="sm"
       type="submit"
@@ -367,7 +375,9 @@ export function CampaignComposer({
           <form
             className="min-w-0 space-y-6"
             id="campaign-composer"
-            inert={campaign?.readOnly}
+            // Creating opens the new campaign's page, which would drop edits
+            // made meanwhile, so the form waits for it.
+            inert={campaign?.readOnly || create.isExecuting || created}
             noValidate
             onSubmit={save}
           >

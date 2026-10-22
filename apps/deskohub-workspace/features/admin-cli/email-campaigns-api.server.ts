@@ -44,6 +44,9 @@ export const AdminCliCampaignsApiHandlers = HttpApiBuilder.group(
       )
       .handle("listCampaigns", () => invoke("listCampaigns", {}))
       .handle("getCampaign", ({ params }) => invoke("getCampaign", params))
+      .handle("getCampaignEditorContent", ({ params }) =>
+        invoke("getCampaignEditorContent", params)
+      )
       .handle("createCampaign", ({ payload }) =>
         invoke("createCampaign", payload)
       )

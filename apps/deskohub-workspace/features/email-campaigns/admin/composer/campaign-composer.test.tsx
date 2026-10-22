@@ -1,5 +1,4 @@
 import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
@@ -26,8 +25,13 @@ mock.module("../editor/actions", () => ({
   uploadCampaignImage: mock(),
 }));
 
+registerWorkspaceComponentTestEnv();
+// React DOM detects the DOM when it loads, so it loads after it.
+const { act, cleanup, fireEvent, render } = await import(
+  "@testing-library/react"
+);
+
 beforeAll(() => {
-  registerWorkspaceComponentTestEnv();
   workspaceUseAction.mockImplementation(
     () => ({ execute: mock(), isExecuting: false }) as never
   );
@@ -153,4 +157,124 @@ test("drops “No audience” once a new campaign is made automated", async () =
     audiences.length
   );
   expect(noAudienceOption(view)).toBeNull();
+});
+
+/** A campaign operation's success, as the action hook reports it. */
+type ActionSuccess = {
+  readonly data: { readonly _tag: "Success"; readonly output: object };
+  readonly input: { readonly input: object };
+};
+
+/** The action hook options the composer passes, as far as these tests use them. */
+type CampaignActionOptions = {
+  readonly actionName: string;
+  readonly onSuccess: (success: ActionSuccess) => void;
+};
+
+test("keeps edits made while a save is in flight unsaved", async () => {
+  let succeed: CampaignActionOptions["onSuccess"] | undefined;
+  const execute = mock();
+  let saving = false;
+  workspaceUseAction.mockImplementation((_action, options) => {
+    const { actionName, onSuccess } = options as CampaignActionOptions;
+    if (actionName !== "email-campaigns.updateCampaign") {
+      return { execute: mock(), isExecuting: false } as never;
+    }
+    succeed = onSuccess;
+    return {
+      execute: (...request: Parameters<typeof execute>) => {
+        saving = true;
+        execute(...request);
+      },
+      isExecuting: saving,
+    } as never;
+  });
+  try {
+    const view = await renderComposer("once");
+    const title = view.getByRole("textbox", {
+      name: m.emailCampaignsComposerTitleLabel({}, { locale: "en-US" }),
+    });
+    const composerForm = view.container.querySelector("#campaign-composer");
+    if (!composerForm) throw new Error("no composer form");
+
+    await act(async () => {
+      fireEvent.change(title, { target: { value: "Saved title" } });
+    });
+    await act(async () => {
+      fireEvent.submit(composerForm);
+    });
+    expect(execute).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      fireEvent.change(title, { target: { value: "Edited during save" } });
+    });
+    await act(async () => {
+      saving = false;
+      succeed?.({
+        data: { _tag: "Success", output: {} },
+        input: { input: execute.mock.calls[0]?.[0] },
+      });
+    });
+
+    expect(title).toHaveProperty("value", "Edited during save");
+    expect(
+      view.getByRole("button", {
+        name: m.emailCampaignsComposerSaveDraft({}, { locale: "en-US" }),
+      })
+    ).toHaveProperty("disabled", false);
+  } finally {
+    workspaceUseAction.mockImplementation(
+      () => ({ execute: mock(), isExecuting: false }) as never
+    );
+  }
+});
+
+test("holds the form while a new campaign is created and its page opens", async () => {
+  let succeed: CampaignActionOptions["onSuccess"] | undefined;
+  let creating = true;
+  const create = mock();
+  workspaceUseAction.mockImplementation((_action, options) => {
+    const { actionName, onSuccess } = options as CampaignActionOptions;
+    const isCreate = actionName === "email-campaigns.createCampaign";
+    if (isCreate) succeed = onSuccess;
+    return {
+      execute: isCreate ? create : mock(),
+      isExecuting: isCreate && creating,
+    } as never;
+  });
+  try {
+    const view = await renderComposer(undefined);
+    const held = () =>
+      view.container.querySelector("#campaign-composer")?.hasAttribute("inert");
+    expect(held()).toBe(true);
+
+    // The action stops executing before its success opens the new page.
+    await act(async () => {
+      creating = false;
+      succeed?.({
+        data: {
+          _tag: "Success",
+          output: { id: campaignIdSchema.make("synthetic-created") },
+        },
+        input: { input: {} },
+      });
+    });
+    expect(held()).toBe(true);
+    expect(
+      view.getByRole("button", {
+        name: m.emailCampaignsComposerCreateDraft({}, { locale: "en-US" }),
+      })
+    ).toHaveProperty("disabled", true);
+
+    const composerForm = view.container.querySelector("#campaign-composer");
+    if (!composerForm) throw new Error("no composer form");
+    await act(async () => {
+      fireEvent.submit(composerForm);
+    });
+    expect(create).not.toHaveBeenCalled();
+  } finally {
+    workspaceUseAction.mockImplementation(
+      () => ({ execute: mock(), isExecuting: false }) as never
+    );
+  }
 });

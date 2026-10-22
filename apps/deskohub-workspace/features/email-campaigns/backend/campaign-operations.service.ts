@@ -38,6 +38,7 @@ import {
 import {
   toAdministrationAudience,
   toAdministrationCampaignDetail,
+  toAdministrationCampaignEditorContent,
   toAdministrationCampaignSummary,
   toAdministrationSendStatus,
   toCampaignLocaleContent,
@@ -347,6 +348,10 @@ const makeCampaignOperationHandlers = Effect.gen(function* () {
       campaigns
         .get(campaignId)
         .pipe(Effect.map(toAdministrationCampaignDetail)),
+    getCampaignEditorContent: ({ campaignId }) =>
+      campaigns
+        .get(campaignId)
+        .pipe(Effect.map(toAdministrationCampaignEditorContent)),
     createCampaign: ({ campaign }) =>
       toCampaignLocalizedContent(campaign.content).pipe(
         Effect.flatMap((content) =>

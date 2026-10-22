@@ -6,6 +6,7 @@ import { AutomationFlowPage } from "@/features/email-campaigns/admin/automation/
 import {
   loadAdminCampaign,
   loadCampaignDelivery,
+  loadCampaignEditorContent,
   requireCampaignRouteId,
 } from "@/features/email-campaigns/admin/campaign-page-data.server";
 import { CampaignComposerPage } from "@/features/email-campaigns/admin/composer/campaign-composer-page";
@@ -61,10 +62,18 @@ async function OnceCampaign({
 }: {
   readonly campaignId: CampaignId;
 }) {
-  const campaign = await loadAdminCampaign(campaignId);
+  const campaign = await loadCampaignEditorContent(campaignId, "once");
   return campaign.status === "draft" ? (
     <CampaignComposerPage campaign={campaign} />
   ) : (
-    <SentCampaignPage campaign={campaign} />
+    <SentCampaign campaignId={campaignId} />
   );
+}
+
+async function SentCampaign({
+  campaignId,
+}: {
+  readonly campaignId: CampaignId;
+}) {
+  return <SentCampaignPage campaign={await loadAdminCampaign(campaignId)} />;
 }

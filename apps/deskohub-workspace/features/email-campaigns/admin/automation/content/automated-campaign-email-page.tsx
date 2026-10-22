@@ -1,5 +1,4 @@
-import { campaignLocales } from "../../../recipient-locale";
-import { loadAutomatedCampaignEmail } from "../../campaign-page-data.server";
+import { loadCampaignEditorContent } from "../../campaign-page-data.server";
 import { CampaignComposer } from "../../composer/campaign-composer";
 import { loadCampaignComposerOptions } from "../../composer/campaign-composer-data.server";
 import { campaignComposerFieldsFromCampaign } from "../../composer/campaign-composer-fields";
@@ -16,7 +15,7 @@ export async function AutomatedCampaignEmailPage({
   readonly automated: AutomatedCampaign;
 }) {
   const [campaign, options] = await Promise.all([
-    loadAutomatedCampaignEmail(automated.campaign.id),
+    loadCampaignEditorContent(automated.campaign.id, "automated"),
     loadCampaignComposerOptions(),
   ]);
   return (
@@ -24,9 +23,7 @@ export async function AutomatedCampaignEmailPage({
       {...options}
       campaign={{
         id: campaign.id,
-        contentLocales: campaignLocales.filter(
-          (locale) => campaign.content[locale] !== undefined
-        ),
+        contentLocales: campaign.locales,
         delivery: "automated",
         readOnly: automated.automation.status === "archived",
       }}

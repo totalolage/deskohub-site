@@ -1,11 +1,11 @@
 import type {
-  AdministrationCampaignContent,
-  AdministrationCampaignLocaleContent,
-  AdministrationCampaignUpdateInput,
+  AdministrationCampaignContentInputType,
+  AdministrationCampaignEditorContentType,
+  AdministrationCampaignEditorLocaleContentType,
+  AdministrationCampaignUpdateInputType,
   CampaignTemplatePreviewInputType,
 } from "@deskohub/workspace-admin-api";
 import { Schema } from "effect";
-import type { CampaignRow } from "@/db/schema";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import {
@@ -13,13 +13,11 @@ import {
   CampaignBodyNode as CampaignBodyNodeSchema,
   campaignBodyFormatVersion,
 } from "../../body/campaign-body-document";
-import { campaignBodyToMarkdown } from "../../body/campaign-body-markdown";
 import {
   type CampaignBodyIssue,
   campaignBodyIssues,
 } from "../../body/campaign-body-rules";
 import {
-  type CampaignLocaleContent,
   CampaignPurpose,
   CampaignTemplateKey,
 } from "../../body/campaign-content";
@@ -88,19 +86,20 @@ export const newCampaignComposerFields: CampaignComposerFields = {
 };
 
 const localeFieldsFromContent = (
-  content: CampaignLocaleContent | undefined
+  content: AdministrationCampaignEditorLocaleContentType | undefined
 ): CampaignComposerLocaleFields =>
   content
     ? {
         subject: content.subject,
         preheader: content.preheader,
-        body: content.body.doc,
+        body: content.bodyDocument.doc,
         operationalReason: content.operationalReason ?? "",
       }
     : emptyLocaleFields;
 
+/** The composer's fields for a saved campaign, as the campaign port reads it. */
 export const campaignComposerFieldsFromCampaign = (
-  campaign: CampaignRow
+  campaign: AdministrationCampaignEditorContentType
 ): CampaignComposerFields => ({
   title: campaign.title,
   purpose: campaign.purpose,
@@ -140,36 +139,31 @@ export const composerLocales = (singleLocale: Locale | undefined) =>
     ? { editable: [singleLocale], required: singleLocale }
     : { editable: campaignLocales, required: campaignFallbackLocale };
 
-const toCampaignLocaleContent = (
+/**
+ * One locale's texts as the campaign port takes them: the body crosses as
+ * the editor's document, unchanged.
+ */
+const toAdministrationLocaleContent = (
   fields: CampaignComposerLocaleFields,
   purpose: CampaignPurpose
-): CampaignLocaleContent => {
+): AdministrationCampaignEditorLocaleContentType => {
   const operationalReason = fields.operationalReason.trim();
   return {
     subject: fields.subject.trim(),
     preheader: fields.preheader.trim(),
-    body: { formatVersion: campaignBodyFormatVersion, doc: fields.body },
+    bodyDocument: {
+      formatVersion: campaignBodyFormatVersion,
+      doc: fields.body,
+    },
     ...(purpose === "operational" &&
       operationalReason.length > 0 && { operationalReason }),
   };
 };
 
 /**
- * One locale's texts as the campaign port takes them: the body crosses as
- * Markdown.
- */
-const toAdministrationLocaleContent = (
-  fields: CampaignComposerLocaleFields,
-  purpose: CampaignPurpose
-): AdministrationCampaignLocaleContent => {
-  const { body, ...texts } = toCampaignLocaleContent(fields, purpose);
-  return { ...texts, bodyMarkdown: campaignBodyToMarkdown(body) };
-};
-
-/**
  * The campaign port's preview of one locale still being written. The body
- * crosses as Markdown, as saving sends it, and may hold unfinished links,
- * buttons and images.
+ * crosses as the editor's document, as saving sends it, and may hold
+ * unfinished links, buttons and images.
  */
 export const toCampaignPreviewInput = ({
   templateKey,
@@ -195,7 +189,7 @@ export const toCampaignPreviewInput = ({
 export const toAdministrationCampaignContent = (
   fields: CampaignComposerFields,
   editableLocales: readonly Locale[]
-): AdministrationCampaignContent =>
+): AdministrationCampaignContentInputType =>
   Object.fromEntries(
     editableLocales
       .filter((locale) => hasLocaleContent(fields.locales[locale]))
@@ -208,23 +202,25 @@ export const toAdministrationCampaignContent = (
 /**
  * A draft edit that replaces the saved content: each editable locale with
  * text is rewritten, without a reason line unless one is set, and every other
- * saved locale loses its content.
+ * locale loses any content it has. It doesn't depend on which locales the
+ * last save left, which a save still in flight can change.
  */
 export const toAdministrationCampaignContentChange = (
   fields: CampaignComposerFields,
-  editableLocales: readonly Locale[],
-  savedLocales: readonly Locale[]
-): NonNullable<AdministrationCampaignUpdateInput["content"]> => {
+  editableLocales: readonly Locale[]
+): NonNullable<AdministrationCampaignUpdateInputType["content"]> => {
   const content = toAdministrationCampaignContent(fields, editableLocales);
-  return Object.fromEntries([
-    ...savedLocales
-      .filter((locale) => content[locale] === undefined)
-      .map((locale) => [locale, null]),
-    ...Object.entries(content).map(([locale, localeContent]) => [
-      locale,
-      { operationalReason: null, ...localeContent },
-    ]),
-  ]);
+  return Object.fromEntries(
+    campaignLocales.map((locale) => {
+      const localeContent = content[locale];
+      return [
+        locale,
+        localeContent === undefined
+          ? null
+          : { operationalReason: null, ...localeContent },
+      ];
+    })
+  );
 };
 
 /**
