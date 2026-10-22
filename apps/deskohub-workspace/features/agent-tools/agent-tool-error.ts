@@ -45,52 +45,79 @@ const agentToolErrorMessageField = Schema.String.annotate({
   description: "What went wrong, in the requested locale, for the customer.",
 });
 
+/** The codes, beyond the ones with details, that any tool may fail with. */
+const publicErrorCodes = [
+  "unsupported_family",
+  "availability_unavailable",
+  "quote_unavailable",
+  "offerings_unavailable",
+  "rate_limited",
+  "service_unavailable",
+] as const;
+
+/** The codes only signed-in tools fail with: account and booking failures. */
+const signedInErrorCodes = [
+  "profile_incomplete",
+  "selection_unavailable",
+  "reservation_conflict",
+  "payment_in_progress",
+  "reservation_unavailable",
+  "account_unavailable",
+  "reservation_not_found",
+  "reservations_unavailable",
+] as const;
+
 /**
  * The structured result of a failed call: the error code agents branch on,
  * its details, and the localized message.
  */
-export const agentToolErrorResultSchema = Schema.Struct({
-  error: Schema.Union([
-    Schema.Struct({
-      code: Schema.Literal("invalid_input"),
-      field: Schema.optionalKey(
-        Schema.String.annotate({
-          description: "The dotted path of the first invalid argument.",
-        })
-      ),
-      message: agentToolErrorMessageField,
-    }),
-    Schema.Struct({
-      code: Schema.Literal("date_out_of_range"),
-      earliest: Schema.String.annotate({
-        description: "The first bookable date, YYYY-MM-DD.",
+const makeAgentToolErrorResultSchema = <
+  const Codes extends ReadonlyArray<
+    Exclude<AgentToolErrorCode, "invalid_input" | "date_out_of_range">
+  >,
+>(
+  codes: Codes
+) =>
+  Schema.Struct({
+    error: Schema.Union([
+      Schema.Struct({
+        code: Schema.Literal("invalid_input"),
+        field: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "The dotted path of the first invalid argument.",
+          })
+        ),
+        message: agentToolErrorMessageField,
       }),
-      latest: Schema.String.annotate({
-        description: "The last bookable date, YYYY-MM-DD.",
+      Schema.Struct({
+        code: Schema.Literal("date_out_of_range"),
+        earliest: Schema.String.annotate({
+          description: "The first bookable date, YYYY-MM-DD.",
+        }),
+        latest: Schema.String.annotate({
+          description: "The last bookable date, YYYY-MM-DD.",
+        }),
+        message: agentToolErrorMessageField,
       }),
-      message: agentToolErrorMessageField,
-    }),
-    Schema.Struct({
-      code: Schema.Literals([
-        "unsupported_family",
-        "availability_unavailable",
-        "quote_unavailable",
-        "offerings_unavailable",
-        "rate_limited",
-        "service_unavailable",
-        "profile_incomplete",
-        "selection_unavailable",
-        "reservation_conflict",
-        "payment_in_progress",
-        "reservation_unavailable",
-        "account_unavailable",
-        "reservation_not_found",
-        "reservations_unavailable",
-      ]),
-      message: agentToolErrorMessageField,
-    }),
-  ]),
-});
+      Schema.Struct({
+        code: Schema.Literals(codes),
+        message: agentToolErrorMessageField,
+      }),
+    ]),
+  });
+
+/** The failed-call result of any tool. */
+export const agentToolErrorResultSchema = makeAgentToolErrorResultSchema([
+  ...publicErrorCodes,
+  ...signedInErrorCodes,
+]);
+
+/**
+ * The failed-call result a public tool publishes: it never reports account
+ * or booking failures, so its schema names none of their codes.
+ */
+export const publicAgentToolErrorResultSchema =
+  makeAgentToolErrorResultSchema(publicErrorCodes);
 
 export type AgentToolErrorResult = typeof agentToolErrorResultSchema.Type;
 

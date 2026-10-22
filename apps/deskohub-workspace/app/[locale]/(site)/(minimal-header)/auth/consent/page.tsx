@@ -139,6 +139,7 @@ export default async function CustomerAgentConsentPage({
           <CustomerAgentConsent
             locale={locale}
             client={client}
+            redirect={request.redirect}
             scopes={request.scopes}
             administration={administrator}
           />

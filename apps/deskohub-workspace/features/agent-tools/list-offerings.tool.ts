@@ -25,9 +25,9 @@ import {
 
 export const listOfferingsTool = defineAgentTool({
   name: "list_offerings",
-  title: "List DH Workspace offerings",
+  title: "List Deskohub Workspace offerings",
   description:
-    "Lists every product DH Workspace in Prague offers, with its regular price and the price advertised today including any public sale, in CZK, plus add-ons, usage limits, opening hours, and the reservation page for each. Use get_quote for the exact price of another date or selection.",
+    "Lists every product Deskohub Workspace in Prague offers, with its regular price and today's price including any public sale, in CZK, plus add-ons, usage limits, opening hours, and the reservation page for each. Use get_quote for the exact price of another date or selection.",
   access: "public",
   readOnly: true,
   unavailableCode: "offerings_unavailable",

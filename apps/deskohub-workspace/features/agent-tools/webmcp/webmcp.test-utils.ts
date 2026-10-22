@@ -81,7 +81,7 @@ export const publishedAgentTools = [
     },
     _meta: {
       [accessMetaKey]: "public",
-      ui: { resourceUri: "ui://dh-workspace/booking-v1.html" },
+      ui: { resourceUri: "ui://dh-workspace/booking-v2.html" },
     },
   },
 ] as const;

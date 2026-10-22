@@ -28,7 +28,8 @@ export interface BookingStart {
 
 /**
  * The view's language: the agent's `locale` argument, then the host's
- * language, where any Czech locale picks Czech, then English.
+ * language (from its context, else ChatGPT's bridge), where any Czech locale
+ * picks Czech, then English.
  */
 export const getBookingLocale = ({
   requested,

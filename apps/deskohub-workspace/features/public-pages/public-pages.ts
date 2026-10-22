@@ -24,6 +24,7 @@ export const publicPages = [
   { pathname: "/" },
   { pathname: "/contact" },
   { pathname: "/faq" },
+  { pathname: "/ai-assistants" },
   { pathname: "/pricing" },
   { pathname: "/meeting-room", releaseGate: "meeting-room-page" },
   { pathname: "/team" },
