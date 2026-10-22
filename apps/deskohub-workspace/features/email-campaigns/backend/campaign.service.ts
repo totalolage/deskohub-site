@@ -56,7 +56,7 @@ import {
 type Campaign = CampaignRow;
 
 /** A campaign that sends once; only these can be sent or duplicated. */
-export type OnceCampaign = Campaign & {
+type OnceCampaign = Campaign & {
   readonly delivery: "once";
   readonly status: OnceCampaignStatus;
 };
