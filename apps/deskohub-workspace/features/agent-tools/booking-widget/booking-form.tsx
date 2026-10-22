@@ -269,6 +269,7 @@ export function BookingForm({
                         field.onChange(event);
                         onSelectionChange();
                       }}
+                      className="bg-surface"
                       type="date"
                       variant={fieldState.invalid ? "error" : "default"}
                     />
@@ -293,6 +294,7 @@ export function BookingForm({
                           field.onChange(event);
                           onSelectionChange();
                         }}
+                        className="bg-surface"
                         step={3600}
                         type="time"
                         variant={fieldState.invalid ? "error" : "default"}
@@ -320,6 +322,7 @@ export function BookingForm({
                       <FormControl>
                         <Input
                           {...field}
+                          className="bg-surface"
                           inputMode="numeric"
                           min={1}
                           onChange={(event) => {
@@ -518,7 +521,9 @@ function OfferingChoices({
             align="center"
             // Meeting-room durations share a name.
             key={offering.tier ?? offering.duration ?? offering.name}
-            tone="plain"
+            // The neutral tone tints the text colour, so it follows the
+            // host's theme; the plain tone is white.
+            tone="neutral"
           >
             <input
               checked={selected(offering)}
@@ -531,7 +536,7 @@ function OfferingChoices({
               <span className="font-semibold">
                 {offering.duration_label ?? offering.name}
               </span>
-              <span className="text-sm text-navy-blue/70">
+              <span className="text-sm text-muted">
                 {{
                   day: m.bookingWidgetPricePerDay,
                   booking: m.bookingWidgetPricePerBooking,
@@ -585,7 +590,7 @@ function SiteLink({
           {label}
         </a>
       </Button>
-      <span className="break-all text-xs text-navy-blue/70">{url}</span>
+      <span className="break-all text-xs text-muted">{url}</span>
     </div>
   );
 }

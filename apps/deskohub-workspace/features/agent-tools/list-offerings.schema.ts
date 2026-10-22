@@ -21,7 +21,7 @@ export const agentOfferingSchema = Schema.Struct({
   price_unit: Schema.Literals(["day", "booking"]),
   advertised_price: agentToolMoneySchema.annotate({
     description:
-      "Price the reservation page advertises for a booking on advertised_on, including any public sale: one cowork day without paid add-ons, one meeting-room booking of the duration, or one office day with one seat.",
+      "Price the reservation page advertises for a booking on advertised_on, including any public sale: one cowork day without add-ons that cost extra, one meeting-room booking of the duration, or one office day with one seat.",
   }),
   discount: agentToolMoneySchema.annotate({
     description:

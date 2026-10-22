@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { aiAssistantsPageMarkdown } from "@/features/ai-assistants/ai-assistants-page-markdown";
 import type { PublicOffering } from "@/features/checkout/public-offerings";
 import { contactPageMarkdown } from "@/features/contact/contact-page-markdown";
 import { coworkReservationPageMarkdown } from "@/features/cowork/cowork-reservation-page-markdown";
@@ -94,6 +95,11 @@ export const publicPageMarkdown = {
     topic: "offer",
     title: (locale) => m.faqMetadataTitle({}, { locale }),
     render: faqPageMarkdown,
+  },
+  "/ai-assistants": {
+    topic: "booking",
+    title: (locale) => m.aiAssistantsMetadataTitle({}, { locale }),
+    render: aiAssistantsPageMarkdown,
   },
   "/pricing": {
     topic: "prices",

@@ -53,7 +53,7 @@ type ListMyReservationsResult = typeof outputSchema.Type;
 
 export const listMyReservationsTool = defineSignedInAgentTool({
   name: "list_my_reservations",
-  title: "List my DH Workspace reservations",
+  title: "List my Deskohub Workspace reservations",
   description:
     "Lists the signed-in customer's reservations as their account page shows them: current and past, with family, time, seats, and status. Other people's names and contact details are never included.",
   scope: "reservations:read",
