@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import { Match, Schema, SchemaGetter } from "effect";
 import type { WorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
