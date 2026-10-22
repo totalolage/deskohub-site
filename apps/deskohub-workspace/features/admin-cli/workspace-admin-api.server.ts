@@ -154,8 +154,21 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
     const productDetailsBackfill = yield* ReservationProductDetailsBackfill;
     return handlers
       .handle("getOverview", () =>
-        administration.loadOverviewSource().pipe(
-          Effect.flatMap((source) => administration.loadOverview(source)),
+        Effect.all(
+          {
+            overview: administration
+              .loadOverviewSource()
+              .pipe(
+                Effect.flatMap((source) => administration.loadOverview(source))
+              ),
+            refundsNeeded: administration.countReservationsNeedingRefund(),
+          },
+          { concurrency: "unbounded" }
+        ).pipe(
+          Effect.map(({ overview, refundsNeeded }) => ({
+            ...overview,
+            refundAttention: { unavailable: false, value: refundsNeeded },
+          })),
           mapServiceFailure
         )
       )
@@ -363,6 +376,11 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
           { concurrency: "unbounded" }
         ).pipe(mapServiceFailure)
       )
+      .handle("getCustomerReservationActivity", ({ params }) =>
+        administration
+          .loadCustomerReservationActivity(params.customerId)
+          .pipe(mapServiceFailure)
+      )
       .handle("listCustomerReservations", ({ params, query }) =>
         administration
           .loadCustomerReservations({
@@ -375,6 +393,12 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
         discounts
           .loadDashboard()
           .pipe(Effect.map(toCliDiscountDashboard), mapServiceFailure)
+      )
+      .handle("listDiscountGroups", () =>
+        discounts.listDiscountGroups().pipe(
+          Effect.map((discountGroups) => ({ discountGroups })),
+          mapServiceFailure
+        )
       )
       .handle("getDiscountCode", ({ params }) =>
         discounts.loadCodeDetail({ codeId: params.codeId }).pipe(
@@ -423,6 +447,18 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
           Effect.map(({ bytes }) => bytes),
           mapAdministrationApiFailure(mapInvoiceReadFailure)
         )
+      )
+      .handle("getInvoiceCreationDefaults", () =>
+        invoices.getCreationDefaults().pipe(mapServiceFailure)
+      )
+      .handle(
+        "previewInvoice",
+        Effect.fn(function* ({ payload }) {
+          const { actor } = yield* CurrentAdministrationCaller;
+          return yield* invoices
+            .preview(payload, { source: "dhw-cli", administrator: actor })
+            .pipe(mapAdministrationApiFailure(mapInvoicePreviewFailure));
+        })
       )
       .handle(
         "createInvoice",
@@ -761,6 +797,18 @@ const mapInvoiceReadFailure = (
     Match.tag(
       "InvoiceAdministrationNotFoundError",
       () => new CliResourceNotFound({ message: "The invoice was not found." })
+    ),
+    Match.orElse(makeServiceUnavailable)
+  );
+
+const mapInvoicePreviewFailure = (
+  cause: Effect.Error<ReturnType<InvoiceAdministration["preview"]>>
+) =>
+  Match.value(cause).pipe(
+    Match.tag(
+      "InvoiceAdministrationCustomerError",
+      "ManualInvoiceValidationError",
+      ({ message }) => new CliMutationRejected({ message })
     ),
     Match.orElse(makeServiceUnavailable)
   );

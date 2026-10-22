@@ -213,6 +213,13 @@ const cases: AdapterContractCases<Registry> = {
   listCampaignTemplates: [
     { title: "lists the templates", input: () => ({}), expect: success },
   ],
+  getCampaignSettings: [
+    {
+      title: "returns campaign settings",
+      input: () => ({}),
+      expect: success,
+    },
+  ],
   previewCampaignTemplate: [
     {
       title: "renders unsaved operational texts",

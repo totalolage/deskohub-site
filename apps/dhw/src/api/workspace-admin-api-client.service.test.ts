@@ -3,8 +3,14 @@ import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationBookingSummary,
   AdministrationCampaignId,
+  AdministrationCampaignSettings,
   AdministrationCanonicalPromotionCode,
+  AdministrationCustomerReservationActivity,
   AdministrationDiscountCodeId,
+  AdministrationDiscountGroupList,
+  AdministrationDotyposCustomerId,
+  AdministrationInvoiceCreateInput,
+  AdministrationInvoiceCreationDefaults,
   AdministrationInvoiceId,
   AdministrationNexiOperationId,
   AdministrationOperation,
@@ -41,6 +47,33 @@ import {
 } from "./workspace-admin-api-client.service";
 
 const syntheticEmail = testEmailAddress("synthetic");
+
+const runClientTest = async <A, E>(
+  fetch: (request: Request) => Response | Promise<Response>,
+  run: (client: WorkspaceAdminApiClient["Service"]) => Effect.Effect<A, E>
+) => {
+  const server = Bun.serve({ port: 0, fetch });
+  try {
+    const clientLayer = WorkspaceAdminApiClient.Default.pipe(
+      Layer.provide(FetchHttpClient.layer),
+      Layer.provide(
+        Layer.succeed(DhwConfig, {
+          baseUrl: new URL(`http://127.0.0.1:${server.port}`),
+          requestHeaders: {},
+          isCi: true,
+          stateDirectory: `/tmp/dhw-client-test-${crypto.randomUUID()}`,
+          updateChecksDisabled: true,
+        })
+      )
+    );
+    return await Effect.gen(function* () {
+      const client = yield* WorkspaceAdminApiClient;
+      return yield* run(client);
+    }).pipe(Effect.provide(clientLayer), Effect.runPromise);
+  } finally {
+    server.stop(true);
+  }
+};
 
 const accessCodeAttemptId = Schema.decodeUnknownSync(
   AdministrationStandaloneAccessCodeAttemptId
@@ -679,7 +712,10 @@ describe("WorkspaceAdminApiClient", () => {
         yield* client.getAuthenticationStatus(code);
         yield* client.exchangeGrant({ code, grantToken, verifier });
         yield* client.getCurrentSession(Redacted.make(accessToken));
-        yield* client.getOverview(Redacted.make(accessToken));
+        const overview = yield* client.getOverview(Redacted.make(accessToken));
+        expect(overview.refundAttention.unavailable).toBe(true);
+        expect(overview.uniqueCustomers.customers).toEqual([]);
+        expect(overview.newCustomers.customers).toEqual([]);
         yield* client.listReservations(Redacted.make(accessToken), {
           page: 2,
           status: "complete",
@@ -820,6 +856,206 @@ describe("WorkspaceAdminApiClient", () => {
     } finally {
       server.stop(true);
     }
+  });
+
+  test("gets a customer's reservation activity", async () => {
+    const token = Redacted.make(
+      Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43))
+    );
+    const activity = Schema.decodeUnknownSync(
+      AdministrationCustomerReservationActivity
+    )({
+      from: "2026-08-01",
+      to: "2026-08-02",
+      dates: [{ date: "2026-08-01", count: 2, category: "meeting-room" }],
+    });
+
+    const result = await runClientTest(
+      async (request) => {
+        const url = new URL(request.url);
+        expect(request.method).toBe("GET");
+        expect(url.pathname).toBe(
+          "/api/v1/cli/customers/customer-1/reservation-activity"
+        );
+        expect(request.headers.get("authorization")).toBe(
+          `Bearer ${Redacted.value(token)}`
+        );
+        return Response.json(activity);
+      },
+      (client) =>
+        client.getCustomerReservationActivity(
+          token,
+          Schema.decodeUnknownSync(AdministrationDotyposCustomerId)(
+            "customer-1"
+          )
+        )
+    );
+
+    expect(result).toEqual(activity);
+  });
+
+  test("lists discount groups", async () => {
+    const token = Redacted.make(
+      Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43))
+    );
+    const discountGroups = Schema.decodeUnknownSync(
+      AdministrationDiscountGroupList
+    )({ discountGroups: [{ id: "group-1", name: "Community" }] });
+
+    const result = await runClientTest(
+      async (request) => {
+        const url = new URL(request.url);
+        expect(request.method).toBe("GET");
+        expect(url.pathname).toBe("/api/v1/cli/discount-groups");
+        expect(request.headers.get("authorization")).toBe(
+          `Bearer ${Redacted.value(token)}`
+        );
+        return Response.json(discountGroups);
+      },
+      (client) => client.listDiscountGroups(token)
+    );
+
+    expect(result).toEqual(discountGroups);
+  });
+
+  test("gets invoice creation defaults", async () => {
+    const token = Redacted.make(
+      Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43))
+    );
+    const defaults = Schema.decodeUnknownSync(
+      AdministrationInvoiceCreationDefaults
+    )({
+      currencies: [{ code: "CZK", exponent: 2, name: "Czech koruna" }],
+      defaultCurrency: "CZK",
+      defaultServiceDate: "2026-08-10",
+      defaultDueDate: "2026-08-24",
+      suggestedVariableSymbol: "260810",
+    });
+
+    const result = await runClientTest(
+      async (request) => {
+        const url = new URL(request.url);
+        expect(request.method).toBe("GET");
+        expect(url.pathname).toBe("/api/v1/cli/invoices/creation-defaults");
+        expect(request.headers.get("authorization")).toBe(
+          `Bearer ${Redacted.value(token)}`
+        );
+        return Response.json(defaults);
+      },
+      (client) => client.getInvoiceCreationDefaults(token)
+    );
+
+    expect(result).toEqual(defaults);
+  });
+
+  test("previews invoices and preserves mutation rejection errors", async () => {
+    const token = Redacted.make(
+      Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43))
+    );
+    const input = Schema.decodeUnknownSync(AdministrationInvoiceCreateInput)({
+      invoiceId: "01980000-0000-7000-8000-000000000019",
+      customer: {
+        kind: "new",
+        details: {
+          kind: "person",
+          email: syntheticEmail,
+          firstName: "Synthetic",
+          lastName: "Customer",
+          address: {
+            line1: "Test street 1",
+            city: "Prague",
+            postalCode: "100 00",
+            country: "CZ",
+          },
+        },
+      },
+      locale: "cs-CZ",
+      serviceDate: "2026-08-10",
+      payment: { status: "due", date: "2026-08-24" },
+      currency: "CZK",
+      lines: [{ description: "Synthetic service", price: "1000" }],
+    });
+    const pdf = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 55]);
+    const requests: Array<{
+      readonly method: string;
+      readonly path: string;
+      readonly body: unknown;
+    }> = [];
+    let attempt = 0;
+
+    const result = await runClientTest(
+      async (request) => {
+        const url = new URL(request.url);
+        requests.push({
+          method: request.method,
+          path: url.pathname,
+          body: await request.json(),
+        });
+        expect(request.headers.get("authorization")).toBe(
+          `Bearer ${Redacted.value(token)}`
+        );
+        attempt += 1;
+        if (attempt === 1) {
+          return new Response(Buffer.from(pdf), {
+            headers: { "content-type": "application/pdf" },
+          });
+        }
+        return Response.json(
+          {
+            _tag: "CliMutationRejected",
+            message: "The invoice preview input was rejected.",
+          },
+          { status: 409 }
+        );
+      },
+      (client) =>
+        Effect.gen(function* () {
+          const preview = yield* client.previewInvoice(token, input);
+          const rejected = yield* client
+            .previewInvoice(token, input)
+            .pipe(Effect.flip);
+          return { preview, rejected };
+        })
+    );
+
+    expect(result.preview).toEqual(pdf);
+    expect(result.rejected).toBeInstanceOf(CliMutationRejected);
+    expect(requests).toEqual([
+      {
+        method: "POST",
+        path: "/api/v1/cli/invoices/preview",
+        body: input,
+      },
+      {
+        method: "POST",
+        path: "/api/v1/cli/invoices/preview",
+        body: input,
+      },
+    ]);
+  });
+
+  test("gets campaign settings", async () => {
+    const token = Redacted.make(
+      Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43))
+    );
+    const settings = Schema.decodeUnknownSync(AdministrationCampaignSettings)({
+      testSendInbox: testEmailAddress("campaign-test-inbox"),
+    });
+
+    const result = await runClientTest(
+      async (request) => {
+        const url = new URL(request.url);
+        expect(request.method).toBe("GET");
+        expect(url.pathname).toBe("/api/v1/cli/campaigns/settings");
+        expect(request.headers.get("authorization")).toBe(
+          `Bearer ${Redacted.value(token)}`
+        );
+        return Response.json(settings);
+      },
+      (client) => client.getCampaignSettings(token)
+    );
+
+    expect(result).toEqual(settings);
   });
 
   test("retries access-code creation with one captured attempt id and never on terminal outcomes", async () => {

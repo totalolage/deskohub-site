@@ -184,6 +184,14 @@ const callCampaignsApi = <A, E>(
   );
 
 describe("campaign admin API", () => {
+  test("returns a test-send inbox in campaign settings", async () => {
+    const settings = await callCampaignsApi((client) =>
+      client.getCampaignSettings({})
+    );
+
+    expect(settings.testSendInbox).toEqual(expect.any(String));
+  });
+
   test("rejects a request without a valid CLI session before any service runs", async () => {
     const calls: string[] = [];
     const error = await callCampaignsApi(
