@@ -65,3 +65,18 @@ export const resolveCampaignEmailConfig = (
       input.EMAIL_CAMPAIGN_ADMIN_INBOX ?? `campaign-admin@${EMAIL_TEST_DOMAIN}`,
   });
 };
+
+/**
+ * The settings the composer shows. The test-send inbox is null where campaign
+ * email isn't configured: the composer still loads, and a test send reports
+ * the missing settings.
+ */
+export const toCampaignSettings = (
+  config: Effect.Effect<ICampaignEmailConfig, CampaignEmailNotConfigured>
+) =>
+  config.pipe(
+    Effect.map(({ adminInbox }) => ({ testSendInbox: adminInbox })),
+    Effect.catchTag("CampaignEmailNotConfigured", () =>
+      Effect.succeed({ testSendInbox: null })
+    )
+  );

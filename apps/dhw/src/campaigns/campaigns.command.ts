@@ -397,6 +397,21 @@ const formatRecipientPreview = (
     ),
   ].join("\n");
 
+const campaignsSettingsCommand = Command.make("settings", {}, () =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    Effect.gen(function* () {
+      const settings = yield* api.getCampaignSettings(accessToken);
+      yield* Console.log(
+        json
+          ? JSON.stringify(settings)
+          : `Test-send inbox: ${settings.testSendInbox ?? "not configured"}`
+      );
+    })
+  )
+).pipe(
+  Command.withDescription("Show the inbox every campaign test send reaches")
+);
+
 const campaignsTestSendCommand = Command.make(
   "test-send",
   {
@@ -578,6 +593,7 @@ export const campaignsCommand = Command.make("campaigns").pipe(
     campaignsDuplicateCommand,
     campaignsDeleteCommand,
     campaignsRecipientsCommand,
+    campaignsSettingsCommand,
     campaignsTestSendCommand,
     campaignsSendCommand,
     campaignsRetryCommand,

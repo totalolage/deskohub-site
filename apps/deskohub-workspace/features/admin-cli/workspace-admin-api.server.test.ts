@@ -1,11 +1,13 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { ExternalAPIError } from "@deskohub/dotypos";
 import { IgloohomeService } from "@deskohub/igloohome";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationActorEmail,
   AdministrationAuthentication,
+  AdministrationDotyposCustomerId,
   AdministrationInstant,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
@@ -60,13 +62,17 @@ import {
   InvoiceAdministrationInProgressError,
   InvoiceAdministrationService,
 } from "@/features/accounting/admin/invoice-administration.service";
+import { ManualInvoiceValidationError } from "@/features/accounting/manual-invoice";
 import { AdministrationService } from "@/features/administration/administration.service";
 import {
   ReservationAccessAdministration,
   ReservationAccessAdministrationError,
 } from "@/features/administration/reservation-access-administration.service";
 import { ReservationAdministrationService } from "@/features/administration/reservation-administration.service";
-import { LegacyAdministratorBackfill } from "@/features/administrators";
+import {
+  AdministratorRoster,
+  LegacyAdministratorBackfill,
+} from "@/features/administrators";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import {
   DiscountAdminConflictError,
@@ -194,6 +200,64 @@ const ActorAuthorizedCliRequest = Layer.mergeAll(
       }),
   })
 );
+const administrationClient = HttpApiTest.groups(WorkspaceAdminApi, [
+  "administration",
+]).pipe(Effect.map((client) => client.administration));
+type AdministrationClient = Effect.Success<typeof administrationClient>;
+
+type AdministrationApiServiceLayers = {
+  readonly administration?: Layer.Layer<AdministrationService>;
+  readonly discounts?: Layer.Layer<DiscountAdministration>;
+  readonly invoices?: Layer.Layer<InvoiceAdministrationService>;
+};
+
+const callAdministrationApi = <A, E>(
+  call: (client: AdministrationClient) => Effect.Effect<A, E>,
+  services: AdministrationApiServiceLayers = {}
+) =>
+  administrationClient.pipe(
+    Effect.flatMap(call),
+    Effect.provide(AdminCliAdministrationApiHandlers),
+    Effect.provide(ActorAuthorizedCliRequest),
+    Effect.provide(UnusedStandaloneAccessCodeAdministration),
+    Effect.provide(ClaimEveryCliMutation),
+    Effect.provide(services.invoices ?? UnusedInvoiceAdministration),
+    Effect.provide(UnusedReservationAdministration),
+    Effect.provide(UnusedReservationProductDetailsBackfill),
+    Effect.provide(services.discounts ?? UnusedDiscountAdministration),
+    Effect.provide(SessionAdministratorAuthentication),
+    Effect.provide(services.administration ?? UnusedAdministrationService),
+    Effect.provide(UnusedReservationAccessAdministration),
+    Effect.provide(CliClientCompatibilityLive),
+    Effect.provide(UnrecordedAdministrationActions),
+    Effect.provide(NodeHttpServer.layerHttpServices),
+    Effect.scoped,
+    Effect.runPromise
+  );
+
+const invoicePreviewPayload = {
+  invoiceId: "01980000-0000-7000-8000-000000000009",
+  customer: {
+    kind: "new" as const,
+    details: {
+      kind: "person" as const,
+      email: testEmailAddress("invoice-preview"),
+      firstName: "Synthetic",
+      lastName: "Customer",
+      address: {
+        line1: "Test street 1",
+        city: "Prague",
+        postalCode: "100 00",
+        country: "CZ",
+      },
+    },
+  },
+  locale: "cs-CZ" as const,
+  serviceDate: "2026-08-10",
+  payment: { status: "due" as const, date: "2026-08-24" },
+  currency: "CZK",
+  lines: [{ description: "Space rental", price: "1000" }],
+};
 
 describe("Workspace Admin API", () => {
   test("disables caching for API responses", async () => {
@@ -203,6 +267,100 @@ describe("Workspace Admin API", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  test("returns refund attention and customer metrics in the overview", async () => {
+    const source = {};
+    const sourceInputs: unknown[] = [];
+    const customerId = AdministrationDotyposCustomerId.make("1001");
+    const overview = {
+      today: { completed: 1, unavailable: false, value: 2 },
+      upcoming: { completed: 0, unavailable: false, value: 3 },
+      lastSevenDays: { completed: 4, unavailable: false, value: 5 },
+      uniqueCustomers: {
+        customers: [{ customerId, customer: null }],
+        unavailable: false,
+        value: 1,
+      },
+      newCustomers: {
+        customers: [
+          {
+            customerId,
+            customer: {
+              id: customerId,
+              displayName: "Synthetic Customer",
+              email: testEmailAddress("overview-customer"),
+              phone: null,
+            },
+          },
+        ],
+        unavailable: false,
+        value: 1,
+      },
+    };
+    const administration = Layer.succeed(AdministrationService, {
+      ...({} as AdministrationService["Service"]),
+      loadOverviewSource: () => Effect.succeed(source as never),
+      loadOverview: (input) => {
+        sourceInputs.push(input);
+        return Effect.succeed(overview as never);
+      },
+      countReservationsNeedingRefund: () => Effect.succeed(4),
+    });
+
+    const result = await callAdministrationApi(
+      (client) => client.getOverview({}),
+      { administration }
+    );
+
+    expect(sourceInputs).toEqual([source]);
+    expect(result).toMatchObject({
+      ...overview,
+      refundAttention: { unavailable: false, value: 4 },
+    });
+  });
+
+  test("passes the customer id and returns reservation activity with dates or unavailable dates", async () => {
+    const requests: unknown[] = [];
+    const withDates = {
+      from: "2025-10-23",
+      to: "2026-10-22",
+      dates: [{ date: "2026-10-20", count: 2, category: "meeting-room" }],
+    };
+    const unavailable = {
+      from: "2025-10-23",
+      to: "2026-10-22",
+      dates: null,
+    };
+    const administration = Layer.succeed(AdministrationService, {
+      ...({} as AdministrationService["Service"]),
+      loadCustomerReservationActivity: (customerId) => {
+        requests.push(customerId);
+        return Effect.succeed(requests.length === 1 ? withDates : unavailable);
+      },
+    });
+    const customerId = AdministrationDotyposCustomerId.make("1001");
+    const unavailableCustomerId = AdministrationDotyposCustomerId.make("1002");
+
+    const result = await callAdministrationApi(
+      (client) =>
+        Effect.gen(function* () {
+          const withActivity = yield* client.getCustomerReservationActivity({
+            params: { customerId },
+          });
+          const withoutActivity = yield* client.getCustomerReservationActivity({
+            params: { customerId: unavailableCustomerId },
+          });
+          return { withActivity, withoutActivity };
+        }),
+      { administration }
+    );
+
+    expect(requests).toEqual([customerId, unavailableCustomerId]);
+    expect(result).toEqual({
+      withActivity: withDates,
+      withoutActivity: unavailable,
+    });
   });
 
   test("serves each instance's own caller when instances share a memo map", async () => {
@@ -260,6 +418,7 @@ describe("Workspace Admin API", () => {
       }),
       Layer.succeed(CliAuthenticationAdmission, {} as never),
       Layer.succeed(AdministrationService, {} as never),
+      Layer.succeed(AdministratorRoster, {} as never),
       Layer.succeed(LegacyAdministratorBackfill, {} as never),
       Layer.succeed(CampaignOperations, {} as never),
       UnusedReservationAdministration,
@@ -410,6 +569,49 @@ describe("Workspace Admin API", () => {
     expect(result).toEqual(batch);
   });
 
+  test("lists discount groups and maps a failed service to unavailable", async () => {
+    const calls: string[] = [];
+    const discounts = Layer.succeed(DiscountAdministration, {
+      ...({} as DiscountAdministration["Service"]),
+      listDiscountGroups: () => {
+        calls.push("list");
+        return calls.length === 1
+          ? Effect.succeed([
+              { id: "10", name: "  Group Ten  " },
+              { id: "11", name: null },
+            ])
+          : Effect.fail(
+              new ExternalAPIError({
+                service: "dotypos",
+                operation: "getDiscountGroups",
+                message: "Synthetic provider failure",
+              })
+            );
+      },
+    });
+
+    const result = await callAdministrationApi(
+      (client) =>
+        Effect.gen(function* () {
+          const groups = yield* client.listDiscountGroups({});
+          const unavailable = yield* client
+            .listDiscountGroups({})
+            .pipe(Effect.flip);
+          return { groups, unavailable };
+        }),
+      { discounts }
+    );
+
+    expect(result.groups).toEqual({
+      discountGroups: [
+        { id: "10", name: "  Group Ten  " },
+        { id: "11", name: null },
+      ],
+    });
+    expect(result.unavailable).toBeInstanceOf(CliServiceUnavailable);
+    expect(calls).toEqual(["list", "list"]);
+  });
+
   test("logs the original failure before reporting the service as unavailable", async () => {
     const logRecords: { readonly level: string; readonly text: string }[] = [];
     const capturingLogger = Logger.make<unknown, void>(
@@ -464,6 +666,74 @@ describe("Workspace Admin API", () => {
           text.includes("select from workspace reservations")
       )
     ).toBe(true);
+  });
+
+  test("returns invoice creation defaults", async () => {
+    const defaults = {
+      currencies: [{ code: "CZK", exponent: 2, name: "Czech koruna" }],
+      defaultCurrency: "CZK",
+      defaultServiceDate: "2026-10-22",
+      defaultDueDate: "2026-11-05",
+      suggestedVariableSymbol: "26000001",
+    };
+    const invoices = Layer.succeed(InvoiceAdministrationService, {
+      ...({} as InvoiceAdministrationService["Service"]),
+      getCreationDefaults: () => Effect.succeed(defaults),
+    });
+
+    const result = await callAdministrationApi(
+      (client) => client.getInvoiceCreationDefaults({}),
+      { invoices }
+    );
+
+    expect(result).toEqual(defaults);
+  });
+
+  test("previews an invoice with CLI administrator provenance", async () => {
+    const pdf = new Uint8Array([37, 80, 68, 70]);
+    const previews: unknown[] = [];
+    const invoices = Layer.succeed(InvoiceAdministrationService, {
+      ...({} as InvoiceAdministrationService["Service"]),
+      preview: (input, provenance) => {
+        previews.push({ input, provenance });
+        return Effect.succeed(pdf);
+      },
+    });
+
+    const result = await callAdministrationApi(
+      (client) => client.previewInvoice({ payload: invoicePreviewPayload }),
+      { invoices }
+    );
+
+    expect(result).toEqual(pdf);
+    expect(previews).toEqual([
+      {
+        input: invoicePreviewPayload,
+        provenance: { source: "dhw-cli", administrator: cliAdministrator },
+      },
+    ]);
+  });
+
+  test("maps invoice preview validation failures to a rejected mutation", async () => {
+    const invoices = Layer.succeed(InvoiceAdministrationService, {
+      ...({} as InvoiceAdministrationService["Service"]),
+      preview: () =>
+        Effect.fail(
+          new ManualInvoiceValidationError({
+            message: "Synthetic invoice validation failure.",
+          })
+        ),
+    });
+
+    const error = await callAdministrationApi(
+      (client) =>
+        client
+          .previewInvoice({ payload: invoicePreviewPayload })
+          .pipe(Effect.flip),
+      { invoices }
+    );
+
+    expect(error).toBeInstanceOf(CliMutationRejected);
   });
 
   test("maps an in-progress invoice claim for retry without changing provenance", async () => {

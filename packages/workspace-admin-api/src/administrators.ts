@@ -4,11 +4,15 @@ import {
   AdministrationOperationBehavior,
   destructiveOperation,
   dryRunPreview,
+  readOperation,
+  readPreview,
 } from "./administration-operation";
 import {
+  AdministrationAccountId,
   AdministrationActionRecord,
   AdministrationAuthentication,
   AdministrationLegacyUsername,
+  CliMutationRejected,
   CliResourceNotFound,
   CliServiceUnavailable,
 } from "./workspace-admin-api";
@@ -23,6 +27,48 @@ export const AdministrationAccountEmail = Schema.Trim.check(
   description: "Login email of an existing Workspace account.",
 });
 export type AdministrationAccountEmail = typeof AdministrationAccountEmail.Type;
+
+/** An account that holds the administrator role. */
+export const AdministrationAdministrator = Schema.Struct({
+  accountId: AdministrationAccountId,
+  /** The account's login email. */
+  email: Schema.String,
+  /** Null when a bootstrap granted the role or the granter was deleted. */
+  grantedByEmail: Schema.NullOr(Schema.String),
+  /** ISO instant. */
+  grantedAt: Schema.String,
+});
+export type AdministrationAdministrator =
+  typeof AdministrationAdministrator.Type;
+
+export const AdministrationAdministratorList = Schema.Struct({
+  /** Oldest grant first. */
+  administrators: Schema.Array(AdministrationAdministrator),
+});
+export type AdministrationAdministratorList =
+  typeof AdministrationAdministratorList.Type;
+
+export const AdministrationAdministratorGrantInput = Schema.Struct({
+  email: AdministrationAccountEmail,
+}).annotate({
+  parseOptions: { errors: "all", onExcessProperty: "error" },
+});
+export type AdministrationAdministratorGrantInput =
+  typeof AdministrationAdministratorGrantInput.Type;
+
+export const AdministrationAdministratorGrantResult = Schema.Struct({
+  outcome: Schema.Literals(["granted", "already_granted"]),
+  /** The login email of the account that holds the role. */
+  email: Schema.String,
+});
+export type AdministrationAdministratorGrantResult =
+  typeof AdministrationAdministratorGrantResult.Type;
+
+export const AdministrationAdministratorRevocationResult = Schema.Struct({
+  outcome: Schema.Literals(["revoked", "not_administrator"]),
+});
+export type AdministrationAdministratorRevocationResult =
+  typeof AdministrationAdministratorRevocationResult.Type;
 
 export const AdministrationLegacyAdministratorBackfillInput = Schema.Struct({
   /** The Basic-auth username whose records move to the account. */
@@ -58,7 +104,38 @@ export const AdministrationLegacyAdministratorBackfillResult = Schema.Struct({
 export type AdministrationLegacyAdministratorBackfillResult =
   typeof AdministrationLegacyAdministratorBackfillResult.Type;
 
+const administratorsPreview = readPreview("administrators.listAdministrators");
+
 export const AdminCliAdministratorsApi = HttpApiGroup.make("administrators")
+  .add(
+    HttpApiEndpoint.get("listAdministrators", "/administrators", {
+      success: AdministrationAdministratorList,
+    }).annotate(AdministrationOperationBehavior, readOperation)
+  )
+  .add(
+    HttpApiEndpoint.post("grantAdministrator", "/administrators", {
+      payload: AdministrationAdministratorGrantInput,
+      success: AdministrationAdministratorGrantResult,
+      error: [CliResourceNotFound.schema, CliServiceUnavailable.schema],
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({ idempotent: true, preview: administratorsPreview })
+    )
+  )
+  .add(
+    HttpApiEndpoint.delete(
+      "revokeAdministrator",
+      "/administrators/:accountId",
+      {
+        params: { accountId: AdministrationAccountId },
+        success: AdministrationAdministratorRevocationResult,
+        error: [CliMutationRejected.schema, CliServiceUnavailable.schema],
+      }
+    ).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({ idempotent: true, preview: administratorsPreview })
+    )
+  )
   .add(
     HttpApiEndpoint.post(
       "backfillLegacyAdministrator",

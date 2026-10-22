@@ -59,6 +59,7 @@ export const AdminCliCampaignsApiHandlers = HttpApiBuilder.group(
       .handle("previewCampaignRecipients", ({ params }) =>
         invoke("previewCampaignRecipients", params)
       )
+      .handle("getCampaignSettings", () => invoke("getCampaignSettings", {}))
       .handle("testSendCampaign", ({ params, payload }) =>
         invoke("testSendCampaign", { ...params, ...payload })
       )
