@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationAuthentication,
@@ -16,6 +16,7 @@ import { NodeCrypto, NodeHttpServer } from "@effect/platform-node";
 import { inArray } from "drizzle-orm";
 import { Effect, Layer, Redacted } from "effect";
 import { HttpApiTest } from "effect/unstable/httpapi";
+import type { PoolClient } from "pg";
 import { cliAuthenticationRequests, cliSessions } from "@/db/schema";
 import {
   type CliAuthenticationRequestId,
@@ -202,36 +203,51 @@ describe.skipIf(!postgresDatabase)(
           )
       );
 
+    const heldTransactions = new Set<PoolClient>();
+
+    afterEach(async () => {
+      for (const client of heldTransactions) {
+        await client.query("rollback");
+        client.release();
+      }
+      heldTransactions.clear();
+    });
+
     /**
      * Holds a transaction open on its own connection, as a concurrent
-     * revoke, exchange, or approval would, until `release` commits it.
+     * revoke, exchange, or approval would, until `release` commits it. A
+     * failed test rolls it back.
      */
     const holdTransaction = async (
       statements: ReadonlyArray<[string, unknown[]]>
     ) => {
       const client = await postgres.pool.connect();
+      heldTransactions.add(client);
       await client.query("begin");
       for (const [text, values] of statements) await client.query(text, values);
-      const {
-        rows: [holder],
-      } = await client.query<{ pid: number }>("select pg_backend_pid() as pid");
       return {
-        /** Resolves once another connection waits on this transaction. */
-        blocking: async () => {
-          for (;;) {
-            const waiting = await postgres.pool.query(
-              "select 1 from pg_stat_activity where $1 = any(pg_blocking_pids(pid))",
-              [holder?.pid]
-            );
-            if (waiting.rowCount) return;
-            await Bun.sleep(10);
-          }
-        },
         release: async () => {
+          heldTransactions.delete(client);
           await client.query("commit");
           client.release();
         },
       };
+    };
+
+    /** Resolves once `count` connections wait on another's locks. */
+    const waitForBlockedConnections = async (count: number) => {
+      const deadline = Date.now() + 10_000;
+      while (Date.now() < deadline) {
+        const {
+          rows: [row],
+        } = await postgres.pool.query<{ blocked: number }>(
+          `select count(*)::int as blocked from pg_stat_activity
+           where cardinality(pg_blocking_pids(pid)) > 0`
+        );
+        if ((row?.blocked ?? 0) >= count) return;
+        await Bun.sleep(10);
+      }
+      throw new Error(`Fewer than ${count} connections ever blocked.`);
     };
 
     /** An insert of a CLI session `owner` approved, and its bearer. */
@@ -261,6 +277,23 @@ describe.skipIf(!postgresDatabase)(
       `select 1 from account_role_grants
        where account_id = $1 and role = 'administrator' for share`,
       [account.accountId],
+    ];
+
+    const lockRequestForUpdate = (grant: {
+      readonly grantToken: string;
+    }): [string, unknown[]] => [
+      `select 1 from cli_authentication_requests
+       where grant_token = $1 for update`,
+      [grant.grantToken],
+    ];
+
+    const consumeRequest = (grant: {
+      readonly grantToken: string;
+    }): [string, unknown[]] => [
+      `update cli_authentication_requests
+       set consumed_at = now(), grant_token = null
+       where grant_token = $1`,
+      [grant.grantToken],
     ];
 
     const deleteGrant = (
@@ -532,7 +565,7 @@ describe.skipIf(!postgresDatabase)(
       const revoking = callAs(bearer, (client) =>
         client.revokeAdministrator({ params: { accountId: target.accountId } })
       );
-      await exchange.blocking();
+      await waitForBlockedConnections(1);
       await exchange.release();
       const revoked = await revoking;
       await callAs(bearer, (client) =>
@@ -553,13 +586,91 @@ describe.skipIf(!postgresDatabase)(
       });
     });
 
+    test("a revoke waits for a real CLI exchange to commit and revokes its session", async () => {
+      const actor = await insertAdministrator();
+      const bearer = await insertSession(actor);
+      const target = await insertAdministrator();
+      const targetGrant = await insertRequest(target);
+      // Stalls the exchange at consumption, after it locked the grant and
+      // inserted its session.
+      const requestLock = await holdTransaction([
+        lockRequestForUpdate(targetGrant),
+      ]);
+
+      const exchanging = exchangeGrant(targetGrant);
+      await waitForBlockedConnections(1);
+      const revoking = callAs(bearer, (client) =>
+        client.revokeAdministrator({ params: { accountId: target.accountId } })
+      );
+      await waitForBlockedConnections(2);
+      await requestLock.release();
+      const exchanged = await exchanging;
+      const revoked = await revoking;
+      await callAs(bearer, (client) =>
+        client.grantAdministrator({ payload: { email: target.email } })
+      );
+
+      expect(exchanged._tag).toBe("Success");
+      expect(revoked).toMatchObject({
+        _tag: "Success",
+        success: { outcome: "revoked" },
+      });
+      expect(
+        exchanged._tag === "Success"
+          ? await callAs(exchanged.success.accessToken, (client) =>
+              client.listAdministrators({})
+            )
+          : null
+      ).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "CliSessionUnauthorized" },
+      });
+    });
+
+    test("revoking an account without the grant revokes a session an in-flight exchange commits", async () => {
+      const actor = await insertAdministrator();
+      const bearer = await insertSession(actor);
+      const target = await insertAccount();
+      const targetGrant = await insertRequest(target);
+      const exchangedSession = await newSessionStatement(target);
+      // An exchange that already passed its grant check under an earlier
+      // grant: its session and consumption are written but uncommitted.
+      const exchange = await holdTransaction([
+        exchangedSession.statement,
+        consumeRequest(targetGrant),
+      ]);
+
+      const revoking = callAs(bearer, (client) =>
+        client.revokeAdministrator({ params: { accountId: target.accountId } })
+      );
+      await waitForBlockedConnections(1);
+      await exchange.release();
+      const revoked = await revoking;
+      await callAs(bearer, (client) =>
+        client.grantAdministrator({ payload: { email: target.email } })
+      );
+      const exchangedAfterRegrant = await callAs(
+        exchangedSession.bearer,
+        (client) => client.listAdministrators({})
+      );
+
+      expect(revoked).toMatchObject({
+        _tag: "Success",
+        success: { outcome: "not_administrator" },
+      });
+      expect(exchangedAfterRegrant).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "CliSessionUnauthorized" },
+      });
+    });
+
     test("a CLI exchange waits for an in-flight revoke and then rejects the grant", async () => {
       const target = await insertAdministrator();
       const targetGrant = await insertRequest(target);
       const revoke = await holdTransaction([deleteGrant(target)]);
 
       const exchanging = exchangeGrant(targetGrant);
-      await revoke.blocking();
+      await waitForBlockedConnections(1);
       await revoke.release();
 
       expect(await exchanging).toMatchObject({
@@ -580,7 +691,7 @@ describe.skipIf(!postgresDatabase)(
           sessionLifetime: cliSessionLifetimeSchema.cases.Never.make({}),
         })
       );
-      await revoke.blocking();
+      await waitForBlockedConnections(1);
       await revoke.release();
 
       expect(await approving).toMatchObject({
