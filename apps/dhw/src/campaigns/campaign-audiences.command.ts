@@ -173,6 +173,7 @@ const audiencesArchiveCommand = Command.make(
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
         const confirmed = yield* confirmChange(
+          "campaigns.archiveCampaignAudience",
           yes,
           json,
           `Archive campaign audience ${audienceId}? It can no longer be picked for campaigns.`
@@ -214,6 +215,7 @@ const audiencesDeleteCommand = Command.make(
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
         const confirmed = yield* confirmChange(
+          "campaigns.deleteCampaignAudience",
           yes,
           json,
           `Delete campaign audience ${audienceId}? This cannot be undone.`

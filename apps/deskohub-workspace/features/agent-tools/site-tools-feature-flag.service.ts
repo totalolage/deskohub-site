@@ -1,5 +1,9 @@
 import { Context, Effect, Layer } from "effect";
-import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
+import {
+  type GlobalRelease,
+  globalRelease,
+  WorkspaceFeatureFlagService,
+} from "@/features/feature-flags/backend";
 
 export interface ISiteToolsFeatureFlagService {
   /**
@@ -8,6 +12,8 @@ export interface ISiteToolsFeatureFlagService {
    * including one PostHog omits, counts as off.
    */
   readonly isEnabled: Effect.Effect<boolean>;
+  /** Whether the site tools register for every visitor, read without the request. */
+  readonly release: Effect.Effect<GlobalRelease>;
 }
 
 export class SiteToolsFeatureFlagService extends Context.Service<
@@ -36,7 +42,11 @@ export class SiteToolsFeatureFlagService extends Context.Service<
         )
       );
 
-      return { isEnabled } satisfies ISiteToolsFeatureFlagService;
+      const release = featureFlags
+        .constantValue("webmcp_site_tools")
+        .pipe(Effect.map(globalRelease));
+
+      return { isEnabled, release } satisfies ISiteToolsFeatureFlagService;
     })
   );
 

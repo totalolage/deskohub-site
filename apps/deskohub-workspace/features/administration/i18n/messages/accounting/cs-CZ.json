@@ -36,6 +36,7 @@
   "accountingInvoiceSourcePostOrderLink": "Odkaz po objednávce",
   "accountingInvoiceSourceAdminUi": "Administrace",
   "accountingInvoiceSourceDhwCli": "CLI dhw",
+  "accountingInvoiceSourceAssistant": "AI asistent",
   "accountingInvoiceSourceLegacy": "Starší záznam / neznámé",
   "accountingInvoiceDeliveryNeedsResend": "Nutné znovu odeslat",
   "accountingInvoiceDeliverySent": "Odesláno",

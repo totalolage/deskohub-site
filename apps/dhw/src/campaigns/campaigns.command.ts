@@ -339,6 +339,7 @@ const campaignsDeleteCommand = Command.make(
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
         const confirmed = yield* confirmChange(
+          "campaigns.deleteCampaign",
           yes,
           json,
           `Delete campaign ${campaignId}? This cannot be undone.`
@@ -451,6 +452,7 @@ const campaignsSendCommand = Command.make(
         if (!yes) {
           const campaign = yield* api.getCampaign(accessToken, campaignId);
           const confirmed = yield* confirmChange(
+            "campaigns.sendCampaign",
             yes,
             json,
             `Send campaign "${campaign.title}" (${campaign.id}) to its audience now? This cannot be undone.`
@@ -490,6 +492,7 @@ const campaignsRetryCommand = Command.make(
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
         const confirmed = yield* confirmChange(
+          "campaigns.retryCampaign",
           yes,
           json,
           includeUnconfirmed

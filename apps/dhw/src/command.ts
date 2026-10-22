@@ -307,6 +307,7 @@ const reservationsCancelCommand = Command.make(
           AdministrationWorkspaceReservationId
         )(reservationId);
         const confirmed = yield* confirmChange(
+          "administration.cancelReservation",
           yes,
           json,
           force
@@ -359,6 +360,7 @@ const reservationsBackfillProductDetailsCommand = Command.make(
       Effect.gen(function* () {
         if (!dryRun) {
           const confirmed = yield* confirmChange(
+            "administration.backfillReservationProductDetails",
             yes,
             json,
             "Fill missing meeting-room and office product details from Dotypos?"
@@ -737,6 +739,7 @@ const invoicesCreateCommand = Command.make(
         }
         const invoiceInput = yield* readInvoiceCreateInput(input);
         const confirmed = yield* confirmChange(
+          "administration.createInvoice",
           yes,
           json,
           "Create this immutable invoice and immediately email it to both the customer and Deskohub?"
@@ -817,6 +820,7 @@ const invoicesResendCommand = Command.make(
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
         const confirmed = yield* confirmChange(
+          "administration.resendInvoice",
           yes,
           json,
           `Retry missing or failed email delivery for invoice ${invoiceId}?`
@@ -1973,6 +1977,7 @@ const accessCodesCreateCommand = Command.make(
           )
         );
         const confirmed = yield* confirmChange(
+          "administration.createStandaloneAccessCode",
           yes,
           json,
           formatStandaloneAccessCodeConfirmation(request)
@@ -2193,6 +2198,7 @@ const sessionsRevokeCommand = Command.make(
     runAuthenticatedCommand((api, accessToken, json, currentSession) =>
       Effect.gen(function* () {
         const confirmed = yield* confirmChange(
+          "administration.revokeSession",
           yes,
           json,
           `Revoke CLI session ${sessionId}? Its access will stop immediately. This cannot be undone.`
@@ -2526,7 +2532,12 @@ const runConfirmedDiscountMutation = ({
 }) =>
   runAuthenticatedCommand((api, accessToken, json) =>
     Effect.gen(function* () {
-      const confirmed = yield* confirmChange(yes, json, confirmation);
+      const confirmed = yield* confirmChange(
+        `administration.mutateDiscounts.${mutation.kind}`,
+        yes,
+        json,
+        confirmation
+      );
       if (!confirmed) {
         yield* reportCancellation(json);
         return;
@@ -2556,7 +2567,12 @@ const runConfirmedReservationAccessMutation = ({
             "Verify the credential in Igloohome, then pass --provider-credential-removed.",
         });
       }
-      const confirmed = yield* confirmChange(yes, json, confirmation);
+      const confirmed = yield* confirmChange(
+        `administration.mutateReservationAccess.${mutation.kind}`,
+        yes,
+        json,
+        confirmation
+      );
       if (!confirmed) {
         yield* reportCancellation(json);
         return;

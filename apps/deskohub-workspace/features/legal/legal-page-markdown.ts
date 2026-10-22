@@ -1,7 +1,7 @@
 import { Predicate } from "effect";
 import type { PhrasingContent } from "mdast";
 import { Children, isValidElement, type ReactNode } from "react";
-import { type Locale, m } from "@/features/i18n";
+import { getWorkspacePageUrl, type Locale, m } from "@/features/i18n";
 import {
   type MarkdownBlocks,
   markdownHeading,
@@ -9,7 +9,6 @@ import {
   markdownParagraph,
   markdownText,
 } from "@/shared/markdown/markdown";
-import { getWorkspaceCanonicalUrl } from "@/shared/utils/site-constants";
 import { getLegalDocument, type LegalDocumentKey } from "./content";
 
 type LegalElementProps = {
@@ -17,9 +16,10 @@ type LegalElementProps = {
   readonly href?: string;
 };
 
-// Same-site links are written as paths; Markdown readers need the full URL.
+// Same-site links are written as paths, some with a locale; Markdown readers
+// need the full, locale-agnostic URL.
 const absoluteHref = (href: string) =>
-  href.startsWith("/") ? getWorkspaceCanonicalUrl(href) : href;
+  href.startsWith("/") ? getWorkspacePageUrl(href) : href;
 
 /**
  * The authored legal body as Markdown phrasing: text stays text and an

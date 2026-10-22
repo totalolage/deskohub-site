@@ -1,6 +1,6 @@
 import type { PublicCatalogOffering } from "@/features/checkout/public-offerings";
 import { getPublicOfferingsStructuredData } from "@/features/checkout/public-offerings-structured-data";
-import { getWorkspaceAlternates, type Locale } from "@/features/i18n";
+import { getWorkspacePageUrl, type Locale } from "@/features/i18n";
 import { StructuredData } from "@/shared/components/structured-data";
 
 /** The Schema.org services and offers a reservation page books. */
@@ -18,7 +18,7 @@ export function ReservationOfferingsStructuredData({
       data={getPublicOfferingsStructuredData({
         locale,
         offerings,
-        url: getWorkspaceAlternates(locale, pathname).canonical,
+        url: getWorkspacePageUrl(pathname),
       })}
     />
   );

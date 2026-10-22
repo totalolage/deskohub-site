@@ -1,4 +1,4 @@
-import { getWorkspaceAlternates, type Locale, m } from "@/features/i18n";
+import { getWorkspacePageUrl, type Locale, m } from "@/features/i18n";
 import {
   getWorkspaceCanonicalUrl,
   workspaceSiteConstants,
@@ -65,7 +65,7 @@ export const getLocalBusinessStructuredData = ({
     name: brand.name,
     legalName: brand.legalName,
     description: m.landingMetadataDescription({}, { locale }),
-    url: getWorkspaceAlternates(locale).canonical,
+    url: getWorkspacePageUrl("/"),
     email: contact.infoEmail,
     image,
     address: {
