@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
-import { Effect, Layer, Logger } from "effect";
+import { Effect, Layer, Logger, Option } from "effect";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
 import { SiteToolsFeatureFlagService } from "./site-tools-feature-flag.service";
@@ -89,5 +89,30 @@ describe("SiteToolsFeatureFlagService", () => {
       values: [false, false],
       warnings: ["Site tools feature flag evaluation unavailable"],
     });
+  });
+
+  test("releases site tools for every visitor only while the flag is the same for everyone", async () => {
+    const releaseFor = (constantValue: Option.Option<boolean>) =>
+      Effect.runPromise(
+        SiteToolsFeatureFlagService.pipe(
+          Effect.flatMap((featureFlag) => featureFlag.release),
+          Effect.provide(
+            SiteToolsFeatureFlagService.Default.pipe(
+              Layer.provide(
+                WorkspaceFeatureFlagServiceMock({
+                  constantValue: (key) =>
+                    key === "webmcp_site_tools"
+                      ? Effect.succeed(constantValue)
+                      : Effect.die(`unexpected flag ${key}`),
+                })
+              )
+            )
+          )
+        )
+      );
+
+    expect(await releaseFor(Option.some(true))).toBe("on");
+    expect(await releaseFor(Option.some(false))).toBe("off");
+    expect(await releaseFor(Option.none())).toBe("undecided");
   });
 });

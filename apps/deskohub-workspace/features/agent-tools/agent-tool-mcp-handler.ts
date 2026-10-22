@@ -36,6 +36,10 @@ import {
   toAgentToolErrorResult,
 } from "./agent-tool-error";
 import {
+  agentToolBookingGuidance,
+  agentToolBusinessSummary,
+} from "./agent-tool-guidance";
+import {
   authorizeAgentToolRequest,
   isAgentToolGranted,
 } from "./agent-tool-mcp-authorization";
@@ -51,14 +55,12 @@ import type { CustomerAgentCaller } from "./customer-agent-caller";
 /** The version of the tool contract agents see; bump it on breaking changes. */
 const agentToolServerVersion = "1.0.0";
 
-const { address } = workspaceSiteConstants.location;
-
+// The products come from list_offerings, so the instructions don't repeat
+// the catalog.
 const agentToolServerInstructions = [
-  `${workspaceSiteConstants.brand.name} is a coworking space at ${address.street}, ${address.postalCode} ${address.city}, open 24/7.`,
-  "It offers cowork desks by the day, a meeting room by the hour or the day, and a private office for whole days.",
-  "Use list_offerings for products with their regular and today's advertised prices, check_availability to see whether a selection looks free, and get_quote for the exact price of a selection.",
-  "Bookings are made and paid on the website: give the customer the reservation_url from a result to finish there. Availability and price are confirmed on the website before payment.",
-  "With the customer signed in, start_reservation holds a selection for them and returns a pay_url where they accept the terms and pay; get_reservation_status and list_my_reservations show their own reservations. The tools can't pay, cancel, or change a reservation.",
+  agentToolBusinessSummary,
+  "Use list_offerings for the products on offer with their regular and today's advertised prices, check_availability to see whether a selection looks free, and get_quote for the exact price of a selection.",
+  ...agentToolBookingGuidance,
 ].join(" ");
 
 /**

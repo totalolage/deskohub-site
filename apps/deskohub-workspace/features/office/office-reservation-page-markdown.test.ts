@@ -93,13 +93,13 @@ describe.each(locales)("officeReservationPageMarkdown in %s", (locale) => {
       expect(lines).not.toContain(line);
     }
     expect(markdownLinkUrls(markdown)).toEqual([
-      `https://workspace.deskohub.cz/${locale}/reservation/office`,
+      "https://workspace.deskohub.cz/reservation/office",
     ]);
   });
 
   test("links to the office reservation page", () => {
     expect(markdownLinkUrls(render(locale))).toEqual([
-      `https://workspace.deskohub.cz/${locale}/reservation/office`,
+      "https://workspace.deskohub.cz/reservation/office",
     ]);
   });
 });

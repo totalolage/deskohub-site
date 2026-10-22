@@ -8,6 +8,13 @@ export interface WorkspacePaymentAccount {
   readonly bankName: string;
 }
 
+export interface WorkspaceOpeningHours {
+  /** The space is open around the clock, every day. */
+  readonly alwaysOpen: boolean;
+  /** Open Space desks are usable from midnight until this local time, exclusive. */
+  readonly openSpaceUsableUntil: string;
+}
+
 export const workspaceSiteConstants = {
   brand: {
     name: "Deskohub Workspace",
@@ -32,11 +39,9 @@ export const workspaceSiteConstants = {
     timeZone: WORKSPACE_SITE_TIME_ZONE,
   },
   openingHours: {
-    /** The space is open around the clock, every day. */
     alwaysOpen: true,
-    /** Open Space desks are usable from midnight until this local time, exclusive. */
     openSpaceUsableUntil: "17:00",
-  },
+  } satisfies WorkspaceOpeningHours,
   reservation: {
     defaultStartTime: "10:00",
   },

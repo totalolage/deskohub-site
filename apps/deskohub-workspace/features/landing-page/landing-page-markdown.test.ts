@@ -93,17 +93,17 @@ describe.each(locales)("landingPageMarkdown in %s", (locale) => {
     expect(markdown).toStartWith(`# ${m.landingHeroTitle({}, { locale })}`);
   });
 
-  test("links each call to action to its absolute target", async () => {
+  test("links each call to action to its absolute, locale-agnostic target", async () => {
     const markdown = await renderLandingPage(locale, true);
 
     expect(markdownLinkUrls(markdown)).toEqual([
-      `${origin}/${locale}/meeting-room`,
-      `${origin}/${locale}/reservation/cowork`,
-      `${origin}/${locale}/contact`,
+      `${origin}/meeting-room`,
+      `${origin}/reservation/cowork`,
+      `${origin}/contact`,
       workspaceGoogleDirectionsUrl,
       `mailto:${infoEmail}`,
-      `${origin}/${locale}/contact`,
-      `${origin}/${locale}#overview`,
+      `${origin}/contact`,
+      `${origin}/#overview`,
     ]);
   });
 
@@ -126,7 +126,9 @@ describe.each(locales)("landingPageMarkdown in %s", (locale) => {
     ]);
     expect(bannerSentence(banner)).toContain("*Summer* sale");
     expect(markdown).toContain(`**${banner.label.adjustment}**`);
-    expect(markdownLinkUrls(markdown)[0]).toBe(`${origin}${banner.href}`);
+    expect(markdownLinkUrls(markdown)[0]).toBe(
+      `${origin}${banner.href.slice(`/${locale}`.length)}`
+    );
   });
 
   test("leaves out the meeting room call to action while that page is unpublished", async () => {
@@ -135,9 +137,7 @@ describe.each(locales)("landingPageMarkdown in %s", (locale) => {
     expect(markdownPlainText(markdown)).not.toContain(
       m.landingHeroMeetingRoomCta({}, { locale })
     );
-    expect(markdownLinkUrls(markdown)).not.toContain(
-      `${origin}/${locale}/meeting-room`
-    );
+    expect(markdownLinkUrls(markdown)).not.toContain(`${origin}/meeting-room`);
     expect(markdownPlainText(markdown)).toContain(
       m.landingHeroPrimaryCta({}, { locale })
     );
