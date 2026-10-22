@@ -93,7 +93,7 @@ describe.skipIf(!testDatabase)("CLI mutations on disposable Postgres", () => {
       } as const;
       return yield* ledger.applyOnce({
         request: {
-          sessionId,
+          scope: { _tag: "CliSession", sessionId },
           requestId,
           mutation: {
             kind: "campaign-audience-create",

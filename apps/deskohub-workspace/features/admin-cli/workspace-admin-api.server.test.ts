@@ -5,6 +5,7 @@ import { IgloohomeService } from "@deskohub/igloohome";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationActorEmail,
+  AdministrationAuthentication,
   AdministrationInstant,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
@@ -30,13 +31,23 @@ import {
   CliSessionUnauthorized,
   CliStandaloneAccessCodeCleanupRequired,
   CliStandaloneAccessCodeReconciled,
+  CurrentAdministrationCaller,
   CurrentCliSession,
   toAdministrationActorName,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Layer, Logger, Option, Result, Schema } from "effect";
+import {
+  Effect,
+  Layer,
+  Logger,
+  Option,
+  Redacted,
+  Result,
+  Schema,
+} from "effect";
+import { HttpRouter } from "effect/unstable/http";
 import { HttpApiTest } from "effect/unstable/httpapi";
 import type { CliStoredMutation } from "@/db/schema";
 import {
@@ -55,16 +66,19 @@ import {
   ReservationAccessAdministrationError,
 } from "@/features/administration/reservation-access-administration.service";
 import { ReservationAdministrationService } from "@/features/administration/reservation-administration.service";
+import { LegacyAdministratorBackfill } from "@/features/administrators";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import {
   DiscountAdminConflictError,
   DiscountAdministration,
 } from "@/features/discounts/admin/discount-administration.service";
+import { CampaignOperations } from "@/features/email-campaigns/backend/campaign-operations.service";
 import {
   ReservationProductDetailsBackfill,
   type ReservationProductDetailsBackfillBatch,
 } from "@/features/reservation/backend/reservation-product-details-backfill.service";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { UnusedCliSessionAuthentication } from "./cli-api.test-utils";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 import { CliClientCompatibilityLive } from "./cli-client-version";
@@ -72,7 +86,9 @@ import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
 import {
   AdminCliAdministrationApiHandlers,
   AdminCliApiHandlers,
+  CliSessionAdministrationAuthenticationLive,
   handleWorkspaceAdminApiRequest,
+  makeWorkspaceAdminApiLayer,
 } from "./workspace-admin-api.server";
 
 const cliAdministrator: AdministratorAccountActor = {
@@ -84,8 +100,11 @@ const SessionAdministratorAuthentication = Layer.succeed(CliAuthentication, {
   ...({} as CliAuthentication["Service"]),
   sessionAdministrator: () => Effect.succeed(cliAdministrator),
 });
+// The bearer authenticates, but its session has no approving administrator.
 const UnresolvableSessionAuthentication = Layer.succeed(CliAuthentication, {
   ...({} as CliAuthentication["Service"]),
+  authenticateSession: () =>
+    Effect.succeed({ ...session, id: CliSessionId.make(session.id) }),
   sessionAdministrator: () =>
     Effect.fail(
       new CliSessionUnauthorized({ message: "No approving administrator." })
@@ -146,17 +165,31 @@ const cliAdministratorApprover = {
   approvedBy: toAdministrationActorName(cliAdministratorEmail),
   approvedByEmail: cliAdministratorEmail,
 };
-const AuthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
+// Every request acts as `cliAdministrator` on the session's channel.
+const CliCallerAuthentication = Layer.succeed(AdministrationAuthentication, {
   bearer: (httpEffect) =>
-    Effect.provideService(httpEffect, CurrentCliSession, session),
-});
-const ActorAuthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
-  bearer: (httpEffect) =>
-    Effect.provideService(httpEffect, CurrentCliSession, {
-      ...session,
-      ...cliAdministratorApprover,
+    Effect.provideService(httpEffect, CurrentAdministrationCaller, {
+      actor: cliAdministrator,
+      channel: { _tag: "CliSession", sessionId: CliSessionId.make(session.id) },
     }),
 });
+const AuthorizedCliRequest = Layer.mergeAll(
+  CliCallerAuthentication,
+  Layer.succeed(CliBearerAuthentication, {
+    bearer: (httpEffect) =>
+      Effect.provideService(httpEffect, CurrentCliSession, session),
+  })
+);
+const ActorAuthorizedCliRequest = Layer.mergeAll(
+  CliCallerAuthentication,
+  Layer.succeed(CliBearerAuthentication, {
+    bearer: (httpEffect) =>
+      Effect.provideService(httpEffect, CurrentCliSession, {
+        ...session,
+        ...cliAdministratorApprover,
+      }),
+  })
+);
 
 describe("Workspace Admin API", () => {
   test("disables caching for API responses", async () => {
@@ -166,6 +199,156 @@ describe("Workspace Admin API", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  test("serves each instance's own caller when instances share a memo map", async () => {
+    const instances = ["first", "second"] as const;
+    type Instance = (typeof instances)[number];
+    const callerOf = (instance: Instance) => ({
+      actor: {
+        accountId: customerAccountIdSchema.make(`account-${instance}`),
+        email: testEmailAddress(instance),
+      },
+      channel: {
+        _tag: "CliSession" as const,
+        sessionId: CliSessionId.make(
+          instance === "first"
+            ? "01980000-0000-7000-8000-0000000000a1"
+            : "01980000-0000-7000-8000-0000000000a2"
+        ),
+      },
+    });
+    // Each instance accepts only the bearer named after it.
+    const authenticationOf = (instance: Instance) =>
+      Layer.succeed(AdministrationAuthentication, {
+        bearer: (httpEffect, { credential }) =>
+          Redacted.value(credential) === instance
+            ? Effect.provideService(
+                httpEffect,
+                CurrentAdministrationCaller,
+                callerOf(instance)
+              )
+            : Effect.fail(
+                new CliSessionUnauthorized({ message: "Not this instance." })
+              ),
+      });
+    const sessionOwners: Array<string> = [];
+    const ledgerScopes: Array<unknown> = [];
+    const services = Layer.mergeAll(
+      Layer.succeed(CliAuthentication, {
+        ...({} as CliAuthentication["Service"]),
+        listSessions: (owner) =>
+          Effect.sync(() => {
+            sessionOwners.push(owner);
+            return [];
+          }),
+      }),
+      Layer.succeed(CliMutationIdempotency, {
+        applyOnce: () => Effect.die("Unused CLI mutation ledger"),
+        claim: (request) =>
+          Effect.sync(() => {
+            ledgerScopes.push(request.scope);
+            return { kind: "in-progress" as const };
+          }),
+        complete: () => Effect.void,
+        reclaimStale: () => Effect.succeed(false),
+        release: () => Effect.void,
+      }),
+      Layer.succeed(CliAuthenticationAdmission, {} as never),
+      Layer.succeed(AdministrationService, {} as never),
+      Layer.succeed(LegacyAdministratorBackfill, {} as never),
+      Layer.succeed(CampaignOperations, {} as never),
+      UnusedReservationAdministration,
+      UnusedReservationProductDetailsBackfill,
+      UnusedReservationAccessAdministration,
+      UnusedDiscountAdministration,
+      UnusedInvoiceAdministration,
+      UnusedStandaloneAccessCodeAdministration,
+      NodeHttpServer.layerHttpServices
+    );
+    const request = (
+      handler: (request: Request) => Promise<Response>,
+      bearer: Instance,
+      init: RequestInit & { readonly path: string }
+    ) =>
+      handler(
+        new Request(`https://workspace.deskohub.test/api/v1/cli${init.path}`, {
+          ...init,
+          headers: {
+            authorization: `Bearer ${bearer}`,
+            "content-type": "application/json",
+          },
+        })
+      );
+    const listSessions = { path: "/sessions" };
+    const deleteCode = {
+      path: "/discounts/mutations",
+      method: "POST",
+      body: JSON.stringify({
+        requestId: "01980000-0000-7000-8000-0000000000b1",
+        mutation: {
+          kind: "delete-code",
+          id: "01980000-0000-7000-8000-0000000000c1",
+        },
+      }),
+    };
+
+    for (const order of [instances, [...instances].reverse()]) {
+      sessionOwners.length = 0;
+      ledgerScopes.length = 0;
+      const memoMap = Layer.makeMemoMapUnsafe();
+      const handlers = Object.fromEntries(
+        instances.map((instance) => [
+          instance,
+          HttpRouter.toWebHandler(
+            makeWorkspaceAdminApiLayer({
+              authentication: authenticationOf(instance),
+              clientCompatibility: CliClientCompatibilityLive,
+            }).pipe(Layer.provide(services)),
+            { disableLogger: true, memoMap }
+          ),
+        ])
+      ) as Record<
+        Instance,
+        ReturnType<typeof HttpRouter.toWebHandler<never, never, never, never>>
+      >;
+
+      const statuses: Array<[string, number, string | null]> = [];
+      for (const instance of [...order, order[0]]) {
+        const other = instance === "first" ? "second" : "first";
+        const { handler } = handlers[instance];
+        for (const [name, response] of [
+          ["own sessions", await request(handler, instance, listSessions)],
+          ["other's sessions", await request(handler, other, listSessions)],
+          ["own mutation", await request(handler, instance, deleteCode)],
+        ] as const) {
+          statuses.push([
+            `${instance} ${name}`,
+            response.status,
+            response.headers.get("cache-control"),
+          ]);
+        }
+      }
+      await Promise.all(
+        Object.values(handlers).map((handler) => handler.dispose())
+      );
+
+      expect(statuses).toEqual(
+        [...order, order[0]].flatMap((instance) => [
+          [`${instance} own sessions`, 200, "private, no-store"],
+          [`${instance} other's sessions`, 401, "private, no-store"],
+          [`${instance} own mutation`, 409, "private, no-store"],
+        ])
+      );
+      expect(sessionOwners).toEqual(
+        [...order, order[0]].map(
+          (instance) => callerOf(instance).actor.accountId
+        )
+      );
+      expect(ledgerScopes).toEqual(
+        [...order, order[0]].map((instance) => callerOf(instance).channel)
+      );
+    }
   });
 
   test("runs one product-details backfill batch with the requested options", async () => {
@@ -795,6 +978,8 @@ describe("Workspace Admin API", () => {
     let serviceCalls = 0;
     const authentication = Layer.succeed(CliAuthentication, {
       ...({} as CliAuthentication["Service"]),
+      authenticateSession: () =>
+        Effect.succeed({ ...session, id: CliSessionId.make(session.id) }),
       sessionAdministrator: () =>
         Effect.fail(
           new CliSessionUnauthorized({ message: "No approving administrator." })
@@ -838,7 +1023,12 @@ describe("Workspace Admin API", () => {
       return { renamed, revoked, sessions };
     }).pipe(
       Effect.provide(AdminCliAdministrationApiHandlers),
-      Effect.provide(AuthorizedCliRequest),
+      Effect.provide(
+        Layer.mergeAll(
+          CliSessionAdministrationAuthenticationLive,
+          UnusedCliSessionAuthentication
+        )
+      ),
       Effect.provide(authentication),
       Effect.provide(
         Layer.succeed(
@@ -859,9 +1049,9 @@ describe("Workspace Admin API", () => {
       Effect.runPromise
     );
 
-    expect(result.sessions).toBeInstanceOf(CliServiceUnavailable);
-    expect(result.renamed).toBeInstanceOf(CliServiceUnavailable);
-    expect(result.revoked).toBeInstanceOf(CliServiceUnavailable);
+    expect(result.sessions).toBeInstanceOf(CliSessionUnauthorized);
+    expect(result.renamed).toBeInstanceOf(CliSessionUnauthorized);
+    expect(result.revoked).toBeInstanceOf(CliSessionUnauthorized);
     expect(serviceCalls).toBe(0);
   });
 
@@ -1030,7 +1220,7 @@ describe("standalone access-code CLI endpoint", () => {
     });
 
   const runAdministration = <A, E, R>(
-    bearer: Layer.Layer<CliBearerAuthentication>,
+    bearer: Layer.Layer<AdministrationAuthentication, never, CliAuthentication>,
     standalone: Layer.Layer<StandaloneAccessCodeAdministration>,
     idempotency: Layer.Layer<CliMutationIdempotency>,
     operation: Effect.Effect<A, E, R>,
@@ -1039,6 +1229,7 @@ describe("standalone access-code CLI endpoint", () => {
     operation.pipe(
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(bearer),
+      Effect.provide(UnusedCliSessionAuthentication),
       Effect.provide(standalone),
       Effect.provide(idempotency),
       Effect.provide(UnusedInvoiceAdministration),
@@ -1208,14 +1399,14 @@ describe("standalone access-code CLI endpoint", () => {
     });
 
     const error = await runAdministration(
-      AuthorizedCliRequest,
+      CliSessionAdministrationAuthenticationLive,
       UnusedStandaloneAccessCodeAdministration,
       idempotency,
       createAccessCodeError,
       UnresolvableSessionAuthentication
     ).pipe(Effect.runPromise);
 
-    expect(error).toBeInstanceOf(CliServiceUnavailable);
+    expect(error).toBeInstanceOf(CliSessionUnauthorized);
     expect(claims).toBe(0);
   });
 
@@ -1678,9 +1869,9 @@ describe("standalone access-code CLI endpoint", () => {
       { readonly mutation: CliStoredMutation; result: unknown }
     >();
     const ledgerKey = (request: {
-      readonly sessionId: string;
+      readonly scope: { readonly sessionId: string };
       readonly requestId: string;
-    }) => `${request.sessionId}/${request.requestId}`;
+    }) => `${request.scope.sessionId}/${request.requestId}`;
     const sameStoredMutation = (
       stored: CliStoredMutation,
       incoming: CliStoredMutation

@@ -3,13 +3,8 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
-  AdministrationActorEmail,
   type AdministrationLegacyAdministratorBackfillResultType,
   AdministrationLegacyUsername,
-  CliBearerAuthentication,
-  CliSessionUnauthorized,
-  CurrentCliSession,
-  toAdministrationActorName,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
@@ -21,33 +16,13 @@ import {
   LegacyAdministratorBackfillError,
 } from "@/features/administrators/backend/legacy-administrator-backfill.service";
 import { AdminCliAdministratorsApiHandlers } from "./administrators-api.server";
+import {
+  authorizedCliRequest,
+  UnauthorizedCliRequest,
+} from "./cli-api.test-utils";
 import { CliClientCompatibilityLive } from "./cli-client-version";
 
-const cliAdministratorEmail = AdministrationActorEmail.make(
-  testEmailAddress("cli-admin")
-);
-const session = {
-  id: "01980000-0000-7000-8000-000000000000",
-  approvedBy: toAdministrationActorName(cliAdministratorEmail),
-  approvedByEmail: cliAdministratorEmail,
-  clientName: "test client",
-  cliVersion: "1.0.0",
-  buildTarget: "development",
-  createdAt: "2026-08-10T10:00:00.000Z",
-  lastUsedAt: "2026-08-10T10:00:00.000Z",
-  expiresAt: null,
-} as const;
-
-const AuthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
-  bearer: (httpEffect) =>
-    Effect.provideService(httpEffect, CurrentCliSession, session),
-});
-const UnauthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
-  bearer: () =>
-    Effect.fail(
-      new CliSessionUnauthorized({ message: "The CLI session is not valid." })
-    ),
-});
+const AuthorizedCliRequest = authorizedCliRequest();
 
 const input = {
   legacyUsername: AdministrationLegacyUsername.make("admin"),

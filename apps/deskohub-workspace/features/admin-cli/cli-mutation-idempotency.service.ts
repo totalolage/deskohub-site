@@ -1,6 +1,7 @@
 import {
   AdministrationCampaignAudience,
   AdministrationCampaignDetail,
+  type AdministrationChannel,
   AdministrationDiscountMutationResult,
   AdministrationReservationAccessGrant,
   AdministrationStandaloneAccessCodeResult,
@@ -29,8 +30,45 @@ type CliMutationClaim =
   | { readonly kind: "in-progress" }
   | { readonly kind: "mismatch" };
 
-type CliMutationRequest = {
+/**
+ * Where a request ID is unique and its result replays: the channel the
+ * administrator called through. Only CLI sessions keep a ledger today.
+ */
+export type AdministrationMutationScope = {
+  readonly _tag: "CliSession";
   readonly sessionId: CliSessionIdType;
+};
+
+/** The ledger scope of an administration caller's channel. */
+export const mutationScopeOf = (
+  channel: AdministrationChannel
+): AdministrationMutationScope =>
+  Match.value(channel).pipe(
+    Match.tagsExhaustive({
+      CliSession: ({ sessionId }) => ({
+        _tag: "CliSession" as const,
+        sessionId,
+      }),
+    })
+  );
+
+const isInScope = (scope: AdministrationMutationScope) =>
+  Match.value(scope).pipe(
+    Match.tagsExhaustive({
+      CliSession: ({ sessionId }) =>
+        eq(cliMutationRequests.sessionId, sessionId),
+    })
+  );
+
+const scopeColumns = (scope: AdministrationMutationScope) =>
+  Match.value(scope).pipe(
+    Match.tagsExhaustive({
+      CliSession: ({ sessionId }) => ({ sessionId }),
+    })
+  );
+
+type CliMutationRequest = {
+  readonly scope: AdministrationMutationScope;
   readonly requestId: CliMutationRequestIdType;
   readonly mutation: CliStoredMutation;
 };
@@ -44,7 +82,7 @@ type CliDatabaseMutation<A extends CliStoredMutationResult, E, R> = {
 
 interface ICliMutationIdempotency {
   /**
-   * Applies a database-only CLI mutation at most once per session and
+   * Applies a database-only CLI mutation at most once per scope and
    * request ID. The claim, the mutation and the stored result commit in
    * one transaction, so a failure or crash anywhere leaves no trace and
    * the request ID free for a retry. A retry after the commit replays the
@@ -99,7 +137,11 @@ export class CliMutationIdempotency extends Context.Service<
       ) {
         const inserted = yield* db
           .insert(cliMutationRequests)
-          .values(request)
+          .values({
+            ...scopeColumns(request.scope),
+            requestId: request.requestId,
+            mutation: request.mutation,
+          })
           .onConflictDoNothing()
           .returning({ requestId: cliMutationRequests.requestId });
         if (inserted.length > 0) {
@@ -111,7 +153,7 @@ export class CliMutationIdempotency extends Context.Service<
           .from(cliMutationRequests)
           .where(
             and(
-              eq(cliMutationRequests.sessionId, request.sessionId),
+              isInScope(request.scope),
               eq(cliMutationRequests.requestId, request.requestId),
               eq(cliMutationRequests.mutation, request.mutation)
             )
@@ -147,7 +189,7 @@ export class CliMutationIdempotency extends Context.Service<
             })
             .where(
               and(
-                eq(cliMutationRequests.sessionId, request.sessionId),
+                isInScope(request.scope),
                 eq(cliMutationRequests.requestId, request.requestId),
                 eq(cliMutationRequests.mutation, request.mutation),
                 isNull(cliMutationRequests.result)
@@ -173,7 +215,7 @@ export class CliMutationIdempotency extends Context.Service<
             .delete(cliMutationRequests)
             .where(
               and(
-                eq(cliMutationRequests.sessionId, request.sessionId),
+                isInScope(request.scope),
                 eq(cliMutationRequests.requestId, request.requestId),
                 eq(cliMutationRequests.mutation, request.mutation),
                 isNull(cliMutationRequests.result)
@@ -194,7 +236,7 @@ export class CliMutationIdempotency extends Context.Service<
             .set({ createdAt: request.reclaimedAt })
             .where(
               and(
-                eq(cliMutationRequests.sessionId, request.sessionId),
+                isInScope(request.scope),
                 eq(cliMutationRequests.requestId, request.requestId),
                 eq(cliMutationRequests.mutation, request.mutation),
                 isNull(cliMutationRequests.result),

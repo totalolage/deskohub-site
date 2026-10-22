@@ -1,8 +1,13 @@
 import { Schema } from "effect";
 import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import {
+  AdministrationOperationBehavior,
+  destructiveOperation,
+  dryRunPreview,
+} from "./administration-operation";
+import {
+  AdministrationAuthentication,
   AdministrationLegacyUsername,
-  CliBearerAuthentication,
   CliResourceNotFound,
   CliServiceUnavailable,
 } from "./workspace-admin-api";
@@ -62,7 +67,10 @@ export const AdminCliAdministratorsApi = HttpApiGroup.make("administrators")
         success: AdministrationLegacyAdministratorBackfillResult,
         error: [CliResourceNotFound.schema, CliServiceUnavailable.schema],
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({ idempotent: true, preview: dryRunPreview })
     )
   )
-  .middleware(CliBearerAuthentication)
+  .middleware(AdministrationAuthentication)
   .prefix("/api/v1/cli");
