@@ -234,11 +234,17 @@ export const callHandler = (
     })
   );
 
-const runIpOctet = Math.floor(Math.random() * 200) + 20;
+const runIpOffset = (Math.floor(Math.random() * 200) + 20) * 256;
 let ipCounter = 0;
+/**
+ * A new address in 172.16.0.0/12 on every call. The count carries into the
+ * higher octets, so a run never produces an invalid address, which Better
+ * Auth would not rate-limit by.
+ */
 export const uniqueIp = () => {
   ipCounter += 1;
-  return `172.16.${runIpOctet}.${ipCounter}`;
+  const host = (runIpOffset + ipCounter) % 2 ** 20;
+  return `172.${16 + (host >> 16)}.${(host >> 8) & 255}.${host & 255}`;
 };
 
 const runCustomerPrefix = Math.floor(Math.random() * 900000) + 100000;
