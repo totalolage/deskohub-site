@@ -201,7 +201,7 @@ export const handleAssistantAdministrationRequest: (
         Layer.mergeAll(
           CustomerAgentAuthorization.Default,
           AdministratorAgentAuthorization.Live,
-          CustomerAgentClientDirectory.Default,
+          CustomerAgentClientDirectory.Server,
           AdministratorAssistantConnections.Live
         )
       )

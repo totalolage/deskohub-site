@@ -301,6 +301,24 @@ const findClient = (auth: TestAuth, clientId: string, headers: Headers) =>
     )
   );
 
+/** Reads a client the way the server does without a customer session. */
+const findClientOnServer = (auth: TestAuth, clientId: string) =>
+  Effect.runPromise(
+    Effect.flatMap(CustomerAgentClientDirectory, (directory) =>
+      directory.find(clientId)
+    ).pipe(
+      Effect.provide(
+        CustomerAgentClientDirectory.fromAuthority({
+          findPublicClient: (id) =>
+            auth.api.findCustomerAgentClient({
+              body: { clientId: id },
+              headers: new Headers({ host: HOST }),
+            }),
+        })
+      )
+    )
+  );
+
 /** Serves each agent's metadata document from one transport. */
 const serveAgents =
   (...agents: ReadonlyArray<ReturnType<typeof makeAgent>>) =>
@@ -739,6 +757,18 @@ describe.skipIf(!testDatabase)(
       expect(unresolved._tag === "Failure" && unresolved.failure.reason).toBe(
         "unavailable"
       );
+      // The server names the same agent without a customer session, as for
+      // a request that carries only the agent's access token.
+      expect(await findClientOnServer(auth, agent.clientId)).toEqual(
+        Option.some({
+          clientId: agent.clientId as never,
+          name: CLIENT_NAME,
+          host: "client.example",
+        })
+      );
+      expect(
+        await findClientOnServer(auth, "https://unknown.example/client.json")
+      ).toEqual(Option.none());
 
       // d. Accepting returns the agent to its redirect URI with a code.
       const callback = await answerConsent(

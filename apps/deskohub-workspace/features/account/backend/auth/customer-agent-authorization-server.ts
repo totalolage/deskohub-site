@@ -44,6 +44,10 @@ const accessTokenVerificationBody = Schema.toStandardSchemaV1(
   Schema.Struct({ token: Schema.String })
 );
 
+const clientLookupBody = Schema.toStandardSchemaV1(
+  Schema.Struct({ clientId: Schema.String })
+);
+
 /**
  * The OAuth 2.1 authorization server that customers' AI agents sign in
  * through, for the customer MCP server at `resource`.
@@ -65,6 +69,9 @@ const accessTokenVerificationBody = Schema.toStandardSchemaV1(
  * - `verifyCustomerAgentAccessToken` is a server-only endpoint that validates
  *   a token through the provider's own capability surface, so the MCP route
  *   in this app needs no introspection client or HTTP round trip.
+ * - `findCustomerAgentClient` is a server-only endpoint that reads a client's
+ *   public metadata without a customer session, for requests that carry
+ *   only an agent's access token. A disabled client reads as unknown.
  */
 export const makeCustomerAgentAuthorizationPlugins = ({
   resource,
@@ -102,6 +109,27 @@ export const makeCustomerAgentAuthorizationPlugins = ({
           getOAuthProviderApi(ctx, provider.options).validateAccessToken(
             ctx.body.token
           )
+      ),
+      findCustomerAgentClient: createAuthEndpoint(
+        "/customer-agent/find-client",
+        {
+          method: "POST",
+          body: clientLookupBody,
+          metadata: { SERVER_ONLY: true },
+        },
+        async (ctx) => {
+          const client = await getOAuthProviderApi(
+            ctx,
+            provider.options
+          ).getClient(ctx.body.clientId);
+          return client === null || client.disabled
+            ? null
+            : {
+                client_id: client.clientId,
+                client_name: client.name ?? undefined,
+                client_uri: client.uri ?? undefined,
+              };
+        }
       ),
     },
   } satisfies BetterAuthPlugin;
