@@ -337,8 +337,15 @@ document); refresh them when a client changes its document.
   host that authenticates only after a challenge doesn't. The reconnect path
   is the host's own: disconnect and reconnect the connector, set Claude
   Code's `oauth.scopes` to include `administration`, or reauthorize the
-  ChatGPT link. Administration tools are never listed without the scope, so
-  there is no step-up challenge for them.
+  ChatGPT link.
+- Never answer with an OAuth challenge (`WWW-Authenticate` or
+  `_meta["mcp/www_authenticate"]`) that names `administration`, for any
+  caller. Claude Code re-authorizes for the union of its scopes and the
+  challenged one, and a non-administrator's consent drops `administration`,
+  so it would loop. A caller without the scope or the grant gets no
+  administration tools (a call is an unknown tool); a grant lost before a
+  call, or any refusal inside it, answers a tool error (`isError`). The
+  route tests pin this.
 
 ## Account-boundary adapter
 

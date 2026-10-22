@@ -8,7 +8,7 @@ import type {
   ListToolsResult,
   Resource,
 } from "@modelcontextprotocol/client";
-import { DateTime, Effect, Layer, Schema } from "effect";
+import { DateTime, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { m } from "@/features/i18n";
 import type { AgentTrafficEvent } from "@/shared/backend/agent-traffic/agent-traffic-events";
@@ -149,6 +149,9 @@ mock.module(
   })
 );
 
+/** What the administration API built for agents answers. */
+let administrationResponse = () => Response.json([]);
+
 /** The requests the administration API built for agents received. */
 const administrationRequests: Array<{
   readonly method: string;
@@ -164,7 +167,7 @@ mock.module(
         path: new URL(request.url).pathname,
         authorization: request.headers.get("authorization"),
       });
-      return Response.json([]);
+      return administrationResponse();
     },
   })
 );
@@ -933,6 +936,14 @@ describe("customer MCP route for signed-in tools", () => {
   });
 });
 
+const toolChallengesSchema = Schema.Struct({
+  result: Schema.Struct({
+    _meta: Schema.Struct({
+      "mcp/www_authenticate": Schema.Array(Schema.String),
+    }),
+  }),
+});
+
 describe("customer MCP route for administration tools", () => {
   beforeEach(() => {
     rateLimit = { rateLimited: false };
@@ -942,6 +953,7 @@ describe("customer MCP route for administration tools", () => {
     accessTokens.clear();
     administratorGrant = "live";
     administrationRequests.length = 0;
+    administrationResponse = () => Response.json([]);
   });
 
   const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
@@ -1108,6 +1120,119 @@ describe("customer MCP route for administration tools", () => {
 
     expect(response.status).toBeLessThan(500);
     expect(administrationRequests).toEqual([]);
+  });
+
+  /**
+   * Every OAuth challenge a response carries: its `WWW-Authenticate` header
+   * and each tool result's `_meta["mcp/www_authenticate"]`.
+   */
+  const challengesOf = async (response: Response) => {
+    const body = await response.clone().text();
+    const messages =
+      body === ""
+        ? []
+        : [(await readJsonRpc(response.clone())) as Schema.Json].flat();
+    return [
+      response.headers.get("www-authenticate") ?? "",
+      ...messages.flatMap((message) =>
+        Schema.decodeUnknownOption(toolChallengesSchema)(message).pipe(
+          Option.match({
+            onNone: () => [],
+            onSome: ({ result }) => result._meta["mcp/www_authenticate"],
+          })
+        )
+      ),
+    ];
+  };
+
+  test.each([
+    ["an agent without a token", undefined, "live"],
+    ["a customer's agent", "customer", "live"],
+    [
+      "an administrator's agent whose grant is gone",
+      "administrator",
+      "revoked",
+    ],
+    ["an administrator's agent", "administrator", "live"],
+  ] as const)(
+    "never challenges %s for the administration scope",
+    async (_, token, grant) => {
+      accessTokens.set("customer", "reservations:read");
+      accessTokens.set("administrator", "reservations:read administration");
+      administratorGrant = grant;
+      const headers = token === undefined ? {} : bearer(token);
+      const responses = [
+        await postRpc("tools/list", {}, headers),
+        ...(await Promise.all(
+          [
+            ["admin_list_sessions", {}],
+            [
+              "admin_revoke_session",
+              { sessionId: "0190a5c4-0000-7000-8000-000000000001" },
+            ],
+            ["whoami", {}],
+            ["start_reservation", {}],
+          ].map(([name, args]) =>
+            postRpc("tools/call", { name, arguments: args }, headers)
+          )
+        )),
+      ];
+
+      for (const response of responses) {
+        for (const challenge of await challengesOf(response)) {
+          expect(challenge).not.toContain("administration");
+        }
+      }
+    }
+  );
+
+  test("keeps a customer tool's challenge naming only that tool's scope for an administrator's agent", async () => {
+    accessTokens.set("administrator", "administration");
+
+    const response = await postRpc(
+      "tools/call",
+      { name: "whoami", arguments: {} },
+      bearer("administrator")
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("www-authenticate")).toContain(
+      'scope="reservations:read"'
+    );
+    expect(response.headers.get("www-authenticate")).not.toContain(
+      "administration"
+    );
+  });
+
+  test("answers a refusal inside an administration call as a tool error, not a challenge", async () => {
+    accessTokens.set("administrator", "administration");
+    administrationResponse = () =>
+      Response.json(
+        {
+          _tag: "CliSessionUnauthorized",
+          message: "Administrator access for this assistant ended.",
+        },
+        { status: 401 }
+      );
+
+    const response = await postRpc(
+      "tools/call",
+      { name: "admin_list_sessions", arguments: {} },
+      bearer("administrator")
+    );
+    const { result } = (await readJsonRpc(response.clone())) as {
+      readonly result?: CallToolResult;
+    };
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("www-authenticate")).toBeNull();
+    expect(result?.isError).toBe(true);
+    expect(result?.structuredContent).toMatchObject({
+      error: {
+        code: "administration_failed",
+        error: { _tag: "CliSessionUnauthorized" },
+      },
+    });
   });
 
   test("runs an administration tool for an administrator's agent with its own token", async () => {

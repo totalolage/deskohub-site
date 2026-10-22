@@ -108,18 +108,12 @@ const authorizeCalledTools = Effect.fn("agentTools.authorizeCalledTools")(
                   Effect.sync(() => !grant.scopes.has(scope))
                 ),
             }),
-          // Listed only after the live administrator check, so a caller
-          // reaches this only with the scope; the tool re-checks the grant.
-          administration: () =>
-            Effect.when(
-              refuse({ kind: "invalid-token" }),
-              Effect.sync(
-                () =>
-                  !Option.exists(caller, ({ grant }) =>
-                    grant.scopes.has(administrationAgentScope)
-                  )
-              )
-            ),
+          // Never challenged: an OAuth challenge naming `administration`
+          // would send a customer's agent, whose consent drops the scope,
+          // into a re-authorization loop. The tools are listed only after
+          // the live administrator check, and each call re-checks the grant
+          // and answers a refusal as a tool error.
+          administration: () => Effect.void,
         })
       )
     );
