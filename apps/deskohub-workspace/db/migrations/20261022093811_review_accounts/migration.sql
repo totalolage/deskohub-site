@@ -20,5 +20,7 @@ CREATE TABLE "review_account_holds" (
 	CONSTRAINT "review_account_holds_expiry_check" CHECK ("expires_at" > "booked_at")
 );
 --> statement-breakpoint
+ALTER TABLE "customer_accounts" ADD COLUMN "review" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 CREATE INDEX "review_account_holds_account_session_idx" ON "review_account_holds" ("account_id","checkout_session_key");--> statement-breakpoint
-ALTER TABLE "review_account_holds" ADD CONSTRAINT "review_account_holds_account_id_customer_accounts_id_fkey" FOREIGN KEY ("account_id") REFERENCES "customer_accounts"("id") ON DELETE RESTRICT;
+ALTER TABLE "review_account_holds" ADD CONSTRAINT "review_account_holds_account_id_customer_accounts_id_fkey" FOREIGN KEY ("account_id") REFERENCES "customer_accounts"("id") ON DELETE RESTRICT;--> statement-breakpoint
+ALTER TABLE "customer_accounts" ADD CONSTRAINT "customer_accounts_review_without_dotypos_customer_check" CHECK (not "review" or "dotypos_customer_id" is null);
