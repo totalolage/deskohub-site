@@ -63,11 +63,12 @@ const list = (
   );
 
 describe("CustomerAgentConnections", () => {
-  test("names each consented assistant, oldest first, with the scopes it explains", async () => {
+  test("names each consented assistant, oldest first, with the scopes it explains and whether it administers", async () => {
     const result = await list(async () => [
       consent("consent-2", helperId, "2026-10-05T08:00:00.000Z", [
         "openid",
         "offline_access",
+        "administration",
         "reservations:create",
       ]),
       consent("consent-1", assistantId, new Date("2026-10-01T08:00:00.000Z")),
@@ -81,6 +82,7 @@ describe("CustomerAgentConnections", () => {
           name: "Synthetic Assistant",
           host: "assistant.invalid",
           scopes: ["reservations:read"],
+          administration: false,
           connectedAt: "2026-10-01T08:00:00.000Z",
         },
         {
@@ -88,8 +90,9 @@ describe("CustomerAgentConnections", () => {
           name: "Synthetic Helper",
           host: "helper.invalid",
           // Scopes the consent page can't explain are left out; the rest
-          // keep its order.
+          // keep its order. Administration is flagged on its own.
           scopes: ["reservations:create", "offline_access"],
+          administration: true,
           connectedAt: "2026-10-05T08:00:00.000Z",
         },
       ],

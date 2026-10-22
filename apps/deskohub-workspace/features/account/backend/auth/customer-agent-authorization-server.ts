@@ -5,14 +5,11 @@ import { getOAuthProviderApi } from "@better-auth/oauth-provider";
 import type { BetterAuthPlugin } from "better-auth";
 import { createAuthEndpoint } from "better-auth/api";
 import { Schema } from "effect";
+import { agentScopes, offlineAccessAgentScope } from "../../agent-scopes";
 import {
   customerAgentConsentPath,
   customerAgentSignInPath,
 } from "../../customer-agent-routes";
-import {
-  customerAgentOfflineAccessScope,
-  customerAgentScopes,
-} from "../../customer-agent-scopes";
 
 /**
  * OAuth endpoints a signed-in customer could otherwise call to register or
@@ -26,6 +23,9 @@ export const disabledCustomerAgentClientPaths = [
   "/oauth2/update-client",
   "/oauth2/client/rotate-secret",
   "/oauth2/delete-client",
+  // Rewrites a consent's scopes without the consent step, which would let a
+  // customer grant themselves the administration scope.
+  "/oauth2/update-consent",
   "/oauth2/end-session",
 ];
 
@@ -84,11 +84,8 @@ export const makeCustomerAgentAuthorizationPlugins = ({
     consentPage: customerAgentConsentPath,
     disableJwtPlugin: true,
     refreshTokenReuseInterval: customerAgentRefreshTokenReuseSeconds,
-    scopes: [...customerAgentScopes, customerAgentOfflineAccessScope],
-    clientRegistrationDefaultScopes: [
-      ...customerAgentScopes,
-      customerAgentOfflineAccessScope,
-    ],
+    scopes: [...agentScopes, offlineAccessAgentScope],
+    clientRegistrationDefaultScopes: [...agentScopes, offlineAccessAgentScope],
   });
 
   const accessTokenVerification = {

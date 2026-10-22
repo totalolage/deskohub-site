@@ -1,6 +1,8 @@
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Option } from "effect";
+import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { revokeAdministrationAgentAccess } from "@/features/account/backend/auth/administration-agent-access";
 import { findActiveCustomerAccountByEmail } from "@/features/account/backend/customer-account-by-email";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { AdministratorAccountActor } from "../account-role";
@@ -41,14 +43,19 @@ interface IAdministratorRoster {
   >;
   /**
    * Revokes another account's administrator role. The gate reads grants on
-   * every request, so the account loses access on its next request.
+   * every request, so the account loses access on its next request. The
+   * account's AI agents that may use the administration are disconnected
+   * too, even when the role was already gone, so a retry finishes a revoke
+   * that failed halfway.
    */
   readonly revoke: (input: {
     readonly accountId: CustomerAccountId;
     readonly actor: AdministratorAccountActor;
   }) => Effect.Effect<
     { readonly changed: boolean },
-    AdministratorSelfRevocationError | EffectDrizzleQueryError
+    | AdministratorSelfRevocationError
+    | EffectDrizzleQueryError
+    | SqlError.SqlError
   >;
 }
 
@@ -100,7 +107,14 @@ export class AdministratorRoster extends Context.Service<
               message: "Administrators can't revoke their own grant.",
             });
           }
-          return yield* grants.revoke({ accountId, role });
+          // Grant first: once it is gone, later consent checks refuse the
+          // administration scope. One that already passed can still finish;
+          // administration calls re-read the grant.
+          const revoked = yield* grants.revoke({ accountId, role });
+          yield* revokeAdministrationAgentAccess(accountId).pipe(
+            Effect.provideService(WorkspaceDatabase, database)
+          );
+          return revoked;
         }),
       } satisfies IAdministratorRoster;
     })

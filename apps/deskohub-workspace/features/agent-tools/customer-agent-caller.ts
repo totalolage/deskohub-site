@@ -1,8 +1,11 @@
 import { Context, Layer } from "effect";
 import {
+  type CustomerAgentCaller,
   type CustomerAgentGrant,
   customerAgentAccountServices,
 } from "@/features/account";
+
+export type { CustomerAgentCaller };
 
 /**
  * The verified grant behind the access token of the agent calling a
@@ -13,12 +16,6 @@ export class CurrentCustomerAgentGrant extends Context.Service<
   CurrentCustomerAgentGrant,
   CustomerAgentGrant
 >()("@deskohub-workspace/agent-tools/CurrentCustomerAgentGrant") {}
-
-/** An agent whose access token the MCP request authorized. */
-export interface CustomerAgentCaller {
-  readonly grant: CustomerAgentGrant;
-  readonly accessToken: string;
-}
 
 /**
  * The services a signed-in tool call reads the customer through: the grant,

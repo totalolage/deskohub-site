@@ -15,6 +15,8 @@ export type CustomerAgentConnection = {
   readonly host: string | undefined;
   /** What the customer allowed, in the consent page's order. */
   readonly scopes: readonly CustomerAgentConsentScope[];
+  /** Whether the administrator also let it use the administration. */
+  readonly administration: boolean;
   /** ISO 8601 time of the customer's consent. */
   readonly connectedAt: string;
 };

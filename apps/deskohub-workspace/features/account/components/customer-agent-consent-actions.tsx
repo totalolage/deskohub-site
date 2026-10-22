@@ -22,10 +22,15 @@ class CustomerAgentConsentError extends Data.TaggedError(
   "CustomerAgentConsentError"
 )<{ readonly status?: number; readonly cause?: unknown }> {}
 
-/** Sends the customer's answer and yields the assistant's redirect URL. */
-const submitConsent = (accept: boolean) =>
+/**
+ * Sends the customer's answer and yields the assistant's redirect URL. An
+ * accepted consent always names the scopes it grants; the server refuses one
+ * that doesn't.
+ */
+const submitConsent = (accept: boolean, scope: string) =>
   Effect.tryPromise({
-    try: () => authClient.oauth2.consent({ accept }),
+    try: () =>
+      authClient.oauth2.consent(accept ? { accept, scope } : { accept }),
     catch: (cause) => new CustomerAgentConsentError({ cause }),
   }).pipe(
     Effect.flatMap(({ data, error }) =>
@@ -49,9 +54,12 @@ const consentFailureCode = "account.customer-agent-consent.failed";
 export function CustomerAgentConsentActions({
   locale,
   clientName,
+  scope,
 }: {
   readonly locale: Locale;
   readonly clientName: string;
+  /** The space-separated scopes Allow grants. */
+  readonly scope: string;
 }) {
   const [phase, setPhase] = useState<ConsentPhase>("idle");
   const [answer, setAnswer] = useState<boolean>();
@@ -67,7 +75,7 @@ export function CustomerAgentConsentActions({
     if (lifetime.current === undefined) return;
     setAnswer(accept);
     setPhase("submitting");
-    void submitConsent(accept).pipe(
+    void submitConsent(accept, scope).pipe(
       Effect.flatMap((url) =>
         Effect.sync(() => {
           setPhase("navigating");

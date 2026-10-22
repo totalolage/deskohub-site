@@ -1135,6 +1135,7 @@ describe("loadCustomerAccountPage", () => {
       name: "Synthetic Assistant",
       host: "assistant.invalid",
       scopes: ["reservations:read"],
+      administration: false,
       connectedAt: "2026-10-01T08:00:00.000Z",
     };
     assistantListEffect = Effect.succeed([assistant]);
