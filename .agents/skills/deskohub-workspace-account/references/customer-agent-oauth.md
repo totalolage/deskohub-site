@@ -92,8 +92,9 @@ resource.
 ChatGPT and Claude, whose directories list the MCP server, register through
 their published metadata documents. The flow test signs a customer in
 through each one; its fixtures in
-`customer-agent-directory-clients.test-utils.ts` copy the live documents, so
-refresh them when a client changes its document.
+`customer-agent-directory-clients.test-utils.ts` copy the live documents
+(ChatGPT publishes no per-connector example, so that one follows its stable
+document); refresh them when a client changes its document.
 
 - ChatGPT uses `https://chatgpt.com/oauth/client.json` with redirect
   `https://chatgpt.com/connector_platform_oauth_redirect`, because the
@@ -118,8 +119,9 @@ refresh them when a client changes its document.
   and listens on a port it picks per sign-in. Upstream ignores the port only
   for loopback IPs; the `@better-auth/oauth-provider` patch extends that to
   `localhost` (see the `deskohub-repository` skill's patched dependencies).
-  A document without `application_type` registers as native, which allows
-  HTTP loopback redirect URIs.
+  Path, query, scheme, and host still match exactly.
+  A document without `application_type` gets native redirect validation,
+  which allows HTTP loopback redirect URIs.
 - The consent page names each client by its metadata host: `chatgpt.com`,
   `claude.ai`. Claude Code also shows `claude.ai`, though its redirect
   URI is on loopback.

@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, setSystemTime, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer, Option, type Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { CustomerAccountId } from "../../customer-account";
 import {
@@ -141,6 +141,7 @@ type AuthorizationRequest = {
   readonly state: string;
   readonly scope?: string;
   readonly prompt?: string;
+  readonly resource?: string;
 };
 
 const authorizePath = (authorization: AuthorizationRequest) => {
@@ -151,7 +152,7 @@ const authorizePath = (authorization: AuthorizationRequest) => {
     state: authorization.state,
     code_challenge: authorization.challenge,
     code_challenge_method: "S256",
-    resource: RESOURCE,
+    resource: authorization.resource ?? RESOURCE,
   });
   if (authorization.scope) query.set("scope", authorization.scope);
   if (authorization.prompt) query.set("prompt", authorization.prompt);
@@ -2020,7 +2021,7 @@ describe.skipIf(!testDatabase)(
 );
 
 /** Serves published documents by URL, in place of their hosts. */
-const serveDocuments = (documents: Readonly<Record<string, unknown>>) => {
+const serveDocuments = (documents: Readonly<Record<string, Schema.Json>>) => {
   const requests: string[] = [];
   const transport = async (input: RequestInfo | URL) => {
     const url = input instanceof Request ? input.url : String(input);
@@ -2033,7 +2034,7 @@ const serveDocuments = (documents: Readonly<Record<string, unknown>>) => {
   return { requests, transport };
 };
 
-const base64UrlJson = (value: object) =>
+const base64UrlJson = (value: Schema.JsonObject) =>
   Buffer.from(JSON.stringify(value)).toString("base64url");
 
 /**
@@ -2112,8 +2113,7 @@ const makeDirectoryClients = async () => {
         "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
       client_assertion: await signingKey.assertion(clientId),
     });
-  const unauthenticated: DirectoryClient["authenticate"] = async (form) =>
-    form;
+  const unauthenticated: DirectoryClient["authenticate"] = async (form) => form;
   const clients = {
     ChatGPT: {
       clientId: chatGptClientMetadata.client_id,
@@ -2353,6 +2353,27 @@ describe.skipIf(!testDatabase)(
         });
         expect(unknownScope.searchParams.get("error")).toBe("invalid_scope");
 
+        // A resource other than the MCP server gets no code, so a token's
+        // audience is always the resource the server serves.
+        const otherResourceState = crypto.randomUUID();
+        const otherResource = redirectOf(
+          await request(
+            auth,
+            authorizePath({
+              ...authorization,
+              state: otherResourceState,
+              scope: AGENT_SCOPE,
+              resource: "https://elsewhere.example/api/mcp",
+            }),
+            { cookie }
+          )
+        );
+        expectAuthorizationResponse(otherResource, client, {
+          state: otherResourceState,
+          issuer,
+        });
+        expect(otherResource.searchParams.get("error")).toBe("invalid_target");
+
         const declinedState = crypto.randomUUID();
         const consentPage = redirectOf(
           await request(
@@ -2376,7 +2397,7 @@ describe.skipIf(!testDatabase)(
       }
     );
 
-    test("refuses ChatGPT's code exchange without its signed client assertion", async () => {
+    test("refuses ChatGPT's code exchange without an assertion signed with its published key", async () => {
       const {
         clients: { ChatGPT: client },
         documents,
@@ -2387,34 +2408,103 @@ describe.skipIf(!testDatabase)(
         clientMetadataTransport: documents.transport,
       });
       const { cookie } = await signIn(auth, sentLinks);
-      const pkce = await makePkce();
-      const consentPage = redirectOf(
-        await request(
-          auth,
-          authorizePath({
-            clientId: client.clientId,
-            redirectUri: client.redirectUri,
-            challenge: pkce.challenge,
-            state: crypto.randomUUID(),
-            scope: AGENT_SCOPE,
-          }),
-          { cookie }
-        )
-      );
-      const callback = await answerConsent(auth, cookie, consentPage, true);
-      const response = await requestToken(auth, {
-        grant_type: "authorization_code",
-        client_id: client.clientId,
-        code: callback.searchParams.get("code") ?? "",
-        code_verifier: pkce.verifier,
-        redirect_uri: client.redirectUri,
-        resource: RESOURCE,
-      });
+      /**
+       * A new code for ChatGPT, as its token request carries it. The first
+       * authorization asks for consent; later ones get a code straight away.
+       */
+      const authorizeCode = async () => {
+        const pkce = await makePkce();
+        const redirect = redirectOf(
+          await request(
+            auth,
+            authorizePath({
+              clientId: client.clientId,
+              redirectUri: client.redirectUri,
+              challenge: pkce.challenge,
+              state: crypto.randomUUID(),
+              scope: AGENT_SCOPE,
+            }),
+            { cookie }
+          )
+        );
+        const callback =
+          redirect.pathname === "/auth/consent"
+            ? await answerConsent(auth, cookie, redirect, true)
+            : redirect;
+        return {
+          grant_type: "authorization_code",
+          client_id: client.clientId,
+          code: callback.searchParams.get("code") ?? "",
+          code_verifier: pkce.verifier,
+          redirect_uri: client.redirectUri,
+          resource: RESOURCE,
+        };
+      };
+      const errorOf = async (response: Response) =>
+        ((await response.json()) as { readonly error: string }).error;
 
-      expect(response.status).toBe(400);
-      expect(((await response.json()) as { error: string }).error).toBe(
-        "invalid_client"
-      );
+      const unsigned = await requestToken(auth, await authorizeCode());
+      expect(unsigned.status).toBe(400);
+      expect(await errorOf(unsigned)).toBe("invalid_client");
+
+      const otherKey = await makeClientSigningKey();
+      const wronglySigned = await requestToken(auth, {
+        ...(await authorizeCode()),
+        client_assertion_type:
+          "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+        client_assertion: await otherKey.assertion(client.clientId),
+      });
+      expect(wronglySigned.status).toBe(401);
+      expect(await errorOf(wronglySigned)).toBe("invalid_client");
+      expect(documents.requests).toContain(chatGptClientMetadata.jwks_uri);
     });
+
+    test.each([
+      ["another path", (port: string) => `http://localhost:${port}/other`],
+      ["HTTPS", (port: string) => `https://localhost:${port}/callback`],
+      [
+        "another host",
+        (port: string) => `http://localhost.evil.example:${port}/callback`,
+      ],
+      ["the IPv6 loopback", (port: string) => `http://[::1]:${port}/callback`],
+      [
+        "a query",
+        (port: string) => `http://127.0.0.1:${port}/callback?next=evil`,
+      ],
+    ])(
+      "never redirects Claude Code to a loopback URI with %s",
+      async (_, redirectUriOn) => {
+        const {
+          clients: { "Claude Code on localhost": client },
+          documents,
+        } = await makeDirectoryClients();
+        const sentLinks: CapturedMagicLink[] = [];
+        const auth = makeTestAuth({
+          sentLinks,
+          clientMetadataTransport: documents.transport,
+        });
+        const { cookie } = await signIn(auth, sentLinks);
+        const redirectUri = redirectUriOn(new URL(client.redirectUri).port);
+        const pkce = await makePkce();
+
+        const refused = redirectOf(
+          await request(
+            auth,
+            authorizePath({
+              clientId: client.clientId,
+              redirectUri,
+              challenge: pkce.challenge,
+              state: crypto.randomUUID(),
+              scope: AGENT_SCOPE,
+            }),
+            { cookie }
+          )
+        );
+
+        expect(`${refused.origin}${refused.pathname}`).toBe(
+          `${AUTH_BASE}/error`
+        );
+      }
+    );
   }
 );
