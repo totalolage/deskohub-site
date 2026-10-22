@@ -881,7 +881,11 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
               )
             )
           )
-        ).toEqual({ kind: "linked", customerId: customerId(id), created: true });
+        ).toEqual({
+          kind: "linked",
+          customerId: customerId(id),
+          created: true,
+        });
         expect(await isLegacy(pool, id)).toBe(false);
         expect(await accountCreatedEvents(pool, id)).toEqual([
           {
