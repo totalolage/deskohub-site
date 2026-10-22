@@ -64,6 +64,7 @@ export const getAiAssistantsGuide = (locale: Locale): AiAssistantsGuide => {
               m.aiAssistantsCapabilityAvailability({}, { locale }),
               m.aiAssistantsCapabilityQuote({}, { locale }),
               m.aiAssistantsCapabilityBookingView({}, { locale }),
+              m.aiAssistantsCapabilityReservations({}, { locale }),
             ],
           },
           {
@@ -86,7 +87,7 @@ export const getAiAssistantsGuide = (locale: Locale): AiAssistantsGuide => {
           },
           {
             kind: "paragraph",
-            text: m.aiAssistantsDirectoryNoSignIn({}, { locale }),
+            text: m.aiAssistantsChatGptSignIn({}, { locale }),
           },
         ],
       },
@@ -104,7 +105,7 @@ export const getAiAssistantsGuide = (locale: Locale): AiAssistantsGuide => {
           },
           {
             kind: "paragraph",
-            text: m.aiAssistantsDirectoryNoSignIn({}, { locale }),
+            text: m.aiAssistantsClaudeSignIn({}, { locale }),
           },
         ],
       },

@@ -7,18 +7,16 @@ import { agentOfferingSchema } from "./list-offerings.schema";
 
 /**
  * How the customer finishes in the booking view: start the booking there and
- * pay on the Pay page, open the prefilled reservation page, or open the
- * product's page on the website, for hosts whose directory admits no
- * checkout links.
+ * pay on the Pay page, or open the prefilled reservation page.
  */
-const bookingModes = ["reserve", "reservation_page", "website"] as const;
+const bookingModes = ["reserve", "reservation_page"] as const;
 
 export type BookingMode = (typeof bookingModes)[number];
 
 export const showBookingResultSchema = Schema.Struct({
   booking_mode: Schema.Literals(bookingModes).annotate({
     description:
-      "How the customer finishes in the view. reserve: the customer starts the booking in the view. reservation_page: the view links to the reservation page, prefilled with the selection. website: the view links to the product's page on the website, listed in offering_pages.",
+      "How the customer finishes in the view. reserve: the customer starts the booking in the view. reservation_page: the view links to the reservation page, prefilled with the selection.",
   }),
   locale: Schema.Literals(locales).annotate({
     description: "Language of the names and the note in the result.",
@@ -36,12 +34,6 @@ export const showBookingResultSchema = Schema.Struct({
     description: "Prague date (YYYY-MM-DD) the advertised prices are for.",
   }),
   offerings: Schema.Array(agentOfferingSchema),
-  offering_pages: Schema.optionalKey(
-    Schema.Record(workspaceReservationKindSchema, Schema.String).annotate({
-      description:
-        "The website page that presents each product family, in website mode.",
-    })
-  ),
   note: Schema.String,
 });
 

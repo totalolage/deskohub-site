@@ -3,9 +3,6 @@ import bookingWidgetHtml from "@/features/agent-tools/booking-widget/generated/b
   type: "text",
 };
 import { m } from "@/features/i18n";
-import { getShareablePriceFamilyPath } from "@/features/pricing/price-family";
-import type { WorkspaceReservationKind } from "@/features/reservation/reservation-kind";
-import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import {
   agentToolLocaleField,
   CallableAgentTools,
@@ -13,7 +10,6 @@ import {
   getAgentToolLocale,
 } from "./agent-tool";
 import { admitsCheckout, CurrentAgentToolClient } from "./agent-tool-client";
-import { AgentToolError } from "./agent-tool-error";
 import type { AgentToolView } from "./agent-tool-view";
 import { loadAgentOfferings } from "./list-offerings.tool";
 import { completeSelectionFields } from "./quote-selection";
@@ -65,25 +61,16 @@ export const showBookingTool = defineAgentTool({
       Effect.let("locale", () => getAgentToolLocale(input)),
       Effect.bind("listing", ({ locale }) => loadAgentOfferings(locale)),
       Effect.bind("mode", () => getBookingMode),
-      Effect.bind("origin", () =>
-        getWorkspaceRuntimeCallbackOrigin.pipe(
-          Effect.mapError(AgentToolError.unavailable("offerings_unavailable"))
-        )
-      ),
       Effect.map(
-        ({ locale, listing, mode, origin }): ShowBookingResult => ({
+        ({ locale, listing, mode }): ShowBookingResult => ({
           booking_mode: mode,
           locale,
           selection: Struct.omit(input, ["locale"]),
           ...listing,
-          ...(mode === "website" && {
-            offering_pages: getOfferingPages(origin),
-          }),
           note: {
             reserve: () => m.agentToolBookingViewReserveNote({}, { locale }),
             reservation_page: () =>
               m.agentToolBookingViewReservationPageNote({}, { locale }),
-            website: () => m.agentToolBookingViewWebsiteNote({}, { locale }),
           }[mode](),
         })
       )
@@ -91,30 +78,20 @@ export const showBookingTool = defineAgentTool({
   ),
 });
 
-/** Each family's price list on the site's pricing page. */
-const getOfferingPages = (origin: URL) => {
-  const getPage = (kind: WorkspaceReservationKind) =>
-    new URL(getShareablePriceFamilyPath(kind), origin).toString();
-  return {
-    cowork: getPage("cowork"),
-    "meeting-room": getPage("meeting-room"),
-    office: getPage("office"),
-  };
-};
-
 /**
  * How the view lets the customer finish. It starts a booking only when its
- * agent could: the caller's token grants the scope and the deployment
- * publishes the tool. Otherwise it links to the prefilled reservation page,
- * or, where the client's directory admits no checkout links, to the
- * product's page.
+ * agent could: the caller's token grants the scope, the deployment
+ * publishes the tool, and the client's directory admits checkout links.
+ * Otherwise it links to the prefilled reservation page.
  */
 const getBookingMode = Effect.all({
   callable: CallableAgentTools,
   client: CurrentAgentToolClient,
 }).pipe(
-  Effect.map(({ callable, client }): BookingMode => {
-    if (callable.has(startReservationTool.name)) return "reserve";
-    return admitsCheckout(client) ? "reservation_page" : "website";
-  })
+  Effect.map(
+    ({ callable, client }): BookingMode =>
+      callable.has(startReservationTool.name) && admitsCheckout(client)
+        ? "reserve"
+        : "reservation_page"
+  )
 );

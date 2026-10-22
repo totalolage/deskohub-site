@@ -213,7 +213,6 @@ const connectBookingHost = Effect.fn("bookingWidget.connect")(function* (
         today: listing.advertised_on,
         offerings: listing.offerings,
         selection: result.selection,
-        offeringPages: result.offering_pages ?? {},
         opensLinks: Boolean(
           app.getHostCapabilities()?.openLinks ?? window.openai
         ),

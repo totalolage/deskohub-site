@@ -26,7 +26,6 @@ import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { currentInstant } from "@/shared/utils/temporal";
 import {
   type AgentTool,
-  type AgentToolAuthorization,
   CallableAgentTools,
   getRequestedAgentToolLocale,
 } from "./agent-tool";
@@ -64,30 +63,52 @@ const agentToolServerVersion = "1.0.0";
 const { address } = workspaceSiteConstants.location;
 
 /**
- * The server instructions for the client and the tools it sees. Directory
- * apps see no signed-in tools, and a client whose directory admits no
- * checkout reads nothing about paying.
+ * The server instructions for the client and the tools it sees. A client
+ * whose directory admits no checkout reads nothing about paying. Each
+ * sentence about a customer tool appears only when the client sees that
+ * tool, so other tools served beside them add nothing here.
  */
 const getAgentToolServerInstructions = ({
   client,
   tools,
 }: {
   readonly client: AgentToolClient;
-  readonly tools: ReadonlyArray<AgentToolAuthorization>;
-}) =>
-  [
+  readonly tools: ReadonlyArray<Pick<AgentTool<unknown>, "name" | "readOnly">>;
+}) => {
+  const startReservation = tools.find(
+    ({ name }) => name === "start_reservation"
+  );
+  const readsReservations = tools.some(
+    ({ name }) => name === "list_my_reservations"
+  );
+  return [
     `${workspaceSiteConstants.brand.name} is a coworking space at ${address.street}, ${address.postalCode} ${address.city}, open 24/7.`,
     "It offers cowork desks by the day, a meeting room by the hour or the day, and a private office for whole days.",
     "Use list_offerings for products with their regular price and today's price including any public sale, check_availability to see whether a selection looks free, and get_quote for the exact price of a selection.",
     admitsCheckout(client)
       ? "Bookings are made and paid on the website: give the customer the reservation_url from a result to finish there. Availability and price are confirmed on the website before payment."
-      : "Customers book on the website, which confirms availability and the price.",
-    ...(tools.some(({ access }) => access === "signed-in")
+      : "Customers book on the website, which confirms availability and the price: give the customer the reservation_url from a result to finish there.",
+    ...(startReservation === undefined
+      ? []
+      : [getStartReservationInstruction(startReservation)]),
+    ...(readsReservations
       ? [
-          "With the customer signed in, start_reservation holds a selection for them and returns a pay_url where they accept the terms and pay; get_reservation_status and list_my_reservations show their own reservations. The tools can't pay, cancel, or change a reservation.",
+          "With the customer signed in, get_reservation_status and list_my_reservations show their own reservations.",
+          admitsCheckout(client)
+            ? "The tools can't pay, cancel, or change a reservation."
+            : "The tools can't cancel or change a reservation.",
         ]
       : []),
   ].join(" ");
+};
+
+/** What `start_reservation` does where it books, and where it only links. */
+const getStartReservationInstruction = ({
+  readOnly,
+}: Pick<AgentTool<unknown>, "readOnly">) =>
+  readOnly
+    ? "start_reservation returns the reservation page for a complete selection, filled in, where the customer finishes the booking; it books nothing itself."
+    : "With the customer signed in, start_reservation holds a selection for them and returns a pay_url where they accept the terms and pay.";
 
 /**
  * Answers one MCP request with a set of agent tools: stateless Streamable
@@ -102,9 +123,11 @@ const getAgentToolServerInstructions = ({
  * where the platform routes no foreign hostname to the deployment, as Vercel
  * routes only a project's own domains.
  *
- * The tools are the ones the request's client may see
- * (`selectAgentToolsForClient`), and the client also chooses the server
- * instructions and the view's `_meta`.
+ * The caller passes the tools to serve, adapted to the request's client
+ * (`getCustomerAgentToolsForClient`), and the client also chooses the
+ * server instructions and the view's `_meta`. Everything else follows
+ * from each tool's own definition, so tools added beside the customer
+ * tools are served as they are.
  *
  * An agent may send an OAuth bearer token. A token that grants nothing,
  * or a signed-in tool called without a token granting its scope, is answered

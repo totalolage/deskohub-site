@@ -22,10 +22,6 @@ export interface BookingStart {
   readonly today: string;
   readonly offerings: ReadonlyArray<AgentOffering>;
   readonly selection: ShowBookingResult["selection"];
-  /** The website page of each family, where website mode sends the customer. */
-  readonly offeringPages: Partial<
-    NonNullable<ShowBookingResult["offering_pages"]>
-  >;
   /** Whether the host opens site links for the view. */
   readonly opensLinks: boolean;
 }

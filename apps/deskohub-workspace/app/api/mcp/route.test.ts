@@ -117,6 +117,21 @@ const { makeAgentToolTestServices, workspaceDateFromToday } = await import(
   "@/features/agent-tools/agent-tools.test-utils"
 );
 const services = makeAgentToolTestServices();
+const preparePayStateModule = await import(
+  "@/features/reservation/actions/prepare-pay-state"
+);
+/** Every booking the route started, so a test can assert it booked nothing. */
+const bookingCalls: unknown[] = [];
+mock.module("@/features/reservation/actions/prepare-pay-state", () => ({
+  ...preparePayStateModule,
+  prepareWorkspacePayState: (
+    input: Parameters<typeof preparePayStateModule.prepareWorkspacePayState>[0]
+  ) =>
+    Effect.sync(() => bookingCalls.push(input)).pipe(
+      Effect.andThen(preparePayStateModule.prepareWorkspacePayState(input))
+    ),
+}));
+
 const { listOfferingsTool } = await import(
   "@/features/agent-tools/list-offerings.tool"
 );
@@ -1072,7 +1087,11 @@ describe("customer MCP route per client", () => {
     const tools = await listToolsAs(headers);
     return [
       initialize.result.instructions,
-      ...tools.flatMap(({ title, description }) => [title, description]),
+      ...tools.flatMap(({ title, description, inputSchema }) => [
+        title,
+        description,
+        JSON.stringify(inputSchema),
+      ]),
       ...resources.result.resources.flatMap(
         ({ title, description, _meta }: Resource) => [
           title,
@@ -1080,21 +1099,124 @@ describe("customer MCP route per client", () => {
           _meta?.["openai/widgetDescription"],
         ]
       ),
-      JSON.stringify(tools),
+      // A signed-in tool's result reports the customer's own orders,
+      // their payment state included, which isn't commerce copy.
+      JSON.stringify(
+        tools.filter(
+          ({ _meta }) => _meta?.["cz.deskohub.workspace/access"] === "public"
+        )
+      ),
     ].join("\n");
   };
+
+  const customerTools = [
+    ...publicTools,
+    "start_reservation",
+    "get_reservation_status",
+    "list_my_reservations",
+  ];
 
   test.each([
     ["ChatGPT", chatGpt],
     ["the Claude apps", claudeApp],
-  ])("lists only the public tools to %s", async (_, headers) => {
+  ])("lists every tool to %s", async (_, headers) => {
     const tools = await listToolsAs(headers);
 
-    expect(tools.map(({ name }) => name)).toEqual(publicTools);
-    for (const tool of tools) {
+    expect(tools.map(({ name }) => name)).toEqual([...customerTools, "whoami"]);
+    for (const tool of tools.filter(({ name }) =>
+      customerTools.includes(name)
+    )) {
       expect(tool.title).toContain("Deskohub Workspace");
       expect(tool.annotations?.title).toContain("Deskohub Workspace");
     }
+  });
+
+  test("lets ChatGPT call start_reservation without signing in, as a read-only tool", async () => {
+    const tools = await listToolsAs(chatGpt);
+    const startReservation = tools.find(
+      ({ name }) => name === "start_reservation"
+    );
+
+    expect(
+      Object.fromEntries(
+        tools.map((tool) => [tool.name, tool["securitySchemes"]])
+      )
+    ).toMatchObject({
+      start_reservation: [{ type: "noauth" }],
+      get_reservation_status: [
+        { type: "oauth2", scopes: ["reservations:read"] },
+      ],
+      list_my_reservations: [{ type: "oauth2", scopes: ["reservations:read"] }],
+    });
+    expect(startReservation?._meta?.["cz.deskohub.workspace/access"]).toBe(
+      "public"
+    );
+    expect(startReservation?.annotations).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+    });
+  });
+
+  test("keeps the Claude apps' start_reservation a signed-in booking", async () => {
+    const tools = await listToolsAs(claudeApp);
+    const startReservation = tools.find(
+      ({ name }) => name === "start_reservation"
+    );
+
+    expect(startReservation?.["securitySchemes"]).toEqual([
+      { type: "oauth2", scopes: ["reservations:create"] },
+    ]);
+    expect(startReservation?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+    });
+  });
+
+  test("answers ChatGPT's start_reservation with the prefilled reservation page, booking nothing", async () => {
+    bookingCalls.length = 0;
+    const args = {
+      family: "cowork",
+      date: workspaceDateFromToday(2),
+      tier: "open-space",
+    };
+    const callAsChatGpt = async (name: string) => {
+      const response = await postRpc(
+        "tools/call",
+        { name, arguments: args },
+        chatGpt
+      );
+      expect(response.status).toBe(200);
+      const { result } = (await readJsonRpc(response)) as {
+        readonly result: CallToolResult;
+      };
+      expect(result.isError).toBeFalsy();
+      return result.structuredContent;
+    };
+
+    const [started, quote] = await Promise.all([
+      callAsChatGpt("start_reservation"),
+      callAsChatGpt("get_quote"),
+    ]);
+
+    expect(started).toEqual({
+      family: "cowork",
+      reservation_url: quote?.["reservation_url"],
+      note: expect.any(String),
+    });
+    expect(bookingCalls).toEqual([]);
+  });
+
+  test("asks ChatGPT to sign in for the customer's own reservations", async () => {
+    const response = await postRpc(
+      "tools/call",
+      { name: "list_my_reservations", arguments: {} },
+      chatGpt
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toContain(
+      'scope="reservations:read"'
+    );
   });
 
   test("lists every tool to a client it doesn't recognize, with how each authorizes", async () => {
@@ -1152,7 +1274,7 @@ describe("customer MCP route per client", () => {
     );
 
   test.each([
-    ["ChatGPT", "openai-mcp", {}, publicTools.length],
+    ["ChatGPT", "openai-mcp", {}, 8],
     // Claude Code through Anthropic's gateway shares the Claude apps'
     // User-Agent but names itself.
     ["Claude Code", "claude-code", claudeApp, 8],
@@ -1168,45 +1290,36 @@ describe("customer MCP route per client", () => {
     }
   );
 
-  test("answers a directory app's call of an unlisted tool as unknown, not with a sign-in challenge", async () => {
-    const response = await postRpc(
-      "tools/call",
-      { name: "list_my_reservations", arguments: {} },
-      chatGpt
-    );
-
-    expect(response.status).toBe(200);
-    const { result, error } = await readJsonRpc(response);
-    expect(error ?? result?.isError).toBeTruthy();
-  });
-
   test("tells ChatGPT nothing about paying or holds", async () => {
     const copy = await readListingCopy(chatGpt, "openai-mcp");
 
     expect(copy).not.toMatch(/\bpa(y|id)|\bhold/i);
-    expect(copy).not.toContain("start_reservation");
   });
 
-  test("keeps the reservation page for the Claude apps", async () => {
+  test("keeps the reservation page and the Pay link for the Claude apps", async () => {
     const copy = await readListingCopy(claudeApp, "Anthropic/ClaudeAI");
 
-    expect(copy).not.toContain("start_reservation");
     expect(copy).toContain("reservation_url");
+    expect(copy).toContain("pay_url");
   });
 
   test.each([
-    ["ChatGPT", chatGpt, "website"],
-    ["the Claude apps", claudeApp, "reservation_page"],
-  ])("hands %s off in the booking view as %s", async (_, headers, mode) => {
-    const response = await postRpc(
-      "tools/call",
-      { name: "show_booking", arguments: { family: "cowork" } },
-      headers
-    );
-    const { result } = await readJsonRpc(response);
+    ["ChatGPT", chatGpt, "reservation_page"],
+    ["the Claude apps", claudeApp, "reserve"],
+  ])(
+    "hands %s, signed in to book, off in the booking view as %s",
+    async (_, headers, mode) => {
+      accessTokens.set("create", "reservations:create");
+      const response = await postRpc(
+        "tools/call",
+        { name: "show_booking", arguments: { family: "cowork" } },
+        { ...headers, authorization: "Bearer create" }
+      );
+      const { result } = await readJsonRpc(response);
 
-    expect(result.structuredContent.booking_mode).toBe(mode);
-  });
+      expect(result.structuredContent.booking_mode).toBe(mode);
+    }
+  );
 
   test("gives ChatGPT's booking view the site as its widget domain", async () => {
     const { result } = await readJsonRpc(

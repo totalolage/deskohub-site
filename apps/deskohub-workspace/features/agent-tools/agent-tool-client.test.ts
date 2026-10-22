@@ -1,15 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-import {
-  agentToolLocaleField,
-  defineAgentTool,
-  defineSignedInAgentTool,
-} from "./agent-tool";
-import {
-  identifyAgentToolClient,
-  selectAgentToolsForClient,
-} from "./agent-tool-client";
+import { Effect } from "effect";
+import { identifyAgentToolClient } from "./agent-tool-client";
 
 const mcpRequest = ({
   body,
@@ -112,46 +104,5 @@ describe("identifyAgentToolClient", () => {
         })
       )
     ).toBe("other");
-  });
-});
-
-describe("selectAgentToolsForClient", () => {
-  const definition = {
-    title: "Test tool",
-    description: "A test tool.",
-    unavailableCode: "quote_unavailable",
-    input: Schema.Struct({ locale: agentToolLocaleField }),
-    output: Schema.Struct({}),
-    run: () => Effect.succeed({}),
-  } as const;
-  const tools = [
-    defineAgentTool({
-      ...definition,
-      name: "list_offerings",
-      access: "public",
-      readOnly: true,
-    }),
-    defineSignedInAgentTool({
-      ...definition,
-      name: "start_reservation",
-      scope: "reservations:create",
-      readOnly: false,
-    }),
-    defineSignedInAgentTool({
-      ...definition,
-      name: "list_my_reservations",
-      scope: "reservations:read",
-      readOnly: true,
-    }),
-  ];
-
-  test.each([
-    ["chatgpt", ["list_offerings"]],
-    ["claude", ["list_offerings"]],
-    ["other", ["list_offerings", "start_reservation", "list_my_reservations"]],
-  ] as const)("gives %s the tools %p", (client, names) => {
-    expect(
-      selectAgentToolsForClient({ client, tools }).map(({ name }) => name)
-    ).toEqual([...names]);
   });
 });

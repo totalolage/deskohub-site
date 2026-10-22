@@ -1,5 +1,4 @@
 import { Context, Effect, Option, Schema } from "effect";
-import { type AgentTool, selectAgentTools } from "./agent-tool";
 import { readMcpMessages } from "./agent-tool-mcp-messages";
 
 /**
@@ -7,7 +6,7 @@ import { readMcpMessages } from "./agent-tool-mcp-messages";
  * publishes. ChatGPT and the Claude apps (claude.ai, Claude Desktop, and
  * Claude mobile) list the server in their app directories, which review
  * every tool and its copy. Every other client, and one we can't recognize,
- * is `other` and gets the whole server.
+ * is `other`.
  */
 export type AgentToolClient = "chatgpt" | "claude" | "other";
 
@@ -17,30 +16,12 @@ export class CurrentAgentToolClient extends Context.Service<
   AgentToolClient
 >()("@deskohub-workspace/agent-tools/CurrentAgentToolClient") {}
 
-/** Whether the client lists the server in its app directory. */
-const isDirectoryApp = (client: AgentToolClient) => client !== "other";
-
 /**
  * Whether the client's directory admits links that start a checkout and
  * copy about paying. ChatGPT's admits commerce only for physical goods, so
- * its customers get the product's page on the website instead.
+ * its customers finish on the prefilled reservation page instead.
  */
 export const admitsCheckout = (client: AgentToolClient) => client !== "chatgpt";
-
-/**
- * The tools the client may see. A directory app gets only the public tools:
- * its listing is reviewed without signing in. Any other client gets them all.
- */
-export const selectAgentToolsForClient = <R>({
-  client,
-  tools,
-}: {
-  readonly client: AgentToolClient;
-  readonly tools: ReadonlyArray<AgentTool<R>>;
-}) =>
-  isDirectoryApp(client)
-    ? selectAgentTools(tools, { access: ["public"], transactional: false })
-    : tools;
 
 /**
  * The `clientInfo` names directory apps send: ChatGPT as `openai-mcp`, the

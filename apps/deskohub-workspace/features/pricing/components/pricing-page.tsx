@@ -20,7 +20,7 @@ import {
   loadSharedPriceList,
   loadVisitorPriceList,
 } from "../backend/price-list.server";
-import { getPriceFamilies, getPriceFamilyHeadingId } from "../price-family";
+import { getPriceFamilies } from "../price-family";
 
 type PricingPageProps = {
   readonly locale: Locale;
@@ -126,13 +126,10 @@ function PriceList({
       return (
         <section
           key={kind}
-          aria-labelledby={getPriceFamilyHeadingId(kind)}
+          aria-labelledby={`pricing-${kind}-title`}
           className="mt-14"
         >
-          <h2
-            id={getPriceFamilyHeadingId(kind)}
-            className="text-2xl sm:text-3xl"
-          >
+          <h2 id={`pricing-${kind}-title`} className="text-2xl sm:text-3xl">
             {title}
           </h2>
           {sharedUsage && (

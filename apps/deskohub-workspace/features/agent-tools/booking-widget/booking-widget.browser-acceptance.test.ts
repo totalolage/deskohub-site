@@ -19,7 +19,6 @@ import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser
 import type { BookingMode } from "../show-booking.schema";
 import {
   availabilityResult,
-  bookingOfferingPages,
   bookingOfferings,
   bookingToday,
   quoteResult,
@@ -368,31 +367,29 @@ describe.skipIf(!chromiumAvailable)("booking view", () => {
     });
 
     for (const theme of ["light", "dark"] as const) {
-      test(`website mode in ${locale} with a ${theme} host: links the family's website page, never a booking`, async () => {
+      test(`ChatGPT in ${locale} with a ${theme} host: links the prefilled reservation page, never a Pay page`, async () => {
         const { page, view, calls, linkOpened } = await openBookingView({
-          mode: "website",
+          mode: "reservation_page",
           locale,
           hostTheme: theme,
+          chatgptBridge: true,
         });
         try {
           await expect(
             view.locator("html").getAttribute("data-theme")
           ).resolves.toBe(theme);
           await checkAvailability(view, locale);
-          const websiteLink = view.getByRole("link", {
-            name: m.bookingWidgetOpenWebsite({}, { locale }),
+          const reservationPageLink = view.getByRole("link", {
+            name: m.bookingWidgetOpenReservationPage({}, { locale }),
           });
-          await websiteLink.waitFor();
+          await reservationPageLink.waitFor();
           await expect(
             view
               .getByRole("link")
               .evaluateAll((links) =>
                 links.map((link) => link.getAttribute("href"))
               )
-          ).resolves.toEqual([bookingOfferingPages().cowork]);
-          await expect(
-            view.getByText(quoteResult().reservation_url).count()
-          ).resolves.toBe(0);
+          ).resolves.toEqual([quoteResult().reservation_url]);
           await expect(
             view
               .getByRole("button", {
@@ -400,10 +397,14 @@ describe.skipIf(!chromiumAvailable)("booking view", () => {
               })
               .count()
           ).resolves.toBe(0);
-          await capture(page, `website-${theme}-${locale}`);
+          // ChatGPT's directory admits no checkout copy.
+          await expect(view.locator("body").innerText()).resolves.not.toMatch(
+            /\bpa(y|id)|payment|zaplat|platb/i
+          );
+          await capture(page, `chatgpt-reservation-page-${theme}-${locale}`);
 
-          await websiteLink.click();
-          await expect(linkOpened).resolves.toBe(bookingOfferingPages().cowork);
+          await reservationPageLink.click();
+          await expect(linkOpened).resolves.toBe(quoteResult().reservation_url);
           expect(calls.map(({ name }) => name)).toEqual([
             "check_availability",
             "get_quote",
@@ -414,32 +415,6 @@ describe.skipIf(!chromiumAvailable)("booking view", () => {
       });
     }
   }
-
-  test("website mode links the page of the family the customer checked", async () => {
-    const { page, view, linkOpened } = await openBookingView({
-      mode: "website",
-      locale: "en-US",
-    });
-    try {
-      const websiteLink = view.getByRole("link", {
-        name: m.bookingWidgetOpenWebsite({}, { locale: "en-US" }),
-      });
-      await checkAvailability(view, "en-US");
-      await websiteLink.waitFor();
-      // Another family makes the check stale, and its link with it.
-      await view
-        .getByText(m.bookingWidgetFamilyOffice({}, { locale: "en-US" }), {
-          exact: true,
-        })
-        .click();
-      await expect(websiteLink.count()).resolves.toBe(0);
-      await checkAvailability(view, "en-US");
-      await websiteLink.click();
-      await expect(linkOpened).resolves.toBe(bookingOfferingPages().office);
-    } finally {
-      await page.close();
-    }
-  });
 
   test("follows the host's theme and style variables as they change", async () => {
     const { page, view } = await openBookingView({
@@ -510,7 +485,7 @@ describe.skipIf(!chromiumAvailable)("booking view", () => {
 
   test("takes the theme and language from ChatGPT's bridge when the host context lacks them", async () => {
     const { page, view, calls } = await openBookingView({
-      mode: "website",
+      mode: "reservation_page",
       locale: "cs-CZ",
       hostLocale: null,
       requestedLocale: null,

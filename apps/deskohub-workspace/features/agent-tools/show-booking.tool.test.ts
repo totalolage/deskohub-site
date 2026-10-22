@@ -44,34 +44,30 @@ describe("show_booking", () => {
     );
   });
 
-  test("hands off to the reservation page in the Claude apps", async () => {
-    const result = await showBooking({}, ["show_booking"], "claude");
+  test.each(["claude", "other"] as const)(
+    "lets the view start a booking in %s when the caller may call start_reservation",
+    async (client) => {
+      const result = await showBooking(
+        {},
+        ["show_booking", "start_reservation"],
+        client
+      );
+
+      expect(result.booking_mode).toBe("reserve");
+    }
+  );
+
+  test("hands ChatGPT, whose directory admits no checkout, off to the reservation page even when start_reservation is callable", async () => {
+    const result = await showBooking(
+      {},
+      ["show_booking", "start_reservation"],
+      "chatgpt"
+    );
 
     expect(result.booking_mode).toBe("reservation_page");
-    expect(result).not.toHaveProperty("offering_pages");
-  });
-
-  test("links each family's page on the website in ChatGPT, whose directory admits no checkout", async () => {
-    const result = await showBooking({}, ["show_booking"], "chatgpt");
-
-    expect(result.booking_mode).toBe("website");
     expect(result.note).toBe(
-      m.agentToolBookingViewWebsiteNote({}, { locale: "en-US" })
+      m.agentToolBookingViewReservationPageNote({}, { locale: "en-US" })
     );
-    const pages = Object.entries(result.offering_pages ?? {});
-    expect(pages.map(([family]) => family)).toEqual([
-      "cowork",
-      "meeting-room",
-      "office",
-    ]);
-    for (const [family, page] of pages) {
-      const url = new URL(page);
-      expect({ path: url.pathname, search: url.search }).toEqual({
-        path: "/pricing",
-        search: "",
-      });
-      expect(url.hash).toContain(family);
-    }
   });
 
   test("lists the offerings list_offerings lists, in the requested locale", async () => {
