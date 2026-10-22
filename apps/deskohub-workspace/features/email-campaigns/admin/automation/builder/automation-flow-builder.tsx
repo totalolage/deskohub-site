@@ -7,7 +7,7 @@ import type {
 } from "@deskohub/workspace-admin-api";
 import Interpolate from "@doist/react-interpolate";
 import { useRouter } from "next/navigation";
-import { Fragment, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { get, useController, useForm } from "react-hook-form";
 import { AdministrationLink } from "@/features/administration/admin-link";
 import { m } from "@/features/administration/i18n";
@@ -129,6 +129,8 @@ export function AutomationFlowBuilder({
       ? saveFailure.message
       : undefined;
 
+  // Each step's insert point, by step id, to take focus from a deleted step.
+  const insertPoints = useRef(new Map<string, HTMLButtonElement>());
   const stepMenu = (index: number, step: FlowStepValue, number: number) => (
     <StepMenu
       stepLabel={stepLabel(step, number, locale)}
@@ -137,6 +139,12 @@ export function AutomationFlowBuilder({
       onMoveUp={() => setSteps(moveStep(steps, index, -1))}
       onMoveDown={() => setSteps(moveStep(steps, index, 1))}
       onDelete={() => setSteps(removeStepAt(steps, index))}
+      // The next step takes the deleted one's place; the send step is last
+      // and can't be deleted, so there always is one.
+      onDeleted={() => {
+        const next = steps[index + 1];
+        if (next) insertPoints.current.get(next.id)?.focus();
+      }}
     />
   );
 
@@ -199,6 +207,13 @@ export function AutomationFlowBuilder({
                   <FlowConnector>
                     {!readOnly && (
                       <InsertStepMenu
+                        triggerRef={(trigger) => {
+                          if (!trigger) return;
+                          insertPoints.current.set(step.id, trigger);
+                          return () => {
+                            insertPoints.current.delete(step.id);
+                          };
+                        }}
                         position={number}
                         onInsert={(kind) =>
                           setSteps(

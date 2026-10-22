@@ -10,7 +10,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, type Ref, useRef } from "react";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
@@ -120,16 +120,19 @@ const insertableSteps = {
 export function InsertStepMenu({
   position,
   onInsert,
+  triggerRef,
 }: {
   /** The number the new step gets, for its accessible name. */
   readonly position: number;
   readonly onInsert: (kind: InsertableStepKind) => void;
+  readonly triggerRef?: Ref<HTMLButtonElement>;
 }) {
   const locale = useRouteLocale();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          ref={triggerRef}
           type="button"
           variant="secondary"
           size="icon-sm"
@@ -186,6 +189,7 @@ export function StepMenu({
   onMoveUp,
   onMoveDown,
   onDelete,
+  onDeleted,
 }: {
   readonly stepLabel: string;
   readonly canMoveUp: boolean;
@@ -193,8 +197,14 @@ export function StepMenu({
   readonly onMoveUp: () => void;
   readonly onMoveDown: () => void;
   readonly onDelete: () => void;
+  /**
+   * Moves focus once the menu has closed after Delete: its trigger left with
+   * the deleted step, so the menu can't return focus there.
+   */
+  readonly onDeleted: () => void;
 }) {
   const locale = useRouteLocale();
+  const deleted = useRef(false);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -211,7 +221,14 @@ export function StepMenu({
           <Ellipsis className="h-4 w-4" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent
+        align="end"
+        onCloseAutoFocus={(event) => {
+          if (!deleted.current) return;
+          event.preventDefault();
+          onDeleted();
+        }}
+      >
         <DropdownMenuItem disabled={!canMoveUp} onSelect={onMoveUp}>
           <ArrowUp className="h-4 w-4" aria-hidden />
           {m.emailAutomationFlowStepMoveUp({}, { locale })}
@@ -222,7 +239,10 @@ export function StepMenu({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onSelect={onDelete}
+          onSelect={() => {
+            deleted.current = true;
+            onDelete();
+          }}
           className="text-red-700 focus:text-red-800"
         >
           <Trash2 className="h-4 w-4" aria-hidden />
