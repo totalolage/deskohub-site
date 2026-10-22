@@ -120,19 +120,21 @@ const recordedOperation = (
         Option.Option<AdministrationOperationReference>,
         never,
         HttpServerRequest.HttpServerRequest
-      > => {
-        if (!changesState(behavior)) {
-          return Effect.succeed(Option.none());
-        }
-        if (behavior.preview?._tag !== "DryRun") {
-          return Effect.succeed(Option.some(reference));
-        }
-        return requestsDryRun(endpoint).pipe(
-          Effect.map((dryRun) =>
-            dryRun ? Option.none() : Option.some(reference)
-          )
-        );
-      },
+      > =>
+        Match.value(behavior).pipe(
+          Match.when(
+            (operation) => !changesState(operation),
+            () => Effect.succeed(Option.none())
+          ),
+          Match.when({ preview: { _tag: "DryRun" } }, () =>
+            requestsDryRun(endpoint).pipe(
+              Effect.map((dryRun) =>
+                dryRun ? Option.none() : Option.some(reference)
+              )
+            )
+          ),
+          Match.orElse(() => Effect.succeed(Option.some(reference)))
+        ),
       Variants: ({ variants }) =>
         Object.values(variants.operations).some(changesState)
           ? requestBody.pipe(
