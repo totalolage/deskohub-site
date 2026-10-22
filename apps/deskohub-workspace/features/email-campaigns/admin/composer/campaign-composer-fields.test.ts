@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { getClientEnv } from "@/client-env";
+import type { AdministrationCampaignEditorContentType } from "@deskohub/workspace-admin-api";
 import type { CampaignBodyNode } from "../../body/campaign-body-document";
+import { richCampaignBodies } from "../../body/campaign-body-document.test-utils";
+import { campaignBodySchema } from "../../body/campaign-body-extensions";
 import {
   type CampaignComposerFields,
   type CampaignComposerLocaleFields,
+  campaignComposerFieldsFromCampaign,
   composerLocales,
   localeContentIssues,
   newCampaignComposerFields,
@@ -75,7 +79,7 @@ describe("toAdministrationCampaignContent", () => {
 });
 
 describe("toAdministrationCampaignContent body", () => {
-  test("sends the body as Markdown", () => {
+  test("sends the body as the editor's document", () => {
     const fields: CampaignComposerFields = {
       ...newCampaignComposerFields,
       locales: {
@@ -105,7 +109,10 @@ describe("toAdministrationCampaignContent body", () => {
       "cs-CZ": {
         subject: "Ahoj",
         preheader: "",
-        bodyMarkdown: "Dobrý **den**",
+        bodyDocument: {
+          formatVersion: 1,
+          doc: fields.locales["cs-CZ"].body,
+        },
       },
     });
   });
@@ -118,32 +125,78 @@ describe("toAdministrationCampaignContentChange", () => {
     expect(
       toAdministrationCampaignContentChange(
         czechOnly,
-        composerLocales(undefined).editable,
-        ["cs-CZ"]
+        composerLocales(undefined).editable
       )["cs-CZ"]
     ).toMatchObject({ subject: "Ahoj", operationalReason: null });
   });
 
-  test("removes a saved locale that no longer has content", () => {
+  test("clears every locale without content, whatever the last save left", () => {
     expect(
       toAdministrationCampaignContentChange(
         czechOnly,
-        composerLocales(undefined).editable,
-        ["cs-CZ", "en-US"]
+        composerLocales(undefined).editable
       )
     ).toMatchObject({ "en-US": null });
   });
 
-  test("leaves locales the draft never had alone", () => {
+  test("clears a locale a single-locale audience hides", () => {
+    const bothLocales = withSubject(czechOnly, "en-US", "Hello");
     expect(
-      Object.keys(
-        toAdministrationCampaignContentChange(
-          czechOnly,
-          composerLocales(undefined).editable,
-          ["cs-CZ"]
-        )
+      toAdministrationCampaignContentChange(
+        bothLocales,
+        composerLocales("en-US").editable
       )
-    ).toEqual(["cs-CZ"]);
+    ).toMatchObject({ "cs-CZ": null, "en-US": { subject: "Hello" } });
+  });
+});
+
+describe("editor round trip", () => {
+  const saved: AdministrationCampaignEditorContentType = {
+    id: "01990000-0000-7000-8000-000000000001",
+    title: "Autumn news",
+    purpose: "operational",
+    templateKey: "workspace",
+    delivery: "once",
+    status: "draft",
+    audienceId: null,
+    locales: ["cs-CZ", "en-US"],
+    createdAt: "2026-10-19T08:00:00Z",
+    updatedAt: "2026-10-19T08:00:00Z",
+    content: {
+      "cs-CZ": {
+        subject: "Podzimní novinky",
+        preheader: "Co je nového",
+        bodyDocument: richCampaignBodies["cs-CZ"],
+        operationalReason: "Měníme otevírací dobu.",
+      },
+      "en-US": {
+        subject: "Autumn news",
+        preheader: "What's new",
+        bodyDocument: richCampaignBodies["en-US"],
+      },
+    },
+  };
+
+  test.each([
+    "cs-CZ",
+    "en-US",
+  ] as const)("the editor holds the saved %s body unchanged", (locale) => {
+    const { body } = campaignComposerFieldsFromCampaign(saved).locales[locale];
+    expect(campaignBodySchema.nodeFromJSON(body).toJSON()).toEqual(body);
+    expect(body).toEqual(richCampaignBodies[locale].doc);
+  });
+
+  test("saving unchanged fields writes back exactly what the port read", () => {
+    const fields = campaignComposerFieldsFromCampaign(saved);
+    expect(
+      toAdministrationCampaignContentChange(
+        fields,
+        composerLocales(undefined).editable
+      )
+    ).toEqual({
+      "cs-CZ": { ...saved.content["cs-CZ"] },
+      "en-US": { operationalReason: null, ...saved.content["en-US"] },
+    });
   });
 });
 

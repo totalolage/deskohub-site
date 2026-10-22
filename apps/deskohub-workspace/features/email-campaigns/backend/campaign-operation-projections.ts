@@ -1,7 +1,10 @@
 import type {
   AdministrationCampaignAudienceType,
-  AdministrationCampaignContentType,
+  AdministrationCampaignContentInputType,
   AdministrationCampaignDetailType,
+  AdministrationCampaignEditorContentType,
+  AdministrationCampaignEditorLocaleContentType,
+  AdministrationCampaignLocaleContentInputType,
   AdministrationCampaignLocaleContentType,
   AdministrationCampaignSendStatusResultType,
   AdministrationCampaignSummaryType,
@@ -10,15 +13,14 @@ import { Effect, Option } from "effect";
 import type { CampaignAudienceRow, CampaignRow } from "@/db/schema";
 import { type Locale, locales } from "@/features/i18n";
 import {
-  campaignBodyToMarkdown,
-  parseCampaignBodyMarkdown,
-  parseUnfinishedCampaignBodyMarkdown,
-} from "../body/campaign-body-markdown";
+  readCampaignBody,
+  readUnfinishedCampaignBody,
+} from "../body/campaign-body-input";
+import { campaignBodyToMarkdown } from "../body/campaign-body-markdown";
 import type {
   CampaignLocaleContent,
   CampaignLocalizedContent,
 } from "../body/campaign-content";
-import { CampaignBodyMarkdownInvalid } from "../errors";
 import type { ICampaignSendStatusService } from "./campaign-send-status.service";
 
 /** The locales a per-locale record has a value for, in locale order. */
@@ -30,31 +32,19 @@ const localeEntries = <Value>(
     return value === undefined ? [] : [[locale, value] as const];
   });
 
-/** Parses one locale's Markdown body with `parse`; its failure names the locale. */
-const parseLocaleBody = (
-  locale: Locale,
-  markdown: string,
-  parse: typeof parseCampaignBodyMarkdown
-) =>
-  parse(markdown).pipe(
-    Effect.mapError(
-      (cause) => new CampaignBodyMarkdownInvalid({ locale, cause })
-    )
-  );
-
 const withOperationalReason = (
   content: Omit<CampaignLocaleContent, "operationalReason">,
   operationalReason: string | undefined
 ): CampaignLocaleContent =>
   operationalReason === undefined ? content : { ...content, operationalReason };
 
-/** One locale's texts as the contract sends them, with a body parsed by `parse`. */
+/** One locale's texts as the contract sends them, with a body read by `read`. */
 const parseLocaleContent = (
   locale: Locale,
-  content: AdministrationCampaignLocaleContentType,
-  parse: typeof parseCampaignBodyMarkdown
+  content: AdministrationCampaignLocaleContentInputType,
+  read: typeof readCampaignBody
 ) =>
-  parseLocaleBody(locale, content.bodyMarkdown, parse).pipe(
+  read(locale, content).pipe(
     Effect.map((body) =>
       withOperationalReason(
         { subject: content.subject, preheader: content.preheader, body },
@@ -63,11 +53,11 @@ const parseLocaleContent = (
     )
   );
 
-/** One locale's texts as the contract sends them, with a parsed body. */
+/** One locale's texts as the contract sends them, with a checked body. */
 export const toCampaignLocaleContent = Effect.fn(
   "CampaignOperations.toCampaignLocaleContent"
-)((locale: Locale, content: AdministrationCampaignLocaleContentType) =>
-  parseLocaleContent(locale, content, parseCampaignBodyMarkdown)
+)((locale: Locale, content: AdministrationCampaignLocaleContentInputType) =>
+  parseLocaleContent(locale, content, readCampaignBody)
 );
 
 /**
@@ -76,12 +66,12 @@ export const toCampaignLocaleContent = Effect.fn(
  */
 export const toUnfinishedCampaignLocaleContent = Effect.fn(
   "CampaignOperations.toUnfinishedCampaignLocaleContent"
-)((locale: Locale, content: AdministrationCampaignLocaleContentType) =>
-  parseLocaleContent(locale, content, parseUnfinishedCampaignBodyMarkdown)
+)((locale: Locale, content: AdministrationCampaignLocaleContentInputType) =>
+  parseLocaleContent(locale, content, readUnfinishedCampaignBody)
 );
 
 export const toCampaignLocalizedContent = (
-  content: AdministrationCampaignContentType
+  content: AdministrationCampaignContentInputType
 ) =>
   Effect.forEach(localeEntries(content), ([locale, localeContent]) =>
     toCampaignLocaleContent(locale, localeContent).pipe(
@@ -135,6 +125,27 @@ export const toAdministrationCampaignDetail = (
     localeEntries(campaign.content).map(([locale, content]) => [
       locale,
       toAdministrationLocaleContent(content),
+    ])
+  ),
+});
+
+const toAdministrationEditorLocaleContent = ({
+  body,
+  ...content
+}: CampaignLocaleContent): AdministrationCampaignEditorLocaleContentType => ({
+  ...content,
+  bodyDocument: body,
+});
+
+/** The campaign with its bodies as stored, which the editor edits losslessly. */
+export const toAdministrationCampaignEditorContent = (
+  campaign: CampaignRow
+): AdministrationCampaignEditorContentType => ({
+  ...toAdministrationCampaignSummary(campaign),
+  content: Object.fromEntries(
+    localeEntries(campaign.content).map(([locale, content]) => [
+      locale,
+      toAdministrationEditorLocaleContent(content),
     ])
   ),
 });

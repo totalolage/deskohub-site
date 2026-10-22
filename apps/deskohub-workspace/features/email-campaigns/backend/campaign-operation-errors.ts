@@ -31,6 +31,7 @@ import {
   CampaignAudienceInUse,
   type CampaignAudienceMissing,
   type CampaignAudienceNotFound,
+  CampaignBodyDocumentInvalid,
   CampaignBodyMarkdownInvalid,
   type CampaignConfirmationRejected,
   type CampaignContentInvalid,
@@ -78,6 +79,7 @@ export type CampaignOperationCause =
   | CampaignAudienceInUse
   | CampaignAudienceMissing
   | CampaignAudienceNotFound
+  | CampaignBodyDocumentInvalid
   | CampaignBodyMarkdownInvalid
   | CampaignConfirmationRejected
   | CampaignContentInvalid
@@ -162,6 +164,15 @@ export const toOperationError = (
         new OperationInputInvalid({
           code: CampaignBodyMarkdownInvalid.code,
           message: `The ${locale} body isn't valid campaign Markdown: ${invalid.message}`,
+          cause,
+        })
+    ),
+    Match.tag(
+      "CampaignBodyDocumentInvalid",
+      ({ locale, cause: invalid }) =>
+        new OperationInputInvalid({
+          code: CampaignBodyDocumentInvalid.code,
+          message: `The ${locale} body document breaks the campaign content rules: ${invalid.message}`,
           cause,
         })
     ),

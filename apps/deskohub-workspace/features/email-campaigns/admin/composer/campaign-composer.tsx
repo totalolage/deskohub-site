@@ -3,7 +3,7 @@
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { CheckCircle2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { type Control, useForm, useWatch } from "react-hook-form";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { AdministrationPageHeader } from "@/features/administration/components";
@@ -137,6 +137,8 @@ const campaignSaveFailureCopy: CampaignOperationFailureCopy = {
       m.emailCampaignsComposerSaveContentInvalid({}, { locale }),
     "content-markdown-invalid": (locale) =>
       m.emailCampaignsComposerSaveContentInvalid({}, { locale }),
+    "content-document-invalid": (locale) =>
+      m.emailCampaignsComposerSaveContentInvalid({}, { locale }),
     "content-locale-missing": (locale) =>
       m.emailCampaignsComposerSaveContentInvalid({}, { locale }),
     "audience-filter-context": (locale) =>
@@ -191,6 +193,10 @@ export function CampaignComposer({
   const [saveError, setSaveError] = useState<string>();
   /** Chosen while creating; a saved campaign's delivery never changes. */
   const [newDelivery, setNewDelivery] = useState<CampaignDelivery>("once");
+  /** Set once a new campaign is created, while its page opens. */
+  const [created, setCreated] = useState(false);
+  /** The fields of the save in flight, which its success marks saved. */
+  const submittedFields = useRef<CampaignComposerFields>(initialFields);
   const delivery = campaign?.delivery ?? newDelivery;
   const savedOnce = campaign?.delivery === "once" ? campaign : undefined;
 
@@ -207,11 +213,12 @@ export function CampaignComposer({
 
   const create = useCampaignOperation("createCampaign", {
     failureCopy: campaignSaveFailureCopy,
-    onSuccess: (created) => {
+    onSuccess: ({ id }) => {
+      setCreated(true);
       form.reset(form.getValues());
       router.push(
         localizeAdministrationHref(
-          `/admin/email-campaigns/${created.id}`,
+          `/admin/email-campaigns/${id}`,
           routeLocale
         )
       );
@@ -224,7 +231,8 @@ export function CampaignComposer({
         ? automatedEmailSaveFailureCopy
         : campaignSaveFailureCopy,
     onSuccess: () => {
-      form.reset(form.getValues());
+      // Edits made while the save ran stay unsaved.
+      form.reset(submittedFields.current, { keepValues: true });
       router.refresh();
     },
     onFailure: setSaveError,
@@ -234,6 +242,7 @@ export function CampaignComposer({
 
   const save = form.handleSubmit((values) => {
     setSaveError(undefined);
+    submittedFields.current = values;
     const fields = {
       title: values.title.trim(),
       purpose: values.purpose,
@@ -244,11 +253,7 @@ export function CampaignComposer({
       update.execute({
         ...fields,
         campaignId: campaign.id,
-        content: toAdministrationCampaignContentChange(
-          values,
-          editable,
-          campaign.contentLocales
-        ),
+        content: toAdministrationCampaignContentChange(values, editable),
       });
     } else {
       create.execute({
@@ -367,7 +372,9 @@ export function CampaignComposer({
           <form
             className="min-w-0 space-y-6"
             id="campaign-composer"
-            inert={campaign?.readOnly}
+            // Creating opens the new campaign's page, which would drop edits
+            // made meanwhile, so the form waits for it.
+            inert={campaign?.readOnly || create.isExecuting || created}
             noValidate
             onSubmit={save}
           >

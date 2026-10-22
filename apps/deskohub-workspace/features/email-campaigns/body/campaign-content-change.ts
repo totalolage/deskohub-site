@@ -3,17 +3,18 @@ import { Effect } from "effect";
 import { type Locale, locales } from "@/features/i18n";
 import type { CampaignId } from "../campaign-identifiers";
 import {
-  CampaignBodyMarkdownInvalid,
+  type CampaignBodyDocumentInvalid,
+  type CampaignBodyMarkdownInvalid,
   CampaignLocaleContentMissing,
 } from "../errors";
-import { parseCampaignBodyMarkdown } from "./campaign-body-markdown";
+import { type CampaignBodyInput, readCampaignBody } from "./campaign-body-input";
 import type {
   CampaignLocaleContent,
   CampaignLocalizedContent,
 } from "./campaign-content";
 
 /**
- * Per-locale changes to a campaign's texts, with Markdown bodies. A locale
+ * Per-locale changes to a campaign's texts, with Markdown or document bodies. A locale
  * mapped to null loses its content; omitted locales are unchanged.
  */
 export type CampaignContentChanges = NonNullable<CampaignPatchInput["content"]>;
@@ -24,6 +25,16 @@ const withOperationalReason = (
   operationalReason: string | undefined
 ): CampaignLocaleContent =>
   operationalReason === undefined ? content : { ...content, operationalReason };
+
+/** The body a change gives, if any; the contract allows only one form. */
+const changedBody = ({
+  bodyDocument,
+  bodyMarkdown,
+}: CampaignLocaleContentChange): CampaignBodyInput | undefined => {
+  if (bodyDocument !== undefined) return { bodyDocument };
+  if (bodyMarkdown !== undefined) return { bodyMarkdown };
+  return undefined;
+};
 
 /**
  * Merges one locale's change into its current content. Omitted fields keep
@@ -36,14 +47,11 @@ const applyLocaleChange = Effect.fn("applyCampaignLocaleChange")(function* (
   current: CampaignLocaleContent | undefined,
   change: CampaignLocaleContentChange
 ) {
+  const bodyInput = changedBody(change);
   const body =
-    change.bodyMarkdown === undefined
+    bodyInput === undefined
       ? current?.body
-      : yield* parseCampaignBodyMarkdown(change.bodyMarkdown).pipe(
-          Effect.mapError(
-            (cause) => new CampaignBodyMarkdownInvalid({ locale, cause })
-          )
-        );
+      : yield* readCampaignBody(locale, bodyInput);
   const subject = change.subject ?? current?.subject;
   if (body === undefined || subject === undefined) {
     return yield* new CampaignLocaleContentMissing({ campaignId, locale });
@@ -67,7 +75,9 @@ const changeLocaleContent = (
   change: CampaignLocaleContentChange | null | undefined
 ): Effect.Effect<
   CampaignLocaleContent | undefined,
-  CampaignBodyMarkdownInvalid | CampaignLocaleContentMissing
+  | CampaignBodyDocumentInvalid
+  | CampaignBodyMarkdownInvalid
+  | CampaignLocaleContentMissing
 > => {
   if (change === undefined) return Effect.succeed(current);
   if (change === null) return Effect.succeed(undefined);
