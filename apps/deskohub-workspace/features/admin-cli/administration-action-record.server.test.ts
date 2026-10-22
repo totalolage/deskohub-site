@@ -63,7 +63,11 @@ type ActionLogEvent =
   | { readonly event: "finish"; readonly end: AdministrationActionEnd };
 
 const makeActionLog = (
-  options: { readonly startFails?: boolean; readonly finishDies?: boolean } = {}
+  options: {
+    readonly startFails?: boolean;
+    readonly finishDies?: boolean;
+    readonly finishHangs?: boolean;
+  } = {}
 ) => {
   const events: ActionLogEvent[] = [];
   const layer = Layer.succeed(AdministrationActionLog, {
