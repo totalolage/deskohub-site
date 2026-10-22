@@ -9,6 +9,23 @@
 - Bounded filters use schema-typed GET query parameters. Keep service operations and shared schemas transport-independent.
 - `dhw` sends its version in `x-dhw-version` on every request. In a group that uses the `CliClientCompatibility` middleware (today `campaigns` and `automations`), an endpoint or group annotated with `MinimumDhwVersion` (`dhw-version.ts`) rejects a missing, malformed, or older version with `CliInputInvalid` before its handler runs (`features/admin-cli/cli-client-version.ts`). `getInfo` lists every minimum, and a test fails if an endpoint with a minimum lacks the middleware. When a response gains a field that older binaries would drop and then write back, raise the minimum on the affected endpoints in the same PR as the writer. A group that adds the middleware must already declare `CliInputInvalid` on every endpoint; otherwise released binaries can't decode the rejection.
 
+## Operation annotations
+
+Every endpoint declares what its operation does, using the keys in `packages/workspace-admin-api/src/administration-operation.ts`. The annotations describe the operation, not a channel: `dhw` confirmations follow them, and any other administration channel must too. When you add or change an endpoint:
+
+- Annotate it with exactly one of:
+  - `AdministrationOperationBehavior`, for an operation every administration channel serves. Use `readOperation`, `writeOperation({ idempotent })` or `destructiveOperation({ idempotent, preview })`.
+  - `AdministrationOperationVariants`, for a generic mutation endpoint. Each union member is its own operation. Add the new variant to `discountMutationOperations` or `reservationAccessMutationOperations`; the `satisfies Record<kind, …>` fails the typecheck until you do.
+  - `CliOnly { reason }`, only for the CLI's own sign-in handshake and client checks.
+- `destructive` means `dhw` asks before running it: it cancels, sends, deletes, revokes, publishes, issues a credential, or changes who may claim a discount. A destructive command calls `confirmChange` with the operation's reference (`<group>.<endpoint>`, or `<group>.<endpoint>.<kind>` for a variant). `apps/dhw/src/command-runtime.test.ts` runs every confirming command without `--yes` and checks that the confirmed operations and the destructive operations are the same set, so add the command's row there.
+- `idempotent` is true only when repeating the same input, request ID included, has no further effect: reads, request-ID ledger writes, and writes that set a state. Sending email again or starting another job is not idempotent.
+- Give a destructive operation a `preview` when a read can show what it would change: `dryRunPreview` for an endpoint with a `dryRun` input, or `readPreview(...)` naming read operations. Leave it out when no read endpoint exists yet.
+- Mark a schema that lets its holder act (a token, a code, a PIN) with `credential: true`. Only `CliOnly` endpoints may return one, apart from the entries in `disclosedCredentials`; today that's the one-time standalone access-code PIN.
+- Put the endpoint in a group that uses `AdministrationAuthentication`; only `CliOnly` endpoints use the CLI's own bearer. Handlers take the actor and channel from `CurrentAdministrationCaller`, never from input.
+- Keep a campaign port operation's `query` or `mutation` kind consistent with the endpoint's `read` or write kind; ledger operations are idempotent.
+
+`packages/workspace-admin-api/src/administration-operation.test.ts` checks all of the above.
+
 ## Authentication and sessions
 
 1. `dhw auth` creates a five-minute authentication request and prints an unprefixed `/admin/cli/authenticate` URL, which the proxy redirects into the operator's locale.
@@ -18,7 +35,7 @@
 Rules:
 
 - The server persists only SHA-256 digests of bearers.
-- Approval records the approving administrator's account actor on the request, and exchange copies it to the session (`approved_by_account_*`). The API returns the email snapshot as `approvedByEmail` and, for released `dhw` binaries that cap `approvedBy` at 80 characters and read null as a legacy session, a shortened copy as `approvedBy` (`toAdministrationActorName`). Keep `approvedBy` within that contract; the `CLI session contract` test in `packages/workspace-admin-api` decodes with the dhw-v1.17.0 schema. Handlers take the provenance actor for invoices and access codes from `CliAuthentication.sessionAdministrator`, never from CLI input.
+- Approval records the approving administrator's account actor on the request, and exchange copies it to the session (`approved_by_account_*`). The API returns the email snapshot as `approvedByEmail` and, for released `dhw` binaries that cap `approvedBy` at 80 characters and read null as a legacy session, a shortened copy as `approvedBy` (`toAdministrationActorName`). Keep `approvedBy` within that contract; the `CLI session contract` test in `packages/workspace-admin-api` decodes with the dhw-v1.17.0 schema. `CliSessionAdministrationAuthenticationLive` resolves the session's approving administrator once per request and provides it, with the CLI session channel, as `CurrentAdministrationCaller`. Handlers take the provenance actor for invoices and access codes from it, never from CLI input.
 - A session stops working when it's revoked, when it expires, when its approving account loses the administrator grant or awaits deletion, or when it has no approving account (an unlinked pre-account session). Bearer authentication reads the grant on every request, so a revocation applies on the next one. Every failure is `CliSessionUnauthorized`, and `dhw` deletes the stored credential. Exchange also fails when the approver lost the grant.
 - Session list, rename, and revoke are scoped to the approving account.
 - Expiry is computed at approval in `Europe/Prague` calendar units. `NULL` means the session never expires.
@@ -28,12 +45,12 @@ Rules:
 ## Output and confirmation
 
 - `--json` reserves stdout for one final JSON result. `dhw auth --json` writes approval instructions to stderr.
-- Every administration command that has a `--yes` flag prompts for confirmation through `confirmChange`. With `--json` or without a TTY on both stdin and stdout, it fails unless you pass `--yes`. `dhw update --json` without `--yes` only reports an available update.
+- Every administration command that has a `--yes` flag runs a destructive operation and prompts for confirmation through `confirmChange`, which names that operation. With `--json` or without a TTY on both stdin and stdout, it fails unless you pass `--yes`. `dhw update --json` without `--yes` only reports an available update.
 - Reservation detail includes safe access-grant metadata, never the PIN.
 
 ## Retries and idempotency
 
-- Discount and reservation-access mutations carry a client-generated request ID. The server stores the request and result per CLI session in `features/admin-cli/cli-mutation-idempotency.service.ts`, so retrying after an ambiguous transport failure replays the stored result instead of applying the mutation twice. A replayed access mutation returns safe grant metadata without issuing another credential.
+- Discount and reservation-access mutations carry a client-generated request ID. The server stores the request and result per caller scope (`AdministrationMutationScope`, the CLI session today) in `features/admin-cli/cli-mutation-idempotency.service.ts`, so retrying after an ambiguous transport failure replays the stored result instead of applying the mutation twice. A replayed access mutation returns safe grant metadata without issuing another credential.
 - An incomplete access request claim can be reclaimed after one minute. Recovery returns an issued grant, safely retries a failed grant, or requires provider reconciliation for every ambiguous state.
 - `dhw invoices create --input <file>` decodes the file with the strict `AdministrationInvoiceCreateFileInput` schema, which rejects unknown properties at every level. The file supplies the invoice UUID, and `dhw` sends it unchanged across retries. After an uncertain attempt, rerun with the same file. The server rejects the same UUID with different input.
 - Keep invoice customer data out of the generic CLI mutation ledger.
