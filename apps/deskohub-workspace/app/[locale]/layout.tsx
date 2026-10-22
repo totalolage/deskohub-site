@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { isLocale, locales, m } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
+import { loadOfficeGlobalRelease } from "@/features/office/backend/office-reservation-feature-flag.server";
+import { getSharedWorkspaceSummary } from "@/features/public-pages/workspace-summary";
 import { workspaceSiteOrigin } from "@/shared/utils";
 import "../globals.css";
 
@@ -33,7 +35,12 @@ export async function generateMetadata({
   return {
     metadataBase: new URL(workspaceSiteOrigin),
     title: m.workspaceMetadataTitle({}, { locale }),
-    description: m.workspaceMetadataDescription({}, { locale }),
+    // The products every visitor can book. The layout is static, so it reads
+    // the office gate only as decided for everyone.
+    description: getSharedWorkspaceSummary({
+      locale,
+      officeRelease: await loadOfficeGlobalRelease(),
+    }),
     icons: {
       icon: {
         url: "/favicon.png",

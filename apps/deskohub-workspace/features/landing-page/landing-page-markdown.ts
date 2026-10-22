@@ -1,7 +1,12 @@
 import { Effect } from "effect";
-import { getLocalizedPagePath, type Locale, m } from "@/features/i18n";
+import {
+  getPagePath,
+  getWorkspacePageUrl,
+  type Locale,
+  m,
+} from "@/features/i18n";
 import type { PublicPageMarkdownSources } from "@/features/public-pages/public-page-markdown";
-import { getCoworkReservationPath } from "@/features/reservation/routes";
+import { coworkReservationPath } from "@/features/reservation/routes";
 import { siteHeaderSectionIds } from "@/shared/components/site-header-config";
 import {
   type MarkdownBlocks,
@@ -14,10 +19,7 @@ import {
   markdownParagraph,
   markdownStrong,
 } from "@/shared/markdown/markdown";
-import {
-  getWorkspaceCanonicalUrl,
-  workspaceSiteConstants,
-} from "@/shared/utils/site-constants";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   workspaceFormattedAddress,
   workspaceGoogleDirectionsUrl,
@@ -36,7 +38,7 @@ const saleBannerMarkdown = (banner: LandingPageSaleBannerContent) =>
       })
     ),
     markdownParagraph(
-      markdownLink(getWorkspaceCanonicalUrl(banner.href), banner.ctaLabel)
+      markdownLink(getWorkspacePageUrl(banner.href), banner.ctaLabel)
     )
   );
 
@@ -49,9 +51,7 @@ export const landingPageMarkdown = (
   locale: Locale,
   { isPublished, saleBanner }: PublicPageMarkdownSources
 ): Effect.Effect<MarkdownBlocks> => {
-  const contactUrl = getWorkspaceCanonicalUrl(
-    getLocalizedPagePath(locale, "/[locale]/contact")
-  );
+  const contactUrl = getWorkspacePageUrl(getPagePath("/[locale]/contact"));
   const infoEmail = workspaceSiteConstants.contact.infoEmail;
 
   return Effect.map(saleBanner, (banner) => [
@@ -63,9 +63,7 @@ export const landingPageMarkdown = (
         ? [
             markdownListItem(
               markdownLink(
-                getWorkspaceCanonicalUrl(
-                  getLocalizedPagePath(locale, "/[locale]/meeting-room")
-                ),
+                getWorkspacePageUrl(getPagePath("/[locale]/meeting-room")),
                 m.landingHeroMeetingRoomCta({}, { locale })
               )
             ),
@@ -73,7 +71,7 @@ export const landingPageMarkdown = (
         : []),
       markdownListItem(
         markdownLink(
-          getWorkspaceCanonicalUrl(getCoworkReservationPath(locale)),
+          getWorkspacePageUrl(coworkReservationPath),
           m.landingHeroPrimaryCta({}, { locale })
         )
       ),
@@ -98,9 +96,7 @@ export const landingPageMarkdown = (
       ),
       markdownListItem(
         markdownLink(
-          getWorkspaceCanonicalUrl(
-            `/${locale}#${siteHeaderSectionIds.overview}`
-          ),
+          getWorkspacePageUrl(`/#${siteHeaderSectionIds.overview}`),
           m.landingFooterBarCta({}, { locale })
         )
       ),

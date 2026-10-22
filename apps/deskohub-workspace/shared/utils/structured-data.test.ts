@@ -23,7 +23,7 @@ describe("getLocalBusinessStructuredData", () => {
       "@id": "https://workspace.deskohub.cz/#business",
       name: workspaceSiteConstants.brand.name,
       description: m.landingMetadataDescription({}, { locale: "cs-CZ" }),
-      url: "https://workspace.deskohub.cz/cs-CZ",
+      url: "https://workspace.deskohub.cz/",
       email: workspaceSiteConstants.contact.infoEmail,
       image,
       address: {

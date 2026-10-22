@@ -14,7 +14,7 @@ import {
 import { type Locale, m } from "@/features/i18n";
 import { getPublicOfferingsStructuredData } from "./public-offerings-structured-data";
 
-const url = "https://workspace.deskohub.cz/en-US/reservation/cowork";
+const url = "https://workspace.deskohub.cz/reservation/cowork";
 const business = { "@id": "https://workspace.deskohub.cz/#business" };
 
 const getServices = (locale: Locale = "en-US") =>
@@ -172,7 +172,10 @@ describe("getPublicOfferingsStructuredData", () => {
 
     expect(openSpace).toMatchObject({
       name: m.reservationOpenSpaceTitle({}, { locale: "cs-CZ" }),
-      description: m.reservationOpenSpaceDescription({}, { locale: "cs-CZ" }),
+      description: m.reservationOpenSpaceDescription(
+        { until: "17:00" },
+        { locale: "cs-CZ" }
+      ),
       offers: {
         description: m.publicOfferingOpenSpaceUsage(
           { until: "17:00" },
