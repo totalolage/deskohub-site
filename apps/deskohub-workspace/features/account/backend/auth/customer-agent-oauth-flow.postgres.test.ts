@@ -34,6 +34,12 @@ import {
 import { customerAgentRefreshTokenReuseSeconds } from "./customer-agent-authorization-server";
 import { CustomerAgentClientDirectory } from "./customer-agent-client-directory.service";
 import { CustomerAgentConnections } from "./customer-agent-connections.service";
+import {
+  chatGptCallbackClientMetadata,
+  chatGptClientMetadata,
+  claudeClientMetadata,
+  claudeCodeClientMetadata,
+} from "./customer-agent-directory-clients.test-utils";
 
 const RESOURCE = `https://${HOST}/api/mcp`;
 const ORIGIN = `https://${HOST}`;
@@ -2008,6 +2014,406 @@ describe.skipIf(!testDatabase)(
           name: customerAgentTestClientMetadata.client_name,
           host: "workspace.deskohub.cz",
         })
+      );
+    });
+  }
+);
+
+/** Serves published documents by URL, in place of their hosts. */
+const serveDocuments = (documents: Readonly<Record<string, unknown>>) => {
+  const requests: string[] = [];
+  const transport = async (input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input);
+    requests.push(url);
+    const document = documents[url];
+    return document
+      ? Response.json(document, { headers: { "cache-control": "max-age=300" } })
+      : new Response("not found", { status: 404 });
+  };
+  return { requests, transport };
+};
+
+const base64UrlJson = (value: object) =>
+  Buffer.from(JSON.stringify(value)).toString("base64url");
+
+/**
+ * An RS256 key pair standing in for ChatGPT's: its public JWKS, as the
+ * client's `jwks_uri` serves it, and `private_key_jwt` client assertions
+ * signed with it for the token endpoint.
+ */
+const makeClientSigningKey = async () => {
+  const kid = crypto.randomUUID();
+  const { publicKey, privateKey } = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"]
+  );
+  const { kty, n, e } = await crypto.subtle.exportKey("jwk", publicKey);
+  const assertion = async (clientId: string) => {
+    const now = Math.floor(Date.now() / 1000);
+    const signingInput = `${base64UrlJson({ alg: "RS256", typ: "JWT", kid })}.${base64UrlJson(
+      {
+        iss: clientId,
+        sub: clientId,
+        aud: `${AUTH_BASE}/oauth2/token`,
+        iat: now,
+        exp: now + 60,
+        jti: crypto.randomUUID(),
+      }
+    )}`;
+    const signature = await crypto.subtle.sign(
+      "RSASSA-PKCS1-v1_5",
+      privateKey,
+      new TextEncoder().encode(signingInput)
+    );
+    return `${signingInput}.${Buffer.from(signature).toString("base64url")}`;
+  };
+  return {
+    jwks: { keys: [{ kty, n, e, kid, use: "sig", alg: "RS256" }] },
+    assertion,
+  };
+};
+
+/** An app-directory client as it signs a customer in. */
+type DirectoryClient = {
+  readonly clientId: string;
+  readonly clientName: string;
+  /** The host the consent page names the client by. */
+  readonly host: string;
+  /** The redirect URI the client sends with this authorization. */
+  readonly redirectUri: string;
+  /** Adds the client's token-endpoint authentication to a token request. */
+  readonly authenticate: (
+    form: Record<string, string>
+  ) => Promise<Record<string, string>>;
+};
+
+/**
+ * ChatGPT (its stable client and a per-connector one), Claude's apps, and
+ * Claude Code on a loopback port of each host it names, with their
+ * documents served as their hosts publish them.
+ */
+const makeDirectoryClients = async () => {
+  const signingKey = await makeClientSigningKey();
+  const chatGptCallbackClient = chatGptCallbackClientMetadata(
+    crypto.randomUUID()
+  );
+  const loopbackPort = 49_152 + Math.floor(Math.random() * 16_000);
+  const signed =
+    (clientId: string): DirectoryClient["authenticate"] =>
+    async (form) => ({
+      ...form,
+      client_assertion_type:
+        "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+      client_assertion: await signingKey.assertion(clientId),
+    });
+  const unauthenticated: DirectoryClient["authenticate"] = async (form) =>
+    form;
+  const clients = {
+    ChatGPT: {
+      clientId: chatGptClientMetadata.client_id,
+      clientName: chatGptClientMetadata.client_name,
+      host: "chatgpt.com",
+      redirectUri: chatGptClientMetadata.redirect_uris[0],
+      authenticate: signed(chatGptClientMetadata.client_id),
+    },
+    "ChatGPT's per-connector client": {
+      clientId: chatGptCallbackClient.client_id,
+      clientName: chatGptCallbackClient.client_name,
+      host: "chatgpt.com",
+      redirectUri: chatGptCallbackClient.redirect_uris[0],
+      authenticate: signed(chatGptCallbackClient.client_id),
+    },
+    Claude: {
+      clientId: claudeClientMetadata.client_id,
+      clientName: claudeClientMetadata.client_name,
+      host: "claude.ai",
+      redirectUri: claudeClientMetadata.redirect_uris[0],
+      authenticate: unauthenticated,
+    },
+    "Claude Code on localhost": {
+      clientId: claudeCodeClientMetadata.client_id,
+      clientName: claudeCodeClientMetadata.client_name,
+      host: "claude.ai",
+      redirectUri: `http://localhost:${loopbackPort}/callback`,
+      authenticate: unauthenticated,
+    },
+    "Claude Code on 127.0.0.1": {
+      clientId: claudeCodeClientMetadata.client_id,
+      clientName: claudeCodeClientMetadata.client_name,
+      host: "claude.ai",
+      redirectUri: `http://127.0.0.1:${loopbackPort}/callback`,
+      authenticate: unauthenticated,
+    },
+  } satisfies Record<string, DirectoryClient>;
+  const documents = serveDocuments({
+    [chatGptClientMetadata.client_id]: chatGptClientMetadata,
+    [chatGptCallbackClient.client_id]: chatGptCallbackClient,
+    [chatGptClientMetadata.jwks_uri]: signingKey.jwks,
+    [claudeClientMetadata.client_id]: claudeClientMetadata,
+    [claudeCodeClientMetadata.client_id]: claudeCodeClientMetadata,
+  });
+  return { clients, documents };
+};
+
+type DirectoryClientName = keyof Awaited<
+  ReturnType<typeof makeDirectoryClients>
+>["clients"];
+
+const directoryClientNames: ReadonlyArray<DirectoryClientName> = [
+  "ChatGPT",
+  "ChatGPT's per-connector client",
+  "Claude",
+  "Claude Code on localhost",
+  "Claude Code on 127.0.0.1",
+];
+
+/** The issuer the authorization-server metadata advertises. */
+const discoveredIssuer = async (auth: TestAuth) => {
+  const response = await auth.handler(
+    new Request(`${ORIGIN}/.well-known/oauth-authorization-server/api/auth`)
+  );
+  expect(response.status).toBe(200);
+  const metadata = (await response.json()) as {
+    readonly issuer: string;
+    readonly authorization_response_iss_parameter_supported?: boolean;
+  };
+  expect(metadata.authorization_response_iss_parameter_supported).toBe(true);
+  return metadata.issuer;
+};
+
+/** The authorization response at a client's redirect URI. */
+const expectAuthorizationResponse = (
+  response: URL,
+  client: DirectoryClient,
+  { state, issuer }: { readonly state: string; readonly issuer: string }
+) => {
+  expect(`${response.origin}${response.pathname}`).toBe(client.redirectUri);
+  expect(response.searchParams.get("state")).toBe(state);
+  // RFC 9207: every response names the issuer, so the client can tell it
+  // came from the server it started the request with.
+  expect(response.searchParams.get("iss")).toBe(issuer);
+};
+
+describe.skipIf(!testDatabase)(
+  "App-directory clients on the migrated disposable Postgres",
+  () => {
+    test.each(directoryClientNames)(
+      "signs a customer in through %s from its published metadata document",
+      async (name) => {
+        const { clients, documents } = await makeDirectoryClients();
+        const client: DirectoryClient = clients[name];
+        const sentLinks: CapturedMagicLink[] = [];
+        const auth = makeTestAuth({
+          sentLinks,
+          clientMetadataTransport: documents.transport,
+        });
+        const issuer = await discoveredIssuer(auth);
+        const pkce = await makePkce();
+        const state = crypto.randomUUID();
+
+        const { consentPage, customer } = await connectToConsent(
+          auth,
+          sentLinks,
+          {
+            clientId: client.clientId,
+            redirectUri: client.redirectUri,
+            challenge: pkce.challenge,
+            state,
+            scope: AGENT_SCOPE,
+          }
+        );
+        expect(documents.requests).toContain(client.clientId);
+        expect(consentPage.pathname).toBe("/auth/consent");
+
+        // The consent page names the client and the host it publishes from.
+        const listed = await findClient(
+          auth,
+          client.clientId,
+          new Headers({ cookie: customer.cookie, host: HOST })
+        );
+        expect(listed._tag === "Success" && listed.success).toEqual(
+          Option.some({
+            clientId: client.clientId as never,
+            name: client.clientName,
+            host: client.host,
+          })
+        );
+
+        const callback = await answerConsent(
+          auth,
+          customer.cookie,
+          consentPage,
+          true
+        );
+        expectAuthorizationResponse(callback, client, { state, issuer });
+        const code = callback.searchParams.get("code");
+        expect(code).toBeTruthy();
+
+        const tokenResponse = await requestToken(
+          auth,
+          await client.authenticate({
+            grant_type: "authorization_code",
+            client_id: client.clientId,
+            code: code!,
+            code_verifier: pkce.verifier,
+            redirect_uri: client.redirectUri,
+            resource: RESOURCE,
+          })
+        );
+        expect(tokenResponse.status).toBe(200);
+        const tokens = (await tokenResponse.json()) as TokenResponse;
+        expect(tokens.refresh_token).toBeTruthy();
+
+        // The requested resource, the MCP server, is the token's audience.
+        const claims = (await auth.api.verifyCustomerAgentAccessToken({
+          body: { token: tokens.access_token },
+          headers: new Headers({ host: HOST }),
+        })) as {
+          readonly active: boolean;
+          readonly aud?: string | ReadonlyArray<string>;
+          readonly sub?: string;
+          readonly client_id?: string;
+        };
+        expect(claims.active).toBe(true);
+        expect([claims.aud].flat()).toContain(RESOURCE);
+        expect(claims.sub).toBe(customer.accountId);
+        expect(claims.client_id).toBe(client.clientId);
+        expect(
+          (await authorizeToken(authorityOver(auth), tokens.access_token))._tag
+        ).toBe("Success");
+
+        const refreshed = await requestToken(
+          auth,
+          await client.authenticate({
+            grant_type: "refresh_token",
+            client_id: client.clientId,
+            refresh_token: tokens.refresh_token!,
+            resource: RESOURCE,
+          })
+        );
+        expect(refreshed.status).toBe(200);
+        const renewed = (await refreshed.json()) as TokenResponse;
+        expect(
+          (await authorizeToken(authorityOver(auth), renewed.access_token))._tag
+        ).toBe("Success");
+
+        // An expired access token grants nothing, which the MCP route
+        // answers with an invalid_token challenge.
+        setSystemTime(new Date(Date.now() + (renewed.expires_in + 60) * 1000));
+        try {
+          expect(
+            await failureReasonOf(authorityOver(auth), renewed.access_token)
+          ).toBe("invalid-token");
+        } finally {
+          setSystemTime();
+        }
+      }
+    );
+
+    test.each(directoryClientNames)(
+      "sends %s its authorization errors with the issuer",
+      async (name) => {
+        const { clients, documents } = await makeDirectoryClients();
+        const client: DirectoryClient = clients[name];
+        const sentLinks: CapturedMagicLink[] = [];
+        const auth = makeTestAuth({
+          sentLinks,
+          clientMetadataTransport: documents.transport,
+        });
+        const issuer = await discoveredIssuer(auth);
+        const { cookie } = await signIn(auth, sentLinks);
+        const pkce = await makePkce();
+        const authorization = {
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+          challenge: pkce.challenge,
+        };
+
+        const unknownScopeState = crypto.randomUUID();
+        const unknownScope = redirectOf(
+          await request(
+            auth,
+            authorizePath({
+              ...authorization,
+              state: unknownScopeState,
+              scope: "offerings:read payments:write",
+            }),
+            { cookie }
+          )
+        );
+        expectAuthorizationResponse(unknownScope, client, {
+          state: unknownScopeState,
+          issuer,
+        });
+        expect(unknownScope.searchParams.get("error")).toBe("invalid_scope");
+
+        const declinedState = crypto.randomUUID();
+        const consentPage = redirectOf(
+          await request(
+            auth,
+            authorizePath({
+              ...authorization,
+              state: declinedState,
+              scope: AGENT_SCOPE,
+            }),
+            { cookie }
+          )
+        );
+        expect(consentPage.pathname).toBe("/auth/consent");
+        const declined = await answerConsent(auth, cookie, consentPage, false);
+        expectAuthorizationResponse(declined, client, {
+          state: declinedState,
+          issuer,
+        });
+        expect(declined.searchParams.get("error")).toBe("access_denied");
+        expect(declined.searchParams.has("code")).toBe(false);
+      }
+    );
+
+    test("refuses ChatGPT's code exchange without its signed client assertion", async () => {
+      const {
+        clients: { ChatGPT: client },
+        documents,
+      } = await makeDirectoryClients();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: documents.transport,
+      });
+      const { cookie } = await signIn(auth, sentLinks);
+      const pkce = await makePkce();
+      const consentPage = redirectOf(
+        await request(
+          auth,
+          authorizePath({
+            clientId: client.clientId,
+            redirectUri: client.redirectUri,
+            challenge: pkce.challenge,
+            state: crypto.randomUUID(),
+            scope: AGENT_SCOPE,
+          }),
+          { cookie }
+        )
+      );
+      const callback = await answerConsent(auth, cookie, consentPage, true);
+      const response = await requestToken(auth, {
+        grant_type: "authorization_code",
+        client_id: client.clientId,
+        code: callback.searchParams.get("code") ?? "",
+        code_verifier: pkce.verifier,
+        redirect_uri: client.redirectUri,
+        resource: RESOURCE,
+      });
+
+      expect(response.status).toBe(400);
+      expect(((await response.json()) as { error: string }).error).toBe(
+        "invalid_client"
       );
     });
   }
