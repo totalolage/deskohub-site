@@ -1,4 +1,4 @@
-import { equal } from "node:assert/strict";
+import { equal, fail } from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
@@ -7,7 +7,12 @@ import {
   ProtocolErrorCode,
   type Tool,
 } from "@modelcontextprotocol/client";
-import type { BrowserContext, Page, TestInfo } from "@playwright/test";
+import {
+  type BrowserContext,
+  expect,
+  type Page,
+  type TestInfo,
+} from "@playwright/test";
 import { Effect } from "effect";
 import { administrationAgentScope } from "@/features/account/agent-scopes";
 import { customerAgentTestClientMetadata } from "@/features/account/customer-agent-test-client";
@@ -34,7 +39,7 @@ import { tryWorkspaceE2EPromise, tryWorkspaceE2ESync } from "../errors";
 import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import { runtimeTest as test } from "../playwright-checkout/runtime-fixtures";
 import { waitForReactClickHandler } from "../react-handlers";
-import { addRedaction, assert, workspaceDir } from "../runtime";
+import { addRedaction, assert, parseUrl, workspaceDir } from "../runtime";
 import {
   workspaceE2EAdministratorAgentToolsPlaywrightTimeout,
   workspaceE2ETimeouts,
@@ -389,10 +394,12 @@ const allowAgentConsent = Effect.fn("allowAgentConsent")(function* ({
       await page.goto(request.authorizationUrl, {
         timeout: workspaceE2ETimeouts.browserNavigation,
       });
-      await page.waitForURL(
-        (url) => isCustomerAgentConsentUrl(url.toString(), config.baseUrl),
-        { timeout: workspaceE2ETimeouts.uiTransition }
-      );
+      await waitForBrowserLocation({
+        baseUrl: config.baseUrl,
+        expected: "the consent page",
+        matches: (url) => isCustomerAgentConsentUrl(url, config.baseUrl),
+        page,
+      });
       const consentUrl = localizeCustomerAgentConsentUrl(
         page.url(),
         consentLocale
@@ -406,10 +413,16 @@ const allowAgentConsent = Effect.fn("allowAgentConsent")(function* ({
         exact: true,
         name: m.customerAgentConsentAllow({}, { locale: consentLocale }),
       });
-      await allow.waitFor({
-        state: "visible",
-        timeout: workspaceE2ETimeouts.uiTransition,
-      });
+      await allow
+        .waitFor({
+          state: "visible",
+          timeout: workspaceE2ETimeouts.uiTransition,
+        })
+        .catch(async () =>
+          fail(
+            `The consent page shows no Allow button; ${await describePageState(page)}`
+          )
+        );
       equal(
         await page.locator(administrationConsentSection).count(),
         administrator ? 1 : 0,
@@ -418,16 +431,20 @@ const allowAgentConsent = Effect.fn("allowAgentConsent")(function* ({
           : "The consent page asks a customer about the administration"
       );
       await waitForReactClickHandler(page, allow);
+      const consentAnswer = describeConsentAnswer(page, config.baseUrl);
       await allow.click({ timeout: workspaceE2ETimeouts.browserAction });
-      await page.waitForURL(
-        (url) => {
-          if (!isCustomerAgentCallbackUrl(url.toString())) return false;
+      await waitForBrowserLocation({
+        baseUrl: config.baseUrl,
+        detail: consentAnswer,
+        expected: "the agent's redirect URI after Allow",
+        matches: (url) => {
+          if (!isCustomerAgentCallbackUrl(url)) return false;
           // Registered before any log line can carry the URL.
-          addRedaction(url.searchParams.get("code") ?? "", true);
+          addRedaction(new URL(url).searchParams.get("code") ?? "", true);
           return true;
         },
-        { timeout: workspaceE2ETimeouts.uiTransition }
-      );
+        page,
+      });
       return page.url();
     }
   );
@@ -480,6 +497,133 @@ const expectNoAdministrationTools = Effect.fn("expectNoAdministrationTools")(
   },
   Effect.scoped
 );
+
+/**
+ * Waits for the browser to reach a URL by polling it, as `waitForBrowserUrl`
+ * does: after Allow, Better Auth's client and the consent page both navigate
+ * to the agent's redirect URI, and `page.waitForURL` can reject on the first,
+ * aborted navigation. On a timeout it fails with where the browser is
+ * instead, in code-owned terms only: no host, query, or page text.
+ */
+const waitForBrowserLocation = async ({
+  baseUrl,
+  detail,
+  expected,
+  matches,
+  page,
+}: {
+  readonly baseUrl: string;
+  /** More context for the failure message, such as the consent answer. */
+  readonly detail?: Promise<string>;
+  readonly expected: string;
+  readonly matches: (url: string) => boolean;
+  readonly page: Page;
+}) => {
+  try {
+    await expect
+      .poll(() => matches(page.url()), {
+        timeout: workspaceE2ETimeouts.uiTransition,
+      })
+      .toBe(true);
+  } catch {
+    fail(
+      `The browser did not reach ${expected}; it is on ${describeDestination(page.url(), baseUrl)}, ${await describePageState(page)}${detail ? `; ${await detail}` : ""}`
+    );
+  }
+};
+
+/** The OAuth error codes a failure message may name; others aren't echoed. */
+const reportableOAuthErrors = new Set([
+  "access_denied",
+  "client_disabled",
+  "consent_required",
+  "interaction_required",
+  "invalid_client",
+  "invalid_grant",
+  "invalid_redirect",
+  "invalid_request",
+  "invalid_scope",
+  "invalid_target",
+  "login_required",
+  "server_error",
+  "temporarily_unavailable",
+  "unauthorized_client",
+  "unsupported_response_type",
+]);
+
+const oauthErrorCode = (value: unknown) => {
+  if (value === null || value === undefined) return "none";
+  return typeof value === "string" && reportableOAuthErrors.has(value)
+    ? value
+    : "unrecognized";
+};
+
+/** The preview pages a failure message may name, by path suffix. */
+const reportablePreviewPages = [
+  ["/auth/consent", "the consent page"],
+  ["/auth/connect", "the connect page"],
+  ["/auth/sign-in", "the sign-in page"],
+  ["/api/auth/error", "the auth error page"],
+] as const;
+
+/**
+ * Where a URL points: the agent's redirect URI with its OAuth error code, a
+ * known preview page, another preview path, or another origin.
+ */
+const describeDestination = (url: string, baseUrl: string) => {
+  const target = parseUrl(url);
+  if (target === undefined) return "an unreadable URL";
+  if (isCustomerAgentCallbackUrl(target.toString())) {
+    return `the agent's redirect URI with error ${oauthErrorCode(target.searchParams.get("error"))}`;
+  }
+  if (target.origin !== new URL(baseUrl).origin) return "another origin";
+  return (
+    reportablePreviewPages.find(([suffix]) =>
+      target.pathname.endsWith(suffix)
+    )?.[1] ?? "another preview path"
+  );
+};
+
+/** Whether the page shows the consent buttons and an alert. */
+const describePageState = async (page: Page) => {
+  const count = (locator: ReturnType<Page["locator"]>) =>
+    locator.count().catch(() => -1);
+  const [allow, alerts] = await Promise.all([
+    count(
+      page.getByRole("button", {
+        exact: true,
+        name: m.customerAgentConsentAllow({}, { locale: consentLocale }),
+      })
+    ),
+    count(page.getByRole("alert").filter({ hasText: /\S/ })),
+  ]);
+  return `Allow buttons ${allow}, non-empty alerts ${alerts}`;
+};
+
+/**
+ * What the OAuth server answered the page's consent request: the status and
+ * where it sends the browser, in the same code-owned terms.
+ */
+const describeConsentAnswer = (page: Page, baseUrl: string) =>
+  page
+    .waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/oauth2/consent"),
+      { timeout: workspaceE2ETimeouts.uiTransition }
+    )
+    .then(
+      async (response) => {
+        const body: unknown = await response.json().catch(() => undefined);
+        const destination =
+          isRecord(body) && typeof body.url === "string"
+            ? describeDestination(body.url, baseUrl)
+            : "nowhere";
+        const error = oauthErrorCode(isRecord(body) ? body.error : undefined);
+        return `the consent answer was ${response.status()} with error ${error}, sending the browser to ${destination}`;
+      },
+      () => "the page sent no consent answer"
+    );
 
 const listAgentTools = (mcp: Client, config: WorkspaceE2EConfig) =>
   tryWorkspaceE2EPromise("list agent tools", async () => {
