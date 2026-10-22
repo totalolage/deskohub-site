@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.26.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.25.0...dhw-v1.26.0) (2026-10-22)
+
+
+### Features
+
+* **workspace-admin-api:** move the remaining admin UI operations into the administration API ([69f4970](https://github.com/totalolage/deskohub-site/commit/69f4970cb27025b21d7d612175b9807278d4d25c))
+
 ## [1.25.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.24.0...dhw-v1.25.0) (2026-10-22)
 
 
