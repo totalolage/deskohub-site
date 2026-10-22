@@ -2459,7 +2459,9 @@ describe.skipIf(!testDatabase)(
       expect(documents.requests).toContain(chatGptClientMetadata.jwks_uri);
     });
 
-    test.each([
+    // Only the port of a loopback redirect URI may differ from the one
+    // Claude Code registered.
+    const unregisteredLoopbackRedirectUris = [
       ["another path", (port: string) => `http://localhost:${port}/other`],
       ["HTTPS", (port: string) => `https://localhost:${port}/callback`],
       [
@@ -2471,7 +2473,23 @@ describe.skipIf(!testDatabase)(
         "a query",
         (port: string) => `http://127.0.0.1:${port}/callback?next=evil`,
       ],
-    ])(
+      [
+        "credentials",
+        (port: string) => `http://user:pass@localhost:${port}/callback`,
+      ],
+      [
+        "loopback IP credentials",
+        (port: string) => `http://user:pass@127.0.0.1:${port}/callback`,
+      ],
+      [
+        "an empty query",
+        (port: string) => `http://localhost:${port}/callback?`,
+      ],
+      ["a fragment", (port: string) => `http://localhost:${port}/callback#x`],
+      ["an empty fragment", (port: string) => `http://localhost:${port}/callback#`],
+    ] as const;
+
+    test.each(unregisteredLoopbackRedirectUris)(
       "never redirects Claude Code to a loopback URI with %s",
       async (_, redirectUriOn) => {
         const {
@@ -2504,6 +2522,60 @@ describe.skipIf(!testDatabase)(
         expect(`${refused.origin}${refused.pathname}`).toBe(
           `${AUTH_BASE}/error`
         );
+      }
+    );
+
+    // A request object is refused before the request is validated, so the
+    // error goes to the requested redirect URI only if Claude Code
+    // registered it.
+    test.each(unregisteredLoopbackRedirectUris)(
+      "never sends Claude Code an authorization error at a loopback URI with %s",
+      async (_, redirectUriOn) => {
+        const {
+          clients: { "Claude Code on localhost": client },
+          documents,
+        } = await makeDirectoryClients();
+        const sentLinks: CapturedMagicLink[] = [];
+        const auth = makeTestAuth({
+          sentLinks,
+          clientMetadataTransport: documents.transport,
+        });
+        const { cookie } = await signIn(auth, sentLinks);
+        const redirectUri = redirectUriOn(new URL(client.redirectUri).port);
+        const pkce = await makePkce();
+        const authorization = {
+          clientId: client.clientId,
+          challenge: pkce.challenge,
+          state: crypto.randomUUID(),
+          scope: AGENT_SCOPE,
+        };
+
+        const registered = redirectOf(
+          await request(
+            auth,
+            `${authorizePath({ ...authorization, redirectUri: client.redirectUri })}&request=unsupported`,
+            { cookie }
+          )
+        );
+        const registeredUri = new URL(client.redirectUri);
+        expect(`${registered.origin}${registered.pathname}`).toBe(
+          `${registeredUri.origin}${registeredUri.pathname}`
+        );
+        expect(registered.searchParams.get("error")).toBe(
+          "request_not_supported"
+        );
+
+        const refused = redirectOf(
+          await request(
+            auth,
+            `${authorizePath({ ...authorization, redirectUri })}&request=unsupported`,
+            { cookie }
+          )
+        );
+        expect(`${refused.origin}${refused.pathname}`).toBe(
+          `${AUTH_BASE}/error`
+        );
+        expect(refused.searchParams.get("error")).toBe("request_not_supported");
       }
     );
   }

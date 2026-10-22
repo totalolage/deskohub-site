@@ -66,19 +66,25 @@ index 42c943dd45aa3d297a14edcc056a14e7ddd54680..c88a3c2795a277d9af8f418bb8bde697
  			expiresAt: { type: "date" },
  			createdAt: { type: "date" },
  			revoked: {
-@@ -5395,7 +5430,10 @@ function findRegisteredRedirectUri(registered, requested) {
+@@ -5395,7 +5430,16 @@ function findRegisteredRedirectUri(registered, requested) {
  		if (!req) return false;
  		try {
  			const reg = new URL(url);
 -			return isLoopbackIP(reg.hostname) && reg.hostname === req.hostname && reg.pathname === req.pathname && reg.protocol === req.protocol && reg.search === req.search;
 +			// Workspace patch: "localhost" gets the same port variance. Claude
 +			// Code's metadata document registers http://localhost/callback
-+			// and listens on a port it picks per sign-in.
-+			return (isLoopbackIP(reg.hostname) || reg.hostname === "localhost") && reg.hostname === req.hostname && reg.pathname === req.pathname && reg.protocol === req.protocol && reg.search === req.search;
++			// and listens on a port it picks per sign-in. Only the port may
++			// differ: given the registered port, the normalized requested URI
++			// must equal the registered one, so credentials, a fragment, or an
++			// empty query don't match.
++			if (!isLoopbackIP(reg.hostname) && reg.hostname !== "localhost") return false;
++			const candidate = new URL(req.href);
++			candidate.port = reg.port;
++			return candidate.href === reg.href;
  		} catch {
  			return false;
  		}
-@@ -5646,7 +5684,11 @@ async function authorizeEndpoint(ctx, opts, settings) {
+@@ -5646,7 +5690,11 @@ async function authorizeEndpoint(ctx, opts, settings) {
  		sessionId: session.session.id,
  		authTime: new Date(session.session.createdAt).getTime(),
  		referenceId,
@@ -91,7 +97,7 @@ index 42c943dd45aa3d297a14edcc056a14e7ddd54680..c88a3c2795a277d9af8f418bb8bde697
  	});
  }
  function serializeAuthorizationQuery(query) {
-@@ -5674,7 +5716,8 @@ async function redirectWithAuthorizationCode(ctx, opts, verificationValue) {
+@@ -5674,7 +5722,8 @@ async function redirectWithAuthorizationCode(ctx, opts, verificationValue) {
  			sessionId: verificationValue?.sessionId,
  			referenceId: verificationValue.referenceId,
  			authTime: verificationValue.authTime,
