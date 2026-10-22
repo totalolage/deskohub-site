@@ -134,6 +134,16 @@ describe.skipIf(!testDatabase)(
           grants.has({ accountId: reviewAccount, role })
         )
       ).toBe(false);
+      expect(
+        await runGrants((grants) =>
+          grants.lockHeld({ accountId: reviewAccount, role })
+        )
+      ).toBe(false);
+      expect(
+        await runGrants((grants) =>
+          grants.lockHeld({ accountId: administrator, role })
+        )
+      ).toBe(true);
       const listed = (await runGrants((grants) => grants.list(role))).map(
         ({ accountId }) => accountId
       );

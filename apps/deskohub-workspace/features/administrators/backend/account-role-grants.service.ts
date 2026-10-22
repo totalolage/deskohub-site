@@ -116,7 +116,7 @@ export class AccountRoleGrants extends Context.Service<
           const [grant] = yield* db
             .select({ accountId: accountRoleGrants.accountId })
             .from(accountRoleGrants)
-            .where(matchesGrant(key))
+            .where(and(matchesGrant(key), outsideReviewAccounts))
             .limit(1)
             .for("share");
           return grant !== undefined;
