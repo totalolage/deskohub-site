@@ -3,7 +3,7 @@
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { CheckCircle2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { type Control, useForm, useWatch } from "react-hook-form";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { AdministrationPageHeader } from "@/features/administration/components";
@@ -196,7 +196,8 @@ export function CampaignComposer({
   /** Set once a new campaign is created, while its page opens. */
   const [created, setCreated] = useState(false);
   /** The fields of the save in flight, which its success marks saved. */
-  const submittedFields = useRef<CampaignComposerFields>(initialFields);
+  const [submittedFields, setSubmittedFields] =
+    useState<CampaignComposerFields>(initialFields);
   const delivery = campaign?.delivery ?? newDelivery;
   const savedOnce = campaign?.delivery === "once" ? campaign : undefined;
 
@@ -217,10 +218,7 @@ export function CampaignComposer({
       setCreated(true);
       form.reset(form.getValues());
       router.push(
-        localizeAdministrationHref(
-          `/admin/email-campaigns/${id}`,
-          routeLocale
-        )
+        localizeAdministrationHref(`/admin/email-campaigns/${id}`, routeLocale)
       );
     },
     onFailure: setSaveError,
@@ -232,7 +230,7 @@ export function CampaignComposer({
         : campaignSaveFailureCopy,
     onSuccess: () => {
       // Edits made while the save ran stay unsaved.
-      form.reset(submittedFields.current, { keepValues: true });
+      form.reset(submittedFields, { keepValues: true });
       router.refresh();
     },
     onFailure: setSaveError,
@@ -241,8 +239,11 @@ export function CampaignComposer({
   const unsavedChanges = form.formState.isDirty;
 
   const save = form.handleSubmit((values) => {
+    // A created campaign's page is opening; another submit would create a
+    // second one.
+    if (created) return;
     setSaveError(undefined);
-    submittedFields.current = values;
+    setSubmittedFields(values);
     const fields = {
       title: values.title.trim(),
       purpose: values.purpose,
@@ -286,7 +287,9 @@ export function CampaignComposer({
   );
   const saveButton = !campaign?.readOnly && (
     <Button
-      disabled={saving || (campaign !== undefined && !unsavedChanges)}
+      disabled={
+        saving || created || (campaign !== undefined && !unsavedChanges)
+      }
       form="campaign-composer"
       size="sm"
       type="submit"

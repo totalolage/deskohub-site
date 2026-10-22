@@ -159,23 +159,32 @@ test("drops “No audience” once a new campaign is made automated", async () =
   expect(noAudienceOption(view)).toBeNull();
 });
 
+/** A campaign operation's success, as the action hook reports it. */
+type ActionSuccess = {
+  readonly data: { readonly _tag: "Success"; readonly output: object };
+  readonly input: { readonly input: object };
+};
+
+/** The action hook options the composer passes, as far as these tests use them. */
+type CampaignActionOptions = {
+  readonly actionName: string;
+  readonly onSuccess: (success: ActionSuccess) => void;
+};
+
 test("keeps edits made while a save is in flight unsaved", async () => {
-  const pending: { onSuccess?: (result: unknown) => void } = {};
+  let succeed: CampaignActionOptions["onSuccess"] | undefined;
   const execute = mock();
   let saving = false;
   workspaceUseAction.mockImplementation((_action, options) => {
-    const { actionName, onSuccess } = options as {
-      readonly actionName: string;
-      readonly onSuccess: (result: unknown) => void;
-    };
+    const { actionName, onSuccess } = options as CampaignActionOptions;
     if (actionName !== "email-campaigns.updateCampaign") {
       return { execute: mock(), isExecuting: false } as never;
     }
-    pending.onSuccess = onSuccess;
+    succeed = onSuccess;
     return {
-      execute: (input: unknown) => {
+      execute: (...request: Parameters<typeof execute>) => {
         saving = true;
-        execute(input);
+        execute(...request);
       },
       isExecuting: saving,
     } as never;
@@ -201,7 +210,7 @@ test("keeps edits made while a save is in flight unsaved", async () => {
     });
     await act(async () => {
       saving = false;
-      pending.onSuccess?.({
+      succeed?.({
         data: { _tag: "Success", output: {} },
         input: { input: execute.mock.calls[0]?.[0] },
       });
@@ -221,16 +230,17 @@ test("keeps edits made while a save is in flight unsaved", async () => {
 });
 
 test("holds the form while a new campaign is created and its page opens", async () => {
-  const pending: { onSuccess?: (result: unknown) => void } = {};
+  let succeed: CampaignActionOptions["onSuccess"] | undefined;
   let creating = true;
+  const create = mock();
   workspaceUseAction.mockImplementation((_action, options) => {
-    const { actionName, onSuccess } = options as {
-      readonly actionName: string;
-      readonly onSuccess: (result: unknown) => void;
-    };
+    const { actionName, onSuccess } = options as CampaignActionOptions;
     const isCreate = actionName === "email-campaigns.createCampaign";
-    if (isCreate) pending.onSuccess = onSuccess;
-    return { execute: mock(), isExecuting: isCreate && creating } as never;
+    if (isCreate) succeed = onSuccess;
+    return {
+      execute: isCreate ? create : mock(),
+      isExecuting: isCreate && creating,
+    } as never;
   });
   try {
     const view = await renderComposer(undefined);
@@ -241,7 +251,7 @@ test("holds the form while a new campaign is created and its page opens", async 
     // The action stops executing before its success opens the new page.
     await act(async () => {
       creating = false;
-      pending.onSuccess?.({
+      succeed?.({
         data: {
           _tag: "Success",
           output: { id: campaignIdSchema.make("synthetic-created") },
@@ -250,6 +260,18 @@ test("holds the form while a new campaign is created and its page opens", async 
       });
     });
     expect(held()).toBe(true);
+    expect(
+      view.getByRole("button", {
+        name: m.emailCampaignsComposerCreateDraft({}, { locale: "en-US" }),
+      })
+    ).toHaveProperty("disabled", true);
+
+    const composerForm = view.container.querySelector("#campaign-composer");
+    if (!composerForm) throw new Error("no composer form");
+    await act(async () => {
+      fireEvent.submit(composerForm);
+    });
+    expect(create).not.toHaveBeenCalled();
   } finally {
     workspaceUseAction.mockImplementation(
       () => ({ execute: mock(), isExecuting: false }) as never

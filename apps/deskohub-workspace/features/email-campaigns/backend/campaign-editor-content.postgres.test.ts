@@ -94,7 +94,7 @@ describe.skipIf(!testDatabase)("campaign editor content", () => {
     const { id } = await createDraft();
     const saved = await invoke("getCampaignEditorContent", { campaignId: id });
     expect(saved.content).toEqual({ "cs-CZ": czech, "en-US": english });
-    expect(saved.locales).toEqual(["cs-CZ", "en-US"]);
+    expect([...saved.locales].sort()).toEqual(["cs-CZ", "en-US"]);
   });
 
   test("keeps every node Markdown would re-read differently", async () => {
@@ -179,7 +179,9 @@ describe.skipIf(!testDatabase)("campaign editor content", () => {
               formatVersion: 1,
               doc: {
                 type: "doc",
-                content: [{ type: "ctaButton", attrs: { label: "", href: "" } }],
+                content: [
+                  { type: "ctaButton", attrs: { label: "", href: "" } },
+                ],
               },
             },
           },

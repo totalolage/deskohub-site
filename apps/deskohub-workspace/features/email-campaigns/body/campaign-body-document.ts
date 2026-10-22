@@ -1,7 +1,6 @@
 import {
-  type AdministrationCampaignBodyAttributeValue,
-  AdministrationCampaignBodyNode,
-  type AdministrationCampaignBodyNodeType,
+  type AdministrationCampaignBodyAttributeValue as CampaignBodyAttributeValue,
+  AdministrationCampaignBodyNode as CampaignBodyNode,
   campaignBodyFormatVersion,
 } from "@deskohub/workspace-admin-api";
 import { Schema } from "effect";
@@ -11,13 +10,12 @@ import {
   campaignBodyStructureIssues,
 } from "./campaign-body-rules";
 
-export { campaignBodyFormatVersion };
-export type CampaignBodyAttributeValue =
-  AdministrationCampaignBodyAttributeValue;
-export type CampaignBodyNode = AdministrationCampaignBodyNodeType;
-
-/** A ProseMirror JSON node, as TipTap stores it; the contract defines it. */
-export const CampaignBodyNode = AdministrationCampaignBodyNode;
+/** The contract defines the node and its format version. */
+export {
+  type CampaignBodyAttributeValue,
+  CampaignBodyNode,
+  campaignBodyFormatVersion,
+};
 
 /** A versioned TipTap document whose `doc` passes `issues`. */
 const versionedCampaignBody = (

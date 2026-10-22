@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { getClientEnv } from "@/client-env";
 import type { AdministrationCampaignEditorContentType } from "@deskohub/workspace-admin-api";
+import { getClientEnv } from "@/client-env";
 import type { CampaignBodyNode } from "../../body/campaign-body-document";
 import { richCampaignBodies } from "../../body/campaign-body-document.test-utils";
 import { campaignBodySchema } from "../../body/campaign-body-extensions";
@@ -177,14 +177,15 @@ describe("editor round trip", () => {
     },
   };
 
-  test.each([
-    "cs-CZ",
-    "en-US",
-  ] as const)("the editor holds the saved %s body unchanged", (locale) => {
-    const { body } = campaignComposerFieldsFromCampaign(saved).locales[locale];
-    expect(campaignBodySchema.nodeFromJSON(body).toJSON()).toEqual(body);
-    expect(body).toEqual(richCampaignBodies[locale].doc);
-  });
+  test.each(["cs-CZ", "en-US"] as const)(
+    "the editor holds the saved %s body unchanged",
+    (locale) => {
+      const { body } =
+        campaignComposerFieldsFromCampaign(saved).locales[locale];
+      expect(campaignBodySchema.nodeFromJSON(body).toJSON()).toEqual(body);
+      expect(body).toEqual(richCampaignBodies[locale].doc);
+    }
+  );
 
   test("saving unchanged fields writes back exactly what the port read", () => {
     const fields = campaignComposerFieldsFromCampaign(saved);

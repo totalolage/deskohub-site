@@ -112,6 +112,14 @@ export {
   canonicalCalendarExpression,
 } from "./calendar-expression";
 export {
+  type AdministrationCampaignBodyAttributeValue,
+  AdministrationCampaignBodyDocument,
+  type AdministrationCampaignBodyDocument as AdministrationCampaignBodyDocumentType,
+  AdministrationCampaignBodyNode,
+  type AdministrationCampaignBodyNode as AdministrationCampaignBodyNodeType,
+  campaignBodyFormatVersion,
+} from "./campaign-body-document";
+export {
   AdministrationCampaignAudienceId,
   type AdministrationCampaignAudienceId as AdministrationCampaignAudienceIdType,
   AdministrationCampaignId,
@@ -394,14 +402,6 @@ export {
   administrationCampaignAudienceTitleMaxLength,
   campaignsMinimumDhwVersion,
 } from "./email-campaigns";
-export {
-  type AdministrationCampaignBodyAttributeValue,
-  AdministrationCampaignBodyDocument,
-  type AdministrationCampaignBodyDocument as AdministrationCampaignBodyDocumentType,
-  AdministrationCampaignBodyNode,
-  type AdministrationCampaignBodyNode as AdministrationCampaignBodyNodeType,
-  campaignBodyFormatVersion,
-} from "./campaign-body-document";
 export {
   WORKSPACE_SITE_TIME_ZONE,
   type WorkspaceSiteTimeZone,

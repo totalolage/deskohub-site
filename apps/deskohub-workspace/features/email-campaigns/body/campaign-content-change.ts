@@ -7,7 +7,10 @@ import {
   type CampaignBodyMarkdownInvalid,
   CampaignLocaleContentMissing,
 } from "../errors";
-import { type CampaignBodyInput, readCampaignBody } from "./campaign-body-input";
+import {
+  type CampaignBodyInput,
+  readCampaignBody,
+} from "./campaign-body-input";
 import type {
   CampaignLocaleContent,
   CampaignLocalizedContent,

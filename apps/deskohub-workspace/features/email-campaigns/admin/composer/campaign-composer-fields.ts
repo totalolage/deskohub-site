@@ -151,7 +151,10 @@ const toAdministrationLocaleContent = (
   return {
     subject: fields.subject.trim(),
     preheader: fields.preheader.trim(),
-    bodyDocument: { formatVersion: campaignBodyFormatVersion, doc: fields.body },
+    bodyDocument: {
+      formatVersion: campaignBodyFormatVersion,
+      doc: fields.body,
+    },
     ...(purpose === "operational" &&
       operationalReason.length > 0 && { operationalReason }),
   };

@@ -1,7 +1,8 @@
+import { Schema } from "effect";
 import type { Locale } from "@/features/i18n";
 import {
   type CampaignBodyDocument,
-  type CampaignBodyNode,
+  CampaignBodyNode,
   campaignBodyFormatVersion,
 } from "./campaign-body-document";
 import { campaignBodySchema } from "./campaign-body-extensions";
@@ -50,41 +51,49 @@ const richDocument = (words: {
   readonly typedHash: string;
 }): CampaignBodyDocument => ({
   formatVersion: campaignBodyFormatVersion,
-  doc: campaignBodySchema
-    .nodeFromJSON({
-      type: "doc",
-      content: [
-        heading(1, words.heading),
-        heading(2, words.section),
-        heading(3, words.detail),
-        paragraph(
-          text(`${words.typedHash} `),
-          text("**", [{ type: "bold" }]),
-          text(" "),
-          text(words.link, [...link("https://deskohub.cz/akce"), { type: "italic" }])
-        ),
-        paragraph(),
-        list("bulletList", ...words.bullets),
-        { ...list("orderedList", ...words.steps), attrs: { start: 3 } },
-        {
-          type: "ctaButton",
-          attrs: { label: words.button, href: "https://deskohub.cz/rezervace" },
-        },
-        { type: "horizontalRule" },
-        {
-          type: "image",
-          attrs: {
-            src: "https://res.cloudinary.com/cloud/image/upload/v1/campaigns/autumn.jpg",
-            alt: words.heading,
+  doc: Schema.decodeUnknownSync(CampaignBodyNode)(
+    campaignBodySchema
+      .nodeFromJSON({
+        type: "doc",
+        content: [
+          heading(1, words.heading),
+          heading(2, words.section),
+          heading(3, words.detail),
+          paragraph(
+            text(`${words.typedHash} `),
+            text("**", [{ type: "bold" }]),
+            text(" "),
+            text(words.link, [
+              ...link("https://deskohub.cz/akce"),
+              { type: "italic" },
+            ])
+          ),
+          paragraph(),
+          list("bulletList", ...words.bullets),
+          { ...list("orderedList", ...words.steps), attrs: { start: 3 } },
+          {
+            type: "ctaButton",
+            attrs: {
+              label: words.button,
+              href: "https://deskohub.cz/rezervace",
+            },
           },
-        },
-      ],
-    })
-    .toJSON() as CampaignBodyNode,
+          { type: "horizontalRule" },
+          {
+            type: "image",
+            attrs: {
+              src: "https://res.cloudinary.com/cloud/image/upload/v1/campaigns/autumn.jpg",
+              alt: words.heading,
+            },
+          },
+        ],
+      })
+      .toJSON()
+  ),
 });
 
 /** A rich body per locale, each in its own language. */
-export const richCampaignBodies: Record<Locale, CampaignBodyDocument> = {
+export const richCampaignBodies = {
   "cs-CZ": richDocument({
     heading: "Podzimní novinky",
     section: "Co chystáme",
@@ -105,4 +114,4 @@ export const richCampaignBodies: Record<Locale, CampaignBodyDocument> = {
     button: "Book now",
     typedHash: "# not a heading",
   }),
-};
+} satisfies Record<Locale, CampaignBodyDocument>;

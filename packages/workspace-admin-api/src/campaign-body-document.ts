@@ -28,9 +28,7 @@ const AdministrationCampaignBodyMark = Schema.Struct({
 // A type alias, not an interface, so the node stays assignable to JSON types.
 export type AdministrationCampaignBodyNode = {
   readonly type: string;
-  readonly attrs?:
-    | typeof AdministrationCampaignBodyAttributes.Type
-    | undefined;
+  readonly attrs?: typeof AdministrationCampaignBodyAttributes.Type | undefined;
   readonly content?: ReadonlyArray<AdministrationCampaignBodyNode> | undefined;
   readonly marks?:
     | ReadonlyArray<typeof AdministrationCampaignBodyMark.Type>
