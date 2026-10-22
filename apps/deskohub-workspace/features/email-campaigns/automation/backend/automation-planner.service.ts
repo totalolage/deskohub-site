@@ -22,8 +22,29 @@ import {
 } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import { currentInstant } from "@/shared/utils/temporal";
+import {
+  type AutomationConditionPlan,
+  AutomationConditionPlanning,
+} from "./automation-condition-planning.service";
+import {
+  type AutomationIntakePlan,
+  AutomationIntakePlanning,
+} from "./automation-intake-planning.service";
+import {
+  type AutomationSchedulePlan,
+  AutomationSchedulePlanning,
+} from "./automation-schedule-planning.service";
+import {
+  type AutomationSendPlan,
+  AutomationSendPlanning,
+} from "./automation-send-planning.service";
 import { AutomationSweepPlanning } from "./automation-sweep-planning.service";
+import {
+  type AutomationTimerPlan,
+  AutomationTimerPlanning,
+} from "./automation-timer-planning.service";
 import { AutomationUnitHandlers } from "./automation-unit-handlers.service";
+import { releaseAutomationUnitSubjects } from "./automation-unit-planning";
 import { AutomationUnitQueue } from "./automation-unit-queue.service";
 import { AutomationUnitSlots } from "./automation-unit-slots";
 
@@ -42,6 +63,11 @@ type AutomationPlanSummary = {
   /** Failed sweep pages planned again after their backoff. */
   readonly sweepPagesReplanned: number;
   readonly eventsReconciled: number;
+  readonly intake: AutomationIntakePlan;
+  readonly timers: AutomationTimerPlan;
+  readonly conditions: AutomationConditionPlan;
+  readonly sends: AutomationSendPlan;
+  readonly schedules: AutomationSchedulePlan;
   readonly pruned: {
     readonly units: number;
     readonly previews: number;
@@ -79,6 +105,11 @@ export class AutomationPlanner extends Context.Service<
       const { db } = yield* WorkspaceDatabase;
       const { supportedKinds } = yield* AutomationUnitHandlers;
       const sweepPlanning = yield* AutomationSweepPlanning;
+      const intakePlanning = yield* AutomationIntakePlanning;
+      const timerPlanning = yield* AutomationTimerPlanning;
+      const conditionPlanning = yield* AutomationConditionPlanning;
+      const sendPlanning = yield* AutomationSendPlanning;
+      const schedulePlanning = yield* AutomationSchedulePlanning;
       const slots = yield* AutomationUnitSlots;
 
       const heartbeat = (at: Temporal.Instant) =>
@@ -87,6 +118,27 @@ export class AutomationPlanner extends Context.Service<
           .set({ lastPlannedAt: at })
           .where(eq(emailCampaignAutomationEngine.id, 1))
           .pipe(Effect.withSpan("automationPlanner.heartbeat"));
+
+      /** Marked units no live claimant holds. */
+      /**
+       * A unit with `send_id` owns a persisted batch, its only recovery path
+       * (§5.9), so a mark never drops it: the reaper requeues it instead.
+       */
+      const recoverable = or(
+        isNull(units.cancelRequestedAt),
+        isNotNull(units.sendId)
+      );
+
+      const droppable = (at: Temporal.Instant) =>
+        and(
+          inArray(units.kind, supportedKinds),
+          isNotNull(units.cancelRequestedAt),
+          isNull(units.sendId),
+          or(
+            eq(units.status, "enqueued"),
+            and(eq(units.status, "claimed"), lte(units.claimExpiresAt, at))
+          )
+        );
 
       /**
        * Recovers units whose consumer died or whose message was lost. Only
@@ -97,28 +149,37 @@ export class AutomationPlanner extends Context.Service<
         db
           .transaction((tx) =>
             Effect.all({
+              // Marked units only ever settle `dropped`, so their subjects
+              // are freed first, in lock order, before the unit rows.
               dropped: tx
-                .update(units)
-                .set({
-                  status: "dropped",
-                  claimId: null,
-                  claimExpiresAt: null,
-                  settledAt: at,
-                })
-                .where(
-                  and(
-                    inArray(units.kind, supportedKinds),
-                    isNotNull(units.cancelRequestedAt),
-                    or(
-                      eq(units.status, "enqueued"),
-                      and(
-                        eq(units.status, "claimed"),
-                        lte(units.claimExpiresAt, at)
+                .select({ id: units.id, subject: units.subject })
+                .from(units)
+                .where(droppable(at))
+                .pipe(
+                  Effect.tap((marked) =>
+                    releaseAutomationUnitSubjects(tx, marked)
+                  ),
+                  Effect.flatMap((marked) =>
+                    tx
+                      .update(units)
+                      .set({
+                        status: "dropped",
+                        claimId: null,
+                        claimExpiresAt: null,
+                        settledAt: at,
+                      })
+                      .where(
+                        and(
+                          inArray(
+                            units.id,
+                            marked.map((unit) => unit.id)
+                          ),
+                          droppable(at)
+                        )
                       )
-                    )
+                      .returning({ unitId: units.id })
                   )
-                )
-                .returning({ unitId: units.id }),
+                ),
               requeued: tx
                 .update(units)
                 .set({
@@ -132,7 +193,7 @@ export class AutomationPlanner extends Context.Service<
                 .where(
                   and(
                     inArray(units.kind, supportedKinds),
-                    isNull(units.cancelRequestedAt),
+                    recoverable,
                     eq(units.status, "claimed"),
                     lte(units.claimExpiresAt, at)
                   )
@@ -150,7 +211,7 @@ export class AutomationPlanner extends Context.Service<
                 .where(
                   and(
                     inArray(units.kind, supportedKinds),
-                    isNull(units.cancelRequestedAt),
+                    recoverable,
                     eq(units.status, "enqueued"),
                     lt(units.enqueuedAt, at.subtract(unclaimedResendAfter))
                   )
@@ -291,6 +352,31 @@ export class AutomationPlanner extends Context.Service<
               .plan(at)
               .pipe(Effect.withSpan("automationPlanner.sweep"))
           ),
+          Effect.bind("intake", ({ at }) =>
+            intakePlanning
+              .plan(at)
+              .pipe(Effect.withSpan("automationPlanner.intake"))
+          ),
+          Effect.bind("timers", ({ at }) =>
+            timerPlanning
+              .plan(at)
+              .pipe(Effect.withSpan("automationPlanner.timers"))
+          ),
+          Effect.bind("conditions", ({ at }) =>
+            conditionPlanning
+              .plan(at)
+              .pipe(Effect.withSpan("automationPlanner.conditions"))
+          ),
+          Effect.bind("sends", ({ at }) =>
+            sendPlanning
+              .plan(at)
+              .pipe(Effect.withSpan("automationPlanner.sends"))
+          ),
+          Effect.bind("schedules", ({ at }) =>
+            schedulePlanning
+              .plan(at)
+              .pipe(Effect.withSpan("automationPlanner.schedules"))
+          ),
           Effect.bind("pruned", ({ at }) => housekeeping(at)),
           Effect.bind("promoted", () =>
             slots.topUp.pipe(Effect.withSpan("automationPlanner.topUp"))
@@ -302,6 +388,11 @@ export class AutomationPlanner extends Context.Service<
               at,
               reaped,
               sweep,
+              intake,
+              timers,
+              conditions,
+              sends,
+              schedules,
               pruned,
               promoted,
               inFlightByKind,
@@ -312,6 +403,11 @@ export class AutomationPlanner extends Context.Service<
               sweepPagesPlanned: sweep.sweepPagesPlanned,
               sweepPagesReplanned: sweep.sweepPagesReplanned,
               eventsReconciled: sweep.eventsReconciled,
+              intake,
+              timers,
+              conditions,
+              sends,
+              schedules,
               pruned,
               promoted: promoted.length,
               inFlightByKind,
@@ -333,7 +429,12 @@ export class AutomationPlanner extends Context.Service<
         WorkspaceDatabaseAdvisoryLock.Default,
         AutomationUnitHandlers.Live,
         AutomationUnitQueue.Default,
-        AutomationSweepPlanning.Live
+        AutomationSweepPlanning.Live,
+        AutomationIntakePlanning.Live,
+        AutomationTimerPlanning.Live,
+        AutomationConditionPlanning.Live,
+        AutomationSendPlanning.Live,
+        AutomationSchedulePlanning.Live
       )
     )
   );

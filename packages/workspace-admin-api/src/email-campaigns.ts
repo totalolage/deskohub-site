@@ -1,5 +1,12 @@
 import { Effect, Option, Schema } from "effect";
 import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
+import {
+  AdministrationOperationBehavior,
+  destructiveOperation,
+  readOperation,
+  readPreview,
+  writeOperation,
+} from "./administration-operation";
 import { AudienceFilter } from "./audience-filter";
 import {
   AdministrationCampaignAudienceId,
@@ -11,8 +18,9 @@ import {
 } from "./campaign-locale-and-purpose";
 import { DhwVersion, MinimumDhwVersion } from "./dhw-version";
 import {
+  AdministrationActionRecord,
+  AdministrationAuthentication,
   AdministrationDotyposCustomerId,
-  CliBearerAuthentication,
   CliClientCompatibility,
   CliInputInvalid,
   CliMutationInProgress,
@@ -88,6 +96,14 @@ export type AdministrationCampaignRecipientSkipReason =
 
 const AdministrationCampaignTitle = Schema.Trim.check(Schema.isNonEmpty());
 
+export const administrationCampaignAudienceTitleMaxLength = 120;
+
+/** A trimmed, non-empty audience title of at most 120 characters. */
+export const AdministrationCampaignAudienceTitle = Schema.Trim.check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(administrationCampaignAudienceTitleMaxLength)
+);
+
 export const AdministrationCampaignAudience = Schema.Struct({
   id: AdministrationCampaignAudienceId,
   title: Schema.String,
@@ -100,7 +116,7 @@ export type AdministrationCampaignAudience =
   typeof AdministrationCampaignAudience.Type;
 
 export const AdministrationCampaignAudienceInput = Schema.Struct({
-  title: AdministrationCampaignTitle,
+  title: AdministrationCampaignAudienceTitle,
   filter: AudienceFilter,
 }).annotate(strictParseOptions);
 export type AdministrationCampaignAudienceInput =
@@ -111,11 +127,21 @@ export const AdministrationCampaignAudienceCreateRequest = Schema.Struct({
   requestId: CliMutationRequestId,
   audience: AdministrationCampaignAudienceInput,
 }).annotate(strictParseOptions);
+export const AdministrationCampaignAudiences = Schema.Array(
+  AdministrationCampaignAudience
+);
+
+export const AdministrationCampaignAudienceDeleted = Schema.Struct({
+  id: AdministrationCampaignAudienceId,
+});
+export type AdministrationCampaignAudienceDeleted =
+  typeof AdministrationCampaignAudienceDeleted.Type;
+
 export type AdministrationCampaignAudienceCreateRequest =
   typeof AdministrationCampaignAudienceCreateRequest.Type;
 
 export const AdministrationCampaignAudienceUpdate = Schema.Struct({
-  title: Schema.optionalKey(AdministrationCampaignTitle),
+  title: Schema.optionalKey(AdministrationCampaignAudienceTitle),
   filter: Schema.optionalKey(AudienceFilter),
 }).annotate(strictParseOptions);
 export type AdministrationCampaignAudienceUpdate =
@@ -128,6 +154,10 @@ export const AdministrationCampaignTemplate = Schema.Struct({
 });
 export type AdministrationCampaignTemplate =
   typeof AdministrationCampaignTemplate.Type;
+
+export const AdministrationCampaignTemplates = Schema.Array(
+  AdministrationCampaignTemplate
+);
 
 const AdministrationCampaignOperationalReason = Schema.Trim.check(
   Schema.isNonEmpty()
@@ -187,11 +217,23 @@ export const AdministrationCampaignCreateInput = Schema.Struct({
   title: AdministrationCampaignTitle,
   purpose: AdministrationCampaignPurpose,
   templateKey: AdministrationCampaignTemplateKey,
+  /** `once` when omitted. */
+  delivery: Schema.optionalKey(AdministrationCampaignDelivery),
   audienceId: Schema.NullOr(AdministrationCampaignAudienceId),
   content: AdministrationCampaignContent,
 }).annotate(strictParseOptions);
 export type AdministrationCampaignCreateInput =
   typeof AdministrationCampaignCreateInput.Type;
+
+export const AdministrationCampaignSummaries = Schema.Array(
+  AdministrationCampaignSummary
+);
+
+export const AdministrationCampaignDeleted = Schema.Struct({
+  id: AdministrationCampaignId,
+});
+export type AdministrationCampaignDeleted =
+  typeof AdministrationCampaignDeleted.Type;
 
 /** The request ID makes a retried creation replay the first one's draft. */
 export const AdministrationCampaignCreateRequest = Schema.Struct({
@@ -247,9 +289,19 @@ export const AdministrationCampaignUpdateInput = Schema.Struct({
 export type AdministrationCampaignUpdateInput =
   typeof AdministrationCampaignUpdateInput.Type;
 
-/** Renders either unsaved texts or a saved campaign's locale in a template. */
+/**
+ * Renders unsaved texts, texts still being written, or a saved campaign's
+ * locale in a template. Unsaved `Content` must meet the rules saving applies;
+ * `UnfinishedContent` skips the body's content rules, so links, buttons and
+ * images may be incomplete or point anywhere.
+ */
 export const AdministrationCampaignTemplatePreviewInput = Schema.Union([
   Schema.TaggedStruct("Content", {
+    purpose: AdministrationCampaignPurpose,
+    locale: AdministrationCampaignLocale,
+    content: AdministrationCampaignLocaleContent,
+  }).annotate(strictParseOptions),
+  Schema.TaggedStruct("UnfinishedContent", {
     purpose: AdministrationCampaignPurpose,
     locale: AdministrationCampaignLocale,
     content: AdministrationCampaignLocaleContent,
@@ -392,7 +444,7 @@ export type AdministrationCampaignSendStatusResult =
  * applied under the same request ID (409), and an unavailable dependency
  * (503).
  */
-const campaignErrors = [
+export const campaignErrors = [
   CliInputInvalid.schema,
   CliMutationInProgress.schema,
   CliMutationRejected.schema,
@@ -406,7 +458,7 @@ const campaignErrors = [
  * `campaign` and would write "any campaign" back, so every campaign and
  * audience operation, reads included, requires it.
  */
-const campaignsMinimumDhwVersion = DhwVersion.make("1.20.0");
+export const campaignsMinimumDhwVersion = DhwVersion.make("1.20.0");
 
 const campaignParams = { campaignId: AdministrationCampaignId };
 const audienceParams = { audienceId: AdministrationCampaignAudienceId };
@@ -414,9 +466,9 @@ const audienceParams = { audienceId: AdministrationCampaignAudienceId };
 export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
   .add(
     HttpApiEndpoint.get("listCampaignAudiences", "/campaign-audiences", {
-      success: Schema.Array(AdministrationCampaignAudience),
+      success: AdministrationCampaignAudiences,
       error: campaignErrors,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get(
@@ -427,14 +479,17 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignAudience,
         error: campaignErrors,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post("createCampaignAudience", "/campaign-audiences", {
       payload: AdministrationCampaignAudienceCreateRequest,
       success: AdministrationCampaignAudience,
       error: campaignErrors,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: true })
+    )
   )
   .add(
     HttpApiEndpoint.patch(
@@ -446,6 +501,9 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignAudience,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: true })
     )
   )
   .add(
@@ -457,6 +515,12 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignAudience,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview("campaigns.getCampaignAudience"),
+      })
     )
   )
   .add(
@@ -468,6 +532,9 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignAudience,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: true })
     )
   )
   .add(
@@ -476,15 +543,22 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
       "/campaign-audiences/:audienceId",
       {
         params: audienceParams,
-        success: Schema.Struct({ id: AdministrationCampaignAudienceId }),
+        success: AdministrationCampaignAudienceDeleted,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview("campaigns.getCampaignAudience"),
+      })
     )
   )
   .add(
     HttpApiEndpoint.get("listCampaignTemplates", "/campaign-templates", {
-      success: Schema.Array(AdministrationCampaignTemplate),
-    })
+      success: AdministrationCampaignTemplates,
+      error: campaignErrors,
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post(
@@ -496,27 +570,30 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignEmailPreview,
         error: campaignErrors,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listCampaigns", "/campaigns", {
-      success: Schema.Array(AdministrationCampaignSummary),
+      success: AdministrationCampaignSummaries,
       error: campaignErrors,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getCampaign", "/campaigns/:campaignId", {
       params: campaignParams,
       success: AdministrationCampaignDetail,
       error: campaignErrors,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post("createCampaign", "/campaigns", {
       payload: AdministrationCampaignCreateRequest,
       success: AdministrationCampaignDetail,
       error: campaignErrors,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: true })
+    )
   )
   .add(
     HttpApiEndpoint.patch("updateCampaign", "/campaigns/:campaignId", {
@@ -524,7 +601,10 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
       payload: AdministrationCampaignUpdateInput,
       success: AdministrationCampaignDetail,
       error: campaignErrors,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: true })
+    )
   )
   .add(
     HttpApiEndpoint.post(
@@ -536,14 +616,23 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignDetail,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: true })
     )
   )
   .add(
     HttpApiEndpoint.delete("deleteCampaign", "/campaigns/:campaignId", {
       params: campaignParams,
-      success: Schema.Struct({ id: AdministrationCampaignId }),
+      success: AdministrationCampaignDeleted,
       error: campaignErrors,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview("campaigns.getCampaign"),
+      })
+    )
   )
   .add(
     HttpApiEndpoint.get(
@@ -554,7 +643,7 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignRecipientPreview,
         error: campaignErrors,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post(
@@ -566,6 +655,9 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignTestSendResult,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: false })
     )
   )
   .add(
@@ -574,7 +666,16 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
       payload: AdministrationCampaignSendInput,
       success: AdministrationCampaignSendResult,
       error: campaignErrors,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview(
+          "campaigns.getCampaign",
+          "campaigns.previewCampaignRecipients"
+        ),
+      })
+    )
   )
   .add(
     HttpApiEndpoint.post("retryCampaign", "/campaigns/:campaignId/retry", {
@@ -582,7 +683,13 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
       payload: AdministrationCampaignRetryInput,
       success: AdministrationCampaignRetryResult,
       error: campaignErrors,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: false,
+        preview: readPreview("campaigns.getCampaignSendStatus"),
+      })
+    )
   )
   .add(
     HttpApiEndpoint.get(
@@ -593,10 +700,11 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignSendStatusResult,
         error: campaignErrors,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .annotate(MinimumDhwVersion, Option.some(campaignsMinimumDhwVersion))
-  .middleware(CliBearerAuthentication)
+  .middleware(AdministrationActionRecord)
+  .middleware(AdministrationAuthentication)
   // Added last, so it runs first: an outdated `dhw` is refused before its
   // session is read. Every campaign endpoint already declares the
   // `CliInputInvalid` it fails with, so released binaries print it.

@@ -183,7 +183,7 @@ const whoamiTool = defineSignedInAgentTool({
 });
 
 mock.module("@/features/agent-tools/customer-agent-tools", () => ({
-  customerAgentTools: [
+  publishedCustomerAgentTools: [
     listOfferingsTool,
     checkAvailabilityTool,
     getQuoteTool,

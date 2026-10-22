@@ -42,6 +42,10 @@ import {
   toAgentToolErrorResult,
 } from "./agent-tool-error";
 import {
+  agentToolBusinessSummary,
+  getAgentToolBookingGuidance,
+} from "./agent-tool-guidance";
+import {
   authorizeAgentToolRequest,
   isAgentToolGranted,
 } from "./agent-tool-mcp-authorization";
@@ -60,13 +64,10 @@ import type { CustomerAgentCaller } from "./customer-agent-caller";
 /** The version of the tool contract agents see; bump it on breaking changes. */
 const agentToolServerVersion = "1.0.0";
 
-const { address } = workspaceSiteConstants.location;
-
 /**
- * The server instructions for the client and the tools it sees. A client
- * whose directory admits no checkout reads nothing about paying. Each
- * sentence about a customer tool appears only when the client sees that
- * tool, so other tools served beside them add nothing here.
+ * The server instructions for the client and the tools it sees. The
+ * products come from list_offerings, so the instructions don't repeat the
+ * catalog.
  */
 const getAgentToolServerInstructions = ({
   client,
@@ -74,41 +75,18 @@ const getAgentToolServerInstructions = ({
 }: {
   readonly client: AgentToolClient;
   readonly tools: ReadonlyArray<Pick<AgentTool<unknown>, "name" | "readOnly">>;
-}) => {
-  const startReservation = tools.find(
-    ({ name }) => name === "start_reservation"
-  );
-  const readsReservations = tools.some(
-    ({ name }) => name === "list_my_reservations"
-  );
-  return [
-    `${workspaceSiteConstants.brand.name} is a coworking space at ${address.street}, ${address.postalCode} ${address.city}, open 24/7.`,
-    "It offers cowork desks by the day, a meeting room by the hour or the day, and a private office for whole days.",
-    "Use list_offerings for products with their regular price and today's price including any public sale, check_availability to see whether a selection looks free, and get_quote for the exact price of a selection.",
-    admitsCheckout(client)
-      ? "Bookings are made and paid on the website: give the customer the reservation_url from a result to finish there. Availability and price are confirmed on the website before payment."
-      : "Customers book on the website, which confirms availability and the price: give the customer the reservation_url from a result to finish there.",
-    ...(startReservation === undefined
-      ? []
-      : [getStartReservationInstruction(startReservation)]),
-    ...(readsReservations
-      ? [
-          "With the customer signed in, get_reservation_status and list_my_reservations show their own reservations.",
-          admitsCheckout(client)
-            ? "The customer tools can't pay for, cancel, or change a reservation."
-            : "The customer tools can't cancel or change a reservation.",
-        ]
-      : []),
+}) =>
+  [
+    agentToolBusinessSummary,
+    "Use list_offerings for the products on offer with their regular price and today's price including any public sale, check_availability to see whether a selection looks free, and get_quote for the exact price of a selection.",
+    ...getAgentToolBookingGuidance({
+      admitsCheckout: admitsCheckout(client),
+      startReservation: tools.find(({ name }) => name === "start_reservation"),
+      readsReservations: tools.some(
+        ({ name }) => name === "list_my_reservations"
+      ),
+    }),
   ].join(" ");
-};
-
-/** What `start_reservation` does where it books, and where it only links. */
-const getStartReservationInstruction = ({
-  readOnly,
-}: Pick<AgentTool<unknown>, "readOnly">) =>
-  readOnly
-    ? "start_reservation returns the reservation page for a complete selection, filled in, where the customer finishes the booking; it books nothing itself."
-    : "With the customer signed in, start_reservation holds a selection for them and returns a pay_url where they accept the terms and pay.";
 
 /**
  * Answers one MCP request with a set of agent tools: stateless Streamable

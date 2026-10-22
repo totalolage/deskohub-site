@@ -15,6 +15,16 @@ export const customerAgentConsentPath = "/auth/consent";
 /** The customer MCP server's path on every Workspace host. */
 export const customerMcpServerPath = "/api/mcp";
 
+/**
+ * The OAuth discovery documents agents read before they connect: the MCP
+ * server's protected-resource metadata (RFC 9728), which names the
+ * authorization server, and that server's metadata (RFC 8414).
+ */
+export const customerAgentDiscoveryPaths = {
+  protectedResource: "/.well-known/oauth-protected-resource",
+  authorizationServer: "/.well-known/oauth-authorization-server/api/auth",
+} as const;
+
 /** The OAuth authorization endpoint the sign-in step resumes through. */
 export const customerAgentAuthorizePath = "/api/auth/oauth2/authorize";
 

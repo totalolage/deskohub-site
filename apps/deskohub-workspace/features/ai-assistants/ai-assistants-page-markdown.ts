@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import type { PhrasingContent } from "mdast";
-import type { Locale } from "@/features/i18n";
+import { getWorkspacePageUrl, type Locale } from "@/features/i18n";
 import {
   type MarkdownBlocks,
   markdownHeading,
@@ -11,13 +11,12 @@ import {
   markdownOrderedList,
   markdownParagraph,
 } from "@/shared/markdown/markdown";
-import { getWorkspaceCanonicalUrl } from "@/shared/utils/site-constants";
 import {
   type AiAssistantsGuideBlock,
   getAiAssistantsGuide,
 } from "./ai-assistants-guide";
 
-/** The AI assistants guide as Markdown, with absolute links. */
+/** The AI assistants guide as Markdown, with absolute, locale-agnostic links. */
 export const aiAssistantsPageMarkdown = (
   locale: Locale
 ): Effect.Effect<MarkdownBlocks> => {
@@ -27,7 +26,7 @@ export const aiAssistantsPageMarkdown = (
       name,
       (content: PhrasingContent[]) =>
         markdownLink(
-          href.startsWith("mailto:") ? href : getWorkspaceCanonicalUrl(href),
+          href.startsWith("mailto:") ? href : getWorkspacePageUrl(href),
           ...content
         ),
     ])

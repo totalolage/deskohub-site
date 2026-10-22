@@ -118,7 +118,10 @@ export class CustomerAccountLinkRepository extends Context.Service<
                       isNull(customerAccounts.deletedAt)
                     )
                   )
-                  .returning({ createdAt: customerAccounts.createdAt });
+                  .returning({
+                    createdAt: customerAccounts.createdAt,
+                    legacy: customerAccounts.legacy,
+                  });
                 if (!link) return undefined;
                 if (signupReferral) {
                   yield* insertReferralSignupIntent(
@@ -129,13 +132,16 @@ export class CustomerAccountLinkRepository extends Context.Service<
                 }
                 // The first link gives the account a mailable Dotypos
                 // customer, so the account counts as created at its creation
-                // instant.
-                yield* recordCustomerEvent(tx, {
-                  kind: "account-created",
-                  occurredAt: link.createdAt,
-                  dotyposCustomerId: customerId,
-                  customerAccountId: accountId,
-                });
+                // instant. An existing customer's account was never created
+                // here (D37), so its first link records nothing.
+                if (!link.legacy) {
+                  yield* recordCustomerEvent(tx, {
+                    kind: "account-created",
+                    occurredAt: link.createdAt,
+                    dotyposCustomerId: customerId,
+                    customerAccountId: accountId,
+                  });
+                }
                 return {
                   kind: "linked",
                   customerId,

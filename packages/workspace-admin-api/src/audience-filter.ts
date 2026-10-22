@@ -298,31 +298,42 @@ export type AudienceFilter = AudienceFilterOf<AudienceCondition>;
 /**
  * The condition and filter-tree schemas of a catalogue. The filter tree
  * ignores excess properties when decoded on its own; the strict API inputs
- * that embed it reject them.
+ * that embed it reject them. `extraLeaves` adds leaves that aren't
+ * catalogued attributes, such as an automation condition's "in saved
+ * audience"; `condition` stays the catalogue's conditions only.
  */
 export const makeAudienceFilterSchemas = <
   Catalogue extends {
     readonly [Attribute in keyof Catalogue]: AudienceAttributeDefinition;
   },
+  Leaf = never,
+  LeafEncoded = Leaf,
 >(
-  catalogue: Catalogue
+  catalogue: Catalogue,
+  options?: {
+    readonly extraLeaves?: readonly Schema.Codec<Leaf, LeafEncoded>[];
+  }
 ) => {
   type Condition = AudienceConditionIn<Catalogue>;
+  type Node = Condition | Leaf;
   const definitions: readonly AudienceAttributeDefinition[] =
     Object.values(catalogue);
   // Each entry's shapes decode to its own attribute's conditions.
   const members = definitions.flatMap(
     ({ conditions }) => conditions
   ) as readonly Schema.Codec<Condition>[];
+  // Like the catalogue's members, the tree is typed by its decoded shapes.
+  const extraLeaves = (options?.extraLeaves ??
+    []) as unknown as readonly Schema.Codec<Leaf>[];
   const group = Schema.TaggedStruct("Group", {
     operator: Schema.Literals(["and", "or"]),
     filters: Schema.Array(
-      Schema.suspend((): Schema.Codec<AudienceFilterOf<Condition>> => filter)
+      Schema.suspend((): Schema.Codec<AudienceFilterOf<Node>> => filter)
     ),
   });
-  const filter: Schema.Codec<AudienceFilterOf<Condition>> = Schema.Union<
-    readonly Schema.Codec<AudienceFilterOf<Condition>>[]
-  >([...members, group]).annotate({
+  const filter: Schema.Codec<AudienceFilterOf<Node>> = Schema.Union<
+    readonly Schema.Codec<AudienceFilterOf<Node>>[]
+  >([...members, ...extraLeaves, group]).annotate({
     identifier: "AudienceFilter",
     description: `Nested AND/OR tree of attribute conditions: ${definitions
       .map(({ label }) => label.toLowerCase())

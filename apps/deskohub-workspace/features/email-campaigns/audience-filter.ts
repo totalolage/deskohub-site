@@ -11,6 +11,8 @@ import {
   type AudienceDateAttributeDefinition,
   type AudienceDateCondition,
   type AudienceFilterGroup,
+  type AudienceFilterGroupOf,
+  type AudienceFilterOf,
   type AudienceFilterType,
   type AudienceParam,
   type AudienceSetAttributeDefinition,
@@ -21,6 +23,7 @@ import {
   type ReservationProductFilterType,
 } from "@deskohub/workspace-admin-api";
 import { Match, Option, Schema } from "effect";
+import type { ReservationStatusRead } from "@/features/administration/reservation-status-condition";
 import { type Locale, locales } from "@/features/i18n";
 import { reservationProductFilterSchema } from "@/features/reservation/reservation-product-descriptor";
 import type { AudienceEvaluationContext } from "./backend/audience-evaluation-context";
@@ -29,6 +32,7 @@ import {
   type DatePeriod,
   type DatePeriodBounds,
   datePeriodBounds,
+  datePeriodBoundsEndingBy,
 } from "./date-period";
 
 /**
@@ -113,6 +117,8 @@ type CountRequestOf<Condition extends AudienceCountCondition> =
     ? {
         readonly attribute: Condition["attribute"];
         readonly params: ConcreteCountParams<Condition["params"]>;
+        /** Reservations count as they stood then (reservation counts). */
+        readonly reservationsAsOf?: Temporal.Instant;
       }
     : never;
 
@@ -135,6 +141,8 @@ export type AudienceDateRequest<
   readonly asOf: Temporal.Instant;
   /** Only reservations of this product count (reservation-based dates). */
   readonly product?: ReservationProductFilterType;
+  /** Reservations count as they stood then (reservation-based dates). */
+  readonly reservationsAsOf?: Temporal.Instant;
 };
 
 /** Customers whose date attribute has a value, and whose value is in the period. */
@@ -186,11 +194,39 @@ type CountParamValue =
   | CampaignEmailSourceType
   | ReservationProductFilterType;
 
+/**
+ * When the things a count dates by their recorded moment happened, such as
+ * an email's dispatch or a reservation's booking. A replayed moment counts
+ * only what happened by then, whatever the period: the later ones hadn't
+ * happened yet.
+ */
+export const occurrenceBounds = (
+  period: DatePeriod,
+  context: AudienceEvaluationContext
+): DatePeriodBounds => {
+  const bounds = datePeriodBounds(period, context);
+  return context.replayed
+    ? datePeriodBoundsEndingBy(bounds, context.now)
+    : bounds;
+};
+
+/**
+ * A replayed moment, at which reservations count as they stood then: a
+ * visit may lie anywhere, but a later booking hadn't happened yet, and a
+ * later fulfillment or cancellation hadn't changed its status. Live
+ * evaluations leave it unset and count reservations as they are now.
+ */
+const reservationsAsOfReplay = ({
+  now,
+  replayed,
+}: AudienceEvaluationContext) => (replayed ? { reservationsAsOf: now } : {});
+
 /** One param value fixed by the context, by its param's part. */
 const concreteParam = (
   param: AudienceParam | undefined,
   value: CountParamValue,
-  context: AudienceEvaluationContext
+  context: AudienceEvaluationContext,
+  periodBounds: typeof datePeriodBounds
 ) =>
   param === undefined
     ? // The product filter isn't a catalogued param; it needs no context.
@@ -200,22 +236,34 @@ const concreteParam = (
           choice: () => value,
           // The condition decoded with the param's schema, so the value is
           // of its part.
-          period: () => datePeriodBounds(value as DatePeriod, context),
+          period: () => periodBounds(value as DatePeriod, context),
           campaign: () =>
             concreteCampaignSource(value as CampaignEmailSourceType, context),
         })
       );
 
 /**
+ * Whether a count dates what it counts by when it happened, rather than by
+ * a visit, which may lie ahead of any moment.
+ */
+const datesOccurrences = ({ attribute, params }: AudienceCountCondition) =>
+  attribute === "campaignEmailCount" ||
+  (attribute === "reservationCount" && params.dateBasis === "booking");
+
+/**
  * The count condition's request in one evaluation context, with each param
- * fixed by its part in the condition's catalogue entry.
+ * fixed by its part in the condition's catalogue entry. A reservation count
+ * in a replay counts the reservations as they stood then.
  */
 export const countFactRequest = <Condition extends AudienceCountCondition>(
   entry: Pick<AudienceCountAttributeDefinition, "params">,
-  { attribute, params }: Condition,
+  condition: Condition,
   context: AudienceEvaluationContext
-): CountRequestOf<Condition> =>
-  ({
+): CountRequestOf<Condition> => {
+  const { attribute, params } = condition;
+  const occurrences = datesOccurrences(condition);
+  const periodBounds = occurrences ? occurrenceBounds : datePeriodBounds;
+  return {
     attribute,
     params: Object.fromEntries(
       // A decoded condition's params hold only its entry's param values and
@@ -223,11 +271,15 @@ export const countFactRequest = <Condition extends AudienceCountCondition>(
       (Object.entries(params) as [string, CountParamValue][]).map(
         ([key, value]) => [
           key,
-          concreteParam(entry.params[key], value, context),
+          concreteParam(entry.params[key], value, context, periodBounds),
         ]
       )
     ),
-  }) as CountRequestOf<Condition>;
+    // Occurrence bounds already end by a replayed moment, but a reservation's
+    // status may have changed since its booking.
+    ...(attribute === "reservationCount" && reservationsAsOfReplay(context)),
+  } as CountRequestOf<Condition>;
+};
 
 /** "Has no value" needs only the customers with one, so it asks for any time. */
 export const dateFactRequest = <Condition extends AudienceDateCondition>(
@@ -241,14 +293,34 @@ export const dateFactRequest = <Condition extends AudienceDateCondition>(
   ),
   asOf: context.now,
   ...(condition.params && { product: condition.params.product }),
+  ...reservationsAsOfReplay(context),
 });
 
 export const audienceConditionsOf = (
   filter: AudienceFilter
-): readonly AudienceCondition[] =>
-  filter._tag === "Group"
-    ? filter.filters.flatMap(audienceConditionsOf)
-    : [filter];
+): readonly AudienceCondition[] => audienceLeavesOf(filter);
+
+/**
+ * The reservation statuses the filter's conditions read: a reservation
+ * count's status group, or `booked` for a count without one and for visit
+ * dates.
+ */
+export const audienceReservationStatusesOf = (
+  filter: AudienceFilter
+): ReadonlySet<ReservationStatusRead> =>
+  new Set(
+    audienceConditionsOf(filter).flatMap(
+      (condition): readonly ReservationStatusRead[] => {
+        if (condition.attribute === "reservationCount") {
+          return [condition.params.status ?? "booked"];
+        }
+        return condition.attribute === "firstVisit" ||
+          condition.attribute === "lastVisit"
+          ? ["booked"]
+          : [];
+      }
+    )
+  );
 
 /**
  * Every count and date lookup the tree needs in any of the contexts,
@@ -334,20 +406,54 @@ const combineAudienceOutcomes = (
   return operator === "and" ? "match" : "noMatch";
 };
 
+const isAudienceFilterGroup = <Leaf extends { readonly _tag: string }>(
+  node: AudienceFilterOf<Leaf>
+): node is AudienceFilterGroupOf<Leaf> => node._tag === "Group";
+
 /**
- * The tree's outcome from its conditions' outcomes. An empty AND group
- * matches and an empty OR group doesn't.
+ * The tree's outcome from its leaves' outcomes. An empty AND group matches
+ * and an empty OR group doesn't. Trees with leaves beyond catalogue
+ * conditions, such as saved-audience membership, combine the same way.
  */
-export const evaluateAudienceTree = (
-  filter: AudienceFilter,
-  conditionOutcome: (condition: AudienceCondition) => AudienceFilterOutcome
+export const evaluateAudienceTree = <Leaf extends { readonly _tag: string }>(
+  filter: AudienceFilterOf<Leaf>,
+  leafOutcome: (leaf: Leaf) => AudienceFilterOutcome
 ): AudienceFilterOutcome => {
-  const evaluate = (node: AudienceFilter): AudienceFilterOutcome =>
-    node._tag === "Group"
+  const evaluate = (node: AudienceFilterOf<Leaf>): AudienceFilterOutcome =>
+    isAudienceFilterGroup(node)
       ? combineAudienceOutcomes(node.operator, node.filters.map(evaluate))
-      : conditionOutcome(node);
+      : leafOutcome(node);
   return evaluate(filter);
 };
+
+/**
+ * The tree's top-level clauses: a root group's members, or the root leaf
+ * alone. Condition timelines name failed clauses by their index here.
+ */
+export const audienceTopLevelClauses = <Leaf extends { readonly _tag: string }>(
+  filter: AudienceFilterOf<Leaf>
+): readonly AudienceFilterOf<Leaf>[] =>
+  isAudienceFilterGroup(filter) ? filter.filters : [filter];
+
+/** The tree with each leaf replaced by `mapLeaf`, its groups kept as they are. */
+export const mapAudienceLeaves = <Leaf extends { readonly _tag: string }>(
+  filter: AudienceFilterOf<Leaf>,
+  mapLeaf: (leaf: Leaf) => Leaf
+): AudienceFilterOf<Leaf> =>
+  isAudienceFilterGroup(filter)
+    ? {
+        ...filter,
+        filters: filter.filters.map((node) => mapAudienceLeaves(node, mapLeaf)),
+      }
+    : mapLeaf(filter);
+
+/** Every leaf of the tree, in order. */
+export const audienceLeavesOf = <Leaf extends { readonly _tag: string }>(
+  filter: AudienceFilterOf<Leaf>
+): readonly Leaf[] =>
+  isAudienceFilterGroup(filter)
+    ? filter.filters.flatMap(audienceLeavesOf)
+    : [filter];
 
 const outcomeOf = (value: boolean): AudienceFilterOutcome =>
   value ? "match" : "noMatch";

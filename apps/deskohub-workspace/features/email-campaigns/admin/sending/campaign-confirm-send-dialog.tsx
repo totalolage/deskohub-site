@@ -28,16 +28,19 @@ import {
   FormMessage,
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
-import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import type { CampaignId } from "../../campaign-identifiers";
-import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
-import { sendCampaign } from "./actions";
+import { useCampaignOperation } from "../use-campaign-operation";
+import { campaignSendingFailureCopy } from "./campaign-sending-failure";
 import {
   type ConfirmationCodeFieldSchema,
   createConfirmationCodeFieldSchema,
 } from "./contracts";
 
 const emptyCodeField = { code: "" };
+
+const sendFailureCopy = campaignSendingFailureCopy((locale) =>
+  m.emailCampaignsSendConfirmFailed({}, { locale })
+);
 
 export function CampaignConfirmSendDialog({
   campaignId,
@@ -64,20 +67,13 @@ export function CampaignConfirmSendDialog({
     reValidateMode: "onChange",
     resolver: effectSchemaResolver(codeFieldSchema),
   });
-  const { execute, isExecuting } = useWorkspaceAction(sendCampaign, {
-    actionName: "sendCampaign",
-    onSuccess: ({ data }) => {
-      if (!data) return;
+  const { execute, isExecuting } = useCampaignOperation("sendCampaign", {
+    failureCopy: sendFailureCopy,
+    onSuccess: () => {
       setOpen(false);
       router.refresh();
     },
-    onError: ({ error: actionError }) =>
-      setError(
-        getEmailCampaignAdminActionFailureMessage(actionError.serverError, {
-          fallback: m.emailCampaignsSendConfirmFailed({}, { locale }),
-          locale,
-        })
-      ),
+    onFailure: setError,
   });
 
   return (

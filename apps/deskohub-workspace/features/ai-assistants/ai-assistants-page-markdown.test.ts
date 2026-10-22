@@ -27,14 +27,19 @@ describe.each(locales)("aiAssistantsPageMarkdown in %s", (locale) => {
     expect(headings).toEqual(guide.sections.map((section) => section.heading));
   });
 
-  test("links absolutely and leaves no template syntax", async () => {
+  test("links absolutely and locale-agnostically and leaves no template syntax", async () => {
     const body = await markdown();
 
     expect(markdownPlainText(body)).not.toMatch(/<\/?\w+>|\{\w+\}/);
     const urls = markdownLinkUrls(body);
     expect(urls.length).toBeGreaterThan(Object.keys(guide.links).length);
+    expect(urls).toContain("https://workspace.deskohub.cz/privacy-policy");
     for (const url of urls) {
       expect(url).toMatch(/^(https:\/\/|mailto:)/);
+      if (!url.startsWith("https://workspace.deskohub.cz/")) continue;
+      for (const pageLocale of locales) {
+        expect(new URL(url).pathname.split("/")).not.toContain(pageLocale);
+      }
     }
   });
 

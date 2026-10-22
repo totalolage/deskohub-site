@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 
-const { customerAgentTools } = await import("./customer-agent-tools");
+const { publishedCustomerAgentTools } = await import("./customer-agent-tools");
 const { getCustomerAgentToolsForClient } = await import(
   "./customer-agent-tools-for-client"
 );
@@ -11,7 +11,10 @@ const { startReservationOnWebsiteTool } = await import(
 );
 
 const toolsFor = (client: "chatgpt" | "claude" | "other") =>
-  getCustomerAgentToolsForClient({ client, tools: customerAgentTools });
+  getCustomerAgentToolsForClient({
+    client,
+    tools: publishedCustomerAgentTools,
+  });
 
 describe("getCustomerAgentToolsForClient", () => {
   test.each(["chatgpt", "claude", "other"] as const)(
@@ -32,7 +35,7 @@ describe("getCustomerAgentToolsForClient", () => {
   test.each(["claude", "other"] as const)(
     "gives %s the tools unchanged",
     (client) => {
-      expect(toolsFor(client)).toEqual(customerAgentTools);
+      expect(toolsFor(client)).toEqual(publishedCustomerAgentTools);
       expect(toolsFor(client)).toContain(startReservationTool);
     }
   );
@@ -51,7 +54,7 @@ describe("getCustomerAgentToolsForClient", () => {
     expect(startReservation?.destructive ?? false).toBe(false);
     // Only start_reservation changes; the signed-in reads stay.
     expect(
-      tools.filter((tool, index) => tool !== customerAgentTools[index])
+      tools.filter((tool, index) => tool !== publishedCustomerAgentTools[index])
     ).toEqual([startReservationOnWebsiteTool]);
   });
 });

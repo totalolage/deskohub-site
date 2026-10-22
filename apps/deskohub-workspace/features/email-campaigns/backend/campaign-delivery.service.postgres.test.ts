@@ -567,7 +567,7 @@ describe.skipIf(!testDatabase)(
       expect(batchSend.mock.calls).toHaveLength(1);
     });
 
-    test("settles an automated send whatever its campaign's status and leaves its runs to the run transitions", async () => {
+    test("settles an automated send whatever its campaign's status and ends its runs from their recipients", async () => {
       batchSend = mock(async () => ({
         data: null,
         error: { message: "Invalid batch", statusCode: 422 },
@@ -594,10 +594,118 @@ describe.skipIf(!testDatabase)(
       expect(campaign.status).toBe("paused");
       expect(campaign.completed_at).not.toBeNull();
       const { rows: runs } = await testDatabase.pool.query(
-        "select status, outcome from email_campaign_automation_runs where send_id = $1",
+        "select status, outcome, outcome_reason from email_campaign_automation_runs where send_id = $1",
         [sendId]
       );
-      expect(runs).toEqual([{ status: "sending", outcome: null }]);
+      expect(runs).toEqual([
+        {
+          status: "ended",
+          outcome: "failed",
+          outcome_reason: "delivery-refused",
+        },
+      ]);
+    });
+
+    /**
+     * Persists an automated send of the version to `recipients` and submits
+     * it from the profiles read for it, as a deliver unit does (§5.9).
+     */
+    const deliverAutomated = (input: {
+      readonly campaignId: CampaignId;
+      readonly versionId: Parameters<typeof seedAutomatedSend>[1]["versionId"];
+      readonly recipients: readonly DotyposCustomerId[];
+    }) => {
+      const read = new Map(
+        profiles.flatMap((customer) =>
+          customer.id === undefined ? [] : [[customer.id, customer] as const]
+        )
+      );
+      return Effect.runPromise(
+        Effect.gen(function* () {
+          const delivery = yield* CampaignDeliveryService;
+          const at = Temporal.Now.instant();
+          const sendId = yield* db.transaction((tx) =>
+            delivery
+              .createAutomatedSend(tx, {
+                campaignId: input.campaignId,
+                versionId: input.versionId,
+                at,
+              })
+              .pipe(
+                Effect.tap((created) =>
+                  delivery.persistAutomatedBatch(tx, {
+                    sendId: created,
+                    recipients: input.recipients.map((dotyposCustomerId) => ({
+                      dotyposCustomerId,
+                      locale: "cs-CZ" as const,
+                    })),
+                    profiles: read,
+                    at,
+                  })
+                )
+              )
+          );
+          const settle = yield* delivery.submitAutomatedSend({
+            sendId,
+            profiles: Option.some(read),
+          });
+          yield* db.transaction((tx) => settle(tx, Temporal.Now.instant()));
+          return sendId;
+        }).pipe(Effect.provide(consumerLayer))
+      );
+    };
+
+    test("a deliver unit's send mails its version's content, skips non-test recipients one by one and leaves the campaign's status", async () => {
+      const inside = customerId("unit-inside");
+      const outside = customerId("unit-outside");
+      profiles = [
+        profile(inside),
+        profile(outside, { email: resendSimulatorAddress("delivered") }),
+      ];
+      await grantConsent([inside, outside]);
+      const campaignId = await seedAutomatedCampaign(db, {
+        purpose: "operational",
+      });
+      automatedCampaignIds.push(campaignId);
+      const versionId = await seedAutomationVersion(db, {
+        campaignId,
+        purpose: "marketing",
+        text: "Verze jedna",
+      });
+
+      const sendId = await deliverAutomated({
+        campaignId,
+        versionId,
+        recipients: [inside, outside],
+      });
+
+      expect(requestKeys()).toEqual([
+        `email-campaign:${sendId}:attempt-1:batch-0`,
+      ]);
+      expect(requestPayloads()[0]).toContain("Verze jedna");
+      expect(requestPayloads()[0]).not.toContain("Rozpracovan");
+      expect(mailed).toEqual([testEmailAddress(inside)]);
+      const { recipients, campaign, batches } = await stored(sendId);
+      expect(
+        recipients.map((row) => [
+          row.dotypos_customer_id,
+          row.status,
+          row.skip_reason,
+        ])
+      ).toEqual([
+        [inside, "sent", null],
+        [outside, "skipped", "outside-test-domain"],
+      ]);
+      expect(batches).toEqual([
+        {
+          delivery_attempt: 1,
+          batch_index: 0,
+          dotypos_customer_ids: [inside],
+          status: "accepted",
+        },
+      ]);
+      expect(campaign.status).toBe("active");
+      expect(campaign.completed_at).not.toBeNull();
     });
 
     test("skips a recipient outside the test domain before any provider request outside production", async () => {

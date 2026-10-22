@@ -22,6 +22,7 @@ import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 /** A Workspace-booked reservation with its live Dotypos times and status. */
 export type ReservationVisit = {
   readonly workspaceReservationId: WorkspaceReservationId;
+  readonly dotyposReservationId: DotyposReservationId;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly startsAt: Temporal.Instant;
   readonly endsAt: Temporal.Instant;
@@ -76,6 +77,13 @@ interface IReservationVisits {
     window: ReservationVisitWindow,
     page: number
   ) => Effect.Effect<ReservationVisitsPage, ReservationVisitsUnavailable>;
+  /**
+   * How many reservations `ofCustomers` reads for each customer; a customer
+   * without any is absent. Unit packing sizes its units from these.
+   */
+  readonly bookings: (
+    customers: ReadonlyArray<DotyposCustomerId>
+  ) => Effect.Effect<ReadonlyMap<DotyposCustomerId, number>>;
   /** The most Dotypos requests `ofCustomers` makes for these customers. */
   readonly cost: (
     customers: ReadonlyArray<DotyposCustomerId>
@@ -194,6 +202,32 @@ export class ReservationVisits extends Context.Service<
           return Math.ceil((row?.booked ?? 0) / dotyposIdFilterBatchSize);
         });
 
+        const bookings = Effect.fn("ReservationVisits.bookings")(function* (
+          customers: ReadonlyArray<DotyposCustomerId>
+        ) {
+          if (customers.length === 0) {
+            return new Map<DotyposCustomerId, number>();
+          }
+          const rows = yield* db
+            .select({
+              dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+              booked: count(),
+            })
+            .from(workspaceReservations)
+            .where(
+              and(
+                countedReservationCondition,
+                inArray(workspaceReservations.dotyposCustomerId, [...customers])
+              )
+            )
+            .groupBy(workspaceReservations.dotyposCustomerId)
+            .pipe(Effect.orDie);
+          const booked: ReadonlyMap<DotyposCustomerId, number> = new Map(
+            rows.map((row) => [row.dotyposCustomerId, row.booked])
+          );
+          return booked;
+        });
+
         const memoised = (id: WorkspaceReservationId) =>
           memo.get(id) ?? Option.none<ReservationVisit>();
 
@@ -300,7 +334,7 @@ export class ReservationVisits extends Context.Service<
           );
         };
 
-        return { ofReservations, ofCustomers, activeDuring, cost };
+        return { ofReservations, ofCustomers, activeDuring, bookings, cost };
       })
     )
   );
@@ -318,8 +352,11 @@ type BookedReservation = {
   readonly dotyposReservationId: DotyposReservationId;
 };
 
-/** Booked through Workspace and linked to a Dotypos reservation (D31.6). */
-const countedReservationCondition = and(
+/**
+ * Booked through Workspace and linked to a Dotypos reservation (D31.6): the
+ * reservations `bookings` counts and `ofCustomers` reads.
+ */
+export const countedReservationCondition = and(
   bookedReservationCondition,
   isNotNull(workspaceReservations.dotyposReservationId)
 )!;
@@ -353,6 +390,7 @@ const toVisit = (
     Effect.map(
       ({ startsAt, endsAt }): ReservationVisit => ({
         workspaceReservationId: booked.workspaceReservationId,
+        dotyposReservationId: booked.dotyposReservationId,
         dotyposCustomerId: booked.dotyposCustomerId,
         startsAt: Temporal.Instant.from(startsAt),
         endsAt: Temporal.Instant.from(endsAt),

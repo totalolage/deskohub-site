@@ -7,7 +7,24 @@
 - Treat `workspace-admin-api.ts` as the single contract for the Admin UI, the API, and `dhw`. Extend the generic mutation endpoint and client unless the transport itself changes.
 - Give each new response field a decoding default so a newer `dhw` still decodes an older server's response. `CliSession.expiresAt` and the payment-attempt `refundedAmount` and `refundedAt` fields use `Schema.withDecodingDefaultTypeKey` to decode a missing value as `null`.
 - Bounded filters use schema-typed GET query parameters. Keep service operations and shared schemas transport-independent.
-- `dhw` sends its version in `x-dhw-version` on every request. In a group that uses the `CliClientCompatibility` middleware (today only `campaigns`), an endpoint or group annotated with `MinimumDhwVersion` (`dhw-version.ts`) rejects a missing, malformed, or older version with `CliInputInvalid` before its handler runs (`features/admin-cli/cli-client-version.ts`). `getInfo` lists every minimum, and a test fails if an endpoint with a minimum lacks the middleware. When a response gains a field that older binaries would drop and then write back, raise the minimum on the affected endpoints in the same PR as the writer. A group that adds the middleware must already declare `CliInputInvalid` on every endpoint; otherwise released binaries can't decode the rejection.
+- `dhw` sends its version in `x-dhw-version` on every request. In a group that uses the `CliClientCompatibility` middleware (today `campaigns` and `automations`), an endpoint or group annotated with `MinimumDhwVersion` (`dhw-version.ts`) rejects a missing, malformed, or older version with `CliInputInvalid` before its handler runs (`features/admin-cli/cli-client-version.ts`). `getInfo` lists every minimum, and a test fails if an endpoint with a minimum lacks the middleware. When a response gains a field that older binaries would drop and then write back, raise the minimum on the affected endpoints in the same PR as the writer. A group that adds the middleware must already declare `CliInputInvalid` on every endpoint; otherwise released binaries can't decode the rejection.
+
+## Operation annotations
+
+Every endpoint declares what its operation does, using the keys in `packages/workspace-admin-api/src/administration-operation.ts`. The annotations describe the operation, not a channel: `dhw` confirmations follow them, and any other administration channel must too. When you add or change an endpoint:
+
+- Annotate it with exactly one of:
+  - `AdministrationOperationBehavior`, for an operation every administration channel serves. Use `readOperation`, `writeOperation({ idempotent })` or `destructiveOperation({ idempotent, preview })`.
+  - `AdministrationOperationVariants`, for a generic mutation endpoint. Each union member is its own operation. Add the new variant to `discountMutationOperations` or `reservationAccessMutationOperations`; the `satisfies Record<kind, …>` fails the typecheck until you do.
+  - `CliOnly { reason }`, only for the CLI's own sign-in handshake and client checks.
+- `destructive` means `dhw` asks before running it: it cancels, sends, deletes, revokes, publishes, issues a credential, or changes who may claim a discount. A destructive command calls `confirmChange` with the operation's reference (`<group>.<endpoint>`, or `<group>.<endpoint>.<kind>` for a variant). `apps/dhw/src/command-runtime.test.ts` runs every confirming command without `--yes` and checks that the confirmed operations and the destructive operations are the same set, so add the command's row there.
+- `idempotent` is true only when repeating the same input, request ID included, has no further effect: reads, request-ID ledger writes, and writes that set a state. Sending email again or starting another job is not idempotent.
+- Give a destructive operation a `preview` when a read can show what it would change: `dryRunPreview` for an endpoint with a `dryRun` input, or `readPreview(...)` naming read operations. Leave it out when no read endpoint exists yet.
+- Mark a schema that lets its holder act (a token, a code, a PIN) with `credential: true`. Only `CliOnly` endpoints may return one, apart from the entries in `disclosedCredentials`; today that's the one-time standalone access-code PIN.
+- Put the endpoint in a group that uses `AdministrationAuthentication`; only `CliOnly` endpoints use the CLI's own bearer. Handlers take the actor and channel from `CurrentAdministrationCaller`, never from input.
+- Keep a campaign port operation's `query` or `mutation` kind consistent with the endpoint's `read` or write kind; ledger operations are idempotent.
+
+`packages/workspace-admin-api/src/administration-operation.test.ts` checks all of the above.
 
 ## Authentication and sessions
 
@@ -18,7 +35,7 @@
 Rules:
 
 - The server persists only SHA-256 digests of bearers.
-- Approval records the approving administrator's account actor on the request, and exchange copies it to the session (`approved_by_account_*`). The API returns the email snapshot as `approvedByEmail` and, for released `dhw` binaries that cap `approvedBy` at 80 characters and read null as a legacy session, a shortened copy as `approvedBy` (`toAdministrationActorName`). Keep `approvedBy` within that contract; the `CLI session contract` test in `packages/workspace-admin-api` decodes with the dhw-v1.17.0 schema. Handlers take the provenance actor for invoices and access codes from `CliAuthentication.sessionAdministrator`, never from CLI input.
+- Approval records the approving administrator's account actor on the request, and exchange copies it to the session (`approved_by_account_*`). The API returns the email snapshot as `approvedByEmail` and, for released `dhw` binaries that cap `approvedBy` at 80 characters and read null as a legacy session, a shortened copy as `approvedBy` (`toAdministrationActorName`). Keep `approvedBy` within that contract; the `CLI session contract` test in `packages/workspace-admin-api` decodes with the dhw-v1.17.0 schema. `CliSessionAdministrationAuthenticationLive` resolves the session's approving administrator once per request and provides it, with the CLI session channel, as `CurrentAdministrationCaller`. Handlers take the provenance actor for invoices and access codes from it, never from CLI input.
 - A session stops working when it's revoked, when it expires, when its approving account loses the administrator grant or awaits deletion, or when it has no approving account (an unlinked pre-account session). Bearer authentication reads the grant on every request, so a revocation applies on the next one. Every failure is `CliSessionUnauthorized`, and `dhw` deletes the stored credential. Exchange also fails when the approver lost the grant.
 - Session list, rename, and revoke are scoped to the approving account.
 - Expiry is computed at approval in `Europe/Prague` calendar units. `NULL` means the session never expires.
@@ -28,15 +45,24 @@ Rules:
 ## Output and confirmation
 
 - `--json` reserves stdout for one final JSON result. `dhw auth --json` writes approval instructions to stderr.
-- Every administration command that has a `--yes` flag prompts for confirmation through `confirmChange`. With `--json` or without a TTY on both stdin and stdout, it fails unless you pass `--yes`. `dhw update --json` without `--yes` only reports an available update.
+- Every administration command that has a `--yes` flag runs a destructive operation and prompts for confirmation through `confirmChange`, which names that operation. With `--json` or without a TTY on both stdin and stdout, it fails unless you pass `--yes`. `dhw update --json` without `--yes` only reports an available update.
 - Reservation detail includes safe access-grant metadata, never the PIN.
 
 ## Retries and idempotency
 
-- Discount and reservation-access mutations carry a client-generated request ID. The server stores the request and result per CLI session in `features/admin-cli/cli-mutation-idempotency.service.ts`, so retrying after an ambiguous transport failure replays the stored result instead of applying the mutation twice. A replayed access mutation returns safe grant metadata without issuing another credential.
+- Discount and reservation-access mutations carry a client-generated request ID. The server stores the request and result per caller scope (`AdministrationMutationScope`, the CLI session today) in `features/admin-cli/cli-mutation-idempotency.service.ts`, so retrying after an ambiguous transport failure replays the stored result instead of applying the mutation twice. A replayed access mutation returns safe grant metadata without issuing another credential.
 - An incomplete access request claim can be reclaimed after one minute. Recovery returns an issued grant, safely retries a failed grant, or requires provider reconciliation for every ambiguous state.
 - `dhw invoices create --input <file>` decodes the file with the strict `AdministrationInvoiceCreateFileInput` schema, which rejects unknown properties at every level. The file supplies the invoice UUID, and `dhw` sends it unchanged across retries. After an uncertain attempt, rerun with the same file. The server rejects the same UUID with different input.
 - Keep invoice customer data out of the generic CLI mutation ledger.
+- The ledger (`cli_mutation_requests`, named before assistants) is scoped per administration channel: each row belongs to exactly one CLI session or one administrator assistant connection, and a request ID is unique only within its channel. Partial unique indexes replace the old primary key, so an untargeted `on conflict do nothing` still detects a repeated claim. Handlers take the scope from `CurrentAdministrationCaller.channel` through `mutationScopeOf`.
+
+## Channels and action records
+
+- `CurrentAdministrationCaller.channel` is a `CliSession` or an `AssistantConnection`. An assistant connection (`administrator_assistant_connections`, `AdministratorAssistantConnections.connect`) is one row per administrator account and OAuth client, so it survives a disconnect and reconnect; it records the login-email snapshot, the client ID and its published name, and a last use written at most every five minutes.
+- Invoices and standalone access-code events record their provenance `source` from the channel: `dhw-cli` or `assistant`.
+- `AdministrationActionRecord` runs on every authenticated group and records each `write` or `destructive` operation, read from its `AdministrationOperationBehavior` or, for a generic mutation, the variant the body names, in `administration_actions`: the operation reference, the actor and its email snapshot, the channel, and the outcome. It stores no input or output. Add it to a new authenticated group before `AdministrationAuthentication`, so it runs inside authentication.
+- The row is written as `started` before the operation runs; if that write fails the request fails with `CliServiceUnavailable` and nothing runs. The outcome (`succeeded`, `replayed`, `failed` with the error tag, `defect`, `interrupted`) is written afterwards and only logged when it can't be, so a row left `started` means the outcome is unknown. Outcomes describe the request, not whether state changed. `replayed` means `CliMutationIdempotency.claim` returned a stored result (it marks `CurrentAdministrationAction`); invoice retries replay through their own ledger and record `succeeded`.
+- Released `dhw` binaries before the `assistant` invoice source fail to decode an invoice list or detail that contains an assistant-issued invoice; operators update `dhw`.
 
 ## Discount targets
 
@@ -46,9 +72,19 @@ Rules:
 
 - The campaign contract lives in `packages/workspace-admin-api/src/email-campaigns.ts`, and `features/admin-cli/email-campaigns-api.server.ts` serves it with the services the campaign admin UI uses.
 - Bodies cross the API as Markdown. The server parses them with `parseCampaignBodyMarkdown` and exports stored bodies with `campaignBodyToMarkdown`; `dhw` never parses Markdown itself.
+- `previewCampaignTemplate` takes a saved `Campaign`, unsaved `Content` held to the rules saving applies, or `UnfinishedContent`, whose body skips the content rules for links, buttons and images (`parseUnfinishedCampaignBodyMarkdown`). The composer's live preview sends `UnfinishedContent` through the generic campaign-operation bridge; keep it the only relaxed path and never save through it.
 - `AudienceFilter` in the contract is the only audience filter schema. Workspace re-exports it from `features/email-campaigns/audience-filter.ts` as `audienceFilterSchema`. On its own it ignores excess properties, so stored filters keep decoding. The strict API inputs that embed it reject them, and `dhw` decodes filter files with the same strict parse options. Keep its encoded form stable: `email-campaigns.test.ts` pins the stored wire format byte for byte. Each condition schema lists `attribute` before `_tag`: a Schema union dispatches on the first literal key it indexes, so this order checks a condition only against its own attribute's shapes and reports errors at its fields. A change to the stored shape needs a data migration of `email_campaign_audiences.filter`, `email_campaign_sends.audience_filter`, and stored `cli_mutation_requests` results that embed an audience.
 - Unparsable or invalid input fails with `CliInputInvalid` (400), and state conflicts fail with `CliMutationRejected` (409). Both messages reach the operator verbatim, so keep them actionable.
 - Campaign create, campaign duplicate, and audience create go through the CLI mutation ledger (`CliMutationIdempotency.applyOnce`), so a retried request replays its first response instead of leaving an extra row. `applyOnce` runs the claim, the mutation, and the stored result in one database transaction, so any failure or crash rolls all three back and frees the request ID. Its `apply` must write only through `WorkspaceDatabase`: queries and nested `db.transaction` calls join the ambient transaction through the shared SQL client, while external side effects (provider calls, email) don't roll back and belong in the claim/complete/reclaim flow the discount and access mutations use. Updates, archive, and unarchive are idempotent; a confirmed send is single-use by its confirmation code, and retry needs a Failed campaign.
+
+## Automations
+
+- The automation contract lives in `packages/workspace-admin-api/src/email-automations.ts`; its `automations` group has one endpoint per automation operation. `dhw automations` and `dhw calendar` call it.
+- `dhw` decodes `--flow-file` and `--expression` JSON with the strict parse options through `decodeJsonInput` (`apps/dhw/src/json-input.ts`), so an unknown key fails before any request.
+- `dry-run` and `activate` without `--preview` poll the dry run every two seconds through `pollUntil` (`apps/dhw/src/polling.ts`) until it settles, give up after 15 minutes, and then follow `nextCursor` to print every row. Rerunning reuses the running dry run.
+- `activate` gates only on `AutomationDetail.activation` (`Published` means nothing to activate) and the server's answer. It never checks readiness itself, so refusals such as `automation-draft-changed` reach the operator verbatim.
+- `show`, `flow set`, `dry-run`, and the activation prompt print the server's `frequency` as a red `warning:` on stderr when `firesMoreThanHourly`. `dhw` never computes frequency, and the warning never blocks.
+- A schedule may fire only on the engine's tick minutes (`emailAutomationScheduleMinutes`: :00, :15, :30, :45). `validateAutomationFlow` enforces it on every save through the contract's `scheduleMinutesOffTick`, so the Admin UI, the API and `dhw flow set` refuse the same flows with `schedule-minutes-not-allowed`. Calendar waits may use any minute. Keep the rule in that one helper rather than in the schema, so stored flows still decode.
 
 ## Reservation product-details backfill
 
@@ -89,12 +125,13 @@ Administrators sign in with their customer accounts; the `administrator` grant a
 
 ## Configuration
 
-- `DHW_BASE`: Workspace origin. Must be an HTTPS origin, or an HTTP origin on `localhost` or `127.0.0.1`.
+- `DHW_BASE`: Workspace origin. Must be an HTTPS origin, or an HTTP origin on `localhost` or `127.0.0.1`. Only published releases (built with `DHW_BUILD_CHANNEL=release` by `dhw-release.yml`, see `isReleaseBuild`) default to `https://workspace.deskohub.cz`. PR artifacts, local native builds, source runs and development builds fail closed without it, except `--help` and `--version`; point them at a local or preview Workspace, and pass the production origin only to work against production on purpose.
+- `DHW_CREDENTIAL_STORE`: `system` (default) uses the operating-system credential store, keyed by Workspace origin. `memory` keeps credentials for one process only.
 - `DHW_REQUEST_HEADERS`: JSON object of extra API headers, such as a Vercel protection-bypass header. Values are redacted, can't override headers that `dhw` manages, and are never sent to GitHub.
 - `DHW_STATE_DIR`: overrides the state directory for updater state and access-code attempt reservations.
 - `DHW_NO_UPDATE_CHECK=true` disables automatic update checks. They also never run for `--json`, under `CI`, or without a TTY.
 
-`dhw update` forces a check. Automatic checks persist the GitHub ETag and wait 30 seconds between requests. The updater accepts only a stable, immutable `dhw-v*` release asset for the build target embedded at compile time, with the expected size and SHA-256 digest and a matching self-reported version and target. Never infer the target from the host OS or architecture. Windows is unsupported.
+Only published releases check for or install updates. `dhw update` forces a check. Automatic checks persist the GitHub ETag and wait 30 seconds between requests. The updater accepts only a stable, immutable `dhw-v*` release asset for the build target embedded at compile time, with the expected size and SHA-256 digest and a matching self-reported version and target. Never infer the target from the host OS or architecture. Windows is unsupported.
 
 ## Checks
 
@@ -107,8 +144,10 @@ bun --cwd apps/dhw test
 bun test packages/workspace-admin-api
 bun turbo test:admin-cli --filter=./apps/deskohub-workspace
 bun apps/dhw/src/build.ts development
-apps/dhw/dist/dhw version --json
+DHW_BASE=http://localhost:3000 apps/dhw/dist/dhw version --json
 ```
+
+`apps/dhw` tests preload `src/testing/test-isolation.preload.ts`, which replaces `Bun.secrets` and sends non-local requests to an unreachable proxy. Start `dhw` subprocesses only through `runDhw` (`src/testing/dhw-process.ts`): it passes an environment built from scratch with the memory credential store, a fresh home, no `.env` loading, and a trap that records and refuses every request outside localhost. It rejects the production origin, and the system credential store for compiled executables, which skip the preload. Never run `dhw` against production or with the system credential store in tests.
 
 Development builds report `<version>+development`, and PR artifacts report `<version>+pr.<number>.<head-sha>`. Published releases use the plain package version.
 

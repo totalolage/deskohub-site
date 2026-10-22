@@ -35,6 +35,7 @@
   "accountingInvoiceSourcePostOrderLink": "Post-order link",
   "accountingInvoiceSourceAdminUi": "Admin UI",
   "accountingInvoiceSourceDhwCli": "dhw CLI",
+  "accountingInvoiceSourceAssistant": "AI assistant",
   "accountingInvoiceSourceLegacy": "Legacy / unknown",
   "accountingInvoiceDeliveryNeedsResend": "Needs resend",
   "accountingInvoiceDeliverySent": "Sent",

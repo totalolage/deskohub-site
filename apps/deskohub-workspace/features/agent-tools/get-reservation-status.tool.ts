@@ -136,12 +136,10 @@ const ensureOwnOrder = (input: {
 
 const toReservationStatusResult = ({
   orderId,
-  locale,
   status,
   origin,
 }: {
   readonly orderId: WorkspaceReservationId;
-  readonly locale: Locale;
   readonly status: CheckoutStatusViewModel;
   readonly origin: URL;
 }): Effect.Effect<ReservationStatusResult, AgentToolError> =>
@@ -165,7 +163,7 @@ const toReservationStatusResult = ({
           }),
         }),
         status_url: new URL(
-          `/${locale}${reservationStatusPath}/${orderId}`,
+          `${reservationStatusPath}/${encodeURIComponent(orderId)}`,
           origin
         ).toString(),
       })

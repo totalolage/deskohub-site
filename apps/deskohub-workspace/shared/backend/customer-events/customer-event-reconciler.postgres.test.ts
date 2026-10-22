@@ -279,12 +279,15 @@ describe.skipIf(!testDatabase)(
       const createdAt = now.subtract({ hours: 5 });
       const insertAccount = async (
         linkedCustomer: string | null,
-        emailVerified: boolean
+        emailVerified: boolean,
+        legacy = false
       ) => {
         const id = customerAccountIdSchema.make(crypto.randomUUID());
         accountIds.push(id);
         await Effect.runPromise(
-          testDatabase.db.insert(customerAccounts).values({ id, createdAt })
+          testDatabase.db
+            .insert(customerAccounts)
+            .values({ id, createdAt, legacy })
         );
         await testDatabase.pool.query(
           `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, $3)`,
@@ -307,6 +310,8 @@ describe.skipIf(!testDatabase)(
       const linked = await insertAccount(linkedCustomer, true);
       const unverified = await insertAccount(unverifiedCustomer, false);
       const unlinked = await insertAccount(null, true);
+      // An existing customer's verified account is never a new one.
+      const legacy = await insertAccount(crypto.randomUUID(), true, true);
       const readAccountEvents = (id: CustomerAccountId) =>
         Effect.runPromise(
           testDatabase.db
@@ -333,6 +338,7 @@ describe.skipIf(!testDatabase)(
       ]);
       expect(await readAccountEvents(unverified)).toEqual([]);
       expect(await readAccountEvents(unlinked)).toEqual([]);
+      expect(await readAccountEvents(legacy)).toEqual([]);
     });
   }
 );

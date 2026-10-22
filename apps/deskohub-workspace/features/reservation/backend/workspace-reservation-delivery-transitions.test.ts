@@ -468,7 +468,8 @@ describe.skipIf(!postgresDatabase)(
 
       expect(repaired?.id).toEqual(id);
       expect(repaired?.fulfillmentState).toBe("fulfilled");
-      expect(repaired?.fulfillmentFailedAt).toBeNull();
+      // The failure's time stays, so a status replay knows it failed first.
+      expect(repaired?.fulfillmentFailedAt?.equals(failedAt)).toBe(true);
       expect(repaired?.fulfillmentFailureCode).toBeNull();
     });
 

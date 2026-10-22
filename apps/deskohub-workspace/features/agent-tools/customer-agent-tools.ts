@@ -9,7 +9,12 @@ import { payStatePreparationServices } from "@/features/reservation/backend/pay-
 import { SharedReservationRecordsLive } from "@/features/reservation/backend/reservation-records-cache.server";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { AgentTool, CallableAgentTools } from "./agent-tool";
+import {
+  type AgentTool,
+  type AgentToolExposure,
+  type CallableAgentTools,
+  selectAgentTools,
+} from "./agent-tool";
 import type { CurrentAgentToolClient } from "./agent-tool-client";
 import { checkAvailabilityTool } from "./check-availability.tool";
 import type { SignedInAgentToolRequirements } from "./customer-agent-caller";
@@ -41,7 +46,7 @@ export const CustomerAgentToolsLive = Layer.mergeAll(
 );
 
 /** Every tool customers' agents can call, in the order agents see them. */
-export const customerAgentTools: ReadonlyArray<
+const customerAgentTools: ReadonlyArray<
   AgentTool<
     | Layer.Success<typeof CustomerAgentToolsLive>
     | SignedInAgentToolRequirements
@@ -57,3 +62,19 @@ export const customerAgentTools: ReadonlyArray<
   getReservationStatusTool,
   listMyReservationsTool,
 ];
+
+/**
+ * The customer MCP server (`/api/mcp`) serves the public tools to anyone and
+ * the signed-in tools, including starting a booking, to agents with an OAuth
+ * access token.
+ */
+const customerToolExposure: AgentToolExposure = {
+  access: ["public", "signed-in"],
+  transactional: true,
+};
+
+/** The tools the customer MCP server publishes, as llms.txt describes them. */
+export const publishedCustomerAgentTools = selectAgentTools(
+  customerAgentTools,
+  customerToolExposure
+);

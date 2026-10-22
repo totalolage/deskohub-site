@@ -7,6 +7,16 @@ import {
   HttpApiSchema,
   HttpApiSecurity,
 } from "effect/unstable/httpapi";
+import {
+  AdministrationOperationBehavior,
+  AdministrationOperationVariants,
+  CliOnly,
+  destructiveOperation,
+  dryRunPreview,
+  readOperation,
+  readPreview,
+  writeOperation,
+} from "./administration-operation";
 import { administrationCalendarDate } from "./calendar-date";
 import { DhwVersion } from "./dhw-version";
 import { WORKSPACE_SITE_TIME_ZONE } from "./site-time-zone";
@@ -25,12 +35,12 @@ const uuidSchema = Schema.String.check(
 
 export const CliAuthenticationCode = base64UrlSecretSchema
   .pipe(Schema.brand("CliAuthenticationCode"))
-  .annotate({ identifier: "CliAuthenticationCode" });
+  .annotate({ identifier: "CliAuthenticationCode", credential: true });
 export type CliAuthenticationCode = typeof CliAuthenticationCode.Type;
 
 export const CliAuthenticationVerifier = base64UrlSecretSchema
   .pipe(Schema.brand("CliAuthenticationVerifier"))
-  .annotate({ identifier: "CliAuthenticationVerifier" });
+  .annotate({ identifier: "CliAuthenticationVerifier", credential: true });
 export type CliAuthenticationVerifier = typeof CliAuthenticationVerifier.Type;
 
 export const CliAuthenticationChallenge = base64UrlSecretSchema
@@ -40,18 +50,28 @@ export type CliAuthenticationChallenge = typeof CliAuthenticationChallenge.Type;
 
 export const CliGrantToken = base64UrlSecretSchema
   .pipe(Schema.brand("CliGrantToken"))
-  .annotate({ identifier: "CliGrantToken" });
+  .annotate({ identifier: "CliGrantToken", credential: true });
 export type CliGrantToken = typeof CliGrantToken.Type;
 
 export const CliAccessToken = base64UrlSecretSchema
   .pipe(Schema.brand("CliAccessToken"))
-  .annotate({ identifier: "CliAccessToken" });
+  .annotate({ identifier: "CliAccessToken", credential: true });
 export type CliAccessToken = typeof CliAccessToken.Type;
 
 export const CliSessionId = uuidSchema
   .pipe(Schema.brand("CliSessionId"))
   .annotate({ identifier: "CliSessionId" });
 export type CliSessionId = typeof CliSessionId.Type;
+
+export const AdministrationAssistantConnectionId = uuidSchema
+  .pipe(Schema.brand("AdministrationAssistantConnectionId"))
+  .annotate({
+    identifier: "AdministrationAssistantConnectionId",
+    description:
+      "An administrator's connection of one AI assistant (OAuth client).",
+  });
+export type AdministrationAssistantConnectionId =
+  typeof AdministrationAssistantConnectionId.Type;
 
 export const CliMutationRequestId = uuidSchema
   .pipe(Schema.brand("CliMutationRequestId"))
@@ -279,16 +299,22 @@ export class CliSessionUnauthorized extends Schema.TaggedErrorClass<CliSessionUn
   static schema = this.pipe(HttpApiSchema.status("Unauthorized"));
 }
 
+/**
+ * The campaign port's stable error code, when the failure came from it.
+ * Older servers omit it.
+ */
+const cliErrorCode = Schema.optionalKey(Schema.String);
+
 export class CliServiceUnavailable extends Schema.TaggedErrorClass<CliServiceUnavailable>()(
   "CliServiceUnavailable",
-  { message: Schema.String }
+  { message: Schema.String, code: cliErrorCode }
 ) {
   static schema = this.pipe(HttpApiSchema.status("ServiceUnavailable"));
 }
 
 export class CliResourceNotFound extends Schema.TaggedErrorClass<CliResourceNotFound>()(
   "CliResourceNotFound",
-  { message: Schema.String }
+  { message: Schema.String, code: cliErrorCode }
 ) {
   static schema = this.pipe(HttpApiSchema.status("NotFound"));
 }
@@ -296,14 +322,14 @@ export class CliResourceNotFound extends Schema.TaggedErrorClass<CliResourceNotF
 /** Request content the server can't accept, such as an unparsable body. */
 export class CliInputInvalid extends Schema.TaggedErrorClass<CliInputInvalid>()(
   "CliInputInvalid",
-  { message: Schema.String }
+  { message: Schema.String, code: cliErrorCode }
 ) {
   static schema = this.pipe(HttpApiSchema.status("BadRequest"));
 }
 
 export class CliMutationRejected extends Schema.TaggedErrorClass<CliMutationRejected>()(
   "CliMutationRejected",
-  { message: Schema.String }
+  { message: Schema.String, code: cliErrorCode }
 ) {
   static schema = this.pipe(HttpApiSchema.status("Conflict"));
 }
@@ -359,6 +385,85 @@ export class CliClientCompatibility extends HttpApiMiddleware.Service<CliClientC
   "@deskohub/workspace-admin-api/CliClientCompatibility",
   { error: CliInputInvalid.schema }
 ) {}
+
+/**
+ * A Workspace account id, as Better Auth assigns it. It carries the
+ * Workspace's `CustomerAccountId` brand, so either side's ids pass unchanged.
+ */
+export const AdministrationAccountId = Schema.Trim.check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(255)
+)
+  .pipe(Schema.brand("CustomerAccountId"))
+  .annotate({
+    identifier: "AdministrationAccountId",
+    description: "Opaque Workspace account identifier.",
+  });
+export type AdministrationAccountId = typeof AdministrationAccountId.Type;
+
+/**
+ * The account an administrator acts as, with its login email at the time, so
+ * provenance stays readable after the account is deleted.
+ */
+export type AdministratorActor = {
+  readonly accountId: AdministrationAccountId;
+  readonly email: string;
+};
+
+/**
+ * How an administrator reached the administration API: a `dhw` session, or an
+ * AI assistant the administrator connected, identified by its OAuth client.
+ */
+export type AdministrationChannel =
+  | {
+      readonly _tag: "CliSession";
+      readonly sessionId: CliSessionId;
+    }
+  | {
+      readonly _tag: "AssistantConnection";
+      readonly connectionId: AdministrationAssistantConnectionId;
+      readonly oauthClientId: string;
+    };
+
+/**
+ * Who calls an administration operation and through which channel. Handlers
+ * take the actor for provenance and the channel for request scoping, and
+ * never from request input.
+ */
+export class CurrentAdministrationCaller extends Context.Service<
+  CurrentAdministrationCaller,
+  {
+    readonly actor: AdministratorActor;
+    readonly channel: AdministrationChannel;
+  }
+>()("@deskohub/workspace-admin-api/CurrentAdministrationCaller") {}
+
+/**
+ * Authenticates an administration operation's bearer and provides its
+ * caller. The bearer and the errors match `CliBearerAuthentication`, so
+ * released `dhw` binaries call and decode it unchanged.
+ */
+export class AdministrationAuthentication extends HttpApiMiddleware.Service<
+  AdministrationAuthentication,
+  { provides: CurrentAdministrationCaller }
+>()("@deskohub/workspace-admin-api/AdministrationAuthentication", {
+  error: [CliSessionUnauthorized.schema, CliServiceUnavailable.schema],
+  security: { bearer: HttpApiSecurity.bearer },
+}) {}
+
+/**
+ * Records each `write` and `destructive` operation with its caller and
+ * outcome. Add it before `AdministrationAuthentication`, so it runs inside
+ * it and sees the caller. It fails with `CliServiceUnavailable`, which every
+ * authenticated endpoint already declares, when it can't record the call
+ * before the operation runs.
+ */
+export class AdministrationActionRecord extends HttpApiMiddleware.Service<
+  AdministrationActionRecord,
+  { requires: CurrentAdministrationCaller }
+>()("@deskohub/workspace-admin-api/AdministrationActionRecord", {
+  error: CliServiceUnavailable.schema,
+}) {}
 
 export const AdministrationOverviewMetric = Schema.Struct({
   completed: Schema.Number,
@@ -694,6 +799,7 @@ export const AdministrationInvoiceListItem = Schema.Struct({
     "post-order-link",
     "admin-ui",
     "dhw-cli",
+    "assistant",
     "legacy",
   ]),
   actor: Schema.NullOr(Schema.String),
@@ -1129,6 +1235,25 @@ export const AdministrationReservationAccessMutation = Schema.Union([
 export type AdministrationReservationAccessMutation =
   typeof AdministrationReservationAccessMutation.Type;
 
+/** Each reservation-access mutation as an administration operation. */
+export const reservationAccessMutationOperations = {
+  field: "mutation",
+  discriminator: "kind",
+  operations: {
+    "retry-failed": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getReservation"),
+    }),
+    "confirm-provider-credential-removed": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getReservation"),
+    }),
+  } satisfies Record<
+    AdministrationReservationAccessMutation["kind"],
+    AdministrationOperationBehavior["Service"]
+  >,
+};
+
 export const AdministrationInstant = Schema.String.check(
   Schema.makeFilter((value) => {
     try {
@@ -1221,6 +1346,7 @@ export const AdministrationStandaloneAccessCodePin = Schema.String.check(
     identifier: "AdministrationStandaloneAccessCodePin",
     description:
       "Seven-to-nine-digit access PIN, disclosed only by the created outcome.",
+    credential: true,
   });
 export type AdministrationStandaloneAccessCodePin =
   typeof AdministrationStandaloneAccessCodePin.Type;
@@ -1938,6 +2064,69 @@ export const AdministrationDiscountMutation = Schema.Union([
 export type AdministrationDiscountMutation =
   typeof AdministrationDiscountMutation.Type;
 
+/**
+ * Each discount mutation as an administration operation. Changing who may
+ * claim a code or voucher, or a customer's discount group, is destructive:
+ * `dhw` confirms it like a deletion.
+ */
+export const discountMutationOperations = {
+  field: "mutation",
+  discriminator: "kind",
+  operations: {
+    "create-discount": writeOperation({ idempotent: true }),
+    "update-discount": writeOperation({ idempotent: true }),
+    "delete-discount": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getDiscountDashboard"),
+    }),
+    "create-code": writeOperation({ idempotent: true }),
+    "create-customer-code": writeOperation({ idempotent: true }),
+    "update-code": writeOperation({ idempotent: true }),
+    "delete-code": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getDiscountCode"),
+    }),
+    "add-code-customer": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getDiscountCode"),
+    }),
+    "remove-code-customer": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getDiscountCode"),
+    }),
+    "make-code-unrestricted": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getDiscountCode"),
+    }),
+    "create-voucher": writeOperation({ idempotent: true }),
+    "create-customer-voucher": writeOperation({ idempotent: true }),
+    "update-voucher": writeOperation({ idempotent: true }),
+    "delete-voucher": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getVoucher"),
+    }),
+    "add-voucher-customer": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getVoucher"),
+    }),
+    "remove-voucher-customer": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getVoucher"),
+    }),
+    "make-voucher-unrestricted": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getVoucher"),
+    }),
+    "set-customer-discount-group": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getCustomer"),
+    }),
+  } satisfies Record<
+    AdministrationDiscountMutation["kind"],
+    AdministrationOperationBehavior["Service"]
+  >,
+};
+
 export const AdministrationDiscountMutationResult = Schema.Struct({
   kind: Schema.Literals(ADMINISTRATION_DISCOUNT_MUTATION_KINDS),
   createdDiscountId: Schema.NullOr(AdministrationStoredDiscountId),
@@ -2054,6 +2243,8 @@ export const AdminCliApi = HttpApiGroup.make("cli")
   .add(
     HttpApiEndpoint.get("getInfo", "/info", {
       success: AdminCliInfo,
+    }).annotate(CliOnly, {
+      reason: "Reports the server's dhw compatibility to the CLI.",
     })
   )
   .add(
@@ -2064,6 +2255,8 @@ export const AdminCliApi = HttpApiGroup.make("cli")
         CliAuthenticationRateLimited.schema,
         CliServiceUnavailable.schema,
       ],
+    }).annotate(CliOnly, {
+      reason: "CLI sign-in handshake; it hands out CLI credentials.",
     })
   )
   .add(
@@ -2071,6 +2264,8 @@ export const AdminCliApi = HttpApiGroup.make("cli")
       query: { code: CliAuthenticationCode },
       success: CliAuthenticationStatus,
       error: CliServiceUnavailable.schema,
+    }).annotate(CliOnly, {
+      reason: "CLI sign-in handshake; it hands out CLI credentials.",
     })
   )
   .add(
@@ -2078,12 +2273,16 @@ export const AdminCliApi = HttpApiGroup.make("cli")
       payload: ExchangeCliGrant,
       success: GrantedCliSession,
       error: [CliGrantRejected.schema, CliServiceUnavailable.schema],
+    }).annotate(CliOnly, {
+      reason: "CLI sign-in handshake; it hands out CLI credentials.",
     })
   )
   .add(
     HttpApiEndpoint.get("getCurrentSession", "/session", {
       success: CliSession,
-    }).middleware(CliBearerAuthentication)
+    })
+      .middleware(CliBearerAuthentication)
+      .annotate(CliOnly, { reason: "Reports the calling CLI session." })
   )
   .prefix("/api/v1/cli");
 
@@ -2091,20 +2290,20 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
   .add(
     HttpApiEndpoint.get("getOverview", "/overview", {
       success: AdministrationOverview,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listReservations", "/reservations", {
       query: AdministrationReservationQuery,
       success: AdministrationReservationPage,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getReservation", "/reservations/:reservationId", {
       params: { reservationId: AdministrationWorkspaceReservationId },
       success: AdministrationReservationDetail,
       error: CliResourceNotFound.schema,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post(
@@ -2120,6 +2319,12 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
           CliServiceUnavailable.schema,
         ],
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: false,
+        preview: readPreview("administration.getReservation"),
+      })
     )
   )
   .add(
@@ -2131,6 +2336,9 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
         success: AdministrationReservationProductDetailsBackfillBatch,
         error: CliServiceUnavailable.schema,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({ idempotent: true, preview: dryRunPreview })
     )
   )
   .add(
@@ -2153,68 +2361,71 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
           CliServiceUnavailable.schema,
         ],
       }
+    ).annotate(
+      AdministrationOperationVariants,
+      reservationAccessMutationOperations
     )
   )
   .add(
     HttpApiEndpoint.get("findReservation", "/reservations/find", {
       query: AdministrationReservationLookupQuery,
       success: AdministrationReservationLookupResult,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listBookings", "/bookings", {
       query: AdministrationBookingQuery,
       success: AdministrationBookingPage,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getBooking", "/bookings/:bookingId", {
       params: { bookingId: AdministrationDotyposReservationId },
       success: AdministrationBookingDetail,
       error: CliResourceNotFound.schema,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listOrders", "/orders", {
       query: AdministrationOrderQuery,
       success: AdministrationOrderList,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getOrder", "/orders/:orderId", {
       params: { orderId: AdministrationNexiOrderId },
       success: AdministrationOrder,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listOperations", "/operations", {
       query: AdministrationOperationQuery,
       success: AdministrationOperationList,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getOperation", "/operations/:operationId", {
       params: { operationId: AdministrationNexiOperationId },
       success: AdministrationOperationDetail,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listCustomers", "/customers", {
       query: AdministrationCustomerQuery,
       success: AdministrationCustomerPage,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("searchCustomers", "/customers/search", {
       query: AdministrationCustomerSearchQuery,
       success: AdministrationCustomerSearchResult,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getCustomer", "/customers/:customerId", {
       params: { customerId: AdministrationDotyposCustomerId },
       success: AdministrationCustomerDetail,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get(
@@ -2225,46 +2436,46 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
         query: AdministrationCustomerReservationsQuery,
         success: AdministrationCustomerReservationPage,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getDiscountDashboard", "/discounts", {
       success: AdministrationDiscountDashboard,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getDiscountCode", "/codes/:codeId", {
       params: { codeId: AdministrationDiscountCodeId },
       success: AdministrationDiscountCodeDetail,
       error: CliResourceNotFound.schema,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getVoucher", "/vouchers/:voucherId", {
       params: { voucherId: AdministrationVoucherId },
       success: AdministrationVoucherDetail,
       error: CliResourceNotFound.schema,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listInvoices", "/invoices", {
       query: AdministrationInvoiceQuery,
       success: AdministrationInvoicePage,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getInvoice", "/invoices/:invoiceId", {
       params: { invoiceId: AdministrationInvoiceId },
       success: AdministrationInvoiceDetail,
       error: [CliResourceNotFound.schema, CliServiceUnavailable.schema],
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getInvoicePdf", "/invoices/:invoiceId/pdf", {
       params: { invoiceId: AdministrationInvoiceId },
       success: AdministrationInvoicePdf,
       error: [CliResourceNotFound.schema, CliServiceUnavailable.schema],
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post("createInvoice", "/invoices", {
@@ -2275,7 +2486,10 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
         CliMutationRejected.schema,
         CliServiceUnavailable.schema,
       ],
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({ idempotent: true })
+    )
   )
   .add(
     HttpApiEndpoint.post("createStandaloneAccessCode", "/access-codes", {
@@ -2289,7 +2503,10 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
         CliStandaloneAccessCodeCleanupRequired.schema,
         CliStandaloneAccessCodeReconciled.schema,
       ],
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({ idempotent: true })
+    )
   )
   .add(
     HttpApiEndpoint.post("resendInvoice", "/invoices/:invoiceId/resend", {
@@ -2300,12 +2517,18 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
         CliResourceNotFound.schema,
         CliServiceUnavailable.schema,
       ],
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: false,
+        preview: readPreview("administration.getInvoice"),
+      })
+    )
   )
   .add(
     HttpApiEndpoint.get("listSessions", "/sessions", {
       success: Schema.Array(CliSessionAdministration),
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post("mutateDiscounts", "/discounts/mutations", {
@@ -2321,7 +2544,7 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
         CliMutationRejected.schema,
         CliResourceNotFound.schema,
       ],
-    })
+    }).annotate(AdministrationOperationVariants, discountMutationOperations)
   )
   .add(
     HttpApiEndpoint.patch("renameSession", "/sessions/:sessionId", {
@@ -2329,13 +2552,23 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
       payload: RenameCliSession,
       success: CliSessionMutationResult,
       error: CliResourceNotFound.schema,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: true })
+    )
   )
   .add(
     HttpApiEndpoint.delete("revokeSession", "/sessions/:sessionId", {
       params: { sessionId: CliSessionId },
       success: CliSessionMutationResult,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview("administration.listSessions"),
+      })
+    )
   )
-  .middleware(CliBearerAuthentication)
+  .middleware(AdministrationActionRecord)
+  .middleware(AdministrationAuthentication)
   .prefix("/api/v1/cli");

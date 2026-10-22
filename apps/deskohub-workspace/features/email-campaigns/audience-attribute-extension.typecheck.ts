@@ -46,6 +46,7 @@ export const extendedResolvers: AudienceAttributeResolvers<
   giftCardCount: {
     count: () =>
       Effect.succeed(new Map([[DotyposCustomerIdSchema.make("buyer"), 3]])),
+    readsVisits: () => false,
   },
 };
 

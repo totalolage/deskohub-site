@@ -75,6 +75,8 @@ import {
   reportAuthenticationStarted,
 } from "./authentication/authentication-output";
 import { ClientIdentity } from "./authentication/client-identity.service";
+import { automationsCommand } from "./automations/automations.command";
+import { calendarCommand } from "./automations/calendar.command";
 import { DHW_BUILD_TARGET, DHW_VERSION, isReleaseBuild } from "./build-info";
 import { campaignsCommand } from "./campaigns/campaigns.command";
 import {
@@ -91,6 +93,7 @@ import {
   runCommand,
 } from "./command-runtime";
 import { DhwConfig } from "./config/dhw-config.service";
+import { pollUntil } from "./polling";
 import { UpdateService } from "./update/update.service";
 
 const versionCommand = Command.make("version", {}, () =>
@@ -304,6 +307,7 @@ const reservationsCancelCommand = Command.make(
           AdministrationWorkspaceReservationId
         )(reservationId);
         const confirmed = yield* confirmChange(
+          "administration.cancelReservation",
           yes,
           json,
           force
@@ -356,6 +360,7 @@ const reservationsBackfillProductDetailsCommand = Command.make(
       Effect.gen(function* () {
         if (!dryRun) {
           const confirmed = yield* confirmChange(
+            "administration.backfillReservationProductDetails",
             yes,
             json,
             "Fill missing meeting-room and office product details from Dotypos?"
@@ -734,6 +739,7 @@ const invoicesCreateCommand = Command.make(
         }
         const invoiceInput = yield* readInvoiceCreateInput(input);
         const confirmed = yield* confirmChange(
+          "administration.createInvoice",
           yes,
           json,
           "Create this immutable invoice and immediately email it to both the customer and Deskohub?"
@@ -814,6 +820,7 @@ const invoicesResendCommand = Command.make(
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
         const confirmed = yield* confirmChange(
+          "administration.resendInvoice",
           yes,
           json,
           `Retry missing or failed email delivery for invoice ${invoiceId}?`
@@ -1970,6 +1977,7 @@ const accessCodesCreateCommand = Command.make(
           )
         );
         const confirmed = yield* confirmChange(
+          "administration.createStandaloneAccessCode",
           yes,
           json,
           formatStandaloneAccessCodeConfirmation(request)
@@ -2190,6 +2198,7 @@ const sessionsRevokeCommand = Command.make(
     runAuthenticatedCommand((api, accessToken, json, currentSession) =>
       Effect.gen(function* () {
         const confirmed = yield* confirmChange(
+          "administration.revokeSession",
           yes,
           json,
           `Revoke CLI session ${sessionId}? Its access will stop immediately. This cannot be undone.`
@@ -2297,7 +2306,7 @@ const updateCommand = Command.make(
         yield* Console.log(
           json
             ? JSON.stringify({ status: "development-build" })
-            : "Self-update is unavailable in development builds."
+            : "Self-update is available only in published releases."
         );
         return;
       }
@@ -2334,7 +2343,9 @@ export const dhwCommand = rootCommand.pipe(
     administratorsCommand,
     apiCommand,
     authCommand,
+    automationsCommand,
     bookingsCommand,
+    calendarCommand,
     campaignsCommand,
     codesCommand,
     customersCommand,
@@ -2366,35 +2377,41 @@ const waitForCliAuthentication = Effect.fn(
   >[0];
   readonly verifier: Parameters<typeof makeCliAuthenticationChallenge>[0];
 }) {
-  while (true) {
-    const status = yield* api.getAuthenticationStatus(code);
-    switch (status.authStatus) {
-      case "pending":
-        yield* Effect.sleep("2 seconds");
-        break;
-      case "approved": {
-        const granted = yield* api.exchangeGrant({
-          code,
-          grantToken: status.grantToken,
-          verifier,
-        });
-        yield* authentication.save(granted.accessToken);
-        return granted.session;
-      }
-      case "expired":
-        return yield* new AuthenticationFlowError({
-          message: "The authentication request expired. Run dhw auth again.",
-        });
-      case "granted":
-        return yield* new AuthenticationFlowError({
-          message:
-            "The authentication grant was already exchanged. Run dhw auth again on this machine.",
-        });
-      case "revoked":
-        return yield* new AuthenticationFlowError({
-          message: "The CLI session was revoked. Run dhw auth again.",
-        });
+  const status = yield* pollUntil(api.getAuthenticationStatus(code), {
+    settled: (
+      status
+    ): status is Exclude<typeof status, { readonly authStatus: "pending" }> =>
+      status.authStatus !== "pending",
+    // The request itself expires after five minutes.
+    timeout: "10 minutes",
+    onTimeout: () =>
+      new AuthenticationFlowError({
+        message: "The authentication request expired. Run dhw auth again.",
+      }),
+  });
+  switch (status.authStatus) {
+    case "approved": {
+      const granted = yield* api.exchangeGrant({
+        code,
+        grantToken: status.grantToken,
+        verifier,
+      });
+      yield* authentication.save(granted.accessToken);
+      return granted.session;
     }
+    case "expired":
+      return yield* new AuthenticationFlowError({
+        message: "The authentication request expired. Run dhw auth again.",
+      });
+    case "granted":
+      return yield* new AuthenticationFlowError({
+        message:
+          "The authentication grant was already exchanged. Run dhw auth again on this machine.",
+      });
+    case "revoked":
+      return yield* new AuthenticationFlowError({
+        message: "The CLI session was revoked. Run dhw auth again.",
+      });
   }
 });
 
@@ -2515,7 +2532,12 @@ const runConfirmedDiscountMutation = ({
 }) =>
   runAuthenticatedCommand((api, accessToken, json) =>
     Effect.gen(function* () {
-      const confirmed = yield* confirmChange(yes, json, confirmation);
+      const confirmed = yield* confirmChange(
+        `administration.mutateDiscounts.${mutation.kind}`,
+        yes,
+        json,
+        confirmation
+      );
       if (!confirmed) {
         yield* reportCancellation(json);
         return;
@@ -2545,7 +2567,12 @@ const runConfirmedReservationAccessMutation = ({
             "Verify the credential in Igloohome, then pass --provider-credential-removed.",
         });
       }
-      const confirmed = yield* confirmChange(yes, json, confirmation);
+      const confirmed = yield* confirmChange(
+        `administration.mutateReservationAccess.${mutation.kind}`,
+        yes,
+        json,
+        confirmation
+      );
       if (!confirmed) {
         yield* reportCancellation(json);
         return;

@@ -1,7 +1,17 @@
-import { Effect } from "effect";
+import { Context, Effect } from "effect";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import type { AdministratorAccountActor } from "../account-role";
 import { AccountRoleGrants } from "./account-role-grants.service";
+
+/**
+ * The administrator an adapter authenticated for this request: the admin
+ * UI's session or the CLI session's approving account. Operations that need
+ * it still re-read the grant, so a revocation applies at once.
+ */
+export class CurrentAdministrator extends Context.Service<
+  CurrentAdministrator,
+  AdministratorAccountActor
+>()("@deskohub-workspace/administrators/CurrentAdministrator") {}
 
 /**
  * Who the current request acts as in the administration:

@@ -1,5 +1,8 @@
-import type { DotyposCustomerId } from "@deskohub/dotypos";
+import type { DotyposCustomer, DotyposCustomerId } from "@deskohub/dotypos";
 import { Data, Option } from "effect";
+import type { ReservationVisit } from "@/features/reservation/backend/reservation-visits.service";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import type { AutomationTriggerKind } from "../automation/automation-states";
 import type { CampaignId } from "../campaign-identifiers";
 
 /**
@@ -8,7 +11,10 @@ import type { CampaignId } from "../campaign-identifiers";
  * from `at`.
  */
 type AudienceTrigger = {
+  readonly kind: AutomationTriggerKind;
   readonly at: Temporal.Instant;
+  /** The triggering reservation of a reservation event. */
+  readonly reservationId: Option.Option<WorkspaceReservationId>;
 };
 
 /**
@@ -20,6 +26,12 @@ export type AudienceEvaluationContext = {
   readonly now: Temporal.Instant;
   readonly campaignId: Option.Option<CampaignId>;
   readonly trigger: Option.Option<AudienceTrigger>;
+  /**
+   * `now` is a past moment a dry run replays, so Workspace has since
+   * recorded what came after it. Live evaluations run at the present and
+   * leave it unset.
+   */
+  readonly replayed?: boolean;
 };
 
 /** The context of a one-off evaluation at `now`: no campaign, no trigger. */
@@ -51,3 +63,25 @@ export const scopedCustomers = (
     All: () => undefined,
     Customers: ({ ids }) => ids,
   });
+
+/**
+ * Where an evaluation reads Dotypos facts. `Live` reads them as one-off sends
+ * and their previews always have. `Fetched` holds what one automation unit
+ * fetched for its customers: their Workspace-booked visits and their
+ * profiles, each `None` when the unit's filters didn't need it. It lives in
+ * memory for one invocation and is never written. A customer missing from
+ * `profiles` is one Dotypos didn't return.
+ */
+export type AudienceFactSource = Data.TaggedEnum<{
+  Live: Record<never, never>;
+  Fetched: {
+    readonly visits: Option.Option<
+      ReadonlyMap<DotyposCustomerId, readonly ReservationVisit[]>
+    >;
+    readonly profiles: Option.Option<
+      ReadonlyMap<DotyposCustomerId, DotyposCustomer>
+    >;
+  };
+}>;
+
+export const AudienceFactSource = Data.taggedEnum<AudienceFactSource>();

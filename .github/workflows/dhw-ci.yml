@@ -107,7 +107,7 @@ jobs:
 
           bun apps/dhw/src/build.ts development
           expected_version="$(jq -r '.version' apps/dhw/package.json)+development"
-          build_info="$(apps/dhw/dist/dhw version --json)"
+          build_info="$(DHW_BASE=http://localhost:3000 apps/dhw/dist/dhw version --json)"
           test "$(jq -r '.version' <<<"$build_info")" = "$expected_version"
           test "$(jq -r '.target' <<<"$build_info")" = "development"
 
@@ -160,6 +160,8 @@ jobs:
 
       - name: Verify and package the PR binary
         env:
+          # PR binaries have no default Workspace; this origin is never contacted.
+          DHW_BASE: http://localhost:3000
           DHW_BUILD_VERSION_TAG: ${{ steps.build.outputs.version_tag }}
           DHW_TARGET: ${{ matrix.target }}
         run: |

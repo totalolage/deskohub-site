@@ -3,33 +3,17 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { CustomerAgentAuthorization } from "@/features/account";
 import {
   AgentToolAdmission,
-  type AgentToolExposure,
   answerAgentToolMcpRequest,
   CustomerAgentToolsLive,
-  customerAgentTools,
   getCustomerAgentToolsForClient,
   identifyAgentToolClient,
-  selectAgentTools,
+  publishedCustomerAgentTools,
 } from "@/features/agent-tools";
 import { RequestBudget } from "@/shared/backend/request-budget/request-budget.service";
 import {
   defineWorkspaceRoute,
   WorkspaceRouteFailure,
 } from "@/shared/backend/workspace-route";
-
-/**
- * This endpoint serves the public tools to anyone and the signed-in tools,
- * including starting a booking, to agents with an OAuth access token.
- */
-const customerToolExposure: AgentToolExposure = {
-  access: ["public", "signed-in"],
-  transactional: true,
-};
-
-const customerTools = selectAgentTools(
-  customerAgentTools,
-  customerToolExposure
-);
 
 /**
  * The customer MCP server: stateless Streamable HTTP. POST carries every
@@ -53,7 +37,7 @@ const handleMcpRequest = defineWorkspaceRoute(
         answerAgentToolMcpRequest({
           tools: getCustomerAgentToolsForClient({
             client,
-            tools: customerTools,
+            tools: publishedCustomerAgentTools,
           }),
           client,
           request,

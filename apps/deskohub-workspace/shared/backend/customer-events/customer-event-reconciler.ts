@@ -143,6 +143,8 @@ export class CustomerEventReconciler extends Context.Service<
                 and(
                   isNotNull(customerAccounts.dotyposCustomerId),
                   gte(customerAccounts.createdAt, since),
+                  // An existing customer's account is never a new one (D37).
+                  eq(customerAccounts.legacy, false),
                   eq(authUser.emailVerified, true),
                   notExists(
                     db

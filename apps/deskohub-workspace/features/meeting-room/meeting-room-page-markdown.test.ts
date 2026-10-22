@@ -54,7 +54,7 @@ describe.each(locales)("meetingRoomPageMarkdown in %s", (locale) => {
     );
 
     expect(markdownLinkUrls(markdown)).toEqual([
-      `https://workspace.deskohub.cz/${locale}/reservation/meeting-room`,
+      "https://workspace.deskohub.cz/reservation/meeting-room",
     ]);
   });
 });

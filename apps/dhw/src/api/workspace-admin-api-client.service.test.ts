@@ -14,6 +14,9 @@ import {
   AdministrationStandaloneAccessCodeCreateInput,
   AdministrationStandaloneAccessCodeName,
   AdministrationStoredDiscountId,
+  AutomationFlow,
+  AutomationPreviewId,
+  AutomationRunId,
   CliAccessToken,
   CliAuthenticationChallenge,
   CliAuthenticationCode,
@@ -67,6 +70,68 @@ const createdAccessCodeOutcome = {
 };
 
 describe("WorkspaceAdminApiClient", () => {
+  test("lists invoices an administrator issued through an AI assistant", async () => {
+    const accessToken = Redacted.make(
+      Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43))
+    );
+    const server = Bun.serve({
+      port: 0,
+      fetch: () =>
+        Response.json({
+          items: [
+            {
+              id: "01980000-0000-7000-8000-000000000009",
+              invoiceNumber: "WS-FV-2026-000020",
+              issuedAt: "2026-10-22T08:00:00Z",
+              customerId: null,
+              customerName: "Synthetic Customer",
+              reservationId: null,
+              total: "1000",
+              currency: "CZK",
+              paymentStatus: "due",
+              source: "assistant",
+              actor: syntheticEmail,
+              delivery: { customer: "accepted", internal: "accepted" },
+              needsAttention: false,
+            },
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 25,
+          pageCount: 1,
+        }),
+    });
+
+    try {
+      const page = await Effect.gen(function* () {
+        const client = yield* WorkspaceAdminApiClient;
+        return yield* client.listInvoices(accessToken, {});
+      }).pipe(
+        Effect.provide(
+          WorkspaceAdminApiClient.Default.pipe(
+            Layer.provide(FetchHttpClient.layer),
+            Layer.provide(
+              Layer.succeed(DhwConfig, {
+                baseUrl: new URL(`http://127.0.0.1:${server.port}`),
+                requestHeaders: {},
+                isCi: true,
+                stateDirectory: "/tmp/dhw-assistant-invoice-list-test",
+                updateChecksDisabled: true,
+              })
+            )
+          )
+        ),
+        Effect.runPromise
+      );
+
+      expect(page.items.map((invoice) => invoice.source)).toEqual([
+        "assistant",
+      ]);
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("retries invoice creation through the one-minute claim recovery window", async () => {
     const accessToken = Redacted.make(
       Schema.decodeUnknownSync(CliAccessToken)("i".repeat(43))
@@ -1345,6 +1410,207 @@ describe("WorkspaceAdminApiClient campaigns", () => {
         {
           path: `/api/v1/cli/campaigns/${campaignId}/retry`,
           body: { includeUnconfirmed: true },
+        },
+      ]);
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
+describe("WorkspaceAdminApiClient automations", () => {
+  test("calls every automation endpoint with the version header and keeps the server's refusal code", async () => {
+    const accessToken = Redacted.make(
+      Schema.decodeUnknownSync(CliAccessToken)("d".repeat(43))
+    );
+    const campaignId = Schema.decodeUnknownSync(AdministrationCampaignId)(
+      "campaign-1"
+    );
+    const previewId = AutomationPreviewId.make("preview-1");
+    const flow = Schema.decodeUnknownSync(AutomationFlow)({
+      trigger: { _tag: "Schedule", calendar: { minutes: [0, 30] } },
+      steps: [{ _tag: "Send", id: "send" }],
+    });
+    const requests: Array<{
+      readonly method: string;
+      readonly path: string;
+      readonly query: string;
+      readonly body: unknown;
+    }> = [];
+    const clientVersions: Array<string | null> = [];
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        const url = new URL(request.url);
+        const text = await request.text();
+        requests.push({
+          method: request.method,
+          path: url.pathname,
+          query: url.search,
+          body: text === "" ? null : JSON.parse(text),
+        });
+        clientVersions.push(request.headers.get(dhwVersionHeader));
+        return Response.json(
+          {
+            _tag: "CliMutationRejected",
+            message: "Run a dry run of the current draft first.",
+            code: "automation-preview-required",
+          },
+          { status: 409 }
+        );
+      },
+    });
+
+    try {
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
+        Layer.provide(FetchHttpClient.layer),
+        Layer.provide(
+          Layer.succeed(DhwConfig, {
+            baseUrl: new URL(`http://127.0.0.1:${server.port}`),
+            requestHeaders: {},
+            isCi: true,
+            stateDirectory: "/tmp/dhw-automation-client-test",
+            updateChecksDisabled: true,
+          })
+        )
+      );
+      const errors = await Effect.gen(function* () {
+        const client = yield* WorkspaceAdminApiClient;
+        return yield* Effect.forEach(
+          [
+            client.getAutomation(accessToken, campaignId),
+            client.updateAutomationFlow(accessToken, { campaignId, flow }),
+            client.dryRunAutomation(accessToken, campaignId),
+            client.getAutomationDryRun(accessToken, {
+              previewId,
+              cursor: "page-2",
+              limit: 50,
+            }),
+            client.activateAutomation(accessToken, { campaignId, previewId }),
+            client.pauseAutomation(accessToken, campaignId),
+            client.resumeAutomation(accessToken, campaignId),
+            client.archiveAutomation(accessToken, campaignId),
+            client.listAutomationVersions(accessToken, campaignId),
+            client.getAutomationVersion(accessToken, {
+              campaignId,
+              versionNumber: 2,
+            }),
+            client.getAutomationRunStats(accessToken, {
+              campaignId,
+              versionNumber: 2,
+            }),
+            client.listAutomationRuns(accessToken, {
+              campaignId,
+              state: "ended",
+              outcome: "sent",
+            }),
+            client.getAutomationRun(accessToken, {
+              runId: AutomationRunId.make("run-1"),
+            }),
+            client.previewCalendarExpression(accessToken, {
+              expression: { hours: [9] },
+              usage: "wait",
+              locale: "en-US",
+            }),
+            client.getAutomationEngineHealth(accessToken),
+          ],
+          (request) => Effect.flip(request as Effect.Effect<unknown, unknown>)
+        );
+      }).pipe(Effect.provide(clientLayer), Effect.runPromise);
+
+      for (const error of errors) {
+        expect(error).toBeInstanceOf(CliMutationRejected);
+        expect(error).toMatchObject({
+          message: "Run a dry run of the current draft first.",
+          code: "automation-preview-required",
+        });
+      }
+      expect(clientVersions).toEqual(requests.map(() => DHW_VERSION));
+      const automation = "/api/v1/cli/automations/campaign-1";
+      expect(requests).toEqual([
+        { method: "GET", path: `${automation}/flow`, query: "", body: null },
+        {
+          method: "PUT",
+          path: `${automation}/flow`,
+          query: "",
+          body: {
+            flow: {
+              trigger: { _tag: "Schedule", calendar: { minutes: [0, 30] } },
+              steps: [{ _tag: "Send", id: "send" }],
+            },
+          },
+        },
+        {
+          method: "POST",
+          path: `${automation}/dry-run`,
+          query: "",
+          body: null,
+        },
+        {
+          method: "GET",
+          path: "/api/v1/cli/automation-dry-runs/preview-1",
+          query: "?cursor=page-2&limit=50",
+          body: null,
+        },
+        {
+          method: "POST",
+          path: `${automation}/activate`,
+          query: "",
+          body: { previewId: "preview-1" },
+        },
+        { method: "POST", path: `${automation}/pause`, query: "", body: null },
+        { method: "POST", path: `${automation}/resume`, query: "", body: null },
+        {
+          method: "POST",
+          path: `${automation}/archive`,
+          query: "",
+          body: null,
+        },
+        {
+          method: "GET",
+          path: `${automation}/versions`,
+          query: "",
+          body: null,
+        },
+        {
+          method: "GET",
+          path: `${automation}/versions/2`,
+          query: "",
+          body: null,
+        },
+        {
+          method: "GET",
+          path: `${automation}/runs/stats`,
+          query: "?versionNumber=2",
+          body: null,
+        },
+        {
+          method: "GET",
+          path: `${automation}/runs`,
+          query: "?state=ended&outcome=sent",
+          body: null,
+        },
+        {
+          method: "GET",
+          path: "/api/v1/cli/automation-runs/run-1",
+          query: "",
+          body: null,
+        },
+        {
+          method: "POST",
+          path: "/api/v1/cli/calendar-expressions/preview",
+          query: "",
+          body: {
+            expression: { hours: [9] },
+            usage: "wait",
+            locale: "en-US",
+          },
+        },
+        {
+          method: "GET",
+          path: "/api/v1/cli/automations/engine-health",
+          query: "",
+          body: null,
         },
       ]);
     } finally {

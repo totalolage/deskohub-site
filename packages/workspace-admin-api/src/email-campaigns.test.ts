@@ -339,7 +339,7 @@ describe("campaign admin API contract", () => {
     ).toBe(false);
   });
 
-  test("previews either unsaved content or a saved campaign", () => {
+  test("previews unsaved content, unfinished content or a saved campaign", () => {
     expect(
       decodes(AdministrationCampaignTemplatePreviewInput, {
         _tag: "Content",
@@ -348,6 +348,27 @@ describe("campaign admin API contract", () => {
         content: { subject: "Novinky", preheader: "", bodyMarkdown: "Ahoj" },
       })
     ).toBe(true);
+    expect(
+      decodes(AdministrationCampaignTemplatePreviewInput, {
+        _tag: "UnfinishedContent",
+        purpose: "operational",
+        locale: "en-US",
+        content: {
+          subject: "",
+          preheader: "",
+          bodyMarkdown: "[[button: ]()]",
+        },
+      })
+    ).toBe(true);
+    expect(
+      decodes(AdministrationCampaignTemplatePreviewInput, {
+        _tag: "UnfinishedContent",
+        purpose: "operational",
+        locale: "en-US",
+        content: { subject: "", preheader: "", bodyMarkdown: "" },
+        campaignId: "01990000-0000-7000-8000-000000000001",
+      })
+    ).toBe(false);
     expect(
       decodes(AdministrationCampaignTemplatePreviewInput, {
         _tag: "Campaign",
