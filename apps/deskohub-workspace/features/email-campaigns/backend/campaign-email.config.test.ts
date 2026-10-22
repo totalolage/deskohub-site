@@ -4,7 +4,10 @@ import { describe, expect, test } from "bun:test";
 import { isTestEmailRecipient } from "@deskohub/email";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Cause, Effect, Exit } from "effect";
-import { resolveCampaignEmailConfig } from "./campaign-email.config";
+import {
+  resolveCampaignEmailConfig,
+  toCampaignSettings,
+} from "./campaign-email.config";
 
 const unset = {
   EMAIL_CAMPAIGN_FROM: undefined,
@@ -53,5 +56,35 @@ describe("resolveCampaignEmailConfig", () => {
     expect(isTestEmailRecipient(config.adminInbox)).toBe(true);
     expect(isTestEmailRecipient(config.from.email)).toBe(true);
     expect(config.replyTo.email).toBe(config.from.email);
+  });
+});
+
+describe("toCampaignSettings", () => {
+  test("reports the admin inbox as the test-send inbox", async () => {
+    const settings = await Effect.runPromise(
+      toCampaignSettings(
+        resolveCampaignEmailConfig({
+          deploymentEnvironment: "production",
+          EMAIL_CAMPAIGN_FROM: testEmailAddress("news"),
+          EMAIL_CAMPAIGN_REPLY_TO: testEmailAddress("hello"),
+          EMAIL_CAMPAIGN_ADMIN_INBOX: testEmailAddress("admin"),
+        })
+      )
+    );
+
+    expect(settings).toEqual({ testSendInbox: testEmailAddress("admin") });
+  });
+
+  test("reports no test-send inbox where campaign email isn't configured", async () => {
+    const settings = await Effect.runPromise(
+      toCampaignSettings(
+        resolveCampaignEmailConfig({
+          deploymentEnvironment: "production",
+          ...unset,
+        })
+      )
+    );
+
+    expect(settings).toEqual({ testSendInbox: null });
   });
 });

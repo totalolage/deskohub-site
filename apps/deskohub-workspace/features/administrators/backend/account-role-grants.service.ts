@@ -46,6 +46,14 @@ interface IAccountRoleGrants {
   readonly has: (
     input: AccountRoleGrantKey
   ) => Effect.Effect<boolean, EffectDrizzleQueryError>;
+  /**
+   * Like `has`, but share-locks the grant until the surrounding transaction
+   * ends, so a concurrent revoke waits for that transaction and then sees
+   * what it wrote.
+   */
+  readonly lockHeld: (
+    input: AccountRoleGrantKey
+  ) => Effect.Effect<boolean, EffectDrizzleQueryError>;
   /** Every account holding `role`, oldest grant first. */
   readonly list: (
     role: AccountRole
@@ -102,6 +110,15 @@ export class AccountRoleGrants extends Context.Service<
             .from(accountRoleGrants)
             .where(and(matchesGrant(key), outsideReviewAccounts))
             .limit(1);
+          return grant !== undefined;
+        }),
+        lockHeld: Effect.fn("AccountRoleGrants.lockHeld")(function* (key) {
+          const [grant] = yield* db
+            .select({ accountId: accountRoleGrants.accountId })
+            .from(accountRoleGrants)
+            .where(matchesGrant(key))
+            .limit(1)
+            .for("share");
           return grant !== undefined;
         }),
         list: Effect.fn("AccountRoleGrants.list")(function* (role) {

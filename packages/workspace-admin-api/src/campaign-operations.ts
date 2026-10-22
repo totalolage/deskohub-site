@@ -45,6 +45,7 @@ import {
   AdministrationCampaignSendInput,
   AdministrationCampaignSendResult,
   AdministrationCampaignSendStatusResult,
+  AdministrationCampaignSettings,
   AdministrationCampaignSummaries,
   AdministrationCampaignTemplateKey,
   AdministrationCampaignTemplatePreviewInput,
@@ -428,6 +429,11 @@ export const campaignOperations = defineOperations({
     minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignRef,
     output: AdministrationCampaignRecipientPreview,
+  }),
+  getCampaignSettings: query({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
+    input: NoInput,
+    output: AdministrationCampaignSettings,
   }),
   testSendCampaign: mutation({
     minimumDhwVersion: campaignsMinimumDhwVersion,

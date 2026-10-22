@@ -358,6 +358,17 @@ export const AdministrationCampaignRecipientPreview = Schema.Struct({
 export type AdministrationCampaignRecipientPreview =
   typeof AdministrationCampaignRecipientPreview.Type;
 
+/** The deployment's campaign settings a composer shows. */
+export const AdministrationCampaignSettings = Schema.Struct({
+  /**
+   * The inbox every test send reaches, or null where campaign email isn't
+   * configured; a test send then reports the missing settings.
+   */
+  testSendInbox: Schema.NullOr(Schema.String),
+});
+export type AdministrationCampaignSettings =
+  typeof AdministrationCampaignSettings.Type;
+
 /** Extra test recipients; the admin inbox is always included. */
 export const AdministrationCampaignTestSendInput = Schema.Struct({
   recipients: Schema.Array(Schema.Trim.check(Schema.isNonEmpty())),
@@ -644,6 +655,12 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         error: campaignErrors,
       }
     ).annotate(AdministrationOperationBehavior, readOperation)
+  )
+  .add(
+    HttpApiEndpoint.get("getCampaignSettings", "/campaigns/settings", {
+      success: AdministrationCampaignSettings,
+      error: campaignErrors,
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post(

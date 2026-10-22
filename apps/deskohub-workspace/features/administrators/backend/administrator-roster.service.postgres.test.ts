@@ -61,6 +61,123 @@ const grantAdministrator = (accountId: string, grantedBy: string | null) =>
     [accountId, grantedBy]
   );
 
+const cliSecret = () =>
+  Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
+
+/** An unrevoked CLI session and an approved, unexchanged CLI request. */
+const insertCliCredentials = async (approver: AdministratorAccountActor) => {
+  const sessionId = crypto.randomUUID();
+  const requestId = crypto.randomUUID();
+  await testDatabase!.pool.query(
+    `insert into cli_sessions
+       (id, approved_by_account_id, approved_by_account_email, token_hash,
+        client_name, cli_version, build_target, created_at, last_used_at)
+     values ($1, $2, $3, $4, 'Roster test', '1.0.0', 'development', now(), now())`,
+    [sessionId, approver.accountId, approver.email, cliSecret()]
+  );
+  await testDatabase!.pool.query(
+    `insert into cli_authentication_requests
+       (id, code_hash, challenge, client_name, cli_version, build_target,
+        created_at, expires_at, approved_at, approved_by_account_id,
+        approved_by_account_email, grant_token, grant_expires_at)
+     values ($1, $2, $3, 'Roster test', '1.0.0', 'development', now(),
+             now() + interval '5 minutes', now(), $4, $5, $6,
+             now() + interval '5 minutes')`,
+    [
+      requestId,
+      cliSecret(),
+      cliSecret(),
+      approver.accountId,
+      approver.email,
+      cliSecret(),
+    ]
+  );
+  return { sessionId, requestId };
+};
+
+const cliCredentialsState = async (credentials: {
+  readonly sessionId: string;
+  readonly requestId: string;
+}) => {
+  const session = await testDatabase!.pool.query<{ revoked: boolean }>(
+    `select revoked_at is not null as revoked from cli_sessions where id = $1`,
+    [credentials.sessionId]
+  );
+  const request = await testDatabase!.pool.query<{ exchangeable: boolean }>(
+    `select grant_token is not null as exchangeable
+     from cli_authentication_requests where id = $1`,
+    [credentials.requestId]
+  );
+  return {
+    sessionRevoked: session.rows[0]?.revoked,
+    grantExchangeable: request.rows[0]?.exchangeable,
+  };
+};
+
+/**
+ * An agent's consent to the administration and the refresh and access
+ * tokens issued under it.
+ */
+const insertAdministrationAgent = async (
+  account: AdministratorAccountActor
+) => {
+  const clientId = `roster-agent-${crypto.randomUUID()}`;
+  const consentId = crypto.randomUUID();
+  const refreshId = crypto.randomUUID();
+  const scopes = ["openid", "administration"];
+  await testDatabase!.pool.query(
+    `insert into auth.oauth_client
+       (id, client_id, scopes, redirect_uris, token_endpoint_auth_method,
+        grant_types, response_types, created_at, updated_at)
+     values ($1, $1, $2, $3, 'none', '{authorization_code,refresh_token}',
+             '{code}', now(), now())`,
+    [clientId, scopes, [`https://client.example/${clientId}`]]
+  );
+  await testDatabase!.pool.query(
+    `insert into auth.oauth_consent
+       (id, client_id, user_id, scopes, created_at, updated_at)
+     values ($1, $2, $3, $4, now(), now())`,
+    [consentId, clientId, account.accountId, scopes]
+  );
+  await testDatabase!.pool.query(
+    `insert into auth.oauth_refresh_token
+       (id, token, client_id, user_id, consent_id, scopes, created_at,
+        expires_at)
+     values ($1, $2, $3, $4, $5, $6, now(), now() + interval '30 days')`,
+    [refreshId, cliSecret(), clientId, account.accountId, consentId, scopes]
+  );
+  await testDatabase!.pool.query(
+    `insert into auth.oauth_access_token
+       (id, token, client_id, user_id, consent_id, refresh_id, scopes,
+        created_at, expires_at)
+     values ($1, $2, $3, $4, $5, $6, $7, now(), now() + interval '1 hour')`,
+    [
+      crypto.randomUUID(),
+      cliSecret(),
+      clientId,
+      account.accountId,
+      consentId,
+      refreshId,
+      scopes,
+    ]
+  );
+};
+
+const agentAccessState = async (accountId: string) => {
+  const { rows } = await testDatabase!.pool.query<{
+    consents: number;
+    refreshTokens: number;
+    accessTokens: number;
+  }>(
+    `select
+       (select count(*)::int from auth.oauth_consent where user_id = $1) as consents,
+       (select count(*)::int from auth.oauth_refresh_token where user_id = $1) as "refreshTokens",
+       (select count(*)::int from auth.oauth_access_token where user_id = $1) as "accessTokens"`,
+    [accountId]
+  );
+  return rows[0];
+};
+
 const isAdministrator = async (accountId: string) =>
   (
     await testDatabase!.pool.query(
@@ -189,6 +306,81 @@ describe.skipIf(!testDatabase)(
       expect(revoked).toEqual({ changed: true });
       expect(repeat).toEqual({ changed: false });
       expect(await isAdministrator(target.accountId)).toBe(false);
+    });
+
+    test("ends only the revoked administrator's CLI sessions and grants", async () => {
+      const actor = await insertAccount();
+      const target = await insertAccount();
+      await grantAdministrator(actor.accountId, null);
+      await grantAdministrator(target.accountId, actor.accountId);
+      const actorCredentials = await insertCliCredentials(actor);
+      const targetCredentials = await insertCliCredentials(target);
+
+      await runRoster((roster) =>
+        roster.revoke({ accountId: target.accountId, actor })
+      );
+
+      expect(await cliCredentialsState(targetCredentials)).toEqual({
+        sessionRevoked: true,
+        grantExchangeable: false,
+      });
+      expect(await cliCredentialsState(actorCredentials)).toEqual({
+        sessionRevoked: false,
+        grantExchangeable: true,
+      });
+    });
+
+    test("keeps the grant and CLI credentials when disconnecting agents fails", async () => {
+      const actor = await insertAccount();
+      const target = await insertAccount();
+      await grantAdministrator(target.accountId, actor.accountId);
+      const targetCredentials = await insertCliCredentials(target);
+      await insertAdministrationAgent(target);
+      // Agents are disconnected last, after the grant and CLI cleanup.
+      const fault = `fail_agent_disconnect_${crypto.randomUUID().replaceAll("-", "")}`;
+      await testDatabase!.pool.query(
+        `create function ${fault}() returns trigger language plpgsql as $$ begin raise exception 'simulated agent disconnect failure'; end $$`
+      );
+      await testDatabase!.pool.query(
+        `create trigger ${fault} before delete on auth.oauth_consent for each row when (old.user_id = '${target.accountId}') execute function ${fault}()`
+      );
+      try {
+        await runRosterFailure((roster) =>
+          roster.revoke({ accountId: target.accountId, actor })
+        );
+      } finally {
+        await testDatabase!.pool.query(
+          `drop trigger ${fault} on auth.oauth_consent`
+        );
+        await testDatabase!.pool.query(`drop function ${fault}()`);
+      }
+
+      expect(await isAdministrator(target.accountId)).toBe(true);
+      expect(await cliCredentialsState(targetCredentials)).toEqual({
+        sessionRevoked: false,
+        grantExchangeable: true,
+      });
+      expect(await agentAccessState(target.accountId)).toEqual({
+        consents: 1,
+        refreshTokens: 1,
+        accessTokens: 1,
+      });
+    });
+
+    test("ends the CLI sessions of an account whose grant is already gone", async () => {
+      const actor = await insertAccount();
+      const target = await insertAccount();
+      const targetCredentials = await insertCliCredentials(target);
+
+      const revoked = await runRoster((roster) =>
+        roster.revoke({ accountId: target.accountId, actor })
+      );
+
+      expect(revoked).toEqual({ changed: false });
+      expect(await cliCredentialsState(targetCredentials)).toEqual({
+        sessionRevoked: true,
+        grantExchangeable: false,
+      });
     });
 
     test("refuses to revoke the acting administrator's own grant", async () => {
