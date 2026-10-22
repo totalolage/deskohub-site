@@ -250,19 +250,17 @@ describe("readCustomerAgentConsentRequest", () => {
     ]);
   });
 
-  test.each([
-    "client_id",
-    "sig",
-    "exp",
-    "redirect_uri",
-  ])("is unknown without %s", (param) => {
-    const query = signedRequest();
-    query.delete(param);
+  test.each(["client_id", "sig", "exp", "redirect_uri"])(
+    "is unknown without %s",
+    (param) => {
+      const query = signedRequest();
+      query.delete(param);
 
-    expect(readCustomerAgentConsentRequest(query, now)).toEqual({
-      status: "unknown-request",
-    });
-  });
+      expect(readCustomerAgentConsentRequest(query, now)).toEqual({
+        status: "unknown-request",
+      });
+    }
+  );
 
   test("is unknown with an unreadable redirect URI", () => {
     const query = signedRequest();

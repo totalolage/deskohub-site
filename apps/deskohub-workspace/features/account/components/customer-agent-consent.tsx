@@ -45,7 +45,7 @@ export function CustomerAgentConsent({
             aria-hidden="true"
             className="mt-1 size-4 shrink-0 text-chilean-fire"
           />
-          <span>
+          <span className="min-w-0">
             {m.customerAgentConsentLocalRedirect(
               { host: redirect.host, client: client.name },
               { locale }

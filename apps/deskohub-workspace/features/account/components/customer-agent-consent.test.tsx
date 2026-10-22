@@ -38,7 +38,7 @@ const { CustomerAgentNotice } = await import("./customer-agent-notice");
 
 const locales = ["en-US", "cs-CZ"] as const;
 const client = { name: "Synthetic Assistant", host: "assistant.invalid" };
-const redirect = { host: "assistant.invalid", local: false };
+const redirect = { host: "callback.invalid", local: false };
 const redirectUrl = "https://assistant.invalid/callback?code=synthetic-code";
 const navigations: string[] = [];
 const originalAssign = window.location.assign;
