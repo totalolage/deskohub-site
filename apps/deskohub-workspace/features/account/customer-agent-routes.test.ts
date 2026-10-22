@@ -155,7 +155,17 @@ describe("readCustomerAgentConsentRequest", () => {
       status: "pending",
       clientId,
       scopes: ["offerings:read", "reservations:create", "offline_access"],
+      administration: false,
     });
+  });
+
+  test("reads a request for the administration scope apart from the rest", () => {
+    expect(
+      readCustomerAgentConsentRequest(
+        signedRequest({ scope: "administration reservations:read" }),
+        now
+      )
+    ).toMatchObject({ scopes: ["reservations:read"], administration: true });
   });
 
   test("leaves out scopes it can't explain", () => {
@@ -173,6 +183,7 @@ describe("readCustomerAgentConsentRequest", () => {
 
     expect(readCustomerAgentConsentRequest(query, now)).toMatchObject({
       scopes: customerAgentConsentScopes,
+      administration: true,
     });
     expect(customerAgentConsentScopes).toEqual([
       "offerings:read",

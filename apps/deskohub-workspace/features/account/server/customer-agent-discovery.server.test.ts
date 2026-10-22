@@ -6,11 +6,11 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { createResourceServerChallenge } from "@better-auth/oauth-provider";
 import { APIError } from "better-auth/api";
+import { agentScopes } from "@/features/account/agent-scopes";
 import {
   HOST,
   makeMemoryTestAuth,
 } from "@/features/account/backend/auth/auth-handler.test-utils";
-import { customerAgentScopes } from "@/features/account/customer-agent-scopes";
 
 const { auth } = makeMemoryTestAuth();
 mock.module("@/features/account/server/auth.server", () => ({ auth }));
@@ -69,7 +69,7 @@ describe("customer agent OAuth discovery", () => {
     });
     expect(metadata.code_challenge_methods_supported).toEqual(["S256"]);
     expect(metadata.scopes_supported).toEqual(
-      expect.arrayContaining([...customerAgentScopes, "offline_access"])
+      expect.arrayContaining([...agentScopes, "offline_access"])
     );
     expect(metadata).not.toHaveProperty("registration_endpoint");
   });
@@ -90,7 +90,7 @@ describe("customer agent OAuth discovery", () => {
         resource,
         authorization_servers: [issuer],
       });
-      expect(metadata.scopes_supported).toEqual([...customerAgentScopes]);
+      expect(metadata.scopes_supported).toEqual([...agentScopes]);
     }
   );
 
