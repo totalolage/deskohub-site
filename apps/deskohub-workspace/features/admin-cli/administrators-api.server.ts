@@ -36,20 +36,22 @@ export const AdminCliAdministratorsApiHandlers = HttpApiBuilder.group(
           mapServiceFailure
         )
       )
-      .handle("grantAdministrator", ({ payload }) =>
-        Effect.gen(function* () {
-          const { actor } = yield* CurrentAdministrationCaller;
-          const { changed, email } = yield* roster.grant({
-            email: payload.email,
-            actor,
-          });
-          return {
-            outcome: changed
-              ? ("granted" as const)
-              : ("already_granted" as const),
-            email,
-          };
-        }).pipe(
+      .handle(
+        "grantAdministrator",
+        Effect.fn(
+          function* ({ payload }) {
+            const { actor } = yield* CurrentAdministrationCaller;
+            const { changed, email } = yield* roster.grant({
+              email: payload.email,
+              actor,
+            });
+            return {
+              outcome: changed
+                ? ("granted" as const)
+                : ("already_granted" as const),
+              email,
+            };
+          },
           mapAdministrationApiFailure((cause) =>
             Match.value(cause).pipe(
               Match.tag(
@@ -61,19 +63,21 @@ export const AdminCliAdministratorsApiHandlers = HttpApiBuilder.group(
           )
         )
       )
-      .handle("revokeAdministrator", ({ params }) =>
-        Effect.gen(function* () {
-          const { actor } = yield* CurrentAdministrationCaller;
-          const { changed } = yield* roster.revoke({
-            accountId: params.accountId,
-            actor,
-          });
-          return {
-            outcome: changed
-              ? ("revoked" as const)
-              : ("not_administrator" as const),
-          };
-        }).pipe(
+      .handle(
+        "revokeAdministrator",
+        Effect.fn(
+          function* ({ params }) {
+            const { actor } = yield* CurrentAdministrationCaller;
+            const { changed } = yield* roster.revoke({
+              accountId: params.accountId,
+              actor,
+            });
+            return {
+              outcome: changed
+                ? ("revoked" as const)
+                : ("not_administrator" as const),
+            };
+          },
           mapAdministrationApiFailure((cause) =>
             Match.value(cause).pipe(
               Match.tag(
