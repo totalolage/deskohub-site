@@ -41,12 +41,14 @@ const onceCampaignStateSchema = Schema.Struct({
  * The delivery mode with the statuses it allows, as the
  * `email_campaigns_status_check` constraint stores them.
  */
+const automatedCampaignStateSchema = Schema.Struct({
+  delivery: Schema.Literal("automated"),
+  status: Schema.Literals(automatedCampaignStatuses),
+});
+
 const campaignStateSchema = Schema.Union([
   onceCampaignStateSchema,
-  Schema.Struct({
-    delivery: Schema.Literal("automated"),
-    status: Schema.Literals(automatedCampaignStatuses),
-  }),
+  automatedCampaignStateSchema,
 ]);
 type CampaignState = typeof campaignStateSchema.Type;
 export type OnceCampaignStatus = (typeof onceCampaignStatuses)[number];
@@ -59,6 +61,9 @@ export type CampaignStatus = CampaignState["status"];
  * and the one-off admin pages handle only these.
  */
 export const isOnceCampaign = Schema.is(onceCampaignStateSchema);
+
+/** Narrows a campaign to an automated one, whose status is its automation's. */
+export const isAutomatedCampaign = Schema.is(automatedCampaignStateSchema);
 
 /**
  * Delivery state of one frozen recipient. `pending` has no confirmed

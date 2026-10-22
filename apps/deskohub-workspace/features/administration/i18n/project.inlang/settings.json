@@ -16,6 +16,10 @@
       "./messages/accounting/{languageTag}.json",
       "./messages/access-codes/{languageTag}.json",
       "./messages/email-campaigns/{languageTag}.json",
+      "./messages/email-automations/{languageTag}.json",
+      "./messages/email-automation-flow/{languageTag}.json",
+      "./messages/email-automation-activation/{languageTag}.json",
+      "./messages/email-automation-runs/{languageTag}.json",
       "./messages/admin-cli/{languageTag}.json",
       "./messages/administrators/{languageTag}.json"
     ]

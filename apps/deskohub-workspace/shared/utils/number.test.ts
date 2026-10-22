@@ -1,11 +1,33 @@
 import { describe, expect, test } from "bun:test";
-import { formatCount, formatNamesWithNumericRanges } from "./number";
+import {
+  consecutiveRuns,
+  formatCount,
+  formatNamesWithNumericRanges,
+} from "./number";
 
 describe("formatCount", () => {
   test("groups digits for the locale", () => {
     expect(formatCount(1000, "en-US")).toBe("1,000");
     expect(formatCount(1000, "cs-CZ")).toBe("1\u00a0000");
     expect(formatCount(7, "cs-CZ")).toBe("7");
+  });
+});
+
+describe("consecutiveRuns", () => {
+  test("groups consecutive integers in ascending order", () => {
+    expect(consecutiveRuns([20, 9, 15, 8, 10, 14])).toEqual([
+      { first: 8, last: 10 },
+      { first: 14, last: 15 },
+      { first: 20, last: 20 },
+    ]);
+  });
+
+  test("counts duplicates once", () => {
+    expect(consecutiveRuns([3, 2, 3, 2])).toEqual([{ first: 2, last: 3 }]);
+  });
+
+  test("yields no runs for no values", () => {
+    expect(consecutiveRuns([])).toEqual([]);
   });
 });
 

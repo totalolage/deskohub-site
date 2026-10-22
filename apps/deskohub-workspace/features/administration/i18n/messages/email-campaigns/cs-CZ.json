@@ -657,6 +657,8 @@
   "emailCampaignsCalendarEveryDay": "každý den",
   "emailCampaignsCalendarEveryHour": "každou hodinu",
   "emailCampaignsCalendarHourRange": "mezi {start} a {end}",
+  "emailCampaignsCalendarHourSpan": "{start}–{end}",
+  "emailCampaignsCalendarHourSpans": "v době {spans}",
   "emailCampaignsCalendarInMonths": "v {months}",
   "emailCampaignsCalendarInWeeks": [
     {
@@ -782,6 +784,7 @@
   "emailCampaignsCalendarTimeEveryHourAt": "každou hodinu v {minutes}",
   "emailCampaignsCalendarTimeMinutesPastHours": "v hodinách {hours} vždy v {minutes}",
   "emailCampaignsCalendarWait": "Počká na {target} (pražský čas); pokud ten čas už nastal, pokračuje hned",
+  "emailCampaignsCalendarWaitClockWindow": "dobu {windows}",
   "emailCampaignsCalendarWaitDay": "den",
   "emailCampaignsCalendarWaitMonthDay": "den v {months}",
   "emailCampaignsCalendarWaitNextMinute": "nejbližší {minutes}",

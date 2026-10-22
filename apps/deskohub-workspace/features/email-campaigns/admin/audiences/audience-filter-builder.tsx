@@ -1,6 +1,11 @@
 "use client";
 
-import type { AudienceAttribute } from "@deskohub/workspace-admin-api";
+import type {
+  AudienceAttribute,
+  AudienceFilterGroupOf,
+  AudienceFilterOf,
+  AutomationConditionLeaf,
+} from "@deskohub/workspace-admin-api";
 import { Match } from "effect";
 import { ChevronDown, ListPlus, Plus, X } from "lucide-react";
 import { Fragment, useId } from "react";
@@ -27,15 +32,16 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { cn } from "@/shared/utils";
+import { viewAudienceCondition } from "../../audience-filter";
 import {
-  type AudienceFilter,
-  viewAudienceCondition,
-} from "../../audience-filter";
-import type { AudienceValueLookups } from "../audience-filter-summary";
-import {
-  audienceAttributeMenu,
-  isAudienceAttribute,
-} from "./audience-attribute-menu";
+  type AudienceFilterHolder,
+  canHoldSavedAudienceMembership,
+} from "../../audience-filter-usage";
+import type {
+  AudienceValueLookups,
+  AudienceValueOption,
+} from "../audience-filter-summary";
+import { audienceAttributeMenu } from "./audience-attribute-menu";
 import {
   audienceAttributeSectionLabel,
   audienceAttributeWording,
@@ -53,12 +59,15 @@ import {
 import {
   type AudienceCondition,
   type AudienceFilterGroup,
+  type AudienceFilterLeaf,
   appendFilter,
   newCondition,
   newNestedGroup,
+  newSavedAudienceMembership,
   removeFilterAt,
   replaceFilterAt,
 } from "./audience-filter-editing";
+import { SavedAudienceMembershipControls } from "./saved-audience-membership-controls";
 
 /** Error message React Hook Form holds for a form path, if any. */
 export type FilterErrorLookup = (path: string) => string | undefined;
@@ -85,36 +94,120 @@ const groupFrameClassName = (depth: number) => {
     : "border-navy-blue/20 border-l-4 border-l-navy-blue/40 bg-white";
 };
 
+type Group = AudienceFilterGroupOf<AudienceFilterLeaf>;
+type Filter = AudienceFilterOf<AudienceFilterLeaf>;
+
 type BuilderContext = {
   readonly errorAt: FilterErrorLookup;
   readonly lookups: AudienceValueLookups;
+  readonly holder: AudienceFilterHolder;
+  readonly savedAudiences: readonly AudienceValueOption[];
 };
 
+/** The tree a holder keeps, and how the builder hands edits back. */
+type HeldFilter =
+  | {
+      /** A saved audience by default. */
+      readonly holder?: "saved-audience";
+      readonly value: AudienceFilterGroup;
+      readonly onChange: (value: AudienceFilterGroup) => void;
+    }
+  | {
+      readonly holder: "automation-condition";
+      readonly value: AudienceFilterGroupOf<AutomationConditionLeaf>;
+      readonly onChange: (
+        value: AudienceFilterGroupOf<AutomationConditionLeaf>
+      ) => void;
+      /** The saved audiences a membership leaf picks from. */
+      readonly savedAudiences?: readonly AudienceValueOption[];
+    };
+
+/**
+ * The AND/OR filter tree editor. What it offers, such as trigger windows,
+ * "this campaign", and saved-audience membership, follows what `holder` can
+ * hold.
+ */
 export function AudienceFilterBuilder({
-  value,
-  onChange,
   path,
   errorAt,
   lookups = {},
-}: {
-  readonly value: AudienceFilterGroup;
-  readonly onChange: (value: AudienceFilterGroup) => void;
+  ...held
+}: HeldFilter & {
   /** Form path of the root group, used to look up validation errors. */
   readonly path: string;
   readonly errorAt: FilterErrorLookup;
   /** Value lists to pick from; a missing one means free entry. */
   readonly lookups?: AudienceValueLookups;
 }) {
+  const holder = held.holder ?? "saved-audience";
+  const savedAudiences =
+    held.holder === "automation-condition" ? (held.savedAudiences ?? []) : [];
   return (
     <GroupEditor
-      group={value}
-      onChange={onChange}
+      group={held.value}
+      // The menus offer only leaves the holder can hold, so a saved
+      // audience's edits stay saved-audience filters.
+      onChange={held.onChange as (group: Group) => void}
       depth={0}
       path={path}
-      context={{ errorAt, lookups }}
+      context={{ errorAt, lookups, holder, savedAudiences }}
     />
   );
 }
+
+/** One leaf the menus can add or switch a condition to. */
+type LeafMenuItem = {
+  readonly value: string;
+  readonly label: string;
+  readonly create: () => AudienceFilterLeaf;
+};
+
+/** The select value standing for saved-audience membership. */
+const savedAudienceMenuValue = "InAudience";
+
+/**
+ * The leaves `holder` can hold, by section: its catalogue attributes, then
+ * saved-audience membership where it can hold that.
+ */
+const leafMenu = (
+  holder: AudienceFilterHolder,
+  locale: Locale
+): readonly {
+  readonly section: string;
+  readonly label: string;
+  readonly items: readonly LeafMenuItem[];
+}[] => [
+  ...audienceAttributeMenu(holder).map(({ section, attributes }) => ({
+    section,
+    label: audienceAttributeSectionLabel(section, locale),
+    items: attributes.map((attribute) => ({
+      value: attribute,
+      label: attributeLabel(attribute, locale),
+      create: () => newCondition(attribute),
+    })),
+  })),
+  ...(canHoldSavedAudienceMembership(holder)
+    ? [
+        {
+          section: savedAudienceMenuValue,
+          label: m.emailAutomationFlowSavedAudienceMenuSection({}, { locale }),
+          items: [
+            {
+              value: savedAudienceMenuValue,
+              label: m.emailAutomationFlowSavedAudienceMenuLabel(
+                {},
+                { locale }
+              ),
+              create: newSavedAudienceMembership,
+            },
+          ],
+        },
+      ]
+    : []),
+];
+
+const leafMenuValue = (leaf: AudienceFilterLeaf) =>
+  leaf._tag === "InAudience" ? savedAudienceMenuValue : leaf.attribute;
 
 function GroupEditor({
   group,
@@ -124,17 +217,17 @@ function GroupEditor({
   path,
   context,
 }: {
-  readonly group: AudienceFilterGroup;
-  readonly onChange: (group: AudienceFilterGroup) => void;
+  readonly group: Group;
+  readonly onChange: (group: Group) => void;
   readonly onRemove?: () => void;
   readonly depth: number;
   readonly path: string;
   readonly context: BuilderContext;
 }) {
-  const replaceAt = (index: number, filter: AudienceFilter) =>
+  const replaceAt = (index: number, filter: Filter) =>
     onChange(replaceFilterAt(group, index, filter));
   const removeAt = (index: number) => onChange(removeFilterAt(group, index));
-  const add = (filter: AudienceFilter) => onChange(appendFilter(group, filter));
+  const add = (filter: Filter) => onChange(appendFilter(group, filter));
   const locale = useRouteLocale();
   const groupError =
     context.errorAt(path) ?? context.errorAt(`${path}.filters`);
@@ -203,7 +296,7 @@ function GroupEditor({
                   />
                 ) : (
                   <ConditionEditor
-                    condition={filter}
+                    leaf={filter}
                     onChange={(next) => replaceAt(index, next)}
                     onRemove={() => removeAt(index)}
                     path={childPath}
@@ -228,22 +321,22 @@ function GroupEditor({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            {audienceAttributeMenu.map(({ section, attributes }, index) => (
-              <Fragment key={section}>
-                {index > 0 && <DropdownMenuSeparator />}
-                <DropdownMenuLabel>
-                  {audienceAttributeSectionLabel(section, locale)}
-                </DropdownMenuLabel>
-                {attributes.map((attribute) => (
-                  <DropdownMenuItem
-                    key={attribute}
-                    onSelect={() => add(newCondition(attribute))}
-                  >
-                    {attributeLabel(attribute, locale)}
-                  </DropdownMenuItem>
-                ))}
-              </Fragment>
-            ))}
+            {leafMenu(context.holder, locale).map(
+              ({ section, label, items }, index) => (
+                <Fragment key={section}>
+                  {index > 0 && <DropdownMenuSeparator />}
+                  <DropdownMenuLabel>{label}</DropdownMenuLabel>
+                  {items.map((item) => (
+                    <DropdownMenuItem
+                      key={item.value}
+                      onSelect={() => add(item.create())}
+                    >
+                      {item.label}
+                    </DropdownMenuItem>
+                  ))}
+                </Fragment>
+              )
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
         <Button
@@ -261,14 +354,14 @@ function GroupEditor({
 }
 
 function ConditionEditor({
-  condition,
+  leaf,
   onChange,
   onRemove,
   path,
   context,
 }: {
-  readonly condition: AudienceCondition;
-  readonly onChange: (condition: AudienceCondition) => void;
+  readonly leaf: AudienceFilterLeaf;
+  readonly onChange: (leaf: AudienceFilterLeaf) => void;
   readonly onRemove: () => void;
   readonly path: string;
   readonly context: BuilderContext;
@@ -276,9 +369,61 @@ function ConditionEditor({
   const locale = useRouteLocale();
   const errorAt: FieldErrorLookup = (field) =>
     context.errorAt(field === "" ? path : `${path}.${field}`);
+
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-navy-blue/15 bg-white px-2.5 py-2 sm:gap-3 sm:px-3">
+      <div className="min-w-0 flex-1 space-y-2">
+        <LeafPicker
+          value={leafMenuValue(leaf)}
+          holder={context.holder}
+          onChange={onChange}
+        />
+        {leaf._tag === "InAudience" ? (
+          <SavedAudienceMembershipControls
+            value={leaf}
+            onChange={onChange}
+            errorAt={errorAt}
+            savedAudiences={context.savedAudiences}
+          />
+        ) : (
+          <AttributeConditionControls
+            condition={leaf}
+            onChange={onChange}
+            errorAt={errorAt}
+            path={path}
+            context={context}
+          />
+        )}
+        {context.errorAt(path) && (
+          <FieldError message={context.errorAt(path) ?? ""} />
+        )}
+      </div>
+      <RemoveButton
+        label={m.emailCampaignsAudienceConditionRemove({}, { locale })}
+        onClick={onRemove}
+      />
+    </div>
+  );
+}
+
+/** A catalogue condition's controls, by its attribute's kind. */
+function AttributeConditionControls({
+  condition,
+  onChange,
+  errorAt,
+  path,
+  context,
+}: {
+  readonly condition: AudienceCondition;
+  readonly onChange: (condition: AudienceCondition) => void;
+  readonly errorAt: FieldErrorLookup;
+  readonly path: string;
+  readonly context: BuilderContext;
+}) {
+  const locale = useRouteLocale();
   const wording = audienceAttributeWording(condition.attribute, locale);
 
-  const body = Match.value(viewAudienceCondition(condition)).pipe(
+  return Match.value(viewAudienceCondition(condition)).pipe(
     Match.discriminatorsExhaustive("kind")({
       count: ({ entry, condition: count }) =>
         wording?.kind === "count" && (
@@ -289,6 +434,7 @@ function ConditionEditor({
             onChange={onChange}
             errorAt={errorAt}
             lookups={context.lookups}
+            holder={context.holder}
           />
         ),
       date: ({ entry, condition: date }) =>
@@ -299,6 +445,7 @@ function ConditionEditor({
             value={date}
             onChange={onChange}
             errorAt={errorAt}
+            holder={context.holder}
           />
         ),
       set: ({ entry, condition: set }) =>
@@ -324,41 +471,28 @@ function ConditionEditor({
         ),
     })
   );
-
-  return (
-    <div className="flex items-start gap-2 rounded-md border border-navy-blue/15 bg-white px-2.5 py-2 sm:gap-3 sm:px-3">
-      <div className="min-w-0 flex-1 space-y-2">
-        <AttributePicker
-          value={condition.attribute}
-          onChange={(attribute) => onChange(newCondition(attribute))}
-        />
-        {body}
-        {context.errorAt(path) && (
-          <FieldError message={context.errorAt(path) ?? ""} />
-        )}
-      </div>
-      <RemoveButton
-        label={m.emailCampaignsAudienceConditionRemove({}, { locale })}
-        onClick={onRemove}
-      />
-    </div>
-  );
 }
 
-/** Switching the attribute starts its condition over from the defaults. */
-function AttributePicker({
+/** Switching what a leaf tests starts it over from the defaults. */
+function LeafPicker({
   value,
+  holder,
   onChange,
 }: {
-  readonly value: AudienceAttribute;
-  readonly onChange: (attribute: AudienceAttribute) => void;
+  readonly value: string;
+  readonly holder: AudienceFilterHolder;
+  readonly onChange: (leaf: AudienceFilterLeaf) => void;
 }) {
   const locale = useRouteLocale();
+  const menu = leafMenu(holder, locale);
   return (
     <Select
       value={value}
       onValueChange={(next) => {
-        if (isAudienceAttribute(next) && next !== value) onChange(next);
+        const item = menu
+          .flatMap(({ items }) => items)
+          .find((candidate) => candidate.value === next);
+        if (item && next !== value) onChange(item.create());
       }}
     >
       <SelectTrigger
@@ -371,14 +505,12 @@ function AttributePicker({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {audienceAttributeMenu.map(({ section, attributes }) => (
+        {menu.map(({ section, label, items }) => (
           <SelectGroup key={section}>
-            <SelectLabel>
-              {audienceAttributeSectionLabel(section, locale)}
-            </SelectLabel>
-            {attributes.map((attribute) => (
-              <SelectItem key={attribute} value={attribute}>
-                {attributeLabel(attribute, locale)}
+            <SelectLabel>{label}</SelectLabel>
+            {items.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
               </SelectItem>
             ))}
           </SelectGroup>

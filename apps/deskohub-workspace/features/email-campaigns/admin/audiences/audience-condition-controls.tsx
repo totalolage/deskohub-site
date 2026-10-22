@@ -52,6 +52,11 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { cn } from "@/shared/utils";
+import {
+  type AudienceFilterHolder,
+  canHoldCampaignSource,
+  canHoldPeriod,
+} from "../../audience-filter-usage";
 import type { DatePeriod } from "../../date-period";
 import type {
   AudienceCampaignOption,
@@ -93,11 +98,12 @@ import {
 } from "./audience-filter-editing";
 import { ProductFilterControl } from "./reservation-product-filter-control";
 
-/** The periods a saved audience can hold; trigger windows are flow-only. */
+/** Every period kind, in the order the period select lists them. */
 const datePeriodKinds: readonly DatePeriodKind[] = [
   "AnyTime",
   "Past",
   "Last",
+  "TriggerWindow",
   "Range",
   "Since",
   "Onward",
@@ -106,6 +112,8 @@ const datePeriodKinds: readonly DatePeriodKind[] = [
 
 const isDatePeriodKind = (value: string): value is DatePeriodKind =>
   datePeriodKinds.some((kind) => kind === value);
+
+const triggerWindowSides = ["before", "after"] as const;
 
 /** The unit after "in the last N", for N. */
 const datePeriodUnits: Readonly<
@@ -126,8 +134,9 @@ const datePeriodUnit = (
 const today = () => getCurrentWorkspaceDate().toString();
 
 /**
- * Any time, any time so far, the last N days/weeks/months/years, from–to,
- * since, or until. The same control picks every period an audience
+ * Any time, any time so far, the last N days/weeks/months/years, within N
+ * units before or after the trigger, from–to, since, or until, as far as
+ * `holder` can hold them. The same control picks every period an audience
  * condition uses.
  */
 function DatePeriodControl({
@@ -135,12 +144,81 @@ function DatePeriodControl({
   onChange,
   errorAt,
   label,
+  holder,
 }: ControlProps<DatePeriod> & {
   /** What the period applies to, for screen readers. */
   readonly label: string;
+  readonly holder: AudienceFilterHolder;
 }) {
   const locale = useRouteLocale();
   const subject = { subject: label };
+  const kinds = datePeriodKinds.filter((kind) => canHoldPeriod(holder, kind));
+  const kindLabel = (kind: DatePeriodKind) =>
+    Match.value(kind).pipe(
+      Match.when("Last", () =>
+        value._tag === "Last"
+          ? m.emailCampaignsAudiencePeriodLast(
+              { count: value.count },
+              { locale }
+            )
+          : m.emailCampaignsAudiencePeriodKind({ kind }, { locale })
+      ),
+      Match.when("TriggerWindow", () =>
+        value._tag === "TriggerWindow"
+          ? m.emailAutomationFlowPeriodWithin({}, { locale })
+          : m.emailAutomationFlowPeriodTriggerWindow({}, { locale })
+      ),
+      Match.orElse(() =>
+        m.emailCampaignsAudiencePeriodKind({ kind }, { locale })
+      )
+    );
+  const countAndUnit = (
+    period: Extract<DatePeriod, { readonly _tag: "Last" | "TriggerWindow" }>,
+    countLabel: string
+  ) => (
+    <span className="inline-flex items-center gap-1.5">
+      <Input
+        type="number"
+        inputMode="numeric"
+        min={1}
+        step={1}
+        value={numberInputValue(period.count)}
+        onChange={(event) =>
+          onChange({
+            ...period,
+            count: numberFromInput(event.target.value),
+          })
+        }
+        aria-label={countLabel}
+        variant={errorAt("count") ? "error" : "default"}
+        className={cn(compactInputClassName, "w-20")}
+      />
+      <Select
+        value={period.unit}
+        onValueChange={(unit) => {
+          if (isDatePeriodUnit(unit)) onChange({ ...period, unit });
+        }}
+      >
+        <SelectTrigger
+          aria-label={m.emailCampaignsAudiencePeriodUnitLabel(subject, {
+            locale,
+          })}
+          className={compactSelectClassName}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {Object.keys(datePeriodUnits)
+            .filter(isDatePeriodUnit)
+            .map((unit) => (
+              <SelectItem key={unit} value={unit}>
+                {datePeriodUnit(unit, period.count, locale)}
+              </SelectItem>
+            ))}
+        </SelectContent>
+      </Select>
+    </span>
+  );
   const dateInput = (
     date: string,
     field: string,
@@ -176,65 +254,58 @@ function DatePeriodControl({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {datePeriodKinds.map((kind) => (
+          {kinds.map((kind) => (
             <SelectItem key={kind} value={kind}>
-              {kind === "Last" && value._tag === "Last"
-                ? m.emailCampaignsAudiencePeriodLast(
-                    { count: value.count },
-                    { locale }
-                  )
-                : m.emailCampaignsAudiencePeriodKind({ kind }, { locale })}
+              {kindLabel(kind)}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
-      {value._tag === "Last" && (
-        <span className="inline-flex items-center gap-1.5">
-          <Input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            step={1}
-            value={numberInputValue(value.count)}
-            onChange={(event) =>
-              onChange({
-                ...value,
-                count: numberFromInput(event.target.value),
-              })
-            }
-            aria-label={m.emailCampaignsAudiencePeriodCountLabel(
-              // Any count above one names the units in general.
-              { subject: label, units: datePeriodUnit(value.unit, 2, locale) },
-              { locale }
-            )}
-            variant={errorAt("count") ? "error" : "default"}
-            className={cn(compactInputClassName, "w-20")}
-          />
+      {value._tag === "Last" &&
+        countAndUnit(
+          value,
+          m.emailCampaignsAudiencePeriodCountLabel(
+            // Any count above one names the units in general.
+            { subject: label, units: datePeriodUnit(value.unit, 2, locale) },
+            { locale }
+          )
+        )}
+      {value._tag === "TriggerWindow" && (
+        <>
+          {countAndUnit(
+            value,
+            m.emailAutomationFlowPeriodTriggerWindowCountLabel(subject, {
+              locale,
+            })
+          )}
           <Select
-            value={value.unit}
-            onValueChange={(unit) => {
-              if (isDatePeriodUnit(unit)) onChange({ ...value, unit });
+            value={value.side}
+            onValueChange={(side) => {
+              const next = triggerWindowSides.find((known) => known === side);
+              if (next) onChange({ ...value, side: next });
             }}
           >
             <SelectTrigger
-              aria-label={m.emailCampaignsAudiencePeriodUnitLabel(subject, {
-                locale,
-              })}
+              aria-label={m.emailAutomationFlowPeriodTriggerWindowSideLabel(
+                subject,
+                { locale }
+              )}
               className={compactSelectClassName}
             >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {Object.keys(datePeriodUnits)
-                .filter(isDatePeriodUnit)
-                .map((unit) => (
-                  <SelectItem key={unit} value={unit}>
-                    {datePeriodUnit(unit, value.count, locale)}
-                  </SelectItem>
-                ))}
+              {triggerWindowSides.map((side) => (
+                <SelectItem key={side} value={side}>
+                  {m.emailAutomationFlowPeriodTriggerWindowSide(
+                    { side },
+                    { locale }
+                  )}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
-        </span>
+        </>
       )}
       {value._tag === "Range" && (
         <>
@@ -352,29 +423,34 @@ function ChoiceParamControl({
 /** The select value standing for an unset optional choice. */
 const absentValue = "absent";
 
+/** The command value standing for the automation's own campaign. */
+const thisCampaignValue = "this";
+
 /**
- * Whose emails count: any campaign, or one picked by name, searchable and
- * badged with each campaign's state. A chosen campaign missing from the list,
- * such as a deleted one, stays chosen under the wording's label for it.
- * "This campaign" is for automation conditions only, so saved audiences don't
- * offer it.
+ * Whose emails count: any campaign, this campaign where `holder` can hold
+ * it, or one picked by name, searchable and badged with each campaign's
+ * state. A chosen campaign missing from the list, such as a deleted one,
+ * stays chosen under the wording's label for it.
  */
 function CampaignSourceControl({
   wording,
   campaigns = [],
   value,
   onChange,
+  holder,
 }: {
   readonly wording: AudienceCampaignSourceWording;
   readonly campaigns: readonly AudienceCampaignOption[] | undefined;
   readonly value: CampaignEmailSourceType | undefined;
   readonly onChange: (value: CampaignEmailSourceType | undefined) => void;
+  readonly holder: AudienceFilterHolder;
 }) {
   const locale = useRouteLocale();
   const [open, setOpen] = useState(false);
   const chosen = value?._tag === "Specific" ? value.campaignId : undefined;
   const chosenCampaign = campaigns.find(({ id }) => id === chosen);
   const lost = chosen !== undefined && chosenCampaign === undefined;
+  const thisCampaign = m.emailAutomationFlowCampaignSourceThis({}, { locale });
   const pick = (next: CampaignEmailSourceType | undefined) => {
     onChange(next);
     setOpen(false);
@@ -394,7 +470,10 @@ function CampaignSourceControl({
           )}
         >
           <span className="min-w-0 truncate">
-            {chosenCampaign?.name ?? (lost ? wording.unknown : wording.absent)}
+            {value?._tag === "This"
+              ? thisCampaign
+              : (chosenCampaign?.name ??
+                (lost ? wording.unknown : wording.absent))}
           </span>
           <ChevronDown
             className="h-4 w-4 shrink-0 text-navy-blue/60"
@@ -413,11 +492,21 @@ function CampaignSourceControl({
               <CommandItem
                 value={absentValue}
                 keywords={[wording.absent]}
-                selected={chosen === undefined}
+                selected={value === undefined}
                 onSelect={() => pick(undefined)}
               >
                 {wording.absent}
               </CommandItem>
+              {canHoldCampaignSource(holder, "This") && (
+                <CommandItem
+                  value={thisCampaignValue}
+                  keywords={[thisCampaign]}
+                  selected={value?._tag === "This"}
+                  onSelect={() => pick({ _tag: "This" })}
+                >
+                  {thisCampaign}
+                </CommandItem>
+              )}
               {lost && (
                 <CommandItem
                   value={chosen}
@@ -476,10 +565,13 @@ export function CountConditionControls<
   onChange,
   errorAt,
   lookups,
+  holder = "saved-audience",
 }: ControlProps<Condition> & {
   readonly entry: AudienceCountAttributeDefinition;
   readonly wording: AudienceCountWording;
   readonly lookups: AudienceValueLookups;
+  /** What holds the condition, which decides the periods and campaigns offered. */
+  readonly holder?: AudienceFilterHolder;
 }) {
   const locale = useRouteLocale();
   const { params } = condition;
@@ -510,6 +602,7 @@ export function CountConditionControls<
                 key={token.param}
                 wording={sourceWording}
                 campaigns={lookups.campaigns}
+                holder={holder}
                 value={params[token.param] as CampaignEmailSourceType}
                 onChange={(source) => {
                   const { [token.param]: _, ...rest } = params;
@@ -571,6 +664,7 @@ export function CountConditionControls<
           onChange={(period) => changeParams({ ...params, period })}
           errorAt={periodErrorAt}
           label={wording.period}
+          holder={holder}
         />
         <ConditionText>
           {m.emailCampaignsAudienceCountIs({}, { locale })}
@@ -606,9 +700,12 @@ export function DateConditionControls<Condition extends AudienceDateCondition>({
   value: condition,
   onChange,
   errorAt,
+  holder = "saved-audience",
 }: ControlProps<Condition> & {
   readonly entry: AudienceDateAttributeDefinition;
   readonly wording: AudienceDateWording;
+  /** What holds the condition, which decides the periods offered. */
+  readonly holder?: AudienceFilterHolder;
 }) {
   const locale = useRouteLocale();
   const period =
@@ -671,6 +768,7 @@ export function DateConditionControls<Condition extends AudienceDateCondition>({
             onChange={(value) => onChange({ ...condition, value })}
             errorAt={periodErrorAt}
             label={label}
+            holder={holder}
           />
         )}
       </ConditionLine>

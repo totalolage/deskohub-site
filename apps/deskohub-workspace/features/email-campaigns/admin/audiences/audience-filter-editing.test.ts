@@ -171,7 +171,7 @@ describe("switchDatePeriod", () => {
 
 describe("the attribute catalogue in the builder", () => {
   test("every attribute has a label, a menu section, and a valid or placeholder default", () => {
-    const listed = audienceAttributeMenu.flatMap(
+    const listed = audienceAttributeMenu("saved-audience").flatMap(
       ({ attributes: sectionAttributes }) => sectionAttributes
     );
     expect(listed.toSorted()).toEqual(

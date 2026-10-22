@@ -1,21 +1,30 @@
 import {
+  type AdministrationCampaignAudienceIdType,
   type AudienceAttribute,
   type AudienceAttributeDefinition,
+  type AudienceFilterGroupOf,
+  type AudienceFilterOf,
+  type AutomationConditionLeaf,
   audienceAttributeCatalogue,
   type DatePeriodUnitType,
+  type InSavedAudienceType as InSavedAudience,
 } from "@deskohub/workspace-admin-api";
 import { Match } from "effect";
 import type {
   AudienceCondition,
-  AudienceFilter,
   AudienceFilterGroup,
 } from "../../audience-filter";
 import type { DatePeriod } from "../../date-period";
 
 export type { AudienceCondition, AudienceFilterGroup };
 
+/** A leaf the builder edits: a catalogue condition or saved-audience membership. */
+export type AudienceFilterLeaf = AutomationConditionLeaf;
+
 /** The builder always edits a group, so a bare stored condition gets an AND root. */
-export const asRootGroup = (filter: AudienceFilter): AudienceFilterGroup =>
+export const asRootGroup = <Leaf extends AudienceFilterLeaf>(
+  filter: AudienceFilterOf<Leaf>
+): AudienceFilterGroupOf<Leaf> =>
   filter._tag === "Group"
     ? filter
     : { _tag: "Group", operator: "and", filters: [filter] };
@@ -44,33 +53,49 @@ export const newCondition = (attribute: AudienceAttribute): AudienceCondition =>
   // Each entry's defaults are typed against its own attribute's condition.
   newConditionFrom(audienceAttributeCatalogue[attribute]) as AudienceCondition;
 
+/**
+ * The audience a new saved-audience membership leaf holds until the operator
+ * picks one. It is no valid audience ID, so the form reports it as missing.
+ */
+export const unchosenSavedAudience = "" as AdministrationCampaignAudienceIdType;
+
+/** "Is in saved audience" with no audience picked yet. */
+export const newSavedAudienceMembership = (): InSavedAudience => ({
+  _tag: "InAudience",
+  operator: "in",
+  audienceId: unchosenSavedAudience,
+});
+
 /** An empty group nested in `parent`, which usually flips the parent's logic. */
-export const newNestedGroup = (
-  parent: AudienceFilterGroup
-): AudienceFilterGroup => ({
+export const newNestedGroup = <Leaf extends AudienceFilterLeaf>(
+  parent: AudienceFilterGroupOf<Leaf>
+): AudienceFilterGroupOf<Leaf> => ({
   _tag: "Group",
   operator: parent.operator === "and" ? "or" : "and",
   filters: [],
 });
 
-export const appendFilter = (
-  group: AudienceFilterGroup,
-  filter: AudienceFilter
-): AudienceFilterGroup => ({ ...group, filters: [...group.filters, filter] });
+export const appendFilter = <Leaf extends AudienceFilterLeaf>(
+  group: AudienceFilterGroupOf<Leaf>,
+  filter: AudienceFilterOf<Leaf>
+): AudienceFilterGroupOf<Leaf> => ({
+  ...group,
+  filters: [...group.filters, filter],
+});
 
-export const replaceFilterAt = (
-  group: AudienceFilterGroup,
+export const replaceFilterAt = <Leaf extends AudienceFilterLeaf>(
+  group: AudienceFilterGroupOf<Leaf>,
   index: number,
-  filter: AudienceFilter
-): AudienceFilterGroup => ({
+  filter: AudienceFilterOf<Leaf>
+): AudienceFilterGroupOf<Leaf> => ({
   ...group,
   filters: group.filters.map((current, i) => (i === index ? filter : current)),
 });
 
-export const removeFilterAt = (
-  group: AudienceFilterGroup,
+export const removeFilterAt = <Leaf extends AudienceFilterLeaf>(
+  group: AudienceFilterGroupOf<Leaf>,
   index: number
-): AudienceFilterGroup => ({
+): AudienceFilterGroupOf<Leaf> => ({
   ...group,
   filters: group.filters.filter((_, i) => i !== index),
 });

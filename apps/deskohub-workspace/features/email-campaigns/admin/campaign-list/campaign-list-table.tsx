@@ -12,6 +12,8 @@ import { EmptyState } from "@/features/administration/empty-state";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import { Badge } from "@/shared/components/ui/badge";
+import { AutomationStatusBadge } from "../automation/automation-badges";
 import { CampaignPurposeBadge, CampaignStatusBadge } from "./campaign-badges";
 import type { CampaignListItem } from "./campaign-list-page-data.server";
 
@@ -46,7 +48,9 @@ const campaignListColumns = (
     accessorKey: "status",
     header: m.emailCampaignsListStatusColumn({}, { locale }),
     cell: ({ row }) => (
-      <CampaignStatusBadge locale={locale} status={row.original.status} />
+      <span className="flex flex-wrap gap-1.5">
+        <CampaignListStatus campaign={row.original} locale={locale} />
+      </span>
     ),
   },
   {
@@ -66,6 +70,30 @@ const campaignListColumns = (
     cell: ({ row }) => row.original.updatedAtText,
   },
 ];
+
+/**
+ * A one-off campaign's status, or an automated campaign's delivery with its
+ * automation's status.
+ */
+function CampaignListStatus({
+  campaign,
+  locale,
+}: {
+  readonly campaign: CampaignListItem;
+  readonly locale: Locale;
+}) {
+  if (campaign.delivery === "once") {
+    return <CampaignStatusBadge locale={locale} status={campaign.status} />;
+  }
+  return (
+    <>
+      <Badge variant="subtle">
+        {m.emailCampaignsBadgeDeliveryAutomated({}, { locale })}
+      </Badge>
+      <AutomationStatusBadge locale={locale} status={campaign.status} />
+    </>
+  );
+}
 
 export function CampaignListTable({
   campaigns,
@@ -94,10 +122,7 @@ export function CampaignListTable({
               >
                 <span className="block font-semibold">{campaign.title}</span>
                 <span className="mt-2 flex flex-wrap gap-1.5">
-                  <CampaignStatusBadge
-                    locale={locale}
-                    status={campaign.status}
-                  />
+                  <CampaignListStatus campaign={campaign} locale={locale} />
                   <CampaignPurposeBadge
                     locale={locale}
                     purpose={campaign.purpose}

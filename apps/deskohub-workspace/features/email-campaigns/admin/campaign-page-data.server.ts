@@ -4,6 +4,7 @@ import type { CampaignOperationError } from "@deskohub/workspace-admin-api";
 import { Effect, Option, Schema } from "effect";
 import { notFound } from "next/navigation";
 import { cache } from "react";
+import type { CampaignRow } from "@/db/schema";
 import type { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
 import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -19,7 +20,11 @@ import {
   campaignAudienceIdSchema,
   campaignIdSchema,
 } from "../campaign-identifiers";
-import { isOnceCampaign } from "../campaign-states";
+import {
+  type CampaignDelivery,
+  isAutomatedCampaign,
+  isOnceCampaign,
+} from "../campaign-states";
 import {
   invokeCampaignOperation,
   runCampaignPageQuery,
@@ -54,8 +59,22 @@ const findCampaign = cache(
 );
 
 /**
+ * Which page family a campaign route renders, after the admin page check, or
+ * the not-found page.
+ */
+export const loadCampaignDelivery = async (
+  campaignId: CampaignId
+): Promise<CampaignDelivery> => {
+  await authorizeAdministratorPage();
+  return Option.getOrElse(
+    Option.map(await findCampaign(campaignId), ({ delivery }) => delivery),
+    () => notFound()
+  );
+};
+
+/**
  * The one-off campaign a campaign route shows, after the admin page check.
- * Automated campaigns have no admin pages yet, so they aren't found. It
+ * Automated campaigns have their own pages, so they aren't found here. It
  * reads the stored campaign rather than the port's projection: the draft
  * composer edits the stored body document, and the port's Markdown body
  * doesn't round-trip it.
@@ -66,6 +85,21 @@ export const loadAdminCampaign = async (
   await authorizeAdministratorPage();
   return Option.getOrElse(
     Option.filter(await findCampaign(campaignId), isOnceCampaign),
+    () => notFound()
+  );
+};
+
+/**
+ * The stored automated campaign whose email and audience its Email tab edits,
+ * after the admin page check. Like the one-off composer, it reads the stored
+ * body document, which the port's Markdown body doesn't round-trip.
+ */
+export const loadAutomatedCampaignEmail = async (
+  campaignId: CampaignId
+): Promise<CampaignRow> => {
+  await authorizeAdministratorPage();
+  return Option.getOrElse(
+    Option.filter(await findCampaign(campaignId), isAutomatedCampaign),
     () => notFound()
   );
 };

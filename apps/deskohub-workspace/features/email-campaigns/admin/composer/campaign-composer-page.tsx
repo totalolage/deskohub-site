@@ -19,11 +19,13 @@ export async function CampaignComposerPage({
     <AdministrationPage>
       <CampaignComposer
         {...options}
-        draft={{
+        campaign={{
           id: campaign.id,
           contentLocales: campaignLocales.filter(
             (locale) => campaign.content[locale] !== undefined
           ),
+          delivery: "once",
+          readOnly: false,
         }}
         initialFields={campaignComposerFieldsFromCampaign(campaign)}
       />
@@ -38,7 +40,7 @@ export async function NewCampaignComposerPage() {
     <AdministrationPage>
       <CampaignComposer
         {...options}
-        draft={undefined}
+        campaign={undefined}
         initialFields={newCampaignComposerFields}
       />
     </AdministrationPage>
