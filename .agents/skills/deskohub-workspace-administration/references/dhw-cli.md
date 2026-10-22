@@ -70,6 +70,15 @@ Rules:
 - `dhw invoices create --input <file>` decodes the file with the strict `AdministrationInvoiceCreateFileInput` schema, which rejects unknown properties at every level. The file supplies the invoice UUID, and `dhw` sends it unchanged across retries. After an uncertain attempt, rerun with the same file. The server rejects the same UUID with different input.
 - Keep invoice customer data out of the generic CLI mutation ledger.
 - `administration.previewInvoice` renders the same input as `createInvoice` to a PDF and writes nothing. It's a POST read and `createInvoice`'s declared preview, and it fails as create does. `dhw invoices preview --input <file>` decodes the file as `invoices create` does. A preview skips the conflict checks, so a rendered preview doesn't guarantee creation succeeds.
+- The ledger (`cli_mutation_requests`, named before assistants) is scoped per administration channel: each row belongs to exactly one CLI session or one administrator assistant connection, and a request ID is unique only within its channel. Partial unique indexes replace the old primary key, so an untargeted `on conflict do nothing` still detects a repeated claim. Handlers take the scope from `CurrentAdministrationCaller.channel` through `mutationScopeOf`.
+
+## Channels and action records
+
+- `CurrentAdministrationCaller.channel` is a `CliSession` or an `AssistantConnection`. An assistant connection (`administrator_assistant_connections`, `AdministratorAssistantConnections.connect`) is one row per administrator account and OAuth client, so it survives a disconnect and reconnect; it records the login-email snapshot, the client ID and its published name, and a last use written at most every five minutes.
+- Invoices and standalone access-code events record their provenance `source` from the channel: `dhw-cli` or `assistant`.
+- `AdministrationActionRecord` runs on every authenticated group and records each `write` or `destructive` operation, read from its `AdministrationOperationBehavior` or, for a generic mutation, the variant the body names, in `administration_actions`: the operation reference, the actor and its email snapshot, the channel, and the outcome. It stores no input or output. Add it to a new authenticated group before `AdministrationAuthentication`, so it runs inside authentication.
+- The row is written as `started` before the operation runs; if that write fails the request fails with `CliServiceUnavailable` and nothing runs. The outcome (`succeeded`, `replayed`, `failed` with the error tag, `defect`, `interrupted`) is written afterwards and only logged when it can't be, so a row left `started` means the outcome is unknown. Outcomes describe the request, not whether state changed. `replayed` means `CliMutationIdempotency.claim` returned a stored result (it marks `CurrentAdministrationAction`); invoice retries replay through their own ledger and record `succeeded`.
+- Released `dhw` binaries before the `assistant` invoice source fail to decode an invoice list or detail that contains an assistant-issued invoice; operators update `dhw`.
 
 ## Discount targets
 

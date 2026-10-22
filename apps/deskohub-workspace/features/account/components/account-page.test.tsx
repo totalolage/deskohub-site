@@ -831,6 +831,7 @@ describe("AccountPage states", () => {
             name: "Synthetic Assistant",
             host: "assistant.invalid",
             scopes: ["reservations:read"],
+            administration: false,
             connectedAt: "2026-10-14T16:40:00.000Z",
           },
         ],

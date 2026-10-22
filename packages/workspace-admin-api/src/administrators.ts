@@ -9,6 +9,7 @@ import {
 } from "./administration-operation";
 import {
   AdministrationAccountId,
+  AdministrationActionRecord,
   AdministrationAuthentication,
   AdministrationLegacyUsername,
   CliMutationRejected,
@@ -149,5 +150,6 @@ export const AdminCliAdministratorsApi = HttpApiGroup.make("administrators")
       destructiveOperation({ idempotent: true, preview: dryRunPreview })
     )
   )
+  .middleware(AdministrationActionRecord)
   .middleware(AdministrationAuthentication)
   .prefix("/api/v1/cli");

@@ -36,7 +36,7 @@ export const invoiceVariableSymbolSchema = Schema.Trim.check(
 export type InvoiceVariableSymbol = typeof invoiceVariableSymbolSchema.Type;
 
 export const manualInvoiceProvenanceSchema = Schema.Struct({
-  source: Schema.Literals(["admin-ui", "dhw-cli"]),
+  source: Schema.Literals(["admin-ui", "dhw-cli", "assistant"]),
   /**
    * The issuing administrator's login email. Invoices issued before
    * administrator accounts hold a Basic-auth username instead.

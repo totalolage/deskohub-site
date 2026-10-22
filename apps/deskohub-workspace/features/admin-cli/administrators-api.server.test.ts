@@ -23,6 +23,7 @@ import {
   authorizedCliRequest,
   cliSessionAdministrator,
   UnauthorizedCliRequest,
+  UnrecordedAdministrationActions,
 } from "./cli-api.test-utils";
 import { CliClientCompatibilityLive } from "./cli-client-version";
 
@@ -79,6 +80,7 @@ const callAdministrators = <A, E>(
       )
     ),
     Effect.provide(CliClientCompatibilityLive),
+    Effect.provide(UnrecordedAdministrationActions),
     Effect.provide(NodeHttpServer.layerHttpServices),
     Effect.scoped,
     Effect.runPromise

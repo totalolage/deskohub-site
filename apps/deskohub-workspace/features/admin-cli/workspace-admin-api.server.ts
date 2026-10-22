@@ -1,5 +1,6 @@
 import {
   AdministrationAuthentication,
+  type AdministrationChannel,
   AdministrationDiscountMutationResult,
   AdministrationReservationAccessGrant,
   type AdministrationStandaloneAccessCodeCreationOutcomeType,
@@ -77,6 +78,8 @@ import {
   WorkspaceObservabilityLive,
   workspaceMemoMap,
 } from "@/shared/backend/workspace-effect";
+import { AdministrationActionLog } from "./administration-action-log.service";
+import { AdministrationActionRecordLive } from "./administration-action-record.server";
 import {
   makeServiceUnavailable,
   mapAdministrationApiFailure,
@@ -466,10 +469,10 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
       .handle(
         "createInvoice",
         Effect.fn(function* ({ payload }) {
-          const { actor } = yield* CurrentAdministrationCaller;
+          const { actor, channel } = yield* CurrentAdministrationCaller;
           return yield* invoices
             .create(payload, {
-              source: "dhw-cli",
+              source: provenanceSourceOf(channel),
               administrator: actor,
             })
             .pipe(mapAdministrationApiFailure(mapInvoiceMutationFailure));
@@ -498,7 +501,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
             .create({
               attemptId: payload.attemptId,
               actor: caller.actor,
-              source: "dhw-cli",
+              source: provenanceSourceOf(caller.channel),
               request: payload.input,
               providerCredentialRemovedAttemptId:
                 payload.providerCredentialRemovedAttemptId,
@@ -1006,6 +1009,18 @@ const toCliVoucherDetail = (detail: AdminVoucherDetail) => ({
   claims: detail.claims.map(toCliVoucherClaim),
 });
 
+/**
+ * The provenance source invoices and access-code events record for an
+ * administration channel.
+ */
+const provenanceSourceOf = (channel: AdministrationChannel) =>
+  Match.value(channel).pipe(
+    Match.tagsExhaustive({
+      CliSession: () => "dhw-cli" as const,
+      AssistantConnection: () => "assistant" as const,
+    })
+  );
+
 const noStore = HttpRouter.middleware(
   (effect) =>
     Effect.map(effect, (response) =>
@@ -1023,7 +1038,8 @@ const noStore = HttpRouter.middleware(
  * operations and the given client compatibility check. Each call builds its
  * own router, group handlers and global middleware: group handlers capture
  * the middleware they were built with, so instances sharing the Workspace
- * memo map must not share them. The domain services come from the caller.
+ * memo map must not share them. The domain services, and the action log
+ * that records every state-changing operation, come from the caller.
  */
 export const makeWorkspaceAdminApiLayer = <R>({
   authentication,
@@ -1047,7 +1063,8 @@ export const makeWorkspaceAdminApiLayer = <R>({
         Layer.mergeAll(
           CliBearerAuthenticationLive,
           authentication,
-          clientCompatibility
+          clientCompatibility,
+          AdministrationActionRecordLive
         )
       )
     ),
@@ -1073,6 +1090,7 @@ const provideWorkspaceAdminApiServices = <A, E, R>(
     Layer.provide(InvoiceAdministrationService.Live),
     Layer.provide(StandaloneAccessCodeAdministration.Live),
     Layer.provide(CliMutationIdempotency.Live),
+    Layer.provide(AdministrationActionLog.Live),
     Layer.provide(CampaignOperations.Live),
     Layer.provide(CliAuthenticationAdmission.Default),
     Layer.provide(CliAuthentication.Live)

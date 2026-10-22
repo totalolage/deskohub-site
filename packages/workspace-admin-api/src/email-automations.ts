@@ -36,6 +36,7 @@ import {
 } from "./email-campaigns";
 import { fieldWithDefault, listField, nullableField } from "./response-fields";
 import {
+  AdministrationActionRecord,
   AdministrationAuthentication,
   AdministrationDotyposCustomerId,
   CliClientCompatibility,
@@ -995,6 +996,7 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
     ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .annotate(MinimumDhwVersion, Option.some(automationsMinimumDhwVersion))
+  .middleware(AdministrationActionRecord)
   .middleware(AdministrationAuthentication)
   // Added last, so it runs first, as in the campaigns group.
   .middleware(CliClientCompatibility)

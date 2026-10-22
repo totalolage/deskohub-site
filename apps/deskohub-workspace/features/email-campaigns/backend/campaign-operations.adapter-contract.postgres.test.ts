@@ -656,9 +656,8 @@ const handleCliRequest = await (async () => {
   const { CliMutationIdempotency } = await import(
     "@/features/admin-cli/cli-mutation-idempotency.service"
   );
-  const { UnusedCliSessionAuthentication } = await import(
-    "@/features/admin-cli/cli-api.test-utils"
-  );
+  const { UnrecordedAdministrationActions, UnusedCliSessionAuthentication } =
+    await import("@/features/admin-cli/cli-api.test-utils");
   const { CampaignOperations } = await import("./campaign-operations.service");
   const { unhandledHttpApiGroups } = await import(
     "@/shared/testing/http-api-test-groups.test-utils"
@@ -681,6 +680,7 @@ const handleCliRequest = await (async () => {
               }),
           }),
           CliClientCompatibilityLive,
+          UnrecordedAdministrationActions,
           CampaignOperations.Live,
           CliMutationIdempotency.Default.pipe(Layer.provide(testDatabase.layer))
         )

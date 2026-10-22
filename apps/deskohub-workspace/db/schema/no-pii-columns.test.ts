@@ -84,9 +84,22 @@ const allowedColumns = new Map([
     "public.standalone_access_code_attempt_events.actor_account_email",
     "administrator login-email snapshot",
   ],
+  [
+    "public.administrator_assistant_connections.approved_by_account_email",
+    "administrator login-email snapshot",
+  ],
+  [
+    "public.administration_actions.actor_account_email",
+    "administrator login-email snapshot",
+  ],
   // Operator-side labels, not customer data.
   ["public.cli_sessions.client_name", "dhw CLI client label"],
   ["public.cli_authentication_requests.client_name", "dhw CLI client label"],
+  // The name an AI assistant's provider publishes, such as "Claude".
+  [
+    "public.administrator_assistant_connections.client_name",
+    "published AI assistant client name",
+  ],
   [
     "public.standalone_access_code_attempt_events.name",
     "operator-entered access code label",

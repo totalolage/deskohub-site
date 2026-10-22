@@ -1,12 +1,11 @@
 import { Effect } from "effect";
-import { type Locale, m } from "@/features/i18n";
+import { getWorkspacePageUrl, type Locale, m } from "@/features/i18n";
 import {
   type MarkdownBlocks,
   markdownHeading,
   markdownLink,
   markdownParagraph,
 } from "@/shared/markdown/markdown";
-import { workspaceSiteOrigin } from "@/shared/utils/site-constants";
 import { getTtrpgRooms } from "./ttrpg-rooms";
 
 /** The TTRPG room page's rooms as Markdown, each room a section. */
@@ -21,7 +20,12 @@ export const ttrpgRoomPageMarkdown = (
       markdownParagraph(room.seats),
       // A Workspace room links by path, a Bar room by its full URL.
       markdownParagraph(
-        markdownLink(new URL(room.href, workspaceSiteOrigin).href, room.cta)
+        markdownLink(
+          room.href.startsWith("/")
+            ? getWorkspacePageUrl(room.href)
+            : room.href,
+          room.cta
+        )
       ),
     ]),
   ]);

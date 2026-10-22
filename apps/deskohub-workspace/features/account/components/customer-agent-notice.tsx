@@ -9,7 +9,9 @@ export type CustomerAgentNoticeKind =
   | "unknown-request"
   | "expired"
   | "unavailable"
-  | "deletion-pending";
+  | "deletion-pending"
+  /** The assistant asks only for administration, which the account lacks. */
+  | "administration-only";
 
 /**
  * The card the AI assistant connect and consent steps show instead of
@@ -38,6 +40,10 @@ export function CustomerAgentNotice({
     "deletion-pending": {
       title: m.customerAgentDeletionPendingTitle,
       body: m.customerAgentDeletionPendingBody,
+    },
+    "administration-only": {
+      title: m.customerAgentAdministrationOnlyTitle,
+      body: m.customerAgentAdministrationOnlyBody,
     },
   }[notice];
 

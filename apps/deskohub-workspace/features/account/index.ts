@@ -1,6 +1,8 @@
+export type { CustomerAgentScope } from "./agent-scopes";
 export {
   CustomerAgentAuthorization,
   CustomerAgentAuthorizationError,
+  type CustomerAgentCaller,
   type CustomerAgentClientId,
   type CustomerAgentGrant,
   customerAgentClientIdSchema,
@@ -30,4 +32,3 @@ export type {
   CustomerReservationSummary,
 } from "./contracts";
 export { CustomerAccountAccessError } from "./customer-account";
-export type { CustomerAgentScope } from "./customer-agent-scopes";

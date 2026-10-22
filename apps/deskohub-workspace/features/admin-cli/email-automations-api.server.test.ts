@@ -40,6 +40,7 @@ import {
   cliSessionAdministrator,
   GrantedAdministrator,
   UnauthorizedCliRequest,
+  UnrecordedAdministrationActions,
 } from "./cli-api.test-utils";
 import { CliClientCompatibilityLive } from "./cli-client-version";
 import { AdminCliAutomationsApiHandlers } from "./email-automations-api.server";
@@ -105,6 +106,7 @@ const callAutomationsApi = <A, E>(
     ),
     Effect.provide(ClaimEveryCliMutation),
     Effect.provide(CliClientCompatibilityLive),
+    Effect.provide(UnrecordedAdministrationActions),
     Effect.provide(cliClientVersion(dhwVersion)),
     Effect.provide(NodeHttpServer.layerHttpServices),
     Effect.scoped,

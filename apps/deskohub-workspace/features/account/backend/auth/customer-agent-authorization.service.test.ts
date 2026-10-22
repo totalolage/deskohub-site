@@ -129,6 +129,28 @@ describe("CustomerAgentAuthorization.authorize", () => {
     expect(looked).toEqual([ACCOUNT_ID]);
   });
 
+  test.each([
+    ["keeps administration on a token that carries it", true],
+    ["grants no administration to a token without it", false],
+  ])("%s", async (_, administration) => {
+    const outcome = await authorize(
+      authorityWith({
+        validateAccessToken: async () =>
+          activeClaims({
+            scope: administration
+              ? "reservations:read administration offline_access"
+              : "reservations:read offline_access",
+          }),
+      })
+    );
+
+    expect(outcome._tag).toBe("Success");
+    if (outcome._tag === "Success") {
+      expect(outcome.success.scopes.has("administration")).toBe(administration);
+      expect(outcome.success.scopes.has("reservations:read")).toBe(true);
+    }
+  });
+
   test("grants no scopes when the token names none", async () => {
     const outcome = await authorize(
       authorityWith({
