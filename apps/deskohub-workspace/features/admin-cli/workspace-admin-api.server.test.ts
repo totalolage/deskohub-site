@@ -230,6 +230,7 @@ const callAdministrationApi = <A, E>(
     Effect.provide(services.administration ?? UnusedAdministrationService),
     Effect.provide(UnusedReservationAccessAdministration),
     Effect.provide(CliClientCompatibilityLive),
+    Effect.provide(UnrecordedAdministrationActions),
     Effect.provide(NodeHttpServer.layerHttpServices),
     Effect.scoped,
     Effect.runPromise

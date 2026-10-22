@@ -36,7 +36,10 @@ import {
   insertTestAdministrator,
 } from "@/shared/testing/workspace-test-accounts.test-utils";
 import { AdminCliAdministratorsApiHandlers } from "./administrators-api.server";
-import { UnusedCliSessionAuthentication } from "./cli-api.test-utils";
+import {
+  UnrecordedAdministrationActions,
+  UnusedCliSessionAuthentication,
+} from "./cli-api.test-utils";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliClientCompatibilityLive } from "./cli-client-version";
 import { cliSessionLifetimeSchema } from "./contracts";
@@ -351,6 +354,7 @@ describe.skipIf(!postgresDatabase)(
           )
         ),
         Effect.provide(CliClientCompatibilityLive),
+        Effect.provide(UnrecordedAdministrationActions),
         Effect.provide(NodeHttpServer.layerHttpServices),
         Effect.scoped,
         Effect.runPromise

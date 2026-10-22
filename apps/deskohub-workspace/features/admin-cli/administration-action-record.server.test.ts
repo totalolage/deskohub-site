@@ -20,7 +20,10 @@ import { InvoiceAdministrationService } from "@/features/accounting/admin/invoic
 import { AdministrationService } from "@/features/administration/administration.service";
 import { ReservationAccessAdministration } from "@/features/administration/reservation-access-administration.service";
 import { ReservationAdministrationService } from "@/features/administration/reservation-administration.service";
-import { LegacyAdministratorBackfill } from "@/features/administrators";
+import {
+  AdministratorRoster,
+  LegacyAdministratorBackfill,
+} from "@/features/administrators";
 import { DiscountAdministration } from "@/features/discounts/admin/discount-administration.service";
 import { CampaignOperations } from "@/features/email-campaigns/backend/campaign-operations.service";
 import { ReservationProductDetailsBackfill } from "@/features/reservation/backend/reservation-product-details-backfill.service";
@@ -152,6 +155,7 @@ const serve = ({
           Layer.succeed(AdministrationService, {} as never),
           Layer.succeed(ReservationAdministrationService, {} as never),
           Layer.succeed(ReservationProductDetailsBackfill, {} as never),
+          Layer.succeed(AdministratorRoster, {} as never),
           Layer.succeed(LegacyAdministratorBackfill, {} as never),
           Layer.succeed(ReservationAccessAdministration, {} as never),
           Layer.succeed(DiscountAdministration, {} as never),

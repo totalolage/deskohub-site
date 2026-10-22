@@ -1,6 +1,6 @@
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Option } from "effect";
-import type { SqlError } from "effect/unstable/sql/SqlError";
+import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { revokeAdministrationAgentAccess } from "@/features/account/backend/auth/administration-agent-access";
 import { findActiveCustomerAccountByEmail } from "@/features/account/backend/customer-account-by-email";
@@ -48,14 +48,18 @@ interface IAdministratorRoster {
    * same transaction revokes the CLI sessions and pending CLI grants the
    * account approved and disconnects its AI agents that may use the
    * administration, even when the role was already gone, so a re-grant
-   * can't revive them and a retry finishes an interrupted revoke.
+   * can't revive the CLI credentials and a retry finishes an interrupted
+   * revoke. An agent consent whose check passed before the revoke commits
+   * can still be written afterwards; administration calls re-read the grant.
    */
   readonly revoke: (input: {
     readonly accountId: CustomerAccountId;
     readonly actor: AdministratorAccountActor;
   }) => Effect.Effect<
     { readonly changed: boolean },
-    AdministratorSelfRevocationError | EffectDrizzleQueryError | SqlError
+    | AdministratorSelfRevocationError
+    | EffectDrizzleQueryError
+    | SqlError.SqlError
   >;
 }
 
@@ -109,16 +113,18 @@ export class AdministratorRoster extends Context.Service<
           }
           // Grant first: its row lock makes a concurrent CLI exchange
           // finish before the session revocation reads the sessions, and
-          // once it is gone later consent checks refuse the administration
+          // once it commits, later consent checks refuse the administration
           // scope. One that already passed can still finish; administration
           // calls re-read the grant.
           return yield* database.db.transaction(
             Effect.fn(function* () {
               const revoked = yield* grants.revoke({ accountId, role });
-              yield* Effect.all([
-                revokeAdministrationCliAccess(accountId),
-                revokeAdministrationAgentAccess(accountId),
-              ]).pipe(Effect.provideService(WorkspaceDatabase, database));
+              yield* revokeAdministrationCliAccess(accountId).pipe(
+                Effect.provideService(WorkspaceDatabase, database)
+              );
+              yield* revokeAdministrationAgentAccess(accountId).pipe(
+                Effect.provideService(WorkspaceDatabase, database)
+              );
               return revoked;
             })
           );

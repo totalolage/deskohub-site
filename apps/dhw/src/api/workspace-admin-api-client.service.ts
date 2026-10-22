@@ -1157,7 +1157,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           Effect.flatMap((authorized) =>
             authorized.administration.previewInvoice({ payload: input })
           ),
-          Effect.mapError(sanitizeInvoicePreviewError)
+          Effect.mapError(sanitizeRejectedError)
         )
     ),
     createInvoice: Effect.fn("WorkspaceAdminApiClient.createInvoice")(
@@ -1970,16 +1970,6 @@ const sanitizeInvoiceCreationError = (
   cause instanceof CliMutationInProgress || cause instanceof CliMutationRejected
     ? cause
     : sanitizeSessionError(cause);
-
-const sanitizeInvoicePreviewError = (
-  cause:
-    | CliMutationRejected
-    | CliServiceUnavailable
-    | CliSessionUnauthorized
-    | HttpClientError.HttpClientError
-    | Schema.SchemaError
-) =>
-  cause instanceof CliMutationRejected ? cause : sanitizeSessionError(cause);
 
 const sanitizeAccessCodeCreationError = (
   cause:
