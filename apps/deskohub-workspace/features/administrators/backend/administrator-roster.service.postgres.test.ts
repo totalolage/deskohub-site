@@ -59,6 +59,59 @@ const grantAdministrator = (accountId: string, grantedBy: string | null) =>
     [accountId, grantedBy]
   );
 
+const cliSecret = () =>
+  Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
+
+/** An unrevoked CLI session and an approved, unexchanged CLI request. */
+const insertCliCredentials = async (approver: AdministratorAccountActor) => {
+  const sessionId = crypto.randomUUID();
+  const requestId = crypto.randomUUID();
+  await testDatabase!.pool.query(
+    `insert into cli_sessions
+       (id, approved_by_account_id, approved_by_account_email, token_hash,
+        client_name, cli_version, build_target, created_at, last_used_at)
+     values ($1, $2, $3, $4, 'Roster test', '1.0.0', 'development', now(), now())`,
+    [sessionId, approver.accountId, approver.email, cliSecret()]
+  );
+  await testDatabase!.pool.query(
+    `insert into cli_authentication_requests
+       (id, code_hash, challenge, client_name, cli_version, build_target,
+        created_at, expires_at, approved_at, approved_by_account_id,
+        approved_by_account_email, grant_token, grant_expires_at)
+     values ($1, $2, $3, 'Roster test', '1.0.0', 'development', now(),
+             now() + interval '5 minutes', now(), $4, $5, $6,
+             now() + interval '5 minutes')`,
+    [
+      requestId,
+      cliSecret(),
+      cliSecret(),
+      approver.accountId,
+      approver.email,
+      cliSecret(),
+    ]
+  );
+  return { sessionId, requestId };
+};
+
+const cliCredentialsState = async (credentials: {
+  readonly sessionId: string;
+  readonly requestId: string;
+}) => {
+  const session = await testDatabase!.pool.query<{ revoked: boolean }>(
+    `select revoked_at is not null as revoked from cli_sessions where id = $1`,
+    [credentials.sessionId]
+  );
+  const request = await testDatabase!.pool.query<{ exchangeable: boolean }>(
+    `select grant_token is not null as exchangeable
+     from cli_authentication_requests where id = $1`,
+    [credentials.requestId]
+  );
+  return {
+    sessionRevoked: session.rows[0]?.revoked,
+    grantExchangeable: request.rows[0]?.exchangeable,
+  };
+};
+
 const isAdministrator = async (accountId: string) =>
   (
     await testDatabase!.pool.query(
@@ -175,6 +228,44 @@ describe.skipIf(!testDatabase)(
       expect(revoked).toEqual({ changed: true });
       expect(repeat).toEqual({ changed: false });
       expect(await isAdministrator(target.accountId)).toBe(false);
+    });
+
+    test("ends only the revoked administrator's CLI sessions and grants", async () => {
+      const actor = await insertAccount();
+      const target = await insertAccount();
+      await grantAdministrator(actor.accountId, null);
+      await grantAdministrator(target.accountId, actor.accountId);
+      const actorCredentials = await insertCliCredentials(actor);
+      const targetCredentials = await insertCliCredentials(target);
+
+      await runRoster((roster) =>
+        roster.revoke({ accountId: target.accountId, actor })
+      );
+
+      expect(await cliCredentialsState(targetCredentials)).toEqual({
+        sessionRevoked: true,
+        grantExchangeable: false,
+      });
+      expect(await cliCredentialsState(actorCredentials)).toEqual({
+        sessionRevoked: false,
+        grantExchangeable: true,
+      });
+    });
+
+    test("ends the CLI sessions of an account whose grant is already gone", async () => {
+      const actor = await insertAccount();
+      const target = await insertAccount();
+      const targetCredentials = await insertCliCredentials(target);
+
+      const revoked = await runRoster((roster) =>
+        roster.revoke({ accountId: target.accountId, actor })
+      );
+
+      expect(revoked).toEqual({ changed: false });
+      expect(await cliCredentialsState(targetCredentials)).toEqual({
+        sessionRevoked: true,
+        grantExchangeable: false,
+      });
     });
 
     test("refuses to revoke the acting administrator's own grant", async () => {

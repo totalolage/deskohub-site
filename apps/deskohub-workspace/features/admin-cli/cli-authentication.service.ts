@@ -47,6 +47,7 @@ import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identi
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { addCalendarDuration, currentInstant } from "@/shared/utils/temporal";
+import { revokeCliSessions } from "./administration-cli-access";
 import { type CliSessionLifetime, cliSessionLifetimeSchema } from "./contracts";
 
 const authenticationLifetimeMinutes = 5;
@@ -127,6 +128,7 @@ interface ICliAuthentication {
     CliApprovalRequest,
     | EffectDrizzleQueryError
     | PlatformError.PlatformError
+    | SqlError
     | CliApprovalUnavailableError
   >;
   readonly listSessions: (
@@ -153,7 +155,8 @@ export class CliAuthentication extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const database = yield* WorkspaceDatabase;
+      const { db } = database;
       const crypto = yield* Crypto.Crypto;
       const roleGrants = yield* AccountRoleGrants;
       const holdsAdministratorRole = (accountId: CustomerAccountId) =>
@@ -284,24 +287,39 @@ export class CliAuthentication extends Context.Service<
 
         const grantToken = CliGrantToken.make(yield* makeSecret());
         const grantExpiresAt = now.add({ minutes: grantLifetimeMinutes });
-        const [approved] = yield* db
-          .update(cliAuthenticationRequests)
-          .set({
-            approvedAt: now,
-            approvedByAccountId: input.approvedBy.accountId,
-            approvedByAccountEmail: input.approvedBy.email,
-            grantToken,
-            grantExpiresAt,
-            sessionExpiresAt: toSessionExpiry(input.sessionLifetime, now),
+        const [approved] = yield* db.transaction(
+          Effect.fn(function* () {
+            // The lock makes a concurrent revoke wait and then withdraw this
+            // grant token, or makes this approval see the grant gone.
+            const approverHoldsRole = yield* roleGrants.lockHeld({
+              accountId: input.approvedBy.accountId,
+              role: "administrator",
+            });
+            if (!approverHoldsRole) {
+              return yield* new CliApprovalUnavailableError({
+                message: "The approving account isn't an administrator.",
+              });
+            }
+            return yield* db
+              .update(cliAuthenticationRequests)
+              .set({
+                approvedAt: now,
+                approvedByAccountId: input.approvedBy.accountId,
+                approvedByAccountEmail: input.approvedBy.email,
+                grantToken,
+                grantExpiresAt,
+                sessionExpiresAt: toSessionExpiry(input.sessionLifetime, now),
+              })
+              .where(
+                and(
+                  eq(cliAuthenticationRequests.id, result.request.id),
+                  isNull(cliAuthenticationRequests.approvedAt),
+                  gt(cliAuthenticationRequests.expiresAt, now)
+                )
+              )
+              .returning();
           })
-          .where(
-            and(
-              eq(cliAuthenticationRequests.id, result.request.id),
-              isNull(cliAuthenticationRequests.approvedAt),
-              gt(cliAuthenticationRequests.expiresAt, now)
-            )
-          )
-          .returning();
+        );
 
         if (!approved) {
           const latest = yield* loadRequest(input.code);
@@ -343,11 +361,7 @@ export class CliAuthentication extends Context.Service<
 
         // A request approved before accounts carries only a username.
         const { approvedByAccountId, approvedByAccountEmail } = request;
-        if (
-          approvedByAccountId === null ||
-          approvedByAccountEmail === null ||
-          !(yield* holdsAdministratorRole(approvedByAccountId))
-        ) {
+        if (approvedByAccountId === null || approvedByAccountEmail === null) {
           return yield* rejectedGrant;
         }
 
@@ -357,6 +371,14 @@ export class CliAuthentication extends Context.Service<
 
         const session = yield* db.transaction(
           Effect.fn(function* (tx) {
+            // The lock makes a concurrent revoke wait for this session and
+            // revoke it too, or makes this exchange see the grant gone.
+            const approverHoldsRole = yield* roleGrants.lockHeld({
+              accountId: approvedByAccountId,
+              role: "administrator",
+            });
+            if (!approverHoldsRole) return yield* rejectedGrant;
+
             yield* tx.insert(cliSessions).values({
               id: sessionId,
               approvedByAccountId,
@@ -501,18 +523,9 @@ export class CliAuthentication extends Context.Service<
         readonly owner: CustomerAccountId;
         readonly sessionId: CliSessionIdType;
       }) {
-        const now = yield* currentInstant;
-        const revoked = yield* db
-          .update(cliSessions)
-          .set({ revokedAt: now })
-          .where(
-            and(
-              eq(cliSessions.id, input.sessionId),
-              eq(cliSessions.approvedByAccountId, input.owner),
-              isNull(cliSessions.revokedAt)
-            )
-          )
-          .returning({ id: cliSessions.id });
+        const revoked = yield* revokeCliSessions(input).pipe(
+          Effect.provideService(WorkspaceDatabase, database)
+        );
         return revoked.length > 0;
       });
 

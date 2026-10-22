@@ -1,10 +1,11 @@
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Option } from "effect";
-import type { SqlError } from "effect/unstable/sql";
+import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { revokeAdministrationAgentAccess } from "@/features/account/backend/auth/administration-agent-access";
 import { findActiveCustomerAccountByEmail } from "@/features/account/backend/customer-account-by-email";
 import type { CustomerAccountId } from "@/features/account/customer-account";
+import { revokeAdministrationCliAccess } from "@/features/admin-cli/administration-cli-access";
 import type { AdministratorAccountActor } from "../account-role";
 import {
   type AccountRoleGrant,
@@ -44,18 +45,17 @@ interface IAdministratorRoster {
   /**
    * Revokes another account's administrator role. The gate reads grants on
    * every request, so the account loses access on its next request. The
-   * account's AI agents that may use the administration are disconnected
-   * too, even when the role was already gone, so a retry finishes a revoke
-   * that failed halfway.
+   * same transaction revokes the CLI sessions and pending CLI grants the
+   * account approved and disconnects its AI agents that may use the
+   * administration, even when the role was already gone, so a re-grant
+   * can't revive them and a retry finishes an interrupted revoke.
    */
   readonly revoke: (input: {
     readonly accountId: CustomerAccountId;
     readonly actor: AdministratorAccountActor;
   }) => Effect.Effect<
     { readonly changed: boolean },
-    | AdministratorSelfRevocationError
-    | EffectDrizzleQueryError
-    | SqlError.SqlError
+    AdministratorSelfRevocationError | EffectDrizzleQueryError | SqlError
   >;
 }
 
@@ -107,14 +107,21 @@ export class AdministratorRoster extends Context.Service<
               message: "Administrators can't revoke their own grant.",
             });
           }
-          // Grant first: once it is gone, later consent checks refuse the
-          // administration scope. One that already passed can still finish;
-          // administration calls re-read the grant.
-          const revoked = yield* grants.revoke({ accountId, role });
-          yield* revokeAdministrationAgentAccess(accountId).pipe(
-            Effect.provideService(WorkspaceDatabase, database)
+          // Grant first: its row lock makes a concurrent CLI exchange
+          // finish before the session revocation reads the sessions, and
+          // once it is gone later consent checks refuse the administration
+          // scope. One that already passed can still finish; administration
+          // calls re-read the grant.
+          return yield* database.db.transaction(
+            Effect.fn(function* () {
+              const revoked = yield* grants.revoke({ accountId, role });
+              yield* Effect.all([
+                revokeAdministrationCliAccess(accountId),
+                revokeAdministrationAgentAccess(accountId),
+              ]).pipe(Effect.provideService(WorkspaceDatabase, database));
+              return revoked;
+            })
           );
-          return revoked;
         }),
       } satisfies IAdministratorRoster;
     })

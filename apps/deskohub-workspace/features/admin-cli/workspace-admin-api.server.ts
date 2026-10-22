@@ -49,7 +49,10 @@ import {
   type ReservationAdministrationError,
   ReservationAdministrationService,
 } from "@/features/administration/reservation-administration.service";
-import { LegacyAdministratorBackfill } from "@/features/administrators";
+import {
+  AdministratorRoster,
+  LegacyAdministratorBackfill,
+} from "@/features/administrators";
 import { refreshCalendarDiscountSourceAfterMutation } from "@/features/discounts/admin/calendar-discount-source-maintenance.server";
 import {
   type AdminCustomerProfile,
@@ -157,8 +160,21 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
     const productDetailsBackfill = yield* ReservationProductDetailsBackfill;
     return handlers
       .handle("getOverview", () =>
-        administration.loadOverviewSource().pipe(
-          Effect.flatMap((source) => administration.loadOverview(source)),
+        Effect.all(
+          {
+            overview: administration
+              .loadOverviewSource()
+              .pipe(
+                Effect.flatMap((source) => administration.loadOverview(source))
+              ),
+            refundsNeeded: administration.countReservationsNeedingRefund(),
+          },
+          { concurrency: "unbounded" }
+        ).pipe(
+          Effect.map(({ overview, refundsNeeded }) => ({
+            ...overview,
+            refundAttention: { unavailable: false, value: refundsNeeded },
+          })),
           mapServiceFailure
         )
       )
@@ -366,6 +382,11 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
           { concurrency: "unbounded" }
         ).pipe(mapServiceFailure)
       )
+      .handle("getCustomerReservationActivity", ({ params }) =>
+        administration
+          .loadCustomerReservationActivity(params.customerId)
+          .pipe(mapServiceFailure)
+      )
       .handle("listCustomerReservations", ({ params, query }) =>
         administration
           .loadCustomerReservations({
@@ -378,6 +399,12 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
         discounts
           .loadDashboard()
           .pipe(Effect.map(toCliDiscountDashboard), mapServiceFailure)
+      )
+      .handle("listDiscountGroups", () =>
+        discounts.listDiscountGroups().pipe(
+          Effect.map((discountGroups) => ({ discountGroups })),
+          mapServiceFailure
+        )
       )
       .handle("getDiscountCode", ({ params }) =>
         discounts.loadCodeDetail({ codeId: params.codeId }).pipe(
@@ -426,6 +453,18 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
           Effect.map(({ bytes }) => bytes),
           mapAdministrationApiFailure(mapInvoiceReadFailure)
         )
+      )
+      .handle("getInvoiceCreationDefaults", () =>
+        invoices.getCreationDefaults().pipe(mapServiceFailure)
+      )
+      .handle(
+        "previewInvoice",
+        Effect.fn(function* ({ payload }) {
+          const { actor } = yield* CurrentAdministrationCaller;
+          return yield* invoices
+            .preview(payload, { source: "dhw-cli", administrator: actor })
+            .pipe(mapAdministrationApiFailure(mapInvoicePreviewFailure));
+        })
       )
       .handle(
         "createInvoice",
@@ -768,6 +807,18 @@ const mapInvoiceReadFailure = (
     Match.orElse(makeServiceUnavailable)
   );
 
+const mapInvoicePreviewFailure = (
+  cause: Effect.Error<ReturnType<InvoiceAdministration["preview"]>>
+) =>
+  Match.value(cause).pipe(
+    Match.tag(
+      "InvoiceAdministrationCustomerError",
+      "ManualInvoiceValidationError",
+      ({ message }) => new CliMutationRejected({ message })
+    ),
+    Match.orElse(makeServiceUnavailable)
+  );
+
 const mapInvoiceMutationFailure = (
   cause: Effect.Error<ReturnType<InvoiceAdministration["create"]>>
 ) =>
@@ -1032,6 +1083,7 @@ const provideWorkspaceAdminApiServices = <A, E, R>(
     Layer.provide(AdministrationService.Live),
     Layer.provide(ReservationAdministrationService.Live),
     Layer.provide(ReservationProductDetailsBackfill.Live),
+    Layer.provide(AdministratorRoster.Live),
     Layer.provide(LegacyAdministratorBackfill.Live),
     Layer.provide(ReservationAccessAdministration.Live),
     Layer.provide(DiscountAdministration.Live),

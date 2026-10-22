@@ -20,6 +20,7 @@ import {
   AdministrationNexiOrderId,
   type AdministrationOperationQueryType,
   type AdministrationOrderQueryType,
+  type AdministrationOverviewCountType,
   type AdministrationOverviewMetricType,
   type AdministrationReservationAccessGrantType,
   type AdministrationReservationAccessMutationType,
@@ -139,6 +140,18 @@ const overviewCommand = Command.make("overview", {}, () =>
           formatOverviewMetric("Today", overview.today),
           formatOverviewMetric("Upcoming", overview.upcoming),
           formatOverviewMetric("Last 7 days", overview.lastSevenDays),
+          formatOverviewCount(
+            "Customers in the last 7 days",
+            overview.uniqueCustomers
+          ),
+          formatOverviewCount(
+            "New customers in the last 7 days",
+            overview.newCustomers
+          ),
+          formatOverviewCount(
+            "Reservations needing a refund",
+            overview.refundAttention
+          ),
         ].join("\n")
       );
     })
@@ -720,6 +733,62 @@ const invoicesGetCommand = Command.make(
     )
 ).pipe(Command.withDescription("Show an issued invoice"));
 
+const invoicesDefaultsCommand = Command.make("defaults", {}, () =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    Effect.gen(function* () {
+      const defaults = yield* api.getInvoiceCreationDefaults(accessToken);
+      if (json) {
+        yield* Console.log(JSON.stringify(defaults));
+        return;
+      }
+      yield* Console.log(
+        [
+          `Currencies: ${defaults.currencies.map(({ code }) => code).join(", ")}`,
+          `Default currency: ${defaults.defaultCurrency}`,
+          `Service date: ${defaults.defaultServiceDate}`,
+          `Due date: ${defaults.defaultDueDate}`,
+          `Suggested variable symbol: ${defaults.suggestedVariableSymbol}`,
+        ].join("\n")
+      );
+    })
+  )
+).pipe(Command.withDescription("Show what a new invoice starts from"));
+
+const invoicesPreviewCommand = Command.make(
+  "preview",
+  {
+    input: Flag.string("input").pipe(
+      Flag.withDescription("Strict JSON invoice input file")
+    ),
+    output: Flag.string("output").pipe(
+      Flag.optional,
+      Flag.withDescription("PDF output path")
+    ),
+  },
+  ({ input, output }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const invoiceInput = yield* readInvoiceCreateInput(input);
+        const pdf = yield* api.previewInvoice(accessToken, invoiceInput);
+        const path = Option.getOrElse(
+          output,
+          () => `${invoiceInput.invoiceId}-preview.pdf`
+        );
+        const fileSystem = yield* FileSystem.FileSystem;
+        yield* fileSystem.writeFile(path, pdf);
+        yield* Console.log(
+          json
+            ? JSON.stringify({ invoiceId: invoiceInput.invoiceId, path })
+            : `Wrote the preview of invoice ${invoiceInput.invoiceId} to ${path}.`
+        );
+      })
+    )
+).pipe(
+  Command.withDescription(
+    "Render an invoice input file as a PDF without creating the invoice"
+  )
+);
+
 const invoicesCreateCommand = Command.make(
   "create",
   {
@@ -848,6 +917,8 @@ const invoicesCommand = Command.make("invoices").pipe(
   Command.withSubcommands([
     invoicesListCommand,
     invoicesGetCommand,
+    invoicesDefaultsCommand,
+    invoicesPreviewCommand,
     invoicesCreateCommand,
     invoicesDownloadCommand,
     invoicesResendCommand,
@@ -1042,6 +1113,43 @@ const customersGetCommand = Command.make(
     )
 ).pipe(Command.withDescription("Show customer activity and discount details"));
 
+const customersActivityCommand = Command.make(
+  "activity",
+  { customerId: Argument.string("customer-id") },
+  ({ customerId }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const decodedCustomerId = yield* Schema.decodeUnknownEffect(
+          AdministrationDotyposCustomerId
+        )(customerId);
+        const activity = yield* api.getCustomerReservationActivity(
+          accessToken,
+          decodedCustomerId
+        );
+        if (json) {
+          yield* Console.log(JSON.stringify(activity));
+          return;
+        }
+        if (activity.dates === null) {
+          yield* Console.log(
+            `Reservation activity ${activity.from} to ${activity.to}: unavailable`
+          );
+          return;
+        }
+        yield* Console.log(
+          `Reservation activity ${activity.from} to ${activity.to}: ${activity.dates.length} days`
+        );
+        for (const day of activity.dates) {
+          yield* Console.log([day.date, day.count, day.category].join("\t"));
+        }
+      })
+    )
+).pipe(
+  Command.withDescription(
+    "Show a customer's completed reservations per day over the last year"
+  )
+);
+
 const customersReservationsCommand = Command.make(
   "reservations",
   {
@@ -1125,6 +1233,7 @@ const customersCommand = Command.make("customers").pipe(
     customersListCommand,
     customersSearchCommand,
     customersGetCommand,
+    customersActivityCommand,
     customersReservationsCommand,
     customersSetDiscountGroupCommand,
     customersClearDiscountGroupCommand,
@@ -1345,10 +1454,27 @@ const discountsListCommand = Command.make("list", {}, () =>
   )
 ).pipe(Command.withDescription("List managed discounts"));
 
+const discountsGroupsCommand = Command.make("groups", {}, () =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    Effect.gen(function* () {
+      const { discountGroups } = yield* api.listDiscountGroups(accessToken);
+      if (json) {
+        yield* Console.log(JSON.stringify(discountGroups));
+        return;
+      }
+      yield* Console.log(`Discount groups: ${discountGroups.length}`);
+      for (const group of discountGroups) {
+        yield* Console.log(`${group.id}\t${group.name ?? "Unnamed"}`);
+      }
+    })
+  )
+).pipe(Command.withDescription("List the Dotypos discount groups"));
+
 const discountsCommand = Command.make("discounts").pipe(
   Command.withDescription("Inspect and manage discounts"),
   Command.withSubcommands([
     discountsListCommand,
+    discountsGroupsCommand,
     discountsCreateCommand,
     discountsUpdateCommand,
     discountsDeleteCommand,
@@ -2665,6 +2791,11 @@ const formatOverviewMetric = (
   metric: AdministrationOverviewMetricType
 ) =>
   `${label}: ${metric.unavailable ? "unavailable" : `${metric.completed} / ${metric.value}`}`;
+
+const formatOverviewCount = (
+  label: string,
+  count: AdministrationOverviewCountType
+) => `${label}: ${count.unavailable ? "unavailable" : count.value}`;
 
 const formatReservationRow = (
   reservation: AdministrationReservationSummaryType
