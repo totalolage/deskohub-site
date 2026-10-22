@@ -60,10 +60,11 @@ describe.skipIf(!testDatabase)(
           approved_by_account_id: string | null;
           approved_by_account_email: string;
           client_name: string;
-          last_used_at: Date;
+          last_used_ms: number;
         }>(
           `select approved_by_account_id, approved_by_account_email,
-             client_name, last_used_at
+             client_name,
+             (extract(epoch from last_used_at) * 1000)::float8 as last_used_ms
            from administrator_assistant_connections where id = $1`,
           [id]
         )
@@ -105,12 +106,12 @@ describe.skipIf(!testDatabase)(
     test("writes the last use at most every five minutes", async () => {
       const administrator = await insertAdministrator();
       const { connectionId } = await connect(administrator);
-      const recordedUse = (await readConnection(connectionId))!.last_used_at;
+      const recordedUse = (await readConnection(connectionId))!.last_used_ms;
 
       await connect(administrator, clientId, "Renamed assistant");
       expect(await readConnection(connectionId)).toMatchObject({
         client_name: "Synthetic assistant",
-        last_used_at: recordedUse,
+        last_used_ms: recordedUse,
       });
 
       await testDatabase.pool.query(
@@ -123,9 +124,8 @@ describe.skipIf(!testDatabase)(
       await connect(administrator, clientId, "Renamed assistant");
       const refreshed = await readConnection(connectionId);
       expect(refreshed?.client_name).toBe("Renamed assistant");
-      expect(refreshed!.last_used_at.getTime()).toBeGreaterThanOrEqual(
-        recordedUse.getTime()
-      );
+      // Moved back six minutes, then forward to now.
+      expect(refreshed!.last_used_ms).toBeGreaterThan(recordedUse - 6 * 60_000);
     });
 
     test("keeps the connection and its email snapshot when the account is deleted", async () => {

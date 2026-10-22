@@ -233,17 +233,19 @@ describe.skipIf(!testDatabase)(
           Effect.provide(NodeCrypto.layer)
         )
       );
-      await testDatabase.db.insert(cliSessions).values({
-        id: sessionId,
-        approvedByAccountId: administrator.accountId,
-        approvedByAccountEmail: administrator.email,
-        tokenHash,
-        clientName: "ledger scope test client",
-        cliVersion: "1.0.0",
-        buildTarget: "development",
-        createdAt: Temporal.Now.instant(),
-        lastUsedAt: Temporal.Now.instant(),
-      });
+      await Effect.runPromise(
+        testDatabase.db.insert(cliSessions).values({
+          id: sessionId,
+          approvedByAccountId: administrator.accountId,
+          approvedByAccountEmail: administrator.email,
+          tokenHash,
+          clientName: "ledger scope test client",
+          cliVersion: "1.0.0",
+          buildTarget: "development",
+          createdAt: Temporal.Now.instant(),
+          lastUsedAt: Temporal.Now.instant(),
+        })
+      );
       ({ connectionId } = await Effect.runPromise(
         AdministratorAssistantConnections.pipe(
           Effect.flatMap((connections) =>

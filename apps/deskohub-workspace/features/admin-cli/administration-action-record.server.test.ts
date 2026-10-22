@@ -3,16 +3,18 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
+  AdministrationActionRecord,
   type AdministrationAssistantConnectionIdType,
   AdministrationAuthentication,
   type AdministrationChannel,
   CliSessionId,
   CurrentAdministrationCaller,
+  WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Layer, Option } from "effect";
-import { HttpRouter } from "effect/unstable/http";
+import { Effect, Exit, Layer, Option } from "effect";
+import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { StandaloneAccessCodeAdministration } from "@/features/access-codes";
 import { InvoiceAdministrationService } from "@/features/accounting/admin/invoice-administration.service";
 import { AdministrationService } from "@/features/administration/administration.service";
@@ -22,11 +24,13 @@ import { LegacyAdministratorBackfill } from "@/features/administrators";
 import { DiscountAdministration } from "@/features/discounts/admin/discount-administration.service";
 import { CampaignOperations } from "@/features/email-campaigns/backend/campaign-operations.service";
 import { ReservationProductDetailsBackfill } from "@/features/reservation/backend/reservation-product-details-backfill.service";
+import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
 import { CurrentAdministrationAction } from "./administration-action";
 import {
   type AdministrationActionEnd,
   AdministrationActionLog,
 } from "./administration-action-log.service";
+import { AdministrationActionRecordLive } from "./administration-action-record.server";
 import {
   cliSessionAdministrator,
   UnusedCliSessionAuthentication,
@@ -65,17 +69,28 @@ const makeActionLog = (
   const layer = Layer.succeed(AdministrationActionLog, {
     start: ({ operation, caller }) =>
       options.startFails
-        ? Effect.fail(new EffectDrizzleQueryError("insert", [], new Error()))
+        ? Effect.fail(
+            new EffectDrizzleQueryError({
+              query: "insert into administration actions",
+              params: [],
+              cause: new Error("write unavailable"),
+            })
+          )
         : Effect.sync(() => {
             events.push({ event: "start", operation, channel: caller.channel });
             return "01980000-0000-7000-8000-0000000000e1";
           }),
-    finish: (_id, end) =>
-      options.finishDies
-        ? Effect.die(new Error("The action log is unreachable."))
-        : Effect.sync(() => {
-            events.push({ event: "finish", end });
-          }),
+    finish: (_id, end) => {
+      if (options.finishDies) {
+        return Effect.die(new Error("The action log is unreachable."));
+      }
+      if (options.finishHangs) {
+        return Effect.never;
+      }
+      return Effect.sync(() => {
+        events.push({ event: "finish", end });
+      });
+    },
   });
   return { events, layer };
 };
@@ -428,5 +443,55 @@ describe("administration action record", () => {
         channel: assistantChannel,
       },
     ]);
+  });
+
+  describe("around the operation itself", () => {
+    const renameSessionEndpoint = {
+      group: WorkspaceAdminApi.groups.administration,
+      endpoint: WorkspaceAdminApi.groups.administration.endpoints.renameSession,
+    };
+    const runRecorded = (
+      actionLog: Layer.Layer<AdministrationActionLog>,
+      operation: Effect.Effect<HttpServerResponse.HttpServerResponse>
+    ) =>
+      AdministrationActionRecord.pipe(
+        Effect.flatMap((record) =>
+          record(operation, renameSessionEndpoint as never)
+        ),
+        Effect.provideService(CurrentAdministrationCaller, {
+          actor: cliSessionAdministrator,
+          channel: sessionChannel,
+        }),
+        Effect.provide(
+          AdministrationActionRecordLive.pipe(Layer.provide(actionLog))
+        ),
+        Effect.exit
+      );
+
+    test("records an interrupted operation", async () => {
+      const { events, layer } = makeActionLog();
+
+      const exit = await Effect.runPromise(
+        runRecorded(layer, Effect.interrupt)
+      );
+
+      expect(Exit.hasInterrupts(exit)).toBe(true);
+      expect(events.at(-1)).toEqual({
+        event: "finish",
+        end: { outcome: "interrupted" },
+      });
+    });
+
+    test("returns the response when recording the outcome stalls", async () => {
+      const { layer } = makeActionLog({ finishHangs: true });
+
+      const exit = await Effect.runPromise(
+        withInstantSleeps(
+          runRecorded(layer, Effect.succeed(HttpServerResponse.empty()))
+        )
+      );
+
+      expect(Exit.isSuccess(exit)).toBe(true);
+    });
   });
 });

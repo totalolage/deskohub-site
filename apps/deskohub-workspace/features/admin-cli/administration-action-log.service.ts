@@ -7,6 +7,7 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { administrationActions } from "@/db/schema";
+import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import type { AdministrationActionOutcome } from "./administration-action";
 
 type AdministrationActionId = string;
@@ -53,7 +54,7 @@ export class AdministrationActionLog extends Context.Service<
             operation,
             outcome: "started",
             actorAccountId: caller.actor.accountId,
-            actorAccountEmail: caller.actor.email,
+            actorAccountEmail: sensitiveDatabaseParameter(caller.actor.email),
             ...channelColumns(caller.channel),
           })
           .returning({ id: administrationActions.id });

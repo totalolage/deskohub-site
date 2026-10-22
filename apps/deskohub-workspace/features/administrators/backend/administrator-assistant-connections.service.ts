@@ -7,6 +7,7 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { administratorAssistantConnections } from "@/db/schema";
+import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 
 type AssistantConnectionChannel = Extract<
   AdministrationChannel,
@@ -86,7 +87,9 @@ export class AdministratorAssistantConnections extends Context.Service<
             .insert(administratorAssistantConnections)
             .values({
               approvedByAccountId: input.actor.accountId,
-              approvedByAccountEmail: input.actor.email,
+              approvedByAccountEmail: sensitiveDatabaseParameter(
+                input.actor.email
+              ),
               oauthClientId: input.oauthClientId,
               clientName: input.clientName,
               createdAt: now,

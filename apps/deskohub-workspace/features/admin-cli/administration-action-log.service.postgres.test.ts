@@ -44,17 +44,19 @@ describe.skipIf(!testDatabase)(
 
     beforeAll(async () => {
       administrator = await insertTestAdministrator(testDatabase, "action-log");
-      await testDatabase.db.insert(cliSessions).values({
-        id: sessionId,
-        approvedByAccountId: administrator.accountId,
-        approvedByAccountEmail: administrator.email,
-        tokenHash: `${crypto.randomUUID().replaceAll("-", "")}${"a".repeat(11)}`,
-        clientName: "action log test client",
-        cliVersion: "1.0.0",
-        buildTarget: "development",
-        createdAt: Temporal.Now.instant(),
-        lastUsedAt: Temporal.Now.instant(),
-      });
+      await Effect.runPromise(
+        testDatabase.db.insert(cliSessions).values({
+          id: sessionId,
+          approvedByAccountId: administrator.accountId,
+          approvedByAccountEmail: administrator.email,
+          tokenHash: `${crypto.randomUUID().replaceAll("-", "")}${"a".repeat(11)}`,
+          clientName: "action log test client",
+          cliVersion: "1.0.0",
+          buildTarget: "development",
+          createdAt: Temporal.Now.instant(),
+          lastUsedAt: Temporal.Now.instant(),
+        })
+      );
       assistantChannel = await run(
         AdministratorAssistantConnections.pipe(
           Effect.flatMap((connections) =>
