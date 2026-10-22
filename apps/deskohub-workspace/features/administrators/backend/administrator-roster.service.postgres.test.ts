@@ -33,15 +33,17 @@ const runRosterFailure = <A, E>(
 const insertAccount = async ({
   emailVerified = true,
   deletionRequested = false,
+  review = false,
 }: {
   readonly emailVerified?: boolean;
   readonly deletionRequested?: boolean;
+  readonly review?: boolean;
 } = {}) => {
   const accountId = customerAccountIdSchema.make(crypto.randomUUID());
   const email = testEmailAddress(`roster-${accountId}`);
   await testDatabase!.pool.query(
-    `insert into customer_accounts (id) values ($1) on conflict do nothing`,
-    [accountId]
+    `insert into customer_accounts (id, review) values ($1, $2) on conflict do nothing`,
+    [accountId, review]
   );
   await testDatabase!.pool.query(
     `insert into auth."user" (id, name, email, email_verified, deletion_requested_at)
@@ -159,6 +161,18 @@ describe.skipIf(!testDatabase)(
         }
       }
     );
+
+    test("refuses a review account", async () => {
+      const actor = await insertAccount();
+      const target = await insertAccount({ review: true });
+
+      const error = await runRosterFailure((roster) =>
+        roster.grant({ email: target.email, actor })
+      );
+
+      expect(error._tag).toBe("AdministratorReviewAccountError");
+      expect(await isAdministrator(target.accountId)).toBe(false);
+    });
 
     test("revokes another administrator's grant", async () => {
       const actor = await insertAccount();

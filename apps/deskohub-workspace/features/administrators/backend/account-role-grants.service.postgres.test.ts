@@ -122,21 +122,23 @@ describe.skipIf(!testDatabase)(
 
     test("gives a review account no role, whatever grant it has", async () => {
       const reviewAccount = await insertAccount({ review: true });
-      await testDatabase!.pool.query(
-        "insert into account_role_grants (account_id, role) values ($1, $2)",
-        [reviewAccount, role]
-      );
+      const administrator = await insertAccount();
+      for (const accountId of [reviewAccount, administrator]) {
+        await runGrants((grants) =>
+          grants.grant({ accountId, role, grantedBy: null })
+        );
+      }
 
       expect(
         await runGrants((grants) =>
           grants.has({ accountId: reviewAccount, role })
         )
       ).toBe(false);
-      expect(
-        (await runGrants((grants) => grants.list(role))).map(
-          ({ accountId }) => accountId
-        )
-      ).not.toContain(reviewAccount);
+      const listed = (await runGrants((grants) => grants.list(role))).map(
+        ({ accountId }) => accountId
+      );
+      expect(listed).toContain(administrator);
+      expect(listed).not.toContain(reviewAccount);
       expect(
         await runGrants((grants) =>
           grants.revoke({ accountId: reviewAccount, role })
