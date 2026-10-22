@@ -86,7 +86,13 @@ describe("CountConditionControls", () => {
           />
         </RouteLocaleProvider>
       );
-      expect(view.getByRole("alert").textContent).toBe(message);
+      const alert = view.getByRole("alert");
+      expect(alert.textContent).toBe(message);
+      const invalid = view.container.querySelectorAll('[aria-invalid="true"]');
+      expect(invalid.length).toBeGreaterThan(0);
+      for (const control of invalid) {
+        expect(control.getAttribute("aria-describedby")).toBe(alert.id);
+      }
     }
   );
 });

@@ -55,6 +55,7 @@ import {
 import {
   FieldError,
   type FieldErrorLookup,
+  fieldErrorAttributes,
 } from "./audience-control-primitives";
 import {
   type AudienceCondition,
@@ -232,11 +233,12 @@ function GroupEditor({
   const groupError =
     context.errorAt(path) ?? context.errorAt(`${path}.filters`);
   const operatorName = useId();
+  const groupErrorId = useId();
 
   return (
     <div
       className={cn(
-        "space-y-3 rounded-lg border p-2 sm:p-3",
+        "flex flex-col gap-3 rounded-lg border p-2 sm:p-3",
         groupFrameClassName(depth)
       )}
     >
@@ -309,12 +311,17 @@ function GroupEditor({
         </ol>
       )}
 
-      {groupError ? <FieldError message={groupError} /> : null}
+      <FieldError id={groupErrorId} messages={[groupError]} />
 
       <div className="flex flex-wrap items-center gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" variant="secondary" size="sm">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              aria-describedby={groupError ? groupErrorId : undefined}
+            >
               <Plus className="h-4 w-4" aria-hidden />
               {m.emailCampaignsAudienceGroupAddCondition({}, { locale })}
               <ChevronDown className="h-3.5 w-3.5" aria-hidden />
@@ -369,14 +376,18 @@ function ConditionEditor({
   const locale = useRouteLocale();
   const errorAt: FieldErrorLookup = (field) =>
     context.errorAt(field === "" ? path : `${path}.${field}`);
+  const leafError = context.errorAt(path);
+  const leafErrorId = useId();
 
   return (
     <div className="flex items-start gap-2 rounded-md border border-navy-blue/15 bg-white px-2.5 py-2 sm:gap-3 sm:px-3">
-      <div className="min-w-0 flex-1 space-y-2">
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
         <LeafPicker
           value={leafMenuValue(leaf)}
           holder={context.holder}
           onChange={onChange}
+          errorId={leafErrorId}
+          invalid={leafError !== undefined}
         />
         {leaf._tag === "InAudience" ? (
           <SavedAudienceMembershipControls
@@ -394,9 +405,7 @@ function ConditionEditor({
             context={context}
           />
         )}
-        {context.errorAt(path) && (
-          <FieldError message={context.errorAt(path) ?? ""} />
-        )}
+        <FieldError id={leafErrorId} messages={[leafError]} />
       </div>
       <RemoveButton
         label={m.emailCampaignsAudienceConditionRemove({}, { locale })}
@@ -478,10 +487,15 @@ function LeafPicker({
   value,
   holder,
   onChange,
+  errorId,
+  invalid,
 }: {
   readonly value: string;
   readonly holder: AudienceFilterHolder;
   readonly onChange: (leaf: AudienceFilterLeaf) => void;
+  /** The id of the `FieldError` that explains the condition's own errors. */
+  readonly errorId: string;
+  readonly invalid: boolean;
 }) {
   const locale = useRouteLocale();
   const menu = leafMenu(holder, locale);
@@ -500,6 +514,7 @@ function LeafPicker({
           {},
           { locale }
         )}
+        {...fieldErrorAttributes(errorId, invalid)}
         className="h-7 min-h-7 w-auto gap-1 rounded-md border-transparent bg-transparent px-1.5 py-0 font-semibold text-[0.7rem] text-navy-blue/65 uppercase tracking-[0.12em] hover:border-navy-blue/20"
       >
         <SelectValue />

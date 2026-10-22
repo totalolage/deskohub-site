@@ -5,7 +5,7 @@ import {
   type InSavedAudienceType as InSavedAudience,
 } from "@deskohub/workspace-admin-api";
 import { ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import {
@@ -36,6 +36,7 @@ import {
   type ControlProps,
   compactSelectClassName,
   FieldError,
+  fieldErrorAttributes,
 } from "./audience-control-primitives";
 import { unchosenSavedAudience } from "./audience-filter-editing";
 
@@ -63,10 +64,11 @@ export function SavedAudienceMembershipControls({
       : condition.audienceId;
   const chosenAudience = savedAudiences.find(({ id }) => id === chosen);
   const missing = errorAt("audienceId") !== undefined;
+  const missingErrorId = useId();
   const search = m.emailAutomationFlowSavedAudienceSearch({}, { locale });
   const unknown = m.emailAutomationFlowSavedAudienceUnknown({}, { locale });
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-2">
       <ConditionLine>
         <Select
           value={condition.operator}
@@ -103,7 +105,7 @@ export function SavedAudienceMembershipControls({
               type="button"
               role="combobox"
               aria-expanded={open}
-              aria-invalid={missing}
+              {...fieldErrorAttributes(missingErrorId, missing)}
               aria-label={m.emailAutomationFlowSavedAudiencePickerLabel(
                 {},
                 { locale }
@@ -185,11 +187,14 @@ export function SavedAudienceMembershipControls({
       <p className="text-navy-blue/55 text-xs">
         {m.emailAutomationFlowSavedAudienceLiveNote({}, { locale })}
       </p>
-      {missing && (
-        <FieldError
-          message={m.emailAutomationFlowSavedAudienceRequired({}, { locale })}
-        />
-      )}
+      <FieldError
+        id={missingErrorId}
+        messages={[
+          missing
+            ? m.emailAutomationFlowSavedAudienceRequired({}, { locale })
+            : undefined,
+        ]}
+      />
     </div>
   );
 }

@@ -35,6 +35,7 @@ import { cn } from "@/shared/utils";
 import {
   compactInputClassName,
   compactSelectClassName,
+  fieldErrorAttributes,
   ValueChips,
 } from "../../audiences/audience-control-primitives";
 import type { CalendarUsage } from "./calendar-preview";
@@ -160,7 +161,7 @@ function TypedValues({
   removable,
   onAdd,
   onRemove,
-  invalid,
+  errorId,
 }: {
   readonly values: readonly number[];
   readonly labelOf: (value: number) => string;
@@ -171,7 +172,8 @@ function TypedValues({
   readonly removable: boolean;
   readonly onAdd: (value: number) => void;
   readonly onRemove: (value: number) => void;
-  readonly invalid?: boolean;
+  /** The id of the port's refusal of these values, while there is one. */
+  readonly errorId?: string;
 }) {
   const locale = useRouteLocale();
   const [draft, setDraft] = useState("");
@@ -215,7 +217,10 @@ function TypedValues({
           }}
           aria-label={inputLabel}
           placeholder={inputLabel}
-          variant={invalid ? "error" : "default"}
+          {...(errorId === undefined
+            ? {}
+            : fieldErrorAttributes(errorId, true))}
+          variant={errorId === undefined ? "default" : "error"}
           className={cn(compactInputClassName, "w-40")}
         />
         <Button
@@ -295,7 +300,7 @@ function MinutesPicker({
           inputLabel={m.emailAutomationFlowCalendarMinuteOther({}, { locale })}
           addLabel={m.emailAutomationFlowCalendarMinuteAdd({}, { locale })}
           removable={value.length > 1}
-          invalid={errorId !== undefined}
+          errorId={errorId}
           onAdd={(minute) => {
             const next = withNumber(value, minute);
             if (next) onChange(next);

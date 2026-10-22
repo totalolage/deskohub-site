@@ -34,13 +34,39 @@ export type ControlProps<Value> = {
   readonly errorAt: FieldErrorLookup;
 };
 
-export function FieldError({ message }: { readonly message: string }) {
+/**
+ * A control's validation messages under the id its `aria-describedby` points
+ * at (`fieldErrorAttributes`). The alert stays mounted so screen readers
+ * announce a message when it appears; while empty it leaves the flow, so
+ * place it in a flex or grid gap rather than `space-y`.
+ */
+export function FieldError({
+  id,
+  messages,
+}: {
+  readonly id: string;
+  readonly messages: ReadonlyArray<string | undefined>;
+}) {
   return (
-    <p role="alert" className="text-burned-orange text-sm">
-      {message}
-    </p>
+    <div
+      id={id}
+      role="alert"
+      className="flex flex-col gap-2 text-burned-orange text-sm empty:sr-only"
+    >
+      {messages
+        .filter((message) => message !== undefined && message !== "")
+        .map((message) => (
+          <p key={message}>{message}</p>
+        ))}
+    </div>
   );
 }
+
+/** Marks a control invalid and described by its `FieldError` while it has one. */
+export const fieldErrorAttributes = (errorId: string, invalid: boolean) => ({
+  "aria-invalid": invalid,
+  "aria-describedby": invalid ? errorId : undefined,
+});
 
 /** Wording kept apart from the controls so the row reads as a sentence. */
 export function ConditionText({ children }: { readonly children: ReactNode }) {
@@ -101,6 +127,7 @@ export function CountComparisonControl({
   value,
   onChange,
   errorAt,
+  errorId,
   label,
 }: {
   readonly operator: AudienceCountOperatorType;
@@ -110,6 +137,8 @@ export function CountComparisonControl({
     readonly value: number;
   }) => void;
   readonly errorAt: FieldErrorLookup;
+  /** The id of the `FieldError` that explains this comparison's errors. */
+  readonly errorId: string;
   /** What is counted, for screen readers ("Reservation count"). */
   readonly label: string;
 }) {
@@ -128,7 +157,7 @@ export function CountComparisonControl({
             { subject: label },
             { locale }
           )}
-          aria-invalid={errorAt("operator") !== undefined}
+          {...fieldErrorAttributes(errorId, errorAt("operator") !== undefined)}
           className={cn(compactSelectClassName, "min-w-16 font-semibold")}
         >
           <SelectValue>{countOperators[operator]}</SelectValue>
@@ -155,7 +184,7 @@ export function CountComparisonControl({
           onChange({ operator, value: numberFromInput(event.target.value) })
         }
         aria-label={label}
-        aria-invalid={invalid}
+        {...fieldErrorAttributes(errorId, invalid)}
         variant={invalid ? "error" : "default"}
         className={cn(compactInputClassName, "w-20")}
       />

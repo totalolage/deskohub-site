@@ -84,6 +84,7 @@ import {
   countComparisonError,
   FieldError,
   type FieldErrorLookup,
+  fieldErrorAttributes,
   numberFromInput,
   numberInputValue,
   SetOperatorSelect,
@@ -143,9 +144,12 @@ function DatePeriodControl({
   value,
   onChange,
   errorAt,
+  errorId,
   label,
   holder,
 }: ControlProps<DatePeriod> & {
+  /** The id of the `FieldError` that explains the period's errors. */
+  readonly errorId: string;
   /** What the period applies to, for screen readers. */
   readonly label: string;
   readonly holder: AudienceFilterHolder;
@@ -190,6 +194,7 @@ function DatePeriodControl({
           })
         }
         aria-label={countLabel}
+        {...fieldErrorAttributes(errorId, errorAt("count") !== undefined)}
         variant={errorAt("count") ? "error" : "default"}
         className={cn(compactInputClassName, "w-20")}
       />
@@ -232,6 +237,10 @@ function DatePeriodControl({
       {...bounds}
       onChange={(event) => onChange(update(event.target.value))}
       aria-label={fieldLabel}
+      {...fieldErrorAttributes(
+        errorId,
+        errorAt(field) !== undefined || errorAt("") !== undefined
+      )}
       variant={errorAt(field) || errorAt("") ? "error" : "default"}
       className={cn(compactInputClassName, "w-40 max-w-full")}
     />
@@ -584,8 +593,9 @@ export function CountConditionControls<
   const pinsChoice = (param: AudienceChoiceParam) =>
     campaignChosen && Object.hasOwn(param.options, pinnedChoice);
   const periodErrorAt = withPath(errorAt, "params.period");
+  const errorId = useId();
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-2">
       <ConditionLine>
         <ConditionText>
           {m.emailCampaignsAudienceCountNumberOf({}, { locale })}
@@ -663,6 +673,7 @@ export function CountConditionControls<
           value={params.period}
           onChange={(period) => changeParams({ ...params, period })}
           errorAt={periodErrorAt}
+          errorId={errorId}
           label={wording.period}
           holder={holder}
         />
@@ -674,15 +685,17 @@ export function CountConditionControls<
           value={condition.value}
           onChange={(comparison) => onChange({ ...condition, ...comparison })}
           errorAt={errorAt}
+          errorId={errorId}
           label={wording.count}
         />
       </ConditionLine>
-      {[
-        ...datePeriodErrors(periodErrorAt, locale),
-        countComparisonError(errorAt, condition.operator, locale),
-      ].map(
-        (message) => message && <FieldError key={message} message={message} />
-      )}
+      <FieldError
+        id={errorId}
+        messages={[
+          ...datePeriodErrors(periodErrorAt, locale),
+          countComparisonError(errorAt, condition.operator, locale),
+        ]}
+      />
     </div>
   );
 }
@@ -720,8 +733,9 @@ export function DateConditionControls<Condition extends AudienceDateCondition>({
   const periodErrorAt = withPath(errorAt, "value");
   // Attribute parameters, such as a last visit's product, stay.
   const params = condition.params && { params: condition.params };
+  const errorId = useId();
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-2">
       <ConditionLine>
         <ConditionText>{label}</ConditionText>
         <Select
@@ -767,14 +781,16 @@ export function DateConditionControls<Condition extends AudienceDateCondition>({
             value={condition.value}
             onChange={(value) => onChange({ ...condition, value })}
             errorAt={periodErrorAt}
+            errorId={errorId}
             label={label}
             holder={holder}
           />
         )}
       </ConditionLine>
-      {datePeriodErrors(periodErrorAt, locale).map((message) => (
-        <FieldError key={message} message={message} />
-      ))}
+      <FieldError
+        id={errorId}
+        messages={datePeriodErrors(periodErrorAt, locale)}
+      />
       {reservationProduct && (
         <ProductFilterControl
           value={condition.params?.product}
@@ -797,11 +813,13 @@ function ValueEntry({
   onChange,
   wording,
   invalid,
+  errorId,
 }: {
   readonly values: readonly string[];
   readonly onChange: (values: readonly string[]) => void;
   readonly wording: AudienceValueEntryWording;
   readonly invalid: boolean;
+  readonly errorId: string;
 }) {
   const [draft, setDraft] = useState("");
   const commit = () => {
@@ -829,6 +847,7 @@ function ValueEntry({
         onBlur={commit}
         placeholder={wording.placeholder}
         aria-label={wording.add}
+        {...fieldErrorAttributes(errorId, invalid)}
         variant={invalid ? "error" : "default"}
         className={cn(compactInputClassName, "w-44 max-w-full")}
       />
@@ -843,6 +862,7 @@ function LookupPicker({
   options,
   wording,
   invalid,
+  errorId,
 }: {
   readonly values: readonly string[];
   readonly onChange: (values: readonly string[]) => void;
@@ -852,6 +872,7 @@ function LookupPicker({
     { readonly _tag: "Lookup" }
   >;
   readonly invalid: boolean;
+  readonly errorId: string;
 }) {
   const nameOf = (id: string) =>
     options.find((option) => option.id === id)?.name ?? wording.unknown(id);
@@ -871,6 +892,7 @@ function LookupPicker({
             tone={invalid ? "burned-orange" : "navy-blue"}
             size="sm"
             aria-invalid={invalid}
+            aria-describedby={invalid ? errorId : undefined}
           >
             {wording.choose}
             <ChevronDown className="h-3.5 w-3.5" aria-hidden />
@@ -915,6 +937,7 @@ export function SetConditionControls<Condition extends AudienceSetCondition>({
   readonly lookups: AudienceValueLookups;
 }) {
   const invalid = errorAt("value") !== undefined;
+  const errorId = useId();
   const setValues = (value: readonly string[]) =>
     onChange({ ...condition, value });
   const freeText = (entryWording: AudienceValueEntryWording) => (
@@ -923,11 +946,12 @@ export function SetConditionControls<Condition extends AudienceSetCondition>({
       onChange={setValues}
       wording={entryWording}
       invalid={invalid}
+      errorId={errorId}
     />
   );
   const values = wording.values;
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-2">
       <ConditionLine>
         <ConditionText>{wording.lead}</ConditionText>
         <SetOperatorSelect
@@ -949,6 +973,7 @@ export function SetConditionControls<Condition extends AudienceSetCondition>({
                   >
                     <Checkbox
                       id={id}
+                      {...fieldErrorAttributes(errorId, invalid)}
                       checked={condition.value.includes(option)}
                       onCheckedChange={(next) =>
                         setValues(
@@ -975,6 +1000,7 @@ export function SetConditionControls<Condition extends AudienceSetCondition>({
                   options={options}
                   wording={values}
                   invalid={invalid}
+                  errorId={errorId}
                 />
               ) : (
                 freeText(values.entry)
@@ -983,7 +1009,10 @@ export function SetConditionControls<Condition extends AudienceSetCondition>({
           })
         )}
       </ConditionLine>
-      {invalid && <FieldError message={wording.emptyError} />}
+      <FieldError
+        id={errorId}
+        messages={[invalid ? wording.emptyError : undefined]}
+      />
     </div>
   );
 }

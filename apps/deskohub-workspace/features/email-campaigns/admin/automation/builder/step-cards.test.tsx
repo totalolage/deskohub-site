@@ -59,7 +59,10 @@ const emittedStep = (calls: readonly (readonly [WaitStep])[]) => {
   return next;
 };
 
-const renderWait = (step: WaitStep) => {
+const renderWait = (
+  step: WaitStep,
+  errorAt: (field: string) => string | undefined = () => undefined
+) => {
   const onChange = mock((_step: WaitStep) => undefined);
   const view = render(
     <RouteLocaleProvider locale={locale}>
@@ -68,7 +71,7 @@ const renderWait = (step: WaitStep) => {
         number={1}
         onChange={onChange}
         menu={null}
-        errorAt={() => undefined}
+        errorAt={errorAt}
         initialPreview={undefined}
       />
     </RouteLocaleProvider>
@@ -164,4 +167,23 @@ test("switching back to a duration emits a duration wait", () => {
   expect(next.id).toBe(calendarWait.id);
   expect(next.wait._tag).toBe("Duration");
   expect(campaignOperationInputs("previewCalendarExpression")).toEqual([]);
+});
+
+test("an invalid count is described by its mounted error", () => {
+  const valid = renderWait(durationWait);
+  const alert = valid.view.getByRole("alert");
+  expect(alert.textContent).toBe("");
+  expect(valid.count()?.getAttribute("aria-invalid")).toBe("false");
+  expect(valid.count()?.hasAttribute("aria-describedby")).toBe(false);
+  cleanup();
+
+  const invalid = renderWait(
+    { ...durationWait, wait: { _tag: "Duration", count: 0, unit: "hour" } },
+    (field) => (field === "count" ? "Expected a positive count" : undefined)
+  );
+  const count = invalid.count() as HTMLElement;
+  expect(count.getAttribute("aria-invalid")).toBe("true");
+  const error = invalid.view.getByRole("alert");
+  expect(count.getAttribute("aria-describedby")).toBe(error.id);
+  expect(error.textContent).not.toBe("");
 });

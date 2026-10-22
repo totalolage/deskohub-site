@@ -20,6 +20,7 @@ import { cn } from "@/shared/utils";
 import {
   FieldError,
   type FieldErrorLookup,
+  fieldErrorAttributes,
 } from "../../audiences/audience-control-primitives";
 import { ProductFilterControl } from "../../audiences/reservation-product-filter-control";
 import { AutomationFrequencyBanner } from "../automation-frequency-banner";
@@ -95,6 +96,8 @@ export function TriggerCard({
 }) {
   const locale = useRouteLocale();
   const familyName = useId();
+  const familyErrorId = useId();
+  const familyError = errorAt("");
   const calendar = useCalendarPreview(initialPreview, "trigger");
   const previewMinutesError = scheduleMinutesFailure(calendar.preview);
   const family: TriggerFamily | null =
@@ -132,11 +135,16 @@ export function TriggerCard({
       title={title}
     >
       {family === null ? (
-        <div className="space-y-3">
+        <div className="flex flex-col gap-3">
           <p className="text-navy-blue/70 text-sm">
             {m.emailAutomationFlowTriggerChooseDescription({}, { locale })}
           </p>
-          <div className="grid gap-2 @lg:grid-cols-2">
+          <div
+            role="radiogroup"
+            aria-label={m.emailAutomationFlowTriggerFamilyLabel({}, { locale })}
+            {...fieldErrorAttributes(familyErrorId, familyError !== undefined)}
+            className="grid gap-2 @lg:grid-cols-2"
+          >
             {(
               [
                 [
@@ -177,7 +185,7 @@ export function TriggerCard({
               </ChoiceCard>
             ))}
           </div>
-          {errorAt("") && <FieldError message={errorAt("") ?? ""} />}
+          <FieldError id={familyErrorId} messages={[familyError]} />
         </div>
       ) : (
         <SegmentedControl

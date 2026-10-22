@@ -163,8 +163,13 @@ test("marks the audience picker invalid until an audience is chosen", async () =
   const unchosen = await renderConditionBuilder(
     groupOf(newSavedAudienceMembership())
   );
-  expect(audiencePicker(unchosen).getAttribute("aria-invalid")).toBe("true");
-  expect(unchosen.getAllByRole("alert")).toHaveLength(1);
+  const picker = audiencePicker(unchosen);
+  expect(picker.getAttribute("aria-invalid")).toBe("true");
+  const error = document.getElementById(
+    picker.getAttribute("aria-describedby") ?? ""
+  );
+  expect(error?.getAttribute("role")).toBe("alert");
+  expect(error?.textContent).not.toBe("");
   cleanup();
 
   const chosen = await renderConditionBuilder(
@@ -174,7 +179,11 @@ test("marks the audience picker invalid until an audience is chosen", async () =
     } as AutomationConditionLeaf)
   );
   expect(audiencePicker(chosen).getAttribute("aria-invalid")).toBe("false");
-  expect(chosen.queryAllByRole("alert")).toHaveLength(0);
+  expect(audiencePicker(chosen).hasAttribute("aria-describedby")).toBe(false);
+  // The alerts stay mounted, empty, so a later error is announced.
+  expect(
+    chosen.getAllByRole("alert").filter((alert) => alert.textContent !== "")
+  ).toHaveLength(0);
 });
 
 test("choosing an audience sets the leaf's audience and keeps its operator", async () => {

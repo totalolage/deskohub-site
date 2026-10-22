@@ -54,7 +54,8 @@ const schedule: FlowTriggerValue = {
 
 const renderTrigger = (
   trigger: FlowTriggerValue | null,
-  initialPreview?: CalendarPreviewView
+  initialPreview?: CalendarPreviewView,
+  errorAt: (field: string) => string | undefined = () => undefined
 ) => {
   const onChange = mock((_trigger: FlowTriggerValue) => undefined);
   const view = render(
@@ -63,7 +64,7 @@ const renderTrigger = (
         trigger={trigger}
         onChange={onChange}
         initialPreview={initialPreview}
-        errorAt={() => undefined}
+        errorAt={errorAt}
         minutesError={undefined}
       />
     </RouteLocaleProvider>
@@ -121,6 +122,23 @@ const expectScheduleWithPreview = (
 };
 
 describe("trigger family", () => {
+  test("a missing trigger is described by its mounted error", () => {
+    const unset = renderTrigger(null);
+    const choices = unset.view.getByRole("radiogroup");
+    expect(choices.getAttribute("aria-invalid")).toBe("false");
+    expect(unset.view.getByRole("alert").textContent).toBe("");
+    cleanup();
+
+    const refused = renderTrigger(null, undefined, (field) =>
+      field === "" ? "Expected a trigger" : undefined
+    );
+    const invalid = refused.view.getByRole("radiogroup");
+    expect(invalid.getAttribute("aria-invalid")).toBe("true");
+    const error = refused.view.getByRole("alert");
+    expect(invalid.getAttribute("aria-describedby")).toBe(error.id);
+    expect(error.textContent).not.toBe("");
+  });
+
   test("choosing a schedule first starts its calendar and previews it", () => {
     const { onChange, choose } = renderTrigger(null);
 

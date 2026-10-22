@@ -33,6 +33,7 @@ import {
   compactSelectClassName,
   FieldError,
   type FieldErrorLookup,
+  fieldErrorAttributes,
   numberFromInput,
   numberInputValue,
 } from "../../audiences/audience-control-primitives";
@@ -151,6 +152,7 @@ export function WaitStepCard({
   const calendar = useCalendarPreview(initialPreview, "wait");
   const { wait } = step;
   const countError = errorAt("count");
+  const countErrorId = useId();
 
   return (
     <FlowCard
@@ -191,7 +193,7 @@ export function WaitStepCard({
         ]}
       />
       {wait._tag === "Duration" ? (
-        <div className="space-y-1.5">
+        <div className="flex flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm">
               {m.emailAutomationFlowWaitFor({}, { locale })}
@@ -210,6 +212,7 @@ export function WaitStepCard({
                 })
               }
               aria-label={m.emailAutomationFlowWaitCountLabel({}, { locale })}
+              {...fieldErrorAttributes(countErrorId, countError !== undefined)}
               variant={countError ? "error" : "default"}
               className={cn(compactInputClassName, "w-24")}
             />
@@ -239,11 +242,12 @@ export function WaitStepCard({
               </SelectContent>
             </Select>
           </div>
-          {countError && (
-            <FieldError
-              message={m.emailAutomationFlowWaitCountError({}, { locale })}
-            />
-          )}
+          <FieldError
+            id={countErrorId}
+            messages={[
+              countError && m.emailAutomationFlowWaitCountError({}, { locale }),
+            ]}
+          />
         </div>
       ) : (
         <div className="space-y-2">
