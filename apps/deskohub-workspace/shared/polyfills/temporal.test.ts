@@ -143,9 +143,7 @@ const outermostWrapper = (node: ts.Node) => {
   return node;
 };
 
-/** Generator bodies wait for the first `next()`, so they never run here. */
 const isImmediatelyInvoked = (fn: ts.SignatureDeclaration) => {
-  if ("asteriskToken" in fn && fn.asteriskToken !== undefined) return false;
   const node = outermostWrapper(fn);
   return (
     (ts.isCallExpression(node.parent) || ts.isNewExpression(node.parent)) &&
@@ -157,13 +155,19 @@ const isImmediatelyInvoked = (fn: ts.SignatureDeclaration) => {
 const runsAtLoad = (node: ts.Node) => {
   for (let child = node; child.parent; child = child.parent) {
     const parent = child.parent;
-    if (
-      ts.isFunctionLike(parent) &&
-      !isImmediatelyInvoked(parent) &&
-      (("body" in parent && parent.body === child) ||
-        parent.parameters.some((parameter) => parameter === child))
-    ) {
-      return false;
+    if (ts.isFunctionLike(parent)) {
+      const isBody = "body" in parent && parent.body === child;
+      if (
+        (isBody ||
+          parent.parameters.some((parameter) => parameter === child)) &&
+        !isImmediatelyInvoked(parent)
+      ) {
+        return false;
+      }
+      // A generator body waits for the first `next()`; its parameters don't.
+      if (isBody && "asteriskToken" in parent && parent.asteriskToken) {
+        return false;
+      }
     }
     if (
       ts.isPropertyDeclaration(parent) &&
@@ -303,6 +307,10 @@ describe("load-time Temporal reads", () => {
     [
       "an ambient Temporal declaration",
       "declare const Temporal: any;\nconst now = Temporal.Now.instant();",
+    ],
+    [
+      "an immediately invoked generator's default parameter",
+      "const steps = (function* (now = Temporal.Now.instant()) { yield now; })();",
     ],
     [
       "an immediately constructed function",
