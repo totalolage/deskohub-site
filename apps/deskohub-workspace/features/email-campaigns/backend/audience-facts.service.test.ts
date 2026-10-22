@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
+  type DotyposCustomer,
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
   type DotyposReservation,
@@ -7,8 +8,10 @@ import {
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import type { ReservationProductFilterType } from "@deskohub/workspace-admin-api";
-import { Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { TestClock } from "effect/testing";
+import type { ReservationVisit } from "@/features/reservation/backend/reservation-visits.service";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
   type AudienceCondition,
   type AudienceFacts,
@@ -20,8 +23,17 @@ import {
   type DatePeriodBounds,
   datePeriodBounds,
 } from "../date-period";
-import { audienceEvaluationAt } from "./audience-evaluation-context";
-import { AudienceFactsService } from "./audience-facts.service";
+import {
+  AudienceFactSource,
+  type AudienceFactSource as AudienceFactSourceType,
+  AudienceScope,
+  type AudienceScope as AudienceScopeType,
+  audienceEvaluationAt,
+} from "./audience-evaluation-context";
+import {
+  AudienceFactsService,
+  audienceDotyposReads,
+} from "./audience-facts.service";
 import {
   type CampaignBookedReservation,
   CampaignCandidateRepository,
@@ -31,16 +43,44 @@ import {
 const customerId = (value: string) => DotyposCustomerIdSchema.make(value);
 const reservationId = (value: string) => DotyposReservationIdSchema.make(value);
 const instant = (value: string) => Temporal.Instant.from(value);
+const customerProfile = (id: string): DotyposCustomer =>
+  ({
+    id: customerId(id),
+    _cloudId: "cloud",
+    points: "0",
+    flags: "0",
+    display: true,
+    deleted: false,
+  }) as DotyposCustomer;
 
 /** 12:00 in Prague (CEST). */
 const now = instant("2026-10-15T10:00:00Z");
 
-const visit = (id: string, startsAt: string): DotyposReservation =>
+const visit = (
+  id: string,
+  startsAt: string,
+  status: "NEW" | "CANCELLED" = "NEW"
+): DotyposReservation =>
   ({
     id: reservationId(id),
     startDate: startsAt,
     endDate: instant(startsAt).add({ hours: 1 }).toString(),
+    status,
   }) as DotyposReservation;
+
+const reservationVisit = (
+  id: string,
+  customer: string,
+  startsAt: string,
+  status: ReservationVisit["status"] = "active"
+): ReservationVisit => ({
+  workspaceReservationId: workspaceReservationIdSchema.make(`workspace-${id}`),
+  dotyposReservationId: reservationId(id),
+  dotyposCustomerId: customerId(customer),
+  startsAt: instant(startsAt),
+  endsAt: instant(startsAt).add({ hours: 1 }),
+  status,
+});
 
 const group = (...filters: AudienceFilter[]): AudienceFilter => ({
   _tag: "Group",
@@ -54,38 +94,109 @@ const resolveFacts = async (input: {
   readonly visits?: readonly DotyposReservation[];
   readonly booked?: readonly CampaignBookedReservation[];
   readonly earliestReservationAt?: Temporal.Instant | null;
+  readonly scope?: AudienceScopeType;
+  readonly facts?: AudienceFactSourceType;
+  readonly respectVisitBounds?: boolean;
+  readonly profileCustomers?: readonly DotyposCustomerId[];
 }) => {
-  const countReservations = mock((_: CampaignReservationSelection) =>
-    Effect.succeed(new Map<DotyposCustomerId, number>())
-  );
+  const countReservations = mock((selection: CampaignReservationSelection) => {
+    const counts = new Map<DotyposCustomerId, number>();
+    for (const { dotyposReservationId, dotyposCustomerId } of input.booked ??
+      []) {
+      if (
+        selection.dotyposReservationIds &&
+        !selection.dotyposReservationIds.includes(dotyposReservationId)
+      ) {
+        continue;
+      }
+      if (
+        selection.customers &&
+        !selection.customers.includes(dotyposCustomerId)
+      ) {
+        continue;
+      }
+      counts.set(dotyposCustomerId, (counts.get(dotyposCustomerId) ?? 0) + 1);
+    }
+    return Effect.succeed(counts);
+  });
   const countReceivedCampaignEmails = mock(
     (_: { readonly purpose?: string; readonly dispatched: DatePeriodBounds }) =>
       Effect.succeed(new Map<DotyposCustomerId, number>())
   );
-  const accountCreations = mock((_: DatePeriodBounds) =>
-    Effect.succeed({
-      withValue: new Set<DotyposCustomerId>(),
-      inPeriod: new Set<DotyposCustomerId>(),
-    })
+  const accountCreations = mock(
+    (_: {
+      readonly created: DatePeriodBounds;
+      readonly asOf: Temporal.Instant;
+    }) =>
+      Effect.succeed({
+        withValue: new Set<DotyposCustomerId>(),
+        inPeriod: new Set<DotyposCustomerId>(),
+      })
   );
   const listBookedReservations = mock(
     (
       ids: readonly string[],
-      _selection?: { readonly product?: ReservationProductFilterType }
+      selection?: {
+        readonly product?: ReservationProductFilterType;
+        readonly customers?: readonly DotyposCustomerId[];
+      }
     ) =>
       Effect.succeed(
-        (input.booked ?? []).filter(({ dotyposReservationId }) =>
-          ids.includes(dotyposReservationId)
+        (input.booked ?? []).filter(
+          ({ dotyposReservationId, dotyposCustomerId }) =>
+            ids.includes(dotyposReservationId) &&
+            (!selection?.customers ||
+              selection.customers.includes(dotyposCustomerId))
         )
       )
   );
   const listReservations = mock(
-    (_: {
+    (options: {
       readonly startsAtOrAfter?: string;
       readonly startsBefore?: string;
-    }) => Effect.succeed(input.visits ?? [])
+    }) => {
+      const visits = input.visits ?? [];
+      return Effect.succeed(
+        input.respectVisitBounds
+          ? visits.filter(({ startDate }) => {
+              const startsAt = instant(startDate);
+              return (
+                (!options.startsAtOrAfter ||
+                  Temporal.Instant.compare(
+                    startsAt,
+                    instant(options.startsAtOrAfter)
+                  ) >= 0) &&
+                (!options.startsBefore ||
+                  Temporal.Instant.compare(
+                    startsAt,
+                    instant(options.startsBefore)
+                  ) < 0)
+              );
+            })
+          : visits
+      );
+    }
   );
+  const getCustomers = mock(() => Effect.succeed([]));
   const evaluationTime = input.now ?? now;
+  const factsLayer = AudienceFactsService.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.mock(CampaignCandidateRepository)({
+          countReservations,
+          countReceivedCampaignEmails,
+          accountCreations,
+          listBookedReservations,
+          earliestReservationAt: Effect.succeed(
+            input.earliestReservationAt === undefined
+              ? instant("2025-01-10T12:00:00Z")
+              : input.earliestReservationAt
+          ),
+        }),
+        DotyposServiceMock({ listReservations, getCustomers } as never)
+      )
+    )
+  );
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
       yield* TestClock.setTime(evaluationTime.epochMilliseconds);
@@ -93,38 +204,32 @@ const resolveFacts = async (input: {
       return yield* service.resolve({
         filter: input.filter,
         contexts: [audienceEvaluationAt(evaluationTime)],
+        ...(input.scope && { scope: input.scope }),
+        ...(input.facts && { facts: input.facts }),
       });
-    }).pipe(
-      Effect.provide(
-        AudienceFactsService.Default.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.mock(CampaignCandidateRepository)({
-                countReservations,
-                countReceivedCampaignEmails,
-                accountCreations,
-                listBookedReservations,
-                earliestReservationAt: Effect.succeed(
-                  input.earliestReservationAt === undefined
-                    ? instant("2025-01-10T12:00:00Z")
-                    : input.earliestReservationAt
-                ),
-              }),
-              DotyposServiceMock({ listReservations } as never)
-            )
-          )
-        )
-      ),
-      Effect.provide(TestClock.layer())
-    )
+    }).pipe(Effect.provide(factsLayer), Effect.provide(TestClock.layer()))
   );
+  const profileExit =
+    input.profileCustomers === undefined
+      ? undefined
+      : await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const service = yield* AudienceFactsService;
+            return yield* service.profiles({
+              customers: input.profileCustomers,
+              ...(input.facts && { facts: input.facts }),
+            });
+          }).pipe(Effect.provide(factsLayer))
+        );
   return {
     exit,
+    profileExit,
     countReservations,
     countReceivedCampaignEmails,
     accountCreations,
     listBookedReservations,
     listReservations,
+    getCustomers,
   };
 };
 
@@ -387,8 +492,11 @@ describe("AudienceFactsService last visit", () => {
     });
     expect(listReservations).not.toHaveBeenCalled();
     expect(accountCreations.mock.calls[0]?.[0]).toEqual({
-      startsAtOrAfter: instant("2026-08-31T22:00:00Z"),
-      startsAtOrBefore: now,
+      created: {
+        startsAtOrAfter: instant("2026-08-31T22:00:00Z"),
+        startsAtOrBefore: now,
+      },
+      asOf: now,
     });
   });
 });
@@ -485,5 +593,317 @@ describe("AudienceFactsService product filters", () => {
         ([, selection]) => selection?.product
       )
     ).toEqual([coworkDesk, undefined]);
+  });
+});
+
+describe("AudienceFactsService fetched facts", () => {
+  test("resolves the same scoped visit and booking facts as live reads", async () => {
+    const ids = [customerId("a"), customerId("b"), customerId("c")];
+    const scope = AudienceScope.Customers({ ids });
+    const recent = { _tag: "Last", count: 30, unit: "day" } as const;
+    const history = {
+      _tag: "Range",
+      from: "2026-08-01",
+      to: "2026-09-30",
+    } as const;
+    const booked: CampaignBookedReservation[] = [
+      {
+        dotyposReservationId: reservationId("a-cancelled"),
+        dotyposCustomerId: ids[0]!,
+      },
+      {
+        dotyposReservationId: reservationId("a-recent"),
+        dotyposCustomerId: ids[0]!,
+      },
+      {
+        dotyposReservationId: reservationId("b-old"),
+        dotyposCustomerId: ids[1]!,
+      },
+      {
+        dotyposReservationId: reservationId("c-future"),
+        dotyposCustomerId: ids[2]!,
+      },
+    ];
+    const dotyposVisits = [
+      visit("a-cancelled", "2026-09-20T08:00:00Z", "CANCELLED"),
+      visit("a-recent", "2026-10-10T08:00:00Z"),
+      visit("b-old", "2026-08-20T08:00:00Z"),
+      visit("c-future", "2026-10-20T08:00:00Z"),
+    ];
+    const fetchedVisits = new Map<
+      DotyposCustomerId,
+      readonly ReservationVisit[]
+    >([
+      [
+        ids[0]!,
+        [
+          reservationVisit(
+            "a-cancelled",
+            "a",
+            "2026-09-20T08:00:00Z",
+            "cancelled"
+          ),
+          reservationVisit("a-recent", "a", "2026-10-10T08:00:00Z"),
+        ],
+      ],
+      [ids[1]!, [reservationVisit("b-old", "b", "2026-08-20T08:00:00Z")]],
+      [ids[2]!, [reservationVisit("c-future", "c", "2026-10-20T08:00:00Z")]],
+    ]);
+    const filter = group(
+      reservations({ dateBasis: "visit", period: recent }),
+      {
+        attribute: "lastVisit",
+        _tag: "Condition",
+        operator: "in",
+        value: history,
+      },
+      {
+        attribute: "firstVisit",
+        _tag: "Condition",
+        operator: "in",
+        value: history,
+      },
+      reservations({
+        dateBasis: "booking",
+        period: { _tag: "AnyTime" },
+      })
+    );
+    const live = await resolveFacts({
+      filter,
+      scope,
+      visits: dotyposVisits,
+      booked,
+      respectVisitBounds: true,
+    });
+    const fetched = await resolveFacts({
+      filter,
+      scope,
+      booked,
+      facts: AudienceFactSource.Fetched({
+        visits: Option.some(fetchedVisits),
+        profiles: Option.none(),
+      }),
+    });
+    const liveFacts = facts(live.exit);
+    const fetchedFacts = facts(fetched.exit);
+
+    expect(fetchedFacts).toEqual(liveFacts);
+    expect(
+      liveFacts.counts.get(
+        audienceFactKey({
+          attribute: "reservationCount",
+          params: {
+            dateBasis: "visit",
+            period: datePeriodBounds(recent, audienceEvaluationAt(now)),
+          },
+        })
+      )
+    ).toEqual(new Map([[ids[0]!, 2]]));
+    expect(
+      liveFacts.counts.get(
+        audienceFactKey({
+          attribute: "reservationCount",
+          params: {
+            dateBasis: "booking",
+            period: datePeriodBounds(
+              { _tag: "AnyTime" },
+              audienceEvaluationAt(now)
+            ),
+          },
+        })
+      )
+    ).toEqual(
+      new Map([
+        [ids[0]!, 2],
+        [ids[1]!, 1],
+        [ids[2]!, 1],
+      ])
+    );
+    expect(liveFacts.dates.get(lastVisitKey(history))).toEqual({
+      withValue: new Set([ids[0]!, ids[1]!]),
+      inPeriod: new Set([ids[1]!]),
+    });
+    expect(
+      liveFacts.dates.get(
+        audienceFactKey({
+          attribute: "firstVisit",
+          bounds: datePeriodBounds(history, audienceEvaluationAt(now)),
+          asOf: now,
+        })
+      )
+    ).toEqual({
+      withValue: new Set([ids[0]!, ids[1]!]),
+      inPeriod: new Set([ids[0]!, ids[1]!]),
+    });
+    expect(
+      live.countReservations.mock.calls.map(([selection]) => selection)
+    ).toContainEqual({
+      customers: ids,
+      dotyposReservationIds: [
+        reservationId("a-cancelled"),
+        reservationId("a-recent"),
+      ],
+    });
+    expect(fetched.listReservations).not.toHaveBeenCalled();
+    expect(fetched.getCustomers).not.toHaveBeenCalled();
+  });
+
+  test("dies when a last-visit resolver reads visits that were not fetched", async () => {
+    const { exit } = await resolveFacts({
+      filter: {
+        attribute: "lastVisit",
+        _tag: "Condition",
+        operator: "none",
+      },
+      facts: AudienceFactSource.Fetched({
+        visits: Option.none(),
+        profiles: Option.none(),
+      }),
+    });
+
+    expect(Exit.isFailure(exit) && Cause.hasDies(exit.cause)).toBe(true);
+  });
+
+  test("dies when a profile condition is evaluated without fetched profiles", async () => {
+    const { exit } = await resolveFacts({
+      filter: {
+        attribute: "dotyposTags",
+        _tag: "Condition",
+        operator: "anyOf",
+        value: ["vip"],
+      },
+      facts: AudienceFactSource.Fetched({
+        visits: Option.some(
+          new Map<DotyposCustomerId, readonly ReservationVisit[]>()
+        ),
+        profiles: Option.none(),
+      }),
+    });
+
+    expect(Exit.isFailure(exit) && Cause.hasDies(exit.cause)).toBe(true);
+  });
+
+  test("returns only requested fetched profiles and an empty map when absent", async () => {
+    const requested = [customerId("a"), customerId("b")];
+    const fetchedProfiles = new Map<DotyposCustomerId, DotyposCustomer>([
+      [customerId("a"), customerProfile("a")],
+      [customerId("outside-scope"), customerProfile("outside-scope")],
+    ]);
+    const available = await resolveFacts({
+      filter: group(),
+      facts: AudienceFactSource.Fetched({
+        visits: Option.none(),
+        profiles: Option.some(fetchedProfiles),
+      }),
+      profileCustomers: requested,
+    });
+    const missing = await resolveFacts({
+      filter: group(),
+      facts: AudienceFactSource.Fetched({
+        visits: Option.none(),
+        profiles: Option.none(),
+      }),
+      profileCustomers: requested,
+    });
+
+    if (
+      available.profileExit === undefined ||
+      Exit.isFailure(available.profileExit) ||
+      missing.profileExit === undefined ||
+      Exit.isFailure(missing.profileExit)
+    ) {
+      throw new Error("profile lookup failed");
+    }
+    expect([...available.profileExit.value.keys()]).toEqual([requested[0]]);
+    expect(missing.profileExit.value).toEqual(new Map());
+    expect(available.getCustomers).not.toHaveBeenCalled();
+    expect(missing.getCustomers).not.toHaveBeenCalled();
+    expect(available.listReservations).not.toHaveBeenCalled();
+    expect(missing.listReservations).not.toHaveBeenCalled();
+  });
+});
+
+describe("audienceDotyposReads", () => {
+  const context = audienceEvaluationAt(now);
+
+  test("marks local audience facts and unbounded visit counts as local", () => {
+    const filter = group(
+      {
+        attribute: "locale",
+        _tag: "Condition",
+        operator: "anyOf",
+        value: ["cs-CZ"],
+      },
+      {
+        attribute: "hasAccount",
+        _tag: "Condition",
+        operator: "is",
+        value: true,
+      },
+      emails("any", { _tag: "AnyTime" }),
+      {
+        attribute: "accountCreated",
+        _tag: "Condition",
+        operator: "in",
+        value: { _tag: "Last", count: 30, unit: "day" },
+      },
+      reservations({ dateBasis: "booking", period: { _tag: "AnyTime" } }),
+      reservations({ dateBasis: "visit", period: { _tag: "AnyTime" } })
+    );
+
+    expect(audienceDotyposReads(filter, [context])).toEqual({
+      visits: false,
+      profiles: false,
+    });
+  });
+
+  test("marks profile conditions and date-based visit conditions", () => {
+    const dotyposTags: AudienceCondition = {
+      attribute: "dotyposTags",
+      _tag: "Condition",
+      operator: "anyOf",
+      value: ["vip"],
+    };
+    const discountGroup: AudienceCondition = {
+      attribute: "discountGroup",
+      _tag: "Condition",
+      operator: "anyOf",
+      value: ["gold"],
+    };
+    const lastVisit: AudienceCondition = {
+      attribute: "lastVisit",
+      _tag: "Condition",
+      operator: "none",
+    };
+    const firstVisit: AudienceCondition = {
+      attribute: "firstVisit",
+      _tag: "Condition",
+      operator: "none",
+    };
+    const boundedVisitCount = reservations({
+      dateBasis: "visit",
+      period: { _tag: "Last", count: 30, unit: "day" },
+    });
+
+    expect(audienceDotyposReads(dotyposTags, [context])).toEqual({
+      visits: false,
+      profiles: true,
+    });
+    expect(audienceDotyposReads(discountGroup, [context])).toEqual({
+      visits: false,
+      profiles: true,
+    });
+    expect(audienceDotyposReads(lastVisit, [context])).toEqual({
+      visits: true,
+      profiles: false,
+    });
+    expect(audienceDotyposReads(firstVisit, [context])).toEqual({
+      visits: true,
+      profiles: false,
+    });
+    expect(audienceDotyposReads(boundedVisitCount, [context])).toEqual({
+      visits: true,
+      profiles: false,
+    });
   });
 });

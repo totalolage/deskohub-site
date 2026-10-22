@@ -352,7 +352,11 @@ describe("collectAudienceFactRequests", () => {
   test("shares a request between contexts only where their bounds agree", () => {
     const triggeredAt = (at: string): AudienceEvaluationContext => ({
       ...context,
-      trigger: Option.some({ at: Temporal.Instant.from(at) }),
+      trigger: Option.some({
+        kind: "schedule",
+        at: Temporal.Instant.from(at),
+        reservationId: Option.none(),
+      }),
     });
     const afterTrigger = {
       attribute: "reservationCount",
@@ -425,6 +429,92 @@ describe("collectAudienceFactRequests", () => {
         context
       ).params.campaign
     ).toBe(campaignIdSchema.make("campaign-2"));
+  });
+
+  test("counts emails dispatched and reservations booked by a replayed moment", () => {
+    const replayed = { ...context, replayed: true };
+    const sinceMarch = { _tag: "Onward", date: "2026-03-01" } as const;
+    const emailsSinceMarch = {
+      ...marketingEmailsLastTenDays,
+      params: { purpose: "marketing", period: sinceMarch },
+    } as const satisfies AudienceCondition;
+    const visitsSinceMarch = {
+      ...reservationsVisitedInMarch,
+      params: { dateBasis: "visit", period: sinceMarch },
+    } as const satisfies AudienceCondition;
+    const bookingsSinceMarch = {
+      ...reservationsVisitedInMarch,
+      params: { dateBasis: "booking", period: sinceMarch },
+    } as const satisfies AudienceCondition;
+    const march = Temporal.Instant.from("2026-02-28T23:00:00Z");
+    const { campaignEmailCount, reservationCount } = audienceAttributeCatalogue;
+
+    expect(
+      countFactRequest(campaignEmailCount, emailsSinceMarch, replayed).params
+        .period
+    ).toEqual({ startsAtOrAfter: march, startsAtOrBefore: now });
+    expect(
+      countFactRequest(reservationCount, bookingsSinceMarch, replayed).params
+        .period
+    ).toEqual({ startsAtOrAfter: march, startsAtOrBefore: now });
+    // The present has no later emails or bookings; visits may lie ahead
+    // either way.
+    expect(
+      countFactRequest(campaignEmailCount, emailsSinceMarch, context).params
+        .period
+    ).toEqual({ startsAtOrAfter: march });
+    expect(
+      countFactRequest(reservationCount, bookingsSinceMarch, context).params
+        .period
+    ).toEqual({ startsAtOrAfter: march });
+    expect(
+      countFactRequest(reservationCount, visitsSinceMarch, replayed).params
+        .period
+    ).toEqual({ startsAtOrAfter: march });
+  });
+
+  test("counts and dates reservations as they stood at a replayed moment", () => {
+    const replayed = { ...context, replayed: true };
+    const { reservationCount, campaignEmailCount } = audienceAttributeCatalogue;
+    const visitsAnyTime = {
+      ...reservationsVisitedInMarch,
+      params: { dateBasis: "visit", period: { _tag: "AnyTime" } },
+    } as const satisfies AudienceCondition;
+    const bookingsAnyTime = {
+      ...visitsAnyTime,
+      params: { dateBasis: "booking", period: { _tag: "AnyTime" } },
+    } as const satisfies AudienceCondition;
+
+    expect(
+      countFactRequest(reservationCount, visitsAnyTime, replayed)
+        .reservationsAsOf
+    ).toEqual(now);
+    expect(
+      dateFactRequest(lastVisitNotRecent, replayed).reservationsAsOf
+    ).toEqual(now);
+    // Live evaluations count reservations as they are now.
+    expect(
+      countFactRequest(reservationCount, visitsAnyTime, context)
+    ).not.toHaveProperty("reservationsAsOf");
+    expect(dateFactRequest(lastVisitNotRecent, context)).not.toHaveProperty(
+      "reservationsAsOf"
+    );
+    // Booking bounds end by the replayed moment, but statuses change later.
+    expect(
+      countFactRequest(reservationCount, bookingsAnyTime, replayed)
+        .reservationsAsOf
+    ).toEqual(now);
+    // Email counts need only their occurrence bounds.
+    expect(
+      countFactRequest(campaignEmailCount, marketingEmailsLastTenDays, replayed)
+    ).not.toHaveProperty("reservationsAsOf");
+    // A live and a replayed evaluation at the same moment look up apart.
+    expect(
+      collectAudienceFactRequests(group("and", [visitsAnyTime]), [
+        context,
+        replayed,
+      ]).counts
+    ).toHaveLength(2);
   });
 });
 

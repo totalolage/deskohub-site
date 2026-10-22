@@ -50,6 +50,8 @@ const campaignStateSchema = Schema.Union([
 ]);
 type CampaignState = typeof campaignStateSchema.Type;
 export type OnceCampaignStatus = (typeof onceCampaignStatuses)[number];
+export type AutomatedCampaignStatus =
+  (typeof automatedCampaignStatuses)[number];
 export type CampaignStatus = CampaignState["status"];
 
 /**

@@ -1,6 +1,16 @@
 import "server-only";
 
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import {
+  type AnyColumn,
+  and,
+  asc,
+  eq,
+  inArray,
+  isNull,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql";
@@ -8,6 +18,8 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type CampaignAudienceRow,
   emailCampaignAudiences,
+  emailCampaignAutomations,
+  emailCampaignAutomationVersions,
   emailCampaigns,
 } from "@/db/schema";
 import { currentInstant } from "@/shared/utils/temporal";
@@ -74,7 +86,11 @@ export interface ICampaignAudienceService {
     CampaignAudience,
     CampaignAudienceNotFound | EffectDrizzleQueryError
   >;
-  /** Deletes an audience no draft campaign uses; sent campaigns detach. */
+  /**
+   * Deletes an audience no draft campaign uses and no condition of a
+   * non-archived automated campaign references, in its working copy or its
+   * active version; sent campaigns detach.
+   */
   readonly delete: (
     audienceId: CampaignAudienceId
   ) => Effect.Effect<
@@ -143,6 +159,43 @@ export class CampaignAudienceService extends Context.Service<
           .orderBy(asc(emailCampaigns.id));
 
       /**
+       * Non-archived automated campaigns whose working copy or active version
+       * has a condition on the audience. Archived ones never evaluate again,
+       * and runs of older versions fail the condition once it's gone.
+       */
+      const automationsReferencing = (
+        tx: Transaction,
+        audienceId: CampaignAudienceId
+      ) => {
+        const references = (flow: AnyColumn) =>
+          sql`jsonb_path_exists(${flow}, '$.steps[*].filter.** ? (@._tag == "InAudience" && @.audienceId == $id)', jsonb_build_object('id', ${audienceId}::text))`;
+        return tx
+          .select({ id: emailCampaigns.id })
+          .from(emailCampaignAutomations)
+          .innerJoin(
+            emailCampaigns,
+            eq(emailCampaigns.id, emailCampaignAutomations.campaignId)
+          )
+          .leftJoin(
+            emailCampaignAutomationVersions,
+            eq(
+              emailCampaignAutomationVersions.id,
+              emailCampaignAutomations.activeVersionId
+            )
+          )
+          .where(
+            and(
+              ne(emailCampaigns.status, "archived"),
+              or(
+                references(emailCampaignAutomations.flow),
+                references(emailCampaignAutomationVersions.flow)
+              )
+            )
+          )
+          .orderBy(asc(emailCampaigns.id));
+      };
+
+      /**
        * Waits for campaigns assigning the audience to commit; they share-lock
        * its row first. Drafts are checked after the lock, so none can slip in
        * and be detached by the delete.
@@ -158,10 +211,12 @@ export class CampaignAudienceService extends Context.Service<
             return yield* new CampaignAudienceNotFound({ audienceId });
           }
           const drafts = yield* draftsUsing(tx, audienceId);
-          if (drafts.length > 0) {
+          const automations = yield* automationsReferencing(tx, audienceId);
+          if (drafts.length > 0 || automations.length > 0) {
             return yield* new CampaignAudienceInUse({
               audienceId,
               draftCampaignIds: drafts.map(({ id }) => id),
+              automationCampaignIds: automations.map(({ id }) => id),
             });
           }
           yield* tx

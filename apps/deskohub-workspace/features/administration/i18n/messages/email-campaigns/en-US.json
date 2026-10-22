@@ -8,7 +8,6 @@
   "emailCampaignsAudienceArchive": "Archive",
   "emailCampaignsAudienceArchiveConfirm": "Archive audience",
   "emailCampaignsAudienceArchiveDescription": "New campaigns can no longer select it. Draft campaigns that already use it keep it, and sent campaigns are not affected.",
-  "emailCampaignsAudienceArchiveFailed": "The audience could not be archived.",
   "emailCampaignsAudienceArchiveFailedRetry": "The audience could not be archived. Try again.",
   "emailCampaignsAudienceArchiveTitle": "Archive this audience?",
   "emailCampaignsAudienceArchiving": "Archiving…",
@@ -120,7 +119,6 @@
   "emailCampaignsAudienceDelete": "Delete",
   "emailCampaignsAudienceDeleteConfirm": "Delete audience",
   "emailCampaignsAudienceDeleteDescription": "This can't be undone. Sent campaigns keep their own copy of the filters. An audience that draft campaigns use can only be archived.",
-  "emailCampaignsAudienceDeleteFailed": "The audience could not be deleted.",
   "emailCampaignsAudienceDeleteFailedRetry": "The audience could not be deleted. Try again.",
   "emailCampaignsAudienceDeleteTitle": "Delete this audience?",
   "emailCampaignsAudienceDeleting": "Deleting…",
@@ -180,20 +178,6 @@
   "emailCampaignsAudienceHasAccountSummaryFalse": "have no Workspace account",
   "emailCampaignsAudienceHasAccountSummaryTrue": "have a Workspace account",
   "emailCampaignsAudienceHasAccountTrue": "Has",
-  "emailCampaignsAudienceInUse": [
-    {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural",
-        "local formattedCount = count: number"
-      ],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "A draft campaign uses this audience, so it can only be archived. Move those drafts to another audience before deleting it.",
-        "countPlural=other": "{formattedCount} draft campaigns use this audience, so it can only be archived. Move those drafts to another audience before deleting it."
-      }
-    }
-  ],
   "emailCampaignsAudienceFirstVisitEver": "have visited{product}",
   "emailCampaignsAudienceFirstVisitInPeriod": "first visited{product} {period}",
   "emailCampaignsAudienceFirstVisitLabel": "First visit",
@@ -634,7 +618,6 @@
   "emailCampaignsAudienceTitleRequired": "Enter a title for this audience.",
   "emailCampaignsAudienceTitleTooLong": "Use at most {max} characters.",
   "emailCampaignsAudienceUnarchive": "Unarchive",
-  "emailCampaignsAudienceUnarchiveFailed": "The audience could not be unarchived.",
   "emailCampaignsAudienceUnarchiveFailedRetry": "The audience could not be unarchived. Try again.",
   "emailCampaignsAudienceUnarchiving": "Unarchiving…",
   "emailCampaignsCalendarDayOfMonth": [
@@ -1099,33 +1082,13 @@
   "emailCampaignsSendingFailureCodeSuperseded": "A newer test email replaced that code. Use the code from the latest test email.",
   "emailCampaignsSendingFailureCodeTooManyAttempts": "Too many wrong codes, so that code no longer works. Send a new test email to get a fresh code.",
   "emailCampaignsSendingFailureCodeUnknown": "That code doesn't match the latest test email. Check it for typos and try again.",
-  "emailCampaignsSendingFailureConfigError": "Campaign sending isn't configured correctly for this deployment. Ask a developer to check its environment variables.",
   "emailCampaignsSendingFailureContentMissing": "Add a subject and body in at least one language first.",
-  "emailCampaignsSendingFailureDatabaseUnavailable": "Recipients couldn't be resolved because the database is unavailable. Nothing was sent and the code still works; try again in a moment.",
   "emailCampaignsSendingFailureDeliveryQueueFailed": "Delivery couldn't be queued, so the campaign is marked Failed. Retry undelivered recipients in a moment.",
-  "emailCampaignsSendingFailureDotyposUnavailable": "Recipients couldn't be resolved because Dotypos is unavailable. Nothing was sent and the code still works; try again in a moment.",
   "emailCampaignsSendingFailureEmailDeliveryFailed": "The email provider didn't accept the test email. Try again in a moment.",
-  "emailCampaignsSendingFailureEmailNotConfigured": "Campaign email isn't configured for this deployment. Ask a developer to set {variables}.",
   "emailCampaignsSendingFailureFallbackContentMissing": "Customers without content in their language get the Czech version, so add Czech content, or restrict the audience to one language this campaign has. Nothing was sent.",
   "emailCampaignsSendingFailureNoRecipients": "The audience has no reachable recipients right now, so nothing was sent.",
   "emailCampaignsSendingFailureNotRetryable": "Only a failed campaign can retry undelivered recipients.",
-  "emailCampaignsSendingFailureOutsideTestDomain": [
-    {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural",
-        "local formattedCount = count: number"
-      ],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "Outside production, campaign email can only go to @{domain} addresses, and {formattedCount} address is outside it. Nothing was sent.",
-        "countPlural=other": "Outside production, campaign email can only go to @{domain} addresses, and {formattedCount} addresses are outside it. Nothing was sent."
-      }
-    }
-  ],
   "emailCampaignsSendingFailureSigningKeyInvalid": "Confirmation codes can't be issued because the signing secret is misconfigured. Ask a developer to check BETTER_AUTH_SECRETS.",
-  "emailCampaignsSendingFailureSiteUrlNotConfigured": "The test email couldn't be built because the site URL isn't configured. Ask a developer to check the deployment's URL settings.",
-  "emailCampaignsSendingFailureTestRecipientInvalid": "{email} isn't a valid email address.",
   "emailCampaignsSendingFailureUnauthorized": "Your admin sign-in is no longer valid. Reload the page and sign in again.",
   "emailCampaignsSendingFailureUnexpected": "Something went wrong. Try again in a moment.",
   "emailCampaignsSentAudience": "Audience",
@@ -1238,5 +1201,10 @@
   "emailCampaignsTestSendUnsavedChanges": "Save your changes first. A test send uses the saved campaign, so its code wouldn't confirm your unsaved edits.",
   "emailCampaignsActionTimedOut": "The server took too long to respond. Try again.",
   "emailCampaignsDeliveryMismatch": "This action works only for one-off campaigns, and this campaign sends automatically.",
-  "emailCampaignsActionFailedUnexpectedly": "Something went wrong on the server. Try again."
+  "emailCampaignsActionFailedUnexpectedly": "Something went wrong on the server. Try again.",
+  "emailCampaignsAudienceInUseByDrafts": "Draft campaigns use this audience, so it can only be archived. Move those drafts to another audience before deleting it.",
+  "emailCampaignsSendingFailureTestRecipientsInvalid": "One of the addresses isn't a valid email address. Check them and try again.",
+  "emailCampaignsSendingFailureRecipientsOutsideTestDomain": "Outside production, campaign email can only go to @{domain} addresses, and some recipients are outside it. Nothing was sent.",
+  "emailCampaignsSendingFailureRecipientsUnavailable": "Recipients couldn't be resolved because Dotypos or the database is unavailable. Nothing was sent and the code still works; try again in a moment.",
+  "emailCampaignsSendingFailureEmailSetupMissing": "Campaign email isn't configured for this deployment. Ask a developer to check its campaign email environment variables."
 }

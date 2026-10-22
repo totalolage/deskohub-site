@@ -130,7 +130,7 @@ export class ReservationActivitySweep extends Context.Service<
     ) {
       yield* Effect.forEach(
         visitEvents(fetched.visits, at),
-        (event) => recordCustomerEvent(executor, event),
+        (event) => recordCustomerEvent(executor, { ...event, recordedAt: at }),
         { discard: true }
       );
 

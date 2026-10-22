@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import {
+  automationsMinimumDhwVersion,
   CliClientCompatibility,
   CliInputInvalid,
   DhwVersion,
@@ -26,6 +27,10 @@ import {
 import { handleWorkspaceAdminApiRequest } from "./workspace-admin-api.server";
 
 const minimum = DhwVersion.make("1.20.0");
+const groupMinimums: Partial<Record<string, DhwVersion>> = {
+  campaigns: minimum,
+  automations: automationsMinimumDhwVersion,
+};
 
 // A test-local API exercises header edge cases through the same middleware.
 const TestApi = HttpApi.make("testApi")
@@ -169,7 +174,7 @@ describe("dhw client version", () => {
     });
   });
 
-  test("reports the campaigns minimum and no minimum for other groups", async () => {
+  test("reports the campaign and automation minimums and none for other groups", async () => {
     const expectedMinimums: Record<string, DhwVersion> = {};
     HttpApi.reflect(WorkspaceAdminApi, {
       onGroup: () => undefined,
@@ -178,9 +183,11 @@ describe("dhw client version", () => {
           mergedAnnotations,
           MinimumDhwVersion
         );
-        if (group.identifier === "campaigns") {
-          expect(endpointMinimum).toEqual(Option.some(minimum));
-          expectedMinimums[`campaigns.${endpoint.name}`] = minimum;
+        const groupMinimum = groupMinimums[group.identifier];
+        if (groupMinimum !== undefined) {
+          expect(endpointMinimum).toEqual(Option.some(groupMinimum));
+          expectedMinimums[`${group.identifier}.${endpoint.name}`] =
+            groupMinimum;
         } else {
           expect(endpointMinimum).toEqual(Option.none());
         }

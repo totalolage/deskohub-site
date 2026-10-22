@@ -1,5 +1,6 @@
 import {
   AdministrationCampaignAudienceId,
+  AdministrationCampaignDelivery,
   type AdministrationCampaignDetailType,
   AdministrationCampaignId,
   type AdministrationCampaignLocaleType,
@@ -200,11 +201,20 @@ const campaignsCreateCommand = Command.make(
       Flag.optional,
       Flag.withDescription("Saved audience ID")
     ),
+    delivery: Flag.choice(
+      "delivery",
+      AdministrationCampaignDelivery.literals
+    ).pipe(
+      Flag.optional,
+      Flag.withDescription(
+        "once sends it once; automated sends it from an automation flow. Default: once"
+      )
+    ),
     ...localizedContentFlags,
     subject: localizedFlag("subject", "Email subject", 1),
     body: localizedFlag("body", "Markdown body file", 1),
   },
-  ({ audience, template, title, purpose, ...content }) =>
+  ({ audience, delivery, template, title, purpose, ...content }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
         const campaignTitle = yield* requireText("title", title);
@@ -216,6 +226,7 @@ const campaignsCreateCommand = Command.make(
             title: campaignTitle,
             purpose,
             templateKey: template,
+            ...(Option.isSome(delivery) && { delivery: delivery.value }),
             audienceId: Option.getOrNull(audience),
             content: campaignContent,
           }

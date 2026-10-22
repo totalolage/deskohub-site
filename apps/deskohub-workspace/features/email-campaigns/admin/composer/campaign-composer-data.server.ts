@@ -5,19 +5,21 @@ import { m } from "@/features/administration/i18n";
 import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { CampaignEmailConfig } from "../../backend/campaign-email.config";
 import { campaignBodyFormatVersion } from "../../body/campaign-body-document";
 import type {
   CampaignLocaleContent,
   CampaignTemplateKey,
 } from "../../body/campaign-content";
-import { campaignTemplates } from "../../body/campaign-templates";
 import {
   CampaignEmailFooter,
   renderCampaignEmail,
 } from "../../body/render-campaign-email";
 import { loadAudienceOptions } from "../audiences/audience-page-data.server";
+import {
+  invokeCampaignOperation,
+  runCampaignPageQuery,
+} from "../campaign-operation-query.server";
 import type { CampaignComposerTemplate } from "./campaign-composer";
 
 /** Placeholder content that shows a template's typography and footer. */
@@ -79,26 +81,31 @@ const campaignTemplateDescriptions = {
   workspace: m.emailCampaignsComposerTemplateWorkspaceDescription,
 } as const satisfies Record<CampaignTemplateKey, (...args: never) => string>;
 
+/** The port's templates, each rendered with the sample content. */
 const loadTemplates = (locale: Locale) =>
-  Effect.forEach(Object.values(campaignTemplates), (template) =>
-    renderCampaignEmail({
-      templateKey: template.key,
-      locale: "en-US",
-      content: templateSampleContent,
-      footer: CampaignEmailFooter.Marketing({
-        marketingPreferencesUrl: "https://deskohub.cz",
-      }),
-    }).pipe(
-      Effect.map(
-        ({ html }): CampaignComposerTemplate => ({
-          key: template.key,
-          name: template.name,
-          description: campaignTemplateDescriptions[template.key](
-            {},
-            { locale }
-          ),
-          previewHtml: html,
-        })
+  invokeCampaignOperation("listCampaignTemplates", {}).pipe(
+    Effect.flatMap((templates) =>
+      Effect.forEach(templates, (template) =>
+        renderCampaignEmail({
+          templateKey: template.key,
+          locale: "en-US",
+          content: templateSampleContent,
+          footer: CampaignEmailFooter.Marketing({
+            marketingPreferencesUrl: "https://deskohub.cz",
+          }),
+        }).pipe(
+          Effect.map(
+            ({ html }): CampaignComposerTemplate => ({
+              key: template.key,
+              name: template.name,
+              description: campaignTemplateDescriptions[template.key](
+                {},
+                { locale }
+              ),
+              previewHtml: html,
+            })
+          )
+        )
       )
     )
   );
@@ -114,13 +121,12 @@ const loadAdminInbox = CampaignEmailConfig.pipe(
 );
 
 const loadComposerOptions = (locale: Locale) =>
-  Effect.all(
-    { templates: loadTemplates(locale), adminInbox: loadAdminInbox },
-    { concurrency: "unbounded" }
-  ).pipe(
-    runWorkspaceEffect("email-campaigns.admin.load-composer", {
-      boundary: "route",
-    })
+  runCampaignPageQuery(
+    "email-campaigns.admin.load-composer",
+    Effect.all(
+      { templates: loadTemplates(locale), adminInbox: loadAdminInbox },
+      { concurrency: "unbounded" }
+    )
   );
 
 /** Audiences, templates, and the test inbox the composer offers. */

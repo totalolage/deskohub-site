@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-const automationVersionIdSchema = Schema.NonEmptyString.pipe(
+export const automationVersionIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("AutomationVersionId")
 ).annotate({
   identifier: "AutomationVersionId",
@@ -9,7 +9,7 @@ const automationVersionIdSchema = Schema.NonEmptyString.pipe(
 });
 export type AutomationVersionId = typeof automationVersionIdSchema.Type;
 
-const automationRunIdSchema = Schema.NonEmptyString.pipe(
+export const automationRunIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("AutomationRunId")
 ).annotate({
   identifier: "AutomationRunId",
@@ -35,7 +35,7 @@ export const automationWorkUnitIdSchema = Schema.NonEmptyString.pipe(
 });
 export type AutomationWorkUnitId = typeof automationWorkUnitIdSchema.Type;
 
-const automationPreviewIdSchema = Schema.NonEmptyString.pipe(
+export const automationPreviewIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("AutomationPreviewId")
 ).annotate({
   identifier: "AutomationPreviewId",

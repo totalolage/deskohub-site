@@ -1,4 +1,8 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
+import type {
+  AutomationRunEventDetail,
+  AutomationTrigger,
+} from "@deskohub/workspace-admin-api";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -24,12 +28,12 @@ import type {
 import {
   type AutomationPreviewKind,
   type AutomationPreviewOutcome,
-  type AutomationPreviewStatus,
+  type AutomationPreviewState,
   type AutomationRunEventKind,
   type AutomationRunFailureReason,
   type AutomationRunOutcome,
   type AutomationRunPhase,
-  type AutomationRunStatus,
+  type AutomationRunState,
   type AutomationScheduleFireStatus,
   type AutomationTriggerDisposition,
   type AutomationTriggerKind,
@@ -94,9 +98,10 @@ export const emailCampaignAutomationVersions = pgTable(
     versionNumber: integer("version_number").notNull(),
     // Saved-audience conditions store ids only; they're evaluated live.
     flow: jsonb("flow").notNull(),
+    // The flow trigger's tag, such as "Schedule" or "ReservationBooked".
     triggerKind: text("trigger_kind")
       .notNull()
-      .$type<AutomationTriggerKind>()
+      .$type<AutomationTrigger["_tag"]>()
       .generatedAlwaysAs(sql`flow->'trigger'->>'_tag'`),
     purpose: text("purpose").notNull().$type<CampaignPurpose>(),
     templateKey: text("template_key").notNull().$type<CampaignTemplateKey>(),
@@ -302,7 +307,7 @@ export const emailCampaignAutomationRuns = pgTable(
     triggerReservationId: text("trigger_reservation_id")
       .references(() => workspaceReservations.id)
       .$type<WorkspaceReservationId>(),
-    status: text("status").notNull().$type<AutomationRunStatus>(),
+    status: text("status").notNull().$type<AutomationRunState>(),
     /** The current step; the last step once ended. */
     stepId: text("step_id").notNull().$type<AutomationStepId>(),
     /** Active runs only; `waiting` at a send step means a deferred trigger. */
@@ -403,7 +408,10 @@ export const emailCampaignAutomationRunEvents = pgTable(
     kind: text("kind").notNull().$type<AutomationRunEventKind>(),
     stepId: text("step_id").$type<AutomationStepId>(),
     at: instant("at").notNull(),
-    detail: jsonb("detail").notNull().default(sql`'{}'::jsonb`),
+    detail: jsonb("detail")
+      .notNull()
+      .default(sql`'{}'::jsonb`)
+      .$type<AutomationRunEventDetail>(),
   },
   (t) => [
     primaryKey({ columns: [t.runId, t.sequence] }),
@@ -539,12 +547,16 @@ export const emailCampaignAutomationPreviews = pgTable(
     /** The working copy it evaluates. */
     draftHash: text("draft_hash").notNull(),
     kind: text("kind").notNull().$type<AutomationPreviewKind>(),
-    status: text("status").notNull().$type<AutomationPreviewStatus>(),
+    status: text("status").notNull().$type<AutomationPreviewState>(),
     /** Replay: events in [as_of − 30 days, as_of). Schedule: the next fire. */
     asOf: instant("as_of").notNull(),
     unitsTotal: integer("units_total").notNull(),
     unitsDone: integer("units_done").notNull().default(0),
-    counts: jsonb("counts").notNull().default(sql`'{}'::jsonb`),
+    /** Rows written per outcome; an outcome without rows may be absent. */
+    counts: jsonb("counts")
+      .notNull()
+      .default(sql`'{}'::jsonb`)
+      .$type<Partial<Record<AutomationPreviewOutcome, number>>>(),
     eventsTotal: integer("events_total"),
     errorCode: text("error_code"),
     createdAt: instant("created_at").notNull().default(sql`now()`),
@@ -586,6 +598,10 @@ export const emailCampaignAutomationPreviewRows = pgTable(
     stepId: text("step_id").$type<AutomationStepId>(),
     sendAt: instant("send_at"),
     projected: boolean("projected").notNull(),
+    /** Read a reservation status the replay couldn't date then. */
+    reservationStatusesApproximate: boolean("reservation_statuses_approximate")
+      .notNull()
+      .default(false),
   },
   (t) => [
     primaryKey({ columns: [t.previewId, t.dotyposCustomerId, t.triggerAt] }),

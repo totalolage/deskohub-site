@@ -17,6 +17,7 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import {
   connectWorkspacePostgresTestDatabase,
@@ -34,6 +35,7 @@ import { audienceEvaluationAt } from "./audience-evaluation-context";
 import {
   CampaignCandidateRepository,
   type CampaignReservationSelection,
+  listCampaignCandidateIds,
 } from "./campaign-candidate.repository";
 import {
   deleteAutomatedCampaigns,
@@ -87,6 +89,9 @@ const bookedOnPragueDay = (day: string) => ({
   },
 });
 const accountCreatedAt = Temporal.Instant.from("2026-09-15T10:00:00Z");
+// The login predates its account so the two dates differ; the account's own
+// creation is the one that counts.
+const loginCreatedAt = Temporal.Instant.from("2026-08-01T10:00:00Z");
 const marketingCampaign = `campaign-marketing-${run}`;
 const operationalCampaign = `campaign-operational-${run}`;
 const marketingSend = `send-marketing-${run}`;
@@ -108,8 +113,16 @@ describe.skipIf(!testDatabase)(
         db
           .insert(customerAccounts)
           .values([
-            { id: accountId, dotyposCustomerId: linked },
-            { id: unverifiedAccountId, dotyposCustomerId: unverifiedLinked },
+            {
+              id: accountId,
+              dotyposCustomerId: linked,
+              createdAt: accountCreatedAt,
+            },
+            {
+              id: unverifiedAccountId,
+              dotyposCustomerId: unverifiedLinked,
+              createdAt: accountCreatedAt,
+            },
           ])
           .onConflictDoNothing()
       );
@@ -205,7 +218,7 @@ describe.skipIf(!testDatabase)(
               email: testEmailAddress(`campaign-${run}`),
               emailVerified: true,
               locale: "en-US",
-              createdAt: new Date(accountCreatedAt.epochMilliseconds),
+              createdAt: new Date(loginCreatedAt.epochMilliseconds),
             },
             {
               id: unverifiedAccountId,
@@ -213,7 +226,7 @@ describe.skipIf(!testDatabase)(
               email: testEmailAddress(`campaign-unverified-${run}`),
               emailVerified: false,
               locale: "en-US",
-              createdAt: new Date(accountCreatedAt.epochMilliseconds),
+              createdAt: new Date(loginCreatedAt.epochMilliseconds),
             },
           ]),
           db.insert(customerMarketingConsents).values([
@@ -628,9 +641,11 @@ describe.skipIf(!testDatabase)(
       ).toEqual({ [reserved]: 1 });
     });
 
-    test("reads account creation from the linked Better Auth user", async () => {
-      const facts = (created: DatePeriodBounds) =>
-        repository((candidates) => candidates.accountCreations(created));
+    test("reads account creation from the account, not its login", async () => {
+      const facts = (created: DatePeriodBounds, asOf = context.now) =>
+        repository((candidates) =>
+          candidates.accountCreations({ created, asOf })
+        );
       const september = Temporal.Instant.from("2026-09-01T00:00:00Z");
       expect(
         (await facts({ startsAtOrAfter: september })).inPeriod.has(linked)
@@ -641,6 +656,107 @@ describe.skipIf(!testDatabase)(
       expect(before.withValue.has(reserved)).toBe(false);
       expect(before.withValue.has(unverifiedLinked)).toBe(false);
       expect(before.inPeriod.has(unverifiedLinked)).toBe(false);
+      // An account created after the moment doesn't exist yet then.
+      const earlier = await facts({}, accountCreatedAt.subtract({ hours: 2 }));
+      expect(earlier.withValue.has(linked)).toBe(false);
+      expect(earlier.inPeriod.has(linked)).toBe(false);
+      expect((await facts({}, accountCreatedAt)).withValue.has(linked)).toBe(
+        true
+      );
+    });
+
+    test("dates a legacy account before records began", async () => {
+      const backfilledAt = Temporal.Instant.from("2026-10-20T18:00:00Z");
+      const verifiedAt = backfilledAt.add({ hours: 24 });
+      const asOf = verifiedAt.add({ hours: 1 });
+      const legacy = customerId("legacy");
+      const signup = customerId("legacy-signup");
+      const legacyAccountId = `campaign-legacy-account-${run}`;
+      const signupAccountId = `campaign-legacy-signup-account-${run}`;
+      const ids = [legacyAccountId, signupAccountId];
+      await Effect.runPromise(
+        db.insert(customerAccounts).values([
+          {
+            id: customerAccountIdSchema.make(legacyAccountId),
+            dotyposCustomerId: legacy,
+            createdAt: backfilledAt,
+            legacy: true,
+          },
+          // A sign-up the day after the backfill, as the legacy customer
+          // first verifies.
+          {
+            id: customerAccountIdSchema.make(signupAccountId),
+            dotyposCustomerId: signup,
+            createdAt: verifiedAt,
+          },
+        ])
+      );
+      try {
+        await Effect.runPromise(
+          db.insert(authUser).values(
+            ids.map((id) => ({
+              id,
+              name: "",
+              email: testEmailAddress(id),
+              emailVerified: true,
+              locale: "en-US",
+              createdAt: new Date(backfilledAt.epochMilliseconds),
+            }))
+          )
+        );
+        const facts = (created: DatePeriodBounds, at = asOf) =>
+          repository((candidates) =>
+            candidates.accountCreations({
+              created,
+              asOf: at,
+              customers: [legacy, signup],
+            })
+          );
+        const matches = async (created: DatePeriodBounds, at = asOf) =>
+          [...(await facts(created, at)).inPeriod].sort();
+
+        const lastWeek = await facts({
+          startsAtOrAfter: asOf.subtract({ hours: 7 * 24 }),
+          startsAtOrBefore: asOf,
+        });
+        expect([...lastWeek.withValue].sort()).toEqual([legacy, signup].sort());
+        expect([...lastWeek.inPeriod]).toEqual([signup]);
+        expect(await matches({})).toEqual([legacy, signup].sort());
+        expect(await matches({ startsAtOrBefore: asOf })).toEqual(
+          [legacy, signup].sort()
+        );
+        // Until a day before records began, and a period that ends then.
+        const dayBefore = backfilledAt.subtract({ hours: 24 });
+        expect(await matches({ startsBefore: dayBefore })).toEqual([legacy]);
+        const year = Temporal.Instant.from("2026-01-01T00:00:00Z");
+        expect(
+          await matches({ startsAtOrAfter: year, startsBefore: dayBefore })
+        ).toEqual([legacy]);
+        expect(
+          await matches({ startsAtOrAfter: year, startsBefore: backfilledAt })
+        ).toEqual([legacy]);
+        // Any period that holds records' first moment or later excludes it.
+        expect(
+          await matches({
+            startsAtOrAfter: year,
+            startsAtOrBefore: backfilledAt,
+          })
+        ).toEqual([]);
+        expect(await matches({ startsAtOrAfter: year })).toEqual([signup]);
+        // A replayed moment before the backfill still knows the account.
+        const replayed = await facts({}, dayBefore);
+        expect([...replayed.withValue]).toEqual([legacy]);
+        expect([...replayed.inPeriod]).toEqual([legacy]);
+      } finally {
+        await testDatabase.pool.query(
+          'delete from auth."user" where id = any($1)',
+          [ids]
+        );
+        await testDatabase.pool.query(
+          "delete from customer_accounts where id = any($1)",
+          [ids]
+        );
+      }
     });
 
     test("finds when the earliest reservation was created", async () => {
@@ -654,6 +770,82 @@ describe.skipIf(!testDatabase)(
             createdAt.subtract({ hours: 240 })
           ) <= 0
       ).toBe(true);
+    });
+
+    describe("schedule fire pool", () => {
+      /** A linked account with a verified login and no reservation. */
+      const columnLinked = customerId("column-linked");
+      /** A linked account with an unverified login and no reservation. */
+      const unverifiedOnly = customerId("unverified-only");
+      const columnAccountId = `campaign-column-account-${run}`;
+      const unverifiedOnlyAccountId = `campaign-unverified-only-account-${run}`;
+      const pooled = [...seeded, columnLinked, unverifiedOnly];
+
+      beforeAll(async () => {
+        await Effect.runPromise(
+          db.insert(customerAccounts).values([
+            {
+              id: customerAccountIdSchema.make(columnAccountId),
+              dotyposCustomerId: columnLinked,
+            },
+            {
+              id: customerAccountIdSchema.make(unverifiedOnlyAccountId),
+              dotyposCustomerId: unverifiedOnly,
+            },
+          ])
+        );
+        await Effect.runPromise(
+          db.insert(authUser).values([
+            {
+              id: columnAccountId,
+              name: "Column-linked campaign test",
+              email: testEmailAddress(`campaign-column-${run}`),
+              emailVerified: true,
+              locale: "en-US",
+            },
+            {
+              id: unverifiedOnlyAccountId,
+              name: "Unverified-only campaign test",
+              email: testEmailAddress(`campaign-unverified-only-${run}`),
+              emailVerified: false,
+              locale: "en-US",
+            },
+          ])
+        );
+      });
+
+      afterAll(async () => {
+        await testDatabase.pool.query(
+          'delete from auth."user" where id = any($1)',
+          [[columnAccountId, unverifiedOnlyAccountId]]
+        );
+        await testDatabase.pool.query(
+          "delete from customer_accounts where id = any($1)",
+          [[columnAccountId, unverifiedOnlyAccountId]]
+        );
+      });
+
+      test("pools the customers listCandidates lists", async () => {
+        for (const purpose of ["marketing", "operational"] as const) {
+          const pool = (
+            await Effect.runPromise(listCampaignCandidateIds(db, purpose))
+          ).filter((id) => pooled.includes(id));
+          const candidates = (
+            await repository((candidates) =>
+              candidates.listCandidates({ purpose })
+            )
+          )
+            .map(({ dotyposCustomerId }) => dotyposCustomerId)
+            .filter((id) => pooled.includes(id))
+            .sort();
+          expect(pool).toEqual(candidates);
+          expect(pool.includes(unverifiedOnly)).toBe(false);
+        }
+        const operational = await Effect.runPromise(
+          listCampaignCandidateIds(db, "operational")
+        );
+        expect(operational.includes(columnLinked)).toBe(true);
+      });
     });
   }
 );

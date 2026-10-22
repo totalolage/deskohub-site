@@ -87,6 +87,15 @@ export const reservationVisitsFake = (
               end < active.length ? Option.some(page + 1) : Option.none(),
           };
         }),
+      bookings: (customers) =>
+        Effect.succeed(
+          new Map(
+            customers.flatMap((id) => {
+              const booked = customerVisits(visits, id).length;
+              return booked === 0 ? [] : [[id, booked] as const];
+            })
+          )
+        ),
       cost: (customers) =>
         Effect.succeed(
           Math.ceil(

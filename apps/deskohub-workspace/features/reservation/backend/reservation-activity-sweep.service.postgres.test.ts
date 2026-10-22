@@ -31,12 +31,19 @@ import {
 import type { CustomerEventSweepSource } from "@/shared/backend/customer-events/customer-event";
 import { CustomerEventReconciler } from "@/shared/backend/customer-events/customer-event-reconciler";
 import {
-  connectWorkspacePostgresTestDatabase,
+  createWorkspacePostgresSuiteDatabase,
   fixtureReservationAuthorId,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { ReservationActivitySweep } from "./reservation-activity-sweep.service";
 
-const testDatabase = await connectWorkspacePostgresTestDatabase();
+/**
+ * The sweep reads every cursor and the planner every unit, so the suite runs
+ * on a database of its own.
+ */
+const testDatabase = await createWorkspacePostgresSuiteDatabase(
+  "reservation_activity_sweep"
+);
+afterAll(() => testDatabase?.close());
 
 /** How a Workspace reservation stands locally; `none` has no local row. */
 type LocalState = "booked" | "unconfirmed" | "cancelled" | "none";
@@ -587,6 +594,29 @@ describe.skipIf(!testDatabase)(
       expect(await visitEvents([visit.label])).toEqual([
         visitEvent("reservation-started", visit.label, visit.startsAt),
         visitEvent("reservation-finished", visit.label, visit.endsAt),
+      ]);
+    });
+
+    test("records each event at the sweep's instant, not the database's clock", async () => {
+      const dotypos = activityDotypos(100);
+      const now = at("2027-01-20T09:03:00Z");
+      await resetSweeps({ activity: now.subtract({ minutes: 3 }) });
+      const visit = {
+        label: "recorded",
+        startsAt: now.subtract({ hours: 2 }),
+        endsAt: now.subtract({ minutes: 2 }),
+      };
+      await book(dotypos, visit);
+
+      await runEngine(dotypos, (tick) => tick(now));
+
+      const { rows } = await testDatabase.pool.query<{ recorded_at: string }>(
+        "select recorded_at from customer_events where workspace_reservation_id = $1",
+        [workspaceId(visit.label)]
+      );
+      expect(rows.map((row) => storedIso(row.recorded_at))).toEqual([
+        "2027-01-20T09:03:00.000Z",
+        "2027-01-20T09:03:00.000Z",
       ]);
     });
 

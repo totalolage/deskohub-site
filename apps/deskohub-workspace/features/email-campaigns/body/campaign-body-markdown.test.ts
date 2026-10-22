@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Exit, Schema } from "effect";
-import { CampaignBodyDocument } from "./campaign-body-document";
+import { Effect, Exit, Result, Schema } from "effect";
+import {
+  CampaignBodyDocument,
+  UnfinishedCampaignBodyDocument,
+} from "./campaign-body-document";
 import {
   campaignBodyToMarkdown,
   parseCampaignBodyMarkdown,
+  parseUnfinishedCampaignBodyMarkdown,
 } from "./campaign-body-markdown";
 
 const cloudinaryImage =
@@ -139,5 +143,108 @@ describe("campaign body Markdown", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(JSON.stringify(exit)).toContain("InvalidCampaignBody");
+  });
+
+  test.each([
+    ["a bare URL", "See https://example.com/a?b=1&c=2 now"],
+    ["a bare URL without a query", "See https://example.com/a now"],
+    ["a bare domain", "Visit www.example.com today"],
+  ])("keeps %s typed as text when it round-trips", async (_name, text) => {
+    const typed = await parse(text.replaceAll("&", "\\&"));
+    const imported = await parse(campaignBodyToMarkdown(typed));
+
+    expect(imported).toEqual(typed);
+    expect(JSON.stringify(imported.doc)).not.toContain('"link"');
+    expect(JSON.stringify(imported.doc)).toContain(
+      JSON.stringify(text).slice(1, -1)
+    );
+  });
+
+  test("round-trips an empty body", async () => {
+    const empty = await parse("");
+
+    expect(empty.doc).toEqual({
+      type: "doc",
+      content: [{ type: "paragraph" }],
+    });
+    expect(await parse(campaignBodyToMarkdown(empty))).toEqual(empty);
+  });
+});
+
+describe("unfinished campaign body Markdown", () => {
+  const parseUnfinished = (markdown: string) =>
+    Effect.runPromise(parseUnfinishedCampaignBodyMarkdown(markdown));
+
+  /** An editor document as the composer holds it mid-edit. */
+  const editorBody = (...content: ReadonlyArray<object>) => ({
+    formatVersion: 1 as const,
+    doc: { type: "doc", content },
+  });
+
+  const paragraphLink = (href: string) => ({
+    type: "paragraph",
+    content: [
+      { type: "text", text: "web", marks: [{ type: "link", attrs: { href } }] },
+    ],
+  });
+
+  test.each([
+    [
+      "a button without a label or URL",
+      { type: "ctaButton", attrs: { label: "", href: null } },
+    ],
+    [
+      "a button with an unfinished URL",
+      { type: "ctaButton", attrs: { label: "Klik", href: "htt" } },
+    ],
+    ["a link without a URL", paragraphLink("")],
+    ["a link with an unsafe URL", paragraphLink("javascript:alert(1)")],
+    [
+      "an image from elsewhere",
+      { type: "image", attrs: { src: "https://example.com/a.jpg" } },
+    ],
+  ])("accepts %s that saving refuses", async (_name, node) => {
+    const markdown = campaignBodyToMarkdown(editorBody(node) as never);
+
+    const unfinished = await parseUnfinished(markdown);
+    const finished = await Effect.runPromiseExit(
+      parseCampaignBodyMarkdown(markdown)
+    );
+
+    expect(unfinished.doc.content?.[0]?.type).toBe(node.type);
+    expect(Exit.isFailure(finished)).toBe(true);
+  });
+
+  test("keeps a button's unfinished label and URL", async () => {
+    const body = await parseUnfinished(
+      campaignBodyToMarkdown(
+        editorBody({
+          type: "ctaButton",
+          attrs: { label: "", href: null },
+        }) as never
+      )
+    );
+
+    expect(body.doc.content).toEqual([
+      { type: "ctaButton", attrs: { label: "", href: "" } },
+    ]);
+  });
+
+  test("parses finished Markdown as the strict parser does", async () => {
+    const markdown =
+      "Více na [webu](https://workspace.deskohub.cz).\n\n[[button: Rezervovat](https://workspace.deskohub.cz)]";
+
+    expect(await parseUnfinished(markdown)).toEqual(await parse(markdown));
+  });
+
+  test("still refuses a body outside the content set's structure", () => {
+    expect(
+      Result.isFailure(
+        Schema.decodeUnknownResult(UnfinishedCampaignBodyDocument)({
+          formatVersion: 1,
+          doc: { type: "doc", content: [{ type: "video" }] },
+        })
+      )
+    ).toBe(true);
   });
 });

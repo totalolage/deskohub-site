@@ -38,7 +38,10 @@ glossary defines the customer account, reservation author, and tombstone.
 - `public.customer_accounts` stores the account's id, which is the Better Auth
   user id (`CustomerAccountId`), its own Dotypos customer
   (`dotypos_customer_id`, unique, null until the profile is completed), its
-  creation instant, and `deleted_at`. It holds no personal data.
+  creation instant, `deleted_at`, and `legacy`. It holds no personal data.
+  `legacy` marks the existing customers #764's backfill gave silent logins;
+  they never count as new accounts (see the domain skill's email-campaigns
+  reference). Nothing sets it any more, so new rows take the default `false`.
 - Every login has one. Better Auth's `user.create.before` hook creates the
   account (`ensureCustomerAccount`) before it inserts the login, and
   `auth.user.id` references `customer_accounts.id` with `ON DELETE RESTRICT`,

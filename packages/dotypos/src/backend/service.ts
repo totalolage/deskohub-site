@@ -51,6 +51,7 @@ import {
   DotyposTableSchema,
 } from "../types";
 import { toCustomerEmailIdentity } from "../utils/customer-email";
+import { dotyposIdFilterBatchSize } from "../utils/id-filter-batches";
 import { normalizePhoneNumber } from "../utils/phone-formatting";
 import {
   DotyposAccessToken,
@@ -113,6 +114,7 @@ export const dotyposMaximumPageSize = 100;
 
 type DotyposPage<A> = {
   readonly data?: readonly A[];
+  readonly lastPage?: string;
   readonly nextPage?: string | null;
 };
 
@@ -1086,6 +1088,64 @@ const makeDotyposService = Effect.gen(function* () {
     );
   });
 
+  const getCustomersPage: (
+    ids: ReadonlyArray<DotyposCustomerId>
+  ) => Effect.Effect<ReadonlyArray<DotyposCustomer>, DotyposError> = Effect.fn(
+    "getCustomersPage"
+  )(function* (ids: ReadonlyArray<DotyposCustomerId>) {
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) return [];
+    if (uniqueIds.length > dotyposIdFilterBatchSize) {
+      return yield* new ValidationError({
+        message: `Customer filters accept at most ${dotyposIdFilterBatchSize} ids`,
+      });
+    }
+    if (uniqueIds.some((value) => !value.trim() || /[|;,]/.test(value))) {
+      return yield* new ValidationError({
+        message: "Customer filters contain an invalid value",
+      });
+    }
+
+    const filter = [`id|in|${uniqueIds.join(",")}`, "deleted|in|0,1"].join(";");
+    const page = yield* runDotyposRequest(
+      client.getCustomers(config.cloudId, {
+        params: {
+          filter,
+          limit: dotyposMaximumPageSize,
+          page: 1,
+        },
+      }),
+      "getCustomersPage"
+    ).pipe(
+      Effect.catchTag("ExternalAPIError", (error) =>
+        error.statusCode === 404
+          ? Effect.succeed({ data: [] as const })
+          : Effect.fail(error)
+      ),
+      Effect.flatMap((result) =>
+        decodeProviderPage(DotyposCustomerSchema, result, "getCustomersPage")
+      ),
+      catchUnexpectedDotyposError("getCustomersPage")
+    );
+    const nextPage = yield* getNextDotyposPageNumber({
+      currentPage: 1,
+      nextPage: page.nextPage,
+      operation: "getCustomersPage",
+    });
+    if (
+      nextPage !== undefined ||
+      (page.lastPage !== undefined && Number(page.lastPage) > 1)
+    ) {
+      return yield* new ExternalAPIError({
+        service: "Dotypos",
+        operation: "getCustomersPage",
+        message: "Dotypos paged an id-filtered customer read",
+        statusCode: 502,
+      });
+    }
+    return page.data ?? [];
+  });
+
   /**
    * Reads the first page of customer changes for an incremental export; the
    * caller moves through the changes by narrowing the selection, never by
@@ -2017,6 +2077,7 @@ const makeDotyposService = Effect.gen(function* () {
     getReservationStatus,
     getCustomer,
     getCustomers,
+    getCustomersPage,
     listCustomerChanges,
     createCustomer,
     patchCustomer,

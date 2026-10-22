@@ -1,10 +1,18 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
+import type {
+  AutomationFlowType as AutomationFlow,
+  AutomationTriggerType as AutomationTrigger,
+} from "@deskohub/workspace-admin-api";
 import { inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import {
   emailCampaignAutomationRuns,
+  emailCampaignAutomationScheduleFires,
+  emailCampaignAutomations,
+  emailCampaignAutomationTriggerReceipts,
   emailCampaignAutomationVersions,
+  emailCampaignAutomationWorkUnits,
   emailCampaignRecipients,
   emailCampaignSends,
   emailCampaigns,
@@ -16,7 +24,11 @@ import type {
   CampaignPurpose,
 } from "../body/campaign-content";
 import { hashCampaignContent } from "../body/campaign-content-hash";
-import type { CampaignId, CampaignSendId } from "../campaign-identifiers";
+import type {
+  CampaignAudienceId,
+  CampaignId,
+  CampaignSendId,
+} from "../campaign-identifiers";
 import type {
   automatedCampaignStatuses,
   CampaignRecipientStatus,
@@ -44,6 +56,28 @@ export const campaignContentFixture = (
       },
     },
   },
+});
+
+/**
+ * A flow whose condition step requires customers to be in the saved
+ * audience `audienceId`, nested in a group as the builder stores it.
+ */
+export const audienceConditionFlowFixture = (
+  audienceId: CampaignAudienceId
+) => ({
+  trigger: { _tag: "ReservationBooked" },
+  steps: [
+    {
+      _tag: "Condition",
+      id: "step-regulars",
+      filter: {
+        _tag: "Group",
+        operator: "and",
+        filters: [{ _tag: "InAudience", audienceId, operator: "in" }],
+      },
+    },
+    { _tag: "Send", id: "step-send" },
+  ],
 });
 
 type SeededRecipient = {
@@ -160,7 +194,11 @@ export const seedAutomatedCampaign = async (
 
 /**
  * Publishes version `versionNumber` of `campaignId` with `purpose` and the
- * content `text`, as activation will.
+ * content `text`, as activation will. `trigger` and `activatedAt` default to
+ * a placeholder trigger and an activation ordered by version number; `flow`
+ * replaces the whole stored flow, including its trigger. Pass `flow` where
+ * the engine decodes the version's flow: the placeholder flow built from
+ * `trigger` doesn't decode.
  */
 export const seedAutomationVersion = async (
   db: WorkspaceDatabaseClient,
@@ -169,6 +207,10 @@ export const seedAutomationVersion = async (
     readonly purpose: CampaignPurpose;
     readonly versionNumber?: number;
     readonly text?: string;
+    readonly trigger?: AutomationTrigger;
+    readonly audienceFilter?: AudienceFilter;
+    readonly activatedAt?: Temporal.Instant;
+    readonly flow?: unknown;
   }
 ) => {
   const content = campaignContentFixture(input.text ?? "Verze");
@@ -178,7 +220,10 @@ export const seedAutomationVersion = async (
       .values({
         campaignId: input.campaignId,
         versionNumber: input.versionNumber ?? 1,
-        flow: { trigger: { _tag: "reservation-booked" }, steps: [] },
+        flow: input.flow ?? {
+          trigger: input.trigger ?? { _tag: "reservation-booked" },
+          steps: [],
+        },
         purpose: input.purpose,
         templateKey: "workspace",
         content,
@@ -187,13 +232,47 @@ export const seedAutomationVersion = async (
           templateKey: "workspace",
           locales: content,
         }),
-        audienceFilter: everyoneFilter,
+        audienceFilter: input.audienceFilter ?? everyoneFilter,
         draftHash: `draft-${input.versionNumber ?? 1}`,
-        activatedAt: sql`now() + make_interval(secs => ${input.versionNumber ?? 1})`,
+        activatedAt:
+          input.activatedAt ??
+          sql`now() + make_interval(secs => ${input.versionNumber ?? 1})`,
       })
       .returning({ id: emailCampaignAutomationVersions.id })
   );
   return version!.id;
+};
+
+/**
+ * Inserts the automation row of `campaignId` with `activeVersionId` in
+ * force, as activation and the lifecycle operations leave it. `flow`, the
+ * working copy, defaults to the active version's flow.
+ */
+export const seedAutomation = async (
+  db: WorkspaceDatabaseClient,
+  input: {
+    readonly campaignId: CampaignId;
+    readonly activeVersionId: AutomationVersionId;
+    readonly flow?: AutomationFlow;
+    readonly acceptingSince?: Temporal.Instant | null;
+    readonly pausedAt?: Temporal.Instant | null;
+    readonly resumedAt?: Temporal.Instant | null;
+    readonly nextFireAt?: Temporal.Instant | null;
+  }
+) => {
+  await Effect.runPromise(
+    db.insert(emailCampaignAutomations).values({
+      campaignId: input.campaignId,
+      flow:
+        input.flow ??
+        sql`(select ${emailCampaignAutomationVersions.flow} from ${emailCampaignAutomationVersions} where ${emailCampaignAutomationVersions.id} = ${input.activeVersionId})`,
+      activeVersionId: input.activeVersionId,
+      acceptingSince: input.acceptingSince ?? null,
+      pausedAt: input.pausedAt ?? null,
+      resumedAt: input.resumedAt ?? null,
+      nextFireAt: input.nextFireAt ?? null,
+    })
+  );
 };
 
 /**
@@ -217,9 +296,10 @@ export const seedAutomatedSend = (
   });
 
 /**
- * Deletes campaigns with their automation runs, sends, recipients and
- * versions. Versions are immutable, so removing them takes the same
- * exclusive lock and trigger toggle an operator would need.
+ * Deletes campaigns with their automation rows, receipts, runs, units,
+ * fires, sends, recipients and versions. Versions are immutable, so
+ * removing them takes the same exclusive lock and trigger toggle an
+ * operator would need.
  */
 export const deleteAutomatedCampaigns = (
   db: WorkspaceDatabaseClient,
@@ -229,8 +309,33 @@ export const deleteAutomatedCampaigns = (
     db.transaction((tx) =>
       Effect.gen(function* () {
         yield* tx
+          .delete(emailCampaignAutomationTriggerReceipts)
+          .where(
+            inArray(
+              emailCampaignAutomationTriggerReceipts.campaignId,
+              campaignIds
+            )
+          );
+        yield* tx
           .delete(emailCampaignAutomationRuns)
           .where(inArray(emailCampaignAutomationRuns.campaignId, campaignIds));
+        yield* tx
+          .delete(emailCampaignAutomationWorkUnits)
+          .where(
+            inArray(emailCampaignAutomationWorkUnits.campaignId, campaignIds)
+          );
+        yield* tx
+          .delete(emailCampaignAutomationScheduleFires)
+          .where(
+            inArray(
+              emailCampaignAutomationScheduleFires.campaignId,
+              campaignIds
+            )
+          );
+        // The automation row references its active version.
+        yield* tx
+          .delete(emailCampaignAutomations)
+          .where(inArray(emailCampaignAutomations.campaignId, campaignIds));
         yield* tx
           .delete(emailCampaignSends)
           .where(inArray(emailCampaignSends.campaignId, campaignIds));

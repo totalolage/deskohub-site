@@ -1,20 +1,15 @@
 import type { DotyposService } from "@deskohub/dotypos";
-import { Effect, Option, Schema, SchemaGetter } from "effect";
+import { Effect, Option, Schema } from "effect";
 import type { WorkspaceDatabase } from "@/db/database.service";
 import {
   type ReservationActivityFetch,
   ReservationActivitySweep,
 } from "@/features/reservation/backend/reservation-activity-sweep.service";
 import type { ReservationActivityPage } from "@/features/reservation/backend/reservation-activity-sweep-window";
-import {
-  ReservationVisits,
-  type ReservationVisitsUnavailable,
-} from "@/features/reservation/backend/reservation-visits.service";
+import { ReservationVisits } from "@/features/reservation/backend/reservation-visits.service";
 import { customerEventSweepSourceSchema } from "@/shared/backend/customer-events/customer-event";
 import {
-  type Instant,
-  instantStringSchema,
-  TemporalInstantSchema,
+  instantFromIsoStringSchema,
   temporalInstantToIsoString,
 } from "@/shared/utils/temporal";
 import {
@@ -24,20 +19,10 @@ import {
   registerAutomationUnitHandler,
 } from "./automation-unit-handler";
 
-/** Window bounds are whole milliseconds, so the ISO form round-trips exactly. */
-const windowBoundSchema = instantStringSchema.pipe(
-  Schema.decodeTo(TemporalInstantSchema, {
-    decode: SchemaGetter.transform((value) => Temporal.Instant.from(value)),
-    encode: SchemaGetter.transform(
-      (value) => temporalInstantToIsoString(value) as Instant
-    ),
-  })
-);
-
 const sweepPageSubjectSchema = Schema.Struct({
   source: customerEventSweepSourceSchema,
-  windowStartsAt: windowBoundSchema,
-  windowEndsAt: windowBoundSchema,
+  windowStartsAt: instantFromIsoStringSchema,
+  windowEndsAt: instantFromIsoStringSchema,
   page: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
 });
 type SweepPageSubject = typeof sweepPageSubjectSchema.Type;
@@ -78,17 +63,13 @@ export const makeSweepPageHandler = Effect.gen(function* () {
     kind: "sweep-page",
     subject: sweepPageSubjectSchema,
     fetch: (unit) =>
-      sweep.fetchPage(toPage(unit.subject)).pipe(
-        Effect.provide(ReservationVisits.Default),
-        Effect.provideContext(context),
-        Effect.mapError(
-          (unavailable) =>
-            new AutomationUnitFetchFailure({
-              code: dotyposFailureCode(unavailable),
-              cause: unavailable,
-            })
-        )
-      ),
+      sweep
+        .fetchPage(toPage(unit.subject))
+        .pipe(
+          Effect.provide(ReservationVisits.Default),
+          Effect.provideContext(context),
+          Effect.mapError(AutomationUnitFetchFailure.fromReservationVisits)
+        ),
     commit: (tx, unit, fetched, at) =>
       sweep
         .commitPage(tx, toPage(unit.subject), fetched, at)
@@ -101,17 +82,3 @@ export const makeSweepPageHandler = Effect.gen(function* () {
 
   return registerAutomationUnitHandler(handler);
 });
-
-/** A low-cardinality `last_error_code` for a failed Dotypos page read. */
-const dotyposFailureCode = ({ cause }: ReservationVisitsUnavailable) => {
-  switch (cause._tag) {
-    case "ExternalAPIError":
-      return cause.statusCode === undefined
-        ? "dotypos-error"
-        : `dotypos-${cause.statusCode}`;
-    case "NetworkError":
-      return "dotypos-network";
-    case "ValidationError":
-      return "dotypos-invalid-response";
-  }
-};

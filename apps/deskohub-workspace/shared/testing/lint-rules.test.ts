@@ -146,6 +146,9 @@ const blockBodiedInlineCallback = `export const run = Effect.succeed("value").pi
 const blockBodiedInlineHandler = `export const run = Effect.succeed("value").pipe(Effect.catchTag("NotFound", (error) => { return Effect.succeed(error).pipe(Effect.map(value => value)); }));\n`;
 
 const reservations = "apps/deskohub-workspace/features/reservations";
+const automationBackend =
+  "apps/deskohub-workspace/features/email-campaigns/automation/backend";
+const automationEngineModule = `${automationBackend}/automation-deliver-unit.ts`;
 const booking = `${reservations}/book-seat.ts`;
 const generated =
   "apps/deskohub-workspace/shared/backend/generated/dotypos-client.ts";
@@ -172,6 +175,33 @@ const button = (attributes: string) =>
 
 // biome-ignore format: the case table stays one row per line on purpose.
 const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[] = [
+  {
+    name: "automation-state-writers", diagnostic: "Automation states have one writer each",
+    module: automationEngineModule,
+    cases: [
+      ["rejects ending a run with the update builder", 'await tx.update(emailCampaignAutomationRuns).set({ status: "ended", outcome: "sent" }).where(eq(emailCampaignAutomationRuns.id, runId));\n', true],
+      ["rejects inserting an ended run", 'await tx.insert(emailCampaignAutomationRuns).values([{ ...run, status: "ended" }]);\n', true],
+      ["rejects appending run endings outside the transitions", "await appendAutomationRunEndings(tx, entries);\n", true],
+      ["rejects SQL that ends a run", "await client.query(\"update email_campaign_automation_runs set outcome = 'sent', status = 'ended' where id = $1\", [runId]);\n", true],
+      ["rejects SQL that inserts an ended run", "await client.query(\"insert into email_campaign_automation_runs (id, status) values ($1, 'ended')\", [runId]);\n", true],
+      ["rejects a template that ends a run through the table interpolation", `await tx.execute(sql\`update \${emailCampaignAutomationRuns} set \${emailCampaignAutomationRuns.status} = 'ended' where id = \${runId}\`);\n`, true],
+      ["rejects pausing a campaign with the update builder", 'await tx.update(emailCampaigns).set({ status: "paused" }).where(eq(emailCampaigns.id, campaignId));\n', true],
+      ["rejects inserting an active campaign", 'await tx.insert(emailCampaigns).values({ title, delivery: "automated", status: "active" });\n', true],
+      ["rejects SQL that archives a campaign", "await client.query(\"update email_campaigns set status = 'archived' where id = $1\", [campaignId]);\n", true],
+      ["permits the run transitions", 'await tx.update(emailCampaignAutomationRuns).set({ status: "ended", outcome: "sent" }).where(eq(emailCampaignAutomationRuns.id, runId));\n', false, `${automationBackend}/automation-run-transitions.ts`],
+      ["permits the run transitions appending endings", "await appendAutomationRunEndings(tx, entries);\n", false, `${automationBackend}/automation-run-transitions.ts`],
+      ["permits the lifecycle service", 'await tx.update(emailCampaigns).set({ status: "paused" }).where(eq(emailCampaigns.id, campaignId));\n', false, `${automationBackend}/automation-lifecycle.service.ts`],
+      ["permits moving a run between open states", 'await tx.update(emailCampaignAutomationRuns).set({ status: "sending", phase: null, dueAt: null });\n', false],
+      ["permits one-off campaign statuses", 'await tx.update(emailCampaigns).set({ status: "sent" });\n', false],
+      ["permits other tables in an ended status", 'await tx.update(emailCampaignSends).set({ status: "ended" });\n', false],
+      ["permits SQL that filters on ended runs", "await client.query(\"update email_campaign_automation_runs set updated_at = now() where status = 'ended'\");\n", false],
+      ["permits SQL that filters on campaign status", "await client.query(\"update email_campaigns set updated_at = now() where status = 'active'\");\n", false],
+      ["permits a status the rule can't see, which the CHECK and transition tests guard", "await tx.update(emailCampaignAutomationRuns).set({ status });\n", false],
+      ["permits Postgres tests seeding ended runs", 'await tx.insert(emailCampaignAutomationRuns).values({ ...run, status: "ended" });\n', false, `${automationBackend}/automation-run-settlement.service.postgres.test.ts`],
+      ["permits test utils seeding campaign statuses", 'await db.insert(emailCampaigns).values({ title, status: "active" });\n', false, "apps/deskohub-workspace/features/email-campaigns/backend/email-campaigns.test-utils.ts"],
+      ["permits modules outside Workspace", 'await tx.update(emailCampaigns).set({ status: "paused" });\n', false, "apps/dhw/src/campaigns.ts"],
+    ],
+  },
   {
     name: "no-wildcard-reexport", diagnostic: "re-exports must be explicit",
     module: `${reservations}/index.ts`,
