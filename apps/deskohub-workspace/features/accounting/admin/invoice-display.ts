@@ -17,6 +17,7 @@ export const getInvoiceSourceLabel = (
     "post-order-link": m.accountingInvoiceSourcePostOrderLink,
     "admin-ui": m.accountingInvoiceSourceAdminUi,
     "dhw-cli": m.accountingInvoiceSourceDhwCli,
+    assistant: m.accountingInvoiceSourceAssistant,
     legacy: m.accountingInvoiceSourceLegacy,
   })[source]({}, { locale });
 
