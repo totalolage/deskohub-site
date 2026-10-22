@@ -362,6 +362,26 @@ test.skipIf(!chromiumAvailable)(
 );
 
 test.skipIf(!chromiumAvailable)(
+  "deletes a step from its menu without dropping focus to the page",
+  () =>
+    withBuilder(
+      { automation: eventFlow, respond: unexpectedOperation },
+      async ({ page }) => {
+        await stepMenu(page, "Wait", 2).click();
+        await menuItem(
+          page,
+          m.emailAutomationFlowStepDelete({}, { locale })
+        ).click();
+
+        await stepMenu(page, "Wait", 2).waitFor({ state: "detached" });
+        await waitForMenuToClose(page);
+        // Any control left in the flow will do; the page itself won't.
+        await page.locator("form :focus").waitFor({ timeout: 2000 });
+      }
+    )
+);
+
+test.skipIf(!chromiumAvailable)(
   "switches a wait between a duration and a calendar from its segments",
   () =>
     withBuilder(
