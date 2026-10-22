@@ -928,7 +928,10 @@ describe.skipIf(!testDatabase)(
         headers: { cookie, "content-type": "application/json" },
         body: "{}",
       });
-      expect(refused.ok).toBe(false);
+      expect(refused.status).toBe(403);
+      expect(await refused.json()).toMatchObject({
+        code: "REVIEW_ACCOUNT_DELETION_REFUSED",
+      });
       expect(calls).toEqual([]);
 
       const user = await testDatabase!.pool.query(

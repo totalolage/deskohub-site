@@ -875,6 +875,43 @@ describe("DeleteAccountCard", () => {
     ).toBe(false);
   });
 
+  test("reports a refused deletion without offering a retry", async () => {
+    deleteCustomerAccount.mockImplementationOnce(() =>
+      Promise.resolve({ data: { status: "refused" } })
+    );
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email={adaAddress}
+        locale="en-US"
+        deletionPending={false}
+      />
+    );
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          "I understand that my account and every session will be permanently deleted."
+        )
+      );
+    });
+    await act(async () => {
+      fireEvent.click(view.getByText("Delete permanently"));
+    });
+
+    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
+    expect(
+      document
+        .querySelector("[role='dialog'] [aria-live='assertive']")
+        ?.textContent?.trim()
+    ).toBeTruthy();
+    expect(
+      (document.querySelector("#delete-account-confirm") as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+  });
+
   test("shows an explicit server error while keeping the dialog open", async () => {
     const serverError = "Synthetic deletion server failure";
     deleteCustomerAccount.mockImplementationOnce(() =>

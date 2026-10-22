@@ -959,6 +959,35 @@ describe("loadCustomerAccountPage", () => {
     expect(historyLoadCalls).toBe(0);
   });
 
+  test("offers no deletion without a profile when the review marker can't be read", async () => {
+    reviewAccountEffect = Effect.fail(new Error("database unavailable"));
+    resolveEffect = resolverOutcome({ kind: "failure", reason: "unavailable" });
+
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "authenticated-unavailable",
+      assistants: [],
+      email: customerEmail,
+      deletionUnavailable: true,
+    });
+  });
+
+  test("keeps deletion for a linked account or a pending deletion when the review marker can't be read", async () => {
+    reviewAccountEffect = Effect.fail(new Error("database unavailable"));
+
+    await expect(loadPageState()).resolves.not.toHaveProperty(
+      "deletionUnavailable"
+    );
+
+    currentUserEffect = Effect.succeed({
+      ...activeSession,
+      deletionRequested: true,
+    });
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "deletion-pending",
+      email: customerEmail,
+    });
+  });
+
   test("renders the retryable deletion state when the durable marker is set", async () => {
     currentUserEffect = Effect.succeed({
       ...activeSession,

@@ -1139,6 +1139,7 @@
   "accountDeletionReauthCodeTitle": "Confirm it is you",
   "accountDeletionReauthCodeVerified": "Confirmed. Returning to the deletion step…",
   "accountDeletionRetryableError": "We could not expire your customer profile, so your account was not deleted. Please try again when our reservation system recovers.",
+  "accountDeletionRefused": "This account can't be deleted. Nothing was changed.",
   "accountDeletionRequestFailed": "We could not complete the account deletion. Please try again.",
   "accountDeletionPendingError": "Your account is already being deleted, so the profile cannot be changed.",
   "accountSessionExpired": "Your session has expired. Please sign in again.",

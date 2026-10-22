@@ -424,6 +424,19 @@ describe("AccountPage states", () => {
     expect(view.container.querySelector("#delete-account-trigger")).toBeNull();
   });
 
+  test("offers no account deletion while deletion eligibility is unknown", async () => {
+    const view = await renderState({
+      kind: "authenticated-unavailable",
+      email: adaAddress,
+      deletionUnavailable: true,
+    });
+
+    expect(
+      view.container.querySelector("#account-profile-unavailable")
+    ).toBeTruthy();
+    expect(view.container.querySelector("#delete-account-trigger")).toBeNull();
+  });
+
   test("renders the linked account with profile, reservations, sign out, and deletion", async () => {
     const view = await renderState(linkedState);
     const sectionNavigation = within(

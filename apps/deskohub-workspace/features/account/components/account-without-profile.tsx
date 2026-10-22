@@ -17,9 +17,9 @@ type AccountWithoutProfileProps = {
   readonly deletionPending?: boolean;
   /**
    * False for a shared review account, which must keep working for later
-   * review rounds.
+   * review rounds, and while that can't be ruled out.
    */
-  readonly deletable?: boolean;
+  readonly deletable: boolean;
   /** The account's passkeys; absent while `login_passkeys` is off. */
   readonly passkeys?: AccountPasskeySettings;
   /**
@@ -48,7 +48,7 @@ type AccountWithoutProfileProps = {
 export function AccountWithoutProfile({
   assistants,
   children,
-  deletable = true,
+  deletable,
   deletionPending = false,
   email,
   locale,

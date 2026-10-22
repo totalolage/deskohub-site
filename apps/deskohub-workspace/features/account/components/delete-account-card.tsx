@@ -83,7 +83,8 @@ export function DeleteAccountCard({
           setReauthRequired(true);
           return;
         }
-        // "failed" keeps the dialog open with the retryable error message.
+        // "failed" keeps the dialog open with the retryable error message;
+        // "refused" keeps it open with a final one.
       },
       // Also runs for thrown (transport) failures, so no onTransportError.
       onError: () => {
@@ -207,6 +208,9 @@ export function DeleteAccountCard({
                 {result.data?.status === "failed"
                   ? m.accountDeletionRetryableError({}, { locale })
                   : null}
+                {result.data?.status === "refused"
+                  ? m.accountDeletionRefused({}, { locale })
+                  : null}
                 {result.serverError ?? null}
                 {hasErrored &&
                   result.serverError === undefined &&
@@ -225,7 +229,11 @@ export function DeleteAccountCard({
                 <Button
                   id="delete-account-confirm"
                   type="button"
-                  disabled={!confirmed || isExecuting}
+                  disabled={
+                    !confirmed ||
+                    isExecuting ||
+                    result.data?.status === "refused"
+                  }
                   tone="danger"
                   onClick={() => {
                     beginAnalyticsAccountTransition();
