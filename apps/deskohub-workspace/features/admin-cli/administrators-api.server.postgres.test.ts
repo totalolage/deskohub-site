@@ -451,6 +451,22 @@ describe.skipIf(!postgresDatabase)(
       }
     );
 
+    test("refuses to grant the role to a review account", async () => {
+      const actor = await insertAdministrator();
+      const bearer = await insertSession(actor);
+      const target = await insertAccount({ review: true });
+
+      const outcome = await callAs(bearer, (client) =>
+        client.grantAdministrator({ payload: { email: target.email } })
+      );
+
+      expect(outcome).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "CliMutationRejected" },
+      });
+      expect(await grantRow(target.accountId)).toBeNull();
+    });
+
     test("refuses to grant the role to an email no account signs in with", async () => {
       const actor = await insertAdministrator();
       const bearer = await insertSession(actor);

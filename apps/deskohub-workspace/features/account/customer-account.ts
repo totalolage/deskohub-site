@@ -40,6 +40,7 @@ export type CustomerAccountFailureCode =
   | "account-locale-preference.read"
   | "account-locale-preference.write"
   | "account.deletion-state"
+  | "account.review"
   | "authentication.agent-connections"
   | "authentication.agent-token"
   | "authentication.passkeys"

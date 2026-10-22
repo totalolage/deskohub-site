@@ -78,7 +78,11 @@ const signInCodeIdentifier = (email: string) =>
 const digestAddress = ({ email }: { readonly email: string }) =>
   digest(normalizeEmail(email));
 
-const signInEmailLockKey = (recipient: { readonly email: string }) =>
+/**
+ * The per-address lock key that serializes one email address's sign-in
+ * writes: code issues and review-login provisioning.
+ */
+export const signInEmailLockKey = (recipient: { readonly email: string }) =>
   digestAddress(recipient).pipe(
     Effect.map((address): PostgresAdvisoryLockKey => ["sign-in-email", address])
   );

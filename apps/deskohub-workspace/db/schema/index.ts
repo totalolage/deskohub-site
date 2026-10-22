@@ -104,6 +104,10 @@ export {
 export { requestBudgetSpends } from "./request-budget-spends";
 export { reservationAccessGrants } from "./reservation-access-grants";
 export {
+  type ReviewAccountHold,
+  reviewAccountHolds,
+} from "./review-account-holds";
+export {
   type StandaloneAccessCodeAttemptEventRow,
   standaloneAccessCodeAttemptEvents,
 } from "./standalone-access-code-attempt-events";

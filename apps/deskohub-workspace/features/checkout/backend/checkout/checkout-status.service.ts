@@ -56,6 +56,7 @@ import { getStoredOfficeReservationSelectionSearchParams } from "@/features/rese
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { ReservationSelectionSearchParams } from "@/features/reservation/reservation-checkout-query";
 import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
+import { ReviewSandbox } from "@/features/review-accounts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { nexiRequestTimeout } from "@/shared/backend/config/nexi.config";
 import { currentInstant } from "@/shared/utils/temporal";
@@ -127,6 +128,11 @@ type CheckoutReservationStatusViewModelBase = CheckoutStatusViewModelBase & {
   readonly supportContactPrefill?: CheckoutStatusContactPrefill;
   /** The booked selection a retry status reopens on the reservation page. */
   readonly retrySearchParams?: ReservationSelectionSearchParams;
+  /**
+   * Marks a review account's sample or simulated hold, which nothing was
+   * reserved or charged for and which has no access code.
+   */
+  readonly reviewSandbox?: true;
 };
 
 type CheckoutCoworkStatusViewModel = CheckoutReservationStatusViewModelBase & {
@@ -424,6 +430,7 @@ const refreshVerificationBudget = Duration.seconds(40);
 
 const implementation = Effect.gen(function* () {
   const reservations = yield* WorkspaceReservationRepository;
+  const reviewSandbox = yield* ReviewSandbox;
   const latePaymentRecoveries = yield* LatePaymentRecoveryRepository;
   const latePaymentVerification = yield* LatePaymentVerificationService;
   const paymentAttempts = yield* PaymentAttemptRepository;
@@ -768,11 +775,14 @@ const implementation = Effect.gen(function* () {
       yield* Effect.logDebug("Checkout status reservation lookup completed");
 
       if (!reservation) {
-        const result: CheckoutStatusViewModel = {
-          orderId: input.orderId,
-          returnOutcome: input.returnOutcome,
-          status: "not_found",
-        };
+        const result: CheckoutStatusViewModel = Option.getOrElse(
+          yield* reviewSandbox.status(input),
+          () => ({
+            orderId: input.orderId,
+            returnOutcome: input.returnOutcome,
+            status: "not_found",
+          })
+        );
 
         yield* Effect.annotateLogsScoped({ status: result.status });
         yield* Effect.logInfo("Checkout status lookup completed");
@@ -951,6 +961,7 @@ export class CheckoutStatusService extends Context.Service<
       Layer.provide(LatePaymentRecoveryRepository.Default),
       Layer.provide(PaymentAttemptRepository.Default),
       Layer.provide(WorkspaceReservationRepository.Default),
+      Layer.provide(ReviewSandbox.Default),
       Layer.provide(WorkspaceDatabase.Default),
       Layer.provide(WorkspaceDotyposLayer),
       Layer.provide(SharedAvailabilityInventoryLive),

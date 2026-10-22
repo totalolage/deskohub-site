@@ -1,10 +1,13 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
+import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import type { ReferralSignupIntent } from "@/features/referrals/signup-intent.repository";
+import { ReviewAccounts } from "@/features/review-accounts";
 import {
   CustomerAccountAccessError,
   type CustomerAccountId,
+  customerAccountUnavailable,
   type LinkedCustomerAccount,
   mapCustomerAccountFailure,
 } from "../customer-account";
@@ -53,6 +56,13 @@ export type CustomerAccountResolutionDependencies = {
   readonly findLink: (
     accountId: CustomerAccountId
   ) => Effect.Effect<DotyposCustomerId | null, CustomerAccountLinkError>;
+  /**
+   * Whether the account is an app-directory review account, which never
+   * links or creates a Dotypos customer.
+   */
+  readonly isReviewAccount: (
+    accountId: CustomerAccountId
+  ) => Effect.Effect<boolean, EffectDrizzleQueryError>;
   readonly classify: (
     email: string
   ) => Effect.Effect<ExactEmailCustomerMatch, DotyposCustomerError>;
@@ -94,7 +104,7 @@ export const resolveCustomerAccountLinkUnderHeldLock = Effect.fn(
 )(function* (
   dependencies: Pick<
     CustomerAccountResolutionDependencies,
-    "findLink" | "classify" | "claimLink" | "reactivate"
+    "findLink" | "isReviewAccount" | "classify" | "claimLink" | "reactivate"
   >,
   identity: { readonly accountId: CustomerAccountId; readonly email: string },
   signupReferral?: ReferralSignupIntent
@@ -110,6 +120,14 @@ export const resolveCustomerAccountLinkUnderHeldLock = Effect.fn(
       },
       autoLinked: false,
     } satisfies CustomerAccountLinkResolution;
+  }
+
+  // A review account books in its sandbox, so no lookup ever reaches Dotypos.
+  const reviewAccount = yield* dependencies
+    .isReviewAccount(identity.accountId)
+    .pipe(Effect.mapError(mapCustomerAccountFailure("account-link.read")));
+  if (reviewAccount) {
+    return yield* customerAccountUnavailable("account.review");
   }
 
   const match = yield* dependencies
@@ -186,13 +204,16 @@ const resolutionDependencies: Effect.Effect<
   | CustomerAuthentication
   | CustomerAccountLinkRepository
   | CustomerDotyposAdapter
+  | ReviewAccounts
 > = Effect.gen(function* () {
   const authentication = yield* CustomerAuthentication;
   const links = yield* CustomerAccountLinkRepository;
   const dotypos = yield* CustomerDotyposAdapter;
+  const reviewAccounts = yield* ReviewAccounts;
   return {
     currentUser: () => authentication.currentUser,
     findLink: links.find,
+    isReviewAccount: reviewAccounts.isReviewAccount,
     classify: dotypos.classifyExactEmailCustomers,
     claimLink: links.claim,
     reactivate: dotypos.reactivateCustomer,
@@ -206,7 +227,8 @@ const resolutionDependenciesWith = <E, R>(
   Layer.mergeAll(
     authentication,
     CustomerAccountLinkRepository.Live,
-    CustomerDotyposAdapter.Live
+    CustomerDotyposAdapter.Live,
+    ReviewAccounts.Live
   );
 
 interface ICustomerAccountResolver {

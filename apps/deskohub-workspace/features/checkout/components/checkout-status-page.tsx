@@ -406,8 +406,9 @@ export function CheckoutStatusPage({
   );
   const showSupportButton = !!supportContactHref;
   const offersNewReservation = shouldOfferNewReservation(status.status);
+  const reviewSandbox = status.status !== "not_found" && status.reviewSandbox;
   const reservationAccessHref =
-    status.status === "fulfilled"
+    status.status === "fulfilled" && !reviewSandbox
       ? `/${locale}${reservationAccessPath}/${encodeURIComponent(status.orderId)}`
       : undefined;
   const Icon = copy.Icon;
@@ -445,6 +446,14 @@ export function CheckoutStatusPage({
           >
             {copy.lead}
           </p>
+          {reviewSandbox && (
+            <p
+              className="mt-4 rounded-2xl border border-navy-blue/10 bg-navy-blue/3 px-4 py-3 text-sm leading-6 text-navy-blue/72"
+              id="checkout-status-review-sandbox"
+            >
+              {m.checkoutStatusReviewSandboxNotice({}, { locale })}
+            </p>
+          )}
         </div>
       </div>
 

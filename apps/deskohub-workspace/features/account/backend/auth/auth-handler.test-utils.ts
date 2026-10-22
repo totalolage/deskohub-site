@@ -20,6 +20,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { drizzleAuthTables } from "@/db/schema/auth";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
+import { ReviewAccounts } from "@/features/review-accounts";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { ensureCustomerAccount } from "../customer-account.repository";
 import { captureAccountLocalePreference } from "../customer-locale-preference";
@@ -83,6 +84,9 @@ export type TestAuthOptions = {
   readonly clientMetadataTransport?: WorkspaceAuthConfig["clientMetadataTransport"];
   readonly createCustomerAccount?: WorkspaceAuthConfig["createCustomerAccount"];
   readonly hasAdministratorGrant?: WorkspaceAuthConfig["hasAdministratorGrant"];
+  readonly reviewAccountCredentials?: WorkspaceAuthConfig["reviewAccountCredentials"];
+  readonly isReviewAccount?: WorkspaceAuthConfig["isReviewAccount"];
+  readonly registerReviewAccount?: WorkspaceAuthConfig["registerReviewAccount"];
 };
 
 /** The migrated disposable database as the Workspace database service. */
@@ -123,6 +127,29 @@ const realHasAdministratorGrant: WorkspaceAuthConfig["hasAdministratorGrant"] =
         AccountRoleGrants.Default.pipe(Layer.provide(testDatabaseLayer()))
       )
     );
+
+/** The review-account marker on the migrated disposable database. */
+const realReviewAccounts: Pick<
+  WorkspaceAuthConfig,
+  "isReviewAccount" | "registerReviewAccount"
+> = {
+  isReviewAccount: (accountId) =>
+    Effect.flatMap(ReviewAccounts, (reviewAccounts) =>
+      reviewAccounts.isReviewAccount(accountId)
+    ).pipe(
+      Effect.provide(
+        ReviewAccounts.Default.pipe(Layer.provide(testDatabaseLayer()))
+      )
+    ),
+  registerReviewAccount: (accountId) =>
+    Effect.flatMap(ReviewAccounts, (reviewAccounts) =>
+      reviewAccounts.register(accountId)
+    ).pipe(
+      Effect.provide(
+        ReviewAccounts.Default.pipe(Layer.provide(testDatabaseLayer()))
+      )
+    ),
+};
 
 /** The production advisory lock on the migrated disposable database. */
 const realSignInEmailLock: WorkspaceAuthConfig["withSignInEmailLock"] = (
@@ -201,6 +228,18 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
             )
         : () => Effect.void,
     captureAccountLocalePreference,
+    reviewAccountCredentials: options.reviewAccountCredentials ?? [],
+    // Memory-backed instances have no customer_accounts table.
+    isReviewAccount:
+      options.isReviewAccount ??
+      (testDatabase && !options.database
+        ? realReviewAccounts.isReviewAccount
+        : () => Effect.succeed(false)),
+    registerReviewAccount:
+      options.registerReviewAccount ??
+      (testDatabase && !options.database
+        ? realReviewAccounts.registerReviewAccount
+        : () => Effect.void),
   });
 };
 

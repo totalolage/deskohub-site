@@ -2792,6 +2792,45 @@ describe.skipIf(!testDatabase)(
       expect(await countRows("oauth_consent", customer.accountId)).toBe(0);
     });
 
+    test("refuses administration to a review account, even one with an administrator grant", async () => {
+      const agent = makeAgent();
+      const login = {
+        email: uniqueEmail("review-administration"),
+        password: `review-${crypto.randomUUID()}`,
+      };
+      const auth = makeTestAuth({
+        reviewAccountCredentials: [login],
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const signedIn = await request(auth, "/sign-in/email", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...login, callbackURL: "/en-US/auth/callback" }),
+      });
+      expect(signedIn.status).toBe(200);
+      const cookie = cookieJar(getSessionCookie(signedIn)!);
+      const accountId = (await userIdForEmail(login.email))!;
+      await grantAdministrator(accountId);
+      const { response } = await authorizeRequest(auth, cookie, agent, {
+        scope: ALL_SCOPES,
+      });
+
+      expect(
+        (
+          await postConsent(auth, cookie, redirectOf(response), {
+            accept: true,
+            scope: ALL_SCOPES,
+          })
+        ).status
+      ).toBe(403);
+      expect(await countRows("oauth_consent", accountId)).toBe(0);
+      const tokens = await connectAskingEverything(auth, cookie, agent);
+      expect(tokens.scope?.split(" ")).not.toContain("administration");
+      expect(await administrationAccessOf(auth, tokens.access_token)).toBe(
+        "missing-scope"
+      );
+    });
+
     test("connects a customer whose agent asks for every scope with the scopes the customer can grant", async () => {
       const agent = makeAgent();
       const sentLinks: CapturedMagicLink[] = [];

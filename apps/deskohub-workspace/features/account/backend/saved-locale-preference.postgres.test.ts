@@ -60,6 +60,9 @@ describe.skipIf(!testDatabase)(
         createCustomerAccount: (accountId) =>
           ensureCustomerAccount(testDatabase!.db, accountId),
         captureAccountLocalePreference: () => Effect.void,
+        reviewAccountCredentials: [],
+        isReviewAccount: () => Effect.succeed(false),
+        registerReviewAccount: () => Effect.void,
       });
 
     const callHandler = (

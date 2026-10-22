@@ -56,6 +56,13 @@ export const createWorkspaceEnv = (runtimeEnv: WorkspaceRuntimeEnv) =>
           };
         }
 
+        if (hasPath("REVIEW_ACCOUNT_CREDENTIALS")) {
+          return {
+            ...issue,
+            message: "Invalid review account credential configuration.",
+          };
+        }
+
         if (hasPath("IGLOOHOME_CLIENT_SECRET")) {
           return {
             ...issue,
@@ -133,6 +140,7 @@ export const env = createWorkspaceEnv({
   IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID:
     process.env.IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID,
   RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,
+  REVIEW_ACCOUNT_CREDENTIALS: process.env.REVIEW_ACCOUNT_CREDENTIALS,
   CHECKOUT_PAY_STATE_KEYS: process.env.CHECKOUT_PAY_STATE_KEYS,
   CHECKOUT_RETURN_STATE_TOKEN_SECRET:
     process.env.CHECKOUT_RETURN_STATE_TOKEN_SECRET,

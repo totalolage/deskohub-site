@@ -4,14 +4,20 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Duration, Effect, Fiber, Layer } from "effect";
+import { Duration, Effect, Fiber, Layer, Option } from "effect";
 import { TestClock } from "effect/testing";
 import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
+import { ReviewSandboxMock } from "@/features/review-accounts/backend/review-sandbox.service.mock";
 import { LatePaymentVerificationService } from "../payment/late-payment-verification.service";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "../payment/provider-payment-finalization.service";
 import { LatePaymentRecoveryRepository } from "../repositories/late-payment-recovery.repository";
+
+const reviewSandboxLayer = ReviewSandboxMock({
+  status: () => Effect.succeed(Option.none()),
+  isOrderOf: () => Effect.succeed(false),
+});
 
 /** These checkouts never received a late payment. */
 const noLatePaymentLayer = () =>
@@ -164,6 +170,7 @@ describe("CheckoutStatusService", () => {
               Layer.mock(ProviderPaymentFinalizationService, finalization),
               Layer.mock(WorkspaceReservationRepository, reservations),
               Layer.mock(PaymentAttemptRepository, paymentAttempts),
+              reviewSandboxLayer,
               dotyposLayer(makeDotypos()),
               noLatePaymentLayer(),
               SeatingMapFeatureFlagServiceMock({
@@ -181,6 +188,65 @@ describe("CheckoutStatusService", () => {
       verificationDeadline: Duration.seconds(40),
     });
     expect(status.status).toBe("fulfilled");
+  });
+
+  test("reports a review account's sandbox order the ledger doesn't hold", async () => {
+    const { CheckoutStatusService } = await import("./checkout-status.service");
+    const { ProviderPaymentFinalizationService } = await import(
+      "../payment/provider-payment-finalization.service"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+
+    const orderId = "review-sample-order";
+    const sandboxStatus = {
+      kind: "meeting-room",
+      orderId,
+      returnOutcome: "unknown",
+      status: "fulfilled",
+      paymentStatus: "paid",
+      fulfillmentStatus: "fulfilled",
+      reviewSandbox: true,
+    } as const;
+    const sandboxLookup = mock(() =>
+      Effect.succeed(Option.some(sandboxStatus))
+    );
+
+    const status = await Effect.gen(function* () {
+      const service = yield* CheckoutStatusService;
+      return yield* service.getStatus({ orderId, returnOutcome: "unknown" });
+    }).pipe(
+      Effect.provide(
+        CheckoutStatusService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ProviderPaymentFinalizationService, {}),
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(null)),
+              }),
+              Layer.mock(PaymentAttemptRepository, {}),
+              ReviewSandboxMock({ status: sandboxLookup }),
+              dotyposLayer(makeDotypos()),
+              noLatePaymentLayer(),
+              SeatingMapFeatureFlagServiceMock({
+                isEnabled: Effect.succeed(true),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(status).toEqual(sandboxStatus);
+    expect(sandboxLookup).toHaveBeenCalledWith({
+      orderId,
+      returnOutcome: "unknown",
+    });
   });
 
   test("renders the stored status without late-payment recovery after refresh finds terminal payment", async () => {
@@ -234,6 +300,7 @@ describe("CheckoutStatusService", () => {
               Layer.mock(ProviderPaymentFinalizationService, finalization),
               Layer.mock(WorkspaceReservationRepository, reservations),
               Layer.mock(PaymentAttemptRepository, paymentAttempts),
+              reviewSandboxLayer,
               dotyposLayer(makeDotypos()),
               Layer.mock(LatePaymentRecoveryRepository, {
                 findLatestByWorkspaceReservationId: mock(() =>
@@ -362,6 +429,7 @@ describe("CheckoutStatusService", () => {
                 Layer.mock(ProviderPaymentFinalizationService, finalization),
                 Layer.mock(WorkspaceReservationRepository, reservations),
                 Layer.mock(PaymentAttemptRepository, paymentAttempts),
+                reviewSandboxLayer,
                 dotyposLayer(dotypos),
                 noLatePaymentLayer(),
                 SeatingMapFeatureFlagServiceMock({
@@ -575,6 +643,7 @@ describe("CheckoutStatusService", () => {
               Layer.mock(ProviderPaymentFinalizationService, finalization),
               Layer.mock(WorkspaceReservationRepository, reservations),
               Layer.mock(PaymentAttemptRepository, paymentAttempts),
+              reviewSandboxLayer,
               dotyposLayer(dotypos),
               noLatePaymentLayer(),
               SeatingMapFeatureFlagServiceMock({
@@ -676,6 +745,7 @@ describe("CheckoutStatusService", () => {
               Layer.mock(ProviderPaymentFinalizationService, finalization),
               Layer.mock(WorkspaceReservationRepository, reservations),
               Layer.mock(PaymentAttemptRepository, paymentAttempts),
+              reviewSandboxLayer,
               dotyposLayer(dotypos),
               noLatePaymentLayer(),
               SeatingMapFeatureFlagServiceMock({
@@ -771,6 +841,7 @@ describe("CheckoutStatusService", () => {
               Layer.mock(ProviderPaymentFinalizationService, finalization),
               Layer.mock(WorkspaceReservationRepository, reservations),
               Layer.mock(PaymentAttemptRepository, paymentAttempts),
+              reviewSandboxLayer,
               dotyposLayer(dotypos),
               noLatePaymentLayer(),
               SeatingMapFeatureFlagServiceMock({
@@ -885,6 +956,7 @@ describe("CheckoutStatusService", () => {
                     )
                   ),
                 }),
+                reviewSandboxLayer,
                 dotyposLayer(dotypos),
                 noLatePaymentLayer(),
                 SeatingMapFeatureFlagServiceMock({
@@ -1097,6 +1169,7 @@ describe("CheckoutStatusService", () => {
               Layer.mock(ProviderPaymentFinalizationService, finalization),
               Layer.mock(WorkspaceReservationRepository, reservations),
               Layer.mock(PaymentAttemptRepository, paymentAttempts),
+              reviewSandboxLayer,
               dotyposLayer(makeDotypos({ getReservationWithoutCustomer })),
               noLatePaymentLayer(),
               SeatingMapFeatureFlagServiceMock({
@@ -1164,6 +1237,7 @@ describe("CheckoutStatusService", () => {
               Layer.mock(ProviderPaymentFinalizationService, finalization),
               Layer.mock(WorkspaceReservationRepository, reservations),
               Layer.mock(PaymentAttemptRepository, paymentAttempts),
+              reviewSandboxLayer,
               dotyposLayer(
                 makeDotypos({
                   getReservationWithoutCustomer: mock(() =>
@@ -1248,6 +1322,7 @@ describe("CheckoutStatusService retry selection", () => {
                   Effect.succeed(makePaymentAttempt({ state: "failed" }))
                 ),
               }),
+              reviewSandboxLayer,
               dotyposLayer(dotypos),
               Layer.mock(LatePaymentRecoveryRepository, {
                 findLatestByWorkspaceReservationId: mock(() =>

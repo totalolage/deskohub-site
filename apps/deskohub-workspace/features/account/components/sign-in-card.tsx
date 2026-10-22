@@ -15,8 +15,10 @@ import { AuthCard } from "@/features/account/components/auth-card";
 import { PasskeySignInOption } from "@/features/account/components/passkeys/passkey-sign-in-option";
 import { signInEmailFailureMessage } from "@/features/account/components/sign-in-email-failure-message";
 import { SignInEmailSentStep } from "@/features/account/components/sign-in-email-sent-step";
+import { SignInPasswordStep } from "@/features/account/components/sign-in-password-step";
 import {
   hasSignInCode,
+  signsInWithPassword,
   useEmailSignInRequest,
 } from "@/features/account/email-sign-in-request";
 import type { SignInPurpose } from "@/features/account/routes";
@@ -142,8 +144,17 @@ export function SignInCard({
       setFailure(result.reason);
       return;
     }
-    if (!result.signInCode) focusAfterViewChange.current = "accepted";
     setShowNoLongerWaiting(false);
+    if (result.status === "password") {
+      setRequest({
+        email,
+        requestedAt: Date.now(),
+        method: "password",
+        returnTo: destination,
+      });
+      return;
+    }
+    if (!result.signInCode) focusAfterViewChange.current = "accepted";
     setRequest({
       email,
       requestedAt: Date.now(),
@@ -167,6 +178,32 @@ export function SignInCard({
       });
   };
 
+  const changeEmail = (pending: NonNullable<typeof request>) => {
+    authReturn.cancel();
+    focusAfterViewChange.current = "email";
+    setRequest(null);
+    form.reset({
+      email:
+        hasSignInCode(pending) || signsInWithPassword(pending)
+          ? pending.email
+          : "",
+    });
+    setFailure(null);
+  };
+
+  if (request && signsInWithPassword(request)) {
+    return (
+      <AuthCard>
+        <SignInPasswordStep
+          locale={locale}
+          authReturn={authReturn}
+          request={request}
+          onUseDifferentEmail={() => changeEmail(request)}
+        />
+      </AuthCard>
+    );
+  }
+
   if (request) {
     return (
       <AuthCard>
@@ -179,13 +216,7 @@ export function SignInCard({
             if (!hasSignInCode(next)) focusAfterViewChange.current = "accepted";
             setRequest(next);
           }}
-          onUseDifferentEmail={() => {
-            authReturn.cancel();
-            focusAfterViewChange.current = "email";
-            setRequest(null);
-            form.reset({ email: hasSignInCode(request) ? request.email : "" });
-            setFailure(null);
-          }}
+          onUseDifferentEmail={() => changeEmail(request)}
         />
       </AuthCard>
     );

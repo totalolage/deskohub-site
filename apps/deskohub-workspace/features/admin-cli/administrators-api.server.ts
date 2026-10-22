@@ -58,6 +58,10 @@ export const AdminCliAdministratorsApiHandlers = HttpApiBuilder.group(
                 "AdministratorAccountNotFoundError",
                 ({ message }) => new CliResourceNotFound({ message })
               ),
+              Match.tag(
+                "AdministratorReviewAccountError",
+                ({ message }) => new CliMutationRejected({ message })
+              ),
               Match.orElse(makeServiceUnavailable)
             )
           )

@@ -12,6 +12,7 @@ import type { CustomerAccountPageState } from "@/features/account/page-data.serv
 import { type Locale, m } from "@/features/i18n";
 import type { ReferralCode } from "@/features/referrals/client";
 import { ForgetRememberedReferralCode } from "@/features/referrals/forget-remembered-referral-code";
+import { ReviewAccountCard } from "@/features/review-accounts/components/review-account-card";
 import { Card, CardContent } from "@/shared/components/ui/card";
 
 const cardClassName =
@@ -115,6 +116,18 @@ function renderState(
           {...authoredReservations(locale, state.history)}
         >
           <SupportRequiredCard locale={locale} />
+        </AccountWithoutProfile>
+      );
+    case "review-account":
+      return (
+        <AccountWithoutProfile
+          assistants={state.assistants}
+          email={state.email}
+          locale={locale}
+          passkeys={state.passkeys}
+          {...authoredReservations(locale, state.history)}
+        >
+          <ReviewAccountCard locale={locale} />
         </AccountWithoutProfile>
       );
     case "deletion-pending":

@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Result } from "effect";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
+import { NoReviewAccounts } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import {
   CustomerAccountAccessError,
   customerAccountIdSchema,
@@ -82,7 +83,8 @@ const runCurrent = (
           create,
           createUnderHeldLock,
           update,
-        })
+        }),
+        NoReviewAccounts
       )
     )
   );

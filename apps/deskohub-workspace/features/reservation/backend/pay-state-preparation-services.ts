@@ -11,6 +11,7 @@ import { ReferralService } from "@/features/referrals";
 import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-feature-flag.server";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 
@@ -23,7 +24,9 @@ import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 export const payStatePreparationServices = Layer.mergeAll(
   Layer.mergeAll(
     WorkspaceReservationRepository.Default,
-    CustomerMarketingConsentRepository.Default
+    CustomerMarketingConsentRepository.Default,
+    ReviewAccounts.Default,
+    ReviewSandbox.Default
   ).pipe(Layer.provide(WorkspaceDatabase.Default)),
   WorkspaceAvailabilityService.Live,
   EmailRecipientDomainService.Live,
