@@ -1,8 +1,9 @@
 import { isLoopbackHostname } from "@/shared/utils/hostname";
 import {
-  customerAgentOfflineAccessScope,
+  administrationAgentScope,
   customerAgentScopes,
-} from "./customer-agent-scopes";
+  offlineAccessAgentScope,
+} from "./agent-scopes";
 
 /**
  * Where the OAuth server sends a customer who connects an AI agent: the
@@ -113,11 +114,13 @@ export const resolveCustomerAgentConnectStep = ({
 
 /**
  * The scopes the consent page explains, in the order it lists them: the
- * customer agent scopes, then staying connected without the customer.
+ * customer agent scopes, then staying connected without the customer. The
+ * administration scope is asked about on its own, and only of
+ * administrators.
  */
 export const customerAgentConsentScopes = [
   ...customerAgentScopes,
-  customerAgentOfflineAccessScope,
+  offlineAccessAgentScope,
 ] as const;
 
 export type CustomerAgentConsentScope =
@@ -146,6 +149,8 @@ export type CustomerAgentConsentRequest =
       readonly clientId: string;
       readonly scopes: ReadonlyArray<CustomerAgentConsentScope>;
       readonly redirect: CustomerAgentConsentRedirect;
+      /** Whether the request also asks for the administration scope. */
+      readonly administration: boolean;
     };
 
 const readConsentRedirect = (
@@ -192,5 +197,6 @@ export const readCustomerAgentConsentRequest = (
       ? customerAgentConsentScopes.filter((scope) => requested.includes(scope))
       : customerAgentConsentScopes,
     redirect,
+    administration: requested?.includes(administrationAgentScope) ?? true,
   };
 };

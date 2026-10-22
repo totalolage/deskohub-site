@@ -25,8 +25,10 @@ type ConsentResponse = {
 };
 
 const consent = mock(
-  (_body: { readonly accept: boolean }): Promise<ConsentResponse> =>
-    Promise.resolve({ data: null, error: null })
+  (_body: {
+    readonly accept: boolean;
+    readonly scope?: string;
+  }): Promise<ConsentResponse> => Promise.resolve({ data: null, error: null })
 );
 
 mock.module("@/features/account/auth.client", () => ({
@@ -161,6 +163,43 @@ describe("CustomerAgentConsent", () => {
     ).toBeNull();
   });
 
+  test.each(locales)(
+    "asks an administrator about administration apart from the rest in %s",
+    async (locale) => {
+      consent.mockResolvedValue({ data: null, error: { status: 500 } });
+      const view = render(
+        <CustomerAgentConsent
+          locale={locale}
+          client={client}
+          redirect={redirect}
+          scopes={["reservations:read"]}
+          administration
+        />
+      );
+
+      expect(
+        view.getByRole("region", {
+          name: m.customerAgentConsentAdministrationTitle({}, { locale }),
+        })
+      ).toBeTruthy();
+
+      await act(async () => {
+        fireEvent.click(buttons(view, locale).allow);
+      });
+
+      expect(consent).toHaveBeenCalledWith({
+        accept: true,
+        scope: "reservations:read administration",
+      });
+    }
+  );
+
+  test("never mentions administration to a customer", () => {
+    const view = renderConsent("en-US");
+
+    expect(view.queryByRole("region")).toBeNull();
+  });
+
   test("leaves the host line out when the assistant has none", () => {
     const view = render(
       <CustomerAgentConsent
@@ -198,7 +237,15 @@ describe("CustomerAgentConsent", () => {
         fireEvent.click(buttons(view, locale)[button]);
       });
 
-      expect(consent).toHaveBeenCalledWith({ accept });
+      // Allow names exactly the listed scopes; Deny needs none.
+      expect(consent).toHaveBeenCalledWith(
+        accept
+          ? {
+              accept,
+              scope: "offerings:read reservations:create offline_access",
+            }
+          : { accept }
+      );
       expect(buttons(view, locale).allow.disabled).toBe(true);
       expect(buttons(view, locale).deny.disabled).toBe(true);
       expect(view.getByRole("status").textContent).toBe(
@@ -320,6 +367,11 @@ describe("CustomerAgentNotice", () => {
             "deletion-pending",
             m.customerAgentDeletionPendingTitle,
             m.customerAgentDeletionPendingBody,
+          ],
+          [
+            "administration-only",
+            m.customerAgentAdministrationOnlyTitle,
+            m.customerAgentAdministrationOnlyBody,
           ],
         ] as const
       ).map(([notice, title, body]) => ({ locale, notice, title, body }))

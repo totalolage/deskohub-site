@@ -1,4 +1,5 @@
-import { AlertTriangle, Check, X } from "lucide-react";
+import { AlertTriangle, Check, ShieldAlert, X } from "lucide-react";
+import { administrationAgentScope } from "@/features/account/agent-scopes";
 import { AuthCard } from "@/features/account/components/auth-card";
 import { CustomerAgentConsentActions } from "@/features/account/components/customer-agent-consent-actions";
 import type {
@@ -14,18 +15,26 @@ import { type Locale, m } from "@/features/i18n";
  * A redirect that stays on the customer's device gets a warning, since any app
  * there can claim to be the assistant. The client's logo is not shown, since
  * loading it would be a request to a host the assistant picks.
+ * Allow grants exactly the listed scopes, plus administration when the page
+ * offers it to an administrator.
  */
 export function CustomerAgentConsent({
   locale,
   client,
   redirect,
   scopes,
+  administration = false,
 }: {
   readonly locale: Locale;
   readonly client: { readonly name: string; readonly host?: string };
   readonly redirect: CustomerAgentConsentRedirect;
   readonly scopes: ReadonlyArray<CustomerAgentConsentScope>;
+  /** Whether the assistant asks an administrator for administration. */
+  readonly administration?: boolean;
 }) {
+  const granted = administration
+    ? [...scopes, administrationAgentScope]
+    : scopes;
   return (
     <AuthCard>
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-burned-orange">
@@ -94,7 +103,34 @@ export function CustomerAgentConsent({
       <p className="mt-6 rounded-xl border border-navy-blue/10 bg-navy-blue/[0.03] p-3 text-sm leading-6 text-navy-blue/80">
         {m.customerAgentConsentPaymentNote({}, { locale })}
       </p>
-      <CustomerAgentConsentActions locale={locale} clientName={client.name} />
+      {administration && (
+        <section
+          aria-labelledby="customer-agent-consent-administration"
+          className="mt-6 rounded-xl border border-burned-orange/40 bg-burned-orange/[0.06] p-4"
+        >
+          <h2
+            className="flex items-center gap-2 text-sm font-semibold text-navy-blue"
+            id="customer-agent-consent-administration"
+          >
+            <ShieldAlert
+              aria-hidden="true"
+              className="size-4 shrink-0 text-burned-orange"
+            />
+            {m.customerAgentConsentAdministrationTitle({}, { locale })}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-navy-blue/80">
+            {m.customerAgentConsentAdministrationBody({}, { locale })}
+          </p>
+          <p className="mt-2 text-sm leading-6 text-navy-blue/68">
+            {m.customerAgentConsentAdministrationRevocation({}, { locale })}
+          </p>
+        </section>
+      )}
+      <CustomerAgentConsentActions
+        locale={locale}
+        clientName={client.name}
+        scope={granted.join(" ")}
+      />
     </AuthCard>
   );
 }

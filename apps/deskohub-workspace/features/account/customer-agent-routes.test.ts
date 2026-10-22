@@ -161,6 +161,7 @@ describe("readCustomerAgentConsentRequest", () => {
       clientId,
       scopes: ["offerings:read", "reservations:create", "offline_access"],
       redirect: { host: "assistant.invalid", local: false },
+      administration: false,
     });
   });
 
@@ -226,6 +227,15 @@ describe("readCustomerAgentConsentRequest", () => {
     });
   });
 
+  test("reads a request for the administration scope apart from the rest", () => {
+    expect(
+      readCustomerAgentConsentRequest(
+        signedRequest({ scope: "administration reservations:read" }),
+        now
+      )
+    ).toMatchObject({ scopes: ["reservations:read"], administration: true });
+  });
+
   test("leaves out scopes it can't explain", () => {
     const request = readCustomerAgentConsentRequest(
       signedRequest({ scope: "openid reservations:read profile" }),
@@ -241,6 +251,7 @@ describe("readCustomerAgentConsentRequest", () => {
 
     expect(readCustomerAgentConsentRequest(query, now)).toMatchObject({
       scopes: customerAgentConsentScopes,
+      administration: true,
     });
     expect(customerAgentConsentScopes).toEqual([
       "offerings:read",

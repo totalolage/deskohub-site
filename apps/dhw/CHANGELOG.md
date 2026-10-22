@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.25.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.24.0...dhw-v1.25.0) (2026-10-22)
+
+
+### Features
+
+* **dhw:** decode invoices issued through an AI assistant ([436be91](https://github.com/totalolage/deskohub-site/commit/436be9169870c4c02e7c246deb9cba056c2db997))
+* **dhw:** name the destructive operation each confirmation guards ([c3a434e](https://github.com/totalolage/deskohub-site/commit/c3a434e3c7c1611dca34b9e64b81ae3742afb9ee))
+* **workspace-admin-api:** annotate administration operations and authenticate a channel-neutral caller ([d6dd6be](https://github.com/totalolage/deskohub-site/commit/d6dd6be1161dbd1313860f038aec154b1fad02fb))
+
 ## [1.24.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.23.0...dhw-v1.24.0) (2026-10-22)
 
 

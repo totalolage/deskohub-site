@@ -2,6 +2,7 @@ import { Effect, Option } from "effect";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
+import { offlineAccessAgentScope } from "@/features/account/agent-scopes";
 import { CustomerAgentClientDirectory } from "@/features/account/backend/auth/customer-agent-client-directory.service";
 import { AuthPageShell } from "@/features/account/components/auth-card";
 import { CustomerAgentConsent } from "@/features/account/components/customer-agent-consent";
@@ -9,6 +10,8 @@ import { CustomerAgentNotice } from "@/features/account/components/customer-agen
 import { readCustomerAgentSession } from "@/features/account/components/customer-agent-session.server";
 import { readCustomerAgentConsentRequest } from "@/features/account/customer-agent-routes";
 import { getAccountSignInPath } from "@/features/account/routes";
+import { currentAdministratorAccess } from "@/features/administrators/backend/current-administrator";
+import { administratorAccessLayer } from "@/features/administrators/server/administrator-access-layer.server";
 import { m } from "@/features/i18n";
 import { getLocalizedPagePath } from "@/features/i18n/routing";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
@@ -30,9 +33,28 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
+ * Whether the signed-in account holds the administrator grant now, read only
+ * when the assistant asks for administration.
+ */
+const readAdministrator = (requested: boolean) =>
+  requested
+    ? currentAdministratorAccess.pipe(
+        Effect.map(({ kind }) => kind === "administrator"),
+        Effect.provide(administratorAccessLayer),
+        runWorkspaceEffectOrElse("account.agent-consent.administrator", {
+          boundary: "page",
+          failureCode: "customer_agent_administrator_unavailable",
+          orElse: () => "unavailable" as const,
+        })
+      )
+    : Promise.resolve(false);
+
+/**
  * The OAuth server's consent step: the signed-in customer decides whether an
  * AI assistant may act for their account. A signed-out customer signs in and
- * comes back to the same signed request while it is still valid.
+ * comes back to the same signed request while it is still valid. Only an
+ * administrator is asked about the administration scope; for anyone else
+ * the page leaves it out of what Allow grants.
  */
 export default async function CustomerAgentConsentPage({
   searchParams,
@@ -72,18 +94,39 @@ export default async function CustomerAgentConsentPage({
       );
     }
 
-    const client = await Effect.flatMap(
-      CustomerAgentClientDirectory,
-      (directory) => directory.find(request.clientId)
-    ).pipe(
-      Effect.provide(CustomerAgentClientDirectory.Default),
-      Effect.map(Option.getOrUndefined),
-      runWorkspaceEffectOrElse("account.agent-consent.client", {
-        boundary: "page",
-        failureCode: "customer_agent_client_unavailable",
-        orElse: () => "unavailable" as const,
-      })
-    );
+    const [client, administrator] = await Promise.all([
+      Effect.flatMap(CustomerAgentClientDirectory, (directory) =>
+        directory.find(request.clientId)
+      ).pipe(
+        Effect.provide(CustomerAgentClientDirectory.Default),
+        Effect.map(Option.getOrUndefined),
+        runWorkspaceEffectOrElse("account.agent-consent.client", {
+          boundary: "page",
+          failureCode: "customer_agent_client_unavailable",
+          orElse: () => "unavailable" as const,
+        })
+      ),
+      readAdministrator(request.administration),
+    ]);
+    if (administrator === "unavailable") {
+      return (
+        <AuthPageShell>
+          <CustomerAgentNotice locale={locale} notice="unavailable" />
+        </AuthPageShell>
+      );
+    }
+    // Nothing is left to allow once administration is dropped.
+    if (
+      request.administration &&
+      !administrator &&
+      request.scopes.every((scope) => scope === offlineAccessAgentScope)
+    ) {
+      return (
+        <AuthPageShell>
+          <CustomerAgentNotice locale={locale} notice="administration-only" />
+        </AuthPageShell>
+      );
+    }
 
     return (
       <AuthPageShell>
@@ -98,6 +141,7 @@ export default async function CustomerAgentConsentPage({
             client={client}
             redirect={request.redirect}
             scopes={request.scopes}
+            administration={administrator}
           />
         )}
       </AuthPageShell>
