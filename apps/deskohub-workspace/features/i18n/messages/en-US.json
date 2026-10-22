@@ -945,6 +945,8 @@
   "customerAgentConsentEyebrow": "AI assistant",
   "customerAgentConsentTitle": "Allow {client} to use your account?",
   "customerAgentConsentHost": "Assistant from {host}",
+  "customerAgentConsentRedirect": "If you allow it, we send access to {host}.",
+  "customerAgentConsentLocalRedirect": "If you allow it, we send access to {host}, which is on this device. We can't check which app receives it, so allow it only if you just started connecting from {client}.",
   "customerAgentConsentCanTitle": "What it will be able to do",
   "customerAgentScopeOfferingsRead": "Look up our offerings, prices, and availability",
   "customerAgentScopeReservationsRead": "See your reservations",

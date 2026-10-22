@@ -123,8 +123,9 @@ document); refresh them when a client changes its document.
   A document without `application_type` gets native redirect validation,
   which allows HTTP loopback redirect URIs.
 - The consent page names each client by its metadata host: `chatgpt.com`,
-  `claude.ai`. Claude Code also shows `claude.ai`, though its redirect
-  URI is on loopback.
+  `claude.ai`. Claude Code also shows `claude.ai`, so the page also names
+  the redirect host (`localhost` or `127.0.0.1` for Claude Code) and warns
+  about it (see the consent page below).
 - Successful and error authorization responses at the client's redirect URI
   carry `iss`, equal to the advertised issuer. A request whose client or
   redirect URI can't be trusted goes to the server's error page instead.
@@ -165,10 +166,25 @@ document); refresh them when a client changes its document.
   `sig`, or `exp`; past `exp`), then re-checks the session, reads the client through
   `CustomerAgentClientDirectory` (`getOAuthClientPublic`, which needs the
   customer's session), and shows the client's name and metadata host, the
+  host of the request's `redirect_uri`, the
   requested scopes in plain words, what the assistant can't do (pay, cancel,
   change or delete the account), and that the customer accepts the terms and
   pays on the site. Don't render the client's logo: it is a third-party
   request from an arbitrary host.
+- The redirect host is required by the MCP spec (2026-07-28, Security
+  Considerations, "Localhost Redirect URI Risks": the server "MUST clearly
+  display the redirect URI hostname during authorization" and "SHOULD
+  display additional warnings for `localhost`-only redirect URIs").
+  `readCustomerAgentConsentRequest` reads it from the signed query (the
+  provider requires and signs `redirect_uri`; a request without a readable
+  one is `unknown-request`). It marks the redirect `local` when the host is
+  loopback (`isLoopbackHostname` in `shared/utils/hostname.ts`: `localhost`,
+  `*.localhost`, 127.0.0.0/8, `[::1]`) or the URI uses an app's own scheme,
+  shown by its scheme name. A local redirect gets a warning, since any app on
+  the device can use a public client's metadata document. The warning keys
+  on the requested redirect, not on whether every registered URI is local.
+  `customer-agent-routes.ts` is in the proxy bundle and outside the Better
+  Auth import boundary, so it doesn't use Better Auth's `isLoopbackHost`.
 - Allow and Deny call `authClient.oauth2.consent({ accept })`.
   `oauthProviderClient()` in `auth.client.ts` attaches the signed
   `oauth_query` from the page URL to non-GET auth requests. The provider
