@@ -901,6 +901,9 @@ describe("DeleteAccountCard", () => {
     });
 
     expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
+      settleTransition: true,
+    });
     expect(
       document
         .querySelector("[role='dialog'] [aria-live='assertive']")
