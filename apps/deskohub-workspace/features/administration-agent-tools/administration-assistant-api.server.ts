@@ -27,6 +27,7 @@ import {
   WorkspaceObservabilityLive,
   workspaceMemoMap,
 } from "@/shared/backend/workspace-effect";
+import { assistantAccessEnded } from "./administration-assistant-refusal";
 
 /** The token's client isn't known, or names nothing to record. */
 class UnknownAssistantClient extends Data.TaggedError(
@@ -57,12 +58,6 @@ const refusalOfReason = (reason: AgentAuthorizationReason) =>
     ),
     Match.exhaustive
   );
-
-const assistantAccessEnded = () =>
-  new CliSessionUnauthorized({
-    message:
-      "This assistant's administrator access ended. Reconnect the assistant to your Workspace account to continue.",
-  });
 
 /**
  * Authenticates an AI assistant's OAuth access token for an administration

@@ -118,6 +118,7 @@ mock.module("@/shared/backend/request-budget/request-budget.service", () => ({
  * the administrator grant, without it, or can't tell.
  */
 let administratorGrant: "live" | "revoked" | "unavailable" = "live";
+let administratorAuthorizationCalls = 0;
 const administratorAuthorization = await import(
   "@/features/administrators/backend/administrator-agent-authorization.service"
 );
@@ -125,8 +126,9 @@ class TestAdministratorAgentAuthorization extends administratorAuthorization.Adm
   static override Live = Layer.succeed(
     administratorAuthorization.AdministratorAgentAuthorization,
     {
-      authorize: () =>
-        administratorGrant === "live"
+      authorize: () => {
+        administratorAuthorizationCalls += 1;
+        return administratorGrant === "live"
           ? Effect.succeed({
               accountId: agentAccountId,
               email: testEmailAddress("mcp-administrator"),
@@ -137,7 +139,8 @@ class TestAdministratorAgentAuthorization extends administratorAuthorization.Adm
                 administratorGrant === "revoked"
                   ? "not-administrator"
                   : "unavailable",
-            } as never),
+            } as never);
+      },
     }
   );
 }
@@ -952,6 +955,7 @@ describe("customer MCP route for administration tools", () => {
     authorizationServerReachable = true;
     accessTokens.clear();
     administratorGrant = "live";
+    administratorAuthorizationCalls = 0;
     administrationRequests.length = 0;
     administrationResponse = () => Response.json([]);
   });
@@ -1272,6 +1276,39 @@ describe("customer MCP route for administration tools", () => {
       current: { "administration.listSessions": { items: [] } },
     });
     expect(administrationRequests.map(({ method }) => method)).toEqual(["GET"]);
+  });
+
+  test("refuses a call whose grant ended after the tools were listed, even one that reads nothing", async () => {
+    accessTokens.set("administrator", "administration");
+    // The grant ends after the request lists the caller's tools, before the
+    // call runs.
+    checkRateLimit.mockImplementationOnce(async () => {
+      administratorGrant = "revoked";
+      return { rateLimited: false };
+    });
+
+    const { result } = await callToolAs(
+      "admin_create_standalone_access_code",
+      {
+        attemptId: "01980000-0000-7000-8000-000000000042",
+        input: {
+          name: "Synthetic Booth",
+          startsAt: "2026-09-10T10:00",
+          endsAt: "2026-09-10T12:00",
+        },
+      },
+      bearer("administrator")
+    );
+
+    expect(result?.isError).toBe(true);
+    expect(result?.structuredContent).toMatchObject({
+      error: {
+        code: "administration_failed",
+        error: { _tag: "CliSessionUnauthorized" },
+      },
+    });
+    expect(administratorAuthorizationCalls).toBe(2);
+    expect(administrationRequests).toEqual([]);
   });
 });
 

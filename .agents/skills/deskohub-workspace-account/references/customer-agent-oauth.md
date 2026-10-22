@@ -327,8 +327,9 @@ document); refresh them when a client changes its document.
 - The connected assistants list flags a connection that includes the scope.
 - `/api/mcp` lists the administration tools to a token only after
   `AdministratorAgentAuthorization.authorize` passes for that request, and
-  each tool call runs it again inside the administration API built for
-  agents (the administration skill's `references/dhw-cli.md`, "MCP tools").
+  each tool call runs it again before it answers anything, previews
+  included, and once more inside the administration API built for agents
+  (the administration skill's `references/dhw-cli.md`, "MCP tools").
   A customer's token never reaches the check: it lacks the scope.
 - How an administrator's assistant gets the scope: the server challenges
   only a signed-in tool call, naming that tool's scope, and MCP clients

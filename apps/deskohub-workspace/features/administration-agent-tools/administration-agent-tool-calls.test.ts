@@ -23,6 +23,7 @@ import {
   HttpApiGroup,
   HttpApiSchema,
 } from "effect/unstable/httpapi";
+import { AdministratorAgentAuthorization } from "@/features/administrators/backend/administrator-agent-authorization.service";
 import { AgentToolReply } from "@/features/agent-tools/agent-tool";
 import type { CustomerAgentCaller } from "@/features/agent-tools/customer-agent-caller";
 import {
@@ -219,6 +220,40 @@ const caller: CustomerAgentCaller = {
   },
 };
 
+/**
+ * The administrator grant each call checks first: held, ended since the
+ * tools were listed, or impossible to check.
+ */
+let grant: "live" | "ended" | "unavailable" = "live";
+let grantChecks: Array<string> = [];
+
+const administratorAuthorization = Layer.succeed(
+  AdministratorAgentAuthorization,
+  {
+    authorize: ({ accessToken }) =>
+      Effect.suspend(() => {
+        grantChecks.push(accessToken);
+        return grant === "live"
+          ? Effect.succeed({
+              accountId: caller.grant.accountId,
+              email: testEmailAddress("administration-tool-caller"),
+            } as never)
+          : Effect.fail({
+              _tag: "AdministratorAgentAuthorizationError",
+              reason: grant === "ended" ? "not-administrator" : "unavailable",
+            } as never);
+      }),
+  }
+);
+
+/** The services a tool call runs with: the grant check and the test API. */
+const toolServices = Layer.mergeAll(
+  administratorAuthorization,
+  AdministrationApiClient.forApi(TestApi).pipe(
+    Layer.provide(Layer.succeed(AdministrationApiTransport, transport))
+  )
+);
+
 const callTool = (name: string, args: Schema.Json) => {
   const tool = tools.find((candidate) => candidate.name === name);
   if (tool === undefined) {
@@ -226,21 +261,15 @@ const callTool = (name: string, args: Schema.Json) => {
   }
   return tool
     .call(args, Option.some(caller))
-    .pipe(
-      Effect.provide(
-        AdministrationApiClient.forApi(TestApi).pipe(
-          Layer.provide(Layer.succeed(AdministrationApiTransport, transport))
-        )
-      ),
-      Effect.result,
-      Effect.runPromise
-    );
+    .pipe(Effect.provide(toolServices), Effect.result, Effect.runPromise);
 };
 
 const resultOf = (reply: AgentToolReply | Schema.JsonObject | false) =>
   reply instanceof AgentToolReply ? reply.result : reply;
 
 beforeEach(() => {
+  grant = "live";
+  grantChecks = [];
   served = [];
   authorizations = [];
   authorizedPaths = [];
@@ -287,14 +316,7 @@ describe("administration agent tool calls", () => {
         )
       ),
       { concurrency: "unbounded" }
-    ).pipe(
-      Effect.provide(
-        AdministrationApiClient.forApi(TestApi).pipe(
-          Layer.provide(Layer.succeed(AdministrationApiTransport, transport))
-        )
-      ),
-      Effect.runPromise
-    );
+    ).pipe(Effect.provide(toolServices), Effect.runPromise);
 
     expect(
       [...authorizedPaths].sort((left, right) =>
@@ -327,7 +349,11 @@ describe("administration agent tool calls", () => {
         );
         return yield* tool!
           .call({ reservationId: "r-1", sendEmail: true }, Option.some(caller))
-          .pipe(Effect.provideContext(built), Effect.result);
+          .pipe(
+            Effect.provideContext(built),
+            Effect.provide(administratorAuthorization),
+            Effect.result
+          );
       })
     ).pipe(Effect.runPromise);
 
@@ -511,17 +537,56 @@ describe("administration agent tool calls", () => {
     );
     const result = await tool!
       .call({ reservationId: "r-1" })
-      .pipe(
-        Effect.provide(
-          AdministrationApiClient.forApi(TestApi).pipe(
-            Layer.provide(Layer.succeed(AdministrationApiTransport, transport))
-          )
-        ),
-        Effect.result,
-        Effect.runPromise
-      );
+      .pipe(Effect.provide(toolServices), Effect.result, Effect.runPromise);
 
     expect(result._tag).toBe("Failure");
     expect(authorizations).toEqual([]);
+  });
+
+  test.each([
+    [
+      "a preview that reads nothing",
+      "admin_things_delete",
+      { requestId: "q-1", id: "t-1" },
+    ],
+    ["a dry-run preview", "admin_backfill", { dryRun: false }],
+    ["a read", "admin_get_reservation", { reservationId: "r-1" }],
+    [
+      "invalid arguments",
+      "admin_cancel_reservation",
+      { reservationId: "r-1", sendEmail: "yes" },
+    ],
+  ] as const)(
+    "refuse %s once the administrator grant ended, before anything runs",
+    async (_, name, args) => {
+      grant = "ended";
+
+      const result = await callTool(name, args);
+
+      expect(result._tag === "Failure" && result.failure.details).toEqual({
+        code: "administration_failed",
+        error: {
+          _tag: "CliSessionUnauthorized",
+          message: expect.any(String),
+        },
+      });
+      expect(grantChecks).toEqual(["synthetic-agent-token"]);
+      expect(served).toEqual([]);
+      expect(authorizations).toEqual([]);
+    }
+  );
+
+  test("answer a grant that can't be checked as unavailable, running nothing", async () => {
+    grant = "unavailable";
+
+    const result = await callTool("admin_things_delete", {
+      requestId: "q-1",
+      id: "t-1",
+    });
+
+    expect(result._tag === "Failure" && result.failure.details).toEqual({
+      code: "administration_unavailable",
+    });
+    expect(served).toEqual([]);
   });
 });

@@ -23,6 +23,7 @@ import {
   type HttpApiEndpoint,
   type HttpApiGroup,
 } from "effect/unstable/httpapi";
+import { AdministratorAgentAuthorization } from "@/features/administrators/backend/administrator-agent-authorization.service";
 import {
   type AgentTool,
   type AgentToolAttachment,
@@ -40,6 +41,7 @@ import {
   AdministrationApiClient,
   type AdministrationApiRequest,
 } from "./administration-api-client";
+import { assistantAccessEnded } from "./administration-assistant-refusal";
 
 type Behavior = AdministrationOperationBehavior["Service"];
 
@@ -752,7 +754,8 @@ const toAttachmentOutcome = ({
 /**
  * Answers a destructive call without `confirm: true` with what it would
  * change, read through the same API and authentication, and changes
- * nothing: no mutation runs and no change key is claimed.
+ * nothing: no mutation runs, no change key is claimed and no action is
+ * recorded.
  */
 const previewOperation = ({
   tool,
@@ -887,14 +890,35 @@ const callAdministrationTool = Effect.fn("administrationAgentTools.call")(
 );
 
 /**
+ * Checks the caller's token and administrator grant again before a call
+ * answers anything, as a grant can end after the tools were listed: a
+ * preview that reads nothing would otherwise answer a caller who lost
+ * access.
+ */
+const authorizeCaller = (caller: CustomerAgentCaller) =>
+  Effect.flatMap(AdministratorAgentAuthorization, (authorization) =>
+    authorization.authorize(caller)
+  ).pipe(
+    Effect.mapError((error) => {
+      if (error.reason === "unavailable") {
+        return AgentToolError.unavailable("administration_unavailable")(error);
+      }
+      const { _tag, message } = assistantAccessEnded();
+      return AgentToolError.administrationFailed({ _tag, message });
+    })
+  );
+
+/**
  * The administration operations as agent tools, called for the agent whose
- * token the request carried. Each call goes through the administration
- * API, which authenticates the token and reads the administrator grant
- * again.
+ * token the request carried. Each call checks the token and the
+ * administrator grant first, and an operation it runs goes through the
+ * administration API, which authenticates them again.
  */
 export const makeAdministrationAgentTools = (
   operationTools: ReadonlyArray<AdministrationOperationTool>
-): ReadonlyArray<AgentTool<AdministrationApiClient>> => {
+): ReadonlyArray<
+  AgentTool<AdministrationApiClient | AdministratorAgentAuthorization>
+> => {
   const byReference = new Map(
     operationTools.map((tool) => [tool.reference, tool])
   );
@@ -913,15 +937,18 @@ export const makeAdministrationAgentTools = (
       Option.match(caller, {
         // The route lists administration tools only for a verified caller.
         onNone: () => Effect.fail(AgentToolError.serviceUnavailable()),
-        onSome: ({ accessToken }) =>
-          callAdministrationTool({ tool, tools: byReference, args }).pipe(
+        onSome: (agentCaller) =>
+          authorizeCaller(agentCaller).pipe(
+            Effect.andThen(
+              callAdministrationTool({ tool, tools: byReference, args })
+            ),
             Effect.map(
               ({ result, attachments }) =>
                 new AgentToolReply({ result, attachments })
             ),
             Effect.provideService(
               AdministrationAgentAccessToken,
-              Redacted.make(accessToken)
+              Redacted.make(agentCaller.accessToken)
             )
           ),
       }).pipe(

@@ -18,7 +18,7 @@ class AdministrationAgentAccessUnavailable extends Data.TaggedError(
 ) {}
 
 type AdministrationAgentTools = ReadonlyArray<
-  AgentTool<AdministrationApiClient>
+  AgentTool<AdministrationApiClient | AdministratorAgentAuthorization>
 >;
 
 interface IAdministrationAgentAccess {

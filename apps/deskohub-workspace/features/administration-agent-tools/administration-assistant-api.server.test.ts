@@ -11,7 +11,7 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Layer, Logger, Option } from "effect";
+import { Effect, Layer, Logger, Option, type Schema } from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import { StandaloneAccessCodeAdministration } from "@/features/access-codes";
 import type { AgentScope } from "@/features/account/agent-scopes";
@@ -49,10 +49,19 @@ import type { AdministratorAccountActor } from "@/features/administrators/accoun
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { AdministratorAgentAuthorization } from "@/features/administrators/backend/administrator-agent-authorization.service";
 import { AdministratorAssistantConnections } from "@/features/administrators/backend/administrator-assistant-connections.service";
+import type { CustomerAgentCaller } from "@/features/agent-tools/customer-agent-caller";
 import { DiscountAdministration } from "@/features/discounts/admin/discount-administration.service";
 import { CampaignOperations } from "@/features/email-campaigns/backend/campaign-operations.service";
 import { ReservationProductDetailsBackfill } from "@/features/reservation/backend/reservation-product-details-backfill.service";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
+import {
+  administrationOperationTools,
+  makeAdministrationAgentTools,
+} from "./administration-agent-tools";
+import {
+  AdministrationApiClient,
+  AdministrationApiTransport,
+} from "./administration-api-client";
 import { makeAdministrationAssistantApiLayer } from "./administration-assistant-api.server";
 
 const administrator: AdministratorAccountActor = {
@@ -264,6 +273,9 @@ const makeAssistantServices = ({
  */
 const makeInstanceServices = () => {
   const callers: Array<CurrentAdministrationCaller["Service"]> = [];
+  const backfills: Array<
+    Parameters<ReservationProductDetailsBackfill["Service"]["runBatch"]>[0]
+  > = [];
   const sessionOwners: Array<string> = [];
   const sessionAuthentications: Array<string> = [];
   const layer = Layer.mergeAll(
@@ -308,14 +320,31 @@ const makeInstanceServices = () => {
     Layer.succeed(LegacyAdministratorBackfill, {} as never),
     Layer.succeed(CampaignOperations, {} as never),
     Layer.succeed(ReservationAdministrationService, {} as never),
-    Layer.succeed(ReservationProductDetailsBackfill, {} as never),
+    Layer.succeed(ReservationProductDetailsBackfill, {
+      runBatch: (input) =>
+        Effect.sync(() => {
+          backfills.push(input);
+          return {
+            updated: 1,
+            alreadyComplete: 0,
+            unresolved: [],
+            nextCursor: null,
+          };
+        }),
+    }),
     Layer.succeed(ReservationAccessAdministration, {} as never),
     Layer.succeed(DiscountAdministration, {} as never),
     Layer.succeed(InvoiceAdministrationService, {} as never),
     Layer.succeed(StandaloneAccessCodeAdministration, {} as never),
     NodeHttpServer.layerHttpServices
   );
-  return { callers, layer, sessionAuthentications, sessionOwners };
+  return {
+    backfills,
+    callers,
+    layer,
+    sessionAuthentications,
+    sessionOwners,
+  };
 };
 
 const makeCliApiLayer = () =>
@@ -609,5 +638,60 @@ describe("administration API instances", () => {
         requests.map(([bearer]) => `Bearer ${bearer}`)
       );
     }
+  });
+});
+
+describe("administration tools through the assistant API", () => {
+  const caller: CustomerAgentCaller = {
+    accessToken: assistantToken,
+    grant: grantOf({}),
+  };
+  const backfillTool = makeAdministrationAgentTools(
+    administrationOperationTools
+  ).find(({ name }) => name === "admin_backfill_reservation_product_details");
+
+  const callBackfill = (handler: Handler, args: Schema.Json) =>
+    backfillTool!
+      .call(args, Option.some(caller))
+      .pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            makeAssistantServices().layer,
+            AdministrationApiClient.Default.pipe(
+              Layer.provide(Layer.succeed(AdministrationApiTransport, handler))
+            )
+          )
+        ),
+        Effect.runPromise
+      );
+
+  test("records a dry run, the preview's included, as no action, and the confirmed run as one", async () => {
+    const { backfills, callers, handler } = serveAssistant();
+
+    const preview = await callBackfill(handler, {
+      dryRun: false,
+      after: null,
+    });
+    const dryRun = await callBackfill(handler, { dryRun: true, after: null });
+
+    expect(preview).toMatchObject({
+      result: { outcome: "confirmation-required" },
+    });
+    expect(dryRun).toMatchObject({ result: { outcome: "dry-run" } });
+    expect(backfills).toEqual([
+      { dryRun: true, after: null },
+      { dryRun: true, after: null },
+    ]);
+    expect(callers).toEqual([]);
+
+    const applied = await callBackfill(handler, {
+      dryRun: false,
+      after: null,
+      confirm: true,
+    });
+
+    expect(applied).toMatchObject({ result: { outcome: "applied" } });
+    expect(backfills.at(-1)).toEqual({ dryRun: false, after: null });
+    expect(callers.map(({ channel }) => channel)).toEqual([assistantChannel]);
   });
 });
