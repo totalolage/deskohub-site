@@ -236,7 +236,7 @@ describe.skipIf(!postgresDatabase)(
 
     /** Resolves once `count` connections wait on another's locks. */
     const waitForBlockedConnections = async (count: number) => {
-      const deadline = Date.now() + 10_000;
+      const deadline = Date.now() + 3000;
       while (Date.now() < deadline) {
         const {
           rows: [row],
@@ -268,7 +268,7 @@ describe.skipIf(!postgresDatabase)(
                  'development', now(), now())`,
         [id, owner.accountId, owner.email, tokenHash],
       ];
-      return { bearer, statement };
+      return { bearer, id, statement };
     };
 
     const lockGrantForShare = (
@@ -287,13 +287,14 @@ describe.skipIf(!postgresDatabase)(
       [grant.grantToken],
     ];
 
-    const consumeRequest = (grant: {
-      readonly grantToken: string;
-    }): [string, unknown[]] => [
+    const consumeRequest = (
+      grant: { readonly grantToken: string },
+      sessionId: CliSessionId
+    ): [string, unknown[]] => [
       `update cli_authentication_requests
-       set consumed_at = now(), grant_token = null
+       set consumed_at = now(), grant_token = null, session_id = $2
        where grant_token = $1`,
-      [grant.grantToken],
+      [grant.grantToken, sessionId],
     ];
 
     const deleteGrant = (
@@ -637,7 +638,7 @@ describe.skipIf(!postgresDatabase)(
       // grant: its session and consumption are written but uncommitted.
       const exchange = await holdTransaction([
         exchangedSession.statement,
-        consumeRequest(targetGrant),
+        consumeRequest(targetGrant, exchangedSession.id),
       ]);
 
       const revoking = callAs(bearer, (client) =>
