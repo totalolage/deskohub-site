@@ -5,7 +5,6 @@ import { m } from "@/features/administration/i18n";
 import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
-import { CampaignEmailConfig } from "../../backend/campaign-email.config";
 import { campaignBodyFormatVersion } from "../../body/campaign-body-document";
 import type {
   CampaignLocaleContent,
@@ -110,14 +109,9 @@ const loadTemplates = (locale: Locale) =>
     )
   );
 
-/**
- * The fixed test-send inbox, or null where campaign email isn't configured:
- * the composer still loads, and a test send reports the missing settings.
- */
-const loadAdminInbox = CampaignEmailConfig.pipe(
-  Effect.map((config) => config.adminInbox),
-  Effect.provide(CampaignEmailConfig.Default),
-  Effect.catchTag("CampaignEmailNotConfigured", () => Effect.succeed(null))
+/** The fixed test-send inbox, or null where campaign email isn't configured. */
+const loadAdminInbox = invokeCampaignOperation("getCampaignSettings", {}).pipe(
+  Effect.map(({ testSendInbox }) => testSendInbox)
 );
 
 const loadComposerOptions = (locale: Locale) =>

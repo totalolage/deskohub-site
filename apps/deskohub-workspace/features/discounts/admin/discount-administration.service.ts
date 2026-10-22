@@ -54,6 +54,10 @@ import {
 } from "@/features/administration/customer-name";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import {
+  type DiscountGroupListing,
+  listDiscountGroups,
+} from "@/features/discounts/discount-groups";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -397,6 +401,11 @@ export interface IDiscountAdministration {
     input: DiscountAdminCustomerSearch
   ) => Effect.Effect<
     AdminCustomerSearchResult,
+    ExternalAPIError | NetworkError | ValidationError
+  >;
+  /** Every Dotypos discount group, for choosing one by name. */
+  readonly listDiscountGroups: () => Effect.Effect<
+    readonly DiscountGroupListing[],
     ExternalAPIError | NetworkError | ValidationError
   >;
   readonly loadCustomerProfile: (input: {
@@ -1639,6 +1648,13 @@ export class DiscountAdministration extends Context.Service<
         loadSalesPage,
         loadVoucherDetail,
         loadVouchersPage,
+        listDiscountGroups: Effect.fn(
+          "DiscountAdministration.listDiscountGroups"
+        )(() =>
+          listDiscountGroups.pipe(
+            Effect.provideService(DotyposService, dotypos)
+          )
+        ),
         makeCodeUnrestricted,
         makeVoucherUnrestricted,
         removeCodeCustomer,

@@ -19,6 +19,7 @@ import {
 } from "./administration-operation";
 import { administrationCalendarDate } from "./calendar-date";
 import { DhwVersion } from "./dhw-version";
+import { fieldWithDefault } from "./response-fields";
 import { WORKSPACE_SITE_TIME_ZONE } from "./site-time-zone";
 
 export const WORKSPACE_ADMIN_API_VERSION = "v1" as const;
@@ -440,12 +441,13 @@ export const AdministrationOverviewMetric = Schema.Struct({
 export type AdministrationOverviewMetric =
   typeof AdministrationOverviewMetric.Type;
 
-export const AdministrationOverview = Schema.Struct({
-  today: AdministrationOverviewMetric,
-  upcoming: AdministrationOverviewMetric,
-  lastSevenDays: AdministrationOverviewMetric,
+/** A count the overview reports, or `unavailable` when it couldn't. */
+export const AdministrationOverviewCount = Schema.Struct({
+  unavailable: Schema.Boolean,
+  value: Schema.Number,
 });
-export type AdministrationOverview = typeof AdministrationOverview.Type;
+export type AdministrationOverviewCount =
+  typeof AdministrationOverviewCount.Type;
 
 export const AdministrationReservationSort = Schema.Literals([
   "created",
@@ -839,6 +841,25 @@ export const AdministrationInvoicePdf = Schema.Uint8Array.pipe(
   HttpApiSchema.asUint8Array({ contentType: "application/pdf" })
 );
 
+/** What a new invoice starts from: payable currencies, dates, and a symbol. */
+export const AdministrationInvoiceCreationDefaults = Schema.Struct({
+  /** The currencies a receiving account is configured for. */
+  currencies: Schema.Array(
+    Schema.Struct({
+      code: AdministrationInvoiceCreateInput.fields.currency,
+      exponent: Schema.Number,
+      name: Schema.String,
+    })
+  ),
+  defaultCurrency: AdministrationInvoiceCreateInput.fields.currency,
+  /** Today in the Workspace's time zone. */
+  defaultServiceDate: administrationCalendarDate,
+  defaultDueDate: administrationCalendarDate,
+  suggestedVariableSymbol: Schema.String,
+});
+export type AdministrationInvoiceCreationDefaults =
+  typeof AdministrationInvoiceCreationDefaults.Type;
+
 /** The reservation product families. */
 export const AdministrationReservationFamily = Schema.Literals([
   "cowork",
@@ -891,6 +912,45 @@ export const AdministrationCustomer = Schema.Struct({
   phone: Schema.NullOr(Schema.String),
 });
 export type AdministrationCustomer = typeof AdministrationCustomer.Type;
+
+/** A customer count with up to three of the customers it counts. */
+export const AdministrationOverviewCustomerMetric = Schema.Struct({
+  customers: Schema.Array(
+    Schema.Struct({
+      customerId: AdministrationDotyposCustomerId,
+      customer: Schema.NullOr(AdministrationCustomer),
+    })
+  ),
+  unavailable: Schema.Boolean,
+  value: Schema.Number,
+});
+export type AdministrationOverviewCustomerMetric =
+  typeof AdministrationOverviewCustomerMetric.Type;
+
+/** An older server omits the newer counts; they decode as unavailable. */
+const unreportedOverviewCount = { unavailable: true, value: 0 };
+
+export const AdministrationOverview = Schema.Struct({
+  today: AdministrationOverviewMetric,
+  upcoming: AdministrationOverviewMetric,
+  lastSevenDays: AdministrationOverviewMetric,
+  /** Distinct customers with a completed reservation in the last 7 days. */
+  uniqueCustomers: fieldWithDefault(AdministrationOverviewCustomerMetric, {
+    ...unreportedOverviewCount,
+    customers: [],
+  }),
+  /** Those of `uniqueCustomers` whose first reservation is that recent. */
+  newCustomers: fieldWithDefault(AdministrationOverviewCustomerMetric, {
+    ...unreportedOverviewCount,
+    customers: [],
+  }),
+  /** Reservations with a paid attempt awaiting refund work. */
+  refundAttention: fieldWithDefault(
+    AdministrationOverviewCount,
+    unreportedOverviewCount
+  ),
+});
+export type AdministrationOverview = typeof AdministrationOverview.Type;
 
 export const AdministrationMoney = Schema.Struct({
   value: Schema.Number,
@@ -1590,6 +1650,28 @@ export const AdministrationCustomerActivity = Schema.Struct({
 export type AdministrationCustomerActivity =
   typeof AdministrationCustomerActivity.Type;
 
+/** A customer's completed reservations per day over the last 365 days. */
+export const AdministrationCustomerReservationActivity = Schema.Struct({
+  from: administrationCalendarDate,
+  to: administrationCalendarDate,
+  /** Null when Dotypos couldn't be reached. */
+  dates: Schema.NullOr(
+    Schema.Array(
+      Schema.Struct({
+        date: administrationCalendarDate,
+        count: Schema.Number,
+        /**
+         * The product of that day's reservations, such as `meeting-room` or
+         * `cowork-open-space`. Open-ended, so a new product decodes.
+         */
+        category: Schema.String,
+      })
+    )
+  ),
+});
+export type AdministrationCustomerReservationActivity =
+  typeof AdministrationCustomerReservationActivity.Type;
+
 export const AdministrationDiscountGroup = Schema.Struct({
   id: AdministrationDotyposDiscountGroupId,
   name: Schema.String,
@@ -1597,6 +1679,18 @@ export const AdministrationDiscountGroup = Schema.Struct({
 });
 export type AdministrationDiscountGroup =
   typeof AdministrationDiscountGroup.Type;
+
+/** The Dotypos discount groups that exist, by name where they have one. */
+export const AdministrationDiscountGroupList = Schema.Struct({
+  discountGroups: Schema.Array(
+    Schema.Struct({
+      id: AdministrationDotyposDiscountGroupId,
+      name: Schema.NullOr(Schema.String),
+    })
+  ),
+});
+export type AdministrationDiscountGroupList =
+  typeof AdministrationDiscountGroupList.Type;
 
 const administrationPromotionFields = {
   code: Schema.String,
@@ -2395,6 +2489,16 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
   )
   .add(
     HttpApiEndpoint.get(
+      "getCustomerReservationActivity",
+      "/customers/:customerId/reservation-activity",
+      {
+        params: { customerId: AdministrationDotyposCustomerId },
+        success: AdministrationCustomerReservationActivity,
+      }
+    ).annotate(AdministrationOperationBehavior, readOperation)
+  )
+  .add(
+    HttpApiEndpoint.get(
       "listCustomerReservations",
       "/customers/:customerId/reservations",
       {
@@ -2407,6 +2511,11 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
   .add(
     HttpApiEndpoint.get("getDiscountDashboard", "/discounts", {
       success: AdministrationDiscountDashboard,
+    }).annotate(AdministrationOperationBehavior, readOperation)
+  )
+  .add(
+    HttpApiEndpoint.get("listDiscountGroups", "/discount-groups", {
+      success: AdministrationDiscountGroupList,
     }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
@@ -2444,6 +2553,22 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
     }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
+    HttpApiEndpoint.get(
+      "getInvoiceCreationDefaults",
+      "/invoices/creation-defaults",
+      { success: AdministrationInvoiceCreationDefaults }
+    ).annotate(AdministrationOperationBehavior, readOperation)
+  )
+  .add(
+    // A read: it renders the unsaved invoice and writes nothing. POST only
+    // because it takes the invoice as a body.
+    HttpApiEndpoint.post("previewInvoice", "/invoices/preview", {
+      payload: AdministrationInvoiceCreateInput,
+      success: AdministrationInvoicePdf,
+      error: [CliMutationRejected.schema, CliServiceUnavailable.schema],
+    }).annotate(AdministrationOperationBehavior, readOperation)
+  )
+  .add(
     HttpApiEndpoint.post("createInvoice", "/invoices", {
       payload: AdministrationInvoiceCreateInput,
       success: AdministrationInvoiceCreateResult,
@@ -2454,7 +2579,10 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
       ],
     }).annotate(
       AdministrationOperationBehavior,
-      destructiveOperation({ idempotent: true })
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview("administration.previewInvoice"),
+      })
     )
   )
   .add(

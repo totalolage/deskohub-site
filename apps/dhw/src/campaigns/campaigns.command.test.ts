@@ -8,6 +8,7 @@ import {
   AdministrationCampaignDetail,
   AdministrationCampaignRecipientPreview,
   AdministrationCampaignSendStatusResult,
+  AdministrationCampaignSettings,
   CliAccessToken,
   CliInputInvalid,
   CliSessionId,
@@ -200,6 +201,7 @@ type CampaignApi = Pick<
   | "sendCampaign"
   | "retryCampaign"
   | "getCampaignSendStatus"
+  | "getCampaignSettings"
 >;
 
 const makeCampaignLayer = (overrides: Partial<CampaignApi> = {}) => {
@@ -278,6 +280,9 @@ const makeCampaignLayer = (overrides: Partial<CampaignApi> = {}) => {
       retriedCount: 1,
     })),
     getCampaignSendStatus: record("getCampaignSendStatus", () => sendStatus),
+    getCampaignSettings: record("getCampaignSettings", () => ({
+      testSendInbox: adminEmail,
+    })),
     ...overrides,
   };
   const api = Layer.succeed(WorkspaceAdminApiClient, {
@@ -324,6 +329,22 @@ const run = (args: ReadonlyArray<string>, layer: CampaignLayer) =>
 
 const runFailure = (args: ReadonlyArray<string>, layer: CampaignLayer) =>
   run(args, layer).pipe(Effect.flip, Effect.runPromise);
+
+describe("dhw campaign settings", () => {
+  test("prints campaign settings as JSON", async () => {
+    const settings = Schema.decodeUnknownSync(AdministrationCampaignSettings)({
+      testSendInbox: adminEmail,
+    });
+    const { calls, layer, output } = makeCampaignLayer();
+
+    await run(["--json", "campaigns", "settings"], layer).pipe(
+      Effect.runPromise
+    );
+
+    expect(calls).toEqual([["getCampaignSettings"]]);
+    expect(JSON.parse(output.join(""))).toEqual(settings);
+  });
+});
 
 describe("dhw campaigns create and update", () => {
   test("builds per-locale content from Markdown files and trims text", async () => {
