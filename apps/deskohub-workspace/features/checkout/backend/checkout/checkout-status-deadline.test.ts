@@ -11,6 +11,7 @@ import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/av
 import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { ReviewSandboxMock } from "@/features/review-accounts/backend/review-sandbox.service.mock";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { makeWorkspaceNexiLayer } from "@/shared/backend/config/nexi.config";
 import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
@@ -176,7 +177,8 @@ const loadStatusPageOnTestClock = (options: {
             }),
             SeatingMapFeatureFlagServiceMock({
               isEnabled: Effect.succeed(true),
-            })
+            }),
+            ReviewSandboxMock({})
           )
         )
       )

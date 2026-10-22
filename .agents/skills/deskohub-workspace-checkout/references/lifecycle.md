@@ -10,6 +10,7 @@ Business policy for holds, payment, recovery, refunds, and fulfillment is in the
 - [Checkout session and attempt keys](#checkout-session-and-attempt-keys)
 - [Supersession](#supersession)
 - [Agent bookings](#agent-bookings)
+- [Review account sandbox](#review-account-sandbox)
 - [Nexi payment attempts](#nexi-payment-attempts)
 - [Hold cleanup](#hold-cleanup)
 - [Late payment recovery](#late-payment-recovery)
@@ -145,6 +146,15 @@ The customer MCP tool `start_reservation` (`features/agent-tools/start-reservati
   - Anything else ended: start the next attempt in the agent session, which supersedes or rotates past the session's current reservation as usual. First, `supersedeRotatedAgentHolds` cancels the client's held, unpaid holds outside the agent session (`findSupersedableByAgentClient`, filtered by author account and `agent_client_id`) through the same claim and Dotypos check as session supersession. Once the agent session's reservation is paid or payment-pending, every new selection rotates, so without this step the previous hold would stay payable beside the new one. A hold with a pending or completed payment is never claimed, and another assistant's or another account's hold is never cancelled.
 - An agent hold is anchored at its booking instant: the deadline is `bookedAt` plus the Pay-state lifetime, and its Pay state is issued as of that instant (`toReadyResult` `stableLink`) and sealed with a synthetic IV (`sealState` `syntheticIv`). A repeat re-quotes at the anchor and so returns a byte-identical Pay URL. The token never outlives the hold, and nothing extends it. The URL changes only when what it seals changes: a Pay-state key activation, a price or discount change, or a profile or locale change. The browser checkout keeps random IVs and seal-time claims.
 - Agent bookings use the account's profile contact and personal billing without an invoice; business billing and invoices stay on the site.
+
+## Review account sandbox
+
+App-directory review accounts (`customer_accounts.review`) book in a sandbox owned by `features/review-accounts/`. Existing services only branch into it:
+
+- `prepareWorkspacePayState` checks the account under the account lock, before the office gate and `resolveAccountCustomer`. A review booking affirms the advertised price, then `ReviewSandbox.prepareHold` stores a simulated hold in `review_account_holds` and returns a `ready` result whose `redirectUrl` is the payment-disabled page. Nothing reaches Dotypos, Nexi, availability, hold cleanup, consent, or `workspace_reservations`/`payment_attempts`, and the operation captures no pre-payment outcome, success or failure.
+- Holds mirror agent semantics within a checkout session: the same selection (agent selection key or site attempt, bound to the reservation) returns the open hold; a new one cancels the session's open hold first. A hold lapses after the Pay-state lifetime; nothing cleans it up.
+- Every review account also shows computed samples (`getReviewSampleReservations`): a past cowork day and an upcoming meeting room relative to today, with IDs stable per account (`review-sample-…`).
+- `CheckoutStatusService` falls back to `ReviewSandbox.status` only when the order isn't in the ledger. `ReservationAuthorizationService` grants a sandbox order the author's `view-status`, never `view-access-code`. Status views and history items carry `reviewSandbox`, which hides access links.
 
 ## Nexi payment attempts
 

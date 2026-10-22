@@ -9,6 +9,7 @@ import { payStatePreparationServices } from "@/features/reservation/backend/pay-
 import { SharedReservationRecordsLive } from "@/features/reservation/backend/reservation-records-cache.server";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import { ReviewSandbox } from "@/features/review-accounts";
 import type { AgentTool, CallableAgentTools } from "./agent-tool";
 import { checkAvailabilityTool } from "./check-availability.tool";
 import type { SignedInAgentToolRequirements } from "./customer-agent-caller";
@@ -36,7 +37,8 @@ export const CustomerAgentToolsLive = Layer.mergeAll(
   payStatePreparationServices,
   WorkspaceReservationRepository.Live,
   CheckoutStatusService.withRecords(SharedReservationRecordsLive),
-  CustomerReservationHistoryService.withRecords(SharedReservationRecordsLive)
+  CustomerReservationHistoryService.withRecords(SharedReservationRecordsLive),
+  ReviewSandbox.Live
 );
 
 /** Every tool customers' agents can call, in the order agents see them. */

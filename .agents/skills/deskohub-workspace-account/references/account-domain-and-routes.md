@@ -86,6 +86,12 @@ glossary defines the customer account, reservation author, and tombstone.
   reconciliation and campaign audiences count only verified logins. Nothing
   creates unverified logins any more.
 
+## Review accounts
+
+- `customer_accounts.review` marks an app-directory review account; its check forbids a Dotypos customer. `resolveCustomerAccountLinkUnderHeldLock` refuses one (`account.review`) before any Dotypos lookup, so neither resolution nor profile completion links or creates a profile.
+- The account page loads the `review-account` state before resolution: `ReviewAccountCard` replaces profile completion, and the Reservations section shows its sandbox history. The reservation form's `review-account` checkout state books on the account card with `getReviewAccountContact` (synthetic, never stored) and offers no contact entry or consent.
+- `CustomerAccountContactService.current` returns that synthetic contact, which is why it returns booking-contact fields without a Dotypos customer.
+
 ## Error contract
 
 - `CustomerAccountAccessError.reason` is closed: `not-configured`,

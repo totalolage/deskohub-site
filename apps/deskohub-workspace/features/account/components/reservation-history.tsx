@@ -380,7 +380,8 @@ function FeaturedReservationItem({
                 {copy.checkIn}
               </Button>
             </FutureFeatureTooltip>
-            {reservation.workspaceReservationId ? (
+            {reservation.workspaceReservationId &&
+            !reservation.reviewSandbox ? (
               <Button
                 asChild
                 className="@3xl:w-auto"
@@ -407,7 +408,9 @@ function FeaturedReservationItem({
                   {copy.showPinCode}
                 </Button>
                 <p className="mt-2 max-w-sm break-words text-xs leading-5 text-[#64748b]">
-                  {m.accountReservationPinUnavailable({}, { locale })}
+                  {reservation.reviewSandbox
+                    ? m.accountReservationPinReviewSandbox({}, { locale })
+                    : m.accountReservationPinUnavailable({}, { locale })}
                 </p>
               </div>
             )}

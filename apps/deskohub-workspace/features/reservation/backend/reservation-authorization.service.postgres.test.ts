@@ -33,6 +33,7 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
+import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
 import {
   connectWorkspacePostgresTestDatabase,
   fixtureReservationAuthorId,
@@ -183,7 +184,8 @@ const makeAuthorization = (
         Layer.mock(CustomerDotyposAdapter, {
           classifyExactEmailCustomers: () =>
             Effect.succeed({ kind: "not-found" }),
-        })
+        }),
+        ReviewAccounts.Default.pipe(Layer.provide(postgres.layer))
       )
     )
   );
@@ -202,7 +204,13 @@ const makeAuthorization = (
     }).pipe(
       Effect.provide(
         ReservationAuthorizationService.Default.pipe(
-          Layer.provide(Layer.mergeAll(ownershipLayer, reservationsLayer))
+          Layer.provide(
+            Layer.mergeAll(
+              ownershipLayer,
+              reservationsLayer,
+              ReviewSandbox.Default.pipe(Layer.provide(postgres.layer))
+            )
+          )
         )
       )
     )

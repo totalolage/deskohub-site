@@ -21,6 +21,8 @@ The dashboard composes these sources without creating a second customer or reser
 - Nexi supplies live order and operation details for linked payment attempts. Provider IDs stay visible and link to XPay when Nexi is unavailable.
 - PostHog adds optional lifecycle observations to one reservation's timeline. It never decides current status, and lists never query it.
 
+Review accounts' bookings never appear: the review sandbox stores them in `review_account_holds`, which no administration projection, export, or metric reads (checkout skill's lifecycle reference).
+
 When a provider is unavailable, show the affected value as unavailable. Don't substitute a local value that answers a different question, and don't return partial counts.
 
 Keep customer search by name or email in a protected server action. Never put contact data in URLs or persist it. URLs may carry the Dotypos customer ID, status groups, reservation types, dates, and page numbers.
