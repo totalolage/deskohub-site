@@ -711,7 +711,8 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
   })
 );
 
-const CliBearerAuthenticationLive = Layer.effect(
+/** Authenticates a CLI session's bearer for `cli.getCurrentSession`. */
+export const CliBearerAuthenticationLive = Layer.effect(
   CliBearerAuthentication,
   Effect.gen(function* () {
     const authentication = yield* CliAuthentication;
@@ -1035,17 +1036,24 @@ const noStore = HttpRouter.middleware(
 
 /**
  * The administration API's HTTP app, with the given authentication for its
- * operations and the given client compatibility check. Each call builds its
- * own router, group handlers and global middleware: group handlers capture
- * the middleware they were built with, so instances sharing the Workspace
- * memo map must not share them. The domain services, and the action log
+ * operations, the given CLI session authentication for
+ * `cli.getCurrentSession`, and the given client compatibility check. Each
+ * call builds its own router, group handlers and global middleware: group
+ * handlers capture the middleware they were built with, so instances sharing
+ * the Workspace memo map must not share them. The domain services, and the action log
  * that records every state-changing operation, come from the caller.
  */
-export const makeWorkspaceAdminApiLayer = <R>({
+export const makeWorkspaceAdminApiLayer = <R, R2>({
   authentication,
+  sessionAuthentication,
   clientCompatibility,
 }: {
   readonly authentication: Layer.Layer<AdministrationAuthentication, never, R>;
+  readonly sessionAuthentication: Layer.Layer<
+    CliBearerAuthentication,
+    never,
+    R2
+  >;
   readonly clientCompatibility: Layer.Layer<CliClientCompatibility>;
 }) =>
   Layer.mergeAll(
@@ -1061,7 +1069,7 @@ export const makeWorkspaceAdminApiLayer = <R>({
       ),
       Layer.provide(
         Layer.mergeAll(
-          CliBearerAuthenticationLive,
+          sessionAuthentication,
           authentication,
           clientCompatibility,
           AdministrationActionRecordLive
@@ -1076,7 +1084,7 @@ export const makeWorkspaceAdminApiLayer = <R>({
   );
 
 /** The Workspace services behind the administration API. */
-const provideWorkspaceAdminApiServices = <A, E, R>(
+export const provideWorkspaceAdminApiServices = <A, E, R>(
   layer: Layer.Layer<A, E, R>
 ) =>
   layer.pipe(
@@ -1101,6 +1109,7 @@ export const handleWorkspaceAdminApiRequest = HttpRouter.toWebHandler(
     provideWorkspaceAdminApiServices(
       makeWorkspaceAdminApiLayer({
         authentication: CliSessionAdministrationAuthenticationLive,
+        sessionAuthentication: CliBearerAuthenticationLive,
         clientCompatibility: CliClientCompatibilityLive,
       })
     ),
