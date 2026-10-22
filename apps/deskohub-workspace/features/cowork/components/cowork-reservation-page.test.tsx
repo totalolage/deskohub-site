@@ -326,7 +326,7 @@ test("offers the default selection's preloaded prices in structured data", async
     expect(services[0]).toMatchObject({
       name: m.reservationOpenSpaceTitle({}, { locale: "en-US" }),
       offers: {
-        url: "https://workspace.deskohub.cz/en-US/reservation/cowork",
+        url: "https://workspace.deskohub.cz/reservation/cowork",
         price: toWorkspaceMoneyMajorAmount(displayedAmount ?? openSpacePrice),
         priceCurrency: "CZK",
       },

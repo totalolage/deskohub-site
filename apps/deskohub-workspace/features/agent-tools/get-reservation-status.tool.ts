@@ -23,7 +23,8 @@ import { agentToolMoneySchema, toAgentToolMoney } from "./agent-tool-money";
 
 const inputSchema = Schema.Struct({
   order_id: workspaceReservationIdSchema.annotate({
-    description: "The order ID from start_reservation or list_my_reservations.",
+    description:
+      "The order ID from list_my_reservations, or from a start_reservation result that has one.",
   }),
   locale: agentToolLocaleField,
 });
@@ -73,9 +74,9 @@ type ReservationStatusResult = typeof outputSchema.Type;
 
 export const getReservationStatusTool = defineSignedInAgentTool({
   name: "get_reservation_status",
-  title: "Check a DH Workspace reservation",
+  title: "Check a Deskohub Workspace reservation",
   description:
-    "Reports the status of one of the signed-in customer's own orders: whether it is held, paid, confirmed, cancelled, or expired, with its time and price. It never returns door codes or contact details; the customer finds those on the status page.",
+    "Reports the status of one of the signed-in customer's own orders, such as confirmed, cancelled, or expired, with its time and price. It never returns door codes or contact details; the customer finds those on the status page.",
   scope: "reservations:read",
   readOnly: true,
   unavailableCode: "reservations_unavailable",
@@ -135,12 +136,10 @@ const ensureOwnOrder = (input: {
 
 const toReservationStatusResult = ({
   orderId,
-  locale,
   status,
   origin,
 }: {
   readonly orderId: WorkspaceReservationId;
-  readonly locale: Locale;
   readonly status: CheckoutStatusViewModel;
   readonly origin: URL;
 }): Effect.Effect<ReservationStatusResult, AgentToolError> =>
@@ -164,7 +163,7 @@ const toReservationStatusResult = ({
           }),
         }),
         status_url: new URL(
-          `/${locale}${reservationStatusPath}/${orderId}`,
+          `${reservationStatusPath}/${encodeURIComponent(orderId)}`,
           origin
         ).toString(),
       })

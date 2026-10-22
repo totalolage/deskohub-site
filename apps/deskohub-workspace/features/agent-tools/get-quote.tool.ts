@@ -27,9 +27,9 @@ type GetQuoteInput = typeof inputSchema.Type;
 
 export const getQuoteTool = defineAgentTool({
   name: "get_quote",
-  title: "Quote a DH Workspace booking",
+  title: "Quote a Deskohub Workspace booking",
   description:
-    "Prices a complete selection anonymously: a cowork tier and date, a meeting-room start time and duration, or office dates and seats. The total includes any public sale running at the moment of the quote, and the reservation link opens the booking page prefilled. The price is confirmed on the website before payment; it does not check availability.",
+    "Prices a complete selection anonymously: a cowork tier and date, a meeting-room start time and duration, or office dates and seats. The total includes any public sale running at the moment of the quote, and the reservation link opens the booking page prefilled. The website confirms the price when the customer books; this tool does not check availability.",
   access: "public",
   readOnly: true,
   unavailableCode: "quote_unavailable",

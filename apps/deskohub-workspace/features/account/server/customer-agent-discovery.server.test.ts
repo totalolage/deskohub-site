@@ -6,11 +6,11 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { createResourceServerChallenge } from "@better-auth/oauth-provider";
 import { APIError } from "better-auth/api";
+import { agentScopes } from "@/features/account/agent-scopes";
 import {
   HOST,
   makeMemoryTestAuth,
 } from "@/features/account/backend/auth/auth-handler.test-utils";
-import { customerAgentScopes } from "@/features/account/customer-agent-scopes";
 
 const { auth } = makeMemoryTestAuth();
 mock.module("@/features/account/server/auth.server", () => ({ auth }));
@@ -66,10 +66,17 @@ describe("customer agent OAuth discovery", () => {
       authorization_endpoint: `${issuer}/oauth2/authorize`,
       token_endpoint: `${issuer}/oauth2/token`,
       client_id_metadata_document_supported: true,
+      // RFC 9207, which ChatGPT requires for its stable client ID.
+      authorization_response_iss_parameter_supported: true,
     });
+    // Claude picks metadata documents over registration only with `none`;
+    // ChatGPT's document authenticates with `private_key_jwt`.
+    expect(metadata.token_endpoint_auth_methods_supported).toEqual(
+      expect.arrayContaining(["none", "private_key_jwt"])
+    );
     expect(metadata.code_challenge_methods_supported).toEqual(["S256"]);
     expect(metadata.scopes_supported).toEqual(
-      expect.arrayContaining([...customerAgentScopes, "offline_access"])
+      expect.arrayContaining([...agentScopes, "offline_access"])
     );
     expect(metadata).not.toHaveProperty("registration_endpoint");
   });
@@ -90,7 +97,13 @@ describe("customer agent OAuth discovery", () => {
         resource,
         authorization_servers: [issuer],
       });
-      expect(metadata.scopes_supported).toEqual([...customerAgentScopes]);
+      expect(metadata.scopes_supported).toEqual([...agentScopes]);
+      expect(metadata).toMatchObject({
+        resource_name: expect.any(String),
+        resource_documentation: `${origin}/ai-assistants`,
+        resource_policy_uri: `${origin}/privacy-policy`,
+        resource_tos_uri: `${origin}/terms-and-conditions`,
+      });
     }
   );
 

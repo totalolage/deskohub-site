@@ -26,6 +26,11 @@ import { instant } from "../instant";
  * fact created before records began and `created_at` is only when the
  * backfill ran. A legacy account never counts as a new one. Nothing creates
  * legacy accounts any more, so every other account is a sign-up.
+ *
+ * `review` marks an app-directory review account: a synthetic login on the
+ * reserved test domain that reviewers sign in to with a password. Its
+ * bookings run in the review sandbox, so it never gets a Dotypos customer;
+ * the check enforces that for every write.
  */
 export const customerAccounts = pgTable(
   "customer_accounts",
@@ -35,6 +40,7 @@ export const customerAccounts = pgTable(
     deletedAt: instant("deleted_at"),
     createdAt: instant("created_at").notNull().default(sql`now()`),
     legacy: boolean("legacy").notNull().default(false),
+    review: boolean("review").notNull().default(false),
   },
   (t) => [
     uniqueIndex("customer_accounts_dotypos_customer_unique_idx").on(
@@ -43,6 +49,10 @@ export const customerAccounts = pgTable(
     check(
       "customer_accounts_dotypos_customer_check",
       sql`btrim(${t.dotyposCustomerId}) <> ''`
+    ),
+    check(
+      "customer_accounts_review_without_dotypos_customer_check",
+      sql`not ${t.review} or ${t.dotyposCustomerId} is null`
     ),
   ]
 );

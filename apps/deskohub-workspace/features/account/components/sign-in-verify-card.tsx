@@ -5,9 +5,11 @@ import { useEffect, useMemo, useRef } from "react";
 import { createAuthReturnLifecycle } from "@/features/account/auth-return";
 import { AuthCard } from "@/features/account/components/auth-card";
 import { SignInEmailSentStep } from "@/features/account/components/sign-in-email-sent-step";
+import { SignInPasswordStep } from "@/features/account/components/sign-in-password-step";
 import {
   forgetEmailSignInRequest,
   rememberEmailSignInRequest,
+  signsInWithPassword,
   useEmailSignInRequest,
 } from "@/features/account/email-sign-in-request";
 import {
@@ -31,8 +33,8 @@ type SignInVerifyCardProps = {
 /**
  * Continues the sign-in email this tab requested last, such as one sent by a
  * checkout form through `startEmailSignIn`: it takes over the link's
- * hand-off and, while sign-in codes are on, the code entry, and lands on the
- * request's return path. With nothing waiting, a signed-in tab continues to
+ * hand-off and, while sign-in codes are on, the code entry, or a review
+ * login's password entry, and lands on the request's return path. With nothing waiting, a signed-in tab continues to
  * the account and a signed-out one goes back to sign-in with a notice.
  */
 export function SignInVerifyCard({
@@ -100,21 +102,32 @@ export function SignInVerifyCard({
     );
   }
 
+  const changeEmail = () => {
+    authReturn.cancel();
+    discardWhenGone.current = true;
+    forgetEmailSignInRequest();
+    if (presentation === "modal") router.back();
+    else router.replace(returnTo ?? getAccountSignInPath(locale));
+  };
+
   return (
     <AuthCard>
-      <SignInEmailSentStep
-        locale={locale}
-        authReturn={authReturn}
-        request={request}
-        onRequestChange={setRequest}
-        onUseDifferentEmail={() => {
-          authReturn.cancel();
-          discardWhenGone.current = true;
-          forgetEmailSignInRequest();
-          if (presentation === "modal") router.back();
-          else router.replace(returnTo ?? getAccountSignInPath(locale));
-        }}
-      />
+      {signsInWithPassword(request) ? (
+        <SignInPasswordStep
+          locale={locale}
+          authReturn={authReturn}
+          request={request}
+          onUseDifferentEmail={changeEmail}
+        />
+      ) : (
+        <SignInEmailSentStep
+          locale={locale}
+          authReturn={authReturn}
+          request={request}
+          onRequestChange={setRequest}
+          onUseDifferentEmail={changeEmail}
+        />
+      )}
     </AuthCard>
   );
 }

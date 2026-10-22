@@ -1,7 +1,9 @@
+import { isLoopbackHostname } from "@/shared/utils/hostname";
 import {
-  customerAgentOfflineAccessScope,
+  administrationAgentScope,
   customerAgentScopes,
-} from "./customer-agent-scopes";
+  offlineAccessAgentScope,
+} from "./agent-scopes";
 
 /**
  * Where the OAuth server sends a customer who connects an AI agent: the
@@ -13,6 +15,16 @@ export const customerAgentConsentPath = "/auth/consent";
 
 /** The customer MCP server's path on every Workspace host. */
 export const customerMcpServerPath = "/api/mcp";
+
+/**
+ * The OAuth discovery documents agents read before they connect: the MCP
+ * server's protected-resource metadata (RFC 9728), which names the
+ * authorization server, and that server's metadata (RFC 8414).
+ */
+export const customerAgentDiscoveryPaths = {
+  protectedResource: "/.well-known/oauth-protected-resource",
+  authorizationServer: "/.well-known/oauth-authorization-server/api/auth",
+} as const;
 
 /** The OAuth authorization endpoint the sign-in step resumes through. */
 export const customerAgentAuthorizePath = "/api/auth/oauth2/authorize";
@@ -102,34 +114,63 @@ export const resolveCustomerAgentConnectStep = ({
 
 /**
  * The scopes the consent page explains, in the order it lists them: the
- * customer agent scopes, then staying connected without the customer.
+ * customer agent scopes, then staying connected without the customer. The
+ * administration scope is asked about on its own, and only of
+ * administrators.
  */
 export const customerAgentConsentScopes = [
   ...customerAgentScopes,
-  customerAgentOfflineAccessScope,
+  offlineAccessAgentScope,
 ] as const;
 
 export type CustomerAgentConsentScope =
   (typeof customerAgentConsentScopes)[number];
+
+/**
+ * Where the OAuth server sends the customer's answer, and with it the
+ * authorization code. `host` is the redirect URI's hostname, or the scheme of
+ * an app's own URL scheme, which has none. `local` marks a redirect that stays
+ * on the customer's device (a loopback host or an app scheme), where any app
+ * can claim to be the assistant.
+ */
+export type CustomerAgentConsentRedirect = {
+  readonly host: string;
+  readonly local: boolean;
+};
 
 export type CustomerAgentConsentRequest =
   /** The query is not a signed request naming an OAuth client. */
   | { readonly status: "unknown-request" }
   /** The signed request is past its expiry. */
   | { readonly status: "expired" }
-  /** The customer decides whether `clientId` gets `scopes`. */
+  /** The customer decides whether `clientId` gets `scopes` at `redirect`. */
   | {
       readonly status: "pending";
       readonly clientId: string;
       readonly scopes: ReadonlyArray<CustomerAgentConsentScope>;
+      readonly redirect: CustomerAgentConsentRedirect;
+      /** Whether the request also asks for the administration scope. */
+      readonly administration: boolean;
     };
+
+const readConsentRedirect = (
+  redirectUri: string | null
+): CustomerAgentConsentRedirect | undefined => {
+  const url = redirectUri ? URL.parse(redirectUri) : null;
+  if (!url) return undefined;
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return { host: url.protocol.slice(0, -1), local: true };
+  }
+  return { host: url.hostname, local: isLoopbackHostname(url.hostname) };
+};
 
 /**
  * What the consent step asks the customer, from the signed authorization
  * request in `query` at `now` (epoch milliseconds). The OAuth server verifies
  * the signature when the customer answers; this only spots requests that
- * can't succeed. Without `scope` the request asks for every scope; scopes the
- * page can't explain are left out.
+ * can't succeed, including one without a readable `redirect_uri`, which the
+ * server always signs. Without `scope` the request asks for every scope;
+ * scopes the page can't explain are left out.
  */
 export const readCustomerAgentConsentRequest = (
   query: URLSearchParams,
@@ -137,7 +178,13 @@ export const readCustomerAgentConsentRequest = (
 ): CustomerAgentConsentRequest => {
   const clientId = query.get("client_id");
   const expiresAt = Number(query.get("exp") || Number.NaN);
-  if (!clientId || !query.get("sig") || !Number.isFinite(expiresAt)) {
+  const redirect = readConsentRedirect(query.get("redirect_uri"));
+  if (
+    !clientId ||
+    !query.get("sig") ||
+    !Number.isFinite(expiresAt) ||
+    !redirect
+  ) {
     return { status: "unknown-request" };
   }
   if (expiresAt * 1000 <= now) return { status: "expired" };
@@ -149,5 +196,7 @@ export const readCustomerAgentConsentRequest = (
     scopes: requested
       ? customerAgentConsentScopes.filter((scope) => requested.includes(scope))
       : customerAgentConsentScopes,
+    redirect,
+    administration: requested?.includes(administrationAgentScope) ?? true,
   };
 };

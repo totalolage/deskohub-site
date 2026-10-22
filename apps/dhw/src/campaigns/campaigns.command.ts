@@ -339,6 +339,7 @@ const campaignsDeleteCommand = Command.make(
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
         const confirmed = yield* confirmChange(
+          "campaigns.deleteCampaign",
           yes,
           json,
           `Delete campaign ${campaignId}? This cannot be undone.`
@@ -396,6 +397,21 @@ const formatRecipientPreview = (
     ),
   ].join("\n");
 
+const campaignsSettingsCommand = Command.make("settings", {}, () =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    Effect.gen(function* () {
+      const settings = yield* api.getCampaignSettings(accessToken);
+      yield* Console.log(
+        json
+          ? JSON.stringify(settings)
+          : `Test-send inbox: ${settings.testSendInbox ?? "not configured"}`
+      );
+    })
+  )
+).pipe(
+  Command.withDescription("Show the inbox every campaign test send reaches")
+);
+
 const campaignsTestSendCommand = Command.make(
   "test-send",
   {
@@ -451,6 +467,7 @@ const campaignsSendCommand = Command.make(
         if (!yes) {
           const campaign = yield* api.getCampaign(accessToken, campaignId);
           const confirmed = yield* confirmChange(
+            "campaigns.sendCampaign",
             yes,
             json,
             `Send campaign "${campaign.title}" (${campaign.id}) to its audience now? This cannot be undone.`
@@ -490,6 +507,7 @@ const campaignsRetryCommand = Command.make(
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
         const confirmed = yield* confirmChange(
+          "campaigns.retryCampaign",
           yes,
           json,
           includeUnconfirmed
@@ -575,6 +593,7 @@ export const campaignsCommand = Command.make("campaigns").pipe(
     campaignsDuplicateCommand,
     campaignsDeleteCommand,
     campaignsRecipientsCommand,
+    campaignsSettingsCommand,
     campaignsTestSendCommand,
     campaignsSendCommand,
     campaignsRetryCommand,

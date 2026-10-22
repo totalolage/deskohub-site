@@ -32,7 +32,11 @@ export const standaloneAccessCodeProviderVariances = [
   2, 3,
 ] satisfies readonly StandaloneAccessCodeProviderVariance[];
 
-export const standaloneAccessCodeSources = ["admin-ui", "dhw-cli"] as const;
+export const standaloneAccessCodeSources = [
+  "admin-ui",
+  "dhw-cli",
+  "assistant",
+] as const;
 export type StandaloneAccessCodeSource =
   (typeof standaloneAccessCodeSources)[number];
 

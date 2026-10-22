@@ -1,9 +1,9 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, notExists, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { alias } from "drizzle-orm/pg-core";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { accountRoleGrants } from "@/db/schema";
+import { accountRoleGrants, customerAccounts } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { AccountRole } from "../account-role";
@@ -41,9 +41,17 @@ interface IAccountRoleGrants {
   ) => Effect.Effect<{ readonly changed: boolean }, EffectDrizzleQueryError>;
   /**
    * Reads the grant from the database on every call, so a revocation takes
-   * effect on the next check.
+   * effect on the next check. A review account holds no role.
    */
   readonly has: (
+    input: AccountRoleGrantKey
+  ) => Effect.Effect<boolean, EffectDrizzleQueryError>;
+  /**
+   * Like `has`, but share-locks the grant until the surrounding transaction
+   * ends, so a concurrent revoke waits for that transaction and then sees
+   * what it wrote.
+   */
+  readonly lockHeld: (
     input: AccountRoleGrantKey
   ) => Effect.Effect<boolean, EffectDrizzleQueryError>;
   /** Every account holding `role`, oldest grant first. */
@@ -65,6 +73,16 @@ export class AccountRoleGrants extends Context.Service<
           eq(accountRoleGrants.accountId, accountId),
           eq(accountRoleGrants.role, role)
         );
+      /**
+       * App-directory reviewers share a review account's password, so a
+       * grant on one, however it got there, gives no role.
+       */
+      const outsideReviewAccounts = notExists(
+        sql`(select 1 from ${customerAccounts} where ${and(
+          eq(customerAccounts.id, accountRoleGrants.accountId),
+          eq(customerAccounts.review, true)
+        )})`
+      );
 
       return {
         grant: Effect.fn("AccountRoleGrants.grant")(function* ({
@@ -90,8 +108,17 @@ export class AccountRoleGrants extends Context.Service<
           const [grant] = yield* db
             .select({ accountId: accountRoleGrants.accountId })
             .from(accountRoleGrants)
-            .where(matchesGrant(key))
+            .where(and(matchesGrant(key), outsideReviewAccounts))
             .limit(1);
+          return grant !== undefined;
+        }),
+        lockHeld: Effect.fn("AccountRoleGrants.lockHeld")(function* (key) {
+          const [grant] = yield* db
+            .select({ accountId: accountRoleGrants.accountId })
+            .from(accountRoleGrants)
+            .where(and(matchesGrant(key), outsideReviewAccounts))
+            .limit(1)
+            .for("share");
           return grant !== undefined;
         }),
         list: Effect.fn("AccountRoleGrants.list")(function* (role) {
@@ -110,7 +137,7 @@ export class AccountRoleGrants extends Context.Service<
               granter,
               eq(granter.id, accountRoleGrants.grantedByAccountId)
             )
-            .where(eq(accountRoleGrants.role, role))
+            .where(and(eq(accountRoleGrants.role, role), outsideReviewAccounts))
             .orderBy(asc(accountRoleGrants.grantedAt), asc(authUser.email));
           return rows.map(
             (row): AccountRoleGrant => ({

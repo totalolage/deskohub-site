@@ -19,6 +19,8 @@ import {
   AdministrationDotyposDiscountGroupId,
   AdministrationInvoiceCreateInput,
   AdministrationInvoiceListItem,
+  AdministrationOverview,
+  AdministrationOverviewMetric,
   AdministrationPaymentAttempt,
   AdministrationReservationAccessGrant,
   AdministrationReservationAccessMutation,
@@ -824,6 +826,62 @@ describe("administration contract", () => {
         page: 0,
       })
     ).toThrow();
+  });
+});
+
+describe("overview contract", () => {
+  // `AdministrationOverview` as released dhw binaries decode it, before the
+  // customer counts and refund attention.
+  const ReleasedAdministrationOverview = Schema.Struct({
+    today: AdministrationOverviewMetric,
+    upcoming: AdministrationOverviewMetric,
+    lastSevenDays: AdministrationOverviewMetric,
+  });
+  const reservationMetrics = {
+    today: { completed: 1, unavailable: false, value: 2 },
+    upcoming: { completed: 0, unavailable: false, value: 5 },
+    lastSevenDays: { completed: 3, unavailable: false, value: 4 },
+  };
+  const customerId = AdministrationDotyposCustomerId.make("customer-1");
+
+  test("keeps the overview readable by released dhw", () => {
+    const response = Schema.encodeSync(AdministrationOverview)({
+      ...reservationMetrics,
+      uniqueCustomers: {
+        customers: [
+          {
+            customerId,
+            customer: {
+              id: customerId,
+              displayName: "Synthetic Customer",
+              email: syntheticAddress,
+              phone: null,
+            },
+          },
+        ],
+        unavailable: false,
+        value: 1,
+      },
+      newCustomers: { customers: [], unavailable: false, value: 0 },
+      refundAttention: { unavailable: false, value: 2 },
+    });
+
+    expect(
+      Schema.decodeUnknownSync(ReleasedAdministrationOverview)(response)
+    ).toEqual(reservationMetrics);
+  });
+
+  test("reads an older server's overview as not reporting the newer counts", () => {
+    const unreported = { unavailable: true, value: 0 };
+
+    expect(
+      Schema.decodeUnknownSync(AdministrationOverview)(reservationMetrics)
+    ).toEqual({
+      ...reservationMetrics,
+      uniqueCustomers: { ...unreported, customers: [] },
+      newCustomers: { ...unreported, customers: [] },
+      refundAttention: unreported,
+    });
   });
 });
 

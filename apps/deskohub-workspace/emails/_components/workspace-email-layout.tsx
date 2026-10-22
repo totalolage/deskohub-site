@@ -10,6 +10,10 @@ import {
   Tailwind,
   Text,
 } from "react-email";
+import { workspaceSiteConstants } from "@/shared/utils";
+
+const { brand } = workspaceSiteConstants;
+const { address } = workspaceSiteConstants.location;
 
 export type WorkspaceEmailLocale = "cs-CZ" | "en-US";
 
@@ -69,7 +73,7 @@ export function WorkspaceEmailLayout({
               {children}
             </Section>
             <Text className="m-0 px-5 pt-5 text-center text-[12px] leading-[18px] text-[#666983]">
-              Deskohub Workspace · Turnovská 430/10 · Praha 8
+              {[brand.name, address.street, address.city].join(" · ")}
             </Text>
             {footer}
           </Container>

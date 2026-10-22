@@ -5,7 +5,7 @@ import { agentToolMoneySchema } from "./agent-tool-money";
 export const getQuoteResultSchema = Schema.Struct({
   family: workspaceReservationKindSchema,
   total: agentToolMoneySchema.annotate({
-    description: "The price the customer pays for the selection.",
+    description: "The price of the selection.",
   }),
   regular_price: agentToolMoneySchema,
   discount: agentToolMoneySchema.annotate({

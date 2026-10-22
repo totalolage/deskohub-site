@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { env } from "@/env";
+import { revokeUnconsentedAdministrationTokens } from "@/features/account/backend/auth/administration-agent-access";
 import {
   type BetterAuthHostEnvironment,
   resolveBetterAuthAllowedHosts,
@@ -20,6 +21,8 @@ import {
 import { ensureCustomerAccount } from "@/features/account/backend/customer-account.repository";
 import { captureAccountLocalePreference } from "@/features/account/backend/customer-locale-preference";
 import { customerMcpServerPath } from "@/features/account/customer-agent-routes";
+import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
+import { ReviewAccounts } from "@/features/review-accounts";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
@@ -93,8 +96,25 @@ export const auth = makeWorkspaceAuth({
     Effect.flatMap(WorkspaceDatabase, ({ db }) =>
       ensureCustomerAccount(db, accountId)
     ).pipe(Effect.provide(WorkspaceDatabase.Default)),
+  hasAdministratorGrant: (accountId) =>
+    Effect.flatMap(AccountRoleGrants, (grants) =>
+      grants.has({ accountId, role: "administrator" })
+    ).pipe(Effect.provide(AccountRoleGrants.Live)),
+  revokeUnconsentedAdministrationTokens: (owner) =>
+    revokeUnconsentedAdministrationTokens(owner).pipe(
+      Effect.provide(WorkspaceDatabase.Default)
+    ),
   captureAccountLocalePreference: (accountId, locale) =>
     captureAccountLocalePreference(accountId, locale).pipe(
       Effect.provide(WorkspaceDatabase.Default)
     ),
+  reviewAccountCredentials: env.REVIEW_ACCOUNT_CREDENTIALS ?? [],
+  isReviewAccount: (accountId) =>
+    Effect.flatMap(ReviewAccounts, (reviewAccounts) =>
+      reviewAccounts.isReviewAccount(accountId)
+    ).pipe(Effect.provide(ReviewAccounts.Live)),
+  registerReviewAccount: (accountId) =>
+    Effect.flatMap(ReviewAccounts, (reviewAccounts) =>
+      reviewAccounts.register(accountId)
+    ).pipe(Effect.provide(ReviewAccounts.Live)),
 });

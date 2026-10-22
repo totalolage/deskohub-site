@@ -10,7 +10,10 @@ resource.
 | Concern | Location |
 | --- | --- |
 | Plugins (`mcp`, `cimd`, the token-verification endpoint) | `features/account/backend/auth/customer-agent-authorization-server.ts` |
-| Scopes | `features/account/customer-agent-scopes.ts` |
+| Scopes | `features/account/agent-scopes.ts` |
+| Administration scope gate (consent, skip-consent clients) | `features/account/backend/auth/administration-scope-guard.ts` |
+| Revoking administration from an account's agents | `features/account/backend/auth/administration-agent-access.ts` |
+| Per-call administrator check for agents | `features/administrators/backend/administrator-agent-authorization.service.ts` |
 | Login, consent, MCP and authorize paths; the connect-step resolver | `features/account/customer-agent-routes.ts` |
 | Token → customer identity adapter | `features/account/backend/auth/customer-agent-authorization.service.ts` |
 | Client name and host for the consent page | `features/account/backend/auth/customer-agent-client-directory.service.ts` |
@@ -37,9 +40,13 @@ resource.
   `metadataProfile: "mcp-2026-07-28"` and the pinned Node transport).
   Dynamic client registration stays off and the client-management endpoints
   are in `disabledPaths` (`disabledCustomerAgentClientPaths`).
-- Scopes: `offerings:read`, `reservations:read`, `reservations:create`, and
+- Scopes: `offerings:read`, `reservations:read`, `reservations:create`,
+  `administration` (see [Administration scope](#administration-scope)), and
   `offline_access` so agents can refresh without the customer present.
   Without `offline_access`, ending the browser session revokes the grant.
+  Every scope but `offline_access` is advertised in `scopes_supported`, and
+  every one is in the CIMD clients' default ceiling, so an agent can ask for
+  it.
 - The resource is one static URL per deployment (`customerMcpResource` in
   `auth.server.ts`, resolved in `auth-hosts.ts`): the canonical host in
   production, `VERCEL_URL` on previews, `localhost:3000` in development. The
@@ -66,7 +73,19 @@ resource.
   `/.well-known/oauth-protected-resource/api/mcp` (RFC 9728) are Next route
   handlers that pass the request to `auth.handler`. Better Auth runs plugin
   `onRequest` hooks before base-path matching, so the provider and `mcp()`
-  answer from their own builders. Never hand-build the JSON.
+  answer from their own builders. Never hand-build the JSON. The one
+  addition is `describeProtectedResource` in
+  `customer-agent-authorization-server.ts`, which wraps the `mcp()`
+  `onRequest` to add RFC 9728's `resource_name`, `resource_documentation`
+  (`/ai-assistants`), `resource_policy_uri`, and `resource_tos_uri`, which
+  the plugin can't configure. `scopes_supported` stays per resource, never
+  per client.
+- The MCP route answers a refused `tools/call` with the HTTP challenge and,
+  in the body, a JSON-RPC error result per call whose
+  `_meta["mcp/www_authenticate"]` repeats the challenge with `error` and
+  `error_description`, the form ChatGPT reads for per-tool sign-in. Tools
+  publish `securitySchemes` (`noauth`, or `oauth2` with the tool's scope) in
+  their definition and `_meta`.
 - `createResourceServerChallenge(error, resource)` points
   `resource_metadata` at `<resource origin>/.well-known/oauth-protected-resource<resource path>`.
   Pass `customerMcpResource`, not a request-derived URL, so the challenge,
@@ -74,6 +93,57 @@ resource.
 - Dotted paths skip `proxy.ts`, so no locale redirect applies. Bun's test
   collector skips dot directories, so the route tests live beside the shared
   handler in `features/account/server`.
+
+## App-directory clients
+
+ChatGPT and Claude, whose directories list the MCP server, register through
+their published metadata documents. The flow test signs a customer in
+through each one; its fixtures in
+`customer-agent-directory-clients.test-utils.ts` copy the live documents
+(ChatGPT publishes no per-connector example, so that one follows its stable
+document); refresh them when a client changes its document.
+
+- ChatGPT uses `https://chatgpt.com/oauth/client.json` with redirect
+  `https://chatgpt.com/connector_platform_oauth_redirect`, because the
+  server advertises and sends RFC 9207 `iss`. Without that, it falls back
+  to `https://chatgpt.com/oauth/{callback_id}/client.json` and
+  `https://chatgpt.com/connector/oauth/{callback_id}`, which the server
+  also accepts.
+- ChatGPT's document declares `private_key_jwt` with a `jwks_uri` on its own
+  origin, so its code exchange and refresh need a signed client assertion
+  (audience the token endpoint or the issuer, at most 300 seconds, single-use
+  `jti` recorded in `oauth_client_assertion`). The provider fetches the JWKS
+  through the CIMD transport. Keep `private_key_jwt` in
+  `token_endpoint_auth_methods_supported`.
+- Claude's apps use `https://claude.ai/oauth/mcp-oauth-client-metadata` with
+  redirect `https://claude.ai/api/mcp/auth_callback` and no client
+  authentication. Claude picks a metadata document only when the metadata
+  advertises `client_id_metadata_document_supported` and `none`; otherwise it
+  falls back to dynamic registration, which is off, so dropping either breaks
+  Claude.
+- Claude Code uses `https://claude.ai/oauth/claude-code-client-metadata`,
+  registering `http://localhost/callback` and `http://127.0.0.1/callback`,
+  and listens on a port it picks per sign-in. Upstream 1.7.2 ignores the port
+  only for loopback IPs; the `@better-auth/oauth-provider` patch extends that to
+  `localhost` (see the `deskohub-repository` skill's patched dependencies).
+  Only the port may differ: once normalized, scheme, credentials, host, path,
+  query, and fragment match the registered URI exactly, for loopback IPs too.
+  Errors follow the same match, so a request for any other URI gets the
+  server's error page.
+  A document without `application_type` gets native redirect validation,
+  which allows HTTP loopback redirect URIs.
+- The consent page names each client by its metadata host: `chatgpt.com`,
+  `claude.ai`. Claude Code also shows `claude.ai`, so the page also names
+  the redirect host (`localhost` or `127.0.0.1` for Claude Code) and warns
+  about it (see the consent page below).
+- Successful and error authorization responses at the client's redirect URI
+  carry `iss`, equal to the advertised issuer. A request whose client or
+  redirect URI can't be trusted goes to the server's error page instead.
+- The `resource` the client requests becomes the token's audience; an
+  expired or unknown token gets a 401 `invalid_token` challenge.
+- Directory apps see every MCP tool. Only ChatGPT gets a different
+  `start_reservation`: a public, read-only variant that returns a link to
+  continue the booking on the website, without sign-in or a hold.
 
 ## Connect and consent pages
 
@@ -89,7 +159,9 @@ resource.
 - `/auth/connect` uses `resolveCustomerAgentConnectStep` for the next step:
   signed out, or asked to sign in again (`prompt=login` or `create`,
   `max_age`), the customer goes to the existing sign-in page with the
-  `assistant` purpose and a `signed_in=1` marker on the return path.
+  `assistant` purpose and a `signed_in=1` marker on the return path. A
+  review login signs in there with its password, which also returns through
+  that marked path.
   Signed in, the page redirects to `/api/auth/oauth2/authorize` with the
   original parameters minus the signing parameters; the provider validates
   the request from scratch and continues to consent. A marked return drops
@@ -106,11 +178,30 @@ resource.
   `sig`, or `exp`; past `exp`), then re-checks the session, reads the client through
   `CustomerAgentClientDirectory` (`getOAuthClientPublic`, which needs the
   customer's session), and shows the client's name and metadata host, the
+  host of the request's `redirect_uri`, the
   requested scopes in plain words, what the assistant can't do (pay, cancel,
   change or delete the account), and that the customer accepts the terms and
   pays on the site. Don't render the client's logo: it is a third-party
   request from an arbitrary host.
-- Allow and Deny call `authClient.oauth2.consent({ accept })`.
+- The redirect host is required by the MCP spec (2026-07-28, Security
+  Considerations, "Localhost Redirect URI Risks": the server "MUST clearly
+  display the redirect URI hostname during authorization" and "SHOULD
+  display additional warnings for `localhost`-only redirect URIs").
+  `readCustomerAgentConsentRequest` reads it from the signed query (the
+  provider requires and signs `redirect_uri`; a request without a readable
+  one is `unknown-request`). It marks the redirect `local` when the host is
+  loopback (`isLoopbackHostname` in `shared/utils/hostname.ts`: `localhost`,
+  `*.localhost`, 127.0.0.0/8, `[::1]`) or the URI uses an app's own scheme,
+  shown by its scheme name. A local redirect gets a warning, since any app on
+  the device can use a public client's metadata document. The warning keys
+  on the requested redirect, not on whether every registered URI is local.
+  `customer-agent-routes.ts` is in the proxy bundle and outside the Better
+  Auth import boundary, so it doesn't use Better Auth's `isLoopbackHost`.
+- Allow calls `authClient.oauth2.consent({ accept: true, scope })` with
+  exactly the scopes the page lists: the provider stores that subset as the
+  consent and issues only it. Deny calls `consent({ accept: false })`. The
+  auth server refuses an accepted consent without `scope` (400), because
+  the provider would otherwise grant everything requested.
   `oauthProviderClient()` in `auth.client.ts` attaches the signed
   `oauth_query` from the page URL to non-GET auth requests. The provider
   answers `{ redirect: true, url }` for both outcomes and doesn't navigate;
@@ -172,13 +263,70 @@ resource.
   assistants that ask for consent, so an authorization in flight at the
   deploy is refused once and the assistant authorizes again.
 
+## Administration scope
+
+- `administration` lets an administrator's agent use the administration.
+  Issuance is policy; the security boundary is
+  `AdministratorAgentAuthorization.authorize(caller)`, which every
+  administration call runs: it re-verifies the caller's access token through
+  `CustomerAgentAuthorization`, requires `administration` in that token's own
+  scopes, and reads `AccountRoleGrants.has` (the same per-request read as the
+  CLI bearer path) through `currentAdministratorAccess`. Deleted,
+  deletion-pending, and unverified accounts fail token verification. The
+  client the agent connected with plays no part.
+- The consent page reads the grant only when the request asks for
+  `administration`. An administrator sees a separate administration block and
+  Allow adds the scope; anyone else never sees it and Allow leaves it out, so
+  an agent that asks for every scope still connects as a customer. A request
+  that asks a non-administrator for nothing but `administration` (and
+  `offline_access`) shows the `administration-only` notice.
+- `guardAdministrationScope` in the auth server's `hooks.before`:
+  - `/oauth2/consent` with `accept: true` needs an explicit `scope`; one
+    that names `administration` needs a session whose account holds the
+    grant now (403 otherwise; a failed grant read fails the request).
+  - `/oauth2/authorize` refuses `administration`, by name or through an
+    omitted scope that defaults to it, for a client that skips consent. The
+    provider dispatches its own resumed authorizations (consent, continue,
+    post-sign-in) through the same hooks. In production no client skips
+    consent: CIMD refuses `skip_consent`, dynamic registration is off, and
+    the admin client endpoints are server-only with no caller outside tests.
+- `/oauth2/update-consent` is disabled (`disabledCustomerAgentClientPaths`):
+  it rewrites a consent's scopes without the consent step, and a consent
+  that covers a request approves it without the page, `prompt=none`
+  included.
+- An accepted consent for fewer scopes rewrites the consent in place, but
+  tokens keep the scopes they were issued with. So after every accepted
+  consent the auth server's `hooks.after` (`narrowAdministrationOnConsent`)
+  deletes that agent's access and refresh tokens that carry `administration`
+  although their consent no longer names it
+  (`revokeUnconsentedAdministrationTokens`). It reads the stored consent,
+  not the request, because the consent step can end before it records the
+  consent (a login continuation) or fail after it. The connected assistants
+  list then shows what the agent can still do.
+- Revoking the administrator grant (`AdministratorRoster.revoke`) runs
+  `revokeAdministrationAgentAccess` after deleting the grant, even when it
+  was already gone: one transaction deletes the account's consents that
+  include `administration` (their tokens cascade) and any access or refresh
+  token that still carries it, such as one whose consent was narrowed before
+  the narrowing cleanup existed.
+  Customer-only connections stay. A consent whose check passed just before
+  the revocation can still be written after it; the per-call check covers
+  that.
+- After revocation a re-authorization that asks for `administration` finds
+  no covering consent: `prompt=none` gets `consent_required`, and the page
+  asks again without the scope. A customer's agent that always asks for
+  every scope sees the consent page on each new authorization, since its
+  consent never covers `administration`; refreshes are unaffected.
+- The connected assistants list flags a connection that includes the scope.
+
 ## Account-boundary adapter
 
 - `CustomerAgentAuthorization.authorize(token)` validates the token, requires
   the configured resource in `aud`, decodes `sub` and `client_id`, re-reads
   the user, and decodes it with `decodeCustomerAccountSession`. A deleted,
-  deletion-pending, or unverified account gets no grant. Unknown scopes are
-  dropped.
+  deletion-pending, or unverified account gets no grant. Unknown scopes and
+  `offline_access` are dropped. `CustomerAgentCaller` (grant plus access
+  token) is the account boundary's type for an authorized agent.
 - `customerAuthenticationForAgent(token)` provides `CustomerAuthentication`
   for agent requests; every read re-verifies the token, so checks under the
   account lock stay authoritative.

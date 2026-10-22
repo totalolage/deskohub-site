@@ -2,9 +2,15 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, setSystemTime, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer, Option, type Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import type { CustomerAccountId } from "../../customer-account";
+import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
+import { AdministratorAgentAuthorization } from "@/features/administrators/backend/administrator-agent-authorization.service";
+import { AdministratorRoster } from "@/features/administrators/backend/administrator-roster.service";
+import {
+  type CustomerAccountId,
+  customerAccountIdSchema,
+} from "../../customer-account";
 import {
   customerAgentAuthorizePath,
   resolveCustomerAgentConnectStep,
@@ -34,6 +40,12 @@ import {
 import { customerAgentRefreshTokenReuseSeconds } from "./customer-agent-authorization-server";
 import { CustomerAgentClientDirectory } from "./customer-agent-client-directory.service";
 import { CustomerAgentConnections } from "./customer-agent-connections.service";
+import {
+  chatGptCallbackClientMetadata,
+  chatGptClientMetadata,
+  claudeClientMetadata,
+  claudeCodeClientMetadata,
+} from "./customer-agent-directory-clients.test-utils";
 
 const RESOURCE = `https://${HOST}/api/mcp`;
 const ORIGIN = `https://${HOST}`;
@@ -41,6 +53,9 @@ const AUTH_BASE = `${ORIGIN}/api/auth`;
 const CONNECT_PATH = "/en-US/auth/connect";
 const AGENT_SCOPE =
   "offerings:read reservations:read reservations:create offline_access";
+/** Every scope a client may ask for, in the server's order. */
+const ALL_SCOPES =
+  "offerings:read reservations:read reservations:create administration offline_access";
 const CLIENT_NAME = "Example Agent";
 
 /** A synthetic agent that publishes its Client ID Metadata Document. */
@@ -135,6 +150,7 @@ type AuthorizationRequest = {
   readonly state: string;
   readonly scope?: string;
   readonly prompt?: string;
+  readonly resource?: string;
 };
 
 const authorizePath = (authorization: AuthorizationRequest) => {
@@ -145,29 +161,57 @@ const authorizePath = (authorization: AuthorizationRequest) => {
     state: authorization.state,
     code_challenge: authorization.challenge,
     code_challenge_method: "S256",
-    resource: RESOURCE,
+    resource: authorization.resource ?? RESOURCE,
   });
   if (authorization.scope) query.set("scope", authorization.scope);
   if (authorization.prompt) query.set("prompt", authorization.prompt);
   return `/oauth2/authorize?${query}`;
 };
 
-/** Accepts or denies the request the consent page was given. */
-const answerConsent = async (
+/**
+ * What the consent page's Allow grants a customer without the administrator
+ * grant: every requested scope except administration.
+ */
+const customerConsentScope = (consentPage: URL) =>
+  (consentPage.searchParams.get("scope") ?? "")
+    .split(" ")
+    .filter((scope) => scope !== "administration")
+    .join(" ");
+
+/** Posts an answer to the request the consent page was given. */
+const postConsent = (
   auth: TestAuth,
   cookie: string,
   consentPage: URL,
-  accept: boolean
-) => {
-  const response = await request(auth, "/oauth2/consent", {
+  answer: { readonly accept: boolean; readonly scope?: string }
+) =>
+  request(auth, "/oauth2/consent", {
     method: "POST",
     cookie,
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      accept,
+      ...answer,
       oauth_query: consentPage.search.slice(1),
     }),
   });
+
+/**
+ * Accepts or denies the request the consent page was given. Allow names
+ * `scope`, by default what the page grants a customer.
+ */
+const answerConsent = async (
+  auth: TestAuth,
+  cookie: string,
+  consentPage: URL,
+  accept: boolean,
+  scope = customerConsentScope(consentPage)
+) => {
+  const response = await postConsent(
+    auth,
+    cookie,
+    consentPage,
+    accept ? { accept, scope } : { accept }
+  );
   expect(response.status).toBe(200);
   const body = (await response.json()) as { redirect: boolean; url: string };
   expect(body.redirect).toBe(true);
@@ -1076,8 +1120,8 @@ describe.skipIf(!testDatabase)(
 
       // The server fills in the client's default scopes before it signs the
       // request, so the consent page always reads them from `scope`.
-      expect(signInPage.searchParams.get("scope")).toBe(AGENT_SCOPE);
-      expect(consentPage.searchParams.get("scope")).toBe(AGENT_SCOPE);
+      expect(signInPage.searchParams.get("scope")).toBe(ALL_SCOPES);
+      expect(consentPage.searchParams.get("scope")).toBe(ALL_SCOPES);
     });
 
     test("completes the flow for a pre-registered public client", async () => {
@@ -2009,6 +2053,1332 @@ describe.skipIf(!testDatabase)(
           host: "workspace.deskohub.cz",
         })
       );
+    });
+  }
+);
+
+/** Serves published documents by URL, in place of their hosts. */
+const serveDocuments = (documents: Readonly<Record<string, Schema.Json>>) => {
+  const requests: string[] = [];
+  const transport = async (input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input);
+    requests.push(url);
+    const document = documents[url];
+    return document
+      ? Response.json(document, { headers: { "cache-control": "max-age=300" } })
+      : new Response("not found", { status: 404 });
+  };
+  return { requests, transport };
+};
+
+const base64UrlJson = (value: Schema.JsonObject) =>
+  Buffer.from(JSON.stringify(value)).toString("base64url");
+
+/**
+ * An RS256 key pair standing in for ChatGPT's: its public JWKS, as the
+ * client's `jwks_uri` serves it, and `private_key_jwt` client assertions
+ * signed with it for the token endpoint.
+ */
+const makeClientSigningKey = async () => {
+  const kid = crypto.randomUUID();
+  const { publicKey, privateKey } = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"]
+  );
+  const { kty, n, e } = await crypto.subtle.exportKey("jwk", publicKey);
+  const assertion = async (clientId: string) => {
+    const now = Math.floor(Date.now() / 1000);
+    const signingInput = `${base64UrlJson({ alg: "RS256", typ: "JWT", kid })}.${base64UrlJson(
+      {
+        iss: clientId,
+        sub: clientId,
+        aud: `${AUTH_BASE}/oauth2/token`,
+        iat: now,
+        exp: now + 60,
+        jti: crypto.randomUUID(),
+      }
+    )}`;
+    const signature = await crypto.subtle.sign(
+      "RSASSA-PKCS1-v1_5",
+      privateKey,
+      new TextEncoder().encode(signingInput)
+    );
+    return `${signingInput}.${Buffer.from(signature).toString("base64url")}`;
+  };
+  return {
+    jwks: { keys: [{ kty, n, e, kid, use: "sig", alg: "RS256" }] },
+    assertion,
+  };
+};
+
+/** An app-directory client as it signs a customer in. */
+type DirectoryClient = {
+  readonly clientId: string;
+  readonly clientName: string;
+  /** The host the consent page names the client by. */
+  readonly host: string;
+  /** The redirect URI the client sends with this authorization. */
+  readonly redirectUri: string;
+  /** Adds the client's token-endpoint authentication to a token request. */
+  readonly authenticate: (
+    form: Record<string, string>
+  ) => Promise<Record<string, string>>;
+};
+
+/**
+ * ChatGPT (its stable client and a per-connector one), Claude's apps, and
+ * Claude Code on a loopback port of each host it names, with their
+ * documents served as their hosts publish them.
+ */
+const makeDirectoryClients = async () => {
+  const signingKey = await makeClientSigningKey();
+  const chatGptCallbackClient = chatGptCallbackClientMetadata(
+    crypto.randomUUID()
+  );
+  const loopbackPort = 49_152 + Math.floor(Math.random() * 16_000);
+  const signed =
+    (clientId: string): DirectoryClient["authenticate"] =>
+    async (form) => ({
+      ...form,
+      client_assertion_type:
+        "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+      client_assertion: await signingKey.assertion(clientId),
+    });
+  const unauthenticated: DirectoryClient["authenticate"] = async (form) => form;
+  const clients = {
+    ChatGPT: {
+      clientId: chatGptClientMetadata.client_id,
+      clientName: chatGptClientMetadata.client_name,
+      host: "chatgpt.com",
+      redirectUri: chatGptClientMetadata.redirect_uris[0],
+      authenticate: signed(chatGptClientMetadata.client_id),
+    },
+    "ChatGPT's per-connector client": {
+      clientId: chatGptCallbackClient.client_id,
+      clientName: chatGptCallbackClient.client_name,
+      host: "chatgpt.com",
+      redirectUri: chatGptCallbackClient.redirect_uris[0],
+      authenticate: signed(chatGptCallbackClient.client_id),
+    },
+    Claude: {
+      clientId: claudeClientMetadata.client_id,
+      clientName: claudeClientMetadata.client_name,
+      host: "claude.ai",
+      redirectUri: claudeClientMetadata.redirect_uris[0],
+      authenticate: unauthenticated,
+    },
+    "Claude Code on localhost": {
+      clientId: claudeCodeClientMetadata.client_id,
+      clientName: claudeCodeClientMetadata.client_name,
+      host: "claude.ai",
+      redirectUri: `http://localhost:${loopbackPort}/callback`,
+      authenticate: unauthenticated,
+    },
+    "Claude Code on 127.0.0.1": {
+      clientId: claudeCodeClientMetadata.client_id,
+      clientName: claudeCodeClientMetadata.client_name,
+      host: "claude.ai",
+      redirectUri: `http://127.0.0.1:${loopbackPort}/callback`,
+      authenticate: unauthenticated,
+    },
+  } satisfies Record<string, DirectoryClient>;
+  const documents = serveDocuments({
+    [chatGptClientMetadata.client_id]: chatGptClientMetadata,
+    [chatGptCallbackClient.client_id]: chatGptCallbackClient,
+    [chatGptClientMetadata.jwks_uri]: signingKey.jwks,
+    [claudeClientMetadata.client_id]: claudeClientMetadata,
+    [claudeCodeClientMetadata.client_id]: claudeCodeClientMetadata,
+  });
+  return { clients, documents };
+};
+
+type DirectoryClientName = keyof Awaited<
+  ReturnType<typeof makeDirectoryClients>
+>["clients"];
+
+const directoryClientNames: ReadonlyArray<DirectoryClientName> = [
+  "ChatGPT",
+  "ChatGPT's per-connector client",
+  "Claude",
+  "Claude Code on localhost",
+  "Claude Code on 127.0.0.1",
+];
+
+/** The issuer the authorization-server metadata advertises. */
+const discoveredIssuer = async (auth: TestAuth) => {
+  const response = await auth.handler(
+    new Request(`${ORIGIN}/.well-known/oauth-authorization-server/api/auth`)
+  );
+  expect(response.status).toBe(200);
+  const metadata = (await response.json()) as {
+    readonly issuer: string;
+    readonly authorization_response_iss_parameter_supported?: boolean;
+  };
+  expect(metadata.authorization_response_iss_parameter_supported).toBe(true);
+  return metadata.issuer;
+};
+
+/** The authorization response at a client's redirect URI. */
+const expectAuthorizationResponse = (
+  response: URL,
+  client: DirectoryClient,
+  { state, issuer }: { readonly state: string; readonly issuer: string }
+) => {
+  expect(`${response.origin}${response.pathname}`).toBe(client.redirectUri);
+  expect(response.searchParams.get("state")).toBe(state);
+  // RFC 9207: every response names the issuer, so the client can tell it
+  // came from the server it started the request with.
+  expect(response.searchParams.get("iss")).toBe(issuer);
+};
+
+describe.skipIf(!testDatabase)(
+  "App-directory clients on the migrated disposable Postgres",
+  () => {
+    test.each(directoryClientNames)(
+      "signs a customer in through %s from its published metadata document",
+      async (name) => {
+        const { clients, documents } = await makeDirectoryClients();
+        const client: DirectoryClient = clients[name];
+        const sentLinks: CapturedMagicLink[] = [];
+        const auth = makeTestAuth({
+          sentLinks,
+          clientMetadataTransport: documents.transport,
+        });
+        const issuer = await discoveredIssuer(auth);
+        const pkce = await makePkce();
+        const state = crypto.randomUUID();
+
+        const { consentPage, customer } = await connectToConsent(
+          auth,
+          sentLinks,
+          {
+            clientId: client.clientId,
+            redirectUri: client.redirectUri,
+            challenge: pkce.challenge,
+            state,
+            scope: AGENT_SCOPE,
+          }
+        );
+        expect(documents.requests).toContain(client.clientId);
+        expect(consentPage.pathname).toBe("/auth/consent");
+
+        // The consent page names the client and the host it publishes from.
+        const listed = await findClient(
+          auth,
+          client.clientId,
+          new Headers({ cookie: customer.cookie, host: HOST })
+        );
+        expect(listed._tag === "Success" && listed.success).toEqual(
+          Option.some({
+            clientId: client.clientId as never,
+            name: client.clientName,
+            host: client.host,
+          })
+        );
+
+        const callback = await answerConsent(
+          auth,
+          customer.cookie,
+          consentPage,
+          true
+        );
+        expectAuthorizationResponse(callback, client, { state, issuer });
+        const code = callback.searchParams.get("code");
+        expect(code).toBeTruthy();
+
+        const tokenResponse = await requestToken(
+          auth,
+          await client.authenticate({
+            grant_type: "authorization_code",
+            client_id: client.clientId,
+            code: code!,
+            code_verifier: pkce.verifier,
+            redirect_uri: client.redirectUri,
+            resource: RESOURCE,
+          })
+        );
+        expect(tokenResponse.status).toBe(200);
+        const tokens = (await tokenResponse.json()) as TokenResponse;
+        expect(tokens.refresh_token).toBeTruthy();
+
+        // The requested resource, the MCP server, is the token's audience.
+        const claims = (await auth.api.verifyCustomerAgentAccessToken({
+          body: { token: tokens.access_token },
+          headers: new Headers({ host: HOST }),
+        })) as {
+          readonly active: boolean;
+          readonly aud?: string | ReadonlyArray<string>;
+          readonly sub?: string;
+          readonly client_id?: string;
+        };
+        expect(claims.active).toBe(true);
+        expect([claims.aud].flat()).toContain(RESOURCE);
+        expect(claims.sub).toBe(customer.accountId);
+        expect(claims.client_id).toBe(client.clientId);
+        expect(
+          (await authorizeToken(authorityOver(auth), tokens.access_token))._tag
+        ).toBe("Success");
+
+        const refreshed = await requestToken(
+          auth,
+          await client.authenticate({
+            grant_type: "refresh_token",
+            client_id: client.clientId,
+            refresh_token: tokens.refresh_token!,
+            resource: RESOURCE,
+          })
+        );
+        expect(refreshed.status).toBe(200);
+        const renewed = (await refreshed.json()) as TokenResponse;
+        expect(
+          (await authorizeToken(authorityOver(auth), renewed.access_token))._tag
+        ).toBe("Success");
+
+        // An expired access token grants nothing, which the MCP route
+        // answers with an invalid_token challenge.
+        setSystemTime(new Date(Date.now() + (renewed.expires_in + 60) * 1000));
+        try {
+          expect(
+            await failureReasonOf(authorityOver(auth), renewed.access_token)
+          ).toBe("invalid-token");
+        } finally {
+          setSystemTime();
+        }
+      }
+    );
+
+    test.each(directoryClientNames)(
+      "sends %s its authorization errors with the issuer",
+      async (name) => {
+        const { clients, documents } = await makeDirectoryClients();
+        const client: DirectoryClient = clients[name];
+        const sentLinks: CapturedMagicLink[] = [];
+        const auth = makeTestAuth({
+          sentLinks,
+          clientMetadataTransport: documents.transport,
+        });
+        const issuer = await discoveredIssuer(auth);
+        const { cookie } = await signIn(auth, sentLinks);
+        const pkce = await makePkce();
+        const authorization = {
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+          challenge: pkce.challenge,
+        };
+
+        const unknownScopeState = crypto.randomUUID();
+        const unknownScope = redirectOf(
+          await request(
+            auth,
+            authorizePath({
+              ...authorization,
+              state: unknownScopeState,
+              scope: "offerings:read payments:write",
+            }),
+            { cookie }
+          )
+        );
+        expectAuthorizationResponse(unknownScope, client, {
+          state: unknownScopeState,
+          issuer,
+        });
+        expect(unknownScope.searchParams.get("error")).toBe("invalid_scope");
+
+        // A resource other than the MCP server gets no code, so a token's
+        // audience is always the resource the server serves.
+        const otherResourceState = crypto.randomUUID();
+        const otherResource = redirectOf(
+          await request(
+            auth,
+            authorizePath({
+              ...authorization,
+              state: otherResourceState,
+              scope: AGENT_SCOPE,
+              resource: "https://elsewhere.example/api/mcp",
+            }),
+            { cookie }
+          )
+        );
+        expectAuthorizationResponse(otherResource, client, {
+          state: otherResourceState,
+          issuer,
+        });
+        expect(otherResource.searchParams.get("error")).toBe("invalid_target");
+
+        const declinedState = crypto.randomUUID();
+        const consentPage = redirectOf(
+          await request(
+            auth,
+            authorizePath({
+              ...authorization,
+              state: declinedState,
+              scope: AGENT_SCOPE,
+            }),
+            { cookie }
+          )
+        );
+        expect(consentPage.pathname).toBe("/auth/consent");
+        const declined = await answerConsent(auth, cookie, consentPage, false);
+        expectAuthorizationResponse(declined, client, {
+          state: declinedState,
+          issuer,
+        });
+        expect(declined.searchParams.get("error")).toBe("access_denied");
+        expect(declined.searchParams.has("code")).toBe(false);
+      }
+    );
+
+    test("refuses ChatGPT's code exchange without an assertion signed with its published key", async () => {
+      const {
+        clients: { ChatGPT: client },
+        documents,
+      } = await makeDirectoryClients();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: documents.transport,
+      });
+      const { cookie } = await signIn(auth, sentLinks);
+      /**
+       * A new code for ChatGPT, as its token request carries it. The first
+       * authorization asks for consent; later ones get a code straight away.
+       */
+      const authorizeCode = async () => {
+        const pkce = await makePkce();
+        const redirect = redirectOf(
+          await request(
+            auth,
+            authorizePath({
+              clientId: client.clientId,
+              redirectUri: client.redirectUri,
+              challenge: pkce.challenge,
+              state: crypto.randomUUID(),
+              scope: AGENT_SCOPE,
+            }),
+            { cookie }
+          )
+        );
+        const callback =
+          redirect.pathname === "/auth/consent"
+            ? await answerConsent(auth, cookie, redirect, true)
+            : redirect;
+        return {
+          grant_type: "authorization_code",
+          client_id: client.clientId,
+          code: callback.searchParams.get("code") ?? "",
+          code_verifier: pkce.verifier,
+          redirect_uri: client.redirectUri,
+          resource: RESOURCE,
+        };
+      };
+      const errorOf = async (response: Response) =>
+        ((await response.json()) as { readonly error: string }).error;
+
+      const unsigned = await requestToken(auth, await authorizeCode());
+      expect(unsigned.status).toBe(400);
+      expect(await errorOf(unsigned)).toBe("invalid_client");
+
+      const otherKey = await makeClientSigningKey();
+      const wronglySigned = await requestToken(auth, {
+        ...(await authorizeCode()),
+        client_assertion_type:
+          "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+        client_assertion: await otherKey.assertion(client.clientId),
+      });
+      expect(wronglySigned.status).toBe(401);
+      expect(await errorOf(wronglySigned)).toBe("invalid_client");
+      expect(documents.requests).toContain(chatGptClientMetadata.jwks_uri);
+    });
+
+    // Only the port of a loopback redirect URI may differ from the one
+    // Claude Code registered.
+    const unregisteredLoopbackRedirectUris = [
+      ["another path", (port: string) => `http://localhost:${port}/other`],
+      ["HTTPS", (port: string) => `https://localhost:${port}/callback`],
+      [
+        "another host",
+        (port: string) => `http://localhost.evil.example:${port}/callback`,
+      ],
+      ["the IPv6 loopback", (port: string) => `http://[::1]:${port}/callback`],
+      [
+        "a query",
+        (port: string) => `http://127.0.0.1:${port}/callback?next=evil`,
+      ],
+      [
+        "credentials",
+        (port: string) => `http://user:pass@localhost:${port}/callback`,
+      ],
+      [
+        "loopback IP credentials",
+        (port: string) => `http://user:pass@127.0.0.1:${port}/callback`,
+      ],
+      [
+        "an empty query",
+        (port: string) => `http://localhost:${port}/callback?`,
+      ],
+      ["a fragment", (port: string) => `http://localhost:${port}/callback#x`],
+      [
+        "an empty fragment",
+        (port: string) => `http://localhost:${port}/callback#`,
+      ],
+    ] as const;
+
+    test.each(unregisteredLoopbackRedirectUris)(
+      "never redirects Claude Code to a loopback URI with %s",
+      async (_, redirectUriOn) => {
+        const {
+          clients: { "Claude Code on localhost": client },
+          documents,
+        } = await makeDirectoryClients();
+        const sentLinks: CapturedMagicLink[] = [];
+        const auth = makeTestAuth({
+          sentLinks,
+          clientMetadataTransport: documents.transport,
+        });
+        const { cookie } = await signIn(auth, sentLinks);
+        const redirectUri = redirectUriOn(new URL(client.redirectUri).port);
+        const pkce = await makePkce();
+
+        const refused = redirectOf(
+          await request(
+            auth,
+            authorizePath({
+              clientId: client.clientId,
+              redirectUri,
+              challenge: pkce.challenge,
+              state: crypto.randomUUID(),
+              scope: AGENT_SCOPE,
+            }),
+            { cookie }
+          )
+        );
+
+        expect(`${refused.origin}${refused.pathname}`).toBe(
+          `${AUTH_BASE}/error`
+        );
+      }
+    );
+
+    // A request object is refused before the request is validated, so the
+    // error goes to the requested redirect URI only if Claude Code
+    // registered it.
+    test.each(unregisteredLoopbackRedirectUris)(
+      "never sends Claude Code an authorization error at a loopback URI with %s",
+      async (_, redirectUriOn) => {
+        const {
+          clients: { "Claude Code on localhost": client },
+          documents,
+        } = await makeDirectoryClients();
+        const sentLinks: CapturedMagicLink[] = [];
+        const auth = makeTestAuth({
+          sentLinks,
+          clientMetadataTransport: documents.transport,
+        });
+        const { cookie } = await signIn(auth, sentLinks);
+        const redirectUri = redirectUriOn(new URL(client.redirectUri).port);
+        const pkce = await makePkce();
+        const authorization = {
+          clientId: client.clientId,
+          challenge: pkce.challenge,
+          state: crypto.randomUUID(),
+          scope: AGENT_SCOPE,
+        };
+
+        const registered = redirectOf(
+          await request(
+            auth,
+            `${authorizePath({ ...authorization, redirectUri: client.redirectUri })}&request=unsupported`,
+            { cookie }
+          )
+        );
+        const registeredUri = new URL(client.redirectUri);
+        expect(`${registered.origin}${registered.pathname}`).toBe(
+          `${registeredUri.origin}${registeredUri.pathname}`
+        );
+        expect(registered.searchParams.get("error")).toBe(
+          "request_not_supported"
+        );
+
+        const refused = redirectOf(
+          await request(
+            auth,
+            `${authorizePath({ ...authorization, redirectUri })}&request=unsupported`,
+            { cookie }
+          )
+        );
+        expect(`${refused.origin}${refused.pathname}`).toBe(
+          `${AUTH_BASE}/error`
+        );
+        expect(refused.searchParams.get("error")).toBe("request_not_supported");
+      }
+    );
+  }
+);
+
+/** Whether the validated grant behind a token carries administration. */
+const grantCarriesAdministration = async (auth: TestAuth, token: string) => {
+  const outcome = await authorizeToken(authorityOver(auth), token);
+  expect(outcome._tag).toBe("Success");
+  return (
+    outcome._tag === "Success" &&
+    outcome.success.grant.scopes.has("administration")
+  );
+};
+
+/** Grants the administrator role to a signed-in test account. */
+const grantAdministrator = (accountId: string) =>
+  testDatabase!.pool.query(
+    `insert into account_role_grants (account_id, role) values ($1, 'administrator')`,
+    [accountId]
+  );
+
+/** Revokes the role as another administrator does from the roster. */
+const revokeAdministrator = (accountId: string) =>
+  Effect.runPromise(
+    Effect.flatMap(AdministratorRoster, (roster) =>
+      roster.revoke({
+        accountId: customerAccountIdSchema.make(accountId),
+        actor: {
+          accountId: customerAccountIdSchema.make(crypto.randomUUID()),
+          email: uniqueEmail("revoking-administrator"),
+        },
+      })
+    ).pipe(
+      Effect.provide(
+        AdministratorRoster.Default.pipe(
+          Layer.provideMerge(AccountRoleGrants.Default),
+          Layer.provide(testDatabase!.layer)
+        )
+      )
+    )
+  );
+
+/**
+ * Whether an agent's access token may act in the administration now:
+ * `administrator`, or why not, as an administration call would decide.
+ */
+const administrationAccessOf = (auth: TestAuth, accessToken: string) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const grant = yield* (yield* CustomerAgentAuthorization).authorize(
+        accessToken
+      );
+      yield* (yield* AdministratorAgentAuthorization).authorize({
+        grant,
+        accessToken,
+      });
+      return "administrator" as const;
+    }).pipe(
+      Effect.catch((error) => Effect.succeed(error.reason)),
+      Effect.provide(
+        AdministratorAgentAuthorization.Default.pipe(
+          Layer.provideMerge(
+            Layer.mergeAll(
+              CustomerAgentAuthorization.fromAuthority(authorityOver(auth)),
+              AccountRoleGrants.Default.pipe(Layer.provide(testDatabase!.layer))
+            )
+          )
+        )
+      )
+    )
+  );
+
+/** Starts an authorization for `scope`, optionally with `prompt`. */
+const authorizeRequest = async (
+  auth: TestAuth,
+  cookie: string,
+  agent: { readonly clientId: string; readonly redirectUri: string },
+  { scope, prompt }: { readonly scope?: string; readonly prompt?: string }
+) => {
+  const pkce = await makePkce();
+  const response = await request(
+    auth,
+    authorizePath({
+      clientId: agent.clientId,
+      redirectUri: agent.redirectUri,
+      challenge: pkce.challenge,
+      state: crypto.randomUUID(),
+      scope,
+      prompt,
+    }),
+    { cookie }
+  );
+  return { response, pkce };
+};
+
+/**
+ * Connects an agent that asks for every scope; the account allows `grant`,
+ * by default what the consent page offers a customer.
+ */
+const connectAskingEverything = async (
+  auth: TestAuth,
+  cookie: string,
+  agent: ReturnType<typeof makeAgent>,
+  grant?: string
+) => {
+  const { response, pkce } = await authorizeRequest(auth, cookie, agent, {
+    scope: ALL_SCOPES,
+    prompt: "consent",
+  });
+  const consentPage = redirectOf(response);
+  expect(consentPage.pathname).toBe("/auth/consent");
+  const exchanged = await exchangeCode(
+    auth,
+    receivedCode(
+      agent,
+      await answerConsent(auth, cookie, consentPage, true, grant),
+      pkce
+    )
+  );
+  expect(exchanged.status).toBe(200);
+  return (await exchanged.json()) as TokenResponse;
+};
+
+const refreshWith = (
+  auth: TestAuth,
+  agent: { readonly clientId: string },
+  refreshToken: string
+) =>
+  requestToken(auth, {
+    grant_type: "refresh_token",
+    client_id: agent.clientId,
+    refresh_token: refreshToken,
+    resource: RESOURCE,
+  });
+
+describe.skipIf(!testDatabase)(
+  "Administration scope on the migrated disposable Postgres",
+  () => {
+    test("refuses an accepted consent that names no scopes, or administration for a customer", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const customer = await signIn(auth, sentLinks);
+      const { response } = await authorizeRequest(
+        auth,
+        customer.cookie,
+        agent,
+        { scope: ALL_SCOPES }
+      );
+      const consentPage = redirectOf(response);
+
+      // Without a scope the provider would grant everything requested.
+      expect(
+        (
+          await postConsent(auth, customer.cookie, consentPage, {
+            accept: true,
+          })
+        ).status
+      ).toBe(400);
+      for (const scope of [ALL_SCOPES, "administration"]) {
+        expect(
+          (
+            await postConsent(auth, customer.cookie, consentPage, {
+              accept: true,
+              scope,
+            })
+          ).status
+        ).toBe(403);
+      }
+      expect(await countRows("oauth_consent", customer.accountId)).toBe(0);
+    });
+
+    test("refuses administration to a review account, even one with an administrator grant", async () => {
+      const agent = makeAgent();
+      const login = {
+        email: uniqueEmail("review-administration"),
+        password: `review-${crypto.randomUUID()}`,
+      };
+      const auth = makeTestAuth({
+        reviewAccountCredentials: [login],
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const signedIn = await request(auth, "/sign-in/email", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...login, callbackURL: "/en-US/auth/callback" }),
+      });
+      expect(signedIn.status).toBe(200);
+      const cookie = cookieJar(getSessionCookie(signedIn)!);
+      const accountId = (await userIdForEmail(login.email))!;
+      await grantAdministrator(accountId);
+      const { response } = await authorizeRequest(auth, cookie, agent, {
+        scope: ALL_SCOPES,
+      });
+
+      expect(
+        (
+          await postConsent(auth, cookie, redirectOf(response), {
+            accept: true,
+            scope: ALL_SCOPES,
+          })
+        ).status
+      ).toBe(403);
+      expect(await countRows("oauth_consent", accountId)).toBe(0);
+      const tokens = await connectAskingEverything(auth, cookie, agent);
+      expect(tokens.scope?.split(" ")).not.toContain("administration");
+      expect(await administrationAccessOf(auth, tokens.access_token)).toBe(
+        "missing-scope"
+      );
+    });
+
+    test("connects a customer whose agent asks for every scope with the scopes the customer can grant", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const customer = await signIn(auth, sentLinks);
+
+      const tokens = await connectAskingEverything(
+        auth,
+        customer.cookie,
+        agent
+      );
+
+      expect(tokens.scope?.split(" ").toSorted()).toEqual(
+        AGENT_SCOPE.split(" ").toSorted()
+      );
+      expect(await grantCarriesAdministration(auth, tokens.access_token)).toBe(
+        false
+      );
+      expect(await administrationAccessOf(auth, tokens.access_token)).toBe(
+        "missing-scope"
+      );
+      expect(
+        (await listConnections(auth, customer.cookie)).map(
+          ({ administration }) => administration
+        )
+      ).toEqual([false]);
+    });
+
+    test("grants an administrator the administration scope, and the agent acts as them", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const administrator = await signIn(auth, sentLinks);
+      await grantAdministrator(administrator.accountId);
+
+      const tokens = await connectAskingEverything(
+        auth,
+        administrator.cookie,
+        agent,
+        ALL_SCOPES
+      );
+
+      expect(tokens.scope?.split(" ")).toContain("administration");
+      expect(await grantCarriesAdministration(auth, tokens.access_token)).toBe(
+        true
+      );
+      expect(await administrationAccessOf(auth, tokens.access_token)).toBe(
+        "administrator"
+      );
+      expect(
+        (await listConnections(auth, administrator.cookie)).map(
+          ({ administration }) => administration
+        )
+      ).toEqual([true]);
+    });
+
+    test("revoking the grant ends the administration of earlier consents, tokens, and refreshes", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const administrator = await signIn(auth, sentLinks);
+      await grantAdministrator(administrator.accountId);
+      const tokens = await connectAskingEverything(
+        auth,
+        administrator.cookie,
+        agent,
+        ALL_SCOPES
+      );
+
+      await revokeAdministrator(administrator.accountId);
+
+      expect(await countRows("oauth_consent", administrator.accountId)).toBe(0);
+      expect(await administrationAccessOf(auth, tokens.access_token)).toBe(
+        "invalid-token"
+      );
+      expect(
+        (await refreshWith(auth, agent, tokens.refresh_token!)).status
+      ).toBe(400);
+
+      // Without the consent on record, a silent re-authorization can't
+      // succeed, and an interactive one asks again.
+      const silent = redirectOf(
+        (
+          await authorizeRequest(auth, administrator.cookie, agent, {
+            scope: ALL_SCOPES,
+            prompt: "none",
+          })
+        ).response
+      );
+      expect(`${silent.origin}${silent.pathname}`).toBe(agent.redirectUri);
+      expect(silent.searchParams.get("error")).toBe("consent_required");
+      expect(silent.searchParams.has("code")).toBe(false);
+
+      const { response, pkce } = await authorizeRequest(
+        auth,
+        administrator.cookie,
+        agent,
+        { scope: ALL_SCOPES }
+      );
+      const consentPage = redirectOf(response);
+      expect(consentPage.pathname).toBe("/auth/consent");
+      expect(
+        (
+          await postConsent(auth, administrator.cookie, consentPage, {
+            accept: true,
+            scope: ALL_SCOPES,
+          })
+        ).status
+      ).toBe(403);
+      const reconnected = await exchangeCode(
+        auth,
+        receivedCode(
+          agent,
+          await answerConsent(auth, administrator.cookie, consentPage, true),
+          pkce
+        )
+      );
+      expect(reconnected.status).toBe(200);
+      const customerTokens = (await reconnected.json()) as TokenResponse;
+      expect(customerTokens.scope?.split(" ")).not.toContain("administration");
+
+      // A later re-authorization the customer-only consent covers gets no
+      // administration either, with or without prompt=none.
+      for (const prompt of ["none", undefined]) {
+        const again = await authorizeRequest(
+          auth,
+          administrator.cookie,
+          agent,
+          { scope: AGENT_SCOPE, prompt }
+        );
+        const exchanged = await exchangeCode(
+          auth,
+          receivedCode(agent, redirectOf(again.response), again.pkce)
+        );
+        expect(exchanged.status).toBe(200);
+        expect(
+          ((await exchanged.json()) as TokenResponse).scope?.split(" ")
+        ).not.toContain("administration");
+      }
+    });
+
+    test("an administrator's consent without the administration scope ends the agent's earlier administration tokens", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const administrator = await signIn(auth, sentLinks);
+      await grantAdministrator(administrator.accountId);
+      const administering = await connectAskingEverything(
+        auth,
+        administrator.cookie,
+        agent,
+        ALL_SCOPES
+      );
+
+      // Better Auth rewrites the consent in place; the earlier tokens would
+      // keep the scopes they were issued with.
+      const customerOnly = await connectAskingEverything(
+        auth,
+        administrator.cookie,
+        agent,
+        AGENT_SCOPE
+      );
+
+      expect(
+        (await refreshWith(auth, agent, administering.refresh_token!)).status
+      ).toBe(400);
+      expect(
+        await administrationAccessOf(auth, administering.access_token)
+      ).toBe("invalid-token");
+      expect(
+        (await listConnections(auth, administrator.cookie)).map(
+          ({ administration }) => administration
+        )
+      ).toEqual([false]);
+      const refreshed = await refreshWith(
+        auth,
+        agent,
+        customerOnly.refresh_token!
+      );
+      expect(refreshed.status).toBe(200);
+      expect(
+        await administrationAccessOf(
+          auth,
+          ((await refreshed.json()) as TokenResponse).access_token
+        )
+      ).toBe("missing-scope");
+    });
+
+    test("keeps administration tokens when the consent step asks to sign in again before recording the consent", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const administrator = await signIn(auth, sentLinks);
+      await grantAdministrator(administrator.accountId);
+      const administering = await connectAskingEverything(
+        auth,
+        administrator.cookie,
+        agent,
+        ALL_SCOPES
+      );
+      // A request signed after the session began, asking to sign in again.
+      const { response } = await authorizeRequest(
+        auth,
+        administrator.cookie,
+        agent,
+        { scope: ALL_SCOPES, prompt: "login consent" }
+      );
+      const signInPage = redirectOf(response);
+
+      const answered = await postConsent(
+        auth,
+        administrator.cookie,
+        signInPage,
+        { accept: true, scope: AGENT_SCOPE }
+      );
+
+      expect(answered.status).toBe(200);
+      expect(
+        (await listConnections(auth, administrator.cookie)).map(
+          ({ administration }) => administration
+        )
+      ).toEqual([true]);
+      expect(
+        await administrationAccessOf(auth, administering.access_token)
+      ).toBe("administrator");
+    });
+
+    test("ends administration tokens of a narrowed consent even when the authorization after it fails", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const administrator = await signIn(auth, sentLinks);
+      await grantAdministrator(administrator.accountId);
+      const administering = await connectAskingEverything(
+        auth,
+        administrator.cookie,
+        agent,
+        ALL_SCOPES
+      );
+      const { response } = await authorizeRequest(
+        auth,
+        administrator.cookie,
+        agent,
+        { scope: ALL_SCOPES, prompt: "consent" }
+      );
+      const consentPage = redirectOf(response);
+      // The consent is recorded; the authorization it resumes then fails.
+      await testDatabase!.pool.query(
+        `update auth.oauth_client set disabled = true where client_id = $1`,
+        [agent.clientId]
+      );
+
+      await postConsent(auth, administrator.cookie, consentPage, {
+        accept: true,
+        scope: AGENT_SCOPE,
+      });
+      // Enabled again, so only the cleanup can refuse the earlier tokens.
+      await testDatabase!.pool.query(
+        `update auth.oauth_client set disabled = false where client_id = $1`,
+        [agent.clientId]
+      );
+
+      expect(
+        await administrationAccessOf(auth, administering.access_token)
+      ).toBe("invalid-token");
+      expect(
+        (await refreshWith(auth, agent, administering.refresh_token!)).status
+      ).toBe(400);
+    });
+
+    test("revoking the grant also ends administration tokens whose consent no longer names the scope", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const administrator = await signIn(auth, sentLinks);
+      await grantAdministrator(administrator.accountId);
+      const administering = await connectAskingEverything(
+        auth,
+        administrator.cookie,
+        agent,
+        ALL_SCOPES
+      );
+      // A consent narrowed without the narrowing cleanup, as before this
+      // release.
+      await testDatabase!.pool.query(
+        `update auth.oauth_consent
+            set scopes = array_remove(scopes, 'administration')
+          where user_id = $1`,
+        [administrator.accountId]
+      );
+
+      await revokeAdministrator(administrator.accountId);
+
+      expect(
+        (await refreshWith(auth, agent, administering.refresh_token!)).status
+      ).toBe(400);
+      expect(
+        await administrationAccessOf(auth, administering.access_token)
+      ).toBe("invalid-token");
+      // The customer connection stays.
+      expect(await countRows("oauth_consent", administrator.accountId)).toBe(1);
+    });
+
+    test("refuses a token refreshed with the administration scope once the grant is gone", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const administrator = await signIn(auth, sentLinks);
+      await grantAdministrator(administrator.accountId);
+      const tokens = await connectAskingEverything(
+        auth,
+        administrator.cookie,
+        agent,
+        ALL_SCOPES
+      );
+
+      // The grant goes without the cleanup, as when a consent check that
+      // passed just before the revocation records its consent after it.
+      await testDatabase!.pool.query(
+        `delete from account_role_grants where account_id = $1`,
+        [administrator.accountId]
+      );
+      const refreshed = await refreshWith(auth, agent, tokens.refresh_token!);
+      expect(refreshed.status).toBe(200);
+      const renewed = (await refreshed.json()) as TokenResponse;
+
+      expect(renewed.scope?.split(" ")).toContain("administration");
+      expect(await administrationAccessOf(auth, renewed.access_token)).toBe(
+        "not-administrator"
+      );
+    });
+
+    test.each([
+      [
+        "awaiting deletion",
+        `update auth."user" set deletion_requested_at = now() where id = $1`,
+      ],
+      [
+        "unverified",
+        `update auth."user" set email_verified = false where id = $1`,
+      ],
+    ])(
+      "refuses an administrator's agent once the account is %s",
+      async (_, update) => {
+        const agent = makeAgent();
+        const sentLinks: CapturedMagicLink[] = [];
+        const auth = makeTestAuth({
+          sentLinks,
+          clientMetadataTransport: agent.clientMetadataTransport,
+        });
+        const administrator = await signIn(auth, sentLinks);
+        await grantAdministrator(administrator.accountId);
+        const tokens = await connectAskingEverything(
+          auth,
+          administrator.cookie,
+          agent,
+          ALL_SCOPES
+        );
+
+        await testDatabase!.pool.query(update, [administrator.accountId]);
+
+        expect(await administrationAccessOf(auth, tokens.access_token)).toBe(
+          "account-unavailable"
+        );
+      }
+    );
+
+    test("refuses a disconnected administrator's agent", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const administrator = await signIn(auth, sentLinks);
+      await grantAdministrator(administrator.accountId);
+      const tokens = await connectAskingEverything(
+        auth,
+        administrator.cookie,
+        agent,
+        ALL_SCOPES
+      );
+      const [connection] = await listConnections(auth, administrator.cookie);
+
+      const disconnected = await request(auth, "/oauth2/delete-consent", {
+        method: "POST",
+        cookie: administrator.cookie,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: connection!.id }),
+      });
+      expect(disconnected.status).toBe(200);
+
+      // An invalid token is what /api/mcp answers with a 401 challenge.
+      expect(await administrationAccessOf(auth, tokens.access_token)).toBe(
+        "invalid-token"
+      );
+    });
+
+    test("keeps the consent scopes out of reach of the customer's own requests", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const customer = await signIn(auth, sentLinks);
+      await connectAskingEverything(auth, customer.cookie, agent);
+      const [connection] = await listConnections(auth, customer.cookie);
+
+      const updated = await request(auth, "/oauth2/update-consent", {
+        method: "POST",
+        cookie: customer.cookie,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          id: connection!.id,
+          update: { scopes: ALL_SCOPES.split(" ") },
+        }),
+      });
+
+      expect(updated.status).toBe(404);
+      expect(
+        (await listConnections(auth, customer.cookie)).map(
+          ({ administration }) => administration
+        )
+      ).toEqual([false]);
+    });
+
+    test("never lets a client that skips consent ask for administration", async () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({ sentLinks });
+      const administrator = await signIn(auth, sentLinks);
+      await grantAdministrator(administrator.accountId);
+      const redirectUri = `https://preregistered.example/${crypto.randomUUID()}/callback`;
+      const registered = (await auth.api.adminCreateOAuthClient({
+        headers: new Headers({ cookie: administrator.cookie, host: HOST }),
+        body: {
+          client_name: "First-party Agent",
+          redirect_uris: [redirectUri],
+          token_endpoint_auth_method: "none",
+          grant_types: ["authorization_code", "refresh_token"],
+          response_types: ["code"],
+          skip_consent: true,
+        },
+      })) as { client_id: string };
+      const client = { clientId: registered.client_id, redirectUri };
+
+      // By name, or through an omitted scope that defaults to every scope.
+      for (const scope of [ALL_SCOPES, undefined]) {
+        const { response } = await authorizeRequest(
+          auth,
+          administrator.cookie,
+          client,
+          { scope }
+        );
+        expect(response.status).toBe(400);
+      }
+      // A form-encoded POST authorization too.
+      const posted = await request(auth, "/oauth2/authorize", {
+        method: "POST",
+        cookie: administrator.cookie,
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URL(
+          authorizePath({
+            clientId: client.clientId,
+            redirectUri,
+            challenge: (await makePkce()).challenge,
+            state: crypto.randomUUID(),
+            scope: ALL_SCOPES,
+          }),
+          ORIGIN
+        ).searchParams.toString(),
+      });
+      expect(posted.status).toBe(400);
+
+      const { response, pkce } = await authorizeRequest(
+        auth,
+        administrator.cookie,
+        client,
+        { scope: AGENT_SCOPE }
+      );
+      const callback = redirectOf(response);
+      expect(callback.searchParams.get("code")).toBeTruthy();
+      const exchanged = await exchangeCode(auth, {
+        ...client,
+        code: callback.searchParams.get("code")!,
+        verifier: pkce.verifier,
+      });
+      expect(exchanged.status).toBe(200);
+      expect(
+        ((await exchanged.json()) as TokenResponse).scope?.split(" ")
+      ).not.toContain("administration");
+    });
+
+    test("refuses administration when a client starts skipping consent while its consent page is open", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const administrator = await signIn(auth, sentLinks);
+      await grantAdministrator(administrator.accountId);
+      const { response } = await authorizeRequest(
+        auth,
+        administrator.cookie,
+        agent,
+        { scope: ALL_SCOPES }
+      );
+      const consentPage = redirectOf(response);
+      expect(consentPage.pathname).toBe("/auth/consent");
+      await testDatabase!.pool.query(
+        `update auth.oauth_client set skip_consent = true where client_id = $1`,
+        [agent.clientId]
+      );
+
+      // The consent step resumes the authorization through the same hooks.
+      expect(
+        (
+          await postConsent(auth, administrator.cookie, consentPage, {
+            accept: true,
+            scope: ALL_SCOPES,
+          })
+        ).status
+      ).toBe(400);
     });
   }
 );

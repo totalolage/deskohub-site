@@ -19,9 +19,12 @@ import { makeAuthDatabase } from "@/db/auth-database-client";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { drizzleAuthTables } from "@/db/schema/auth";
+import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
+import { ReviewAccounts } from "@/features/review-accounts";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { ensureCustomerAccount } from "../customer-account.repository";
 import { captureAccountLocalePreference } from "../customer-locale-preference";
+import { revokeUnconsentedAdministrationTokens } from "./administration-agent-access";
 import type {
   MagicLinkSendFunction,
   SignInEmail,
@@ -80,7 +83,18 @@ export type TestAuthOptions = {
   readonly captureAccountLocalePreference?: WorkspaceAuthConfig["captureAccountLocalePreference"];
   readonly clientMetadataTransport?: WorkspaceAuthConfig["clientMetadataTransport"];
   readonly createCustomerAccount?: WorkspaceAuthConfig["createCustomerAccount"];
+  readonly hasAdministratorGrant?: WorkspaceAuthConfig["hasAdministratorGrant"];
+  readonly reviewAccountCredentials?: WorkspaceAuthConfig["reviewAccountCredentials"];
+  readonly isReviewAccount?: WorkspaceAuthConfig["isReviewAccount"];
+  readonly registerReviewAccount?: WorkspaceAuthConfig["registerReviewAccount"];
 };
+
+/** The migrated disposable database as the Workspace database service. */
+const testDatabaseLayer = () =>
+  Layer.succeed(
+    WorkspaceDatabase,
+    WorkspaceDatabase.of({ db: testDatabase!.db })
+  );
 
 /** The real sign-in capture against the migrated disposable database. */
 const realCapture: WorkspaceAuthConfig["captureAccountLocalePreference"] = (
@@ -102,6 +116,40 @@ const realCapture: WorkspaceAuthConfig["captureAccountLocalePreference"] = (
  */
 export const realCreateCustomerAccount: WorkspaceAuthConfig["createCustomerAccount"] =
   (accountId) => ensureCustomerAccount(testDatabase!.db, accountId);
+
+/** The real administrator grant read on the migrated disposable database. */
+const realHasAdministratorGrant: WorkspaceAuthConfig["hasAdministratorGrant"] =
+  (accountId) =>
+    Effect.flatMap(AccountRoleGrants, (grants) =>
+      grants.has({ accountId, role: "administrator" })
+    ).pipe(
+      Effect.provide(
+        AccountRoleGrants.Default.pipe(Layer.provide(testDatabaseLayer()))
+      )
+    );
+
+/** The review-account marker on the migrated disposable database. */
+const realReviewAccounts: Pick<
+  WorkspaceAuthConfig,
+  "isReviewAccount" | "registerReviewAccount"
+> = {
+  isReviewAccount: (accountId) =>
+    Effect.flatMap(ReviewAccounts, (reviewAccounts) =>
+      reviewAccounts.isReviewAccount(accountId)
+    ).pipe(
+      Effect.provide(
+        ReviewAccounts.Default.pipe(Layer.provide(testDatabaseLayer()))
+      )
+    ),
+  registerReviewAccount: (accountId) =>
+    Effect.flatMap(ReviewAccounts, (reviewAccounts) =>
+      reviewAccounts.register(accountId)
+    ).pipe(
+      Effect.provide(
+        ReviewAccounts.Default.pipe(Layer.provide(testDatabaseLayer()))
+      )
+    ),
+};
 
 /** The production advisory lock on the migrated disposable database. */
 const realSignInEmailLock: WorkspaceAuthConfig["withSignInEmailLock"] = (
@@ -166,7 +214,32 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
       (testDatabase && !options.database
         ? realCreateCustomerAccount
         : () => Effect.void),
+    hasAdministratorGrant:
+      options.hasAdministratorGrant ??
+      // Memory-backed instances have no role grants.
+      (testDatabase && !options.database
+        ? realHasAdministratorGrant
+        : () => Effect.succeed(false)),
+    revokeUnconsentedAdministrationTokens:
+      testDatabase && !options.database
+        ? (owner) =>
+            revokeUnconsentedAdministrationTokens(owner).pipe(
+              Effect.provide(testDatabaseLayer())
+            )
+        : () => Effect.void,
     captureAccountLocalePreference,
+    reviewAccountCredentials: options.reviewAccountCredentials ?? [],
+    // Memory-backed instances have no customer_accounts table.
+    isReviewAccount:
+      options.isReviewAccount ??
+      (testDatabase && !options.database
+        ? realReviewAccounts.isReviewAccount
+        : () => Effect.succeed(false)),
+    registerReviewAccount:
+      options.registerReviewAccount ??
+      (testDatabase && !options.database
+        ? realReviewAccounts.registerReviewAccount
+        : () => Effect.void),
   });
 };
 
@@ -236,9 +309,14 @@ export const callHandler = (
 
 const runIpOctet = Math.floor(Math.random() * 200) + 20;
 let ipCounter = 0;
+/**
+ * A private IPv4 address no other request of this run used. The run's octet
+ * keeps concurrent runs apart; the counter spans two octets, so a suite can
+ * make more than 255 requests and every address stays valid.
+ */
 export const uniqueIp = () => {
   ipCounter += 1;
-  return `172.16.${runIpOctet}.${ipCounter}`;
+  return `172.${16 + Math.floor(ipCounter / 256)}.${runIpOctet}.${ipCounter % 256}`;
 };
 
 const runCustomerPrefix = Math.floor(Math.random() * 900000) + 100000;

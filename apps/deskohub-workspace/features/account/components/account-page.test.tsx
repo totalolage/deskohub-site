@@ -364,6 +364,50 @@ describe("AccountPage states", () => {
     expect(view.queryByText(m.accountProfileSave({}, en))).toBeNull();
   });
 
+  test("shows a review account's sandbox reservations beside its card, without profile completion or PIN links", async () => {
+    const view = await renderState({
+      kind: "review-account",
+      email: adaAddress,
+      history: {
+        kind: "available",
+        groups: {
+          current: [
+            {
+              id: "review-sample-order",
+              workspaceReservationId: "review-sample-order",
+              reviewSandbox: true,
+              product: { kind: "meeting-room" },
+              startsAt: "2999-01-01T10:00:00.000Z",
+              endsAt: "2999-01-01T11:00:00.000Z",
+              seats: 1,
+              status: "confirmed",
+            },
+          ],
+          past: [],
+          unavailable: [],
+        },
+      },
+    });
+    const hrefs = view
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href") ?? "");
+
+    expect(
+      view.container.querySelector("#account-review-account")
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector("#account-completion-required")
+    ).toBeNull();
+    expect(
+      hrefs.some((href) =>
+        href.endsWith("/reservation/status/review-sample-order")
+      )
+    ).toBe(true);
+    expect(hrefs.some((href) => href.includes("/reservation/access/"))).toBe(
+      false
+    );
+  });
+
   test("renders the linked account with profile, reservations, sign out, and deletion", async () => {
     const view = await renderState(linkedState);
     const sectionNavigation = within(
@@ -831,6 +875,7 @@ describe("AccountPage states", () => {
             name: "Synthetic Assistant",
             host: "assistant.invalid",
             scopes: ["reservations:read"],
+            administration: false,
             connectedAt: "2026-10-14T16:40:00.000Z",
           },
         ],

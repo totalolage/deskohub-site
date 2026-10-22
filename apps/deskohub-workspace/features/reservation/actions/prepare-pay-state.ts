@@ -107,6 +107,7 @@ import {
 import type { ReservationPrePaymentOutcome } from "@/features/reservation/reservation-analytics";
 import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
 import { getReservationCustomerProfile } from "@/features/reservation/reservation-customer-profile";
+import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import {
   currentInstant,
@@ -1188,6 +1189,42 @@ const ensureContactEmailAcceptsMail = Effect.fn(
 });
 
 /**
+ * A review account's booking, priced like any other and held in its sandbox:
+ * no Dotypos customer or reservation, no availability check, no payment, and
+ * no hold cleanup. The sandbox keeps the advertised price.
+ */
+const prepareReviewSandboxHold = Effect.fn(
+  "preparePayState.prepareReviewSandboxHold"
+)(function* ({
+  input,
+  accountId,
+  bookingAgent,
+}: {
+  readonly input: PreparePayStateInput;
+  readonly accountId: CustomerAccountId;
+  readonly bookingAgent: Option.Option<BookingAgent["Service"]>;
+}) {
+  const bookedAt = yield* currentInstant;
+  const advertisement = yield* prepareAdvertisement({ ...input, bookedAt });
+  const sandbox = yield* ReviewSandbox;
+  return yield* sandbox.prepareHold({
+    accountId,
+    locale: input.locale,
+    checkoutSessionId: input.checkoutSessionId,
+    selection: Option.match(bookingAgent, {
+      onNone: () => input.checkoutAttemptId,
+      onSome: (agent) => agent.selectionKey,
+    }),
+    agentClientId: Option.getOrUndefined(
+      Option.map(bookingAgent, (agent) => agent.clientId)
+    ),
+    reservation: advertisement.reservation,
+    total: advertisement.advertisedQuote.payment.expectedPrice,
+    bookedAt,
+  });
+});
+
+/**
  * Prepares the Pay page for one submission: the shared booking operation of
  * the reservation form's Server Action and the customer MCP server. Each
  * caller authenticates its own channel first, the form with BotID and the MCP
@@ -1196,6 +1233,64 @@ const ensureContactEmailAcceptsMail = Effect.fn(
  */
 export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
   function* (input: PreparePayStateInput) {
+    // A review account books in its sandbox, which captures no checkout
+    // analytics, whatever the outcome.
+    const inReviewSandbox = yield* Ref.make(false);
+    const captureOutcome = (outcome: ReservationPrePaymentOutcome) =>
+      capturePrePaymentOutcome({
+        checkoutAttemptId: input.checkoutAttemptId,
+        outcome,
+        timestamp: Temporal.Now.instant(),
+      }).pipe(
+        Effect.when(
+          Ref.get(inReviewSandbox).pipe(Effect.map((sandboxed) => !sandboxed))
+        )
+      );
+
+    return yield* prepareSubmission(input, inReviewSandbox).pipe(
+      Effect.scoped,
+      Effect.tap((result) =>
+        Match.value(result).pipe(
+          Match.discriminatorsExhaustive("status")({
+            error: () => captureOutcome("reservation_conflict"),
+            pricing_changed: () => captureOutcome("pricing_changed"),
+            ready: () => captureOutcome("prepared"),
+          })
+        )
+      ),
+      Effect.tapError((error) =>
+        Match.value(error).pipe(
+          Match.tag("WorkspaceTableUnavailableError", () =>
+            captureOutcome("availability_changed")
+          ),
+          Match.tag("AdvertisedPriceMismatchError", () =>
+            captureOutcome("validation")
+          ),
+          Match.tag("UndeliverableContactEmailError", () =>
+            captureOutcome("validation")
+          ),
+          Match.tag("CheckoutAttemptUnavailableError", () =>
+            captureOutcome("reservation_conflict")
+          ),
+          Match.tag("AgentBookingProfileRequiredError", () =>
+            captureOutcome("validation")
+          ),
+          Match.tag("AgentBookingPaymentInProgressError", () =>
+            captureOutcome("reservation_conflict")
+          ),
+          Match.orElse(() => captureOutcome("server_error"))
+        )
+      ),
+      Effect.annotateLogs({
+        locale: input.locale,
+        reservationKind: input.reservation.kind,
+      })
+    );
+  }
+);
+
+const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
+  function* (input: PreparePayStateInput, inReviewSandbox: Ref.Ref<boolean>) {
     const bookingAgent = yield* Effect.serviceOption(BookingAgent);
     const accountActivity = yield* OptionalAccountActivityGuard;
     const rememberedReferralCode = yield* readRememberedReferralCode.pipe(
@@ -1228,6 +1323,10 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
             reason: "unauthenticated",
           });
         }
+        const reviewAccount = yield* ReviewAccounts.pipe(
+          Effect.flatMap((accounts) => accounts.isReviewAccount(accountId))
+        );
+        yield* Ref.set(inReviewSandbox, reviewAccount);
         yield* Match.value(input.reservation).pipe(
           Match.discriminatorsExhaustive("kind")({
             cowork: () => Effect.void,
@@ -1235,6 +1334,13 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
             office: () => ensureOfficeReservationsEnabled,
           })
         );
+        if (reviewAccount) {
+          return yield* prepareReviewSandboxHold({
+            input,
+            accountId,
+            bookingAgent,
+          });
+        }
 
         const accountCustomer = yield* resolveAccountCustomer({
           input,
@@ -1741,54 +1847,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         addCheckoutReferralAppliedMarker(result.redirectUrl, input.locale) ??
         result.redirectUrl,
     };
-  },
-  (effect, input) => {
-    const captureOutcome = (outcome: ReservationPrePaymentOutcome) =>
-      capturePrePaymentOutcome({
-        checkoutAttemptId: input.checkoutAttemptId,
-        outcome,
-        timestamp: Temporal.Now.instant(),
-      });
-
-    return effect.pipe(
-      Effect.scoped,
-      Effect.tap((result) =>
-        Match.value(result).pipe(
-          Match.discriminatorsExhaustive("status")({
-            error: () => captureOutcome("reservation_conflict"),
-            pricing_changed: () => captureOutcome("pricing_changed"),
-            ready: () => captureOutcome("prepared"),
-          })
-        )
-      ),
-      Effect.tapError((error) =>
-        Match.value(error).pipe(
-          Match.tag("WorkspaceTableUnavailableError", () =>
-            captureOutcome("availability_changed")
-          ),
-          Match.tag("AdvertisedPriceMismatchError", () =>
-            captureOutcome("validation")
-          ),
-          Match.tag("UndeliverableContactEmailError", () =>
-            captureOutcome("validation")
-          ),
-          Match.tag("CheckoutAttemptUnavailableError", () =>
-            captureOutcome("reservation_conflict")
-          ),
-          Match.tag("AgentBookingProfileRequiredError", () =>
-            captureOutcome("validation")
-          ),
-          Match.tag("AgentBookingPaymentInProgressError", () =>
-            captureOutcome("reservation_conflict")
-          ),
-          Match.orElse(() => captureOutcome("server_error"))
-        )
-      ),
-      Effect.annotateLogs({
-        locale: input.locale,
-        reservationKind: input.reservation.kind,
-      })
-    );
   }
 );
 

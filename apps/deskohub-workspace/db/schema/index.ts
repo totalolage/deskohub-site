@@ -1,5 +1,7 @@
 export { accountRoleGrants } from "./account-role-grants";
 export { accountingDocumentSnapshots } from "./accounting-document-snapshots";
+export { administrationActions } from "./administration-actions";
+export { administratorAssistantConnections } from "./administrator-assistant-connections";
 export {
   type CliAuthenticationRequestRow,
   type CliSessionRow,
@@ -101,6 +103,10 @@ export {
 } from "./referrals";
 export { requestBudgetSpends } from "./request-budget-spends";
 export { reservationAccessGrants } from "./reservation-access-grants";
+export {
+  type ReviewAccountHold,
+  reviewAccountHolds,
+} from "./review-account-holds";
 export {
   type StandaloneAccessCodeAttemptEventRow,
   standaloneAccessCodeAttemptEvents,

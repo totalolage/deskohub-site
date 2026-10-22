@@ -140,6 +140,13 @@ export async function PublicSiteFooter() {
               >
                 {m.footerReservationLink({}, { locale })}
               </Link>
+              <Link
+                href={`${localePath}/ai-assistants`}
+                prefetch={false}
+                className="transition-colors hover:text-sunset-yellow"
+              >
+                {m.footerAiAssistantsLink({}, { locale })}
+              </Link>
             </nav>
           </div>
         </div>

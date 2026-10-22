@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.26.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.25.0...dhw-v1.26.0) (2026-10-22)
+
+
+### Features
+
+* **workspace-admin-api:** move the remaining admin UI operations into the administration API ([69f4970](https://github.com/totalolage/deskohub-site/commit/69f4970cb27025b21d7d612175b9807278d4d25c))
+
+## [1.25.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.24.0...dhw-v1.25.0) (2026-10-22)
+
+
+### Features
+
+* **dhw:** decode invoices issued through an AI assistant ([436be91](https://github.com/totalolage/deskohub-site/commit/436be9169870c4c02e7c246deb9cba056c2db997))
+* **dhw:** name the destructive operation each confirmation guards ([c3a434e](https://github.com/totalolage/deskohub-site/commit/c3a434e3c7c1611dca34b9e64b81ae3742afb9ee))
+* **workspace-admin-api:** annotate administration operations and authenticate a channel-neutral caller ([d6dd6be](https://github.com/totalolage/deskohub-site/commit/d6dd6be1161dbd1313860f038aec154b1fad02fb))
+
+## [1.24.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.23.0...dhw-v1.24.0) (2026-10-22)
+
+
+### Features
+
+* **workspace:** automation engine, lifecycle, operations port and dhw automations ([80b177a](https://github.com/totalolage/deskohub-site/commit/80b177a2a763bc2879f6011891f553b3057a2afc))
+
+
+### Bug Fixes
+
+* **dhw:** keep PR binaries off the production default ([5222b75](https://github.com/totalolage/deskohub-site/commit/5222b7504dd18ffc60926a80fae01d978b2bef7e))
+* **dhw:** make the release build an explicit opt-in ([6b57a39](https://github.com/totalolage/deskohub-site/commit/6b57a3918b7f88f60e57e0c6b6f2ede968cf8197))
+* **email-campaigns:** date account creation by the account, gate automations on dhw 1.24.0 ([42ad0d2](https://github.com/totalolage/deskohub-site/commit/42ad0d2037db97defcdbcc95ee7640c75efc34bd))
+* **workspace:** mark a retried fulfillment failure as undated in replays ([00d517d](https://github.com/totalolage/deskohub-site/commit/00d517d22a21525f5aff84e4226517ef53dbfaf9))
+* **workspace:** name Igloohome access by grant, not reservation ([7a2a058](https://github.com/totalolage/deskohub-site/commit/7a2a058a2f36ace6f0868fdd9057a308f3fc8d45)), closes [#780](https://github.com/totalolage/deskohub-site/issues/780)
+* **workspace:** replay account creations and reservation statuses as of the event ([294daae](https://github.com/totalolage/deskohub-site/commit/294daae6f95bb354f2ba7d1888d55734c72f3c34))
+
 ## [1.23.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.22.0...dhw-v1.23.0) (2026-10-20)
 
 

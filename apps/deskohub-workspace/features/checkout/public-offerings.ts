@@ -29,7 +29,11 @@ import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reserv
 import type { MeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
 import { officeReservationMaximumDurationHours } from "@/features/reservation/office-reservation";
-import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { joinSentences } from "@/shared/utils/sentences";
+import {
+  type WorkspaceOpeningHours,
+  workspaceSiteConstants,
+} from "@/shared/utils/site-constants";
 import { plainDateStringSchema } from "@/shared/utils/temporal";
 
 /** An optional or included extra of a cowork offer. */
@@ -188,11 +192,17 @@ export const getPublicOfferingListings = ({
     : []),
 ];
 
-/** The opening hours sentence shown with the offerings. */
-export const getPublicOpeningHours = (locale: Locale) =>
-  m.publicOfferingOpeningHours(
-    { until: workspaceSiteConstants.openingHours.openSpaceUsableUntil },
-    { locale }
+/** The opening hours shown with the offerings. */
+export const getPublicOpeningHours = (
+  locale: Locale,
+  {
+    alwaysOpen,
+    openSpaceUsableUntil,
+  }: WorkspaceOpeningHours = workspaceSiteConstants.openingHours
+) =>
+  joinSentences(
+    alwaysOpen && m.publicOfferingAlwaysOpen({}, { locale }),
+    m.publicOfferingOpenSpaceHours({ until: openSpaceUsableUntil }, { locale })
   );
 
 const getCoworkOffering = (
@@ -212,7 +222,12 @@ const getCoworkOffering = (
           { until: workspaceSiteConstants.openingHours.openSpaceUsableUntil },
           { locale }
         ),
-      "reserved-desk": () => m.publicOfferingReservedDeskUsage({}, { locale }),
+      "reserved-desk": () =>
+        joinSentences(
+          m.publicOfferingReservedDeskUsage({}, { locale }),
+          workspaceSiteConstants.openingHours.alwaysOpen &&
+            m.publicOfferingReservedDeskAlwaysOpenAccess({}, { locale })
+        ),
     }[tier](),
     price: getWorkspaceProductByTier(tier).price,
     addOns: [

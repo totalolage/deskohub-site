@@ -1,5 +1,12 @@
 import { Effect, Option, Schema } from "effect";
 import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
+import {
+  AdministrationOperationBehavior,
+  destructiveOperation,
+  readOperation,
+  readPreview,
+  writeOperation,
+} from "./administration-operation";
 import { AudienceFilter } from "./audience-filter";
 import {
   AdministrationCampaignAudienceId,
@@ -11,8 +18,9 @@ import {
 } from "./campaign-locale-and-purpose";
 import { DhwVersion, MinimumDhwVersion } from "./dhw-version";
 import {
+  AdministrationActionRecord,
+  AdministrationAuthentication,
   AdministrationDotyposCustomerId,
-  CliBearerAuthentication,
   CliClientCompatibility,
   CliInputInvalid,
   CliMutationInProgress,
@@ -350,6 +358,17 @@ export const AdministrationCampaignRecipientPreview = Schema.Struct({
 export type AdministrationCampaignRecipientPreview =
   typeof AdministrationCampaignRecipientPreview.Type;
 
+/** The deployment's campaign settings a composer shows. */
+export const AdministrationCampaignSettings = Schema.Struct({
+  /**
+   * The inbox every test send reaches, or null where campaign email isn't
+   * configured; a test send then reports the missing settings.
+   */
+  testSendInbox: Schema.NullOr(Schema.String),
+});
+export type AdministrationCampaignSettings =
+  typeof AdministrationCampaignSettings.Type;
+
 /** Extra test recipients; the admin inbox is always included. */
 export const AdministrationCampaignTestSendInput = Schema.Struct({
   recipients: Schema.Array(Schema.Trim.check(Schema.isNonEmpty())),
@@ -460,7 +479,7 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
     HttpApiEndpoint.get("listCampaignAudiences", "/campaign-audiences", {
       success: AdministrationCampaignAudiences,
       error: campaignErrors,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get(
@@ -471,14 +490,17 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignAudience,
         error: campaignErrors,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post("createCampaignAudience", "/campaign-audiences", {
       payload: AdministrationCampaignAudienceCreateRequest,
       success: AdministrationCampaignAudience,
       error: campaignErrors,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: true })
+    )
   )
   .add(
     HttpApiEndpoint.patch(
@@ -490,6 +512,9 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignAudience,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: true })
     )
   )
   .add(
@@ -501,6 +526,12 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignAudience,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview("campaigns.getCampaignAudience"),
+      })
     )
   )
   .add(
@@ -512,6 +543,9 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignAudience,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: true })
     )
   )
   .add(
@@ -523,13 +557,19 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignAudienceDeleted,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview("campaigns.getCampaignAudience"),
+      })
     )
   )
   .add(
     HttpApiEndpoint.get("listCampaignTemplates", "/campaign-templates", {
       success: AdministrationCampaignTemplates,
       error: campaignErrors,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post(
@@ -541,27 +581,30 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignEmailPreview,
         error: campaignErrors,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listCampaigns", "/campaigns", {
       success: AdministrationCampaignSummaries,
       error: campaignErrors,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getCampaign", "/campaigns/:campaignId", {
       params: campaignParams,
       success: AdministrationCampaignDetail,
       error: campaignErrors,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post("createCampaign", "/campaigns", {
       payload: AdministrationCampaignCreateRequest,
       success: AdministrationCampaignDetail,
       error: campaignErrors,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: true })
+    )
   )
   .add(
     HttpApiEndpoint.patch("updateCampaign", "/campaigns/:campaignId", {
@@ -569,7 +612,10 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
       payload: AdministrationCampaignUpdateInput,
       success: AdministrationCampaignDetail,
       error: campaignErrors,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: true })
+    )
   )
   .add(
     HttpApiEndpoint.post(
@@ -581,6 +627,9 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignDetail,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: true })
     )
   )
   .add(
@@ -588,7 +637,13 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
       params: campaignParams,
       success: AdministrationCampaignDeleted,
       error: campaignErrors,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview("campaigns.getCampaign"),
+      })
+    )
   )
   .add(
     HttpApiEndpoint.get(
@@ -599,7 +654,13 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignRecipientPreview,
         error: campaignErrors,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
+  )
+  .add(
+    HttpApiEndpoint.get("getCampaignSettings", "/campaigns/settings", {
+      success: AdministrationCampaignSettings,
+      error: campaignErrors,
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post(
@@ -611,6 +672,9 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignTestSendResult,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: false })
     )
   )
   .add(
@@ -619,7 +683,16 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
       payload: AdministrationCampaignSendInput,
       success: AdministrationCampaignSendResult,
       error: campaignErrors,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview(
+          "campaigns.getCampaign",
+          "campaigns.previewCampaignRecipients"
+        ),
+      })
+    )
   )
   .add(
     HttpApiEndpoint.post("retryCampaign", "/campaigns/:campaignId/retry", {
@@ -627,7 +700,13 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
       payload: AdministrationCampaignRetryInput,
       success: AdministrationCampaignRetryResult,
       error: campaignErrors,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: false,
+        preview: readPreview("campaigns.getCampaignSendStatus"),
+      })
+    )
   )
   .add(
     HttpApiEndpoint.get(
@@ -638,10 +717,11 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
         success: AdministrationCampaignSendStatusResult,
         error: campaignErrors,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .annotate(MinimumDhwVersion, Option.some(campaignsMinimumDhwVersion))
-  .middleware(CliBearerAuthentication)
+  .middleware(AdministrationActionRecord)
+  .middleware(AdministrationAuthentication)
   // Added last, so it runs first: an outdated `dhw` is refused before its
   // session is read. Every campaign endpoint already declares the
   // `CliInputInvalid` it fails with, so released binaries print it.

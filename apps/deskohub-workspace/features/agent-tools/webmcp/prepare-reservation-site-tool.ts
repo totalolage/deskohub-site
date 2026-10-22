@@ -10,6 +10,10 @@ import {
   type PublishedAgentTool,
 } from "./agent-tool-mcp-client";
 import {
+  prepareReservationToolDescription,
+  prepareReservationToolName,
+} from "./prepare-reservation-site-tool-description";
+import {
   registerSiteTool,
   runSiteToolCall,
   withPageLocale,
@@ -23,11 +27,6 @@ import type {
   SiteToolReservationFormHandle,
 } from "./use-prepare-reservation-site-tool";
 import type { ModelContext } from "./webmcp";
-
-export const prepareReservationToolName = "prepare_reservation";
-
-export const prepareReservationToolDescription =
-  "Prepares a reservation in this browser tab up to the Pay page. It fills the reservation form on this page with a complete selection, the same input get_quote takes, waits for the live price and availability, and submits the form with the contact details the customer has already entered or the signed-in account. It never asks for or changes contact details: when some are missing, it says which, and the customer fills them in. For a selection in another reservation family, it opens that reservation page and continues there. Set marketingConsent to true only when the customer has explicitly asked in this conversation to receive marketing communication; never infer or default it. The customer accepts the terms and operating rules and pays on the Pay page; this tool cannot do either.";
 
 export const marketingConsentInputDescription =
   "Optional. Set to true only when the customer has explicitly asked, in this conversation, to receive Deskohub Workspace marketing communication (occasional news, event invitations and offers by email). Never infer it from other requests, never default it, and never set it on the customer's behalf. Otherwise omit it. Omitting it or sending false records no consent and never withdraws a consent the customer gave earlier.";

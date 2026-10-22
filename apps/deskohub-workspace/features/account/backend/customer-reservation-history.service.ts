@@ -16,6 +16,7 @@ import {
   ReservationRecords,
   type ReservationRecordsError,
 } from "@/features/reservation/backend/reservation-records";
+import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type {
   CustomerReservationHistory,
@@ -291,6 +292,8 @@ export class CustomerReservationHistoryService extends Context.Service<
       const records = yield* ReservationRecords;
       const links = yield* CustomerAccountLinkRepository;
       const authorDirectory = yield* ReservationAuthorDirectory;
+      const reviewAccounts = yield* ReviewAccounts;
+      const sandbox = yield* ReviewSandbox;
 
       const logUnavailableParty = (code: string) =>
         Effect.logWarning("Reservation history party unavailable").pipe(
@@ -428,20 +431,33 @@ export class CustomerReservationHistoryService extends Context.Service<
           Effect.orElseSucceed(() => new Map<DotyposCustomerId, string>())
         );
 
-      const load = (
+      const loadRecorded = (
         account: ReservationHistoryAccount,
-        options: ReservationHistoryOptions = {}
+        options: ReservationHistoryOptions
       ) =>
         Effect.succeed({
           account,
           includePartyNames: options.includePartyNames ?? true,
         }).pipe(
-          Effect.tap(() => requireAccountActivity(links, account.accountId)),
           Effect.bind("rows", selectReservationRows),
           Effect.bind("sources", readReservationSources),
           Effect.let("entries", relateReservations),
           Effect.bind("names", readPartyNames),
-          Effect.map(toReservationHistory),
+          Effect.map(toReservationHistory)
+        );
+
+      // A review account's reservations all live in its sandbox.
+      const load = (
+        account: ReservationHistoryAccount,
+        options: ReservationHistoryOptions = {}
+      ) =>
+        requireAccountActivity(links, account.accountId).pipe(
+          Effect.andThen(reviewAccounts.isReviewAccount(account.accountId)),
+          Effect.flatMap((review) =>
+            review
+              ? sandbox.history(account.accountId)
+              : loadRecorded(account, options)
+          ),
           Effect.withSpan("CustomerReservationHistoryService.load")
         );
 
@@ -461,7 +477,9 @@ export class CustomerReservationHistoryService extends Context.Service<
           WorkspaceDotyposLayer,
           records,
           CustomerAccountLinkRepository.Live,
-          ReservationAuthorDirectory.Live
+          ReservationAuthorDirectory.Live,
+          ReviewAccounts.Live,
+          ReviewSandbox.Live
         )
       )
     );

@@ -54,6 +54,12 @@ import {
   lookupMagicLinkDeliveryLocale,
   type MagicLinkLocaleLookup,
 } from "../customer-locale-preference";
+import {
+  type AdministrationTokenRevocation,
+  type AdministratorGrantCheck,
+  guardAdministrationScope,
+  narrowAdministrationOnConsent,
+} from "./administration-scope-guard";
 import type { PasskeyRelyingParty } from "./auth-hosts";
 import {
   authOptions,
@@ -66,6 +72,16 @@ import {
   makeCustomerAgentAuthorizationPlugins,
 } from "./customer-agent-authorization-server";
 import { renderMagicLinkEmail } from "./magic-link-email";
+import {
+  findReviewAccountCredential,
+  type ReviewAccountCredential,
+} from "./review-account-credentials";
+import {
+  isConfiguredPassword,
+  makeInvalidEmailOrPasswordError,
+  provisionReviewLogin,
+  type ReviewLoginConfig,
+} from "./review-account-sign-in";
 import {
   magicLinkDeliveryEnvironment,
   makeMagicLinkEmailDelivery,
@@ -91,7 +107,7 @@ export type MagicLinkSendFunction = (
   email: SignInEmail
 ) => Promise<void> | void;
 
-export type WorkspaceAuthConfig = {
+export type WorkspaceAuthConfig = ReviewLoginConfig & {
   readonly database: NonNullable<BetterAuthOptions["database"]>;
   readonly secrets: NonNullable<BetterAuthOptions["secrets"]>;
   readonly allowedHosts: readonly string[];
@@ -101,6 +117,16 @@ export type WorkspaceAuthConfig = {
   readonly customerMcpResource: string;
   /** Test-only stub for fetching agents' Client ID Metadata Documents. */
   readonly clientMetadataTransport?: CustomerAgentClientMetadataTransport;
+  /**
+   * Reads the administrator grant on every consent to the administration
+   * scope; a failure refuses the consent.
+   */
+  readonly hasAdministratorGrant: AdministratorGrantCheck;
+  /**
+   * Deletes an agent's tokens that carry the administration scope although
+   * its consent no longer names it, after every accepted consent.
+   */
+  readonly revokeUnconsentedAdministrationTokens: AdministrationTokenRevocation;
   readonly httpsOnly: boolean;
   /**
    * The `login_email_code` read, once per sign-in email; a rejection counts
@@ -165,6 +191,25 @@ const disabledSignInCodePaths = [
   "/email-otp/reset-password",
   "/email-otp/request-email-change",
   "/email-otp/change-email",
+];
+
+/**
+ * Password sign-in serves only review logins, which the `/sign-in/email`
+ * guard provisions. Nobody can sign up, reset, set, verify, or change a
+ * password, change the login email, or list or unlink login methods over
+ * HTTP. Better Auth matches these literally against the request path, so the
+ * guard also refuses the parameterised reset route.
+ */
+const disabledPasswordPaths = [
+  "/sign-up/email",
+  "/request-password-reset",
+  "/reset-password",
+  "/reset-password/:token",
+  "/change-password",
+  "/verify-password",
+  "/change-email",
+  "/list-accounts",
+  "/unlink-account",
 ];
 
 /** The only body fields code sign-in accepts; none reach the user insert. */
@@ -310,23 +355,35 @@ type GuardedAuthRequest = {
   readonly path: string;
   readonly body?: unknown;
   readonly query?: unknown;
+  readonly json: (body: PasswordSignInStep) => unknown;
   readonly context: {
     readonly adapter: DBAdapter;
     readonly internalAdapter: AuthContext["internalAdapter"];
+    readonly password: AuthContext["password"];
+    readonly generateId: AuthContext["generateId"];
   };
 };
 
 type AuthRequestGuard = {
   readonly config: WorkspaceAuthConfig;
   readonly request: GuardedAuthRequest;
+  /** The id of the login the request's session belongs to, if any. */
+  readonly sessionUserId: () => Promise<string | undefined>;
+};
+
+/** The sign-in email response that sends a review login to its password. */
+type PasswordSignInStep = {
+  readonly status: true;
+  readonly method: "password";
 };
 
 /**
- * BotID screens every sign-in email and code sign-in. A verification outage
- * lets the request through; the per-IP rate limits still apply, and so do the
- * per-email limit and the attempt budget while sign-in codes are on. Verified
- * customer agents may sign in because a session still needs the link or code
- * from the customer's inbox.
+ * BotID screens every sign-in email, code sign-in, and password sign-in. A
+ * verification outage lets the request through; the per-IP rate limits still
+ * apply, and so do the per-email limit and the attempt budget while sign-in
+ * codes are on. Verified customer agents may sign in because a session still
+ * needs the link or code from the customer's inbox, or a review login's
+ * password.
  */
 const verifySignInHuman = (config: WorkspaceAuthConfig) =>
   Effect.suspend(() =>
@@ -337,16 +394,50 @@ const verifySignInHuman = (config: WorkspaceAuthConfig) =>
     })
   ).pipe(Effect.mapError(() => makeBotDetectedError()));
 
+/** Whether the request's session belongs to a review account. */
+const isReviewAccountSession = ({ config, sessionUserId }: AuthRequestGuard) =>
+  Effect.promise(sessionUserId).pipe(
+    Effect.map((userId) =>
+      Option.fromNullishOr(
+        userId === undefined ? undefined : decodeAccountId(userId)
+      )
+    ),
+    Effect.flatMap(
+      Option.match({
+        onNone: () => Effect.succeed(false),
+        onSome: config.isReviewAccount,
+      })
+    )
+  );
+
 /**
  * Adding a passkey needs `login_passkeys` on; an unreadable flag counts as
  * off. Passkey sign-in never reads it, so turning the flag off locks no one
- * out.
+ * out. A review account signs in only with its password, so it never adds a
+ * passkey.
  */
-const requirePasskeyRegistration = ({ config, request }: AuthRequestGuard) =>
-  Effect.tryPromise(() => config.arePasskeysEnabled()).pipe(
+const requirePasskeyRegistration = (guard: AuthRequestGuard) =>
+  Effect.tryPromise(() => guard.config.arePasskeysEnabled()).pipe(
     Effect.orElseSucceed(() => false),
     Effect.filterOrFail(Boolean, makePasskeyRegistrationUnavailableError),
-    Effect.when(Effect.succeed(passkeyRegistrationPaths.has(request.path)))
+    Effect.andThen(isReviewAccountSession(guard)),
+    Effect.filterOrFail(
+      (isReviewAccount) => !isReviewAccount,
+      makePasskeyRegistrationUnavailableError
+    ),
+    Effect.when(
+      Effect.succeed(passkeyRegistrationPaths.has(guard.request.path))
+    )
+  );
+
+/**
+ * `disabledPaths` misses the reset route's token form, which Better Auth
+ * names by its pattern here; no reset can be requested, so it answers like
+ * the disabled routes.
+ */
+const rejectPasswordResetToken = ({ request }: AuthRequestGuard) =>
+  Effect.failSync(() => new APIError("NOT_FOUND")).pipe(
+    Effect.when(Effect.succeed(request.path === "/reset-password/:token"))
   );
 
 const hasProfileFields = ({ path, body }: GuardedAuthRequest) =>
@@ -407,6 +498,16 @@ const readSignInCodeFlag = ({ config }: AuthRequestGuard) =>
 
 const signInEmailBodySchema = Schema.Struct({ email: Schema.String });
 
+/** The review login of the request's email, if it names an allowlisted one. */
+const requestedReviewLogin = ({ config, request }: AuthRequestGuard) =>
+  Option.flatMap(
+    Schema.decodeUnknownOption(signInEmailBodySchema)(request.body),
+    ({ email }) =>
+      Option.fromNullishOr(
+        findReviewAccountCredential(config.reviewAccountCredentials, email)
+      )
+  );
+
 /**
  * The per-email limit counts sign-in emails that carry a code. Better Auth
  * rejects a missing or malformed email after the hook.
@@ -430,13 +531,11 @@ const reserveSignInCodeEmail = ({ request }: AuthRequestGuard) =>
 /**
  * Evaluates `login_email_code` once for a sign-in email (fail closed) and
  * records the decision in the request metadata, replacing any client value,
- * so the email and the response follow one evaluation. Every send is
- * BotID-checked, matching the client's `protect` entry for this path; while
- * the flag is on, the send also counts against the per-email limit.
+ * so the email and the response follow one evaluation. While the flag is on,
+ * the send also counts against the per-email limit.
  */
 const decideSignInCode = (guard: AuthRequestGuard) =>
   Effect.succeed(guard).pipe(
-    Effect.tap(() => verifySignInHuman(guard.config)),
     Effect.bind("signInCode", readSignInCodeFlag),
     Effect.tap(({ signInCode }) =>
       reserveSignInCodeEmail(guard).pipe(
@@ -449,23 +548,98 @@ const decideSignInCode = (guard: AuthRequestGuard) =>
     Effect.withSpan("WorkspaceAuth.decideSignInCode")
   );
 
+/**
+ * Every sign-in email request is BotID-checked, matching the client's
+ * `protect` entry for this path. A review login's address gets the password
+ * step instead: the response ends the request, so no link, code, or
+ * verification row is created and no email is sent.
+ */
+const guardSignInEmail = (guard: AuthRequestGuard) =>
+  verifySignInHuman(guard.config).pipe(
+    Effect.andThen(
+      Effect.suspend(() =>
+        Option.match(requestedReviewLogin(guard), {
+          onNone: () => decideSignInCode(guard),
+          onSome: () =>
+            Effect.sync(() =>
+              guard.request.json({ status: true, method: "password" })
+            ),
+        })
+      )
+    )
+  );
+
+const passwordSignInBodySchema = Schema.Struct({ password: Schema.String });
+
+/** Whether the password sign-in carries the review login's password. */
+const hasConfiguredPassword = (
+  { request }: AuthRequestGuard,
+  credential: ReviewAccountCredential
+) =>
+  Option.match(
+    Schema.decodeUnknownOption(passwordSignInBodySchema)(request.body),
+    {
+      onNone: () => false,
+      onSome: ({ password }) => isConfiguredPassword(credential, password),
+    }
+  );
+
+/**
+ * Password sign-in is only for review logins with their configured password:
+ * any other address or password gets Better Auth's invalid-credentials
+ * answer before any lookup, even an address with a password on record. A
+ * review login is provisioned or repaired first, then Better Auth's own
+ * handler checks the password again and creates the session.
+ * BotID runs first, matching the client's `protect` entry; rate limiting
+ * already ran before the hook.
+ */
+const screenPasswordSignIn = (guard: AuthRequestGuard) =>
+  verifySignInHuman(guard.config).pipe(
+    Effect.andThen(
+      Effect.suspend(() =>
+        Option.match(requestedReviewLogin(guard), {
+          onNone: () => Effect.fail(makeInvalidEmailOrPasswordError()),
+          onSome: (credential) =>
+            hasConfiguredPassword(guard, credential)
+              ? provisionReviewLogin({
+                  config: guard.config,
+                  credential,
+                  context: guard.request.context,
+                  locale: callbackLocaleFromAuthContext(
+                    Option.getOrElse(
+                      decodeAuthContext(guard.request),
+                      () => ({})
+                    )
+                  ),
+                })
+              : Effect.fail(makeInvalidEmailOrPasswordError()),
+        })
+      )
+    ),
+    Effect.withSpan("WorkspaceAuth.screenPasswordSignIn")
+  );
+
 const guardSignInPath = (guard: AuthRequestGuard) =>
   Match.value(guard.request.path).pipe(
-    Match.when("/sign-in/magic-link", () => decideSignInCode(guard)),
+    Match.when("/sign-in/magic-link", () => guardSignInEmail(guard)),
     Match.when("/magic-link/verify", () => claimMagicLink(guard)),
     Match.when("/sign-in/email-otp", () => screenSignInCode(guard)),
+    Match.when("/sign-in/email", () => screenPasswordSignIn(guard)),
     Match.orElse(() => Effect.void)
   );
 
 /**
  * Rejects passkey registrations while passkeys are disabled (an unreadable
- * flag counts as disabled), any request carrying profile fields, and code
- * sign-ins carrying anything beyond the email, code, and callback URL.
+ * flag counts as disabled) or for a review account, any request carrying
+ * profile fields, the password reset token route, code sign-ins carrying
+ * anything beyond the email, code, and callback URL, and password sign-ins
+ * outside the review logins.
  */
 const guardAuthRequest = (guard: AuthRequestGuard) =>
   Effect.succeed(guard).pipe(
     Effect.tap(requirePasskeyRegistration),
     Effect.tap(rejectProfileFields),
+    Effect.tap(rejectPasswordResetToken),
     Effect.flatMap(guardSignInPath),
     Effect.withSpan("WorkspaceAuth.guardRequest")
   );
@@ -646,27 +820,57 @@ const prepareSession = <Session extends { readonly userId: string }>(request: {
     }))
   );
 
+type SignInEmailCompletion = {
+  readonly status: true;
+  readonly signInCode: boolean;
+};
+
+/** Better Auth's credential sign-in response, minus its redirect field. */
+const passwordSignInResponseSchema = Schema.Struct({
+  token: Schema.String,
+  url: Schema.optional(Schema.String),
+  user: Schema.Unknown,
+});
+
+type PasswordSignInCompletion = typeof passwordSignInResponseSchema.Type & {
+  readonly redirect: false;
+};
+
 type CompletedAuthRequest = {
   readonly path: string;
   readonly body?: { readonly metadata?: SignInEmail["metadata"] };
-  readonly json: (body: {
-    readonly status: true;
-    readonly signInCode: boolean;
-  }) => unknown;
+  readonly json: (
+    body: SignInEmailCompletion | PasswordSignInCompletion
+  ) => unknown;
   readonly context: { readonly returned?: unknown };
 };
 
 /**
  * Returns the sign-in code decision with the sign-in email response, so the
- * client shows the code step only for an email that carries a code.
+ * client shows the code step only for an email that carries a code. A
+ * password sign-in answers like a code sign-in, without Better Auth's
+ * redirect instruction: the page continues through its callback itself, and
+ * a reauthentication stays in its dialog.
  */
-const completeAuthRequest = (ctx: CompletedAuthRequest) =>
-  ctx.path === "/sign-in/magic-link" && !isAPIError(ctx.context.returned)
-    ? ctx.json({
-        status: true,
-        signInCode: isSignInCodeRequested(ctx.body?.metadata),
-      })
-    : undefined;
+const completeAuthRequest = (ctx: CompletedAuthRequest) => {
+  if (isAPIError(ctx.context.returned)) return undefined;
+  if (ctx.path === "/sign-in/magic-link") {
+    return ctx.json({
+      status: true,
+      signInCode: isSignInCodeRequested(ctx.body?.metadata),
+    });
+  }
+  if (ctx.path !== "/sign-in/email") return undefined;
+  return Option.match(
+    Schema.decodeUnknownOption(passwordSignInResponseSchema)(
+      ctx.context.returned
+    ),
+    {
+      onNone: () => undefined,
+      onSome: (response) => ctx.json({ ...response, redirect: false }),
+    }
+  );
+};
 
 type PasskeyAssertion = Parameters<
   NonNullable<
@@ -836,13 +1040,22 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
     },
     disabledPaths: [
       "/update-user",
+      ...disabledPasswordPaths,
       ...disabledSignInCodePaths,
       ...disabledCustomerAgentClientPaths,
     ],
     hooks: {
       before: createAuthMiddleware((ctx) =>
         runWorkspaceEffect("account.auth.guard", { boundary: "route" })(
-          guardAuthRequest({ config, request: ctx }).pipe(
+          guardAdministrationScope(ctx, config.hasAdministratorGrant).pipe(
+            Effect.andThen(
+              guardAuthRequest({
+                config,
+                request: ctx,
+                sessionUserId: async () =>
+                  (await getSessionFromCtx(ctx))?.user.id ?? undefined,
+              })
+            ),
             // Auth routes bypass the proxy, so they classify their own headers.
             Effect.provideService(
               CurrentAgentTraffic,
@@ -856,6 +1069,14 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
       after: createAuthMiddleware(
         async (ctx) =>
           completeAuthRequest(ctx) ??
+          (await runWorkspaceEffect("account.agent-consent.narrow", {
+            boundary: "route",
+          })(
+            narrowAdministrationOnConsent(
+              ctx,
+              config.revokeUnconsentedAdministrationTokens
+            )
+          )) ??
           runWorkspaceEffect("account.passkey.reauthentication-options", {
             boundary: "route",
           })(requireReauthenticationUserVerification(ctx))

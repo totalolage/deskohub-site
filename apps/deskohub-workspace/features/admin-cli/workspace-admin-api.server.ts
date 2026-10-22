@@ -1,4 +1,6 @@
 import {
+  AdministrationAuthentication,
+  type AdministrationChannel,
   AdministrationDiscountMutationResult,
   AdministrationReservationAccessGrant,
   type AdministrationStandaloneAccessCodeCreationOutcomeType,
@@ -6,6 +8,7 @@ import {
   type AdministrationStandaloneAccessCodeResultType,
   CliAuthenticationRateLimited,
   CliBearerAuthentication,
+  type CliClientCompatibility,
   CliGrantRejected,
   CliMutationInProgress,
   CliMutationRejected,
@@ -17,6 +20,7 @@ import {
   CliSessionUnauthorized,
   CliStandaloneAccessCodeCleanupRequired,
   CliStandaloneAccessCodeReconciled,
+  CurrentAdministrationCaller,
   CurrentCliSession,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
@@ -45,7 +49,10 @@ import {
   type ReservationAdministrationError,
   ReservationAdministrationService,
 } from "@/features/administration/reservation-administration.service";
-import { LegacyAdministratorBackfill } from "@/features/administrators";
+import {
+  AdministratorRoster,
+  LegacyAdministratorBackfill,
+} from "@/features/administrators";
 import { refreshCalendarDiscountSourceAfterMutation } from "@/features/discounts/admin/calendar-discount-source-maintenance.server";
 import {
   type AdminCustomerProfile,
@@ -71,6 +78,8 @@ import {
   WorkspaceObservabilityLive,
   workspaceMemoMap,
 } from "@/shared/backend/workspace-effect";
+import { AdministrationActionLog } from "./administration-action-log.service";
+import { AdministrationActionRecordLive } from "./administration-action-record.server";
 import {
   makeServiceUnavailable,
   mapAdministrationApiFailure,
@@ -83,7 +92,10 @@ import {
   CliClientCompatibilityLive,
   minimumDhwVersions,
 } from "./cli-client-version";
-import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
+import {
+  CliMutationIdempotency,
+  mutationScopeOf,
+} from "./cli-mutation-idempotency.service";
 import { AdminCliAutomationsApiHandlers } from "./email-automations-api.server";
 import { AdminCliCampaignsApiHandlers } from "./email-campaigns-api.server";
 
@@ -146,17 +158,23 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
     const standaloneAccessCodes = yield* StandaloneAccessCodeAdministration;
     const mutationIdempotency = yield* CliMutationIdempotency;
     const productDetailsBackfill = yield* ReservationProductDetailsBackfill;
-    // The administrator account the authenticated session acts as.
-    const sessionAdministrator = CurrentCliSession.pipe(
-      Effect.flatMap((session) =>
-        authentication.sessionAdministrator(session.id)
-      ),
-      mapServiceFailure
-    );
     return handlers
       .handle("getOverview", () =>
-        administration.loadOverviewSource().pipe(
-          Effect.flatMap((source) => administration.loadOverview(source)),
+        Effect.all(
+          {
+            overview: administration
+              .loadOverviewSource()
+              .pipe(
+                Effect.flatMap((source) => administration.loadOverview(source))
+              ),
+            refundsNeeded: administration.countReservationsNeedingRefund(),
+          },
+          { concurrency: "unbounded" }
+        ).pipe(
+          Effect.map(({ overview, refundsNeeded }) => ({
+            ...overview,
+            refundAttention: { unavailable: false, value: refundsNeeded },
+          })),
           mapServiceFailure
         )
       )
@@ -192,9 +210,9 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
       .handle(
         "mutateReservationAccess",
         Effect.fn(function* ({ params, payload }) {
-          const session = yield* CurrentCliSession;
+          const caller = yield* CurrentAdministrationCaller;
           const request = {
-            sessionId: session.id,
+            scope: mutationScopeOf(caller.channel),
             requestId: payload.requestId,
             mutation: {
               kind: "reservation-access" as const,
@@ -364,6 +382,11 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
           { concurrency: "unbounded" }
         ).pipe(mapServiceFailure)
       )
+      .handle("getCustomerReservationActivity", ({ params }) =>
+        administration
+          .loadCustomerReservationActivity(params.customerId)
+          .pipe(mapServiceFailure)
+      )
       .handle("listCustomerReservations", ({ params, query }) =>
         administration
           .loadCustomerReservations({
@@ -376,6 +399,12 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
         discounts
           .loadDashboard()
           .pipe(Effect.map(toCliDiscountDashboard), mapServiceFailure)
+      )
+      .handle("listDiscountGroups", () =>
+        discounts.listDiscountGroups().pipe(
+          Effect.map((discountGroups) => ({ discountGroups })),
+          mapServiceFailure
+        )
       )
       .handle("getDiscountCode", ({ params }) =>
         discounts.loadCodeDetail({ codeId: params.codeId }).pipe(
@@ -425,14 +454,26 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
           mapAdministrationApiFailure(mapInvoiceReadFailure)
         )
       )
+      .handle("getInvoiceCreationDefaults", () =>
+        invoices.getCreationDefaults().pipe(mapServiceFailure)
+      )
+      .handle(
+        "previewInvoice",
+        Effect.fn(function* ({ payload }) {
+          const { actor } = yield* CurrentAdministrationCaller;
+          return yield* invoices
+            .preview(payload, { source: "dhw-cli", administrator: actor })
+            .pipe(mapAdministrationApiFailure(mapInvoicePreviewFailure));
+        })
+      )
       .handle(
         "createInvoice",
         Effect.fn(function* ({ payload }) {
-          const administrator = yield* sessionAdministrator;
+          const { actor, channel } = yield* CurrentAdministrationCaller;
           return yield* invoices
             .create(payload, {
-              source: "dhw-cli",
-              administrator,
+              source: provenanceSourceOf(channel),
+              administrator: actor,
             })
             .pipe(mapAdministrationApiFailure(mapInvoiceMutationFailure));
         })
@@ -440,13 +481,12 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
       .handle(
         "createStandaloneAccessCode",
         Effect.fn(function* ({ payload }) {
-          const session = yield* CurrentCliSession;
-          const administrator = yield* sessionAdministrator;
+          const caller = yield* CurrentAdministrationCaller;
           const requestId = Schema.decodeUnknownSync(CliMutationRequestId)(
             payload.attemptId
           );
           const request = {
-            sessionId: session.id,
+            scope: mutationScopeOf(caller.channel),
             requestId,
             mutation: {
               kind: "standalone-access-code" as const,
@@ -460,8 +500,8 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
           const executeCreation = standaloneAccessCodes
             .create({
               attemptId: payload.attemptId,
-              actor: administrator,
-              source: "dhw-cli",
+              actor: caller.actor,
+              source: provenanceSourceOf(caller.channel),
               request: payload.input,
               providerCredentialRemovedAttemptId:
                 payload.providerCredentialRemovedAttemptId,
@@ -492,7 +532,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                         "Standalone access-code mutation-ledger completion failed after creation concluded",
                         {
                           requestId,
-                          sessionId: session.id,
+                          channel: caller.channel,
                           outcome: outcome.outcome,
                           cause,
                         }
@@ -570,18 +610,18 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
       .handle(
         "listSessions",
         Effect.fn(function* () {
-          const administrator = yield* sessionAdministrator;
+          const { actor } = yield* CurrentAdministrationCaller;
           return yield* authentication
-            .listSessions(administrator.accountId)
+            .listSessions(actor.accountId)
             .pipe(mapServiceFailure);
         })
       )
       .handle(
         "mutateDiscounts",
         Effect.fn(function* ({ payload }) {
-          const session = yield* CurrentCliSession;
+          const caller = yield* CurrentAdministrationCaller;
           const request = {
-            sessionId: session.id,
+            scope: mutationScopeOf(caller.channel),
             requestId: payload.requestId,
             mutation: payload.mutation,
           };
@@ -639,10 +679,10 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
       .handle(
         "renameSession",
         Effect.fn(function* ({ params, payload }) {
-          const administrator = yield* sessionAdministrator;
+          const { actor } = yield* CurrentAdministrationCaller;
           const changed = yield* authentication
             .renameSession({
-              owner: administrator.accountId,
+              owner: actor.accountId,
               sessionId: params.sessionId,
               clientName: payload.clientName,
             })
@@ -658,10 +698,10 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
       .handle(
         "revokeSession",
         Effect.fn(function* ({ params }) {
-          const administrator = yield* sessionAdministrator;
+          const { actor } = yield* CurrentAdministrationCaller;
           const changed = yield* authentication
             .revoke({
-              owner: administrator.accountId,
+              owner: actor.accountId,
               sessionId: params.sessionId,
             })
             .pipe(mapServiceFailure);
@@ -693,6 +733,48 @@ const CliBearerAuthenticationLive = Layer.effect(
   })
 );
 
+/**
+ * Authenticates a CLI session's bearer for an administration operation and
+ * provides its caller: the session's approving administrator, on the CLI
+ * session channel. The session and the grant are read on every request.
+ */
+export const CliSessionAdministrationAuthenticationLive = Layer.effect(
+  AdministrationAuthentication,
+  Effect.gen(function* () {
+    const authentication = yield* CliAuthentication;
+    return {
+      bearer: (httpEffect, { credential }) =>
+        authentication
+          .authenticateSession(`Bearer ${Redacted.value(credential)}`)
+          .pipe(
+            Effect.flatMap((session) =>
+              authentication.sessionAdministrator(session.id).pipe(
+                Effect.map((actor) => ({
+                  actor,
+                  channel: {
+                    _tag: "CliSession" as const,
+                    sessionId: session.id,
+                  },
+                }))
+              )
+            ),
+            mapAdministrationApiFailure((cause) =>
+              cause instanceof CliSessionUnauthorized
+                ? cause
+                : makeServiceUnavailable()
+            ),
+            Effect.flatMap((caller) =>
+              Effect.provideService(
+                httpEffect,
+                CurrentAdministrationCaller,
+                caller
+              )
+            )
+          ),
+    } satisfies AdministrationAuthentication["Service"];
+  })
+);
+
 const mapDiscountMutationFailure = (
   cause: Effect.Error<ReturnType<typeof executeDiscountAdminMutation>>
 ) =>
@@ -721,6 +803,18 @@ const mapInvoiceReadFailure = (
     Match.tag(
       "InvoiceAdministrationNotFoundError",
       () => new CliResourceNotFound({ message: "The invoice was not found." })
+    ),
+    Match.orElse(makeServiceUnavailable)
+  );
+
+const mapInvoicePreviewFailure = (
+  cause: Effect.Error<ReturnType<InvoiceAdministration["preview"]>>
+) =>
+  Match.value(cause).pipe(
+    Match.tag(
+      "InvoiceAdministrationCustomerError",
+      "ManualInvoiceValidationError",
+      ({ message }) => new CliMutationRejected({ message })
     ),
     Match.orElse(makeServiceUnavailable)
   );
@@ -915,6 +1009,18 @@ const toCliVoucherDetail = (detail: AdminVoucherDetail) => ({
   claims: detail.claims.map(toCliVoucherClaim),
 });
 
+/**
+ * The provenance source invoices and access-code events record for an
+ * administration channel.
+ */
+const provenanceSourceOf = (channel: AdministrationChannel) =>
+  Match.value(channel).pipe(
+    Match.tagsExhaustive({
+      CliSession: () => "dhw-cli" as const,
+      AssistantConnection: () => "assistant" as const,
+    })
+  );
+
 const noStore = HttpRouter.middleware(
   (effect) =>
     Effect.map(effect, (response) =>
@@ -927,40 +1033,81 @@ const noStore = HttpRouter.middleware(
   { global: true }
 );
 
-const WorkspaceAdminApiLive = Layer.mergeAll(
-  HttpApiBuilder.layer(WorkspaceAdminApi).pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        AdminCliApiHandlers,
-        AdminCliAdministrationApiHandlers,
-        AdminCliCampaignsApiHandlers,
-        AdminCliAutomationsApiHandlers,
-        AdminCliAdministratorsApiHandlers
+/**
+ * The administration API's HTTP app, with the given authentication for its
+ * operations and the given client compatibility check. Each call builds its
+ * own router, group handlers and global middleware: group handlers capture
+ * the middleware they were built with, so instances sharing the Workspace
+ * memo map must not share them. The domain services, and the action log
+ * that records every state-changing operation, come from the caller.
+ */
+export const makeWorkspaceAdminApiLayer = <R>({
+  authentication,
+  clientCompatibility,
+}: {
+  readonly authentication: Layer.Layer<AdministrationAuthentication, never, R>;
+  readonly clientCompatibility: Layer.Layer<CliClientCompatibility>;
+}) =>
+  Layer.mergeAll(
+    HttpApiBuilder.layer(WorkspaceAdminApi).pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.fresh(AdminCliApiHandlers),
+          Layer.fresh(AdminCliAdministrationApiHandlers),
+          Layer.fresh(AdminCliCampaignsApiHandlers),
+          Layer.fresh(AdminCliAutomationsApiHandlers),
+          Layer.fresh(AdminCliAdministratorsApiHandlers)
+        )
+      ),
+      Layer.provide(
+        Layer.mergeAll(
+          CliBearerAuthenticationLive,
+          authentication,
+          clientCompatibility,
+          AdministrationActionRecordLive
+        )
       )
     ),
-    Layer.provide(CliBearerAuthenticationLive),
-    Layer.provide(CliClientCompatibilityLive),
+    Layer.fresh(noStore)
+  ).pipe(
+    // Overrides the router `HttpRouter.toWebHandler` provides, which the
+    // memo map would share between instances.
+    Layer.provideMerge(Layer.fresh(HttpRouter.layer))
+  );
+
+/** The Workspace services behind the administration API. */
+const provideWorkspaceAdminApiServices = <A, E, R>(
+  layer: Layer.Layer<A, E, R>
+) =>
+  layer.pipe(
     Layer.provide(AdministrationService.Live),
     Layer.provide(ReservationAdministrationService.Live),
     Layer.provide(ReservationProductDetailsBackfill.Live),
+    Layer.provide(AdministratorRoster.Live),
     Layer.provide(LegacyAdministratorBackfill.Live),
     Layer.provide(ReservationAccessAdministration.Live),
     Layer.provide(DiscountAdministration.Live),
     Layer.provide(InvoiceAdministrationService.Live),
     Layer.provide(StandaloneAccessCodeAdministration.Live),
     Layer.provide(CliMutationIdempotency.Live),
+    Layer.provide(AdministrationActionLog.Live),
     Layer.provide(CampaignOperations.Live),
     Layer.provide(CliAuthenticationAdmission.Default),
     Layer.provide(CliAuthentication.Live)
-  ),
-  noStore,
-  // This handler runs outside the route's Effect runtime, so it needs the
-  // censoring Workspace logger and tracer. Building with the Workspace memo
-  // map reuses the instance the route runtime already built.
-  WorkspaceObservabilityLive
-).pipe(Layer.provide(NodeHttpServer.layerHttpServices));
+  );
 
 export const handleWorkspaceAdminApiRequest = HttpRouter.toWebHandler(
-  WorkspaceAdminApiLive,
+  Layer.mergeAll(
+    provideWorkspaceAdminApiServices(
+      makeWorkspaceAdminApiLayer({
+        authentication: CliSessionAdministrationAuthenticationLive,
+        clientCompatibility: CliClientCompatibilityLive,
+      })
+    ),
+    // This handler runs outside the route's Effect runtime, so it needs the
+    // censoring Workspace logger and tracer. Building with the Workspace memo
+    // map reuses the instance the route runtime already built.
+    WorkspaceObservabilityLive
+  ).pipe(Layer.provide(NodeHttpServer.layerHttpServices)),
   { disableLogger: true, memoMap: workspaceMemoMap }
 ).handler;

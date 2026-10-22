@@ -10,6 +10,7 @@ import {
   type workspaceClientEnvSchema,
 } from "./client-env.schema";
 import { parseBetterAuthSecrets } from "./features/account/backend/auth/auth-secrets";
+import { reviewAccountCredentialsSchema } from "./features/account/backend/auth/review-account-credentials";
 import {
   postHogFeatureFlagOverridesEnvironmentCheck,
   postHogFeatureFlagOverridesSchema,
@@ -159,6 +160,8 @@ export const workspaceServerEnvSchema = Schema.Struct({
   IGLOOHOME_CLIENT_SECRET: optionalNonEmptyStringSchema,
   IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID: nonEmptyStringSchema,
   RESEND_WEBHOOK_SECRET: nonEmptyStringSchema,
+  // App-directory review logins, the only password sign-ins.
+  REVIEW_ACCOUNT_CREDENTIALS: toEnvSchema(reviewAccountCredentialsSchema),
   CHECKOUT_PAY_STATE_KEYS: nonEmptyStringSchema,
   CHECKOUT_RETURN_STATE_TOKEN_SECRET: toEnvSchema(
     Schema.optional(Schema.String.check(Schema.isMinLength(32)))
@@ -174,6 +177,12 @@ export const workspaceServerEnvSchema = Schema.Struct({
   NEXI_API_ORIGIN: urlEnvSchema,
   NEXI_CHECKOUT_CURRENCY_OVERRIDE: toEnvSchema(
     Schema.optional(Schema.Literal("EUR"))
+  ),
+  // The ChatGPT app directory's domain verification token, served at
+  // `/.well-known/openai-apps-challenge`. Trimmed so a pasted line break
+  // doesn't change the served token.
+  OPENAI_APPS_CHALLENGE_TOKEN: toEnvSchema(
+    Schema.optional(Schema.Trim.check(Schema.isNonEmpty()))
   ),
   POSTHOG_SERVICE_NAME: toEnvSchema(
     Schema.NonEmptyString.pipe(

@@ -1,15 +1,26 @@
 import type { CallToolResult } from "@modelcontextprotocol/client";
 import {
   AppBridge,
+  type McpUiHostContext,
+  type McpUiStyles,
+  type McpUiTheme,
   PostMessageTransport,
 } from "@modelcontextprotocol/ext-apps/app-bridge";
 import type { Schema } from "effect";
+
+/** The host context fields the view reads. */
+type BookingHostSettings = {
+  readonly locale?: string;
+  readonly theme?: McpUiTheme;
+  /** Hosts send only the style variables they define. */
+  readonly styleVariables?: Partial<McpUiStyles>;
+};
 
 /** What the test hands the host page before this script runs. */
 type BookingHarness = {
   /** The built view, as `resources/read` serves it. */
   readonly html: string;
-  readonly hostLocale: string;
+  readonly host: BookingHostSettings;
   /** Whether the host declares `openLinks`. */
   readonly opensLinks: boolean;
   readonly toolArguments: Schema.JsonObject;
@@ -28,13 +39,26 @@ declare global {
     readonly openBookingLink: (url: string) => Promise<void>;
     /** Records the view's `window.openai.openExternal`; the test exposes it. */
     readonly openBookingExternal: NonNullable<Window["openai"]>["openExternal"];
+    /** Changes the host context, as a host does when its theme changes. */
+    readonly changeBookingHost: (changes: BookingHostSettings) => void;
   }
 }
 
 // A minimal MCP Apps host: the view runs in a sandboxed frame without the
 // page's origin, as hosts run it, and talks to the host over postMessage.
-const { html, hostLocale, opensLinks, toolArguments, toolResult } =
+const { html, host, opensLinks, toolArguments, toolResult } =
   window.bookingHarness;
+
+// The spec's type lists every style variable, though hosts send a subset.
+const toHostContext = ({
+  styleVariables,
+  ...context
+}: BookingHostSettings): McpUiHostContext => ({
+  ...context,
+  ...(styleVariables && {
+    styles: { variables: styleVariables as McpUiStyles },
+  }),
+});
 const frame = document.createElement("iframe");
 frame.setAttribute("sandbox", "allow-scripts");
 frame.title = "Booking view";
@@ -47,7 +71,7 @@ if (view) {
     null,
     { name: "booking-harness", version: "1.0.0" },
     { serverTools: {}, ...(opensLinks && { openLinks: {} }) },
-    { hostContext: { locale: hostLocale } }
+    { hostContext: toHostContext(host) }
   );
   bridge.oncalltool = ({ name, arguments: args = {} }) =>
     window.callBookingTool(name, args as Schema.JsonObject);
@@ -63,6 +87,13 @@ if (view) {
       .sendToolInput({ arguments: toolArguments })
       .then(() => bridge.sendToolResult(toolResult));
   };
+  let settings = host;
+  Object.assign(window, {
+    changeBookingHost: (changes: BookingHostSettings) => {
+      settings = { ...settings, ...changes };
+      bridge.setHostContext(toHostContext(settings));
+    },
+  });
   void bridge.connect(new PostMessageTransport(view, view));
   frame.srcdoc = html;
 }

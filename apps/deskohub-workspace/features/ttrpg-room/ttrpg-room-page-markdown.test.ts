@@ -49,7 +49,7 @@ describe.each(locales)("ttrpgRoomPageMarkdown in %s", (locale) => {
     );
     expect(barContact.hash).toBe("#contact-form");
     expect(workspaceUrl).toBe(
-      `https://workspace.deskohub.cz/${locale}/reservation/meeting-room`
+      "https://workspace.deskohub.cz/reservation/meeting-room"
     );
   });
 });

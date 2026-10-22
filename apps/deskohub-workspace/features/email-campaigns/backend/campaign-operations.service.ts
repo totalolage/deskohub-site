@@ -28,6 +28,10 @@ import { renderCampaignEmailPreview } from "../body/render-campaign-email-previe
 import { CampaignService } from "./campaign.service";
 import { CampaignAudienceService } from "./campaign-audience.service";
 import {
+  CampaignEmailConfig,
+  toCampaignSettings,
+} from "./campaign-email.config";
+import {
   type CampaignOperationCause,
   toOperationError,
 } from "./campaign-operation-errors";
@@ -367,6 +371,12 @@ const makeCampaignOperationHandlers = Effect.gen(function* () {
       campaigns.delete(campaignId).pipe(Effect.as({ id: campaignId })),
     previewCampaignRecipients: ({ campaignId }) =>
       previewCampaignRecipients(campaignId),
+    // Resolved per call, so a deployment without campaign email still
+    // serves every other operation.
+    getCampaignSettings: () =>
+      toCampaignSettings(
+        CampaignEmailConfig.pipe(Effect.provide(CampaignEmailConfig.Default))
+      ),
     testSendCampaign: ({ campaignId, recipients: extraRecipients }) =>
       sending.testSend({ campaignId, extraRecipients }).pipe(
         Effect.map((result) => ({

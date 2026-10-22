@@ -1,9 +1,18 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationActorEmail,
+  AdministrationCustomerReservationActivity,
   AdministrationDiscountCodeId,
+  AdministrationDiscountGroupList,
+  AdministrationDotyposCustomerId,
+  AdministrationInvoiceCreateInput,
+  AdministrationInvoiceCreationDefaults,
   AdministrationLegacyUsername,
+  AdministrationOverview,
   type AdministrationReservationDetailType,
   AdministrationStandaloneAccessCodeAttemptId,
   type AdministrationStandaloneAccessCodeAttemptIdType,
@@ -35,6 +44,32 @@ import { dhwCommand } from "./command";
 import { DhwConfig } from "./config/dhw-config.service";
 
 const syntheticEmail = testEmailAddress("synthetic");
+
+const previewInvoiceInput = Schema.decodeUnknownSync(
+  AdministrationInvoiceCreateInput
+)({
+  invoiceId: "01980000-0000-7000-8000-000000000019",
+  customer: {
+    kind: "new",
+    details: {
+      kind: "person",
+      email: syntheticEmail,
+      firstName: "Synthetic",
+      lastName: "Customer",
+      address: {
+        line1: "Test street 1",
+        city: "Prague",
+        postalCode: "100 00",
+        country: "CZ",
+      },
+    },
+  },
+  locale: "cs-CZ",
+  serviceDate: "2026-08-10",
+  payment: { status: "due", date: "2026-08-24" },
+  currency: "CZK",
+  lines: [{ description: "Synthetic service", price: "1000" }],
+});
 
 const accessToken = Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43));
 const sessionId = Schema.decodeUnknownSync(CliSessionId)(
@@ -182,6 +217,154 @@ describe("dhw mutation commands", () => {
       expect.objectContaining({ invoiceId }),
       expect.objectContaining({ invoiceId }),
     ]);
+  });
+
+  test("previews an invoice from a strict input file and writes the PDF", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "dhw-command-invoice-"));
+    const inputPath = join(directory, "invoice.json");
+    const outputPath = join(directory, "preview.pdf");
+    const pdf = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 55]);
+    const previews: unknown[] = [];
+    const { layer, output } = makeCommandLayer({
+      previewInvoice: (_accessToken, input) =>
+        Effect.sync(() => {
+          previews.push(input);
+          return pdf;
+        }),
+    });
+    await writeFile(inputPath, JSON.stringify(previewInvoiceInput));
+
+    try {
+      await runCommand(
+        [
+          "--json",
+          "invoices",
+          "preview",
+          "--input",
+          inputPath,
+          "--output",
+          outputPath,
+        ],
+        layer
+      ).pipe(Effect.runPromise);
+
+      expect(previews).toEqual([previewInvoiceInput]);
+      expect(await readFile(outputPath)).toEqual(Buffer.from(pdf));
+      expect(JSON.parse(output.join(""))).toEqual({
+        invoiceId: previewInvoiceInput.invoiceId,
+        path: outputPath,
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects invoice preview input with an unknown property before the API call", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "dhw-command-invoice-"));
+    const inputPath = join(directory, "invoice.json");
+    const previews: unknown[] = [];
+    const { layer } = makeCommandLayer({
+      previewInvoice: (_accessToken, input) =>
+        Effect.sync(() => {
+          previews.push(input);
+          return new Uint8Array();
+        }),
+    });
+    await writeFile(
+      inputPath,
+      JSON.stringify({ ...previewInvoiceInput, unknownProperty: true })
+    );
+
+    try {
+      const error = await runCommand(
+        ["--json", "invoices", "preview", "--input", inputPath],
+        layer
+      ).pipe(Effect.flip, Effect.runPromise);
+
+      expect(error).toMatchObject({ _tag: "InvalidMutationInputError" });
+      expect(previews).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("prints invoice creation defaults as JSON", async () => {
+    const defaults = Schema.decodeUnknownSync(
+      AdministrationInvoiceCreationDefaults
+    )({
+      currencies: [{ code: "CZK", exponent: 2, name: "Czech koruna" }],
+      defaultCurrency: "CZK",
+      defaultServiceDate: "2026-08-10",
+      defaultDueDate: "2026-08-24",
+      suggestedVariableSymbol: "260810",
+    });
+    const { layer, output } = makeCommandLayer({
+      getInvoiceCreationDefaults: () => Effect.succeed(defaults),
+    });
+
+    await runCommand(["--json", "invoices", "defaults"], layer).pipe(
+      Effect.runPromise
+    );
+
+    expect(JSON.parse(output.join(""))).toEqual(defaults);
+  });
+
+  test("passes a decoded customer ID to the activity command and prints its JSON", async () => {
+    const customerId = "customer-1";
+    const decodedCustomerId = Schema.decodeUnknownSync(
+      AdministrationDotyposCustomerId
+    )(customerId);
+    const activity = Schema.decodeUnknownSync(
+      AdministrationCustomerReservationActivity
+    )({
+      from: "2026-08-01",
+      to: "2026-08-02",
+      dates: [{ date: "2026-08-01", count: 2, category: "meeting-room" }],
+    });
+    const requestedCustomerIds: AdministrationDotyposCustomerId[] = [];
+    const { layer, output } = makeCommandLayer({
+      getCustomerReservationActivity: (_accessToken, decodedCustomerId) =>
+        Effect.sync(() => {
+          requestedCustomerIds.push(decodedCustomerId);
+          return activity;
+        }),
+    });
+
+    await runCommand(
+      ["--json", "customers", "activity", customerId],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(requestedCustomerIds).toEqual([decodedCustomerId]);
+    expect(JSON.parse(output.join(""))).toEqual(activity);
+  });
+
+  test("includes refund attention in overview JSON", async () => {
+    const overview = Schema.decodeUnknownSync(AdministrationOverview)({
+      today: { completed: 1, unavailable: false, value: 2 },
+      upcoming: { completed: 3, unavailable: false, value: 4 },
+      lastSevenDays: { completed: 5, unavailable: false, value: 6 },
+      uniqueCustomers: {
+        customers: [],
+        unavailable: false,
+        value: 7,
+      },
+      newCustomers: {
+        customers: [],
+        unavailable: false,
+        value: 8,
+      },
+      refundAttention: { unavailable: false, value: 9 },
+    });
+    const { layer, output } = makeCommandLayer({
+      getOverview: () => Effect.succeed(overview),
+    });
+
+    await runCommand(["--json", "overview"], layer).pipe(Effect.runPromise);
+
+    expect(JSON.parse(output.join("")).refundAttention).toEqual(
+      overview.refundAttention
+    );
   });
 
   test("requires explicit confirmation for non-interactive revocation", async () => {
@@ -1155,6 +1338,21 @@ describe("dhw mutation commands", () => {
     expect(accessMutations).toHaveLength(0);
   });
 
+  test("prints discount groups as the API result in JSON mode", async () => {
+    const discountGroups = Schema.decodeUnknownSync(
+      AdministrationDiscountGroupList
+    )({ discountGroups: [{ id: "group-1", name: "Community" }] });
+    const { layer, output } = makeCommandLayer({
+      listDiscountGroups: () => Effect.succeed(discountGroups),
+    });
+
+    await runCommand(["--json", "discounts", "groups"], layer).pipe(
+      Effect.runPromise
+    );
+
+    expect(JSON.parse(output.join(""))).toEqual(discountGroups.discountGroups);
+  });
+
   test("rejects percentages that cannot be represented as whole basis points", async () => {
     const { layer, mutations } = makeCommandLayer();
 
@@ -1285,6 +1483,11 @@ const makeCommandLayer = ({
   clear = Effect.succeed(true),
   createInvoice = () => Effect.die("not used"),
   createStandaloneAccessCode = () => Effect.die("not used"),
+  getCustomerReservationActivity = () => Effect.die("not used"),
+  getInvoiceCreationDefaults = () => Effect.die("not used"),
+  getOverview = () => Effect.die("not used"),
+  listDiscountGroups = () => Effect.die("not used"),
+  previewInvoice = () => Effect.die("not used"),
   getReservation = () =>
     Effect.succeed({
       accessGrant: { updatedAt: "2026-08-10T10:00:00.000Z" },
@@ -1299,6 +1502,11 @@ const makeCommandLayer = ({
   readonly clear?: AuthenticationService["Service"]["clear"];
   readonly createInvoice?: WorkspaceAdminApiClient["Service"]["createInvoice"];
   readonly createStandaloneAccessCode?: WorkspaceAdminApiClient["Service"]["createStandaloneAccessCode"];
+  readonly getCustomerReservationActivity?: WorkspaceAdminApiClient["Service"]["getCustomerReservationActivity"];
+  readonly getInvoiceCreationDefaults?: WorkspaceAdminApiClient["Service"]["getInvoiceCreationDefaults"];
+  readonly getOverview?: WorkspaceAdminApiClient["Service"]["getOverview"];
+  readonly listDiscountGroups?: WorkspaceAdminApiClient["Service"]["listDiscountGroups"];
+  readonly previewInvoice?: WorkspaceAdminApiClient["Service"]["previewInvoice"];
   readonly getReservation?: WorkspaceAdminApiClient["Service"]["getReservation"];
   readonly authenticatedSession?: CliSessionType;
   readonly revokeSession?: WorkspaceAdminApiClient["Service"]["revokeSession"];
@@ -1312,6 +1520,7 @@ const makeCommandLayer = ({
     readonly input: AdministrationStandaloneAccessCodeCreateInputType;
     readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptIdType;
   }> = [];
+  const output: string[] = [];
   const api = Layer.succeed(WorkspaceAdminApiClient, {
     ...({} as WorkspaceAdminApiClient["Service"]),
     backfillLegacyAdministrator,
@@ -1338,7 +1547,11 @@ const makeCommandLayer = ({
           providerCredentialRemovedAttemptId
         );
       }),
+    getCustomerReservationActivity,
+    getInvoiceCreationDefaults,
+    getOverview,
     getReservation,
+    listDiscountGroups,
     mutateDiscounts: (_accessToken, _requestId, mutation) =>
       Effect.sync(() => {
         mutations.push(mutation);
@@ -1385,8 +1598,15 @@ const makeCommandLayer = ({
           updatedAt: timestamp,
         };
       }),
+    previewInvoice,
     revokeSession,
   });
+  const console = Layer.succeed(Console.Console, {
+    ...globalThis.console,
+    log: (...args: ReadonlyArray<unknown>) => {
+      output.push(args.join(" "));
+    },
+  } satisfies Console.Console);
   const authentication = Layer.succeed(AuthenticationService, {
     current: Effect.succeed(
       Option.some({
@@ -1412,7 +1632,9 @@ const makeCommandLayer = ({
     layer: Layer.mergeAll(
       api,
       authentication,
+      console,
       AccessCodeAttemptStore.Default
     ).pipe(Layer.provideMerge(config), Layer.provideMerge(BunServices.layer)),
+    output,
   };
 };

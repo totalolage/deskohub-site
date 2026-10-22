@@ -23,6 +23,7 @@ import { ReferralService } from "@/features/referrals";
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
 import { ReferralFeatureFlagServiceMock } from "@/features/referrals/referral-feature-flag.service.mock";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
+import { NoReviewAccounts } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type CustomerAccountId,
@@ -255,7 +256,7 @@ const completionLayer = (options: {
   );
   return Layer.mergeAll(
     CustomerProfileService.Default.pipe(
-      Layer.provide(Layer.mergeAll(links, dotyposAdapter))
+      Layer.provide(Layer.mergeAll(links, dotyposAdapter, NoReviewAccounts))
     ),
     referrals,
     ReferralSignupIntentRepository.Default.pipe(Layer.provide(database)),

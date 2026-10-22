@@ -232,6 +232,26 @@ describe("CheckoutStatusPage", () => {
     expect(view.container.querySelector('a[href="/en-US"]')).toBeNull();
   });
 
+  test("shows a review account's sandbox order without an access code", () => {
+    for (const presentation of ["page", "modal"] as const) {
+      const view = render(
+        <CheckoutStatusPage
+          locale="en-US"
+          presentation={presentation}
+          status={{ ...reconstructedCoworkStatus, reviewSandbox: true }}
+        />
+      );
+
+      expect(
+        view.container.querySelector("#checkout-status-review-sandbox")
+      ).not.toBeNull();
+      expect(
+        view.container.querySelector("#checkout-status-access")
+      ).toBeNull();
+      view.unmount();
+    }
+  });
+
   test("keeps support in a failed modal without reservation CTAs", () => {
     const view = render(
       <CheckoutStatusPage

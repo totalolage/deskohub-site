@@ -1,5 +1,10 @@
 import {
   type AdminCliInfoType,
+  type AdministrationAccountIdType,
+  type AdministrationAdministratorGrantInputType,
+  type AdministrationAdministratorGrantResultType,
+  type AdministrationAdministratorListType,
+  type AdministrationAdministratorRevocationResultType,
   type AdministrationBookingDetailType,
   type AdministrationBookingPageType,
   type AdministrationBookingQueryType,
@@ -17,6 +22,7 @@ import {
   type AdministrationCampaignSendInputType,
   type AdministrationCampaignSendResultType,
   type AdministrationCampaignSendStatusResultType,
+  type AdministrationCampaignSettingsType,
   type AdministrationCampaignSummaryType,
   type AdministrationCampaignTemplateKeyType,
   type AdministrationCampaignTemplatePreviewInputType,
@@ -27,6 +33,7 @@ import {
   type AdministrationCustomerDetailType,
   type AdministrationCustomerPageType,
   type AdministrationCustomerQueryType,
+  type AdministrationCustomerReservationActivityType,
   type AdministrationCustomerReservationPageType,
   type AdministrationCustomerReservationsQueryType,
   type AdministrationCustomerSearchQueryType,
@@ -34,12 +41,14 @@ import {
   type AdministrationDiscountCodeDetailType,
   type AdministrationDiscountCodeIdType,
   type AdministrationDiscountDashboardType,
+  type AdministrationDiscountGroupListType,
   type AdministrationDiscountMutationResultType,
   type AdministrationDiscountMutationType,
   type AdministrationDotyposCustomerIdType,
   type AdministrationDotyposReservationIdType,
   type AdministrationInvoiceCreateInputType,
   type AdministrationInvoiceCreateResultType,
+  type AdministrationInvoiceCreationDefaultsType,
   type AdministrationInvoiceDetailType,
   type AdministrationInvoiceIdType,
   type AdministrationInvoicePageType,
@@ -195,6 +204,33 @@ interface IWorkspaceAdminApiClient {
     AdministrationReservationProductDetailsBackfillBatchType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
+  readonly listAdministrators: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>
+  ) => Effect.Effect<
+    AdministrationAdministratorListType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly grantAdministrator: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    input: AdministrationAdministratorGrantInputType
+  ) => Effect.Effect<
+    AdministrationAdministratorGrantResultType,
+    | CliApiRequestError
+    | CliMutationRejected
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly revokeAdministrator: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    accountId: AdministrationAccountIdType
+  ) => Effect.Effect<
+    AdministrationAdministratorRevocationResultType,
+    | CliApiRequestError
+    | CliMutationRejected
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
   readonly backfillLegacyAdministrator: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
     input: AdministrationLegacyAdministratorBackfillInputType
@@ -304,6 +340,13 @@ interface IWorkspaceAdminApiClient {
     AdministrationCustomerDetailType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
+  readonly getCustomerReservationActivity: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    customerId: AdministrationDotyposCustomerIdType
+  ) => Effect.Effect<
+    AdministrationCustomerReservationActivityType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
   readonly listCustomerReservations: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
     customerId: AdministrationDotyposCustomerIdType,
@@ -316,6 +359,12 @@ interface IWorkspaceAdminApiClient {
     accessToken: Redacted.Redacted<CliAccessTokenType>
   ) => Effect.Effect<
     AdministrationDiscountDashboardType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly listDiscountGroups: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>
+  ) => Effect.Effect<
+    AdministrationDiscountGroupListType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
   readonly getDiscountCode: (
@@ -362,6 +411,22 @@ interface IWorkspaceAdminApiClient {
     Uint8Array,
     | CliApiRequestError
     | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly getInvoiceCreationDefaults: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>
+  ) => Effect.Effect<
+    AdministrationInvoiceCreationDefaultsType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly previewInvoice: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    input: AdministrationInvoiceCreateInputType
+  ) => Effect.Effect<
+    Uint8Array,
+    | CliApiRequestError
+    | CliMutationRejected
     | CliSessionUnauthorized
     | CliServiceUnavailable
   >;
@@ -482,6 +547,9 @@ interface IWorkspaceAdminApiClient {
     ReadonlyArray<AdministrationCampaignTemplateType>,
     CampaignRequestError
   >;
+  readonly getCampaignSettings: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>
+  ) => Effect.Effect<AdministrationCampaignSettingsType, CampaignRequestError>;
   readonly previewCampaignTemplate: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
     templateKey: AdministrationCampaignTemplateKeyType,
@@ -874,6 +942,22 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           Effect.mapError(sanitizeSessionError)
         )
     ),
+    getCustomerReservationActivity: Effect.fn(
+      "WorkspaceAdminApiClient.getCustomerReservationActivity"
+    )(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        customerId: AdministrationDotyposCustomerIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.getCustomerReservationActivity({
+              params: { customerId },
+            })
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
     listCustomerReservations: Effect.fn(
       "WorkspaceAdminApiClient.listCustomerReservations"
     )(
@@ -902,6 +986,15 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
         Effect.mapError(sanitizeSessionError)
       )
     ),
+    listDiscountGroups: Effect.fn("WorkspaceAdminApiClient.listDiscountGroups")(
+      (accessToken: Redacted.Redacted<CliAccessTokenType>) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.listDiscountGroups({})
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
     backfillReservationProductDetails: Effect.fn(
       "WorkspaceAdminApiClient.backfillReservationProductDetails"
     )(
@@ -916,6 +1009,43 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
             })
           ),
           Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    listAdministrators: Effect.fn("WorkspaceAdminApiClient.listAdministrators")(
+      (accessToken: Redacted.Redacted<CliAccessTokenType>) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administrators.listAdministrators({})
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    grantAdministrator: Effect.fn("WorkspaceAdminApiClient.grantAdministrator")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        input: AdministrationAdministratorGrantInputType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administrators.grantAdministrator({ payload: input })
+          ),
+          Effect.mapError(sanitizeRejectedResourceError)
+        )
+    ),
+    revokeAdministrator: Effect.fn(
+      "WorkspaceAdminApiClient.revokeAdministrator"
+    )(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        accountId: AdministrationAccountIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administrators.revokeAdministrator({
+              params: { accountId },
+            })
+          ),
+          Effect.mapError(sanitizeRejectedError)
         )
     ),
     backfillLegacyAdministrator: Effect.fn(
@@ -947,7 +1077,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
               payload: input,
             })
           ),
-          Effect.mapError(sanitizeReservationMutationError)
+          Effect.mapError(sanitizeRejectedResourceError)
         )
     ),
     getDiscountCode: Effect.fn("WorkspaceAdminApiClient.getDiscountCode")(
@@ -1012,6 +1142,25 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           Effect.mapError(sanitizeResourceError)
         )
     ),
+    getInvoiceCreationDefaults: Effect.fn(
+      "WorkspaceAdminApiClient.getInvoiceCreationDefaults"
+    )((accessToken: Redacted.Redacted<CliAccessTokenType>) =>
+      makeClient(accessToken).pipe(
+        Effect.flatMap((authorized) =>
+          authorized.administration.getInvoiceCreationDefaults({})
+        ),
+        Effect.mapError(sanitizeSessionError)
+      )
+    ),
+    previewInvoice: Effect.fn("WorkspaceAdminApiClient.previewInvoice")(
+      (accessToken, input: AdministrationInvoiceCreateInputType) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.previewInvoice({ payload: input })
+          ),
+          Effect.mapError(sanitizeRejectedError)
+        )
+    ),
     createInvoice: Effect.fn("WorkspaceAdminApiClient.createInvoice")(
       (accessToken, input: AdministrationInvoiceCreateInputType) =>
         makeClient(accessToken).pipe(
@@ -1030,7 +1179,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
               params: { invoiceId },
             })
           ),
-          Effect.mapError(sanitizeReservationMutationError)
+          Effect.mapError(sanitizeRejectedResourceError)
         )
     ),
     createStandaloneAccessCode: Effect.fn(
@@ -1227,6 +1376,16 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
       makeClient(accessToken).pipe(
         Effect.flatMap((authorized) =>
           authorized.campaigns.listCampaignTemplates({})
+        ),
+        Effect.mapError(sanitizeCampaignError)
+      )
+    ),
+    getCampaignSettings: Effect.fn(
+      "WorkspaceAdminApiClient.getCampaignSettings"
+    )((accessToken: Redacted.Redacted<CliAccessTokenType>) =>
+      makeClient(accessToken).pipe(
+        Effect.flatMap((authorized) =>
+          authorized.campaigns.getCampaignSettings({})
         ),
         Effect.mapError(sanitizeCampaignError)
       )
@@ -1749,7 +1908,17 @@ const sanitizeMutationError = (
   return sanitizeResourceError(cause);
 };
 
-const sanitizeReservationMutationError = (
+const sanitizeRejectedError = (
+  cause:
+    | CliMutationRejected
+    | CliServiceUnavailable
+    | CliSessionUnauthorized
+    | HttpClientError.HttpClientError
+    | Schema.SchemaError
+) =>
+  cause instanceof CliMutationRejected ? cause : sanitizeSessionError(cause);
+
+const sanitizeRejectedResourceError = (
   cause:
     | CliMutationRejected
     | CliResourceNotFound

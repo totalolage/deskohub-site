@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Predicate } from "effect";
 import { workspaceClientEnvSchema } from "./client-env.schema";
 import { createWorkspaceEnv } from "./env";
@@ -61,6 +62,10 @@ const environmentError = (
 
   throw new Error("Expected the workspace environment to be rejected.");
 };
+
+/** A synthetic address outside the test domain, on the reserved `.invalid` TLD. */
+const offTestDomain = (localPart: string) =>
+  testEmailAddress(localPart).replace(/\.test$/, ".invalid");
 
 describe("workspace environment schemas", () => {
   test("always requires the Igloohome target device and requires credentials only in production", () => {
@@ -173,6 +178,22 @@ describe("workspace environment schemas", () => {
     expect(productionError).not.toContain(overrides);
   });
 
+  test("serves the ChatGPT domain token without pasted surrounding whitespace", () => {
+    expect(
+      createWorkspaceEnv(
+        workspaceRuntimeEnv({ OPENAI_APPS_CHALLENGE_TOKEN: " token-value\n" })
+      ).OPENAI_APPS_CHALLENGE_TOKEN
+    ).toBe("token-value");
+    expect(
+      createWorkspaceEnv(
+        workspaceRuntimeEnv({ OPENAI_APPS_CHALLENGE_TOKEN: undefined })
+      ).OPENAI_APPS_CHALLENGE_TOKEN
+    ).toBeUndefined();
+    expect(invalidVariables({ OPENAI_APPS_CHALLENGE_TOKEN: " \n" })).toEqual([
+      "OPENAI_APPS_CHALLENGE_TOKEN",
+    ]);
+  });
+
   test("tolerates unknown override keys only outside production", () => {
     const overrides =
       '{"discount_codes":true,"loyalty_points":true,"seasonal_menu":"synthetic-variant"}';
@@ -214,6 +235,65 @@ describe("workspace environment schemas", () => {
     );
     expect(error).toContain('"discount_codes"');
     expect(error).not.toContain("synthetic-variant");
+  });
+
+  test("accepts review logins only on lowercase test addresses with long passwords", () => {
+    const password = `review-${crypto.randomUUID()}`;
+    const reviewLogins = (
+      ...logins: readonly {
+        readonly email: string;
+        readonly password: string;
+      }[]
+    ) => ({ REVIEW_ACCOUNT_CREDENTIALS: JSON.stringify(logins) });
+    const email = testEmailAddress(`reviewer-${crypto.randomUUID()}`);
+
+    expect(invalidVariables({ REVIEW_ACCOUNT_CREDENTIALS: undefined })).toEqual(
+      []
+    );
+    expect(invalidVariables(reviewLogins({ email, password }))).toEqual([]);
+    expect(
+      createWorkspaceEnv(workspaceRuntimeEnv(reviewLogins({ email, password })))
+        .REVIEW_ACCOUNT_CREDENTIALS
+    ).toEqual([{ email, password }]);
+
+    for (const rejected of [
+      reviewLogins({ email: offTestDomain("reviewer"), password }),
+      reviewLogins({ email: email.toUpperCase(), password }),
+      reviewLogins({ email: testEmailAddress("reviewer@"), password }),
+      reviewLogins({ email, password: "too-short-12" }),
+      reviewLogins({ email, password }, { email, password: `${password}-2` }),
+      { REVIEW_ACCOUNT_CREDENTIALS: "not json" },
+    ]) {
+      expect(
+        invalidVariables(rejected).some((path) =>
+          path.startsWith("REVIEW_ACCOUNT_CREDENTIALS")
+        )
+      ).toBe(true);
+    }
+  });
+
+  test("reports invalid review logins without echoing configured values", () => {
+    const password = `leaked-review-password-${crypto.randomUUID()}`;
+    const email = offTestDomain("leaked-reviewer");
+
+    for (const credentials of [
+      [{ email, password }],
+      [
+        {
+          email: testEmailAddress("leaked-reviewer"),
+          password: "leaked-short",
+        },
+      ],
+    ]) {
+      const error = environmentError({
+        REVIEW_ACCOUNT_CREDENTIALS: JSON.stringify(credentials),
+      });
+
+      expect(error).toContain(
+        "Invalid review account credential configuration."
+      );
+      expect(error).not.toContain("leaked");
+    }
   });
 
   test("reports invalid secrets without echoing configured values", () => {

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { BetterAuthOptions } from "better-auth";
+import { reviewAccountPasswordLength } from "./review-account-credentials";
 
 /**
  * Session windows fixed by the security contract: a 30-day rolling lifetime,
@@ -66,6 +67,14 @@ export const signInEmailLimit = {
 } as const;
 
 /**
+ * Password sign-in serves only app-directory review logins. It allows ten
+ * requests per client IP per ten minutes, like code sign-in.
+ */
+const betterAuthPasswordSignInRateLimit = {
+  "/sign-in/email": { window: 600, max: 10 },
+} as const;
+
+/**
  * Per-IP limits on the passkey endpoints, in line with the sign-in limits.
  * Option generation runs on every sign-in page visit (the email field's
  * passkey autofill), so it allows more requests than the ceremonies that
@@ -113,13 +122,22 @@ export const authOptions = {
   verification: {
     storeIdentifier: "hashed",
   },
+  // Only for app-directory review logins: the `/sign-in/email` guard refuses
+  // every other address, and nobody can sign up, reset, or change a password.
   emailAndPassword: {
-    enabled: false,
+    enabled: true,
+    disableSignUp: true,
+    autoSignIn: false,
+    minPasswordLength: reviewAccountPasswordLength.min,
+    maxPasswordLength: reviewAccountPasswordLength.max,
   },
   rateLimit: {
     enabled: true,
     storage: "database",
-    customRules: betterAuthPasskeyRateLimits,
+    customRules: {
+      ...betterAuthPasswordSignInRateLimit,
+      ...betterAuthPasskeyRateLimits,
+    },
   },
   advanced: {
     crossSubDomainCookies: {

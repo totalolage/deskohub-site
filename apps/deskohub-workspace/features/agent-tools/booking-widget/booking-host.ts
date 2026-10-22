@@ -1,4 +1,9 @@
-import { App } from "@modelcontextprotocol/ext-apps";
+import {
+  App,
+  applyDocumentTheme,
+  applyHostStyleVariables,
+  type McpUiHostContext,
+} from "@modelcontextprotocol/ext-apps";
 import { Context, Data, Deferred, Effect, Layer, Option, Schema } from "effect";
 import { type Locale, locales } from "@/features/i18n";
 import {
@@ -99,6 +104,17 @@ const decodeToolResult =
           Effect.mapError((cause) => new BookingRequestFailed({ cause }))
         );
 
+/**
+ * Follows the host's look: its theme and the style variables the view's
+ * colours and font come from. A context update carries only the fields that
+ * changed. The view skips the host's font CSS: its sandbox admits no
+ * resource domains, so the font stack falls back to system fonts.
+ */
+const applyHostStyles = ({ theme, styles }: McpUiHostContext) => {
+  if (theme) applyDocumentTheme(theme);
+  if (styles?.variables) applyHostStyleVariables(styles.variables);
+};
+
 const connectBookingHost = Effect.fn("bookingWidget.connect")(function* (
   app: App
 ) {
@@ -110,12 +126,31 @@ const connectBookingHost = Effect.fn("bookingWidget.connect")(function* (
     Deferred.doneUnsafe(toolInput, Effect.succeed(input));
   app.ontoolresult = (result) =>
     Deferred.doneUnsafe(toolResult, Effect.succeed(result));
+  app.onhostcontextchanged = applyHostStyles;
   yield* Effect.acquireRelease(
     Effect.tryPromise({
       try: () => app.connect(),
       catch: (cause) => new BookingRequestFailed({ cause }),
     }),
     () => Effect.promise(() => app.close())
+  );
+  yield* Effect.sync(() => applyHostStyles(app.getHostContext() ?? {}));
+  // ChatGPT may report its theme only through its own bridge, which
+  // announces a change with `openai:set_globals`. The host context's theme
+  // comes first.
+  const followChatGptTheme = () => {
+    const theme = window.openai?.theme;
+    if (theme && !app.getHostContext()?.theme) applyDocumentTheme(theme);
+  };
+  yield* Effect.acquireRelease(
+    Effect.sync(() => {
+      followChatGptTheme();
+      window.addEventListener("openai:set_globals", followChatGptTheme);
+    }),
+    () =>
+      Effect.sync(() =>
+        window.removeEventListener("openai:set_globals", followChatGptTheme)
+      )
   );
 
   const callTool = <A>(
@@ -144,7 +179,7 @@ const connectBookingHost = Effect.fn("bookingWidget.connect")(function* (
             Schema.decodeUnknownOption(toolInputSchema)(args)
           )
         )?.locale,
-        hostLocale: app.getHostContext()?.locale,
+        hostLocale: app.getHostContext()?.locale ?? window.openai?.locale,
       })
     )
   );

@@ -61,6 +61,7 @@ import type { IWorkspaceAvailabilityService } from "@/features/reservation/backe
 import type { CreateWorkspaceReservationDraftInput } from "@/features/reservation/backend/workspace-reservation.repository";
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
 import type { ReservationBillingSelectionInput } from "@/features/reservation/reservation-billing";
+import { NoReviewAccounts } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import { getSlowestSuccessfulCalendarLoad } from "@/shared/backend/config/google-calendar.config.test-utils";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
@@ -364,7 +365,9 @@ const accountAuthorityFixture = async (
   const { makeOptionalAccountActivityGuard } = await import(
     "@/features/account/backend/customer-account-activity.test-utils"
   );
-  return makeOptionalAccountActivityGuard(options);
+  const guard = makeOptionalAccountActivityGuard(options);
+  // The signed-in account is an ordinary customer, not a review account.
+  return { ...guard, layer: Layer.merge(guard.layer, NoReviewAccounts) };
 };
 
 /**

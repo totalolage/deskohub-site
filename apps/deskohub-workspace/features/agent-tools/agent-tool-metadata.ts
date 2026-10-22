@@ -1,3 +1,6 @@
+import { Match } from "effect";
+import type { AgentToolAuthorization } from "./agent-tool";
+
 /**
  * Who may call a tool: anyone, or a customer who signed in through the
  * Workspace OAuth server.
@@ -13,3 +16,30 @@ export type AgentToolAccess = (typeof agentToolAccesses)[number];
  * registration, reads it to keep only the tools it can call.
  */
 export const agentToolAccessMetaKey = "cz.deskohub.workspace/access";
+
+/**
+ * How a tool authorizes, in the `securitySchemes` form ChatGPT reads to
+ * tell anonymous tools from those that need the customer to sign in, with
+ * the scope its consent screen asks for.
+ */
+export const getAgentToolSecuritySchemes = (tool: AgentToolAuthorization) =>
+  Match.value(tool).pipe(
+    Match.discriminatorsExhaustive("access")({
+      public: () => [{ type: "noauth" }],
+      "signed-in": ({ scope }) => [{ type: "oauth2", scopes: [scope] }],
+    })
+  );
+
+/**
+ * Whether the site registers a tool as a WebMCP site tool. The page sends no
+ * access token, so only public tools answer it, and a tool whose result
+ * renders an MCP Apps view needs a host that renders the view. The browser
+ * reads both facts from `tools/list`; the server from the tool definitions.
+ */
+export const registersAsSiteTool = ({
+  access,
+  viewUri,
+}: {
+  readonly access: string | undefined;
+  readonly viewUri: string | undefined;
+}) => access === "public" && viewUri === undefined;

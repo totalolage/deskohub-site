@@ -33,6 +33,14 @@ export type StaticLocalizedPageRoute = Exclude<
 >;
 
 /**
+ * Builds a page path without a locale prefix from a route Next generated
+ * from the app directory, so typecheck proves the page exists. The proxy
+ * redirects it to the visitor's locale.
+ */
+export const getPagePath = (route: StaticLocalizedPageRoute): string =>
+  route.slice(localeRouteSegment.length);
+
+/**
  * Builds a localized page path from a route Next generated from the app
  * directory, so typecheck proves the page exists.
  */
