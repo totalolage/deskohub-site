@@ -1,5 +1,5 @@
 import { Temporal } from "@js-temporal/polyfill";
-import { Context, Effect, Schema } from "effect";
+import { Context, Effect, Option, Schema } from "effect";
 import {
   HttpApiEndpoint,
   HttpApiGroup,
@@ -18,7 +18,11 @@ import {
   writeOperation,
 } from "./administration-operation";
 import { administrationCalendarDate } from "./calendar-date";
-import { DhwVersion } from "./dhw-version";
+import {
+  DhwVersion,
+  MinimumDhwVersion,
+  OutdatedDhwRefusal,
+} from "./dhw-version";
 import { fieldWithDefault } from "./response-fields";
 import { WORKSPACE_SITE_TIME_ZONE } from "./site-time-zone";
 
@@ -378,13 +382,14 @@ export class CliBearerAuthentication extends HttpApiMiddleware.Service<
 }) {}
 
 /**
- * Rejects a `dhw` older than the operation's `MinimumDhwVersion` with
- * `CliInputInvalid`. A group that adds it must declare that error on every
- * endpoint, so released binaries decode and print the rejection.
+ * Rejects a `dhw` older than the operation's `MinimumDhwVersion` with the
+ * error its `OutdatedDhwRefusal` names. The operation must have declared
+ * that error since its first release, so released binaries decode and print
+ * the rejection.
  */
 export class CliClientCompatibility extends HttpApiMiddleware.Service<CliClientCompatibility>()(
   "@deskohub/workspace-admin-api/CliClientCompatibility",
-  { error: CliInputInvalid.schema }
+  { error: [CliInputInvalid.schema, CliServiceUnavailable.schema] }
 ) {}
 
 /**
@@ -2380,6 +2385,12 @@ export const AdminCliApi = HttpApiGroup.make("cli")
   )
   .prefix("/api/v1/cli");
 
+/**
+ * The first `dhw` that decodes every invoice `source`, including invoices
+ * issued through an AI assistant.
+ */
+export const invoicesMinimumDhwVersion = DhwVersion.make("1.25.0");
+
 export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
   .add(
     HttpApiEndpoint.get("getOverview", "/overview", {
@@ -2570,14 +2581,28 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
     HttpApiEndpoint.get("listInvoices", "/invoices", {
       query: AdministrationInvoiceQuery,
       success: AdministrationInvoicePage,
-    }).annotate(AdministrationOperationBehavior, readOperation)
+    })
+      .annotate(AdministrationOperationBehavior, readOperation)
+      // Released binaries fail to decode an invoice `source` they don't
+      // know, such as `assistant`. They declared no `CliInputInvalid` here,
+      // so an older one is refused with a `CliServiceUnavailable` it prints.
+      .annotate(MinimumDhwVersion, Option.some(invoicesMinimumDhwVersion))
+      .annotate(OutdatedDhwRefusal, "CliServiceUnavailable")
+      .middleware(CliClientCompatibility)
   )
   .add(
     HttpApiEndpoint.get("getInvoice", "/invoices/:invoiceId", {
       params: { invoiceId: AdministrationInvoiceId },
       success: AdministrationInvoiceDetail,
       error: [CliResourceNotFound.schema, CliServiceUnavailable.schema],
-    }).annotate(AdministrationOperationBehavior, readOperation)
+    })
+      .annotate(AdministrationOperationBehavior, readOperation)
+      // Released binaries fail to decode an invoice `source` they don't
+      // know, such as `assistant`. They declared no `CliInputInvalid` here,
+      // so an older one is refused with a `CliServiceUnavailable` it prints.
+      .annotate(MinimumDhwVersion, Option.some(invoicesMinimumDhwVersion))
+      .annotate(OutdatedDhwRefusal, "CliServiceUnavailable")
+      .middleware(CliClientCompatibility)
   )
   .add(
     HttpApiEndpoint.get("getInvoicePdf", "/invoices/:invoiceId/pdf", {

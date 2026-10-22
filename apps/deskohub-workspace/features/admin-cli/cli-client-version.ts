@@ -1,12 +1,14 @@
 import {
   CliClientCompatibility,
   CliInputInvalid,
+  CliServiceUnavailable,
   DhwVersion,
   dhwVersionHeader,
   MinimumDhwVersion,
+  OutdatedDhwRefusal,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, Effect, Layer, Match, Option, Schema } from "effect";
 import { HttpServerRequest } from "effect/unstable/http";
 import {
   HttpApi,
@@ -28,14 +30,38 @@ const readCliClientVersion = (
     Option.flatMap(Schema.decodeUnknownOption(DhwVersion))
   );
 
+/** An endpoint's annotations over its group's. */
+const endpointAnnotations = (
+  group: HttpApiGroup.AnyWithProps,
+  endpoint: HttpApiEndpoint.AnyWithProps
+) => Context.merge(group.annotations, endpoint.annotations);
+
 /** An endpoint's minimum, falling back to its group's. */
 const endpointMinimumDhwVersion = (
   group: HttpApiGroup.AnyWithProps,
   endpoint: HttpApiEndpoint.AnyWithProps
-) =>
-  Context.get(
-    Context.merge(group.annotations, endpoint.annotations),
-    MinimumDhwVersion
+) => Context.get(endpointAnnotations(group, endpoint), MinimumDhwVersion);
+
+/** The error the endpoint refuses an outdated `dhw` with. */
+const outdatedDhwRefusal = (refusal: (typeof OutdatedDhwRefusal)["Service"]) =>
+  Match.value(refusal).pipe(
+    Match.when(
+      "CliInputInvalid",
+      () =>
+        new CliInputInvalid({
+          message:
+            "This dhw version is too old for email campaigns. Run `dhw update`.",
+        })
+    ),
+    Match.when(
+      "CliServiceUnavailable",
+      () =>
+        new CliServiceUnavailable({
+          message:
+            "This dhw version is too old for this operation. Run `dhw update`.",
+        })
+    ),
+    Match.exhaustive
   );
 
 /**
@@ -44,18 +70,15 @@ const endpointMinimumDhwVersion = (
  */
 const ensureDhwVersionSupported = (
   clientVersion: CliClientVersion,
-  minimum: Option.Option<DhwVersion>
+  annotations: Context.Context<never>
 ) =>
-  Option.match(minimum, {
+  Option.match(Context.get(annotations, MinimumDhwVersion), {
     onNone: () => Effect.void,
     onSome: (required) =>
       Option.exists(clientVersion, (version) => gte(version, required))
         ? Effect.void
         : Effect.fail(
-            new CliInputInvalid({
-              message:
-                "This dhw version is too old for email campaigns. Run `dhw update`.",
-            })
+            outdatedDhwRefusal(Context.get(annotations, OutdatedDhwRefusal))
           ),
   });
 
@@ -90,7 +113,7 @@ export const CliClientCompatibilityLive = Layer.succeed(
       Effect.flatMap((request) =>
         ensureDhwVersionSupported(
           readCliClientVersion(request.headers),
-          endpointMinimumDhwVersion(group, endpoint)
+          endpointAnnotations(group, endpoint)
         )
       ),
       Effect.andThen(httpEffect)
