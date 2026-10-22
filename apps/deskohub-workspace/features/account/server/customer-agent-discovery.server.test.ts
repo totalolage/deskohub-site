@@ -6,11 +6,11 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { createResourceServerChallenge } from "@better-auth/oauth-provider";
 import { APIError } from "better-auth/api";
+import { agentScopes } from "@/features/account/agent-scopes";
 import {
   HOST,
   makeMemoryTestAuth,
 } from "@/features/account/backend/auth/auth-handler.test-utils";
-import { agentScopes } from "@/features/account/agent-scopes";
 
 const { auth } = makeMemoryTestAuth();
 mock.module("@/features/account/server/auth.server", () => ({ auth }));

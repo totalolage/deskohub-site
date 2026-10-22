@@ -1,12 +1,12 @@
 import type { User as BetterAuthUser } from "better-auth";
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
+import { type AgentScope, isAgentScope } from "../../agent-scopes";
 import {
   CustomerAccountAccessError,
   CustomerAccountFailureCause,
   type CustomerAccountId,
   customerAccountIdSchema,
 } from "../../customer-account";
-import { type AgentScope, isAgentScope } from "../../agent-scopes";
 import {
   type CustomerAccountSession,
   CustomerAuthentication,

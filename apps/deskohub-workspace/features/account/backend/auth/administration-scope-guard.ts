@@ -1,7 +1,7 @@
 import { APIError } from "better-auth";
 import { type createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Match, Option, Predicate } from "effect";
+import { Effect, Match, Option, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { administrationAgentScope } from "../../agent-scopes";
 import {
@@ -25,33 +25,46 @@ export type AdministrationTokenRevocation = (input: {
   readonly clientId: string;
 }) => Effect.Effect<unknown, EffectDrizzleQueryError | SqlError.SqlError>;
 
+/** The consent answer fields the guards read from the request body. */
+const consentAnswerSchema = Schema.Struct({
+  accept: Schema.optional(Schema.Boolean),
+  scope: Schema.optional(Schema.String),
+  oauth_query: Schema.optional(Schema.String),
+});
+
+/**
+ * Authorization parameters from a query or a form body. A repeated `scope`
+ * arrives as an array; every value counts.
+ */
+const authorizationParametersSchema = Schema.Struct({
+  client_id: Schema.String,
+  scope: Schema.optional(
+    Schema.Union([Schema.String, Schema.Array(Schema.String)])
+  ),
+});
+
 /** The OAuth client fields the guard reads. */
-type StoredOAuthClient = {
-  readonly skipConsent?: boolean | null;
-  readonly scopes?: ReadonlyArray<string> | null;
-};
+const storedOAuthClientSchema = Schema.Struct({
+  skipConsent: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  scopes: Schema.optional(Schema.NullOr(Schema.Array(Schema.String))),
+});
 
-type ConsentAnswer = {
-  readonly accept: boolean;
-  /** The scopes an accepted answer names; absent when it names none. */
-  readonly scopes: ReadonlyArray<string> | undefined;
-  readonly oauthQuery: string | undefined;
-};
+const decodeConsentAnswer = Schema.decodeUnknownOption(consentAnswerSchema);
+const decodeAuthorizationParameters = Schema.decodeUnknownOption(
+  authorizationParametersSchema
+);
+const decodeStoredOAuthClient = Schema.decodeUnknownOption(
+  storedOAuthClientSchema
+);
 
-const readScopes = (scope: unknown) =>
-  typeof scope === "string" ? scope.split(" ").filter(Boolean) : undefined;
+const splitScopes = (scope: string | ReadonlyArray<string>) =>
+  [scope].flat().flatMap((value) => value.split(" ").filter(Boolean));
 
-const readConsentAnswer = (body: unknown): ConsentAnswer => {
-  const fields = Predicate.isObject(body)
-    ? (body as Readonly<Record<string, unknown>>)
-    : {};
-  return {
-    accept: fields.accept === true,
-    scopes: readScopes(fields.scope),
-    oauthQuery:
-      typeof fields.oauth_query === "string" ? fields.oauth_query : undefined,
-  };
-};
+/** An accepted consent answer, if the request carries one. */
+const acceptedConsent = (request: AuthRequest) =>
+  decodeConsentAnswer(request.body).pipe(
+    Option.filter(({ accept }) => accept === true)
+  );
 
 const includesAdministration = (scopes: ReadonlyArray<string>) =>
   scopes.includes(administrationAgentScope);
@@ -108,11 +121,12 @@ const guardConsent = Effect.fn("WorkspaceAuth.guardAgentConsent")(function* (
   request: AuthRequest,
   hasAdministratorGrant: AdministratorGrantCheck
 ) {
-  const answer = readConsentAnswer(request.body);
-  if (!answer.accept) {
+  const answer = acceptedConsent(request);
+  if (Option.isNone(answer)) {
     return;
   }
-  const scopes = yield* Effect.fromNullishOr(answer.scopes).pipe(
+  const scopes = yield* Effect.fromNullishOr(answer.value.scope).pipe(
+    Effect.map(splitScopes),
     Effect.mapError(missingConsentScope)
   );
   yield* sessionHoldsAdministratorGrant(request, hasAdministratorGrant).pipe(
@@ -128,28 +142,27 @@ const guardConsent = Effect.fn("WorkspaceAuth.guardAgentConsent")(function* (
  */
 const asksForAdministrationWithoutConsent = (
   request: AuthRequest,
-  parameters: Readonly<Record<string, unknown>>
+  parameters: typeof authorizationParametersSchema.Type
 ) =>
-  Option.liftPredicate(parameters.client_id, Predicate.isString).pipe(
-    Option.match({
-      onNone: () => Effect.succeed(false),
-      onSome: (clientId) =>
-        Effect.promise(() =>
-          request.context.adapter.findOne<StoredOAuthClient>({
-            model: "oauthClient",
-            where: [{ field: "clientId", value: clientId }],
-          })
-        ).pipe(
-          Effect.map(
-            (client) =>
-              client?.skipConsent === true &&
-              includesAdministration(
-                readScopes(parameters.scope) ??
-                  client.scopes ?? [administrationAgentScope]
-              )
-          )
-        ),
+  Effect.promise(() =>
+    request.context.adapter.findOne({
+      model: "oauthClient",
+      where: [{ field: "clientId", value: parameters.client_id }],
     })
+  ).pipe(
+    Effect.map((row) =>
+      decodeStoredOAuthClient(row).pipe(
+        Option.exists(
+          (client) =>
+            client.skipConsent === true &&
+            includesAdministration(
+              parameters.scope === undefined
+                ? (client.scopes ?? [administrationAgentScope])
+                : splitScopes(parameters.scope)
+            )
+        )
+      )
+    )
   );
 
 /**
@@ -161,16 +174,12 @@ const asksForAdministrationWithoutConsent = (
  */
 const guardSkipConsentAuthorization = (request: AuthRequest) =>
   Effect.forEach(
-    [request.query, request.body].filter(Predicate.isObject),
+    [request.query, request.body].flatMap((source) =>
+      Option.toArray(decodeAuthorizationParameters(source))
+    ),
     (parameters) =>
-      asksForAdministrationWithoutConsent(
-        request,
-        parameters as Readonly<Record<string, unknown>>
-      ).pipe(
-        Effect.filterOrFail(
-          (asks) => !asks,
-          skipConsentAdministrationRefused
-        )
+      asksForAdministrationWithoutConsent(request, parameters).pipe(
+        Effect.filterOrFail((asks) => !asks, skipConsentAdministrationRefused)
       ),
     { discard: true }
   );
@@ -209,19 +218,17 @@ export const narrowAdministrationOnConsent = (
   request: AuthRequest,
   revokeUnconsentedAdministrationTokens: AdministrationTokenRevocation
 ) =>
-  Option.liftPredicate(
-    readConsentAnswer(request.body),
-    ({ accept }) => request.path === "/oauth2/consent" && accept
-  ).pipe(
+  acceptedConsent(request).pipe(
+    Option.filter(() => request.path === "/oauth2/consent"),
     Option.match({
       onNone: () => Effect.void,
-      onSome: ({ oauthQuery }) =>
+      onSome: (answer) =>
         Effect.all({
           accountId: sessionAccount(request).pipe(
             Effect.flatMap(Effect.fromOption)
           ),
           clientId: Effect.fromNullishOr(
-            new URLSearchParams(oauthQuery).get("client_id")
+            new URLSearchParams(answer.oauth_query).get("client_id")
           ),
         }).pipe(
           Effect.flatMap(revokeUnconsentedAdministrationTokens),

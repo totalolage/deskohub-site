@@ -53,7 +53,9 @@ interface IAdministratorRoster {
     readonly actor: AdministratorAccountActor;
   }) => Effect.Effect<
     { readonly changed: boolean },
-    AdministratorSelfRevocationError | EffectDrizzleQueryError | SqlError.SqlError
+    | AdministratorSelfRevocationError
+    | EffectDrizzleQueryError
+    | SqlError.SqlError
   >;
 }
 

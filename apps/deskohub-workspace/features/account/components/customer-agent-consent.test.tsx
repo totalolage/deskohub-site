@@ -28,8 +28,7 @@ const consent = mock(
   (_body: {
     readonly accept: boolean;
     readonly scope?: string;
-  }): Promise<ConsentResponse> =>
-    Promise.resolve({ data: null, error: null })
+  }): Promise<ConsentResponse> => Promise.resolve({ data: null, error: null })
 );
 
 mock.module("@/features/account/auth.client", () => ({

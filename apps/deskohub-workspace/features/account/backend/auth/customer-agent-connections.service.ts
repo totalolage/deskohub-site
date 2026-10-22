@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Option, Schema } from "effect";
-import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
 import { administrationAgentScope } from "@/features/account/agent-scopes";
+import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
 import { customerAgentConsentScopes } from "@/features/account/customer-agent-routes";
 import {
   type CustomerAccountAccessError,

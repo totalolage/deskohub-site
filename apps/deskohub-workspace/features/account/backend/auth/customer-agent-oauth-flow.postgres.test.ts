@@ -2100,9 +2100,7 @@ const administrationAccessOf = (auth: TestAuth, accessToken: string) =>
           Layer.provideMerge(
             Layer.mergeAll(
               CustomerAgentAuthorization.fromAuthority(authorityOver(auth)),
-              AccountRoleGrants.Default.pipe(
-                Layer.provide(testDatabase!.layer)
-              )
+              AccountRoleGrants.Default.pipe(Layer.provide(testDatabase!.layer))
             )
           )
         )
@@ -2194,8 +2192,11 @@ describe.skipIf(!testDatabase)(
 
       // Without a scope the provider would grant everything requested.
       expect(
-        (await postConsent(auth, customer.cookie, consentPage, { accept: true }))
-          .status
+        (
+          await postConsent(auth, customer.cookie, consentPage, {
+            accept: true,
+          })
+        ).status
       ).toBe(400);
       for (const scope of [ALL_SCOPES, "administration"]) {
         expect(
@@ -2284,9 +2285,7 @@ describe.skipIf(!testDatabase)(
 
       await revokeAdministrator(administrator.accountId);
 
-      expect(await countRows("oauth_consent", administrator.accountId)).toBe(
-        0
-      );
+      expect(await countRows("oauth_consent", administrator.accountId)).toBe(0);
       expect(await administrationAccessOf(auth, tokens.access_token)).toBe(
         "invalid-token"
       );
@@ -2527,9 +2526,7 @@ describe.skipIf(!testDatabase)(
         await administrationAccessOf(auth, administering.access_token)
       ).toBe("invalid-token");
       // The customer connection stays.
-      expect(await countRows("oauth_consent", administrator.accountId)).toBe(
-        1
-      );
+      expect(await countRows("oauth_consent", administrator.accountId)).toBe(1);
     });
 
     test("refuses a token refreshed with the administration scope once the grant is gone", async () => {
@@ -2573,28 +2570,31 @@ describe.skipIf(!testDatabase)(
         "unverified",
         `update auth."user" set email_verified = false where id = $1`,
       ],
-    ])("refuses an administrator's agent once the account is %s", async (_, update) => {
-      const agent = makeAgent();
-      const sentLinks: CapturedMagicLink[] = [];
-      const auth = makeTestAuth({
-        sentLinks,
-        clientMetadataTransport: agent.clientMetadataTransport,
-      });
-      const administrator = await signIn(auth, sentLinks);
-      await grantAdministrator(administrator.accountId);
-      const tokens = await connectAskingEverything(
-        auth,
-        administrator.cookie,
-        agent,
-        ALL_SCOPES
-      );
+    ])(
+      "refuses an administrator's agent once the account is %s",
+      async (_, update) => {
+        const agent = makeAgent();
+        const sentLinks: CapturedMagicLink[] = [];
+        const auth = makeTestAuth({
+          sentLinks,
+          clientMetadataTransport: agent.clientMetadataTransport,
+        });
+        const administrator = await signIn(auth, sentLinks);
+        await grantAdministrator(administrator.accountId);
+        const tokens = await connectAskingEverything(
+          auth,
+          administrator.cookie,
+          agent,
+          ALL_SCOPES
+        );
 
-      await testDatabase!.pool.query(update, [administrator.accountId]);
+        await testDatabase!.pool.query(update, [administrator.accountId]);
 
-      expect(await administrationAccessOf(auth, tokens.access_token)).toBe(
-        "account-unavailable"
-      );
-    });
+        expect(await administrationAccessOf(auth, tokens.access_token)).toBe(
+          "account-unavailable"
+        );
+      }
+    );
 
     test("refuses a disconnected administrator's agent", async () => {
       const agent = makeAgent();

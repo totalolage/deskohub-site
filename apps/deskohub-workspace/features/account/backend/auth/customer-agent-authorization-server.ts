@@ -5,11 +5,11 @@ import { getOAuthProviderApi } from "@better-auth/oauth-provider";
 import type { BetterAuthPlugin } from "better-auth";
 import { createAuthEndpoint } from "better-auth/api";
 import { Schema } from "effect";
+import { agentScopes, offlineAccessAgentScope } from "../../agent-scopes";
 import {
   customerAgentConsentPath,
   customerAgentSignInPath,
 } from "../../customer-agent-routes";
-import { agentScopes, offlineAccessAgentScope } from "../../agent-scopes";
 
 /**
  * OAuth endpoints a signed-in customer could otherwise call to register or

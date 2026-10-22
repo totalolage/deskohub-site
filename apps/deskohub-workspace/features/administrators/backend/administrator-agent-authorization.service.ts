@@ -1,10 +1,10 @@
 import { Context, Data, Effect, Layer, Match } from "effect";
+import { administrationAgentScope } from "@/features/account/agent-scopes";
 import {
   CustomerAgentAuthorization,
   type CustomerAgentCaller,
   customerAuthenticationForAgent,
 } from "@/features/account/backend/auth/customer-agent-authorization.service";
-import { administrationAgentScope } from "@/features/account/agent-scopes";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { AdministratorAccountActor } from "../account-role";
 import { AccountRoleGrants } from "./account-role-grants.service";
