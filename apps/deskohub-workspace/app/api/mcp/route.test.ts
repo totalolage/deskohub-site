@@ -1038,6 +1038,38 @@ describe("customer MCP route for administration tools", () => {
     expect(administrationRequests).toEqual([]);
   });
 
+  test("treats administration tools in a batch as unknown once the grant is gone", async () => {
+    accessTokens.set("administrator", "administration");
+    administratorGrant = "revoked";
+
+    const response = await route.POST(
+      new Request(mcpResource, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+          "mcp-protocol-version": legacyProtocolVersion,
+          "x-real-ip": "203.0.113.7",
+          ...bearer("administrator"),
+        },
+        body: JSON.stringify(
+          ["admin_list_sessions", "admin_revoke_session"].map((name) => ({
+            jsonrpc: "2.0",
+            id: ++requestId,
+            method: "tools/call",
+            params: {
+              name,
+              arguments: { sessionId: "0190a5c4-0000-7000-8000-000000000001" },
+            },
+          }))
+        ),
+      })
+    );
+
+    expect(response.status).toBeLessThan(500);
+    expect(administrationRequests).toEqual([]);
+  });
+
   test("runs an administration tool for an administrator's agent with its own token", async () => {
     accessTokens.set("administrator", "administration");
 

@@ -130,6 +130,10 @@ let served: Array<{
   readonly body: Schema.Json;
 }> = [];
 let authorizations: Array<string | null> = [];
+let authorizedPaths: Array<{
+  readonly path: string;
+  readonly authorization: string | null;
+}> = [];
 
 const record = (operation: string, body: Schema.Json = null) =>
   Effect.sync(() => {
@@ -194,6 +198,10 @@ const handleTestRequest = HttpRouter.toWebHandler(
 
 const transport = (request: Request) => {
   authorizations.push(request.headers.get("authorization"));
+  authorizedPaths.push({
+    path: new URL(request.url).pathname,
+    authorization: request.headers.get("authorization"),
+  });
   return handleTestRequest(request);
 };
 
@@ -234,6 +242,7 @@ const resultOf = (reply: AgentToolReply | Schema.JsonObject | false) =>
 beforeEach(() => {
   served = [];
   authorizations = [];
+  authorizedPaths = [];
 });
 
 describe("administration agent tool calls", () => {
@@ -263,6 +272,39 @@ describe("administration agent tool calls", () => {
         tool!.output["~standard"].jsonSchema.input({ target: "draft-2020-12" })
       )(reply)
     ).toMatchObject({ valid: true });
+  });
+
+  test("send concurrent calls through one client, each with its own caller's token", async () => {
+    const tool = tools.find(({ name }) => name === "admin_get_reservation");
+    const tokens = ["token-a", "token-b", "token-c", "token-d"];
+
+    await Effect.all(
+      tokens.map((token) =>
+        tool!.call(
+          { reservationId: token },
+          Option.some({ ...caller, accessToken: token })
+        )
+      ),
+      { concurrency: "unbounded" }
+    ).pipe(
+      Effect.provide(
+        AdministrationApiClient.forApi(TestApi).pipe(
+          Layer.provide(Layer.succeed(AdministrationApiTransport, transport))
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(
+      [...authorizedPaths].sort((left, right) =>
+        left.path.localeCompare(right.path)
+      )
+    ).toEqual(
+      tokens.map((token) => ({
+        path: `/reservations/${token}`,
+        authorization: `Bearer ${token}`,
+      }))
+    );
   });
 
   test("answer a list as items", async () => {
