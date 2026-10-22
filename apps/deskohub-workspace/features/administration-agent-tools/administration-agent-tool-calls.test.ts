@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationOperationBehavior,
   AdministrationOperationVariants,
@@ -422,7 +423,7 @@ describe("administration agent tool calls", () => {
       reservationId: "r-1",
       sendEmail: true,
       confirm: true,
-      actor: "someone@example.test",
+      actor: testEmailAddress("administration-tool-actor"),
     });
     const invalid = await callTool("admin_cancel_reservation", {
       reservationId: "r-1",

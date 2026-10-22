@@ -687,7 +687,7 @@ interface OperationOutcome {
 const runOperation = (tool: AdministrationOperationTool, args: Arguments) =>
   tool.toRequest(args).pipe(
     Effect.flatMap((request) =>
-      AdministrationApiClient.use((client) =>
+      Effect.flatMap(AdministrationApiClient, (client) =>
         client.call(tool.operation, request)
       ).pipe(
         Effect.mapError((error) =>

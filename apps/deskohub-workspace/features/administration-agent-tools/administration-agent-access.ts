@@ -89,5 +89,7 @@ export class AdministrationAgentAccess extends Context.Service<
 
   /** The administration tools the request's caller may see. */
   static forCaller = (caller: Option.Option<CustomerAgentCaller>) =>
-    AdministrationAgentAccess.use((access) => access.forCaller(caller));
+    Effect.flatMap(AdministrationAgentAccess, (access) =>
+      access.forCaller(caller)
+    );
 }
