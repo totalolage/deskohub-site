@@ -54,6 +54,7 @@ import {
   workspaceE2EPollIntervalMs,
   workspaceE2ETimeouts,
 } from "../timeouts";
+import { addDotyposTagCondition } from "./audience-filter-steps";
 import {
   type EmailCampaignPreviewPlan,
   planEmailCampaignPreview,
@@ -311,41 +312,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
               .fill(plan.audienceTitle, {
                 timeout: workspaceE2ETimeouts.browserAction,
               });
-            await audienceForm
-              .getByRole("button", { exact: true, name: "Add condition" })
-              .click({ timeout: workspaceE2ETimeouts.browserAction });
-            await page
-              .getByRole("menuitem", { exact: true, name: "Dotypos tags" })
-              .click({ timeout: workspaceE2ETimeouts.browserAction });
-            await audienceForm
-              .getByRole("combobox", {
-                exact: true,
-                name: "Dotypos tags match",
-              })
-              .click({ timeout: workspaceE2ETimeouts.browserAction });
-            await page
-              .getByRole("option", { exact: true, name: "is any of" })
-              .click({ timeout: workspaceE2ETimeouts.browserAction });
-            const tagEntry = audienceForm.getByRole("textbox", {
-              exact: true,
-              name: "Add tag",
-            });
-            await tagEntry.fill(plan.customerTag, {
-              timeout: workspaceE2ETimeouts.browserAction,
-            });
-            // The entry commits a tag on Enter and shows it as a removable chip.
-            await tagEntry.press("Enter", {
-              timeout: workspaceE2ETimeouts.browserAction,
-            });
-            await audienceForm
-              .getByRole("button", {
-                exact: true,
-                name: `Remove tag ${plan.customerTag}`,
-              })
-              .waitFor({
-                state: "visible",
-                timeout: workspaceE2ETimeouts.browserAction,
-              });
+            await addDotyposTagCondition(page, audienceForm, plan.customerTag);
           }
         );
         yield* browserStep(

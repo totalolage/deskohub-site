@@ -1,6 +1,7 @@
 // Cases that never open a Nexi hosted payment, longest median deployed
 // duration first.
 export const workspaceE2ENonPaymentCaseIds = [
+  "automation-reservation-booked",
   "voucher-reuse-and-exhaustion",
   "discount-code-capacity-reached",
   "referral-profile-completion-checkout",
