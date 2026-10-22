@@ -2,9 +2,9 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Option } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { revokeAdministrationCliAccess } from "@/features/admin-cli/administration-cli-access";
 import { findActiveCustomerAccountByEmail } from "@/features/account/backend/customer-account-by-email";
 import type { CustomerAccountId } from "@/features/account/customer-account";
+import { revokeAdministrationCliAccess } from "@/features/admin-cli/administration-cli-access";
 import type { AdministratorAccountActor } from "../account-role";
 import {
   type AccountRoleGrant,
@@ -107,8 +107,8 @@ export class AdministratorRoster extends Context.Service<
           }
           // Grant first: its row lock makes a concurrent CLI exchange
           // finish before the session revocation reads the sessions.
-          return yield* database.db.transaction(() =>
-            Effect.gen(function* () {
+          return yield* database.db.transaction(
+            Effect.fn(function* () {
               const revoked = yield* grants.revoke({ accountId, role });
               yield* revokeAdministrationCliAccess(accountId).pipe(
                 Effect.provideService(WorkspaceDatabase, database)

@@ -128,6 +128,7 @@ interface ICliAuthentication {
     CliApprovalRequest,
     | EffectDrizzleQueryError
     | PlatformError.PlatformError
+    | SqlError
     | CliApprovalUnavailableError
   >;
   readonly listSessions: (
@@ -286,24 +287,39 @@ export class CliAuthentication extends Context.Service<
 
         const grantToken = CliGrantToken.make(yield* makeSecret());
         const grantExpiresAt = now.add({ minutes: grantLifetimeMinutes });
-        const [approved] = yield* db
-          .update(cliAuthenticationRequests)
-          .set({
-            approvedAt: now,
-            approvedByAccountId: input.approvedBy.accountId,
-            approvedByAccountEmail: input.approvedBy.email,
-            grantToken,
-            grantExpiresAt,
-            sessionExpiresAt: toSessionExpiry(input.sessionLifetime, now),
+        const [approved] = yield* db.transaction(
+          Effect.fn(function* () {
+            // The lock makes a concurrent revoke wait and then withdraw this
+            // grant token, or makes this approval see the grant gone.
+            const approverHoldsRole = yield* roleGrants.lockHeld({
+              accountId: input.approvedBy.accountId,
+              role: "administrator",
+            });
+            if (!approverHoldsRole) {
+              return yield* new CliApprovalUnavailableError({
+                message: "The approving account isn't an administrator.",
+              });
+            }
+            return yield* db
+              .update(cliAuthenticationRequests)
+              .set({
+                approvedAt: now,
+                approvedByAccountId: input.approvedBy.accountId,
+                approvedByAccountEmail: input.approvedBy.email,
+                grantToken,
+                grantExpiresAt,
+                sessionExpiresAt: toSessionExpiry(input.sessionLifetime, now),
+              })
+              .where(
+                and(
+                  eq(cliAuthenticationRequests.id, result.request.id),
+                  isNull(cliAuthenticationRequests.approvedAt),
+                  gt(cliAuthenticationRequests.expiresAt, now)
+                )
+              )
+              .returning();
           })
-          .where(
-            and(
-              eq(cliAuthenticationRequests.id, result.request.id),
-              isNull(cliAuthenticationRequests.approvedAt),
-              gt(cliAuthenticationRequests.expiresAt, now)
-            )
-          )
-          .returning();
+        );
 
         if (!approved) {
           const latest = yield* loadRequest(input.code);

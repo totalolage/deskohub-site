@@ -59,6 +59,9 @@ const grantAdministrator = (accountId: string, grantedBy: string | null) =>
     [accountId, grantedBy]
   );
 
+const cliSecret = () =>
+  Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
+
 /** An unrevoked CLI session and an approved, unexchanged CLI request. */
 const insertCliCredentials = async (approver: AdministratorAccountActor) => {
   const sessionId = crypto.randomUUID();
@@ -68,7 +71,7 @@ const insertCliCredentials = async (approver: AdministratorAccountActor) => {
        (id, approved_by_account_id, approved_by_account_email, token_hash,
         client_name, cli_version, build_target, created_at, last_used_at)
      values ($1, $2, $3, $4, 'Roster test', '1.0.0', 'development', now(), now())`,
-    [sessionId, approver.accountId, approver.email, crypto.randomUUID()]
+    [sessionId, approver.accountId, approver.email, cliSecret()]
   );
   await testDatabase!.pool.query(
     `insert into cli_authentication_requests
@@ -80,11 +83,11 @@ const insertCliCredentials = async (approver: AdministratorAccountActor) => {
              now() + interval '5 minutes')`,
     [
       requestId,
-      crypto.randomUUID(),
-      crypto.randomUUID(),
+      cliSecret(),
+      cliSecret(),
       approver.accountId,
       approver.email,
-      crypto.randomUUID(),
+      cliSecret(),
     ]
   );
   return { sessionId, requestId };

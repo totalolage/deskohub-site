@@ -38,6 +38,7 @@ import { AdminCliAdministratorsApiHandlers } from "./administrators-api.server";
 import { UnusedCliSessionAuthentication } from "./cli-api.test-utils";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliClientCompatibilityLive } from "./cli-client-version";
+import { cliSessionLifetimeSchema } from "./contracts";
 import { CliSessionAdministrationAuthenticationLive } from "./workspace-admin-api.server";
 
 const postgresDatabase = await connectWorkspacePostgresTestDatabase();
@@ -126,8 +127,11 @@ describe.skipIf(!postgresDatabase)(
         makeCliAuthenticationSecret().pipe(Effect.provide(NodeCrypto.layer))
       );
 
-    /** A CLI request `approver` approved that the CLI hasn't exchanged yet. */
-    const insertApprovedRequest = async (approver: AdministratorAccountActor) => {
+    /**
+     * A CLI request `approver` approved that the CLI hasn't exchanged yet,
+     * or a pending one without an approver.
+     */
+    const insertRequest = async (approver?: AdministratorAccountActor) => {
       const code = await newSecret();
       const verifier = await newSecret();
       const grantToken = await newSecret();
@@ -149,33 +153,26 @@ describe.skipIf(!postgresDatabase)(
           buildTarget: "development",
           createdAt: now,
           expiresAt: now.add({ minutes: 5 }),
-          approvedAt: now,
-          approvedByAccountId: approver.accountId,
-          approvedByAccountEmail: approver.email,
-          grantToken,
-          grantExpiresAt: now.add({ minutes: 5 }),
+          ...(approver && {
+            approvedAt: now,
+            approvedByAccountId: approver.accountId,
+            approvedByAccountEmail: approver.email,
+            grantToken,
+            grantExpiresAt: now.add({ minutes: 5 }),
+          }),
         })
       );
       fixtureRequestIds.push(id);
       return { code, grantToken, verifier };
     };
 
-    const exchangeGrant = (grant: {
-      readonly code: string;
-      readonly grantToken: string;
-      readonly verifier: string;
-    }) =>
+    const runAuthentication = <A, E>(
+      operation: (
+        authentication: CliAuthentication["Service"]
+      ) => Effect.Effect<A, E>
+    ) =>
       CliAuthentication.pipe(
-        Effect.flatMap((authentication) =>
-          authentication.exchange({
-            code: CliAuthenticationCode.make(grant.code),
-            grantToken: CliGrantToken.make(grant.grantToken),
-            verifier: CliAuthenticationVerifier.make(grant.verifier),
-          })
-        ),
-        Effect.tap(({ session }) =>
-          Effect.sync(() => fixtureSessionIds.push(session.id))
-        ),
+        Effect.flatMap(operation),
         Effect.result,
         Effect.provide(
           CliAuthentication.Default.pipe(
@@ -185,6 +182,94 @@ describe.skipIf(!postgresDatabase)(
         ),
         Effect.runPromise
       );
+
+    const exchangeGrant = (grant: {
+      readonly code: string;
+      readonly grantToken: string;
+      readonly verifier: string;
+    }) =>
+      runAuthentication((authentication) =>
+        authentication
+          .exchange({
+            code: CliAuthenticationCode.make(grant.code),
+            grantToken: CliGrantToken.make(grant.grantToken),
+            verifier: CliAuthenticationVerifier.make(grant.verifier),
+          })
+          .pipe(
+            Effect.tap(({ session }) =>
+              Effect.sync(() => fixtureSessionIds.push(session.id))
+            )
+          )
+      );
+
+    /**
+     * Holds a transaction open on its own connection, as a concurrent
+     * revoke, exchange, or approval would, until `release` commits it.
+     */
+    const holdTransaction = async (
+      statements: ReadonlyArray<[string, unknown[]]>
+    ) => {
+      const client = await postgres.pool.connect();
+      await client.query("begin");
+      for (const [text, values] of statements) await client.query(text, values);
+      const {
+        rows: [holder],
+      } = await client.query<{ pid: number }>("select pg_backend_pid() as pid");
+      return {
+        /** Resolves once another connection waits on this transaction. */
+        blocking: async () => {
+          for (;;) {
+            const waiting = await postgres.pool.query(
+              "select 1 from pg_stat_activity where $1 = any(pg_blocking_pids(pid))",
+              [holder?.pid]
+            );
+            if (waiting.rowCount) return;
+            await Bun.sleep(10);
+          }
+        },
+        release: async () => {
+          await client.query("commit");
+          client.release();
+        },
+      };
+    };
+
+    /** An insert of a CLI session `owner` approved, and its bearer. */
+    const newSessionStatement = async (owner: AdministratorAccountActor) => {
+      const bearer = await newSecret();
+      const tokenHash = await Effect.runPromise(
+        digestCliAuthenticationSecret(bearer).pipe(
+          Effect.provide(NodeCrypto.layer)
+        )
+      );
+      const id = CliSessionId.make(crypto.randomUUID());
+      fixtureSessionIds.push(id);
+      const statement: [string, unknown[]] = [
+        `insert into cli_sessions
+           (id, approved_by_account_id, approved_by_account_email, token_hash,
+            client_name, cli_version, build_target, created_at, last_used_at)
+         values ($1, $2, $3, $4, 'Administrators API test', '1.0.0',
+                 'development', now(), now())`,
+        [id, owner.accountId, owner.email, tokenHash],
+      ];
+      return { bearer, statement };
+    };
+
+    const lockGrantForShare = (
+      account: AdministratorAccountActor
+    ): [string, unknown[]] => [
+      `select 1 from account_role_grants
+       where account_id = $1 and role = 'administrator' for share`,
+      [account.accountId],
+    ];
+
+    const deleteGrant = (
+      account: AdministratorAccountActor
+    ): [string, unknown[]] => [
+      `delete from account_role_grants
+       where account_id = $1 and role = 'administrator'`,
+      [account.accountId],
+    ];
 
     /**
      * The in-memory client sends no Authorization header, so this hands
@@ -399,7 +484,7 @@ describe.skipIf(!postgresDatabase)(
       const bystanderBearer = await insertSession(bystander);
       const target = await insertAdministrator();
       const targetBearer = await insertSession(target);
-      const targetGrant = await insertApprovedRequest(target);
+      const targetGrant = await insertRequest(target);
 
       const revoked = await callAs(bearer, (client) =>
         client.revokeAdministrator({ params: { accountId: target.accountId } })
@@ -432,6 +517,76 @@ describe.skipIf(!postgresDatabase)(
         failure: { _tag: "CliGrantRejected" },
       });
       expect(bystanderAfterRevoke._tag).toBe("Success");
+    });
+
+    test("a revoke waits for an in-flight CLI exchange and revokes the session it creates", async () => {
+      const actor = await insertAdministrator();
+      const bearer = await insertSession(actor);
+      const target = await insertAdministrator();
+      const exchangedSession = await newSessionStatement(target);
+      const exchange = await holdTransaction([
+        lockGrantForShare(target),
+        exchangedSession.statement,
+      ]);
+
+      const revoking = callAs(bearer, (client) =>
+        client.revokeAdministrator({ params: { accountId: target.accountId } })
+      );
+      await exchange.blocking();
+      await exchange.release();
+      const revoked = await revoking;
+      await callAs(bearer, (client) =>
+        client.grantAdministrator({ payload: { email: target.email } })
+      );
+      const exchangedAfterRegrant = await callAs(
+        exchangedSession.bearer,
+        (client) => client.listAdministrators({})
+      );
+
+      expect(revoked).toMatchObject({
+        _tag: "Success",
+        success: { outcome: "revoked" },
+      });
+      expect(exchangedAfterRegrant).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "CliSessionUnauthorized" },
+      });
+    });
+
+    test("a CLI exchange waits for an in-flight revoke and then rejects the grant", async () => {
+      const target = await insertAdministrator();
+      const targetGrant = await insertRequest(target);
+      const revoke = await holdTransaction([deleteGrant(target)]);
+
+      const exchanging = exchangeGrant(targetGrant);
+      await revoke.blocking();
+      await revoke.release();
+
+      expect(await exchanging).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "CliGrantRejected" },
+      });
+    });
+
+    test("a CLI approval waits for an in-flight revoke and then refuses", async () => {
+      const target = await insertAdministrator();
+      const pending = await insertRequest();
+      const revoke = await holdTransaction([deleteGrant(target)]);
+
+      const approving = runAuthentication((authentication) =>
+        authentication.approve({
+          code: CliAuthenticationCode.make(pending.code),
+          approvedBy: target,
+          sessionLifetime: cliSessionLifetimeSchema.cases.Never.make({}),
+        })
+      );
+      await revoke.blocking();
+      await revoke.release();
+
+      expect(await approving).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "CliApprovalUnavailableError" },
+      });
     });
 
     test("rejects a bearer that presents no session", async () => {
