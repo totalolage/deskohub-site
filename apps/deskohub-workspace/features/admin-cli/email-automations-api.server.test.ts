@@ -1,11 +1,14 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationCampaignId,
   AutomationDetail,
   AutomationPreviewId,
   AutomationRunId,
+  AutomationRunStats,
+  AutomationRunSummary,
   automationsMinimumDhwVersion,
   CliInputInvalid,
   CliMutationRejected,
@@ -251,15 +254,33 @@ describe("automation admin API", () => {
     expect(error).toMatchObject({ code: "campaign-delivery-mismatch" });
   });
 
-  test("passes the run filters from the query", async () => {
+  test("passes the run filters from the query and returns each run's contact", async () => {
     const queries: unknown[] = [];
-    await callAutomationsApi(
+    const run = Schema.decodeUnknownSync(AutomationRunSummary)({
+      runId: "01990000-0000-7000-8000-000000000003",
+      campaignId,
+      versionNumber: 2,
+      customerId: "customer-1",
+      customerName: "Ana Test",
+      customerEmail: testEmailAddress("ana"),
+      customerProfileStatus: "found",
+      triggerKind: "account-created",
+      triggerAt: "2026-10-19T08:00:00Z",
+      state: "ended",
+      stepId: "send",
+      outcome: "skipped",
+      outcomeReason: "missing-email",
+      startedAt: "2026-10-19T08:00:00Z",
+      endedAt: "2026-10-19T08:01:00Z",
+    });
+    const page = await callAutomationsApi(
       (client) =>
         client.listAutomationRuns({
           params: { campaignId },
           query: {
             state: "ended",
-            outcome: "sent",
+            outcome: "skipped",
+            skipReason: "missing-email",
             versionNumber: 2,
             limit: 20,
           },
@@ -268,7 +289,7 @@ describe("automation admin API", () => {
         runLog: {
           listRuns: (input) => {
             queries.push(input);
-            return Effect.succeed({ runs: [], nextCursor: null });
+            return Effect.succeed({ runs: [run], nextCursor: null });
           },
         },
       }
@@ -278,11 +299,48 @@ describe("automation admin API", () => {
       {
         campaignId,
         state: "ended",
-        outcome: "sent",
+        outcome: "skipped",
+        skipReason: "missing-email",
         versionNumber: 2,
         limit: 20,
       },
     ]);
+    expect(page.runs).toEqual([run]);
+  });
+
+  test("returns the run counts by skip reason", async () => {
+    const stats = Schema.decodeUnknownSync(AutomationRunStats)({
+      campaignId,
+      versionNumber: 2,
+      bySkipReason: {
+        "missing-from-dotypos": 0,
+        "deleted-customer": 0,
+        "missing-email": 2,
+        "invalid-email": 0,
+        "consent-withdrawn": 1,
+        "outside-test-domain": 0,
+      },
+    });
+    const requested: unknown[] = [];
+
+    expect(
+      await callAutomationsApi(
+        (client) =>
+          client.getAutomationRunStats({
+            params: { campaignId },
+            query: { versionNumber: 2 },
+          }),
+        {
+          runLog: {
+            getRunStats: (input) => {
+              requested.push(input);
+              return Effect.succeed(stats);
+            },
+          },
+        }
+      )
+    ).toEqual(stats);
+    expect(requested).toEqual([{ campaignId, versionNumber: 2 }]);
   });
 
   test("reads one version by the number in its path", async () => {

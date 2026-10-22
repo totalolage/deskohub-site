@@ -5,7 +5,6 @@ import {
   DotyposCustomerIdSchema,
   DotyposService,
   dotyposIdFilterBatchSize,
-  getCustomerDisplayName,
 } from "@deskohub/dotypos";
 import type {
   AutomationFlowType as AutomationFlow,
@@ -53,6 +52,7 @@ import {
   type AutomationPageCursorInvalid,
   AutomationPreviewNotFound,
 } from "../errors";
+import { readAutomationCustomerContacts } from "./automation-customer-contacts";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import { lockAutomationForLifecycle } from "./automation-lifecycle-lock";
 import {
@@ -486,45 +486,17 @@ export class AutomationDryRun extends Context.Service<
 
       /** Names and emails of the page's customers, read live and never stored. */
       const hydrate = (customers: readonly DotyposCustomerId[]) =>
-        Effect.forEach(
-          Arr.chunksOf(customers, dotyposIdFilterBatchSize),
-          (chunk) => dotypos.getCustomersPage(chunk)
-        ).pipe(
-          Effect.map((pages) => {
-            const byId = new Map(
-              pages
-                .flat()
-                .flatMap((customer) =>
-                  customer.id === undefined
-                    ? []
-                    : [[customer.id, customer] as const]
-                )
-            );
-            return customers.map((customerId) => {
-              const profile = byId.get(customerId);
+        readAutomationCustomerContacts(customers).pipe(
+          Effect.provideService(DotyposService, dotypos),
+          Effect.map((contacts) =>
+            customers.map((customerId) => {
+              const contact = Option.getOrUndefined(contacts)?.get(customerId);
               return {
                 customerId,
-                name:
-                  profile === undefined
-                    ? null
-                    : (getCustomerDisplayName(profile) ?? null),
-                email: profile?.email?.trim() || null,
+                name: contact?.name ?? null,
+                email: contact?.email ?? null,
               };
-            });
-          }),
-          // Names are a convenience: the dry run still reads without them.
-          Effect.catch((cause) =>
-            Effect.logWarning("Dry run customers couldn't be hydrated", {
-              cause,
-            }).pipe(
-              Effect.as(
-                customers.map((customerId) => ({
-                  customerId,
-                  name: null,
-                  email: null,
-                }))
-              )
-            )
+            })
           )
         );
 

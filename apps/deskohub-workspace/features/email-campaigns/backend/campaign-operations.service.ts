@@ -159,10 +159,10 @@ export class CampaignOperations extends Context.Service<
         CampaignSendStatusService.Live,
         AutomationLifecycle.Live,
         AutomationDryRun.Live,
-        Layer.merge(
-          AutomationRunLog.Default,
-          AutomationEngineHealth.Default
-        ).pipe(Layer.provide(WorkspaceDatabase.Default))
+        AutomationRunLog.Live,
+        AutomationEngineHealth.Default.pipe(
+          Layer.provide(WorkspaceDatabase.Default)
+        )
       )
     )
   );

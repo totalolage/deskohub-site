@@ -127,9 +127,8 @@ const ensureWaitWithinLimit = (step: AutomationStep) =>
     : Effect.void;
 
 /** A schedule fires only on the engine's ticks (D36); calendar waits may use any minute. */
-const ensureScheduleOnTicks = ({ trigger }: AutomationFlow) => {
-  const minutes =
-    trigger._tag === "Schedule" ? scheduleMinutesOffTick(trigger.calendar) : [];
+export const ensureScheduleOnTicks = (calendar: CalendarExpression) => {
+  const minutes = scheduleMinutesOffTick(calendar);
   return minutes.length > 0
     ? Effect.fail(new AutomationScheduleMinutesNotAllowed({ minutes }))
     : Effect.void;
@@ -201,7 +200,11 @@ export const validateAutomationFlow = (
     Effect.mapError(
       (cause) => new AutomationFlowInvalid({ message: cause.message, cause })
     ),
-    Effect.tap(ensureScheduleOnTicks),
+    Effect.tap(({ trigger }) =>
+      trigger._tag === "Schedule"
+        ? ensureScheduleOnTicks(trigger.calendar)
+        : Effect.void
+    ),
     Effect.tap(({ steps }) =>
       Effect.forEach(steps, ensureWaitWithinLimit, { discard: true })
     ),
