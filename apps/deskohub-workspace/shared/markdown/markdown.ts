@@ -60,6 +60,13 @@ export const markdownList = (items: ReadonlyArray<ListItem>): List => ({
   children: [...items],
 });
 
+/** A numbered list, such as steps to follow in order. */
+export const markdownOrderedList = (items: ReadonlyArray<ListItem>): List => ({
+  ...markdownList(items),
+  ordered: true,
+  start: 1,
+});
+
 /** A list item of one line. */
 export const markdownListItem = (
   ...content: ReadonlyArray<Phrasing>
