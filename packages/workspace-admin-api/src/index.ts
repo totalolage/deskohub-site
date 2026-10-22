@@ -202,6 +202,8 @@ export {
   type AutomationPreviewState as AutomationPreviewStateType,
   AutomationPreviewStatus,
   type AutomationPreviewStatus as AutomationPreviewStatusType,
+  AutomationRunCustomerProfileStatus,
+  type AutomationRunCustomerProfileStatus as AutomationRunCustomerProfileStatusType,
   AutomationRunDetail,
   type AutomationRunDetail as AutomationRunDetailType,
   type AutomationRunEventDetail,

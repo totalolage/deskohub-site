@@ -538,6 +538,14 @@ const runOutcomeCounts = fieldWithDefault(
   Schema.Record(AutomationRunOutcome, count),
   zeroRunOutcomeCounts
 );
+const zeroSkipReasonCounts = {
+  "missing-from-dotypos": 0,
+  "deleted-customer": 0,
+  "missing-email": 0,
+  "invalid-email": 0,
+  "consent-withdrawn": 0,
+  "outside-test-domain": 0,
+};
 
 /** Run counts of all versions, or of one. */
 export const AutomationRunStats = Schema.Struct({
@@ -553,6 +561,14 @@ export const AutomationRunStats = Schema.Struct({
       byOutcome: runOutcomeCounts,
     })
   ),
+  /**
+   * Skipped runs by why delivery skipped them. An older server omits it, so
+   * it may not add up to `byOutcome.skipped`.
+   */
+  bySkipReason: fieldWithDefault(
+    Schema.Record(AdministrationCampaignRecipientSkipReason, count),
+    zeroSkipReasonCounts
+  ),
 });
 export type AutomationRunStats = typeof AutomationRunStats.Type;
 
@@ -562,6 +578,8 @@ export const AutomationRunListInput = Schema.Struct({
   state: Schema.optionalKey(AutomationRunState),
   stepId: Schema.optionalKey(AutomationStepId),
   outcome: Schema.optionalKey(AutomationRunOutcome),
+  /** Skipped runs with this reason only. */
+  skipReason: Schema.optionalKey(AdministrationCampaignRecipientSkipReason),
   versionNumber: Schema.optionalKey(AutomationVersionNumber),
   customerId: Schema.optionalKey(AdministrationDotyposCustomerId),
   cursor: Schema.optionalKey(AutomationPageCursor),
@@ -569,11 +587,35 @@ export const AutomationRunListInput = Schema.Struct({
 }).annotate(strictParseOptions);
 export type AutomationRunListInput = typeof AutomationRunListInput.Type;
 
+/**
+ * Whether the run's customer profile was read from Dotypos: `found` (name
+ * and email may still be empty), `not-found`, or `unavailable` when Dotypos
+ * couldn't be read, or the server predates live contacts.
+ */
+export const AutomationRunCustomerProfileStatus = Schema.Literals([
+  "found",
+  "not-found",
+  "unavailable",
+]);
+export type AutomationRunCustomerProfileStatus =
+  typeof AutomationRunCustomerProfileStatus.Type;
+
 export const AutomationRunSummary = Schema.Struct({
   runId: AutomationRunId,
   campaignId: AdministrationCampaignId,
   versionNumber: AutomationVersionNumber,
   customerId: AdministrationDotyposCustomerId,
+  /** The customer's current name, read live and never stored. */
+  customerName: nullableField(Schema.String),
+  /**
+   * The customer's current email, read live; not necessarily the address
+   * a past send went to.
+   */
+  customerEmail: nullableField(Schema.String),
+  customerProfileStatus: fieldWithDefault(
+    AutomationRunCustomerProfileStatus,
+    "unavailable"
+  ),
   triggerKind: AutomationTriggerKind,
   triggerAt: Instant,
   state: AutomationRunState,
