@@ -425,6 +425,7 @@ const automationsActivateCommand = Command.make(
           })
         );
         const confirmed = yield* confirmChange(
+          "automations.activateAutomation",
           yes,
           json,
           `Activate automation ${campaignId} with dry run ${previewId}? New runs start on the new version.`
@@ -473,7 +474,12 @@ const lifecycleCommand = (
     ({ campaignId, yes }) =>
       runAuthenticatedCommand((api, accessToken, json) =>
         Effect.gen(function* () {
-          const confirmed = yield* confirmChange(yes, json, prompt(campaignId));
+          const confirmed = yield* confirmChange(
+            `automations.${name}Automation`,
+            yes,
+            json,
+            prompt(campaignId)
+          );
           if (!confirmed) {
             yield* reportCancellation(json);
             return;

@@ -40,6 +40,7 @@ const administratorsBackfillLegacyCommand = Command.make(
       Effect.gen(function* () {
         if (!dryRun) {
           const confirmed = yield* confirmChange(
+            "administrators.backfillLegacyAdministrator",
             yes,
             json,
             `Grant the administrator role to ${email} and link legacy administrator ${legacyUsername}'s records to that account?`

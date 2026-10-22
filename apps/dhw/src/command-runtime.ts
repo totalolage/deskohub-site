@@ -3,6 +3,7 @@ import {
   CliMutationRequestId,
   type CliSessionType,
   CliSessionUnauthorized,
+  type WorkspaceAdminOperationReference,
 } from "@deskohub/workspace-admin-api";
 import { Console, Crypto, Data, Effect, Option, type Redacted } from "effect";
 import { Command, Flag, Prompt } from "effect/unstable/cli";
@@ -36,9 +37,13 @@ export class AuthenticationRequiredError extends Data.TaggedError(
   "AuthenticationRequiredError"
 )<{ readonly message: string }> {}
 
+/** A destructive operation was refused because nothing confirmed it. */
 export class ConfirmationRequiredError extends Data.TaggedError(
   "ConfirmationRequiredError"
-)<{ readonly message: string }> {}
+)<{
+  readonly message: string;
+  readonly operation: WorkspaceAdminOperationReference;
+}> {}
 
 export class InvalidMutationInputError extends Data.TaggedError(
   "InvalidMutationInputError"
@@ -87,11 +92,21 @@ export const runAuthenticatedCommand = <A, E, R>(
     })
   );
 
-export const confirmChange = (yes: boolean, json: boolean, message: string) => {
+/**
+ * Confirms a destructive administration operation, named as the contract
+ * names it. With `--json` or without a terminal, only `--yes` confirms.
+ */
+export const confirmChange = (
+  operation: WorkspaceAdminOperationReference,
+  yes: boolean,
+  json: boolean,
+  message: string
+) => {
   if (yes) return Effect.succeed(true);
   if (json || process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
     return new ConfirmationRequiredError({
       message: "Confirmation is required. Pass --yes to apply this change.",
+      operation,
     });
   }
   return Prompt.confirm({ message, initial: false }).pipe(Prompt.run);
