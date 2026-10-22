@@ -281,7 +281,7 @@ describe("dhw mutation commands", () => {
         layer
       ).pipe(Effect.flip, Effect.runPromise);
 
-      expect(error).toBeDefined();
+      expect(error).toMatchObject({ _tag: "InvalidMutationInputError" });
       expect(previews).toEqual([]);
     } finally {
       await rm(directory, { recursive: true, force: true });

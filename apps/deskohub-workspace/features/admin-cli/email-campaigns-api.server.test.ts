@@ -184,12 +184,16 @@ const callCampaignsApi = <A, E>(
   );
 
 describe("campaign admin API", () => {
-  test("returns a test-send inbox in campaign settings", async () => {
+  test("reports the deployment's admin inbox as the test-send inbox", async () => {
+    const config = await Effect.runPromise(
+      CampaignEmailConfig.pipe(Effect.provide(CampaignEmailConfig.Default))
+    );
+
     const settings = await callCampaignsApi((client) =>
       client.getCampaignSettings({})
     );
 
-    expect(settings.testSendInbox).toEqual(expect.any(String));
+    expect(settings).toEqual({ testSendInbox: config.adminInbox });
   });
 
   test("rejects a request without a valid CLI session before any service runs", async () => {
