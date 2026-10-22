@@ -179,7 +179,8 @@ describe("AutomationRunCounts", () => {
           queryOf(link).get("state") === "active" && queryOf(link).has("step")
       );
 
-    expectCount(waiting, 7);
+    // The tile counts what its link lists: waiting runs, not sending ones.
+    expectCount(waiting, 3);
     expect(activeStepLinks).toHaveLength(2);
     expect(
       activeStepLinks.map((link) => queryOf(link).get("step")).sort()

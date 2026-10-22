@@ -141,7 +141,8 @@ export function AutomationRunCounts({
                 ]
               : []),
           ]}
-          count={byState.active + byState.sending}
+          // The waiting runs its link lists; sending ones have their own line.
+          count={byState.active}
           href={tileHref({ state: "active" })}
           label={m.emailAutomationRunsCountsWaiting({}, { locale })}
           locale={locale}
