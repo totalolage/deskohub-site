@@ -15,6 +15,7 @@ import {
 import { Schema } from "effect";
 import { m } from "@/features/administration/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
+import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -329,4 +330,19 @@ test("switching the trigger saves the steps unchanged", async () => {
       },
     },
   ]);
+});
+
+test("lock the flow while a save is in flight", () => {
+  workspaceUseAction.mockImplementation(
+    () => ({ execute: mock(), isExecuting: true }) as never
+  );
+  const { view } = renderBuilder([wait, send]);
+
+  expect(view.container.querySelector("fieldset")?.disabled).toBe(true);
+});
+
+test("leave the flow editable when no save is in flight", () => {
+  const { view } = renderBuilder([wait, send]);
+
+  expect(view.container.querySelector("fieldset")?.disabled).toBe(false);
 });

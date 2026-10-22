@@ -166,8 +166,9 @@ export function AutomationFlowBuilder({
           setRevision((current) => current + 1);
         }}
       />
+      {/* Locked while saving: the saved flow replaces the form's values. */}
       <fieldset
-        disabled={readOnly}
+        disabled={readOnly || save.isExecuting}
         className="mx-auto mt-6 max-w-[44rem] min-w-0"
       >
         <ol key={revision}>
