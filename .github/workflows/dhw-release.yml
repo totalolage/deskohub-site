@@ -214,7 +214,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          gh release upload "$DHW_TAG" dist/* --repo "$GITHUB_REPOSITORY"
+          gh release upload "$DHW_TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
           gh release edit "$DHW_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --draft=false \
