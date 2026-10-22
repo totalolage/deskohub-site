@@ -20,6 +20,7 @@ import { commandOutput } from "@/scripts/shared/command";
 
 const appRoot = resolve(import.meta.dir, "../..");
 const polyfillModule = resolve(appRoot, "shared/polyfills/temporal");
+const polyfillInstaller = `${polyfillModule}.ts`;
 
 const scannedModule = /(?<!\.d)\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 const testModule = /\.test\.[cm]?[jt]sx?$/;
@@ -34,7 +35,7 @@ const resolveAppModule = (path: string, specifier: string) => {
 
 /** Whether the module is the polyfill installer or imports it for effect. */
 const loadsPolyfill = (path: string, source: ts.SourceFile) =>
-  resolve(appRoot, path).replace(scannedModule, "") === polyfillModule ||
+  resolve(appRoot, path) === polyfillInstaller ||
   source.statements.some((statement) => {
     if (
       !ts.isImportDeclaration(statement) ||
@@ -106,6 +107,12 @@ const unwrap = (node: ts.Node) => {
   return node;
 };
 
+/** The outermost transparent wrapper around `node`, or `node` itself. */
+const outermostWrapper = (node: ts.Node) => {
+  while (isTransparentWrapper(node.parent)) node = node.parent;
+  return node;
+};
+
 const globalObjects = new Set(["globalThis", "window", "self", "global"]);
 
 /** `globalThis.Temporal` or `window["Temporal"]` style global access. */
@@ -125,22 +132,18 @@ const temporalReference = (node: ts.Node): ts.Node | undefined => {
     }
     return isNameSlot(node) ? undefined : node;
   }
+  if (!ts.isStringLiteralLike(node) || node.text !== "Temporal") {
+    return undefined;
+  }
+  const key = outermostWrapper(node);
   if (
-    ts.isStringLiteralLike(node) &&
-    node.text === "Temporal" &&
-    ts.isElementAccessExpression(parent) &&
-    parent.argumentExpression === node &&
-    isGlobalAccess(parent)
+    ts.isElementAccessExpression(key.parent) &&
+    key.parent.argumentExpression === key &&
+    isGlobalAccess(key.parent)
   ) {
-    return parent;
+    return key.parent;
   }
   return undefined;
-};
-
-/** The outermost transparent wrapper around `node`, or `node` itself. */
-const outermostWrapper = (node: ts.Node) => {
-  while (isTransparentWrapper(node.parent)) node = node.parent;
-  return node;
 };
 
 const isImmediatelyInvoked = (fn: ts.SignatureDeclaration) => {
@@ -328,6 +331,18 @@ describe("load-time Temporal reads", () => {
       "a global read behind an assertion",
       "const now = (globalThis as typeof globalThis).Temporal.Now.instant();",
     ],
+    [
+      "a global element read behind parentheses",
+      'const now = globalThis[("Temporal")].Now.instant();',
+    ],
+    [
+      "a global element read behind an assertion",
+      'const now = globalThis["Temporal" as const].Now.instant();',
+    ],
+    [
+      "a global element read with a template key",
+      "const now = globalThis[`Temporal`].Now.instant();",
+    ],
   ])("rejects %s", (_case, sourceText) => {
     expect(readsIn(sourceText)).not.toEqual([]);
   });
@@ -401,6 +416,21 @@ describe("load-time Temporal reads", () => {
   ])("permits %s", (_case, sourceText) => {
     expect(readsIn(sourceText)).toEqual([]);
   });
+
+  const globalRead = "const now = Temporal.Now.instant();";
+
+  test("exempts only the polyfill installer itself", () => {
+    expect(
+      findLoadTimeTemporalReads("shared/polyfills/temporal.ts", globalRead)
+    ).toEqual([]);
+  });
+
+  test.each(["shared/polyfills/temporal.tsx", "shared/polyfills/temporal.mts"])(
+    "checks the installer's sibling %s",
+    (path) => {
+      expect(findLoadTimeTemporalReads(path, globalRead)).not.toEqual([]);
+    }
+  );
 
   test("every Workspace module that reads Temporal while loading imports the polyfill", async () => {
     const listing = await commandOutput(
