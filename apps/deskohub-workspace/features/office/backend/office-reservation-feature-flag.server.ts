@@ -37,10 +37,13 @@ export const OfficeReservationFeatureFlagRenderLayer = Layer.succeed(
  * Whether office reservations are open for every visitor, read without the
  * request, so static output such as the site description can name the
  * office. A release that can't be read counts as undecided.
+ *
+ * `minutes` keeps it in the route's App Shell, which needs a `stale` of at
+ * least five minutes, while it still revalidates every minute.
  */
 export async function loadOfficeGlobalRelease(): Promise<GlobalRelease> {
   "use cache";
-  cacheLife("publicContent");
+  cacheLife("minutes");
 
   return WorkspaceFeatureFlagService.pipe(
     Effect.flatMap((featureFlags) => featureFlags.constantValue("office_page")),

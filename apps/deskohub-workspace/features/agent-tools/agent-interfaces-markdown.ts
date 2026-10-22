@@ -3,6 +3,7 @@ import {
   customerAgentDiscoveryPaths,
   customerMcpServerPath,
 } from "@/features/account/customer-agent-routes";
+import type { GlobalRelease } from "@/features/feature-flags/backend/global-release";
 import {
   type MarkdownBlocks,
   markdownHeading,
@@ -12,7 +13,6 @@ import {
   markdownListItem,
   markdownParagraph,
 } from "@/shared/markdown/markdown";
-import type { GlobalRelease } from "@/features/feature-flags/backend/global-release";
 import { getWorkspaceCanonicalUrl } from "@/shared/utils/site-constants";
 import type { AgentTool, AgentToolAuthorization } from "./agent-tool";
 import { agentToolBookingGuidance } from "./agent-tool-guidance";
