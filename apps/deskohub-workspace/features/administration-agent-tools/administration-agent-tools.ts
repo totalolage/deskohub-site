@@ -70,7 +70,7 @@ export interface AdministrationOperationTool {
   /** The published input schema: one strict object of every argument. */
   readonly input: Schema.Top;
   /** The published output schema: the success results and the errors. */
-  readonly output: Schema.Codec<Schema.JsonObject, Schema.JsonObject>;
+  readonly output: AgentTool<never>["output"];
   readonly toRequest: RequestParts;
   /** Encodes the operation's success; binary successes become attachments. */
   readonly success: Schema.Top;
@@ -267,6 +267,9 @@ const guardCredentials = ({
 };
 
 /** Whether the schema's JSON is always an object. */
+/** A schema whose JSON is an object, as tool results are. */
+type JsonObjectSchema = Schema.Codec<Schema.JsonObject, Schema.JsonObject>;
+
 const encodesToObject = (ast: SchemaAST.AST): boolean => {
   const encoded = SchemaAST.toEncoded(ast);
   return SchemaAST.isUnion(encoded)
@@ -282,7 +285,7 @@ const successResultSchema = ({
   readonly success: Schema.Top;
   readonly binary: boolean;
   readonly wrapsResult: boolean;
-}): Schema.Top => {
+}): JsonObjectSchema => {
   if (binary) {
     return Schema.Struct({
       uri: Schema.String,
@@ -294,7 +297,10 @@ const successResultSchema = ({
     });
   }
   const json = Schema.toCodecJson(success as Schema.Codec<unknown>);
-  return wrapsResult ? Schema.Struct({ items: json }) : json;
+  // `encodesToObject` decided whether the JSON is an object; wrapped, it is.
+  return (
+    wrapsResult ? Schema.Struct({ items: json }) : json
+  ) as JsonObjectSchema;
 };
 
 const outputSchema = ({
@@ -302,8 +308,8 @@ const outputSchema = ({
   result,
 }: {
   readonly behavior: Behavior;
-  readonly result: Schema.Top;
-}) => {
+  readonly result: JsonObjectSchema;
+}): AgentTool<never>["output"] => {
   const preview = Schema.Struct({
     outcome: Schema.Literal("confirmation-required"),
     operation: Schema.String.annotate({
@@ -337,10 +343,11 @@ const outputSchema = ({
             : []),
         ]
       : [result];
-  return Schema.Union([
-    ...successes,
-    administrationAgentToolErrorResultSchema,
-  ]) as Schema.Codec<Schema.JsonObject, Schema.JsonObject>;
+  return Schema.toStandardJSONSchemaV1(
+    Schema.toStandardSchemaV1(
+      Schema.Union([...successes, administrationAgentToolErrorResultSchema])
+    )
+  );
 };
 
 interface EndpointReflection {
@@ -901,9 +908,7 @@ export const makeAdministrationAgentTools = (
     idempotent: tool.behavior.idempotent,
     unavailableCode: "administration_unavailable",
     input: Schema.toStandardJSONSchemaV1(tool.input),
-    output: Schema.toStandardJSONSchemaV1(
-      Schema.toStandardSchemaV1(tool.output)
-    ),
+    output: tool.output,
     call: (args, caller = Option.none<CustomerAgentCaller>()) =>
       Option.match(caller, {
         // The route lists administration tools only for a verified caller.

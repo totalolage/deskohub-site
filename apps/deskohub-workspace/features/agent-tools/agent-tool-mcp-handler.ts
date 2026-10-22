@@ -112,29 +112,32 @@ export const answerAgentToolMcpRequest = <
   ) => Effect.Effect<ReadonlyArray<AgentTool<RCaller>>, E, RCallerTools>;
   readonly request: Request;
 }) =>
-  Option.fromNullishOr(
-    originValidationResponse(request, [new URL(request.url).hostname])
-  ).pipe(
-    Option.match({
-      onSome: (rejection) =>
-        Effect.logWarning(
-          "Agent tool MCP request from another origin was rejected"
-        ).pipe(Effect.as(rejection)),
-      onNone: () =>
-        authorizeAgentToolRequest<AgentTool<R | RCaller>, E, RCallerTools>({
-          tools,
-          callerTools,
-          request,
-        }).pipe(
-          Effect.flatMap(({ caller, tools: callable }) =>
-            serveAgentToolMcpRequest({ tools: callable, request, caller })
+  // One Effect type for both branches, so callers can handle its errors.
+  Effect.suspend(() =>
+    Option.fromNullishOr(
+      originValidationResponse(request, [new URL(request.url).hostname])
+    ).pipe(
+      Option.match({
+        onSome: (rejection) =>
+          Effect.logWarning(
+            "Agent tool MCP request from another origin was rejected"
+          ).pipe(Effect.as(rejection)),
+        onNone: () =>
+          authorizeAgentToolRequest<AgentTool<R | RCaller>, E, RCallerTools>({
+            tools,
+            callerTools,
+            request,
+          }).pipe(
+            Effect.flatMap(({ caller, tools: callable }) =>
+              serveAgentToolMcpRequest({ tools: callable, request, caller })
+            ),
+            Effect.catchIf(
+              (error) => error instanceof AgentToolRequestRefused,
+              ({ response }) => Effect.succeed(response)
+            )
           ),
-          Effect.catchIf(
-            (error) => error instanceof AgentToolRequestRefused,
-            ({ response }) => Effect.succeed(response)
-          )
-        ),
-    })
+      })
+    )
   );
 
 /**
