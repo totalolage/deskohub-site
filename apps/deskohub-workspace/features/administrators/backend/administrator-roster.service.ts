@@ -1,6 +1,8 @@
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Option } from "effect";
+import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { revokeAdministrationCliAccess } from "@/features/admin-cli/administration-cli-access";
 import { findActiveCustomerAccountByEmail } from "@/features/account/backend/customer-account-by-email";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { AdministratorAccountActor } from "../account-role";
@@ -41,14 +43,17 @@ interface IAdministratorRoster {
   >;
   /**
    * Revokes another account's administrator role. The gate reads grants on
-   * every request, so the account loses access on its next request.
+   * every request, so the account loses access on its next request. The
+   * same transaction revokes the CLI sessions and pending CLI grants the
+   * account approved, even when the role was already gone, so a re-grant
+   * can't revive them and a retry finishes an interrupted revoke.
    */
   readonly revoke: (input: {
     readonly accountId: CustomerAccountId;
     readonly actor: AdministratorAccountActor;
   }) => Effect.Effect<
     { readonly changed: boolean },
-    AdministratorSelfRevocationError | EffectDrizzleQueryError
+    AdministratorSelfRevocationError | EffectDrizzleQueryError | SqlError
   >;
 }
 
@@ -100,7 +105,17 @@ export class AdministratorRoster extends Context.Service<
               message: "Administrators can't revoke their own grant.",
             });
           }
-          return yield* grants.revoke({ accountId, role });
+          // Grant first: its row lock makes a concurrent CLI exchange
+          // finish before the session revocation reads the sessions.
+          return yield* database.db.transaction(() =>
+            Effect.gen(function* () {
+              const revoked = yield* grants.revoke({ accountId, role });
+              yield* revokeAdministrationCliAccess(accountId).pipe(
+                Effect.provideService(WorkspaceDatabase, database)
+              );
+              return revoked;
+            })
+          );
         }),
       } satisfies IAdministratorRoster;
     })

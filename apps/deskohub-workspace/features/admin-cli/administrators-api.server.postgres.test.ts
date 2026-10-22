@@ -4,6 +4,9 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationAuthentication,
+  CliAuthenticationCode,
+  CliAuthenticationVerifier,
+  CliGrantToken,
   CliSessionId,
   digestCliAuthenticationSecret,
   makeCliAuthenticationSecret,
@@ -13,7 +16,11 @@ import { NodeCrypto, NodeHttpServer } from "@effect/platform-node";
 import { inArray } from "drizzle-orm";
 import { Effect, Layer, Redacted } from "effect";
 import { HttpApiTest } from "effect/unstable/httpapi";
-import { cliSessions } from "@/db/schema";
+import { cliAuthenticationRequests, cliSessions } from "@/db/schema";
+import {
+  type CliAuthenticationRequestId,
+  cliAuthenticationRequestIdSchema,
+} from "@/features/admin-cli/cli-identifiers";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { AdministratorRoster } from "@/features/administrators/backend/administrator-roster.service";
@@ -46,8 +53,16 @@ describe.skipIf(!postgresDatabase)(
     const postgres = postgresDatabase as WorkspacePostgresTestDatabase;
     const fixtureAccounts: AdministratorAccountActor[] = [];
     const fixtureSessionIds: CliSessionId[] = [];
+    const fixtureRequestIds: CliAuthenticationRequestId[] = [];
 
     afterAll(async () => {
+      if (fixtureRequestIds.length > 0) {
+        await Effect.runPromise(
+          postgres.db
+            .delete(cliAuthenticationRequests)
+            .where(inArray(cliAuthenticationRequests.id, fixtureRequestIds))
+        );
+      }
       if (fixtureSessionIds.length > 0) {
         await Effect.runPromise(
           postgres.db
@@ -105,6 +120,71 @@ describe.skipIf(!postgresDatabase)(
       fixtureSessionIds.push(id);
       return bearer;
     };
+
+    const newSecret = () =>
+      Effect.runPromise(
+        makeCliAuthenticationSecret().pipe(Effect.provide(NodeCrypto.layer))
+      );
+
+    /** A CLI request `approver` approved that the CLI hasn't exchanged yet. */
+    const insertApprovedRequest = async (approver: AdministratorAccountActor) => {
+      const code = await newSecret();
+      const verifier = await newSecret();
+      const grantToken = await newSecret();
+      const digest = (secret: string) =>
+        Effect.runPromise(
+          digestCliAuthenticationSecret(secret).pipe(
+            Effect.provide(NodeCrypto.layer)
+          )
+        );
+      const id = cliAuthenticationRequestIdSchema.make(crypto.randomUUID());
+      const now = Temporal.Now.instant();
+      await Effect.runPromise(
+        postgres.db.insert(cliAuthenticationRequests).values({
+          id,
+          codeHash: await digest(code),
+          challenge: await digest(verifier),
+          clientName: "Administrators API test",
+          cliVersion: "1.0.0",
+          buildTarget: "development",
+          createdAt: now,
+          expiresAt: now.add({ minutes: 5 }),
+          approvedAt: now,
+          approvedByAccountId: approver.accountId,
+          approvedByAccountEmail: approver.email,
+          grantToken,
+          grantExpiresAt: now.add({ minutes: 5 }),
+        })
+      );
+      fixtureRequestIds.push(id);
+      return { code, grantToken, verifier };
+    };
+
+    const exchangeGrant = (grant: {
+      readonly code: string;
+      readonly grantToken: string;
+      readonly verifier: string;
+    }) =>
+      CliAuthentication.pipe(
+        Effect.flatMap((authentication) =>
+          authentication.exchange({
+            code: CliAuthenticationCode.make(grant.code),
+            grantToken: CliGrantToken.make(grant.grantToken),
+            verifier: CliAuthenticationVerifier.make(grant.verifier),
+          })
+        ),
+        Effect.tap(({ session }) =>
+          Effect.sync(() => fixtureSessionIds.push(session.id))
+        ),
+        Effect.result,
+        Effect.provide(
+          CliAuthentication.Default.pipe(
+            Layer.provideMerge(AccountRoleGrants.Default),
+            Layer.provide(Layer.merge(postgres.layer, NodeCrypto.layer))
+          )
+        ),
+        Effect.runPromise
+      );
 
     /**
      * The in-memory client sends no Authorization header, so this hands
@@ -310,6 +390,48 @@ describe.skipIf(!postgresDatabase)(
         failure: { _tag: "CliSessionUnauthorized" },
       });
       expect(await grantRow(target.accountId)).toBeNull();
+    });
+
+    test("a re-grant revives neither the revoked administrator's CLI sessions nor their approved CLI grants", async () => {
+      const actor = await insertAdministrator();
+      const bearer = await insertSession(actor);
+      const bystander = await insertAdministrator();
+      const bystanderBearer = await insertSession(bystander);
+      const target = await insertAdministrator();
+      const targetBearer = await insertSession(target);
+      const targetGrant = await insertApprovedRequest(target);
+
+      const revoked = await callAs(bearer, (client) =>
+        client.revokeAdministrator({ params: { accountId: target.accountId } })
+      );
+      const regranted = await callAs(bearer, (client) =>
+        client.grantAdministrator({ payload: { email: target.email } })
+      );
+      const targetAfterRegrant = await callAs(targetBearer, (client) =>
+        client.listAdministrators({})
+      );
+      const exchanged = await exchangeGrant(targetGrant);
+      const bystanderAfterRevoke = await callAs(bystanderBearer, (client) =>
+        client.listAdministrators({})
+      );
+
+      expect(revoked).toMatchObject({
+        _tag: "Success",
+        success: { outcome: "revoked" },
+      });
+      expect(regranted).toMatchObject({
+        _tag: "Success",
+        success: { outcome: "granted" },
+      });
+      expect(targetAfterRegrant).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "CliSessionUnauthorized" },
+      });
+      expect(exchanged).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "CliGrantRejected" },
+      });
+      expect(bystanderAfterRevoke._tag).toBe("Success");
     });
 
     test("rejects a bearer that presents no session", async () => {
