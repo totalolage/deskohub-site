@@ -1,6 +1,7 @@
 import {
   type Array as Arr,
   Context,
+  Match,
   Option,
   type Schema,
   SchemaAST,
@@ -204,6 +205,79 @@ export interface AdministrationOperationEntry {
   readonly access: AdministrationOperationAccess;
 }
 
+/** What one endpoint declares about the operations it serves. */
+export type AdministrationOperationDeclaration =
+  | {
+      readonly _tag: "Operation";
+      readonly behavior: AdministrationOperationBehavior["Service"];
+    }
+  | {
+      readonly _tag: "Variants";
+      readonly variants: AdministrationOperationVariants["Service"];
+    }
+  | { readonly _tag: "CliOnly"; readonly reason: string };
+
+/**
+ * The declaration in an endpoint's merged annotations, or none when it
+ * declares no or more than one of `AdministrationOperationBehavior`,
+ * `AdministrationOperationVariants` and `CliOnly`.
+ */
+export const administrationOperationDeclaration = (
+  annotations: Context.Context<never>
+): Option.Option<AdministrationOperationDeclaration> => {
+  const declarations = [
+    Context.getOption(annotations, AdministrationOperationBehavior).pipe(
+      Option.map(
+        (behavior): AdministrationOperationDeclaration => ({
+          _tag: "Operation",
+          behavior,
+        })
+      )
+    ),
+    Context.getOption(annotations, AdministrationOperationVariants).pipe(
+      Option.map(
+        (variants): AdministrationOperationDeclaration => ({
+          _tag: "Variants",
+          variants,
+        })
+      )
+    ),
+    Context.getOption(annotations, CliOnly).pipe(
+      Option.map(
+        ({ reason }): AdministrationOperationDeclaration => ({
+          _tag: "CliOnly",
+          reason,
+        })
+      )
+    ),
+  ].filter(Option.isSome);
+  const [declaration, ...others] = declarations;
+  return declaration !== undefined && others.length === 0
+    ? declaration
+    : Option.none();
+};
+
+/**
+ * The variant a generic mutation endpoint's request body selects, read from
+ * the undecoded body: none when it names no declared variant.
+ */
+export const administrationOperationVariantOf = (
+  variants: AdministrationOperationVariants["Service"],
+  body: unknown
+): Option.Option<string> => {
+  const member = ownProperty(body, variants.field);
+  const variant = ownProperty(member, variants.discriminator);
+  return typeof variant === "string" &&
+    Object.hasOwn(variants.operations, variant)
+    ? Option.some(variant)
+    : Option.none();
+};
+
+const ownProperty = (value: unknown, key: string): unknown =>
+  typeof value === "object" && value !== null && Object.hasOwn(value, key)
+    ? (value as Readonly<Record<string, unknown>>)[key]
+    : undefined;
+
 /**
  * Every operation of the API, one entry per endpoint and one per generic
  * mutation variant. Fails on an endpoint that doesn't declare exactly one of
@@ -220,19 +294,8 @@ export const administrationOperations = <
     onGroup: () => undefined,
     onEndpoint: ({ group, endpoint, mergedAnnotations }) => {
       const reference: AdministrationOperationReference = `${group.identifier}.${endpoint.name}`;
-      const operation = Context.getOption(
-        mergedAnnotations,
-        AdministrationOperationBehavior
-      );
-      const variants = Context.getOption(
-        mergedAnnotations,
-        AdministrationOperationVariants
-      );
-      const cliOnly = Context.getOption(mergedAnnotations, CliOnly);
-      const declared = [operation, variants, cliOnly].filter((option) =>
-        Option.isSome<unknown>(option)
-      ).length;
-      if (declared !== 1) {
+      const declaration = administrationOperationDeclaration(mergedAnnotations);
+      if (Option.isNone(declaration)) {
         throw new Error(
           `${reference} must declare exactly one of AdministrationOperationBehavior, AdministrationOperationVariants and CliOnly.`
         );
@@ -241,32 +304,38 @@ export const administrationOperations = <
         group: group.identifier,
         endpoint: endpoint.name,
       };
-      if (Option.isSome(operation)) {
-        entries.push({
-          ...base,
-          reference,
-          variant: Option.none(),
-          access: { _tag: "Operation", behavior: operation.value },
-        });
-      } else if (Option.isSome(variants)) {
-        for (const [variant, behavior] of Object.entries(
-          variants.value.operations
-        )) {
-          entries.push({
-            ...base,
-            reference: `${reference}.${variant}`,
-            variant: Option.some(variant),
-            access: { _tag: "Operation", behavior },
-          });
-        }
-      } else if (Option.isSome(cliOnly)) {
-        entries.push({
-          ...base,
-          reference,
-          variant: Option.none(),
-          access: { _tag: "CliOnly", reason: cliOnly.value.reason },
-        });
-      }
+      Match.value(declaration.value).pipe(
+        Match.tagsExhaustive({
+          Operation: ({ behavior }) => {
+            entries.push({
+              ...base,
+              reference,
+              variant: Option.none(),
+              access: { _tag: "Operation", behavior },
+            });
+          },
+          Variants: ({ variants }) => {
+            for (const [variant, behavior] of Object.entries(
+              variants.operations
+            )) {
+              entries.push({
+                ...base,
+                reference: `${reference}.${variant}`,
+                variant: Option.some(variant),
+                access: { _tag: "Operation", behavior },
+              });
+            }
+          },
+          CliOnly: ({ reason }) => {
+            entries.push({
+              ...base,
+              reference,
+              variant: Option.none(),
+              access: { _tag: "CliOnly", reason },
+            });
+          },
+        })
+      );
     },
   });
   return entries;

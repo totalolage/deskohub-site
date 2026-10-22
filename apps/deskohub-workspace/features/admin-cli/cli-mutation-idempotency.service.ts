@@ -1,4 +1,5 @@
 import {
+  type AdministrationAssistantConnectionIdType,
   AdministrationCampaignAudience,
   AdministrationCampaignDetail,
   type AdministrationChannel,
@@ -12,7 +13,7 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { and, eq, isNull, lte } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Effect, Layer, Match, Schema } from "effect";
+import { Context, Effect, Layer, Match, Option, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -20,6 +21,7 @@ import {
   type CliStoredMutationResult,
   cliMutationRequests,
 } from "@/db/schema";
+import { CurrentAdministrationAction } from "./administration-action";
 
 type CliMutationClaim =
   | { readonly kind: "claimed" }
@@ -32,12 +34,17 @@ type CliMutationClaim =
 
 /**
  * Where a request ID is unique and its result replays: the channel the
- * administrator called through. Only CLI sessions keep a ledger today.
+ * administrator called through.
  */
-export type AdministrationMutationScope = {
-  readonly _tag: "CliSession";
-  readonly sessionId: CliSessionIdType;
-};
+export type AdministrationMutationScope =
+  | {
+      readonly _tag: "CliSession";
+      readonly sessionId: CliSessionIdType;
+    }
+  | {
+      readonly _tag: "AssistantConnection";
+      readonly connectionId: AdministrationAssistantConnectionIdType;
+    };
 
 /** The ledger scope of an administration caller's channel. */
 export const mutationScopeOf = (
@@ -49,6 +56,10 @@ export const mutationScopeOf = (
         _tag: "CliSession" as const,
         sessionId,
       }),
+      AssistantConnection: ({ connectionId }) => ({
+        _tag: "AssistantConnection" as const,
+        connectionId,
+      }),
     })
   );
 
@@ -57,6 +68,8 @@ const isInScope = (scope: AdministrationMutationScope) =>
     Match.tagsExhaustive({
       CliSession: ({ sessionId }) =>
         eq(cliMutationRequests.sessionId, sessionId),
+      AssistantConnection: ({ connectionId }) =>
+        eq(cliMutationRequests.assistantConnectionId, connectionId),
     })
   );
 
@@ -64,6 +77,9 @@ const scopeColumns = (scope: AdministrationMutationScope) =>
   Match.value(scope).pipe(
     Match.tagsExhaustive({
       CliSession: ({ sessionId }) => ({ sessionId }),
+      AssistantConnection: ({ connectionId }) => ({
+        assistantConnectionId: connectionId,
+      }),
     })
   );
 
@@ -162,6 +178,15 @@ export class CliMutationIdempotency extends Context.Service<
         const row = rows[0];
         if (!row) return { kind: "mismatch" } as const;
         if (row.result === null) return { kind: "in-progress" } as const;
+
+        yield* Effect.serviceOption(CurrentAdministrationAction).pipe(
+          Effect.flatMap(
+            Option.match({
+              onNone: () => Effect.void,
+              onSome: (action) => action.markReplayed,
+            })
+          )
+        );
 
         const result = yield* Schema.decodeUnknownEffect(
           Schema.Union([

@@ -108,6 +108,7 @@ type InvoiceAdministrationSource =
   | "post-order-link"
   | "admin-ui"
   | "dhw-cli"
+  | "assistant"
   | "legacy";
 
 export type InvoiceAdministrationListItem = {

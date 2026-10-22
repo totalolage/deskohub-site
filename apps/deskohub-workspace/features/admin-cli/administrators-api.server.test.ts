@@ -19,6 +19,7 @@ import { AdminCliAdministratorsApiHandlers } from "./administrators-api.server";
 import {
   authorizedCliRequest,
   UnauthorizedCliRequest,
+  UnrecordedAdministrationActions,
 } from "./cli-api.test-utils";
 import { CliClientCompatibilityLive } from "./cli-client-version";
 
@@ -52,6 +53,7 @@ const callBackfill = (
     Effect.provide(bearer),
     Effect.provide(Layer.succeed(LegacyAdministratorBackfill, { run })),
     Effect.provide(CliClientCompatibilityLive),
+    Effect.provide(UnrecordedAdministrationActions),
     Effect.provide(NodeHttpServer.layerHttpServices),
     Effect.scoped,
     Effect.runPromise

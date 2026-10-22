@@ -61,6 +61,7 @@ import {
   cliClientVersion,
   GrantedAdministrator,
   UnauthorizedCliRequest,
+  UnrecordedAdministrationActions,
 } from "./cli-api.test-utils";
 import { CliClientCompatibilityLive } from "./cli-client-version";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
@@ -177,6 +178,7 @@ const callCampaignsApi = <A, E>(
     ),
     Effect.provide(ClaimEveryCliMutation),
     Effect.provide(CliClientCompatibilityLive),
+    Effect.provide(UnrecordedAdministrationActions),
     Effect.provide(TestDhwVersionHeader),
     Effect.provide(NodeHttpServer.layerHttpServices),
     Effect.scoped,
@@ -984,6 +986,7 @@ describe.skipIf(!testDatabase)(
           ).pipe(Layer.provide(testDatabase.layer))
         ),
         Effect.provide(CliClientCompatibilityLive),
+        Effect.provide(UnrecordedAdministrationActions),
         Effect.provide(TestDhwVersionHeader),
         Effect.provide(NodeHttpServer.layerHttpServices),
         Effect.scoped,

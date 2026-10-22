@@ -63,6 +63,16 @@ export const CliSessionId = uuidSchema
   .annotate({ identifier: "CliSessionId" });
 export type CliSessionId = typeof CliSessionId.Type;
 
+export const AdministrationAssistantConnectionId = uuidSchema
+  .pipe(Schema.brand("AdministrationAssistantConnectionId"))
+  .annotate({
+    identifier: "AdministrationAssistantConnectionId",
+    description:
+      "An administrator's connection of one AI assistant (OAuth client).",
+  });
+export type AdministrationAssistantConnectionId =
+  typeof AdministrationAssistantConnectionId.Type;
+
 export const CliMutationRequestId = uuidSchema
   .pipe(Schema.brand("CliMutationRequestId"))
   .annotate({ identifier: "CliMutationRequestId" });
@@ -400,11 +410,20 @@ export type AdministratorActor = {
   readonly email: string;
 };
 
-/** How an administrator reached the administration API. */
-export type AdministrationChannel = {
-  readonly _tag: "CliSession";
-  readonly sessionId: CliSessionId;
-};
+/**
+ * How an administrator reached the administration API: a `dhw` session, or an
+ * AI assistant the administrator connected, identified by its OAuth client.
+ */
+export type AdministrationChannel =
+  | {
+      readonly _tag: "CliSession";
+      readonly sessionId: CliSessionId;
+    }
+  | {
+      readonly _tag: "AssistantConnection";
+      readonly connectionId: AdministrationAssistantConnectionId;
+      readonly oauthClientId: string;
+    };
 
 /**
  * Who calls an administration operation and through which channel. Handlers
@@ -430,6 +449,20 @@ export class AdministrationAuthentication extends HttpApiMiddleware.Service<
 >()("@deskohub/workspace-admin-api/AdministrationAuthentication", {
   error: [CliSessionUnauthorized.schema, CliServiceUnavailable.schema],
   security: { bearer: HttpApiSecurity.bearer },
+}) {}
+
+/**
+ * Records each `write` and `destructive` operation with its caller and
+ * outcome. Add it before `AdministrationAuthentication`, so it runs inside
+ * it and sees the caller. It fails with `CliServiceUnavailable`, which every
+ * authenticated endpoint already declares, when it can't record the call
+ * before the operation runs.
+ */
+export class AdministrationActionRecord extends HttpApiMiddleware.Service<
+  AdministrationActionRecord,
+  { requires: CurrentAdministrationCaller }
+>()("@deskohub/workspace-admin-api/AdministrationActionRecord", {
+  error: CliServiceUnavailable.schema,
 }) {}
 
 export const AdministrationOverviewMetric = Schema.Struct({
@@ -766,6 +799,7 @@ export const AdministrationInvoiceListItem = Schema.Struct({
     "post-order-link",
     "admin-ui",
     "dhw-cli",
+    "assistant",
     "legacy",
   ]),
   actor: Schema.NullOr(Schema.String),
@@ -2535,5 +2569,6 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
       })
     )
   )
+  .middleware(AdministrationActionRecord)
   .middleware(AdministrationAuthentication)
   .prefix("/api/v1/cli");

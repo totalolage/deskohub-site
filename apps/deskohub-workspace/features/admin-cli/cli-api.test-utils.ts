@@ -1,5 +1,6 @@
 import { testEmailAddress } from "@deskohub/test-email";
 import {
+  AdministrationActionRecord,
   AdministrationAuthentication,
   CliBearerAuthentication,
   CliClientCompatibility,
@@ -13,6 +14,7 @@ import { HttpClientRequest } from "effect/unstable/http";
 import { HttpApiMiddleware } from "effect/unstable/httpapi";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
+import { AdministrationActionLog } from "./administration-action-log.service";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
 
 /** The test client's `dhw`: every request sends this version. */
@@ -72,3 +74,21 @@ export const ClaimEveryCliMutation = Layer.succeed(CliMutationIdempotency, {
   reclaimStale: () => Effect.succeed(false),
   release: () => Effect.void,
 });
+
+/**
+ * Runs operations without recording them, for suites built from group
+ * handlers; `administration-action-record.server.test.ts` covers the record.
+ */
+export const UnrecordedAdministrationActions = Layer.succeed(
+  AdministrationActionRecord,
+  (httpEffect) => httpEffect
+);
+
+/** An action log that keeps nothing, for suites serving the whole API. */
+export const DiscardedAdministrationActionLog = Layer.succeed(
+  AdministrationActionLog,
+  {
+    start: () => Effect.succeed("01980000-0000-7000-8000-0000000000f1"),
+    finish: () => Effect.void,
+  }
+);

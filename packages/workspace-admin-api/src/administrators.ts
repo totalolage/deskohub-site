@@ -6,6 +6,7 @@ import {
   dryRunPreview,
 } from "./administration-operation";
 import {
+  AdministrationActionRecord,
   AdministrationAuthentication,
   AdministrationLegacyUsername,
   CliResourceNotFound,
@@ -72,5 +73,6 @@ export const AdminCliAdministratorsApi = HttpApiGroup.make("administrators")
       destructiveOperation({ idempotent: true, preview: dryRunPreview })
     )
   )
+  .middleware(AdministrationActionRecord)
   .middleware(AdministrationAuthentication)
   .prefix("/api/v1/cli");

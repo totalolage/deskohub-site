@@ -78,7 +78,11 @@ import {
   type ReservationProductDetailsBackfillBatch,
 } from "@/features/reservation/backend/reservation-product-details-backfill.service";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { UnusedCliSessionAuthentication } from "./cli-api.test-utils";
+import {
+  DiscardedAdministrationActionLog,
+  UnrecordedAdministrationActions,
+  UnusedCliSessionAuthentication,
+} from "./cli-api.test-utils";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 import { CliClientCompatibilityLive } from "./cli-client-version";
@@ -264,6 +268,7 @@ describe("Workspace Admin API", () => {
       UnusedDiscountAdministration,
       UnusedInvoiceAdministration,
       UnusedStandaloneAccessCodeAdministration,
+      DiscardedAdministrationActionLog,
       NodeHttpServer.layerHttpServices
     );
     const request = (
@@ -395,6 +400,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(Layer.succeed(AdministrationService, {} as never)),
       Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(CliClientCompatibilityLive),
+      Effect.provide(UnrecordedAdministrationActions),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -443,6 +449,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(failingAdministration),
       Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(CliClientCompatibilityLive),
+      Effect.provide(UnrecordedAdministrationActions),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.withLogger(capturingLogger),
@@ -526,6 +533,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(UnusedStandaloneAccessCodeAdministration),
       Effect.provide(SessionAdministratorAuthentication),
       Effect.provide(CliClientCompatibilityLive),
+      Effect.provide(UnrecordedAdministrationActions),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -597,6 +605,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(admission),
       Effect.provide(authentication),
       Effect.provide(CliClientCompatibilityLive),
+      Effect.provide(UnrecordedAdministrationActions),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -803,6 +812,7 @@ describe("Workspace Admin API", () => {
       ),
       Effect.provide(reservationAccess),
       Effect.provide(CliClientCompatibilityLive),
+      Effect.provide(UnrecordedAdministrationActions),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -919,6 +929,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(UnusedStandaloneAccessCodeAdministration),
       Effect.provide(ClaimEveryCliMutation),
       Effect.provide(CliClientCompatibilityLive),
+      Effect.provide(UnrecordedAdministrationActions),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -1044,6 +1055,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(UnusedStandaloneAccessCodeAdministration),
       Effect.provide(ClaimEveryCliMutation),
       Effect.provide(CliClientCompatibilityLive),
+      Effect.provide(UnrecordedAdministrationActions),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -1147,6 +1159,7 @@ describe("Workspace Admin API", () => {
       ),
       Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(CliClientCompatibilityLive),
+      Effect.provide(UnrecordedAdministrationActions),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -1245,6 +1258,7 @@ describe("standalone access-code CLI endpoint", () => {
       ),
       Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(CliClientCompatibilityLive),
+      Effect.provide(UnrecordedAdministrationActions),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped
     );
