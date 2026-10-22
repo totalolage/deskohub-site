@@ -7,24 +7,30 @@ ALTER TABLE "customer_accounts" ADD COLUMN IF NOT EXISTS "legacy" boolean DEFAUL
 -- become legacy, linked or not: a link the backfill lost to a conflict is
 -- claimed at a later sign-in, and that claim records no account creation for
 -- a legacy account. The backfill kept no record of the logins it made, but
--- since #764 merged every other login is made by its owner's verified
--- sign-in, which opens its first session as it creates it. The backfill's
--- logins were unverified and had no session, and one verified later opens
--- its first session at that later sign-in. So a login since then that is
--- unverified, or has no session from its first ten seconds, is one. A
--- sign-up whose first session has since ended counts too: it misses only a
--- welcome, while a customer counted as new would be welcomed as one.
--- A linked login since then is also one if it authors a reservation older
--- than itself, which only the backfill assigned it, or has no
--- account-created event, which a sign-in claim records in the transaction
--- that links the account. An older login predates #764, however late its
--- account was backfilled.
+-- its operation could only run between #764's merge and the first production
+-- deployment without it, #772's, ready at 2026-10-20T18:49:15Z (#765's own
+-- failed). It created logins within admin requests, so none is later than
+-- one request after that; 19:10 leaves a margin over Vercel's longest
+-- function duration. Every other login since #764 merged is made by its
+-- owner's verified sign-in, which opens its first session as it creates it.
+-- The backfill's logins were unverified and had no session, and one verified
+-- later opens its first session at that later sign-in. So a login from that
+-- window that is unverified, or has no session from its first ten seconds, is
+-- one. A sign-up from the window whose first session has since ended counts
+-- too: it misses only a welcome, while a customer counted as new would be
+-- welcomed as one. A linked login from the window is also one if it authors
+-- a reservation older than itself, which only the backfill assigned it, or
+-- has no account-created event, which a sign-in claim records in the
+-- transaction that links the account. A login outside the window isn't the
+-- backfill's: an older one predates #764, however late its account was
+-- backfilled, and a later one may be a sign-up still between its login and
+-- its first session or claim.
 -- This runs before the repair below, which records events without a claim.
 -- A second run finds every such account already legacy.
 UPDATE "customer_accounts" SET "legacy" = true
 FROM "auth"."user"
 WHERE "auth"."user"."id" = "customer_accounts"."id"
-  AND "auth"."user"."created_at" >= '2026-10-20T17:32:49Z'
+  AND "auth"."user"."created_at" BETWEEN '2026-10-20T17:32:49Z' AND '2026-10-20T19:10:00Z'
   AND "customer_accounts"."deleted_at" IS NULL
   AND NOT "customer_accounts"."legacy"
   AND (

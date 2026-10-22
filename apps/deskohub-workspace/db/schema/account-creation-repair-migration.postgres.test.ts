@@ -271,15 +271,18 @@ const storedState = async (pool: Pool) => {
 };
 
 // Fixed millisecond instants, so stored timestamps compare exactly and
-// every login stays on its side of #764's merge (2026-10-20T17:32:49Z).
+// every login stays on its side of the window #764's backfill could run in,
+// from its merge (2026-10-20T17:32:49Z) to the end the migration allows.
 const backfilledAt = Temporal.Instant.from("2026-10-20T18:30:00Z");
+const backfillWindowEndsAt = Temporal.Instant.from("2026-10-20T19:10:00Z");
 const now = backfilledAt.add({ hours: 40 });
 const daysBefore = (days: number) => now.subtract({ hours: days * 24 });
 // Better Auth stamps a login before its hook inserts the account.
 const silentLoginAt = backfilledAt.subtract({ milliseconds: 3 });
 const reconciledAt = backfilledAt.add({ hours: 20 });
 const repairedAt = backfilledAt.add({ hours: 30 });
-const lateSignUpAt = backfilledAt.add({ hours: 2 });
+const lateSignUpAt = backfilledAt.add({ minutes: 20 });
+const afterBackfillAt = backfillWindowEndsAt.add({ milliseconds: 1 });
 
 const customerId = (name: string) =>
   DotyposCustomerIdSchema.make(`repair-${name}`);
@@ -451,7 +454,8 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
           repairedAt,
           repairedAt
         );
-        // Sign-ups after #764 merged: one claimed its customer, one hasn't.
+        // Sign-ups while the backfill could still run: one claimed its
+        // customer, one hasn't.
         await insertAccount(pool, "late-signup", {
           createdAt: lateSignUpAt,
           customerId: customerId("late-signup"),
@@ -475,6 +479,20 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
         // Its sign-in opened the session a moment after making the login.
         await insertLogin(pool, "late-pending", lateSignUpAt, {
           signedInAt: lateSignUpAt.add({ seconds: 2 }),
+        });
+        // The backfill's last possible login, and a login just after it
+        // without a session yet, as a sign-up in progress has none.
+        await insertAccount(pool, "legacy-last", {
+          createdAt: backfillWindowEndsAt,
+        });
+        await insertLogin(pool, "legacy-last", backfillWindowEndsAt, {
+          verified: false,
+        });
+        await insertAccount(pool, "after-backfill", {
+          createdAt: afterBackfillAt,
+        });
+        await insertLogin(pool, "after-backfill", afterBackfillAt, {
+          verified: false,
         });
       },
       check: async ({ pool, layer }) => {
@@ -538,9 +556,11 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
           "tombstone",
           "late-signup",
           "late-pending",
+          "after-backfill",
         ]) {
           expect(await isLegacy(pool, id)).toBe(false);
         }
+        expect(await isLegacy(pool, "legacy-last")).toBe(true);
         expect(await accountCreatedAt(pool, "recorded")).toBe(
           oldLogin.epochMilliseconds
         );
@@ -808,11 +828,65 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
     });
   });
 
+  test("keeps a sign-up whose first session commits after the migration new", async () => {
+    const id = "in-progress";
+    const loginAt = backfillWindowEndsAt.add({ hours: 30 });
+    await migrateAcross({
+      seed: async (pool) => {
+        // The sign-up hook commits the account, stamped a moment after the
+        // login, and Better Auth commits the verified login before it
+        // creates the first session.
+        await insertAccount(pool, id, {
+          createdAt: loginAt.add({ milliseconds: 5 }),
+        });
+        await insertLogin(pool, id, loginAt);
+      },
+      check: async ({ pool, layer }) => {
+        await pool.query(
+          `insert into auth.session (id, expires_at, token, created_at, updated_at, user_id)
+           values ($1, $2::timestamptz + interval '7 days', $1, $2, $2, $3)`,
+          [`session-${id}`, instantParameter(loginAt.add({ seconds: 2 })), id]
+        );
+        expect(
+          await Effect.runPromise(
+            Effect.flatMap(CustomerAccountLinkRepository, (links) =>
+              links.claim(customerAccountIdSchema.make(id), customerId(id))
+            ).pipe(
+              Effect.provide(
+                CustomerAccountLinkRepository.Default.pipe(
+                  Layer.provide(
+                    Layer.merge(
+                      layer,
+                      WorkspaceDatabaseAdvisoryLock.makeLayer(pool)
+                    )
+                  )
+                )
+              )
+            )
+          )
+        ).toEqual({ kind: "linked", customerId: customerId(id), created: true });
+        expect(await isLegacy(pool, id)).toBe(false);
+        expect(await accountCreatedEvents(pool, id)).toEqual([
+          {
+            occurredAt: loginAt.epochMilliseconds,
+            recordedAt: expect.any(Number),
+            processed: false,
+          },
+        ]);
+
+        // Running the migration again changes nothing.
+        const claimed = await storedState(pool);
+        expect((await rerunMigration(pool)).slice(2)).toEqual([0, 0]);
+        expect(await storedState(pool)).toEqual(claimed);
+      },
+    });
+  });
+
   test(
-    "repairs and marks a production-sized account table",
+    "repairs and marks a large account table",
     async () => {
-      // About 47k Dotypos customers got silent logins in #764, beside the
-      // logins that were backfilled accounts. Every fifth login here predates
+      // A synthetic stress case: production's backfill made 53 silent
+      // logins, far fewer than this table holds. Every fifth login predates
       // its account; the rest are stamped as a silent login is, without a
       // session, so they are legacy whether linked or not. Every second
       // account is linked; each linked silent login authors a guest booking

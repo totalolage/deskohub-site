@@ -1367,8 +1367,8 @@ describe.skipIf(!database)(
       });
     });
 
-    // The legacy marking (D37) writes the account row intake locks
-    // `FOR SHARE` after the lifecycle lock, so it races intake's profile
+    // The legacy marking (D37) writes the account row intake's commit locks
+    // `FOR SHARE` before any lifecycle lock, so it races intake's profile
     // fetch like a lifecycle operation.
     describe("legacy marking × intake", () => {
       const named = {
