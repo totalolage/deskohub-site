@@ -1,8 +1,8 @@
 import { Context, Data, Effect, Layer, Option } from "effect";
 import { administrationAgentScope } from "@/features/account/agent-scopes";
+import { AdministratorAgentAuthorization } from "@/features/administrators/backend/administrator-agent-authorization.service";
 import type { AgentTool } from "@/features/agent-tools/agent-tool";
 import type { CustomerAgentCaller } from "@/features/agent-tools/customer-agent-caller";
-import { AdministratorAgentAuthorization } from "@/features/administrators/backend/administrator-agent-authorization.service";
 import {
   administrationOperationTools,
   makeAdministrationAgentTools,
@@ -13,7 +13,7 @@ import type { AdministrationApiClient } from "./administration-api-client";
  * The administrator grant couldn't be checked, so whether the caller may
  * see the administration tools is unknown.
  */
-export class AdministrationAgentAccessUnavailable extends Data.TaggedError(
+class AdministrationAgentAccessUnavailable extends Data.TaggedError(
   "AdministrationAgentAccessUnavailable"
 ) {}
 
@@ -43,7 +43,9 @@ interface IAdministrationAgentAccess {
 export class AdministrationAgentAccess extends Context.Service<
   AdministrationAgentAccess,
   IAdministrationAgentAccess
->()("@deskohub-workspace/administration-agent-tools/AdministrationAgentAccess") {
+>()(
+  "@deskohub-workspace/administration-agent-tools/AdministrationAgentAccess"
+) {
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
@@ -66,7 +68,9 @@ export class AdministrationAgentAccess extends Context.Service<
                     "AdministratorAgentAuthorizationError",
                     ({ reason }) =>
                       reason === "unavailable"
-                        ? Effect.fail(new AdministrationAgentAccessUnavailable())
+                        ? Effect.fail(
+                            new AdministrationAgentAccessUnavailable()
+                          )
                         : Effect.logInfo(
                             "Administration tools withheld from an agent",
                             { reason }

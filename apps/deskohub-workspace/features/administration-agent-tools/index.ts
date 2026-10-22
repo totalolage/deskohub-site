@@ -6,10 +6,7 @@ import {
 } from "./administration-api-client";
 import { handleAssistantAdministrationRequest } from "./administration-assistant-api.server";
 
-export {
-  AdministrationAgentAccess,
-  AdministrationAgentAccessUnavailable,
-} from "./administration-agent-access";
+export { AdministrationAgentAccess } from "./administration-agent-access";
 
 /**
  * The services the MCP route serves administration tools with: the access

@@ -966,9 +966,11 @@ describe("customer MCP route for administration tools", () => {
     );
 
     expect(firstAdministrationTool).toBeGreaterThan(0);
-    expect(names.slice(firstAdministrationTool).every((name) =>
-      name.startsWith("admin_")
-    )).toBe(true);
+    expect(
+      names
+        .slice(firstAdministrationTool)
+        .every((name) => name.startsWith("admin_"))
+    ).toBe(true);
     expect(names).toContain("admin_list_sessions");
     expect(names).toContain("admin_revoke_session");
   });
@@ -1072,9 +1074,7 @@ describe("customer MCP route for administration tools", () => {
       operation: "admin_revoke_session",
       current: { "administration.listSessions": { items: [] } },
     });
-    expect(administrationRequests.map(({ method }) => method)).toEqual([
-      "GET",
-    ]);
+    expect(administrationRequests.map(({ method }) => method)).toEqual(["GET"]);
   });
 });
 

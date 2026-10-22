@@ -13,6 +13,7 @@ import {
   Encoding,
   Match,
   Option,
+  Predicate,
   Redacted,
   Schema,
   SchemaAST,
@@ -74,6 +75,8 @@ export interface AdministrationOperationTool {
   /** Encodes the operation's success; binary successes become attachments. */
   readonly success: Schema.Top;
   readonly binary: boolean;
+  /** Whether the success's JSON isn't an object, so it answers `{ items }`. */
+  readonly wrapsResult: boolean;
   readonly errors: ReadonlyArray<Schema.Top>;
 }
 
@@ -96,14 +99,17 @@ const capitalize = (value: string) =>
 /** A schema's top-level properties, or none when it isn't a plain object. */
 const propertiesOf = (
   schema: Schema.Top | undefined
-): Option.Option<ReadonlyArray<SchemaAST.PropertySignature>> =>
-  schema === undefined
-    ? Option.some([])
-    : SchemaAST.isObjects(schema.ast) &&
-        schema.ast.encoding === undefined &&
-        schema.ast.indexSignatures.length === 0
-      ? Option.some(schema.ast.propertySignatures)
-      : Option.none();
+): Option.Option<ReadonlyArray<SchemaAST.PropertySignature>> => {
+  if (schema === undefined) {
+    return Option.some([]);
+  }
+  const { ast } = schema;
+  return SchemaAST.isObjects(ast) &&
+    ast.encoding === undefined &&
+    ast.indexSignatures.length === 0
+    ? Option.some(ast.propertySignatures)
+    : Option.none();
+};
 
 const nameOf = (property: SchemaAST.PropertySignature) => String(property.name);
 
@@ -260,31 +266,36 @@ const guardCredentials = ({
   }
 };
 
-/** Successes that aren't JSON objects are answered as `{ items }`. */
-const isJsonObject = (value: Schema.Json): value is Schema.JsonObject =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+/** Whether the schema's JSON is always an object. */
+const encodesToObject = (ast: SchemaAST.AST): boolean => {
+  const encoded = SchemaAST.toEncoded(ast);
+  return SchemaAST.isUnion(encoded)
+    ? encoded.types.every(encodesToObject)
+    : SchemaAST.isObjects(encoded);
+};
 
 const successResultSchema = ({
   success,
   binary,
+  wrapsResult,
 }: {
   readonly success: Schema.Top;
   readonly binary: boolean;
-}): Schema.Top =>
-  binary
-    ? Schema.Struct({
-        uri: Schema.String,
-        mimeType: Schema.String,
-        byteLength: Schema.Number,
-      }).annotate({
-        description:
-          "The document, attached to the result as an embedded resource.",
-      })
-    : SchemaAST.isObjects(SchemaAST.toEncoded(success.ast))
-      ? Schema.toCodecJson(success as Schema.Codec<unknown>)
-      : Schema.Struct({
-          items: Schema.toCodecJson(success as Schema.Codec<unknown>),
-        });
+  readonly wrapsResult: boolean;
+}): Schema.Top => {
+  if (binary) {
+    return Schema.Struct({
+      uri: Schema.String,
+      mimeType: Schema.String,
+      byteLength: Schema.Number,
+    }).annotate({
+      description:
+        "The document, attached to the result as an embedded resource.",
+    });
+  }
+  const json = Schema.toCodecJson(success as Schema.Codec<unknown>);
+  return wrapsResult ? Schema.Struct({ items: json }) : json;
+};
 
 const outputSchema = ({
   behavior,
@@ -329,7 +340,7 @@ const outputSchema = ({
   return Schema.Union([
     ...successes,
     administrationAgentToolErrorResultSchema,
-  ]) as unknown as Schema.Codec<Schema.JsonObject, Schema.JsonObject>;
+  ]) as Schema.Codec<Schema.JsonObject, Schema.JsonObject>;
 };
 
 interface EndpointReflection {
@@ -394,6 +405,7 @@ const deriveEndpointTools = ({
   );
   const success = successOf(successes, operation);
   const binary = isBinary(success);
+  const wrapsResult = !binary && !encodesToObject(success.ast);
   const errorSchemas = [...errors.values()].flat();
 
   const variants = Context.getOption(
@@ -447,7 +459,7 @@ const deriveEndpointTools = ({
       input: argumentSchema(properties),
       output: outputSchema({
         behavior,
-        result: successResultSchema({ success, binary }),
+        result: successResultSchema({ success, binary, wrapsResult }),
       }),
       toRequest: (args) =>
         Effect.all({
@@ -463,6 +475,7 @@ const deriveEndpointTools = ({
         }),
       success,
       binary,
+      wrapsResult,
       errors: errorSchemas,
     };
   };
@@ -636,15 +649,19 @@ export const deriveAdministrationOperationTools = <
   return tools;
 };
 
-const toJson = (schema: Schema.Top, value: unknown) =>
+const toJson = <Value>(schema: Schema.Top, value: Value) =>
   Schema.encodeUnknownEffect(
     Schema.toCodecJson(schema as Schema.Codec<unknown>)
   )(value);
 
+const decodeJsonObject = Schema.decodeUnknownEffect(
+  Schema.Record(Schema.String, Schema.Json)
+);
+
 /** An operation's typed error as the API encodes it, if it is one. */
-const encodeOperationError = (
+const encodeOperationError = <OperationError>(
   tool: AdministrationOperationTool,
-  error: unknown
+  error: OperationError
 ) =>
   Option.firstSomeOf(
     tool.errors.map((schema) =>
@@ -693,10 +710,10 @@ const runOperation = (tool: AdministrationOperationTool, args: Arguments) =>
               })
             )
           : toJson(tool.success, value).pipe(
-              Effect.map((json) => ({
-                result: isJsonObject(json) ? json : { items: json },
-                attachments: [],
-              })),
+              Effect.flatMap((json) =>
+                decodeJsonObject(tool.wrapsResult ? { items: json } : json)
+              ),
+              Effect.map((result) => ({ result, attachments: [] })),
               Effect.mapError(
                 AgentToolError.unavailable("administration_unavailable")
               )
@@ -715,9 +732,7 @@ const toAttachmentOutcome = ({
   readonly bytes: Uint8Array;
   readonly mimeType: string;
 }): OperationOutcome => {
-  const subject = Object.values(args)
-    .filter((value) => typeof value === "string")
-    .slice(0, 1);
+  const subject = Object.values(args).filter(Predicate.isString).slice(0, 1);
   const uri = ["urn:deskohub:administration", tool.reference, ...subject].join(
     ":"
   );
@@ -804,16 +819,16 @@ const confirmationSchema = Schema.Struct({
 });
 
 /** Runs a tool call: validates, gates destructive changes, and calls. */
-const callAdministrationTool = ({
-  tool,
-  tools,
-  args,
-}: {
-  readonly tool: AdministrationOperationTool;
-  readonly tools: ReadonlyMap<string, AdministrationOperationTool>;
-  readonly args: Schema.Json;
-}) =>
-  Effect.gen(function* () {
+const callAdministrationTool = Effect.fn("administrationAgentTools.call")(
+  function* ({
+    tool,
+    tools,
+    args,
+  }: {
+    readonly tool: AdministrationOperationTool;
+    readonly tools: ReadonlyMap<string, AdministrationOperationTool>;
+    readonly args: Schema.Json;
+  }) {
     const object = yield* Schema.decodeUnknownEffect(argumentsSchema)(
       args
     ).pipe(Effect.mapError(() => AgentToolError.invalidInput()));
@@ -861,7 +876,8 @@ const callAdministrationTool = ({
         })
       )
     );
-  });
+  }
+);
 
 /**
  * The administration operations as agent tools, called for the agent whose

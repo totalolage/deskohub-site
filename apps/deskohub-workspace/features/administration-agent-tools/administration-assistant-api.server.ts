@@ -71,7 +71,7 @@ const assistantAccessEnded = () =>
  * the administrator grant are checked on every request, and the caller
  * comes only from them, never from request input.
  */
-export const AdministratorAssistantAuthenticationLive = Layer.effect(
+const AdministratorAssistantAuthenticationLive = Layer.effect(
   AdministrationAuthentication,
   Effect.gen(function* () {
     const agents = yield* CustomerAgentAuthorization;
@@ -154,23 +154,20 @@ export const AdministratorAssistantAuthenticationLive = Layer.effect(
  * `cli.getCurrentSession` reports the calling CLI session; an assistant has
  * none, so this instance refuses every CLI bearer.
  */
-export const RefusedCliSessionAuthentication = Layer.succeed(
-  CliBearerAuthentication,
-  {
-    bearer: () =>
-      Effect.fail(
-        new CliSessionUnauthorized({
-          message: "CLI sessions can't be used through an AI assistant.",
-        })
-      ),
-  }
-);
+const RefusedCliSessionAuthentication = Layer.succeed(CliBearerAuthentication, {
+  bearer: () =>
+    Effect.fail(
+      new CliSessionUnauthorized({
+        message: "CLI sessions can't be used through an AI assistant.",
+      })
+    ),
+});
 
 /**
  * Admits every request: the assistant's tools are derived from the current
  * contract, so no released `dhw` decodes these responses.
  */
-export const AssistantClientCompatibilityLive = Layer.succeed(
+const AssistantClientCompatibilityLive = Layer.succeed(
   CliClientCompatibility,
   (httpEffect) => httpEffect
 );

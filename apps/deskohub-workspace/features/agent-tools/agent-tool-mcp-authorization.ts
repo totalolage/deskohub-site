@@ -1,5 +1,4 @@
 import { Data, Effect, Match, Option, Schema } from "effect";
-import { administrationAgentScope } from "@/features/account/agent-scopes";
 import {
   CustomerAgentAuthorization,
   type CustomerAgentAuthorizationError,
@@ -7,6 +6,7 @@ import {
   customerAgentChallenge,
   readAgentAccessToken,
 } from "@/features/account";
+import { administrationAgentScope } from "@/features/account/agent-scopes";
 import type { AgentToolAuthorization } from "./agent-tool";
 import type { CustomerAgentCaller } from "./customer-agent-caller";
 

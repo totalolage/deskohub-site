@@ -2,9 +2,9 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import {
+  AdministrationAuthentication,
   AdministrationOperationBehavior,
   AdministrationOperationVariants,
-  AdministrationAuthentication,
   administrationOperations,
   CliOnly,
   destructiveOperation,
@@ -12,7 +12,8 @@ import {
   readPreview,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
-import { Schema } from "effect";
+import { AjvJsonSchemaValidator } from "@modelcontextprotocol/client/validators/ajv";
+import { Schema, SchemaAST } from "effect";
 import {
   HttpApi,
   HttpApiEndpoint,
@@ -44,15 +45,12 @@ HttpApi.reflect(WorkspaceAdminApi, {
   onEndpoint: ({ group, endpoint }) => {
     const fields = [...endpoint.payload.values()]
       .flatMap(({ schemas }) => schemas)
-      .flatMap((schema) =>
-        "fields" in schema && typeof schema.fields === "object"
-          ? Object.keys(schema.fields ?? {})
+      .flatMap(({ ast }) =>
+        SchemaAST.isObjects(ast)
+          ? ast.propertySignatures.map(({ name }) => String(name))
           : []
       );
-    payloadFields.set(
-      `${group.identifier}.${endpoint.name}`,
-      new Set(fields)
-    );
+    payloadFields.set(`${group.identifier}.${endpoint.name}`, new Set(fields));
   },
 });
 
@@ -66,8 +64,9 @@ describe("administration agent tools", () => {
       .map((entry) => entry.reference)
       .sort();
 
-    expect(administrationOperationTools.map((tool) => tool.reference).sort())
-      .toEqual(served);
+    expect(
+      administrationOperationTools.map((tool) => tool.reference).sort()
+    ).toEqual(served);
     expect(served.length).toBeGreaterThan(0);
     for (const entry of operations.filter(
       (candidate) => candidate.access._tag === "CliOnly"
@@ -107,6 +106,18 @@ describe("administration agent tools", () => {
     }
   });
 
+  test("publish input and output schemas MCP clients can compile", () => {
+    const validator = new AjvJsonSchemaValidator();
+    for (const tool of agentTools) {
+      for (const schema of [
+        tool.input["~standard"].jsonSchema.input({ target: "draft-2020-12" }),
+        tool.output["~standard"].jsonSchema.input({ target: "draft-2020-12" }),
+      ]) {
+        expect(() => validator.getValidator(schema)).not.toThrow();
+      }
+    }
+  });
+
   test("ask for confirmation exactly on destructive operations", () => {
     for (const tool of administrationOperationTools) {
       expect(tool.argumentNames.has("confirm")).toBe(
@@ -135,9 +146,7 @@ describe("administration agent tools", () => {
 
       expect(tool.access).toBe("administration");
       expect(tool.readOnly).toBe(operation?.behavior.kind === "read");
-      expect(tool.destructive).toBe(
-        operation?.behavior.kind === "destructive"
-      );
+      expect(tool.destructive).toBe(operation?.behavior.kind === "destructive");
       expect(tool.idempotent).toBe(operation?.behavior.idempotent);
     }
   });
@@ -187,14 +196,10 @@ describe("administration agent tool derivation", () => {
     const api = apiWith(
       authenticated(
         HttpApiGroup.make("administration").add(
-          HttpApiEndpoint.post(
-            "createStandaloneAccessCode",
-            "/access-codes",
-            {
-              payload: Schema.Struct({ attemptId: Schema.String }),
-              success: Schema.Struct({ pin: Secret }),
-            }
-          ).annotate(
+          HttpApiEndpoint.post("createStandaloneAccessCode", "/access-codes", {
+            payload: Schema.Struct({ attemptId: Schema.String }),
+            success: Schema.Struct({ pin: Secret }),
+          }).annotate(
             AdministrationOperationBehavior,
             destructiveOperation({ idempotent: true })
           )

@@ -422,7 +422,9 @@ const toToolResult = (
   reply: AgentToolReply | AgentToolReply["result"]
 ): CallToolResult => {
   const { result, attachments } =
-    reply instanceof AgentToolReply ? reply : { result: reply, attachments: [] };
+    reply instanceof AgentToolReply
+      ? reply
+      : { result: reply, attachments: [] };
 
   return {
     content: [

@@ -12,6 +12,7 @@ import {
   writeOperation,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
+import { AjvJsonSchemaValidator } from "@modelcontextprotocol/client/validators/ajv";
 import { Effect, Layer, Option, Schema } from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import {
@@ -99,6 +100,21 @@ const TestApi = HttpApi.make("testApi").add(
       })
     )
     .add(
+      HttpApiEndpoint.post("issueCode", "/codes", {
+        payload: Schema.Struct({ attemptId: Schema.String }),
+        success: Schema.Union([
+          Schema.Struct({
+            outcome: Schema.Literal("created"),
+            code: Schema.String,
+          }),
+          Schema.Struct({ outcome: Schema.Literal("already-created") }),
+        ]),
+      }).annotate(
+        AdministrationOperationBehavior,
+        writeOperation({ idempotent: true })
+      )
+    )
+    .add(
       HttpApiEndpoint.get("getDocument", "/documents/:documentId", {
         params: { documentId: Schema.String },
         success: Schema.Uint8Array.pipe(
@@ -109,11 +125,13 @@ const TestApi = HttpApi.make("testApi").add(
 );
 
 /** The requests the test API served, by operation, in order. */
-let served: Array<{ readonly operation: string; readonly body: unknown }> =
-  [];
+let served: Array<{
+  readonly operation: string;
+  readonly body: Schema.Json;
+}> = [];
 let authorizations: Array<string | null> = [];
 
-const record = (operation: string, body: unknown = null) =>
+const record = (operation: string, body: Schema.Json = null) =>
   Effect.sync(() => {
     served.push({ operation, body });
   });
@@ -157,6 +175,11 @@ const handleTestRequest = HttpRouter.toWebHandler(
               Effect.as({ applied: payload.mutation.kind })
             )
           )
+          .handle("issueCode", () =>
+            record("issueCode").pipe(
+              Effect.as({ outcome: "created" as const, code: "synthetic" })
+            )
+          )
           .handle("getDocument", () =>
             record("getDocument").pipe(
               Effect.as(new TextEncoder().encode("%PDF-1.7 synthetic"))
@@ -192,18 +215,20 @@ const callTool = (name: string, args: Schema.Json) => {
   if (tool === undefined) {
     throw new Error(`No tool ${name}.`);
   }
-  return tool.call(args, Option.some(caller)).pipe(
-    Effect.provide(
-      AdministrationApiClient.forApi(TestApi).pipe(
-        Layer.provide(Layer.succeed(AdministrationApiTransport, transport))
-      )
-    ),
-    Effect.result,
-    Effect.runPromise
-  );
+  return tool
+    .call(args, Option.some(caller))
+    .pipe(
+      Effect.provide(
+        AdministrationApiClient.forApi(TestApi).pipe(
+          Layer.provide(Layer.succeed(AdministrationApiTransport, transport))
+        )
+      ),
+      Effect.result,
+      Effect.runPromise
+    );
 };
 
-const resultOf = (reply: unknown) =>
+const resultOf = (reply: AgentToolReply | Schema.JsonObject | false) =>
   reply instanceof AgentToolReply ? reply.result : reply;
 
 beforeEach(() => {
@@ -223,6 +248,21 @@ describe("administration agent tool calls", () => {
       status: "confirmed",
     });
     expect(authorizations).toEqual(["Bearer synthetic-agent-token"]);
+  });
+
+  test("answer a union of objects as it is, as its published schema describes", async () => {
+    const result = await callTool("admin_issue_code", {
+      attemptId: "0190a5c4-0000-7000-8000-000000000002",
+    });
+    const reply = resultOf(result._tag === "Success" && result.success);
+    const tool = tools.find(({ name }) => name === "admin_issue_code");
+
+    expect(reply).toEqual({ outcome: "created", code: "synthetic" });
+    expect(
+      new AjvJsonSchemaValidator().getValidator(
+        tool!.output["~standard"].jsonSchema.input({ target: "draft-2020-12" })
+      )(reply)
+    ).toMatchObject({ valid: true });
   });
 
   test("answer a list as items", async () => {
@@ -385,12 +425,11 @@ describe("administration agent tool calls", () => {
       byteLength: 18,
     });
     expect(
-      reply instanceof AgentToolReply && reply.attachments.map(
-        ({ mimeType, blob }) => ({
+      reply instanceof AgentToolReply &&
+        reply.attachments.map(({ mimeType, blob }) => ({
           mimeType,
           text: Buffer.from(blob, "base64").toString(),
-        })
-      )
+        }))
     ).toEqual([{ mimeType: "application/pdf", text: "%PDF-1.7 synthetic" }]);
   });
 

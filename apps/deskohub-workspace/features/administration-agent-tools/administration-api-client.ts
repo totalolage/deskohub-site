@@ -40,7 +40,7 @@ export interface AdministrationApiRequest {
 }
 
 /** An operation's decoded success and the content type it was sent with. */
-export interface AdministrationApiResponse {
+interface AdministrationApiResponse {
   readonly value: unknown;
   readonly contentType: Option.Option<string>;
 }
@@ -90,8 +90,10 @@ export class AdministrationApiClient extends Context.Service<
       AdministrationApiClient,
       Effect.gen(function* () {
         const httpClient = (yield* HttpClient.HttpClient).pipe(
-          HttpClient.mapRequestEffect((request) =>
-            Effect.gen(function* () {
+          HttpClient.mapRequestEffect(
+            Effect.fn("AdministrationApiClient.authorize")(function* (
+              request: HttpClientRequest.HttpClientRequest
+            ) {
               const token = yield* AdministrationAgentAccessToken;
               return HttpClientRequest.bearerToken(
                 request,
