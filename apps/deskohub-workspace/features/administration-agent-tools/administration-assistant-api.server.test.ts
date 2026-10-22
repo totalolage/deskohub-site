@@ -165,9 +165,9 @@ const databaseFailure = (query: string) =>
  * the real one, so scope and grant checks run as in production.
  */
 const makeAssistantServices = ({
-  connectFails = false,
+  connectFailure,
 }: {
-  readonly connectFails?: boolean;
+  readonly connectFailure?: "fails" | "dies";
 } = {}) => {
   const connects: Array<
     Parameters<AdministratorAssistantConnections["Service"]["connect"]>[0]
@@ -234,18 +234,20 @@ const makeAssistantServices = ({
     }),
     Layer.succeed(AdministratorAssistantConnections, {
       connect: (input) =>
-        connectFails
+        connectFailure === "fails"
           ? Effect.fail(
               databaseFailure("insert into administrator assistant connections")
             )
-          : Effect.sync(() => {
-              connects.push(input);
-              return {
-                _tag: "AssistantConnection" as const,
-                connectionId: assistantChannel.connectionId,
-                oauthClientId: input.oauthClientId,
-              };
-            }),
+          : connectFailure === "dies"
+            ? Effect.die(new Error("The assistant connection disappeared."))
+            : Effect.sync(() => {
+                connects.push(input);
+                return {
+                  _tag: "AssistantConnection" as const,
+                  connectionId: assistantChannel.connectionId,
+                  oauthClientId: input.oauthClientId,
+                };
+              }),
     })
   );
   return { connects, layer };
@@ -319,7 +321,10 @@ const makeCliApiLayer = () =>
   });
 
 const serveAssistant = (
-  options: { readonly connectFails?: boolean; readonly logs?: string[] } = {}
+  options: {
+    readonly connectFailure?: "fails" | "dies";
+    readonly logs?: string[];
+  } = {}
 ) => {
   const assistant = makeAssistantServices(options);
   const instance = makeInstanceServices();
@@ -453,7 +458,12 @@ describe("AdministratorAssistantAuthenticationLive", () => {
     [
       "the connection can't be recorded",
       assistantToken,
-      { connectFails: true },
+      { connectFailure: "fails" as const },
+    ],
+    [
+      "recording the connection dies",
+      assistantToken,
+      { connectFailure: "dies" as const },
     ],
   ])(
     "reports the service unavailable when %s",

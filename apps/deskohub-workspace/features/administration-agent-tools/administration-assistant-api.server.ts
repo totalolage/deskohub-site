@@ -8,7 +8,10 @@ import {
 import { NodeHttpServer } from "@effect/platform-node";
 import { Data, Effect, Layer, Match, Option, Redacted } from "effect";
 import { HttpRouter } from "effect/unstable/http";
-import { CustomerAgentAuthorization } from "@/features/account/backend/auth/customer-agent-authorization.service";
+import {
+  CustomerAgentAuthorization,
+  type CustomerAgentAuthorizationError,
+} from "@/features/account/backend/auth/customer-agent-authorization.service";
 import { CustomerAgentClientDirectory } from "@/features/account/backend/auth/customer-agent-client-directory.service";
 import {
   makeServiceUnavailable,
@@ -29,6 +32,31 @@ import {
 class UnknownAssistantClient extends Data.TaggedError(
   "UnknownAssistantClient"
 ) {}
+
+/** Authenticating died, as when a connection disappears while it's read. */
+class AssistantAuthenticationDefect extends Data.TaggedError(
+  "AssistantAuthenticationDefect"
+)<{ readonly defect: unknown }> {}
+
+type AgentAuthorizationReason =
+  | CustomerAgentAuthorizationError["reason"]
+  | Effect.Error<
+      ReturnType<AdministratorAgentAuthorization["Service"]["authorize"]>
+    >["reason"];
+
+/** The refusal an authorization reason stands for; none for an outage. */
+const refusalOfReason = (reason: AgentAuthorizationReason) =>
+  Match.value(reason).pipe(
+    Match.when("unavailable", () => Option.none<string>()),
+    Match.whenOr(
+      "invalid-token",
+      "account-unavailable",
+      "missing-scope",
+      "not-administrator",
+      (refusal): Option.Option<string> => Option.some(refusal)
+    ),
+    Match.exhaustive
+  );
 
 const assistantAccessEnded = () =>
   new CliSessionUnauthorized({
@@ -73,23 +101,29 @@ export const AdministratorAssistantAuthenticationLive = Layer.effect(
     });
 
     /** Why the token may not act in the administration, if it was refused. */
-    const refusalOf = (cause: Effect.Error<ReturnType<typeof authenticate>>) =>
+    const refusalOf = (
+      cause:
+        | Effect.Error<ReturnType<typeof authenticate>>
+        | AssistantAuthenticationDefect
+    ): Option.Option<string> =>
       Match.value(cause).pipe(
-        Match.tag("UnknownAssistantClient", () =>
-          Option.some("unknown-client")
-        ),
-        Match.tag(
-          "CustomerAgentAuthorizationError",
-          "AdministratorAgentAuthorizationError",
-          ({ reason }) =>
-            reason === "unavailable" ? Option.none() : Option.some(reason)
-        ),
-        Match.orElse(() => Option.none())
+        Match.tagsExhaustive({
+          CustomerAgentAuthorizationError: ({ reason }) =>
+            refusalOfReason(reason),
+          AdministratorAgentAuthorizationError: ({ reason }) =>
+            refusalOfReason(reason),
+          UnknownAssistantClient: () => Option.some("unknown-client"),
+          EffectDrizzleQueryError: () => Option.none(),
+          AssistantAuthenticationDefect: () => Option.none(),
+        })
       );
 
     return {
       bearer: (httpEffect, { credential }) =>
         authenticate(Redacted.value(credential)).pipe(
+          Effect.catchDefect((defect) =>
+            Effect.fail(new AssistantAuthenticationDefect({ defect }))
+          ),
           Effect.tapError((cause) =>
             Option.match(refusalOf(cause), {
               onNone: () => Effect.void,
