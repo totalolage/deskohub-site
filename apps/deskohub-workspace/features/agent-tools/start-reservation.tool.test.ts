@@ -196,12 +196,16 @@ describe("start_reservation", () => {
   });
 
   test("keeps the same session and attempt across the old 10-minute boundary", async () => {
-    const selection = cowork(2);
-    const beforeBoundary = Temporal.Instant.from("2026-10-20T12:09:59Z");
-    const afterBoundary = Temporal.Instant.from("2026-10-20T12:10:01Z");
+    const selection = cowork();
+    // The next 10-minute boundary after now, so the selection stays bookable.
+    const tenMinutes = 10 * 60 * 1000;
+    const boundary = Temporal.Instant.fromEpochMilliseconds(
+      Math.ceil(Temporal.Now.instant().epochMilliseconds / tenMinutes) *
+        tenMinutes
+    );
 
-    await start(selection, { now: beforeBoundary });
-    await start(selection, { now: afterBoundary });
+    await start(selection, { now: boundary.subtract({ seconds: 1 }) });
+    await start(selection, { now: boundary.add({ seconds: 1 }) });
 
     expect(submissions).toHaveLength(2);
     const [first, later] = submissions.map(({ input }) => input);
@@ -210,13 +214,13 @@ describe("start_reservation", () => {
   });
 
   test("derives one selection key for identical calls and another for a different selection", async () => {
-    const now = Temporal.Instant.from("2026-10-20T12:09:59Z");
-    const selection = cowork(2);
+    const now = Temporal.Now.instant();
 
-    await start(selection, { now });
-    await start(selection, { now: now.add({ seconds: 2 }) });
+    await start(cowork(), { now });
+    await start(cowork(), { now: now.add({ seconds: 2 }) });
     await start(cowork(3), { now });
 
+    expect(submissions).toHaveLength(3);
     const [first, repeat, otherSelection] = submissions.map(
       ({ selectionKey }) => selectionKey
     );
