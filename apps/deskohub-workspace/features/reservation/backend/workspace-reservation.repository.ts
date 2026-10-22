@@ -1493,7 +1493,8 @@ export class WorkspaceReservationRepository extends Context.Service<
             .set({
               fulfillmentState: "fulfilled",
               fulfilledAt: input.fulfilledAt,
-              fulfillmentFailedAt: null,
+              // A recovery keeps the failure's time, so a status replay
+              // knows the reservation failed before it recovered.
               fulfillmentFailureCode: null,
               updatedAt: Temporal.Now.instant(),
             })
@@ -1654,7 +1655,7 @@ export class WorkspaceReservationRepository extends Context.Service<
             .set({
               fulfillmentState: "fulfilled",
               fulfilledAt: input.deliveredAt,
-              fulfillmentFailedAt: null,
+              // Keeps the failure's time, as `markCustomerEmailDeliveryFulfilled` does.
               fulfillmentFailureCode: null,
               updatedAt: Temporal.Now.instant(),
             })

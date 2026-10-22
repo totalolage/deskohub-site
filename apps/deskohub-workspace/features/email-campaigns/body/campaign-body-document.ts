@@ -1,5 +1,9 @@
 import { Schema } from "effect";
-import { campaignBodyIssues } from "./campaign-body-rules";
+import {
+  type CampaignBodyIssue,
+  campaignBodyIssues,
+  campaignBodyStructureIssues,
+} from "./campaign-body-rules";
 
 /**
  * Version of the stored body format. Bump it, and migrate stored bodies, when
@@ -51,20 +55,41 @@ export const CampaignBodyNode: Schema.Codec<CampaignBodyNode> = Schema.Struct({
   text: Schema.optional(Schema.String),
 });
 
+/** A versioned TipTap document whose `doc` passes `issues`. */
+const versionedCampaignBody = (
+  issues: (doc: CampaignBodyNode) => ReadonlyArray<CampaignBodyIssue>
+) =>
+  Schema.Struct({
+    formatVersion: Schema.Literal(campaignBodyFormatVersion),
+    doc: CampaignBodyNode.check(
+      Schema.makeFilter((doc) =>
+        issues(doc).map(({ path, issue }) => ({ path, issue }))
+      )
+    ),
+  });
+
 /**
  * One locale's campaign body: a versioned TipTap document. Decoding checks the
  * document against the campaign content set.
  */
-export const CampaignBodyDocument = Schema.Struct({
-  formatVersion: Schema.Literal(campaignBodyFormatVersion),
-  doc: CampaignBodyNode.check(
-    Schema.makeFilter((doc) =>
-      campaignBodyIssues(doc).map(({ path, issue }) => ({ path, issue }))
-    )
-  ),
-}).annotate({
+export const CampaignBodyDocument = versionedCampaignBody(
+  campaignBodyIssues
+).annotate({
   identifier: "CampaignBodyDocument",
   description: "A campaign email body stored as versioned TipTap JSON.",
 });
 
 export type CampaignBodyDocument = typeof CampaignBodyDocument.Type;
+
+/**
+ * A body still being written, as a preview renders it. Decoding checks only
+ * its structure: links, buttons and images may be unfinished, which saving
+ * refuses.
+ */
+export const UnfinishedCampaignBodyDocument = versionedCampaignBody(
+  campaignBodyStructureIssues
+).annotate({
+  identifier: "UnfinishedCampaignBodyDocument",
+  description:
+    "A campaign email body still being written, as versioned TipTap JSON.",
+});

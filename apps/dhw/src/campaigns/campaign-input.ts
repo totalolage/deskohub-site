@@ -6,9 +6,10 @@ import {
   AudienceFilter,
   type AudienceFilterType,
 } from "@deskohub/workspace-admin-api";
-import { Effect, FileSystem, Option, Schema } from "effect";
+import { Effect, FileSystem, Option } from "effect";
 import { Flag } from "effect/unstable/cli";
 import { InvalidMutationInputError } from "../command-runtime";
+import { decodeJsonInput, readJsonInputFile } from "../json-input";
 
 /** Short locale names accepted on the command line, mapped to API locales. */
 export const campaignLocaleChoices = [
@@ -302,42 +303,18 @@ export const readAudienceFilter = ({
       });
     }
     if (Option.isSome(filterFile)) {
-      const fileSystem = yield* FileSystem.FileSystem;
-      const contents = yield* fileSystem.readFileString(filterFile.value).pipe(
-        Effect.mapError(
-          () =>
-            new InvalidMutationInputError({
-              message: `The audience filter file ${filterFile.value} could not be read.`,
-            })
+      return Option.some(
+        yield* readJsonInputFile(
+          AudienceFilter,
+          "audience filter",
+          filterFile.value
         )
       );
-      return Option.some(yield* decodeAudienceFilter(contents));
     }
     if (Option.isSome(filter)) {
-      return Option.some(yield* decodeAudienceFilter(filter.value));
+      return Option.some(
+        yield* decodeJsonInput(AudienceFilter, "audience filter", filter.value)
+      );
     }
     return Option.none<AudienceFilterType>();
   });
-
-const decodeAudienceFilter = (contents: string) =>
-  Effect.try({
-    try: () => JSON.parse(contents) as unknown,
-    catch: () =>
-      new InvalidMutationInputError({
-        message: "The audience filter is not valid JSON.",
-      }),
-  }).pipe(
-    Effect.flatMap(
-      Schema.decodeUnknownEffect(AudienceFilter, {
-        errors: "all",
-        onExcessProperty: "error",
-      })
-    ),
-    Effect.mapError((error) =>
-      error instanceof InvalidMutationInputError
-        ? error
-        : new InvalidMutationInputError({
-            message: `The audience filter is invalid:\n${error.message}`,
-          })
-    )
-  );

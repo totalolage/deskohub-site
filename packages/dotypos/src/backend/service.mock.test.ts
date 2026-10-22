@@ -1,10 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Option, Schema } from "effect";
 import type { Reservation } from "../generated/effect.gen";
-import { DotyposCustomerIdSchema, DotyposReservationSchema } from "../types";
-import { seededReservationReads } from "./service.mock";
+import {
+  DotyposCustomerIdSchema,
+  DotyposCustomerSchema,
+  DotyposReservationSchema,
+} from "../types";
+import { seededCustomerReads, seededReservationReads } from "./service.mock";
 
 const dotyposCustomerId = Schema.decodeUnknownSync(DotyposCustomerIdSchema);
+
+const customer = (id: string) =>
+  Schema.decodeSync(DotyposCustomerSchema)({
+    _cloudId: "cloud-id",
+    id,
+    firstName: "Ada",
+    points: null,
+    flags: "0",
+    display: true,
+    deleted: false,
+  });
 
 const reservation = (overrides: Partial<Reservation>) =>
   Schema.decodeUnknownSync(DotyposReservationSchema)({
@@ -19,6 +34,22 @@ const reservation = (overrides: Partial<Reservation>) =>
 
 const startOfDay = (day: number) =>
   new Date(Date.UTC(2026, 0, 1) + day * 86_400_000).toISOString();
+
+describe("seededCustomerReads", () => {
+  test("selects customers by ID and preserves the seeded order", async () => {
+    const seeded = [customer("customer-1"), customer("customer-2")];
+    const reads = seededCustomerReads(seeded);
+
+    const selected = await Effect.runPromise(
+      reads.getCustomersPage([
+        dotyposCustomerId("customer-2"),
+        dotyposCustomerId("missing"),
+      ])
+    );
+
+    expect(selected).toEqual([customer("customer-2")]);
+  });
+});
 
 describe("seededReservationReads", () => {
   const visits = Array.from({ length: 250 }, (_, day) =>

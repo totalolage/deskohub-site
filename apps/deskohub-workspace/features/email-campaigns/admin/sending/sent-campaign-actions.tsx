@@ -8,13 +8,17 @@ import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
-import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import type { CampaignId } from "../../campaign-identifiers";
-import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
-import {
-  duplicateCampaign,
-  retryUndeliveredCampaignRecipients,
-} from "./actions";
+import { useCampaignOperation } from "../use-campaign-operation";
+import { campaignSendingFailureCopy } from "./campaign-sending-failure";
+
+const duplicateFailureCopy = campaignSendingFailureCopy((locale) =>
+  m.emailCampaignsSentDuplicateFailed({}, { locale })
+);
+
+const retryFailureCopy = campaignSendingFailureCopy((locale) =>
+  m.emailCampaignsSentRetryFailed({}, { locale })
+);
 
 /**
  * Duplicate for any sent campaign, plus Retry undelivered once it failed.
@@ -37,47 +41,29 @@ export function SentCampaignActions({
     readonly kind: "error" | "success";
     readonly message: string;
   } | null>(null);
-  const duplicate = useWorkspaceAction(duplicateCampaign, {
-    actionName: "duplicateCampaign",
-    onSuccess: ({ data }) => {
-      if (data)
-        router.push(
-          localizeAdministrationHref(
-            `/admin/email-campaigns/${data.campaignId}`,
-            locale
-          )
-        );
-    },
-    onError: ({ error }) =>
-      setFeedback({
-        kind: "error",
-        message: getEmailCampaignAdminActionFailureMessage(error.serverError, {
-          fallback: m.emailCampaignsSentDuplicateFailed({}, { locale }),
-          locale,
-        }),
-      }),
+  const showFailure = (message: string) =>
+    setFeedback({ kind: "error", message });
+  const duplicate = useCampaignOperation("duplicateCampaign", {
+    failureCopy: duplicateFailureCopy,
+    onSuccess: (copy) =>
+      router.push(
+        localizeAdministrationHref(`/admin/email-campaigns/${copy.id}`, locale)
+      ),
+    onFailure: showFailure,
   });
-  const retry = useWorkspaceAction(retryUndeliveredCampaignRecipients, {
-    actionName: "retryUndeliveredCampaignRecipients",
-    onSuccess: ({ data }) => {
-      if (!data) return;
+  const retry = useCampaignOperation("retryCampaign", {
+    failureCopy: retryFailureCopy,
+    onSuccess: ({ retriedCount }) => {
       setFeedback({
         kind: "success",
         message: m.emailCampaignsSentRetryStarted(
-          { count: data.retriedCount },
+          { count: retriedCount },
           { locale }
         ),
       });
       router.refresh();
     },
-    onError: ({ error }) =>
-      setFeedback({
-        kind: "error",
-        message: getEmailCampaignAdminActionFailureMessage(error.serverError, {
-          fallback: m.emailCampaignsSentRetryFailed({}, { locale }),
-          locale,
-        }),
-      }),
+    onFailure: showFailure,
   });
   const busy = duplicate.isExecuting || retry.isExecuting;
 
@@ -108,7 +94,7 @@ export function SentCampaignActions({
           disabled={busy}
           onClick={() => {
             setFeedback(null);
-            duplicate.execute({ campaignId });
+            duplicate.execute({ campaignId, requestId: crypto.randomUUID() });
           }}
           size="sm"
           type="button"

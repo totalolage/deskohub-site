@@ -12,6 +12,8 @@ import type { AudienceFilter } from "../audience-filter";
 import { campaignIdSchema } from "../campaign-identifiers";
 import {
   type AudienceEvaluationContext,
+  AudienceFactSource,
+  type AudienceFactSource as AudienceFactSourceType,
   AudienceScope,
   audienceEvaluationAt,
 } from "./audience-evaluation-context";
@@ -68,6 +70,7 @@ const resolve = async (input: {
   readonly dotypos?: Parameters<typeof DotyposServiceMock>[0];
   readonly scope?: AudienceScope;
   readonly context?: AudienceEvaluationContext;
+  readonly facts?: AudienceFactSourceType;
 }) => {
   const listCandidates = mock(() => Effect.succeed(input.candidates));
   const countReceivedCampaignEmails = mock(() =>
@@ -89,6 +92,7 @@ const resolve = async (input: {
           filter: input.filter ?? everyone,
           ...(input.scope && { scope: input.scope }),
           ...(input.context && { context: input.context }),
+          ...(input.facts && { facts: input.facts }),
         })
       )
     ).pipe(
@@ -276,6 +280,40 @@ describe("CampaignRecipientService.resolve", () => {
         ({ dotyposCustomerId }) => dotyposCustomerId
       )
     ).toEqual(["1", "2"]);
+  });
+
+  test("uses fetched profiles for tags and excludes customers absent from Dotypos", async () => {
+    const { exit, getCustomers } = await resolve({
+      candidates: [facts("1"), facts("2"), facts("3")],
+      facts: AudienceFactSource.Fetched({
+        visits: Option.none(),
+        profiles: Option.some(
+          new Map<DotyposCustomerId, DotyposCustomer>([
+            [customerId("1"), customer("1", { tags: ["vip"] })],
+            [customerId("2"), customer("2", { tags: [] })],
+          ])
+        ),
+      }),
+      filter: {
+        attribute: "dotyposTags",
+        _tag: "Condition",
+        operator: "anyOf",
+        value: ["vip"],
+      },
+    });
+
+    expect(getCustomers).not.toHaveBeenCalled();
+    expect(
+      resolution(exit).recipients.map(
+        ({ dotyposCustomerId }) => dotyposCustomerId
+      )
+    ).toEqual([customerId("1")]);
+    expect(resolution(exit).exclusions).toEqual([
+      {
+        dotyposCustomerId: customerId("3"),
+        reason: "missing-from-dotypos",
+      },
+    ]);
   });
 
   test("lists matching customers it can't reach with a reason", async () => {

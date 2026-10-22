@@ -1,21 +1,20 @@
 "use client";
 
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
-import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import type {
   CampaignPurpose,
   CampaignTemplateKey,
 } from "../../body/campaign-content";
-import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
+import type { CampaignOperationFailureCopy } from "../campaign-operation-failure";
 import { CampaignInboxPreview } from "../email-preview/campaign-inbox-preview";
-import { previewCampaignEmail } from "./actions";
+import { useCampaignOperation } from "../use-campaign-operation";
 import {
   type CampaignComposerLocaleFields,
   hasLocaleContent,
-  toCampaignLocaleContent,
+  toCampaignPreviewInput,
 } from "./campaign-composer-fields";
 
 const previewDelayMs = 500;
@@ -24,6 +23,11 @@ const missingContentMessages = {
   "cs-CZ": m.emailCampaignsEmailPreviewMissingContentCzech,
   "en-US": m.emailCampaignsEmailPreviewMissingContentEnglish,
 } as const satisfies Record<Locale, (...args: never) => string>;
+
+const previewFailureCopy: CampaignOperationFailureCopy = {
+  fallback: (locale) =>
+    m.emailCampaignsEmailPreviewRenderFailed({}, { locale }),
+};
 
 /**
  * The unsaved locale content rendered through the campaign template, as a
@@ -45,19 +49,15 @@ export function CampaignEmailPreview({
   readonly templateKey: CampaignTemplateKey;
 }) {
   const routeLocale = useRouteLocale();
-  const [preview, setPreview] = useState<{
-    readonly html: string;
-    readonly subject: string;
-    readonly preheader: string;
-  }>();
+  const [html, setHtml] = useState<string>();
   const [error, setError] = useState<string>();
   const hasContent = hasLocaleContent(fields);
-  const request = {
-    templateKey,
-    purpose,
-    locale,
-    content: toCampaignLocaleContent(fields, purpose),
-  };
+  // Exporting the body to Markdown walks the whole document, so only an edit
+  // redoes it, not the renders the pending state causes.
+  const request = useMemo(
+    () => toCampaignPreviewInput({ templateKey, purpose, locale, fields }),
+    [templateKey, purpose, locale, fields]
+  );
   const requestKey = JSON.stringify(request);
   // Responses can arrive out of order; only the latest request's applies.
   const latestRequestKey = useRef(requestKey);
@@ -65,27 +65,14 @@ export function CampaignEmailPreview({
     latestRequestKey.current = requestKey;
   }, [requestKey]);
 
-  const render = useWorkspaceAction(previewCampaignEmail, {
-    actionName: "previewCampaignEmail",
-    onSuccess: ({ data, input }) => {
+  const render = useCampaignOperation("previewCampaignTemplate", {
+    failureCopy: previewFailureCopy,
+    onSuccess: (output, input) => {
       if (JSON.stringify(input) !== latestRequestKey.current) return;
       setError(undefined);
-      setPreview({
-        html: data.html,
-        subject: data.subject,
-        preheader: input.content.preheader,
-      });
+      setHtml(output.html);
     },
-    onError: ({ error }) =>
-      setError(
-        getEmailCampaignAdminActionFailureMessage(error.serverError, {
-          fallback: m.emailCampaignsEmailPreviewRenderFailed(
-            {},
-            { locale: routeLocale }
-          ),
-          locale: routeLocale,
-        })
-      ),
+    onFailure: setError,
   });
   // The hook returns a new `execute` on every render, including the renders
   // its own pending state causes; an effect event keeps those from
@@ -102,7 +89,7 @@ export function CampaignEmailPreview({
   return (
     <CampaignInboxPreview
       error={error}
-      html={hasContent ? preview?.html : undefined}
+      html={hasContent ? html : undefined}
       locale={locale}
       locales={locales}
       onLocaleChange={onLocaleChange}

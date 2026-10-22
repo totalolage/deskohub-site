@@ -1,6 +1,12 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { sql } from "drizzle-orm";
-import { check, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  pgTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { instant } from "../instant";
 
@@ -14,6 +20,12 @@ import { instant } from "../instant";
  *
  * `dotypos_customer_id` is the live account's own Dotypos customer, unique
  * across accounts; a tombstone holds none.
+ *
+ * `legacy` marks an existing customer's account: #764's backfill gave every
+ * customer with older reservations a silent login, so the account was in
+ * fact created before records began and `created_at` is only when the
+ * backfill ran. A legacy account never counts as a new one. Nothing creates
+ * legacy accounts any more, so every other account is a sign-up.
  */
 export const customerAccounts = pgTable(
   "customer_accounts",
@@ -22,6 +34,7 @@ export const customerAccounts = pgTable(
     dotyposCustomerId: text("dotypos_customer_id").$type<DotyposCustomerId>(),
     deletedAt: instant("deleted_at"),
     createdAt: instant("created_at").notNull().default(sql`now()`),
+    legacy: boolean("legacy").notNull().default(false),
   },
   (t) => [
     uniqueIndex("customer_accounts_dotypos_customer_unique_idx").on(

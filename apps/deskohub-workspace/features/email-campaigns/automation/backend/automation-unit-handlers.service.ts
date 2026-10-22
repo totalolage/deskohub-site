@@ -2,8 +2,18 @@ import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { ReservationActivitySweep } from "@/features/reservation/backend/reservation-activity-sweep.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { CampaignCandidateRepository } from "../../backend/campaign-candidate.repository";
+import { CampaignDeliveryService } from "../../backend/campaign-delivery.service";
+import { CampaignRecipientService } from "../../backend/campaign-recipient.service";
 import type { AutomationWorkUnitKind } from "../automation-work-units";
+import { AutomationConditionEvaluation } from "./automation-condition-evaluation.service";
+import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
+import { makePreviewUnitHandler } from "./automation-preview-unit";
 import type { RegisteredAutomationUnitHandler } from "./automation-unit-handler";
+import { makeConditionHandler } from "./condition";
+import { makeDeliverHandler } from "./deliver";
+import { makeFireChunkHandler } from "./fire-chunk";
+import { makeIntakeHandler } from "./intake";
 import { makeSweepPageHandler } from "./sweep-page";
 
 interface IAutomationUnitHandlers {
@@ -38,13 +48,30 @@ export class AutomationUnitHandlers extends Context.Service<
       }))
     );
 
-  /** PR C runs sweep pages only. */
-  static Live = this.layer(Effect.all([makeSweepPageHandler])).pipe(
+  /**
+   * Sweep pages, dry-run previews, intake, schedule fire chunks, conditions
+   * and deliveries, with one provider list for all of them.
+   */
+  static Live = this.layer(
+    Effect.all([
+      makeSweepPageHandler,
+      makePreviewUnitHandler,
+      makeIntakeHandler,
+      makeFireChunkHandler,
+      makeConditionHandler,
+      makeDeliverHandler,
+    ])
+  ).pipe(
     Layer.provide(
       Layer.mergeAll(
         ReservationActivitySweep.Default,
         WorkspaceDatabase.Default,
-        WorkspaceDotyposLayer
+        WorkspaceDotyposLayer,
+        CampaignRecipientService.Live,
+        AutomationEvaluationFacts.Live,
+        AutomationConditionEvaluation.Live,
+        CampaignCandidateRepository.Live,
+        CampaignDeliveryService.Live
       )
     )
   );

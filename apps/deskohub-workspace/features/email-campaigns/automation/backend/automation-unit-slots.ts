@@ -142,6 +142,12 @@ const inFlightStatuses = ["enqueued", "claimed"] as const;
  * The slot count changes only under the slot lock, taken last in the
  * transaction (§5.4), so concurrent hand-offs never exceed the limits.
  * Units of kinds this deployment doesn't run still hold their slots.
+ *
+ * A transaction can hold `planned` rows when it asks for the slot lock: a
+ * hand-off that drops a preview's planned units, or re-plans a unit key, locks
+ * them first. Promotion therefore never waits for a row; it skips one another
+ * transaction holds, which a later hand-off or top-up promotes, so no wait
+ * cycle forms with the slot lock.
  */
 const fillAutomationUnitSlots = Effect.fn("automationUnitSlots.fill")(
   function* (
@@ -218,4 +224,5 @@ const nextPlannedUnit = (
       asc(units.id)
     )
     .limit(1)
+    .for("update", { skipLocked: true })
     .pipe(Effect.map(([unit]) => unit));

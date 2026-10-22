@@ -7,7 +7,8 @@ import {
   composerLocales,
   localeContentIssues,
   newCampaignComposerFields,
-  toCampaignLocalizedContent,
+  toAdministrationCampaignContent,
+  toAdministrationCampaignContentChange,
 } from "./campaign-composer-fields";
 
 const withSubject = (
@@ -42,7 +43,7 @@ describe("composerLocales", () => {
   });
 });
 
-describe("toCampaignLocalizedContent", () => {
+describe("toAdministrationCampaignContent", () => {
   const bothLocales = withSubject(
     withSubject(newCampaignComposerFields, "cs-CZ", "Ahoj"),
     "en-US",
@@ -52,7 +53,7 @@ describe("toCampaignLocalizedContent", () => {
   test("saves only the editable locales", () => {
     expect(
       Object.keys(
-        toCampaignLocalizedContent(
+        toAdministrationCampaignContent(
           bothLocales,
           composerLocales("en-US").editable
         )
@@ -64,9 +65,82 @@ describe("toCampaignLocalizedContent", () => {
     const czechOnly = withSubject(newCampaignComposerFields, "cs-CZ", "Ahoj");
     expect(
       Object.keys(
-        toCampaignLocalizedContent(
+        toAdministrationCampaignContent(
           czechOnly,
           composerLocales(undefined).editable
+        )
+      )
+    ).toEqual(["cs-CZ"]);
+  });
+});
+
+describe("toAdministrationCampaignContent body", () => {
+  test("sends the body as Markdown", () => {
+    const fields: CampaignComposerFields = {
+      ...newCampaignComposerFields,
+      locales: {
+        ...newCampaignComposerFields.locales,
+        "cs-CZ": {
+          ...newCampaignComposerFields.locales["cs-CZ"],
+          subject: " Ahoj ",
+          body: {
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  { type: "text", text: "Dobrý " },
+                  { type: "text", text: "den", marks: [{ type: "bold" }] },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    expect(
+      toAdministrationCampaignContent(fields, composerLocales("cs-CZ").editable)
+    ).toEqual({
+      "cs-CZ": {
+        subject: "Ahoj",
+        preheader: "",
+        bodyMarkdown: "Dobrý **den**",
+      },
+    });
+  });
+});
+
+describe("toAdministrationCampaignContentChange", () => {
+  const czechOnly = withSubject(newCampaignComposerFields, "cs-CZ", "Ahoj");
+
+  test("restores the default reason line unless one is set", () => {
+    expect(
+      toAdministrationCampaignContentChange(
+        czechOnly,
+        composerLocales(undefined).editable,
+        ["cs-CZ"]
+      )["cs-CZ"]
+    ).toMatchObject({ subject: "Ahoj", operationalReason: null });
+  });
+
+  test("removes a saved locale that no longer has content", () => {
+    expect(
+      toAdministrationCampaignContentChange(
+        czechOnly,
+        composerLocales(undefined).editable,
+        ["cs-CZ", "en-US"]
+      )
+    ).toMatchObject({ "en-US": null });
+  });
+
+  test("leaves locales the draft never had alone", () => {
+    expect(
+      Object.keys(
+        toAdministrationCampaignContentChange(
+          czechOnly,
+          composerLocales(undefined).editable,
+          ["cs-CZ"]
         )
       )
     ).toEqual(["cs-CZ"]);

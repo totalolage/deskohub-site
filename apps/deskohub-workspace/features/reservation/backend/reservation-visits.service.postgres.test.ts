@@ -145,13 +145,18 @@ describe.skipIf(!testDatabase)(
         bookings.map(dotyposReservation)
       );
 
-      const { cost, visits } = await Effect.runPromise(
+      const {
+        cost,
+        bookings: booked,
+        visits,
+      } = await Effect.runPromise(
         withVisits(
           dotypos,
           Effect.gen(function* () {
             const reservationVisits = yield* ReservationVisits;
             return {
               cost: yield* reservationVisits.cost(customers),
+              bookings: yield* reservationVisits.bookings(customers),
               visits: yield* reservationVisits.ofCustomers(customers),
             };
           })
@@ -159,6 +164,7 @@ describe.skipIf(!testDatabase)(
       );
 
       expect(cost).toBe(3);
+      expect(customers.map((id) => booked.get(id))).toEqual([40, 40, 40]);
       expect(dotypos.requests()).toBe(3);
       expect(dotypos.peakOpenRequests()).toBe(1);
       expect(customers.map((id) => visits.get(id)?.length)).toEqual([
@@ -166,6 +172,7 @@ describe.skipIf(!testDatabase)(
       ]);
       expect(visits.get(customers[0]!)).toContainEqual({
         workspaceReservationId: workspaceId("cost-0"),
+        dotyposReservationId: dotyposId("cost-0"),
         dotyposCustomerId: customers[0]!,
         startsAt: at(9),
         endsAt: at(11),
@@ -308,6 +315,7 @@ describe.skipIf(!testDatabase)(
                 1
               ),
               cost: yield* reservationVisits.cost([customer]),
+              bookings: yield* reservationVisits.bookings([customer]),
             };
           })
         )
@@ -326,6 +334,7 @@ describe.skipIf(!testDatabase)(
         result.active.visits.map((visit) => visit.workspaceReservationId)
       ).toEqual(booked);
       expect(result.cost).toBe(1);
+      expect([...result.bookings]).toEqual([[customer, 1]]);
     });
 
     test("follows a reschedule in Dotypos without any local change", async () => {

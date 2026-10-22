@@ -1,23 +1,9 @@
 import "server-only";
 
-import {
-  type DotyposCustomer,
-  type DotyposCustomerId,
-  DotyposService,
-} from "@deskohub/dotypos";
-import {
-  Array as Arr,
-  Context,
-  Effect,
-  Layer,
-  Option,
-  Order,
-  Result,
-  Schema,
-} from "effect";
+import type { DotyposCustomer, DotyposCustomerId } from "@deskohub/dotypos";
+import { Context, Effect, Layer, Option, Order, Result, Schema } from "effect";
 import type { Locale } from "@/features/i18n";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
-import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { currentInstant } from "@/shared/utils/temporal";
 import type {
   AudienceCandidate,
@@ -30,6 +16,7 @@ import { resolveRecipientLocale } from "../recipient-locale";
 import { evaluateAudienceFilter } from "./audience-evaluation";
 import {
   type AudienceEvaluationContext,
+  type AudienceFactSource,
   AudienceScope,
   audienceEvaluationAt,
   scopedCustomers,
@@ -39,9 +26,6 @@ import {
   type CampaignCandidateFacts,
   CampaignCandidateRepository,
 } from "./campaign-candidate.repository";
-
-/** Dotypos customers requested per hydration call. */
-const hydrationChunkSize = 100;
 
 /** A customer the campaign reaches, with the Dotypos profile email. */
 type CampaignRecipient = {
@@ -80,14 +64,16 @@ type CampaignRecipientResolution = {
 
 /**
  * What to resolve recipients for. A one-off send passes only the purpose
- * and filter: everyone, evaluated now. An automation narrows the scope to
- * its subjects and evaluates in its own context.
+ * and filter: everyone, evaluated now from live facts. An automation unit
+ * narrows the scope to its subjects, evaluates in its own context, and
+ * reads the Dotypos facts it fetched.
  */
 type CampaignRecipientQuery = {
   readonly purpose: CampaignPurpose;
   readonly filter: AudienceFilter;
   readonly scope?: AudienceScope;
   readonly context?: AudienceEvaluationContext;
+  readonly facts?: AudienceFactSource;
 };
 
 export interface ICampaignRecipientService {
@@ -117,27 +103,7 @@ export class CampaignRecipientService extends Context.Service<
     this,
     Effect.gen(function* () {
       const candidates = yield* CampaignCandidateRepository;
-      const dotypos = yield* DotyposService;
       const audienceFacts = yield* AudienceFactsService;
-
-      const hydrate = (ids: readonly DotyposCustomerId[]) =>
-        Effect.forEach(Arr.chunksOf(ids, hydrationChunkSize), (chunk) =>
-          dotypos.getCustomers({ ids: chunk })
-        ).pipe(
-          Effect.map(
-            (pages) =>
-              new Map(
-                pages
-                  .flat()
-                  .flatMap((customer) =>
-                    customer.id === undefined
-                      ? []
-                      : [[customer.id, customer] as const]
-                  )
-              )
-          ),
-          Effect.mapError(CampaignRecipientResolutionError.dotypos)
-        );
 
       return {
         resolve: ({
@@ -145,6 +111,7 @@ export class CampaignRecipientService extends Context.Service<
           filter,
           scope = AudienceScope.All(),
           context,
+          facts,
         }: CampaignRecipientQuery) =>
           Effect.Do.pipe(
             Effect.bind("candidates", () =>
@@ -173,15 +140,19 @@ export class CampaignRecipientService extends Context.Service<
                 filter,
                 contexts: [context],
                 scope,
+                ...(facts && { facts }),
               })
             ),
             Effect.let("localMatches", ({ candidates, context, facts }) =>
               selectLocalMatches({ candidates, filter, context, facts })
             ),
             Effect.bind("profiles", ({ localMatches }) =>
-              hydrate(
-                localMatches.map(({ dotyposCustomerId }) => dotyposCustomerId)
-              )
+              audienceFacts.profiles({
+                customers: localMatches.map(
+                  ({ dotyposCustomerId }) => dotyposCustomerId
+                ),
+                ...(facts && { facts }),
+              })
             ),
             Effect.map(({ localMatches, profiles, context, facts }) =>
               classifyRecipients({
@@ -202,7 +173,6 @@ export class CampaignRecipientService extends Context.Service<
     Layer.provide(
       Layer.mergeAll(
         CampaignCandidateRepository.Live,
-        WorkspaceDotyposLayer,
         AudienceFactsService.Live
       )
     )

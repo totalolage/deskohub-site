@@ -1,4 +1,4 @@
-import { Clock, Effect, Option, Schema } from "effect";
+import { Clock, Effect, Option, Schema, SchemaGetter } from "effect";
 
 export const unixTimestampSecondsSchema = Schema.Int.check(
   Schema.isGreaterThanOrEqualTo(0)
@@ -92,6 +92,20 @@ export const instantStringSchema = Schema.String.check(
   });
 
 export type Instant = typeof instantStringSchema.Type;
+
+/**
+ * A whole-millisecond instant stored as its ISO string, such as a work
+ * unit subject's window bound or fire time; the ISO form round-trips it
+ * exactly.
+ */
+export const instantFromIsoStringSchema = instantStringSchema.pipe(
+  Schema.decodeTo(TemporalInstantSchema, {
+    decode: SchemaGetter.transform((value) => Temporal.Instant.from(value)),
+    encode: SchemaGetter.transform(
+      (value) => temporalInstantToIsoString(value) as Instant
+    ),
+  })
+);
 
 export const isPlainDateString = (annotations?: Schema.Annotations.Filter) =>
   Schema.makeFilter<string>(

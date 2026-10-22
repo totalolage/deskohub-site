@@ -1,6 +1,8 @@
 import { Data, type Schema } from "effect";
 import type { BetterAuthSecretsMessage } from "@/features/account/backend/auth/auth-secrets";
+import type { Locale } from "@/features/i18n";
 import type { AudienceFilterUses } from "./audience-filter-usage";
+import type { InvalidCampaignBody } from "./body/invalid-campaign-body";
 import type { CampaignAudienceId, CampaignId } from "./campaign-identifiers";
 import type { CampaignDelivery, CampaignStatus } from "./campaign-states";
 
@@ -24,15 +26,57 @@ export class CampaignContentInvalid extends Data.TaggedError(
   readonly cause: Schema.SchemaError;
 }> {}
 
-/** A campaign left Draft, so its content and audience are frozen. */
+/** A locale's Markdown body in a campaign edit isn't valid campaign Markdown. */
+export class CampaignBodyMarkdownInvalid extends Data.TaggedError(
+  "CampaignBodyMarkdownInvalid"
+)<{
+  readonly locale: Locale;
+  readonly cause: InvalidCampaignBody;
+}> {
+  /** Stable across transports, so clients can tell this rejection apart. */
+  static readonly code = "content-markdown-invalid";
+}
+
+/**
+ * A campaign edit adds a locale the campaign has no content for without
+ * giving both its subject and its body.
+ */
+export class CampaignLocaleContentMissing extends Data.TaggedError(
+  "CampaignLocaleContentMissing"
+)<{
+  readonly campaignId: CampaignId;
+  readonly locale: Locale;
+}> {
+  /** Stable across transports, so clients can tell this rejection apart. */
+  static readonly code = "content-locale-missing";
+}
+
+/**
+ * The campaign's content and audience are frozen: a one-off campaign left
+ * Draft, or an automated one was archived.
+ */
 export class CampaignReadOnly extends Data.TaggedError("CampaignReadOnly")<{
   readonly campaignId: CampaignId;
   readonly status: Exclude<CampaignStatus, "draft">;
-}> {}
+}> {
+  /** Stable across transports, so clients can tell this conflict apart. */
+  static readonly code = "campaign-read-only";
+}
 
 /**
- * A one-off operation (edit, delete, test send, confirmation, send, retry,
- * duplicate) was asked of an automated campaign.
+ * An automated campaign that published a version can't be deleted: its runs
+ * and sends reference that version. Archive it instead.
+ */
+export class CampaignPublished extends Data.TaggedError("CampaignPublished")<{
+  readonly campaignId: CampaignId;
+}> {
+  /** Stable across transports, so clients can tell this conflict apart. */
+  static readonly code = "campaign-published";
+}
+
+/**
+ * A one-off operation (test send, confirmation, send, retry) was asked of an
+ * automated campaign.
  */
 export class CampaignDeliveryMismatch extends Data.TaggedError(
   "CampaignDeliveryMismatch"
@@ -44,13 +88,22 @@ export class CampaignDeliveryMismatch extends Data.TaggedError(
   static readonly code = "campaign-delivery-mismatch";
 }
 
-/** Draft campaigns use the audience, so it can be archived but not deleted. */
+/**
+ * Draft campaigns use the audience, or conditions of non-archived automated
+ * campaigns (working copy or active version) reference it, so it can be
+ * archived but not deleted.
+ */
 export class CampaignAudienceInUse extends Data.TaggedError(
   "CampaignAudienceInUse"
 )<{
   readonly audienceId: CampaignAudienceId;
   readonly draftCampaignIds: readonly CampaignId[];
-}> {}
+  /** Automated campaigns whose conditions reference the audience. */
+  readonly automationCampaignIds?: readonly CampaignId[];
+}> {
+  /** Stable across transports, so clients can tell this conflict apart. */
+  static readonly code = "audience-in-use";
+}
 
 /** An archived audience can't be assigned to a campaign. */
 export class CampaignAudienceArchived extends Data.TaggedError(
@@ -78,7 +131,10 @@ export class AudienceFilterCampaignNotFound extends Data.TaggedError(
   "AudienceFilterCampaignNotFound"
 )<{
   readonly campaignIds: readonly CampaignId[];
-}> {}
+}> {
+  /** Stable across transports, so clients can tell this rejection apart. */
+  static readonly code = "audience-filter-campaign-not-found";
+}
 
 export type CampaignConfirmationRejection =
   | "unknown-code"

@@ -1,6 +1,10 @@
-import { and, eq, lte, sql } from "drizzle-orm";
-import { Effect } from "effect";
-import { emailCampaignAutomationWorkUnits as units } from "@/db/schema";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { Effect, Option, Schema } from "effect";
+import {
+  customerEvents,
+  emailCampaignAutomationRuns as runs,
+  emailCampaignAutomationWorkUnits as units,
+} from "@/db/schema";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
 import { automationWorkUnitPriorities } from "../automation-work-units";
 import type {
@@ -37,7 +41,7 @@ export const planAutomationUnits = Effect.fn("automationUnits.plan")(function* (
   planned: ReadonlyArray<PlannedAutomationUnit>,
   at: Temporal.Instant
 ) {
-  if (planned.length === 0) return { planned: 0, replanned: [] };
+  if (planned.length === 0) return { planned: 0, replanned: [], written: [] };
 
   const written = yield* tx
     .insert(units)
@@ -76,6 +80,7 @@ export const planAutomationUnits = Effect.fn("automationUnits.plan")(function* (
     })
     .returning({
       unitId: units.id,
+      key: units.key,
       kind: units.kind,
       failures: units.failures,
       lastErrorCode: units.lastErrorCode,
@@ -88,5 +93,96 @@ export const planAutomationUnits = Effect.fn("automationUnits.plan")(function* (
   yield* Effect.logWarning("Automation units replanned after failing", {
     units: replanned,
   }).pipe(Effect.when(Effect.succeed(replanned.length > 0)));
-  return { planned: written.length - replanned.length, replanned };
+  return {
+    planned: written.length - replanned.length,
+    replanned,
+    /** Every unit this call inserted or replanned, so the caller can CAS its subjects' owner. */
+    written: written.map(({ unitId, key }) => ({ unitId, key })),
+  };
+});
+
+/** The subjects a unit owns through `runs.work_unit_id` or `customer_events.automation_unit_id` (§1.2.13). */
+const ownedSubjectsSchema = Schema.Struct({
+  runIds: Schema.optional(Schema.Array(Schema.String)),
+  eventIds: Schema.optional(Schema.Array(Schema.String)),
+});
+
+/**
+ * Frees the runs and events that settling units still own, so the planner
+ * replans them where they stand. Ownership is read from the subject's
+ * `runIds` and `eventIds` and cleared by CAS on the unit id, so subjects a
+ * commit already released, or that another unit owns, are untouched. Call
+ * it before the unit row's settlement CAS, in the same transaction: rows
+ * lock in the §5.4 order (runs in id order, then the unit row).
+ */
+export const releaseAutomationUnitSubjects = Effect.fn(
+  "automationUnits.releaseSubjects"
+)(function* (
+  tx: AutomationEngineTransaction,
+  settling: ReadonlyArray<{
+    readonly id: AutomationWorkUnitId;
+    readonly subject: unknown;
+  }>
+) {
+  const owned = settling.flatMap((unit) =>
+    Option.match(
+      Schema.decodeUnknownOption(ownedSubjectsSchema)(unit.subject),
+      {
+        onNone: () => [],
+        onSome: (subject) => [{ unitId: unit.id, ...subject }],
+      }
+    )
+  );
+  const runOwners = owned
+    .flatMap(({ unitId, runIds = [] }) =>
+      runIds.map((runId) => ({ unitId, runId }))
+    )
+    .toSorted((left, right) => left.runId.localeCompare(right.runId));
+
+  if (runOwners.length > 0) {
+    const locked = yield* tx
+      .select({ id: runs.id, workUnitId: runs.workUnitId })
+      .from(runs)
+      .where(
+        inArray(
+          runs.id,
+          runOwners.map(({ runId }) => runId as typeof runs.$inferSelect.id)
+        )
+      )
+      .orderBy(runs.id)
+      .for("update");
+    const released = locked.filter((run) =>
+      runOwners.some(
+        (owner) => owner.runId === run.id && owner.unitId === run.workUnitId
+      )
+    );
+    if (released.length > 0) {
+      yield* tx
+        .update(runs)
+        .set({ workUnitId: null })
+        .where(
+          inArray(
+            runs.id,
+            released.map((run) => run.id)
+          )
+        );
+    }
+  }
+  yield* Effect.forEach(
+    owned.filter(({ eventIds = [] }) => eventIds.length > 0),
+    ({ unitId, eventIds = [] }) =>
+      tx
+        .update(customerEvents)
+        .set({ automationUnitId: null })
+        .where(
+          and(
+            inArray(
+              customerEvents.id,
+              eventIds as Array<typeof customerEvents.$inferSelect.id>
+            ),
+            eq(customerEvents.automationUnitId, unitId)
+          )
+        ),
+    { discard: true }
+  );
 });
