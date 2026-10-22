@@ -19,7 +19,7 @@ import { currentAdministratorAccess } from "./current-administrator";
  *   account is deleted, awaiting deletion, or unverified.
  * - `unavailable`: the token or the grant couldn't be checked.
  */
-export class AdministratorAgentAuthorizationError extends Data.TaggedError(
+class AdministratorAgentAuthorizationError extends Data.TaggedError(
   "AdministratorAgentAuthorizationError"
 )<{
   readonly reason:
