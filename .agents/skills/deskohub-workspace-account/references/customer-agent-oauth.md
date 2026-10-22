@@ -116,10 +116,13 @@ document); refresh them when a client changes its document.
   Claude.
 - Claude Code uses `https://claude.ai/oauth/claude-code-client-metadata`,
   registering `http://localhost/callback` and `http://127.0.0.1/callback`,
-  and listens on a port it picks per sign-in. Upstream ignores the port only
-  for loopback IPs; the `@better-auth/oauth-provider` patch extends that to
+  and listens on a port it picks per sign-in. Upstream 1.7.2 ignores the port
+  only for loopback IPs; the `@better-auth/oauth-provider` patch extends that to
   `localhost` (see the `deskohub-repository` skill's patched dependencies).
-  Path, query, scheme, and host still match exactly.
+  Only the port may differ: once normalized, scheme, credentials, host, path,
+  query, and fragment match the registered URI exactly, for loopback IPs too.
+  Errors follow the same match, so a request for any other URI gets the
+  server's error page.
   A document without `application_type` gets native redirect validation,
   which allows HTTP loopback redirect URIs.
 - The consent page names each client by its metadata host: `chatgpt.com`,
