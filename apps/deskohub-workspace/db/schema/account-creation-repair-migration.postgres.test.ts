@@ -273,6 +273,7 @@ const storedState = async (pool: Pool) => {
 // Fixed millisecond instants, so stored timestamps compare exactly and
 // every login stays on its side of the window #764's backfill could run in,
 // from its merge (2026-10-20T17:32:49Z) to the end the migration allows.
+const backfillWindowStartsAt = Temporal.Instant.from("2026-10-20T17:32:49Z");
 const backfilledAt = Temporal.Instant.from("2026-10-20T18:30:00Z");
 const backfillWindowEndsAt = Temporal.Instant.from("2026-10-20T19:10:00Z");
 const now = backfilledAt.add({ hours: 40 });
@@ -282,6 +283,7 @@ const silentLoginAt = backfilledAt.subtract({ milliseconds: 3 });
 const reconciledAt = backfilledAt.add({ hours: 20 });
 const repairedAt = backfilledAt.add({ hours: 30 });
 const lateSignUpAt = backfilledAt.add({ minutes: 20 });
+const beforeBackfillAt = backfillWindowStartsAt.subtract({ milliseconds: 1 });
 const afterBackfillAt = backfillWindowEndsAt.add({ milliseconds: 1 });
 
 const customerId = (name: string) =>
@@ -480,8 +482,20 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
         await insertLogin(pool, "late-pending", lateSignUpAt, {
           signedInAt: lateSignUpAt.add({ seconds: 2 }),
         });
-        // The backfill's last possible login, and a login just after it
-        // without a session yet, as a sign-up in progress has none.
+        // Unverified logins without a session at each end of the window and
+        // just outside it. One after it may be a sign-up still in progress.
+        await insertAccount(pool, "legacy-first", {
+          createdAt: backfillWindowStartsAt,
+        });
+        await insertLogin(pool, "legacy-first", backfillWindowStartsAt, {
+          verified: false,
+        });
+        await insertAccount(pool, "before-backfill", {
+          createdAt: beforeBackfillAt,
+        });
+        await insertLogin(pool, "before-backfill", beforeBackfillAt, {
+          verified: false,
+        });
         await insertAccount(pool, "legacy-last", {
           createdAt: backfillWindowEndsAt,
         });
@@ -556,11 +570,14 @@ describe.skipIf(!testDatabaseUrl)("account creation repair migration", () => {
           "tombstone",
           "late-signup",
           "late-pending",
+          "before-backfill",
           "after-backfill",
         ]) {
           expect(await isLegacy(pool, id)).toBe(false);
         }
-        expect(await isLegacy(pool, "legacy-last")).toBe(true);
+        for (const id of ["legacy-first", "legacy-last"]) {
+          expect(await isLegacy(pool, id)).toBe(true);
+        }
         expect(await accountCreatedAt(pool, "recorded")).toBe(
           oldLogin.epochMilliseconds
         );

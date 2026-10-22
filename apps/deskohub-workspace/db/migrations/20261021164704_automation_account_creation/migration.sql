@@ -12,7 +12,8 @@ ALTER TABLE "customer_accounts" ADD COLUMN IF NOT EXISTS "legacy" boolean DEFAUL
 -- failed). It created logins within admin requests, so none is later than
 -- one request after that; 19:10 leaves a margin over Vercel's longest
 -- function duration. Every other login since #764 merged is made by its
--- owner's verified sign-in, which opens its first session as it creates it.
+-- owner's verified sign-in, which opens its first session moments after it
+-- commits the login.
 -- The backfill's logins were unverified and had no session, and one verified
 -- later opens its first session at that later sign-in. So a login from that
 -- window that is unverified, or has no session from its first ten seconds, is
