@@ -125,10 +125,8 @@ const serve = ({
 }) =>
   HttpRouter.toWebHandler(
     makeWorkspaceAdminApiLayer({
-      authentication: Layer.merge(
-        callerAuthentication(channel),
-        UnusedCliSessionAuthentication
-      ),
+      authentication: callerAuthentication(channel),
+      sessionAuthentication: UnusedCliSessionAuthentication,
       clientCompatibility: CliClientCompatibilityLive,
     }).pipe(
       Layer.provide(
