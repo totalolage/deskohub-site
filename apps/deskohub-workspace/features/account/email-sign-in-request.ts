@@ -23,6 +23,11 @@ const emailSignInRequestSchema = Schema.Struct({
   signInCode: Schema.optional(Schema.Boolean),
   /** Correlates this tab with the link's callback tab. */
   attemptId: Schema.optional(Schema.String),
+  /**
+   * The address is a review login that signs in with its password; no email
+   * was sent.
+   */
+  method: Schema.optional(Schema.Literal("password")),
   /** The validated path the sign-in lands on instead of the account. */
   returnTo: Schema.optional(Schema.String),
 });
@@ -34,7 +39,11 @@ export type EmailSignInRequest = typeof emailSignInRequestSchema.Type;
 
 /** Whether the request's email carries a sign-in code to type. */
 export const hasSignInCode = (request: EmailSignInRequest) =>
-  request.signInCode !== false;
+  request.method !== "password" && request.signInCode !== false;
+
+/** Whether the request's address signs in with a password instead. */
+export const signsInWithPassword = (request: EmailSignInRequest) =>
+  request.method === "password";
 
 // The request this document set: it outlives a forgotten stored copy and
 // covers a tab without storage. Without one, the stored request counts, such

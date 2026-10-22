@@ -19,6 +19,7 @@ import { makeAuthDatabase } from "@/db/auth-database-client";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { drizzleAuthTables } from "@/db/schema/auth";
+import { ReviewAccounts } from "@/features/review-accounts";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { ensureCustomerAccount } from "../customer-account.repository";
 import { captureAccountLocalePreference } from "../customer-locale-preference";
@@ -80,7 +81,20 @@ export type TestAuthOptions = {
   readonly captureAccountLocalePreference?: WorkspaceAuthConfig["captureAccountLocalePreference"];
   readonly clientMetadataTransport?: WorkspaceAuthConfig["clientMetadataTransport"];
   readonly createCustomerAccount?: WorkspaceAuthConfig["createCustomerAccount"];
+  readonly reviewAccountCredentials?: WorkspaceAuthConfig["reviewAccountCredentials"];
+  readonly isReviewAccount?: WorkspaceAuthConfig["isReviewAccount"];
+  readonly registerReviewAccount?: WorkspaceAuthConfig["registerReviewAccount"];
 };
+
+const testReviewAccountsLayer = () =>
+  ReviewAccounts.Default.pipe(
+    Layer.provide(
+      Layer.succeed(
+        WorkspaceDatabase,
+        WorkspaceDatabase.of({ db: testDatabase!.db })
+      )
+    )
+  );
 
 /** The real sign-in capture against the migrated disposable database. */
 const realCapture: WorkspaceAuthConfig["captureAccountLocalePreference"] = (
@@ -102,6 +116,21 @@ const realCapture: WorkspaceAuthConfig["captureAccountLocalePreference"] = (
  */
 export const realCreateCustomerAccount: WorkspaceAuthConfig["createCustomerAccount"] =
   (accountId) => ensureCustomerAccount(testDatabase!.db, accountId);
+
+/** The review-account marker on the migrated disposable database. */
+const realReviewAccounts: Pick<
+  WorkspaceAuthConfig,
+  "isReviewAccount" | "registerReviewAccount"
+> = {
+  isReviewAccount: (accountId) =>
+    Effect.flatMap(ReviewAccounts, (reviewAccounts) =>
+      reviewAccounts.isReviewAccount(accountId)
+    ).pipe(Effect.provide(testReviewAccountsLayer())),
+  registerReviewAccount: (accountId) =>
+    Effect.flatMap(ReviewAccounts, (reviewAccounts) =>
+      reviewAccounts.register(accountId)
+    ).pipe(Effect.provide(testReviewAccountsLayer())),
+};
 
 /** The production advisory lock on the migrated disposable database. */
 const realSignInEmailLock: WorkspaceAuthConfig["withSignInEmailLock"] = (
@@ -167,6 +196,18 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
         ? realCreateCustomerAccount
         : () => Effect.void),
     captureAccountLocalePreference,
+    reviewAccountCredentials: options.reviewAccountCredentials ?? [],
+    // Memory-backed instances have no customer_accounts table.
+    isReviewAccount:
+      options.isReviewAccount ??
+      (testDatabase && !options.database
+        ? realReviewAccounts.isReviewAccount
+        : () => Effect.succeed(false)),
+    registerReviewAccount:
+      options.registerReviewAccount ??
+      (testDatabase && !options.database
+        ? realReviewAccounts.registerReviewAccount
+        : () => Effect.void),
   });
 };
 

@@ -88,6 +88,16 @@ export function SignInEmailSentStep({
     // "Use a different email" or a newer email replaced this request.
     if (result.status === "cancelled") return result.status;
     if (result.status === "failed") return result.reason;
+    // An address that became a review login meanwhile moves to its password.
+    if (result.status === "password") {
+      onRequestChange({
+        email: request.email,
+        requestedAt: Date.now(),
+        method: "password",
+        returnTo: request.returnTo,
+      });
+      return "sent" as const;
+    }
     // Codes switched off meanwhile fall back to the link-only state.
     onRequestChange({
       ...request,

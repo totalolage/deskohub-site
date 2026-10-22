@@ -81,6 +81,11 @@ export type SignInEmailResult =
        */
       readonly attemptId?: string;
     }
+  /**
+   * The address is an app-directory review login, which signs in with its
+   * password instead; no email was sent.
+   */
+  | { readonly status: "password" }
   | { readonly status: "failed"; readonly reason: SignInEmailFailure }
   /** A later send or a cancel replaced this request before it settled. */
   | { readonly status: "cancelled" };
@@ -90,6 +95,16 @@ export type SignInCodeVerification =
   | "wrong"
   | "expired"
   | "too-many-attempts"
+  /** BotID judged the request automated; continue in your own browser. */
+  | "automated"
+  | "failed";
+
+export type PasswordSignIn =
+  | "signed-in"
+  /** The email and password don't match. */
+  | "wrong"
+  /** The browser sent too many auth requests; try again shortly. */
+  | "rate-limited"
   /** BotID judged the request automated; continue in your own browser. */
   | "automated"
   | "failed";
@@ -116,6 +131,16 @@ export type AuthReturnLifecycle = {
   /** Hard-navigates through the sign-in callback after a verified code. */
   readonly continueWithVerifiedCode: () => boolean;
   /**
+   * Signs this tab in with a review login's password, against the callback
+   * of the latest sign-in email request. It stays on the page.
+   */
+  readonly signInWithPassword: (
+    email: string,
+    password: string
+  ) => Promise<PasswordSignIn>;
+  /** Hard-navigates through the sign-in callback after a password sign-in. */
+  readonly continueWithPassword: () => boolean;
+  /**
    * Continues to the sign-in destination when this browser already holds a
    * usable session, such as after the link was opened in another tab.
    */
@@ -131,7 +156,10 @@ type AuthError = typeof authErrorSchema.Type;
 const signInEmailResponseSchema = Schema.Struct({
   data: Schema.optional(
     Schema.NullOr(
-      Schema.Struct({ signInCode: Schema.optional(Schema.Boolean) })
+      Schema.Struct({
+        signInCode: Schema.optional(Schema.Boolean),
+        method: Schema.optional(Schema.Literal("password")),
+      })
     )
   ),
   error: Schema.NullOr(authErrorSchema),
@@ -139,12 +167,16 @@ const signInEmailResponseSchema = Schema.Struct({
 const decodeSignInEmailResponse = Schema.decodeUnknownOption(
   signInEmailResponseSchema
 );
-const codeSignInResponseSchema = Schema.Struct({
+const signInResponseSchema = Schema.Struct({
   error: Schema.NullOr(authErrorSchema),
 });
-const decodeCodeSignInResponse = Schema.decodeUnknownOption(
-  codeSignInResponseSchema
-);
+const decodeSignInResponse = Schema.decodeUnknownOption(signInResponseSchema);
+
+const toPasswordSignIn = ({ status, code }: AuthError): PasswordSignIn => {
+  if (code === "BOT_DETECTED") return "automated";
+  if (status === 429) return "rate-limited";
+  return code === "INVALID_EMAIL_OR_PASSWORD" ? "wrong" : "failed";
+};
 
 const toSignInEmailFailure = ({
   status,
@@ -276,6 +308,7 @@ export const createAuthReturnLifecycle = ({
   // The callback URL of the latest sign-in email, reused by code sign-in.
   let currentCallbackURL = callbackURLFor(undefined);
   let verifiedCallbackURL: string | undefined;
+  let passwordCallbackURL: string | undefined;
   // Every continuation (link hand-off, typed code, session check) leaves the
   // page at most once.
   let leaving = false;
@@ -374,6 +407,16 @@ export const createAuthReturnLifecycle = ({
       response = Option.none();
     }
     if (requestEpoch !== requestId) return { status: "cancelled" };
+    if (
+      Option.isSome(response) &&
+      response.value.error === null &&
+      response.value.data?.method === "password"
+    ) {
+      // No link is on its way, so nothing hands off from another tab.
+      dispose();
+      currentCallbackURL = callbackURLFor(undefined);
+      return { status: "password" };
+    }
     if (Option.isSome(response) && response.value.error === null) {
       return {
         status: "sent",
@@ -397,9 +440,9 @@ export const createAuthReturnLifecycle = ({
     code: string
   ): Promise<SignInCodeVerification> => {
     const callbackURL = currentCallbackURL;
-    let response: Option.Option<typeof codeSignInResponseSchema.Type>;
+    let response: Option.Option<typeof signInResponseSchema.Type>;
     try {
-      response = decodeCodeSignInResponse(
+      response = decodeSignInResponse(
         await authClient.signIn.emailOtp({ email, otp: code, callbackURL })
       );
     } catch {
@@ -432,6 +475,31 @@ export const createAuthReturnLifecycle = ({
     return leaveFor(verifiedCallbackURL, { focus: false });
   };
 
+  const signInWithPassword = async (
+    email: string,
+    password: string
+  ): Promise<PasswordSignIn> => {
+    const callbackURL = currentCallbackURL;
+    let response: Option.Option<typeof signInResponseSchema.Type>;
+    try {
+      response = decodeSignInResponse(
+        await authClient.signIn.email({ email, password, callbackURL })
+      );
+    } catch {
+      return "failed";
+    }
+    if (Option.isNone(response)) return "failed";
+    const { error } = response.value;
+    if (error !== null) return toPasswordSignIn(error);
+    cancel();
+    passwordCallbackURL = callbackURL;
+    return "signed-in";
+  };
+
+  const continueWithPassword = () =>
+    passwordCallbackURL !== undefined &&
+    leaveFor(passwordCallbackURL, { focus: false });
+
   const continueIfSignedIn = async () => {
     if (leaving) return true;
     const requestId = requestEpoch;
@@ -449,7 +517,9 @@ export const createAuthReturnLifecycle = ({
     resumeSignInEmail,
     continueIfSignedIn,
     continueWithVerifiedCode,
+    continueWithPassword,
     sendSignInEmail,
+    signInWithPassword,
     verifySignInCode,
   };
 };
@@ -458,9 +528,10 @@ export const createAuthReturnLifecycle = ({
  * Sends the sign-in email for a page that continues on the verify page
  * (`getAuthVerifyPath`), such as a checkout form: the sign-in lands on the
  * same-origin `returnTo`, and the request is stored for this tab so the
- * verify page takes over the link's hand-off and the code entry. Navigate
- * there once the result is `sent`. A `returnTo` that isn't a valid return
- * path fails with `invalid-return-path` before anything is sent.
+ * verify page takes over the link's hand-off and the code entry, or the
+ * password entry of a review login. Navigate there once the result is `sent`
+ * or `password`. A `returnTo` that isn't a valid return path fails with
+ * `invalid-return-path` before anything is sent.
  */
 export const startEmailSignIn = async ({
   locale,
@@ -488,6 +559,14 @@ export const startEmailSignIn = async ({
       requestedAt: Date.now(),
       signInCode: result.signInCode,
       attemptId: result.attemptId,
+      returnTo: returnPath,
+    });
+  }
+  if (result.status === "password") {
+    rememberEmailSignInRequest({
+      email,
+      requestedAt: Date.now(),
+      method: "password",
       returnTo: returnPath,
     });
   }

@@ -170,7 +170,9 @@ glossary defines the customer account, reservation author, and tombstone.
   re-reads the session. The `/account` redirect for signed-out visitors stays
   only for direct or stale navigations, and it is a document navigation too,
   so it loads the sign-in page instead of opening its modal.
-- Use one magic-link form for sign-in and implicit sign-up.
+- Use one magic-link form for sign-in and implicit sign-up. Only an
+  app-directory review login's address gets a password step after it; see
+  the password bullet in [Better Auth configuration](better-auth-configuration.md).
 - The site layout's `@modal` slot intercepts `/auth/sign-in` and
   `/auth/verify`: a client navigation, such as the header's sign-in link,
   opens the page as a modal over the current page, and a document load
@@ -190,7 +192,12 @@ glossary defines the customer account, reservation author, and tombstone.
   sign-in card and the verify page and mirrored to sessionStorage; never put
   the email in the URL. The request records whether the email carries a code
   (`login_email_code`), so the verify page shows the code entry or the
-  link-only instructions. It also records its return target: the sign-in
+  link-only instructions. A review login's address returns `password`
+  instead of `sent`, and its request records `method: "password"`: the
+  sign-in card, the verify page, and reauthentication show
+  `SignInPasswordForm`, which signs in through `signIn.email` against the
+  request's callback and continues through it like a code. Callers of
+  `startEmailSignIn` move to the verify page on `sent` or `password`. It also records its return target: the sign-in
   card resumes it when opened without one or for the same one, and starts
   a fresh request when opened for another, since the sent link already
   lands on the stored target.

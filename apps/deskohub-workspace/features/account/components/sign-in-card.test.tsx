@@ -48,6 +48,19 @@ const signInEmailOtp = mock(
   }): Promise<AuthResponse> =>
     Promise.resolve({ data: { token: "synthetic" }, error: null })
 );
+const signInEmail = mock(
+  (_body: {
+    readonly email: string;
+    readonly password: string;
+    readonly callbackURL: string;
+  }): Promise<AuthResponse> =>
+    Promise.resolve({
+      data: { redirect: false, token: "synthetic" },
+      error: null,
+    })
+);
+const passwordStep = (): Promise<AuthResponse> =>
+  Promise.resolve({ data: { status: true, method: "password" }, error: null });
 /**
  * The passkey endpoints and the browser's ceremony, settled the way a
  * customer who ignores the email field's autofill would: options arrive at
@@ -145,6 +158,7 @@ mock.module("@/features/account/auth.client", () => ({
   authClient: {
     getSession,
     signIn: {
+      email: signInEmail,
       emailOtp: signInEmailOtp,
       magicLink: signInMagicLink,
     },
@@ -231,6 +245,7 @@ describe("account components", () => {
     signInMagicLink.mockClear();
     signInMagicLink.mockImplementation(() => Promise.resolve({ error: null }));
     signInEmailOtp.mockClear();
+    signInEmail.mockClear();
     Reflect.deleteProperty(globalThis, "PublicKeyCredential");
     localStorage.clear();
     getSession.mockClear();
@@ -241,6 +256,84 @@ describe("account components", () => {
 
   afterAll(async () => {
     await unregisterWorkspaceComponentTestEnv();
+  });
+
+  const passwordInput = (view: ReturnType<typeof render>) =>
+    view.container.querySelector(
+      "#account-sign-in-password"
+    ) as HTMLInputElement | null;
+
+  const submitPassword = async (
+    view: ReturnType<typeof render>,
+    password: string
+  ) => {
+    fireEvent.change(passwordInput(view)!, { target: { value: password } });
+    await act(async () => {
+      fireEvent.submit(
+        view.container.querySelector("#account-sign-in-password-form")!
+      );
+    });
+  };
+
+  test.each([
+    ["the account", undefined, undefined],
+    ["an assistant connection", "assistant", "/en-US/auth/connect?signed_in=1"],
+  ] as const)(
+    "sign-in card signs a review login in to %s with its password, without an email",
+    async (_case, purpose, returnTo) => {
+      signInMagicLink.mockImplementationOnce(passwordStep);
+      const { SignInCard } = await import("./sign-in-card");
+      const view = await renderSettled(
+        <SignInCard locale={locale} purpose={purpose} returnTo={returnTo} />
+      );
+
+      await submitEmail(view);
+
+      expect(passwordInput(view)?.type).toBe("password");
+      expect(passwordInput(view)?.autocomplete).toBe("current-password");
+      expect(view.container.querySelector("#account-sign-in-code")).toBeNull();
+      await submitPassword(view, "synthetic-review-password");
+
+      const callbackURL = getAuthCallbackPath(locale, { returnTo });
+      expect(signInEmail).toHaveBeenCalledWith({
+        email: adaAddress,
+        password: "synthetic-review-password",
+        callbackURL,
+      });
+      expect(navigations).toEqual([callbackURL]);
+    }
+  );
+
+  test("sign-in card keeps a review login on its password after a wrong one", async () => {
+    signInMagicLink.mockImplementationOnce(passwordStep);
+    signInEmail.mockImplementationOnce(() =>
+      Promise.resolve({
+        error: { status: 401, code: "INVALID_EMAIL_OR_PASSWORD" },
+      })
+    );
+    const { SignInCard } = await import("./sign-in-card");
+    const view = await renderSettled(<SignInCard locale={locale} />);
+
+    await submitEmail(view);
+    await submitPassword(view, "synthetic-wrong-password");
+
+    expect(passwordInput(view)?.getAttribute("aria-invalid")).toBe("true");
+    expect(passwordInput(view)?.value).toBe("");
+    expect(navigations).toEqual([]);
+  });
+
+  test("sign-in card never shows customers a password field", async () => {
+    signInMagicLink.mockImplementationOnce(() =>
+      Promise.resolve({ data: { status: true, signInCode: true }, error: null })
+    );
+    const { SignInCard } = await import("./sign-in-card");
+    const view = await renderSettled(<SignInCard locale={locale} />);
+
+    expect(passwordInput(view)).toBeNull();
+    await submitEmail(view);
+
+    expect(passwordInput(view)).toBeNull();
+    expect(view.container.querySelector('input[type="password"]')).toBeNull();
   });
 
   test("server markup cannot submit an email through a native GET", async () => {

@@ -20,6 +20,7 @@ import {
 import { ensureCustomerAccount } from "@/features/account/backend/customer-account.repository";
 import { captureAccountLocalePreference } from "@/features/account/backend/customer-locale-preference";
 import { customerMcpServerPath } from "@/features/account/customer-agent-routes";
+import { ReviewAccounts } from "@/features/review-accounts";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
@@ -97,4 +98,13 @@ export const auth = makeWorkspaceAuth({
     captureAccountLocalePreference(accountId, locale).pipe(
       Effect.provide(WorkspaceDatabase.Default)
     ),
+  reviewAccountCredentials: env.REVIEW_ACCOUNT_CREDENTIALS ?? [],
+  isReviewAccount: (accountId) =>
+    Effect.flatMap(ReviewAccounts, (reviewAccounts) =>
+      reviewAccounts.isReviewAccount(accountId)
+    ).pipe(Effect.provide(ReviewAccounts.Live)),
+  registerReviewAccount: (accountId) =>
+    Effect.flatMap(ReviewAccounts, (reviewAccounts) =>
+      reviewAccounts.register(accountId)
+    ).pipe(Effect.provide(ReviewAccounts.Live)),
 });

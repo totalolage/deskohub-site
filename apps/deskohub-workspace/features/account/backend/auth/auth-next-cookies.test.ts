@@ -91,6 +91,9 @@ const makeTestAuth = (sentMagicLinks: { url: string }[] = []) => {
     createCustomerAccount: (accountId) =>
       ensureCustomerAccount(testDatabase!.db, accountId),
     captureAccountLocalePreference: captureLocalePreference,
+    reviewAccountCredentials: [],
+    isReviewAccount: () => Effect.succeed(false),
+    registerReviewAccount: () => Effect.void,
   });
 };
 
