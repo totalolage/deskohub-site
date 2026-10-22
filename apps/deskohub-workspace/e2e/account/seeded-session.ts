@@ -162,9 +162,7 @@ export const revokeWorkspaceE2ESyntheticAccountRoles = (
       "revoke synthetic account roles",
       db
         .delete(accountRoleGrants)
-        .where(
-          eq(accountRoleGrants.accountId, accountId as CustomerAccountId)
-        )
+        .where(eq(accountRoleGrants.accountId, accountId as CustomerAccountId))
     );
   });
 

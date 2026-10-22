@@ -54,9 +54,7 @@ export type WorkspaceE2EAdministrationAccount = {
  * validate and delete it even after an interruption. Deleting the user
  * cascades its sessions and role grants.
  */
-export const makeWorkspaceE2EAdministrationIdentities = <
-  Label extends string,
->({
+export const makeWorkspaceE2EAdministrationIdentities = <Label extends string>({
   journalDirectory,
   ownerId,
   runId,
