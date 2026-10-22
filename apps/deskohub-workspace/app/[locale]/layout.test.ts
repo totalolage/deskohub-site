@@ -1,11 +1,28 @@
 import { describe, expect, mock, test } from "bun:test";
 import { createElement } from "react";
 import { getPublicCatalogOfferings } from "@/features/checkout/public-offerings";
+import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 mock.module("next/font/local", () => ({
   default: () => ({ variable: "--font-sculpin" }),
 }));
+
+// Outside a Next.js render there is no cache to configure.
+const nextCache = await import("next/cache");
+mock.module("next/cache", () => ({ ...nextCache, cacheLife: () => {} }));
+
+// The flags that are the same for every visitor; any other is decided per
+// visitor.
+let constantFlags: Partial<Record<PostHogFeatureFlagKey, boolean>> = {};
+mock.module(
+  "@/features/feature-flags/backend/feature-flag-evaluation-mode.server",
+  () => ({
+    getGlobalWorkspaceFeatureFlagValues: () => Promise.resolve(undefined),
+    getGlobalWorkspaceFeatureFlagValue: (key: PostHogFeatureFlagKey) =>
+      Promise.resolve(constantFlags[key]),
+  })
+);
 
 const page = createElement("page");
 
@@ -32,7 +49,7 @@ describe("localized route layout", () => {
       ["en-US", english],
       ["cs-CZ", czech],
     ] as const) {
-      // Office reservations open by a release gate the layout does not read.
+      // No flag is the same for every visitor here, so the office stays out.
       for (const { kind, name } of getPublicCatalogOfferings({
         locale,
         office: {},
@@ -46,6 +63,32 @@ describe("localized route layout", () => {
     }
     expect(czech.description).not.toEqual(english.description);
     expect(czech.title).not.toEqual(english.title);
+  });
+
+  test("names the office only while it is open for every visitor", async () => {
+    const { generateMetadata } = await import("./layout");
+
+    for (const officePage of [true, false, undefined]) {
+      constantFlags =
+        officePage === undefined ? {} : { office_page: officePage };
+
+      for (const locale of ["en-US", "cs-CZ"] as const) {
+        const { description } = await generateMetadata({
+          params: Promise.resolve({ locale }),
+        });
+        const office = getPublicCatalogOfferings({ locale, office: {} }).find(
+          ({ kind }) => kind === "office"
+        );
+        if (!office) throw new Error("The catalog has no office offering.");
+
+        if (officePage === true) {
+          expect(description).toContain(office.name);
+        } else {
+          expect(description).not.toContain(office.name);
+        }
+      }
+    }
+    constantFlags = {};
   });
 
   test("rejects an unknown locale", async () => {
