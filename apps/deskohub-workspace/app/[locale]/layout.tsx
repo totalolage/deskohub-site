@@ -2,10 +2,10 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { getPublicCatalogOfferings } from "@/features/checkout/public-offerings";
 import { isLocale, locales, m } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
-import { getWorkspaceSummary } from "@/features/public-pages/workspace-summary";
+import { loadOfficeGlobalRelease } from "@/features/office/backend/office-reservation-feature-flag.server";
+import { getSharedWorkspaceSummary } from "@/features/public-pages/workspace-summary";
 import { workspaceSiteOrigin } from "@/shared/utils";
 import "../globals.css";
 
@@ -35,11 +35,11 @@ export async function generateMetadata({
   return {
     metadataBase: new URL(workspaceSiteOrigin),
     title: m.workspaceMetadataTitle({}, { locale }),
-    // The products every visitor can book: office reservations open by a
-    // release gate, which the root layout does not read.
-    description: getWorkspaceSummary({
+    // The products every visitor can book. The layout is static, so it reads
+    // the office gate only as decided for everyone.
+    description: getSharedWorkspaceSummary({
       locale,
-      offerings: getPublicCatalogOfferings({ locale }),
+      officeRelease: await loadOfficeGlobalRelease(),
     }),
     icons: {
       icon: {

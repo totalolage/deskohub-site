@@ -1,4 +1,8 @@
-import type { PublicCatalogOffering } from "@/features/checkout/public-offerings";
+import {
+  getPublicCatalogOfferings,
+  type PublicCatalogOffering,
+} from "@/features/checkout/public-offerings";
+import type { GlobalRelease } from "@/features/feature-flags/backend/global-release";
 import { type Locale, m } from "@/features/i18n";
 import { joinSentences } from "@/shared/utils/sentences";
 import {
@@ -34,3 +38,22 @@ export const getWorkspaceSummary = ({
     ),
     openingHours.alwaysOpen && m.workspaceMetadataAlwaysOpen({}, { locale })
   );
+
+/**
+ * The summary every visitor gets, from the catalog: it names the office only
+ * while office reservations are open for everyone.
+ */
+export const getSharedWorkspaceSummary = ({
+  locale,
+  officeRelease,
+}: {
+  readonly locale: Locale;
+  readonly officeRelease: GlobalRelease;
+}) =>
+  getWorkspaceSummary({
+    locale,
+    offerings: getPublicCatalogOfferings({
+      locale,
+      ...(officeRelease === "on" && { office: {} }),
+    }),
+  });

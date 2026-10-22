@@ -3,7 +3,7 @@ import "server-only";
 import { Effect } from "effect";
 import { cacheLife } from "next/cache";
 import { publishedCustomerAgentTools } from "@/features/agent-tools/customer-agent-tools";
-import type { SiteToolsRelease } from "@/features/agent-tools/site-tools-feature-flag.service";
+import type { GlobalRelease } from "@/features/feature-flags/backend/global-release";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { serializeMarkdown } from "@/shared/markdown/markdown";
 import { llmsTxtLocale, llmsTxtMarkdown } from "../llms-txt";
@@ -19,7 +19,7 @@ import {
  */
 export async function renderLlmsTxt(
   releases: PublicPageMarkdownReleases,
-  siteToolsRelease: SiteToolsRelease
+  siteToolsRelease: GlobalRelease
 ): Promise<string> {
   "use cache";
 

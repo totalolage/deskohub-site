@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { getPublicCatalogOfferings } from "@/features/checkout/public-offerings";
 import { locales, m } from "@/features/i18n";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import { getWorkspaceSummary } from "./workspace-summary";
+import {
+  getSharedWorkspaceSummary,
+  getWorkspaceSummary,
+} from "./workspace-summary";
 
 describe("getWorkspaceSummary", () => {
   test("names the address and each offered product once in every locale", () => {
@@ -44,6 +47,26 @@ describe("getWorkspaceSummary", () => {
       expect(getWorkspaceSummary({ locale, offerings })).toBe(
         workspaceSiteConstants.openingHours.alwaysOpen ? alwaysOpen : limited
       );
+    }
+  });
+});
+
+describe("getSharedWorkspaceSummary", () => {
+  test("names the office only while it is open for everyone", () => {
+    for (const locale of locales) {
+      const office = getPublicCatalogOfferings({ locale, office: {} }).find(
+        ({ kind }) => kind === "office"
+      );
+      if (!office) throw new Error("The catalog has no office offering.");
+
+      expect(
+        getSharedWorkspaceSummary({ locale, officeRelease: "on" })
+      ).toContain(office.name);
+      for (const officeRelease of ["undecided", "off"] as const) {
+        expect(
+          getSharedWorkspaceSummary({ locale, officeRelease })
+        ).not.toContain(office.name);
+      }
     }
   });
 });

@@ -1,8 +1,17 @@
 import "server-only";
 
 import { Effect, Layer } from "effect";
+import { cacheLife } from "next/cache";
 import { cache } from "react";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import {
+  type GlobalRelease,
+  globalRelease,
+  WorkspaceFeatureFlagService,
+} from "@/features/feature-flags/backend";
+import {
+  runWorkspaceEffect,
+  runWorkspaceEffectOrElse,
+} from "@/shared/backend/workspace-effect";
 import { OfficeReservationFeatureFlagService } from "./office-reservation-feature-flag.service";
 
 /**
@@ -23,3 +32,23 @@ export const OfficeReservationFeatureFlagRenderLayer = Layer.succeed(
   OfficeReservationFeatureFlagService,
   { isEnabled: Effect.promise(() => isOfficePageEnabled()) }
 );
+
+/**
+ * Whether office reservations are open for every visitor, read without the
+ * request, so static output such as the site description can name the
+ * office. A release that can't be read counts as undecided.
+ */
+export async function loadOfficeGlobalRelease(): Promise<GlobalRelease> {
+  "use cache";
+  cacheLife("publicContent");
+
+  return WorkspaceFeatureFlagService.pipe(
+    Effect.flatMap((featureFlags) => featureFlags.constantValue("office_page")),
+    Effect.map(globalRelease),
+    Effect.provide(WorkspaceFeatureFlagService.Default),
+    runWorkspaceEffectOrElse("office.global-release", {
+      failureCode: "office.global_release.load_failed",
+      orElse: (): GlobalRelease => "undecided",
+    })
+  );
+}

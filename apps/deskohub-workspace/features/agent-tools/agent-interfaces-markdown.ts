@@ -12,11 +12,11 @@ import {
   markdownListItem,
   markdownParagraph,
 } from "@/shared/markdown/markdown";
+import type { GlobalRelease } from "@/features/feature-flags/backend/global-release";
 import { getWorkspaceCanonicalUrl } from "@/shared/utils/site-constants";
 import type { AgentTool, AgentToolAuthorization } from "./agent-tool";
 import { agentToolBookingGuidance } from "./agent-tool-guidance";
 import { registersAsSiteTool } from "./agent-tool-metadata";
-import type { SiteToolsRelease } from "./site-tools-feature-flag.service";
 import {
   prepareReservationToolDescription,
   prepareReservationToolName,
@@ -33,7 +33,7 @@ export type DescribedAgentTool = Pick<
 export interface AgentInterfaces {
   /** The tools the customer MCP server publishes. */
   readonly tools: ReadonlyArray<DescribedAgentTool>;
-  readonly siteToolsRelease: SiteToolsRelease;
+  readonly siteToolsRelease: GlobalRelease;
 }
 
 export const agentInterfacesHeading = "AI agents";
@@ -73,7 +73,7 @@ const siteToolsIntro = {
   on: "In a browser that supports WebMCP, the site's pages register these tools for an agent working in the page:",
   undecided:
     "In a browser that supports WebMCP, the site's pages may register these tools for an agent working in the page; the tools the browser lists are the ones available:",
-} satisfies Record<Exclude<SiteToolsRelease, "off">, string>;
+} satisfies Record<Exclude<GlobalRelease, "off">, string>;
 
 /**
  * The site tools a page registers: the published tools the site registers,
