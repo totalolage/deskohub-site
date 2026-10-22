@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
+  AdministrationAccountEmail,
+  AdministrationAccountId,
   AdministrationBookingSummary,
   AdministrationCampaignId,
   AdministrationCanonicalPromotionCode,
@@ -26,6 +28,7 @@ import {
   CliMutationRejected,
   CliMutationRequestId,
   CliMutationUncertain,
+  CliResourceNotFound,
   CliSessionId,
   CliStandaloneAccessCodeCleanupRequired,
   CliStandaloneAccessCodeReconciled,
@@ -1159,6 +1162,137 @@ describe("WorkspaceAdminApiClient", () => {
           providerCredentialRemovedAttemptId: cleanupTargetAttemptId,
         },
       });
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
+describe("WorkspaceAdminApiClient administrators", () => {
+  test("lists, grants, and revokes administrators, keeping the server's refusals", async () => {
+    const accessToken = Redacted.make(
+      Schema.decodeUnknownSync(CliAccessToken)("d".repeat(43))
+    );
+    const accountId = AdministrationAccountId.make("account-target");
+    const email = Schema.decodeUnknownSync(AdministrationAccountEmail)(
+      testEmailAddress("administrator-target")
+    );
+    const listed = {
+      administrators: [
+        {
+          accountId,
+          email,
+          grantedByEmail: null,
+          grantedAt: "2026-10-01T08:00:00Z",
+        },
+      ],
+    };
+    const requests: Array<{
+      readonly method: string;
+      readonly path: string;
+      readonly authorization: string | null;
+      readonly body: unknown;
+    }> = [];
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        const path = new URL(request.url).pathname;
+        requests.push({
+          method: request.method,
+          path,
+          authorization: request.headers.get("authorization"),
+          body: request.method === "POST" ? await request.json() : null,
+        });
+        if (request.method === "GET") return Response.json(listed);
+        if (request.method === "POST") {
+          return Response.json(
+            {
+              _tag: "CliResourceNotFound",
+              message: "No active account signs in with this email.",
+            },
+            { status: 404 }
+          );
+        }
+        if (requests.filter(({ method }) => method === "DELETE").length > 1) {
+          return new Response("internal details", { status: 500 });
+        }
+        return Response.json(
+          {
+            _tag: "CliMutationRejected",
+            message: "Administrators can't revoke their own grant.",
+          },
+          { status: 409 }
+        );
+      },
+    });
+
+    try {
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
+        Layer.provide(FetchHttpClient.layer),
+        Layer.provide(
+          Layer.succeed(DhwConfig, {
+            baseUrl: new URL(`http://127.0.0.1:${server.port}`),
+            requestHeaders: {},
+            isCi: true,
+            stateDirectory: "/tmp/dhw-administrators-client-test",
+            updateChecksDisabled: true,
+          })
+        )
+      );
+      const results = await Effect.gen(function* () {
+        const client = yield* WorkspaceAdminApiClient;
+        return {
+          list: yield* client.listAdministrators(accessToken),
+          grant: yield* client
+            .grantAdministrator(accessToken, { email })
+            .pipe(Effect.flip),
+          rejected: yield* client
+            .revokeAdministrator(accessToken, accountId)
+            .pipe(Effect.flip),
+          failed: yield* client
+            .revokeAdministrator(accessToken, accountId)
+            .pipe(Effect.flip),
+        };
+      }).pipe(Effect.provide(clientLayer), Effect.runPromise);
+
+      expect(results.list).toEqual(listed);
+      expect(results.grant).toBeInstanceOf(CliResourceNotFound);
+      expect(results.grant.message).toBe(
+        "No active account signs in with this email."
+      );
+      expect(results.rejected).toBeInstanceOf(CliMutationRejected);
+      expect(results.rejected.message).toBe(
+        "Administrators can't revoke their own grant."
+      );
+      expect(results.failed).toBeInstanceOf(CliApiRequestError);
+      expect(results.failed.message).not.toContain("internal details");
+      const authorization = `Bearer ${"d".repeat(43)}`;
+      expect(requests).toEqual([
+        {
+          method: "GET",
+          path: "/api/v1/cli/administrators",
+          authorization,
+          body: null,
+        },
+        {
+          method: "POST",
+          path: "/api/v1/cli/administrators",
+          authorization,
+          body: { email },
+        },
+        {
+          method: "DELETE",
+          path: `/api/v1/cli/administrators/${accountId}`,
+          authorization,
+          body: null,
+        },
+        {
+          method: "DELETE",
+          path: `/api/v1/cli/administrators/${accountId}`,
+          authorization,
+          body: null,
+        },
+      ]);
     } finally {
       server.stop(true);
     }

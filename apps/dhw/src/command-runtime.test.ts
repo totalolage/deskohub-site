@@ -42,6 +42,7 @@ const reservationId = "reservation-confirmation-test";
 const campaignId = "campaign-confirmation-test";
 const campaignAudienceId = "audience-confirmation-test";
 const customerId = "customer-confirmation-test";
+const administratorAccountId = "account-confirmation-test";
 const discountGroupId = "discount-group-confirmation-test";
 const discountId = "01980000-0000-7000-8000-000000000004";
 const voucherId = "voucher-confirmation-test";
@@ -121,6 +122,22 @@ const confirmedCommands: ReadonlyArray<ConfirmedCommand> = [
   {
     args: ["sessions", "revoke", sessionId],
     operation: "administration.revokeSession",
+  },
+  {
+    args: [
+      "administrators",
+      "grant",
+      "--email",
+      testEmailAddress("confirmation-test-new-administrator"),
+    ],
+    operation: "administrators.grantAdministrator",
+  },
+  {
+    args: ["administrators", "revoke", administratorAccountId],
+    operation: "administrators.revokeAdministrator",
+    reads: {
+      listAdministrators: () => Effect.succeed({ administrators: [] }),
+    },
   },
   {
     args: [

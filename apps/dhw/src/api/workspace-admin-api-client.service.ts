@@ -45,6 +45,11 @@ import {
   type AdministrationInvoicePageType,
   type AdministrationInvoiceQueryType,
   type AdministrationInvoiceRetryResultType,
+  type AdministrationAccountIdType,
+  type AdministrationAdministratorGrantInputType,
+  type AdministrationAdministratorGrantResultType,
+  type AdministrationAdministratorListType,
+  type AdministrationAdministratorRevocationResultType,
   type AdministrationLegacyAdministratorBackfillInputType,
   type AdministrationLegacyAdministratorBackfillResultType,
   type AdministrationNexiOperationIdType,
@@ -194,6 +199,32 @@ interface IWorkspaceAdminApiClient {
   ) => Effect.Effect<
     AdministrationReservationProductDetailsBackfillBatchType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly listAdministrators: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>
+  ) => Effect.Effect<
+    AdministrationAdministratorListType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly grantAdministrator: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    input: AdministrationAdministratorGrantInputType
+  ) => Effect.Effect<
+    AdministrationAdministratorGrantResultType,
+    | CliApiRequestError
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly revokeAdministrator: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    accountId: AdministrationAccountIdType
+  ) => Effect.Effect<
+    AdministrationAdministratorRevocationResultType,
+    | CliApiRequestError
+    | CliMutationRejected
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
   >;
   readonly backfillLegacyAdministrator: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
@@ -916,6 +947,43 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
             })
           ),
           Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    listAdministrators: Effect.fn("WorkspaceAdminApiClient.listAdministrators")(
+      (accessToken: Redacted.Redacted<CliAccessTokenType>) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administrators.listAdministrators({})
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    grantAdministrator: Effect.fn("WorkspaceAdminApiClient.grantAdministrator")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        input: AdministrationAdministratorGrantInputType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administrators.grantAdministrator({ payload: input })
+          ),
+          Effect.mapError(sanitizeResourceError)
+        )
+    ),
+    revokeAdministrator: Effect.fn(
+      "WorkspaceAdminApiClient.revokeAdministrator"
+    )(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        accountId: AdministrationAccountIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administrators.revokeAdministrator({
+              params: { accountId },
+            })
+          ),
+          Effect.mapError(sanitizeRejectedError)
         )
     ),
     backfillLegacyAdministrator: Effect.fn(
@@ -1748,6 +1816,16 @@ const sanitizeMutationError = (
   }
   return sanitizeResourceError(cause);
 };
+
+const sanitizeRejectedError = (
+  cause:
+    | CliMutationRejected
+    | CliServiceUnavailable
+    | CliSessionUnauthorized
+    | HttpClientError.HttpClientError
+    | Schema.SchemaError
+) =>
+  cause instanceof CliMutationRejected ? cause : sanitizeSessionError(cause);
 
 const sanitizeReservationMutationError = (
   cause:

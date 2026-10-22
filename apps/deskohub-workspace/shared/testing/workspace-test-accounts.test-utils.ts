@@ -4,12 +4,20 @@ import type { AdministratorAccountActor } from "@/features/administrators/accoun
 import type { WorkspacePostgresTestDatabase } from "./workspace-postgres-test-database.test-utils";
 
 /**
- * Inserts a verified customer account with a synthetic login email. The
- * returned actor is the account id and that email.
+ * Inserts a customer account with a synthetic login email, verified and not
+ * awaiting deletion unless the options say otherwise. The returned actor is
+ * the account id and that email.
  */
 export const insertTestAccount = async (
   database: WorkspacePostgresTestDatabase,
-  label: string
+  label: string,
+  {
+    emailVerified = true,
+    deletionRequested = false,
+  }: {
+    readonly emailVerified?: boolean;
+    readonly deletionRequested?: boolean;
+  } = {}
 ): Promise<AdministratorAccountActor> => {
   const accountId = customerAccountIdSchema.make(crypto.randomUUID());
   const email = testEmailAddress(`${label}-${accountId}`);
@@ -17,8 +25,9 @@ export const insertTestAccount = async (
     accountId,
   ]);
   await database.pool.query(
-    `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, true)`,
-    [accountId, email]
+    `insert into auth."user" (id, name, email, email_verified, deletion_requested_at)
+     values ($1, '', $2, $3, case when $4 then now() end)`,
+    [accountId, email, emailVerified, deletionRequested]
   );
   return { accountId, email };
 };
