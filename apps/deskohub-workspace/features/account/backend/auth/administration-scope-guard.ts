@@ -1,9 +1,5 @@
 import { APIError } from "better-auth";
-import {
-  type createAuthMiddleware,
-  getSessionFromCtx,
-  isAPIError,
-} from "better-auth/api";
+import { type createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Match, Option, Predicate } from "effect";
 import type { SqlError } from "effect/unstable/sql";
@@ -21,8 +17,8 @@ export type AdministratorGrantCheck = (
 ) => Effect.Effect<boolean, EffectDrizzleQueryError>;
 
 /**
- * Deletes the account's tokens for one agent that still carry the
- * administration scope.
+ * Deletes the account's tokens for one agent that carry the administration
+ * scope although its consent no longer names it.
  */
 export type AdministrationTokenRevocation = (input: {
   readonly accountId: CustomerAccountId;
@@ -200,24 +196,22 @@ export const guardAdministrationScope = (
   );
 
 /**
- * After an accepted consent without the administration scope, the agent's
- * earlier tokens that still carry it go too: Better Auth rewrites the
- * consent's scopes, but tokens keep the scopes they were issued with. The
- * provider verified the signed request before it accepted, so its client is
- * the one the consent names, and only the session account's tokens go.
+ * After an accepted consent, the agent's tokens that carry the
+ * administration scope although its consent no longer names it go: Better
+ * Auth rewrites the consent's scopes when the account consents again for
+ * fewer, but tokens keep the scopes they were issued with. The stored
+ * consent decides, since the step can end before it records the consent or
+ * fail after. The provider verified the signed request before the step ran,
+ * so its client is the one the consent names, and only the session
+ * account's tokens go.
  */
 export const narrowAdministrationOnConsent = (
   request: AuthRequest,
-  revokeAdministrationTokens: AdministrationTokenRevocation
+  revokeUnconsentedAdministrationTokens: AdministrationTokenRevocation
 ) =>
   Option.liftPredicate(
     readConsentAnswer(request.body),
-    ({ accept, scopes }) =>
-      request.path === "/oauth2/consent" &&
-      !isAPIError(request.context.returned) &&
-      accept &&
-      scopes !== undefined &&
-      !includesAdministration(scopes)
+    ({ accept }) => request.path === "/oauth2/consent" && accept
   ).pipe(
     Option.match({
       onNone: () => Effect.void,
@@ -230,7 +224,7 @@ export const narrowAdministrationOnConsent = (
             new URLSearchParams(oauthQuery).get("client_id")
           ),
         }).pipe(
-          Effect.flatMap(revokeAdministrationTokens),
+          Effect.flatMap(revokeUnconsentedAdministrationTokens),
           Effect.catchNoSuchElement,
           Effect.asVoid
         ),

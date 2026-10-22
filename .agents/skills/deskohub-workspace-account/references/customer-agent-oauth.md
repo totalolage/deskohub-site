@@ -214,12 +214,15 @@ resource.
   it rewrites a consent's scopes without the consent step, and a consent
   that covers a request approves it without the page, `prompt=none`
   included.
-- An accepted consent without `administration` rewrites the consent in
-  place, but tokens keep the scopes they were issued with. So the auth
-  server's `hooks.after` (`narrowAdministrationOnConsent`) deletes that
-  agent's access and refresh tokens that still carry the scope, through the
-  `revokeAdministrationTokens` capability (`revokeAdministrationAgentTokens`).
-  The connected assistants list then shows what the agent can still do.
+- An accepted consent for fewer scopes rewrites the consent in place, but
+  tokens keep the scopes they were issued with. So after every accepted
+  consent the auth server's `hooks.after` (`narrowAdministrationOnConsent`)
+  deletes that agent's access and refresh tokens that carry `administration`
+  although their consent no longer names it
+  (`revokeUnconsentedAdministrationTokens`). It reads the stored consent,
+  not the request, because the consent step can end before it records the
+  consent (a login continuation) or fail after it. The connected assistants
+  list then shows what the agent can still do.
 - Revoking the administrator grant (`AdministratorRoster.revoke`) runs
   `revokeAdministrationAgentAccess` after deleting the grant, even when it
   was already gone: one transaction deletes the account's consents that

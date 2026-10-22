@@ -1,4 +1,4 @@
-import { and, arrayContains, eq, type SQL } from "drizzle-orm";
+import { and, arrayContains, eq, notExists, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { Effect } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -15,43 +15,47 @@ const administration = [administrationAgentScope];
 type Database = WorkspaceDatabase["Service"]["db"];
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
-/** Whose administration tokens to delete: an account's, or one agent's. */
-type AdministrationTokenOwner = {
-  readonly accountId: CustomerAccountId;
-  readonly clientId?: string;
+/** The columns both OAuth token tables share. */
+type TokenColumns = {
+  readonly userId: AnyPgColumn;
+  readonly clientId: AnyPgColumn;
+  readonly scopes: AnyPgColumn;
+  readonly consentId: AnyPgColumn;
 };
 
-const ownedBy = (
-  columns: {
-    readonly userId: AnyPgColumn;
-    readonly clientId: AnyPgColumn;
-    readonly scopes: AnyPgColumn;
-  },
-  { accountId, clientId }: AdministrationTokenOwner
-): SQL | undefined =>
-  and(
-    eq(columns.userId, accountId),
-    clientId === undefined ? undefined : eq(columns.clientId, clientId),
-    arrayContains(columns.scopes, administration)
+/** The account's tokens that carry the administration scope. */
+const carriesAdministration =
+  (accountId: CustomerAccountId) => (columns: TokenColumns) =>
+    and(
+      eq(columns.userId, accountId),
+      arrayContains(columns.scopes, administration)
+    );
+
+/** The token's consent, if it still has one, no longer names the scope. */
+const outlivesAdministrationConsent = (columns: TokenColumns) =>
+  notExists(
+    sql`(select 1 from ${authOauthConsent} where ${and(
+      eq(authOauthConsent.id, columns.consentId),
+      arrayContains(authOauthConsent.scopes, administration)
+    )})`
   );
 
 /**
- * Deletes the owner's access and refresh tokens that carry the
- * administration scope. A refresh token's access tokens go with it
- * (ON DELETE CASCADE).
+ * Deletes the access and refresh tokens `matching` selects. A refresh
+ * token's access tokens go with it (ON DELETE CASCADE).
  */
-const deleteAdministrationTokens = (
+const deleteTokens = (
   tx: Transaction,
-  owner: AdministrationTokenOwner
+  matching: (columns: TokenColumns) => SQL | undefined
 ) =>
   Effect.all({
     refreshTokens: tx
       .delete(authOauthRefreshToken)
-      .where(ownedBy(authOauthRefreshToken, owner))
+      .where(matching(authOauthRefreshToken))
       .returning({ id: authOauthRefreshToken.id }),
     accessTokens: tx
       .delete(authOauthAccessToken)
-      .where(ownedBy(authOauthAccessToken, owner))
+      .where(matching(authOauthAccessToken))
       .returning({ id: authOauthAccessToken.id }),
   });
 
@@ -84,19 +88,36 @@ export const revokeAdministrationAgentAccess = Effect.fn(
           )
         )
         .returning({ id: authOauthConsent.id }),
-      tokens: deleteAdministrationTokens(tx, { accountId }),
+      tokens: deleteTokens(tx, carriesAdministration(accountId)),
     })
   );
 });
 
 /**
- * Deletes one agent's tokens that still carry the administration scope after
- * the account consented to it again without the scope. Better Auth rewrites
- * the consent in place, but tokens keep the scopes they were issued with.
+ * Deletes one agent's tokens that carry the administration scope although
+ * their consent no longer names it. Better Auth rewrites a consent in place
+ * when the account consents again for fewer scopes, but tokens keep the
+ * scopes they were issued with. Reading the stored consent rather than the
+ * request covers a consent step that ends before or after it records the
+ * consent.
  */
-export const revokeAdministrationAgentTokens = Effect.fn(
-  "CustomerAgent.revokeAdministrationTokens"
-)(function* (owner: Required<AdministrationTokenOwner>) {
+export const revokeUnconsentedAdministrationTokens = Effect.fn(
+  "CustomerAgent.revokeUnconsentedAdministrationTokens"
+)(function* ({
+  accountId,
+  clientId,
+}: {
+  readonly accountId: CustomerAccountId;
+  readonly clientId: string;
+}) {
   const { db } = yield* WorkspaceDatabase;
-  return yield* db.transaction((tx) => deleteAdministrationTokens(tx, owner));
+  return yield* db.transaction((tx) =>
+    deleteTokens(tx, (columns) =>
+      and(
+        carriesAdministration(accountId)(columns),
+        eq(columns.clientId, clientId),
+        outlivesAdministrationConsent(columns)
+      )
+    )
+  );
 });

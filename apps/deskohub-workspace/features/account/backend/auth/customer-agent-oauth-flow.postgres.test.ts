@@ -2406,6 +2406,94 @@ describe.skipIf(!testDatabase)(
       ).toBe("missing-scope");
     });
 
+    test("keeps administration tokens when the consent step asks to sign in again before recording the consent", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const administrator = await signIn(auth, sentLinks);
+      await grantAdministrator(administrator.accountId);
+      const administering = await connectAskingEverything(
+        auth,
+        administrator.cookie,
+        agent,
+        ALL_SCOPES
+      );
+      // A request signed after the session began, asking to sign in again.
+      const { response } = await authorizeRequest(
+        auth,
+        administrator.cookie,
+        agent,
+        { scope: ALL_SCOPES, prompt: "login consent" }
+      );
+      const signInPage = redirectOf(response);
+
+      const answered = await postConsent(
+        auth,
+        administrator.cookie,
+        signInPage,
+        { accept: true, scope: AGENT_SCOPE }
+      );
+
+      expect(answered.status).toBe(200);
+      expect(
+        (await listConnections(auth, administrator.cookie)).map(
+          ({ administration }) => administration
+        )
+      ).toEqual([true]);
+      expect(
+        await administrationAccessOf(auth, administering.access_token)
+      ).toBe("administrator");
+    });
+
+    test("ends administration tokens of a narrowed consent even when the authorization after it fails", async () => {
+      const agent = makeAgent();
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        clientMetadataTransport: agent.clientMetadataTransport,
+      });
+      const administrator = await signIn(auth, sentLinks);
+      await grantAdministrator(administrator.accountId);
+      const administering = await connectAskingEverything(
+        auth,
+        administrator.cookie,
+        agent,
+        ALL_SCOPES
+      );
+      const { response } = await authorizeRequest(
+        auth,
+        administrator.cookie,
+        agent,
+        { scope: ALL_SCOPES, prompt: "consent" }
+      );
+      const consentPage = redirectOf(response);
+      // The consent is recorded; the authorization it resumes then fails.
+      await testDatabase!.pool.query(
+        `update auth.oauth_client set disabled = true where client_id = $1`,
+        [agent.clientId]
+      );
+
+      await postConsent(auth, administrator.cookie, consentPage, {
+        accept: true,
+        scope: AGENT_SCOPE,
+      });
+      // Enabled again, so only the cleanup can refuse the earlier tokens.
+      await testDatabase!.pool.query(
+        `update auth.oauth_client set disabled = false where client_id = $1`,
+        [agent.clientId]
+      );
+
+      expect(
+        await administrationAccessOf(auth, administering.access_token)
+      ).toBe("invalid-token");
+      expect(
+        (await refreshWith(auth, agent, administering.refresh_token!)).status
+      ).toBe(400);
+    });
+
     test("revoking the grant also ends administration tokens whose consent no longer names the scope", async () => {
       const agent = makeAgent();
       const sentLinks: CapturedMagicLink[] = [];

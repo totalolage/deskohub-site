@@ -113,10 +113,10 @@ export type WorkspaceAuthConfig = {
    */
   readonly hasAdministratorGrant: AdministratorGrantCheck;
   /**
-   * Deletes an agent's tokens that still carry the administration scope
-   * once the account consents to it again without the scope.
+   * Deletes an agent's tokens that carry the administration scope although
+   * its consent no longer names it, after every accepted consent.
    */
-  readonly revokeAdministrationTokens: AdministrationTokenRevocation;
+  readonly revokeUnconsentedAdministrationTokens: AdministrationTokenRevocation;
   readonly httpsOnly: boolean;
   /**
    * The `login_email_code` read, once per sign-in email; a rejection counts
@@ -878,7 +878,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
           })(
             narrowAdministrationOnConsent(
               ctx,
-              config.revokeAdministrationTokens
+              config.revokeUnconsentedAdministrationTokens
             )
           )) ??
           runWorkspaceEffect("account.passkey.reauthentication-options", {

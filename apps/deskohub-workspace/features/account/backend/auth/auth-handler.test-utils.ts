@@ -23,7 +23,7 @@ import { AccountRoleGrants } from "@/features/administrators/backend/account-rol
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { ensureCustomerAccount } from "../customer-account.repository";
 import { captureAccountLocalePreference } from "../customer-locale-preference";
-import { revokeAdministrationAgentTokens } from "./administration-agent-access";
+import { revokeUnconsentedAdministrationTokens } from "./administration-agent-access";
 import type {
   MagicLinkSendFunction,
   SignInEmail,
@@ -193,10 +193,10 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
       (testDatabase && !options.database
         ? realHasAdministratorGrant
         : () => Effect.succeed(false)),
-    revokeAdministrationTokens:
+    revokeUnconsentedAdministrationTokens:
       testDatabase && !options.database
         ? (owner) =>
-            revokeAdministrationAgentTokens(owner).pipe(
+            revokeUnconsentedAdministrationTokens(owner).pipe(
               Effect.provide(testDatabaseLayer())
             )
         : () => Effect.void,
