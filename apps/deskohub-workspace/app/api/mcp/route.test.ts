@@ -1102,8 +1102,10 @@ describe("customer MCP route per client", () => {
       // A signed-in tool's result reports the customer's own orders,
       // their payment state included, which isn't commerce copy.
       JSON.stringify(
-        tools.filter(
-          ({ _meta }) => _meta?.["cz.deskohub.workspace/access"] === "public"
+        tools.map(({ outputSchema, ...tool }) =>
+          tool._meta?.["cz.deskohub.workspace/access"] === "public"
+            ? { ...tool, outputSchema }
+            : tool
         )
       ),
     ].join("\n");

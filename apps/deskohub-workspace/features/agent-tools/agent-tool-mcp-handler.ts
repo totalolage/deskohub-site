@@ -95,8 +95,8 @@ const getAgentToolServerInstructions = ({
       ? [
           "With the customer signed in, get_reservation_status and list_my_reservations show their own reservations.",
           admitsCheckout(client)
-            ? "The tools can't pay, cancel, or change a reservation."
-            : "The tools can't cancel or change a reservation.",
+            ? "The customer tools can't pay for, cancel, or change a reservation."
+            : "The customer tools can't cancel or change a reservation.",
         ]
       : []),
   ].join(" ");
