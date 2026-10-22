@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import {
   getNexiPaymentMetadata,
   NexiCurrencySchema,

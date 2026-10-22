@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type {
   AutomationConditionFilter,

@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import { type DotyposReservationId, DotyposService } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import type { AccountingDocumentSnapshot } from "@/features/accounting/accounting-document-snapshot";
