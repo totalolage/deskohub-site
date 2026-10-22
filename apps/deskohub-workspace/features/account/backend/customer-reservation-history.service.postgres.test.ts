@@ -24,6 +24,7 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
+import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
 import {
   connectWorkspacePostgresTestDatabase,
   fixtureReservationAuthorId,
@@ -188,6 +189,8 @@ const makeHistoryLayer = (
     Layer.provide(
       Layer.mergeAll(
         testDatabaseLayer(),
+        ReviewAccounts.Default.pipe(Layer.provide(testDatabaseLayer())),
+        ReviewSandbox.Default.pipe(Layer.provide(testDatabaseLayer())),
         recordingCustomerListReads(options.customerListReads).pipe(
           Layer.provideMerge(
             Layer.mock(DotyposService, {

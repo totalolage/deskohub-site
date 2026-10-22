@@ -46,6 +46,7 @@ import { ReferralFeatureFlagRequest } from "@/features/referrals/referral-featur
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
 import { readRememberedReferralCode } from "@/features/referrals/remembered-referral-code.server";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
+import { ReviewAccounts } from "@/features/review-accounts";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 
@@ -120,6 +121,15 @@ type SignedInAccountPageState = SessionSettings &
          * support, present only when it has any or they can't be read.
          */
         readonly history?: CustomerReservationHistory;
+      }
+    | {
+        /**
+         * An app-directory review account: no profile, and a history of
+         * sample reservations and simulated holds.
+         */
+        readonly kind: "review-account";
+        readonly email: string;
+        readonly history: CustomerReservationHistory;
       }
     | { readonly kind: "deletion-pending"; readonly email: string }
   );
@@ -314,6 +324,24 @@ const loadAuthoredHistory = (user: CustomerAccountSession) =>
   );
 
 /**
+ * Whether the session's account is an app-directory review account, or
+ * `undefined` when the marker couldn't be read. An unknown account loads as
+ * an ordinary one, whose resolution then refuses a review account, but gets
+ * no sign-in methods section.
+ */
+const readReviewAccount = (user: CustomerAccountSession) =>
+  Effect.flatMap(ReviewAccounts, (accounts) =>
+    accounts.isReviewAccount(user.accountId)
+  ).pipe(
+    Effect.provide(ReviewAccounts.Live),
+    Effect.tapError(() =>
+      logDegradedAccountSection("account.review.unavailable")
+    ),
+    Effect.orElseSucceed(() => undefined),
+    withOperation("account.review")
+  );
+
+/**
  * The customer's referral summary and share link. An unavailable summary
  * degrades to the referral screen's unavailable state.
  */
@@ -367,7 +395,18 @@ const findAvailableReferralCode = (code: ReferralCode) =>
  * remembered code is used up. While the referral program is withheld, none of
  * this runs: no prefill, acceptance, retry, or settlement check.
  */
-const loadSignedInAccount = Effect.fn(function* (user: CustomerAccountSession) {
+const loadSignedInAccount = Effect.fn(function* (
+  user: CustomerAccountSession,
+  reviewAccount: boolean | undefined
+) {
+  // A review account never resolves to a Dotypos profile.
+  if (reviewAccount) {
+    return {
+      kind: "review-account",
+      email: user.email,
+      history: yield* loadReservationHistory({ accountId: user.accountId }),
+    } satisfies CustomerAccountPageState;
+  }
   const referralsEnabled = yield* referralsReleased;
   const rememberedReferralCode = referralsEnabled
     ? yield* readRememberedReferralCode.pipe(
@@ -462,13 +501,18 @@ const loadAccountPageState = Effect.gen(function* () {
 
   const user = session.success;
   if (!user) return { kind: "unauthenticated" } as const;
+  const reviewAccount = yield* readReviewAccount(user);
   const state = user.deletionRequested
     ? ({ kind: "deletion-pending", email: user.email } as const)
-    : yield* loadSignedInAccount(user);
+    : yield* loadSignedInAccount(user, reviewAccount);
   if (state.kind === "unauthenticated") return state;
   const { passkeys, assistants } = yield* Effect.all(
     {
-      passkeys: loadPasskeySettings(user.accountId),
+      // A review account signs in with its password only.
+      passkeys:
+        reviewAccount === false
+          ? loadPasskeySettings(user.accountId)
+          : Effect.succeed(undefined),
       assistants:
         state.kind === "deletion-pending"
           ? Effect.void

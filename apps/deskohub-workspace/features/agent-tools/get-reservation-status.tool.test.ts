@@ -12,6 +12,7 @@ import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { CheckoutStatusViewModel } from "@/features/checkout/backend/checkout/checkout-status.service";
 import type { WorkspaceReservation } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { ReviewSandboxMock } from "@/features/review-accounts/backend/review-sandbox.service.mock";
 
 const accountId = "account-1" as CustomerAccountId;
 const linkedCustomerId = "60111";
@@ -80,6 +81,7 @@ const services = Layer.mergeAll(
   Layer.mock(WorkspaceReservationRepository, {
     findById: () => Effect.succeed(stored as WorkspaceReservation | null),
   }),
+  ReviewSandboxMock({ isOrderOf: () => Effect.succeed(false) }),
   Layer.mock(CheckoutStatusService, { getStatus })
 );
 

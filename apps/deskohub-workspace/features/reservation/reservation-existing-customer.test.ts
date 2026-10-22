@@ -252,6 +252,32 @@ describe("getReservationCheckoutCustomerForm", () => {
     });
   });
 
+  test("books a review account only as itself, on its synthetic contact", () => {
+    const reviewContact = {
+      name: "App Review",
+      email: testEmailAddress("reviewer"),
+      phone: "+44 20 7946 0123",
+    };
+    const { checkoutCustomer, initialValues } =
+      getReservationCheckoutCustomerForm({
+        account: { status: "review-account", contact: reviewContact },
+        checkoutContact: typed,
+        queryMode: "contact",
+        restored: false,
+        values,
+      });
+
+    expect(checkoutCustomer).toMatchObject({
+      status: "review-account",
+      existingCustomer: {
+        contact: reviewContact,
+        hasMarketingConsent: true,
+        initialMode: "account",
+      },
+    });
+    expect(initialValues).toMatchObject(reviewContact);
+  });
+
   test("keeps the form's values while the account can't be read", () => {
     expect(
       getReservationCheckoutCustomerForm({

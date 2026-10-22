@@ -68,7 +68,15 @@ export type ReservationCheckoutAccount<
    */
   | { readonly status: "support-required" }
   /** The session or its profile couldn't be read. */
-  | { readonly status: "unavailable" };
+  | { readonly status: "unavailable" }
+  /**
+   * An app-directory review account, which books its simulated holds with
+   * a synthetic contact and never with a profile.
+   */
+  | {
+      readonly status: "review-account";
+      readonly contact: ReservationAccountContact;
+    };
 
 /**
  * Whether the reservation form opens on the account card or on the contact
@@ -192,6 +200,11 @@ export type ReservationCheckoutCustomerForm =
        * replaces the details typed before the verification.
        */
       readonly replacesTypedContact: boolean;
+    }
+  /** A review account books only as itself, on the account card. */
+  | {
+      readonly status: "review-account";
+      readonly existingCustomer: ReservationExistingCustomerForm;
     };
 
 type ReservationCheckoutFormValues = ReservationContactValues & {
@@ -247,6 +260,25 @@ export const getReservationCheckoutCustomerForm = <
     return {
       checkoutCustomer: { status: account.status },
       initialValues: typedValues,
+    };
+  }
+
+  if (account.status === "review-account") {
+    return {
+      checkoutCustomer: {
+        status: "review-account",
+        existingCustomer: {
+          contact: account.contact,
+          // The simulated booking records no consent, so it never asks.
+          hasMarketingConsent: true,
+          initialMode: "account",
+          otherContact: emptyReservationContact,
+        },
+      },
+      initialValues: {
+        ...typedValues,
+        ...getAccountContactValues(account.contact, typedValues.phone),
+      },
     };
   }
 

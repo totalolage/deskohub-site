@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import { SqlError } from "effect/unstable/sql";
+import { NoReviewAccounts } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import {
   type CustomerAccountAccessError,
   customerAccountIdSchema,
@@ -144,7 +145,7 @@ const makeLayers = (fakes: {
   } satisfies Partial<CustomerDotyposAdapter["Service"]>);
 
   const service = CustomerProfileService.Default.pipe(
-    Layer.provide(Layer.mergeAll(links, dotypos))
+    Layer.provide(Layer.mergeAll(links, dotypos, NoReviewAccounts))
   );
   return {
     service,

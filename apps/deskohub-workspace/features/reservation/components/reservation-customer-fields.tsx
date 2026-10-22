@@ -128,6 +128,20 @@ export function ReservationCustomerSection({
     return <ReservationAccountSupportRequired locale={locale} />;
   }
 
+  if (checkoutCustomer.status === "review-account") {
+    return (
+      <div className="space-y-3">
+        <ReservationExistingCustomerCard
+          contact={checkoutCustomer.existingCustomer.contact}
+          locale={locale}
+        />
+        <ReservationContactHint>
+          {m.reservationContactReviewAccountHint({}, { locale })}
+        </ReservationContactHint>
+      </div>
+    );
+  }
+
   if (checkoutCustomer.status === "profile-missing") {
     return (
       <div className="space-y-5">

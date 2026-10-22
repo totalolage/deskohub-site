@@ -8,6 +8,7 @@ import { CustomerAccountReservationOwnership } from "@/features/account/backend/
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
+import { ReviewSandbox } from "@/features/review-accounts";
 import { fixtureReservationAuthorId } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   createReservationAccessCookieCapability,
@@ -43,6 +44,8 @@ const runAuthorization = async (options: {
   readonly input?: Partial<ReservationAuthorizationInput>;
   readonly owner?: "matches" | "different" | "unlinked" | "unavailable";
   readonly reservation?: AuthorizedReservation | null;
+  /** Whether the order is one of the signed-in review account's sandbox orders. */
+  readonly sandboxOrder?: boolean;
 }) => {
   const findById = mock(() =>
     Effect.succeed(
@@ -92,7 +95,10 @@ const runAuthorization = async (options: {
           activeAccountId,
           resolve: Effect.suspend(resolve),
         }),
-        Layer.mock(WorkspaceReservationRepository, { findById })
+        Layer.mock(WorkspaceReservationRepository, { findById }),
+        Layer.mock(ReviewSandbox, {
+          isOrderOf: () => Effect.succeed(options.sandboxOrder ?? false),
+        })
       )
     ),
     Effect.runPromise
@@ -280,4 +286,30 @@ describe("ReservationAuthorizationService", () => {
       expect(result.authorized).toBe(true);
     }
   );
+});
+
+describe("a review account's sandbox order", () => {
+  test("shows its status to the account but never its access code", async () => {
+    const status = await runAuthorization({
+      reservation: null,
+      sandboxOrder: true,
+    });
+    const accessCode = await runAuthorization({
+      input: { permission: "view-access-code" },
+      reservation: null,
+      sandboxOrder: true,
+    });
+
+    expect(status.authorized).toBe(true);
+    expect(accessCode.authorized).toBe(false);
+  });
+
+  test("stays hidden from every other account", async () => {
+    const result = await runAuthorization({
+      reservation: null,
+      sandboxOrder: false,
+    });
+
+    expect(result.authorized).toBe(false);
+  });
 });
