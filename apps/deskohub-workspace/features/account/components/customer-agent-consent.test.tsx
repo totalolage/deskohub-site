@@ -40,6 +40,7 @@ const { CustomerAgentNotice } = await import("./customer-agent-notice");
 
 const locales = ["en-US", "cs-CZ"] as const;
 const client = { name: "Synthetic Assistant", host: "assistant.invalid" };
+const redirect = { host: "callback.invalid", local: false };
 const redirectUrl = "https://assistant.invalid/callback?code=synthetic-code";
 const navigations: string[] = [];
 const originalAssign = window.location.assign;
@@ -49,6 +50,7 @@ const renderConsent = (locale: (typeof locales)[number]) =>
     <CustomerAgentConsent
       locale={locale}
       client={client}
+      redirect={redirect}
       scopes={["offerings:read", "reservations:create", "offline_access"]}
     />
   );
@@ -91,6 +93,7 @@ describe("CustomerAgentConsent", () => {
       );
       for (const text of [
         m.customerAgentConsentHost({ host: client.host }, { locale }),
+        m.customerAgentConsentRedirect({ host: redirect.host }, { locale }),
         m.customerAgentScopeOfferingsRead({}, { locale }),
         m.customerAgentScopeReservationsCreate({}, { locale }),
         m.customerAgentScopeOfflineAccess({}, { locale }),
@@ -111,6 +114,56 @@ describe("CustomerAgentConsent", () => {
   );
 
   test.each(locales)(
+    "warns that access stays on the device for a loopback redirect in %s",
+    (locale) => {
+      const localRedirect = { host: "localhost", local: true };
+      const view = render(
+        <CustomerAgentConsent
+          locale={locale}
+          client={client}
+          redirect={localRedirect}
+          scopes={["reservations:read"]}
+        />
+      );
+
+      const warning = view.getByText(
+        m.customerAgentConsentLocalRedirect(
+          { host: localRedirect.host, client: client.name },
+          { locale }
+        )
+      );
+      expect(warning.textContent).toContain(localRedirect.host);
+      expect(
+        view.queryByText(
+          m.customerAgentConsentRedirect(
+            { host: localRedirect.host },
+            { locale }
+          )
+        )
+      ).toBeNull();
+    }
+  );
+
+  test("names the redirect host without a warning for a remote redirect", () => {
+    const locale = "en-US";
+    const view = renderConsent(locale);
+
+    expect(
+      view.getByText(
+        m.customerAgentConsentRedirect({ host: redirect.host }, { locale })
+      ).textContent
+    ).toContain(redirect.host);
+    expect(
+      view.queryByText(
+        m.customerAgentConsentLocalRedirect(
+          { host: redirect.host, client: client.name },
+          { locale }
+        )
+      )
+    ).toBeNull();
+  });
+
+  test.each(locales)(
     "asks an administrator about administration apart from the rest in %s",
     async (locale) => {
       consent.mockResolvedValue({ data: null, error: { status: 500 } });
@@ -118,6 +171,7 @@ describe("CustomerAgentConsent", () => {
         <CustomerAgentConsent
           locale={locale}
           client={client}
+          redirect={redirect}
           scopes={["reservations:read"]}
           administration
         />
@@ -151,6 +205,7 @@ describe("CustomerAgentConsent", () => {
       <CustomerAgentConsent
         locale="en-US"
         client={{ name: client.name }}
+        redirect={redirect}
         scopes={["reservations:read"]}
       />
     );

@@ -80,7 +80,19 @@ resource.
   `/.well-known/oauth-protected-resource/api/mcp` (RFC 9728) are Next route
   handlers that pass the request to `auth.handler`. Better Auth runs plugin
   `onRequest` hooks before base-path matching, so the provider and `mcp()`
-  answer from their own builders. Never hand-build the JSON.
+  answer from their own builders. Never hand-build the JSON. The one
+  addition is `describeProtectedResource` in
+  `customer-agent-authorization-server.ts`, which wraps the `mcp()`
+  `onRequest` to add RFC 9728's `resource_name`, `resource_documentation`
+  (`/ai-assistants`), `resource_policy_uri`, and `resource_tos_uri`, which
+  the plugin can't configure. `scopes_supported` stays per resource, never
+  per client.
+- The MCP route answers a refused `tools/call` with the HTTP challenge and,
+  in the body, a JSON-RPC error result per call whose
+  `_meta["mcp/www_authenticate"]` repeats the challenge with `error` and
+  `error_description`, the form ChatGPT reads for per-tool sign-in. Tools
+  publish `securitySchemes` (`noauth`, or `oauth2` with the tool's scope) in
+  their definition and `_meta`.
 - `createResourceServerChallenge(error, resource)` points
   `resource_metadata` at `<resource origin>/.well-known/oauth-protected-resource<resource path>`.
   Pass `customerMcpResource`, not a request-derived URL, so the challenge,
@@ -88,6 +100,57 @@ resource.
 - Dotted paths skip `proxy.ts`, so no locale redirect applies. Bun's test
   collector skips dot directories, so the route tests live beside the shared
   handler in `features/account/server`.
+
+## App-directory clients
+
+ChatGPT and Claude, whose directories list the MCP server, register through
+their published metadata documents. The flow test signs a customer in
+through each one; its fixtures in
+`customer-agent-directory-clients.test-utils.ts` copy the live documents
+(ChatGPT publishes no per-connector example, so that one follows its stable
+document); refresh them when a client changes its document.
+
+- ChatGPT uses `https://chatgpt.com/oauth/client.json` with redirect
+  `https://chatgpt.com/connector_platform_oauth_redirect`, because the
+  server advertises and sends RFC 9207 `iss`. Without that, it falls back
+  to `https://chatgpt.com/oauth/{callback_id}/client.json` and
+  `https://chatgpt.com/connector/oauth/{callback_id}`, which the server
+  also accepts.
+- ChatGPT's document declares `private_key_jwt` with a `jwks_uri` on its own
+  origin, so its code exchange and refresh need a signed client assertion
+  (audience the token endpoint or the issuer, at most 300 seconds, single-use
+  `jti` recorded in `oauth_client_assertion`). The provider fetches the JWKS
+  through the CIMD transport. Keep `private_key_jwt` in
+  `token_endpoint_auth_methods_supported`.
+- Claude's apps use `https://claude.ai/oauth/mcp-oauth-client-metadata` with
+  redirect `https://claude.ai/api/mcp/auth_callback` and no client
+  authentication. Claude picks a metadata document only when the metadata
+  advertises `client_id_metadata_document_supported` and `none`; otherwise it
+  falls back to dynamic registration, which is off, so dropping either breaks
+  Claude.
+- Claude Code uses `https://claude.ai/oauth/claude-code-client-metadata`,
+  registering `http://localhost/callback` and `http://127.0.0.1/callback`,
+  and listens on a port it picks per sign-in. Upstream 1.7.2 ignores the port
+  only for loopback IPs; the `@better-auth/oauth-provider` patch extends that to
+  `localhost` (see the `deskohub-repository` skill's patched dependencies).
+  Only the port may differ: once normalized, scheme, credentials, host, path,
+  query, and fragment match the registered URI exactly, for loopback IPs too.
+  Errors follow the same match, so a request for any other URI gets the
+  server's error page.
+  A document without `application_type` gets native redirect validation,
+  which allows HTTP loopback redirect URIs.
+- The consent page names each client by its metadata host: `chatgpt.com`,
+  `claude.ai`. Claude Code also shows `claude.ai`, so the page also names
+  the redirect host (`localhost` or `127.0.0.1` for Claude Code) and warns
+  about it (see the consent page below).
+- Successful and error authorization responses at the client's redirect URI
+  carry `iss`, equal to the advertised issuer. A request whose client or
+  redirect URI can't be trusted goes to the server's error page instead.
+- The `resource` the client requests becomes the token's audience; an
+  expired or unknown token gets a 401 `invalid_token` challenge.
+- Directory apps see every MCP tool. Only ChatGPT gets a different
+  `start_reservation`: a public, read-only variant that returns a link to
+  continue the booking on the website, without sign-in or a hold.
 
 ## Connect and consent pages
 
@@ -120,10 +183,25 @@ resource.
   `sig`, or `exp`; past `exp`), then re-checks the session, reads the client through
   `CustomerAgentClientDirectory` (`getOAuthClientPublic`, which needs the
   customer's session), and shows the client's name and metadata host, the
+  host of the request's `redirect_uri`, the
   requested scopes in plain words, what the assistant can't do (pay, cancel,
   change or delete the account), and that the customer accepts the terms and
   pays on the site. Don't render the client's logo: it is a third-party
   request from an arbitrary host.
+- The redirect host is required by the MCP spec (2026-07-28, Security
+  Considerations, "Localhost Redirect URI Risks": the server "MUST clearly
+  display the redirect URI hostname during authorization" and "SHOULD
+  display additional warnings for `localhost`-only redirect URIs").
+  `readCustomerAgentConsentRequest` reads it from the signed query (the
+  provider requires and signs `redirect_uri`; a request without a readable
+  one is `unknown-request`). It marks the redirect `local` when the host is
+  loopback (`isLoopbackHostname` in `shared/utils/hostname.ts`: `localhost`,
+  `*.localhost`, 127.0.0.0/8, `[::1]`) or the URI uses an app's own scheme,
+  shown by its scheme name. A local redirect gets a warning, since any app on
+  the device can use a public client's metadata document. The warning keys
+  on the requested redirect, not on whether every registered URI is local.
+  `customer-agent-routes.ts` is in the proxy bundle and outside the Better
+  Auth import boundary, so it doesn't use Better Auth's `isLoopbackHost`.
 - Allow calls `authClient.oauth2.consent({ accept: true, scope })` with
   exactly the scopes the page lists: the provider stores that subset as the
   consent and issues only it. Deny calls `consent({ accept: false })`. The

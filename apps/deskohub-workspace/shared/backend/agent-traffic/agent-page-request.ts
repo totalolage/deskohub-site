@@ -29,6 +29,7 @@ const agentPageRoutes = {
   "/[locale]/account/[section]": true,
   "/[locale]/account/deleted": true,
   "/[locale]/account/legal": true,
+  "/[locale]/ai-assistants": true,
   "/[locale]/auth/callback": true,
   "/[locale]/auth/connect": true,
   "/[locale]/auth/consent": true,

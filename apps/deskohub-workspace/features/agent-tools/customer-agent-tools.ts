@@ -15,6 +15,7 @@ import {
   type CallableAgentTools,
   selectAgentTools,
 } from "./agent-tool";
+import type { CurrentAgentToolClient } from "./agent-tool-client";
 import { checkAvailabilityTool } from "./check-availability.tool";
 import type { SignedInAgentToolRequirements } from "./customer-agent-caller";
 import { getQuoteTool } from "./get-quote.tool";
@@ -50,6 +51,7 @@ const customerAgentTools: ReadonlyArray<
     | Layer.Success<typeof CustomerAgentToolsLive>
     | SignedInAgentToolRequirements
     | CallableAgentTools
+    | CurrentAgentToolClient
   >
 > = [
   listOfferingsTool,

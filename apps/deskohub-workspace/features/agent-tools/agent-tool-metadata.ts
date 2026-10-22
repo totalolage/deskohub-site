@@ -1,3 +1,7 @@
+import { Match } from "effect";
+import { administrationAgentScope } from "@/features/account/agent-scopes";
+import type { AgentToolAuthorization } from "./agent-tool";
+
 /**
  * Who may call a tool: anyone, a customer who signed in through the
  * Workspace OAuth server, or an administrator's agent.
@@ -14,6 +18,22 @@ export type AgentToolAccess = (typeof agentToolAccesses)[number];
  * tools are listed only to an administrator's agent.
  */
 export const agentToolAccessMetaKey = "cz.deskohub.workspace/access";
+
+/**
+ * How a tool authorizes, in the `securitySchemes` form ChatGPT reads to
+ * tell anonymous tools from those that need the customer to sign in, with
+ * the scope its consent screen asks for.
+ */
+export const getAgentToolSecuritySchemes = (tool: AgentToolAuthorization) =>
+  Match.value(tool).pipe(
+    Match.discriminatorsExhaustive("access")({
+      public: () => [{ type: "noauth" }],
+      "signed-in": ({ scope }) => [{ type: "oauth2", scopes: [scope] }],
+      administration: () => [
+        { type: "oauth2", scopes: [administrationAgentScope] },
+      ],
+    })
+  );
 
 /**
  * Whether the site registers a tool as a WebMCP site tool. The page sends no
