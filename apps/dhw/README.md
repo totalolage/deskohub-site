@@ -12,15 +12,17 @@ Sessions may be listed, renamed, and revoked. A session label helps an operator 
 
 Operators may read:
 
-- the administration overview;
+- the administration overview, including recent and new customers and reservations awaiting refund work;
 - reservations and their current lifecycle;
 - bookings, payment orders, and payment operations;
-- customers and their Workspace reservation history;
-- discount definitions, codes, and scheduled sales;
+- customers, their Workspace reservation history, and their reservations per day over the last year;
+- discount definitions, codes, scheduled sales, and the Dotypos discount groups;
+- invoice creation defaults, and a rendered preview of an invoice before it's created;
 - email campaigns, their per-locale texts, current recipients, and delivery status;
-- saved campaign audiences and email templates, including rendered template previews;
+- saved campaign audiences and email templates, including rendered template previews, and the inbox that receives test emails;
 - automated campaigns: their flow, activation readiness, dry runs, published versions, runs with their timelines and counts, and the automation engine's health;
-- descriptions and next starts of calendar expressions; and
+- descriptions and next starts of calendar expressions;
+- the accounts that hold the administrator role; and
 - issued administration sessions.
 
 Search and filters use the same business definitions as the dashboard. Human output is compact; machine-readable output retains the complete supported result without changing the meaning of a command.
@@ -37,12 +39,13 @@ Operators may:
 - create, update, archive, unarchive, or delete saved campaign audiences;
 - send a campaign's test emails, then send the campaign with the confirmation code from the latest test email, and retry the recipients it didn't reach, optionally including those whose delivery is unconfirmed and who may already have the email;
 - fill the booked product of older meeting-room and office reservations from their Dotypos booking, first as a dry run;
+- grant an account the administrator role, or revoke another account's role;
 - grant an account the administrator role and link the records a pre-account administrator username wrote to it, first as a dry run; and
 - rename or revoke administration sessions.
 
 Creating a code may create its discount benefit atomically. Fixed-money values use the currency's minor units. An omitted schedule or global-use limit means unrestricted along that dimension.
 
-Destructive or access-broadening operations require explicit confirmation. This includes granting the administrator role, deleting resources, removing the final audience restriction, revoking a session, changing a customer's discount group, removing a customer from a restricted code, archiving or deleting a campaign audience, deleting a campaign, sending or retrying a campaign, activating, pausing, resuming, or archiving an automation, or filling reservation products. Non-interactive execution must provide that confirmation deliberately.
+Destructive or access-broadening operations require explicit confirmation. This includes granting or revoking the administrator role, deleting resources, removing the final audience restriction, revoking a session, changing a customer's discount group, removing a customer from a restricted code, archiving or deleting a campaign audience, deleting a campaign, sending or retrying a campaign, activating, pausing, resuming, or archiving an automation, or filling reservation products. Non-interactive execution must provide that confirmation deliberately.
 
 Discount-management mutations and the creation or duplication of campaigns and campaign audiences are safe to retry after an ambiguous connection failure. The same administration session and request identity must return the original result rather than apply the mutation twice.
 
