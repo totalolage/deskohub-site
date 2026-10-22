@@ -172,7 +172,9 @@ const makeAssistantServices = ({
   const connects: Array<
     Parameters<AdministratorAssistantConnections["Service"]["connect"]>[0]
   > = [];
-  const verify = (token: string) => {
+  const verify = (
+    token: string
+  ): Effect.Effect<CustomerAgentGrant, CustomerAgentAuthorizationError> => {
     const state = tokens.get(token) ?? {
       kind: "refused",
       reason: "invalid-token",
@@ -233,21 +235,24 @@ const makeAssistantServices = ({
             ),
     }),
     Layer.succeed(AdministratorAssistantConnections, {
-      connect: (input) =>
-        connectFailure === "fails"
-          ? Effect.fail(
-              databaseFailure("insert into administrator assistant connections")
-            )
-          : connectFailure === "dies"
-            ? Effect.die(new Error("The assistant connection disappeared."))
-            : Effect.sync(() => {
-                connects.push(input);
-                return {
-                  _tag: "AssistantConnection" as const,
-                  connectionId: assistantChannel.connectionId,
-                  oauthClientId: input.oauthClientId,
-                };
-              }),
+      connect: (input) => {
+        if (connectFailure === "fails") {
+          return Effect.fail(
+            databaseFailure("insert into administrator assistant connections")
+          );
+        }
+        if (connectFailure === "dies") {
+          return Effect.die(new Error("The assistant connection disappeared."));
+        }
+        return Effect.sync(() => {
+          connects.push(input);
+          return {
+            _tag: "AssistantConnection" as const,
+            connectionId: assistantChannel.connectionId,
+            oauthClientId: input.oauthClientId,
+          };
+        });
+      },
     })
   );
   return { connects, layer };
@@ -568,30 +573,29 @@ describe("administration API instances", () => {
         ReturnType<typeof HttpRouter.toWebHandler<never, never, never, never>>
       >;
 
-      const statuses: Array<[string, number]> = [];
+      const statuses: Array<string> = [];
       for (const name of order) {
         for (const [bearer, init] of requests) {
           const response = await send(webs[name].handler, bearer, init);
-          statuses.push([
-            `${name} ${bearer === cliBearer ? "CLI bearer" : "OAuth token"} ${init.path}`,
-            response.status,
-          ]);
+          statuses.push(
+            `${name} ${bearer === cliBearer ? "CLI bearer" : "OAuth token"} ${init.path} ${response.status}`
+          );
         }
       }
       await Promise.all(Object.values(webs).map((web) => web.dispose()));
 
       const expected = {
         cli: [
-          ["cli CLI bearer /sessions", 200],
-          ["cli CLI bearer /session", 200],
-          ["cli OAuth token /sessions", 401],
-          ["cli OAuth token /session", 401],
+          "cli CLI bearer /sessions 200",
+          "cli CLI bearer /session 200",
+          "cli OAuth token /sessions 401",
+          "cli OAuth token /session 401",
         ],
         assistant: [
-          ["assistant CLI bearer /sessions", 401],
-          ["assistant CLI bearer /session", 401],
-          ["assistant OAuth token /sessions", 200],
-          ["assistant OAuth token /session", 401],
+          "assistant CLI bearer /sessions 401",
+          "assistant CLI bearer /session 401",
+          "assistant OAuth token /sessions 200",
+          "assistant OAuth token /session 401",
         ],
       };
       expect(statuses).toEqual(order.flatMap((name) => expected[name]));
