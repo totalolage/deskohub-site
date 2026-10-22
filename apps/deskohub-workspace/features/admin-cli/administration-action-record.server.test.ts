@@ -13,7 +13,7 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Exit, Layer, Option } from "effect";
+import { Effect, Exit, Layer, Option, type Schema } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { StandaloneAccessCodeAdministration } from "@/features/access-codes";
 import { InvoiceAdministrationService } from "@/features/accounting/admin/invoice-administration.service";
@@ -118,6 +118,7 @@ const serve = ({
   idempotency = {},
   invoices = {},
   standalone = {},
+  backfill = {},
 }: {
   readonly channel?: AdministrationChannel;
   readonly actionLog: Layer.Layer<AdministrationActionLog>;
@@ -125,13 +126,12 @@ const serve = ({
   readonly idempotency?: Partial<CliMutationIdempotency["Service"]>;
   readonly invoices?: Partial<InvoiceAdministrationService["Service"]>;
   readonly standalone?: Partial<StandaloneAccessCodeAdministration["Service"]>;
+  readonly backfill?: Partial<ReservationProductDetailsBackfill["Service"]>;
 }) =>
   HttpRouter.toWebHandler(
     makeWorkspaceAdminApiLayer({
-      authentication: Layer.merge(
-        callerAuthentication(channel),
-        UnusedCliSessionAuthentication
-      ),
+      authentication: callerAuthentication(channel),
+      sessionAuthentication: UnusedCliSessionAuthentication,
       clientCompatibility: CliClientCompatibilityLive,
     }).pipe(
       Layer.provide(
@@ -156,7 +156,10 @@ const serve = ({
           Layer.succeed(CliAuthenticationAdmission, {} as never),
           Layer.succeed(AdministrationService, {} as never),
           Layer.succeed(ReservationAdministrationService, {} as never),
-          Layer.succeed(ReservationProductDetailsBackfill, {} as never),
+          Layer.succeed(ReservationProductDetailsBackfill, {
+            ...({} as ReservationProductDetailsBackfill["Service"]),
+            ...backfill,
+          }),
           Layer.succeed(AdministratorRoster, {} as never),
           Layer.succeed(LegacyAdministratorBackfill, {} as never),
           Layer.succeed(ReservationAccessAdministration, {} as never),
@@ -228,6 +231,91 @@ describe("administration action record", () => {
 
     expect(response.status).toBe(200);
     expect(events).toEqual([]);
+  });
+
+  describe("for an operation whose preview is its dry run", () => {
+    const serveBackfill = () => {
+      const { events, layer } = makeActionLog();
+      const handler = serve({
+        actionLog: layer,
+        backfill: {
+          runBatch: () =>
+            Effect.sync(() => {
+              events.push({ event: "operation" });
+              return {
+                updated: 0,
+                alreadyComplete: 0,
+                unresolved: [],
+                nextCursor: null,
+              };
+            }),
+        },
+      });
+      const runBatch = (payload: Schema.Json) =>
+        call(handler, {
+          path: "/reservations/product-details-backfill",
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+      return { events, runBatch };
+    };
+    const startOf = {
+      event: "start",
+      operation: "administration.backfillReservationProductDetails",
+      channel: sessionChannel,
+    } as const;
+
+    test("leaves a dry run unrecorded, as it changes nothing", async () => {
+      const { events, runBatch } = serveBackfill();
+
+      const response = await runBatch({ dryRun: true, after: null });
+
+      expect(response.status).toBe(200);
+      expect(events).toEqual([{ event: "operation" }]);
+    });
+
+    test("records the run that writes", async () => {
+      const { events, runBatch } = serveBackfill();
+
+      const response = await runBatch({ dryRun: false, after: null });
+
+      expect(response.status).toBe(200);
+      expect(events).toEqual([
+        startOf,
+        { event: "operation" },
+        { event: "finish", end: { outcome: "succeeded" } },
+      ]);
+    });
+
+    test("records a request whose payload doesn't decode, whatever its dryRun", async () => {
+      const { events, runBatch } = serveBackfill();
+
+      const response = await runBatch({
+        dryRun: true,
+        after: null,
+        limit: 10,
+      });
+
+      expect(response.status).toBe(400);
+      expect(events[0]).toEqual(startOf);
+      expect(events).not.toContainEqual({ event: "operation" });
+    });
+  });
+
+  test("records a dryRun key an operation without a dry run doesn't declare", async () => {
+    const { events, layer } = makeActionLog();
+    const handler = serve({ actionLog: layer });
+
+    await call(handler, {
+      ...renameSession,
+      body: JSON.stringify({ clientName: "Renamed", dryRun: true }),
+    });
+
+    expect(events[0]).toEqual({
+      event: "start",
+      operation: "administration.renameSession",
+      channel: sessionChannel,
+    });
   });
 
   test("records a declared failure by its tag", async () => {

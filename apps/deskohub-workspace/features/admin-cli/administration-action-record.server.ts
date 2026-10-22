@@ -14,6 +14,7 @@ import {
   Layer,
   Match,
   Option,
+  Predicate,
   Ref,
   Schema,
 } from "effect";
@@ -33,9 +34,10 @@ import { mapServiceFailure } from "./administration-api-failure";
 const finishTimeout = "5 seconds";
 
 /**
- * Records every `write` and `destructive` administration request. The row
- * is written before the operation runs, so a change can't happen without
- * one: if it can't be written, the request fails with 503 and nothing runs.
+ * Records every `write` and `destructive` administration request, except
+ * a dry run, which changes nothing. The row is written before the
+ * operation runs, so a change can't happen without one: if it can't be
+ * written, the request fails with 503 and nothing runs.
  * Its end is recorded after the operation, and a failure to record it is
  * only logged, leaving the outcome `started`, so the response is the
  * operation's own.
@@ -90,9 +92,10 @@ export const AdministrationActionRecordLive = Layer.effect(
 );
 
 /**
- * The operation a request records, or none for a read or a CLI-only
- * endpoint. A generic mutation endpoint records the variant its body names;
- * a body that names none fails to decode and is recorded under the endpoint.
+ * The operation a request records, or none for a read, a dry run or a
+ * CLI-only endpoint. A generic mutation endpoint records the variant its
+ * body names; a body that names none fails to decode and is recorded under
+ * the endpoint.
  */
 const recordedOperation = (
   group: HttpApiGroup.AnyWithProps,
@@ -111,9 +114,26 @@ const recordedOperation = (
   }
   return Match.value(declaration.value).pipe(
     Match.tagsExhaustive({
-      Operation: ({ behavior }) =>
-        Effect.succeed(
-          changesState(behavior) ? Option.some(reference) : Option.none()
+      Operation: ({
+        behavior,
+      }): Effect.Effect<
+        Option.Option<AdministrationOperationReference>,
+        never,
+        HttpServerRequest.HttpServerRequest
+      > =>
+        Match.value(behavior).pipe(
+          Match.when(
+            (operation) => !changesState(operation),
+            () => Effect.succeed(Option.none())
+          ),
+          Match.when({ preview: { _tag: "DryRun" } }, () =>
+            requestsDryRun(endpoint).pipe(
+              Effect.map((dryRun) =>
+                dryRun ? Option.none() : Option.some(reference)
+              )
+            )
+          ),
+          Match.orElse(() => Effect.succeed(Option.some(reference)))
         ),
       Variants: ({ variants }) =>
         Object.values(variants.operations).some(changesState)
@@ -148,6 +168,50 @@ const requestBody = HttpServerRequest.HttpServerRequest.pipe(
   Effect.flatMap((request) => request.json),
   Effect.orElseSucceed((): unknown => undefined)
 );
+
+/**
+ * Whether the request runs its operation as the dry run its contract
+ * declares as the preview: the body decodes to `dryRun: true` with the
+ * payload schema the endpoint picks for the request's JSON media type. A
+ * body that doesn't decode is no dry run; the endpoint rejects it.
+ */
+const requestsDryRun = (endpoint: HttpApiEndpoint.AnyWithProps) =>
+  HttpServerRequest.HttpServerRequest.pipe(
+    Effect.flatMap((request) =>
+      Option.fromNullishOr(endpoint.payload.get(mediaTypeOf(request))).pipe(
+        Option.filter(({ encoding }) => encoding._tag === "Json"),
+        Option.match({
+          onNone: () => Effect.succeed(false),
+          onSome: ({ schemas }) =>
+            requestBody.pipe(
+              Effect.map((body) =>
+                // The first member that decodes, as the union decodes it.
+                Option.firstSomeOf(
+                  schemas.map((schema) =>
+                    Schema.decodeUnknownOption(schema as Schema.Codec<unknown>)(
+                      body
+                    )
+                  )
+                ).pipe(
+                  Option.exists(
+                    (payload) =>
+                      Predicate.hasProperty(payload, "dryRun") &&
+                      payload.dryRun === true
+                  )
+                )
+              )
+            ),
+        })
+      )
+    )
+  );
+
+/** The request's media type, as `HttpApiBuilder` picks a payload by it. */
+const mediaTypeOf = (request: HttpServerRequest.HttpServerRequest) =>
+  (request.headers["content-type"] || "application/json")
+    .toLowerCase()
+    .split(";", 1)[0]
+    ?.trim() ?? "";
 
 /** A declared administration error: every one is a tagged schema class. */
 const TaggedError = Schema.Struct({ _tag: Schema.NonEmptyString });

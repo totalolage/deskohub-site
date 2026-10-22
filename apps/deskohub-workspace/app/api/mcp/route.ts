@@ -2,6 +2,10 @@ import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { CustomerAgentAuthorization } from "@/features/account";
 import {
+  AdministrationAgentAccess,
+  AdministrationAgentToolsLive,
+} from "@/features/administration-agent-tools";
+import {
   AgentToolAdmission,
   answerAgentToolMcpRequest,
   CustomerAgentToolsLive,
@@ -24,6 +28,11 @@ import {
  * tools need a bearer access token from the Workspace OAuth server; a call
  * without a usable one is answered with an OAuth challenge. Each tool call
  * is counted by the caller's agent category.
+ *
+ * An administrator's agent also sees the administration tools, after the
+ * customer tools, when its token carries the administration scope and its
+ * account holds the administrator grant at that moment. When the grant
+ * can't be checked the request is answered with 503, never with the tools.
  */
 const handleMcpRequest = defineWorkspaceRoute(
   {
@@ -39,13 +48,24 @@ const handleMcpRequest = defineWorkspaceRoute(
             client,
             tools: publishedCustomerAgentTools,
           }),
+          // Appended after the customer tools, never adapted per client.
+          callerTools: AdministrationAgentAccess.forCaller,
           client,
           request,
         })
       ),
+      Effect.catchTag("AdministrationAgentAccessUnavailable", () =>
+        Effect.succeed(
+          new Response(null, {
+            status: 503,
+            headers: { "cache-control": "no-store", "retry-after": "5" },
+          })
+        )
+      ),
       Effect.provide(
         Layer.mergeAll(
           CustomerAgentToolsLive,
+          AdministrationAgentToolsLive,
           AgentToolAdmission.Default,
           CustomerAgentAuthorization.Default,
           RequestBudget.Live,

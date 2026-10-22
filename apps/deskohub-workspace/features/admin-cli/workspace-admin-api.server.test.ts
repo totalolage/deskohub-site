@@ -96,6 +96,7 @@ import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
 import {
   AdminCliAdministrationApiHandlers,
   AdminCliApiHandlers,
+  CliBearerAuthenticationLive,
   CliSessionAdministrationAuthenticationLive,
   handleWorkspaceAdminApiRequest,
   makeWorkspaceAdminApiLayer,
@@ -467,6 +468,7 @@ describe("Workspace Admin API", () => {
           HttpRouter.toWebHandler(
             makeWorkspaceAdminApiLayer({
               authentication: authenticationOf(instance),
+              sessionAuthentication: CliBearerAuthenticationLive,
               clientCompatibility: CliClientCompatibilityLive,
             }).pipe(Layer.provide(services)),
             { disableLogger: true, memoMap }

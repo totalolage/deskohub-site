@@ -1252,6 +1252,7 @@
   "agentToolErrorAccountUnavailable": "Tvůj účet teď nemůže rezervovat. Přihlas se na webu a zkontroluj ho.",
   "agentToolErrorReservationNotFound": "Rezervace s tímto číslem objednávky ve tvém účtu není.",
   "agentToolErrorReservationsUnavailable": "Tvoje rezervace teď nejde načíst. Zkus to za chvíli znovu nebo se podívej do účtu na webu.",
+  "agentToolErrorAdministrationUnavailable": "Administrace teď není dostupná. Zkus to za chvíli znovu.",
   "agentToolBookingViewReserveNote": "V rezervačním okně zákazník ověří dostupnost a cenu a založí rezervaci. Pak na webu přijme podmínky a zaplatí.",
   "agentToolBookingViewReservationPageNote": "V rezervačním okně zákazník ověří dostupnost a cenu a pak otevře předvyplněnou rezervační stránku, kde rezervaci dokončí na webu.",
   "agentToolStartReservationNote": "Rezervace je blokovaná, dokud nevyprší odkaz na platbu. Otevři ho, zkontroluj objednávku, potvrď podmínky a zaplať na webu.",

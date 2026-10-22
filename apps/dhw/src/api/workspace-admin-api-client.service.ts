@@ -1113,7 +1113,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           Effect.flatMap((authorized) =>
             authorized.administration.listInvoices({ query })
           ),
-          Effect.mapError(sanitizeSessionError)
+          Effect.mapError(sanitizeInvoiceListError)
         )
     ),
     getInvoice: Effect.fn("WorkspaceAdminApiClient.getInvoice")(
@@ -1125,7 +1125,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           Effect.flatMap((authorized) =>
             authorized.administration.getInvoice({ params: { invoiceId } })
           ),
-          Effect.mapError(sanitizeResourceError)
+          Effect.mapError(sanitizeInvoiceError)
         )
     ),
     getInvoicePdf: Effect.fn("WorkspaceAdminApiClient.getInvoicePdf")(
@@ -1888,6 +1888,36 @@ const sanitizeResourceError = (
     | Schema.SchemaError
 ) =>
   cause instanceof CliResourceNotFound ? cause : sanitizeSessionError(cause);
+
+/**
+ * Invoice reads require a minimum `dhw`. The server refuses an older one
+ * with `CliServiceUnavailable`, which released binaries already decode; a
+ * `CliInputInvalid` refusal keeps its message the same way.
+ */
+const sanitizeInvoiceListError = (
+  cause:
+    | CliInputInvalid
+    | CliServiceUnavailable
+    | CliSessionUnauthorized
+    | HttpClientError.HttpClientError
+    | Schema.SchemaError
+) =>
+  cause instanceof CliInputInvalid
+    ? new CliApiRequestError({ message: cause.message })
+    : sanitizeSessionError(cause);
+
+const sanitizeInvoiceError = (
+  cause:
+    | CliInputInvalid
+    | CliResourceNotFound
+    | CliServiceUnavailable
+    | CliSessionUnauthorized
+    | HttpClientError.HttpClientError
+    | Schema.SchemaError
+) =>
+  cause instanceof CliInputInvalid
+    ? new CliApiRequestError({ message: cause.message })
+    : sanitizeResourceError(cause);
 
 const sanitizeMutationError = (
   cause:

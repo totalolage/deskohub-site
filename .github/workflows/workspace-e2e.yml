@@ -655,6 +655,15 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      - name: Upload administrator agent tools evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: workspace-administrator-agent-tools-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/deskohub-workspace/e2e-artifacts/administrator-agent-tools/*.json
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Classify synthetic main account state
         if: failure()
         continue-on-error: true

@@ -18,6 +18,7 @@ import {
 } from "../errors";
 import { addRedaction, assert } from "../runtime";
 import {
+  type CustomerAgentRequestedScope,
   customerAgentRedirectUri,
   customerAgentRequestedScopes,
   customerMcpResourceFor,
@@ -155,14 +156,19 @@ export type CustomerAgentAuthorizationRequest = {
   readonly state: string;
 };
 
-/** A fresh authorization request with a PKCE (S256) challenge and state. */
+/**
+ * A fresh authorization request with a PKCE (S256) challenge and state, for
+ * the customer scopes unless the caller names others.
+ */
 export const startCustomerAgentAuthorization = ({
   clientId,
   config,
+  scopes = customerAgentRequestedScopes,
   server,
 }: {
   readonly clientId: string;
   readonly config: WorkspaceE2EConfig;
+  readonly scopes?: readonly CustomerAgentRequestedScope[];
   readonly server: CustomerAgentAuthorizationServer;
 }): Effect.Effect<CustomerAgentAuthorizationRequest, WorkspaceE2EError> =>
   tryWorkspaceE2EPromise("start customer agent authorization", async () => {
@@ -174,7 +180,7 @@ export const startCustomerAgentAuthorization = ({
         metadata: server.metadata,
         redirectUrl: customerAgentRedirectUri,
         resource: customerMcpResourceFor(config.baseUrl),
-        scope: customerAgentRequestedScopes.join(" "),
+        scope: scopes.join(" "),
         state,
       }
     );
@@ -192,22 +198,27 @@ export const startCustomerAgentAuthorization = ({
 
 /**
  * Redeems the code at the token endpoint with the PKCE verifier, bound to
- * the MCP resource, and returns the opaque access token.
+ * the MCP resource, and returns the opaque access token. The grant must
+ * carry every expected scope and none of the withheld ones.
  */
 export const exchangeCustomerAgentCode = ({
   clientId,
   code,
   config,
+  expectedScopes = customerAgentRequestedScopes,
   iss,
   request,
   server,
+  withheldScopes = [],
 }: {
   readonly clientId: string;
   readonly code: string;
   readonly config: WorkspaceE2EConfig;
+  readonly expectedScopes?: readonly CustomerAgentRequestedScope[];
   readonly iss: string | undefined;
   readonly request: CustomerAgentAuthorizationRequest;
   readonly server: CustomerAgentAuthorizationServer;
+  readonly withheldScopes?: readonly CustomerAgentRequestedScope[];
 }): Effect.Effect<string, WorkspaceE2EError> =>
   tryWorkspaceE2EPromise("exchange customer agent code", async (signal) => {
     const tokens = await exchangeAuthorization(server.url, {
@@ -228,8 +239,12 @@ export const exchangeCustomerAgentCode = ({
     );
     const granted = new Set(tokens.scope?.split(" "));
     assert(
-      customerAgentRequestedScopes.every((scope) => granted.has(scope)),
+      expectedScopes.every((scope) => granted.has(scope)),
       "The token endpoint granted fewer scopes than the customer allowed"
+    );
+    assert(
+      !withheldScopes.some((scope) => granted.has(scope)),
+      "The token endpoint granted a scope the consent withheld"
     );
     assert(
       tokens.refresh_token,

@@ -26,6 +26,8 @@ import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { currentInstant } from "@/shared/utils/temporal";
 import {
   type AgentTool,
+  type AgentToolAttachment,
+  AgentToolReply,
   CallableAgentTools,
   getRequestedAgentToolLocale,
 } from "./agent-tool";
@@ -46,6 +48,7 @@ import {
   getAgentToolBookingGuidance,
 } from "./agent-tool-guidance";
 import {
+  AgentToolRequestRefused,
   authorizeAgentToolRequest,
   isAgentToolGranted,
 } from "./agent-tool-mcp-authorization";
@@ -117,36 +120,62 @@ const getAgentToolServerInstructions = ({
  * server can't see which clients render them, so tools always link their
  * view, and every result stays complete without it.
  *
+ * `callerTools` adds the tools only the request's caller may see, after
+ * its token is verified and before any called tool is authorized; they are
+ * listed after `tools`. Its failure fails the request.
+ *
  * Tool calls run as fibers of the returned Effect, so they share its
  * services, request context, and trace, and are interrupted with it.
  */
-export const answerAgentToolMcpRequest = <R>({
+export const answerAgentToolMcpRequest = <
+  R,
+  RCaller = never,
+  E = never,
+  RCallerTools = never,
+>({
   tools,
+  callerTools,
   client,
   request,
 }: {
   readonly tools: ReadonlyArray<AgentTool<R>>;
+  readonly callerTools?: (
+    caller: Option.Option<CustomerAgentCaller>
+  ) => Effect.Effect<ReadonlyArray<AgentTool<RCaller>>, E, RCallerTools>;
   readonly client: AgentToolClient;
   readonly request: Request;
 }) =>
-  Option.fromNullishOr(
-    originValidationResponse(request, [new URL(request.url).hostname])
-  ).pipe(
-    Option.match({
-      onSome: (rejection) =>
-        Effect.logWarning(
-          "Agent tool MCP request from another origin was rejected"
-        ).pipe(Effect.as(rejection)),
-      onNone: () =>
-        authorizeAgentToolRequest({ tools, request }).pipe(
-          Effect.flatMap((caller) =>
-            serveAgentToolMcpRequest({ tools, client, request, caller })
+  // One Effect type for both branches, so callers can handle its errors.
+  Effect.suspend(() =>
+    Option.fromNullishOr(
+      originValidationResponse(request, [new URL(request.url).hostname])
+    ).pipe(
+      Option.match({
+        onSome: (rejection) =>
+          Effect.logWarning(
+            "Agent tool MCP request from another origin was rejected"
+          ).pipe(Effect.as(rejection)),
+        onNone: () =>
+          authorizeAgentToolRequest<AgentTool<R | RCaller>, E, RCallerTools>({
+            tools,
+            callerTools,
+            request,
+          }).pipe(
+            Effect.flatMap(({ caller, tools: served }) =>
+              serveAgentToolMcpRequest({
+                tools: served,
+                client,
+                request,
+                caller,
+              })
+            ),
+            Effect.catchIf(
+              (error) => error instanceof AgentToolRequestRefused,
+              ({ response }) => Effect.succeed(response)
+            )
           ),
-          Effect.catchTag("AgentToolRequestRefused", ({ response }) =>
-            Effect.succeed(response)
-          )
-        ),
-    })
+      })
+    )
   );
 
 /**
@@ -426,12 +455,7 @@ const callAgentTool = <R>({
           )
         )
     ),
-    Effect.map(
-      (result): CallToolResult => ({
-        content: [{ type: "text", text: JSON.stringify(result) }],
-        structuredContent: result,
-      })
-    ),
+    Effect.map(toToolResult),
     Effect.tap(() => recordAgentToolCall(tool.name, "success")),
     Effect.catchTag("AgentToolError", (error) =>
       reportAgentToolError(error).pipe(
@@ -463,6 +487,8 @@ const spendCallBudgets = <R>({
           onSome: ({ grant }) =>
             spendSignedInCallBudgets({ grant, tool: signedInTool }),
         }),
+      // Administration is staff work, not a customer's booking traffic.
+      administration: () => Effect.void,
     })
   );
 
@@ -481,6 +507,32 @@ const recordAgentToolCall = (
       })
     )
   );
+
+/**
+ * A successful call's MCP result: the structured result, its JSON text,
+ * and any attachments as embedded resources.
+ */
+const toToolResult = (
+  reply: AgentToolReply | AgentToolReply["result"]
+): CallToolResult => {
+  const { result, attachments } =
+    reply instanceof AgentToolReply
+      ? reply
+      : { result: reply, attachments: [] };
+
+  return {
+    content: [
+      { type: "text", text: JSON.stringify(result) },
+      ...attachments.map(toEmbeddedResource),
+    ],
+    structuredContent: result,
+  };
+};
+
+const toEmbeddedResource = ({ uri, mimeType, blob }: AgentToolAttachment) => ({
+  type: "resource" as const,
+  resource: { uri, mimeType, blob },
+});
 
 const reportAgentToolError = (error: AgentToolError) =>
   error.cause === undefined
