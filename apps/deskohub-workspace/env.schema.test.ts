@@ -63,6 +63,10 @@ const environmentError = (
   throw new Error("Expected the workspace environment to be rejected.");
 };
 
+/** A synthetic address outside the test domain, on the reserved `.invalid` TLD. */
+const offTestDomain = (localPart: string) =>
+  testEmailAddress(localPart).replace(/\.test$/, ".invalid");
+
 describe("workspace environment schemas", () => {
   test("always requires the Igloohome target device and requires credentials only in production", () => {
     const missingCredentials = {
@@ -237,7 +241,7 @@ describe("workspace environment schemas", () => {
     ).toEqual([{ email, password }]);
 
     for (const rejected of [
-      reviewLogins({ email: "reviewer@example.com", password }),
+      reviewLogins({ email: offTestDomain("reviewer"), password }),
       reviewLogins({ email: email.toUpperCase(), password }),
       reviewLogins({ email: testEmailAddress("reviewer@"), password }),
       reviewLogins({ email, password: "too-short-12" }),
@@ -254,7 +258,7 @@ describe("workspace environment schemas", () => {
 
   test("reports invalid review logins without echoing configured values", () => {
     const password = `leaked-review-password-${crypto.randomUUID()}`;
-    const email = "leaked-reviewer@example.com";
+    const email = offTestDomain("leaked-reviewer");
 
     for (const credentials of [
       [{ email, password }],
