@@ -968,21 +968,17 @@ const noStore = HttpRouter.middleware(
 );
 
 /**
- * The administration API with the given authentication for its operations
- * and the given client compatibility check. Each call builds its own
- * router, group handlers and global middleware: group handlers capture the
- * middleware they were built with, so instances sharing the Workspace memo
- * map must not share them. The domain services stay shared.
+ * The administration API's HTTP app, with the given authentication for its
+ * operations and the given client compatibility check. Each call builds its
+ * own router, group handlers and global middleware: group handlers capture
+ * the middleware they were built with, so instances sharing the Workspace
+ * memo map must not share them. The domain services come from the caller.
  */
-export const makeWorkspaceAdminApiLayer = ({
+export const makeWorkspaceAdminApiLayer = <R>({
   authentication,
   clientCompatibility,
 }: {
-  readonly authentication: Layer.Layer<
-    AdministrationAuthentication,
-    never,
-    CliAuthentication
-  >;
+  readonly authentication: Layer.Layer<AdministrationAuthentication, never, R>;
   readonly clientCompatibility: Layer.Layer<CliClientCompatibility>;
 }) =>
   Layer.mergeAll(
@@ -1002,36 +998,46 @@ export const makeWorkspaceAdminApiLayer = ({
           authentication,
           clientCompatibility
         )
-      ),
-      Layer.provide(AdministrationService.Live),
-      Layer.provide(ReservationAdministrationService.Live),
-      Layer.provide(ReservationProductDetailsBackfill.Live),
-      Layer.provide(LegacyAdministratorBackfill.Live),
-      Layer.provide(ReservationAccessAdministration.Live),
-      Layer.provide(DiscountAdministration.Live),
-      Layer.provide(InvoiceAdministrationService.Live),
-      Layer.provide(StandaloneAccessCodeAdministration.Live),
-      Layer.provide(CliMutationIdempotency.Live),
-      Layer.provide(CampaignOperations.Live),
-      Layer.provide(CliAuthenticationAdmission.Default),
-      Layer.provide(CliAuthentication.Live)
+      )
     ),
-    Layer.fresh(noStore),
+    Layer.fresh(noStore)
+  ).pipe(
+    // Overrides the router `HttpRouter.toWebHandler` provides, which the
+    // memo map would share between instances.
+    Layer.provideMerge(Layer.fresh(HttpRouter.layer))
+  );
+
+/** The Workspace services behind the administration API. */
+const provideWorkspaceAdminApiServices = <A, E, R>(
+  layer: Layer.Layer<A, E, R>
+) =>
+  layer.pipe(
+    Layer.provide(AdministrationService.Live),
+    Layer.provide(ReservationAdministrationService.Live),
+    Layer.provide(ReservationProductDetailsBackfill.Live),
+    Layer.provide(LegacyAdministratorBackfill.Live),
+    Layer.provide(ReservationAccessAdministration.Live),
+    Layer.provide(DiscountAdministration.Live),
+    Layer.provide(InvoiceAdministrationService.Live),
+    Layer.provide(StandaloneAccessCodeAdministration.Live),
+    Layer.provide(CliMutationIdempotency.Live),
+    Layer.provide(CampaignOperations.Live),
+    Layer.provide(CliAuthenticationAdmission.Default),
+    Layer.provide(CliAuthentication.Live)
+  );
+
+export const handleWorkspaceAdminApiRequest = HttpRouter.toWebHandler(
+  Layer.mergeAll(
+    provideWorkspaceAdminApiServices(
+      makeWorkspaceAdminApiLayer({
+        authentication: CliSessionAdministrationAuthenticationLive,
+        clientCompatibility: CliClientCompatibilityLive,
+      })
+    ),
     // This handler runs outside the route's Effect runtime, so it needs the
     // censoring Workspace logger and tracer. Building with the Workspace memo
     // map reuses the instance the route runtime already built.
     WorkspaceObservabilityLive
-  ).pipe(
-    // Overrides the router `HttpRouter.toWebHandler` provides, which the
-    // memo map would share between instances.
-    Layer.provideMerge(Layer.fresh(HttpRouter.layer)),
-    Layer.provide(NodeHttpServer.layerHttpServices)
-  );
-
-export const handleWorkspaceAdminApiRequest = HttpRouter.toWebHandler(
-  makeWorkspaceAdminApiLayer({
-    authentication: CliSessionAdministrationAuthenticationLive,
-    clientCompatibility: CliClientCompatibilityLive,
-  }),
+  ).pipe(Layer.provide(NodeHttpServer.layerHttpServices)),
   { disableLogger: true, memoMap: workspaceMemoMap }
 ).handler;

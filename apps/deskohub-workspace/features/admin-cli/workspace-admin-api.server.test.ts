@@ -38,7 +38,15 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Layer, Logger, Option, Result, Schema } from "effect";
+import {
+  Effect,
+  Layer,
+  Logger,
+  Option,
+  Redacted,
+  Result,
+  Schema,
+} from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import { HttpApiTest } from "effect/unstable/httpapi";
 import type { CliStoredMutation } from "@/db/schema";
@@ -58,11 +66,13 @@ import {
   ReservationAccessAdministrationError,
 } from "@/features/administration/reservation-access-administration.service";
 import { ReservationAdministrationService } from "@/features/administration/reservation-administration.service";
+import { LegacyAdministratorBackfill } from "@/features/administrators";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import {
   DiscountAdminConflictError,
   DiscountAdministration,
 } from "@/features/discounts/admin/discount-administration.service";
+import { CampaignOperations } from "@/features/email-campaigns/backend/campaign-operations.service";
 import {
   ReservationProductDetailsBackfill,
   type ReservationProductDetailsBackfillBatch,
@@ -191,65 +201,153 @@ describe("Workspace Admin API", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 
-  test("keeps each instance's authentication when instances share a memo map", async () => {
-    const authenticate = (name: string, seen: Array<string>) =>
+  test("serves each instance's own caller when instances share a memo map", async () => {
+    const instances = ["first", "second"] as const;
+    type Instance = (typeof instances)[number];
+    const callerOf = (instance: Instance) => ({
+      actor: {
+        accountId: customerAccountIdSchema.make(`account-${instance}`),
+        email: testEmailAddress(instance),
+      },
+      channel: {
+        _tag: "CliSession" as const,
+        sessionId: CliSessionId.make(
+          instance === "first"
+            ? "01980000-0000-7000-8000-0000000000a1"
+            : "01980000-0000-7000-8000-0000000000a2"
+        ),
+      },
+    });
+    // Each instance accepts only the bearer named after it.
+    const authenticationOf = (instance: Instance) =>
       Layer.succeed(AdministrationAuthentication, {
-        bearer: () =>
-          Effect.sync(() => seen.push(name)).pipe(
-            Effect.andThen(
-              Effect.fail(
-                new CliSessionUnauthorized({ message: "Not under test." })
+        bearer: (httpEffect, { credential }) =>
+          Redacted.value(credential) === instance
+            ? Effect.provideService(
+                httpEffect,
+                CurrentAdministrationCaller,
+                callerOf(instance)
               )
-            )
-          ),
+            : Effect.fail(
+                new CliSessionUnauthorized({ message: "Not this instance." })
+              ),
       });
-    const listReservations = (
-      handler: (request: Request) => Promise<Response>
+    const sessionOwners: Array<string> = [];
+    const ledgerScopes: Array<unknown> = [];
+    const services = Layer.mergeAll(
+      Layer.succeed(CliAuthentication, {
+        ...({} as CliAuthentication["Service"]),
+        listSessions: (owner) =>
+          Effect.sync(() => {
+            sessionOwners.push(owner);
+            return [];
+          }),
+      }),
+      Layer.succeed(CliMutationIdempotency, {
+        applyOnce: () => Effect.die("Unused CLI mutation ledger"),
+        claim: (request) =>
+          Effect.sync(() => {
+            ledgerScopes.push(request.scope);
+            return { kind: "in-progress" as const };
+          }),
+        complete: () => Effect.void,
+        reclaimStale: () => Effect.succeed(false),
+        release: () => Effect.void,
+      }),
+      Layer.succeed(CliAuthenticationAdmission, {} as never),
+      Layer.succeed(AdministrationService, {} as never),
+      Layer.succeed(LegacyAdministratorBackfill, {} as never),
+      Layer.succeed(CampaignOperations, {} as never),
+      UnusedReservationAdministration,
+      UnusedReservationProductDetailsBackfill,
+      UnusedReservationAccessAdministration,
+      UnusedDiscountAdministration,
+      UnusedInvoiceAdministration,
+      UnusedStandaloneAccessCodeAdministration,
+      NodeHttpServer.layerHttpServices
+    );
+    const request = (
+      handler: (request: Request) => Promise<Response>,
+      bearer: Instance,
+      init: RequestInit & { readonly path: string }
     ) =>
       handler(
-        new Request("https://workspace.deskohub.test/api/v1/cli/reservations", {
-          headers: { authorization: "Bearer test-token" },
+        new Request(`https://workspace.deskohub.test/api/v1/cli${init.path}`, {
+          ...init,
+          headers: {
+            authorization: `Bearer ${bearer}`,
+            "content-type": "application/json",
+          },
         })
       );
+    const listSessions = { path: "/sessions" };
+    const deleteCode = {
+      path: "/discounts/mutations",
+      method: "POST",
+      body: JSON.stringify({
+        requestId: "01980000-0000-7000-8000-0000000000b1",
+        mutation: {
+          kind: "delete-code",
+          id: "01980000-0000-7000-8000-0000000000c1",
+        },
+      }),
+    };
 
-    for (const order of [
-      ["first", "second"],
-      ["second", "first"],
-    ] as const) {
-      const seen: Array<string> = [];
+    for (const order of [instances, [...instances].reverse()]) {
+      sessionOwners.length = 0;
+      ledgerScopes.length = 0;
       const memoMap = Layer.makeMemoMapUnsafe();
-      const handlers = {
-        first: HttpRouter.toWebHandler(
-          makeWorkspaceAdminApiLayer({
-            authentication: authenticate("first", seen),
-            clientCompatibility: CliClientCompatibilityLive,
-          }),
-          { disableLogger: true, memoMap }
-        ),
-        second: HttpRouter.toWebHandler(
-          makeWorkspaceAdminApiLayer({
-            authentication: authenticate("second", seen),
-            clientCompatibility: CliClientCompatibilityLive,
-          }),
-          { disableLogger: true, memoMap }
-        ),
-      };
+      const handlers = Object.fromEntries(
+        instances.map((instance) => [
+          instance,
+          HttpRouter.toWebHandler(
+            makeWorkspaceAdminApiLayer({
+              authentication: authenticationOf(instance),
+              clientCompatibility: CliClientCompatibilityLive,
+            }).pipe(Layer.provide(services)),
+            { disableLogger: true, memoMap }
+          ),
+        ])
+      ) as Record<
+        Instance,
+        ReturnType<typeof HttpRouter.toWebHandler<never, never, never, never>>
+      >;
 
-      const responses = [];
-      for (const name of [...order, order[0]]) {
-        responses.push(await listReservations(handlers[name].handler));
+      const statuses: Array<[string, number, string | null]> = [];
+      for (const instance of [...order, order[0]]) {
+        const other = instance === "first" ? "second" : "first";
+        const { handler } = handlers[instance];
+        for (const [name, response] of [
+          ["own sessions", await request(handler, instance, listSessions)],
+          ["other's sessions", await request(handler, other, listSessions)],
+          ["own mutation", await request(handler, instance, deleteCode)],
+        ] as const) {
+          statuses.push([
+            `${instance} ${name}`,
+            response.status,
+            response.headers.get("cache-control"),
+          ]);
+        }
       }
       await Promise.all(
         Object.values(handlers).map((handler) => handler.dispose())
       );
 
-      expect(seen).toEqual([...order, order[0]]);
-      expect(responses.map((response) => response.status)).toEqual([
-        401, 401, 401,
-      ]);
-      expect(
-        responses.map((response) => response.headers.get("cache-control"))
-      ).toEqual(Array(3).fill("private, no-store"));
+      expect(statuses).toEqual(
+        [...order, order[0]].flatMap((instance) => [
+          [`${instance} own sessions`, 200, "private, no-store"],
+          [`${instance} other's sessions`, 401, "private, no-store"],
+          [`${instance} own mutation`, 409, "private, no-store"],
+        ])
+      );
+      expect(sessionOwners).toEqual(
+        [...order, order[0]].map(
+          (instance) => callerOf(instance).actor.accountId
+        )
+      );
+      expect(ledgerScopes).toEqual(
+        [...order, order[0]].map((instance) => callerOf(instance).channel)
+      );
     }
   });
 
