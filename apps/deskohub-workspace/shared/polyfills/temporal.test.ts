@@ -32,7 +32,9 @@ const resolveAppModule = (path: string, specifier: string) => {
   return undefined;
 };
 
-const importsPolyfill = (path: string, source: ts.SourceFile) =>
+/** Whether the module is the polyfill installer or imports it for effect. */
+const loadsPolyfill = (path: string, source: ts.SourceFile) =>
+  resolve(appRoot, path).replace(scannedModule, "") === polyfillModule ||
   source.statements.some((statement) => {
     if (
       !ts.isImportDeclaration(statement) ||
@@ -40,25 +42,12 @@ const importsPolyfill = (path: string, source: ts.SourceFile) =>
     ) {
       return false;
     }
-    const specifier = statement.moduleSpecifier.text;
-    if (specifier === "@js-temporal/polyfill") {
-      const clause = statement.importClause;
-      const bindings = clause?.namedBindings;
-      return (
-        clause?.isTypeOnly === false &&
-        bindings !== undefined &&
-        ts.isNamedImports(bindings) &&
-        bindings.elements.some(
-          ({ isTypeOnly, name, propertyName }) =>
-            !isTypeOnly &&
-            name.text === "Temporal" &&
-            (propertyName ?? name).text === "Temporal"
-        )
-      );
-    }
     if (statement.importClause !== undefined) return false;
     return (
-      resolveAppModule(path, specifier)?.replace(/\.ts$/, "") === polyfillModule
+      resolveAppModule(path, statement.moduleSpecifier.text)?.replace(
+        /\.ts$/,
+        ""
+      ) === polyfillModule
     );
   });
 
@@ -148,10 +137,20 @@ const temporalReference = (node: ts.Node): ts.Node | undefined => {
   return undefined;
 };
 
-const isImmediatelyInvoked = (fn: ts.SignatureDeclaration) => {
-  let node: ts.Node = fn;
+/** The outermost transparent wrapper around `node`, or `node` itself. */
+const outermostWrapper = (node: ts.Node) => {
   while (isTransparentWrapper(node.parent)) node = node.parent;
-  return ts.isCallExpression(node.parent) && node.parent.expression === node;
+  return node;
+};
+
+/** Generator bodies wait for the first `next()`, so they never run here. */
+const isImmediatelyInvoked = (fn: ts.SignatureDeclaration) => {
+  if ("asteriskToken" in fn && fn.asteriskToken !== undefined) return false;
+  const node = outermostWrapper(fn);
+  return (
+    (ts.isCallExpression(node.parent) || ts.isNewExpression(node.parent)) &&
+    node.parent.expression === node
+  );
 };
 
 /** Whether the code holding `node` runs while its module loads. */
@@ -177,16 +176,26 @@ const runsAtLoad = (node: ts.Node) => {
   return true;
 };
 
-const isTypeOnlyImport = (declaration: ts.Declaration) =>
-  (ts.isImportSpecifier(declaration) &&
-    (declaration.isTypeOnly || declaration.parent.parent.isTypeOnly)) ||
-  (ts.isImportClause(declaration) && declaration.isTypeOnly) ||
-  (ts.isNamespaceImport(declaration) && declaration.parent.isTypeOnly);
+/** Whether the declaration sits under `declare`, so binds nothing at runtime. */
+const isAmbient = (declaration: ts.Node) => {
+  for (let node: ts.Node | undefined = declaration; node; node = node.parent) {
+    if (
+      ts.canHaveModifiers(node) &&
+      ts
+        .getModifiers(node)
+        ?.some(({ kind }) => kind === ts.SyntaxKind.DeclareKeyword)
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
 
 /**
  * Whether a bare `Temporal` resolves to a binding the module declares, such
  * as a local const or an import, rather than the global. Without the default
- * library, the global `Temporal` resolves to no symbol.
+ * library, the global `Temporal` resolves to no symbol. Type-only imports and
+ * `declare`d names create no runtime binding.
  */
 const bindsLocally = (source: ts.SourceFile) => {
   const options: ts.CompilerOptions = {
@@ -207,7 +216,9 @@ const bindsLocally = (source: ts.SourceFile) => {
       : checker.getSymbolAtLocation(identifier);
     return (
       symbol?.declarations?.some(
-        (declaration) => !isTypeOnlyImport(declaration)
+        (declaration) =>
+          !ts.isTypeOnlyImportDeclaration(declaration) &&
+          !isAmbient(declaration)
       ) === true
     );
   };
@@ -225,13 +236,13 @@ const findLoadTimeTemporalReads = (
     ts.ScriptTarget.Latest,
     true
   );
-  if (importsPolyfill(path, source)) return [];
+  if (loadsPolyfill(path, source)) return [];
   const references: ts.Node[] = [];
   const visit = (node: ts.Node): void => {
     const reference = temporalReference(node);
     if (
       reference !== undefined &&
-      !ts.isTypeOfExpression(reference.parent) &&
+      !ts.isTypeOfExpression(outermostWrapper(reference).parent) &&
       !isTypeOnly(reference) &&
       runsAtLoad(reference)
     ) {
@@ -285,6 +296,18 @@ describe("load-time Temporal reads", () => {
       "a module that renames the polyfill binding",
       'import { Temporal as Polyfill } from "@js-temporal/polyfill";\nconst step = Temporal.Duration.from({ hours: 1 });',
     ],
+    [
+      "a global read in a module that binds the polyfill package",
+      'import { Temporal } from "@js-temporal/polyfill";\nconst now = globalThis.Temporal.Now.instant();',
+    ],
+    [
+      "an ambient Temporal declaration",
+      "declare const Temporal: any;\nconst now = Temporal.Now.instant();",
+    ],
+    [
+      "an immediately constructed function",
+      "new (function () { Temporal.Now.instant(); })();",
+    ],
     ["a globalThis read", "const now = globalThis.Temporal.Now.instant();"],
     ["a window read", "const now = window.Temporal.Now.instant();"],
     ["a self read", "const now = self.Temporal.Now.instant();"],
@@ -326,6 +349,14 @@ describe("load-time Temporal reads", () => {
     [
       "a typeof probe on a global",
       'export const native = typeof globalThis.Temporal === "undefined" || typeof window["Temporal"] === "undefined";',
+    ],
+    [
+      "a parenthesized typeof probe",
+      'export const native = typeof (globalThis.Temporal) === "undefined";',
+    ],
+    [
+      "an immediately invoked generator",
+      "const steps = (function* () { yield Temporal.Now.instant(); })();",
     ],
     [
       "a global read in a function body",
