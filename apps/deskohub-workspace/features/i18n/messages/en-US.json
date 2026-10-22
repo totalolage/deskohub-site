@@ -1094,6 +1094,7 @@
   "accountCompletionBody": "Your email is verified and no matching customer profile exists yet. Tell us your name and we will create one.",
   "accountReviewTitle": "Review account",
   "accountReviewBody": "This account lets app-directory reviewers try Deskohub Workspace. Its sample reservations and any bookings you make are simulated: nothing is reserved, charged, or sent to anyone.",
+  "accountReviewDeletionUnavailable": "Customers can delete their account on this page. This shared review account can't be deleted, so later reviews can keep using it.",
   "accountCompletionSubmit": "Create customer profile",
   "accountCompletionSaved": "Your customer profile was created and linked.",
   "accountReservationsTitle": "Reservations",

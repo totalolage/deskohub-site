@@ -408,6 +408,22 @@ describe("AccountPage states", () => {
     );
   });
 
+  test("offers a review account no account deletion", async () => {
+    const view = await renderState({
+      kind: "review-account",
+      email: adaAddress,
+      history: {
+        kind: "available",
+        groups: { current: [], past: [], unavailable: [] },
+      },
+    });
+
+    expect(
+      view.container.querySelector("#account-review-account")
+    ).toBeTruthy();
+    expect(view.container.querySelector("#delete-account-trigger")).toBeNull();
+  });
+
   test("renders the linked account with profile, reservations, sign out, and deletion", async () => {
     const view = await renderState(linkedState);
     const sectionNavigation = within(

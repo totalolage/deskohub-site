@@ -122,6 +122,7 @@ function renderState(
       return (
         <AccountWithoutProfile
           assistants={state.assistants}
+          deletable={false}
           email={state.email}
           locale={locale}
           passkeys={state.passkeys}

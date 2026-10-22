@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/shared/components/ui/card";
 
 /**
  * Takes the profile's place on a review account's page: the account has no
- * profile, and everything it books is simulated.
+ * profile, everything it books is simulated, and it can't be deleted.
  */
 export function ReviewAccountCard({ locale }: { readonly locale: Locale }) {
   return (
@@ -17,6 +17,9 @@ export function ReviewAccountCard({ locale }: { readonly locale: Locale }) {
         </h2>
         <p className="mt-3 text-sm leading-6 text-navy-blue/68">
           {m.accountReviewBody({}, { locale })}
+        </p>
+        <p className="mt-3 text-sm leading-6 text-navy-blue/68">
+          {m.accountReviewDeletionUnavailable({}, { locale })}
         </p>
       </CardContent>
     </Card>

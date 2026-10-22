@@ -1102,6 +1102,7 @@
   "accountCompletionBody": "Váš e-mail je ověřený a zatím neexistuje odpovídající zákaznický profil. Řekněte nám své jméno a vytvoříme ho.",
   "accountReviewTitle": "Recenzní účet",
   "accountReviewBody": "Tento účet slouží recenzentům katalogů aplikací k vyzkoušení Deskohub Workspace. Ukázkové rezervace i všechno, co zarezervujete, jsou jen simulované: nic se nerezervuje, neplatí ani nikomu neposílá.",
+  "accountReviewDeletionUnavailable": "Zákazníci si na této stránce mohou účet smazat. Tento sdílený recenzní účet smazat nelze, aby zůstal dostupný i pro další kola recenzí.",
   "accountCompletionSubmit": "Vytvořit zákaznický profil",
   "accountCompletionSaved": "Váš zákaznický profil byl vytvořen a propojen.",
   "accountReservationsTitle": "Rezervace",

@@ -98,6 +98,7 @@ const makeDeletion = (options: {
 }) =>
   import("./customer-account-deletion").then(({ expireLinkedDotyposProfile }) =>
     expireLinkedDotyposProfile({
+      isReviewAccount: () => Effect.succeed(false),
       markDeletionRequested: () =>
         Effect.sync(() => {
           options.marker.deletionRequestedAt = new Date(

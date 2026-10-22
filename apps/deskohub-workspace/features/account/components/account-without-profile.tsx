@@ -15,6 +15,11 @@ type AccountWithoutProfileProps = {
   readonly locale: Locale;
   /** True when the durable deletion marker is set and deletion is retryable. */
   readonly deletionPending?: boolean;
+  /**
+   * False for a shared review account, which must keep working for later
+   * review rounds.
+   */
+  readonly deletable?: boolean;
   /** The account's passkeys; absent while `login_passkeys` is off. */
   readonly passkeys?: AccountPasskeySettings;
   /**
@@ -37,11 +42,13 @@ type AccountWithoutProfileProps = {
  * A signed-in account whose profile can't be shown. Sign-in methods and
  * connected assistants need only the session, so Sign-in & security, the
  * post-sign-in passkey prompt, and Connected assistants still work; an
- * account pending deletion only confirms the deletion.
+ * account pending deletion only confirms the deletion, and a review account
+ * offers no deletion.
  */
 export function AccountWithoutProfile({
   assistants,
   children,
+  deletable = true,
   deletionPending = false,
   email,
   locale,
@@ -69,12 +76,14 @@ export function AccountWithoutProfile({
             <div hidden={activeSection !== "reservations"}>{reservations}</div>
           )}
           {children}
-          <DeleteAccountCard
-            deletionPending={deletionPending}
-            email={email}
-            locale={locale}
-            passkeys={accountPasskeys}
-          />
+          {deletable && (
+            <DeleteAccountCard
+              deletionPending={deletionPending}
+              email={email}
+              locale={locale}
+              passkeys={accountPasskeys}
+            />
+          )}
         </div>
       </div>
       {signInSecurity && (
