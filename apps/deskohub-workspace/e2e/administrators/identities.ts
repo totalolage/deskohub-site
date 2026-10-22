@@ -24,6 +24,8 @@ import type { WorkspaceE2ERunId } from "../run-identifiers";
  */
 const workspaceE2EAdministrationRecipientLabels = {
   "access-code-creation": ["acc-admin"],
+  "administrator-agent-tools": ["aat-admin"],
+  "administrator-agent-tools-customer-refusal": ["aatc-member"],
   "administrator-non-administrator-refusal": ["anr-member"],
   "administrator-sign-in-return": ["asr-admin"],
   "email-campaign-recipient-preview": ["ecp-admin"],

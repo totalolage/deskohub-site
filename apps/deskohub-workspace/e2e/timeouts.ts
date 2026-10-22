@@ -14,6 +14,9 @@ export const workspaceE2ETimeouts = {
   // (see account/rate-budget.ts).
   accountCase: 18 * MINUTE,
   administratorAccessCase: 2 * MINUTE,
+  // A seeded account connects the test agent (discovery, one consent round,
+  // the code exchange), then lists and calls tools over MCP.
+  administratorAgentToolsCase: 4 * MINUTE,
   artifactCapture: 60 * SECOND,
   authDelivery: 2 * MINUTE,
   browserAction: 30 * SECOND,
@@ -119,6 +122,12 @@ export const workspaceE2EEmailCampaignPlaywrightTimeout =
 // finalizer; suite cleanup deletes its seeded accounts.
 export const workspaceE2EAdministratorAccessPlaywrightTimeout =
   workspaceE2ETimeouts.administratorAccessCase +
+  workspaceE2ETimeouts.browserAction;
+
+// The administrator agent tool cases share that project but need a longer
+// watchdog; their finalizer closes the context the same way.
+export const workspaceE2EAdministratorAgentToolsPlaywrightTimeout =
+  workspaceE2ETimeouts.administratorAgentToolsCase +
   workspaceE2ETimeouts.browserAction;
 
 // Agent evals give each agent a task budget; the harness gets SIGTERM a grace
