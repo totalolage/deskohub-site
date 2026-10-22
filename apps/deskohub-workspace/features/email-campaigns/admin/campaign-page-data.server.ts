@@ -1,6 +1,7 @@
 import "server-only";
 
 import type {
+  AdministrationCampaignDetailType,
   AdministrationCampaignEditorContentType,
   CampaignOperationError,
 } from "@deskohub/workspace-admin-api";
@@ -9,11 +10,6 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import type { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
 import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import {
-  CampaignService,
-  type OnceCampaign,
-} from "../backend/campaign.service";
 import type { CampaignOperations } from "../backend/campaign-operations.service";
 import type { OperationRequestLedger } from "../backend/operation-request-ledger.service";
 import {
@@ -22,7 +18,11 @@ import {
   campaignAudienceIdSchema,
   campaignIdSchema,
 } from "../campaign-identifiers";
-import { type CampaignDelivery, isOnceCampaign } from "../campaign-states";
+import {
+  type CampaignDelivery,
+  isOnceCampaign,
+  type OnceCampaignStatus,
+} from "../campaign-states";
 import {
   invokeCampaignOperation,
   runCampaignPageQuery,
@@ -40,19 +40,13 @@ export const requireAudienceRouteId = (value: string): CampaignAudienceId =>
     notFound()
   );
 
-const findCampaign = cache(
-  Effect.fn(
-    function* (campaignId: CampaignId) {
-      const campaigns = yield* CampaignService;
-      return yield* campaigns.get(campaignId).pipe(Effect.option);
-    },
-    (effect) =>
-      effect.pipe(
-        Effect.provide(CampaignService.Live),
-        runWorkspaceEffect("email-campaigns.admin.load-campaign", {
-          boundary: "route",
-        })
-      )
+const findCampaign = cache((campaignId: CampaignId) =>
+  runCampaignPageQuery(
+    "email-campaigns.admin.load-campaign",
+    invokeCampaignOperation("getCampaign", { campaignId }).pipe(
+      Effect.map(Option.some),
+      Effect.catchTag("OperationNotFound", () => Effect.succeedNone)
+    )
   )
 );
 
@@ -70,16 +64,26 @@ export const loadCampaignDelivery = async (
   );
 };
 
+/** A one-off campaign as the port reports it. */
+export type OnceCampaignDetail = AdministrationCampaignDetailType & {
+  readonly delivery: "once";
+  readonly status: OnceCampaignStatus;
+};
+
+const isOnceCampaignDetail = (
+  campaign: AdministrationCampaignDetailType
+): campaign is OnceCampaignDetail => isOnceCampaign(campaign);
+
 /**
  * The one-off campaign a sent campaign's page shows, after the admin page
  * check. Automated campaigns have their own pages, so they aren't found here.
  */
 export const loadAdminCampaign = async (
   campaignId: CampaignId
-): Promise<OnceCampaign> => {
+): Promise<OnceCampaignDetail> => {
   await authorizeAdministratorPage();
   return Option.getOrElse(
-    Option.filter(await findCampaign(campaignId), isOnceCampaign),
+    Option.filter(await findCampaign(campaignId), isOnceCampaignDetail),
     () => notFound()
   );
 };

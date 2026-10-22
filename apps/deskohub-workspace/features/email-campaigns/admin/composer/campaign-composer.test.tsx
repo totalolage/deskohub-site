@@ -229,6 +229,70 @@ test("keeps edits made while a save is in flight unsaved", async () => {
   }
 });
 
+test("a save after a failed one marks the fields it sent saved", async () => {
+  let respond: CampaignActionOptions["onSuccess"] | undefined;
+  const execute = mock();
+  workspaceUseAction.mockImplementation((_action, options) => {
+    const { actionName, onSuccess } = options as CampaignActionOptions;
+    if (actionName !== "email-campaigns.updateCampaign") {
+      return { execute: mock(), isExecuting: false } as never;
+    }
+    respond = onSuccess;
+    return { execute, isExecuting: false } as never;
+  });
+  try {
+    const view = await renderComposer("once");
+    const title = view.getByRole("textbox", {
+      name: m.emailCampaignsComposerTitleLabel({}, { locale: "en-US" }),
+    });
+    const saveDraft = () =>
+      view.getByRole("button", {
+        name: m.emailCampaignsComposerSaveDraft({}, { locale: "en-US" }),
+      });
+    const composerForm = view.container.querySelector("#campaign-composer");
+    if (!composerForm) throw new Error("no composer form");
+
+    await act(async () => {
+      fireEvent.change(title, { target: { value: "Refused title" } });
+    });
+    await act(async () => {
+      fireEvent.submit(composerForm);
+    });
+    await act(async () => {
+      respond?.({
+        data: {
+          _tag: "Failure",
+          code: "campaign-not-editable",
+          message: "Port message",
+        },
+        input: { input: execute.mock.calls[0]?.[0] },
+      } as never);
+    });
+    expect(saveDraft()).toHaveProperty("disabled", false);
+
+    await act(async () => {
+      fireEvent.change(title, { target: { value: "Saved title" } });
+    });
+    await act(async () => {
+      fireEvent.submit(composerForm);
+    });
+    expect(execute).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      respond?.({
+        data: { _tag: "Success", output: {} },
+        input: { input: execute.mock.calls[1]?.[0] },
+      });
+    });
+
+    expect(title).toHaveProperty("value", "Saved title");
+    expect(saveDraft()).toHaveProperty("disabled", true);
+  } finally {
+    workspaceUseAction.mockImplementation(
+      () => ({ execute: mock(), isExecuting: false }) as never
+    );
+  }
+});
+
 test("holds the form while a new campaign is created and its page opens", async () => {
   let succeed: CampaignActionOptions["onSuccess"] | undefined;
   let creating = true;

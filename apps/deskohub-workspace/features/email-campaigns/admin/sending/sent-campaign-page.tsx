@@ -9,7 +9,6 @@ import {
 import { m } from "@/features/administration/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { formatCount } from "@/shared/utils/number";
-import type { OnceCampaign } from "../../backend/campaign.service";
 import { campaignRecipientStatuses } from "../../campaign-states";
 import {
   describeAudienceFilter,
@@ -21,6 +20,7 @@ import {
   CampaignRecipientStatusBadge,
   CampaignStatusBadge,
 } from "../campaign-list/campaign-badges";
+import type { OnceCampaignDetail } from "../campaign-page-data.server";
 import { loadSentCampaign } from "./sent-campaign.server";
 import { SentCampaignActions } from "./sent-campaign-actions";
 import { loadSentCampaignEmails } from "./sent-campaign-email.server";
@@ -31,7 +31,7 @@ import { SentRecipientTable } from "./sent-recipient-table";
 export async function SentCampaignPage({
   campaign,
 }: {
-  readonly campaign: OnceCampaign;
+  readonly campaign: OnceCampaignDetail;
 }) {
   const [{ send, audienceTitle }, lookups, emails, locale] = await Promise.all([
     loadSentCampaign(campaign.id),
