@@ -649,6 +649,9 @@ const handleCliRequest = await (async () => {
   const { CliMutationIdempotency } = await import(
     "@/features/admin-cli/cli-mutation-idempotency.service"
   );
+  const { UnusedCliSessionAuthentication } = await import(
+    "@/features/admin-cli/cli-api.test-utils"
+  );
   const { CampaignOperations } = await import("./campaign-operations.service");
   const { unhandledHttpApiGroups } = await import(
     "@/shared/testing/http-api-test-groups.test-utils"
@@ -662,6 +665,7 @@ const handleCliRequest = await (async () => {
       ),
       Layer.provide(
         Layer.mergeAll(
+          UnusedCliSessionAuthentication,
           Layer.succeed(AdministrationAuthentication, {
             bearer: (httpEffect) =>
               Effect.provideService(httpEffect, CurrentAdministrationCaller, {
