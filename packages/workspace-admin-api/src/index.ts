@@ -17,6 +17,7 @@ export {
   dryRunPreview,
   readOperation,
   readPreview,
+  readPreviewWithArguments,
   writeOperation,
 } from "./administration-operation";
 export {
@@ -186,6 +187,7 @@ export {
   type DhwVersion as DhwVersionType,
   dhwVersionHeader,
   MinimumDhwVersion,
+  OutdatedDhwRefusal,
 } from "./dhw-version";
 export {
   emailAutomationScheduleMinutes,
@@ -718,6 +720,7 @@ export {
   type ExchangeCliGrant as ExchangeCliGrantType,
   GrantedCliSession,
   type GrantedCliSession as GrantedCliSessionType,
+  invoicesMinimumDhwVersion,
   isStandaloneAccessCodeWindowWithinContractDuration,
   RenameCliSession,
   type RenameCliSession as RenameCliSessionType,

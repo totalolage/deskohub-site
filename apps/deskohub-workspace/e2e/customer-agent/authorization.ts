@@ -1,3 +1,4 @@
+import { administrationAgentScope } from "@/features/account/agent-scopes";
 import {
   type CustomerAgentConsentScope,
   customerAgentConsentPath,
@@ -22,6 +23,22 @@ export const customerAgentRequestedScopes = [
   "reservations:create",
   "offline_access",
 ] as const satisfies readonly CustomerAgentConsentScope[];
+
+/** A scope the synthetic agent can ask for. */
+export type CustomerAgentRequestedScope =
+  | CustomerAgentConsentScope
+  | typeof administrationAgentScope;
+
+/**
+ * What the synthetic agent asks an account for when it wants the
+ * administration: one customer scope beside it, so the customer tools stay in
+ * the grant, and offline access as every agent asks for it.
+ */
+export const administrationAgentRequestedScopes = [
+  "reservations:read",
+  "offline_access",
+  administrationAgentScope,
+] as const satisfies readonly CustomerAgentRequestedScope[];
 
 /** The deployment's MCP resource, which every token must be bound to. */
 export const customerMcpResourceFor = (baseUrl: string) =>

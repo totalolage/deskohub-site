@@ -6,6 +6,7 @@ import {
   customerAgentChallenge,
   readAgentAccessToken,
 } from "@/features/account";
+import { administrationAgentScope } from "@/features/account/agent-scopes";
 import type { AgentToolAuthorization } from "./agent-tool";
 import { readMcpMessages } from "./agent-tool-mcp-messages";
 import type { CustomerAgentCaller } from "./customer-agent-caller";
@@ -14,7 +15,7 @@ import type { CustomerAgentCaller } from "./customer-agent-caller";
  * The request was refused before the MCP server saw it, with an OAuth
  * challenge telling the agent how to get a usable token.
  */
-class AgentToolRequestRefused extends Data.TaggedError(
+export class AgentToolRequestRefused extends Data.TaggedError(
   "AgentToolRequestRefused"
 )<{ readonly response: Response }> {}
 
@@ -32,42 +33,92 @@ type PublishedTool = AgentToolAuthorization & { readonly name: string };
  * A refused tool call also gets an error result for each call in the body,
  * carrying the challenge in `_meta["mcp/www_authenticate"]`, the form
  * ChatGPT reads to offer signing in for one tool.
+ *
+ * `callerTools` adds the tools only this caller may see, once its token is
+ * verified; a call is checked against `tools` and those alike. Returns the
+ * caller and every tool the request is served with.
  */
-export const authorizeAgentToolRequest = Effect.fn(
-  "agentTools.authorizeRequest"
-)(function* ({
+export const authorizeAgentToolRequest = <
+  Tool extends PublishedTool,
+  E = never,
+  R = never,
+>({
   tools,
+  callerTools,
   request,
 }: {
-  readonly tools: ReadonlyArray<PublishedTool>;
+  readonly tools: ReadonlyArray<Tool>;
+  readonly callerTools?:
+    | ((
+        caller: Option.Option<CustomerAgentCaller>
+      ) => Effect.Effect<ReadonlyArray<Tool>, E, R>)
+    | undefined;
   readonly request: Request;
-}) {
-  const toolCalls = yield* readToolCalls(request);
-  const refuse = (reason: CustomerAgentChallengeReason) =>
-    refuseRequest(reason, toolCalls);
-  const caller = yield* authorizeBearerToken(request, refuse);
-  const calledTools = toolCalls.flatMap(({ params }) =>
-    tools.filter((tool) => tool.name === params.name)
-  );
-  yield* Effect.forEach(calledTools, (tool) =>
-    Match.value<AgentToolAuthorization>(tool).pipe(
-      Match.discriminatorsExhaustive("access")({
-        public: () => Effect.void,
-        "signed-in": ({ scope }) =>
-          Option.match(caller, {
-            onNone: () => refuse({ kind: "missing-token", scopes: [scope] }),
-            onSome: ({ grant }) =>
-              Effect.when(
-                refuse({ kind: "insufficient-scope", scopes: [scope] }),
-                Effect.sync(() => !grant.scopes.has(scope))
-              ),
-          }),
-      })
-    )
+}) =>
+  readToolCalls(request).pipe(
+    Effect.flatMap((toolCalls) => {
+      const refuse = (reason: CustomerAgentChallengeReason) =>
+        refuseRequest(reason, toolCalls);
+      return authorizeBearerToken(request, refuse).pipe(
+        Effect.flatMap((caller) =>
+          (callerTools === undefined
+            ? Effect.succeed<ReadonlyArray<Tool>>([])
+            : callerTools(caller)
+          ).pipe(
+            Effect.map((added) => [...tools, ...added]),
+            Effect.tap((served) =>
+              authorizeCalledTools({ tools: served, toolCalls, caller, refuse })
+            ),
+            Effect.map((served) => ({ caller, tools: served }))
+          )
+        )
+      );
+    }),
+    Effect.withSpan("agentTools.authorizeRequest")
   );
 
-  return caller;
-});
+/** Refuses a call of a tool the caller's token doesn't grant. */
+const authorizeCalledTools = Effect.fn("agentTools.authorizeCalledTools")(
+  function* ({
+    tools,
+    toolCalls,
+    caller,
+    refuse,
+  }: {
+    readonly tools: ReadonlyArray<PublishedTool>;
+    readonly toolCalls: ReadonlyArray<ToolCallMessage>;
+    readonly caller: Option.Option<CustomerAgentCaller>;
+    readonly refuse: (
+      reason: CustomerAgentChallengeReason
+    ) => Effect.Effect<never, AgentToolRequestRefused>;
+  }) {
+    const calledTools = toolCalls.flatMap(({ params }) =>
+      tools.filter((tool) => tool.name === params.name)
+    );
+    yield* Effect.forEach(calledTools, (tool) =>
+      Match.value<AgentToolAuthorization>(tool).pipe(
+        Match.discriminatorsExhaustive("access")({
+          public: () => Effect.void,
+          "signed-in": ({ scope }) =>
+            Option.match(caller, {
+              onNone: () => refuse({ kind: "missing-token", scopes: [scope] }),
+              onSome: ({ grant }) =>
+                Effect.when(
+                  refuse({ kind: "insufficient-scope", scopes: [scope] }),
+                  Effect.sync(() => !grant.scopes.has(scope))
+                ),
+            }),
+          // Never challenged: an OAuth challenge naming `administration`
+          // would send a customer's agent, whose consent drops the scope,
+          // into a re-authorization loop. The tools are listed only after
+          // the live administrator check, and each call re-checks the grant
+          // and answers a refusal as a tool error.
+          administration: () => Effect.void,
+        })
+      )
+    );
+  }
+);
 
 /**
  * Whether the caller may call the tool: any caller a public one, and an
@@ -82,6 +133,10 @@ export const isAgentToolGranted = (
       public: () => true,
       "signed-in": ({ scope }) =>
         Option.exists(caller, ({ grant }) => grant.scopes.has(scope)),
+      administration: () =>
+        Option.exists(caller, ({ grant }) =>
+          grant.scopes.has(administrationAgentScope)
+        ),
     })
   );
 

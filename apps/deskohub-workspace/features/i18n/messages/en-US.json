@@ -1245,6 +1245,7 @@
   "agentToolErrorAccountUnavailable": "Your account can't make bookings right now. Sign in on the website to check it.",
   "agentToolErrorReservationNotFound": "No reservation with this order ID was found in your account.",
   "agentToolErrorReservationsUnavailable": "Your reservations can't be loaded right now. Try again shortly or check your account on the website.",
+  "agentToolErrorAdministrationUnavailable": "The administration can't be reached right now. Try again shortly.",
   "agentToolBookingViewReserveNote": "In the booking view, the customer checks availability and the price and starts the booking. They then accept the terms and pay on the website.",
   "agentToolBookingViewReservationPageNote": "In the booking view, the customer checks availability and the price, then opens the prefilled reservation page to finish the booking on the website.",
   "agentToolStartReservationNote": "The reservation is held until the Pay link expires. Open the link to check the order, accept the terms and pay on the website.",

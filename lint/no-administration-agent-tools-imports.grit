@@ -1,0 +1,21 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Administration tools reach only administrators' agents, through the MCP
+// route's per-caller check. Only that route and the module itself import
+// them, so no customer registry, listing, llms.txt or other surface can.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
+  not $name <: r".*apps/deskohub-workspace/(?:app/api/mcp/route|features/administration-agent-tools/.*)\.(?:ts|tsx)$",
+  $body <: r"(?s).*administration-agent-tools.*",
+  $body <: contains bubble {
+    or { JsModuleSource() as $source, JsImportCallExpression() as $source } where {
+      $source <: r".*administration-agent-tools.*",
+      register_diagnostic(
+        span = $source,
+        message = "Only the MCP route imports the administration agent tools, after its per-caller administrator check.",
+        severity = "error"
+      )
+    }
+  }
+}

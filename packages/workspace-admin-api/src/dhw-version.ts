@@ -26,3 +26,17 @@ export const MinimumDhwVersion = Context.Reference<Option.Option<DhwVersion>>(
   "@deskohub/workspace-admin-api/MinimumDhwVersion",
   { defaultValue: Option.none }
 );
+
+/**
+ * Which error refuses a `dhw` older than an operation's minimum, as an
+ * endpoint or group annotation. A released binary decodes only the errors
+ * its own contract declared on the endpoint, so an operation that gains a
+ * minimum after release refuses with `CliServiceUnavailable`, which every
+ * authenticated operation declared from the start. Operations that declared
+ * `CliInputInvalid` from their first release refuse with it.
+ */
+export const OutdatedDhwRefusal = Context.Reference<
+  "CliInputInvalid" | "CliServiceUnavailable"
+>("@deskohub/workspace-admin-api/OutdatedDhwRefusal", {
+  defaultValue: () => "CliInputInvalid",
+});
