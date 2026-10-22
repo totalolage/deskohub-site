@@ -6,10 +6,12 @@
  * `@/shared/polyfills/temporal` itself, or bind `Temporal` from
  * `@js-temporal/polyfill`, so the build never sees `Temporal is not defined`.
  *
+ * Reads through `globalThis`, `window`, `self`, or `global` count as well.
  * Bun ships Temporal, so `*.test.*` modules are exempt. Uses inside function
  * bodies, default parameters, and instance field initializers run later and
- * are exempt too. The scan is syntactic: it does not follow a load-time call
- * into a function that reads `Temporal`.
+ * are exempt too, as are `typeof` probes and a `Temporal` the module binds
+ * itself. The scan is per module: it does not follow a load-time call into a
+ * function that reads `Temporal`.
  */
 import { describe, expect, test } from "bun:test";
 import { dirname, resolve } from "node:path";
@@ -60,11 +62,10 @@ const importsPolyfill = (path: string, source: ts.SourceFile) =>
     );
   });
 
-/** Whether the identifier is a name slot or a `typeof` probe, not a read. */
+/** Whether the identifier names a declaration or member rather than reading. */
 const isNameSlot = (identifier: ts.Identifier) => {
   const parent = identifier.parent;
   return (
-    ts.isTypeOfExpression(parent) ||
     (ts.isPropertyAccessExpression(parent) && parent.name === identifier) ||
     ts.isQualifiedName(parent) ||
     ts.isImportSpecifier(parent) ||
@@ -91,19 +92,61 @@ const isEvaluatedHeritage = (node: ts.Node) =>
   node.parent.token === ts.SyntaxKind.ExtendsKeyword &&
   ts.isClassLike(node.parent.parent);
 
-const isTypeOnly = (identifier: ts.Identifier) => {
-  for (let node: ts.Node = identifier; node.parent; node = node.parent) {
+const isTypeOnly = (reference: ts.Node) => {
+  for (let node = reference; node.parent; node = node.parent) {
     if (ts.isTypeNode(node) && !isEvaluatedHeritage(node)) return true;
   }
   return false;
 };
 
 /** Wrappers that leave the wrapped value unchanged at runtime. */
-const isTransparentWrapper = (node: ts.Node) =>
+const isTransparentWrapper = (
+  node: ts.Node
+): node is
+  | ts.ParenthesizedExpression
+  | ts.AssertionExpression
+  | ts.SatisfiesExpression
+  | ts.NonNullExpression =>
   ts.isParenthesizedExpression(node) ||
   ts.isAssertionExpression(node) ||
   ts.isSatisfiesExpression(node) ||
   ts.isNonNullExpression(node);
+
+const unwrap = (node: ts.Node) => {
+  while (isTransparentWrapper(node)) node = node.expression;
+  return node;
+};
+
+const globalObjects = new Set(["globalThis", "window", "self", "global"]);
+
+/** `globalThis.Temporal` or `window["Temporal"]` style global access. */
+const isGlobalAccess = (
+  access: ts.PropertyAccessExpression | ts.ElementAccessExpression
+) => {
+  const object = unwrap(access.expression);
+  return ts.isIdentifier(object) && globalObjects.has(object.text);
+};
+
+/** The expression that reads global `Temporal` through `node`, if any. */
+const temporalReference = (node: ts.Node): ts.Node | undefined => {
+  const parent = node.parent;
+  if (ts.isIdentifier(node) && node.text === "Temporal") {
+    if (ts.isPropertyAccessExpression(parent) && parent.name === node) {
+      return isGlobalAccess(parent) ? parent : undefined;
+    }
+    return isNameSlot(node) ? undefined : node;
+  }
+  if (
+    ts.isStringLiteralLike(node) &&
+    node.text === "Temporal" &&
+    ts.isElementAccessExpression(parent) &&
+    parent.argumentExpression === node &&
+    isGlobalAccess(parent)
+  ) {
+    return parent;
+  }
+  return undefined;
+};
 
 const isImmediatelyInvoked = (fn: ts.SignatureDeclaration) => {
   let node: ts.Node = fn;
@@ -134,6 +177,42 @@ const runsAtLoad = (node: ts.Node) => {
   return true;
 };
 
+const isTypeOnlyImport = (declaration: ts.Declaration) =>
+  (ts.isImportSpecifier(declaration) &&
+    (declaration.isTypeOnly || declaration.parent.parent.isTypeOnly)) ||
+  (ts.isImportClause(declaration) && declaration.isTypeOnly) ||
+  (ts.isNamespaceImport(declaration) && declaration.parent.isTypeOnly);
+
+/**
+ * Whether a bare `Temporal` resolves to a binding the module declares, such
+ * as a local const or an import, rather than the global. Without the default
+ * library, the global `Temporal` resolves to no symbol.
+ */
+const bindsLocally = (source: ts.SourceFile) => {
+  const options: ts.CompilerOptions = {
+    allowJs: true,
+    noLib: true,
+    noResolve: true,
+    types: [],
+  };
+  const host = ts.createCompilerHost(options);
+  host.getSourceFile = (fileName) =>
+    fileName === source.fileName ? source : undefined;
+  const checker = ts
+    .createProgram({ rootNames: [source.fileName], options, host })
+    .getTypeChecker();
+  return (identifier: ts.Identifier) => {
+    const symbol = ts.isShorthandPropertyAssignment(identifier.parent)
+      ? checker.getShorthandAssignmentValueSymbol(identifier.parent)
+      : checker.getSymbolAtLocation(identifier);
+    return (
+      symbol?.declarations?.some(
+        (declaration) => !isTypeOnlyImport(declaration)
+      ) === true
+    );
+  };
+};
+
 /** 1-based `line:column` of each load-time `Temporal` reference. */
 const findLoadTimeTemporalReads = (
   path: string,
@@ -147,24 +226,30 @@ const findLoadTimeTemporalReads = (
     true
   );
   if (importsPolyfill(path, source)) return [];
-  const reads: string[] = [];
+  const references: ts.Node[] = [];
   const visit = (node: ts.Node): void => {
+    const reference = temporalReference(node);
     if (
-      ts.isIdentifier(node) &&
-      node.text === "Temporal" &&
-      !isNameSlot(node) &&
-      !isTypeOnly(node) &&
-      runsAtLoad(node)
+      reference !== undefined &&
+      !ts.isTypeOfExpression(reference.parent) &&
+      !isTypeOnly(reference) &&
+      runsAtLoad(reference)
     ) {
-      const { line, character } = source.getLineAndCharacterOfPosition(
-        node.getStart(source)
-      );
-      reads.push(`${line + 1}:${character + 1}`);
+      references.push(reference);
     }
     ts.forEachChild(node, visit);
   };
   visit(source);
-  return reads;
+  if (references.length === 0) return [];
+  const isLocal = bindsLocally(source);
+  return references
+    .filter((reference) => !(ts.isIdentifier(reference) && isLocal(reference)))
+    .map((reference) => {
+      const { line, character } = source.getLineAndCharacterOfPosition(
+        reference.getStart(source)
+      );
+      return `${line + 1}:${character + 1}`;
+    });
 };
 
 describe("load-time Temporal reads", () => {
@@ -193,8 +278,24 @@ describe("load-time Temporal reads", () => {
       'import type { Temporal } from "@js-temporal/polyfill";\nconst step = Temporal.Duration.from({ hours: 1 });',
     ],
     [
+      "a module that imports a Temporal type from another module",
+      'import { type Temporal } from "./clock";\nconst step = Temporal.Duration.from({ hours: 1 });',
+    ],
+    [
       "a module that renames the polyfill binding",
       'import { Temporal as Polyfill } from "@js-temporal/polyfill";\nconst step = Temporal.Duration.from({ hours: 1 });',
+    ],
+    ["a globalThis read", "const now = globalThis.Temporal.Now.instant();"],
+    ["a window read", "const now = window.Temporal.Now.instant();"],
+    ["a self read", "const now = self.Temporal.Now.instant();"],
+    ["a global read", "const now = global.Temporal.Now.instant();"],
+    [
+      "a global element read",
+      'const now = globalThis["Temporal"].Now.instant();',
+    ],
+    [
+      "a global read behind an assertion",
+      "const now = (globalThis as typeof globalThis).Temporal.Now.instant();",
     ],
   ])("rejects %s", (_case, sourceText) => {
     expect(readsIn(sourceText)).not.toEqual([]);
@@ -221,6 +322,26 @@ describe("load-time Temporal reads", () => {
     [
       "a typeof probe",
       'export const native = typeof Temporal !== "undefined";',
+    ],
+    [
+      "a typeof probe on a global",
+      'export const native = typeof globalThis.Temporal === "undefined" || typeof window["Temporal"] === "undefined";',
+    ],
+    [
+      "a global read in a function body",
+      "export const later = () => globalThis.Temporal.Now.instant();",
+    ],
+    [
+      "a Temporal property of another object",
+      "export const now = clock.Temporal.Now.instant();",
+    ],
+    [
+      "a local Temporal binding",
+      "const Temporal = clock;\nexport const now = Temporal.Now.instant();",
+    ],
+    [
+      "a Temporal binding imported from another module",
+      'import { Temporal } from "./clock";\nexport const now = Temporal.Now.instant();',
     ],
     [
       "declaration names",
