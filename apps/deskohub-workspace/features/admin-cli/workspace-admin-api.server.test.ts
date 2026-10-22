@@ -69,7 +69,10 @@ import {
   ReservationAccessAdministrationError,
 } from "@/features/administration/reservation-access-administration.service";
 import { ReservationAdministrationService } from "@/features/administration/reservation-administration.service";
-import { LegacyAdministratorBackfill } from "@/features/administrators";
+import {
+  AdministratorRoster,
+  LegacyAdministratorBackfill,
+} from "@/features/administrators";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import {
   DiscountAdminConflictError,
@@ -410,6 +413,7 @@ describe("Workspace Admin API", () => {
       }),
       Layer.succeed(CliAuthenticationAdmission, {} as never),
       Layer.succeed(AdministrationService, {} as never),
+      Layer.succeed(AdministratorRoster, {} as never),
       Layer.succeed(LegacyAdministratorBackfill, {} as never),
       Layer.succeed(CampaignOperations, {} as never),
       UnusedReservationAdministration,
