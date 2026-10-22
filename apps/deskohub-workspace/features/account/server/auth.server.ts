@@ -19,7 +19,9 @@ import {
 } from "@/features/account/backend/auth/auth-server";
 import { ensureCustomerAccount } from "@/features/account/backend/customer-account.repository";
 import { captureAccountLocalePreference } from "@/features/account/backend/customer-locale-preference";
+import { revokeAdministrationAgentTokens } from "@/features/account/backend/auth/administration-agent-access";
 import { customerMcpServerPath } from "@/features/account/customer-agent-routes";
+import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
@@ -93,6 +95,14 @@ export const auth = makeWorkspaceAuth({
     Effect.flatMap(WorkspaceDatabase, ({ db }) =>
       ensureCustomerAccount(db, accountId)
     ).pipe(Effect.provide(WorkspaceDatabase.Default)),
+  hasAdministratorGrant: (accountId) =>
+    Effect.flatMap(AccountRoleGrants, (grants) =>
+      grants.has({ accountId, role: "administrator" })
+    ).pipe(Effect.provide(AccountRoleGrants.Live)),
+  revokeAdministrationTokens: (owner) =>
+    revokeAdministrationAgentTokens(owner).pipe(
+      Effect.provide(WorkspaceDatabase.Default)
+    ),
   captureAccountLocalePreference: (accountId, locale) =>
     captureAccountLocalePreference(accountId, locale).pipe(
       Effect.provide(WorkspaceDatabase.Default)

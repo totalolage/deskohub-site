@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
+import { administrationAgentScope } from "@/features/account/agent-scopes";
 import { customerAgentConsentScopes } from "@/features/account/customer-agent-routes";
 import {
   type CustomerAccountAccessError,
@@ -78,6 +79,9 @@ export class CustomerAgentConnections extends Context.Service<
                       host: Option.getOrUndefined(client)?.host,
                       scopes: customerAgentConsentScopes.filter((scope) =>
                         row.scopes.includes(scope)
+                      ),
+                      administration: row.scopes.includes(
+                        administrationAgentScope
                       ),
                       connectedAt: new Date(row.createdAt).toISOString(),
                     })

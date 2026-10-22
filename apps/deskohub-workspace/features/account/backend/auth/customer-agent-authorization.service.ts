@@ -6,10 +6,7 @@ import {
   type CustomerAccountId,
   customerAccountIdSchema,
 } from "../../customer-account";
-import {
-  type CustomerAgentScope,
-  isCustomerAgentScope,
-} from "../../customer-agent-scopes";
+import { type AgentScope, isAgentScope } from "../../agent-scopes";
 import {
   type CustomerAccountSession,
   CustomerAuthentication,
@@ -33,8 +30,14 @@ export type CustomerAgentClientId = typeof customerAgentClientIdSchema.Type;
 export type CustomerAgentGrant = {
   readonly accountId: CustomerAccountId;
   readonly clientId: CustomerAgentClientId;
-  readonly scopes: ReadonlySet<CustomerAgentScope>;
+  readonly scopes: ReadonlySet<AgentScope>;
 };
+
+/** An agent whose access token a request authorized. */
+export interface CustomerAgentCaller {
+  readonly grant: CustomerAgentGrant;
+  readonly accessToken: string;
+}
 
 /**
  * Why a token grants nothing. `invalid-token` covers unknown, expired,
@@ -103,8 +106,8 @@ const decodeClaims = Schema.decodeUnknownOption(accessTokenClaimsSchema);
 const decodeAccountId = Schema.decodeUnknownOption(customerAccountIdSchema);
 const decodeClientId = Schema.decodeUnknownOption(customerAgentClientIdSchema);
 
-const toScopes = (scope: string | undefined): ReadonlySet<CustomerAgentScope> =>
-  new Set((scope ?? "").split(" ").filter(isCustomerAgentScope));
+const toScopes = (scope: string | undefined): ReadonlySet<AgentScope> =>
+  new Set((scope ?? "").split(" ").filter(isAgentScope));
 
 /**
  * Verifies the token and re-reads the account it names, so every check sees

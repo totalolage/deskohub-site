@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Check, Unplug } from "lucide-react";
+import { Bot, Check, ShieldAlert, Unplug } from "lucide-react";
 import { useState } from "react";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
 import { disconnectCustomerAgent } from "@/features/account/customer-agent-connection-client";
@@ -101,7 +101,8 @@ export function CustomerAgentConnectionsSection({
                             { locale }
                           )}
                     </p>
-                    {connection.scopes.length > 0 && (
+                    {(connection.scopes.length > 0 ||
+                      connection.administration) && (
                       <ul
                         aria-label={m.accountAssistantScopesLabel(
                           { name },
@@ -122,6 +123,21 @@ export function CustomerAgentConnectionsSection({
                             {describeCustomerAgentScope(scope, locale)}
                           </li>
                         ))}
+                        {connection.administration && (
+                          <li
+                            className="flex gap-2"
+                            data-assistant-scope="administration"
+                          >
+                            <ShieldAlert
+                              aria-hidden
+                              className="mt-1 size-4 shrink-0 text-burned-orange"
+                            />
+                            {m.customerAgentConsentAdministrationTitle(
+                              {},
+                              { locale }
+                            )}
+                          </li>
+                        )}
                       </ul>
                     )}
                   </div>

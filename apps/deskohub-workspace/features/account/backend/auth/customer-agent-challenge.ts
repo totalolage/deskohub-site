@@ -2,7 +2,7 @@ import { createResourceServerChallenge } from "@better-auth/oauth-provider";
 import { APIError } from "better-auth/api";
 import { createInsufficientScopeError } from "better-auth/oauth2";
 import { Effect, Match } from "effect";
-import type { CustomerAgentScope } from "../../customer-agent-scopes";
+import type { CustomerAgentScope } from "../../agent-scopes";
 
 /**
  * Why the customer MCP server refuses an agent's request: no access token

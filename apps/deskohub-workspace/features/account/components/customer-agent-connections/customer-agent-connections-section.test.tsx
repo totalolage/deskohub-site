@@ -44,6 +44,7 @@ const assistant: CustomerAgentConnection = {
   name: "Synthetic Assistant",
   host: "assistant.invalid",
   scopes: ["reservations:read", "offline_access"],
+  administration: false,
   connectedAt: "2026-10-01T09:30:00.000Z",
 };
 const unnamed: CustomerAgentConnection = {
@@ -51,6 +52,7 @@ const unnamed: CustomerAgentConnection = {
   name: undefined,
   host: undefined,
   scopes: [],
+  administration: false,
   connectedAt: "2026-10-02T09:30:00.000Z",
 };
 

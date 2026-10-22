@@ -10,7 +10,10 @@ resource.
 | Concern | Location |
 | --- | --- |
 | Plugins (`mcp`, `cimd`, the token-verification endpoint) | `features/account/backend/auth/customer-agent-authorization-server.ts` |
-| Scopes | `features/account/customer-agent-scopes.ts` |
+| Scopes | `features/account/agent-scopes.ts` |
+| Administration scope gate (consent, skip-consent clients) | `features/account/backend/auth/administration-scope-guard.ts` |
+| Revoking administration from an account's agents | `features/account/backend/auth/administration-agent-access.ts` |
+| Per-call administrator check for agents | `features/administrators/backend/administrator-agent-authorization.service.ts` |
 | Login, consent, MCP and authorize paths; the connect-step resolver | `features/account/customer-agent-routes.ts` |
 | Token → customer identity adapter | `features/account/backend/auth/customer-agent-authorization.service.ts` |
 | Client name and host for the consent page | `features/account/backend/auth/customer-agent-client-directory.service.ts` |
@@ -37,9 +40,13 @@ resource.
   `metadataProfile: "mcp-2026-07-28"` and the pinned Node transport).
   Dynamic client registration stays off and the client-management endpoints
   are in `disabledPaths` (`disabledCustomerAgentClientPaths`).
-- Scopes: `offerings:read`, `reservations:read`, `reservations:create`, and
+- Scopes: `offerings:read`, `reservations:read`, `reservations:create`,
+  `administration` (see [Administration scope](#administration-scope)), and
   `offline_access` so agents can refresh without the customer present.
   Without `offline_access`, ending the browser session revokes the grant.
+  Every scope but `offline_access` is advertised in `scopes_supported`, and
+  every one is in the CIMD clients' default ceiling, so an agent can ask for
+  it.
 - The resource is one static URL per deployment (`customerMcpResource` in
   `auth.server.ts`, resolved in `auth-hosts.ts`): the canonical host in
   production, `VERCEL_URL` on previews, `localhost:3000` in development. The
@@ -110,7 +117,11 @@ resource.
   change or delete the account), and that the customer accepts the terms and
   pays on the site. Don't render the client's logo: it is a third-party
   request from an arbitrary host.
-- Allow and Deny call `authClient.oauth2.consent({ accept })`.
+- Allow calls `authClient.oauth2.consent({ accept: true, scope })` with
+  exactly the scopes the page lists: the provider stores that subset as the
+  consent and issues only it. Deny calls `consent({ accept: false })`. The
+  auth server refuses an accepted consent without `scope` (400), because
+  the provider would otherwise grant everything requested.
   `oauthProviderClient()` in `auth.client.ts` attaches the signed
   `oauth_query` from the page URL to non-GET auth requests. The provider
   answers `{ redirect: true, url }` for both outcomes and doesn't navigate;
@@ -172,13 +183,67 @@ resource.
   assistants that ask for consent, so an authorization in flight at the
   deploy is refused once and the assistant authorizes again.
 
+## Administration scope
+
+- `administration` lets an administrator's agent use the administration.
+  Issuance is policy; the security boundary is
+  `AdministratorAgentAuthorization.authorize(caller)`, which every
+  administration call runs: it re-verifies the caller's access token through
+  `CustomerAgentAuthorization`, requires `administration` in that token's own
+  scopes, and reads `AccountRoleGrants.has` (the same per-request read as the
+  CLI bearer path) through `currentAdministratorAccess`. Deleted,
+  deletion-pending, and unverified accounts fail token verification. The
+  client the agent connected with plays no part.
+- The consent page reads the grant only when the request asks for
+  `administration`. An administrator sees a separate administration block and
+  Allow adds the scope; anyone else never sees it and Allow leaves it out, so
+  an agent that asks for every scope still connects as a customer. A request
+  that asks a non-administrator for nothing but `administration` (and
+  `offline_access`) shows the `administration-only` notice.
+- `guardAdministrationScope` in the auth server's `hooks.before`:
+  - `/oauth2/consent` with `accept: true` needs an explicit `scope`; one
+    that names `administration` needs a session whose account holds the
+    grant now (403 otherwise; a failed grant read fails the request).
+  - `/oauth2/authorize` refuses `administration`, by name or through an
+    omitted scope that defaults to it, for a client that skips consent. The
+    provider dispatches its own resumed authorizations (consent, continue,
+    post-sign-in) through the same hooks. In production no client skips
+    consent: CIMD refuses `skip_consent`, dynamic registration is off, and
+    the admin client endpoints are server-only with no caller outside tests.
+- `/oauth2/update-consent` is disabled (`disabledCustomerAgentClientPaths`):
+  it rewrites a consent's scopes without the consent step, and a consent
+  that covers a request approves it without the page, `prompt=none`
+  included.
+- An accepted consent without `administration` rewrites the consent in
+  place, but tokens keep the scopes they were issued with. So the auth
+  server's `hooks.after` (`narrowAdministrationOnConsent`) deletes that
+  agent's access and refresh tokens that still carry the scope, through the
+  `revokeAdministrationTokens` capability (`revokeAdministrationAgentTokens`).
+  The connected assistants list then shows what the agent can still do.
+- Revoking the administrator grant (`AdministratorRoster.revoke`) runs
+  `revokeAdministrationAgentAccess` after deleting the grant, even when it
+  was already gone: one transaction deletes the account's consents that
+  include `administration` (their tokens cascade) and any access or refresh
+  token that still carries it, such as one whose consent was narrowed before
+  the narrowing cleanup existed.
+  Customer-only connections stay. A consent whose check passed just before
+  the revocation can still be written after it; the per-call check covers
+  that.
+- After revocation a re-authorization that asks for `administration` finds
+  no covering consent: `prompt=none` gets `consent_required`, and the page
+  asks again without the scope. A customer's agent that always asks for
+  every scope sees the consent page on each new authorization, since its
+  consent never covers `administration`; refreshes are unaffected.
+- The connected assistants list flags a connection that includes the scope.
+
 ## Account-boundary adapter
 
 - `CustomerAgentAuthorization.authorize(token)` validates the token, requires
   the configured resource in `aud`, decodes `sub` and `client_id`, re-reads
   the user, and decodes it with `decodeCustomerAccountSession`. A deleted,
-  deletion-pending, or unverified account gets no grant. Unknown scopes are
-  dropped.
+  deletion-pending, or unverified account gets no grant. Unknown scopes and
+  `offline_access` are dropped. `CustomerAgentCaller` (grant plus access
+  token) is the account boundary's type for an authorized agent.
 - `customerAuthenticationForAgent(token)` provides `CustomerAuthentication`
   for agent requests; every read re-verifies the token, so checks under the
   account lock stay authoritative.
