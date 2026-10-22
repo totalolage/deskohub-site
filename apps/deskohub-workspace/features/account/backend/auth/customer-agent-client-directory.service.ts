@@ -43,10 +43,10 @@ const hostOf = (value: string | undefined) =>
  */
 export interface CustomerAgentClientAuthority {
   /**
-   * The client's public metadata for the signed-in customer of the current
-   * request, resolving a Client ID Metadata Document on first use. Rejects
-   * with an error named `APIError` for a client the server doesn't know or
-   * won't serve, and with anything else when the read itself fails.
+   * The client's public metadata, resolving a Client ID Metadata Document on
+   * first use. Rejects with an error named `APIError` for a client the
+   * server doesn't know or won't serve, or answers null, and rejects with
+   * anything else when the read itself fails.
    */
   readonly findPublicClient: (clientId: string) => Promise<unknown>;
 }
@@ -110,6 +110,28 @@ export class CustomerAgentClientDirectory extends Context.Service<
       }),
     });
 
+  /**
+   * Reads clients for the server itself, without a customer session, for
+   * requests that carry only an agent's access token.
+   */
+  static Server = Layer.unwrap(
+    Effect.promise(async () => {
+      const { auth, customerMcpResource } = await import(
+        "@/features/account/server/auth.server"
+      );
+      return CustomerAgentClientDirectory.fromAuthority({
+        findPublicClient: (clientId) =>
+          auth.api.findCustomerAgentClient({
+            body: { clientId },
+            // Direct calls resolve the dynamic base URL from a host; the MCP
+            // resource's host is trusted on every deployment.
+            headers: new Headers({ host: new URL(customerMcpResource).host }),
+          }),
+      });
+    })
+  );
+
+  /** Reads clients for the signed-in customer of the current request. */
   static Default = Layer.unwrap(
     Effect.promise(async () => {
       const [{ auth }, { headers }] = await Promise.all([

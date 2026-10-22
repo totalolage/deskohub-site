@@ -35,13 +35,16 @@ export type AdministrationOperationReference = `${string}.${string}`;
 /**
  * How a caller shows what a destructive operation would change before it
  * runs: the same endpoint with `dryRun: true`, or read operations that show
- * the current state.
+ * the current state. The read operations take the operation's own
+ * arguments, under the names in `arguments` where theirs differ.
  */
 export type AdministrationOperationPreview =
   | { readonly _tag: "DryRun" }
   | {
       readonly _tag: "Read";
       readonly operations: Arr.NonEmptyReadonlyArray<AdministrationOperationReference>;
+      /** `{ <read operation's argument>: <this operation's argument> }`. */
+      readonly arguments?: Readonly<Record<string, string>> | undefined;
     };
 
 /**
@@ -109,6 +112,20 @@ export const dryRunPreview: AdministrationOperationPreview = { _tag: "DryRun" };
 export const readPreview = (
   ...operations: Arr.NonEmptyReadonlyArray<AdministrationOperationReference>
 ): AdministrationOperationPreview => ({ _tag: "Read", operations });
+
+/**
+ * A read preview whose operations take some of this operation's arguments
+ * under other names, as `{ <read operation's argument>: <this operation's
+ * argument> }`.
+ */
+export const readPreviewWithArguments = (
+  previewArguments: Readonly<Record<string, string>>,
+  ...operations: Arr.NonEmptyReadonlyArray<AdministrationOperationReference>
+): AdministrationOperationPreview => ({
+  _tag: "Read",
+  operations,
+  arguments: previewArguments,
+});
 
 /**
  * The credentials an operation may return to any administration channel.

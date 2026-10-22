@@ -5,9 +5,12 @@ import {
   automationsMinimumDhwVersion,
   CliClientCompatibility,
   CliInputInvalid,
+  CliServiceUnavailable,
   DhwVersion,
   dhwVersionHeader,
+  invoicesMinimumDhwVersion,
   MinimumDhwVersion,
+  OutdatedDhwRefusal,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
@@ -30,6 +33,10 @@ const minimum = DhwVersion.make("1.20.0");
 const groupMinimums: Partial<Record<string, DhwVersion>> = {
   campaigns: minimum,
   automations: automationsMinimumDhwVersion,
+};
+const endpointMinimums: Partial<Record<string, DhwVersion>> = {
+  "administration.listInvoices": invoicesMinimumDhwVersion,
+  "administration.getInvoice": invoicesMinimumDhwVersion,
 };
 
 // A test-local API exercises header edge cases through the same middleware.
@@ -55,11 +62,19 @@ const TestApi = HttpApi.make("testApi")
       .annotate(MinimumDhwVersion, Option.some(minimum))
   )
   .add(
-    HttpApiGroup.make("administration").add(
-      HttpApiEndpoint.get("listReservations", "/reservations", {
-        success: Schema.String,
-      })
-    )
+    HttpApiGroup.make("administration")
+      .add(
+        HttpApiEndpoint.get("listReservations", "/reservations", {
+          success: Schema.String,
+        })
+      )
+      .add(
+        HttpApiEndpoint.get("listInvoices", "/invoices", {
+          success: Schema.String,
+        })
+          .annotate(MinimumDhwVersion, Option.some(minimum))
+          .annotate(OutdatedDhwRefusal, "CliServiceUnavailable")
+      )
   )
   .middleware(CliClientCompatibility);
 
@@ -74,7 +89,9 @@ const handleTestRequest = HttpRouter.toWebHandler(
             .handle("listTemplates", () => Effect.succeed("listed"))
         ),
         HttpApiBuilder.group(TestApi, "administration", (handlers) =>
-          handlers.handle("listReservations", () => Effect.succeed("listed"))
+          handlers
+            .handle("listReservations", () => Effect.succeed("listed"))
+            .handle("listInvoices", () => Effect.succeed("listed"))
         )
       )
     ),
@@ -126,6 +143,27 @@ describe("dhw client version", () => {
   );
 
   test.each([
+    ["no header", undefined],
+    ["an older version", "1.19.9"],
+  ])(
+    "refuses %s with an error released binaries already decode where the operation says so",
+    async (_, version) => {
+      const response = await request("GET", "/invoices", version);
+
+      expect(response.status).toBe(503);
+      expect(
+        Schema.decodeUnknownSync(CliServiceUnavailable)(await response.json())
+      ).toBeInstanceOf(CliServiceUnavailable);
+    }
+  );
+
+  test("serves the minimum where an operation refuses with a service error", async () => {
+    const response = await request("GET", "/invoices", "1.20.0");
+
+    expect(response.status).toBe(200);
+  });
+
+  test.each([
     ["the minimum", "1.20.0"],
     ["a newer version", "1.21.0"],
     ["a pull-request build of the minimum", "1.20.0+pr.743.abc1234"],
@@ -171,10 +209,11 @@ describe("dhw client version", () => {
     expect(collectMinimumDhwVersions(TestApi)).toEqual({
       "campaigns.listCampaigns": minimum,
       "campaigns.createCampaign": minimum,
+      "administration.listInvoices": minimum,
     });
   });
 
-  test("reports the campaign and automation minimums and none for other groups", async () => {
+  test("reports the campaign, automation and invoice minimums and none elsewhere", async () => {
     const expectedMinimums: Record<string, DhwVersion> = {};
     HttpApi.reflect(WorkspaceAdminApi, {
       onGroup: () => undefined,
@@ -183,11 +222,12 @@ describe("dhw client version", () => {
           mergedAnnotations,
           MinimumDhwVersion
         );
-        const groupMinimum = groupMinimums[group.identifier];
-        if (groupMinimum !== undefined) {
-          expect(endpointMinimum).toEqual(Option.some(groupMinimum));
-          expectedMinimums[`${group.identifier}.${endpoint.name}`] =
-            groupMinimum;
+        const reference = `${group.identifier}.${endpoint.name}`;
+        const expectedMinimum =
+          endpointMinimums[reference] ?? groupMinimums[group.identifier];
+        if (expectedMinimum !== undefined) {
+          expect(endpointMinimum).toEqual(Option.some(expectedMinimum));
+          expectedMinimums[reference] = expectedMinimum;
         } else {
           expect(endpointMinimum).toEqual(Option.none());
         }

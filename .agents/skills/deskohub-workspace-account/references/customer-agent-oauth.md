@@ -57,6 +57,13 @@ resource.
 - `verifyCustomerAgentAccessToken` is a `SERVER_ONLY` endpoint over the
   provider's `getOAuthProviderApi(...).validateAccessToken`, so the MCP route
   verifies in-process without an introspection client.
+- `findCustomerAgentClient` is a `SERVER_ONLY` endpoint over
+  `getOAuthProviderApi(...).getClient`, returning only the public fields (a
+  disabled client reads as unknown). `CustomerAgentClientDirectory.Server`
+  reads through it for requests that carry only an agent's token, such as
+  administration tool calls; `CustomerAgentClientDirectory.Default` reads
+  through `getOAuthClientPublic`, which needs a customer session, for the
+  consent and connected-assistant pages.
 - Every direct `auth.api.*` call needs a request or a `host` header: with the
   dynamic `allowedHosts` base URL, Better Auth otherwise throws a 500
   `APIError` before the endpoint runs. The adapter passes the MCP resource's
@@ -318,6 +325,30 @@ document); refresh them when a client changes its document.
   every scope sees the consent page on each new authorization, since its
   consent never covers `administration`; refreshes are unaffected.
 - The connected assistants list flags a connection that includes the scope.
+- `/api/mcp` lists the administration tools to a token only after
+  `AdministratorAgentAuthorization.authorize` passes for that request, and
+  each tool call runs it again before it answers anything, previews
+  included, and once more inside the administration API built for agents
+  (the administration skill's `references/dhw-cli.md`, "MCP tools").
+  A customer's token never reaches the check: it lacks the scope.
+- How an administrator's assistant gets the scope: the server challenges
+  only a signed-in tool call, naming that tool's scope, and MCP clients
+  (2025-11-25 and later) request the challenge's scope first, or every
+  `scopes_supported` value when the challenge names none. A host that
+  authenticates when it connects, before any challenge, asks for
+  `administration` and the consent page grants it to an administrator; a
+  host that authenticates only after a challenge doesn't. The reconnect path
+  is the host's own: disconnect and reconnect the connector, set Claude
+  Code's `oauth.scopes` to include `administration`, or reauthorize the
+  ChatGPT link.
+- Never answer with an OAuth challenge (`WWW-Authenticate` or
+  `_meta["mcp/www_authenticate"]`) that names `administration`, for any
+  caller. Claude Code re-authorizes for the union of its scopes and the
+  challenged one, and a non-administrator's consent drops `administration`,
+  so it would loop. A caller without the scope or the grant gets no
+  administration tools (a call is an unknown tool); a grant lost before a
+  call, or any refusal inside it, answers a tool error (`isError`). The
+  route tests pin this.
 
 ## Account-boundary adapter
 

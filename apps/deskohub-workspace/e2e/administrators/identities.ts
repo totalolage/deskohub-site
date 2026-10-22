@@ -9,6 +9,7 @@ import { makeWorkspaceE2EAccountRecipientForRunId } from "../account/config";
 import { makeWorkspaceE2EAccountJournalRecorder } from "../account/journal";
 import type { WorkspaceE2EAccountJournalOwner } from "../account/reconcile";
 import {
+  revokeWorkspaceE2ESyntheticAccountRoles,
   seedWorkspaceE2ESyntheticAccount,
   signInWorkspaceE2ESyntheticBrowserContext,
   type WorkspaceE2ESessionSigningSecret,
@@ -24,6 +25,8 @@ import type { WorkspaceE2ERunId } from "../run-identifiers";
  */
 const workspaceE2EAdministrationRecipientLabels = {
   "access-code-creation": ["acc-admin"],
+  "administrator-agent-tools": ["aat-admin"],
+  "administrator-agent-tools-customer-refusal": ["aatc-member"],
   "administrator-non-administrator-refusal": ["anr-member"],
   "administrator-sign-in-return": ["asr-admin"],
   "automation-reservation-booked": ["arb-admin"],
@@ -52,9 +55,7 @@ export type WorkspaceE2EAdministrationAccount = {
  * validate and delete it even after an interruption. Deleting the user
  * cascades its sessions and role grants.
  */
-export const makeWorkspaceE2EAdministrationIdentities = <
-  Label extends string,
->({
+export const makeWorkspaceE2EAdministrationIdentities = <Label extends string>({
   journalDirectory,
   ownerId,
   runId,
@@ -101,6 +102,14 @@ export const makeWorkspaceE2EAdministrationIdentities = <
         yield* seedWorkspaceE2ESyntheticAccount({ ...account, roles });
         return account;
       }),
+
+    /**
+     * Removes the role grants of one of the seeded accounts; its sessions
+     * and agent tokens stay.
+     */
+    revokeRoles: (
+      account: Pick<WorkspaceE2EAdministrationAccount, "accountId">
+    ) => revokeWorkspaceE2ESyntheticAccountRoles(account.accountId),
 
     /** Signs a browser context in as one of the seeded accounts. */
     signIn: (
