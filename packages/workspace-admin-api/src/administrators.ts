@@ -116,7 +116,11 @@ export const AdminCliAdministratorsApi = HttpApiGroup.make("administrators")
     HttpApiEndpoint.post("grantAdministrator", "/administrators", {
       payload: AdministrationAdministratorGrantInput,
       success: AdministrationAdministratorGrantResult,
-      error: [CliResourceNotFound.schema, CliServiceUnavailable.schema],
+      error: [
+        CliMutationRejected.schema,
+        CliResourceNotFound.schema,
+        CliServiceUnavailable.schema,
+      ],
     }).annotate(
       AdministrationOperationBehavior,
       destructiveOperation({ idempotent: true, preview: administratorsPreview })
