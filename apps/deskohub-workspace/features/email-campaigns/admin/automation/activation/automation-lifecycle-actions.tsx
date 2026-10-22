@@ -24,7 +24,8 @@ import {
 
 /**
  * Pause, resume and archive for an automated campaign's header, plus the
- * way to the preview tab while there is something to activate.
+ * way to the preview tab while there is something to activate. A draft can
+ * be archived too, so an abandoned one can be retired.
  */
 export function AutomationLifecycleActions({
   automation,
@@ -123,38 +124,36 @@ export function AutomationLifecycleActions({
               </TooltipContent>
             </Tooltip>
           )}
-          {status !== "draft" && (
-            <ConfirmDialog
-              confirmLabel={m.emailAutomationActivationArchiveConfirm(
-                {},
-                { locale }
-              )}
-              description={m.emailAutomationActivationArchiveDescription(
-                {},
-                { locale }
-              )}
-              error={archiveError}
-              onConfirm={() => archive.execute({ campaignId })}
-              onOpenChange={(open) => {
-                setArchiveOpen(open);
-                setArchiveError(null);
-              }}
-              open={archiveOpen}
-              pending={archive.isExecuting}
-              title={m.emailAutomationActivationArchiveTitle({}, { locale })}
-              trigger={
-                <Button
-                  disabled={pending}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  <Archive aria-hidden className="size-4" />
-                  {m.emailAutomationActivationArchive({}, { locale })}
-                </Button>
-              }
-            />
-          )}
+          <ConfirmDialog
+            confirmLabel={m.emailAutomationActivationArchiveConfirm(
+              {},
+              { locale }
+            )}
+            description={m.emailAutomationActivationArchiveDescription(
+              {},
+              { locale }
+            )}
+            error={archiveError}
+            onConfirm={() => archive.execute({ campaignId })}
+            onOpenChange={(open) => {
+              setArchiveOpen(open);
+              setArchiveError(null);
+            }}
+            open={archiveOpen}
+            pending={archive.isExecuting}
+            title={m.emailAutomationActivationArchiveTitle({}, { locale })}
+            trigger={
+              <Button
+                disabled={pending}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <Archive aria-hidden className="size-4" />
+                {m.emailAutomationActivationArchive({}, { locale })}
+              </Button>
+            }
+          />
         </div>
       </TooltipProvider>
       <p className="text-burned-orange-ink text-sm empty:hidden" role="alert">

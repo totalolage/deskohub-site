@@ -79,10 +79,10 @@ describe("AutomationLifecycleActions", () => {
   afterEach(() => cleanup());
   afterAll(() => unregisterWorkspaceComponentTestEnv());
 
-  test("offers only the way to the preview for a draft", () => {
+  test("offers the way to the preview and Archive for a draft", () => {
     const view = renderActions(automationDetailFixture({ status: "draft" }));
 
-    expect(buttonNames(view)).toEqual([]);
+    expect(buttonNames(view)).toEqual([label.archive]);
     expect(
       view
         .getByRole("link", { name: label.previewAndActivate })
@@ -168,23 +168,32 @@ describe("AutomationLifecycleActions", () => {
     expect(workspaceRouterRefresh).not.toHaveBeenCalled();
   });
 
-  test("archives only after the confirmation", () => {
-    const view = renderActions(published({ status: "active" }));
+  test.each([
+    {
+      status: "draft",
+      automation: () => automationDetailFixture({ status: "draft" }),
+    },
+    { status: "active", automation: () => published({ status: "active" }) },
+  ])(
+    "archives a $status automation only after the confirmation",
+    ({ automation }) => {
+      const view = renderActions(automation());
 
-    fireEvent.click(view.getByRole("button", { name: label.archive }));
-    const dialog = view.getByRole("dialog");
-    expect(operations.requests("archiveAutomation")).toEqual([]);
+      fireEvent.click(view.getByRole("button", { name: label.archive }));
+      const dialog = view.getByRole("dialog");
+      expect(operations.requests("archiveAutomation")).toEqual([]);
 
-    fireEvent.click(view.getByRole("button", { name: label.archiveConfirm }));
-    expect(operations.requests("archiveAutomation")).toEqual([
-      { operation: "archiveAutomation", ...ownCampaign },
-    ]);
-    expect(dialog.isConnected).toBe(true);
+      fireEvent.click(view.getByRole("button", { name: label.archiveConfirm }));
+      expect(operations.requests("archiveAutomation")).toEqual([
+        { operation: "archiveAutomation", ...ownCampaign },
+      ]);
+      expect(dialog.isConnected).toBe(true);
 
-    operations.respond("archiveAutomation", { _tag: "Success", output: {} });
-    expect(view.queryByRole("dialog")).toBeNull();
-    expect(workspaceRouterRefresh).toHaveBeenCalledTimes(1);
-  });
+      operations.respond("archiveAutomation", { _tag: "Success", output: {} });
+      expect(view.queryByRole("dialog")).toBeNull();
+      expect(workspaceRouterRefresh).toHaveBeenCalledTimes(1);
+    }
+  );
 
   test("keeps the confirmation open with the port's refusal of an archive", () => {
     const view = renderActions(published({ status: "paused" }));
