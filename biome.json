@@ -28,6 +28,7 @@
   "plugins": [
     "./lint/automation-state-writers.grit",
     "./lint/no-backend-runtime-directives.grit",
+    "./lint/no-administration-agent-tools-imports.grit",
     "./lint/no-better-auth-in-account-domain.grit",
     "./lint/no-blocking-administration-routes.grit",
     "./lint/no-button-restyling.grit",

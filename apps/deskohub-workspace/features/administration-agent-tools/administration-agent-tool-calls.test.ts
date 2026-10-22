@@ -1,0 +1,416 @@
+import "@/shared/testing/workspace-test-env";
+
+import { beforeEach, describe, expect, test } from "bun:test";
+import {
+  AdministrationOperationBehavior,
+  AdministrationOperationVariants,
+  CliMutationRejected,
+  destructiveOperation,
+  dryRunPreview,
+  readOperation,
+  readPreview,
+  writeOperation,
+} from "@deskohub/workspace-admin-api";
+import { NodeHttpServer } from "@effect/platform-node";
+import { Effect, Layer, Option, Schema } from "effect";
+import { HttpRouter } from "effect/unstable/http";
+import {
+  HttpApi,
+  HttpApiBuilder,
+  HttpApiEndpoint,
+  HttpApiGroup,
+  HttpApiSchema,
+} from "effect/unstable/httpapi";
+import { AgentToolReply } from "@/features/agent-tools/agent-tool";
+import type { CustomerAgentCaller } from "@/features/agent-tools/customer-agent-caller";
+import {
+  deriveAdministrationOperationTools,
+  makeAdministrationAgentTools,
+} from "./administration-agent-tools";
+import {
+  AdministrationApiClient,
+  AdministrationApiTransport,
+} from "./administration-api-client";
+
+const Reservation = Schema.Struct({
+  id: Schema.String,
+  status: Schema.String,
+});
+
+const Mutation = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("rename"), title: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("delete"), id: Schema.String }),
+]);
+
+const TestApi = HttpApi.make("testApi").add(
+  HttpApiGroup.make("administration")
+    .add(
+      HttpApiEndpoint.get("getReservation", "/reservations/:reservationId", {
+        params: { reservationId: Schema.String },
+        success: Reservation,
+      }).annotate(AdministrationOperationBehavior, readOperation)
+    )
+    .add(
+      HttpApiEndpoint.get("listReservations", "/reservations", {
+        success: Schema.Array(Reservation),
+      }).annotate(AdministrationOperationBehavior, readOperation)
+    )
+    .add(
+      HttpApiEndpoint.post(
+        "cancelReservation",
+        "/reservations/:reservationId/cancellation",
+        {
+          params: { reservationId: Schema.String },
+          payload: Schema.Struct({ sendEmail: Schema.Boolean }),
+          success: Schema.Struct({ outcome: Schema.String }),
+          error: CliMutationRejected.schema,
+        }
+      ).annotate(
+        AdministrationOperationBehavior,
+        destructiveOperation({
+          idempotent: false,
+          preview: readPreview("administration.getReservation"),
+        })
+      )
+    )
+    .add(
+      HttpApiEndpoint.post("backfill", "/backfill", {
+        payload: Schema.Struct({ dryRun: Schema.Boolean }),
+        success: Schema.Struct({ changed: Schema.Number }),
+      }).annotate(
+        AdministrationOperationBehavior,
+        destructiveOperation({ idempotent: true, preview: dryRunPreview })
+      )
+    )
+    .add(
+      HttpApiEndpoint.post("mutateThings", "/things/mutations", {
+        payload: Schema.Struct({
+          requestId: Schema.String,
+          mutation: Mutation,
+        }),
+        success: Schema.Struct({ applied: Schema.String }),
+      }).annotate(AdministrationOperationVariants, {
+        field: "mutation",
+        discriminator: "kind",
+        operations: {
+          rename: writeOperation({ idempotent: true }),
+          delete: destructiveOperation({ idempotent: true }),
+        },
+      })
+    )
+    .add(
+      HttpApiEndpoint.get("getDocument", "/documents/:documentId", {
+        params: { documentId: Schema.String },
+        success: Schema.Uint8Array.pipe(
+          HttpApiSchema.asUint8Array({ contentType: "application/pdf" })
+        ),
+      }).annotate(AdministrationOperationBehavior, readOperation)
+    )
+);
+
+/** The requests the test API served, by operation, in order. */
+let served: Array<{ readonly operation: string; readonly body: unknown }> =
+  [];
+let authorizations: Array<string | null> = [];
+
+const record = (operation: string, body: unknown = null) =>
+  Effect.sync(() => {
+    served.push({ operation, body });
+  });
+
+const handleTestRequest = HttpRouter.toWebHandler(
+  HttpApiBuilder.layer(TestApi).pipe(
+    Layer.provide(
+      HttpApiBuilder.group(TestApi, "administration", (handlers) =>
+        handlers
+          .handle("getReservation", ({ params }) =>
+            record("getReservation").pipe(
+              Effect.as({ id: params.reservationId, status: "confirmed" })
+            )
+          )
+          .handle("listReservations", () =>
+            record("listReservations").pipe(
+              Effect.as([{ id: "r-1", status: "confirmed" }])
+            )
+          )
+          .handle("cancelReservation", ({ params, payload }) =>
+            record("cancelReservation", payload).pipe(
+              Effect.andThen(
+                params.reservationId === "locked"
+                  ? Effect.fail(
+                      new CliMutationRejected({
+                        message: "The reservation is locked.",
+                        code: "reservation-locked",
+                      })
+                    )
+                  : Effect.succeed({ outcome: "cancelled" })
+              )
+            )
+          )
+          .handle("backfill", ({ payload }) =>
+            record("backfill", payload).pipe(
+              Effect.as({ changed: payload.dryRun ? 0 : 3 })
+            )
+          )
+          .handle("mutateThings", ({ payload }) =>
+            record("mutateThings", payload).pipe(
+              Effect.as({ applied: payload.mutation.kind })
+            )
+          )
+          .handle("getDocument", () =>
+            record("getDocument").pipe(
+              Effect.as(new TextEncoder().encode("%PDF-1.7 synthetic"))
+            )
+          )
+      )
+    ),
+    Layer.provide(NodeHttpServer.layerHttpServices)
+  ),
+  { disableLogger: true }
+).handler;
+
+const transport = (request: Request) => {
+  authorizations.push(request.headers.get("authorization"));
+  return handleTestRequest(request);
+};
+
+const tools = makeAdministrationAgentTools(
+  deriveAdministrationOperationTools(TestApi)
+);
+
+const caller: CustomerAgentCaller = {
+  accessToken: "synthetic-agent-token",
+  grant: {
+    accountId: "synthetic-account" as CustomerAgentCaller["grant"]["accountId"],
+    clientId: "https://agent.example/client.json",
+    scopes: new Set(["administration"]),
+  },
+};
+
+const callTool = (name: string, args: Schema.Json) => {
+  const tool = tools.find((candidate) => candidate.name === name);
+  if (tool === undefined) {
+    throw new Error(`No tool ${name}.`);
+  }
+  return tool.call(args, Option.some(caller)).pipe(
+    Effect.provide(
+      AdministrationApiClient.forApi(TestApi).pipe(
+        Layer.provide(Layer.succeed(AdministrationApiTransport, transport))
+      )
+    ),
+    Effect.result,
+    Effect.runPromise
+  );
+};
+
+const resultOf = (reply: unknown) =>
+  reply instanceof AgentToolReply ? reply.result : reply;
+
+beforeEach(() => {
+  served = [];
+  authorizations = [];
+});
+
+describe("administration agent tool calls", () => {
+  test("call the operation with the agent's token and answer its result", async () => {
+    const result = await callTool("admin_get_reservation", {
+      reservationId: "r-1",
+    });
+
+    expect(result._tag).toBe("Success");
+    expect(resultOf(result._tag === "Success" && result.success)).toEqual({
+      id: "r-1",
+      status: "confirmed",
+    });
+    expect(authorizations).toEqual(["Bearer synthetic-agent-token"]);
+  });
+
+  test("answer a list as items", async () => {
+    const result = await callTool("admin_list_reservations", {});
+
+    expect(resultOf(result._tag === "Success" && result.success)).toEqual({
+      items: [{ id: "r-1", status: "confirmed" }],
+    });
+  });
+
+  test("preview a destructive operation without confirm and change nothing", async () => {
+    const result = await callTool("admin_cancel_reservation", {
+      reservationId: "r-1",
+      sendEmail: true,
+    });
+
+    expect(resultOf(result._tag === "Success" && result.success)).toEqual({
+      outcome: "confirmation-required",
+      operation: "admin_cancel_reservation",
+      input: { reservationId: "r-1", sendEmail: true },
+      current: {
+        "administration.getReservation": { id: "r-1", status: "confirmed" },
+      },
+    });
+    expect(served.map(({ operation }) => operation)).toEqual([
+      "getReservation",
+    ]);
+  });
+
+  test("treat confirm: false like no confirmation", async () => {
+    await callTool("admin_cancel_reservation", {
+      reservationId: "r-1",
+      sendEmail: true,
+      confirm: false,
+    });
+
+    expect(served.map(({ operation }) => operation)).toEqual([
+      "getReservation",
+    ]);
+  });
+
+  test("apply a destructive operation with confirm: true", async () => {
+    const result = await callTool("admin_cancel_reservation", {
+      reservationId: "r-1",
+      sendEmail: false,
+      confirm: true,
+    });
+
+    expect(resultOf(result._tag === "Success" && result.success)).toEqual({
+      outcome: "applied",
+      result: { outcome: "cancelled" },
+    });
+    expect(served).toEqual([
+      { operation: "cancelReservation", body: { sendEmail: false } },
+    ]);
+  });
+
+  test("preview a dry-run operation with a dry run", async () => {
+    const result = await callTool("admin_backfill", { dryRun: false });
+
+    expect(resultOf(result._tag === "Success" && result.success)).toEqual({
+      outcome: "confirmation-required",
+      operation: "admin_backfill",
+      input: { dryRun: false },
+      dryRun: { changed: 0 },
+    });
+    expect(served).toEqual([{ operation: "backfill", body: { dryRun: true } }]);
+  });
+
+  test("run an explicit dry run without confirmation", async () => {
+    const result = await callTool("admin_backfill", { dryRun: true });
+
+    expect(resultOf(result._tag === "Success" && result.success)).toEqual({
+      outcome: "dry-run",
+      result: { changed: 0 },
+    });
+  });
+
+  test("rebuild a generic mutation from a variant's arguments", async () => {
+    const result = await callTool("admin_things_rename", {
+      requestId: "0190a5c4-0000-7000-8000-000000000001",
+      title: "Renamed",
+    });
+
+    expect(resultOf(result._tag === "Success" && result.success)).toEqual({
+      applied: "rename",
+    });
+    expect(served).toEqual([
+      {
+        operation: "mutateThings",
+        body: {
+          requestId: "0190a5c4-0000-7000-8000-000000000001",
+          mutation: { kind: "rename", title: "Renamed" },
+        },
+      },
+    ]);
+  });
+
+  test("refuse a variant's discriminator as an argument", async () => {
+    const result = await callTool("admin_things_rename", {
+      requestId: "0190a5c4-0000-7000-8000-000000000001",
+      title: "Renamed",
+      kind: "delete",
+    });
+
+    expect(result._tag === "Failure" && result.failure.details).toEqual({
+      code: "invalid_input",
+      field: "kind",
+    });
+    expect(served).toEqual([]);
+  });
+
+  test("refuse unknown and invalid arguments before anything runs", async () => {
+    const unknown = await callTool("admin_cancel_reservation", {
+      reservationId: "r-1",
+      sendEmail: true,
+      confirm: true,
+      actor: "someone@example.test",
+    });
+    const invalid = await callTool("admin_cancel_reservation", {
+      reservationId: "r-1",
+      sendEmail: "yes",
+    });
+
+    expect(unknown._tag === "Failure" && unknown.failure.details).toEqual({
+      code: "invalid_input",
+      field: "actor",
+    });
+    expect(invalid._tag === "Failure" && invalid.failure.details).toEqual({
+      code: "invalid_input",
+      field: "sendEmail",
+    });
+    expect(served).toEqual([]);
+  });
+
+  test("answer a typed operation error as an administration error", async () => {
+    const result = await callTool("admin_cancel_reservation", {
+      reservationId: "locked",
+      sendEmail: false,
+      confirm: true,
+    });
+
+    expect(result._tag === "Failure" && result.failure.details).toEqual({
+      code: "administration_failed",
+      error: {
+        _tag: "CliMutationRejected",
+        message: "The reservation is locked.",
+        code: "reservation-locked",
+      },
+    });
+  });
+
+  test("attach a binary result as an embedded document", async () => {
+    const result = await callTool("admin_get_document", { documentId: "d-1" });
+    const reply = result._tag === "Success" ? result.success : undefined;
+
+    expect(reply).toBeInstanceOf(AgentToolReply);
+    expect(reply instanceof AgentToolReply && reply.result).toMatchObject({
+      mimeType: "application/pdf",
+      byteLength: 18,
+    });
+    expect(
+      reply instanceof AgentToolReply && reply.attachments.map(
+        ({ mimeType, blob }) => ({
+          mimeType,
+          text: Buffer.from(blob, "base64").toString(),
+        })
+      )
+    ).toEqual([{ mimeType: "application/pdf", text: "%PDF-1.7 synthetic" }]);
+  });
+
+  test("refuse a call without a verified caller", async () => {
+    const tool = tools.find(
+      (candidate) => candidate.name === "admin_get_reservation"
+    );
+    const result = await tool!
+      .call({ reservationId: "r-1" })
+      .pipe(
+        Effect.provide(
+          AdministrationApiClient.forApi(TestApi).pipe(
+            Layer.provide(Layer.succeed(AdministrationApiTransport, transport))
+          )
+        ),
+        Effect.result,
+        Effect.runPromise
+      );
+
+    expect(result._tag).toBe("Failure");
+    expect(authorizations).toEqual([]);
+  });
+});

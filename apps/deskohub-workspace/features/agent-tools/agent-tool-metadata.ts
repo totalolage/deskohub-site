@@ -1,8 +1,8 @@
 /**
- * Who may call a tool: anyone, or a customer who signed in through the
- * Workspace OAuth server.
+ * Who may call a tool: anyone, a customer who signed in through the
+ * Workspace OAuth server, or an administrator's agent.
  */
-const agentToolAccesses = ["public", "signed-in"] as const;
+const agentToolAccesses = ["public", "signed-in", "administration"] as const;
 
 export type AgentToolAccess = (typeof agentToolAccesses)[number];
 
@@ -10,7 +10,8 @@ export type AgentToolAccess = (typeof agentToolAccesses)[number];
  * The tool `_meta` key that publishes who may call a tool. `tools/list`
  * answers every client with the public and the signed-in tools alike, so a
  * client that sends no access token, such as the site's WebMCP
- * registration, reads it to keep only the tools it can call.
+ * registration, reads it to keep only the tools it can call. Administration
+ * tools are listed only to an administrator's agent.
  */
 export const agentToolAccessMetaKey = "cz.deskohub.workspace/access";
 

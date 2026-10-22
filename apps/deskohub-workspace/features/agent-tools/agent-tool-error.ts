@@ -18,17 +18,42 @@ export type AgentToolErrorCode =
   | "reservation_unavailable"
   | "account_unavailable"
   | "reservation_not_found"
-  | "reservations_unavailable";
+  | "reservations_unavailable"
+  | "administration_failed"
+  | "administration_unavailable";
 
 export type AgentToolUnavailableCode =
   | "availability_unavailable"
   | "quote_unavailable"
   | "offerings_unavailable"
   | "reservation_unavailable"
-  | "reservations_unavailable";
+  | "reservations_unavailable"
+  | "administration_unavailable";
+
+/** A typed administration API error, as the API encodes it. */
+const administrationErrorSchema = Schema.StructWithRest(
+  Schema.Struct({
+    _tag: Schema.String.annotate({
+      description: "The administration API error, such as CliMutationRejected.",
+    }),
+    message: Schema.String,
+  }),
+  [Schema.Record(Schema.String, Schema.Json)]
+);
+
+type AdministrationError = typeof administrationErrorSchema.Type;
+
+/** An administration API error, if the JSON is one. */
+export const decodeAdministrationError = Schema.decodeUnknownOption(
+  administrationErrorSchema
+);
 
 type AgentToolErrorDetails =
   | { readonly code: "invalid_input"; readonly field?: string }
+  | {
+      readonly code: "administration_failed";
+      readonly error: AdministrationError;
+    }
   | {
       readonly code: "date_out_of_range";
       readonly earliest: string;
@@ -37,7 +62,7 @@ type AgentToolErrorDetails =
   | {
       readonly code: Exclude<
         AgentToolErrorCode,
-        "invalid_input" | "date_out_of_range"
+        "invalid_input" | "date_out_of_range" | "administration_failed"
       >;
     };
 
@@ -92,7 +117,31 @@ export const agentToolErrorResultSchema = Schema.Struct({
   ]),
 });
 
-export type AgentToolErrorResult = typeof agentToolErrorResultSchema.Type;
+/**
+ * The structured result of a failed administration tool call: any error a
+ * customer tool reports, an administration API error the API's message
+ * explains, or an unexpected failure.
+ */
+export const administrationAgentToolErrorResultSchema = Schema.Struct({
+  error: Schema.Union([
+    ...agentToolErrorResultSchema.fields.error.members,
+    Schema.Struct({
+      code: Schema.Literal("administration_failed"),
+      error: administrationErrorSchema,
+      message: Schema.String.annotate({
+        description: "The administration API's message for the administrator.",
+      }),
+    }),
+    Schema.Struct({
+      code: Schema.Literal("administration_unavailable"),
+      message: agentToolErrorMessageField,
+    }),
+  ]),
+});
+
+export type AgentToolErrorResult =
+  | typeof agentToolErrorResultSchema.Type
+  | typeof administrationAgentToolErrorResultSchema.Type;
 
 export class AgentToolError extends Data.TaggedError("AgentToolError")<{
   readonly details: AgentToolErrorDetails;
@@ -142,6 +191,13 @@ export class AgentToolError extends Data.TaggedError("AgentToolError")<{
     (cause?: unknown) =>
       new AgentToolError({ details: { code }, cause });
 
+  /**
+   * The administration API refused or failed the operation with a typed
+   * error; its message is written for the administrator.
+   */
+  static administrationFailed = (error: AdministrationError) =>
+    new AgentToolError({ details: { code: "administration_failed", error } });
+
   /** Wraps an unexpected failure as the tool's unavailable code. */
   static unavailable = (code: AgentToolUnavailableCode) => (cause: unknown) =>
     new AgentToolError({ details: { code }, cause });
@@ -190,6 +246,9 @@ export const getAgentToolErrorMessage = (
         m.agentToolErrorReservationNotFound({}, { locale }),
       reservations_unavailable: () =>
         m.agentToolErrorReservationsUnavailable({}, { locale }),
+      administration_failed: ({ error }) => error.message,
+      administration_unavailable: () =>
+        m.agentToolErrorAdministrationUnavailable({}, { locale }),
     })
   );
 

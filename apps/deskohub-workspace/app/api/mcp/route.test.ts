@@ -112,6 +112,62 @@ mock.module("@/shared/backend/request-budget/request-budget.service", () => ({
   RequestBudget: TestRequestBudget,
 }));
 
+/**
+ * Whether the fake administrator check finds the token's account holding
+ * the administrator grant, without it, or can't tell.
+ */
+let administratorGrant: "live" | "revoked" | "unavailable" = "live";
+const administratorAuthorization = await import(
+  "@/features/administrators/backend/administrator-agent-authorization.service"
+);
+class TestAdministratorAgentAuthorization extends administratorAuthorization.AdministratorAgentAuthorization {
+  static override Live = Layer.succeed(
+    administratorAuthorization.AdministratorAgentAuthorization,
+    {
+      authorize: () =>
+        administratorGrant === "live"
+          ? Effect.succeed({
+              accountId: agentAccountId,
+              email: testEmailAddress("mcp-administrator"),
+            } as never)
+          : Effect.fail({
+              _tag: "AdministratorAgentAuthorizationError",
+              reason:
+                administratorGrant === "revoked"
+                  ? "not-administrator"
+                  : "unavailable",
+            } as never),
+    }
+  );
+}
+mock.module(
+  "@/features/administrators/backend/administrator-agent-authorization.service",
+  () => ({
+    ...administratorAuthorization,
+    AdministratorAgentAuthorization: TestAdministratorAgentAuthorization,
+  })
+);
+
+/** The requests the administration API built for agents received. */
+const administrationRequests: Array<{
+  readonly method: string;
+  readonly path: string;
+  readonly authorization: string | null;
+}> = [];
+mock.module(
+  "@/features/administration-agent-tools/administration-assistant-api.server",
+  () => ({
+    handleAssistantAdministrationRequest: async (request: Request) => {
+      administrationRequests.push({
+        method: request.method,
+        path: new URL(request.url).pathname,
+        authorization: request.headers.get("authorization"),
+      });
+      return Response.json([]);
+    },
+  })
+);
+
 const { makeAgentToolTestServices, workspaceDateFromToday } = await import(
   "@/features/agent-tools/agent-tools.test-utils"
 );
@@ -834,6 +890,191 @@ describe("customer MCP route for signed-in tools", () => {
     const response = await callToolAs("whoami", {}, bearer("valid"));
 
     expect(response.status).toBeGreaterThanOrEqual(500);
+  });
+});
+
+describe("customer MCP route for administration tools", () => {
+  beforeEach(() => {
+    rateLimit = { rateLimited: false };
+    checkRateLimit.mockClear();
+    budgetSpends.length = 0;
+    authorizationServerReachable = true;
+    accessTokens.clear();
+    administratorGrant = "live";
+    administrationRequests.length = 0;
+  });
+
+  const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+
+  const listToolNames = async (headers: Record<string, string>) => {
+    const response = await postRpc("tools/list", {}, headers);
+
+    expect(response.status).toBe(200);
+    const { result } = (await readJsonRpc(response)) as {
+      readonly result: ListToolsResult;
+    };
+    return result.tools.map(({ name }) => name);
+  };
+
+  const administrationToolNames = (names: ReadonlyArray<string>) =>
+    names.filter((name) => name.startsWith("admin_"));
+
+  const callToolAs = async (
+    name: string,
+    args: Schema.JsonObject,
+    headers: Record<string, string>
+  ) => {
+    const response = await postRpc(
+      "tools/call",
+      { name, arguments: args },
+      headers
+    );
+    expect(response.status).toBe(200);
+    return (await readJsonRpc(response)) as {
+      readonly result?: CallToolResult;
+      readonly error?: { readonly code: number; readonly message: string };
+    };
+  };
+
+  test("lists no administration tools to an agent without a token", async () => {
+    expect(administrationToolNames(await listToolNames({}))).toEqual([]);
+  });
+
+  test("lists no administration tools to a customer's agent", async () => {
+    accessTokens.set("customer", "reservations:read reservations:create");
+
+    expect(
+      administrationToolNames(await listToolNames(bearer("customer")))
+    ).toEqual([]);
+  });
+
+  test("lists no administration tools once the administrator grant is gone", async () => {
+    accessTokens.set("administrator", "reservations:read administration");
+    administratorGrant = "revoked";
+
+    expect(
+      administrationToolNames(await listToolNames(bearer("administrator")))
+    ).toEqual([]);
+  });
+
+  test("lists the administration tools after the customer tools to an administrator's agent", async () => {
+    accessTokens.set("administrator", "reservations:read administration");
+
+    const names = await listToolNames(bearer("administrator"));
+    const firstAdministrationTool = names.findIndex((name) =>
+      name.startsWith("admin_")
+    );
+
+    expect(firstAdministrationTool).toBeGreaterThan(0);
+    expect(names.slice(firstAdministrationTool).every((name) =>
+      name.startsWith("admin_")
+    )).toBe(true);
+    expect(names).toContain("admin_list_sessions");
+    expect(names).toContain("admin_revoke_session");
+  });
+
+  test("publishes the administration access and the contract's annotations", async () => {
+    accessTokens.set("administrator", "administration");
+
+    const response = await postRpc("tools/list", {}, bearer("administrator"));
+    const { result } = (await readJsonRpc(response)) as {
+      readonly result: ListToolsResult;
+    };
+    const revoke = result.tools.find(
+      ({ name }) => name === "admin_revoke_session"
+    );
+
+    expect(revoke?._meta?.["cz.deskohub.workspace/access"]).toBe(
+      "administration"
+    );
+    expect(revoke?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+    });
+    expect(revoke?.inputSchema).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+    });
+  });
+
+  test("answers 503 and lists nothing while the administrator grant can't be checked", async () => {
+    accessTokens.set("administrator", "administration");
+    administratorGrant = "unavailable";
+
+    const response = await postRpc("tools/list", {}, bearer("administrator"));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
+  test("checks the grant without calling the administration for a customer's token", async () => {
+    accessTokens.set("customer", "reservations:read");
+    administratorGrant = "unavailable";
+
+    const response = await postRpc("tools/list", {}, bearer("customer"));
+
+    expect(response.status).toBe(200);
+  });
+
+  test.each([
+    ["without a token", undefined],
+    ["with a customer's token", "customer"],
+    ["after the administrator grant is gone", "administrator"],
+  ])("treats an administration tool called %s as unknown", async (_, token) => {
+    accessTokens.set("customer", "reservations:read");
+    accessTokens.set("administrator", "administration");
+    administratorGrant = "revoked";
+
+    const response = await callToolAs(
+      "admin_list_sessions",
+      {},
+      token === undefined ? {} : bearer(token)
+    );
+
+    expect(response.error ?? response.result?.isError).toBeTruthy();
+    expect(administrationRequests).toEqual([]);
+  });
+
+  test("runs an administration tool for an administrator's agent with its own token", async () => {
+    accessTokens.set("administrator", "administration");
+
+    const { result } = await callToolAs(
+      "admin_list_sessions",
+      {},
+      bearer("administrator")
+    );
+
+    expect(result?.isError).toBeFalsy();
+    expect(result?.structuredContent).toEqual({ items: [] });
+    expect(administrationRequests).toEqual([
+      {
+        method: "GET",
+        path: "/api/v1/cli/sessions",
+        authorization: "Bearer administrator",
+      },
+    ]);
+    expect(budgetSpends).toEqual([]);
+  });
+
+  test("answers a destructive call without confirm with a preview and changes nothing", async () => {
+    accessTokens.set("administrator", "administration");
+
+    const { result } = await callToolAs(
+      "admin_revoke_session",
+      { sessionId: "0190a5c4-0000-7000-8000-000000000001" },
+      bearer("administrator")
+    );
+
+    expect(result?.isError).toBeFalsy();
+    expect(result?.structuredContent).toMatchObject({
+      outcome: "confirmation-required",
+      operation: "admin_revoke_session",
+      current: { "administration.listSessions": { items: [] } },
+    });
+    expect(administrationRequests.map(({ method }) => method)).toEqual([
+      "GET",
+    ]);
   });
 });
 

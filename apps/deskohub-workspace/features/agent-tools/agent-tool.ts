@@ -4,6 +4,7 @@ import type {
 } from "@standard-schema/spec";
 import {
   Context,
+  Data,
   Effect,
   Layer,
   Option,
@@ -30,7 +31,10 @@ import {
 
 /**
  * Who may call a tool. A signed-in tool also names the OAuth scope the
- * customer must have granted the agent; public tools need no token.
+ * customer must have granted the agent; public tools need no token. An
+ * administration tool needs the administration scope, and the MCP route
+ * publishes it only to an agent whose account holds the administrator grant
+ * at that moment.
  */
 export type AgentToolAuthorization =
   | { readonly access: "public" }
@@ -38,7 +42,8 @@ export type AgentToolAuthorization =
       readonly access: "signed-in";
       readonly scope: CustomerAgentScope;
       readonly accountBudget?: AgentToolAccountBudget;
-    };
+    }
+  | { readonly access: "administration" };
 
 /** A schema that validates a value and describes it as JSON Schema. */
 type AgentToolSchema<Input, Output = Input> = StandardSchemaV1<Input, Output> &
@@ -48,6 +53,23 @@ type AgentToolSchema<Input, Output = Input> = StandardSchemaV1<Input, Output> &
 const agentToolResultSchema = Schema.Record(Schema.String, Schema.Unknown);
 
 type AgentToolResult = typeof agentToolResultSchema.Type;
+
+/** A resource a result carries in full, such as a PDF document. */
+export interface AgentToolAttachment {
+  readonly uri: string;
+  readonly mimeType: string;
+  /** The content, base64-encoded. */
+  readonly blob: string;
+}
+
+/**
+ * A result that also carries attachments, which the protocol edge sends
+ * beside the structured result rather than inside it.
+ */
+export class AgentToolReply extends Data.Class<{
+  readonly result: AgentToolResult;
+  readonly attachments: ReadonlyArray<AgentToolAttachment>;
+}> {}
 
 /**
  * A capability customers' AI agents can call. Each protocol edge, such as the
@@ -65,6 +87,16 @@ export type AgentTool<R> = AgentToolAuthorization & {
    * state is transactional.
    */
   readonly readOnly: boolean;
+  /**
+   * Whether a call can cancel or replace state the customer made before.
+   * Defaults to false.
+   */
+  readonly destructive?: boolean;
+  /**
+   * Whether repeating a call with the same arguments changes nothing more.
+   * Defaults to `readOnly`.
+   */
+  readonly idempotent?: boolean;
   /** The code an unexpected failure is reported with. */
   readonly unavailableCode: AgentToolUnavailableCode;
   /** The MCP Apps view the tool's result renders in, if any. */
@@ -82,7 +114,7 @@ export type AgentTool<R> = AgentToolAuthorization & {
   readonly call: (
     args: Schema.Json,
     caller?: Option.Option<CustomerAgentCaller>
-  ) => Effect.Effect<AgentToolResult, AgentToolError, R>;
+  ) => Effect.Effect<AgentToolResult | AgentToolReply, AgentToolError, R>;
 };
 
 /** Which tools a deployment publishes. */
@@ -139,7 +171,7 @@ export const getRequestedAgentToolLocale = (args: Schema.Json): Locale =>
 const formatIssues = SchemaIssue.makeFormatterStandardSchemaV1();
 
 /** The dotted path of the first invalid argument, such as `seats`. */
-const getInvalidField = (issue: SchemaIssue.Issue) =>
+export const getInvalidField = (issue: SchemaIssue.Issue) =>
   formatIssues(issue)
     .issues[0]?.path?.map((segment) =>
       String(Predicate.hasProperty(segment, "key") ? segment.key : segment)
@@ -155,6 +187,8 @@ type AgentToolDefinition<
   readonly title: string;
   readonly description: string;
   readonly readOnly: boolean;
+  readonly destructive?: boolean;
+  readonly idempotent?: boolean;
   /** The code an unexpected failure is reported with. */
   readonly unavailableCode: AgentToolUnavailableCode;
   /** The MCP Apps view the tool's result renders in, if any. */
@@ -240,6 +274,12 @@ const makeAgentTool = <
     title: definition.title,
     description: definition.description,
     readOnly: definition.readOnly,
+    ...(definition.destructive !== undefined && {
+      destructive: definition.destructive,
+    }),
+    ...(definition.idempotent !== undefined && {
+      idempotent: definition.idempotent,
+    }),
     unavailableCode: definition.unavailableCode,
     ...(definition.view && { view: definition.view }),
     input: Schema.toStandardJSONSchemaV1(definition.input),

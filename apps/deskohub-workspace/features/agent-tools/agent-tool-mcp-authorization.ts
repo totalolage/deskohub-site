@@ -1,4 +1,5 @@
 import { Data, Effect, Match, Option, Schema } from "effect";
+import { administrationAgentScope } from "@/features/account/agent-scopes";
 import {
   CustomerAgentAuthorization,
   type CustomerAgentAuthorizationError,
@@ -13,7 +14,7 @@ import type { CustomerAgentCaller } from "./customer-agent-caller";
  * The request was refused before the MCP server saw it, with an OAuth
  * challenge telling the agent how to get a usable token.
  */
-class AgentToolRequestRefused extends Data.TaggedError(
+export class AgentToolRequestRefused extends Data.TaggedError(
   "AgentToolRequestRefused"
 )<{ readonly response: Response }> {}
 
@@ -27,37 +28,86 @@ type PublishedTool = AgentToolAuthorization & { readonly name: string };
  * tool needs a token with the tool's scope. Public tools and every other
  * method stay open without a token. An authorization server that can't be
  * reached fails the request.
+ *
+ * `callerTools` adds the tools only this caller may see, once its token is
+ * verified; a call is checked against `tools` and those alike. Returns the
+ * caller and every tool the request is served with.
  */
-export const authorizeAgentToolRequest = Effect.fn(
-  "agentTools.authorizeRequest"
-)(function* ({
+export const authorizeAgentToolRequest = <
+  Tool extends PublishedTool,
+  E = never,
+  R = never,
+>({
   tools,
+  callerTools,
   request,
 }: {
-  readonly tools: ReadonlyArray<PublishedTool>;
+  readonly tools: ReadonlyArray<Tool>;
+  readonly callerTools?:
+    | ((
+        caller: Option.Option<CustomerAgentCaller>
+      ) => Effect.Effect<ReadonlyArray<Tool>, E, R>)
+    | undefined;
   readonly request: Request;
-}) {
-  const caller = yield* authorizeBearerToken(request);
-  const calledTools = yield* readCalledTools({ tools, request });
-  yield* Effect.forEach(calledTools, (tool) =>
-    Match.value<AgentToolAuthorization>(tool).pipe(
-      Match.discriminatorsExhaustive("access")({
-        public: () => Effect.void,
-        "signed-in": ({ scope }) =>
-          Option.match(caller, {
-            onNone: () => refuse({ kind: "missing-token", scopes: [scope] }),
-            onSome: ({ grant }) =>
-              Effect.when(
-                refuse({ kind: "insufficient-scope", scopes: [scope] }),
-                Effect.sync(() => !grant.scopes.has(scope))
-              ),
-          }),
-      })
-    )
+}) =>
+  authorizeBearerToken(request).pipe(
+    Effect.flatMap((caller) =>
+      (callerTools === undefined
+        ? Effect.succeed<ReadonlyArray<Tool>>([])
+        : callerTools(caller)
+      ).pipe(
+        Effect.map((added) => [...tools, ...added]),
+        Effect.tap((served) =>
+          authorizeCalledTools({ tools: served, request, caller })
+        ),
+        Effect.map((served) => ({ caller, tools: served }))
+      )
+    ),
+    Effect.withSpan("agentTools.authorizeRequest")
   );
 
-  return caller;
-});
+/** Refuses a call of a tool the caller's token doesn't grant. */
+const authorizeCalledTools = Effect.fn("agentTools.authorizeCalledTools")(
+  function* ({
+    tools,
+    request,
+    caller,
+  }: {
+    readonly tools: ReadonlyArray<PublishedTool>;
+    readonly request: Request;
+    readonly caller: Option.Option<CustomerAgentCaller>;
+  }) {
+    const calledTools = yield* readCalledTools({ tools, request });
+    yield* Effect.forEach(calledTools, (tool) =>
+      Match.value<AgentToolAuthorization>(tool).pipe(
+        Match.discriminatorsExhaustive("access")({
+          public: () => Effect.void,
+          "signed-in": ({ scope }) =>
+            Option.match(caller, {
+              onNone: () => refuse({ kind: "missing-token", scopes: [scope] }),
+              onSome: ({ grant }) =>
+                Effect.when(
+                  refuse({ kind: "insufficient-scope", scopes: [scope] }),
+                  Effect.sync(() => !grant.scopes.has(scope))
+                ),
+            }),
+          // Listed only after the live administrator check, so a caller
+          // reaches this only with the scope; the tool re-checks the grant.
+          administration: () =>
+            Effect.when(
+              refuse({ kind: "invalid-token" }),
+              Effect.sync(
+                () =>
+                  !Option.exists(caller, ({ grant }) =>
+                    grant.scopes.has(administrationAgentScope)
+                  )
+              )
+            ),
+        })
+      )
+    );
+  }
+);
 
 /**
  * Whether the caller may call the tool: any caller a public one, and an
@@ -72,6 +122,10 @@ export const isAgentToolGranted = (
       public: () => true,
       "signed-in": ({ scope }) =>
         Option.exists(caller, ({ grant }) => grant.scopes.has(scope)),
+      administration: () =>
+        Option.exists(caller, ({ grant }) =>
+          grant.scopes.has(administrationAgentScope)
+        ),
     })
   );
 

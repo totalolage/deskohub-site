@@ -359,6 +359,17 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
     ],
   },
   {
+    name: "no-administration-agent-tools-imports", diagnostic: "Only the MCP route imports the administration agent tools",
+    module: "apps/deskohub-workspace/features/agent-tools/customer-agent-tools.ts",
+    cases: [
+      ["rejects the customer registry importing the module", 'import { AdministrationAgentAccess } from "@/features/administration-agent-tools";\nexport const access = AdministrationAgentAccess;\n', true],
+      ["rejects a deep import from another route", 'import { makeAdministrationAgentTools } from "@/features/administration-agent-tools/administration-agent-tools";\nexport const tools = makeAdministrationAgentTools;\n', true, "apps/deskohub-workspace/app/llms.txt/route.ts"],
+      ["rejects a dynamic import", 'export const load = () => import("@/features/administration-agent-tools");\n', true],
+      ["permits the MCP route", 'import { AdministrationAgentAccess } from "@/features/administration-agent-tools";\nexport const access = AdministrationAgentAccess;\n', false, "apps/deskohub-workspace/app/api/mcp/route.ts"],
+      ["permits the module's own files", 'import { makeAdministrationAgentTools } from "./administration-agent-tools";\nexport const tools = makeAdministrationAgentTools;\n', false, "apps/deskohub-workspace/features/administration-agent-tools/administration-agent-access.ts"],
+    ],
+  },
+  {
     name: "no-better-auth-in-account-domain", diagnostic: "Keep Better Auth names out",
     module: `${account}/contracts.ts`,
     cases: [
