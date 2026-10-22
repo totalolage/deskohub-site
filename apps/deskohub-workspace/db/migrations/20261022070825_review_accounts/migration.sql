@@ -1,0 +1,2 @@
+ALTER TABLE "customer_accounts" ADD COLUMN "review" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "customer_accounts" ADD CONSTRAINT "customer_accounts_review_without_dotypos_customer_check" CHECK (not "review" or "dotypos_customer_id" is null);
