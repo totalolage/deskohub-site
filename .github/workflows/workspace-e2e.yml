@@ -610,6 +610,7 @@ jobs:
           TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           WORKSPACE_E2E_BETTER_AUTH_SECRETS: ${{ secrets.WORKSPACE_E2E_BETTER_AUTH_SECRETS }}
+          WORKSPACE_E2E_CRON_SECRET: ${{ secrets.WORKSPACE_E2E_CRON_SECRET }}
           DATABASE_URL: ${{ steps.preview-database.outputs.pooled_url }}
           WORKSPACE_E2E_DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
           WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ steps.preview-database.outputs.direct_url }}

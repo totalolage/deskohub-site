@@ -26,6 +26,7 @@ const workspaceE2EAdministrationRecipientLabels = {
   "access-code-creation": ["acc-admin"],
   "administrator-non-administrator-refusal": ["anr-member"],
   "administrator-sign-in-return": ["asr-admin"],
+  "automation-reservation-booked": ["arb-admin"],
   "email-campaign-recipient-preview": ["ecp-admin"],
 } as const satisfies Record<string, readonly string[]>;
 

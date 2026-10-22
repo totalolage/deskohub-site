@@ -78,6 +78,7 @@ Never put production Nexi, Dotypos, or database credentials in Preview. Never ad
 | `WORKSPACE_E2E_COORDINATOR_DATABASE_URL` | Secret | Allocator role; used only by the trusted allocation action. |
 | `WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL` | Secret | Connect-only role for the replay permit. |
 | `WORKSPACE_E2E_BETTER_AUTH_SECRETS` | Secret | Copy of the Preview-only `BETTER_AUTH_SECRETS`. Required to run checkout E2E: booker and case-specific verification or referral identity binders use it; administrator sessions use it too ([seeded sessions](referral-lane.md#seeded-sessions)). |
+| `WORKSPACE_E2E_CRON_SECRET` | Secret | Copy of the Preview-only `CRON_SECRET`. Vercel Cron never fires on previews, so the automation journey ticks the email automation planner through its cron route with this secret. Never copy the Production value; the journey fails closed without it. |
 | `WORKSPACE_E2E_DOTYPOS_*` | Secrets | E2E Dotypos cloud; mapped to `DOTYPOS_*` per step. |
 | `VERCEL_AUTOMATION_BYPASS_SECRET`, `NEON_API_KEY`, `TURBO_TOKEN` | Secrets | Protection bypass, branch lookup, remote cache. |
 
