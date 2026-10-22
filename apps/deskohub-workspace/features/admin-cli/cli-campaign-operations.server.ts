@@ -8,7 +8,7 @@ import {
   CliResourceNotFound,
   CliServiceUnavailable,
   CliSessionUnauthorized,
-  CurrentCliSession,
+  CurrentAdministrationCaller,
   type OperationInput,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Match } from "effect";
@@ -16,8 +16,10 @@ import { CurrentAdministrator } from "@/features/administrators/backend/current-
 import { CampaignOperations } from "@/features/email-campaigns/backend/campaign-operations.service";
 import { OperationRequestLedger } from "@/features/email-campaigns/backend/operation-request-ledger.service";
 import { mapAdministrationApiFailure } from "./administration-api-failure";
-import { CliAuthentication } from "./cli-authentication.service";
-import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
+import {
+  CliMutationIdempotency,
+  mutationScopeOf,
+} from "./cli-mutation-idempotency.service";
 import { cliOperationRequestLedger } from "./cli-operation-request-ledger";
 
 /**
@@ -45,43 +47,31 @@ const toCliFailure = (error: CampaignOperationError) =>
   );
 
 /**
- * Runs a campaign operation for the CLI session's administrator, with the
- * session's mutation ledger. Every campaign and automation endpoint is the
+ * Runs a campaign operation for the calling administrator, with the ledger
+ * of the caller's channel. Every campaign and automation endpoint is the
  * operation of the same name with the request's params, query and payload
  * as its input.
  */
 export const cliCampaignOperationInvoker = Effect.gen(function* () {
   const operations = yield* CampaignOperations;
-  const authentication = yield* CliAuthentication;
   const mutations = yield* CliMutationIdempotency;
 
   const invoke = <Name extends CampaignOperationName>(
     name: Name,
     input: OperationInput<CampaignOperationRegistry[Name]>
   ) =>
-    CurrentCliSession.pipe(
-      Effect.flatMap((session) =>
-        authentication.sessionAdministrator(session.id).pipe(
-          Effect.mapError((cause) =>
-            cause._tag === "CliSessionUnauthorized"
-              ? cause
-              : new CliServiceUnavailable({
-                  message: "The administration API is temporarily unavailable.",
-                })
-          ),
-          Effect.flatMap((administrator) =>
-            operations
-              .invoke(name, input)
-              .pipe(
-                mapAdministrationApiFailure(toCliFailure),
-                Effect.provideService(CurrentAdministrator, administrator),
-                Effect.provideService(
-                  OperationRequestLedger,
-                  cliOperationRequestLedger(mutations, session.id)
-                )
-              )
+    CurrentAdministrationCaller.pipe(
+      Effect.flatMap(({ actor, channel }) =>
+        operations
+          .invoke(name, input)
+          .pipe(
+            mapAdministrationApiFailure(toCliFailure),
+            Effect.provideService(CurrentAdministrator, actor),
+            Effect.provideService(
+              OperationRequestLedger,
+              cliOperationRequestLedger(mutations, mutationScopeOf(channel))
+            )
           )
-        )
       )
     );
 

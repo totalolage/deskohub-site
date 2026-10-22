@@ -2,14 +2,14 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import {
+  AdministrationAuthentication,
   AdministrationLegacyUsername,
   type CampaignOperationError,
   type CampaignOperationName,
   type CampaignOperations as CampaignOperationRegistry,
-  CliBearerAuthentication,
   CliMutationRequestId,
   CliSessionId,
-  CurrentCliSession,
+  CurrentAdministrationCaller,
   campaignOperationEndpoints,
   campaignOperations,
   dhwVersionHeader,
@@ -649,23 +649,10 @@ const handleCliRequest = await (async () => {
   const { CliMutationIdempotency } = await import(
     "@/features/admin-cli/cli-mutation-idempotency.service"
   );
-  const { CliAuthentication } = await import(
-    "@/features/admin-cli/cli-authentication.service"
-  );
   const { CampaignOperations } = await import("./campaign-operations.service");
   const { unhandledHttpApiGroups } = await import(
     "@/shared/testing/http-api-test-groups.test-utils"
   );
-  const session = {
-    id: sessionId,
-    approvedBy: null,
-    clientName: "contract client",
-    cliVersion: currentDhwVersion,
-    buildTarget: "development" as const,
-    createdAt: "2026-10-19T08:00:00.000Z",
-    lastUsedAt: "2026-10-19T08:00:00.000Z",
-    expiresAt: null,
-  };
   return HttpRouter.toWebHandler(
     HttpApiBuilder.layer(WorkspaceAdminApi).pipe(
       Layer.provide(AdminCliCampaignsApiHandlers),
@@ -675,18 +662,16 @@ const handleCliRequest = await (async () => {
       ),
       Layer.provide(
         Layer.mergeAll(
-          Layer.succeed(CliBearerAuthentication, {
+          Layer.succeed(AdministrationAuthentication, {
             bearer: (httpEffect) =>
-              Effect.provideService(httpEffect, CurrentCliSession, session),
+              Effect.provideService(httpEffect, CurrentAdministrationCaller, {
+                actor: administrator,
+                channel: { _tag: "CliSession", sessionId },
+              }),
           }),
           CliClientCompatibilityLive,
           CampaignOperations.Live,
-          CliMutationIdempotency.Default.pipe(
-            Layer.provide(testDatabase.layer)
-          ),
-          Layer.mock(CliAuthentication, {
-            sessionAdministrator: () => Effect.succeed(administrator),
-          })
+          CliMutationIdempotency.Default.pipe(Layer.provide(testDatabase.layer))
         )
       ),
       Layer.provide(NodeHttpServer.layerHttpServices)

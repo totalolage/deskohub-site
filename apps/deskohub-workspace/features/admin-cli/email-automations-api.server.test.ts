@@ -36,7 +36,6 @@ import { CampaignDeliveryMismatch } from "@/features/email-campaigns/errors";
 import {
   authorizedCliRequest,
   ClaimEveryCliMutation,
-  CliSessionAdministrator,
   cliClientVersion,
   cliSessionAdministrator,
   GrantedAdministrator,
@@ -81,15 +80,14 @@ const callAutomationsApi = <A, E>(
   stubs: AutomationServiceStubs = {},
   options: {
     readonly dhwVersion?: string;
-    readonly bearer?: Layer.Layer<never>;
+    readonly bearer?: typeof UnauthorizedCliRequest;
   } = {}
 ) => {
   const dhwVersion = options.dhwVersion ?? automationsMinimumDhwVersion;
   return automationsClient.pipe(
     Effect.flatMap(call),
     Effect.provide(AdminCliAutomationsApiHandlers),
-    Effect.provide(options.bearer ?? authorizedCliRequest(dhwVersion)),
-    Effect.provide(CliSessionAdministrator),
+    Effect.provide(options.bearer ?? authorizedCliRequest()),
     Effect.provide(
       CampaignOperations.Default.pipe(
         Layer.provide(
