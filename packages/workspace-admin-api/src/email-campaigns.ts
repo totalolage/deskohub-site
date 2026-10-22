@@ -18,6 +18,7 @@ import {
 } from "./campaign-locale-and-purpose";
 import { DhwVersion, MinimumDhwVersion } from "./dhw-version";
 import {
+  AdministrationActionRecord,
   AdministrationAuthentication,
   AdministrationDotyposCustomerId,
   CliClientCompatibility,
@@ -702,6 +703,7 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
     ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .annotate(MinimumDhwVersion, Option.some(campaignsMinimumDhwVersion))
+  .middleware(AdministrationActionRecord)
   .middleware(AdministrationAuthentication)
   // Added last, so it runs first: an outdated `dhw` is refused before its
   // session is read. Every campaign endpoint already declares the
