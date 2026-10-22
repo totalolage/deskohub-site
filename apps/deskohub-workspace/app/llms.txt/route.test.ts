@@ -2,13 +2,13 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import { SiteToolsFeatureFlagService } from "@/features/agent-tools/site-tools-feature-flag.service";
 import { advertisedCatalogOfferings } from "@/features/checkout/public-offerings.test-utils";
 import { DiscountReleaseGateService } from "@/features/discounts/discount-release-gate.service";
 import type { Locale } from "@/features/i18n";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { type PublicPage, publicPages } from "@/features/public-pages";
 import { PublishedPublicPagesService } from "@/features/public-pages/backend";
-import { findLocalizedPublicPage } from "@/features/public-pages/page-markdown-negotiation";
 import { markdownLinkUrls } from "@/shared/markdown/markdown.test-utils";
 
 // Outside a Next.js render there is no cache to configure.
@@ -17,7 +17,11 @@ mock.module("next/cache", () => ({ ...nextCache, cacheLife: () => {} }));
 
 // Advertised pricing has its own tests; here every offering is at its
 // catalog price, and the office is listed only while its gate is open.
+const publicOfferings = await import(
+  "@/features/checkout/backend/checkout/public-offerings"
+);
 mock.module("@/features/checkout/backend/checkout/public-offerings", () => ({
+  ...publicOfferings,
   loadPublicPriceList: (locale: Locale) =>
     Effect.gen(function* () {
       const officeFlag = yield* OfficeReservationFeatureFlagService;
@@ -52,9 +56,19 @@ Object.assign(DiscountReleaseGateService, {
     discountCodes: false,
   }),
 });
+// The flag service's own tests cover the release; here the site tools are
+// on for every visitor.
+const originalSiteToolsLive = SiteToolsFeatureFlagService.Live;
+Object.assign(SiteToolsFeatureFlagService, {
+  Live: Layer.succeed(SiteToolsFeatureFlagService, {
+    isEnabled: Effect.succeed(true),
+    release: Effect.succeed("on"),
+  }),
+});
 afterAll(() => {
   Object.assign(PublishedPublicPagesService, { Live: originalLive });
   Object.assign(DiscountReleaseGateService, { Live: originalGatesLive });
+  Object.assign(SiteToolsFeatureFlagService, { Live: originalSiteToolsLive });
 });
 
 const { GET } = await import("./route");
@@ -76,7 +90,7 @@ describe("/llms.txt", () => {
     );
     expect(body).toStartWith("# Deskohub Workspace\n");
     expect(markdownLinkUrls(body)).toContain(
-      "https://workspace.deskohub.cz/cs-CZ/reservation/office"
+      "https://workspace.deskohub.cz/reservation/office"
     );
   });
 
@@ -92,7 +106,7 @@ describe("/llms.txt", () => {
     const body = await (await getLlmsTxt()).text();
     const listed = markdownLinkUrls(body)
       .filter((url) => url.startsWith("https://"))
-      .map((url) => findLocalizedPublicPage(new URL(url).pathname)?.pathname);
+      .map((url) => new URL(url).pathname);
 
     expect(listed).not.toContain("/meeting-room");
     expect(listed).not.toContain("/reservation/office");

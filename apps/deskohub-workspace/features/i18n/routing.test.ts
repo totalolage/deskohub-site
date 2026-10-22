@@ -1,11 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { getLocalizedDynamicPagePath, getLocalizedPagePath } from "./routing";
+import {
+  getLocalizedDynamicPagePath,
+  getLocalizedPagePath,
+  getPagePath,
+} from "./routing";
 
 describe("localized page paths", () => {
   test("prefixes a static page route with the locale", () => {
     expect(getLocalizedPagePath("cs-CZ", "/[locale]/account")).toBe(
       "/cs-CZ/account"
     );
+  });
+
+  test("drops the locale segment for a locale-agnostic path", () => {
+    expect(getPagePath("/[locale]/account")).toBe("/account");
   });
 
   test("fills a dynamic page route's parameters", () => {
