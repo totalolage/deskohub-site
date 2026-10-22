@@ -1,6 +1,7 @@
 import {
   AdministrationCampaignId,
   type AdministrationCampaignIdType,
+  AdministrationCampaignRecipientSkipReason,
   AdministrationDotyposCustomerId,
   type AutomationActivationType,
   type AutomationDetailType,
@@ -599,11 +600,18 @@ const describeRunProgress = (run: AutomationRunSummaryType) => {
     : `${run.outcome} (${run.outcomeReason})`;
 };
 
+/** The customer's current name and email, or why they're missing. */
+const describeRunCustomer = (run: AutomationRunSummaryType) =>
+  run.customerProfileStatus === "found"
+    ? [run.customerName ?? "", run.customerEmail ?? ""]
+    : [`(profile ${run.customerProfileStatus})`, ""];
+
 const formatRunRow = (run: AutomationRunSummaryType) =>
   [
     run.runId,
     `v${run.versionNumber}`,
     run.customerId,
+    ...describeRunCustomer(run),
     run.triggerAt,
     run.state,
     run.stepId,
@@ -636,6 +644,13 @@ const automationsRunsCommand = Command.make(
       Flag.optional,
       Flag.withDescription("Only ended runs with this outcome")
     ),
+    skipReason: Flag.choice(
+      "skip-reason",
+      AdministrationCampaignRecipientSkipReason.literals
+    ).pipe(
+      Flag.optional,
+      Flag.withDescription("Only runs skipped for this reason")
+    ),
     version: Flag.integer("version").pipe(
       Flag.withSchema(AutomationVersionNumber),
       Flag.optional,
@@ -659,7 +674,17 @@ const automationsRunsCommand = Command.make(
       Flag.withDescription("Runs per page, at most 100")
     ),
   },
-  ({ campaignId, cursor, customer, limit, outcome, state, step, version }) =>
+  ({
+    campaignId,
+    cursor,
+    customer,
+    limit,
+    outcome,
+    skipReason,
+    state,
+    step,
+    version,
+  }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       api
         .listAutomationRuns(accessToken, {
@@ -667,6 +692,7 @@ const automationsRunsCommand = Command.make(
           ...(Option.isSome(state) && { state: state.value }),
           ...(Option.isSome(step) && { stepId: step.value }),
           ...(Option.isSome(outcome) && { outcome: outcome.value }),
+          ...(Option.isSome(skipReason) && { skipReason: skipReason.value }),
           ...(Option.isSome(version) && { versionNumber: version.value }),
           ...(Option.isSome(customer) && { customerId: customer.value }),
           ...(Option.isSome(cursor) && { cursor: cursor.value }),
@@ -730,6 +756,11 @@ const formatRunStats = (stats: AutomationRunStatsType) =>
     ),
     ...AutomationRunOutcome.literals.map(
       (outcome) => `${outcome}\t${stats.byOutcome[outcome]}`
+    ),
+    ...AdministrationCampaignRecipientSkipReason.literals.flatMap((reason) =>
+      stats.bySkipReason[reason] === 0
+        ? []
+        : [`skipped (${reason})\t${stats.bySkipReason[reason]}`]
     ),
     `Steps: ${stats.bySteps.length}`,
     ...stats.bySteps.map((step) =>
