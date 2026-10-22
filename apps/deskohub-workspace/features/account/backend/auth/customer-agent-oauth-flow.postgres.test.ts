@@ -2486,7 +2486,10 @@ describe.skipIf(!testDatabase)(
         (port: string) => `http://localhost:${port}/callback?`,
       ],
       ["a fragment", (port: string) => `http://localhost:${port}/callback#x`],
-      ["an empty fragment", (port: string) => `http://localhost:${port}/callback#`],
+      [
+        "an empty fragment",
+        (port: string) => `http://localhost:${port}/callback#`,
+      ],
     ] as const;
 
     test.each(unregisteredLoopbackRedirectUris)(
