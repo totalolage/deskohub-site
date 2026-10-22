@@ -15,7 +15,7 @@ import {
 import { NodeHttpServer } from "@effect/platform-node";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/client/validators/ajv";
 import { Effect, Layer, Option, Schema } from "effect";
-import { HttpRouter } from "effect/unstable/http";
+import { FetchHttpClient, HttpRouter } from "effect/unstable/http";
 import {
   HttpApi,
   HttpApiBuilder,
@@ -306,6 +306,35 @@ describe("administration agent tool calls", () => {
         authorization: `Bearer ${token}`,
       }))
     );
+  });
+
+  test("keep every request in process when the fetch client was built elsewhere first", async () => {
+    const tool = tools.find(({ name }) => name === "admin_cancel_reservation");
+
+    const result = await Effect.scoped(
+      Effect.gen(function* () {
+        // The Workspace memo map shares the fetch client layer: another
+        // feature may have built it before, with the global fetch.
+        const memoMap = yield* Layer.makeMemoMap;
+        const scope = yield* Effect.scope;
+        yield* Layer.buildWithMemoMap(FetchHttpClient.layer, memoMap, scope);
+        const built = yield* Layer.buildWithMemoMap(
+          AdministrationApiClient.forApi(TestApi).pipe(
+            Layer.provide(Layer.succeed(AdministrationApiTransport, transport))
+          ),
+          memoMap,
+          scope
+        );
+        return yield* tool!
+          .call({ reservationId: "r-1", sendEmail: true }, Option.some(caller))
+          .pipe(Effect.provideContext(built), Effect.result);
+      })
+    ).pipe(Effect.runPromise);
+
+    expect(resultOf(result._tag === "Success" && result.success)).toMatchObject(
+      { outcome: "confirmation-required" }
+    );
+    expect(authorizations).toEqual(["Bearer synthetic-agent-token"]);
   });
 
   test("answer a list as items", async () => {

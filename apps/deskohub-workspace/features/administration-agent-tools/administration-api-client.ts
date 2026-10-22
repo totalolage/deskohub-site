@@ -89,7 +89,19 @@ export class AdministrationApiClient extends Context.Service<
     Layer.effect(
       AdministrationApiClient,
       Effect.gen(function* () {
+        const transport = yield* AdministrationApiTransport;
+        const fetch: typeof globalThis.fetch = Object.assign(
+          (input: RequestInfo | URL, init?: RequestInit) =>
+            transport(new Request(input, init)),
+          { preconnect: globalThis.fetch.preconnect }
+        );
         const httpClient = (yield* HttpClient.HttpClient).pipe(
+          // The fetch client reads `Fetch` from the fiber that sends each
+          // request, so the transport is pinned on every request here:
+          // none of them may reach the network.
+          HttpClient.transformResponse(
+            Effect.provideService(FetchHttpClient.Fetch, fetch)
+          ),
           HttpClient.mapRequestEffect(
             Effect.fn("AdministrationApiClient.authorize")(function* (
               request: HttpClientRequest.HttpClientRequest
@@ -134,23 +146,7 @@ export class AdministrationApiClient extends Context.Service<
             ),
         } satisfies IAdministrationApiClient;
       })
-    ).pipe(
-      Layer.provide(FetchHttpClient.layer),
-      Layer.provide(
-        Layer.effect(
-          FetchHttpClient.Fetch,
-          Effect.gen(function* () {
-            const transport = yield* AdministrationApiTransport;
-            const fetch: typeof globalThis.fetch = Object.assign(
-              (input: RequestInfo | URL, init?: RequestInit) =>
-                transport(new Request(input, init)),
-              { preconnect: globalThis.fetch.preconnect }
-            );
-            return fetch;
-          })
-        )
-      )
-    );
+    ).pipe(Layer.provide(FetchHttpClient.layer));
 
   static Default = this.forApi(WorkspaceAdminApi);
 }
