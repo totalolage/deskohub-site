@@ -17,6 +17,7 @@ import { openAdminBrowserPage, sanitizedBrowserOperation } from "../admin-case";
 import { getConfig, type WorkspaceE2EConfig } from "../config";
 import {
   administrationAgentRequestedScopes,
+  type CustomerAgentRequestedScope,
   isCustomerAgentCallbackUrl,
   isCustomerAgentConsentUrl,
   localizeCustomerAgentConsentUrl,
@@ -312,7 +313,9 @@ const connectTestAgent = Effect.fn("connectTestAgent")(function* ({
     : administrationAgentRequestedScopes.filter(
         (scope) => scope !== administrationAgentScope
       );
-  const withheld = administrator ? [] : [administrationAgentScope];
+  const withheld: readonly CustomerAgentRequestedScope[] = administrator
+    ? []
+    : [administrationAgentScope];
   const accessToken = yield* step(
     "exchange-agent-code",
     workspaceE2ETimeouts.customerMcpRequest,

@@ -240,10 +240,8 @@ const expectAdministrationContent = async (page: Page, heading: string) => {
     .getByRole("navigation", { name: "Administration" })
     .first()
     .waitFor({ state: "visible", timeout: workspaceE2ETimeouts.browserAction });
-  await page
-    .getByRole("heading", { level: 1, name: heading })
-    .waitFor({
-      state: "attached",
-      timeout: workspaceE2ETimeouts.browserAction,
-    });
+  await page.getByRole("heading", { level: 1, name: heading }).waitFor({
+    state: "attached",
+    timeout: workspaceE2ETimeouts.browserAction,
+  });
 };
