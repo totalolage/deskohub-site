@@ -66,9 +66,9 @@ type AvailabilityResult = Omit<
 
 export const checkAvailabilityTool = defineAgentTool({
   name: "check_availability",
-  title: "Check DH Workspace availability",
+  title: "Check Deskohub Workspace availability",
   description:
-    "Checks whether a DH Workspace product looks free: cowork desks for a date or date range, the meeting room for a start time and duration, or the office for a date range and seats. Answers are advisory, from a cache refreshed every minute; availability is confirmed when the customer books on the website.",
+    "Checks whether a Deskohub Workspace product looks free: cowork desks for a date or date range, the meeting room for a start time and duration, or the office for a date range and seats. Answers are advisory, from a cache refreshed every minute; availability is confirmed when the customer books on the website.",
   access: "public",
   readOnly: true,
   unavailableCode: "availability_unavailable",

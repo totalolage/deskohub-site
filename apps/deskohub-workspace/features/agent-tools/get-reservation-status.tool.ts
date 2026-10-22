@@ -73,7 +73,7 @@ type ReservationStatusResult = typeof outputSchema.Type;
 
 export const getReservationStatusTool = defineSignedInAgentTool({
   name: "get_reservation_status",
-  title: "Check a DH Workspace reservation",
+  title: "Check a Deskohub Workspace reservation",
   description:
     "Reports the status of one of the signed-in customer's own orders: whether it is held, paid, confirmed, cancelled, or expired, with its time and price. It never returns door codes or contact details; the customer finds those on the status page.",
   scope: "reservations:read",

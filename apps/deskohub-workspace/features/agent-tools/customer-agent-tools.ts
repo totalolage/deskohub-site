@@ -10,6 +10,7 @@ import { SharedReservationRecordsLive } from "@/features/reservation/backend/res
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { AgentTool, CallableAgentTools } from "./agent-tool";
+import type { CurrentAgentToolClient } from "./agent-tool-client";
 import { checkAvailabilityTool } from "./check-availability.tool";
 import type { SignedInAgentToolRequirements } from "./customer-agent-caller";
 import { getQuoteTool } from "./get-quote.tool";
@@ -45,6 +46,7 @@ export const customerAgentTools: ReadonlyArray<
     | Layer.Success<typeof CustomerAgentToolsLive>
     | SignedInAgentToolRequirements
     | CallableAgentTools
+    | CurrentAgentToolClient
   >
 > = [
   listOfferingsTool,

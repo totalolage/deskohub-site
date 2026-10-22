@@ -3,13 +3,23 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/client";
-import { type Browser, chromium, type Page } from "@playwright/test";
+import type {
+  McpUiStyles,
+  McpUiTheme,
+} from "@modelcontextprotocol/ext-apps/app-bridge";
+import {
+  type Browser,
+  chromium,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import type { Schema } from "effect";
 import { type Locale, m } from "@/features/i18n";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import type { BookingMode } from "../show-booking.schema";
 import {
   availabilityResult,
+  bookingOfferingPages,
   bookingOfferings,
   bookingToday,
   quoteResult,
@@ -68,6 +78,22 @@ type ToolAnswers = Partial<
   Record<string, (args: Schema.JsonObject) => ReturnType<typeof toolResult>>
 >;
 
+/** Synthetic host palettes, shaped like a host's style variables. */
+const hostStyleVariables = {
+  light: {
+    "--color-background-primary": "#ffffff",
+    "--color-text-primary": "#1f1e1d",
+    "--color-text-danger": "#a32222",
+    "--color-ring-primary": "#2c64d0",
+  },
+  dark: {
+    "--color-background-primary": "#262624",
+    "--color-text-primary": "#f5f4ef",
+    "--color-text-danger": "#f28b82",
+    "--color-ring-primary": "#7aa7ff",
+  },
+} satisfies Record<McpUiTheme, Partial<McpUiStyles>>;
+
 const toLocale = (locale: Schema.Json | undefined): Locale =>
   locale === "cs-CZ" ? "cs-CZ" : "en-US";
 
@@ -97,17 +123,23 @@ const defaultAnswers: ToolAnswers = {
 const openBookingView = async ({
   mode,
   locale,
-  hostLocale = locale,
+  hostLocale = locale as string | null,
+  hostTheme,
+  hostStyles,
   requestedLocale = locale as Locale | null,
   resultLocale = locale,
   answers = {},
   opensLinks = true,
   chatgptBridge = false,
+  chatgptGlobals = {},
   waitForForm = true,
 }: {
   readonly mode: BookingMode;
   readonly locale: Locale;
-  readonly hostLocale?: string;
+  /** The host context's language; `null` when it sends none. */
+  readonly hostLocale?: string | null;
+  readonly hostTheme?: McpUiTheme;
+  readonly hostStyles?: Partial<McpUiStyles>;
   /** The agent's `locale` argument; `null` when it sends none. */
   readonly requestedLocale?: Locale | null;
   readonly resultLocale?: Locale;
@@ -116,6 +148,11 @@ const openBookingView = async ({
   readonly opensLinks?: boolean;
   /** Whether the view gets ChatGPT's `window.openai` bridge. */
   readonly chatgptBridge?: boolean;
+  /** The theme and language ChatGPT's bridge reports. */
+  readonly chatgptGlobals?: Pick<
+    NonNullable<Window["openai"]>,
+    "theme" | "locale"
+  >;
   /** Whether to wait until the view shows the booking form. */
   readonly waitForForm?: boolean;
 }) => {
@@ -144,15 +181,18 @@ const openBookingView = async ({
       externalOpened.resolve(options);
     });
     // ChatGPT injects its bridge into the view's frame before the view runs.
-    await page.addInitScript(() => {
+    await page.addInitScript((globals) => {
       if (window === window.top) return;
       Object.assign(window, {
-        openai: { openExternal: window.openBookingExternal },
+        openai: { ...globals, openExternal: window.openBookingExternal },
       });
-    });
+    }, chatgptGlobals);
   }
+  const hostBackground =
+    hostStyles?.["--color-background-primary"] ??
+    (hostTheme === "dark" ? "#212121" : "#ffffff");
   await page.setContent(
-    "<!doctype html><html><head><meta charset='utf-8'></head><body style='margin:0'></body></html>"
+    `<!doctype html><html><head><meta charset='utf-8'></head><body style='margin:0; background:${hostBackground}'></body></html>`
   );
   await page.evaluate(
     (harness) => {
@@ -160,7 +200,11 @@ const openBookingView = async ({
     },
     {
       html: widgetHtml,
-      hostLocale,
+      host: {
+        ...(hostLocale !== null && { locale: hostLocale }),
+        ...(hostTheme && { theme: hostTheme }),
+        ...(hostStyles && { styleVariables: hostStyles }),
+      },
       opensLinks,
       toolArguments: requestedLocale ? { locale: requestedLocale } : {},
       toolResult: toolResult(showBookingResult({ mode, locale: resultLocale })),
@@ -322,7 +366,180 @@ describe.skipIf(!chromiumAvailable)("booking view", () => {
         await page.close();
       }
     });
+
+    for (const theme of ["light", "dark"] as const) {
+      test(`website mode in ${locale} with a ${theme} host: links the family's website page, never a booking`, async () => {
+        const { page, view, calls, linkOpened } = await openBookingView({
+          mode: "website",
+          locale,
+          hostTheme: theme,
+        });
+        try {
+          await expect(
+            view.locator("html").getAttribute("data-theme")
+          ).resolves.toBe(theme);
+          await checkAvailability(view, locale);
+          const websiteLink = view.getByRole("link", {
+            name: m.bookingWidgetOpenWebsite({}, { locale }),
+          });
+          await websiteLink.waitFor();
+          await expect(
+            view
+              .getByRole("link")
+              .evaluateAll((links) =>
+                links.map((link) => link.getAttribute("href"))
+              )
+          ).resolves.toEqual([bookingOfferingPages().cowork]);
+          await expect(
+            view.getByText(quoteResult().reservation_url).count()
+          ).resolves.toBe(0);
+          await expect(
+            view
+              .getByRole("button", {
+                name: m.bookingWidgetReserve({}, { locale }),
+              })
+              .count()
+          ).resolves.toBe(0);
+          await capture(page, `website-${theme}-${locale}`);
+
+          await websiteLink.click();
+          await expect(linkOpened).resolves.toBe(bookingOfferingPages().cowork);
+          expect(calls.map(({ name }) => name)).toEqual([
+            "check_availability",
+            "get_quote",
+          ]);
+        } finally {
+          await page.close();
+        }
+      });
+    }
   }
+
+  test("website mode links the page of the family the customer checked", async () => {
+    const { page, view, linkOpened } = await openBookingView({
+      mode: "website",
+      locale: "en-US",
+    });
+    try {
+      const websiteLink = view.getByRole("link", {
+        name: m.bookingWidgetOpenWebsite({}, { locale: "en-US" }),
+      });
+      await checkAvailability(view, "en-US");
+      await websiteLink.waitFor();
+      // Another family makes the check stale, and its link with it.
+      await view
+        .getByText(m.bookingWidgetFamilyOffice({}, { locale: "en-US" }), {
+          exact: true,
+        })
+        .click();
+      await expect(websiteLink.count()).resolves.toBe(0);
+      await checkAvailability(view, "en-US");
+      await websiteLink.click();
+      await expect(linkOpened).resolves.toBe(bookingOfferingPages().office);
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("follows the host's theme and style variables as they change", async () => {
+    const { page, view } = await openBookingView({
+      mode: "reservation_page",
+      locale: "en-US",
+      hostTheme: "light",
+      hostStyles: hostStyleVariables.light,
+    });
+    // Read once the controls' colour transitions have finished.
+    const colors = (locator: Locator) =>
+      locator.evaluate(async (element) => {
+        await Promise.all(
+          element.getAnimations().map((animation) => animation.finished)
+        );
+        const style = getComputedStyle(element);
+        return [style.backgroundColor, style.color];
+      });
+    const body = view.locator("body");
+    const checkButton = view.getByRole("button", {
+      name: m.bookingWidgetCheck({}, { locale: "en-US" }),
+    });
+    const changeTheme = async (theme: McpUiTheme) => {
+      await page.evaluate(
+        ([theme, styleVariables]) =>
+          window.changeBookingHost({ theme, styleVariables }),
+        [theme, hostStyleVariables[theme]] as const
+      );
+      await view.locator(`html[data-theme='${theme}']`).waitFor();
+      await page.evaluate((background) => {
+        document.body.style.background = background;
+      }, hostStyleVariables[theme]["--color-background-primary"]);
+    };
+    try {
+      await checkAvailability(view, "en-US");
+      // Off the button, which shows its hover tint after the click.
+      await page.mouse.move(0, 0);
+      await expect(colors(body)).resolves.toEqual([
+        "rgb(255, 255, 255)",
+        "rgb(31, 30, 29)",
+      ]);
+      await expect(colors(checkButton)).resolves.toEqual([
+        "rgb(184, 59, 6)",
+        "rgb(255, 255, 255)",
+      ]);
+      await capture(page, "host-styles-light-en-US");
+
+      // In a dark host the accent turns light and the text on it dark.
+      await changeTheme("dark");
+      await expect(colors(body)).resolves.toEqual([
+        "rgb(38, 38, 36)",
+        "rgb(245, 244, 239)",
+      ]);
+      await expect(colors(checkButton)).resolves.toEqual([
+        "rgb(240, 138, 75)",
+        "rgb(20, 21, 42)",
+      ]);
+      await capture(page, "host-styles-dark-en-US");
+
+      await changeTheme("light");
+      await expect(colors(checkButton)).resolves.toEqual([
+        "rgb(184, 59, 6)",
+        "rgb(255, 255, 255)",
+      ]);
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("takes the theme and language from ChatGPT's bridge when the host context lacks them", async () => {
+    const { page, view, calls } = await openBookingView({
+      mode: "website",
+      locale: "cs-CZ",
+      hostLocale: null,
+      requestedLocale: null,
+      resultLocale: "en-US",
+      chatgptBridge: true,
+      chatgptGlobals: { theme: "dark", locale: "cs-CZ" },
+    });
+    try {
+      expect(calls[0]).toEqual({
+        name: "list_offerings",
+        args: { locale: "cs-CZ" },
+      });
+      const html = view.locator("html");
+      await expect(html.getAttribute("data-theme")).resolves.toBe("dark");
+
+      // ChatGPT announces a theme change on its bridge.
+      await html.evaluate(() => {
+        Object.assign(window.openai ?? {}, { theme: "light" });
+        window.dispatchEvent(
+          new CustomEvent("openai:set_globals", {
+            detail: { globals: { theme: "light" } },
+          })
+        );
+      });
+      await expect(html.getAttribute("data-theme")).resolves.toBe("light");
+    } finally {
+      await page.close();
+    }
+  });
 
   test("follows a Czech host when the agent asks for no locale, listing the offerings again in Czech", async () => {
     const { page, view, calls } = await openBookingView({

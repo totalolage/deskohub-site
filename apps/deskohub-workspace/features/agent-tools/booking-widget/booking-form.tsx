@@ -124,10 +124,10 @@ const getFailureMessage = (
 
 /**
  * The booking view: the customer picks a family, its options and a date,
- * checks availability and the price, and continues on the site, either
- * through the Pay page of a booking started here or the prefilled
- * reservation page. Results are announced through live regions that stay
- * mounted.
+ * checks availability and the price, and continues on the site: through the
+ * Pay page of a booking started here, the prefilled reservation page, or, in
+ * website mode, the family's page on the website. Results are announced
+ * through live regions that stay mounted.
  */
 export function BookingForm({
   start,
@@ -159,6 +159,7 @@ export function BookingForm({
     onSelectionChange();
   };
   const familyOfferings = getFamilyOfferings(start.offerings, family);
+  const offeringPage = start.offeringPages[family];
   const checked = AsyncResult.isSuccess(check) ? check.value : undefined;
   const reserved = AsyncResult.isSuccess(reservation)
     ? reservation.value
@@ -269,6 +270,7 @@ export function BookingForm({
                         field.onChange(event);
                         onSelectionChange();
                       }}
+                      className="bg-surface"
                       type="date"
                       variant={fieldState.invalid ? "error" : "default"}
                     />
@@ -293,6 +295,7 @@ export function BookingForm({
                           field.onChange(event);
                           onSelectionChange();
                         }}
+                        className="bg-surface"
                         step={3600}
                         type="time"
                         variant={fieldState.invalid ? "error" : "default"}
@@ -320,6 +323,7 @@ export function BookingForm({
                       <FormControl>
                         <Input
                           {...field}
+                          className="bg-surface"
                           inputMode="numeric"
                           min={1}
                           onChange={(event) => {
@@ -399,41 +403,55 @@ export function BookingForm({
         {linkFailed && <p>{m.bookingWidgetLinkFailed({}, { locale })}</p>}
       </div>
 
-      {checked?.quote && checked.selection && (
-        <div className="space-y-4">
-          {reserved
-            ? link(
-                reserved.pay_url,
-                m.bookingWidgetOpenPaymentPage({}, { locale })
-              )
-            : start.mode === "reserve" && (
-                <Button
-                  onClick={() =>
-                    checked.selection && onReserve(checked.selection)
-                  }
-                  pending={AsyncResult.isWaiting(reservation)}
-                  type="button"
-                >
-                  {m.bookingWidgetReserve({}, { locale })}
-                </Button>
-              )}
-          {(start.mode === "reservation_page" ||
-            AsyncResult.isFailure(reservation)) && (
+      {/* Website mode starts no booking and links no checkout: once
+          checked, the customer continues on the family's page. */}
+      {start.mode === "website"
+        ? (checked || AsyncResult.isFailure(check)) &&
+          !AsyncResult.isWaiting(check) &&
+          offeringPage && (
             <div className="space-y-2">
-              {/* After a failed booking, the alert already offers the page. */}
-              {start.mode === "reservation_page" && (
-                <p className="text-sm">
-                  {m.bookingWidgetReservationPageHint({}, { locale })}
-                </p>
-              )}
-              {link(
-                checked.quote.reservation_url,
-                m.bookingWidgetOpenReservationPage({}, { locale })
+              <p className="text-sm">
+                {m.bookingWidgetWebsiteHint({}, { locale })}
+              </p>
+              {link(offeringPage, m.bookingWidgetOpenWebsite({}, { locale }))}
+            </div>
+          )
+        : checked?.quote &&
+          checked.selection && (
+            <div className="space-y-4">
+              {reserved
+                ? link(
+                    reserved.pay_url,
+                    m.bookingWidgetOpenPaymentPage({}, { locale })
+                  )
+                : start.mode === "reserve" && (
+                    <Button
+                      onClick={() =>
+                        checked.selection && onReserve(checked.selection)
+                      }
+                      pending={AsyncResult.isWaiting(reservation)}
+                      type="button"
+                    >
+                      {m.bookingWidgetReserve({}, { locale })}
+                    </Button>
+                  )}
+              {(start.mode === "reservation_page" ||
+                AsyncResult.isFailure(reservation)) && (
+                <div className="space-y-2">
+                  {/* After a failed booking, the alert already offers the page. */}
+                  {start.mode === "reservation_page" && (
+                    <p className="text-sm">
+                      {m.bookingWidgetReservationPageHint({}, { locale })}
+                    </p>
+                  )}
+                  {link(
+                    checked.quote.reservation_url,
+                    m.bookingWidgetOpenReservationPage({}, { locale })
+                  )}
+                </div>
               )}
             </div>
           )}
-        </div>
-      )}
     </main>
   );
 }
@@ -518,7 +536,9 @@ function OfferingChoices({
             align="center"
             // Meeting-room durations share a name.
             key={offering.tier ?? offering.duration ?? offering.name}
-            tone="plain"
+            // The neutral tone tints the text colour, so it follows the
+            // host's theme; the plain tone is white.
+            tone="neutral"
           >
             <input
               checked={selected(offering)}
@@ -531,7 +551,7 @@ function OfferingChoices({
               <span className="font-semibold">
                 {offering.duration_label ?? offering.name}
               </span>
-              <span className="text-sm text-navy-blue/70">
+              <span className="text-sm text-muted">
                 {{
                   day: m.bookingWidgetPricePerDay,
                   booking: m.bookingWidgetPricePerBooking,
@@ -585,7 +605,7 @@ function SiteLink({
           {label}
         </a>
       </Button>
-      <span className="break-all text-xs text-navy-blue/70">{url}</span>
+      <span className="break-all text-xs text-muted">{url}</span>
     </div>
   );
 }

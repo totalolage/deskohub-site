@@ -40,3 +40,14 @@ export const getPriceFamilies = <Offering extends PublicPriceListOffering>(
         ]
       : [];
   });
+
+/** The id of a family's price-list heading on the pricing page. */
+export const getPriceFamilyHeadingId = (kind: WorkspaceReservationKind) =>
+  `pricing-${kind}-title`;
+
+/**
+ * The pricing page at a family's price list, without a locale prefix, for
+ * links customers receive outside the app.
+ */
+export const getShareablePriceFamilyPath = (kind: WorkspaceReservationKind) =>
+  `/pricing#${getPriceFamilyHeadingId(kind)}`;

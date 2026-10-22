@@ -2,21 +2,25 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { Effect, type Schema } from "effect";
 import { m } from "@/features/i18n";
+import type { AgentToolClient } from "./agent-tool-client";
 import type { ShowBookingResult } from "./show-booking.schema";
 
 const { makeAgentToolTestServices } = await import("./agent-tools.test-utils");
 const { CallableAgentTools } = await import("./agent-tool");
+const { CurrentAgentToolClient } = await import("./agent-tool-client");
 const { listOfferingsTool } = await import("./list-offerings.tool");
 const { showBookingTool } = await import("./show-booking.tool");
 
 const showBooking = (
   args: Schema.Json,
-  callable: ReadonlyArray<string> = ["show_booking"]
+  callable: ReadonlyArray<string> = ["show_booking"],
+  client: AgentToolClient = "other"
 ) =>
   showBookingTool
     .call(args)
     .pipe(
       Effect.provideService(CallableAgentTools, new Set(callable)),
+      Effect.provideService(CurrentAgentToolClient, client),
       Effect.provide(makeAgentToolTestServices().layer),
       Effect.runPromise
     ) as Promise<ShowBookingResult>;
@@ -38,6 +42,36 @@ describe("show_booking", () => {
     expect(result.note).toBe(
       m.agentToolBookingViewReservationPageNote({}, { locale: "en-US" })
     );
+  });
+
+  test("hands off to the reservation page in the Claude apps", async () => {
+    const result = await showBooking({}, ["show_booking"], "claude");
+
+    expect(result.booking_mode).toBe("reservation_page");
+    expect(result).not.toHaveProperty("offering_pages");
+  });
+
+  test("links each family's page on the website in ChatGPT, whose directory admits no checkout", async () => {
+    const result = await showBooking({}, ["show_booking"], "chatgpt");
+
+    expect(result.booking_mode).toBe("website");
+    expect(result.note).toBe(
+      m.agentToolBookingViewWebsiteNote({}, { locale: "en-US" })
+    );
+    const pages = Object.entries(result.offering_pages ?? {});
+    expect(pages.map(([family]) => family)).toEqual([
+      "cowork",
+      "meeting-room",
+      "office",
+    ]);
+    for (const [family, page] of pages) {
+      const url = new URL(page);
+      expect({ path: url.pathname, search: url.search }).toEqual({
+        path: "/pricing",
+        search: "",
+      });
+      expect(url.hash).toContain(family);
+    }
   });
 
   test("lists the offerings list_offerings lists, in the requested locale", async () => {
