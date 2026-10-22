@@ -54,6 +54,12 @@ import {
   lookupMagicLinkDeliveryLocale,
   type MagicLinkLocaleLookup,
 } from "../customer-locale-preference";
+import {
+  type AdministrationTokenRevocation,
+  type AdministratorGrantCheck,
+  guardAdministrationScope,
+  narrowAdministrationOnConsent,
+} from "./administration-scope-guard";
 import type { PasskeyRelyingParty } from "./auth-hosts";
 import {
   authOptions,
@@ -111,6 +117,16 @@ export type WorkspaceAuthConfig = ReviewLoginConfig & {
   readonly customerMcpResource: string;
   /** Test-only stub for fetching agents' Client ID Metadata Documents. */
   readonly clientMetadataTransport?: CustomerAgentClientMetadataTransport;
+  /**
+   * Reads the administrator grant on every consent to the administration
+   * scope; a failure refuses the consent.
+   */
+  readonly hasAdministratorGrant: AdministratorGrantCheck;
+  /**
+   * Deletes an agent's tokens that carry the administration scope although
+   * its consent no longer names it, after every accepted consent.
+   */
+  readonly revokeUnconsentedAdministrationTokens: AdministrationTokenRevocation;
   readonly httpsOnly: boolean;
   /**
    * The `login_email_code` read, once per sign-in email; a rejection counts
@@ -1031,12 +1047,15 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
     hooks: {
       before: createAuthMiddleware((ctx) =>
         runWorkspaceEffect("account.auth.guard", { boundary: "route" })(
-          guardAuthRequest({
-            config,
-            request: ctx,
-            sessionUserId: async () =>
-              (await getSessionFromCtx(ctx))?.user.id ?? undefined,
-          }).pipe(
+          guardAdministrationScope(ctx, config.hasAdministratorGrant).pipe(
+            Effect.andThen(
+              guardAuthRequest({
+                config,
+                request: ctx,
+                sessionUserId: async () =>
+                  (await getSessionFromCtx(ctx))?.user.id ?? undefined,
+              })
+            ),
             // Auth routes bypass the proxy, so they classify their own headers.
             Effect.provideService(
               CurrentAgentTraffic,
@@ -1050,6 +1069,14 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
       after: createAuthMiddleware(
         async (ctx) =>
           completeAuthRequest(ctx) ??
+          (await runWorkspaceEffect("account.agent-consent.narrow", {
+            boundary: "route",
+          })(
+            narrowAdministrationOnConsent(
+              ctx,
+              config.revokeUnconsentedAdministrationTokens
+            )
+          )) ??
           runWorkspaceEffect("account.passkey.reauthentication-options", {
             boundary: "route",
           })(requireReauthenticationUserVerification(ctx))

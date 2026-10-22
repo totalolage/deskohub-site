@@ -6,6 +6,7 @@ import type {
   CallToolResult,
   InitializeResult,
   ListToolsResult,
+  Resource,
 } from "@modelcontextprotocol/client";
 import { DateTime, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -116,6 +117,21 @@ const { makeAgentToolTestServices, workspaceDateFromToday } = await import(
   "@/features/agent-tools/agent-tools.test-utils"
 );
 const services = makeAgentToolTestServices();
+const preparePayStateModule = await import(
+  "@/features/reservation/actions/prepare-pay-state"
+);
+/** Every booking the route started, so a test can assert it booked nothing. */
+const bookingCalls: unknown[] = [];
+mock.module("@/features/reservation/actions/prepare-pay-state", () => ({
+  ...preparePayStateModule,
+  prepareWorkspacePayState: (
+    input: Parameters<typeof preparePayStateModule.prepareWorkspacePayState>[0]
+  ) =>
+    Effect.sync(() => bookingCalls.push(input)).pipe(
+      Effect.andThen(preparePayStateModule.prepareWorkspacePayState(input))
+    ),
+}));
+
 const { listOfferingsTool } = await import(
   "@/features/agent-tools/list-offerings.tool"
 );
@@ -167,7 +183,7 @@ const whoamiTool = defineSignedInAgentTool({
 });
 
 mock.module("@/features/agent-tools/customer-agent-tools", () => ({
-  customerAgentTools: [
+  publishedCustomerAgentTools: [
     listOfferingsTool,
     checkAvailabilityTool,
     getQuoteTool,
@@ -248,9 +264,15 @@ const readJsonRpc = async (response: Response) => {
 const callTool = (name: string, args: Schema.JsonObject) =>
   rpc<CallToolResult>("tools/call", { name, arguments: args });
 
-/** An SDK client on the 2026 per-request leg, sending these extra headers. */
-const connectClient = async (headers: Record<string, string> = {}) => {
-  const client = new Client({ name: "route-test", version: "1.0.0" });
+/**
+ * An SDK client on the 2026 per-request leg, named `name` in its
+ * `clientInfo` and sending these extra headers.
+ */
+const connectClient = async (
+  headers: Record<string, string> = {},
+  name = "route-test"
+) => {
+  const client = new Client({ name, version: "1.0.0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(mcpResource), {
       fetch: (input: string | URL | Request, init?: RequestInit) => {
@@ -294,7 +316,7 @@ describe("customer MCP route", () => {
     accessTokens.clear();
   });
 
-  test("initializes as the DH Workspace server with booking instructions", async () => {
+  test("initializes as the Deskohub Workspace server with booking instructions", async () => {
     const { result } = await rpc<InitializeResult>("initialize", {
       protocolVersion: legacyProtocolVersion,
       capabilities: {},
@@ -363,13 +385,19 @@ describe("customer MCP route", () => {
       list_my_reservations: "signed-in",
       whoami: "signed-in",
     });
+    // A different selection cancels the earlier unpaid hold; the same one
+    // returns the same order.
     expect(
       tools.find(({ name }) => name === "start_reservation")?.annotations
-    ).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+    ).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+    });
     for (const tool of tools) {
       expect(tool.annotations).toMatchObject({
         readOnlyHint: tool.name !== "start_reservation",
-        destructiveHint: false,
+        destructiveHint: tool.name === "start_reservation",
         openWorldHint: false,
       });
       expect(tool.inputSchema).toMatchObject({
@@ -697,6 +725,17 @@ describe("customer MCP route for signed-in tools", () => {
       `Bearer resource_metadata="${resourceMetadata}", scope="reservations:create"`
     );
     expect(checkRateLimit).not.toHaveBeenCalled();
+    // ChatGPT offers signing in for one tool from the challenge in an error
+    // result's `_meta`, which also needs an error and its description.
+    const { id, result } = await response.json();
+    expect(id).toBe(requestId);
+    expect(result.isError).toBe(true);
+    const [challenge] = result._meta["mcp/www_authenticate"];
+    expect(challenge).toStartWith(
+      `Bearer resource_metadata="${resourceMetadata}", scope="reservations:create"`
+    );
+    expect(challenge).toContain('error="');
+    expect(challenge).toContain('error_description="');
   });
 
   test("answers a request with an unknown token with an invalid_token challenge", async () => {
@@ -706,6 +745,7 @@ describe("customer MCP route for signed-in tools", () => {
     expect(response.headers.get("www-authenticate")).toBe(
       `Bearer resource_metadata="${resourceMetadata}", error="invalid_token"`
     );
+    expect(await response.text()).toBe("");
   });
 
   test("answers a token without the tool's scope with a 403 insufficient_scope challenge", async () => {
@@ -838,7 +878,7 @@ describe("customer MCP route for signed-in tools", () => {
 });
 
 describe("customer MCP route booking view", () => {
-  const bookingViewUri = "ui://dh-workspace/booking-v1.html";
+  const bookingViewUri = "ui://dh-workspace/booking-v2.html";
   const viewMimeType = "text/html;profile=mcp-app";
 
   beforeEach(() => {
@@ -858,9 +898,12 @@ describe("customer MCP route booking view", () => {
         name: "show_booking",
         _meta: {
           "cz.deskohub.workspace/access": "public",
+          securitySchemes: [{ type: "noauth" }],
           ui: { resourceUri: bookingViewUri },
           "ui/resourceUri": bookingViewUri,
           "openai/outputTemplate": bookingViewUri,
+          "openai/toolInvocation/invoking": expect.any(String),
+          "openai/toolInvocation/invoked": expect.any(String),
         },
       },
     ]);
@@ -905,8 +948,12 @@ describe("customer MCP route booking view", () => {
             resource_domains: [],
             redirect_domains: ["http://deskohub.test"],
           },
+          "openai/widgetDomain": "http://deskohub.test",
+          "openai/widgetDescription": expect.any(String),
         },
       });
+      // Claude accepts only its own `ui.domain` form, so other clients get none.
+      expect(view?._meta?.ui).not.toHaveProperty("domain");
       const html = view && "text" in view ? view.text : "";
       // Compared as booleans: a failure would print the whole document.
       expect(/^<!doctype html>/i.test(html)).toBe(true);
@@ -986,6 +1033,331 @@ describe("customer MCP route booking view", () => {
 
     expect(result?.structuredContent).toMatchObject({
       booking_mode: "reservation_page",
+    });
+  });
+});
+
+describe("customer MCP route per client", () => {
+  const publicTools = [
+    "list_offerings",
+    "check_availability",
+    "get_quote",
+    "show_booking",
+  ];
+  const chatGpt = { "user-agent": "openai-mcp/1.0.0" };
+  const claudeApp = { "user-agent": "Claude-User" };
+
+  beforeEach(() => {
+    rateLimit = { rateLimited: false };
+    authorizationServerReachable = true;
+    accessTokens.clear();
+  });
+
+  const listToolsAs = async (headers: Record<string, string>) => {
+    const response = await postRpc("tools/list", {}, headers);
+    expect(response.status).toBe(200);
+    const { result } = (await readJsonRpc(response)) as {
+      readonly result: ListToolsResult;
+    };
+    return result.tools;
+  };
+
+  /**
+   * What a directory reviewer reads: the instructions, the tools as listed,
+   * and the view's copy.
+   */
+  const readListingCopy = async (
+    headers: Record<string, string>,
+    clientName: string
+  ) => {
+    const initialize = await readJsonRpc(
+      await postRpc(
+        "initialize",
+        {
+          protocolVersion: legacyProtocolVersion,
+          capabilities: {},
+          clientInfo: { name: clientName, version: "1.0.0" },
+        },
+        headers
+      )
+    );
+    const resources = await readJsonRpc(
+      await postRpc("resources/list", {}, headers)
+    );
+    const tools = await listToolsAs(headers);
+    return [
+      initialize.result.instructions,
+      ...tools.flatMap(({ title, description, inputSchema }) => [
+        title,
+        description,
+        JSON.stringify(inputSchema),
+      ]),
+      ...resources.result.resources.flatMap(
+        ({ title, description, _meta }: Resource) => [
+          title,
+          description,
+          _meta?.["openai/widgetDescription"],
+        ]
+      ),
+      // A signed-in tool's result reports the customer's own orders,
+      // their payment state included, which isn't commerce copy.
+      JSON.stringify(
+        tools.map(({ outputSchema, ...tool }) =>
+          tool._meta?.["cz.deskohub.workspace/access"] === "public"
+            ? { ...tool, outputSchema }
+            : tool
+        )
+      ),
+    ].join("\n");
+  };
+
+  const customerTools = [
+    ...publicTools,
+    "start_reservation",
+    "get_reservation_status",
+    "list_my_reservations",
+  ];
+
+  test.each([
+    ["ChatGPT", chatGpt],
+    ["the Claude apps", claudeApp],
+  ])("lists every tool to %s", async (_, headers) => {
+    const tools = await listToolsAs(headers);
+
+    expect(tools.map(({ name }) => name)).toEqual([...customerTools, "whoami"]);
+    for (const tool of tools.filter(({ name }) =>
+      customerTools.includes(name)
+    )) {
+      expect(tool.title).toContain("Deskohub Workspace");
+      expect(tool.annotations?.title).toContain("Deskohub Workspace");
+    }
+  });
+
+  test("lets ChatGPT call start_reservation without signing in, as a read-only tool", async () => {
+    const tools = await listToolsAs(chatGpt);
+    const startReservation = tools.find(
+      ({ name }) => name === "start_reservation"
+    );
+
+    expect(
+      Object.fromEntries(
+        tools.map((tool) => [tool.name, tool["securitySchemes"]])
+      )
+    ).toMatchObject({
+      start_reservation: [{ type: "noauth" }],
+      get_reservation_status: [
+        { type: "oauth2", scopes: ["reservations:read"] },
+      ],
+      list_my_reservations: [{ type: "oauth2", scopes: ["reservations:read"] }],
+    });
+    expect(startReservation?._meta?.["cz.deskohub.workspace/access"]).toBe(
+      "public"
+    );
+    expect(startReservation?.annotations).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+    });
+  });
+
+  test("keeps the Claude apps' start_reservation a signed-in booking", async () => {
+    const tools = await listToolsAs(claudeApp);
+    const startReservation = tools.find(
+      ({ name }) => name === "start_reservation"
+    );
+
+    expect(startReservation?.["securitySchemes"]).toEqual([
+      { type: "oauth2", scopes: ["reservations:create"] },
+    ]);
+    expect(startReservation?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+    });
+  });
+
+  test("answers ChatGPT's start_reservation with the prefilled reservation page, booking nothing", async () => {
+    bookingCalls.length = 0;
+    const args = {
+      family: "cowork",
+      date: workspaceDateFromToday(2),
+      tier: "open-space",
+    };
+    const callAsChatGpt = async (name: string) => {
+      const response = await postRpc(
+        "tools/call",
+        { name, arguments: args },
+        chatGpt
+      );
+      expect(response.status).toBe(200);
+      const { result } = (await readJsonRpc(response)) as {
+        readonly result: CallToolResult;
+      };
+      expect(result.isError).toBeFalsy();
+      return result.structuredContent;
+    };
+
+    const [started, quote] = await Promise.all([
+      callAsChatGpt("start_reservation"),
+      callAsChatGpt("get_quote"),
+    ]);
+
+    expect(started).toEqual({
+      family: "cowork",
+      reservation_url: quote?.["reservation_url"],
+      note: expect.any(String),
+    });
+    expect(bookingCalls).toEqual([]);
+  });
+
+  test("asks ChatGPT to sign in for the customer's own reservations", async () => {
+    const response = await postRpc(
+      "tools/call",
+      { name: "list_my_reservations", arguments: {} },
+      chatGpt
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toContain(
+      'scope="reservations:read"'
+    );
+  });
+
+  test("lists every tool to a client it doesn't recognize, with how each authorizes", async () => {
+    const tools = await listToolsAs({
+      "user-agent": "claude-code/2.1.0 (cli)",
+    });
+
+    expect(tools.map(({ name }) => name)).toEqual([
+      ...publicTools,
+      "start_reservation",
+      "get_reservation_status",
+      "list_my_reservations",
+      "whoami",
+    ]);
+    expect(
+      Object.fromEntries(
+        tools.map((tool) => [tool.name, tool["securitySchemes"]])
+      )
+    ).toEqual({
+      list_offerings: [{ type: "noauth" }],
+      check_availability: [{ type: "noauth" }],
+      get_quote: [{ type: "noauth" }],
+      show_booking: [{ type: "noauth" }],
+      start_reservation: [{ type: "oauth2", scopes: ["reservations:create"] }],
+      get_reservation_status: [
+        { type: "oauth2", scopes: ["reservations:read"] },
+      ],
+      list_my_reservations: [{ type: "oauth2", scopes: ["reservations:read"] }],
+      whoami: [{ type: "oauth2", scopes: ["reservations:read"] }],
+    });
+    for (const tool of tools) {
+      expect(tool._meta?.["securitySchemes"]).toEqual(tool["securitySchemes"]);
+    }
+  });
+
+  /** A 2026-07-28 request, whose `_meta` envelope names its client. */
+  const postModernRpc = (
+    method: string,
+    clientName: string,
+    headers: Record<string, string> = {}
+  ) =>
+    postRpc(
+      method,
+      {
+        _meta: {
+          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+          "io.modelcontextprotocol/clientCapabilities": {},
+          "io.modelcontextprotocol/clientInfo": {
+            name: clientName,
+            version: "1.0.0",
+          },
+        },
+      },
+      { "mcp-protocol-version": "2026-07-28", "mcp-method": method, ...headers }
+    );
+
+  test.each([
+    ["ChatGPT", "openai-mcp", {}, 8],
+    // Claude Code through Anthropic's gateway shares the Claude apps'
+    // User-Agent but names itself.
+    ["Claude Code", "claude-code", claudeApp, 8],
+  ])(
+    "identifies %s by the clientInfo a 2026-era request carries",
+    async (_, name, headers, count) => {
+      const response = await postModernRpc("tools/list", name, headers);
+      expect(response.status).toBe(200);
+      const { result } = await readJsonRpc(response);
+
+      expect(result.tools).toHaveLength(count);
+      expect(result.tools[0].securitySchemes).toEqual([{ type: "noauth" }]);
+    }
+  );
+
+  test("tells ChatGPT nothing about paying or holds", async () => {
+    const copy = await readListingCopy(chatGpt, "openai-mcp");
+
+    expect(copy).not.toMatch(/\bpa(y|id)|\bhold/i);
+  });
+
+  test("keeps the reservation page and the Pay link for the Claude apps", async () => {
+    const copy = await readListingCopy(claudeApp, "Anthropic/ClaudeAI");
+
+    expect(copy).toContain("reservation_url");
+    expect(copy).toContain("pay_url");
+  });
+
+  test.each([
+    ["ChatGPT", chatGpt, "reservation_page"],
+    ["the Claude apps", claudeApp, "reserve"],
+  ])(
+    "hands %s, signed in to book, off in the booking view as %s",
+    async (_, headers, mode) => {
+      accessTokens.set("create", "reservations:create");
+      const response = await postRpc(
+        "tools/call",
+        { name: "show_booking", arguments: { family: "cowork" } },
+        { ...headers, authorization: "Bearer create" }
+      );
+      const { result } = await readJsonRpc(response);
+
+      expect(result.structuredContent.booking_mode).toBe(mode);
+    }
+  );
+
+  test("gives ChatGPT's booking view the site as its widget domain", async () => {
+    const { result } = await readJsonRpc(
+      await postRpc(
+        "resources/read",
+        { uri: "ui://dh-workspace/booking-v2.html" },
+        chatGpt
+      )
+    );
+
+    expect(result.contents[0]._meta).toMatchObject({
+      ui: { domain: "http://deskohub.test" },
+      "openai/widgetDomain": "http://deskohub.test",
+    });
+  });
+
+  test("names the site and its icons", async () => {
+    const { result } = await rpc<InitializeResult>("initialize", {
+      protocolVersion: legacyProtocolVersion,
+      capabilities: {},
+      clientInfo: { name: "openai-mcp", version: "1.0.0" },
+    });
+
+    expect(result?.serverInfo).toMatchObject({
+      title: "Deskohub Workspace",
+      websiteUrl: "http://deskohub.test",
+      icons: [
+        expect.objectContaining({
+          src: "http://deskohub.test/favicon.png",
+          mimeType: "image/png",
+        }),
+        expect.objectContaining({
+          src: "http://deskohub.test/favicon.svg",
+          mimeType: "image/svg+xml",
+        }),
+      ],
     });
   });
 });

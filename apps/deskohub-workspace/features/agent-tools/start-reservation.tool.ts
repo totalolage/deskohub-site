@@ -35,7 +35,7 @@ const inputSchema = Schema.Struct({
   marketing_consent: Schema.optionalKey(
     Schema.Boolean.annotate({
       description:
-        "Set true only when the customer explicitly asked to receive DH Workspace marketing emails. Omit it otherwise; never assume consent.",
+        "Set true only when the customer explicitly asked to receive Deskohub Workspace marketing emails. Omit it otherwise; never assume consent.",
     })
   ),
   locale: agentToolLocaleField,
@@ -57,12 +57,16 @@ const startReservationAccountBudget = {
 
 export const startReservationTool = defineSignedInAgentTool({
   name: "start_reservation",
-  title: "Start a DH Workspace booking",
+  title: "Start a Deskohub Workspace booking",
   description:
     "Holds a complete selection for the signed-in customer, with the same arguments as get_quote, and returns a pay_url. Give the pay_url to the customer: they check the order, accept the terms, and pay on the website before the link expires; this tool can't pay. The customer's account profile is the contact. Calling again with the same selection returns the same held order and pay_url until the link expires; a different selection replaces the unpaid hold you made before. A hold whose payment has started is kept, and holds made by other assistants are not affected.",
   scope: "reservations:create",
   accountBudget: startReservationAccountBudget,
   readOnly: false,
+  // A different selection cancels the unpaid hold made before; the same
+  // selection returns the same held order.
+  destructive: true,
+  idempotent: true,
   unavailableCode: "reservation_unavailable",
   input: inputSchema,
   output: startReservationResultSchema,

@@ -1,7 +1,6 @@
 import {
   CliMutationInProgress,
   CliMutationRejected,
-  type CliSessionIdType,
   campaignOperations,
   OperationConflict,
   OperationInProgress,
@@ -14,7 +13,10 @@ import type {
   OperationLedgerRequest,
   OperationRequestLedger,
 } from "@/features/email-campaigns/backend/operation-request-ledger.service";
-import type { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
+import type {
+  AdministrationMutationScope,
+  CliMutationIdempotency,
+} from "./cli-mutation-idempotency.service";
 
 /**
  * The stored form of each ledger operation. The kinds predate the port, so
@@ -39,21 +41,22 @@ const storedMutation = (request: OperationLedgerRequest): CliStoredMutation =>
   );
 
 /**
- * The CLI's request ledger: one per session, stored with the other CLI
- * mutations, so a retried request replays its first result.
+ * The administration API's request ledger: one per caller's scope, stored
+ * with the other CLI mutations, so a retried request replays its first
+ * result.
  */
 export const cliOperationRequestLedger = (
   mutations: CliMutationIdempotency["Service"],
-  sessionId: CliSessionIdType
+  scope: AdministrationMutationScope
 ): OperationRequestLedger["Service"] => ({
   applyOnce: (entry) =>
     // A generic operation name can't pair the stored result with its output.
-    applyLedgerEntry(mutations, sessionId, entry) as never,
+    applyLedgerEntry(mutations, scope, entry) as never,
 });
 
 const applyLedgerEntry = <E, R>(
   mutations: CliMutationIdempotency["Service"],
-  sessionId: CliSessionIdType,
+  scope: AdministrationMutationScope,
   entry: OperationLedgerRequest & {
     readonly apply: Effect.Effect<CliStoredMutationResult, E, R>;
   }
@@ -61,7 +64,7 @@ const applyLedgerEntry = <E, R>(
   mutations
     .applyOnce({
       request: {
-        sessionId,
+        scope,
         requestId: entry.input.requestId,
         mutation: storedMutation(entry),
       },

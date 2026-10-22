@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  chatGptClientMetadata,
+  claudeClientMetadata,
+  claudeCodeClientMetadata,
+} from "./backend/auth/customer-agent-directory-clients.test-utils";
+import {
   customerAgentConsentScopes,
   readCustomerAgentConsentRequest,
   resolveCustomerAgentConnectStep,
@@ -155,7 +160,80 @@ describe("readCustomerAgentConsentRequest", () => {
       status: "pending",
       clientId,
       scopes: ["offerings:read", "reservations:create", "offline_access"],
+      redirect: { host: "assistant.invalid", local: false },
+      administration: false,
     });
+  });
+
+  test.each([
+    {
+      client: chatGptClientMetadata,
+      redirectUri: chatGptClientMetadata.redirect_uris[0],
+      redirect: { host: "chatgpt.com", local: false },
+    },
+    {
+      client: claudeClientMetadata,
+      redirectUri: claudeClientMetadata.redirect_uris[0],
+      redirect: { host: "claude.ai", local: false },
+    },
+    {
+      client: claudeCodeClientMetadata,
+      redirectUri: "http://localhost:53122/callback",
+      redirect: { host: "localhost", local: true },
+    },
+    {
+      client: claudeCodeClientMetadata,
+      redirectUri: "http://127.0.0.1:53122/callback",
+      redirect: { host: "127.0.0.1", local: true },
+    },
+  ] as const)(
+    "names $redirect.host as where $client.client_name sends the answer",
+    ({ client, redirectUri, redirect }) => {
+      expect(
+        readCustomerAgentConsentRequest(
+          signedRequest({
+            client_id: client.client_id,
+            redirect_uri: redirectUri,
+          }),
+          now
+        )
+      ).toMatchObject({ status: "pending", redirect });
+    }
+  );
+
+  test.each([
+    ["http://[::1]:8080/callback", "[::1]"],
+    ["https://app.localhost/callback", "app.localhost"],
+    ["com.example.assistant:/oauth/callback", "com.example.assistant"],
+  ])("marks %s as staying on the device", (redirectUri, host) => {
+    expect(
+      readCustomerAgentConsentRequest(
+        signedRequest({ redirect_uri: redirectUri }),
+        now
+      )
+    ).toMatchObject({ redirect: { host, local: true } });
+  });
+
+  test("shows a look-alike of localhost as the remote host it is", () => {
+    expect(
+      readCustomerAgentConsentRequest(
+        signedRequest({
+          redirect_uri: "https://localhost.attacker.example/callback",
+        }),
+        now
+      )
+    ).toMatchObject({
+      redirect: { host: "localhost.attacker.example", local: false },
+    });
+  });
+
+  test("reads a request for the administration scope apart from the rest", () => {
+    expect(
+      readCustomerAgentConsentRequest(
+        signedRequest({ scope: "administration reservations:read" }),
+        now
+      )
+    ).toMatchObject({ scopes: ["reservations:read"], administration: true });
   });
 
   test("leaves out scopes it can't explain", () => {
@@ -173,6 +251,7 @@ describe("readCustomerAgentConsentRequest", () => {
 
     expect(readCustomerAgentConsentRequest(query, now)).toMatchObject({
       scopes: customerAgentConsentScopes,
+      administration: true,
     });
     expect(customerAgentConsentScopes).toEqual([
       "offerings:read",
@@ -182,9 +261,21 @@ describe("readCustomerAgentConsentRequest", () => {
     ]);
   });
 
-  test.each(["client_id", "sig", "exp"])("is unknown without %s", (param) => {
+  test.each(["client_id", "sig", "exp", "redirect_uri"])(
+    "is unknown without %s",
+    (param) => {
+      const query = signedRequest();
+      query.delete(param);
+
+      expect(readCustomerAgentConsentRequest(query, now)).toEqual({
+        status: "unknown-request",
+      });
+    }
+  );
+
+  test("is unknown with an unreadable redirect URI", () => {
     const query = signedRequest();
-    query.delete(param);
+    query.set("redirect_uri", "/callback");
 
     expect(readCustomerAgentConsentRequest(query, now)).toEqual({
       status: "unknown-request",

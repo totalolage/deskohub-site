@@ -1,5 +1,12 @@
 import { Array as Arr, Option, Order, Schema, Struct } from "effect";
 import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
+import {
+  AdministrationOperationBehavior,
+  destructiveOperation,
+  readOperation,
+  readPreview,
+  writeOperation,
+} from "./administration-operation";
 import { ReservationProductFilter } from "./audience-attribute-kinds";
 import {
   type AudienceCondition,
@@ -29,8 +36,9 @@ import {
 } from "./email-campaigns";
 import { fieldWithDefault, listField, nullableField } from "./response-fields";
 import {
+  AdministrationActionRecord,
+  AdministrationAuthentication,
   AdministrationDotyposCustomerId,
-  CliBearerAuthentication,
   CliClientCompatibility,
 } from "./workspace-admin-api";
 
@@ -809,7 +817,7 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
       params: automationParams,
       success: AutomationDetail,
       error: campaignErrors,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.put(
@@ -821,6 +829,9 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
         success: AutomationDetail,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: true })
     )
   )
   .add(
@@ -832,6 +843,9 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
         success: AutomationPreviewStatus,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: false })
     )
   )
   .add(
@@ -844,7 +858,7 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
         success: AutomationDryRun,
         error: campaignErrors,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post(
@@ -856,6 +870,12 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
         success: AutomationVersionSummary,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview("automations.getAutomation"),
+      })
     )
   )
   .add(
@@ -863,7 +883,13 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
       params: automationParams,
       success: AutomationDetail,
       error: campaignErrors,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview("automations.getAutomation"),
+      })
+    )
   )
   .add(
     HttpApiEndpoint.post(
@@ -874,6 +900,12 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
         success: AutomationDetail,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview("automations.getAutomation"),
+      })
     )
   )
   .add(
@@ -885,6 +917,12 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
         success: AutomationDetail,
         error: campaignErrors,
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview("automations.getAutomation"),
+      })
     )
   )
   .add(
@@ -896,7 +934,7 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
         success: Schema.Array(AutomationVersionSummary),
         error: campaignErrors,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get(
@@ -907,7 +945,7 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
         success: AutomationVersionDetail,
         error: campaignErrors,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get(
@@ -919,7 +957,7 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
         success: AutomationRunStats,
         error: campaignErrors,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listAutomationRuns", "/automations/:campaignId/runs", {
@@ -927,14 +965,14 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
       query: withoutPathParams(AutomationRunListInput, ["campaignId"]),
       success: AutomationRunPage,
       error: campaignErrors,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getAutomationRun", "/automation-runs/:runId", {
       params: { runId: AutomationRunId },
       success: AutomationRunDetail,
       error: campaignErrors,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post(
@@ -945,7 +983,7 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
         success: CalendarPreview,
         error: campaignErrors,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get(
@@ -955,10 +993,11 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
         success: AutomationEngineHealth,
         error: campaignErrors,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .annotate(MinimumDhwVersion, Option.some(automationsMinimumDhwVersion))
-  .middleware(CliBearerAuthentication)
+  .middleware(AdministrationActionRecord)
+  .middleware(AdministrationAuthentication)
   // Added last, so it runs first, as in the campaigns group.
   .middleware(CliClientCompatibility)
   .prefix("/api/v1/cli");

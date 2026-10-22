@@ -1,4 +1,5 @@
 import type {
+  AdministrationAssistantConnectionIdType,
   AdministrationCampaignAudienceInputType,
   AdministrationCampaignAudienceType,
   AdministrationCampaignCreateInputType,
@@ -24,7 +25,6 @@ import {
   index,
   jsonb,
   pgTable,
-  primaryKey,
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -32,6 +32,7 @@ import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identifiers";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
+import { administratorAssistantConnections } from "./administrator-assistant-connections";
 import { authUser } from "./auth";
 import { quotedSqlList } from "./sql-list";
 
@@ -198,13 +199,22 @@ export const cliAuthenticationRequests = pgTable(
   ]
 );
 
+/**
+ * The administration mutation ledger: one row per channel scope and request
+ * ID, owned by exactly one CLI session or one assistant connection. The
+ * name predates assistant connections.
+ */
 export const cliMutationRequests = pgTable(
   "cli_mutation_requests",
   {
     sessionId: text("session_id")
-      .notNull()
       .$type<CliSessionIdType>()
       .references(() => cliSessions.id, { onDelete: "cascade" }),
+    assistantConnectionId: text("assistant_connection_id")
+      .$type<AdministrationAssistantConnectionIdType>()
+      .references(() => administratorAssistantConnections.id, {
+        onDelete: "cascade",
+      }),
     requestId: text("request_id").notNull().$type<CliMutationRequestIdType>(),
     mutation: jsonb("mutation").notNull().$type<CliStoredMutation>(),
     result: jsonb("result").$type<CliStoredMutationResult>(),
@@ -212,10 +222,18 @@ export const cliMutationRequests = pgTable(
     completedAt: instant("completed_at"),
   },
   (t) => [
-    primaryKey({
-      name: "cli_mutation_requests_pk",
-      columns: [t.sessionId, t.requestId],
-    }),
+    // Partial unique indexes rather than a key, so a deployment that inserts
+    // with an untargeted `on conflict do nothing` keeps its claim semantics.
+    uniqueIndex("cli_mutation_requests_session_request_idx")
+      .on(t.sessionId, t.requestId)
+      .where(sql`${t.sessionId} is not null`),
+    uniqueIndex("cli_mutation_requests_assistant_connection_request_idx")
+      .on(t.assistantConnectionId, t.requestId)
+      .where(sql`${t.assistantConnectionId} is not null`),
+    check(
+      "cli_mutation_requests_owner_check",
+      sql`num_nonnulls(${t.sessionId}, ${t.assistantConnectionId}) = 1`
+    ),
     index("cli_mutation_requests_created_at_idx").on(t.createdAt),
     check(
       "cli_mutation_requests_request_id_check",

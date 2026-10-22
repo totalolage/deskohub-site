@@ -178,6 +178,12 @@ export const workspaceServerEnvSchema = Schema.Struct({
   NEXI_CHECKOUT_CURRENCY_OVERRIDE: toEnvSchema(
     Schema.optional(Schema.Literal("EUR"))
   ),
+  // The ChatGPT app directory's domain verification token, served at
+  // `/.well-known/openai-apps-challenge`. Trimmed so a pasted line break
+  // doesn't change the served token.
+  OPENAI_APPS_CHALLENGE_TOKEN: toEnvSchema(
+    Schema.optional(Schema.Trim.check(Schema.isNonEmpty()))
+  ),
   POSTHOG_SERVICE_NAME: toEnvSchema(
     Schema.NonEmptyString.pipe(
       Schema.withDecodingDefaultType(Effect.succeed("deskohub-workspace"))

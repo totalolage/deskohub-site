@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "fb56d0bc-7e8a-47ac-8c15-6db3f9ca6519",
+  "id": "009e4030-961f-4507-ab2e-8e41d16172f6",
   "prevIds": [
-    "ba5ccd23-0f7e-467a-8782-4a42d4712de6"
+    "e943c035-faca-47e7-b95b-f47e4911cf9d"
   ],
   "ddl": [
     {
@@ -19,6 +19,18 @@
     {
       "isRlsEnabled": false,
       "name": "accounting_document_snapshots",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "administration_actions",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "administrator_assistant_connections",
       "entityType": "tables",
       "schema": "public"
     },
@@ -546,6 +558,227 @@
       "name": "id",
       "entityType": "columns",
       "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "operation",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "outcome",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "failure",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "actor_account_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "actor_account_email",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "cli_session_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "assistant_connection_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "started_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "finished_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "uuid_generate_v7()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administrator_assistant_connections"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "approved_by_account_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administrator_assistant_connections"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "approved_by_account_email",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administrator_assistant_connections"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "oauth_client_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administrator_assistant_connections"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "client_name",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administrator_assistant_connections"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administrator_assistant_connections"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "last_used_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "administrator_assistant_connections"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "uuid_generate_v7()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
       "table": "cli_authentication_requests"
     },
     {
@@ -759,12 +992,25 @@
     {
       "type": "text",
       "typeSchema": null,
-      "notNull": true,
+      "notNull": false,
       "dimensions": 0,
       "default": null,
       "generated": null,
       "identity": null,
       "name": "session_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "cli_mutation_requests"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "assistant_connection_id",
       "entityType": "columns",
       "schema": "public",
       "table": "cli_mutation_requests"
@@ -9371,6 +9617,34 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "approved_by_account_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "oauth_client_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "administrator_assistant_connections_account_client_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "administrator_assistant_connections"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "code_hash",
           "isExpression": false,
           "asc": true,
@@ -9429,6 +9703,62 @@
       "entityType": "indexes",
       "schema": "public",
       "table": "cli_authentication_requests"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "session_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "request_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"session_id\" is not null",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "cli_mutation_requests_session_request_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "cli_mutation_requests"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "assistant_connection_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "request_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"assistant_connection_id\" is not null",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "cli_mutation_requests_assistant_connection_request_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "cli_mutation_requests"
     },
     {
       "nameExplicit": true,
@@ -12413,6 +12743,74 @@
     {
       "nameExplicit": false,
       "columns": [
+        "actor_account_id"
+      ],
+      "schemaTo": "auth",
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "administration_actions_actor_account_id_user_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "cli_session_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "cli_sessions",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "administration_actions_cli_session_id_cli_sessions_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "assistant_connection_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "administrator_assistant_connections",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "administration_actions_CV4kaVBpPah1_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "approved_by_account_id"
+      ],
+      "schemaTo": "auth",
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "administrator_assistant_connections_a5oBl0WiKhQa_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "administrator_assistant_connections"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
         "approved_by_account_id"
       ],
       "schemaTo": "auth",
@@ -12457,6 +12855,23 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "cli_mutation_requests_session_id_cli_sessions_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "cli_mutation_requests"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "assistant_connection_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "administrator_assistant_connections",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "cli_mutation_requests_mOHiwUUJHzIg_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "cli_mutation_requests"
@@ -13928,17 +14343,6 @@
     },
     {
       "columns": [
-        "session_id",
-        "request_id"
-      ],
-      "nameExplicit": true,
-      "name": "cli_mutation_requests_pk",
-      "entityType": "pks",
-      "schema": "public",
-      "table": "cli_mutation_requests"
-    },
-    {
-      "columns": [
         "code_id",
         "dotypos_customer_id"
       ],
@@ -14067,6 +14471,26 @@
       "name": "accounting_document_snapshots_pkey",
       "schema": "public",
       "table": "accounting_document_snapshots",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "administration_actions_pkey",
+      "schema": "public",
+      "table": "administration_actions",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "administrator_assistant_connections_pkey",
+      "schema": "public",
+      "table": "administrator_assistant_connections",
       "entityType": "pks"
     },
     {
@@ -14668,6 +15092,69 @@
       "table": "accounting_document_snapshots"
     },
     {
+      "value": "btrim(\"operation\") <> ''",
+      "name": "administration_actions_operation_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "value": "\"outcome\" in ('started', 'succeeded', 'replayed', 'failed', 'defect', 'interrupted')",
+      "name": "administration_actions_outcome_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "value": "(\"outcome\" = 'failed') = (\"failure\" is not null)",
+      "name": "administration_actions_failure_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "value": "(\"outcome\" = 'started') = (\"finished_at\" is null)\n        and (\"finished_at\" is null or \"finished_at\" >= \"started_at\")",
+      "name": "administration_actions_finished_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "value": "btrim(\"actor_account_email\") <> ''",
+      "name": "administration_actions_email_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "value": "num_nonnulls(\"cli_session_id\", \"assistant_connection_id\") = 1",
+      "name": "administration_actions_channel_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "administration_actions"
+    },
+    {
+      "value": "btrim(\"approved_by_account_email\") <> ''",
+      "name": "administrator_assistant_connections_email_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "administrator_assistant_connections"
+    },
+    {
+      "value": "btrim(\"oauth_client_id\") <> '' and btrim(\"client_name\") <> ''",
+      "name": "administrator_assistant_connections_client_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "administrator_assistant_connections"
+    },
+    {
+      "value": "\"last_used_at\" >= \"created_at\"",
+      "name": "administrator_assistant_connections_last_used_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "administrator_assistant_connections"
+    },
+    {
       "value": "\"expires_at\" > \"created_at\"",
       "name": "cli_authentication_requests_expiry_check",
       "entityType": "checks",
@@ -14729,6 +15216,13 @@
       "entityType": "checks",
       "schema": "public",
       "table": "cli_authentication_requests"
+    },
+    {
+      "value": "num_nonnulls(\"session_id\", \"assistant_connection_id\") = 1",
+      "name": "cli_mutation_requests_owner_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "cli_mutation_requests"
     },
     {
       "value": "\"request_id\" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'",
@@ -15711,7 +16205,7 @@
       "table": "standalone_access_code_attempt_events"
     },
     {
-      "value": "\"source\" in ('admin-ui', 'dhw-cli')",
+      "value": "\"source\" in ('admin-ui', 'dhw-cli', 'assistant')",
       "name": "standalone_access_code_attempt_events_source_check",
       "entityType": "checks",
       "schema": "public",

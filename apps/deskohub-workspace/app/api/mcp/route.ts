@@ -3,11 +3,11 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { CustomerAgentAuthorization } from "@/features/account";
 import {
   AgentToolAdmission,
-  type AgentToolExposure,
   answerAgentToolMcpRequest,
   CustomerAgentToolsLive,
-  customerAgentTools,
-  selectAgentTools,
+  getCustomerAgentToolsForClient,
+  identifyAgentToolClient,
+  publishedCustomerAgentTools,
 } from "@/features/agent-tools";
 import { RequestBudget } from "@/shared/backend/request-budget/request-budget.service";
 import {
@@ -16,23 +16,11 @@ import {
 } from "@/shared/backend/workspace-route";
 
 /**
- * This endpoint serves the public tools to anyone and the signed-in tools,
- * including starting a booking, to agents with an OAuth access token.
- */
-const customerToolExposure: AgentToolExposure = {
-  access: ["public", "signed-in"],
-  transactional: true,
-};
-
-const customerTools = selectAgentTools(
-  customerAgentTools,
-  customerToolExposure
-);
-
-/**
  * The customer MCP server: stateless Streamable HTTP. POST carries every
  * request; GET and DELETE, which only sessions use, are answered with 405.
- * Browsers may call it only from the host serving the request. Signed-in
+ * Browsers may call it only from the host serving the request. Every client
+ * sees every tool, as `getCustomerAgentToolsForClient` adapts them: ChatGPT's
+ * `start_reservation` only links the prefilled reservation page. Signed-in
  * tools need a bearer access token from the Workspace OAuth server; a call
  * without a usable one is answered with an OAuth challenge. Each tool call
  * is counted by the caller's agent category.
@@ -44,7 +32,17 @@ const handleMcpRequest = defineWorkspaceRoute(
     caller: "client",
   },
   (request: Request) =>
-    answerAgentToolMcpRequest({ tools: customerTools, request }).pipe(
+    identifyAgentToolClient(request).pipe(
+      Effect.flatMap((client) =>
+        answerAgentToolMcpRequest({
+          tools: getCustomerAgentToolsForClient({
+            client,
+            tools: publishedCustomerAgentTools,
+          }),
+          client,
+          request,
+        })
+      ),
       Effect.provide(
         Layer.mergeAll(
           CustomerAgentToolsLive,

@@ -3,6 +3,7 @@ import type {
   BlockContent,
   Blockquote,
   Heading,
+  InlineCode,
   Link,
   List,
   ListItem,
@@ -43,6 +44,11 @@ export const markdownStrong = (
   children: toPhrasing(content),
 });
 
+export const markdownInlineCode = (value: string): InlineCode => ({
+  type: "inlineCode",
+  value,
+});
+
 export const markdownLink = (
   url: string,
   ...content: ReadonlyArray<Phrasing>
@@ -58,6 +64,13 @@ export const markdownList = (items: ReadonlyArray<ListItem>): List => ({
   ordered: false,
   spread: false,
   children: [...items],
+});
+
+/** A numbered list, such as steps to follow in order. */
+export const markdownOrderedList = (items: ReadonlyArray<ListItem>): List => ({
+  ...markdownList(items),
+  ordered: true,
+  start: 1,
 });
 
 /** A list item of one line. */

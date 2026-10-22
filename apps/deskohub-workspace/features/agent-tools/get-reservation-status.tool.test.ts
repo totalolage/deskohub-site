@@ -119,8 +119,9 @@ describe("get_reservation_status", () => {
         starts_at: "2099-07-01T06:00:00Z",
         ends_at: "2099-07-01T22:00:00Z",
         total: { amount: 290, currency: "CZK" },
+        // Locale-agnostic: the proxy opens it in the customer's language.
         status_url: expect.stringMatching(
-          /\/cs-CZ\/reservation\/status\/order-1$/
+          /:\/\/[^/]+\/reservation\/status\/order-1$/
         ),
       },
     });

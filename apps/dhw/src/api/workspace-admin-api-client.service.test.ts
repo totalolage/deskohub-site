@@ -70,6 +70,68 @@ const createdAccessCodeOutcome = {
 };
 
 describe("WorkspaceAdminApiClient", () => {
+  test("lists invoices an administrator issued through an AI assistant", async () => {
+    const accessToken = Redacted.make(
+      Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43))
+    );
+    const server = Bun.serve({
+      port: 0,
+      fetch: () =>
+        Response.json({
+          items: [
+            {
+              id: "01980000-0000-7000-8000-000000000009",
+              invoiceNumber: "WS-FV-2026-000020",
+              issuedAt: "2026-10-22T08:00:00Z",
+              customerId: null,
+              customerName: "Synthetic Customer",
+              reservationId: null,
+              total: "1000",
+              currency: "CZK",
+              paymentStatus: "due",
+              source: "assistant",
+              actor: syntheticEmail,
+              delivery: { customer: "accepted", internal: "accepted" },
+              needsAttention: false,
+            },
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 25,
+          pageCount: 1,
+        }),
+    });
+
+    try {
+      const page = await Effect.gen(function* () {
+        const client = yield* WorkspaceAdminApiClient;
+        return yield* client.listInvoices(accessToken, {});
+      }).pipe(
+        Effect.provide(
+          WorkspaceAdminApiClient.Default.pipe(
+            Layer.provide(FetchHttpClient.layer),
+            Layer.provide(
+              Layer.succeed(DhwConfig, {
+                baseUrl: new URL(`http://127.0.0.1:${server.port}`),
+                requestHeaders: {},
+                isCi: true,
+                stateDirectory: "/tmp/dhw-assistant-invoice-list-test",
+                updateChecksDisabled: true,
+              })
+            )
+          )
+        ),
+        Effect.runPromise
+      );
+
+      expect(page.items.map((invoice) => invoice.source)).toEqual([
+        "assistant",
+      ]);
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("retries invoice creation through the one-minute claim recovery window", async () => {
     const accessToken = Redacted.make(
       Schema.decodeUnknownSync(CliAccessToken)("i".repeat(43))

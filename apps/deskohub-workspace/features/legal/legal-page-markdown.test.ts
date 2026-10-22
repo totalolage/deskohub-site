@@ -57,7 +57,7 @@ describe.each(locales)("legalPageMarkdown in %s", (locale) => {
     }
   );
 
-  test("links every anchor to its absolute target", () => {
+  test("links every anchor to its absolute, locale-agnostic target", () => {
     const urls = documentKeys.flatMap((documentKey) =>
       markdownLinkUrls(
         serializeMarkdown(legalPageMarkdown(locale, documentKey))
@@ -67,11 +67,13 @@ describe.each(locales)("legalPageMarkdown in %s", (locale) => {
     expect(urls).toContain(
       `mailto:${workspaceSiteConstants.contact.infoEmail}`
     );
-    expect(urls).toContain(
-      `https://workspace.deskohub.cz/${locale}/privacy-policy`
-    );
+    expect(urls).toContain("https://workspace.deskohub.cz/privacy-policy");
     for (const url of urls) {
       expect(url).toMatch(/^(https:\/\/|mailto:)/);
+      if (!url.startsWith("https://workspace.deskohub.cz/")) continue;
+      for (const pageLocale of locales) {
+        expect(new URL(url).pathname.split("/")).not.toContain(pageLocale);
+      }
     }
   });
 });

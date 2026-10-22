@@ -9,7 +9,6 @@ import {
   AdministrationCampaignSendId,
   AdministrationDotyposCustomerId,
   AdministrationLegacyUsername,
-  CliBearerAuthentication,
   CliInputInvalid,
   CliMutationRejected,
   CliMutationRequestId,
@@ -17,7 +16,6 @@ import {
   CliServiceUnavailable,
   CliSessionId,
   CliSessionUnauthorized,
-  CurrentCliSession,
   digestCliAuthenticationSecret,
   makeCliAuthenticationSecret,
   WorkspaceAdminApi,
@@ -60,10 +58,10 @@ import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace
 import {
   authorizedCliRequest,
   ClaimEveryCliMutation,
-  CliSessionAdministrator,
   cliClientVersion,
   GrantedAdministrator,
   UnauthorizedCliRequest,
+  UnrecordedAdministrationActions,
 } from "./cli-api.test-utils";
 import { CliClientCompatibilityLive } from "./cli-client-version";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
@@ -79,7 +77,7 @@ const customerId = AdministrationDotyposCustomerId.make("1001");
 const otherCustomerId = AdministrationDotyposCustomerId.make("1002");
 const createdAt = Temporal.Instant.from("2026-10-14T08:00:00Z");
 const testDhwVersion = "1.20.0";
-const AuthorizedCliRequest = authorizedCliRequest(testDhwVersion);
+const AuthorizedCliRequest = authorizedCliRequest();
 const TestDhwVersionHeader = cliClientVersion(testDhwVersion);
 
 const parseBody = (markdown: string) =>
@@ -171,7 +169,6 @@ const callCampaignsApi = <A, E>(
     Effect.flatMap(call),
     Effect.provide(AdminCliCampaignsApiHandlers),
     Effect.provide(bearer),
-    Effect.provide(CliSessionAdministrator),
     Effect.provide(
       CampaignOperations.Default.pipe(
         Layer.provide(
@@ -181,6 +178,7 @@ const callCampaignsApi = <A, E>(
     ),
     Effect.provide(ClaimEveryCliMutation),
     Effect.provide(CliClientCompatibilityLive),
+    Effect.provide(UnrecordedAdministrationActions),
     Effect.provide(TestDhwVersionHeader),
     Effect.provide(NodeHttpServer.layerHttpServices),
     Effect.scoped,
@@ -945,19 +943,7 @@ describe.skipIf(!testDatabase)(
       Effect.runPromise(seedSession.pipe(Effect.provide(NodeCrypto.layer)))
     );
 
-    const SeededSessionRequest = Layer.succeed(CliBearerAuthentication, {
-      bearer: (httpEffect) =>
-        Effect.provideService(httpEffect, CurrentCliSession, {
-          id: sessionId,
-          approvedBy: null,
-          clientName: "ledger test client",
-          cliVersion: testDhwVersion,
-          buildTarget: "development",
-          createdAt: createdAt.toString(),
-          lastUsedAt: createdAt.toString(),
-          expiresAt: null,
-        }),
-    });
+    const SeededSessionRequest = authorizedCliRequest(sessionId);
 
     const callWithLedger = <A, E>(
       call: (client: CampaignsClient) => Effect.Effect<A, E>
@@ -966,7 +952,6 @@ describe.skipIf(!testDatabase)(
         Effect.flatMap(call),
         Effect.provide(AdminCliCampaignsApiHandlers),
         Effect.provide(SeededSessionRequest),
-        Effect.provide(CliSessionAdministrator),
         Effect.provide(CampaignOperations.Default),
         Effect.provide(
           Layer.mergeAll(
@@ -1001,6 +986,7 @@ describe.skipIf(!testDatabase)(
           ).pipe(Layer.provide(testDatabase.layer))
         ),
         Effect.provide(CliClientCompatibilityLive),
+        Effect.provide(UnrecordedAdministrationActions),
         Effect.provide(TestDhwVersionHeader),
         Effect.provide(NodeHttpServer.layerHttpServices),
         Effect.scoped,

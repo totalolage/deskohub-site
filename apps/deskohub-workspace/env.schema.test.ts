@@ -178,6 +178,22 @@ describe("workspace environment schemas", () => {
     expect(productionError).not.toContain(overrides);
   });
 
+  test("serves the ChatGPT domain token without pasted surrounding whitespace", () => {
+    expect(
+      createWorkspaceEnv(
+        workspaceRuntimeEnv({ OPENAI_APPS_CHALLENGE_TOKEN: " token-value\n" })
+      ).OPENAI_APPS_CHALLENGE_TOKEN
+    ).toBe("token-value");
+    expect(
+      createWorkspaceEnv(
+        workspaceRuntimeEnv({ OPENAI_APPS_CHALLENGE_TOKEN: undefined })
+      ).OPENAI_APPS_CHALLENGE_TOKEN
+    ).toBeUndefined();
+    expect(invalidVariables({ OPENAI_APPS_CHALLENGE_TOKEN: " \n" })).toEqual([
+      "OPENAI_APPS_CHALLENGE_TOKEN",
+    ]);
+  });
+
   test("tolerates unknown override keys only outside production", () => {
     const overrides =
       '{"discount_codes":true,"loyalty_points":true,"seasonal_menu":"synthetic-variant"}';

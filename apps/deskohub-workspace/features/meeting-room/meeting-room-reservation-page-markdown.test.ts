@@ -82,7 +82,7 @@ describe.each(locales)("meetingRoomReservationPageMarkdown in %s", (locale) => {
 
   test("links to the meeting-room reservation page", () => {
     expect(markdownLinkUrls(render(locale))).toEqual([
-      `https://workspace.deskohub.cz/${locale}/reservation/meeting-room`,
+      "https://workspace.deskohub.cz/reservation/meeting-room",
     ]);
   });
 });
