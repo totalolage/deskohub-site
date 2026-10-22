@@ -6,6 +6,7 @@ import { revokeAdministrationAgentAccess } from "@/features/account/backend/auth
 import { findActiveCustomerAccountByEmail } from "@/features/account/backend/customer-account-by-email";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { revokeAdministrationCliAccess } from "@/features/admin-cli/administration-cli-access";
+import { ReviewAccounts } from "@/features/review-accounts";
 import type { AdministratorAccountActor } from "../account-role";
 import {
   type AccountRoleGrant,
@@ -15,6 +16,16 @@ import {
 /** No active account signs in with the email, so it can't get the role. */
 class AdministratorAccountNotFoundError extends Data.TaggedError(
   "AdministratorAccountNotFoundError"
+)<{
+  readonly message: string;
+}> {}
+
+/**
+ * The email belongs to a review account, whose password app-directory
+ * reviewers share, so it never holds the role.
+ */
+class AdministratorReviewAccountError extends Data.TaggedError(
+  "AdministratorReviewAccountError"
 )<{
   readonly message: string;
 }> {}
@@ -33,14 +44,17 @@ interface IAdministratorRoster {
   >;
   /**
    * Grants the administrator role to the active account that signs in with
-   * `email`. Granting it to a current administrator changes nothing.
+   * `email`. Granting it to a current administrator changes nothing; a
+   * review account can't get it.
    */
   readonly grant: (input: {
     readonly email: string;
     readonly actor: AdministratorAccountActor;
   }) => Effect.Effect<
     { readonly changed: boolean; readonly email: string },
-    AdministratorAccountNotFoundError | EffectDrizzleQueryError
+    | AdministratorAccountNotFoundError
+    | AdministratorReviewAccountError
+    | EffectDrizzleQueryError
   >;
   /**
    * Revokes another account's administrator role. The gate reads grants on
@@ -95,6 +109,19 @@ export class AdministratorRoster extends Context.Service<
               })
             )
           );
+          const isReviewAccount = yield* Effect.flatMap(
+            ReviewAccounts,
+            (reviewAccounts) =>
+              reviewAccounts.isReviewAccount(account.accountId)
+          ).pipe(
+            Effect.provide(ReviewAccounts.Default),
+            Effect.provideService(WorkspaceDatabase, database)
+          );
+          if (isReviewAccount) {
+            return yield* new AdministratorReviewAccountError({
+              message: "A review account can't hold the administrator role.",
+            });
+          }
           const { changed } = yield* grants.grant({
             accountId: account.accountId,
             role,

@@ -1,6 +1,7 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { Context, Effect, Layer } from "effect";
 import type { ReferralSignupIntent } from "@/features/referrals/signup-intent.repository";
+import { ReviewAccounts } from "@/features/review-accounts";
 import type { CustomerProfileInput } from "../contracts";
 import {
   CustomerAccountAccessError,
@@ -80,8 +81,10 @@ export class CustomerProfileService extends Context.Service<
     Effect.gen(function* () {
       const links = yield* CustomerAccountLinkRepository;
       const dotypos = yield* CustomerDotyposAdapter;
+      const reviewAccounts = yield* ReviewAccounts;
       const lockedResolution = {
         findLink: links.find,
+        isReviewAccount: reviewAccounts.isReviewAccount,
         classify: dotypos.classifyExactEmailCustomers,
         claimLink: links.claim,
         reactivate: dotypos.reactivateCustomer,
@@ -237,7 +240,8 @@ export class CustomerProfileService extends Context.Service<
     Layer.provide(
       Layer.mergeAll(
         CustomerAccountLinkRepository.Live,
-        CustomerDotyposAdapter.Live
+        CustomerDotyposAdapter.Live,
+        ReviewAccounts.Live
       )
     )
   );

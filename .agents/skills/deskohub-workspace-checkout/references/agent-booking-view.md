@@ -18,6 +18,8 @@ ChatGPT and the Claude apps list the server in their app directories. `identifyA
 
 The handler gives each call `CallableAgentTools`: the published tools its caller may call, meaning the public tools plus the signed-in tools its token's scopes grant (`isAgentToolGranted`). `show_booking` answers `booking_mode: "reserve"` only when that set holds `start_reservation`. The set holds it when the token grants `reservations:create` and the deployment's exposure is `transactional`; ChatGPT's public `start_reservation` is always in it, so the mode also needs `admitsCheckout`. Otherwise the mode is `reservation_page`. The mode travels in `structuredContent`, so the model reads the same fact the view does.
 
+For a review account, `start_reservation` returns a simulated hold whose `pay_url` opens the payment-disabled page, and `list_my_reservations`/`get_reservation_status` report its samples and holds (lifecycle reference, review account sandbox).
+
 The view sends `start_reservation` only the quoted selection and `locale`, never `marketing_consent`. When the call fails, the view shows its own message for the error code and the prefilled reservation-page link from `get_quote`.
 
 In `reservation_page` mode the view starts no booking and never shows the Pay link or payment wording, which ChatGPT's directory requires. Keep that mode's copy (`bookingWidgetReservationPageHint`, `agentToolBookingViewReservationPageNote`) payment-neutral.

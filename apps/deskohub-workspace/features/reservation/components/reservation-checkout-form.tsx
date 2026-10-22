@@ -150,7 +150,8 @@ export function ReservationCheckoutForm<
 }: ReservationCheckoutFormProps<Input, Data>) {
   const checkoutStep = useReservationCheckoutStep();
   const existingCustomer =
-    checkoutCustomer.status === "linked"
+    checkoutCustomer.status === "linked" ||
+    checkoutCustomer.status === "review-account"
       ? checkoutCustomer.existingCustomer
       : undefined;
   const customer = useReservationCustomer(existingCustomer);

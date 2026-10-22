@@ -74,6 +74,21 @@ const emailOtp = mock(
   }): Promise<AuthResponse> =>
     Promise.resolve({ data: { token: "synthetic" }, error: null })
 );
+const passwordStep: AuthResponse = {
+  data: { status: true, method: "password" },
+  error: null,
+};
+const passwordSignIn = mock(
+  (_body: {
+    readonly email: string;
+    readonly password: string;
+    readonly callbackURL: string;
+  }): Promise<AuthResponse> =>
+    Promise.resolve({
+      data: { redirect: false, token: "synthetic" },
+      error: null,
+    })
+);
 const recordSignInCompletion = mock((method: string) => {
   events.push(`record:${method}`);
 });
@@ -91,7 +106,7 @@ mock.module("@/shared/browser/return-window", () => ({ listenForReturn }));
 mock.module("@/features/account/auth.client", () => ({
   authClient: {
     getSession,
-    signIn: { magicLink, emailOtp },
+    signIn: { magicLink, emailOtp, email: passwordSignIn },
   },
 }));
 mock.module("./sign-in-analytics", () => ({
@@ -175,6 +190,13 @@ describe("account auth return lifecycle", () => {
     emailOtp.mockImplementation(() =>
       Promise.resolve({ data: { token: "synthetic" }, error: null })
     );
+    passwordSignIn.mockClear();
+    passwordSignIn.mockImplementation(() =>
+      Promise.resolve({
+        data: { redirect: false, token: "synthetic" },
+        error: null,
+      })
+    );
     recordSignInCompletion.mockClear();
     captureSignInCodeRejection.mockClear();
     getSession.mockClear();
@@ -218,6 +240,61 @@ describe("account auth return lifecycle", () => {
     });
     lifecycle.cancel();
     expect(events).toContain("cleanup");
+  });
+
+  describe("for a review login", () => {
+    test("stops the link hand-off and signs in with the password against the plain callback", async () => {
+      magicLink.mockImplementationOnce(() => Promise.resolve(passwordStep));
+      const lifecycle = authReturn.createAuthReturnLifecycle({
+        locale: "cs-CZ",
+      });
+
+      expect(await lifecycle.sendSignInEmail(customerEmail)).toEqual({
+        status: "password",
+      });
+      expect(listenerCleanups[0]).toHaveBeenCalledTimes(1);
+      expect(
+        await lifecycle.signInWithPassword(customerEmail, "synthetic-password")
+      ).toBe("signed-in");
+      expect(passwordSignIn).toHaveBeenCalledWith({
+        email: customerEmail,
+        password: "synthetic-password",
+        callbackURL: "/cs-CZ/auth/callback",
+      });
+      expect(events.some((event) => event.startsWith("replace:"))).toBe(false);
+
+      expect(lifecycle.continueWithPassword()).toBe(true);
+      expect(events.filter((event) => event.startsWith("replace:"))).toEqual([
+        "replace:/cs-CZ/auth/callback",
+      ]);
+      expect(recordSignInCompletion).not.toHaveBeenCalled();
+    });
+
+    test.each([
+      [{ status: 401, code: "INVALID_EMAIL_OR_PASSWORD" }, "wrong"],
+      [{ status: 429 }, "rate-limited"],
+      [{ status: 403, code: "BOT_DETECTED" }, "automated"],
+      [{ status: 500 }, "failed"],
+    ] as const)(
+      "maps a rejected password sign-in %p to %p and stays",
+      async (error, outcome) => {
+        passwordSignIn.mockImplementationOnce(() => Promise.resolve({ error }));
+        const lifecycle = authReturn.createAuthReturnLifecycle({
+          locale: "en-US",
+        });
+
+        expect(
+          await lifecycle.signInWithPassword(
+            customerEmail,
+            "synthetic-password"
+          )
+        ).toBe(outcome);
+        expect(lifecycle.continueWithPassword()).toBe(false);
+        expect(events.some((event) => event.startsWith("replace:"))).toBe(
+          false
+        );
+      }
+    );
   });
 
   describe("with a return target", () => {
@@ -910,6 +987,33 @@ describe("account auth return lifecycle", () => {
         attemptId: VALID_ATTEMPT_ID,
         returnTo,
       });
+    });
+
+    test("stores a review login's password step for the verify page", async () => {
+      magicLink.mockImplementationOnce(() => Promise.resolve(passwordStep));
+
+      expect(
+        await authReturn.startEmailSignIn({
+          locale: "en-US",
+          email: customerEmail,
+          returnTo,
+        })
+      ).toEqual({ status: "password" });
+      expect(
+        JSON.parse(
+          sessionStorage.getItem("deskohub:account-sign-in-code") ?? ""
+        )
+      ).toMatchObject({ email: customerEmail, method: "password", returnTo });
+
+      const lifecycle = authReturn.createAuthReturnLifecycle({
+        locale: "en-US",
+        returnTo,
+      });
+      lifecycle.resumeSignInEmail({});
+      await lifecycle.signInWithPassword(customerEmail, "synthetic-password");
+      expect(
+        callbackReturnTo(passwordSignIn.mock.calls[0]?.[0].callbackURL)
+      ).toBe(returnTo);
     });
 
     test("stores nothing when the email could not be sent", async () => {

@@ -54,6 +54,7 @@ const makeDependencies = (
       calls.push("find-link");
       return Effect.succeed(overrides.link ?? null);
     },
+    isReviewAccount: () => Effect.succeed(false),
     classify: () => {
       calls.push("classify");
       return Effect.succeed(overrides.matches ?? { kind: "not-found" });

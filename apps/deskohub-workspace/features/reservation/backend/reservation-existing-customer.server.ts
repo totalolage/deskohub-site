@@ -28,6 +28,10 @@ import {
   isMeetingRoomAvailable,
   type WorkspaceAvailabilityQuery,
 } from "@/features/reservation/workspace-availability";
+import {
+  getReviewAccountContact,
+  ReviewAccounts,
+} from "@/features/review-accounts";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { CustomerLastReservationService } from "./customer-last-reservation.service";
 import { WorkspaceAvailabilityService } from "./workspace-availability.service";
@@ -50,7 +54,8 @@ export const loadReservationCheckoutAccount = cache(
           CustomerAccountContactService.Live,
           CustomerAccountResolver.Live,
           CustomerLastReservationService.Live,
-          CustomerMarketingConsentRepository.Live
+          CustomerMarketingConsentRepository.Live,
+          ReviewAccounts.Live
         )
       ),
       Effect.tapError((error) =>
@@ -84,6 +89,15 @@ const loadCheckoutAccount = Effect.fn("reservation.loadCheckoutAccount")(
     }
     if (account.status === "linked") {
       return yield* loadLinkedCheckoutAccount(account, kind);
+    }
+    const reviewAccount = yield* ReviewAccounts.pipe(
+      Effect.flatMap((accounts) => accounts.isReviewAccount(account.accountId))
+    );
+    if (reviewAccount) {
+      return {
+        status: "review-account",
+        contact: getReviewAccountContact(account.email),
+      } satisfies ReservationCheckoutAccount<Kind>;
     }
 
     // As on the account page, an account without a link first claims its

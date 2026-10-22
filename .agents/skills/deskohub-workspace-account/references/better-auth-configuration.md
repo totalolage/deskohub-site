@@ -54,7 +54,36 @@ Keep these settings unless a reviewed decision changes them:
   canonical customer-facing host, the exact Vercel project, deployment, and
   branch hosts, and `localhost:3000` in development. Wildcards fail closed.
   Don't trust arbitrary request hosts or add a fallback host.
-- Email and password sign-in is disabled.
+- Password sign-in exists only for app-directory review logins, the
+  `REVIEW_ACCOUNT_CREDENTIALS` allowlist (`review-account-credentials.ts`:
+  JSON `[{ email, password }]`, lowercase `@deskohub.test` emails, passwords
+  of 16 to 128 characters; validation errors never echo values). Sign-up is
+  off, and `disabledPasswordPaths` in `auth-server.ts` blocks every reset,
+  set, verify, change-password, change-email, list-accounts, and
+  unlink-account route; Better Auth matches `disabledPaths` literally against
+  the request path, so the guard also refuses `/reset-password/:token`. The
+  `/sign-in/email` guard runs BotID, answers any address outside the
+  allowlist, or any password but the configured one (constant-time), with
+  Better Auth's own `INVALID_EMAIL_OR_PASSWORD` 401 before any lookup, and
+  provisions an allowlisted login under `withSignInEmailLock`
+  (`review-account-sign-in.ts`): a new login gets
+  `ReviewAccounts.register(id)`, then `createUser` with that id, then a
+  credential row shaped like Better Auth's `setPassword`; an existing review
+  login gets a missing credential back or a rehash when the configured
+  password changed (only the configured password triggers it, so an old
+  deployment can't rehash over a rotation); an existing customer login is
+  refused with the fixed
+  `account.review-login.customer-login` code and the same 401. Better Auth's
+  handler then checks the password. The `after` hook drops the response's
+  `redirect` so the page navigates itself, as after a code. The per-IP limit
+  is ten requests per 10 minutes. `/sign-in/magic-link` answers an
+  allowlisted address with `{ status: true, method: "password" }` from the
+  `before` hook, which ends the request: no link, code, verification row, or
+  email. Passkey registration is refused for review accounts. Rotation
+  residual: a deployment still configured with the old value, including an
+  older deployment's own URL, accepts the old password and rehashes it back;
+  review logins hold no customer data, and older deployment URLs rely on
+  Vercel Deployment Protection.
 - Sign-in codes (`login_email_code`): the stock `emailOTP` plugin stores a
   hashed six-digit code that lives as long as the link (600 s) and burns after
   five wrong attempts. `/sign-in/magic-link` stays the only send path: its
@@ -118,8 +147,9 @@ Keep these settings unless a reviewed decision changes them:
   and `disableIpTracking` would also disable rate limiting.
 - Don't pass a name or image to Better Auth, so `auth.user.name` stays the
   empty string. Never fill `auth.user.image`; avatars live in Cloudinary.
-- `auth.account` stays empty: the magic-link flow creates no account rows, and
-  passwords, OAuth sign-in providers, and social providers stay disabled. The
+- `auth.account` holds only review logins' credential rows (a scrypt hash on
+  a synthetic `.test` login): the magic-link flow creates no account rows, and
+  OAuth sign-in providers and social providers stay disabled. The
   OAuth server for AI agents is a separate concern: its client, consent, and
   token tables are covered in [customer agent OAuth](customer-agent-oauth.md).
 - What remains in Neon is the login email, the email inside each pending

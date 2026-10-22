@@ -216,6 +216,7 @@ interface IWorkspaceAdminApiClient {
   ) => Effect.Effect<
     AdministrationAdministratorGrantResultType,
     | CliApiRequestError
+    | CliMutationRejected
     | CliResourceNotFound
     | CliSessionUnauthorized
     | CliServiceUnavailable
@@ -1028,7 +1029,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           Effect.flatMap((authorized) =>
             authorized.administrators.grantAdministrator({ payload: input })
           ),
-          Effect.mapError(sanitizeResourceError)
+          Effect.mapError(sanitizeRejectedResourceError)
         )
     ),
     revokeAdministrator: Effect.fn(
@@ -1076,7 +1077,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
               payload: input,
             })
           ),
-          Effect.mapError(sanitizeReservationMutationError)
+          Effect.mapError(sanitizeRejectedResourceError)
         )
     ),
     getDiscountCode: Effect.fn("WorkspaceAdminApiClient.getDiscountCode")(
@@ -1178,7 +1179,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
               params: { invoiceId },
             })
           ),
-          Effect.mapError(sanitizeReservationMutationError)
+          Effect.mapError(sanitizeRejectedResourceError)
         )
     ),
     createStandaloneAccessCode: Effect.fn(
@@ -1947,7 +1948,7 @@ const sanitizeRejectedError = (
 ) =>
   cause instanceof CliMutationRejected ? cause : sanitizeSessionError(cause);
 
-const sanitizeReservationMutationError = (
+const sanitizeRejectedResourceError = (
   cause:
     | CliMutationRejected
     | CliResourceNotFound

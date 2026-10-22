@@ -8,6 +8,7 @@ import type {
 } from "@/features/account/auth-return";
 import { SignInCodeStep } from "@/features/account/components/sign-in-code-step";
 import { signInEmailFailureMessage } from "@/features/account/components/sign-in-email-failure-message";
+import { SignInPasswordForm } from "@/features/account/components/sign-in-password-form";
 import type { PasskeyConfirmationResult } from "@/features/account/passkeys";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
@@ -37,7 +38,10 @@ type AccountReauthenticationStepProps = {
    * has none or `login_passkeys` is off.
    */
   readonly confirmWithPasskey?: () => Promise<PasskeyConfirmationResult>;
-  /** Runs once a typed code or a passkey has created a fresh session. */
+  /**
+   * Runs once a typed code, a passkey, or a review login's password has
+   * created a fresh session.
+   */
   readonly onReauthenticated: () => void;
 };
 
@@ -45,7 +49,8 @@ type PasskeyStatus = "idle" | "pending" | "wrong-account" | "failed";
 
 /**
  * A dialog's re-authentication step: confirm with a passkey, or send a fresh
- * magic link and, when the email also carries a code, type it in place.
+ * magic link and, when the email also carries a code, type it in place. A
+ * review login's address gets no email and types its password in place.
  */
 export function AccountReauthenticationStep({
   purpose,
@@ -60,6 +65,7 @@ export function AccountReauthenticationStep({
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<SignInEmailFailure | null>(null);
   const [codeRequestedAt, setCodeRequestedAt] = useState<number | null>(null);
+  const [passwordStep, setPasswordStep] = useState(false);
   const [passkeyStatus, setPasskeyStatus] = useState<PasskeyStatus>("idle");
   const copy = {
     "delete-account": {
@@ -90,6 +96,13 @@ export function AccountReauthenticationStep({
   // when codes are switched off between two emails, only the link signs in.
   const sendReauthEmail = async () => {
     const result = await authReturn.sendSignInEmail(email);
+    if (result.status === "password") {
+      // The password entry replaces the email steps.
+      setCodeRequestedAt(null);
+      setLinkSent(false);
+      setPasswordStep(true);
+      return "sent" as const;
+    }
     if (result.status !== "sent") {
       return result.status === "failed" ? result.reason : result.status;
     }
@@ -119,7 +132,7 @@ export function AccountReauthenticationStep({
     setPasskeyStatus(result === "cancelled" ? "idle" : result);
   };
 
-  const codeStep = codeRequestedAt !== null;
+  const codeStep = codeRequestedAt !== null || passwordStep;
   const iconHeader = purpose === "add-passkey" || passkeysEnabled;
   const passkeyPending = passkeyStatus === "pending";
   const passkeyFailure =
@@ -131,7 +144,29 @@ export function AccountReauthenticationStep({
   // fallback after a resend is announced.
   return (
     <>
-      {codeStep && (
+      {passwordStep && (
+        <>
+          <DialogHeader>
+            <DialogTitle>{copy.title}</DialogTitle>
+            <DialogDescription id={copy.descriptionId}>
+              {m.accountSignInPasswordBody(
+                { email: maskEmailAddress(email) },
+                { locale }
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <SignInPasswordForm
+            locale={locale}
+            email={email}
+            signedInMessage={copy.verified}
+            signIn={(password) =>
+              authReturn.signInWithPassword(email, password)
+            }
+            onSignedIn={onReauthenticated}
+          />
+        </>
+      )}
+      {codeRequestedAt !== null && (
         <>
           <DialogHeader>
             <DialogTitle>{copy.codeTitle}</DialogTitle>

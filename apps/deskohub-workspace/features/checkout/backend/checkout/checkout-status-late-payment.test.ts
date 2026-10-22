@@ -10,6 +10,7 @@ import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backe
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import { ReviewSandboxMock } from "@/features/review-accounts/backend/review-sandbox.service.mock";
 import { LatePaymentVerificationService } from "../payment/late-payment-verification.service";
 import { ProviderPaymentFinalizationService } from "../payment/provider-payment-finalization.service";
 import { LatePaymentRecoveryRepository } from "../repositories/late-payment-recovery.repository";
@@ -136,7 +137,8 @@ const makeHarness = (options: {
         Layer.mock(AdvisoryAvailabilityInventory, {
           tables: Effect.succeed(tables as never),
         }),
-        SeatingMapFeatureFlagServiceMock({ isEnabled: Effect.succeed(true) })
+        SeatingMapFeatureFlagServiceMock({ isEnabled: Effect.succeed(true) }),
+        ReviewSandboxMock({})
       )
     )
   );

@@ -19,6 +19,8 @@ const authReturn: AuthReturnLifecycle = {
   resumeSignInEmail: () => undefined,
   verifySignInCode: () => new Promise(() => undefined),
   continueWithVerifiedCode: () => false,
+  signInWithPassword: () => new Promise(() => undefined),
+  continueWithPassword: () => false,
   continueIfSignedIn: () => Promise.resolve(false),
 };
 

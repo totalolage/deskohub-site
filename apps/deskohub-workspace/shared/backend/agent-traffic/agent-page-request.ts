@@ -62,6 +62,7 @@ const agentPageRoutes = {
   "/[locale]/reservation/invoice/[orderId]": true,
   "/[locale]/reservation/meeting-room": true,
   "/[locale]/reservation/office": true,
+  "/[locale]/reservation/payment-disabled/[orderId]": true,
   "/[locale]/reservation/status/[orderId]": true,
   "/[locale]/route-error-preview": true,
   "/[locale]/team": true,

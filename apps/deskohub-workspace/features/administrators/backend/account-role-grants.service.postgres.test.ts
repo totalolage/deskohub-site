@@ -21,11 +21,11 @@ const runGrants = <A, E>(
     )
   );
 
-const insertAccount = async () => {
+const insertAccount = async ({ review = false } = {}) => {
   const accountId = customerAccountIdSchema.make(crypto.randomUUID());
   await testDatabase!.pool.query(
-    `insert into customer_accounts (id) values ($1) on conflict do nothing`,
-    [accountId]
+    `insert into customer_accounts (id, review) values ($1, $2) on conflict do nothing`,
+    [accountId, review]
   );
   await testDatabase!.pool.query(
     `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, true)`,
@@ -118,6 +118,42 @@ describe.skipIf(!testDatabase)(
         [accountId]
       );
       expect(remaining.rowCount).toBe(0);
+    });
+
+    test("gives a review account no role, whatever grant it has", async () => {
+      const reviewAccount = await insertAccount({ review: true });
+      const administrator = await insertAccount();
+      for (const accountId of [reviewAccount, administrator]) {
+        await runGrants((grants) =>
+          grants.grant({ accountId, role, grantedBy: null })
+        );
+      }
+
+      expect(
+        await runGrants((grants) =>
+          grants.has({ accountId: reviewAccount, role })
+        )
+      ).toBe(false);
+      expect(
+        await runGrants((grants) =>
+          grants.lockHeld({ accountId: reviewAccount, role })
+        )
+      ).toBe(false);
+      expect(
+        await runGrants((grants) =>
+          grants.lockHeld({ accountId: administrator, role })
+        )
+      ).toBe(true);
+      const listed = (await runGrants((grants) => grants.list(role))).map(
+        ({ accountId }) => accountId
+      );
+      expect(listed).toContain(administrator);
+      expect(listed).not.toContain(reviewAccount);
+      expect(
+        await runGrants((grants) =>
+          grants.revoke({ accountId: reviewAccount, role })
+        )
+      ).toEqual({ changed: true });
     });
 
     test("rejects a role the application doesn't define", async () => {

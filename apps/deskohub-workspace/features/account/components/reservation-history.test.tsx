@@ -567,6 +567,35 @@ describe("ReservationHistory", () => {
     ).toBeNull();
   });
 
+  test("links a review account's sandbox reservation to its status but never to a PIN", () => {
+    const view = renderHistory("en-US", {
+      kind: "available",
+      groups: {
+        current: [
+          reservation({
+            id: "review-sample",
+            workspaceReservationId: linkedReservationId,
+            reviewSandbox: true,
+          }),
+        ],
+        past: [],
+        unavailable: [],
+      },
+    });
+
+    expect(
+      view
+        .getByRole("button", { name: copyFor("en-US").showPinCode })
+        .hasAttribute("disabled")
+    ).toBe(true);
+    expect(
+      view.container.querySelector('a[href*="/reservation/access/"]')
+    ).toBeNull();
+    expect(
+      view.container.querySelector('a[href*="/reservation/status/"]')
+    ).not.toBeNull();
+  });
+
   test("does not create a fake link from a provider-only reservation id", () => {
     const view = renderHistory("en-US", {
       kind: "available",

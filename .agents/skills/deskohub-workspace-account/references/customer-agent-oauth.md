@@ -166,7 +166,9 @@ document); refresh them when a client changes its document.
 - `/auth/connect` uses `resolveCustomerAgentConnectStep` for the next step:
   signed out, or asked to sign in again (`prompt=login` or `create`,
   `max_age`), the customer goes to the existing sign-in page with the
-  `assistant` purpose and a `signed_in=1` marker on the return path.
+  `assistant` purpose and a `signed_in=1` marker on the return path. A
+  review login signs in there with its password, which also returns through
+  that marked path.
   Signed in, the page redirects to `/api/auth/oauth2/authorize` with the
   original parameters minus the signing parameters; the provider validates
   the request from scratch and continues to consent. A marked return drops

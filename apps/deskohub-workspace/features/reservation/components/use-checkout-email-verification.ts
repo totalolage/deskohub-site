@@ -47,7 +47,8 @@ export function useCheckoutEmailVerification({
         email: input.email,
         returnTo: getCheckoutContactReturnPath(data.token),
       }).finally(() => setIsSendingEmail(false));
-      if (result.status === "sent") {
+      // A review login continues to its password on the verify page.
+      if (result.status === "sent" || result.status === "password") {
         router.push(getAuthVerifyPath(locale), { scroll: false });
         return;
       }

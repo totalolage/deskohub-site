@@ -180,6 +180,27 @@ mock.module(
   })
 );
 
+let reviewAccountEffect: Effect.Effect<boolean, unknown>;
+
+const Review = Context.Service<
+  Review,
+  {
+    readonly isReviewAccount: (
+      accountId: CustomerAccountId
+    ) => typeof reviewAccountEffect;
+  }
+>()("@test/ReviewAccounts");
+
+Object.assign(Review, {
+  Live: Layer.succeed(Review, {
+    isReviewAccount: () => reviewAccountEffect,
+  }),
+});
+
+mock.module("@/features/review-accounts", () => ({
+  ReviewAccounts: Review,
+}));
+
 let avatarLookupEffect: Effect.Effect<
   { readonly url: string; readonly version?: number } | null,
   unknown
@@ -425,6 +446,7 @@ describe("loadCustomerAccountPage", () => {
     avatarLookupCalls = 0;
     runtimeRuns.length = 0;
     avatarLookupEffect = Effect.succeed(null);
+    reviewAccountEffect = Effect.succeed(false);
     referralSummaryEffect = Effect.succeed(referralSummary);
     referralSummaryCalls = [];
     availableReferralCodeEffect = Effect.succeed("RFL12345");

@@ -209,6 +209,22 @@ describe("dhw administrators", () => {
     ).not.toContain(email);
   });
 
+  test("propagates the server's refusal to grant", async () => {
+    const refusal = new CliMutationRejected({
+      message: "A review account can't hold the administrator role.",
+    });
+    const { layer } = makeAdministratorsLayer({
+      grantAdministrator: () => Effect.fail(refusal),
+    });
+
+    const error = await runFailure(
+      ["--json", "administrators", "grant", "--email", email, "--yes"],
+      layer
+    );
+
+    expect(error).toBe(refusal);
+  });
+
   test("propagates the server's refusal to revoke", async () => {
     const refusal = new CliMutationRejected({
       message: "Administrators can't revoke their own grant.",

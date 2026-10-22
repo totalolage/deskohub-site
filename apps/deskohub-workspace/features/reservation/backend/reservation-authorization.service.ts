@@ -1,9 +1,11 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { Context, Effect, Layer, Result } from "effect";
 import { CustomerAccountReservationOwnership } from "@/features/account";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
+import { ReviewSandbox } from "@/features/review-accounts";
 import {
   openReservationAccessCookie,
   type ReservationAccessCookieOptions,
@@ -86,6 +88,15 @@ export class ReservationAuthorizationService extends Context.Service<
     Effect.gen(function* () {
       const ownership = yield* CustomerAccountReservationOwnership;
       const reservations = yield* WorkspaceReservationRepository;
+      const reviewSandbox = yield* ReviewSandbox;
+
+      const isReviewSandboxOrderOf = (
+        accountId: CustomerAccountId,
+        orderId: WorkspaceReservationId
+      ) =>
+        reviewSandbox
+          .isOrderOf({ accountId, orderId })
+          .pipe(Effect.orElseSucceed(() => false));
 
       const isAuthorized = Effect.fn(
         "ReservationAuthorizationService.isAuthorized"
@@ -105,7 +116,15 @@ export class ReservationAuthorizationService extends Context.Service<
         const reservation = yield* reservations
           .findById(input.orderId)
           .pipe(Effect.result);
-        if (Result.isFailure(reservation) || !reservation.success) return false;
+        if (Result.isFailure(reservation)) return false;
+        // A review account's sandbox order is the account's own booking, so
+        // it sees what an author sees: the status, never an access code.
+        if (!reservation.success) {
+          return (
+            grants("author", input.permission) &&
+            (yield* isReviewSandboxOrderOf(accountId.success, input.orderId))
+          );
+        }
 
         if (
           grants("author", input.permission) &&
@@ -131,7 +150,8 @@ export class ReservationAuthorizationService extends Context.Service<
     Layer.provide(
       Layer.mergeAll(
         CustomerAccountReservationOwnership.Live,
-        WorkspaceReservationRepository.Live
+        WorkspaceReservationRepository.Live,
+        ReviewSandbox.Live
       )
     )
   );

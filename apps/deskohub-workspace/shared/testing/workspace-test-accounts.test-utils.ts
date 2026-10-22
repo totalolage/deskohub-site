@@ -14,16 +14,19 @@ export const insertTestAccount = async (
   {
     emailVerified = true,
     deletionRequested = false,
+    review = false,
   }: {
     readonly emailVerified?: boolean;
     readonly deletionRequested?: boolean;
+    readonly review?: boolean;
   } = {}
 ): Promise<AdministratorAccountActor> => {
   const accountId = customerAccountIdSchema.make(crypto.randomUUID());
   const email = testEmailAddress(`${label}-${accountId}`);
-  await database.pool.query("insert into customer_accounts (id) values ($1)", [
-    accountId,
-  ]);
+  await database.pool.query(
+    "insert into customer_accounts (id, review) values ($1, $2)",
+    [accountId, review]
+  );
   await database.pool.query(
     `insert into auth."user" (id, name, email, email_verified, deletion_requested_at)
      values ($1, '', $2, $3, case when $4 then now() end)`,

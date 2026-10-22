@@ -144,6 +144,7 @@ const signIn = (input: {
           deletionRequested: false,
         }),
       findLink: links.find,
+      isReviewAccount: () => Effect.succeed(false),
       classify: () =>
         Effect.succeed({
           kind: "matched",
