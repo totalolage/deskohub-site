@@ -1,6 +1,7 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type { BrowserContext } from "@playwright/test";
 import { makeSignature } from "better-auth/crypto";
+import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import { accountRoleGrants } from "@/db/schema/account-role-grants";
 import { authSession, authUser } from "@/db/schema/auth";
@@ -145,6 +146,25 @@ export const seedWorkspaceE2ESyntheticAccount = (
           }
         })
       )
+    );
+  });
+
+/**
+ * Removes every role grant of one seeded synthetic account, as an
+ * administrator's revocation does; its sessions and agent tokens stay.
+ */
+export const revokeWorkspaceE2ESyntheticAccountRoles = (
+  accountId: string
+): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    yield* runDatabaseOperation(
+      "revoke synthetic account roles",
+      db
+        .delete(accountRoleGrants)
+        .where(
+          eq(accountRoleGrants.accountId, accountId as CustomerAccountId)
+        )
     );
   });
 

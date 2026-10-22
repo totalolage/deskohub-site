@@ -69,7 +69,7 @@ const evidencePath = (caseId: string) =>
     `${caseId}.json`
   );
 
-test("lists the administration tools to an administrator's agent after the customer tools, and previews a destructive call without changing anything", async ({
+test("lists the administration tools to an administrator's agent after the customer tools, previews a destructive call without confirm, and withdraws them with the grant", async ({
   baseURL,
   browser,
   environment,
@@ -104,17 +104,18 @@ test("lists the administration tools to an administrator's agent after the custo
         timeoutMs: workspaceE2ETimeouts.administratorAgentToolsCase,
         body: (step) =>
           Effect.gen(function* () {
-            yield* step(
+            const administrator = yield* step(
               "sign-in-seeded-administrator",
               workspaceE2ETimeouts.datasource,
               Effect.gen(function* () {
-                const administrator = yield* identities.seed("aat-admin", [
+                const account = yield* identities.seed("aat-admin", [
                   "administrator",
                 ]);
-                yield* identities.signIn(administrator, { context, origin });
+                yield* identities.signIn(account, { context, origin });
+                return account;
               })
             );
-            const { accessToken, grantedScopes } = yield* connectTestAgent({
+            const { accessToken, scopes } = yield* connectTestAgent({
               administrator: true,
               config,
               context,
@@ -181,7 +182,7 @@ test("lists the administration tools to an administrator's agent after the custo
                 );
                 return {
                   case: caseId,
-                  grantedScopes,
+                  scopes,
                   ...catalog,
                   calls: {
                     [readToolName]: { isError: false, ...read },
@@ -194,6 +195,19 @@ test("lists the administration tools to an administrator's agent after the custo
                 };
               })
             );
+            // The token keeps its administration scope; the tools follow the
+            // live grant.
+            yield* step(
+              "revoke-administrator-grant",
+              workspaceE2ETimeouts.datasource,
+              identities.revokeRoles(administrator)
+            );
+            const afterRevocation = yield* expectNoAdministrationTools({
+              accessToken,
+              config,
+              step,
+            });
+            evidence = { ...evidence, afterGrantRevocation: afterRevocation };
           }),
       })
     );
@@ -246,53 +260,19 @@ test("lists no administration tools to a customer's agent that asks for the admi
                 yield* identities.signIn(member, { context, origin });
               })
             );
-            const { accessToken, grantedScopes } = yield* connectTestAgent({
+            const { accessToken, scopes } = yield* connectTestAgent({
               administrator: false,
               config,
               context,
               page,
               step,
             });
-            evidence = yield* Effect.scoped(
-              Effect.gen(function* () {
-                const mcp = yield* step(
-                  "connect-agent-mcp",
-                  workspaceE2ETimeouts.customerMcpRequest,
-                  connectCustomerMcp({ accessToken, config })
-                );
-                const tools = yield* step(
-                  "list-customer-tools",
-                  workspaceE2ETimeouts.customerMcpRequest,
-                  Effect.flatMap(listAgentTools(mcp, config), (listed) =>
-                    tryWorkspaceE2ESync(
-                      "check the customer tool catalog",
-                      () => {
-                        assert(
-                          listed.length > 0,
-                          "The customer's agent lists no tools"
-                        );
-                        assert(
-                          !listed.some(isAdministrationTool),
-                          "The customer's agent lists administration tools"
-                        );
-                        return { total: listed.length, administration: 0 };
-                      }
-                    )
-                  )
-                );
-                const refusal = yield* step(
-                  "refuse-administration-call",
-                  workspaceE2ETimeouts.customerMcpRequest,
-                  expectUnknownTool(mcp, config, readToolName)
-                );
-                return {
-                  case: caseId,
-                  grantedScopes,
-                  tools,
-                  calls: { [readToolName]: refusal },
-                };
-              })
-            );
+            const refusal = yield* expectNoAdministrationTools({
+              accessToken,
+              config,
+              step,
+            });
+            evidence = { case: caseId, scopes, ...refusal };
           }),
       })
     );
@@ -338,6 +318,7 @@ const connectTestAgent = ({
       : administrationAgentRequestedScopes.filter(
           (scope) => scope !== administrationAgentScope
         );
+    const withheld = administrator ? [] : [administrationAgentScope];
     const accessToken = yield* step(
       "exchange-agent-code",
       workspaceE2ETimeouts.customerMcpRequest,
@@ -358,11 +339,18 @@ const connectTestAgent = ({
             iss,
             request,
             server,
-            withheldScopes: administrator ? [] : [administrationAgentScope],
+            withheldScopes: withheld,
           })
       )
     );
-    return { accessToken, grantedScopes: [...expected].sort() };
+    // What the exchange verified, not the raw grant, which may carry more.
+    return {
+      accessToken,
+      scopes: {
+        verifiedGranted: [...expected].sort(),
+        verifiedWithheld: withheld,
+      },
+    };
   });
 
 /**
@@ -453,6 +441,49 @@ const allowAgentConsent = ({
     );
     return { callback, request };
   });
+
+/**
+ * A fresh MCP client with the token lists no administration tools, and a
+ * call to one is refused as unknown.
+ */
+const expectNoAdministrationTools = ({
+  accessToken,
+  config,
+  step,
+}: {
+  readonly accessToken: string;
+  readonly config: WorkspaceE2EConfig;
+  readonly step: AdministratorCaseStep;
+}) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const mcp = yield* step(
+        "connect-agent-mcp-without-administration",
+        workspaceE2ETimeouts.customerMcpRequest,
+        connectCustomerMcp({ accessToken, config })
+      );
+      const tools = yield* step(
+        "list-tools-without-administration",
+        workspaceE2ETimeouts.customerMcpRequest,
+        Effect.flatMap(listAgentTools(mcp, config), (listed) =>
+          tryWorkspaceE2ESync("check the tool catalog", () => {
+            assert(listed.length > 0, "The agent lists no tools");
+            assert(
+              !listed.some(isAdministrationTool),
+              "The agent lists administration tools"
+            );
+            return { administration: 0, total: listed.length };
+          })
+        )
+      );
+      const refusal = yield* step(
+        "refuse-administration-call",
+        workspaceE2ETimeouts.customerMcpRequest,
+        expectUnknownTool(mcp, config, readToolName)
+      );
+      return { calls: { [readToolName]: refusal }, tools };
+    })
+  );
 
 const listAgentTools = (mcp: Client, config: WorkspaceE2EConfig) =>
   tryWorkspaceE2EPromise("list agent tools", async () => {

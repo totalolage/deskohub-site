@@ -9,6 +9,7 @@ import { makeWorkspaceE2EAccountRecipientForRunId } from "../account/config";
 import { makeWorkspaceE2EAccountJournalRecorder } from "../account/journal";
 import type { WorkspaceE2EAccountJournalOwner } from "../account/reconcile";
 import {
+  revokeWorkspaceE2ESyntheticAccountRoles,
   seedWorkspaceE2ESyntheticAccount,
   signInWorkspaceE2ESyntheticBrowserContext,
   type WorkspaceE2ESessionSigningSecret,
@@ -102,6 +103,14 @@ export const makeWorkspaceE2EAdministrationIdentities = <
         yield* seedWorkspaceE2ESyntheticAccount({ ...account, roles });
         return account;
       }),
+
+    /**
+     * Removes the role grants of one of the seeded accounts; its sessions
+     * and agent tokens stay.
+     */
+    revokeRoles: (
+      account: Pick<WorkspaceE2EAdministrationAccount, "accountId">
+    ) => revokeWorkspaceE2ESyntheticAccountRoles(account.accountId),
 
     /** Signs a browser context in as one of the seeded accounts. */
     signIn: (
