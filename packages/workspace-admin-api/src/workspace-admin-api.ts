@@ -15,6 +15,7 @@ import {
   dryRunPreview,
   readOperation,
   readPreview,
+  readPreviewWithArguments,
   writeOperation,
 } from "./administration-operation";
 import { administrationCalendarDate } from "./calendar-date";
@@ -2183,7 +2184,10 @@ export const discountMutationOperations = {
     "update-code": writeOperation({ idempotent: true }),
     "delete-code": destructiveOperation({
       idempotent: true,
-      preview: readPreview("administration.getDiscountCode"),
+      preview: readPreviewWithArguments(
+        { codeId: "id" },
+        "administration.getDiscountCode"
+      ),
     }),
     "add-code-customer": destructiveOperation({
       idempotent: true,
@@ -2202,7 +2206,10 @@ export const discountMutationOperations = {
     "update-voucher": writeOperation({ idempotent: true }),
     "delete-voucher": destructiveOperation({
       idempotent: true,
-      preview: readPreview("administration.getVoucher"),
+      preview: readPreviewWithArguments(
+        { voucherId: "id" },
+        "administration.getVoucher"
+      ),
     }),
     "add-voucher-customer": destructiveOperation({
       idempotent: true,

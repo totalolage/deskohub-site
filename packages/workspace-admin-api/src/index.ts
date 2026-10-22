@@ -17,6 +17,7 @@ export {
   dryRunPreview,
   readOperation,
   readPreview,
+  readPreviewWithArguments,
   writeOperation,
 } from "./administration-operation";
 export {
