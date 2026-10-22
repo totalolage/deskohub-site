@@ -48,7 +48,9 @@ interface IAdministratorRoster {
    * same transaction revokes the CLI sessions and pending CLI grants the
    * account approved and disconnects its AI agents that may use the
    * administration, even when the role was already gone, so a re-grant
-   * can't revive them and a retry finishes an interrupted revoke.
+   * can't revive the CLI credentials and a retry finishes an interrupted
+   * revoke. An agent consent whose check passed before the revoke commits
+   * can still be written afterwards; administration calls re-read the grant.
    */
   readonly revoke: (input: {
     readonly accountId: CustomerAccountId;
