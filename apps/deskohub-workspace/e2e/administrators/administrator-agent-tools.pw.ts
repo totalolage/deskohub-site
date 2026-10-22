@@ -532,17 +532,43 @@ const waitForBrowserLocation = async ({
   }
 };
 
-/** OAuth error codes are lowercase ASCII words; anything else isn't echoed. */
+/** The OAuth error codes a failure message may name; others aren't echoed. */
+const reportableOAuthErrors = new Set([
+  "access_denied",
+  "client_disabled",
+  "consent_required",
+  "interaction_required",
+  "invalid_client",
+  "invalid_grant",
+  "invalid_redirect",
+  "invalid_request",
+  "invalid_scope",
+  "invalid_target",
+  "login_required",
+  "server_error",
+  "temporarily_unavailable",
+  "unauthorized_client",
+  "unsupported_response_type",
+]);
+
 const oauthErrorCode = (value: unknown) => {
   if (value === null || value === undefined) return "none";
-  return typeof value === "string" && /^[a-z_]{1,64}$/.test(value)
+  return typeof value === "string" && reportableOAuthErrors.has(value)
     ? value
     : "unrecognized";
 };
 
+/** The preview pages a failure message may name, by path suffix. */
+const reportablePreviewPages = [
+  ["/auth/consent", "the consent page"],
+  ["/auth/connect", "the connect page"],
+  ["/auth/sign-in", "the sign-in page"],
+  ["/api/auth/error", "the auth error page"],
+] as const;
+
 /**
  * Where a URL points: the agent's redirect URI with its OAuth error code, a
- * preview pathname, or another origin.
+ * known preview page, another preview path, or another origin.
  */
 const describeDestination = (url: string, baseUrl: string) => {
   const target = parseUrl(url);
@@ -550,9 +576,12 @@ const describeDestination = (url: string, baseUrl: string) => {
   if (isCustomerAgentCallbackUrl(target.toString())) {
     return `the agent's redirect URI with error ${oauthErrorCode(target.searchParams.get("error"))}`;
   }
-  return target.origin === new URL(baseUrl).origin
-    ? `the preview path ${target.pathname}`
-    : "another origin";
+  if (target.origin !== new URL(baseUrl).origin) return "another origin";
+  return (
+    reportablePreviewPages.find(([suffix]) =>
+      target.pathname.endsWith(suffix)
+    )?.[1] ?? "another preview path"
+  );
 };
 
 /** Whether the page shows the consent buttons and an alert. */
