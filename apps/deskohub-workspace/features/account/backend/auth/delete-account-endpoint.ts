@@ -7,6 +7,7 @@ import { auth } from "@/features/account/server/auth.server";
 export type CustomerAccountDeletionEndpointResult =
   | { readonly status: "deleted" }
   | { readonly status: "reauthentication-required" }
+  | { readonly status: "refused" }
   | {
       readonly status: "failed";
       readonly code: "account.delete.endpoint" | "account.delete.unexpected";
@@ -30,6 +31,9 @@ export const deleteCurrentAccountThroughAuthEndpoint =
           cause.body?.code === "UNAUTHORIZED"
         ) {
           return { status: "reauthentication-required" };
+        }
+        if (cause.body?.code === "REVIEW_ACCOUNT_DELETION_REFUSED") {
+          return { status: "refused" };
         }
         return {
           status: "failed",

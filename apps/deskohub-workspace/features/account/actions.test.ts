@@ -922,6 +922,21 @@ describe("account actions", () => {
     expect(deleteUserCalls).toBe(0);
   });
 
+  test("reports a refusal when the endpoint refuses to delete a review account", async () => {
+    const { APIError } = await import("better-auth");
+    deleteUser = () => {
+      throw new APIError("FORBIDDEN", {
+        code: "REVIEW_ACCOUNT_DELETION_REFUSED",
+        message: "A review account can't be deleted.",
+      });
+    };
+    const { deleteCustomerAccount } = await importActions();
+
+    const result = await deleteCustomerAccount({ confirmed: true });
+
+    expect(result).toEqual({ data: { status: "refused" } });
+  });
+
   test("reports a retryable failure for other endpoint errors and keeps the account", async () => {
     const { APIError } = await import("better-auth");
     deleteUser = () => {

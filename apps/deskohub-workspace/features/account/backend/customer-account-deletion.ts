@@ -1,6 +1,7 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { Context, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql";
+import { ReviewAccounts } from "@/features/review-accounts";
 import type { CustomerAccountId } from "../customer-account";
 import { CustomerAccountRepository } from "./customer-account.repository";
 import {
@@ -17,13 +18,27 @@ import {
   type DotyposCustomerError,
 } from "./customer-dotypos-adapter.service";
 
+/**
+ * A shared app-directory review account can't be deleted: later review rounds
+ * sign in with the same credentials.
+ */
+export class ReviewAccountDeletionRefusedError extends Data.TaggedError(
+  "ReviewAccountDeletionRefusedError"
+)<Record<never, never>> {
+  override readonly message = "A review account can't be deleted.";
+}
+
 export type CustomerAccountDeletionError =
+  | ReviewAccountDeletionRefusedError
   | CustomerAccountLinkError
   | DotyposCustomerError
   | CustomerAvatarProviderError
   | CustomerAvatarUnavailableError;
 
 export type CustomerAccountDeletionDependencies = {
+  readonly isReviewAccount: (
+    accountId: CustomerAccountId
+  ) => Effect.Effect<boolean, CustomerAccountLinkError>;
   readonly markDeletionRequested: (
     accountId: CustomerAccountId,
     requestedAt: Date
@@ -54,55 +69,60 @@ export type CustomerAccountDeletionDependencies = {
  * Provider-first account deletion. Persisting the durable marker must survive
  * a later retryable provider failure, so the marker is written in its own
  * transaction under the session-level account lock, never in the same
- * transaction as the provider call.
+ * transaction as the provider call. A review account is refused before
+ * anything changes; its marker never goes away, so the check needs no lock.
  */
 export const expireLinkedDotyposProfile = (
   dependencies: CustomerAccountDeletionDependencies
 ) =>
-  Effect.fn("CustomerAccountDeletion.expireLinkedDotyposProfile")(
-    (accountId: CustomerAccountId) =>
-      dependencies
-        .withAccountLock(
-          accountId,
-          Effect.gen(function* () {
-            yield* dependencies.markDeletionRequested(accountId, new Date());
+  Effect.fn("CustomerAccountDeletion.expireLinkedDotyposProfile")(function* (
+    accountId: CustomerAccountId
+  ) {
+    if (yield* dependencies.isReviewAccount(accountId)) {
+      return yield* new ReviewAccountDeletionRefusedError();
+    }
+    return yield* dependencies
+      .withAccountLock(
+        accountId,
+        Effect.gen(function* () {
+          yield* dependencies.markDeletionRequested(accountId, new Date());
 
-            const linkedCustomerId = yield* dependencies.findLink(accountId);
-            if (linkedCustomerId) {
-              yield* dependencies
-                .expireCustomer(linkedCustomerId)
-                .pipe(
-                  Effect.catchTag("ExternalAPIError", (error) =>
-                    error.statusCode === 404
-                      ? Effect.logWarning(
-                          "Customer account deletion: Dotypos profile already missing.",
-                          { code: "dotypos.customer-expiration.missing" }
-                        )
-                      : Effect.fail(error)
-                  )
-                );
-            }
+          const linkedCustomerId = yield* dependencies.findLink(accountId);
+          if (linkedCustomerId) {
+            yield* dependencies
+              .expireCustomer(linkedCustomerId)
+              .pipe(
+                Effect.catchTag("ExternalAPIError", (error) =>
+                  error.statusCode === 404
+                    ? Effect.logWarning(
+                        "Customer account deletion: Dotypos profile already missing.",
+                        { code: "dotypos.customer-expiration.missing" }
+                      )
+                    : Effect.fail(error)
+                )
+              );
+          }
 
-            // The media asset goes before identity removal: an uncertain
-            // provider outcome fails retryably so deletion stays retryable,
-            // and a missing asset is idempotent success.
-            yield* dependencies.destroyAvatar(accountId);
+          // The media asset goes before identity removal: an uncertain
+          // provider outcome fails retryably so deletion stays retryable,
+          // and a missing asset is idempotent success.
+          yield* dependencies.destroyAvatar(accountId);
 
-            // The tombstone goes last, once nothing retryable remains, and
-            // before Better Auth removes the identity rows, so reservations
-            // the account authored keep their author.
-            yield* dependencies.tombstone(accountId, Temporal.Now.instant());
-          })
-        )
-        .pipe(
-          Effect.tapError((cause) =>
-            Effect.logWarning(
-              "Customer account deletion: provider cleanup failed; deletion stays retryable.",
-              { code: "account.deletion.retryable", cause }
-            )
+          // The tombstone goes last, once nothing retryable remains, and
+          // before Better Auth removes the identity rows, so reservations
+          // the account authored keep their author.
+          yield* dependencies.tombstone(accountId, Temporal.Now.instant());
+        })
+      )
+      .pipe(
+        Effect.tapError((cause) =>
+          Effect.logWarning(
+            "Customer account deletion: provider cleanup failed; deletion stays retryable.",
+            { code: "account.deletion.retryable", cause }
           )
         )
-  );
+      );
+  });
 
 interface ICustomerAccountDeletionService {
   readonly requestDeletion: (
@@ -121,8 +141,10 @@ export class CustomerAccountDeletionService extends Context.Service<
       const accounts = yield* CustomerAccountRepository;
       const dotypos = yield* CustomerDotyposAdapter;
       const avatars = yield* CustomerAvatarService;
+      const reviewAccounts = yield* ReviewAccounts;
 
       const requestDeletion = expireLinkedDotyposProfile({
+        isReviewAccount: reviewAccounts.isReviewAccount,
         markDeletionRequested: links.markDeletionRequested,
         findLink: links.find,
         expireCustomer: dotypos.expireCustomer,
@@ -141,7 +163,8 @@ export class CustomerAccountDeletionService extends Context.Service<
         CustomerAccountLinkRepository.Live,
         CustomerAccountRepository.Live,
         CustomerDotyposAdapter.Live,
-        CustomerAvatarService.Live
+        CustomerAvatarService.Live,
+        ReviewAccounts.Live
       )
     )
   );

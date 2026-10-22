@@ -82,6 +82,7 @@ function renderState(
       return (
         <AccountWithoutProfile
           assistants={state.assistants}
+          deletable={!state.deletionUnavailable}
           email={state.email}
           locale={locale}
           passkeys={state.passkeys}
@@ -93,6 +94,7 @@ function renderState(
       return (
         <AccountWithoutProfile
           assistants={state.assistants}
+          deletable={!state.deletionUnavailable}
           email={state.email}
           locale={locale}
           passkeys={state.passkeys}
@@ -110,6 +112,7 @@ function renderState(
       return (
         <AccountWithoutProfile
           assistants={state.assistants}
+          deletable={!state.deletionUnavailable}
           email={state.email}
           locale={locale}
           passkeys={state.passkeys}
@@ -122,6 +125,7 @@ function renderState(
       return (
         <AccountWithoutProfile
           assistants={state.assistants}
+          deletable={false}
           email={state.email}
           locale={locale}
           passkeys={state.passkeys}
@@ -133,6 +137,7 @@ function renderState(
     case "deletion-pending":
       return (
         <AccountWithoutProfile
+          deletable
           deletionPending
           email={state.email}
           locale={locale}

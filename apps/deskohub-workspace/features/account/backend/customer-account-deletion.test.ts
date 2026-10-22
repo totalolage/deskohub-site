@@ -12,12 +12,17 @@ const accountId = customerAccountIdSchema.make("auth-user-1");
 const makeDependencies = (
   overrides: {
     readonly link?: string | null;
+    readonly reviewAccount?: boolean;
     readonly expireOutcome?: Effect.Effect<void, unknown>;
     readonly avatarOutcome?: Effect.Effect<void, unknown>;
   } & Partial<CustomerAccountDeletionDependencies> = {}
 ) => {
   const calls: string[] = [];
   const dependencies: CustomerAccountDeletionDependencies = {
+    isReviewAccount: () => {
+      calls.push("review-check");
+      return Effect.succeed(overrides.reviewAccount ?? false);
+    },
     markDeletionRequested: () => {
       calls.push("marker");
       return Effect.void;
@@ -67,6 +72,7 @@ describe("Customer account deletion", () => {
     );
 
     expect(calls).toEqual([
+      "review-check",
       "lock-acquire",
       "marker",
       "find-link",
@@ -75,6 +81,20 @@ describe("Customer account deletion", () => {
       "tombstone",
       "lock-release",
     ]);
+  });
+
+  test("refuses a review account before it marks, expires, or tombstones anything", async () => {
+    const { dependencies, calls } = makeDependencies({
+      link: null,
+      reviewAccount: true,
+    });
+
+    const outcome = await Effect.runPromise(
+      expireLinkedDotyposProfile(dependencies)(accountId).pipe(Effect.flip)
+    );
+
+    expect(outcome._tag).toBe("ReviewAccountDeletionRefusedError");
+    expect(calls).toEqual(["review-check"]);
   });
 
   test("keeps the durable marker when the provider call fails retryably", async () => {
@@ -90,6 +110,7 @@ describe("Customer account deletion", () => {
 
     expect(outcome._tag).toBe("Failure");
     expect(calls).toEqual([
+      "review-check",
       "lock-acquire",
       "marker",
       "find-link",
@@ -141,6 +162,7 @@ describe("Customer account deletion", () => {
 
     expect(outcome._tag).toBe("Success");
     expect(calls).toEqual([
+      "review-check",
       "lock-acquire",
       "marker",
       "find-link",

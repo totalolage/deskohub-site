@@ -257,6 +257,13 @@ const makePasskeyUserVerificationRequiredError = () =>
     message: "Confirming with a passkey requires user verification.",
   });
 
+/** A shared app-directory review account must keep working. */
+const makeReviewAccountDeletionRefusedError = () =>
+  new APIError("FORBIDDEN", {
+    code: "REVIEW_ACCOUNT_DELETION_REFUSED",
+    message: "A review account can't be deleted.",
+  });
+
 /** Better Auth's response to a wrong or used code. */
 const makeInvalidSignInCodeError = () =>
   new APIError("BAD_REQUEST", { code: "INVALID_OTP", message: "Invalid OTP" });
@@ -1200,7 +1207,13 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
               if (!accountId) {
                 return yield* new DeletingAccountIdInvalidError();
               }
-              yield* config.beforeDeleteUser(accountId);
+              yield* config
+                .beforeDeleteUser(accountId)
+                .pipe(
+                  Effect.catchTag("ReviewAccountDeletionRefusedError", () =>
+                    Effect.fail(makeReviewAccountDeletionRefusedError())
+                  )
+                );
             })
           ),
       },
