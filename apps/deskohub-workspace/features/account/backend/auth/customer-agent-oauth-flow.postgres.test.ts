@@ -2050,6 +2050,16 @@ describe.skipIf(!testDatabase)(
   }
 );
 
+/** Whether the validated grant behind a token carries administration. */
+const grantCarriesAdministration = async (auth: TestAuth, token: string) => {
+  const outcome = await authorizeToken(authorityOver(auth), token);
+  expect(outcome._tag).toBe("Success");
+  return (
+    outcome._tag === "Success" &&
+    outcome.success.grant.scopes.has("administration")
+  );
+};
+
 /** Grants the administrator role to a signed-in test account. */
 const grantAdministrator = (accountId: string) =>
   testDatabase!.pool.query(
@@ -2229,6 +2239,9 @@ describe.skipIf(!testDatabase)(
       expect(tokens.scope?.split(" ").toSorted()).toEqual(
         AGENT_SCOPE.split(" ").toSorted()
       );
+      expect(await grantCarriesAdministration(auth, tokens.access_token)).toBe(
+        false
+      );
       expect(await administrationAccessOf(auth, tokens.access_token)).toBe(
         "missing-scope"
       );
@@ -2257,6 +2270,9 @@ describe.skipIf(!testDatabase)(
       );
 
       expect(tokens.scope?.split(" ")).toContain("administration");
+      expect(await grantCarriesAdministration(auth, tokens.access_token)).toBe(
+        true
+      );
       expect(await administrationAccessOf(auth, tokens.access_token)).toBe(
         "administrator"
       );
