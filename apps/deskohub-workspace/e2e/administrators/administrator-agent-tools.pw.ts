@@ -420,7 +420,7 @@ const allowAgentConsent = Effect.fn("allowAgentConsent")(function* ({
         })
         .catch(async () =>
           fail(
-            `The consent page shows no Allow button; its heading reads "${await firstHeading(page)}"`
+            `The consent page shows no Allow button; ${await describePageState(page)}`
           )
         );
       equal(
@@ -431,7 +431,7 @@ const allowAgentConsent = Effect.fn("allowAgentConsent")(function* ({
           : "The consent page asks a customer about the administration"
       );
       await waitForReactClickHandler(page, allow);
-      const consentAnswer = describeConsentAnswer(page);
+      const consentAnswer = describeConsentAnswer(page, config.baseUrl);
       await allow.click({ timeout: workspaceE2ETimeouts.browserAction });
       await waitForBrowserLocation({
         baseUrl: config.baseUrl,
@@ -501,10 +501,9 @@ const expectNoAdministrationTools = Effect.fn("expectNoAdministrationTools")(
 /**
  * Waits for the browser to reach a URL by polling it, as `waitForBrowserUrl`
  * does: after Allow, Better Auth's client and the consent page both navigate
- * to the agent's redirect URI, and `page.waitForURL` rejects on the first,
- * aborted navigation. On a timeout it fails with where the browser is instead: the agent's redirect URI with its OAuth error code, a
- * preview pathname with the page's alert, or another origin. Nothing in the
- * message carries a query, a code, or a host.
+ * to the agent's redirect URI, and `page.waitForURL` can reject on the first,
+ * aborted navigation. On a timeout it fails with where the browser is
+ * instead, in code-owned terms only: no host, query, or page text.
  */
 const waitForBrowserLocation = async ({
   baseUrl,
@@ -528,16 +527,55 @@ const waitForBrowserLocation = async ({
       .toBe(true);
   } catch {
     fail(
-      `The browser did not reach ${expected}; it is on ${await describeBrowserLocation(page, baseUrl)}${detail ? `; ${await detail}` : ""}`
+      `The browser did not reach ${expected}; it is on ${describeDestination(page.url(), baseUrl)}, ${await describePageState(page)}${detail ? `; ${await detail}` : ""}`
     );
   }
 };
 
+/** OAuth error codes are lowercase ASCII words; anything else isn't echoed. */
+const oauthErrorCode = (value: unknown) => {
+  if (value === null || value === undefined) return "none";
+  return typeof value === "string" && /^[a-z_]{1,64}$/.test(value)
+    ? value
+    : "unrecognized";
+};
+
+/**
+ * Where a URL points: the agent's redirect URI with its OAuth error code, a
+ * preview pathname, or another origin.
+ */
+const describeDestination = (url: string, baseUrl: string) => {
+  const target = parseUrl(url);
+  if (target === undefined) return "an unreadable URL";
+  if (isCustomerAgentCallbackUrl(target.toString())) {
+    return `the agent's redirect URI with error ${oauthErrorCode(target.searchParams.get("error"))}`;
+  }
+  return target.origin === new URL(baseUrl).origin
+    ? `the preview path ${target.pathname}`
+    : "another origin";
+};
+
+/** Whether the page shows the consent buttons and an alert. */
+const describePageState = async (page: Page) => {
+  const count = (locator: ReturnType<Page["locator"]>) =>
+    locator.count().catch(() => -1);
+  const [allow, alerts] = await Promise.all([
+    count(
+      page.getByRole("button", {
+        exact: true,
+        name: m.customerAgentConsentAllow({}, { locale: consentLocale }),
+      })
+    ),
+    count(page.getByRole("alert").filter({ hasText: /\S/ })),
+  ]);
+  return `Allow buttons ${allow}, non-empty alerts ${alerts}`;
+};
+
 /**
  * What the OAuth server answered the page's consent request: the status and
- * where it sends the browser (host and path only) or its OAuth error code.
+ * where it sends the browser, in the same code-owned terms.
  */
-const describeConsentAnswer = (page: Page) =>
+const describeConsentAnswer = (page: Page, baseUrl: string) =>
   page
     .waitForResponse(
       (response) =>
@@ -548,51 +586,14 @@ const describeConsentAnswer = (page: Page) =>
     .then(
       async (response) => {
         const body: unknown = await response.json().catch(() => undefined);
-        const target =
+        const destination =
           isRecord(body) && typeof body.url === "string"
-            ? parseUrl(body.url)
-            : undefined;
-        const error =
-          isRecord(body) && typeof body.error === "string"
-            ? body.error
-            : "none";
-        return `the consent answer was ${response.status()} sending the browser to ${target ? `${target.host}${target.pathname}` : "nowhere"} with error "${target?.searchParams.get("error") ?? error}"`;
+            ? describeDestination(body.url, baseUrl)
+            : "nowhere";
+        const error = oauthErrorCode(isRecord(body) ? body.error : undefined);
+        return `the consent answer was ${response.status()} with error ${error}, sending the browser to ${destination}`;
       },
       () => "the page sent no consent answer"
-    );
-
-const describeBrowserLocation = async (page: Page, baseUrl: string) => {
-  const current = new URL(page.url());
-  if (isCustomerAgentCallbackUrl(current.toString())) {
-    return `the agent's redirect URI with error "${current.searchParams.get("error") ?? "none"}" (${current.searchParams.get("error_description") ?? "no description"})`;
-  }
-  if (current.origin !== new URL(baseUrl).origin) return "another origin";
-  return `${current.pathname} with heading "${await firstHeading(page)}" and alert "${await pageAlert(page)}"`;
-};
-
-/** The page's first heading, for a failure message. */
-const firstHeading = (page: Page) =>
-  page
-    .locator("h1")
-    .first()
-    .textContent({ timeout: workspaceE2ETimeouts.browserAction })
-    .then(
-      (text) => text?.trim() || "none",
-      () => "none"
-    );
-
-/** The page's alert text, for a failure message. */
-const pageAlert = (page: Page) =>
-  page
-    .getByRole("alert")
-    .allTextContents()
-    .then(
-      (texts) =>
-        texts
-          .map((text) => text.trim())
-          .filter(Boolean)
-          .join(" | ") || "none",
-      () => "none"
     );
 
 const listAgentTools = (mcp: Client, config: WorkspaceE2EConfig) =>
