@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import { Option } from "effect";
 import type { CustomerEventSweepSource } from "@/shared/backend/customer-events/customer-event";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";

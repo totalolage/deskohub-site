@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import type { DotyposReservationId } from "@deskohub/dotypos";
 import type { NexiOperationId, NexiWebhookEventId } from "@deskohub/nexi";
 import { and, desc, eq, gt, inArray, lte, ne, or, sql } from "drizzle-orm";
