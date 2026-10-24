@@ -105,9 +105,12 @@ const readHealth = (db: WorkspaceDatabaseClient, now: Temporal.Instant) =>
         .from(engine)
         .where(eq(engine.id, 1))
         .pipe(Effect.map(([row]) => row?.lastPlannedAt ?? null)),
+      // Only the clock sweep trails now: the hourly reconcile's cursor is
+      // the instant its last window opened, up to an hour old when healthy.
       sweptUntil: db
-        .select({ sweptUntil: min(customerEventSweeps.sweptUntil) })
+        .select({ sweptUntil: customerEventSweeps.sweptUntil })
         .from(customerEventSweeps)
+        .where(eq(customerEventSweeps.source, "reservation-activity"))
         .pipe(Effect.map(([row]) => row?.sweptUntil ?? null)),
       oldestUnprocessedEventAt: db
         .select({ recordedAt: min(customerEvents.recordedAt) })
