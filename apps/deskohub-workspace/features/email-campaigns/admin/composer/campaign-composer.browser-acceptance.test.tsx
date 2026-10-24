@@ -10,6 +10,7 @@ import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles
 
 const harnessOrigin = "http://campaign-composer.test";
 const desktopViewport = { height: 1212, width: 1896 } as const;
+const shortDesktopViewport = { height: 760, width: 1440 } as const;
 const mobileViewport = { height: 844, width: 390 } as const;
 
 const nextModuleStubs: Readonly<Record<string, string>> = {
@@ -147,6 +148,7 @@ const measureStickyLayout = (page: Page, position: "middle" | "bottom") =>
       controlsTop: controls.top,
       controlsUpperEdgeOnTop: isDrawnOnTop(centreX, controls.top + 1),
       previewPosition: getComputedStyle(previewAside).position,
+      previewBottom: previewAside.getBoundingClientRect().bottom,
       previewTop: previewAside.getBoundingClientRect().top,
       scrollY: window.scrollY,
       toolbarBottom: bar.getBoundingClientRect().bottom,
@@ -155,11 +157,15 @@ const measureStickyLayout = (page: Page, position: "middle" | "bottom") =>
     };
   }, position);
 
-for (const locale of ["cs-CZ", "en-US"] as const) {
+for (const { locale, viewport } of [
+  { locale: "cs-CZ", viewport: desktopViewport },
+  { locale: "en-US", viewport: desktopViewport },
+  { locale: "cs-CZ", viewport: shortDesktopViewport },
+] as const) {
   test.skipIf(!chromiumAvailable)(
-    `keeps campaign actions clear of the preview language controls while the ${locale} desktop page scrolls`,
+    `keeps campaign actions clear of the preview language controls while the ${locale} ${viewport.width}x${viewport.height} desktop page scrolls`,
     async () => {
-      const page = await openCampaignComposer(desktopViewport, locale);
+      const page = await openCampaignComposer(viewport, locale);
       try {
         const scrollStates = [
           await measureStickyLayout(page, "middle"),
@@ -173,7 +179,7 @@ for (const locale of ["cs-CZ", "en-US"] as const) {
           expect(layout.toolbarTop).toBeGreaterThanOrEqual(64);
           expect(layout.toolbarTop).toBeLessThan(66);
           expect(layout.buttonTop).toBeGreaterThanOrEqual(layout.toolbarTop);
-          expect(layout.buttonBottom).toBeLessThan(desktopViewport.height);
+          expect(layout.buttonBottom).toBeLessThan(viewport.height);
           expect(layout.previewPosition).toBe("sticky");
           expect(layout.previewTop).toBeGreaterThanOrEqual(
             layout.toolbarBottom
@@ -181,9 +187,7 @@ for (const locale of ["cs-CZ", "en-US"] as const) {
           expect(layout.controlsTop).toBeGreaterThanOrEqual(
             layout.toolbarBottom
           );
-          expect(layout.controlsBottom).toBeLessThanOrEqual(
-            desktopViewport.height
-          );
+          expect(layout.previewBottom).toBeLessThanOrEqual(viewport.height);
           expect(layout.controlsUpperEdgeOnTop).toBe(true);
           expect(layout.controlsCentreOnTop).toBe(true);
         }
