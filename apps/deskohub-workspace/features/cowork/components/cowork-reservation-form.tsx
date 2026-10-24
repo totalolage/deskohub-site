@@ -32,7 +32,6 @@ import {
   workspaceProductTierCardMessages,
   workspaceProductTierMessages,
 } from "@/features/checkout/product-catalog.i18n";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import openSpaceArtwork from "@/features/cowork/assets/open-space.png";
 import reservedDeskArtwork from "@/features/cowork/assets/reserved-desk.png";
 import reservedDeskWorkstationArtwork from "@/features/cowork/assets/reserved-desk-workstation.png";
@@ -92,6 +91,7 @@ import {
   FormMessage,
 } from "@/shared/components/ui/form";
 import { Label } from "@/shared/components/ui/label";
+import { formatMoney } from "@/shared/money/money";
 import { cn } from "@/shared/utils";
 import { CoworkOptionalAddonToggle } from "./cowork-optional-addon-toggle";
 import { getCoworkReservationSelectionSummary } from "./cowork-reservation-selection-summary";
@@ -258,7 +258,7 @@ export function CoworkReservationForm({
     ({ type }) => type === "coffee"
   )?.amount;
   const coffeePriceLabel = coffeePrice
-    ? formatWorkspaceMoney(coffeePrice, locale)
+    ? formatMoney(coffeePrice, locale)
     : undefined;
   const advertisedPricesByTier = new Map<
     string,
@@ -312,7 +312,7 @@ export function CoworkReservationForm({
     ({ type }) => type === "workstation"
   )?.amount;
   const workstationPriceLabel = workstationPrice
-    ? formatWorkspaceMoney(workstationPrice, locale)
+    ? formatMoney(workstationPrice, locale)
     : undefined;
 
   const selectedAdvertisedPriceIndex = advertisedPriceRequests.findIndex(

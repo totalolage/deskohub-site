@@ -51,7 +51,6 @@ export {
 export { EmptyState } from "./empty-state";
 export {
   formatAdministrationDateTime,
-  formatAdministrationMoney,
   formatAdministrationPlainDate,
   formatAdministrationReservationDate,
 } from "./formatters";

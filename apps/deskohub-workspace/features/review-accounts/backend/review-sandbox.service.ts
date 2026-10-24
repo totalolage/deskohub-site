@@ -19,7 +19,6 @@ import type {
 } from "@/features/checkout/backend/checkout/checkout-status.service";
 import { payStateDefaultTtlMilliseconds } from "@/features/checkout/backend/checkout/pay-state";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 import {
   getCoworkReservationInterval,
@@ -34,6 +33,7 @@ import {
   getStoredWorkspaceReservationDetails,
   type WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
+import type { Money } from "@/shared/money/money";
 import {
   currentInstant,
   temporalInstantToIsoString,
@@ -71,7 +71,7 @@ export type ReviewSandboxHoldRequest = {
   readonly agentClientId?: CustomerAgentClientId;
   readonly reservation: ReviewSandboxOrder;
   /** The price the booking was advertised at, which the sandbox keeps. */
-  readonly total: WorkspaceMoney;
+  readonly total: Money;
   readonly bookedAt: Temporal.Instant;
 };
 

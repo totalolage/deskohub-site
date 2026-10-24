@@ -1,10 +1,10 @@
 import type { CheckoutMeetingRoomStatusSummary } from "@/features/checkout/backend/checkout";
 import type { CheckoutStatusSummaryPresentation } from "@/features/checkout/checkout-status-summary-presentation";
 import { getWorkspaceMeetingRoomProductTitle } from "@/features/checkout/product-catalog.i18n";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { formatMeetingRoomReservationDisplayTime } from "@/features/reservation/reservation.i18n";
 import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
+import { formatMoney } from "@/shared/money/money";
 
 export const getMeetingRoomCheckoutStatusSummary = (
   summary: CheckoutMeetingRoomStatusSummary,
@@ -32,7 +32,7 @@ export const getMeetingRoomCheckoutStatusSummary = (
     },
     {
       label: String(m.checkoutStatusSummaryPriceLabel({}, { locale })),
-      value: formatWorkspaceMoney(summary.price, locale),
+      value: formatMoney(summary.price, locale),
     },
   ],
 });

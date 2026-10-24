@@ -1,9 +1,9 @@
 import type { Locale } from "@/features/i18n";
+import { formatMoney } from "@/shared/money/money";
 import { cn } from "@/shared/utils";
 import type { AdministrationPaymentAttempt } from "./administration.service";
 import {
   formatAdministrationDateTime,
-  formatAdministrationMoney,
   getAdministrationPaymentStatus,
 } from "./formatters";
 import { m } from "./i18n";
@@ -32,7 +32,7 @@ export function PaymentAmount({
   readonly payment: DisplayedPayment;
 }) {
   const status = getAdministrationPaymentStatus(payment, locale);
-  const amount = formatAdministrationMoney(payment.amount, locale);
+  const amount = formatMoney(payment.amount, locale);
   if (!status.refunded) return amount;
   return (
     <>
@@ -48,7 +48,7 @@ export function PaymentAmount({
       {status.retainedAmount && (
         <>
           {" "}
-          {formatAdministrationMoney(status.retainedAmount, locale)}
+          {formatMoney(status.retainedAmount, locale)}
           <span className="sr-only">
             {" "}
             {m.administrationPaymentAmountAfterRefund({}, { locale })}

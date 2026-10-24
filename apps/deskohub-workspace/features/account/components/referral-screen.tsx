@@ -4,7 +4,6 @@ import { Check, Copy, Info } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { formatReferralDiscount } from "@/features/referrals/client";
 import type { ReferralAccountOverview } from "@/features/referrals/contracts";
@@ -22,6 +21,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/shared/components/ui/tooltip";
+import { formatMoney } from "@/shared/money/money";
 import { formatDuration } from "@/shared/utils/format-duration";
 
 export function ReferralScreen({
@@ -130,7 +130,7 @@ export function ReferralScreen({
                   key={amount.currency}
                 >
                   {m.accountReferralsSaved(
-                    { amount: formatWorkspaceMoney(amount, locale) },
+                    { amount: formatMoney(amount, locale) },
                     { locale }
                   )}
                 </li>

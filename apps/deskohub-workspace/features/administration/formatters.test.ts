@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { formatMoney } from "@/shared/money/money";
 import type { AdministrationPaymentAttempt } from "./administration.service";
 import {
   formatAdministrationDateTime,
   formatAdministrationExportDateTime,
-  formatAdministrationMoney,
   formatAdministrationPlainDate,
   formatAdministrationReservationDate,
-  getAdministrationMoneyAmount,
   getAdministrationPaymentStatus,
 } from "./formatters";
 
@@ -58,36 +57,6 @@ describe("administration formatters", () => {
         "cs-CZ"
       )
     ).toBe("12. 10. 2026");
-  });
-
-  test("formats money in en-US", () => {
-    expect(
-      formatAdministrationMoney(
-        { value: 21_750, exponent: 2, currency: "CZK" },
-        "en-US"
-      )
-    ).toBe("CZK\u00a0217.50");
-    expect(
-      formatAdministrationMoney(
-        { value: 120_000, exponent: 2, currency: "CZK" },
-        "en-US"
-      )
-    ).toBe("CZK\u00a01,200");
-  });
-
-  test("formats money in cs-CZ", () => {
-    expect(
-      formatAdministrationMoney(
-        { value: 21_750, exponent: 2, currency: "CZK" },
-        "cs-CZ"
-      )
-    ).toBe("217,50\u00a0Kč");
-    expect(
-      formatAdministrationMoney(
-        { value: 120_000, exponent: 2, currency: "CZK" },
-        "cs-CZ"
-      )
-    ).toBe("1\u00a0200\u00a0Kč");
   });
 });
 
@@ -146,7 +115,7 @@ describe("getAdministrationPaymentStatus", () => {
         "en-US"
       )
     ).toEqual({
-      label: `Partially refunded ${formatAdministrationMoney(
+      label: `Partially refunded ${formatMoney(
         {
           ...paidAttempt.amount,
           value: 10_000,
@@ -201,9 +170,7 @@ describe("getAdministrationPaymentStatus", () => {
     expect(
       getAdministrationPaymentStatus({ ...refunded, refundedAmount }, "cs-CZ")
         .label
-    ).toBe(
-      `Částečně vráceno ${formatAdministrationMoney(refundedAmount, "cs-CZ")}`
-    );
+    ).toBe(`Částečně vráceno ${formatMoney(refundedAmount, "cs-CZ")}`);
   });
 });
 
@@ -215,18 +182,5 @@ describe("export values", () => {
     expect(formatAdministrationExportDateTime("2026-01-15T23:30:00Z")).toBe(
       "2026-01-16 00:30"
     );
-  });
-
-  test("writes amounts in currency units", () => {
-    expect(
-      getAdministrationMoneyAmount({
-        value: 125_050,
-        exponent: 2,
-        currency: "CZK",
-      })
-    ).toBe(1250.5);
-    expect(
-      getAdministrationMoneyAmount({ value: 900, exponent: 0, currency: "CZK" })
-    ).toBe(900);
   });
 });
