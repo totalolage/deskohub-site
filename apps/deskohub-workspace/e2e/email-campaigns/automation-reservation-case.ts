@@ -664,7 +664,11 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
           { timeout: workspaceE2ETimeouts.uiTransition, waitUntil: "commit" }
         );
         // The run link's text is a formatted time; its target is the run.
-        const runLink = page.locator(`a[href$="/runs/${runId}"]`).first();
+        // The list renders as cards or a table by width, with the other
+        // hidden, so only the visible link takes the click.
+        const runLink = page
+          .locator(`a[href$="/runs/${runId}"]`)
+          .filter({ visible: true });
         await runLink.click({ timeout: workspaceE2ETimeouts.uiTransition });
         await waitForPath(
           new RegExp(`/runs/${runId}$`),
