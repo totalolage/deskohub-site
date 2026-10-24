@@ -87,11 +87,24 @@ export function AdministrationFiltersLoading({
   );
 }
 
-export function AdministrationMetricsLoading() {
+export function AdministrationReservationActivityLoading() {
   const locale = useRouteLocale();
   return (
     <LoadingRegion
       label={m.administrationLoadingReservationActivity({}, { locale })}
+    >
+      <div className="rounded-xl border border-navy-blue/10 bg-white p-4 sm:p-5">
+        <Skeleton className="h-40 w-full" />
+      </div>
+    </LoadingRegion>
+  );
+}
+
+export function AdministrationMetricsLoading() {
+  const locale = useRouteLocale();
+  return (
+    <LoadingRegion
+      label={m.administrationLoadingReservationCounts({}, { locale })}
     >
       <div className="grid gap-3 @xl:grid-cols-3">
         {["today", "upcoming", "recent"].map((key) => (

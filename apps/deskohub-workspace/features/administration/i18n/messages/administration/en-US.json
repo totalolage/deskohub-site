@@ -69,8 +69,8 @@
   "administrationBookingViewCustomer": "View customer",
   "administrationBookingViewReservationHistory": "View lifecycle and payment history",
   "administrationConfirmDialogCancel": "Cancel",
-  "administrationCustomerActivityCalendarLabel": "Reservation activity for the past 365 days",
-  "administrationCustomerActivityDay": [
+  "administrationReservationActivityCalendarLabel": "Reservation activity for the past 365 days",
+  "administrationReservationActivityDay": [
     {
       "declarations": [
         "input count",
@@ -85,10 +85,12 @@
       }
     }
   ],
-  "administrationCustomerActivityDayEmpty": "No reservations on {date}",
-  "administrationCustomerActivityTitle": "Reservation activity",
-  "administrationCustomerActivityUnavailable": "Reservation activity is temporarily unavailable.",
-  "administrationCustomerActivityYearTotal": [
+  "administrationReservationActivityDayEmpty": "No reservations on {date}",
+  "administrationReservationActivityLegendFewer": "Fewer",
+  "administrationReservationActivityLegendMore": "More",
+  "administrationReservationActivityTitle": "Reservation activity",
+  "administrationReservationActivityUnavailable": "Reservation activity is temporarily unavailable.",
+  "administrationReservationActivityYearTotal": [
     {
       "declarations": [
         "input count",
@@ -214,6 +216,7 @@
   "administrationLoadingDiscountForm": "Loading discount code form",
   "administrationLoadingPage": "Loading administration page",
   "administrationLoadingReservationActivity": "Loading reservation activity",
+  "administrationLoadingReservationCounts": "Loading reservation counts",
   "administrationLoadingTableFilters": "Loading table filters",
   "administrationNexiOrderLinkLabel": "{order} (opens in XPay)",
   "administrationNexiOrderName": "Nexi order {orderId}",
@@ -334,7 +337,7 @@
   "administrationOverviewNewCustomerCountUnavailable": "New customer count unavailable",
   "administrationOverviewNewCustomersLabel": "New customers",
   "administrationOverviewNoCustomers": "No customers in this period",
-  "administrationOverviewReservationActivityTitle": "Reservation activity",
+  "administrationOverviewReservationCountsTitle": "Reservation counts",
   "administrationOverviewReservationCompletion": [
     {
       "declarations": [

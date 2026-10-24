@@ -80,6 +80,7 @@ AdministrationService.Live = Layer.succeed(AdministrationService, {
   loadCustomerReservations: unused,
   loadCustomerActivity: unused,
   loadCustomerReservationActivity: unused,
+  loadReservationActivity: unused,
   listOrders: unused,
   loadOrder: unused,
   listOperations: unused,

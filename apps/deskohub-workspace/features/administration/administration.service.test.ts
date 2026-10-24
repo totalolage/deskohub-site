@@ -1543,6 +1543,161 @@ describe("AdministrationService", () => {
     expect(result.dates).toBeNull();
   });
 
+  test("counts every linked reservation in the overview reservation activity", async () => {
+    const listInputs: unknown[] = [];
+    const database = {
+      select: () =>
+        makeQuery([
+          { id: "booking-confirmed" },
+          { id: "booking-new" },
+          { id: "booking-cancelled" },
+          { id: "booking-other-day" },
+        ]),
+    };
+    const booking = {
+      _branchId: "branch",
+      _cloudId: "cloud",
+      _customerId: "dotypos-customer",
+      endDate: "2026-08-10T23:00:00Z",
+      seats: "1",
+    };
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadReservationActivity();
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: database as never })
+              ),
+              DotyposServiceMock({
+                listReservations: (input) =>
+                  Effect.sync(() => {
+                    listInputs.push(input);
+                    return [
+                      {
+                        ...booking,
+                        id: "booking-confirmed",
+                        startDate: "2026-08-09T22:30:00Z",
+                        status: "CONFIRMED" as const,
+                      },
+                      {
+                        ...booking,
+                        id: "booking-new",
+                        startDate: "2026-08-10T08:00:00Z",
+                        status: "NEW" as const,
+                      },
+                      {
+                        ...booking,
+                        id: "booking-cancelled",
+                        startDate: "2026-08-10T18:00:00Z",
+                        status: "CANCELLED" as const,
+                      },
+                      {
+                        ...booking,
+                        id: "booking-not-linked",
+                        startDate: "2026-08-10T12:00:00Z",
+                        status: "CONFIRMED" as const,
+                      },
+                      {
+                        ...booking,
+                        id: "booking-other-day",
+                        startDate: "2026-08-12T08:00:00Z",
+                        status: "CONFIRMED" as const,
+                      },
+                    ];
+                  }),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              reservationAuthorsMock(),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    const to = Temporal.Now.instant()
+      .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+      .toPlainDate();
+    expect(listInputs).toEqual([
+      {
+        startsAtOrAfter: to
+          .subtract({ days: 364 })
+          .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+          .toInstant()
+          .toString(),
+        startsBefore: to
+          .add({ days: 1 })
+          .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+          .toInstant()
+          .toString(),
+        order: "startDateAscending",
+      },
+    ]);
+    expect(result).toEqual({
+      from: to.subtract({ days: 364 }).toString(),
+      to: to.toString(),
+      dates: [
+        { count: 3, date: "2026-08-10" },
+        { count: 1, date: "2026-08-12" },
+      ],
+    });
+  });
+
+  test("keeps unavailable overview reservation activity distinct from no activity", async () => {
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadReservationActivity();
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({
+                  db: { select: () => makeQuery([]) } as never,
+                })
+              ),
+              DotyposServiceMock({
+                listReservations: () =>
+                  Effect.fail(
+                    new ExternalAPIError({
+                      operation: "listReservations",
+                      service: "Dotypos",
+                      statusCode: 503,
+                    })
+                  ),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              reservationAuthorsMock(),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result.dates).toBeNull();
+  });
+
   test("counts only completed reservations in customer reservation activity", async () => {
     setSystemTime(new Date("2026-08-26T12:00:00Z"));
     const listInputs: unknown[] = [];
