@@ -9,19 +9,20 @@ import { type PublicPagePathname, publicPagePathnames } from "./public-pages";
 // it stays clear of page rendering, the Markdown renderers and server-only
 // modules.
 
-
 /** Release gate that decides whether production serves a gated page. */
 export type PublicPageReleaseGate = "meeting-room-page" | "office-page";
 
 export interface PublicPageDefinition {
   /** The page's own title: its metadata, Markdown heading and llms.txt link. */
   readonly title: LocalizedCopy;
-  readonly description?: LocalizedCopy;
   /**
-   * A legal document, whose browser title names the brand after the
-   * document's own title and which shares as an article.
+   * The title already names the site, so the document title is the title as
+   * written rather than the title followed by the site name.
    */
-  readonly document?: true;
+  readonly titleNamesSite?: true;
+  readonly description?: LocalizedCopy;
+  /** Shares the page as an article rather than a website. */
+  readonly article?: true;
   /**
    * Present when the page returns not found, in its metadata and its body,
    * while its gate is off. Discovery surfaces then leave it out.
@@ -33,7 +34,7 @@ const legalPage = (documentKey: LegalDocumentKey): PublicPageDefinition => ({
   title: (_inputs, { locale }) => getLegalDocument(locale, documentKey).title,
   description: (_inputs, { locale }) =>
     getLegalDocument(locale, documentKey).lead,
-  document: true,
+  article: true,
 });
 
 /**
@@ -45,18 +46,22 @@ export const publicPageDefinitions: Readonly<
 > = {
   "/": {
     title: m.landingMetadataTitle,
+    titleNamesSite: true,
     description: m.landingMetadataDescription,
   },
   "/contact": {
     title: m.contactMetadataTitle,
+    titleNamesSite: true,
     description: m.contactMetadataDescription,
   },
   "/faq": {
     title: m.faqMetadataTitle,
+    titleNamesSite: true,
     description: m.faqMetadataDescription,
   },
   "/ai-assistants": {
     title: m.aiAssistantsMetadataTitle,
+    titleNamesSite: true,
     description: m.aiAssistantsMetadataDescription,
   },
   "/pricing": {
@@ -65,15 +70,18 @@ export const publicPageDefinitions: Readonly<
   },
   "/meeting-room": {
     title: m.meetingRoomMetadataTitle,
+    titleNamesSite: true,
     description: m.meetingRoomMetadataDescription,
     releaseGate: "meeting-room-page",
   },
   "/team": {
     title: m.teamMetadataTitle,
+    titleNamesSite: true,
     description: m.teamMetadataDescription,
   },
   "/ttrpg-room": {
     title: m.ttrpgRoomMetadataTitle,
+    titleNamesSite: true,
     description: m.ttrpgRoomMetadataDescription,
   },
   "/logo": { title: m.logoVariantsTitle },
@@ -84,14 +92,17 @@ export const publicPageDefinitions: Readonly<
   "/marketing-communications": legalPage("marketing-communications"),
   "/reservation/cowork": {
     title: m.checkoutOrderMetadataTitle,
+    titleNamesSite: true,
     description: m.checkoutOrderMetadataDescription,
   },
   "/reservation/meeting-room": {
     title: m.reservationMeetingRoomMetadataTitle,
+    titleNamesSite: true,
     description: m.reservationMeetingRoomMetadataDescription,
   },
   "/reservation/office": {
     title: m.reservationOfficeMetadataTitle,
+    titleNamesSite: true,
     description: m.reservationOfficeMetadataDescription,
     releaseGate: "office-page",
   },

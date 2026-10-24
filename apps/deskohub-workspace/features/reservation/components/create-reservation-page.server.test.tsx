@@ -160,9 +160,14 @@ test("gates a page by its registry release gate inside its content, keeping the 
   await expect(renderContent(content.props)).rejects.toThrow(
     "NEXT_HTTP_ERROR_FALLBACK;404"
   );
-  await expect(pageDefinition.generateMetadata()).rejects.toThrow(
-    "NEXT_HTTP_ERROR_FALLBACK;404"
-  );
+  // The page 404s before it reads its layouts' metadata.
+  const parent = new Promise<never>(() => {});
+  await expect(
+    pageDefinition.generateMetadata(
+      { searchParams: Promise.resolve({}) },
+      parent
+    )
+  ).rejects.toThrow("NEXT_HTTP_ERROR_FALLBACK;404");
   expect(isOfficePageEnabled).toHaveBeenCalledTimes(2);
   expect(render).not.toHaveBeenCalled();
   officePageEnabled = true;

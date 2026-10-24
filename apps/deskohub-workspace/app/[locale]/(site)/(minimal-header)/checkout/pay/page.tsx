@@ -1,5 +1,5 @@
 import { Effect, Option } from "effect";
-import type { Metadata } from "next";
+import type { Metadata, ResolvingMetadata } from "next";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import {
@@ -30,6 +30,7 @@ import {
   getEarlyPerformanceRequestRequiredAt,
   isEarlyPerformanceRequestRequired,
 } from "@/features/legal/early-performance";
+import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
 import { reservationCheckoutStepQueryParam } from "@/features/reservation/reservation-checkout-step";
 import {
   getCoworkReservationPath,
@@ -46,7 +47,6 @@ import {
   CardTitle,
 } from "@/shared/components/ui/card";
 import { getSearchParam, type SearchParamsRecord } from "@/shared/utils";
-import { getPageMetadata } from "@/shared/utils/page-metadata";
 
 type LocalizedCheckoutPayPageProps = {
   searchParams: Promise<SearchParamsRecord>;
@@ -57,12 +57,20 @@ type LocalizedCheckoutPayPageProps = {
 // race the still-settling checkout transition.
 export const instant = false;
 
-export async function generateMetadata(): Promise<Metadata> {
-  return runWithRequestLocale((locale) => ({
-    ...getPageMetadata(locale, "/checkout/pay", {
-      title: m.checkoutPayMetadataTitle({}, { locale }),
-      description: m.checkoutPayMetadataDescription({}, { locale }),
-    }),
+export async function generateMetadata(
+  _props: PageProps<"/[locale]/checkout/pay">,
+  parent: ResolvingMetadata
+): Promise<Metadata> {
+  return runWithRequestLocale(async (locale) => ({
+    ...(await createPublicPageMetadata(
+      {
+        locale,
+        pathname: "/checkout/pay",
+        title: { absolute: m.checkoutPayMetadataTitle({}, { locale }) },
+        description: m.checkoutPayMetadataDescription({}, { locale }),
+      },
+      parent
+    )),
     robots: { index: false, follow: false },
   }));
 }

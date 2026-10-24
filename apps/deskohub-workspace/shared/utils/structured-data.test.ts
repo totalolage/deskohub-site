@@ -3,9 +3,12 @@ import { m } from "@/features/i18n";
 import { workspaceSiteConstants } from "./site-constants";
 import {
   getLocalBusinessStructuredData,
+  getWebSiteStructuredData,
   serializeStructuredData,
   workspaceBusinessId,
+  workspaceWebSiteId,
 } from "./structured-data";
+import { workspaceGoogleMapUrl } from "./workspace-location-map";
 
 const image = "https://workspace.deskohub.cz/_next/static/media/hero.jpeg";
 
@@ -29,7 +32,7 @@ describe("getLocalBusinessStructuredData", () => {
       address: {
         "@type": "PostalAddress",
         streetAddress: address.street,
-        addressLocality: "Praha 8 - Libeň",
+        addressLocality: address.city,
         postalCode: address.postalCode,
         addressCountry: "CZ",
       },
@@ -46,6 +49,28 @@ describe("getLocalBusinessStructuredData", () => {
     expect(business["@id"]).toBe(workspaceBusinessId);
     // There is no business phone number to publish.
     expect(business).not.toHaveProperty("telephone");
+  });
+
+  test("identifies the company and links its logo, prices and map", () => {
+    const { company } = workspaceSiteConstants;
+
+    expect(
+      getLocalBusinessStructuredData({
+        image,
+        locale: "en-US",
+        priceRange: "CZK 1 – CZK 2",
+      })
+    ).toMatchObject({
+      logo: "https://workspace.deskohub.cz/favicon.png",
+      priceRange: "CZK 1 – CZK 2",
+      taxID: company.taxIdentificationNumber,
+      identifier: {
+        "@type": "PropertyValue",
+        propertyID: "IČO",
+        value: company.identificationNumber,
+      },
+      hasMap: workspaceGoogleMapUrl,
+    });
   });
 
   test("is open around the clock every day", () => {
@@ -68,6 +93,21 @@ describe("getLocalBusinessStructuredData", () => {
         closes: "23:59",
       },
     ]);
+  });
+});
+
+describe("getWebSiteStructuredData", () => {
+  test("names the site after the business that publishes it", () => {
+    expect(getWebSiteStructuredData()).toEqual({
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "@id": "https://workspace.deskohub.cz/#website",
+      name: workspaceSiteConstants.brand.name,
+      url: "https://workspace.deskohub.cz/",
+      inLanguage: ["en-US", "cs-CZ"],
+      publisher: { "@id": workspaceBusinessId },
+    });
+    expect(getWebSiteStructuredData()["@id"]).toBe(workspaceWebSiteId);
   });
 });
 

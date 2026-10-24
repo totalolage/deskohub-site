@@ -41,11 +41,17 @@ export async function generateMetadata({
       locale,
       officeRelease: await loadOfficeGlobalRelease(),
     }),
+    // `app/favicon.ico` comes first on its own. Next links `apple-icon` and
+    // `icon` files only when no `icons` are set, so these are listed here.
     icons: {
-      icon: {
-        url: "/favicon.png",
+      icon: [
+        { url: "/favicon.svg", type: "image/svg+xml" },
+        { url: "/favicon.png", type: "image/png", sizes: "512x512" },
+      ],
+      apple: {
+        url: "/apple-touch-icon.png",
         type: "image/png",
-        sizes: "512x512",
+        sizes: "180x180",
       },
     },
   };
@@ -54,6 +60,8 @@ export async function generateMetadata({
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // The header's brand navy.
+  themeColor: "#00024f",
 };
 
 export function generateStaticParams() {

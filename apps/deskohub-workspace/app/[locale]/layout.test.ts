@@ -91,6 +91,34 @@ describe("localized route layout", () => {
     constantFlags = {};
   });
 
+  test("links icons that the app serves and sets a theme colour", async () => {
+    const { generateMetadata, viewport } = await import("./layout");
+    type Icon = { url: string; type: string };
+    const { icons } = await generateMetadata({
+      params: Promise.resolve({ locale: "en-US" }),
+    });
+    const { icon, apple } = icons as { icon: Icon[]; apple: Icon };
+    const linked = [...icon, apple];
+
+    expect(linked.map(({ type }) => type)).toEqual([
+      "image/svg+xml",
+      "image/png",
+      "image/png",
+    ]);
+    for (const { url } of linked) {
+      // `/favicon.png` is rendered from `/favicon.svg` by its route.
+      const file =
+        url === "/favicon.png"
+          ? new URL("../favicon.png/route.ts", import.meta.url)
+          : new URL(`../../public${url}`, import.meta.url);
+      expect(await Bun.file(file).exists()).toBe(true);
+    }
+    expect(
+      await Bun.file(new URL("../favicon.ico", import.meta.url)).exists()
+    ).toBe(true);
+    expect(viewport.themeColor).toBeDefined();
+  });
+
   test("rejects an unknown locale", async () => {
     const { default: LocaleLayout } = await import("./layout");
     await expect(
