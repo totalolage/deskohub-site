@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AdministratorAccountActor } from "../account-role";
@@ -47,11 +48,14 @@ const insertAccount = ({
     })
   );
 
-const grantAdministrator = (accountId: string, grantedBy: string | null) =>
-  testDatabase!.pool.query(
-    `insert into account_role_grants (account_id, role, granted_by_account_id)
-     values ($1, 'administrator', $2)`,
-    [accountId, grantedBy]
+const grantAdministrator = (
+  accountId: CustomerAccountId,
+  grantedBy?: CustomerAccountId
+) =>
+  Effect.runPromise(
+    workspaceFixtures(testDatabase!.db).grantRole(accountId, "administrator", {
+      grantedBy,
+    })
   );
 
 const cliSecret = () =>
@@ -187,7 +191,7 @@ describe.skipIf(!testDatabase)(
       const granted = await insertAccount();
       const orphaned = await insertAccount();
       const deletedGranter = await insertAccount();
-      await grantAdministrator(bootstrapped.accountId, null);
+      await grantAdministrator(bootstrapped.accountId);
       await grantAdministrator(granted.accountId, bootstrapped.accountId);
       await grantAdministrator(orphaned.accountId, deletedGranter.accountId);
       await testDatabase!.pool.query(`delete from auth."user" where id = $1`, [
@@ -233,7 +237,7 @@ describe.skipIf(!testDatabase)(
     test("reports an existing grant without changing it", async () => {
       const actor = await insertAccount();
       const target = await insertAccount();
-      await grantAdministrator(target.accountId, null);
+      await grantAdministrator(target.accountId);
 
       const result = await runRoster((roster) =>
         roster.grant({ email: target.email, actor })
@@ -304,7 +308,7 @@ describe.skipIf(!testDatabase)(
     test("ends only the revoked administrator's CLI sessions and grants", async () => {
       const actor = await insertAccount();
       const target = await insertAccount();
-      await grantAdministrator(actor.accountId, null);
+      await grantAdministrator(actor.accountId);
       await grantAdministrator(target.accountId, actor.accountId);
       const actorCredentials = await insertCliCredentials(actor);
       const targetCredentials = await insertCliCredentials(target);
@@ -378,7 +382,7 @@ describe.skipIf(!testDatabase)(
 
     test("refuses to revoke the acting administrator's own grant", async () => {
       const actor = await insertAccount();
-      await grantAdministrator(actor.accountId, null);
+      await grantAdministrator(actor.accountId);
 
       const error = await runRosterFailure((roster) =>
         roster.revoke({ accountId: actor.accountId, actor })

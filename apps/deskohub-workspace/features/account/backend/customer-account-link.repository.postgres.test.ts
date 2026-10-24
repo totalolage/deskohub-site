@@ -1,3 +1,4 @@
+import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
@@ -332,15 +333,13 @@ describe.skipIf(!testDatabase)(
       const customer = uniqueDotyposId();
       // #764 linked the silent login to its customer; its owner then
       // verifies it and completes the profile.
-      await insertAuthUser(account, testEmailAddress(`l-${account}`));
-      await testDatabase!.pool.query(
-        `update customer_accounts set dotypos_customer_id = $2, legacy = true
-         where id = $1`,
-        [account, customer]
-      );
-      await testDatabase!.pool.query(
-        `update auth."user" set email_verified = true where id = $1`,
-        [account]
+      await Effect.runPromise(
+        workspaceFixtures(testDatabase!.db).account("account-link", {
+          id: account,
+          email: testEmailAddress(`l-${account}`),
+          legacy: true,
+          linkedCustomer: DotyposCustomerIdSchema.make(customer),
+        })
       );
 
       const claimed = await Effect.runPromise(
