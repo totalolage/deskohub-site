@@ -1,16 +1,15 @@
 import "server-only";
 
-import type { CampaignOperationError } from "@deskohub/workspace-admin-api";
+import type {
+  AdministrationCampaignDetailType,
+  AdministrationCampaignEditorContentType,
+  CampaignOperationError,
+} from "@deskohub/workspace-admin-api";
 import { Effect, Option, Schema } from "effect";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import type { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
 import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import {
-  CampaignService,
-  type OnceCampaign,
-} from "../backend/campaign.service";
 import type { CampaignOperations } from "../backend/campaign-operations.service";
 import type { OperationRequestLedger } from "../backend/operation-request-ledger.service";
 import {
@@ -19,7 +18,11 @@ import {
   campaignAudienceIdSchema,
   campaignIdSchema,
 } from "../campaign-identifiers";
-import { isOnceCampaign } from "../campaign-states";
+import {
+  type CampaignDelivery,
+  isOnceCampaign,
+  type OnceCampaignStatus,
+} from "../campaign-states";
 import {
   invokeCampaignOperation,
   runCampaignPageQuery,
@@ -37,35 +40,80 @@ export const requireAudienceRouteId = (value: string): CampaignAudienceId =>
     notFound()
   );
 
-const findCampaign = cache(
-  Effect.fn(
-    function* (campaignId: CampaignId) {
-      const campaigns = yield* CampaignService;
-      return yield* campaigns.get(campaignId).pipe(Effect.option);
-    },
-    (effect) =>
-      effect.pipe(
-        Effect.provide(CampaignService.Live),
-        runWorkspaceEffect("email-campaigns.admin.load-campaign", {
-          boundary: "route",
-        })
-      )
+const findCampaign = cache((campaignId: CampaignId) =>
+  runCampaignPageQuery(
+    "email-campaigns.admin.load-campaign",
+    invokeCampaignOperation("getCampaign", { campaignId }).pipe(
+      Effect.map(Option.some),
+      Effect.catchTag("OperationNotFound", () => Effect.succeedNone)
+    )
   )
 );
 
 /**
- * The one-off campaign a campaign route shows, after the admin page check.
- * Automated campaigns have no admin pages yet, so they aren't found. It
- * reads the stored campaign rather than the port's projection: the draft
- * composer edits the stored body document, and the port's Markdown body
- * doesn't round-trip it.
+ * Which page family a campaign route renders, after the admin page check, or
+ * the not-found page.
+ */
+export const loadCampaignDelivery = async (
+  campaignId: CampaignId
+): Promise<CampaignDelivery> => {
+  await authorizeAdministratorPage();
+  return Option.getOrElse(
+    Option.map(await findCampaign(campaignId), ({ delivery }) => delivery),
+    () => notFound()
+  );
+};
+
+/** A one-off campaign as the port reports it. */
+export type OnceCampaignDetail = AdministrationCampaignDetailType & {
+  readonly delivery: "once";
+  readonly status: OnceCampaignStatus;
+};
+
+const isOnceCampaignDetail = (
+  campaign: AdministrationCampaignDetailType
+): campaign is OnceCampaignDetail => isOnceCampaign(campaign);
+
+/**
+ * The one-off campaign a sent campaign's page shows, after the admin page
+ * check. Automated campaigns have their own pages, so they aren't found here.
  */
 export const loadAdminCampaign = async (
   campaignId: CampaignId
-): Promise<OnceCampaign> => {
+): Promise<OnceCampaignDetail> => {
   await authorizeAdministratorPage();
   return Option.getOrElse(
-    Option.filter(await findCampaign(campaignId), isOnceCampaign),
+    Option.filter(await findCampaign(campaignId), isOnceCampaignDetail),
+    () => notFound()
+  );
+};
+
+const findCampaignEditorContent = cache((campaignId: CampaignId) =>
+  runCampaignPageQuery(
+    "email-campaigns.admin.load-editor-content",
+    invokeCampaignOperation("getCampaignEditorContent", { campaignId }).pipe(
+      Effect.map(Option.some),
+      Effect.catchTag("OperationNotFound", () => Effect.succeedNone)
+    )
+  )
+);
+
+/**
+ * The campaign a composer edits, with its bodies as the editor holds them,
+ * after the admin page check: a one-off campaign, or an automated campaign's
+ * email and audience. A campaign of the other delivery renders the
+ * not-found page.
+ */
+export const loadCampaignEditorContent = async (
+  campaignId: CampaignId,
+  delivery: CampaignDelivery
+): Promise<AdministrationCampaignEditorContentType> => {
+  await authorizeAdministratorPage();
+  return Option.getOrElse(
+    Option.filter(
+      await findCampaignEditorContent(campaignId),
+      (campaign) => campaign.delivery === delivery
+    ),
     () => notFound()
   );
 };

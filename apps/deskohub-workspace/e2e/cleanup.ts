@@ -484,7 +484,7 @@ const readCheckoutCleanupReservationOwner = Effect.fn(
 
 // Each checkout contact's email is unique to its flow, so every Dotypos
 // customer matching it belongs to this run.
-const readCheckoutCleanupCustomerIds = Effect.fn(
+export const readCheckoutCleanupCustomerIds = Effect.fn(
   "readCheckoutCleanupCustomerIds"
 )(function* (config: DatasourceConfig, contacts: readonly CheckoutData[]) {
   const customers = yield* Effect.gen(function* () {

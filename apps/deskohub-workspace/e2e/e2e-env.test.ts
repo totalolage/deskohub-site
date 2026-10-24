@@ -3,6 +3,7 @@ import {
   makeAgentEvalEnvironment,
   makeE2EEnvironment,
   makeWorkspaceE2EEnvironment,
+  nightlyCasesEnabled,
   toPlaywrightEnvironment,
 } from "./e2e-env";
 import {
@@ -34,6 +35,18 @@ describe("Workspace E2E environment", () => {
         WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: "",
       }).WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN
     ).toBeUndefined();
+  });
+
+  test("includes nightly cases only when the run opts in", () => {
+    expect(nightlyCasesEnabled(makeTestE2EEnvironment({}))).toBe(false);
+    expect(
+      nightlyCasesEnabled(
+        makeTestE2EEnvironment({ WORKSPACE_E2E_NIGHTLY_CASES: "true" })
+      )
+    ).toBe(true);
+    expect(() =>
+      makeTestE2EEnvironment({ WORKSPACE_E2E_NIGHTLY_CASES: "false" })
+    ).toThrow();
   });
 
   test("does not expose application-only environment variables", () => {

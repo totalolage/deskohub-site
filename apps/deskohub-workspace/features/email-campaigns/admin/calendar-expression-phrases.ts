@@ -6,6 +6,7 @@ import type {
 } from "@deskohub/workspace-admin-api";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
+import { consecutiveRuns } from "@/shared/utils/number";
 import { upperCaseFirst } from "@/shared/utils/text-case";
 
 /**
@@ -35,6 +36,52 @@ const twoDigits = (value: number) => String(value).padStart(2, "0");
 
 const clockTime = (hour: number, minute: number) =>
   `${twoDigits(hour)}:${twoDigits(minute)}`;
+
+/** ":15" in English, "xx:15" in Czech, listed for the sentence. */
+const minuteMarks = (minutes: readonly number[], phrasing: Phrasing) =>
+  listed(
+    minutes.map((minute) =>
+      m.emailCampaignsCalendarMinute(
+        { minute: twoDigits(minute) },
+        { locale: phrasing.locale }
+      )
+    ),
+    phrasing
+  );
+
+/**
+ * A wait's hours as clock windows, consecutive hours merged into one: hours
+ * 9, 10, 11 and 14 are 09:00–11:59 and 14:00–14:59.
+ */
+const hourWindows = (hours: readonly number[]) =>
+  consecutiveRuns(hours).map(({ first, last }) => ({
+    start: clockTime(first, 0),
+    end: clockTime(last, 59),
+  }));
+
+/** "09:00–11:59 or 14:00–14:59". */
+const hourSpans = (hours: readonly number[], phrasing: Phrasing) =>
+  listed(
+    hourWindows(hours).map((window) =>
+      m.emailCampaignsCalendarHourSpan(window, { locale: phrasing.locale })
+    ),
+    phrasing
+  );
+
+/**
+ * When in the day a wait waits for: "between 09:00 and 11:59" for one
+ * window, "during 09:00–11:59 or 14:00–14:59" for several.
+ */
+const hoursWithin = (hours: readonly number[], phrasing: Phrasing) => {
+  const options = { locale: phrasing.locale };
+  const [window, ...others] = hourWindows(hours);
+  return window && others.length === 0
+    ? m.emailCampaignsCalendarHourRange(window, options)
+    : m.emailCampaignsCalendarHourSpans(
+        { spans: hourSpans(hours, phrasing) },
+        options
+      );
+};
 
 const workdays = ["monday", "tuesday", "wednesday", "thursday", "friday"];
 const weekend = ["saturday", "sunday"];
@@ -233,13 +280,6 @@ const timePhrase = (
 ): string | undefined => {
   const { hours, minutes } = expression;
   const options = { locale: phrasing.locale };
-  const minuteMarks = (values: readonly number[]) =>
-    listed(
-      values.map((minute) =>
-        m.emailCampaignsCalendarMinute({ minute: twoDigits(minute) }, options)
-      ),
-      phrasing
-    );
   if (hours && minutes) {
     if (hours.length * minutes.length <= 6) {
       const times = hours.flatMap((hour) =>
@@ -250,13 +290,21 @@ const timePhrase = (
         options
       );
     }
-    return m.emailCampaignsCalendarTimeMinutesPastHours(
-      {
-        minutes: minuteMarks(minutes),
-        hours: listed(hours.map(twoDigits), phrasing),
-      },
-      options
-    );
+    return phrasing.usage === "schedule"
+      ? m.emailCampaignsCalendarTimeMinutesPastHours(
+          {
+            minutes: minuteMarks(minutes, phrasing),
+            hours: listed(hours.map(twoDigits), phrasing),
+          },
+          options
+        )
+      : [
+          m.emailCampaignsCalendarTimeAt(
+            { times: minuteMarks(minutes, phrasing) },
+            options
+          ),
+          hoursWithin(hours, phrasing),
+        ].join(" ");
   }
   if (hours) {
     return phrasing.usage === "schedule"
@@ -269,24 +317,16 @@ const timePhrase = (
           },
           options
         )
-      : listed(
-          hours.map((hour) =>
-            m.emailCampaignsCalendarHourRange(
-              { start: clockTime(hour, 0), end: clockTime(hour, 59) },
-              options
-            )
-          ),
-          phrasing
-        );
+      : hoursWithin(hours, phrasing);
   }
   if (minutes) {
     return phrasing.usage === "schedule" && hasDayScope
       ? m.emailCampaignsCalendarTimeEveryHourAt(
-          { minutes: minuteMarks(minutes) },
+          { minutes: minuteMarks(minutes, phrasing) },
           options
         )
       : m.emailCampaignsCalendarTimeAt(
-          { times: minuteMarks(minutes) },
+          { times: minuteMarks(minutes, phrasing) },
           options
         );
   }
@@ -435,7 +475,58 @@ const describeSchedule = (
     .join(" ");
 };
 
-const describeWait = (expression: CalendarExpression, phrasing: Phrasing) => {
+/** Where a wait's period is named: in the sentence, or as a step's label. */
+type WaitForm = "sentence" | "label";
+
+/**
+ * A wait for a time of any day. A few exact times are listed ("10:15");
+ * more read as minutes within hour windows ("the next :00 or :15 between
+ * 09:00 and 11:59"). Hour windows read "it's between 10:00 and 10:59" in the
+ * sentence and "10:00–10:59" in a label.
+ */
+const clockWaitTarget = (
+  hours: readonly number[],
+  minutes: readonly number[] | undefined,
+  form: WaitForm,
+  phrasing: Phrasing
+): string => {
+  const options = { locale: phrasing.locale };
+  if (minutes) {
+    return hours.length * minutes.length <= 6
+      ? listed(
+          hours.flatMap((hour) =>
+            minutes.map((minute) => clockTime(hour, minute))
+          ),
+          phrasing
+        )
+      : [
+          m.emailCampaignsCalendarWaitNextMinute(
+            { minutes: minuteMarks(minutes, phrasing) },
+            options
+          ),
+          hoursWithin(hours, phrasing),
+        ].join(" ");
+  }
+  if (form === "label") {
+    return hourSpans(hours, phrasing);
+  }
+  const [window, ...others] = hourWindows(hours);
+  return m.emailCampaignsCalendarWaitClockWindow(
+    {
+      windows:
+        window && others.length === 0
+          ? m.emailCampaignsCalendarHourRange(window, options)
+          : hourSpans(hours, phrasing),
+    },
+    options
+  );
+};
+
+const describeWait = (
+  expression: CalendarExpression,
+  phrasing: Phrasing,
+  form: WaitForm = "sentence"
+) => {
   const { weeksOfYear, months, hours, minutes } = expression;
   const options = { locale: phrasing.locale };
   const day = dayPhrase(expression, phrasing);
@@ -474,19 +565,12 @@ const describeWait = (expression: CalendarExpression, phrasing: Phrasing) => {
             options
           );
     }
-    return !hours && minutes
+    if (hours) {
+      return clockWaitTarget(hours, minutes, form, phrasing);
+    }
+    return minutes
       ? m.emailCampaignsCalendarWaitNextMinute(
-          {
-            minutes: listed(
-              minutes.map((minute) =>
-                m.emailCampaignsCalendarMinute(
-                  { minute: twoDigits(minute) },
-                  options
-                )
-              ),
-              phrasing
-            ),
-          },
+          { minutes: minuteMarks(minutes, phrasing) },
           options
         )
       : m.emailCampaignsCalendarWaitTime({ time: time ?? "" }, options);
@@ -526,3 +610,12 @@ export const describeCalendarExpression = (
         { locale }
       );
 };
+
+/**
+ * The period a calendar wait waits for, as a phrase in `locale` that names
+ * the step, without the sentence `describeCalendarExpression` wraps it in.
+ */
+export const describeCalendarWaitTarget = (
+  expression: CalendarExpression,
+  locale: Locale
+): string => describeWait(expression, { usage: "wait", locale }, "label");

@@ -38,6 +38,7 @@ import {
   AdministrationCampaignDeleted,
   AdministrationCampaignDetail,
   AdministrationCampaignDuplicateRequest,
+  AdministrationCampaignEditorContent,
   AdministrationCampaignEmailPreview,
   AdministrationCampaignRecipientPreview,
   AdministrationCampaignRetryInput,
@@ -402,6 +403,12 @@ export const campaignOperations = defineOperations({
     minimumDhwVersion: campaignsMinimumDhwVersion,
     input: CampaignRef,
     output: AdministrationCampaignDetail,
+  }),
+  /** The campaign with lossless document bodies, as the editor holds them. */
+  getCampaignEditorContent: query({
+    minimumDhwVersion: campaignsMinimumDhwVersion,
+    input: CampaignRef,
+    output: AdministrationCampaignEditorContent,
   }),
   createCampaign: mutation({
     minimumDhwVersion: campaignsMinimumDhwVersion,

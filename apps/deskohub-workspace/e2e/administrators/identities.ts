@@ -29,6 +29,7 @@ const workspaceE2EAdministrationRecipientLabels = {
   "administrator-agent-tools-customer-refusal": ["aatc-member"],
   "administrator-non-administrator-refusal": ["anr-member"],
   "administrator-sign-in-return": ["asr-admin"],
+  "automation-reservation-booked": ["arb-admin"],
   "email-campaign-recipient-preview": ["ecp-admin"],
 } as const satisfies Record<string, readonly string[]>;
 

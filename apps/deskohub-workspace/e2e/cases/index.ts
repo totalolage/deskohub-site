@@ -96,7 +96,7 @@ export const makeWorkspaceE2ECases = ({
         checkoutFlows.length +
           terminalScenarios.length +
           latePaymentRecoveryScenarios.length +
-          2,
+          3,
         {
           allocation,
           maximumReservationsPerDate:
@@ -286,6 +286,43 @@ export const makeWorkspaceE2ECases = ({
           ),
         id: "checkout-zero-total",
         timeoutMs: config.timeouts.zeroTotalCheckoutCase,
+      });
+
+      // The automation journey books its own zero-total reservation; its
+      // binder wraps this checkout in the admin flow and the engine waits.
+      const automationDate = yield* requireCheckoutDate(
+        checkoutDates,
+        nextDateIndex
+      );
+      const automationData = makeCoworkCheckoutData(
+        config.baseUrl,
+        automationDate,
+        "cowork-automation"
+      );
+      nextDateIndex += 1;
+      const automationState = trackCheckoutState(flowStates, automationData);
+      cases.push({
+        checkoutStates: [automationState],
+        execute: ({ runStep, session }) =>
+          executeZeroTotalCheckout({
+            config,
+            data: automationData,
+            datasourceConfig,
+            run,
+            runStep,
+            session,
+            state: automationState,
+            stepIdPrefix: "automation-",
+            submitReservationScript:
+              getSubmitCoworkReservationScript(automationData),
+            discountCode: discountCodeFixtures.zeroTotal.code,
+          }).pipe(
+            Effect.mapError((cause) =>
+              toWorkspaceE2EError("run automation reservation checkout", cause)
+            )
+          ),
+        id: "automation-reservation-booked",
+        timeoutMs: config.timeouts.automationReservationCase,
       });
 
       for (const flow of checkoutFlows) {

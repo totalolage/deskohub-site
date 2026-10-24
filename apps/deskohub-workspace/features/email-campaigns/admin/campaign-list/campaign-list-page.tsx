@@ -15,30 +15,29 @@ import {
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { Button } from "@/shared/components/ui/button";
+import type { CampaignDelivery } from "../../campaign-states";
+import { CampaignDeliveryFilterForm } from "./campaign-delivery-filter-form";
 import type { loadCampaignList } from "./campaign-list-page-data.server";
 import { CampaignListTable } from "./campaign-list-table";
 
 type Campaigns = ReturnType<typeof loadCampaignList>;
 
-/** Every email campaign, with the action to start a new one. */
+/**
+ * Every email campaign, or those of one delivery, with the action to start a
+ * new one.
+ */
 export async function CampaignListPage({
   campaigns,
+  delivery,
 }: {
   readonly campaigns: Campaigns;
+  readonly delivery: Promise<CampaignDelivery | undefined>;
 }) {
   const locale = await getRequestLocale();
   return (
     <AdministrationPage>
       <h1 className="sr-only">{m.emailCampaignsListTitle({}, { locale })}</h1>
       <AdministrationTableToolbar
-        actions={
-          <Button asChild size="sm">
-            <Link href="/admin/email-campaigns/new">
-              <Plus aria-hidden className="size-4" />
-              {m.emailCampaignsListNewCampaign({}, { locale })}
-            </Link>
-          </Button>
-        }
         count={
           <Suspense
             fallback={
@@ -49,6 +48,17 @@ export async function CampaignListPage({
           >
             <CampaignCount campaigns={campaigns} locale={locale} />
           </Suspense>
+        }
+        filters={
+          <div className="flex flex-wrap items-end justify-end gap-3">
+            <CampaignDeliveryFilterForm delivery={await delivery} />
+            <Button asChild size="md">
+              <Link href="/admin/email-campaigns/new">
+                <Plus aria-hidden className="size-4" />
+                {m.emailCampaignsListNewCampaign({}, { locale })}
+              </Link>
+            </Button>
+          </div>
         }
         label={m.emailCampaignsListTableControls({}, { locale })}
       />

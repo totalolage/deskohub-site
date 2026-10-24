@@ -7,6 +7,7 @@ import {
   type UseActionHookReturn,
   useAction,
 } from "next-safe-action/hooks";
+import { useRef } from "react";
 
 type WorkspaceActionTransportErrorInput<
   Schema extends StandardSchemaV1 | undefined,
@@ -54,6 +55,11 @@ export function useWorkspaceAction<
     }),
   });
 
+  // The library applies only the latest call's result and callbacks, so a
+  // call superseded before it settles mustn't report its transport error
+  // over the newer call's outcome either.
+  const latestCall = useRef(0);
+
   const handleTransportError = (
     cause: unknown,
     input: WorkspaceActionTransportErrorInput<Schema>
@@ -66,13 +72,16 @@ export function useWorkspaceAction<
   const executeAsync = async (
     input: Parameters<typeof action.executeAsync>[0]
   ) => {
+    const call = ++latestCall.current;
     try {
       return await action.executeAsync(input);
     } catch (error) {
-      handleTransportError(
-        error,
-        input as WorkspaceActionTransportErrorInput<Schema>
-      );
+      if (call === latestCall.current) {
+        handleTransportError(
+          error,
+          input as WorkspaceActionTransportErrorInput<Schema>
+        );
+      }
       throw error;
     }
   };
@@ -81,10 +90,16 @@ export function useWorkspaceAction<
     void executeAsync(input).catch(() => undefined);
   };
 
+  const reset = () => {
+    latestCall.current += 1;
+    action.reset();
+  };
+
   return {
     ...action,
     execute,
     executeAsync,
+    reset,
   };
 }
 

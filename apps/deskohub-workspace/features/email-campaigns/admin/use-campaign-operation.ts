@@ -37,7 +37,11 @@ export function useCampaignOperation<Name extends CampaignOperationName>(
       output: OperationOutput<CampaignOperations[Name]>,
       input: OperationInput<CampaignOperations[Name]>
     ) => void;
-    readonly onFailure: (message: string) => void;
+    /** `failure` carries the port's `code` when the port refused the call. */
+    readonly onFailure: (
+      message: string,
+      failure?: { readonly code: string }
+    ) => void;
   }
 ) {
   const locale = useRouteLocale();
@@ -51,7 +55,10 @@ export function useCampaignOperation<Name extends CampaignOperationName>(
     onSuccess: ({ data, input }) => {
       if (data?._tag === "Success") onSuccess?.(data.output, input.input);
       if (data?._tag === "Failure") {
-        onFailure(describeCampaignOperationFailure(data, failureCopy, locale));
+        onFailure(
+          describeCampaignOperationFailure(data, failureCopy, locale),
+          data
+        );
       }
     },
     onError: ({ error }) =>

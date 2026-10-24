@@ -14,6 +14,7 @@ import {
   type CalendarExpressionUsage,
   describeCalendarExpression,
 } from "../admin/calendar-expression-phrases";
+import { ensureScheduleOnTicks } from "./automation-flow";
 
 /** Period starts a preview lists. */
 const previewedStarts = 5;
@@ -22,11 +23,16 @@ const previewedStarts = 5;
  * How a schedule trigger or a wait step would read an expression: its
  * sentence in the requested locale, its next five period starts after now,
  * and how often it can fire. An expression without a start in the next
- * eight years fails `CalendarExpressionNeverOccurs`.
+ * eight years fails `CalendarExpressionNeverOccurs`, and a trigger off the
+ * engine's ticks fails `AutomationScheduleMinutesNotAllowed`, as saving the
+ * flow would.
  */
 export const previewCalendarExpression = Effect.fn(
   "AutomationCalendar.preview"
 )(function* ({ expression, usage, locale }: CalendarPreviewInput) {
+  if (usage === "trigger") {
+    yield* ensureScheduleOnTicks(expression);
+  }
   const now = yield* currentInstant;
   const first = yield* nextStart(expression, now);
   const preview: CalendarPreview = {

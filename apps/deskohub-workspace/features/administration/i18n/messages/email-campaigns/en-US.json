@@ -639,6 +639,8 @@
   "emailCampaignsCalendarEveryDay": "every day",
   "emailCampaignsCalendarEveryHour": "every hour",
   "emailCampaignsCalendarHourRange": "between {start} and {end}",
+  "emailCampaignsCalendarHourSpan": "{start}–{end}",
+  "emailCampaignsCalendarHourSpans": "during {spans}",
   "emailCampaignsCalendarInMonths": "in {months}",
   "emailCampaignsCalendarInWeeks": [
     {
@@ -776,6 +778,7 @@
   "emailCampaignsCalendarTimeEveryHourAt": "every hour at {minutes}",
   "emailCampaignsCalendarTimeMinutesPastHours": "at {minutes} past {hours}",
   "emailCampaignsCalendarWait": "Waits until {target} (Prague time); continues at once if it's already then",
+  "emailCampaignsCalendarWaitClockWindow": "it's {windows}",
   "emailCampaignsCalendarWaitDay": "a day",
   "emailCampaignsCalendarWaitMonthDay": "a {months} day",
   "emailCampaignsCalendarWaitNextMinute": "the next {minutes}",

@@ -40,6 +40,7 @@ import type {
   CampaignTemplateKey,
 } from "../../body/campaign-content";
 import type { CampaignId } from "../../campaign-identifiers";
+import type { CampaignDelivery } from "../../campaign-states";
 import type { AudienceOption } from "../audiences/audience-page-data.server";
 import type { CampaignOperationFailureCopy } from "../campaign-operation-failure";
 import { CampaignBodyEditor } from "../editor/campaign-body-editor";
@@ -68,11 +69,17 @@ export type CampaignComposerTemplate = {
   readonly previewHtml: string;
 };
 
-/** The saved draft the composer edits; absent while creating one. */
-export type CampaignComposerDraft = {
+/**
+ * The saved campaign the composer edits, absent while creating one: a one-off
+ * Draft, or an automated campaign's email and audience.
+ */
+export type CampaignComposerCampaign = {
   readonly id: CampaignId;
   /** Locales the saved content covers, which a test send renders. */
   readonly contentLocales: readonly Locale[];
+  readonly delivery: CampaignDelivery;
+  /** An archived automated campaign can no longer change. */
+  readonly readOnly: boolean;
 };
 
 type CampaignComposerSchema = ReturnType<typeof createCampaignComposerFields>;
@@ -91,6 +98,23 @@ const purposeOptions: ReadonlyArray<{
     value: "operational",
     label: m.emailCampaignsComposerPurposeOperational,
     description: m.emailCampaignsComposerPurposeOperationalDescription,
+  },
+];
+
+const deliveryOptions: ReadonlyArray<{
+  readonly value: CampaignDelivery;
+  readonly label: typeof m.emailAutomationsComposerDeliveryOnce;
+  readonly description: typeof m.emailAutomationsComposerDeliveryOnceDescription;
+}> = [
+  {
+    value: "once",
+    label: m.emailAutomationsComposerDeliveryOnce,
+    description: m.emailAutomationsComposerDeliveryOnceDescription,
+  },
+  {
+    value: "automated",
+    label: m.emailAutomationsComposerDeliveryAutomated,
+    description: m.emailAutomationsComposerDeliveryAutomatedDescription,
   },
 ];
 
@@ -113,6 +137,8 @@ const campaignSaveFailureCopy: CampaignOperationFailureCopy = {
       m.emailCampaignsComposerSaveContentInvalid({}, { locale }),
     "content-markdown-invalid": (locale) =>
       m.emailCampaignsComposerSaveContentInvalid({}, { locale }),
+    "content-document-invalid": (locale) =>
+      m.emailCampaignsComposerSaveContentInvalid({}, { locale }),
     "content-locale-missing": (locale) =>
       m.emailCampaignsComposerSaveContentInvalid({}, { locale }),
     "audience-filter-context": (locale) =>
@@ -126,16 +152,26 @@ const campaignSaveFailureCopy: CampaignOperationFailureCopy = {
   },
 };
 
+/** An automated campaign's edits fail as read-only only once it's archived. */
+const automatedEmailSaveFailureCopy: CampaignOperationFailureCopy = {
+  ...campaignSaveFailureCopy,
+  codes: {
+    ...campaignSaveFailureCopy.codes,
+    "campaign-read-only": (locale) =>
+      m.emailAutomationsEmailSaveArchived({}, { locale }),
+  },
+};
+
 export function CampaignComposer({
   adminInbox,
   audiences,
-  draft,
+  campaign,
   initialFields,
   templates,
 }: {
   readonly adminInbox: string | null;
   readonly audiences: readonly AudienceOption[];
-  readonly draft: CampaignComposerDraft | undefined;
+  readonly campaign: CampaignComposerCampaign | undefined;
   readonly initialFields: CampaignComposerFields;
   readonly templates: readonly CampaignComposerTemplate[];
 }) {
@@ -155,6 +191,15 @@ export function CampaignComposer({
   });
   const [selectedLocale, setSelectedLocale] = useState<Locale>("cs-CZ");
   const [saveError, setSaveError] = useState<string>();
+  /** Chosen while creating; a saved campaign's delivery never changes. */
+  const [newDelivery, setNewDelivery] = useState<CampaignDelivery>("once");
+  /** Set once a new campaign is created, while its page opens. */
+  const [created, setCreated] = useState(false);
+  /** The fields of the save in flight, which its success marks saved. */
+  const [submittedFields, setSubmittedFields] =
+    useState<CampaignComposerFields>(initialFields);
+  const delivery = campaign?.delivery ?? newDelivery;
+  const savedOnce = campaign?.delivery === "once" ? campaign : undefined;
 
   const audience = audiences.find((option) => option.id === audienceId);
   const template = templates.find((option) => option.key === templateKey);
@@ -169,21 +214,23 @@ export function CampaignComposer({
 
   const create = useCampaignOperation("createCampaign", {
     failureCopy: campaignSaveFailureCopy,
-    onSuccess: (created) => {
+    onSuccess: ({ id }) => {
+      setCreated(true);
       form.reset(form.getValues());
       router.push(
-        localizeAdministrationHref(
-          `/admin/email-campaigns/${created.id}`,
-          routeLocale
-        )
+        localizeAdministrationHref(`/admin/email-campaigns/${id}`, routeLocale)
       );
     },
     onFailure: setSaveError,
   });
   const update = useCampaignOperation("updateCampaign", {
-    failureCopy: campaignSaveFailureCopy,
+    failureCopy:
+      delivery === "automated"
+        ? automatedEmailSaveFailureCopy
+        : campaignSaveFailureCopy,
     onSuccess: () => {
-      form.reset(form.getValues());
+      // Edits made while the save ran stay unsaved.
+      form.reset(submittedFields, { keepValues: true });
       router.refresh();
     },
     onFailure: setSaveError,
@@ -192,111 +239,131 @@ export function CampaignComposer({
   const unsavedChanges = form.formState.isDirty;
 
   const save = form.handleSubmit((values) => {
+    // A created campaign's page is opening; another submit would create a
+    // second one.
+    if (created) return;
     setSaveError(undefined);
+    setSubmittedFields(values);
     const fields = {
       title: values.title.trim(),
       purpose: values.purpose,
       templateKey: values.templateKey,
       audienceId: audience?.id ?? null,
     };
-    if (draft) {
+    if (campaign) {
       update.execute({
         ...fields,
-        campaignId: draft.id,
-        content: toAdministrationCampaignContentChange(
-          values,
-          editable,
-          draft.contentLocales
-        ),
+        campaignId: campaign.id,
+        content: toAdministrationCampaignContentChange(values, editable),
       });
     } else {
       create.execute({
         requestId: crypto.randomUUID(),
         campaign: {
           ...fields,
+          delivery,
           content: toAdministrationCampaignContent(values, editable),
         },
       });
     }
   });
 
+  const saveState = (
+    <span
+      className="inline-flex items-center gap-1.5 text-navy-blue/60 text-sm"
+      role="status"
+    >
+      {unsavedChanges ? (
+        <>
+          <span aria-hidden className="size-2 rounded-full bg-burned-orange" />
+          {m.emailCampaignsComposerUnsavedChanges({}, { locale: routeLocale })}
+        </>
+      ) : (
+        campaign &&
+        !campaign.readOnly &&
+        m.emailCampaignsComposerAllChangesSaved({}, { locale: routeLocale })
+      )}
+    </span>
+  );
+  const saveButton = !campaign?.readOnly && (
+    <Button
+      disabled={
+        saving || created || (campaign !== undefined && !unsavedChanges)
+      }
+      form="campaign-composer"
+      size="sm"
+      type="submit"
+    >
+      {saving && m.emailCampaignsComposerSaving({}, { locale: routeLocale })}
+      {!saving &&
+        (campaign
+          ? {
+              once: m.emailCampaignsComposerSaveDraft,
+              automated: m.emailAutomationsEmailSave,
+            }[campaign.delivery]({}, { locale: routeLocale })
+          : m.emailCampaignsComposerCreateDraft({}, { locale: routeLocale }))}
+    </Button>
+  );
+
   return (
     <Form {...form}>
-      <AdministrationPageHeader
-        actions={
+      {campaign?.delivery === "automated" ? (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-xl border border-navy-blue/10 bg-white px-5 py-4">
+          <p className="max-w-2xl text-navy-blue/70 text-sm">
+            {campaign.readOnly
+              ? m.emailAutomationsEmailArchivedNote({}, { locale: routeLocale })
+              : m.emailAutomationsEmailUnpublishedNote(
+                  {},
+                  { locale: routeLocale }
+                )}
+          </p>
           <div className="flex flex-wrap items-center gap-3">
-            <span
-              className="inline-flex items-center gap-1.5 text-navy-blue/60 text-sm"
-              role="status"
-            >
-              {unsavedChanges ? (
-                <>
-                  <span
-                    aria-hidden
-                    className="size-2 rounded-full bg-burned-orange"
-                  />
-                  {m.emailCampaignsComposerUnsavedChanges(
-                    {},
-                    { locale: routeLocale }
-                  )}
-                </>
-              ) : (
-                draft &&
-                m.emailCampaignsComposerAllChangesSaved(
+            {saveState}
+            {saveButton}
+          </div>
+        </div>
+      ) : (
+        <AdministrationPageHeader
+          actions={
+            <div className="flex flex-wrap items-center gap-3">
+              {saveState}
+              {savedOnce && (
+                <CampaignSendControls
+                  adminInbox={adminInbox}
+                  campaignId={savedOnce.id}
+                  contentLocales={savedOnce.contentLocales}
+                  unsavedChanges={unsavedChanges}
+                />
+              )}
+              {saveButton}
+              {savedOnce && (
+                <DeleteCampaignDraftControl campaignId={savedOnce.id} />
+              )}
+            </div>
+          }
+          description={
+            savedOnce
+              ? m.emailCampaignsComposerDraftDescription(
                   {},
                   { locale: routeLocale }
                 )
-              )}
-            </span>
-            {draft && (
-              <CampaignSendControls
-                adminInbox={adminInbox}
-                campaignId={draft.id}
-                contentLocales={draft.contentLocales}
-                unsavedChanges={unsavedChanges}
-              />
-            )}
-            <Button
-              disabled={saving || (draft !== undefined && !unsavedChanges)}
-              form="campaign-composer"
-              size="sm"
-              type="submit"
-            >
-              {saving &&
-                m.emailCampaignsComposerSaving({}, { locale: routeLocale })}
-              {!saving &&
-                (draft
-                  ? m.emailCampaignsComposerSaveDraft(
-                      {},
-                      { locale: routeLocale }
-                    )
-                  : m.emailCampaignsComposerCreateDraft(
-                      {},
-                      { locale: routeLocale }
-                    ))}
-            </Button>
-            {draft && <DeleteCampaignDraftControl campaignId={draft.id} />}
-          </div>
-        }
-        description={
-          draft
-            ? m.emailCampaignsComposerDraftDescription(
-                {},
-                { locale: routeLocale }
-              )
-            : m.emailCampaignsComposerNewDescription(
-                {},
-                { locale: routeLocale }
-              )
-        }
-        eyebrow={m.emailCampaignsComposerEyebrow({}, { locale: routeLocale })}
-        title={
-          title.trim() ||
-          (draft
-            ? m.emailCampaignsComposerUntitledTitle({}, { locale: routeLocale })
-            : m.emailCampaignsComposerNewTitle({}, { locale: routeLocale }))
-        }
-      />
+              : {
+                  once: m.emailCampaignsComposerNewDescription,
+                  automated: m.emailAutomationsComposerNewDescription,
+                }[delivery]({}, { locale: routeLocale })
+          }
+          eyebrow={m.emailCampaignsComposerEyebrow({}, { locale: routeLocale })}
+          title={
+            title.trim() ||
+            (savedOnce
+              ? m.emailCampaignsComposerUntitledTitle(
+                  {},
+                  { locale: routeLocale }
+                )
+              : m.emailCampaignsComposerNewTitle({}, { locale: routeLocale }))
+          }
+        />
+      )}
       <p
         className="mb-5 rounded-lg border border-burned-orange/25 bg-burned-orange/5 px-4 py-3 text-burned-orange-ink text-sm empty:hidden"
         role="alert"
@@ -308,6 +375,9 @@ export function CampaignComposer({
           <form
             className="min-w-0 space-y-6"
             id="campaign-composer"
+            // Creating opens the new campaign's page, which would drop edits
+            // made meanwhile, so the form waits for it.
+            inert={campaign?.readOnly || create.isExecuting || created}
             noValidate
             onSubmit={save}
           >
@@ -318,6 +388,44 @@ export function CampaignComposer({
               )}
             >
               <div className="space-y-5">
+                {!campaign && (
+                  <fieldset className="space-y-2">
+                    <legend className="font-medium text-sm leading-none">
+                      {m.emailAutomationsComposerDeliveryLabel(
+                        {},
+                        { locale: routeLocale }
+                      )}
+                    </legend>
+                    <div className="grid items-stretch gap-2 sm:grid-cols-2">
+                      {deliveryOptions.map((option) => (
+                        <ChoiceCard key={option.value} tone="plain">
+                          <input
+                            checked={newDelivery === option.value}
+                            className="mt-1 size-4 accent-[var(--brand-burned-orange)]"
+                            name="delivery"
+                            onChange={() => setNewDelivery(option.value)}
+                            type="radio"
+                            value={option.value}
+                          />
+                          <span className="flex flex-col gap-1 text-sm">
+                            <span className="font-semibold">
+                              {option.label({}, { locale: routeLocale })}
+                            </span>
+                            <span className="text-navy-blue/60 text-xs leading-5">
+                              {option.description({}, { locale: routeLocale })}
+                            </span>
+                          </span>
+                        </ChoiceCard>
+                      ))}
+                    </div>
+                    <p className="text-navy-blue/55 text-xs">
+                      {m.emailAutomationsComposerDeliveryHint(
+                        {},
+                        { locale: routeLocale }
+                      )}
+                    </p>
+                  </fieldset>
+                )}
                 <FormField
                   control={form.control}
                   name="title"
@@ -435,29 +543,40 @@ export function CampaignComposer({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
-                        {m.emailCampaignsComposerAudienceLabel(
-                          {},
-                          { locale: routeLocale }
-                        )}
+                        {{
+                          once: m.emailCampaignsComposerAudienceLabel,
+                          automated: m.emailAutomationsComposerAudienceLabel,
+                        }[delivery]({}, { locale: routeLocale })}
                       </FormLabel>
                       <Select
                         onValueChange={(value) =>
                           field.onChange(value === noAudience ? "" : value)
                         }
-                        value={field.value || noAudience}
+                        // An automated campaign always needs an audience,
+                        // so only a one-off draft can be left without one.
+                        value={
+                          field.value || (delivery === "once" ? noAudience : "")
+                        }
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue />
+                            <SelectValue
+                              placeholder={m.emailAutomationsComposerAudiencePlaceholder(
+                                {},
+                                { locale: routeLocale }
+                              )}
+                            />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value={noAudience}>
-                            {m.emailCampaignsComposerAudienceNone(
-                              {},
-                              { locale: routeLocale }
-                            )}
-                          </SelectItem>
+                          {delivery === "once" && (
+                            <SelectItem value={noAudience}>
+                              {m.emailCampaignsComposerAudienceNone(
+                                {},
+                                { locale: routeLocale }
+                              )}
+                            </SelectItem>
+                          )}
                           {audiences.map((option) => (
                             <SelectItem key={option.id} value={option.id}>
                               {option.title}

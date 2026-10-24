@@ -1,6 +1,5 @@
-import type { CampaignRow } from "@/db/schema";
+import type { AdministrationCampaignEditorContentType } from "@deskohub/workspace-admin-api";
 import { AdministrationPage } from "@/features/administration/components";
-import { campaignLocales } from "../../recipient-locale";
 import { CampaignComposer } from "./campaign-composer";
 import { loadCampaignComposerOptions } from "./campaign-composer-data.server";
 import {
@@ -12,18 +11,18 @@ import {
 export async function CampaignComposerPage({
   campaign,
 }: {
-  readonly campaign: CampaignRow;
+  readonly campaign: AdministrationCampaignEditorContentType;
 }) {
   const options = await loadCampaignComposerOptions();
   return (
     <AdministrationPage>
       <CampaignComposer
         {...options}
-        draft={{
+        campaign={{
           id: campaign.id,
-          contentLocales: campaignLocales.filter(
-            (locale) => campaign.content[locale] !== undefined
-          ),
+          contentLocales: campaign.locales,
+          delivery: "once",
+          readOnly: false,
         }}
         initialFields={campaignComposerFieldsFromCampaign(campaign)}
       />
@@ -38,7 +37,7 @@ export async function NewCampaignComposerPage() {
     <AdministrationPage>
       <CampaignComposer
         {...options}
-        draft={undefined}
+        campaign={undefined}
         initialFields={newCampaignComposerFields}
       />
     </AdministrationPage>

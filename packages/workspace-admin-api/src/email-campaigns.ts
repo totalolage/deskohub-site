@@ -8,6 +8,7 @@ import {
   writeOperation,
 } from "./administration-operation";
 import { AudienceFilter } from "./audience-filter";
+import { AdministrationCampaignBodyDocument } from "./campaign-body-document";
 import {
   AdministrationCampaignAudienceId,
   AdministrationCampaignId,
@@ -163,22 +164,46 @@ const AdministrationCampaignOperationalReason = Schema.Trim.check(
   Schema.isNonEmpty()
 );
 
+const localeTexts = {
+  subject: Schema.String,
+  preheader: Schema.String,
+  /** Replaces an operational campaign's footer reason line. */
+  operationalReason: Schema.optionalKey(
+    AdministrationCampaignOperationalReason
+  ),
+};
+
 /**
  * One locale's texts. The body is Markdown; a line
  * `[[button: Label](https://example.com)]` makes a button. The server parses
  * and validates it, and exports stored bodies back to Markdown.
  */
 export const AdministrationCampaignLocaleContent = Schema.Struct({
-  subject: Schema.String,
-  preheader: Schema.String,
+  ...localeTexts,
   bodyMarkdown: Schema.String,
-  /** Replaces an operational campaign's footer reason line. */
-  operationalReason: Schema.optionalKey(
-    AdministrationCampaignOperationalReason
-  ),
 }).annotate(strictParseOptions);
 export type AdministrationCampaignLocaleContent =
   typeof AdministrationCampaignLocaleContent.Type;
+
+/**
+ * One locale's texts with the body as the editor's document, which keeps
+ * everything the editor holds. Markdown can't: it re-reads typed text such
+ * as a leading `# ` as formatting.
+ */
+export const AdministrationCampaignEditorLocaleContent = Schema.Struct({
+  ...localeTexts,
+  bodyDocument: AdministrationCampaignBodyDocument,
+}).annotate(strictParseOptions);
+export type AdministrationCampaignEditorLocaleContent =
+  typeof AdministrationCampaignEditorLocaleContent.Type;
+
+/** One locale's texts as a writer gives them: a Markdown or document body. */
+export const AdministrationCampaignLocaleContentInput = Schema.Union([
+  AdministrationCampaignLocaleContent,
+  AdministrationCampaignEditorLocaleContent,
+]);
+export type AdministrationCampaignLocaleContentInput =
+  typeof AdministrationCampaignLocaleContentInput.Type;
 
 /** Per-locale campaign texts; a locale without content is absent. */
 export const AdministrationCampaignContent = Schema.Record(
@@ -187,6 +212,14 @@ export const AdministrationCampaignContent = Schema.Record(
 );
 export type AdministrationCampaignContent =
   typeof AdministrationCampaignContent.Type;
+
+/** Per-locale texts a new campaign starts with; a locale without content is absent. */
+export const AdministrationCampaignContentInput = Schema.Record(
+  AdministrationCampaignLocale,
+  Schema.optionalKey(AdministrationCampaignLocaleContentInput)
+);
+export type AdministrationCampaignContentInput =
+  typeof AdministrationCampaignContentInput.Type;
 
 export const AdministrationCampaignSummary = Schema.Struct({
   id: AdministrationCampaignId,
@@ -213,6 +246,17 @@ export const AdministrationCampaignDetail = Schema.Struct({
 export type AdministrationCampaignDetail =
   typeof AdministrationCampaignDetail.Type;
 
+/** A campaign with its texts as the editor holds them. */
+export const AdministrationCampaignEditorContent = Schema.Struct({
+  ...AdministrationCampaignSummary.fields,
+  content: Schema.Record(
+    AdministrationCampaignLocale,
+    Schema.optionalKey(AdministrationCampaignEditorLocaleContent)
+  ),
+});
+export type AdministrationCampaignEditorContent =
+  typeof AdministrationCampaignEditorContent.Type;
+
 export const AdministrationCampaignCreateInput = Schema.Struct({
   title: AdministrationCampaignTitle,
   purpose: AdministrationCampaignPurpose,
@@ -220,7 +264,7 @@ export const AdministrationCampaignCreateInput = Schema.Struct({
   /** `once` when omitted. */
   delivery: Schema.optionalKey(AdministrationCampaignDelivery),
   audienceId: Schema.NullOr(AdministrationCampaignAudienceId),
-  content: AdministrationCampaignContent,
+  content: AdministrationCampaignContentInput,
 }).annotate(strictParseOptions);
 export type AdministrationCampaignCreateInput =
   typeof AdministrationCampaignCreateInput.Type;
@@ -253,16 +297,27 @@ export type AdministrationCampaignDuplicateRequest =
 /**
  * Changes to one locale's texts. Omitted fields keep their value; a null
  * `operationalReason` restores the default reason line. A locale the
- * campaign has no content for yet needs a subject and a body.
+ * campaign has no content for yet needs a subject and a body, given as
+ * `bodyMarkdown` or `bodyDocument` but not both.
  */
 export const AdministrationCampaignLocaleContentChange = Schema.Struct({
   subject: Schema.optionalKey(Schema.String),
   preheader: Schema.optionalKey(Schema.String),
   bodyMarkdown: Schema.optionalKey(Schema.String),
+  bodyDocument: Schema.optionalKey(AdministrationCampaignBodyDocument),
   operationalReason: Schema.optionalKey(
     Schema.NullOr(AdministrationCampaignOperationalReason)
   ),
-}).annotate(strictParseOptions);
+})
+  .check(
+    Schema.makeFilter(
+      (change) =>
+        change.bodyMarkdown === undefined ||
+        change.bodyDocument === undefined ||
+        "Give the body as bodyMarkdown or bodyDocument, not both."
+    )
+  )
+  .annotate(strictParseOptions);
 export type AdministrationCampaignLocaleContentChange =
   typeof AdministrationCampaignLocaleContentChange.Type;
 
@@ -299,12 +354,12 @@ export const AdministrationCampaignTemplatePreviewInput = Schema.Union([
   Schema.TaggedStruct("Content", {
     purpose: AdministrationCampaignPurpose,
     locale: AdministrationCampaignLocale,
-    content: AdministrationCampaignLocaleContent,
+    content: AdministrationCampaignLocaleContentInput,
   }).annotate(strictParseOptions),
   Schema.TaggedStruct("UnfinishedContent", {
     purpose: AdministrationCampaignPurpose,
     locale: AdministrationCampaignLocale,
-    content: AdministrationCampaignLocaleContent,
+    content: AdministrationCampaignLocaleContentInput,
   }).annotate(strictParseOptions),
   Schema.TaggedStruct("Campaign", {
     campaignId: AdministrationCampaignId,
@@ -595,6 +650,17 @@ export const AdminCliCampaignsApi = HttpApiGroup.make("campaigns")
       success: AdministrationCampaignDetail,
       error: campaignErrors,
     }).annotate(AdministrationOperationBehavior, readOperation)
+  )
+  .add(
+    HttpApiEndpoint.get(
+      "getCampaignEditorContent",
+      "/campaigns/:campaignId/editor-content",
+      {
+        params: campaignParams,
+        success: AdministrationCampaignEditorContent,
+        error: campaignErrors,
+      }
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post("createCampaign", "/campaigns", {

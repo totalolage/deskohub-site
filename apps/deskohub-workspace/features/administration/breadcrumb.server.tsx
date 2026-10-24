@@ -20,6 +20,13 @@ const newEntityLabels = new Map([
   ["email-campaigns", m.shellBreadcrumbNewCampaign],
 ]);
 
+/** An automated campaign's section segments, after its ID. */
+const campaignSectionLabels = new Map([
+  ["email", m.shellBreadcrumbCampaignEmail],
+  ["preview", m.shellBreadcrumbCampaignPreview],
+  ["runs", m.shellBreadcrumbCampaignRuns],
+]);
+
 export async function AdministrationBreadcrumb({
   segments,
 }: {
@@ -61,8 +68,15 @@ export async function AdministrationBreadcrumb({
     entityLabel = await loadAudienceBreadcrumbLabel(segments[1]);
   }
 
-  const segmentLabels =
-    entityLabel && segments[1] ? { [segments[1]]: entityLabel } : undefined;
+  const segmentLabels: Record<string, string> = {};
+  if (entityLabel && segments[1]) segmentLabels[segments[1]] = entityLabel;
+  if (segments[0] === "email-campaigns" && segments[2]) {
+    const sectionLabel = campaignSectionLabels.get(segments[2]);
+    if (sectionLabel) segmentLabels[segments[2]] = sectionLabel({}, { locale });
+    if (segments[2] === "runs" && segments[3]) {
+      segmentLabels[segments[3]] = m.shellBreadcrumbCampaignRun({}, { locale });
+    }
+  }
 
   return (
     <AdministrationBreadcrumbs

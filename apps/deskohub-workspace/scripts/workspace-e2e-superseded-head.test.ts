@@ -172,7 +172,10 @@ describe("Workspace E2E run superseded before its test job", () => {
 
   test("runs the cancelling guard beside test-e2e without exact-SHA code", () => {
     expect(guardJob?.needs).toBe("resolve-target");
-    expect(guardJob?.if).toBe(testJob?.if);
+    // A nightly target has no PR head to supersede.
+    expect(guardJob?.if).toBe(
+      `${testJob?.if} && needs.resolve-target.outputs.nightly != 'true'`
+    );
     expect(guardJob?.permissions).toEqual({
       actions: "write",
       "pull-requests": "read",
@@ -215,7 +218,9 @@ describe("Workspace E2E runs sharing a preview database", () => {
       "Release the lease unless this SHA is still the PR head"
     );
     expect(index).toBe(testStepIndex("Lease an available date shard") + 1);
-    expect(leasedHeadCheckStep?.if).toBeUndefined();
+    expect(leasedHeadCheckStep?.if).toBe(
+      "needs.resolve-target.outputs.nightly != 'true'"
+    );
   });
 
   test("lets run B use the database once it holds the lease", async () => {

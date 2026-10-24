@@ -1,0 +1,49 @@
+{
+  "emailAutomationsEyebrow": "Automated campaign",
+  "emailAutomationsFrequencyBannerBody": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "This schedule fires up to {count} time an hour. Every fire evaluates the whole audience, so check this frequency is intended.",
+        "countPlural=other": "This schedule fires up to {count} times an hour. Every fire evaluates the whole audience, so check this frequency is intended."
+      }
+    }
+  ],
+  "emailAutomationsFrequencyBannerTitle": "Potentially excessive frequency",
+  "emailAutomationsNeverActivated": "Not activated yet",
+  "emailAutomationsPendingChanges": "Unpublished changes",
+  "emailAutomationsSectionEmail": "Email",
+  "emailAutomationsSectionFlow": "Flow",
+  "emailAutomationsSectionPreview": "Preview and activate",
+  "emailAutomationsSectionRuns": "Run log",
+  "emailAutomationsSectionsLabel": "Automated campaign sections",
+  "emailAutomationsStatusActive": "Active",
+  "emailAutomationsStatusArchived": "Archived",
+  "emailAutomationsStatusDraft": "Draft",
+  "emailAutomationsStatusPaused": "Paused",
+  "emailAutomationsTriggerAccountCreated": "Account created",
+  "emailAutomationsTriggerReservationBooked": "Reservation booked",
+  "emailAutomationsTriggerReservationCancelled": "Reservation cancelled",
+  "emailAutomationsTriggerReservationFinished": "Reservation finished",
+  "emailAutomationsTriggerReservationStarted": "Reservation started",
+  "emailAutomationsTriggerSchedule": "On a schedule",
+  "emailAutomationsVersionLive": "Version {version} live since {date}",
+  "emailAutomationsListDeliveryFilter": "Delivery",
+  "emailAutomationsListDeliveryAll": "All campaigns",
+  "emailAutomationsListDeliveryOnce": "One-off",
+  "emailAutomationsListDeliveryAutomated": "Automated",
+  "emailAutomationsComposerDeliveryLabel": "Delivery",
+  "emailAutomationsComposerDeliveryOnce": "Send once",
+  "emailAutomationsComposerDeliveryOnceDescription": "One email to the audience, sent after a test send.",
+  "emailAutomationsComposerDeliveryAutomated": "Automated",
+  "emailAutomationsComposerDeliveryAutomatedDescription": "A flow sends this email to each customer as they qualify.",
+  "emailAutomationsComposerDeliveryHint": "You can't change this after the campaign is created.",
+  "emailAutomationsComposerNewDescription": "Write the email, then create the campaign to build the flow that sends it.",
+  "emailAutomationsComposerAudienceLabel": "Audience (entry set for schedules, entry gate for events)",
+  "emailAutomationsComposerAudiencePlaceholder": "Choose an audience",
+  "emailAutomationsEmailSave": "Save changes",
+  "emailAutomationsEmailUnpublishedNote": "Edits here are unpublished until you preview and activate them. Runs already in progress keep the email they started with.",
+  "emailAutomationsEmailArchivedNote": "This campaign is archived, so its email and audience can no longer change.",
+  "emailAutomationsEmailSaveArchived": "This campaign is archived, so its email can no longer be edited."
+}
