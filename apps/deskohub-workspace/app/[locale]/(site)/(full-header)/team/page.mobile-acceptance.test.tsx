@@ -50,13 +50,20 @@ mock.module(
     isOfficePageEnabled: async () => false,
   })
 );
+// The page module also loads server code that imports more of these modules.
+const nextNavigation = await import("next/navigation");
 mock.module("next/navigation", () => ({
+  ...nextNavigation,
   usePathname: () => "/cs-CZ/team",
   useRouter: () => ({ bfcacheId: "synthetic-team-page" }),
   useSearchParams: () => new URLSearchParams(),
   useSelectedLayoutSegment: () => "team",
 }));
-mock.module("next/cache", () => ({ cacheLife: () => undefined }));
+const nextCache = await import("next/cache");
+mock.module("next/cache", () => ({
+  ...nextCache,
+  cacheLife: () => undefined,
+}));
 const syntheticLogoSource =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 96'%3E%3Crect x='8' y='12' width='72' height='72' rx='18' fill='%23f57c00'/%3E%3Cpath d='M28 60 44 28 60 60' fill='none' stroke='white' stroke-width='7'/%3E%3Ctext x='96' y='61' fill='white' font-family='Arial,sans-serif' font-size='34' font-weight='700'%3EDeskohub%3C/text%3E%3C/svg%3E";
 mock.module("next/link", () => ({

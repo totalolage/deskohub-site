@@ -1,8 +1,5 @@
 import { m } from "@/features/i18n";
-import {
-  getRequestLocale,
-  runWithRequestLocale,
-} from "@/features/i18n/server/request-locale";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { publicPageMetadata } from "@/features/public-pages/backend/public-page-route.server";
 import { HorizontalLogo, Logo } from "@/shared/components/logo";
 
