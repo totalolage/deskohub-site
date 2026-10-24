@@ -153,7 +153,7 @@ describe("Workspace E2E nightly target", () => {
       dispatchStep,
       { "": {} },
       {
-        GITHUB_REF_NAME: "main",
+        GITHUB_REF_NAME: "feature/x",
         TARGET_SHA: mainSha,
         TARGET_URL: previewUrl,
       }
@@ -163,6 +163,7 @@ describe("Workspace E2E nightly target", () => {
     const [dispatch = ""] = calls;
     expect(dispatch).toStartWith("workflow run workspace-e2e.yml");
     for (const field of [
+      "--ref main",
       `sha=${mainSha}`,
       `url=${previewUrl}`,
       `ref=${nightlyBranch}`,
@@ -300,11 +301,21 @@ describe("Workspace E2E nightly workflow contract", () => {
     expect(nightlyBranch).toBe("e2e/nightly");
   });
 
-  test("runs nightly cases only when a dispatch opts in", () => {
-    expect(
-      findStepByName(e2e, "Run checkout E2E")?.env?.WORKSPACE_E2E_NIGHTLY_CASES
-    ).toBe(
-      `\${{ github.event_name == 'workflow_dispatch' && inputs.include_nightly_cases && 'true' || '' }}`
-    );
+  test("starts only from main, before it moves the nightly branch", async () => {
+    const [first] = nightly.jobs["start-nightly-e2e"]?.steps ?? [];
+    expect(first?.name).toBe("Refuse to start from a ref other than main");
+    expect(first?.env?.LAUNCH_REF).toBe(`\${{ github.ref }}`);
+    const launch = (ref: string) =>
+      runStep(first, {}, { LAUNCH_REF: ref }).then(
+        ({ result }) => result.exitCode
+      );
+    expect(await launch("refs/heads/main")).toBe(0);
+    for (const ref of [
+      "refs/heads/feat/automation-builder",
+      "refs/heads/main-old",
+      "refs/tags/main",
+    ]) {
+      expect(await launch(ref)).not.toBe(0);
+    }
   });
 });

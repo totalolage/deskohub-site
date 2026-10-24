@@ -11,7 +11,7 @@ on:
         default: false
         type: boolean
       include_nightly_cases:
-        description: Also run the nightly-only cases, such as the automation journey
+        description: Also run the nightly-only cases, such as the automation journey (nightly target only)
         required: false
         default: false
         type: boolean
@@ -44,6 +44,7 @@ jobs:
       eligible: ${{ steps.target.outputs.eligible }}
       head_ref: ${{ steps.target.outputs.head_ref }}
       nightly: ${{ steps.target.outputs.nightly }}
+      nightly_cases: ${{ steps.target.outputs.nightly_cases }}
       pr_number: ${{ steps.target.outputs.pr_number }}
       sha: ${{ steps.target.outputs.sha }}
       status_description: ${{ steps.status-without-run.outputs.description }}
@@ -55,6 +56,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
+          INCLUDE_NIGHTLY_CASES: ${{ github.event_name == 'workflow_dispatch' && inputs.include_nightly_cases && 'true' || 'false' }}
           # Only workspace-e2e-nightly.yml moves this branch, to a commit of
           # main whose Workspace preview it waits for.
           NIGHTLY_BRANCH: e2e/nightly
@@ -78,6 +80,14 @@ jobs:
           fi
           if ! git check-ref-format --branch "$TARGET_REF" >/dev/null; then
             echo "Target ref is not a valid branch name" >&2
+            exit 1
+          fi
+          # Nightly cases test main only (D38). A dispatch that asks for them
+          # against any other target fails before it resolves a PR, so it
+          # leaves that PR's required status alone.
+          if [[ "$INCLUDE_NIGHTLY_CASES" == "true" &&
+            ! ("$EVENT_NAME" == "workflow_dispatch" && "$TARGET_REF" == "$NIGHTLY_BRANCH") ]]; then
+            echo "Nightly cases run only against the $NIGHTLY_BRANCH target, never a PR; dispatch without include_nightly_cases" >&2
             exit 1
           fi
 
@@ -129,7 +139,12 @@ jobs:
               fail 'Nightly target SHA is not a commit of main' \
                 'The nightly branch points outside main; start workspace-e2e-nightly.yml again'
             fi
-            echo "head_ref=$TARGET_REF" >> "$GITHUB_OUTPUT"
+            {
+              echo "head_ref=$TARGET_REF"
+              if [[ "$INCLUDE_NIGHTLY_CASES" == "true" ]]; then
+                echo "nightly_cases=true"
+              fi
+            } >> "$GITHUB_OUTPUT"
           else
             # Vercel's own events for the nightly branch wait for the
             # nightly workflow's dispatch, even if a PR has that head.
@@ -661,7 +676,8 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           WORKSPACE_E2E_BETTER_AUTH_SECRETS: ${{ secrets.WORKSPACE_E2E_BETTER_AUTH_SECRETS }}
           WORKSPACE_E2E_CRON_SECRET: ${{ secrets.WORKSPACE_E2E_CRON_SECRET }}
-          WORKSPACE_E2E_NIGHTLY_CASES: ${{ github.event_name == 'workflow_dispatch' && inputs.include_nightly_cases && 'true' || '' }}
+          # Set only for a validated nightly target that asked for them.
+          WORKSPACE_E2E_NIGHTLY_CASES: ${{ needs.resolve-target.outputs.nightly == 'true' && needs.resolve-target.outputs.nightly_cases == 'true' && 'true' || '' }}
           DATABASE_URL: ${{ steps.preview-database.outputs.pooled_url }}
           WORKSPACE_E2E_DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
           WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ steps.preview-database.outputs.direct_url }}

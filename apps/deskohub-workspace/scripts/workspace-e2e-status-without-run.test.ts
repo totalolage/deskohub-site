@@ -271,7 +271,8 @@ const pullRequest = {
 const resolveTarget = (
   deployment: string,
   deploymentStatus: DeploymentStatus | null,
-  pulls: readonly object[] = [pullRequest]
+  pulls: readonly object[] = [pullRequest],
+  overrides: Readonly<Record<string, string>> = {}
 ) =>
   runStep(
     targetStep,
@@ -284,10 +285,12 @@ const resolveTarget = (
     },
     {
       EVENT_NAME: "repository_dispatch",
+      INCLUDE_NIGHTLY_CASES: "false",
       TARGET_DEPLOYMENT: deployment,
       TARGET_REF: "feature/x",
       TARGET_SHA: targetSha,
       TARGET_URL: previewUrl,
+      ...overrides,
     }
   );
 
@@ -381,11 +384,13 @@ const nightlyBranch = String(targetStep?.env?.NIGHTLY_BRANCH);
 
 const resolveNightlyTarget = ({
   eventName = "workflow_dispatch",
+  includeNightlyCases = "true",
   mainRelation = "ahead",
   nightlyHead = targetSha,
   pulls = [],
 }: {
   readonly eventName?: string;
+  readonly includeNightlyCases?: "false" | "true";
   readonly mainRelation?: string;
   readonly nightlyHead?: string;
   readonly pulls?: readonly object[];
@@ -403,6 +408,7 @@ const resolveNightlyTarget = ({
     },
     {
       EVENT_NAME: eventName,
+      INCLUDE_NIGHTLY_CASES: includeNightlyCases,
       TARGET_DEPLOYMENT: "success",
       TARGET_REF: nightlyBranch,
       TARGET_SHA: targetSha,
@@ -419,9 +425,45 @@ describe("Workspace E2E nightly target resolution", () => {
       eligible: "true",
       head_ref: nightlyBranch,
       nightly: "true",
+      nightly_cases: "true",
       sha: targetSha,
       url: previewUrl,
     });
+  });
+
+  test("runs only the default cases on a nightly target that doesn't ask for more", async () => {
+    const { outputs, result } = await resolveNightlyTarget({
+      includeNightlyCases: "false",
+    });
+    expect(result.exitCode).toBe(0);
+    expect(outputs.nightly).toBe("true");
+    expect(outputs.nightly_cases).toBeUndefined();
+  });
+
+  test("refuses nightly cases for a PR target before it resolves the PR", async () => {
+    // D38: nightly cases test main only, so this dispatch fails without
+    // marking the PR eligible, which would publish its required status.
+    const { calls, outputs, result } = await resolveTarget(
+      "success",
+      deploymentSucceeded,
+      [pullRequest],
+      { EVENT_NAME: "workflow_dispatch", INCLUDE_NIGHTLY_CASES: "true" }
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(outputs).toEqual({});
+    expect(calls).toEqual([]);
+  });
+
+  test("never passes nightly cases to the suite without a validated nightly target", () => {
+    expect(
+      findStepByName(workflow, "Run checkout E2E")?.env
+        ?.WORKSPACE_E2E_NIGHTLY_CASES
+    ).toBe(
+      `\${{ needs.resolve-target.outputs.nightly == 'true' && needs.resolve-target.outputs.nightly_cases == 'true' && 'true' || '' }}`
+    );
+    expect(workflow.jobs["resolve-target"]?.outputs?.nightly_cases).toBe(
+      `\${{ steps.target.outputs.nightly_cases }}`
+    );
   });
 
   test("accepts main's own head", async () => {
@@ -457,6 +499,7 @@ describe("Workspace E2E nightly target resolution", () => {
     ]) {
       const { outputs, result } = await resolveNightlyTarget({
         eventName: "repository_dispatch",
+        includeNightlyCases: "false",
         pulls,
       });
       expect(result.exitCode).toBe(0);

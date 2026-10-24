@@ -26,6 +26,17 @@ jobs:
       contents: write
       deployments: read
     steps:
+      # The dispatched run uses main's Workspace E2E workflow, so a launcher
+      # from another ref could pair an older workflow with current main.
+      - name: Refuse to start from a ref other than main
+        env:
+          LAUNCH_REF: ${{ github.ref }}
+        run: |
+          if [[ "$LAUNCH_REF" != "refs/heads/main" ]]; then
+            echo "Workspace E2E nightly starts only from main" >&2
+            exit 1
+          fi
+
       - name: Point the nightly branch at main and wait for its preview
         id: target
         env:
@@ -136,7 +147,7 @@ jobs:
           set -euo pipefail
           gh workflow run workspace-e2e.yml \
             --repo "$GITHUB_REPOSITORY" \
-            --ref "$GITHUB_REF_NAME" \
+            --ref main \
             -f sha="$TARGET_SHA" \
             -f url="$TARGET_URL" \
             -f ref=e2e/nightly \
