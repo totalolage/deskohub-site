@@ -2,7 +2,6 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
 import {
-  DotyposCustomerIdSchema,
   type DotyposReservationId,
   DotyposReservationIdSchema,
   type DotyposService,
@@ -11,7 +10,6 @@ import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { inArray } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import { workspaceReservations } from "@/db/schema";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
@@ -20,7 +18,7 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   ReservationProductDetailsBackfill,
@@ -74,21 +72,17 @@ describe.skipIf(!testDatabase)(
         });
       }
       await Effect.runPromise(
-        testDatabase.db.insert(workspaceReservations).values({
-          authorAccountId: fixtureReservationAuthorId,
-          id,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
-          dotyposCustomerId: DotyposCustomerIdSchema.make(`customer-${runId}`),
-          dotyposReservationId: input.dotypos ? dotyposId(input.label) : null,
-          reservationState: input.dotypos ? "confirmed" : "hold_expired",
-          paymentState: input.dotypos ? "paid" : "not_started",
-          paidAt: input.dotypos
-            ? Temporal.Instant.from("2001-01-01T00:00:00Z")
-            : null,
-          fulfillmentState: "not_started",
-          reservationDetails: input.details,
-          locale: "en-US",
-          updatedAt: Temporal.Instant.from("2001-01-01T00:00:00Z"),
+        workspaceFixtures(testDatabase.db).reservation({
+          stage: input.dotypos
+            ? { reservation: "confirmed", payment: "paid" }
+            : { reservation: "hold_expired" },
+          details: input.details,
+          overrides: {
+            id,
+            ...(input.dotypos && {
+              dotyposReservationId: dotyposId(input.label),
+            }),
+          },
         })
       );
       return id;

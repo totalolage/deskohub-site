@@ -33,7 +33,12 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import { rejectCustomerEventInserts } from "@/shared/backend/customer-events/customer-event-outbox.test-utils";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import {
+  fixtureReservationAuthorId,
+  type ReservationFixtureInput,
+  type ReservationFixtureStage,
+  workspaceFixtures,
+} from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   fulfillmentEmailFailureCode,
@@ -47,7 +52,6 @@ const testDatabase = await connectWorkspacePostgresTestDatabase();
 // expired-hold selects only reach rows this file inserted.
 const at = (minutes: number) =>
   Temporal.Instant.from("1990-01-01T12:00:00Z").add({ minutes });
-const paid = { paymentState: "paid", paidAt: at(0) } as const;
 
 describe.skipIf(!testDatabase)(
   "WorkspaceReservationRepository state guards on disposable Postgres",
@@ -92,35 +96,23 @@ describe.skipIf(!testDatabase)(
       ) => Effect.Effect<A, E>
     ) => run((repository) => Effect.flip(operation(repository)));
 
-    /** Inserts a synthetic held, unpaid reservation with the given overrides. */
+    /**
+     * Inserts a synthetic reservation, held and unpaid unless the stage says
+     * otherwise, whose events happened at `at(0)`. Whatever its stage, its
+     * hold expires at `at(0)` unless the overrides say otherwise.
+     */
     const insertReservation = async (
-      values: Partial<typeof workspaceReservations.$inferInsert> = {}
+      stage: Partial<ReservationFixtureStage> = {},
+      overrides: ReservationFixtureInput["overrides"] = {}
     ) => {
-      const key = crypto.randomUUID();
-      const id = workspaceReservationIdSchema.make(`reservation-${key}`);
-      reservationIds.push(id);
-      await Effect.runPromise(
-        testDatabase.db.insert(workspaceReservations).values({
-          authorAccountId: fixtureReservationAuthorId,
-          id,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${key}`),
-          dotyposCustomerId: DotyposCustomerIdSchema.make(`customer-${key}`),
-          dotyposReservationId: DotyposReservationIdSchema.make(
-            `dotypos-reservation-${key}`
-          ),
-          reservationState: "held",
-          paymentState: "not_started",
-          fulfillmentState: "not_started",
-          reservationHoldExpiresAt: at(0),
-          reservationDetails: {
-            kind: "cowork",
-            entryTier: "basic",
-            coffee: false,
-          },
-          locale: "en-US",
-          ...values,
+      const { id } = await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).reservation({
+          stage: { reservation: "held", ...stage },
+          at: at(0),
+          overrides: { reservationHoldExpiresAt: at(0), ...overrides },
         })
       );
+      reservationIds.push(id);
       return id;
     };
 
@@ -203,20 +195,20 @@ describe.skipIf(!testDatabase)(
 
     describe("expired holds", () => {
       test("selects unpaid expired holds and queues holds with skipped cleanup behind fresh ones", async () => {
-        const skippedCleanup = await insertReservation({
-          paymentState: "failed",
-          reservationHoldExpiresAt: at(0),
-          reservationHoldExpiredAt: at(120),
-        });
-        const freshlyExpired = await insertReservation({
-          reservationHoldExpiresAt: at(60),
-        });
+        const skippedCleanup = await insertReservation(
+          { payment: "failed" },
+          { reservationHoldExpiredAt: at(120) }
+        );
+        const freshlyExpired = await insertReservation(
+          {},
+          { reservationHoldExpiresAt: at(60) }
+        );
         const fixtureIds = new Set([
           skippedCleanup,
           freshlyExpired,
-          await insertReservation({ ...paid }),
-          await insertReservation({ reservationHoldExpiresAt: at(240) }),
-          await insertReservation({ reservationState: "hold_expired" }),
+          await insertReservation({ payment: "paid" }),
+          await insertReservation({}, { reservationHoldExpiresAt: at(240) }),
+          await insertReservation({ reservation: "hold_expired" }),
         ]);
 
         const holds = await run((repository) =>
@@ -240,17 +232,17 @@ describe.skipIf(!testDatabase)(
           "cancelled",
           "expired",
         ] as const) {
-          const id = await insertReservation({ paymentState });
+          const id = await insertReservation({ payment: paymentState });
           expectedIds.push((await readReservation(id))?.dotyposReservationId);
         }
         const excludedIds = [];
-        for (const values of [
-          { paymentState: "pending" },
-          { ...paid },
-          { reservationHoldExpiresAt: at(240) },
-          { reservationState: "confirmed" },
+        for (const [stage, overrides] of [
+          [{ payment: "pending" }, {}],
+          [{ payment: "paid" }, {}],
+          [{}, { reservationHoldExpiresAt: at(240) }],
+          [{ reservation: "confirmed" }, {}],
         ] as const) {
-          const id = await insertReservation(values);
+          const id = await insertReservation(stage, overrides);
           excludedIds.push((await readReservation(id))?.dotyposReservationId);
         }
 
@@ -282,16 +274,21 @@ describe.skipIf(!testDatabase)(
       });
 
       test.each([
-        ["a paid hold", { ...paid }],
-        ["a hold that has not expired", { reservationHoldExpiresAt: at(60) }],
+        ["a paid hold", { payment: "paid" }, {}],
+        [
+          "a hold that has not expired",
+          {},
+          { reservationHoldExpiresAt: at(60) },
+        ],
         [
           "a reservation that is no longer held",
-          { reservationState: "confirmed" },
+          { reservation: "confirmed" },
+          {},
         ],
       ] as const)(
         "refuses to record a skipped cleanup on %s",
-        async (_label, values) => {
-          const id = await insertReservation(values);
+        async (_label, stage, overrides) => {
+          const id = await insertReservation(stage, overrides);
 
           const error = await runFailure((repository) =>
             repository.recordHoldCleanupSkipped({
@@ -319,23 +316,19 @@ describe.skipIf(!testDatabase)(
         );
 
       test.each([
-        ["a held booking not yet fulfilled", { ...paid }],
+        ["a held booking not yet fulfilled", { payment: "paid" }, {}],
         [
           "a confirmed booking whose fulfillment failed",
-          {
-            ...paid,
-            reservationState: "confirmed",
-            fulfillmentState: "failed",
-            fulfillmentFailedAt: at(1),
-            fulfillmentFailureCode: fulfillmentEmailFailureCode,
-          },
+          { reservation: "confirmed", payment: "paid", fulfillment: "failed" },
+          { fulfillmentFailureCode: fulfillmentEmailFailureCode },
         ],
         [
           "a stale processing claim",
-          { ...paid, fulfillmentState: "processing", updatedAt: at(0) },
+          { payment: "paid", fulfillment: "processing" },
+          { updatedAt: at(0) },
         ],
-      ] as const)("claims %s", async (_label, values) => {
-        const id = await insertReservation(values);
+      ] as const)("claims %s", async (_label, stage, overrides) => {
+        const id = await insertReservation(stage, overrides);
 
         const claimed = await claim(id);
 
@@ -346,33 +339,30 @@ describe.skipIf(!testDatabase)(
       });
 
       test.each([
-        ["an unpaid booking", { paymentState: "pending" }],
-        ["a cancelled booking", { ...paid, reservationState: "cancelled" }],
+        ["an unpaid booking", { payment: "pending" }],
+        ["a cancelled booking", { reservation: "cancelled", payment: "paid" }],
         [
           "a fresh processing claim",
-          { ...paid, fulfillmentState: "processing" },
+          { payment: "paid", fulfillment: "processing" },
         ],
-        [
-          "a fulfilled booking",
-          { ...paid, fulfillmentState: "fulfilled", fulfilledAt: at(1) },
-        ],
-      ] as const)("does not claim %s", async (_label, values) => {
-        const id = await insertReservation(values);
+        ["a fulfilled booking", { payment: "paid", fulfillment: "fulfilled" }],
+      ] as const)("does not claim %s", async (_label, stage) => {
+        const id = await insertReservation(stage);
 
         expect(await claim(id)).toBeNull();
         expect((await readReservation(id))?.fulfillmentState).toBe(
-          values.fulfillmentState ?? "not_started"
+          stage.fulfillment ?? "not_started"
         );
       });
 
       test("leaves an active attempt under late-payment recovery to that recovery", async () => {
-        const underRecovery = await insertReservation({ ...paid });
+        const underRecovery = await insertReservation({ payment: "paid" });
         await insertLatePaymentRecovery(
           underRecovery,
           await insertActivePaymentAttempt(underRecovery),
           "pending"
         );
-        const recovered = await insertReservation({ ...paid });
+        const recovered = await insertReservation({ payment: "paid" });
         await insertLatePaymentRecovery(
           recovered,
           await insertActivePaymentAttempt(recovered),
@@ -384,13 +374,13 @@ describe.skipIf(!testDatabase)(
       });
 
       test("keeps a retried failure once the retry's delivery succeeds", async () => {
-        const id = await insertReservation({
-          ...paid,
-          reservationState: "confirmed",
-          fulfillmentState: "failed",
-          fulfillmentFailedAt: at(1),
-          fulfillmentFailureCode: fulfillmentEmailFailureCode,
-        });
+        const id = await insertReservation(
+          { reservation: "confirmed", payment: "paid", fulfillment: "failed" },
+          {
+            fulfillmentFailedAt: at(1),
+            fulfillmentFailureCode: fulfillmentEmailFailureCode,
+          }
+        );
         const customerEmailDeliveryId =
           EmailDeliveryIdSchema.make("retried-delivery");
 
@@ -421,19 +411,19 @@ describe.skipIf(!testDatabase)(
       });
 
       test("reports the late-payment recovery that blocks the claim", async () => {
-        const refundRequired = await insertReservation({ ...paid });
+        const refundRequired = await insertReservation({ payment: "paid" });
         await insertLatePaymentRecovery(
           refundRequired,
           await insertActivePaymentAttempt(refundRequired),
           "refund_required"
         );
-        const recovered = await insertReservation({ ...paid });
+        const recovered = await insertReservation({ payment: "paid" });
         await insertLatePaymentRecovery(
           recovered,
           await insertActivePaymentAttempt(recovered),
           "recovered"
         );
-        const supersededRecovery = await insertReservation({ ...paid });
+        const supersededRecovery = await insertReservation({ payment: "paid" });
         await insertLatePaymentRecovery(
           supersededRecovery,
           await insertActivePaymentAttempt(supersededRecovery),
@@ -465,15 +455,13 @@ describe.skipIf(!testDatabase)(
 
       test("marks only a processing paid booking fulfilled", async () => {
         const processing = await insertReservation({
-          ...paid,
-          fulfillmentState: "processing",
+          payment: "paid",
+          fulfillment: "processing",
         });
-        const failed = await insertReservation({
-          ...paid,
-          fulfillmentState: "failed",
-          fulfillmentFailedAt: at(1),
-          fulfillmentFailureCode: "provider_unavailable",
-        });
+        const failed = await insertReservation(
+          { payment: "paid", fulfillment: "failed" },
+          { fulfillmentFailureCode: "provider_unavailable" }
+        );
 
         const customerEmailDeliveryId =
           EmailDeliveryIdSchema.make("accepted-delivery");
@@ -510,11 +498,10 @@ describe.skipIf(!testDatabase)(
         const recovered = EmailDeliveryIdSchema.make(
           `console-recovered-${crypto.randomUUID()}`
         );
-        const id = await insertReservation({
-          ...paid,
-          fulfillmentState: "processing",
-          activeCustomerEmailDeliveryId: superseded,
-        });
+        const id = await insertReservation(
+          { payment: "paid", fulfillment: "processing" },
+          { activeCustomerEmailDeliveryId: superseded }
+        );
 
         await run((repository) =>
           repository.markFulfilled({
@@ -557,23 +544,23 @@ describe.skipIf(!testDatabase)(
         );
 
       test.each([
-        ["a processing fulfillment", { fulfillmentState: "processing" }],
-        [
-          "an earlier fulfillment",
-          { fulfillmentState: "fulfilled", fulfilledAt: at(4) },
-        ],
+        ["a processing fulfillment", "processing", {}],
+        ["an earlier fulfillment", "fulfilled", { fulfilledAt: at(4) }],
         [
           "an earlier failure with the same code",
+          "failed",
           {
-            fulfillmentState: "failed",
             fulfillmentFailedAt: at(4),
             fulfillmentFailureCode: fulfillmentEmailFailureCode,
           },
         ],
       ] as const)(
         "records a delivery failure over %s",
-        async (_label, values) => {
-          const id = await insertReservation({ ...paid, ...values });
+        async (_label, fulfillment, overrides) => {
+          const id = await insertReservation(
+            { payment: "paid", fulfillment },
+            overrides
+          );
 
           expect((await markDeliveryFailed(id))?.id).toBe(id);
           expect(await readReservation(id)).toMatchObject({
@@ -588,47 +575,53 @@ describe.skipIf(!testDatabase)(
       test.each([
         [
           "a fulfillment recorded at the same time",
-          { fulfillmentState: "fulfilled", fulfilledAt: at(5) },
+          "fulfilled",
+          { fulfilledAt: at(5) },
         ],
         [
           "a failure recorded at the same time",
+          "failed",
           {
-            fulfillmentState: "failed",
             fulfillmentFailedAt: at(5),
             fulfillmentFailureCode: fulfillmentEmailFailureCode,
           },
         ],
         [
           "an earlier failure with another code",
+          "failed",
           {
-            fulfillmentState: "failed",
             fulfillmentFailedAt: at(4),
             fulfillmentFailureCode: "provider_unavailable",
           },
         ],
       ] as const)(
         "keeps %s when a delivery failure arrives",
-        async (_label, values) => {
-          const id = await insertReservation({ ...paid, ...values });
+        async (_label, fulfillment, overrides) => {
+          const id = await insertReservation(
+            { payment: "paid", fulfillment },
+            overrides
+          );
 
           expect(await markDeliveryFailed(id)).toBeNull();
-          expect(await readReservation(id)).toMatchObject(values);
+          expect(await readReservation(id)).toMatchObject({
+            fulfillmentState: fulfillment,
+            ...overrides,
+          });
         }
       );
 
       test("recovers an email delivery failure only for a later verified delivery", async () => {
+        const failed = { payment: "paid", fulfillment: "failed" } as const;
         const emailFailure = {
-          ...paid,
-          fulfillmentState: "failed",
           fulfillmentFailedAt: at(4),
           fulfillmentFailureCode: fulfillmentEmailFailureCode,
-        } as const;
-        const recoverable = await insertReservation(emailFailure);
-        const sameInstant = await insertReservation({
+        };
+        const recoverable = await insertReservation(failed, emailFailure);
+        const sameInstant = await insertReservation(failed, {
           ...emailFailure,
           fulfillmentFailedAt: at(5),
         });
-        const otherFailure = await insertReservation({
+        const otherFailure = await insertReservation(failed, {
           ...emailFailure,
           fulfillmentFailureCode: "provider_unavailable",
         });
@@ -655,12 +648,10 @@ describe.skipIf(!testDatabase)(
       });
 
       test("keeps the latest failure's time through a later failure and recovery", async () => {
-        const id = await insertReservation({
-          ...paid,
-          fulfillmentState: "fulfilled",
-          fulfilledAt: at(4),
-          fulfillmentFailedAt: at(2),
-        });
+        const id = await insertReservation(
+          { payment: "paid", fulfillment: "fulfilled" },
+          { fulfilledAt: at(4), fulfillmentFailedAt: at(2) }
+        );
 
         expect((await markDeliveryFailed(id))?.id).toBe(id);
         expect(await readReservation(id)).toMatchObject({
@@ -684,10 +675,9 @@ describe.skipIf(!testDatabase)(
 
     describe("administration cancellation", () => {
       const confirmedPaid = {
-        ...paid,
-        reservationState: "confirmed",
-        fulfillmentState: "fulfilled",
-        fulfilledAt: at(1),
+        reservation: "confirmed",
+        payment: "paid",
+        fulfillment: "fulfilled",
       } as const;
 
       const claimCancellation = (
@@ -718,41 +708,35 @@ describe.skipIf(!testDatabase)(
       });
 
       test.each([
-        ["payment is pending", { paymentState: "pending" }],
+        ["payment is pending", { payment: "pending" }],
         [
           "fulfillment is processing",
-          { ...paid, fulfillmentState: "processing" },
+          { payment: "paid", fulfillment: "processing" },
         ],
         [
           "fulfillment awaits customer delivery",
-          {
-            ...paid,
-            fulfillmentState: "awaiting_delivery",
-            activeCustomerEmailDeliveryId: EmailDeliveryIdSchema.make(
-              `resend-${crypto.randomUUID()}`
-            ),
-          },
+          { payment: "paid", fulfillment: "awaiting_delivery" },
         ],
-        ["the booking is already cancelled", { reservationState: "cancelled" }],
+        ["the booking is already cancelled", { reservation: "cancelled" }],
       ] as const)(
         "does not claim a cancellation while %s",
-        async (_label, values) => {
-          const id = await insertReservation(values);
+        async (_label, stage) => {
+          const id = await insertReservation(stage);
 
           expect(await claimCancellation(id)).toBeNull();
           expect((await readReservation(id))?.reservationState).toBe(
-            values.reservationState ?? "held"
+            stage.reservation ?? "held"
           );
         }
       );
 
       test("cancels the active pending payment attempt inside a forced payment cancellation", async () => {
-        const id = await insertReservation({ paymentState: "pending" });
+        const id = await insertReservation({ payment: "pending" });
         const paymentAttemptId = await insertActivePaymentAttempt(id, {
           state: "pending",
         });
         const otherAttemptReservation = await insertReservation({
-          paymentState: "pending",
+          payment: "pending",
         });
         await insertActivePaymentAttempt(otherAttemptReservation, {
           state: "pending",
@@ -832,11 +816,10 @@ describe.skipIf(!testDatabase)(
 
       test("marks the claimed revision cancelled and requires a refund of its paid Nexi attempt", async () => {
         const claimedAt = at(5);
-        const id = await insertReservation({
-          ...confirmedPaid,
-          reservationState: "cancelling",
-          updatedAt: claimedAt,
-        });
+        const id = await insertReservation(
+          { ...confirmedPaid, reservation: "cancelling" },
+          { updatedAt: claimedAt }
+        );
         const nexiAttempt = await insertActivePaymentAttempt(id);
         const internalAttempt = await insertActivePaymentAttempt(id, {
           provider: "internal",
@@ -868,16 +851,14 @@ describe.skipIf(!testDatabase)(
 
       test("records a cancellation failure on the claimed revision only", async () => {
         const claimedAt = at(5);
-        const claimedRevision = await insertReservation({
-          ...confirmedPaid,
-          reservationState: "cancelling",
-          updatedAt: claimedAt,
-        });
-        const laterRevision = await insertReservation({
-          ...confirmedPaid,
-          reservationState: "cancelling",
-          updatedAt: at(7),
-        });
+        const claimedRevision = await insertReservation(
+          { ...confirmedPaid, reservation: "cancelling" },
+          { updatedAt: claimedAt }
+        );
+        const laterRevision = await insertReservation(
+          { ...confirmedPaid, reservation: "cancelling" },
+          { updatedAt: at(7) }
+        );
         const failure = {
           claimedAt,
           failureCode: "provider_rejected_cancellation",
@@ -907,11 +888,10 @@ describe.skipIf(!testDatabase)(
       });
 
       test("refuses to mark a stale claim cancelled", async () => {
-        const id = await insertReservation({
-          ...confirmedPaid,
-          reservationState: "cancelling",
-          updatedAt: at(7),
-        });
+        const id = await insertReservation(
+          { ...confirmedPaid, reservation: "cancelling" },
+          { updatedAt: at(7) }
+        );
         const attempt = await insertActivePaymentAttempt(id);
 
         const error = await runFailure((repository) =>
@@ -947,8 +927,8 @@ describe.skipIf(!testDatabase)(
         );
 
       const processingPaid = {
-        ...paid,
-        fulfillmentState: "processing",
+        payment: "paid",
+        fulfillment: "processing",
       } as const;
 
       const confirm = (id: WorkspaceReservationId) =>
@@ -1004,17 +984,17 @@ describe.skipIf(!testDatabase)(
       test("records a cancelled event only for an administration cancellation of a confirmed booking", async () => {
         const claimedAt = at(5);
         const cancelling = {
-          ...paid,
-          reservationState: "cancelling",
-          fulfillmentState: "fulfilled",
-          fulfilledAt: at(1),
-          updatedAt: claimedAt,
+          reservation: "cancelling",
+          payment: "paid",
+          fulfillment: "fulfilled",
         } as const;
-        const confirmed = await insertReservation({
-          ...cancelling,
+        const confirmed = await insertReservation(cancelling, {
+          updatedAt: claimedAt,
           reservationConfirmedAt: at(1),
         });
-        const unconfirmed = await insertReservation(cancelling);
+        const unconfirmed = await insertReservation(cancelling, {
+          updatedAt: claimedAt,
+        });
         const cancel = (id: WorkspaceReservationId) =>
           run((repository) =>
             repository.markAdministrationCancelled({
@@ -1041,14 +1021,14 @@ describe.skipIf(!testDatabase)(
 
       test("rolls the administration cancellation back with a failed event write", async () => {
         const claimedAt = at(5);
-        const id = await insertReservation({
-          ...paid,
-          reservationState: "cancelling",
-          fulfillmentState: "fulfilled",
-          fulfilledAt: at(1),
-          updatedAt: claimedAt,
-          reservationConfirmedAt: at(1),
-        });
+        const id = await insertReservation(
+          {
+            reservation: "cancelling",
+            payment: "paid",
+            fulfillment: "fulfilled",
+          },
+          { updatedAt: claimedAt, reservationConfirmedAt: at(1) }
+        );
         const cleanup = await rejectCustomerEventInserts(
           testDatabase.pool,
           `new.workspace_reservation_id = '${id}'`
@@ -1071,12 +1051,10 @@ describe.skipIf(!testDatabase)(
       });
 
       test("records nothing for an unpaid cancellation or a supersession", async () => {
-        const unpaid = await insertReservation({
-          reservationState: "cancelling",
-        });
+        const unpaid = await insertReservation({ reservation: "cancelling" });
         const superseded = await insertReservation({
-          reservationState: "cancelling",
-          paymentState: "failed",
+          reservation: "cancelling",
+          payment: "failed",
         });
         const replacementKey = crypto.randomUUID();
 

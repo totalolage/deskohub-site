@@ -46,6 +46,7 @@ import {
 } from "@/features/review-accounts";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { CurrentPostHogRequestContext } from "@/shared/backend/analytics/posthog-request-context";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { PreparePayStateInput } from "./prepare-pay-state.schema";
 
@@ -206,9 +207,11 @@ describe.skipIf(!database)(
       "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01"
     );
     beforeAll(() =>
-      database.pool.query(
-        "insert into customer_accounts (id, review) values ($1, true)",
-        [accountId]
+      Effect.runPromise(
+        workspaceFixtures(database.db).customerAccount({
+          id: accountId,
+          review: true,
+        })
       )
     );
     const agent = (selection: string) =>

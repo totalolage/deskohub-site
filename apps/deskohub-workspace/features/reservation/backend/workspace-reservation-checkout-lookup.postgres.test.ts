@@ -30,7 +30,10 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import {
+  fixtureReservationAuthorId,
+  workspaceFixtures,
+} from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
@@ -59,31 +62,15 @@ describe.skipIf(!postgresDatabase)(
       readonly createdAt: string;
     }) =>
       Effect.gen(function* () {
-        const id = workspaceReservationIdSchema.make(
-          `reservation-${crypto.randomUUID()}`
-        );
-        yield* postgres.db.insert(workspaceReservations).values({
-          authorAccountId: fixtureReservationAuthorId,
-          id,
-          checkoutSessionKey: input.checkoutSessionKey,
-          checkoutAttemptKey: input.checkoutAttemptKey,
-          dotyposCustomerId: DotyposCustomerIdSchema.make(
-            `customer-${crypto.randomUUID()}`
-          ),
-          reservationState: input.reservationState,
-          paymentState: "not_started",
-          fulfillmentState: "not_started",
-          ...(input.reservationState === "cancelled" && {
-            dotyposReservationId: `dotypos-${crypto.randomUUID()}` as never,
-            reservationCancelledAt: Temporal.Instant.from(input.createdAt),
-          }),
-          reservationDetails: {
-            kind: "cowork",
-            entryTier: "basic",
-            coffee: false,
+        const createdAt = Temporal.Instant.from(input.createdAt);
+        const { id } = yield* workspaceFixtures(postgres.db).reservation({
+          stage: { reservation: input.reservationState },
+          at: createdAt,
+          overrides: {
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+            createdAt,
           },
-          locale: "en-US",
-          createdAt: Temporal.Instant.from(input.createdAt),
         });
         fixtureReservationIds.push(id);
         return id;
