@@ -16,7 +16,12 @@ const e2e = parseWorkflow(resolve(workflowsDir, "workspace-e2e.yml"));
 const nightlyTriggers = (
   Bun.YAML.parse(
     readFileSync(resolve(workflowsDir, "workspace-e2e-nightly.yml"), "utf8")
-  ) as { readonly on: Record<string, unknown> }
+  ) as {
+    readonly on: {
+      readonly schedule?: readonly { readonly cron: string }[];
+      readonly workflow_dispatch?: null;
+    };
+  }
 ).on;
 
 const targetStep = findStepByName(
@@ -182,8 +187,17 @@ cat "$GH_FIXTURES/vercel-deployment.json"
 `,
 };
 
+type VercelDeploymentFixture = {
+  readonly meta: {
+    readonly githubCommitRef: string;
+    readonly githubCommitSha: string;
+  };
+  readonly projectId: string;
+  readonly target: string | null;
+};
+
 const runCheckout = (
-  deployment: object,
+  deployment: VercelDeploymentFixture,
   env: Readonly<Record<string, string>> = {}
 ) =>
   runStep(
@@ -201,7 +215,7 @@ const runCheckout = (
     fakeCommands
   );
 
-const nightlyDeployment = {
+const nightlyDeployment: VercelDeploymentFixture = {
   meta: { githubCommitRef: nightlyBranch, githubCommitSha: mainSha },
   projectId: vercelProject,
   target: null,
@@ -242,7 +256,10 @@ describe("Workspace E2E nightly preview check", () => {
 
   test("leaves PR runs to the existing exact-SHA checks", async () => {
     const { calls, result } = await runCheckout(
-      { ...nightlyDeployment, meta: {} },
+      {
+        ...nightlyDeployment,
+        meta: { githubCommitRef: "feature/x", githubCommitSha: sha("c") },
+      },
       { NIGHTLY_TARGET: "", PREVIEW_BRANCH: "feature/x" }
     );
     expect(result.exitCode).toBe(0);
@@ -256,6 +273,7 @@ describe("Workspace E2E nightly workflow contract", () => {
       "schedule",
       "workflow_dispatch",
     ]);
+    expect(nightlyTriggers.schedule).toHaveLength(1);
     expect(nightly.concurrency).toMatchObject({ "cancel-in-progress": false });
   });
 
@@ -286,7 +304,7 @@ describe("Workspace E2E nightly workflow contract", () => {
     expect(
       findStepByName(e2e, "Run checkout E2E")?.env?.WORKSPACE_E2E_NIGHTLY_CASES
     ).toBe(
-      "${{ github.event_name == 'workflow_dispatch' && inputs.include_nightly_cases && 'true' || '' }}"
+      `\${{ github.event_name == 'workflow_dispatch' && inputs.include_nightly_cases && 'true' || '' }}`
     );
   });
 });
