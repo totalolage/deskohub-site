@@ -2,7 +2,8 @@ import "../../shared/polyfills/temporal";
 
 import { equal, ok } from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { type BrowserContext, expect, type Page } from "@playwright/test";
 import { eq } from "drizzle-orm";
@@ -405,7 +406,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           const actionButton = page.locator('button[form="campaign-composer"]');
           const preview = page.locator("#main-content .grid > aside");
           const screenshotDirectory = resolve(
-            import.meta.dir,
+            dirname(fileURLToPath(import.meta.url)),
             "../../e2e-artifacts/account-review"
           );
           yield* browserStep(
