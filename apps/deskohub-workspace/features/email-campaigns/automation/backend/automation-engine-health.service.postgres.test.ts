@@ -1,10 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
-import {
-  DotyposCustomerIdSchema,
-  DotyposReservationIdSchema,
-} from "@deskohub/dotypos";
+import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { eq, inArray } from "drizzle-orm";
 import { Effect } from "effect";
 import { TestClock } from "effect/testing";
@@ -16,18 +13,14 @@ import {
   emailCampaignAutomationWorkUnits as units,
   workspaceReservations,
 } from "@/db/schema";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import {
   deleteAutomatedCampaigns,
   seedAutomatedCampaign,
   seedAutomationVersion,
 } from "@/features/email-campaigns/backend/email-campaigns.test-utils";
 import type { CampaignId } from "@/features/email-campaigns/campaign-identifiers";
-import {
-  type WorkspaceReservationId,
-  workspaceReservationIdSchema,
-} from "@/features/reservation/persistence-contracts";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { seedAutomationUnit } from "./automation-engine.test-utils";
 import { AutomationEngineHealth } from "./automation-engine-health.service";
@@ -155,36 +148,25 @@ describe.skipIf(!testDatabase)(
       states: readonly ReservationState[]
     ) => {
       const confirmedAt = at("09:00:00");
-      const rows = states.map((reservationState, index) => {
-        const id = workspaceReservationIdSchema.make(
-          `engine-health-${suite}-${customer}-${index}`
-        );
-        reservationIds.push(id);
-        return {
-          id,
-          authorAccountId: fixtureReservationAuthorId,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
-          dotyposCustomerId: DotyposCustomerIdSchema.make(
-            `engine-health-${suite}-${customer}`
-          ),
-          dotyposReservationId: DotyposReservationIdSchema.make(id),
-          reservationState,
-          reservationConfirmedAt: confirmedAt,
-          paymentState: "paid" as const,
-          paidAt: confirmedAt,
-          fulfillmentState: "fulfilled" as const,
-          fulfilledAt: confirmedAt,
-          reservationDetails: {
-            kind: "cowork" as const,
-            entryTier: "open-space" as const,
-            coffee: false,
-          },
-          locale: "cs-CZ" as const,
-          updatedAt: confirmedAt,
-        };
-      });
-      await Effect.runPromise(db.insert(workspaceReservations).values(rows));
-      return rows.map(({ id }) => id);
+      const rows = await Effect.runPromise(
+        workspaceFixtures(db).reservations(
+          states.map((reservation) => ({
+            stage: { reservation, payment: "paid", fulfillment: "fulfilled" },
+            customer: DotyposCustomerIdSchema.make(
+              `engine-health-${suite}-${customer}`
+            ),
+            at: confirmedAt,
+            // Every reservation was booked, including one cancelled later.
+            overrides: {
+              reservationConfirmedAt: confirmedAt,
+              updatedAt: confirmedAt,
+            },
+          }))
+        )
+      );
+      const ids = rows.map(({ id }) => id);
+      reservationIds.push(...ids);
+      return ids;
     };
 
     beforeEach(async () => {

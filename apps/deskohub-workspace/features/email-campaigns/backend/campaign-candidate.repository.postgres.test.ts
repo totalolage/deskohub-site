@@ -5,21 +5,16 @@ import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
-import { testEmailAddress } from "@deskohub/test-email";
 import {
   type AudienceCountCondition,
   audienceAttributeCatalogue,
 } from "@deskohub/workspace-admin-api";
+import { eq, inArray } from "drizzle-orm";
 import { Effect, Option } from "effect";
-import {
-  customerAccounts,
-  customerMarketingConsents,
-  workspaceReservations,
-} from "@/db/schema";
+import { customerAccounts, customerMarketingConsents } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type AudienceCondition,
@@ -68,8 +63,10 @@ const visitedReservation = DotyposReservationIdSchema.make(`booking-${run}`);
 const abandonedReservation = DotyposReservationIdSchema.make(
   `abandoned-${run}`
 );
-const accountId = `campaign-account-${run}`;
-const unverifiedAccountId = `campaign-unverified-account-${run}`;
+const accountId = customerAccountIdSchema.make(`campaign-account-${run}`);
+const unverifiedAccountId = customerAccountIdSchema.make(
+  `campaign-unverified-account-${run}`
+);
 /** 23:50 on March 10 in Prague. */
 const createdAt = Temporal.Instant.from("2026-03-10T22:50:00Z");
 /** 00:30 on March 11 in Prague. */
@@ -107,124 +104,76 @@ describe.skipIf(!testDatabase)(
     const { db } = testDatabase;
 
     beforeAll(async () => {
+      const fixtures = workspaceFixtures(db);
+      for (const [id, linkedCustomer, verified] of [
+        [accountId, linked, true],
+        [unverifiedAccountId, unverifiedLinked, false],
+      ] as const) {
+        await Effect.runPromise(
+          fixtures.account("campaign", {
+            id,
+            linkedCustomer,
+            verified,
+            locale: "en-US",
+            createdAt: accountCreatedAt,
+          })
+        );
+      }
       await Effect.runPromise(
         db
-          .insert(customerAccounts)
-          .values([
-            {
-              id: accountId,
-              dotyposCustomerId: linked,
-              createdAt: accountCreatedAt,
-            },
-            {
-              id: unverifiedAccountId,
-              dotyposCustomerId: unverifiedLinked,
-              createdAt: accountCreatedAt,
-            },
-          ])
-          .onConflictDoNothing()
+          .update(authUser)
+          .set({ createdAt: new Date(loginCreatedAt.epochMilliseconds) })
+          .where(inArray(authUser.id, [accountId, unverifiedAccountId]))
       );
+      const booked = {
+        reservation: "confirmed",
+        payment: "paid",
+      } as const;
       await Effect.runPromise(
         Effect.all([
-          db.insert(workspaceReservations).values([
+          fixtures.reservations([
             {
-              authorAccountId: fixtureReservationAuthorId,
-              checkoutAttemptKey: checkoutAttemptKeySchema.make(`old-${run}`),
-              dotyposCustomerId: reserved,
-              dotyposReservationId: DotyposReservationIdSchema.make(
-                `old-booking-${run}`
-              ),
-              reservationState: "cancelled",
-              paymentState: "cancelled",
-              fulfillmentState: "not_started",
-              reservationDetails,
+              stage: { reservation: "cancelled", payment: "cancelled" },
+              customer: reserved,
+              details: reservationDetails,
+              at: createdAt.subtract({ hours: 240 }),
+              // An older reservation in another locale than the latest.
               locale: "cs-CZ",
-              createdAt: createdAt.subtract({ hours: 240 }),
+              overrides: { createdAt: createdAt.subtract({ hours: 240 }) },
             },
             {
-              authorAccountId: fixtureReservationAuthorId,
-              checkoutAttemptKey: checkoutAttemptKeySchema.make(`new-${run}`),
-              dotyposCustomerId: reserved,
-              dotyposReservationId: visitedReservation,
-              reservationState: "confirmed",
-              reservationConfirmedAt: confirmedAt,
-              paymentState: "paid",
-              paidAt: confirmedAt,
-              fulfillmentState: "fulfilled",
-              fulfilledAt: confirmedAt,
-              reservationDetails,
-              locale: "en-US",
-              createdAt,
+              stage: { ...booked, fulfillment: "fulfilled" },
+              customer: reserved,
+              details: reservationDetails,
+              at: confirmedAt,
+              overrides: {
+                dotyposReservationId: visitedReservation,
+                createdAt,
+              },
             },
             {
-              authorAccountId: fixtureReservationAuthorId,
-              checkoutAttemptKey: checkoutAttemptKeySchema.make(
-                `abandoned-${run}`
-              ),
-              dotyposCustomerId: abandoned,
-              dotyposReservationId: abandonedReservation,
-              reservationState: "hold_expired",
-              paymentState: "expired",
-              fulfillmentState: "not_started",
-              reservationDetails,
-              locale: "en-US",
-              createdAt,
+              stage: { reservation: "hold_expired", payment: "expired" },
+              customer: abandoned,
+              details: reservationDetails,
+              at: createdAt,
+              overrides: {
+                dotyposReservationId: abandonedReservation,
+                createdAt,
+              },
             },
             {
-              authorAccountId: fixtureReservationAuthorId,
-              checkoutAttemptKey: checkoutAttemptKeySchema.make(
-                `unfulfilled-${run}`
-              ),
-              dotyposCustomerId: unfulfilled,
-              dotyposReservationId: DotyposReservationIdSchema.make(
-                `unfulfilled-${run}`
-              ),
-              reservationState: "confirmed",
-              reservationConfirmedAt: confirmedAt,
-              paymentState: "paid",
-              paidAt: confirmedAt,
-              fulfillmentState: "failed",
-              fulfillmentFailedAt: confirmedAt,
-              fulfillmentFailureCode: "fulfillment_email_failed",
-              reservationDetails,
-              locale: "en-US",
-              createdAt,
+              stage: { ...booked, fulfillment: "failed" },
+              customer: unfulfilled,
+              details: reservationDetails,
+              at: confirmedAt,
+              overrides: { createdAt },
             },
             {
-              authorAccountId: fixtureReservationAuthorId,
-              checkoutAttemptKey: checkoutAttemptKeySchema.make(
-                `unverified-linked-${run}`
-              ),
-              dotyposCustomerId: unverifiedLinked,
-              dotyposReservationId: DotyposReservationIdSchema.make(
-                `unverified-linked-${run}`
-              ),
-              reservationState: "confirmed",
-              reservationConfirmedAt: confirmedAt,
-              paymentState: "paid",
-              paidAt: confirmedAt,
-              fulfillmentState: "not_started",
-              reservationDetails,
-              locale: "en-US",
-              createdAt,
-            },
-          ]),
-          db.insert(authUser).values([
-            {
-              id: accountId,
-              name: "Campaign test",
-              email: testEmailAddress(`campaign-${run}`),
-              emailVerified: true,
-              locale: "en-US",
-              createdAt: new Date(loginCreatedAt.epochMilliseconds),
-            },
-            {
-              id: unverifiedAccountId,
-              name: "Unverified campaign test",
-              email: testEmailAddress(`campaign-unverified-${run}`),
-              emailVerified: false,
-              locale: "en-US",
-              createdAt: new Date(loginCreatedAt.epochMilliseconds),
+              stage: booked,
+              customer: unverifiedLinked,
+              details: reservationDetails,
+              at: confirmedAt,
+              overrides: { createdAt },
             },
           ]),
           db.insert(customerMarketingConsents).values([
@@ -669,38 +618,44 @@ describe.skipIf(!testDatabase)(
       const asOf = verifiedAt.add({ hours: 1 });
       const legacy = customerId("legacy");
       const signup = customerId("legacy-signup");
-      const legacyAccountId = `campaign-legacy-account-${run}`;
-      const signupAccountId = `campaign-legacy-signup-account-${run}`;
-      const ids = [legacyAccountId, signupAccountId];
-      await Effect.runPromise(
-        db.insert(customerAccounts).values([
-          {
-            id: customerAccountIdSchema.make(legacyAccountId),
-            dotyposCustomerId: legacy,
-            createdAt: backfilledAt,
-            legacy: true,
-          },
-          // A sign-up the day after the backfill, as the legacy customer
-          // first verifies.
-          {
-            id: customerAccountIdSchema.make(signupAccountId),
-            dotyposCustomerId: signup,
-            createdAt: verifiedAt,
-          },
-        ])
+      const legacyAccountId = customerAccountIdSchema.make(
+        `campaign-legacy-account-${run}`
       );
+      const signupAccountId = customerAccountIdSchema.make(
+        `campaign-legacy-signup-account-${run}`
+      );
+      const ids = [legacyAccountId, signupAccountId];
+      const fixtures = workspaceFixtures(db);
       try {
         await Effect.runPromise(
-          db.insert(authUser).values(
-            ids.map((id) => ({
-              id,
-              name: "",
-              email: testEmailAddress(id),
-              emailVerified: true,
-              locale: "en-US",
-              createdAt: new Date(backfilledAt.epochMilliseconds),
-            }))
-          )
+          fixtures.account("campaign-legacy", {
+            id: legacyAccountId,
+            linkedCustomer: legacy,
+            locale: "en-US",
+            createdAt: backfilledAt,
+          })
+        );
+        // A sign-up the day after the backfill, as the legacy customer first
+        // verifies.
+        await Effect.runPromise(
+          fixtures.account("campaign-legacy-signup", {
+            id: signupAccountId,
+            linkedCustomer: signup,
+            locale: "en-US",
+            createdAt: verifiedAt,
+          })
+        );
+        await Effect.runPromise(
+          db
+            .update(customerAccounts)
+            .set({ legacy: true })
+            .where(eq(customerAccounts.id, legacyAccountId))
+        );
+        await Effect.runPromise(
+          db
+            .update(authUser)
+            .set({ createdAt: new Date(backfilledAt.epochMilliseconds) })
+            .where(eq(authUser.id, signupAccountId))
         );
         const facts = (created: DatePeriodBounds, at = asOf) =>
           repository((candidates) =>
@@ -775,40 +730,30 @@ describe.skipIf(!testDatabase)(
       const columnLinked = customerId("column-linked");
       /** A linked account with an unverified login and no reservation. */
       const unverifiedOnly = customerId("unverified-only");
-      const columnAccountId = `campaign-column-account-${run}`;
-      const unverifiedOnlyAccountId = `campaign-unverified-only-account-${run}`;
+      const columnAccountId = customerAccountIdSchema.make(
+        `campaign-column-account-${run}`
+      );
+      const unverifiedOnlyAccountId = customerAccountIdSchema.make(
+        `campaign-unverified-only-account-${run}`
+      );
       const pooled = [...seeded, columnLinked, unverifiedOnly];
 
       beforeAll(async () => {
+        const fixtures = workspaceFixtures(db);
         await Effect.runPromise(
-          db.insert(customerAccounts).values([
-            {
-              id: customerAccountIdSchema.make(columnAccountId),
-              dotyposCustomerId: columnLinked,
-            },
-            {
-              id: customerAccountIdSchema.make(unverifiedOnlyAccountId),
-              dotyposCustomerId: unverifiedOnly,
-            },
-          ])
+          fixtures.account("campaign-column", {
+            id: columnAccountId,
+            linkedCustomer: columnLinked,
+            locale: "en-US",
+          })
         );
         await Effect.runPromise(
-          db.insert(authUser).values([
-            {
-              id: columnAccountId,
-              name: "Column-linked campaign test",
-              email: testEmailAddress(`campaign-column-${run}`),
-              emailVerified: true,
-              locale: "en-US",
-            },
-            {
-              id: unverifiedOnlyAccountId,
-              name: "Unverified-only campaign test",
-              email: testEmailAddress(`campaign-unverified-only-${run}`),
-              emailVerified: false,
-              locale: "en-US",
-            },
-          ])
+          fixtures.account("campaign-unverified-only", {
+            id: unverifiedOnlyAccountId,
+            linkedCustomer: unverifiedOnly,
+            verified: false,
+            locale: "en-US",
+          })
         );
       });
 
