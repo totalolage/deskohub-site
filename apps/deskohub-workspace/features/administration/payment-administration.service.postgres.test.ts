@@ -1,20 +1,13 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
-import {
-  DotyposCustomerIdSchema,
-  DotyposReservationIdSchema,
-} from "@deskohub/dotypos";
 import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { NexiServiceMock } from "@deskohub/nexi/backend/service.mock";
 import { Effect, Layer } from "effect";
-import { paymentAttempts, workspaceReservations } from "@/db/schema";
-import {
-  checkoutAttemptKeySchema,
-  paymentAttemptIdSchema,
-} from "@/features/checkout/checkout-identifiers";
+import { paymentAttempts } from "@/db/schema";
+import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { PaymentAdministrationService } from "./payment-administration.service";
 
@@ -66,26 +59,9 @@ describe.skipIf(!testDatabase)(
 
     test("filters local orders by provider order creation time, falling back to attempt creation", async () => {
       await Effect.runPromise(
-        testDatabase.db.insert(workspaceReservations).values({
-          authorAccountId: fixtureReservationAuthorId,
-          id: reservationId,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${runId}`),
-          dotyposCustomerId: DotyposCustomerIdSchema.make(
-            `payment-admin-customer-${runId}`
-          ),
-          dotyposReservationId: DotyposReservationIdSchema.make(
-            `payment-admin-booking-${runId}`
-          ),
-          reservationState: "confirmed",
-          paymentState: "paid",
-          paidAt: Temporal.Now.instant(),
-          fulfillmentState: "not_started",
-          reservationDetails: {
-            kind: "cowork",
-            entryTier: "open-space",
-            coffee: false,
-          },
-          locale: "en-US",
+        workspaceFixtures(testDatabase.db).reservation({
+          stage: { reservation: "confirmed", payment: "paid" },
+          overrides: { id: reservationId },
         })
       );
       // The window is far in the past so other suites' orders stay outside it.

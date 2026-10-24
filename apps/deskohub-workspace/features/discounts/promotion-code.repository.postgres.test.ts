@@ -18,15 +18,12 @@ import {
   promotionCodes,
   voucherRedemptions,
   vouchers,
-  workspaceReservations,
 } from "@/db/schema";
 import {
-  checkoutAttemptKeySchema,
   type PaymentAttemptId,
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
-import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { discountIdSchema } from "./contracts";
 import {
@@ -186,29 +183,14 @@ describe.skipIf(!testDatabase)(
       readonly appliedAmountValue: number;
     }) => {
       const id = crypto.randomUUID();
-      const workspaceReservationId = workspaceReservationIdSchema.make(
-        `promotion-reservation-${id}`
-      );
       const paymentAttemptId = paymentAttemptIdSchema.make(
         `promotion-attempt-${id}`
       );
       paymentAttemptIds.push(paymentAttemptId);
-      await Effect.runPromise(
-        testDatabase.db.insert(workspaceReservations).values({
-          authorAccountId: fixtureReservationAuthorId,
-          id: workspaceReservationId,
-          checkoutSessionKey: `promotion-session-${id}`,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${id}`),
-          dotyposCustomerId: input.dotyposCustomerId,
-          reservationState: "draft",
-          paymentState: "pending",
-          fulfillmentState: "not_started",
-          reservationDetails: {
-            kind: "cowork",
-            entryTier: "open-space",
-            coffee: false,
-          },
-          locale: "en-US",
+      const { id: workspaceReservationId } = await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).reservation({
+          stage: { reservation: "draft", payment: "pending" },
+          customer: input.dotyposCustomerId,
         })
       );
       await Effect.runPromise(
