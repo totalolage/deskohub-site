@@ -223,6 +223,12 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
     has: page.getByRole("button", { exact: true, name: "Create audience" }),
   });
   const composerForm = page.locator("#campaign-composer");
+  // The composer's submit button sits in the page header, outside the form,
+  // linked to it only by its form attribute.
+  const composerSubmit = (name: string) =>
+    page
+      .getByRole("button", { exact: true, name })
+      .and(page.locator('[form="campaign-composer"]'));
   const flowForm = page.locator("form").filter({
     has: page.getByRole("button", { exact: true, name: "Save flow" }),
   });
@@ -304,9 +310,9 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
           .getByRole("option", { exact: true, name: plan.audienceTitle })
           .click({ timeout: workspaceE2ETimeouts.browserAction });
         campaignSubmission = retainServerActionSubmission(page, origin);
-        await page
-          .getByRole("button", { exact: true, name: "Create draft" })
-          .click({ timeout: workspaceE2ETimeouts.browserAction });
+        await composerSubmit("Create draft").click({
+          timeout: workspaceE2ETimeouts.browserAction,
+        });
         // The composer stays inert from the submit until the new campaign's
         // page opens, so nothing touches it in between.
         await waitForPath(savedCampaignPath, workspaceE2ETimeouts.uiTransition);
@@ -416,9 +422,9 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
         await editor.pressSequentially(plan.body, {
           timeout: workspaceE2ETimeouts.browserAction,
         });
-        await composerForm
-          .getByRole("button", { exact: true, name: "Save changes" })
-          .click({ timeout: workspaceE2ETimeouts.browserAction });
+        await composerSubmit("Save changes").click({
+          timeout: workspaceE2ETimeouts.browserAction,
+        });
       }
     );
     yield* runStep({
