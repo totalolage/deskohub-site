@@ -23,6 +23,7 @@ import {
   AutomationVersionDetail,
   AutomationVersionRef,
   AutomationVersionSummary,
+  automationEngineHealthMinimumDhwVersion,
   automationsMinimumDhwVersion,
   CalendarPreview,
   CalendarPreviewInput,
@@ -535,7 +536,7 @@ export const campaignOperations = defineOperations({
     output: CalendarPreview,
   }),
   getAutomationEngineHealth: query({
-    minimumDhwVersion: automationsMinimumDhwVersion,
+    minimumDhwVersion: automationEngineHealthMinimumDhwVersion,
     input: NoInput,
     output: AutomationEngineHealth,
   }),

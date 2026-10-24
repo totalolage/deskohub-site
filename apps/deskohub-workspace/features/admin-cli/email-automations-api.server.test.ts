@@ -5,10 +5,12 @@ import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationCampaignId,
   AutomationDetail,
+  AutomationEngineHealth,
   AutomationPreviewId,
   AutomationRunId,
   AutomationRunStats,
   AutomationRunSummary,
+  automationEngineHealthMinimumDhwVersion,
   automationsMinimumDhwVersion,
   CliInputInvalid,
   CliMutationRejected,
@@ -379,6 +381,42 @@ describe("automation admin API", () => {
 
     expect(error).toBeInstanceOf(CliResourceNotFound);
     expect(error).toMatchObject({ code: "automation-run-not-found" });
+  });
+
+  // Released binaries decode warnings as a closed list, so they would fail
+  // on the whole report exactly when the reconcile stalls.
+  test("refuses engine health to dhw 1.27.0, which can't decode reconcile-stalled", async () => {
+    const error = await callAutomationsApi(
+      (client) => client.getAutomationEngineHealth().pipe(Effect.flip),
+      { engineHealth: { get: Effect.die("not expected") } },
+      { dhwVersion: "1.27.0" }
+    );
+
+    expect(error).toBeInstanceOf(CliInputInvalid);
+    expect(error.message).toContain("dhw update");
+  });
+
+  test("returns the reconcile lag and warning to a dhw that reads them", async () => {
+    const health = await callAutomationsApi(
+      (client) => client.getAutomationEngineHealth(),
+      {
+        engineHealth: {
+          get: Effect.succeed(
+            Schema.decodeUnknownSync(AutomationEngineHealth)({
+              lastPlannedAt: "2026-10-19T08:00:00Z",
+              sweepLagSeconds: 60,
+              reconcileLagSeconds: 8160,
+              deadlineMisses: 0,
+              warnings: ["reconcile-stalled"],
+            })
+          ),
+        },
+      },
+      { dhwVersion: automationEngineHealthMinimumDhwVersion }
+    );
+
+    expect(health.reconcileLagSeconds).toBe(8160);
+    expect(health.warnings).toEqual(["reconcile-stalled"]);
   });
 
   test("describes a calendar expression", async () => {

@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import {
+  automationEngineHealthMinimumDhwVersion,
   automationsMinimumDhwVersion,
   CliClientCompatibility,
   CliInputInvalid,
@@ -35,6 +36,8 @@ const groupMinimums: Partial<Record<string, DhwVersion>> = {
   automations: automationsMinimumDhwVersion,
 };
 const endpointMinimums: Partial<Record<string, DhwVersion>> = {
+  "automations.getAutomationEngineHealth":
+    automationEngineHealthMinimumDhwVersion,
   "administration.listInvoices": invoicesMinimumDhwVersion,
   "administration.getInvoice": invoicesMinimumDhwVersion,
 };
