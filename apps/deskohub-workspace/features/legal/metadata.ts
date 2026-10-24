@@ -17,7 +17,7 @@ export function createLegalMetadata(
     {
       locale,
       pathname: documentKey,
-      title: document.title,
+      title: { page: document.title },
       description: document.lead,
       type: "article",
     },

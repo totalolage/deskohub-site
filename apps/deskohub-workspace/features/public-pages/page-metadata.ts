@@ -1,13 +1,15 @@
 import { toOpenGraphLocale } from "@deskohub/i18n/core";
-import type { Metadata, ResolvingMetadata } from "next";
+import type { Metadata } from "next";
 import { getWorkspaceAlternates, type Locale, locales } from "@/features/i18n";
 import { workspaceSiteConstants } from "@/shared/utils";
 
 /**
- * A page's own title, which gets the site name appended, or `{ absolute }`
- * for a title written in full that already names the site.
+ * The page's own title, which gets the site name appended, or an absolute
+ * title written in full that already names the site.
  */
-type PublicPageTitle = string | { readonly absolute: string };
+type PublicPageTitle =
+  | { readonly page: string }
+  | { readonly absolute: string };
 
 type PublicPageMetadataInput = {
   readonly locale: Locale;
@@ -22,11 +24,21 @@ type PublicPageMetadataInput = {
   readonly type?: "website" | "article";
 };
 
+/**
+ * The layouts' metadata that Next passes `generateMetadata` as `parent`, of
+ * which the builder reads only the share image.
+ */
+export type ParentMetadata = Promise<{
+  readonly openGraph: {
+    readonly images?: NonNullable<Metadata["openGraph"]>["images"];
+  } | null;
+}>;
+
 /** The document title a page renders: `<page title> | Deskohub Workspace`. */
 export const getPublicPageTitle = (title: PublicPageTitle): string =>
-  typeof title === "string"
-    ? `${title} | ${workspaceSiteConstants.brand.name}`
-    : title.absolute;
+  "absolute" in title
+    ? title.absolute
+    : `${title.page} | ${workspaceSiteConstants.brand.name}`;
 
 /**
  * Title, description, canonical and hreflang URLs, and the complete Open
@@ -42,7 +54,7 @@ export async function createPublicPageMetadata(
     description,
     type = "website",
   }: PublicPageMetadataInput,
-  parent: ResolvingMetadata
+  parent: ParentMetadata
 ): Promise<Metadata> {
   const { openGraph } = await parent;
   const documentTitle = getPublicPageTitle(title);

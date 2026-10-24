@@ -58,7 +58,7 @@ type LocalizedCheckoutPayPageProps = {
 export const instant = false;
 
 export async function generateMetadata(
-  _props: unknown,
+  _props: PageProps<"/[locale]/checkout/pay">,
   parent: ResolvingMetadata
 ): Promise<Metadata> {
   return runWithRequestLocale(async (locale) => ({

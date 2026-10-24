@@ -7,7 +7,7 @@ import { createPublicPageMetadata } from "@/features/public-pages/page-metadata"
 export const instant = true;
 
 export async function generateMetadata(
-  _props: unknown,
+  _props: PageProps<"/[locale]/contact">,
   parent: ResolvingMetadata
 ): Promise<Metadata> {
   return runWithRequestLocale((locale) =>

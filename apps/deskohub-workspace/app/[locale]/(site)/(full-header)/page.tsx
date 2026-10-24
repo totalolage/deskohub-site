@@ -9,7 +9,7 @@ import { getWebSiteStructuredData } from "@/shared/utils/structured-data";
 export const instant = false;
 
 export async function generateMetadata(
-  _props: unknown,
+  _props: PageProps<"/[locale]">,
   parent: ResolvingMetadata
 ): Promise<Metadata> {
   return runWithRequestLocale((locale) =>

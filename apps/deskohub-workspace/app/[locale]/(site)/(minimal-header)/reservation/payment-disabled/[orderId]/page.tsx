@@ -38,10 +38,7 @@ export async function generateMetadata(
         title: {
           absolute: m.reviewPaymentDisabledMetadataTitle({}, { locale }),
         },
-        description: m.reviewPaymentDisabledMetadataDescription(
-          {},
-          { locale }
-        ),
+        description: m.reviewPaymentDisabledMetadataDescription({}, { locale }),
       },
       parent
     )),

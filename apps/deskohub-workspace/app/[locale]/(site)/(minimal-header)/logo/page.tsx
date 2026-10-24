@@ -10,7 +10,7 @@ import { HorizontalLogo, Logo } from "@/shared/components/logo";
 export const instant = false;
 
 export async function generateMetadata(
-  _props: unknown,
+  _props: PageProps<"/[locale]/logo">,
   parent: ResolvingMetadata
 ): Promise<Metadata> {
   return runWithRequestLocale((locale) =>
@@ -18,7 +18,7 @@ export async function generateMetadata(
       {
         locale,
         pathname: "/logo",
-        title: m.logoVariantsTitle({}, { locale }),
+        title: { page: m.logoVariantsTitle({}, { locale }) },
       },
       parent
     )

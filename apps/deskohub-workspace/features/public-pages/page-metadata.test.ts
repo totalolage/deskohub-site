@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { ResolvingMetadata } from "next";
 import { workspaceSiteConstants } from "@/shared/utils";
-import { createPublicPageMetadata, getPublicPageTitle } from "./page-metadata";
+import {
+  createPublicPageMetadata,
+  getPublicPageTitle,
+  type ParentMetadata,
+} from "./page-metadata";
 
 const shareImage = {
   url: "https://workspace.deskohub.cz/cs-CZ/opengraph-image.jpg?0123456789abcdef",
@@ -12,13 +15,13 @@ const shareImage = {
 
 // The layouts' metadata as Next resolves it, with the share image the
 // `opengraph-image` file adds.
-const parent = Promise.resolve({
+const parent: ParentMetadata = Promise.resolve({
   openGraph: { images: [shareImage] },
-}) as unknown as ResolvingMetadata;
+});
 
 describe("getPublicPageTitle", () => {
   test("appends the site name to a page's own title", () => {
-    expect(getPublicPageTitle("Page")).toBe(
+    expect(getPublicPageTitle({ page: "Page" })).toBe(
       `Page | ${workspaceSiteConstants.brand.name}`
     );
   });
@@ -34,14 +37,14 @@ describe("createPublicPageMetadata", () => {
       {
         locale: "cs-CZ",
         pathname: "/faq",
-        title: "Page",
+        title: { page: "Page" },
         description: "Description",
       },
       parent
     );
 
     expect(metadata).toEqual({
-      title: getPublicPageTitle("Page"),
+      title: getPublicPageTitle({ page: "Page" }),
       description: "Description",
       alternates: {
         canonical: "https://workspace.deskohub.cz/cs-CZ/faq",
@@ -53,7 +56,7 @@ describe("createPublicPageMetadata", () => {
       },
       openGraph: {
         type: "website",
-        title: getPublicPageTitle("Page"),
+        title: getPublicPageTitle({ page: "Page" }),
         description: "Description",
         url: "https://workspace.deskohub.cz/cs-CZ/faq",
         siteName: workspaceSiteConstants.brand.name,
@@ -67,7 +70,7 @@ describe("createPublicPageMetadata", () => {
 
   test("names the other locales as Open Graph alternates", async () => {
     const { openGraph } = await createPublicPageMetadata(
-      { locale: "en-US", pathname: "/", title: "Page" },
+      { locale: "en-US", pathname: "/", title: { page: "Page" } },
       parent
     );
 
@@ -80,7 +83,7 @@ describe("createPublicPageMetadata", () => {
 
   test("leaves the description to the layout when the page has none", async () => {
     const metadata = await createPublicPageMetadata(
-      { locale: "en-US", pathname: "/logo", title: "Page" },
+      { locale: "en-US", pathname: "/logo", title: { page: "Page" } },
       parent
     );
 
@@ -93,7 +96,7 @@ describe("createPublicPageMetadata", () => {
       {
         locale: "en-US",
         pathname: "/privacy-policy",
-        title: "Page",
+        title: { page: "Page" },
         description: "Description",
         type: "article",
       },

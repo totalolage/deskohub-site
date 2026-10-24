@@ -9,7 +9,7 @@ const pathname = "/team";
 export const instant = false;
 
 export async function generateMetadata(
-  _props: unknown,
+  _props: PageProps<"/[locale]/team">,
   parent: ResolvingMetadata
 ): Promise<Metadata> {
   return runWithRequestLocale((locale) =>

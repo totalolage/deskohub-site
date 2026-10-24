@@ -132,7 +132,7 @@ export function createReservationPage<
   PageData = undefined,
 >(definition: ReservationPageDefinition<Kind, PageData>) {
   async function generateMetadata(
-    _props: unknown,
+    _props: LocalizedReservationPageProps,
     parent: ResolvingMetadata
   ): Promise<Metadata> {
     return runWithRequestLocale(async (locale) => {

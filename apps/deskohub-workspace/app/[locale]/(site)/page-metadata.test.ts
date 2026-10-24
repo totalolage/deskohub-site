@@ -1,7 +1,8 @@
 import { describe, expect, mock, test } from "bun:test";
-import type { Metadata, ResolvingMetadata } from "next";
+import type { Metadata } from "next";
 import { locales } from "@/features/i18n";
 import { publicPages } from "@/features/public-pages";
+import type { ParentMetadata } from "@/features/public-pages/page-metadata";
 
 let requestLocale: string = "en-US";
 
@@ -26,8 +27,8 @@ mock.module(
 
 type PageModule = {
   readonly generateMetadata: (
-    props: unknown,
-    parent: ResolvingMetadata
+    props: PageProps<"/[locale]">,
+    parent: ParentMetadata
   ) => Promise<Metadata>;
 };
 
@@ -41,9 +42,9 @@ const openGraphLocales = { "en-US": "en_US", "cs-CZ": "cs_CZ" } as const;
 
 // The layouts' metadata as Next resolves it, with the share image the
 // `opengraph-image` file adds.
-const parent = Promise.resolve({
+const parent: ParentMetadata = Promise.resolve({
   openGraph: { images: [shareImage] },
-}) as unknown as ResolvingMetadata;
+});
 
 // Route groups don't appear in URLs, so find each page file by its pathname.
 const pageFileByPathname = new Map(
@@ -67,7 +68,13 @@ describe("public page metadata", () => {
         expect(pageFile).toBeDefined();
         requestLocale = locale;
         const page: PageModule = await import(`${import.meta.dir}/${pageFile}`);
-        const metadata = await page.generateMetadata({}, parent);
+        const metadata = await page.generateMetadata(
+          {
+            params: Promise.resolve({ locale }),
+            searchParams: Promise.resolve({}),
+          },
+          parent
+        );
 
         expect(metadata.robots).toBeUndefined();
         expect(metadata.alternates).toEqual({

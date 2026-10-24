@@ -7,7 +7,7 @@ import { createPublicPageMetadata } from "@/features/public-pages/page-metadata"
 const pathname = "/ai-assistants";
 
 export async function generateMetadata(
-  _props: unknown,
+  _props: PageProps<"/[locale]/ai-assistants">,
   parent: ResolvingMetadata
 ): Promise<Metadata> {
   return runWithRequestLocale((locale) =>

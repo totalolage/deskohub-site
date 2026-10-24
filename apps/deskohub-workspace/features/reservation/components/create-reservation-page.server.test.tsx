@@ -152,10 +152,14 @@ test("gates a disabled page inside its content, keeping the shell static", async
   await expect(renderContent(content.props)).rejects.toThrow(
     "NEXT_HTTP_ERROR_FALLBACK;404"
   );
-  const parent = Promise.resolve({}) as unknown as ResolvingMetadata;
-  await expect(pageDefinition.generateMetadata({}, parent)).rejects.toThrow(
-    "NEXT_HTTP_ERROR_FALLBACK;404"
-  );
+  // The page 404s before it reads its layouts' metadata.
+  const parent: ResolvingMetadata = new Promise(() => {});
+  await expect(
+    pageDefinition.generateMetadata(
+      { searchParams: Promise.resolve({}) },
+      parent
+    )
+  ).rejects.toThrow("NEXT_HTTP_ERROR_FALLBACK;404");
   expect(isEnabled).toHaveBeenCalledTimes(2);
   expect(render).not.toHaveBeenCalled();
 });

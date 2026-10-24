@@ -26,7 +26,7 @@ const getMeetingRoomGalleryImages = () =>
   }).catch((): readonly CloudinaryAsset[] => []);
 
 export async function generateMetadata(
-  _props: unknown,
+  _props: PageProps<"/[locale]/meeting-room">,
   parent: ResolvingMetadata
 ): Promise<Metadata> {
   return runWithRequestLocale(async (locale) => {

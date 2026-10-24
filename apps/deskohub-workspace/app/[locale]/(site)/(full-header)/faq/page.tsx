@@ -10,7 +10,7 @@ const pathname = "/faq";
 export const instant = false;
 
 export async function generateMetadata(
-  _props: unknown,
+  _props: PageProps<"/[locale]/faq">,
   parent: ResolvingMetadata
 ): Promise<Metadata> {
   return runWithRequestLocale((locale) =>

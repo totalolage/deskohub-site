@@ -4,7 +4,7 @@ import { LegalPage } from "@/features/legal";
 import { createLegalMetadata } from "@/features/legal/metadata";
 
 export async function generateMetadata(
-  _props: unknown,
+  _props: PageProps<"/[locale]/cookie-policy">,
   parent: ResolvingMetadata
 ): Promise<Metadata> {
   return runWithRequestLocale((locale) =>

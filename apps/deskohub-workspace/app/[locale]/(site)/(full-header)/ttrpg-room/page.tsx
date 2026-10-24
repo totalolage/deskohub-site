@@ -25,7 +25,7 @@ const getRoomImages = (
   );
 
 export async function generateMetadata(
-  _props: unknown,
+  _props: PageProps<"/[locale]/ttrpg-room">,
   parent: ResolvingMetadata
 ): Promise<Metadata> {
   return runWithRequestLocale((locale) =>
