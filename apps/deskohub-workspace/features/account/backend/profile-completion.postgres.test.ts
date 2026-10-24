@@ -48,26 +48,24 @@ const uniqueDotyposId = () =>
 const uniqueCode = () =>
   `RFL${uniqueId().replaceAll("-", "").slice(0, 10).toUpperCase()}`;
 
-const insertAuthUser = async (accountId: CustomerAccountId) => {
-  await testDatabase!.pool.query(
-    "insert into customer_accounts (id) values ($1) on conflict do nothing",
-    [accountId]
+const insertAuthUser = (
+  accountId: CustomerAccountId,
+  linkedCustomer?: DotyposCustomerId
+) =>
+  Effect.runPromise(
+    workspaceFixtures(testDatabase!.db).account("profile-completion", {
+      id: accountId,
+      email: testEmailAddress(accountId),
+      verified: false,
+      linkedCustomer,
+    })
   );
-  await testDatabase!.pool.query(
-    `insert into auth."user" (id, name, email) values ($1, '', $2)`,
-    [accountId, testEmailAddress(accountId)]
-  );
-};
 
 /** An active referrer: an auth account linked to a customer with a code. */
 const insertReferrer = async () => {
   const accountId = customerAccountIdSchema.make(uniqueId());
   const customerId = uniqueDotyposId();
-  await insertAuthUser(accountId);
-  await testDatabase!.pool.query(
-    `update customer_accounts set dotypos_customer_id = $2 where id = $1`,
-    [accountId, customerId]
-  );
+  await insertAuthUser(accountId, customerId);
   const code = uniqueCode();
   const [promotion] = await Effect.runPromise(
     testDatabase!.db

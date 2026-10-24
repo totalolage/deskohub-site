@@ -4,7 +4,10 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { sql } from "drizzle-orm";
+import { Effect } from "effect";
 import type { Pool } from "pg";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
@@ -34,17 +37,14 @@ const pgErrorCode = async (promise: Promise<unknown>) => {
   return undefined;
 };
 
-const insertAuthUser = async (
-  database: AuthDatabase,
-  id: string,
-  email: string
-) => {
-  await database.insert(customerAccounts).values({ id }).onConflictDoNothing();
-  return database
-    .insert(authUser)
-    .values({ id, name: "", email })
-    .returning({ id: authUser.id, createdAt: authUser.createdAt });
-};
+const fixtures = () => workspaceFixtures(postgresDatabase!.db);
+
+const insertAuthUser = (id: string) =>
+  Effect.runPromise(
+    fixtures().account("auth-persistence", {
+      id: customerAccountIdSchema.make(id),
+    })
+  );
 
 describe.skipIf(!postgresDatabase)(
   "Better Auth persistence over the shared pool",
@@ -67,20 +67,28 @@ describe.skipIf(!postgresDatabase)(
       const instant = new Date("2026-09-03T10:30:00.123Z");
       const rawEmail = testEmailAddress(`raw-${uniqueId()}`);
       const rawUserId = uniqueId();
-      await pool.query(
-        "insert into customer_accounts (id) values ($1) on conflict do nothing",
-        [rawUserId]
-      );
-      await pool.query(
-        `INSERT INTO auth."user" (id, name, email, created_at) VALUES ($1, '', $2, $3)`,
-        [rawUserId, rawEmail, instant]
+      await Effect.runPromise(
+        fixtures().account("raw", {
+          id: customerAccountIdSchema.make(rawUserId),
+          email: rawEmail,
+          createdAt: Temporal.Instant.fromEpochMilliseconds(instant.getTime()),
+        })
       );
 
-      const inserted = await insertAuthUser(
-        db,
-        uniqueId(),
-        testEmailAddress(`facade-${uniqueId()}`)
+      const facadeUserId = uniqueId();
+      await Effect.runPromise(
+        fixtures().customerAccount({
+          id: customerAccountIdSchema.make(facadeUserId),
+        })
       );
+      const inserted = await db
+        .insert(authUser)
+        .values({
+          id: facadeUserId,
+          name: "",
+          email: testEmailAddress(`facade-${uniqueId()}`),
+        })
+        .returning({ createdAt: authUser.createdAt });
 
       const [rawRow] = await db
         .select()
@@ -98,16 +106,8 @@ describe.skipIf(!postgresDatabase)(
       const secondUserId = uniqueId();
       const dotyposCustomerId = `60${Math.floor(Math.random() * 1_000_000)}`;
 
-      await insertAuthUser(
-        db,
-        firstUserId,
-        testEmailAddress(`link-a-${uniqueId()}`)
-      );
-      await insertAuthUser(
-        db,
-        secondUserId,
-        testEmailAddress(`link-b-${uniqueId()}`)
-      );
+      await insertAuthUser(firstUserId);
+      await insertAuthUser(secondUserId);
       const linkTo = (id: string, customerId: string) =>
         db
           .update(customerAccounts)
@@ -123,11 +123,7 @@ describe.skipIf(!postgresDatabase)(
 
     test("roots every login in a customer account that outlives it", async () => {
       const userId = uniqueId();
-      await insertAuthUser(
-        db,
-        userId,
-        testEmailAddress(`rooted-${uniqueId()}`)
-      );
+      await insertAuthUser(userId);
 
       const accountless = await pgErrorCode(
         db.insert(authUser).values({
@@ -155,7 +151,7 @@ describe.skipIf(!postgresDatabase)(
 
     test("resolves user→sessions/accounts joins through the auth-only graph", async () => {
       const userId = uniqueId();
-      await insertAuthUser(db, userId, testEmailAddress(`graph-${uniqueId()}`));
+      await insertAuthUser(userId);
       await db.insert(authSession).values({
         id: uniqueId(),
         expiresAt: new Date(Date.now() + 3_600_000),

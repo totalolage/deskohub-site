@@ -5,9 +5,11 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type CustomerAccountAccessError,
+  type CustomerAccountId,
   customerAccountIdSchema,
 } from "../customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
@@ -75,16 +77,14 @@ const makeRepositoryLayer = () => {
   };
 };
 
-const insertAuthUser = async (id: string, email: string) => {
-  await testDatabase!.pool.query(
-    "insert into customer_accounts (id) values ($1) on conflict do nothing",
-    [id]
+const insertAuthUser = (id: CustomerAccountId, email: string) =>
+  Effect.runPromise(
+    workspaceFixtures(testDatabase!.db).account("locale-preference", {
+      id,
+      email,
+      verified: false,
+    })
   );
-  await testDatabase!.pool.query(
-    `insert into auth."user" (id, name, email) values ($1, '', $2)`,
-    [id, email]
-  );
-};
 
 const uniqueId = () => crypto.randomUUID();
 
@@ -183,10 +183,11 @@ describe.skipIf(!testDatabase)(
         `unverified-${crypto.randomUUID()}`
       );
       const captureAccount = customerAccountIdSchema.make(uniqueId());
-      await insertAuthUser(captureAccount, verifiedEmail);
-      await testDatabase!.pool.query(
-        `update auth."user" set email_verified = true where id = $1`,
-        [captureAccount]
+      await Effect.runPromise(
+        workspaceFixtures(testDatabase!.db).account("locale-preference", {
+          id: captureAccount,
+          email: verifiedEmail,
+        })
       );
       await insertAuthUser(
         customerAccountIdSchema.make(uniqueId()),
