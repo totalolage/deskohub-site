@@ -242,10 +242,11 @@ export function CampaignComposer({
             : m.emailCampaignsComposerNewTitle({}, { locale: routeLocale }))
         }
       />
-      <div className="sticky top-16 z-30 -mx-4 mb-7 border-y border-navy-blue/10 bg-[#f6f6f3] px-4 py-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-        <div className="flex flex-wrap items-center justify-end gap-3">
+      {/* Keep one toolbar row at the breakpoint where the preview also sticks. */}
+      <div className="sticky top-16 z-30 -mx-4 mb-7 border-y border-navy-blue/10 bg-[#f6f6f3] px-4 py-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 @container">
+        <div className="flex flex-wrap items-center justify-end gap-3 @5xl:flex-nowrap">
           <span
-            className="inline-flex items-center gap-1.5 text-navy-blue/60 text-sm"
+            className="inline-flex items-center gap-1.5 text-navy-blue/60 text-sm @5xl:whitespace-nowrap"
             role="status"
           >
             {unsavedChanges ? (
@@ -557,7 +558,7 @@ export function CampaignComposer({
               </Tabs>
             </ComposerSection>
           </form>
-          <aside className="min-w-0 @5xl:sticky @5xl:top-20">
+          <aside className="min-w-0 @5xl:sticky @5xl:top-32">
             <CampaignEmailPreview
               fields={localeFields[locale]}
               locale={locale}
