@@ -342,17 +342,22 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
           flowForm,
           workspaceE2ETimeouts.uiTransition
         );
+        // Until a trigger is chosen, the family radios are visually hidden
+        // inside their cards, so the card takes the click.
         await flowForm
-          .getByRole("radio", { name: /^Event\b/ })
-          .check({ timeout: workspaceE2ETimeouts.browserAction });
+          .locator("label")
+          .filter({ has: page.getByRole("radio", { name: /^Event\b/ }) })
+          .click({ timeout: workspaceE2ETimeouts.browserAction });
         await flowForm
           .getByRole("radio", { name: /^Reservation booked\b/ })
           .check({ timeout: workspaceE2ETimeouts.browserAction });
         await flowForm
           .getByRole("button", { exact: true, name: "Add a step as step 1" })
           .click({ timeout: workspaceE2ETimeouts.browserAction });
+        // Insert menu items carry a hint after their name.
         await page
-          .getByRole("menuitem", { exact: true, name: "Condition" })
+          .getByRole("menu")
+          .getByRole("menuitem", { name: /^Condition\b/ })
           .click({ timeout: workspaceE2ETimeouts.browserAction });
         await addDotyposTagCondition(page, flowForm, plan.customerTag);
         const save = flowForm.getByRole("button", {
