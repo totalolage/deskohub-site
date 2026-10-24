@@ -3280,7 +3280,16 @@ export class AdministrationService extends Context.Service<
                 cause,
                 ...range,
               }).pipe(Effect.as(null));
-            })
+            }),
+            Effect.tap((items) =>
+              Effect.annotateCurrentSpan({
+                reservationCount: items?.length ?? 0,
+                unavailable: items === null,
+              })
+            ),
+            Effect.withSpan(
+              "AdministrationService.loadReservationActivity.reservationProvider"
+            )
           );
 
         if (!reservations) {
@@ -3296,18 +3305,28 @@ export class AdministrationService extends Context.Service<
           );
           return id ? [id] : [];
         });
-        const linkedRows =
-          reservationIds.length === 0
-            ? []
-            : yield* db
-                .select({ id: workspaceReservations.dotyposReservationId })
-                .from(workspaceReservations)
-                .where(
-                  equalsAny(
-                    workspaceReservations.dotyposReservationId,
-                    reservationIds
-                  )
-                );
+        const linkedRows = yield* Effect.gen(function* () {
+          if (reservationIds.length === 0) return [];
+          return yield* db
+            .select({ id: workspaceReservations.dotyposReservationId })
+            .from(workspaceReservations)
+            .where(
+              equalsAny(
+                workspaceReservations.dotyposReservationId,
+                reservationIds
+              )
+            );
+        }).pipe(
+          Effect.tap((rows) =>
+            Effect.annotateCurrentSpan({
+              linkedRowCount: rows.length,
+              linkageQueried: reservationIds.length > 0,
+            })
+          ),
+          Effect.withSpan(
+            "AdministrationService.loadReservationActivity.databaseLinkage"
+          )
+        );
         const linkedReservationIds = new Set(
           linkedRows.flatMap(({ id }) => (id ? [id] : []))
         );

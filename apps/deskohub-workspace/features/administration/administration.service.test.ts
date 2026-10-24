@@ -1544,6 +1544,7 @@ describe("AdministrationService", () => {
   });
 
   test("counts every linked reservation in the overview reservation activity", async () => {
+    setSystemTime(new Date("2026-08-26T12:00:00Z"));
     const listInputs: unknown[] = [];
     const database = {
       select: () =>
@@ -1627,32 +1628,64 @@ describe("AdministrationService", () => {
       Effect.runPromise
     );
 
-    const to = Temporal.Now.instant()
-      .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-      .toPlainDate();
     expect(listInputs).toEqual([
       {
-        startsAtOrAfter: to
-          .subtract({ days: 364 })
-          .toZonedDateTime(workspaceSiteConstants.location.timeZone)
-          .toInstant()
-          .toString(),
-        startsBefore: to
-          .add({ days: 1 })
-          .toZonedDateTime(workspaceSiteConstants.location.timeZone)
-          .toInstant()
-          .toString(),
+        startsAtOrAfter: "2025-08-26T22:00:00Z",
+        startsBefore: "2026-08-26T22:00:00Z",
         order: "startDateAscending",
       },
     ]);
     expect(result).toEqual({
-      from: to.subtract({ days: 364 }).toString(),
-      to: to.toString(),
+      from: "2025-08-27",
+      to: "2026-08-26",
       dates: [
         { count: 3, date: "2026-08-10" },
         { count: 1, date: "2026-08-12" },
       ],
     });
+  });
+
+  test("skips the linkage query when no reservations fall in the activity range", async () => {
+    let selects = 0;
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadReservationActivity();
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({
+                  db: {
+                    select: () => {
+                      selects += 1;
+                      return makeQuery([]);
+                    },
+                  } as never,
+                })
+              ),
+              DotyposServiceMock({
+                listReservations: () => Effect.succeed([]),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              reservationAuthorsMock(),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result.dates).toEqual([]);
+    expect(selects).toBe(0);
   });
 
   test("keeps unavailable overview reservation activity distinct from no activity", async () => {

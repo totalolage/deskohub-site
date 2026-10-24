@@ -467,10 +467,37 @@ const reservationsReconcileAccessCommand = Command.make(
   )
 );
 
+const reservationsActivityCommand = Command.make("activity", {}, () =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    Effect.gen(function* () {
+      const activity = yield* api.getReservationActivity(accessToken);
+      if (json) {
+        yield* Console.log(JSON.stringify(activity));
+        return;
+      }
+      if (activity.dates === null) {
+        yield* Console.log(
+          `Reservation activity ${activity.from} to ${activity.to}: unavailable`
+        );
+        return;
+      }
+      yield* Console.log(
+        `Reservation activity ${activity.from} to ${activity.to}: ${activity.dates.length} days`
+      );
+      for (const day of activity.dates) {
+        yield* Console.log([day.date, day.count].join("\t"));
+      }
+    })
+  )
+).pipe(
+  Command.withDescription("Show linked reservations per day over the last year")
+);
+
 const reservationsCommand = Command.make("reservations").pipe(
   Command.withDescription("Inspect and cancel Workspace reservations"),
   Command.withSubcommands([
     reservationsListCommand,
+    reservationsActivityCommand,
     reservationsGetCommand,
     reservationsFindCommand,
     reservationsCancelCommand,

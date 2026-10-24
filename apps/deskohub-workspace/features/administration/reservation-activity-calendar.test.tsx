@@ -30,10 +30,10 @@ const activity = {
   ],
 } as const;
 
-const renderCalendar = () =>
+const renderCalendar = (from: string = activity.from) =>
   render(
     <ReservationActivityCalendar
-      activity={activity}
+      activity={{ ...activity, from }}
       getDayAppearance={({ count }) =>
         getReservationActivityCountAppearance(count)
       }
@@ -46,6 +46,14 @@ const renderCalendar = () =>
       locale="en-US"
     />
   );
+
+const getDayCells = (view: ReturnType<typeof render>) => {
+  const firstDay = view.container.querySelector("time");
+  return {
+    cells: [...(firstDay?.parentElement?.children ?? [])],
+    firstDay,
+  };
+};
 
 describe("getReservationActivityIntensity", () => {
   test("leaves an empty day unfilled", () => {
@@ -85,23 +93,51 @@ describe("ReservationActivityCalendar", () => {
     await unregisterWorkspaceComponentTestEnv();
   });
 
-  test("starts each week column on Monday", () => {
-    const view = renderCalendar();
-    const firstDay = view.container.querySelector("time");
-    const cells = [...(firstDay?.parentElement?.children ?? [])];
-    const weekdayLabels = [
-      ...(firstDay?.parentElement?.previousElementSibling?.children ?? []),
-    ].map(({ textContent }) => textContent);
+  for (const [from, leadingDays] of [
+    ["2026-01-01", 3],
+    ["2026-01-04", 6],
+    ["2026-01-05", 0],
+  ] as const) {
+    test(`starts each week column on Monday from ${from}`, () => {
+      const view = renderCalendar(from);
+      const { cells, firstDay } = getDayCells(view);
+      const weekdayLabels = [
+        ...(firstDay?.parentElement?.previousElementSibling?.children ?? []),
+      ].map(({ textContent }) => textContent);
 
-    expect(cells.indexOf(firstDay as Element)).toBe(3);
-    for (const [index, cell] of cells.entries()) {
-      const date = cell.getAttribute("datetime");
-      if (!date) continue;
-      expect(Temporal.PlainDate.from(date).dayOfWeek).toBe((index % 7) + 1);
-    }
-    expect(weekdayLabels[0]).toBe(
-      formatWeekday({ isoDay: 1, locale: "en-US" })
+      expect(firstDay?.getAttribute("datetime")).toBe(from);
+      expect(cells.indexOf(firstDay as Element)).toBe(leadingDays);
+      for (const [index, cell] of cells.entries()) {
+        const date = cell.getAttribute("datetime");
+        if (!date) continue;
+        expect(Temporal.PlainDate.from(date).dayOfWeek).toBe((index % 7) + 1);
+      }
+      expect(weekdayLabels[0]).toBe(
+        formatWeekday({ isoDay: 1, locale: "en-US" })
+      );
+    });
+  }
+
+  test("labels each month above the week column holding its first day", () => {
+    const view = renderCalendar();
+    const { cells, firstDay } = getDayCells(view);
+    const monthLabels = [
+      ...(firstDay?.parentElement?.parentElement?.previousElementSibling
+        ?.lastElementChild?.children ?? []),
+    ];
+    const monthStartColumns = cells.flatMap((cell, index) =>
+      cell.getAttribute("datetime")?.endsWith("-01")
+        ? [Math.floor(index / 7)]
+        : []
     );
+
+    expect(monthStartColumns).toEqual([0, 4, 8]);
+    expect(monthLabels).toHaveLength(Math.ceil(cells.length / 7));
+    for (const [column, label] of monthLabels.entries()) {
+      expect(Boolean(label.textContent)).toBe(
+        monthStartColumns.includes(column)
+      );
+    }
   });
 
   test("keeps day cells and legend swatches square", () => {
