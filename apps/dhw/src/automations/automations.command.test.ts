@@ -2,11 +2,14 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationCampaignDetail,
   AutomationDetail,
   AutomationDryRun,
   AutomationRunDetail,
+  AutomationRunStats,
+  AutomationRunSummary,
   AutomationVersionSummary,
   CalendarPreview,
   CliAccessToken,
@@ -202,6 +205,7 @@ type AutomationApi = Pick<
   | "listAutomationVersions"
   | "getAutomationRun"
   | "listAutomationRuns"
+  | "getAutomationRunStats"
   | "previewCalendarExpression"
   | "createCampaign"
 >;
@@ -242,6 +246,9 @@ const makeAutomationLayer = (overrides: Partial<AutomationApi> = {}) => {
       runs: [run],
       nextCursor: null,
     })),
+    getAutomationRunStats: record("getAutomationRunStats", () =>
+      Schema.decodeUnknownSync(AutomationRunStats)({ campaignId })
+    ),
     previewCalendarExpression: record("previewCalendarExpression", () =>
       Schema.decodeUnknownSync(CalendarPreview)({
         description: "Every Monday from 9:00",
@@ -708,7 +715,9 @@ describe("dhw automations lifecycle and runs", () => {
         "--step",
         "send",
         "--outcome",
-        "sent",
+        "skipped",
+        "--skip-reason",
+        "missing-email",
         "--version",
         "2",
         "--customer",
@@ -728,7 +737,8 @@ describe("dhw automations lifecycle and runs", () => {
           campaignId,
           state: "ended",
           stepId: "send",
-          outcome: "sent",
+          outcome: "skipped",
+          skipReason: "missing-email",
           versionNumber: 2,
           customerId: "customer-1",
           cursor: "page-2",
@@ -736,6 +746,105 @@ describe("dhw automations lifecycle and runs", () => {
         },
       ],
     ]);
+  });
+
+  test("runs refuses an unknown skip reason and sends nothing", async () => {
+    const fake = makeAutomationLayer();
+
+    await runFailure(
+      [
+        "automations",
+        "runs",
+        campaignId,
+        "--skip-reason",
+        "evaluation-unavailable",
+      ],
+      fake.layer
+    );
+
+    expect(fake.calls).toEqual([]);
+  });
+
+  test("runs prints each run's live contact, or the profile status without one", async () => {
+    const summary = (
+      customerId: string,
+      contact: Record<string, unknown>,
+      outcome: Record<string, unknown> = { outcome: "sent" }
+    ) =>
+      Schema.decodeUnknownSync(AutomationRunSummary)({
+        ...run,
+        timeline: undefined,
+        runId: `run-${customerId}`,
+        customerId,
+        ...contact,
+        ...outcome,
+      });
+    const fake = makeAutomationLayer({
+      listAutomationRuns: () =>
+        Effect.succeed({
+          runs: [
+            summary("customer-1", {
+              customerName: "Ana Test",
+              customerEmail: testEmailAddress("ana"),
+              customerProfileStatus: "found",
+            }),
+            summary(
+              "customer-2",
+              { customerName: "Bob Test", customerProfileStatus: "found" },
+              { outcome: "skipped", outcomeReason: "missing-email" }
+            ),
+            summary("customer-3", { customerProfileStatus: "not-found" }),
+            summary("customer-4", {}),
+          ],
+          nextCursor: null,
+        }),
+    });
+
+    await runSuccess(["automations", "runs", campaignId], fake.layer);
+
+    const rows = fake.output.join("\n").split("\n").slice(1);
+    expect(rows.map((row) => row.split("\t").slice(2, 5))).toEqual([
+      ["customer-1", "Ana Test", testEmailAddress("ana")],
+      ["customer-2", "Bob Test", ""],
+      ["customer-3", "(profile not-found)", ""],
+      ["customer-4", "(profile unavailable)", ""],
+    ]);
+    expect(rows[1]!.split("\t").at(-1)).toBe("skipped (missing-email)");
+  });
+
+  test("stats prints the skipped runs by each reason that has any", async () => {
+    const requested: unknown[] = [];
+    const fake = makeAutomationLayer({
+      getAutomationRunStats: (_accessToken, input) =>
+        Effect.sync(() => requested.push(input)).pipe(
+          Effect.as(
+            Schema.decodeUnknownSync(AutomationRunStats)({
+              campaignId,
+              bySkipReason: {
+                "missing-from-dotypos": 0,
+                "deleted-customer": 0,
+                "missing-email": 2,
+                "invalid-email": 0,
+                "consent-withdrawn": 1,
+                "outside-test-domain": 0,
+              },
+            })
+          )
+        ),
+    });
+
+    await runSuccess(
+      ["automations", "stats", campaignId, "--version", "2"],
+      fake.layer
+    );
+
+    expect(requested).toEqual([{ campaignId, versionNumber: 2 }]);
+    expect(
+      fake.output
+        .join("\n")
+        .split("\n")
+        .filter((line) => line.startsWith("skipped ("))
+    ).toEqual(["skipped (missing-email)\t2", "skipped (consent-withdrawn)\t1"]);
   });
 
   test("run prints the timeline with each entry's detail", async () => {

@@ -108,6 +108,7 @@ export function ProductFilterControl({
   errorAt,
 }: ControlProps<ReservationProductFilterType | undefined>) {
   const locale = useRouteLocale();
+  const errorIdPrefix = useId();
   const family = value && reservationProductFamilies[value.family];
   const propertyLabel = (property: string) =>
     value
@@ -190,6 +191,7 @@ export function ProductFilterControl({
           condition.property
         );
         const conditionErrorAt = withPath(errorAt, `properties.${index}`);
+        const conditionErrorId = `${errorIdPrefix}-${condition.property}`;
         const replace = (next: ReservationProductPropertyCondition) =>
           setProperties(
             value.properties.map((current, i) => (i === index ? next : current))
@@ -207,6 +209,7 @@ export function ProductFilterControl({
                 value={condition}
                 onChange={replace}
                 errorAt={conditionErrorAt}
+                errorId={conditionErrorId}
               />
             )}
             <Button
@@ -224,22 +227,23 @@ export function ProductFilterControl({
             >
               <X className="h-4 w-4" aria-hidden />
             </Button>
-            {(conditionErrorAt("operator") || conditionErrorAt("value")) && (
-              <FieldError
-                message={
-                  property?.kind === "number"
-                    ? (countComparisonError(
-                        conditionErrorAt,
-                        countComparison(condition).operator,
-                        locale
-                      ) ?? "")
-                    : m.emailCampaignsAudienceProductChooseValueError(
-                        {},
-                        { locale }
-                      )
-                }
-              />
-            )}
+            <FieldError
+              id={conditionErrorId}
+              messages={[
+                property?.kind === "number"
+                  ? countComparisonError(
+                      conditionErrorAt,
+                      countComparison(condition).operator,
+                      locale
+                    )
+                  : (conditionErrorAt("operator") ||
+                      conditionErrorAt("value")) &&
+                    m.emailCampaignsAudienceProductChooseValueError(
+                      {},
+                      { locale }
+                    ),
+              ]}
+            />
           </div>
         );
       })}
@@ -253,7 +257,10 @@ function ProductPropertyControl({
   value,
   onChange,
   errorAt,
+  errorId,
 }: ControlProps<ReservationProductPropertyCondition> & {
+  /** The id of the `FieldError` that explains this property's errors. */
+  readonly errorId: string;
   readonly property: ReservationProductProperty;
   /** The property's Admin UI label ("Seats"). */
   readonly label: string;
@@ -319,6 +326,9 @@ function ProductPropertyControl({
                   }
                   size="sm"
                   aria-invalid={errorAt("value") !== undefined}
+                  aria-describedby={
+                    errorAt("value") === undefined ? undefined : errorId
+                  }
                 >
                   {m.emailCampaignsAudienceProductChoose({}, { locale })}
                   <ChevronDown className="h-3.5 w-3.5" aria-hidden />
@@ -383,6 +393,7 @@ function ProductPropertyControl({
             onChange({ property: property.id, ...comparison })
           }
           errorAt={errorAt}
+          errorId={errorId}
           label={label}
         />
       ),

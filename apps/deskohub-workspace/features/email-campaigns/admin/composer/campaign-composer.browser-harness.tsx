@@ -19,7 +19,7 @@ createRoot(mountPoint).render(
         <CampaignComposer
           adminInbox={null}
           audiences={[]}
-          draft={undefined}
+          campaign={undefined}
           initialFields={newCampaignComposerFields}
           templates={[]}
         />

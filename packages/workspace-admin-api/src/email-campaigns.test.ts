@@ -308,6 +308,66 @@ describe("campaign admin API contract", () => {
     ).toBe(false);
   });
 
+  test("takes a body as Markdown or as the editor's document, never both", () => {
+    const bodyDocument = {
+      formatVersion: 1 as const,
+      doc: {
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: 1 },
+            content: [{ type: "text", text: "# News" }],
+          },
+        ],
+      },
+    };
+    const texts = { subject: "News", preheader: "" };
+    const create = (content: object) => ({
+      title: "News",
+      purpose: "operational",
+      templateKey: "workspace",
+      audienceId: null,
+      content: { "en-US": content },
+    });
+
+    expect(
+      Schema.decodeUnknownSync(AdministrationCampaignCreateInput)(
+        create({ ...texts, bodyDocument })
+      ).content["en-US"]
+    ).toEqual({ ...texts, bodyDocument });
+    for (const content of [
+      texts,
+      { ...texts, bodyMarkdown: "Hi", bodyDocument },
+      { ...texts, bodyDocument: { ...bodyDocument, formatVersion: 2 } },
+      { ...texts, bodyDocument: { ...bodyDocument, extra: true } },
+      { ...texts, bodyDocument: { formatVersion: 1, doc: { text: "Hi" } } },
+    ]) {
+      expect(decodes(AdministrationCampaignCreateInput, create(content))).toBe(
+        false
+      );
+    }
+
+    expect(
+      decodes(AdministrationCampaignUpdateInput, {
+        content: { "en-US": { bodyDocument } },
+      })
+    ).toBe(true);
+    expect(
+      decodes(AdministrationCampaignUpdateInput, {
+        content: { "en-US": { bodyMarkdown: "Hi", bodyDocument } },
+      })
+    ).toBe(false);
+    expect(
+      decodes(AdministrationCampaignTemplatePreviewInput, {
+        _tag: "UnfinishedContent",
+        purpose: "operational",
+        locale: "en-US",
+        content: { ...texts, bodyDocument },
+      })
+    ).toBe(true);
+  });
+
   test("expresses removals in a campaign update", () => {
     expect(
       Schema.decodeUnknownSync(AdministrationCampaignUpdateInput)({

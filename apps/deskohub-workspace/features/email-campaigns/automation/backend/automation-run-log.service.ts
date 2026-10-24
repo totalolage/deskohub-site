@@ -1,6 +1,9 @@
 import "server-only";
 
+import { type DotyposCustomerId, DotyposService } from "@deskohub/dotypos";
 import {
+  AdministrationCampaignRecipientSkipReason,
+  type AdministrationCampaignRecipientSkipReasonType,
   type AutomationRunDetailType as AutomationRunDetail,
   AutomationRunId as AutomationRunIdSchema,
   type AutomationRunListInputType as AutomationRunListInput,
@@ -33,6 +36,7 @@ import {
   emailCampaignAutomationVersions as versions,
 } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { instantStringSchema } from "@/shared/utils/temporal";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { CampaignDelivery } from "../../campaign-states";
@@ -48,6 +52,10 @@ import {
   AutomationRunNotFound,
   AutomationVersionNotFound,
 } from "../errors";
+import {
+  type AutomationCustomerContact,
+  readAutomationCustomerContacts,
+} from "./automation-customer-contacts";
 
 interface IAutomationRunLog {
   /**
@@ -94,7 +102,11 @@ interface IAutomationRunLog {
 /** Runs per page when the caller doesn't say; the contract allows 100. */
 const defaultPageSize = 50;
 
-/** Reads automated campaigns' runs for the run log; it never writes. */
+/**
+ * Reads automated campaigns' runs for the run log; it never writes. Runs
+ * carry their customers' current name and email, read live from Dotypos
+ * once per call and never stored.
+ */
 export class AutomationRunLog extends Context.Service<
   AutomationRunLog,
   IAutomationRunLog
@@ -103,6 +115,13 @@ export class AutomationRunLog extends Context.Service<
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
+      const dotypos = yield* DotyposService;
+
+      /** The rows' customers' live contacts, in one read per call. */
+      const contactsOf = (rows: readonly RunRow[]) =>
+        readAutomationCustomerContacts(rows.map((row) => row.customerId)).pipe(
+          Effect.provideService(DotyposService, dotypos)
+        );
 
       const listRuns = Effect.fn("AutomationRunLog.listRuns")(function* (
         input: AutomationRunListInput
@@ -115,8 +134,9 @@ export class AutomationRunLog extends Context.Service<
         const rows = yield* selectRunPage(db, { ...input, after, limit });
         const page = rows.slice(0, limit);
         const last = Arr.last(page);
+        const contacts = yield* contactsOf(page);
         return {
-          runs: page.map(runSummary),
+          runs: page.map((row) => runSummary(row, contacts)),
           nextCursor:
             rows.length > limit
               ? Option.getOrNull(Option.map(last, runPosition))
@@ -142,8 +162,9 @@ export class AutomationRunLog extends Context.Service<
           .from(runEvents)
           .where(eq(runEvents.runId, input.runId))
           .orderBy(asc(runEvents.sequence));
+        const contacts = yield* contactsOf([row]);
         const detail: AutomationRunDetail = {
-          ...runSummary(row),
+          ...runSummary(row, contacts),
           timeline: entries.map(timelineEntry),
         };
         return detail;
@@ -160,6 +181,7 @@ export class AutomationRunLog extends Context.Service<
               stepId: runs.stepId,
               state: runs.status,
               outcome: runs.outcome,
+              outcomeReason: runs.outcomeReason,
               runs: count(),
             })
             .from(runs)
@@ -172,7 +194,7 @@ export class AutomationRunLog extends Context.Service<
                   : eq(versions.versionNumber, input.versionNumber)
               )
             )
-            .groupBy(runs.stepId, runs.status, runs.outcome)
+            .groupBy(runs.stepId, runs.status, runs.outcome, runs.outcomeReason)
             .orderBy(asc(runs.stepId));
           const stats: AutomationRunStats = {
             campaignId: input.campaignId,
@@ -184,6 +206,7 @@ export class AutomationRunLog extends Context.Service<
               stepId: stepGroups[0].stepId,
               ...runCounts(stepGroups),
             })),
+            bySkipReason: skipReasonCounts(groups),
           };
           return stats;
         }
@@ -191,6 +214,10 @@ export class AutomationRunLog extends Context.Service<
 
       return { listRuns, getRun, getRunStats };
     })
+  );
+
+  static Live = this.Default.pipe(
+    Layer.provide(Layer.merge(WorkspaceDatabase.Default, WorkspaceDotyposLayer))
   );
 }
 
@@ -307,6 +334,12 @@ const selectRunPage = (
         input.outcome === undefined
           ? undefined
           : eq(runs.outcome, input.outcome),
+        input.skipReason === undefined
+          ? undefined
+          : and(
+              eq(runs.outcome, "skipped"),
+              eq(runs.outcomeReason, input.skipReason)
+            ),
         input.versionNumber === undefined
           ? undefined
           : eq(versions.versionNumber, input.versionNumber),
@@ -333,11 +366,45 @@ const runPosition = (row: RunRow) =>
     runId: row.runId,
   });
 
-const runSummary = (row: RunRow): AutomationRunSummary => ({
+/** The customer's contact fields: unavailable when Dotypos wasn't read. */
+const customerContactFields = (
+  customerId: DotyposCustomerId,
+  contacts: Option.Option<
+    ReadonlyMap<DotyposCustomerId, AutomationCustomerContact>
+  >
+) => {
+  if (Option.isNone(contacts)) {
+    return {
+      customerName: null,
+      customerEmail: null,
+      customerProfileStatus: "unavailable",
+    } as const;
+  }
+  const contact = contacts.value.get(customerId);
+  return contact === undefined
+    ? ({
+        customerName: null,
+        customerEmail: null,
+        customerProfileStatus: "not-found",
+      } as const)
+    : ({
+        customerName: contact.name,
+        customerEmail: contact.email,
+        customerProfileStatus: "found",
+      } as const);
+};
+
+const runSummary = (
+  row: RunRow,
+  contacts: Option.Option<
+    ReadonlyMap<DotyposCustomerId, AutomationCustomerContact>
+  >
+): AutomationRunSummary => ({
   runId: row.runId,
   campaignId: row.campaignId,
   versionNumber: row.versionNumber,
   customerId: row.customerId,
+  ...customerContactFields(row.customerId, contacts),
   triggerKind: row.triggerKind,
   triggerAt: row.triggerAt.toString(),
   state: row.state,
@@ -392,6 +459,24 @@ const runCounts = (groups: readonly RunCountGroup[]) => ({
     ])
   ) as Record<AutomationRunOutcome, number>,
 });
+
+/** Skipped runs by reason, every reason present. */
+const skipReasonCounts = (
+  groups: readonly (RunCountGroup & {
+    readonly outcomeReason: string | null;
+  })[]
+) =>
+  Object.fromEntries(
+    AdministrationCampaignRecipientSkipReason.literals.map((reason) => [
+      reason,
+      sumRuns(
+        groups.filter(
+          (group) =>
+            group.outcome === "skipped" && group.outcomeReason === reason
+        )
+      ),
+    ])
+  ) as Record<AdministrationCampaignRecipientSkipReasonType, number>;
 
 const sumRuns = (groups: readonly RunCountGroup[]) =>
   groups.reduce((total, group) => total + group.runs, 0);

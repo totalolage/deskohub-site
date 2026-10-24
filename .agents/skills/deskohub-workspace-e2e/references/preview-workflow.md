@@ -3,6 +3,7 @@
 ## Contents
 
 - [How a run reaches a preview](#how-a-run-reaches-a-preview)
+- [Nightly run](#nightly-run)
 - [Run E2E](#run-e2e)
 - [Environment contracts](#environment-contracts)
 - [Preview database](#preview-database)
@@ -37,6 +38,20 @@ Only `test-e2e` has a concurrency group, keyed by PR and SHA with `cancel-in-pro
 Never add a workflow-level group: it would cancel at scheduling time, before eligibility is known. Never infer a skip from changed paths or reuse an older preview.
 
 The target is always the immutable `.vercel.app` deployment origin for the exact SHA, taken from the dispatch payload. Never scrape the Vercel PR comment or use a branch alias or custom domain.
+
+## Nightly run
+
+Nightly cases are too slow for the per-PR gate. They are listed in `workspaceE2ENightlyCaseIds` (`e2e/playwright-checkout/case-catalog.ts`) and run only when `WORKSPACE_E2E_NIGHTLY_CASES=true`; any other run reports them as skipped. The only nightly case is the automation journey, which waits up to one 15-minute engine tick. Don't add a path-based PR gate for it (D38).
+
+Main deploys only to production, and E2E never runs there. So `.github/workflows/workspace-e2e-nightly.yml` runs at 02:30 UTC, or on a manual dispatch from `main`; it fails at once from any other ref:
+
+1. It points the `e2e/nightly` branch at main's head. Only this workflow moves that branch.
+2. It waits up to 40 minutes for Vercel's Git preview of that exact SHA. The Neon integration backs it with the persistent `preview/e2e/nightly` branch, which the E2E run migrates. When the head hasn't moved, it reuses that SHA's existing preview without a build.
+3. It dispatches main's `workspace-e2e.yml` with `ref=e2e/nightly` and `include_nightly_cases=true`.
+
+A skipped or failed preview fails the nightly workflow; it never tests another commit's preview. In nightly mode, `resolve-target` accepts no PR. It requires a `workflow_dispatch` whose SHA is both the `e2e/nightly` head and a commit of main. Vercel's own events for the branch are ineligible, even if a PR has that head. GitHub deployment records carry no branch, and the preview database is chosen by branch name. So before the suite starts, `Run checkout E2E` reads the deployment from the Vercel API and refuses one that wasn't built from `e2e/nightly` at the target SHA. It does that in its own script, the only step that holds `WORKSPACE_E2E_VERCEL_TOKEN`. Nightly runs publish no commit status, skip the PR-head checks, and don't run `cancel-superseded-run`. A nightly failure is the failed `Workspace E2E` run in Actions, plus the failed nightly workflow when the preview never came up; the repository has no other alerting.
+
+Nightly cases never run against a PR (D38). `resolve-target` passes `include_nightly_cases` on to the suite only after the nightly-target checks. A dispatch that sets it for any other target fails before it resolves a PR, so that PR's required status is left alone. Change a nightly case on its PR with the colocated tests; the next nightly run covers it on main.
 
 ## Run E2E
 
@@ -78,6 +93,7 @@ Never put production Nexi, Dotypos, or database credentials in Preview. Never ad
 | `WORKSPACE_E2E_COORDINATOR_DATABASE_URL` | Secret | Allocator role; used only by the trusted allocation action. |
 | `WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL` | Secret | Connect-only role for the replay permit. |
 | `WORKSPACE_E2E_BETTER_AUTH_SECRETS` | Secret | Copy of the Preview-only `BETTER_AUTH_SECRETS`. Required to run checkout E2E: booker and case-specific verification or referral identity binders use it; administrator sessions use it too ([seeded sessions](referral-lane.md#seeded-sessions)). |
+| `WORKSPACE_E2E_CRON_SECRET` | Secret | Copy of the Preview-only `CRON_SECRET`. Vercel Cron never fires on previews, so the automation journey ticks the email automation planner through its cron route with this secret. Never copy the Production value; the journey fails closed without it. |
 | `WORKSPACE_E2E_DOTYPOS_*` | Secrets | E2E Dotypos cloud; mapped to `DOTYPOS_*` per step. |
 | `VERCEL_AUTOMATION_BYPASS_SECRET`, `NEON_API_KEY`, `TURBO_TOKEN` | Secrets | Protection bypass, branch lookup, remote cache. |
 
@@ -90,6 +106,7 @@ Never put production Nexi, Dotypos, or database credentials in Preview. Never ad
 - `NEXI_API_ORIGIN`: the sandbox origin, supplied explicitly.
 - `WORKSPACE_E2E_ALLOCATION_SHARD`, `WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED`, `WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL`: see [suite orchestration](suite-orchestration.md).
 - `WORKSPACE_E2E_EXECUTION_CONTEXT`: `manual` or `ci`. Locally it defaults to `manual`; the workflow sets `manual` for `workflow_dispatch` and `ci` for the repository dispatch. A rerun keeps its trigger's value.
+- `WORKSPACE_E2E_NIGHTLY_CASES=true`: also run the nightly cases (see [nightly run](#nightly-run)). The workflow sets it only for a validated nightly target dispatched with `include_nightly_cases`.
 - `WORKSPACE_E2E_REVIEW_SCREENSHOTS=true`: opt-in general account PR review screenshots (see [browser driving](browser-driving.md#review-screenshots)). The workflow doesn't set it.
 - `WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS=true`: opt-in campaign-composer screenshots only. A manual workflow dispatch enables this with `campaign_screenshots=true`; it does not enable general account captures.
 

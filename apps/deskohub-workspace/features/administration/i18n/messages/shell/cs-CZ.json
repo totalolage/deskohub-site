@@ -61,5 +61,9 @@
   "shellNotFoundOverviewLink": "Zpět na přehled",
   "shellErrorTitle": "Stránku se nepodařilo načíst",
   "shellErrorDescription": "Při načítání této stránky administrace se něco pokazilo.",
-  "shellErrorRetry": "Zkusit znovu"
+  "shellErrorRetry": "Zkusit znovu",
+  "shellBreadcrumbCampaignEmail": "E-mail",
+  "shellBreadcrumbCampaignPreview": "Náhled a aktivace",
+  "shellBreadcrumbCampaignRuns": "Záznam běhů",
+  "shellBreadcrumbCampaignRun": "Běh"
 }

@@ -43,6 +43,7 @@ import {
   type AudienceFilterContextInvalid,
   CampaignAudienceArchived,
   CampaignAudienceNotFound,
+  type CampaignBodyDocumentInvalid,
   type CampaignBodyMarkdownInvalid,
   CampaignContentInvalid,
   CampaignDeliveryMismatch,
@@ -55,7 +56,7 @@ import {
 type Campaign = CampaignRow;
 
 /** A campaign that sends once; only these can be sent or duplicated. */
-export type OnceCampaign = Campaign & {
+type OnceCampaign = Campaign & {
   readonly delivery: "once";
   readonly status: OnceCampaignStatus;
 };
@@ -140,7 +141,7 @@ export interface ICampaignService {
   ) => Effect.Effect<Campaign, CampaignEditError>;
   /**
    * Edits a campaign as `update` does, merging per-locale text changes with
-   * Markdown bodies into its current content: omitted locales and fields
+   * Markdown or document bodies into its current content: omitted locales and fields
    * keep their value, a locale mapped to null loses its content, and a null
    * `operationalReason` restores the default reason line.
    */
@@ -149,6 +150,7 @@ export interface ICampaignService {
   ) => Effect.Effect<
     Campaign,
     | CampaignEditError
+    | CampaignBodyDocumentInvalid
     | CampaignBodyMarkdownInvalid
     | CampaignLocaleContentMissing
   >;

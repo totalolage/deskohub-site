@@ -4,6 +4,7 @@ import {
   audienceAttributeCatalogue,
 } from "@deskohub/workspace-admin-api";
 import { Result, Schema } from "effect";
+import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
@@ -14,6 +15,7 @@ import {
   type AudienceCondition,
   audienceFilterSchema,
 } from "../../audience-filter";
+import type { AudienceFilterHolder } from "../../audience-filter-usage";
 import type { AudienceCampaignOption } from "../audience-filter-summary";
 import {
   type AudienceCountWording,
@@ -84,7 +86,13 @@ describe("CountConditionControls", () => {
           />
         </RouteLocaleProvider>
       );
-      expect(view.getByRole("alert").textContent).toBe(message);
+      const alert = view.getByRole("alert");
+      expect(alert.textContent).toBe(message);
+      const invalid = view.container.querySelectorAll('[aria-invalid="true"]');
+      expect(invalid.length).toBeGreaterThan(0);
+      for (const control of invalid) {
+        expect(control.getAttribute("aria-describedby")).toBe(alert.id);
+      }
     }
   );
 });
@@ -240,6 +248,59 @@ describe("campaign picker", () => {
     await openCampaignPicker(picker);
     const automated = view.getByRole("option", { name: /Welcome series/ });
     expect(within(automated).getByText("Automatická")).toBeTruthy();
+  });
+});
+
+describe("campaign picker by holder", () => {
+  const thisCampaignName = m.emailAutomationFlowCampaignSourceThis(
+    {},
+    { locale: "en-US" }
+  );
+
+  const renderFor = (
+    holder: AudienceFilterHolder,
+    onChange: (condition: AudienceCondition) => void = () => undefined
+  ) =>
+    render(
+      <RouteLocaleProvider locale="en-US">
+        <CountConditionControls
+          entry={audienceAttributeCatalogue.campaignEmailCount}
+          wording={campaignEmailCountWording("en-US")}
+          value={newCondition("campaignEmailCount")}
+          onChange={onChange}
+          errorAt={() => undefined}
+          lookups={{ campaigns }}
+          holder={holder}
+        />
+      </RouteLocaleProvider>
+    );
+
+  test.each([
+    ["saved-audience", campaigns.length + 1, false],
+    ["automation-condition", campaigns.length + 2, true],
+  ] as const)(
+    "offers “this campaign” to a %s only where it can hold it",
+    async (holder, optionCount, offersThisCampaign) => {
+      const view = renderFor(holder);
+      await openCampaignPicker(
+        view.getByRole("combobox", { name: "Campaign" })
+      );
+      expect(view.getAllByRole("option")).toHaveLength(optionCount);
+      expect(
+        view.queryByRole("option", { name: thisCampaignName }) !== null
+      ).toBe(offersThisCampaign);
+    }
+  );
+
+  test("picking “this campaign” counts the automation's own emails", async () => {
+    const onChange = mock((_condition: AudienceCondition) => undefined);
+    const view = renderFor("automation-condition", onChange);
+    await openCampaignPicker(view.getByRole("combobox", { name: "Campaign" }));
+    fireEvent.click(view.getByRole("option", { name: thisCampaignName }));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0]?.[0]).toMatchObject({
+      params: { purpose: "any", campaign: { _tag: "This" } },
+    });
   });
 });
 

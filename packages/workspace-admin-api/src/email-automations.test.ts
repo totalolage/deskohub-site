@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Result, Schema } from "effect";
 import {
   AutomationActivation,
@@ -7,6 +8,8 @@ import {
   AutomationFlowUpdate,
   AutomationPreviewRef,
   AutomationRunListInput,
+  AutomationRunStats,
+  AutomationRunSummary,
   AutomationRunTimelineEntry,
   scheduleMinutesOffTick,
 } from "./email-automations";
@@ -132,6 +135,26 @@ describe("automation operation inputs", () => {
     ).toBe(true);
   });
 
+  test("narrow runs by a known skip reason only", () => {
+    const input = { campaignId: "campaign-1", outcome: "skipped" };
+
+    expect(
+      Result.getOrThrow(
+        decodeStrict(AutomationRunListInput, {
+          ...input,
+          skipReason: "missing-email",
+        })
+      )
+    ).toEqual({ ...input, skipReason: "missing-email" });
+    for (const skipReason of ["evaluation-unavailable", "Missing-Email", ""]) {
+      expect(
+        Result.isFailure(
+          decodeStrict(AutomationRunListInput, { ...input, skipReason })
+        )
+      ).toBe(true);
+    }
+  });
+
   test.each([
     [AutomationPreviewRef, { previewId: "preview-1", limit: 201 }],
     [AutomationRunListInput, { campaignId: "campaign-1", limit: 101 }],
@@ -165,6 +188,111 @@ describe("automation responses", () => {
       nextFireAt: null,
       updatedAt: "2026-10-19T10:00:00.000Z",
     });
+  });
+
+  test("decode an older server's run and counts with contacts and skip reasons unknown", () => {
+    const run = {
+      runId: "run-1",
+      campaignId: "campaign-1",
+      versionNumber: 1,
+      customerId: "customer-1",
+      triggerKind: "account-created",
+      triggerAt: "2026-10-19T10:00:00.000Z",
+      state: "ended",
+      phase: null,
+      stepId: "send",
+      dueAt: null,
+      outcome: "skipped",
+      outcomeReason: "missing-email",
+      sendId: null,
+      startedAt: "2026-10-19T10:00:00.000Z",
+      endedAt: "2026-10-19T10:01:00.000Z",
+    };
+
+    expect(
+      Result.getOrThrow(Schema.decodeUnknownResult(AutomationRunSummary)(run))
+    ).toMatchObject({
+      customerName: null,
+      customerEmail: null,
+      customerProfileStatus: "unavailable",
+    });
+    expect(
+      Result.getOrThrow(
+        Schema.decodeUnknownResult(AutomationRunStats)({
+          campaignId: "campaign-1",
+        })
+      ).bySkipReason
+    ).toEqual({
+      "missing-from-dotypos": 0,
+      "deleted-customer": 0,
+      "missing-email": 0,
+      "invalid-email": 0,
+      "consent-withdrawn": 0,
+      "outside-test-domain": 0,
+    });
+  });
+
+  test("refuse counts by skip reason that leave a reason out", () => {
+    expect(
+      Result.isFailure(
+        Schema.decodeUnknownResult(AutomationRunStats)({
+          campaignId: "campaign-1",
+          bySkipReason: { "missing-email": 2 },
+        })
+      )
+    ).toBe(true);
+  });
+
+  test("round-trip a run's live contact and the counts by skip reason", () => {
+    const run = Result.getOrThrow(
+      Schema.decodeUnknownResult(AutomationRunSummary)({
+        runId: "run-1",
+        campaignId: "campaign-1",
+        versionNumber: 1,
+        customerId: "customer-1",
+        customerName: "Ana Test",
+        customerEmail: testEmailAddress("ana"),
+        customerProfileStatus: "found",
+        triggerKind: "account-created",
+        triggerAt: "2026-10-19T10:00:00.000Z",
+        state: "active",
+        stepId: "send",
+        startedAt: "2026-10-19T10:00:00.000Z",
+      })
+    );
+    const stats = Result.getOrThrow(
+      Schema.decodeUnknownResult(AutomationRunStats)({
+        campaignId: "campaign-1",
+        bySkipReason: {
+          "missing-from-dotypos": 0,
+          "deleted-customer": 0,
+          "missing-email": 2,
+          "invalid-email": 0,
+          "consent-withdrawn": 1,
+          "outside-test-domain": 0,
+        },
+      })
+    );
+
+    expect(
+      Result.getOrThrow(Schema.encodeResult(AutomationRunSummary)(run))
+    ).toMatchObject({
+      customerName: "Ana Test",
+      customerEmail: testEmailAddress("ana"),
+      customerProfileStatus: "found",
+    });
+    expect(
+      Result.getOrThrow(Schema.encodeResult(AutomationRunStats)(stats))
+        .bySkipReason
+    ).toMatchObject({ "missing-email": 2, "consent-withdrawn": 1 });
+    expect(
+      Result.isFailure(
+        Schema.decodeUnknownResult(AutomationRunSummary)({
+          ...Result.getOrThrow(Schema.encodeResult(AutomationRunSummary)(run)),
+          customerProfileStatus: "stale",
+        })
+      )
+    ).toBe(true);
   });
 
   test("decode every activation state", () => {

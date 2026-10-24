@@ -1,7 +1,7 @@
 import "server-only";
 
+import type { AdministrationCampaignDetailType } from "@deskohub/workspace-admin-api";
 import { Effect } from "effect";
-import type { CampaignRow } from "@/db/schema";
 import { campaignLocales } from "../../recipient-locale";
 import {
   invokeCampaignOperation,
@@ -9,7 +9,7 @@ import {
 } from "../campaign-operation-query.server";
 
 const sentCampaignEmails = Effect.fn("loadSentCampaignEmails")(function* (
-  campaign: CampaignRow
+  campaign: AdministrationCampaignDetailType
 ) {
   return yield* Effect.forEach(
     campaignLocales.flatMap((locale) => {
@@ -41,7 +41,9 @@ const sentCampaignEmails = Effect.fn("loadSentCampaignEmails")(function* (
  * recipients got it. A locale that fails to render keeps its subject and
  * preheader and has no HTML.
  */
-export const loadSentCampaignEmails = (campaign: CampaignRow) =>
+export const loadSentCampaignEmails = (
+  campaign: AdministrationCampaignDetailType
+) =>
   runCampaignPageQuery(
     "email-campaigns.admin.render-sent-campaign",
     sentCampaignEmails(campaign)

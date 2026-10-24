@@ -28,6 +28,7 @@ import type { AdministratorAccountActor } from "@/features/administrators/accoun
 import type { CampaignId } from "@/features/email-campaigns/campaign-identifiers";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { insertTestAdministrator } from "@/shared/testing/workspace-test-accounts.test-utils";
+import { richCampaignBodies } from "../body/campaign-body-document.test-utils";
 
 /**
  * Every run empties the campaign tables, so the suite runs on a database of
@@ -141,6 +142,19 @@ const twiceHourlyFlow = {
 } as const;
 const czechContent = {
   "cs-CZ": { subject: "Novinky", preheader: "", bodyMarkdown: "# Ahoj" },
+};
+/** Both locales with bodies as the editor holds them. */
+const editorContent = {
+  "cs-CZ": {
+    subject: "Novinky",
+    preheader: "",
+    bodyDocument: richCampaignBodies["cs-CZ"],
+  },
+  "en-US": {
+    subject: "News",
+    preheader: "",
+    bodyDocument: richCampaignBodies["en-US"],
+  },
 };
 
 const cases: AdapterContractCases<Registry> = {
@@ -290,6 +304,18 @@ const cases: AdapterContractCases<Registry> = {
       expect: failure("OperationNotFound", "campaign-not-found"),
     },
   ],
+  getCampaignEditorContent: [
+    {
+      title: "returns a campaign with document bodies",
+      input: ({ draftId }) => ({ campaignId: draftId }),
+      expect: success,
+    },
+    {
+      title: "reports a missing campaign",
+      input: () => ({ campaignId: missingId }),
+      expect: failure("OperationNotFound", "campaign-not-found"),
+    },
+  ],
   createCampaign: [
     {
       title: "creates a one-off draft",
@@ -305,8 +331,37 @@ const cases: AdapterContractCases<Registry> = {
       }),
       expect: success,
     },
+    {
+      title: "creates a draft from document bodies",
+      input: ({ audienceId }) => ({
+        requestId: requestId(),
+        campaign: {
+          title: "November news",
+          purpose: "operational",
+          templateKey: "workspace",
+          audienceId,
+          content: editorContent,
+        },
+      }),
+      expect: success,
+    },
   ],
   updateCampaign: [
+    {
+      title: "rewrites bodies as documents",
+      input: ({ draftId }) => ({ campaignId: draftId, content: editorContent }),
+      expect: success,
+    },
+    {
+      title: "refuses a body given in both forms",
+      input: ({ draftId }) => ({
+        campaignId: draftId,
+        content: {
+          "cs-CZ": { ...editorContent["cs-CZ"], bodyMarkdown: "# Ahoj" },
+        },
+      }),
+      expect: failure("OperationInputInvalid", "input-invalid"),
+    },
     {
       title: "renames a draft",
       input: ({ draftId }) => ({ campaignId: draftId, title: "Renamed news" }),

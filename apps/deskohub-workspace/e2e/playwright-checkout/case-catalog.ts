@@ -1,6 +1,7 @@
 // Cases that never open a Nexi hosted payment, longest median deployed
 // duration first.
 export const workspaceE2ENonPaymentCaseIds = [
+  "automation-reservation-booked",
   "voucher-reuse-and-exhaustion",
   "discount-code-capacity-reached",
   "referral-profile-completion-checkout",
@@ -86,6 +87,17 @@ const workspaceE2EOfficeCaseIds = [
 
 export const isWorkspaceE2EOfficeCaseId = (value: string) =>
   (workspaceE2EOfficeCaseIds as readonly string[]).includes(value);
+
+/**
+ * Cases too slow for the per-PR gate. They run only when the run opts into
+ * nightly cases, as the nightly run against main does.
+ */
+const workspaceE2ENightlyCaseIds = [
+  "automation-reservation-booked",
+] as const satisfies readonly WorkspaceE2ECaseId[];
+
+export const isWorkspaceE2ENightlyCaseId = (value: string) =>
+  (workspaceE2ENightlyCaseIds as readonly string[]).includes(value);
 
 export const workspaceE2ECaseIds = [
   ...workspaceE2ENonPaymentCaseIds,

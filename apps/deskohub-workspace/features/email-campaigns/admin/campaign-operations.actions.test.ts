@@ -387,7 +387,7 @@ describe("composer preview", () => {
     expect(bridged?.data).toMatchObject({
       _tag: "Failure",
       category: "OperationInputInvalid",
-      code: "content-markdown-invalid",
+      code: "content-document-invalid",
     });
   });
 

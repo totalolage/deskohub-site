@@ -105,11 +105,48 @@ const savedAudienceUnavailableUses = {
   campaignSources: ["This"],
 } as const satisfies AudienceFilterUses;
 
+/** What holds a filter tree: a saved audience or an automation's condition step. */
+export type AudienceFilterHolder = "saved-audience" | "automation-condition";
+
+/**
+ * What each holder can't hold. An automation condition has the trigger and
+ * the campaign, so it holds everything.
+ */
+const unavailableUses: Readonly<
+  Record<AudienceFilterHolder, AudienceFilterUses>
+> = {
+  "saved-audience": savedAudienceUnavailableUses,
+  "automation-condition": { attributes: [], periods: [], campaignSources: [] },
+};
+
+/** Whether `holder` can hold conditions on `attribute`. */
+export const canHoldAttribute = (
+  holder: AudienceFilterHolder,
+  attribute: AudienceAttribute
+) => !unavailableUses[holder].attributes.includes(attribute);
+
+/** Whether `holder` can hold periods of kind `period`. */
+export const canHoldPeriod = (
+  holder: AudienceFilterHolder,
+  period: DatePeriod["_tag"]
+) => !unavailableUses[holder].periods.includes(period);
+
+/** Whether `holder` can hold campaign email sources of kind `source`. */
+export const canHoldCampaignSource = (
+  holder: AudienceFilterHolder,
+  source: CampaignEmailSource["_tag"]
+) => !unavailableUses[holder].campaignSources.includes(source);
+
+/**
+ * Whether `holder` can hold "is (not) in saved audience" leaves. Saved
+ * audiences don't nest, so only automation conditions hold them.
+ */
+export const canHoldSavedAudienceMembership = (holder: AudienceFilterHolder) =>
+  holder === "automation-condition";
+
 /** Whether a saved audience can hold conditions on `attribute`. */
 export const isSavedAudienceAttribute = (attribute: AudienceAttribute) =>
-  !savedAudienceUnavailableUses.attributes.some(
-    (unavailable) => unavailable === attribute
-  );
+  canHoldAttribute("saved-audience", attribute);
 
 /** What `filter` uses that a saved audience can't hold, possibly nothing. */
 export const savedAudienceUnavailableUsesIn = (

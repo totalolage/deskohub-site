@@ -87,4 +87,77 @@ describe("useWorkspaceAction", () => {
       error: { thrownError: transportFailure },
     });
   });
+
+  test("drops a superseded call's transport error", async () => {
+    const transportFailure = new TypeError("Failed to fetch");
+    let rejectFirst: (error: TypeError) => void = () => undefined;
+    const calls = [
+      () =>
+        new Promise<ActionResult>((_, reject) => {
+          rejectFirst = reject;
+        }),
+      () => Promise.resolve({ data: "newer" }),
+    ];
+    const onSuccess = mock();
+    const onTransportError = mock();
+    const { result } = renderHook(() =>
+      useWorkspaceAction(
+        async (_input: undefined) => {
+          const call = calls.shift();
+          if (!call) throw new Error("Unexpected call");
+          return call();
+        },
+        { actionName: "test", onSuccess, onTransportError }
+      )
+    );
+
+    let superseded: Promise<unknown> = Promise.resolve();
+    await act(async () => {
+      superseded = result.current.executeAsync(undefined);
+      result.current.execute(undefined);
+    });
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      rejectFirst(transportFailure);
+      await superseded.catch(() => undefined);
+    });
+
+    expect(
+      await superseded.then(
+        () => "resolved",
+        (error) => error
+      )
+    ).toBe(transportFailure);
+    expect(onTransportError).not.toHaveBeenCalled();
+    expect(onSuccess.mock.calls[0]?.[0]).toMatchObject({ data: "newer" });
+    expect(result.current.hasSucceeded).toBe(true);
+  });
+
+  test("drops a transport error that settles after a reset", async () => {
+    let rejectCall: (error: TypeError) => void = () => undefined;
+    const onTransportError = mock();
+    const { result } = renderHook(() =>
+      useWorkspaceAction(
+        (_input: undefined) =>
+          new Promise<ActionResult>((_, reject) => {
+            rejectCall = reject;
+          }),
+        { actionName: "test", onTransportError }
+      )
+    );
+
+    let pending: Promise<unknown> = Promise.resolve();
+    await act(async () => {
+      pending = result.current.executeAsync(undefined);
+    });
+    await act(async () => {
+      result.current.reset();
+      rejectCall(new TypeError("Failed to fetch"));
+      await pending.catch(() => undefined);
+    });
+
+    expect(onTransportError).not.toHaveBeenCalled();
+    expect(result.current.isIdle).toBe(true);
+  });
 });

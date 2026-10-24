@@ -1,3 +1,8 @@
+import {
+  type AdministrationCampaignBodyAttributeValue as CampaignBodyAttributeValue,
+  AdministrationCampaignBodyNode as CampaignBodyNode,
+  campaignBodyFormatVersion,
+} from "@deskohub/workspace-admin-api";
 import { Schema } from "effect";
 import {
   type CampaignBodyIssue,
@@ -5,55 +10,12 @@ import {
   campaignBodyStructureIssues,
 } from "./campaign-body-rules";
 
-/**
- * Version of the stored body format. Bump it, and migrate stored bodies, when
- * a node or attribute is renamed or removed.
- */
-export const campaignBodyFormatVersion = 1;
-
-const CampaignBodyAttributeValue = Schema.Union([
-  Schema.String,
-  Schema.Number,
-  Schema.Boolean,
-  Schema.Null,
-]);
-
-export type CampaignBodyAttributeValue = typeof CampaignBodyAttributeValue.Type;
-
-const CampaignBodyAttributes = Schema.Record(
-  Schema.String,
-  CampaignBodyAttributeValue
-);
-
-const CampaignBodyMark = Schema.Struct({
-  type: Schema.String,
-  attrs: Schema.optional(CampaignBodyAttributes),
-});
-
-// A type alias, not an interface, so the node stays assignable to JSON types.
-export type CampaignBodyNode = {
-  readonly type: string;
-  readonly attrs?: typeof CampaignBodyAttributes.Type | undefined;
-  readonly content?: ReadonlyArray<CampaignBodyNode> | undefined;
-  readonly marks?: ReadonlyArray<typeof CampaignBodyMark.Type> | undefined;
-  readonly text?: string | undefined;
+/** The contract defines the node and its format version. */
+export {
+  type CampaignBodyAttributeValue,
+  CampaignBodyNode,
+  campaignBodyFormatVersion,
 };
-
-/**
- * A ProseMirror JSON node, as TipTap stores it. TipTap leaves unset optional
- * fields as `undefined`, which JSON drops.
- */
-export const CampaignBodyNode: Schema.Codec<CampaignBodyNode> = Schema.Struct({
-  type: Schema.String,
-  attrs: Schema.optional(CampaignBodyAttributes),
-  content: Schema.optional(
-    Schema.Array(
-      Schema.suspend((): Schema.Codec<CampaignBodyNode> => CampaignBodyNode)
-    )
-  ),
-  marks: Schema.optional(Schema.Array(CampaignBodyMark)),
-  text: Schema.optional(Schema.String),
-});
 
 /** A versioned TipTap document whose `doc` passes `issues`. */
 const versionedCampaignBody = (

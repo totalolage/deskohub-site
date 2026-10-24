@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { CalendarExpressionType as CalendarExpression } from "@deskohub/workspace-admin-api";
+import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
 import {
   type CalendarExpressionUsage,
   describeCalendarExpression,
+  describeCalendarWaitTarget,
 } from "./calendar-expression-phrases";
 
 interface Row {
@@ -36,7 +39,7 @@ const rows: readonly Row[] = [
       cs: "Každý den v 10:00 (pražský čas)",
     },
     wait: {
-      en: englishWait("between 10:00 and 10:59"),
+      en: englishWait("it's between 10:00 and 10:59"),
       cs: czechWait("dobu mezi 10:00 a 10:59"),
     },
   },
@@ -245,5 +248,115 @@ describe("describeCalendarExpression", () => {
     expect(describeCalendarExpression(expression, "schedule", "cs-CZ")).toBe(
       "Každý den v hodinách 09, 10 a\u00a011 vždy v xx:00, xx:15 a\u00a0xx:30 (pražský čas)"
     );
+  });
+});
+
+describe("wait hour windows", () => {
+  const locales: readonly Locale[] = ["en-US", "cs-CZ"];
+  const window = (first: number, last: number) => ({
+    start: `${String(first).padStart(2, "0")}:00`,
+    end: `${String(last).padStart(2, "0")}:59`,
+  });
+  const span = (first: number, last: number, locale: Locale) =>
+    m.emailCampaignsCalendarHourSpan(window(first, last), { locale });
+  const range = (first: number, last: number, locale: Locale) =>
+    m.emailCampaignsCalendarHourRange(window(first, last), { locale });
+  const alternatives = (items: readonly string[], locale: Locale) =>
+    new Intl.ListFormat(locale, { type: "disjunction" }).format(items);
+
+  test.each(locales)(
+    "merges consecutive hours into one window (%s)",
+    (locale) => {
+      expect(describeCalendarWaitTarget({ hours: [11, 9, 10] }, locale)).toBe(
+        span(9, 11, locale)
+      );
+    }
+  );
+
+  test.each(locales)(
+    "keeps separate runs as separate windows (%s)",
+    (locale) => {
+      expect(
+        describeCalendarWaitTarget({ hours: [8, 9, 14, 20] }, locale)
+      ).toBe(
+        alternatives(
+          [span(8, 9, locale), span(14, 14, locale), span(20, 20, locale)],
+          locale
+        )
+      );
+    }
+  );
+
+  test.each(locales)(
+    "names one merged window in the sentence (%s)",
+    (locale) => {
+      const sentence = describeCalendarExpression(
+        { hours: [9, 10, 11] },
+        "wait",
+        locale
+      );
+      expect(sentence).toContain(range(9, 11, locale));
+      expect(sentence).not.toContain(range(10, 10, locale));
+    }
+  );
+
+  test.each(locales)(
+    "lists several windows once each in the sentence (%s)",
+    (locale) => {
+      const sentence = describeCalendarExpression(
+        { weekdays: ["monday"], hours: [8, 9, 14, 15, 20] },
+        "wait",
+        locale
+      );
+      const spans = [
+        span(8, 9, locale),
+        span(14, 15, locale),
+        span(20, 20, locale),
+      ];
+      expect(sentence).toContain(alternatives(spans, locale));
+      expect(sentence).not.toContain(range(8, 9, locale));
+    }
+  );
+
+  test.each(locales)(
+    "names many hour and minute combinations by their windows (%s)",
+    (locale) => {
+      const expression: CalendarExpression = {
+        hours: [9, 10, 11, 12],
+        minutes: [0, 15],
+      };
+      for (const target of [
+        describeCalendarExpression(expression, "wait", locale),
+        describeCalendarWaitTarget(expression, locale),
+      ]) {
+        expect(target).toContain(range(9, 12, locale));
+        expect(target).toContain(
+          alternatives(
+            ["00", "15"].map((minute) =>
+              m.emailCampaignsCalendarMinute({ minute }, { locale })
+            ),
+            locale
+          )
+        );
+        expect(target).not.toContain("09:15");
+      }
+      expect(
+        describeCalendarExpression(
+          { ...expression, weekdays: ["monday"] },
+          "wait",
+          locale
+        )
+      ).toContain(range(9, 12, locale));
+    }
+  );
+
+  test.each(locales)("merges hours in a month-scoped wait (%s)", (locale) => {
+    const sentence = describeCalendarExpression(
+      { months: [12], hours: [9, 10, 11] },
+      "wait",
+      locale
+    );
+    expect(sentence).toContain(range(9, 11, locale));
+    expect(sentence).not.toContain(range(10, 10, locale));
   });
 });

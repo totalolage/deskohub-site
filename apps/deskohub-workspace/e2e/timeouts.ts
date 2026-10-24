@@ -1,4 +1,5 @@
 import { dotyposApiTimeoutDefaultMilliseconds } from "@deskohub/dotypos/api-timeout";
+import { emailAutomationTickMinutes } from "@deskohub/workspace-admin-api";
 
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
@@ -18,6 +19,16 @@ export const workspaceE2ETimeouts = {
   // the code exchange), then lists and calls tools over MCP.
   administratorAgentToolsCase: 4 * MINUTE,
   artifactCapture: 60 * SECOND,
+  // Each wait ticks the planner and lets the queue drain the units it
+  // published: a dry run over 30 days of events, or one booked run through
+  // intake, its condition, and delivery.
+  automationEngine: 4 * MINUTE,
+  // Admin setup, a dry run, activation, one zero-total checkout, up to one
+  // engine tick interval before intake may take the booking, the engine
+  // reaching a sent run, and the run log.
+  automationReservationCase: 30 * MINUTE,
+  // The longest wait from a booking to the engine tick that may take it.
+  automationTick: emailAutomationTickMinutes * MINUTE,
   authDelivery: 2 * MINUTE,
   browserAction: 30 * SECOND,
   browserNavigation: 60 * SECOND,
@@ -77,11 +88,6 @@ const accountWatchdogRequirement =
   workspaceE2ETimeouts.artifactCapture +
   workspaceE2ETimeouts.cleanupAction;
 
-export const workspaceE2EPlaywrightCheckoutTimeout = Math.max(
-  checkoutWatchdogRequirement,
-  accountWatchdogRequirement
-);
-
 // The action-completion barrier aligns with the enforced sub-40-second provider
 // bound; the stale barrier matches the application's 60-second attempt stale
 // threshold, so cleanup never deletes while the last server write can still be
@@ -117,6 +123,25 @@ export const workspaceE2EEmailCampaignCleanupTimeout =
 export const workspaceE2EEmailCampaignPlaywrightTimeout =
   workspaceE2ETimeouts.emailCampaignCase +
   workspaceE2EEmailCampaignCleanupTimeout;
+
+// The automation journey's finalizer: the campaign fixture release plus
+// clearing the booked customer's tag.
+export const workspaceE2EAutomationJourneyCleanupTimeout =
+  workspaceE2EEmailCampaignCleanupTimeout + workspaceE2ETimeouts.cleanupAction;
+
+// The automation journey also runs in the checkout lanes, with its own
+// finalizer inside the case.
+const automationWatchdogRequirement =
+  workspaceE2ETimeouts.automationReservationCase +
+  workspaceE2EAutomationJourneyCleanupTimeout +
+  workspaceE2ETimeouts.artifactCapture +
+  workspaceE2ETimeouts.cleanupAction +
+  workspaceE2ETimeouts.datasource;
+export const workspaceE2EPlaywrightCheckoutTimeout = Math.max(
+  checkoutWatchdogRequirement,
+  automationWatchdogRequirement,
+  accountWatchdogRequirement
+);
 
 // An administrator access case closes its own browser context in a bounded
 // finalizer; suite cleanup deletes its seeded accounts.
@@ -162,6 +187,9 @@ export type WorkspaceE2ETimeouts = Readonly<
 
 export const workspaceE2EPollIntervalMs = {
   advertisedPricing: 5 * SECOND,
+  // Between automation planner ticks; each tick also reads the preview
+  // database, never Dotypos.
+  automationPlanner: 10 * SECOND,
   browser: SECOND,
   datasource: 5 * SECOND,
 } as const;

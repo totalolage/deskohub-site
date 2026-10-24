@@ -444,11 +444,16 @@ describe("workspace E2E workflow", () => {
       `\${{ secrets.WORKSPACE_E2E_VERCEL_TOKEN }}`
     );
 
-    // Exactly the Playwright checkout step: one env key plus its secret
-    // reference, counted over the serialized parsed workflow structure.
-    expect(
-      serializedWorkflow.split("WORKSPACE_E2E_VERCEL_TOKEN").length - 1
-    ).toBe(2);
+    // Only the Playwright checkout step holds it, in its env and its own
+    // script's nightly preview check.
+    const withoutCheckoutStep = JSON.stringify(
+      Object.values(doc.jobs).map((job) => ({
+        ...job,
+        steps: job.steps?.filter((step) => step.name !== "Run checkout E2E"),
+      }))
+    );
+    expect(withoutCheckoutStep).not.toContain("WORKSPACE_E2E_VERCEL_TOKEN");
+    expect(serializedWorkflow).toContain("WORKSPACE_E2E_VERCEL_TOKEN");
 
     expect(serializedWorkflow.includes("WORKSPACE_E2E_RESEND_API_KEY")).toBe(
       false

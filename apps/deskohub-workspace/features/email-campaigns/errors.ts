@@ -37,6 +37,17 @@ export class CampaignBodyMarkdownInvalid extends Data.TaggedError(
   static readonly code = "content-markdown-invalid";
 }
 
+/** A locale's document body in a campaign edit breaks the content rules. */
+export class CampaignBodyDocumentInvalid extends Data.TaggedError(
+  "CampaignBodyDocumentInvalid"
+)<{
+  readonly locale: Locale;
+  readonly cause: InvalidCampaignBody;
+}> {
+  /** Stable across transports, so clients can tell this rejection apart. */
+  static readonly code = "content-document-invalid";
+}
+
 /**
  * A campaign edit adds a locale the campaign has no content for without
  * giving both its subject and its body.
