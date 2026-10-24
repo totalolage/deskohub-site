@@ -1,17 +1,17 @@
-import type { Metadata } from "next";
+import type { Metadata, ResolvingMetadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { type ReactNode, Suspense } from "react";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
 import { RoomImageCarousel } from "@/features/gallery/components/room-image-carousel";
-import { getWorkspaceAlternates, type Locale, m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
 import { getTtrpgRooms } from "@/features/ttrpg-room/ttrpg-rooms";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
 import { Skeleton } from "@/shared/components/ui/skeleton";
-import { workspaceSiteConstants } from "@/shared/utils";
 
 const pathname = "/ttrpg-room";
 
@@ -24,26 +24,21 @@ const getRoomImages = (
     (): readonly CloudinaryAsset[] => []
   );
 
-export async function generateMetadata(): Promise<Metadata> {
-  return runWithRequestLocale((locale) => {
-    const title = m.ttrpgRoomMetadataTitle({}, { locale });
-    const description = m.ttrpgRoomMetadataDescription({}, { locale });
-    const alternates = getWorkspaceAlternates(locale, pathname);
-
-    return {
-      title,
-      description,
-      alternates,
-      openGraph: {
-        title,
-        description,
-        url: alternates.canonical,
-        siteName: workspaceSiteConstants.brand.name,
+export async function generateMetadata(
+  _props: unknown,
+  parent: ResolvingMetadata
+): Promise<Metadata> {
+  return runWithRequestLocale((locale) =>
+    createPublicPageMetadata(
+      {
         locale,
-        type: "website",
+        pathname,
+        title: { absolute: m.ttrpgRoomMetadataTitle({}, { locale }) },
+        description: m.ttrpgRoomMetadataDescription({}, { locale }),
       },
-    } satisfies Metadata;
-  });
+      parent
+    )
+  );
 }
 
 export function TtrpgRoomPage({

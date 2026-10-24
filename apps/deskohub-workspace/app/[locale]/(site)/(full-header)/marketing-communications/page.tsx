@@ -1,11 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata, ResolvingMetadata } from "next";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { LegalPage } from "@/features/legal";
 import { createLegalMetadata } from "@/features/legal/metadata";
 
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata(
+  _props: unknown,
+  parent: ResolvingMetadata
+): Promise<Metadata> {
   return runWithRequestLocale((locale) =>
-    createLegalMetadata(locale, "marketing-communications")
+    createLegalMetadata(locale, "marketing-communications", parent)
   );
 }
 

@@ -1,15 +1,13 @@
 import { Option, Schema } from "effect";
-import type { Metadata } from "next";
+import type { Metadata, ResolvingMetadata } from "next";
 import { notFound } from "next/navigation";
 import { CheckoutStatusRoute } from "@/features/checkout/components/checkout-status-route";
-import { getWorkspaceAlternates, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationStatusPath } from "@/features/reservation/routes";
-import {
-  type SearchParamsRecord,
-  workspaceSiteConstants,
-} from "@/shared/utils";
+import type { SearchParamsRecord } from "@/shared/utils";
 
 // The status refresh bounds its Nexi verification at 40 seconds (one full
 // sandbox-length request; see checkout-status.service.ts) and its Dotypos
@@ -26,36 +24,26 @@ const decodeCheckoutStatusParams = Schema.decodeUnknownOption(
   Schema.Struct({ orderId: workspaceReservationIdSchema })
 );
 
-export async function generateMetadata({
-  params,
-}: LocalizedCheckoutStatusPageProps): Promise<Metadata> {
+export async function generateMetadata(
+  { params }: LocalizedCheckoutStatusPageProps,
+  parent: ResolvingMetadata
+): Promise<Metadata> {
   const decodedParams = decodeCheckoutStatusParams(await params);
   const { orderId } = Option.getOrElse(decodedParams, () => notFound());
 
-  return runWithRequestLocale((locale) => {
-    const title = m.checkoutStatusMetadataTitle({}, { locale });
-    const description = m.checkoutStatusMetadataDescription({}, { locale });
-    const alternates = getWorkspaceAlternates(
-      locale,
-      `${reservationStatusPath}/${orderId}`
-    );
-
-    return {
-      title,
-      description,
-      alternates,
-      openGraph: {
-        title,
-        description,
-        url: alternates.canonical,
-        siteName: workspaceSiteConstants.brand.name,
+  return runWithRequestLocale(async (locale) => ({
+    ...(await createPublicPageMetadata(
+      {
         locale,
-        type: "website",
+        pathname: `${reservationStatusPath}/${orderId}`,
+        title: { absolute: m.checkoutStatusMetadataTitle({}, { locale }) },
+        description: m.checkoutStatusMetadataDescription({}, { locale }),
       },
-      robots: { index: false, follow: false },
-      referrer: "no-referrer",
-    } satisfies Metadata;
-  });
+      parent
+    )),
+    robots: { index: false, follow: false },
+    referrer: "no-referrer",
+  }));
 }
 
 export default function LocalizedCheckoutStatusPage({

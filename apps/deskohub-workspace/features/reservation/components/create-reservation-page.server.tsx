@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Effect, Option } from "effect";
-import type { Metadata } from "next";
+import type { Metadata, ResolvingMetadata } from "next";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import type { ReactNode } from "react";
@@ -16,8 +16,9 @@ import {
   discountCodeQueryParam,
   normalizeSubmittedPromotionCode,
 } from "@/features/discounts";
-import { getWorkspaceAlternates, type Locale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
 import { checkoutContactReturnState } from "@/features/reservation/backend/checkout-contact-return-state";
 import { loadReservationCheckoutAccount } from "@/features/reservation/backend/reservation-existing-customer.server";
 import {
@@ -27,11 +28,7 @@ import {
 import type { ReservationCheckoutAccount } from "@/features/reservation/reservation-existing-customer";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import {
-  getSearchParam,
-  type SearchParamsRecord,
-  workspaceSiteConstants,
-} from "@/shared/utils";
+import { getSearchParam, type SearchParamsRecord } from "@/shared/utils";
 import { ReservationPage } from "./reservation-page";
 
 type ReservationKind = ReservationOrderData["kind"];
@@ -134,26 +131,24 @@ export function createReservationPage<
   const Kind extends ReservationKind,
   PageData = undefined,
 >(definition: ReservationPageDefinition<Kind, PageData>) {
-  async function generateMetadata(): Promise<Metadata> {
+  async function generateMetadata(
+    _props: unknown,
+    parent: ResolvingMetadata
+  ): Promise<Metadata> {
     return runWithRequestLocale(async (locale) => {
       if (definition.isEnabled && !(await definition.isEnabled())) notFound();
 
       const { description, title } = definition.metadata(locale);
-      const alternates = getWorkspaceAlternates(locale, definition.pathname);
 
-      return {
-        title,
-        description,
-        alternates,
-        openGraph: {
-          title,
-          description,
-          url: alternates.canonical,
-          siteName: workspaceSiteConstants.brand.name,
+      return createPublicPageMetadata(
+        {
           locale,
-          type: "website",
+          pathname: definition.pathname,
+          title: { absolute: title },
+          description,
         },
-      } satisfies Metadata;
+        parent
+      );
     });
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import type { Metadata } from "next";
+import type { Metadata, ResolvingMetadata } from "next";
 import { locales } from "@/features/i18n";
 import { publicPages } from "@/features/public-pages";
 
@@ -24,7 +24,26 @@ mock.module(
   })
 );
 
-type PageModule = { readonly generateMetadata: () => Promise<Metadata> };
+type PageModule = {
+  readonly generateMetadata: (
+    props: unknown,
+    parent: ResolvingMetadata
+  ) => Promise<Metadata>;
+};
+
+const shareImage = {
+  url: "https://workspace.deskohub.cz/en-US/opengraph-image.jpg",
+  width: 1200,
+  height: 630,
+};
+
+const openGraphLocales = { "en-US": "en_US", "cs-CZ": "cs_CZ" } as const;
+
+// The layouts' metadata as Next resolves it, with the share image the
+// `opengraph-image` file adds.
+const parent = Promise.resolve({
+  openGraph: { images: [shareImage] },
+}) as unknown as ResolvingMetadata;
 
 // Route groups don't appear in URLs, so find each page file by its pathname.
 const pageFileByPathname = new Map(
@@ -43,12 +62,12 @@ describe("public page metadata", () => {
     const suffix = pathname === "/" ? "" : pathname;
 
     for (const locale of locales) {
-      test(`${pathname} in ${locale} is indexable with self-canonical and hreflang alternates`, async () => {
+      test(`${pathname} in ${locale} is indexable with self-canonical and hreflang alternates and a share card`, async () => {
         const pageFile = pageFileByPathname.get(pathname);
         expect(pageFile).toBeDefined();
         requestLocale = locale;
         const page: PageModule = await import(`${import.meta.dir}/${pageFile}`);
-        const metadata = await page.generateMetadata();
+        const metadata = await page.generateMetadata({}, parent);
 
         expect(metadata.robots).toBeUndefined();
         expect(metadata.alternates).toEqual({
@@ -59,11 +78,15 @@ describe("public page metadata", () => {
             "x-default": `https://workspace.deskohub.cz${pathname}`,
           },
         });
-        if (metadata.openGraph) {
-          expect(metadata.openGraph.url).toBe(
-            `https://workspace.deskohub.cz/${locale}${suffix}`
-          );
-        }
+        expect(metadata.openGraph).toMatchObject({
+          url: `https://workspace.deskohub.cz/${locale}${suffix}`,
+          locale: openGraphLocales[locale],
+          alternateLocale: locales
+            .filter((alternateLocale) => alternateLocale !== locale)
+            .map((alternateLocale) => openGraphLocales[alternateLocale]),
+          images: [shareImage],
+        });
+        expect(metadata.twitter).toEqual({ card: "summary_large_image" });
       });
     }
   }

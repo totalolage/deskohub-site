@@ -1,33 +1,35 @@
-import type { Metadata } from "next";
-import { getWorkspaceAlternates, m } from "@/features/i18n";
+import type { Metadata, ResolvingMetadata } from "next";
+import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { LandingPage } from "@/features/landing-page/components/landing-page";
-import { workspaceSiteConstants } from "@/shared/utils";
+import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
+import { StructuredData } from "@/shared/components/structured-data";
+import { getWebSiteStructuredData } from "@/shared/utils/structured-data";
 
 export const instant = false;
 
-export async function generateMetadata(): Promise<Metadata> {
-  return runWithRequestLocale((locale) => {
-    const title = m.landingMetadataTitle({}, { locale });
-    const description = m.landingMetadataDescription({}, { locale });
-    const alternates = getWorkspaceAlternates(locale);
-
-    return {
-      title,
-      description,
-      alternates,
-      openGraph: {
-        title,
-        description,
-        url: alternates.canonical,
-        siteName: workspaceSiteConstants.brand.name,
+export async function generateMetadata(
+  _props: unknown,
+  parent: ResolvingMetadata
+): Promise<Metadata> {
+  return runWithRequestLocale((locale) =>
+    createPublicPageMetadata(
+      {
         locale,
-        type: "website",
+        pathname: "/",
+        title: { absolute: m.landingMetadataTitle({}, { locale }) },
+        description: m.landingMetadataDescription({}, { locale }),
       },
-    } satisfies Metadata;
-  });
+      parent
+    )
+  );
 }
 
 export default async function LocalizedWorkspaceHomePage() {
-  return runWithRequestLocale((locale) => <LandingPage locale={locale} />);
+  return runWithRequestLocale((locale) => (
+    <>
+      <StructuredData data={getWebSiteStructuredData()} />
+      <LandingPage locale={locale} />
+    </>
+  ));
 }

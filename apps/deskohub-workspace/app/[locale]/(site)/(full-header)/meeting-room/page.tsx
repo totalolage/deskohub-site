@@ -1,12 +1,12 @@
-import type { Metadata } from "next";
+import type { Metadata, ResolvingMetadata } from "next";
 import { notFound } from "next/navigation";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
-import { getWorkspaceAlternates, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
 import { MeetingRoomPage } from "@/features/meeting-room/components/meeting-room-page";
-import { workspaceSiteConstants } from "@/shared/utils";
+import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
 
 const pathname = "/meeting-room";
 
@@ -25,27 +25,22 @@ const getMeetingRoomGalleryImages = () =>
     tags: "meeting-room-gallery",
   }).catch((): readonly CloudinaryAsset[] => []);
 
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata(
+  _props: unknown,
+  parent: ResolvingMetadata
+): Promise<Metadata> {
   return runWithRequestLocale(async (locale) => {
     if (!(await isMeetingRoomPageEnabled())) notFound();
 
-    const title = m.meetingRoomMetadataTitle({}, { locale });
-    const description = m.meetingRoomMetadataDescription({}, { locale });
-    const alternates = getWorkspaceAlternates(locale, pathname);
-
-    return {
-      title,
-      description,
-      alternates,
-      openGraph: {
-        title,
-        description,
-        url: alternates.canonical,
-        siteName: workspaceSiteConstants.brand.name,
+    return createPublicPageMetadata(
+      {
         locale,
-        type: "website",
+        pathname,
+        title: { absolute: m.meetingRoomMetadataTitle({}, { locale }) },
+        description: m.meetingRoomMetadataDescription({}, { locale }),
       },
-    } satisfies Metadata;
+      parent
+    );
   });
 }
 

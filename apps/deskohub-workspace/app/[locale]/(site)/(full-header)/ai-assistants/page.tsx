@@ -1,31 +1,26 @@
-import type { Metadata } from "next";
+import type { Metadata, ResolvingMetadata } from "next";
 import { AiAssistantsPage } from "@/features/ai-assistants/components/ai-assistants-page";
-import { getWorkspaceAlternates, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { workspaceSiteConstants } from "@/shared/utils";
+import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
 
 const pathname = "/ai-assistants";
 
-export async function generateMetadata(): Promise<Metadata> {
-  return runWithRequestLocale((locale) => {
-    const title = m.aiAssistantsMetadataTitle({}, { locale });
-    const description = m.aiAssistantsMetadataDescription({}, { locale });
-    const alternates = getWorkspaceAlternates(locale, pathname);
-
-    return {
-      title,
-      description,
-      alternates,
-      openGraph: {
-        title,
-        description,
-        url: alternates.canonical,
-        siteName: workspaceSiteConstants.brand.name,
+export async function generateMetadata(
+  _props: unknown,
+  parent: ResolvingMetadata
+): Promise<Metadata> {
+  return runWithRequestLocale((locale) =>
+    createPublicPageMetadata(
+      {
         locale,
-        type: "website",
+        pathname: pathname,
+        title: { absolute: m.aiAssistantsMetadataTitle({}, { locale }) },
+        description: m.aiAssistantsMetadataDescription({}, { locale }),
       },
-    } satisfies Metadata;
-  });
+      parent
+    )
+  );
 }
 
 export default async function LocalizedAiAssistantsPage() {
