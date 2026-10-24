@@ -518,6 +518,7 @@
     "features/email-campaigns/admin/audiences/audience-list.test.tsx": 276,
     "features/email-campaigns/admin/audiences/deleted-campaign-audience.postgres.test.tsx": 722,
     "features/email-campaigns/admin/audiences/discount-group-options.server.test.ts": 151,
+    "features/email-campaigns/admin/automation/builder/automation-flow-builder.browser-acceptance.test.tsx": 5981,
     "features/email-campaigns/admin/calendar-expression-phrases.test.ts": 38,
     "features/email-campaigns/admin/campaign-operation-failure.test.ts": 21,
     "features/email-campaigns/admin/campaign-operations.actions.test.ts": 1302,
