@@ -401,7 +401,10 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
             async () => {
               await page.setViewportSize({ width: 1896, height: 1212 });
               await page.evaluate(() =>
-                window.scrollTo({ behavior: "instant", top: 700 })
+                window.scrollTo({
+                  behavior: "instant",
+                  top: document.documentElement.scrollHeight,
+                })
               );
               await mkdir(screenshotDirectory, { recursive: true });
               await page.screenshot({
@@ -419,7 +422,10 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
             async () => {
               await page.setViewportSize({ width: 390, height: 844 });
               await page.evaluate(() =>
-                window.scrollTo({ behavior: "instant", top: 700 })
+                window.scrollTo({
+                  behavior: "instant",
+                  top: document.documentElement.scrollHeight,
+                })
               );
               await page.screenshot({
                 path: resolve(
