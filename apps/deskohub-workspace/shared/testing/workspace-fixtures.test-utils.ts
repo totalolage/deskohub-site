@@ -254,6 +254,17 @@ export const workspaceFixtures = (db: WorkspaceDatabaseClient) => {
       })
       .pipe(Effect.as(id));
 
+  const insertRoleGrant = (
+    executor: WorkspaceDatabaseClient,
+    accountId: CustomerAccountId,
+    role: AccountRole,
+    grantedBy?: CustomerAccountId
+  ) =>
+    executor
+      .insert(accountRoleGrants)
+      .values({ accountId, role, grantedByAccountId: grantedBy ?? null })
+      .pipe(Effect.asVoid);
+
   const insertReservations = (inputs: readonly ReservationFixtureInput[]) =>
     Effect.forEach(
       Array.from(
@@ -315,14 +326,22 @@ export const workspaceFixtures = (db: WorkspaceDatabaseClient) => {
                 ? new Date(loginCreatedAt.epochMilliseconds)
                 : databaseDefault,
             });
-            if (roles.length > 0) {
-              yield* tx
-                .insert(accountRoleGrants)
-                .values(roles.map((role) => ({ accountId: id, role })));
-            }
+            yield* Effect.forEach(roles, (role) =>
+              insertRoleGrant(tx, id, role)
+            );
           })
         )
         .pipe(Effect.as<FixtureAccount>({ accountId: id, email })),
+
+    /**
+     * Grants a role to an account that already has a login, as an
+     * administrator does; `grantedBy` names that administrator.
+     */
+    grantRole: (
+      accountId: CustomerAccountId,
+      role: AccountRole,
+      { grantedBy }: { readonly grantedBy?: CustomerAccountId } = {}
+    ) => insertRoleGrant(db, accountId, role, grantedBy),
 
     /** Inserts a customer account without a login and returns its id. */
     customerAccount: (options: FixtureCustomerAccountOptions = {}) =>

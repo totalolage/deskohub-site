@@ -239,4 +239,31 @@ describe.skipIf(!testDatabase)("workspace fixtures", () => {
     );
     expect(logins).toEqual([]);
   });
+  test("a role granted later records its grantor", async () => {
+    const grantor = await Effect.runPromise(
+      fixtures().account("fixture-grantor", { roles: ["administrator"] })
+    );
+    const grantee = await Effect.runPromise(
+      fixtures().account("fixture-grantee")
+    );
+
+    await Effect.runPromise(
+      fixtures().grantRole(grantee.accountId, "administrator", {
+        grantedBy: grantor.accountId,
+      })
+    );
+
+    const grants = await Effect.runPromise(
+      database()
+        .select({
+          role: accountRoleGrants.role,
+          grantedBy: accountRoleGrants.grantedByAccountId,
+        })
+        .from(accountRoleGrants)
+        .where(eq(accountRoleGrants.accountId, grantee.accountId))
+    );
+    expect(grants).toEqual([
+      { role: "administrator", grantedBy: grantor.accountId },
+    ]);
+  });
 });
