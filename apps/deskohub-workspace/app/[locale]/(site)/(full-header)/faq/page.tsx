@@ -1,4 +1,4 @@
-import type { Metadata, ResolvingMetadata } from "next";
+import type { Metadata } from "next";
 import { FaqPage } from "@/features/faq";
 import { loadFaqOccupancyStats } from "@/features/faq/backend/faq-occupancy.server";
 import { m } from "@/features/i18n";
@@ -9,20 +9,14 @@ const pathname = "/faq";
 
 export const instant = false;
 
-export async function generateMetadata(
-  _props: PageProps<"/[locale]/faq">,
-  parent: ResolvingMetadata
-): Promise<Metadata> {
+export async function generateMetadata(): Promise<Metadata> {
   return runWithRequestLocale((locale) =>
-    createPublicPageMetadata(
-      {
-        locale,
-        pathname: pathname,
-        title: { absolute: m.faqMetadataTitle({}, { locale }) },
-        description: m.faqMetadataDescription({}, { locale }),
-      },
-      parent
-    )
+    createPublicPageMetadata({
+      locale,
+      pathname: pathname,
+      title: { absolute: m.faqMetadataTitle({}, { locale }) },
+      description: m.faqMetadataDescription({}, { locale }),
+    })
   );
 }
 

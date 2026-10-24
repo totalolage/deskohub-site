@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import type { Metadata } from "next";
 import { locales } from "@/features/i18n";
 import { publicPages } from "@/features/public-pages";
-import type { ParentMetadata } from "@/features/public-pages/page-metadata";
+import { publicSiteShareImage } from "@/features/public-pages/page-metadata";
 
 let requestLocale: string = "en-US";
 
@@ -25,26 +25,9 @@ mock.module(
   })
 );
 
-type PageModule = {
-  readonly generateMetadata: (
-    props: PageProps<"/[locale]">,
-    parent: ParentMetadata
-  ) => Promise<Metadata>;
-};
-
-const shareImage = {
-  url: "https://workspace.deskohub.cz/en-US/opengraph-image.jpg",
-  width: 1200,
-  height: 630,
-};
+type PageModule = { readonly generateMetadata: () => Promise<Metadata> };
 
 const openGraphLocales = { "en-US": "en_US", "cs-CZ": "cs_CZ" } as const;
-
-// The layouts' metadata as Next resolves it, with the share image the
-// `opengraph-image` file adds.
-const parent: ParentMetadata = Promise.resolve({
-  openGraph: { images: [shareImage] },
-});
 
 // Route groups don't appear in URLs, so find each page file by its pathname.
 const pageFileByPathname = new Map(
@@ -68,13 +51,7 @@ describe("public page metadata", () => {
         expect(pageFile).toBeDefined();
         requestLocale = locale;
         const page: PageModule = await import(`${import.meta.dir}/${pageFile}`);
-        const metadata = await page.generateMetadata(
-          {
-            params: Promise.resolve({ locale }),
-            searchParams: Promise.resolve({}),
-          },
-          parent
-        );
+        const metadata = await page.generateMetadata();
 
         expect(metadata.robots).toBeUndefined();
         expect(metadata.alternates).toEqual({
@@ -91,7 +68,7 @@ describe("public page metadata", () => {
           alternateLocale: locales
             .filter((alternateLocale) => alternateLocale !== locale)
             .map((alternateLocale) => openGraphLocales[alternateLocale]),
-          images: [shareImage],
+          images: [publicSiteShareImage],
         });
         expect(metadata.twitter).toEqual({ card: "summary_large_image" });
       });

@@ -1,4 +1,4 @@
-import type { Metadata, ResolvingMetadata } from "next";
+import type { Metadata } from "next";
 import { m } from "@/features/i18n";
 import {
   getRequestLocale,
@@ -9,19 +9,13 @@ import { HorizontalLogo, Logo } from "@/shared/components/logo";
 
 export const instant = false;
 
-export async function generateMetadata(
-  _props: PageProps<"/[locale]/logo">,
-  parent: ResolvingMetadata
-): Promise<Metadata> {
+export async function generateMetadata(): Promise<Metadata> {
   return runWithRequestLocale((locale) =>
-    createPublicPageMetadata(
-      {
-        locale,
-        pathname: "/logo",
-        title: { page: m.logoVariantsTitle({}, { locale }) },
-      },
-      parent
-    )
+    createPublicPageMetadata({
+      locale,
+      pathname: "/logo",
+      title: { page: m.logoVariantsTitle({}, { locale }) },
+    })
   );
 }
 

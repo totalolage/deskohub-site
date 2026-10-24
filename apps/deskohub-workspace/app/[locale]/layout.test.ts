@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { createElement } from "react";
 import { getPublicCatalogOfferings } from "@/features/checkout/public-offerings";
 import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
+import { publicSiteShareImage } from "@/features/public-pages/page-metadata";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 mock.module("next/font/local", () => ({
@@ -91,16 +92,17 @@ describe("localized route layout", () => {
     constantFlags = {};
   });
 
-  test("links icons that the app serves and sets a theme colour", async () => {
+  test("links icons that the app serves, a share image and a theme colour", async () => {
     const { generateMetadata, viewport } = await import("./layout");
     type Icon = { url: string; type: string };
-    const { icons } = await generateMetadata({
+    const { icons, openGraph } = await generateMetadata({
       params: Promise.resolve({ locale: "en-US" }),
     });
     const { icon, apple } = icons as { icon: Icon[]; apple: Icon };
     const linked = [...icon, apple];
 
     expect(linked.map(({ type }) => type)).toEqual([
+      "image/x-icon",
       "image/svg+xml",
       "image/png",
       "image/png",
@@ -113,9 +115,7 @@ describe("localized route layout", () => {
           : new URL(`../../public${url}`, import.meta.url);
       expect(await Bun.file(file).exists()).toBe(true);
     }
-    expect(
-      await Bun.file(new URL("../favicon.ico", import.meta.url)).exists()
-    ).toBe(true);
+    expect(openGraph?.images).toEqual([publicSiteShareImage]);
     expect(viewport.themeColor).toBeDefined();
   });
 

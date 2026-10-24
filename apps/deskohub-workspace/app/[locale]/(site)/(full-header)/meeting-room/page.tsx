@@ -1,4 +1,4 @@
-import type { Metadata, ResolvingMetadata } from "next";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
@@ -25,22 +25,16 @@ const getMeetingRoomGalleryImages = () =>
     tags: "meeting-room-gallery",
   }).catch((): readonly CloudinaryAsset[] => []);
 
-export async function generateMetadata(
-  _props: PageProps<"/[locale]/meeting-room">,
-  parent: ResolvingMetadata
-): Promise<Metadata> {
+export async function generateMetadata(): Promise<Metadata> {
   return runWithRequestLocale(async (locale) => {
     if (!(await isMeetingRoomPageEnabled())) notFound();
 
-    return createPublicPageMetadata(
-      {
-        locale,
-        pathname,
-        title: { absolute: m.meetingRoomMetadataTitle({}, { locale }) },
-        description: m.meetingRoomMetadataDescription({}, { locale }),
-      },
-      parent
-    );
+    return createPublicPageMetadata({
+      locale,
+      pathname,
+      title: { absolute: m.meetingRoomMetadataTitle({}, { locale }) },
+      description: m.meetingRoomMetadataDescription({}, { locale }),
+    });
   });
 }
 

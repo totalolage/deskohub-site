@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Effect, Option } from "effect";
-import type { Metadata, ResolvingMetadata } from "next";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import type { ReactNode } from "react";
@@ -131,24 +131,18 @@ export function createReservationPage<
   const Kind extends ReservationKind,
   PageData = undefined,
 >(definition: ReservationPageDefinition<Kind, PageData>) {
-  async function generateMetadata(
-    _props: LocalizedReservationPageProps,
-    parent: ResolvingMetadata
-  ): Promise<Metadata> {
+  async function generateMetadata(): Promise<Metadata> {
     return runWithRequestLocale(async (locale) => {
       if (definition.isEnabled && !(await definition.isEnabled())) notFound();
 
       const { description, title } = definition.metadata(locale);
 
-      return createPublicPageMetadata(
-        {
-          locale,
-          pathname: definition.pathname,
-          title: { absolute: title },
-          description,
-        },
-        parent
-      );
+      return createPublicPageMetadata({
+        locale,
+        pathname: definition.pathname,
+        title: { absolute: title },
+        description,
+      });
     });
   }
 

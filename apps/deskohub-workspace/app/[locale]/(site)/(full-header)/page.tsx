@@ -1,4 +1,4 @@
-import type { Metadata, ResolvingMetadata } from "next";
+import type { Metadata } from "next";
 import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { LandingPage } from "@/features/landing-page/components/landing-page";
@@ -8,20 +8,14 @@ import { getWebSiteStructuredData } from "@/shared/utils/structured-data";
 
 export const instant = false;
 
-export async function generateMetadata(
-  _props: PageProps<"/[locale]">,
-  parent: ResolvingMetadata
-): Promise<Metadata> {
+export async function generateMetadata(): Promise<Metadata> {
   return runWithRequestLocale((locale) =>
-    createPublicPageMetadata(
-      {
-        locale,
-        pathname: "/",
-        title: { absolute: m.landingMetadataTitle({}, { locale }) },
-        description: m.landingMetadataDescription({}, { locale }),
-      },
-      parent
-    )
+    createPublicPageMetadata({
+      locale,
+      pathname: "/",
+      title: { absolute: m.landingMetadataTitle({}, { locale }) },
+      description: m.landingMetadataDescription({}, { locale }),
+    })
   );
 }
 

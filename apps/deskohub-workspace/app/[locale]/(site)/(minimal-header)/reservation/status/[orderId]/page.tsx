@@ -1,5 +1,5 @@
 import { Option, Schema } from "effect";
-import type { Metadata, ResolvingMetadata } from "next";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CheckoutStatusRoute } from "@/features/checkout/components/checkout-status-route";
 import { m } from "@/features/i18n";
@@ -24,23 +24,19 @@ const decodeCheckoutStatusParams = Schema.decodeUnknownOption(
   Schema.Struct({ orderId: workspaceReservationIdSchema })
 );
 
-export async function generateMetadata(
-  { params }: LocalizedCheckoutStatusPageProps,
-  parent: ResolvingMetadata
-): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: LocalizedCheckoutStatusPageProps): Promise<Metadata> {
   const decodedParams = decodeCheckoutStatusParams(await params);
   const { orderId } = Option.getOrElse(decodedParams, () => notFound());
 
-  return runWithRequestLocale(async (locale) => ({
-    ...(await createPublicPageMetadata(
-      {
-        locale,
-        pathname: `${reservationStatusPath}/${orderId}`,
-        title: { absolute: m.checkoutStatusMetadataTitle({}, { locale }) },
-        description: m.checkoutStatusMetadataDescription({}, { locale }),
-      },
-      parent
-    )),
+  return runWithRequestLocale((locale) => ({
+    ...createPublicPageMetadata({
+      locale,
+      pathname: `${reservationStatusPath}/${orderId}`,
+      title: { absolute: m.checkoutStatusMetadataTitle({}, { locale }) },
+      description: m.checkoutStatusMetadataDescription({}, { locale }),
+    }),
     robots: { index: false, follow: false },
     referrer: "no-referrer",
   }));

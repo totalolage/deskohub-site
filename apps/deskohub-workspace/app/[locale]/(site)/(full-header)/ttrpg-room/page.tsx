@@ -1,4 +1,4 @@
-import type { Metadata, ResolvingMetadata } from "next";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { type ReactNode, Suspense } from "react";
@@ -24,20 +24,14 @@ const getRoomImages = (
     (): readonly CloudinaryAsset[] => []
   );
 
-export async function generateMetadata(
-  _props: PageProps<"/[locale]/ttrpg-room">,
-  parent: ResolvingMetadata
-): Promise<Metadata> {
+export async function generateMetadata(): Promise<Metadata> {
   return runWithRequestLocale((locale) =>
-    createPublicPageMetadata(
-      {
-        locale,
-        pathname,
-        title: { absolute: m.ttrpgRoomMetadataTitle({}, { locale }) },
-        description: m.ttrpgRoomMetadataDescription({}, { locale }),
-      },
-      parent
-    )
+    createPublicPageMetadata({
+      locale,
+      pathname,
+      title: { absolute: m.ttrpgRoomMetadataTitle({}, { locale }) },
+      description: m.ttrpgRoomMetadataDescription({}, { locale }),
+    })
   );
 }
 

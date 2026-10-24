@@ -1,5 +1,5 @@
 import { Option, Schema } from "effect";
-import type { Metadata, ResolvingMetadata } from "next";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
@@ -19,23 +19,19 @@ const decodeReservationAccessParams = Schema.decodeUnknownOption(
   Schema.Struct({ orderId: workspaceReservationIdSchema })
 );
 
-export async function generateMetadata(
-  { params }: LocalizedReservationAccessPageProps,
-  parent: ResolvingMetadata
-): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: LocalizedReservationAccessPageProps): Promise<Metadata> {
   const decodedParams = decodeReservationAccessParams(await params);
   const { orderId } = Option.getOrElse(decodedParams, () => notFound());
 
-  return runWithRequestLocale(async (locale) => ({
-    ...(await createPublicPageMetadata(
-      {
-        locale,
-        pathname: `${reservationAccessPath}/${orderId}`,
-        title: { absolute: m.reservationAccessMetadataTitle({}, { locale }) },
-        description: m.reservationAccessMetadataDescription({}, { locale }),
-      },
-      parent
-    )),
+  return runWithRequestLocale((locale) => ({
+    ...createPublicPageMetadata({
+      locale,
+      pathname: `${reservationAccessPath}/${orderId}`,
+      title: { absolute: m.reservationAccessMetadataTitle({}, { locale }) },
+      description: m.reservationAccessMetadataDescription({}, { locale }),
+    }),
     robots: { index: false, follow: false },
     referrer: "no-referrer",
   }));

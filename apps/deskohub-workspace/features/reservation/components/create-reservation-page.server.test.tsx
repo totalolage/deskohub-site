@@ -1,7 +1,6 @@
 import { expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
-import type { ResolvingMetadata } from "next";
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import { instantStringSchema } from "@/shared/utils/temporal";
@@ -152,14 +151,9 @@ test("gates a disabled page inside its content, keeping the shell static", async
   await expect(renderContent(content.props)).rejects.toThrow(
     "NEXT_HTTP_ERROR_FALLBACK;404"
   );
-  // The page 404s before it reads its layouts' metadata.
-  const parent: ResolvingMetadata = new Promise(() => {});
-  await expect(
-    pageDefinition.generateMetadata(
-      { searchParams: Promise.resolve({}) },
-      parent
-    )
-  ).rejects.toThrow("NEXT_HTTP_ERROR_FALLBACK;404");
+  await expect(pageDefinition.generateMetadata()).rejects.toThrow(
+    "NEXT_HTTP_ERROR_FALLBACK;404"
+  );
   expect(isEnabled).toHaveBeenCalledTimes(2);
   expect(render).not.toHaveBeenCalled();
 });

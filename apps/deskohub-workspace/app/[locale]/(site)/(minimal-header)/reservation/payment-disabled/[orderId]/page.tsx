@@ -1,5 +1,5 @@
 import { Option, Schema } from "effect";
-import type { Metadata, ResolvingMetadata } from "next";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
@@ -24,24 +24,20 @@ const readOrderId = async (
   params: LocalizedReviewPaymentDisabledPageProps["params"]
 ) => Option.getOrElse(decodeParams(await params), () => notFound()).orderId;
 
-export async function generateMetadata(
-  { params }: LocalizedReviewPaymentDisabledPageProps,
-  parent: ResolvingMetadata
-): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: LocalizedReviewPaymentDisabledPageProps): Promise<Metadata> {
   const orderId = await readOrderId(params);
 
-  return runWithRequestLocale(async (locale) => ({
-    ...(await createPublicPageMetadata(
-      {
-        locale,
-        pathname: `${reviewPaymentDisabledPath}/${orderId}`,
-        title: {
-          absolute: m.reviewPaymentDisabledMetadataTitle({}, { locale }),
-        },
-        description: m.reviewPaymentDisabledMetadataDescription({}, { locale }),
+  return runWithRequestLocale((locale) => ({
+    ...createPublicPageMetadata({
+      locale,
+      pathname: `${reviewPaymentDisabledPath}/${orderId}`,
+      title: {
+        absolute: m.reviewPaymentDisabledMetadataTitle({}, { locale }),
       },
-      parent
-    )),
+      description: m.reviewPaymentDisabledMetadataDescription({}, { locale }),
+    }),
     robots: { index: false, follow: false },
     referrer: "no-referrer",
   }));

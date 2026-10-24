@@ -2,6 +2,7 @@ import { toOpenGraphLocale } from "@deskohub/i18n/core";
 import type { Metadata } from "next";
 import { getWorkspaceAlternates, type Locale, locales } from "@/features/i18n";
 import { workspaceSiteConstants } from "@/shared/utils";
+import shareImage from "./share-image.jpg";
 
 /**
  * The page's own title, which gets the site name appended, or an absolute
@@ -24,15 +25,13 @@ type PublicPageMetadataInput = {
   readonly type?: "website" | "article";
 };
 
-/**
- * The layouts' metadata that Next passes `generateMetadata` as `parent`, of
- * which the builder reads only the share image.
- */
-export type ParentMetadata = Promise<{
-  readonly openGraph: {
-    readonly images?: NonNullable<Metadata["openGraph"]>["images"];
-  } | null;
-}>;
+/** The photo of the space that a shared link to any page shows. */
+export const publicSiteShareImage = {
+  url: shareImage.src,
+  width: shareImage.width,
+  height: shareImage.height,
+  type: "image/jpeg",
+};
 
 /** The document title a page renders: `<page title> | Deskohub Workspace`. */
 export const getPublicPageTitle = (title: PublicPageTitle): string =>
@@ -43,20 +42,15 @@ export const getPublicPageTitle = (title: PublicPageTitle): string =>
 /**
  * Title, description, canonical and hreflang URLs, and the complete Open
  * Graph and Twitter card of a page on the public site. A page's `openGraph`
- * replaces the layouts' whole, so the share image the `opengraph-image`
- * file gives the locale layout is carried over from `parent`.
+ * replaces the layouts' whole, so the card names the share image itself.
  */
-export async function createPublicPageMetadata(
-  {
-    locale,
-    pathname,
-    title,
-    description,
-    type = "website",
-  }: PublicPageMetadataInput,
-  parent: ParentMetadata
-): Promise<Metadata> {
-  const { openGraph } = await parent;
+export function createPublicPageMetadata({
+  locale,
+  pathname,
+  title,
+  description,
+  type = "website",
+}: PublicPageMetadataInput): Metadata {
   const documentTitle = getPublicPageTitle(title);
   const alternates = getWorkspaceAlternates(locale, pathname);
 
@@ -74,7 +68,7 @@ export async function createPublicPageMetadata(
       alternateLocale: locales
         .filter((alternateLocale) => alternateLocale !== locale)
         .map(toOpenGraphLocale),
-      images: openGraph?.images,
+      images: [publicSiteShareImage],
     },
     // The title, description and image follow from `openGraph`.
     twitter: { card: "summary_large_image" },
