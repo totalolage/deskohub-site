@@ -7,7 +7,7 @@ description: Workspace checkout, reservation submission, agent booking view, MCP
 
 Read the reference for the part you're changing:
 
-- Advertised prices, signed summaries, discount affirmation, `pricing_changed`, discount codes, Calendar booking instant and deadlines, currency: [references/pricing.md](references/pricing.md).
+- Advertised prices, signed summaries, discount affirmation, `pricing_changed`, discount codes, Calendar booking instant and deadlines, currency, the shared Money module: [references/pricing.md](references/pricing.md).
 - Reservation-page availability and caching, page preload, account card, Pay tab handling, return route, status page: [references/checkout-pages.md](references/checkout-pages.md).
 - Agent booking view, MCP Apps `ui://` resources, `show_booking`, tool `_meta`, booking mode: [references/agent-booking-view.md](references/agent-booking-view.md).
 - Tables, PII rules, state machines, checkout keys and key rotation, supersession, Nexi attempts and timeouts, webhook, hold cleanup, late payment, refunds, fulfillment and email delivery: [references/lifecycle.md](references/lifecycle.md).

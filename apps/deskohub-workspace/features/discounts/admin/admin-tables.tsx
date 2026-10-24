@@ -19,10 +19,8 @@ import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
 } from "@/features/administration/data-table";
-import { formatAdministrationMoney } from "@/features/administration/formatters";
 import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import type {
   DiscountCodeId,
@@ -55,6 +53,7 @@ import {
   findWorkspaceCurrencyDefinition,
   workspaceCurrencyDefinitions,
 } from "@/shared/money/currencies";
+import { formatMoney, type Money } from "@/shared/money/money";
 import {
   temporalInstantToLocalDateTimeString,
   workspaceSiteConstants,
@@ -121,8 +120,8 @@ export type CalendarSaleTableItem = AdminCalendarSale & {
 export type VoucherTableItem = {
   readonly id: VoucherId;
   readonly code: string;
-  readonly issuedCredit: WorkspaceMoney;
-  readonly remainingCredit: WorkspaceMoney;
+  readonly issuedCredit: Money;
+  readonly remainingCredit: Money;
   readonly enabled: boolean;
   readonly validFrom: string | null;
   readonly validUntil: string | null;
@@ -321,15 +320,13 @@ export function VouchersAdminTable({
         accessorFn: (voucher) => voucher.issuedCredit.value,
         id: "issuedCredit",
         header: m.discountsColumnIssued({}, { locale }),
-        cell: ({ row }) =>
-          formatAdministrationMoney(row.original.issuedCredit, locale),
+        cell: ({ row }) => formatMoney(row.original.issuedCredit, locale),
       },
       {
         accessorFn: (voucher) => voucher.remainingCredit.value,
         id: "remainingCredit",
         header: m.discountsColumnRemaining({}, { locale }),
-        cell: ({ row }) =>
-          formatAdministrationMoney(row.original.remainingCredit, locale),
+        cell: ({ row }) => formatMoney(row.original.remainingCredit, locale),
       },
       {
         accessorFn: (voucher) => getStatusLabel(voucher.enabled, locale),
@@ -1547,9 +1544,7 @@ export function DiscountCodeConfigurationFields({
   );
 }
 
-function VoucherCreditFields(_props: {
-  readonly credit?: WorkspaceMoney | null;
-}) {
+function VoucherCreditFields(_props: { readonly credit?: Money | null }) {
   const locale = useRouteLocale();
   const { control } = useFormContext<VoucherFormValues>();
 

@@ -5,7 +5,6 @@ import {
   type CheckoutSummaryChangedKeys,
   checkoutSummaryChangedKeysSchema,
 } from "@/features/checkout/checkout-summary";
-import { nonNegativeWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import {
   type CanonicalPromotionCode,
   canonicalPromotionCodeSchema,
@@ -16,6 +15,7 @@ import type { Locale } from "@/features/i18n";
 import { locales } from "@/features/i18n";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { sealedStateKeyIdSchema } from "@/shared/backend/sealed-state";
+import { nonNegativeMoneyCodec } from "@/shared/money/money";
 import {
   type Instant,
   instantStringSchema,
@@ -30,7 +30,7 @@ export const signedPayStateEnvelopeSchema = Schema.Struct({
   orderId: workspaceReservationIdSchema,
   bookedAt: instantStringSchema,
   checkoutSessionId: Schema.optional(checkoutSessionIdSchema),
-  acceptedTotal: nonNegativeWorkspaceMoneyCodec,
+  acceptedTotal: nonNegativeMoneyCodec,
   submittedCode: Schema.optional(canonicalPromotionCodeSchema),
   submittedCodeDiscountId: Schema.optional(discountIdSchema),
   requestedDiscountCode: Schema.optional(canonicalPromotionCodeSchema),

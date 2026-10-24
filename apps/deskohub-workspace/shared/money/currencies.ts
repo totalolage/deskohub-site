@@ -1,6 +1,7 @@
 import { Schema } from "effect";
+import { type Money, moneyWithValue } from "./money";
 
-export const czkCurrency = {
+const czkCurrency = {
   code: "CZK",
   exponent: 2,
   name: "Czech koruna",
@@ -25,3 +26,10 @@ export const defaultWorkspaceCurrencyCode = czkCurrency.code;
 
 export const findWorkspaceCurrencyDefinition = (code: string) =>
   workspaceCurrencyDefinitions.find((currency) => currency.code === code);
+
+/** `value` minor units of Czech koruna. */
+export const currencyCZK = (value: number): Money =>
+  moneyWithValue(value, {
+    currency: czkCurrency.code,
+    exponent: czkCurrency.exponent,
+  });
