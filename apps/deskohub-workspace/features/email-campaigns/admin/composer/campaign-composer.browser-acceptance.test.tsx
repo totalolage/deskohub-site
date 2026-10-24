@@ -2,7 +2,8 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Browser, chromium } from "@playwright/test";
+import { type Browser, chromium, type Page } from "@playwright/test";
+import type { Locale } from "@/features/i18n";
 import { browserModuleStubPlugin } from "@/shared/testing/browser-module-stubs.test-utils";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles.test-utils";
@@ -46,12 +47,6 @@ const nextModuleStubs: Readonly<Record<string, string>> = {
   "./delete-campaign-draft-control": `
     export function DeleteCampaignDraftControl() { return null; }
   `,
-  "./campaign-email-preview": `
-    import { createElement } from "react";
-    export function CampaignEmailPreview() {
-      return createElement("div", { "aria-label": "Campaign preview", className: "h-[30rem]" });
-    }
-  `,
   "@deskohub/secret-comparison": `
     export const isMatchingSecret = () => false;
   `,
@@ -92,10 +87,10 @@ afterAll(async () => {
   }
 });
 
-const openCampaignComposer = async (viewport: {
-  readonly height: number;
-  readonly width: number;
-}) => {
+const openCampaignComposer = async (
+  viewport: { readonly height: number; readonly width: number },
+  locale: Locale = "en-US"
+) => {
   if (!browser)
     throw new Error("The CampaignComposer browser has not launched.");
   const page = await browser.newPage({
@@ -104,11 +99,11 @@ const openCampaignComposer = async (viewport: {
   });
   await page.route(`${harnessOrigin}/**`, (route) =>
     route.fulfill({
-      body: `<!doctype html><html lang="en-US"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="campaign-composer-test-root" data-locale="en-US"></div></body></html>`,
+      body: `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="campaign-composer-test-root" data-locale="${locale}"></div></body></html>`,
       contentType: "text/html",
     })
   );
-  await page.goto(`${harnessOrigin}/en-US/admin/email-campaigns/new`);
+  await page.goto(`${harnessOrigin}/${locale}/admin/email-campaigns/new`);
   await page.addStyleTag({ content: appStyles });
   await page.addScriptTag({ path: browserBundlePath });
   await page
@@ -117,84 +112,122 @@ const openCampaignComposer = async (viewport: {
   return page;
 };
 
-test.skipIf(!chromiumAvailable)(
-  "keeps campaign actions and preview separate while the desktop page scrolls",
-  async () => {
-    const page = await openCampaignComposer(desktopViewport);
-    try {
-      const action = page.locator('button[form="campaign-composer"]');
-      const toolbar = action.locator("xpath=../..");
-      const preview = page.locator("#main-content .grid > aside");
-      await page.evaluate(() =>
-        window.scrollTo({ behavior: "instant", top: 700 })
-      );
-      const scrollY = await page.evaluate(() => window.scrollY);
-      expect(scrollY).toBeGreaterThan(0);
-      const layout = await page.evaluate(() => {
-        const button = document.querySelector(
-          'button[form="campaign-composer"]'
-        );
-        const bar = button?.parentElement?.parentElement;
-        const previewAside = document.querySelector(
-          "#main-content .grid > aside"
-        );
-        return {
-          previewPosition: previewAside
-            ? getComputedStyle(previewAside).position
-            : undefined,
-          previewTop: previewAside?.getBoundingClientRect().top,
-          buttonBottom: button?.getBoundingClientRect().bottom,
-          toolbarBottom: bar?.getBoundingClientRect().bottom,
-          toolbarPosition: bar ? getComputedStyle(bar).position : undefined,
-          toolbarTop: bar?.getBoundingClientRect().top,
-        };
-      });
-      await action.waitFor({ state: "visible" });
-      await toolbar.waitFor({ state: "visible" });
-      await preview.waitFor({ state: "visible" });
-      expect(layout.buttonBottom).toBeLessThan(desktopViewport.height);
-      expect(layout.toolbarPosition).toBe("sticky");
-      expect(layout.toolbarTop).toBeGreaterThanOrEqual(64);
-      expect(layout.toolbarTop).toBeLessThan(66);
-      expect(layout.previewPosition).toBe("sticky");
-      expect(layout.previewTop).toBeGreaterThanOrEqual(
-        layout.toolbarBottom ?? Infinity
-      );
-    } finally {
-      await page.close();
+/**
+ * Where the campaign actions and the preview's language controls sit after
+ * scrolling halfway or all the way down, and which element is drawn on top of the language
+ * controls' upper edge and centre.
+ */
+const measureStickyLayout = (page: Page, position: "middle" | "bottom") =>
+  page.evaluate((scrollPosition) => {
+    const scrollRange =
+      document.documentElement.scrollHeight - window.innerHeight;
+    window.scrollTo({
+      behavior: "instant",
+      top: scrollPosition === "bottom" ? scrollRange : scrollRange / 2,
+    });
+    const button = document.querySelector('button[form="campaign-composer"]');
+    const bar = button?.parentElement?.parentElement;
+    const previewAside = document.querySelector("#main-content .grid > aside");
+    const localeControls = previewAside?.querySelector("fieldset");
+    if (!(button && bar && previewAside && localeControls)) {
+      throw new Error("The campaign composer layout is incomplete.");
     }
-  }
-);
+    const controls = localeControls.getBoundingClientRect();
+    const isDrawnOnTop = (x: number, y: number) =>
+      localeControls.contains(document.elementFromPoint(x, y));
+    const centreX = controls.left + controls.width / 2;
+    return {
+      buttonBottom: button.getBoundingClientRect().bottom,
+      buttonTop: button.getBoundingClientRect().top,
+      controlsBottom: controls.bottom,
+      controlsCentreOnTop: isDrawnOnTop(
+        centreX,
+        controls.top + controls.height / 2
+      ),
+      controlsTop: controls.top,
+      controlsUpperEdgeOnTop: isDrawnOnTop(centreX, controls.top + 1),
+      previewPosition: getComputedStyle(previewAside).position,
+      previewTop: previewAside.getBoundingClientRect().top,
+      scrollY: window.scrollY,
+      toolbarBottom: bar.getBoundingClientRect().bottom,
+      toolbarPosition: getComputedStyle(bar).position,
+      toolbarTop: bar.getBoundingClientRect().top,
+    };
+  }, position);
+
+for (const locale of ["cs-CZ", "en-US"] as const) {
+  test.skipIf(!chromiumAvailable)(
+    `keeps campaign actions clear of the preview language controls while the ${locale} desktop page scrolls`,
+    async () => {
+      const page = await openCampaignComposer(desktopViewport, locale);
+      try {
+        const scrollStates = [
+          await measureStickyLayout(page, "middle"),
+          await measureStickyLayout(page, "bottom"),
+        ];
+        const [scrolled, bottom] = scrollStates;
+        expect(scrolled?.scrollY).toBeGreaterThan(0);
+        expect(bottom?.scrollY).toBeGreaterThan(scrolled?.scrollY ?? Infinity);
+        for (const layout of scrollStates) {
+          expect(layout.toolbarPosition).toBe("sticky");
+          expect(layout.toolbarTop).toBeGreaterThanOrEqual(64);
+          expect(layout.toolbarTop).toBeLessThan(66);
+          expect(layout.buttonTop).toBeGreaterThanOrEqual(layout.toolbarTop);
+          expect(layout.buttonBottom).toBeLessThan(desktopViewport.height);
+          expect(layout.previewPosition).toBe("sticky");
+          expect(layout.previewTop).toBeGreaterThanOrEqual(
+            layout.toolbarBottom
+          );
+          expect(layout.controlsTop).toBeGreaterThanOrEqual(
+            layout.toolbarBottom
+          );
+          expect(layout.controlsBottom).toBeLessThanOrEqual(
+            desktopViewport.height
+          );
+          expect(layout.controlsUpperEdgeOnTop).toBe(true);
+          expect(layout.controlsCentreOnTop).toBe(true);
+        }
+      } finally {
+        await page.close();
+      }
+    }
+  );
+}
 
 test.skipIf(!chromiumAvailable)(
   "keeps the campaign create action in view while the mobile page scrolls",
   async () => {
     const page = await openCampaignComposer(mobileViewport);
     try {
-      const action = page.locator('button[form="campaign-composer"]');
-      const toolbar = action.locator("xpath=../..");
-      await page.evaluate(() =>
-        window.scrollTo({ behavior: "instant", top: 700 })
-      );
-      const scrollY = await page.evaluate(() => window.scrollY);
-      expect(scrollY).toBeGreaterThan(0);
-      const layout = await page.evaluate(() => {
-        const button = document.querySelector(
-          'button[form="campaign-composer"]'
-        );
-        const bar = button?.parentElement?.parentElement;
-        return {
-          buttonBottom: button?.getBoundingClientRect().bottom,
-          toolbarPosition: bar ? getComputedStyle(bar).position : undefined,
-          toolbarTop: bar?.getBoundingClientRect().top,
-        };
-      });
-      await action.waitFor({ state: "visible" });
-      await toolbar.waitFor({ state: "visible" });
-      expect(layout.toolbarPosition).toBe("sticky");
-      expect(layout.toolbarTop).toBeGreaterThanOrEqual(64);
-      expect(layout.toolbarTop).toBeLessThan(66);
-      expect(layout.buttonBottom).toBeLessThan(mobileViewport.height);
+      for (const top of [700, "bottom"] as const) {
+        const layout = await page.evaluate((scrollTop) => {
+          window.scrollTo({
+            behavior: "instant",
+            top:
+              scrollTop === "bottom"
+                ? document.documentElement.scrollHeight
+                : scrollTop,
+          });
+          const button = document.querySelector(
+            'button[form="campaign-composer"]'
+          );
+          const bar = button?.parentElement?.parentElement;
+          return {
+            buttonBottom: button?.getBoundingClientRect().bottom,
+            scrollY: window.scrollY,
+            toolbarPosition: bar ? getComputedStyle(bar).position : undefined,
+            toolbarTop: bar?.getBoundingClientRect().top,
+          };
+        }, top);
+        expect(layout.scrollY).toBeGreaterThan(0);
+        expect(layout.toolbarPosition).toBe("sticky");
+        expect(layout.toolbarTop).toBeGreaterThanOrEqual(64);
+        expect(layout.toolbarTop).toBeLessThan(66);
+        expect(layout.buttonBottom).toBeLessThan(mobileViewport.height);
+      }
+      await page
+        .locator('button[form="campaign-composer"]')
+        .waitFor({ state: "visible" });
     } finally {
       await page.close();
     }

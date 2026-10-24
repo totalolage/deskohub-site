@@ -558,7 +558,10 @@ export function CampaignComposer({
               </Tabs>
             </ComposerSection>
           </form>
-          <aside className="min-w-0 @5xl:sticky @5xl:top-32">
+          {/* At the bottom of the page the grid pushes the sticky preview up;
+              fitting it between its offset (8rem) and the page's bottom
+              padding (2.25rem) keeps its header clear of the toolbar. */}
+          <aside className="min-w-0 @5xl:sticky @5xl:top-32 @5xl:h-[calc(100dvh-10.25rem)]">
             <CampaignEmailPreview
               fields={localeFields[locale]}
               locale={locale}
