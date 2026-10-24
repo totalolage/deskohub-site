@@ -427,7 +427,9 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
             await expect(preview).toBeVisible();
 
             await page.setViewportSize({ width: 1896, height: 1212 });
-            await page.evaluate(() => window.scrollTo(0, 700));
+            await page.evaluate(() =>
+              window.scrollTo({ behavior: "instant", top: 700 })
+            );
             await expect(toolbar).toBeInViewport();
             const desktopLayout = await page.evaluate(() => {
               const button = document.querySelector(
@@ -476,7 +478,9 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
             }
 
             await page.setViewportSize({ width: 390, height: 844 });
-            await page.evaluate(() => window.scrollTo(0, 700));
+            await page.evaluate(() =>
+              window.scrollTo({ behavior: "instant", top: 700 })
+            );
             await expect(toolbar).toBeInViewport();
             const mobileLayout = await page.evaluate(() => {
               const button = document.querySelector(
