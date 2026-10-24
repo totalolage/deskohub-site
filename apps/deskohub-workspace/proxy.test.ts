@@ -837,7 +837,7 @@ test("does not treat a GET with a spoofed action header as a Server Action", asy
   const response = await proxy(request);
 
   expect(response.headers.get("location")).toBe(
-    "https://workspace.example/en-US"
+    "https://workspace.example/cs-CZ"
   );
 });
 
@@ -847,7 +847,7 @@ test("redirects session-cookie unprefixed administration URLs to the resolved lo
       url: "https://workspace.example/admin/cli/authenticate?code=SYNTHETIC-CODE",
       headers: {},
       location:
-        "https://workspace.example/en-US/admin/cli/authenticate?code=SYNTHETIC-CODE",
+        "https://workspace.example/cs-CZ/admin/cli/authenticate?code=SYNTHETIC-CODE",
     },
     {
       url: "https://workspace.example/admin",
