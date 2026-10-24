@@ -131,6 +131,13 @@ jobs:
             fi
             echo "head_ref=$TARGET_REF" >> "$GITHUB_OUTPUT"
           else
+            # Vercel's own events for the nightly branch wait for the
+            # nightly workflow's dispatch, even if a PR has that head.
+            if [[ "$TARGET_REF" == "$NIGHTLY_BRANCH" ]]; then
+              echo "Only workspace-e2e-nightly.yml starts E2E for the nightly branch"
+              echo "eligible=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             if [[ "$eligible_count" == "0" ]]; then
               echo "No eligible open internal PR matches the exact deployment SHA"
               echo "eligible=false" >> "$GITHUB_OUTPUT"
@@ -672,7 +679,33 @@ jobs:
           WORKSPACE_E2E_POSTHOG_HOST: ${{ vars.WORKSPACE_E2E_POSTHOG_HOST }}
           WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: ${{ vars.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN }}
           WORKSPACE_E2E_ALLOCATION_SHARD: ${{ steps.lease.outputs.shard }}
-        run: bun turbo test:e2e --filter=deskohub-workspace
+          NIGHTLY_TARGET: ${{ needs.resolve-target.outputs.nightly }}
+          PREVIEW_BRANCH: ${{ needs.resolve-target.outputs.head_ref }}
+        run: |
+          set -euo pipefail
+          # The preview database is chosen by branch name, and a commit of
+          # main could be built on another branch too. Before any browser
+          # action, a nightly run proves Vercel built its target from the
+          # nightly branch. It reads the deployment here, where the token is.
+          if [[ "$NIGHTLY_TARGET" == "true" ]]; then
+            deployment="$(curl --fail --silent --max-time 30 \
+              -H "Authorization: Bearer $WORKSPACE_E2E_VERCEL_TOKEN" \
+              "https://api.vercel.com/v13/deployments/${WORKSPACE_E2E_BASE_URL#https://}")" || {
+              echo "Could not read the nightly preview deployment from Vercel" >&2
+              exit 1
+            }
+            if ! jq -e \
+              --arg project "$WORKSPACE_E2E_VERCEL_PROJECT" \
+              --arg ref "$PREVIEW_BRANCH" \
+              --arg sha "$TARGET_SHA" \
+              '.projectId == $project and .target != "production" and
+                .meta.githubCommitRef == $ref and .meta.githubCommitSha == $sha' \
+              <<<"$deployment" >/dev/null; then
+              echo "The nightly preview was not built from the nightly branch at the target SHA" >&2
+              exit 1
+            fi
+          fi
+          bun turbo test:e2e --filter=deskohub-workspace
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()

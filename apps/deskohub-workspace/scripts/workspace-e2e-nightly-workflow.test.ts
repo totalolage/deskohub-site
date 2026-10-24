@@ -9,7 +9,9 @@ import {
 } from "./shared/workflow-step-runner";
 
 const workflowsDir = resolve(import.meta.dir, "../../../.github/workflows");
-const nightly = parseWorkflow(resolve(workflowsDir, "workspace-e2e-nightly.yml"));
+const nightly = parseWorkflow(
+  resolve(workflowsDir, "workspace-e2e-nightly.yml")
+);
 const e2e = parseWorkflow(resolve(workflowsDir, "workspace-e2e.yml"));
 const nightlyTriggers = (
   Bun.YAML.parse(
@@ -163,6 +165,88 @@ describe("Workspace E2E nightly target", () => {
     ]) {
       expect(dispatch).toContain(field);
     }
+  });
+});
+
+const checkoutStep = findStepByName(e2e, "Run checkout E2E");
+const vercelProject = "prj_workspace";
+
+// Stand-ins for the Vercel API read and the suite: curl answers from the
+// `vercel-deployment` fixture, and bun only records that the suite started.
+const fakeCommands = {
+  bun: `#!/usr/bin/env bash
+printf 'bun %s\\n' "$*" >> "$GH_FIXTURES/calls.log"
+`,
+  curl: `#!/usr/bin/env bash
+cat "$GH_FIXTURES/vercel-deployment.json"
+`,
+};
+
+const runCheckout = (
+  deployment: object,
+  env: Readonly<Record<string, string>> = {}
+) =>
+  runStep(
+    checkoutStep,
+    { "vercel-deployment": deployment },
+    {
+      NIGHTLY_TARGET: "true",
+      PREVIEW_BRANCH: nightlyBranch,
+      TARGET_SHA: mainSha,
+      WORKSPACE_E2E_BASE_URL: previewUrl,
+      WORKSPACE_E2E_VERCEL_PROJECT: vercelProject,
+      WORKSPACE_E2E_VERCEL_TOKEN: "synthetic-token",
+      ...env,
+    },
+    fakeCommands
+  );
+
+const nightlyDeployment = {
+  meta: { githubCommitRef: nightlyBranch, githubCommitSha: mainSha },
+  projectId: vercelProject,
+  target: null,
+};
+
+const suiteStarted = (calls: readonly string[]) =>
+  calls.some((call) => call.startsWith("bun turbo test:e2e"));
+
+describe("Workspace E2E nightly preview check", () => {
+  test("starts the suite on a preview of the nightly branch at the target SHA", async () => {
+    const { calls, result } = await runCheckout(nightlyDeployment);
+    expect(result.exitCode).toBe(0);
+    expect(suiteStarted(calls)).toBe(true);
+  });
+
+  test.each([
+    [
+      "another branch",
+      { meta: { ...nightlyDeployment.meta, githubCommitRef: "feature/x" } },
+    ],
+    [
+      "another commit",
+      { meta: { ...nightlyDeployment.meta, githubCommitSha: sha("c") } },
+    ],
+    ["another project", { projectId: "prj_other" }],
+    ["production", { target: "production" }],
+  ])(
+    "refuses a preview built from %s before any browser action",
+    async (_label, override) => {
+      const { calls, result } = await runCheckout({
+        ...nightlyDeployment,
+        ...override,
+      });
+      expect(result.exitCode).not.toBe(0);
+      expect(suiteStarted(calls)).toBe(false);
+    }
+  );
+
+  test("leaves PR runs to the existing exact-SHA checks", async () => {
+    const { calls, result } = await runCheckout(
+      { ...nightlyDeployment, meta: {} },
+      { NIGHTLY_TARGET: "", PREVIEW_BRANCH: "feature/x" }
+    );
+    expect(result.exitCode).toBe(0);
+    expect(suiteStarted(calls)).toBe(true);
   });
 });
 

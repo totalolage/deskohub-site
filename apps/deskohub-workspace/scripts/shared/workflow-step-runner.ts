@@ -69,18 +69,25 @@ export const createWorkflowStepRunner = (prefix: string) => {
   const root = mkdtempSync(join(tmpdir(), prefix));
   let runIndex = 0;
 
+  /**
+   * `commands` adds fake executables beside `gh`, as bash scripts keyed by
+   * command name; they can read `$GH_FIXTURES` and append to its `calls.log`.
+   */
   const runStep = async (
     step: WorkflowStep | undefined,
     fixtures: GhFixtures,
-    env: Readonly<Record<string, string>>
+    env: Readonly<Record<string, string>>,
+    commands: Readonly<Record<string, string>> = {}
   ) => {
     const dir = join(root, `run-${runIndex++}`);
     const bin = join(dir, "bin");
     const fixtureDir = join(dir, "fixtures");
     mkdirSync(bin, { recursive: true });
     mkdirSync(fixtureDir);
-    writeFileSync(join(bin, "gh"), fakeGh);
-    chmodSync(join(bin, "gh"), 0o755);
+    for (const [name, script] of Object.entries({ ...commands, gh: fakeGh })) {
+      writeFileSync(join(bin, name), script);
+      chmodSync(join(bin, name), 0o755);
+    }
     for (const [path, body] of Object.entries(fixtures)) {
       writeFileSync(
         join(fixtureDir, `${path.replaceAll("/", "_")}.json`),

@@ -383,15 +383,17 @@ const resolveNightlyTarget = ({
   eventName = "workflow_dispatch",
   mainRelation = "ahead",
   nightlyHead = targetSha,
+  pulls = [],
 }: {
   readonly eventName?: string;
   readonly mainRelation?: string;
   readonly nightlyHead?: string;
+  readonly pulls?: readonly object[];
 } = {}) =>
   runStep(
     targetStep,
     {
-      [`commits/${targetSha}/pulls`]: [],
+      [`commits/${targetSha}/pulls`]: pulls,
       [`compare/${targetSha}...main`]: { status: mainRelation },
       deployments: [{ creator: { login: "vercel[bot]" }, id: 11 }],
       "deployments/11/statuses": [
@@ -449,11 +451,17 @@ describe("Workspace E2E nightly target resolution", () => {
   test("leaves Vercel's own nightly branch events ineligible", async () => {
     // Only the nightly workflow's dispatch tests the branch, after it has
     // waited for the preview.
-    const { outputs, result } = await resolveNightlyTarget({
-      eventName: "repository_dispatch",
-    });
-    expect(result.exitCode).toBe(0);
-    expect(outputs).toEqual({ eligible: "false" });
+    for (const pulls of [
+      [],
+      [{ ...pullRequest, head: { ...pullRequest.head, ref: nightlyBranch } }],
+    ]) {
+      const { outputs, result } = await resolveNightlyTarget({
+        eventName: "repository_dispatch",
+        pulls,
+      });
+      expect(result.exitCode).toBe(0);
+      expect(outputs).toEqual({ eligible: "false" });
+    }
   });
 
   test("publishes no PR status for a nightly target", () => {
