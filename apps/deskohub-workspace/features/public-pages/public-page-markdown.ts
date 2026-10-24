@@ -69,9 +69,10 @@ const reservationPage = (
 });
 
 /**
- * The Markdown variant of every public page. Its title comes from the page's
- * definition in `public-page-definitions.ts`. Typecheck proves each public
- * page has one, so a new public page must add its renderer here.
+ * The Markdown variant of every public page, starting with the heading its
+ * HTML page shows. llms.txt names the page by its definition's title instead.
+ * Typecheck proves each public page has one, so a new public page must add
+ * its renderer here.
  */
 export const publicPageMarkdown = {
   "/": { topic: "offer", render: landingPageMarkdown },

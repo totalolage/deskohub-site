@@ -13,7 +13,10 @@ import { type PublicPagePathname, publicPagePathnames } from "./public-pages";
 export type PublicPageReleaseGate = "meeting-room-page" | "office-page";
 
 export interface PublicPageDefinition {
-  /** The page's own title: its metadata, Markdown heading and llms.txt link. */
+  /**
+   * The page's own title: its metadata, its llms.txt link, and a reservation
+   * page's Markdown heading. Other pages' Markdown keeps their content heading.
+   */
   readonly title: LocalizedCopy;
   /**
    * The title already names the site, so the document title is the title as
