@@ -13,9 +13,6 @@ const orderPage = privateOrderPage({
   description: m.checkoutStatusMetadataDescription,
 });
 
-// The layouts' metadata, here without a share image.
-const parent = Promise.resolve({ openGraph: null });
-
 const routeParams = (locale: string, orderId: string) =>
   // The `[locale]` segment's parameter reaches every page under it.
   Promise.resolve({ locale, orderId });
@@ -23,10 +20,9 @@ const routeParams = (locale: string, orderId: string) =>
 describe("privateOrderPage", () => {
   for (const locale of locales) {
     test(`keeps the ${locale} order page out of search results and referrers`, async () => {
-      const metadata = await orderPage.generateMetadata(
-        { params: routeParams(locale, "order-1") },
-        parent
-      );
+      const metadata = await orderPage.generateMetadata({
+        params: routeParams(locale, "order-1"),
+      });
       const canonical = `https://workspace.deskohub.cz/${locale}/reservation/status/order-1`;
 
       expect(metadata.robots).toEqual({ index: false, follow: false });
@@ -50,7 +46,7 @@ describe("privateOrderPage", () => {
       orderPage.readOrderId(routeParams("en-US", ""))
     ).rejects.toThrow(notFound);
     await expect(
-      orderPage.generateMetadata({ params: routeParams("en-US", "") }, parent)
+      orderPage.generateMetadata({ params: routeParams("en-US", "") })
     ).rejects.toThrow(notFound);
   });
 });

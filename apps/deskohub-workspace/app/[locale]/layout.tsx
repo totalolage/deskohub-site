@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { isLocale, locales, m } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import { loadOfficeGlobalRelease } from "@/features/office/backend/office-reservation-feature-flag.server";
+import { publicSiteShareImage } from "@/features/public-pages/page-metadata";
 import { getSharedWorkspaceSummary } from "@/features/public-pages/workspace-summary";
 import { workspaceSiteOrigin } from "@/shared/utils";
 import "../globals.css";
@@ -41,10 +42,15 @@ export async function generateMetadata({
       locale,
       officeRelease: await loadOfficeGlobalRelease(),
     }),
-    // `app/favicon.ico` comes first on its own. Next links `apple-icon` and
-    // `icon` files only when no `icons` are set, so these are listed here.
+    // Pages that set their own card name the image through the page builder.
+    openGraph: { images: [publicSiteShareImage] },
     icons: {
       icon: [
+        {
+          url: "/favicon.ico",
+          type: "image/x-icon",
+          sizes: "16x16 32x32 48x48",
+        },
         { url: "/favicon.svg", type: "image/svg+xml" },
         { url: "/favicon.png", type: "image/png", sizes: "512x512" },
       ],

@@ -1,5 +1,5 @@
 import { Effect, Option } from "effect";
-import type { Metadata, ResolvingMetadata } from "next";
+import type { Metadata } from "next";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import {
@@ -57,20 +57,14 @@ type LocalizedCheckoutPayPageProps = {
 // race the still-settling checkout transition.
 export const instant = false;
 
-export async function generateMetadata(
-  _props: PageProps<"/[locale]/checkout/pay">,
-  parent: ResolvingMetadata
-): Promise<Metadata> {
-  return runWithRequestLocale(async (locale) => ({
-    ...(await createPublicPageMetadata(
-      {
-        locale,
-        pathname: "/checkout/pay",
-        title: { absolute: m.checkoutPayMetadataTitle({}, { locale }) },
-        description: m.checkoutPayMetadataDescription({}, { locale }),
-      },
-      parent
-    )),
+export async function generateMetadata(): Promise<Metadata> {
+  return runWithRequestLocale((locale) => ({
+    ...createPublicPageMetadata({
+      locale,
+      pathname: "/checkout/pay",
+      title: { absolute: m.checkoutPayMetadataTitle({}, { locale }) },
+      description: m.checkoutPayMetadataDescription({}, { locale }),
+    }),
     robots: { index: false, follow: false },
   }));
 }

@@ -9,10 +9,7 @@ import { MeetingRoomPageFeatureFlagService } from "@/features/meeting-room/backe
 import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import {
-  createPublicPageMetadata,
-  type ParentMetadata,
-} from "../page-metadata";
+import { createPublicPageMetadata } from "../page-metadata";
 import { publicPageDefinitions } from "../public-page-definitions";
 import type { PublicPagePathname } from "../public-pages";
 import { PublishedPublicPagesService } from "./published-public-pages.service";
@@ -59,22 +56,18 @@ export async function requirePublishedPublicPage(pathname: PublicPagePathname) {
  * card. A gated page's metadata is not found while its gate is off.
  */
 export const publicPageMetadata =
-  (pathname: PublicPagePathname) =>
-  async (_props: unknown, parent: ParentMetadata): Promise<Metadata> =>
+  (pathname: PublicPagePathname) => async (): Promise<Metadata> =>
     runWithRequestLocale(async (locale) => {
       await requirePublishedPublicPage(pathname);
       const { title, titleNamesSite, description, article } =
         publicPageDefinitions[pathname];
       const pageTitle = title({}, { locale });
 
-      return createPublicPageMetadata(
-        {
-          locale,
-          pathname,
-          title: titleNamesSite ? { absolute: pageTitle } : { page: pageTitle },
-          description: description?.({}, { locale }),
-          type: article ? "article" : "website",
-        },
-        parent
-      );
+      return createPublicPageMetadata({
+        locale,
+        pathname,
+        title: titleNamesSite ? { absolute: pageTitle } : { page: pageTitle },
+        description: description?.({}, { locale }),
+        type: article ? "article" : "website",
+      });
     });

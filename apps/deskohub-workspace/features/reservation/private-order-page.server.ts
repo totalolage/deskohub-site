@@ -5,15 +5,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { LocalizedCopy } from "@/features/i18n";
 import { getLocalizedParamsDecoder } from "@/features/i18n/server/route-params";
-import {
-  createPublicPageMetadata,
-  type ParentMetadata,
-} from "@/features/public-pages/page-metadata";
+import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
 import { workspaceReservationIdSchema } from "./persistence-contracts";
 
 type PrivateOrderPageProps = {
-  // The `[locale]` segment's parameter reaches every page under it too.
-  readonly params: Promise<{ orderId: string }>;
+  readonly params: Promise<{ locale: string; orderId: string }>;
 };
 
 const decodeParams = getLocalizedParamsDecoder({
@@ -39,22 +35,18 @@ export function privateOrderPage({
   readonly title: LocalizedCopy;
   readonly description: LocalizedCopy;
 }) {
-  async function generateMetadata(
-    { params }: PrivateOrderPageProps,
-    parent: ParentMetadata
-  ): Promise<Metadata> {
+  async function generateMetadata({
+    params,
+  }: PrivateOrderPageProps): Promise<Metadata> {
     const { locale, orderId } = await readParams(params);
 
     return {
-      ...(await createPublicPageMetadata(
-        {
-          locale,
-          pathname: `${pathname}/${orderId}`,
-          title: { absolute: title({}, { locale }) },
-          description: description({}, { locale }),
-        },
-        parent
-      )),
+      ...createPublicPageMetadata({
+        locale,
+        pathname: `${pathname}/${orderId}`,
+        title: { absolute: title({}, { locale }) },
+        description: description({}, { locale }),
+      }),
       robots: { index: false, follow: false },
       referrer: "no-referrer",
     };

@@ -9,7 +9,7 @@ import { ReviewPaymentDisabledPage } from "@/features/review-accounts/components
 export const instant = false;
 
 type LocalizedReviewPaymentDisabledPageProps = {
-  params: Promise<{ orderId: string }>;
+  params: Promise<{ locale: string; orderId: string }>;
 };
 
 const { generateMetadata, readOrderId } = privateOrderPage({

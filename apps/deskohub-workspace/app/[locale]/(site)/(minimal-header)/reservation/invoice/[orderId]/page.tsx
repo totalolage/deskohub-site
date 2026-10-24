@@ -25,7 +25,7 @@ export const maxDuration = 30;
 export const instant = true;
 
 type PageProps = {
-  params: Promise<{ orderId: string }>;
+  params: Promise<{ locale: string; orderId: string }>;
   searchParams: Promise<SearchParamsRecord>;
 };
 

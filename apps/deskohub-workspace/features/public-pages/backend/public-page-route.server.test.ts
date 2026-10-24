@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { type Locale, locales } from "@/features/i18n";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import type { ParentMetadata } from "../page-metadata";
+import { publicSiteShareImage } from "../page-metadata";
 import {
   type PublicPageReleaseGate,
   publicPages,
@@ -41,22 +41,10 @@ const { publicPageMetadata, requirePublishedPublicPage } = await import(
 
 const notFound = "NEXT_HTTP_ERROR_FALLBACK;404";
 
-const shareImage = {
-  url: "https://workspace.deskohub.cz/en-US/opengraph-image.jpg",
-  width: 1200,
-  height: 630,
-};
-
 const openGraphLocales = { "en-US": "en_US", "cs-CZ": "cs_CZ" } as const;
 
-// The layouts' metadata as Next resolves it, with the share image the
-// `opengraph-image` file adds.
-const parent: ParentMetadata = Promise.resolve({
-  openGraph: { images: [shareImage] },
-});
-
 const pageMetadata = (pathname: (typeof publicPages)[number]["pathname"]) =>
-  publicPageMetadata(pathname)({}, parent);
+  publicPageMetadata(pathname)();
 
 beforeEach(() => {
   requestLocale = "en-US";
@@ -98,7 +86,7 @@ describe("public page metadata", () => {
           alternateLocale: locales
             .filter((alternateLocale) => alternateLocale !== locale)
             .map((alternateLocale) => openGraphLocales[alternateLocale]),
-          images: [shareImage],
+          images: [publicSiteShareImage],
         });
         expect(metadata.twitter).toEqual({ card: "summary_large_image" });
       });
