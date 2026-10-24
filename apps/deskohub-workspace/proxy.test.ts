@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { NextRequest } from "next/server";
 import { localeCookieName } from "@/features/i18n/routing";
+import { indexNowKeyPathname } from "@/features/public-pages";
 import { referralCodeCookieName } from "@/features/referrals/referral-code-cookie";
 import { getReservationAccessCookieName } from "@/features/reservation/backend/reservation-access-cookie";
 import { createReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
@@ -79,6 +80,9 @@ const inspectCheckoutEntry = (
           ["https://immutable-preview.vercel.app/en-US/account", { headers: { cookie: "better-auth.session_token=synthetic-session" } }],
           ["https://branch-preview.vercel.app/en-US", {}],
           ["https://branch-preview.vercel.app/en-US/reservation/cowork", {}],
+          ["https://workspace.deskohub.cz/en-US/checkout/pay?state=synthetic-summary", {}],
+          ["https://immutable-preview.vercel.app/en/faq?utm_source=synthetic", {}],
+          ["https://branch-preview.vercel.app/en-US/admin", { method: "HEAD" }],
         ];
         const results = [];
         for (const [url, options] of requests) {
@@ -177,17 +181,52 @@ test("uses the Preview callback host before sign-in and reservation preparation"
   expect(responses[9].status).toBe(200);
 });
 
-test("retains Development and Production payment origins", async () => {
-  const results = await Promise.all(
-    (["development", "production"] as const).map(inspectCheckoutEntryOnce)
-  );
-  for (const result of results) {
-    expect(result.exitCode).toBe(0);
-    const responses = inspectedResponses(result);
-    for (const index of [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11]) {
-      expect(responses[index].location).toBeNull();
-    }
+test("retains Development payment origins", async () => {
+  const result = await inspectCheckoutEntryOnce("development");
+  expect(result.exitCode).toBe(0);
+  const responses = inspectedResponses(result);
+  for (const index of [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
+    expect(responses[index].location).toBeNull();
   }
+});
+
+test("moves Production alias page loads to the canonical origin with their path and query", async () => {
+  const result = await inspectCheckoutEntryOnce("production");
+  expect(result.exitCode).toBe(0);
+  const responses = inspectedResponses(result);
+  const canonicalUrls = new Map([
+    [
+      0,
+      "https://workspace.deskohub.cz/en-US/checkout/pay?state=synthetic%2Bsummary",
+    ],
+    [
+      1,
+      "https://workspace.deskohub.cz/cs-CZ/checkout/pay?state=synthetic-summary",
+    ],
+    [3, "https://workspace.deskohub.cz/en-US/checkout/pay"],
+    [10, "https://workspace.deskohub.cz/en-US"],
+    [13, "https://workspace.deskohub.cz/en/faq?utm_source=synthetic"],
+    [14, "https://workspace.deskohub.cz/en-US/admin"],
+  ]);
+  for (const [index, canonicalUrl] of canonicalUrls) {
+    expect(responses[index].status).toBe(308);
+    expect(responses[index].location).toBe(canonicalUrl);
+  }
+  // A Server Action finishes where it was posted; the canonical host serves.
+  for (const index of [6, 12]) {
+    expect(responses[index].location).toBeNull();
+    expect(responses[index].status).toBe(200);
+  }
+});
+
+test("lets Preview deployments serve a bare language on their own host", async () => {
+  const result = await inspectCheckoutEntryOnce("preview");
+  expect(result.exitCode).toBe(0);
+  const response = inspectedResponses(result)[13];
+  expect(response.status).toBe(308);
+  expect(response.location).toBe(
+    "https://immutable-preview.vercel.app/en-US/faq?utm_source=synthetic"
+  );
 });
 
 const unprefixedAdministrationPaths = [
@@ -493,6 +532,62 @@ test("passes Server Action requests through without mutating the response", asyn
   expect(response.cookies.get(localeCookieName)).toBeUndefined();
 });
 
+describe("locale negotiation", () => {
+  const localeRedirect = async (url: string, headers: HeadersInit = {}) => {
+    const response = await proxy(new NextRequest(url, { headers }));
+    return {
+      status: response.status,
+      location: response.headers.get("location"),
+    };
+  };
+
+  test("opens Czech for a request that states no language", async () => {
+    for (const [path, localized] of [
+      ["/", "/cs-CZ"],
+      ["/faq?x=1", "/cs-CZ/faq?x=1"],
+    ]) {
+      expect(await localeRedirect(`https://workspace.example${path}`)).toEqual({
+        status: 307,
+        location: `https://workspace.example${localized}`,
+      });
+    }
+  });
+
+  test("opens Czech for Slovak readers and English for unserved languages", async () => {
+    expect(
+      await localeRedirect("https://workspace.example/faq", {
+        "accept-language": "sk-SK,sk;q=0.9",
+      })
+    ).toEqual({ status: 307, location: "https://workspace.example/cs-CZ/faq" });
+    expect(
+      await localeRedirect("https://workspace.example/faq", {
+        "accept-language": "de-DE,de;q=0.9",
+      })
+    ).toEqual({ status: 307, location: "https://workspace.example/en-US/faq" });
+  });
+
+  test("moves a loosely spelled locale prefix permanently to the exact locale", async () => {
+    for (const [path, exact] of [
+      ["/en-us/faq?x=1", "/en-US/faq?x=1"],
+      ["/EN-US", "/en-US"],
+      ["/cs-cz/pricing", "/cs-CZ/pricing"],
+      ["/en/faq", "/en-US/faq"],
+      ["/CS/faq", "/cs-CZ/faq"],
+      ["/sk/faq", "/cs-CZ/faq"],
+      ["/en/account", "/en-US/account"],
+      ["/cs/admin", "/cs-CZ/admin"],
+    ]) {
+      // The URL alone decides, whatever the visitor's language or cookie.
+      expect(
+        await localeRedirect(`https://workspace.example${path}`, {
+          "accept-language": "de",
+          cookie: `${localeCookieName}=en-US`,
+        })
+      ).toEqual({ status: 308, location: `https://workspace.example${exact}` });
+    }
+  });
+});
+
 test("continues to persist the locale for ordinary localized requests", async () => {
   const request = new NextRequest("https://workspace.example/cs-CZ");
 
@@ -742,7 +837,7 @@ test("does not treat a GET with a spoofed action header as a Server Action", asy
   const response = await proxy(request);
 
   expect(response.headers.get("location")).toBe(
-    "https://workspace.example/en-US"
+    "https://workspace.example/cs-CZ"
   );
 });
 
@@ -752,7 +847,7 @@ test("redirects session-cookie unprefixed administration URLs to the resolved lo
       url: "https://workspace.example/admin/cli/authenticate?code=SYNTHETIC-CODE",
       headers: {},
       location:
-        "https://workspace.example/en-US/admin/cli/authenticate?code=SYNTHETIC-CODE",
+        "https://workspace.example/cs-CZ/admin/cli/authenticate?code=SYNTHETIC-CODE",
     },
     {
       url: "https://workspace.example/admin",
@@ -886,6 +981,12 @@ describe("account render pathname hand-off", () => {
       "/_next/static/chunks/account.js",
       "/favicon.ico",
       "/workspace-location-map.jpeg",
+      // The footer's company extract and the utility files serve from the
+      // site root, without a locale prefix.
+      "/official-company-extract.pdf",
+      "/llms.txt",
+      "/.well-known/security.txt",
+      indexNowKeyPathname,
     ]) {
       expect(matchesProxy(pathname)).toBe(false);
     }

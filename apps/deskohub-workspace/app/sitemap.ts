@@ -3,6 +3,7 @@ import type { MetadataRoute } from "next";
 import { connection } from "next/server";
 import { env } from "@/env";
 import { getWorkspaceAlternates, locales } from "@/features/i18n";
+import { publicPageContentDates } from "@/features/public-pages";
 import { PublishedPublicPagesService } from "@/features/public-pages/backend";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 
@@ -21,7 +22,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   return pages.flatMap(({ pathname }) =>
     locales.map((locale) => {
       const { canonical, languages } = getWorkspaceAlternates(locale, pathname);
-      return { url: canonical, alternates: { languages } };
+      return {
+        url: canonical,
+        lastModified: publicPageContentDates[pathname],
+        alternates: { languages },
+      };
     })
   );
 }

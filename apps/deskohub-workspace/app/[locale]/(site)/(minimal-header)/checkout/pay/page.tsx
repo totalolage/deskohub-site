@@ -24,7 +24,7 @@ import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-pag
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page-skeleton";
 import { parseDiscountCodeRejection } from "@/features/checkout/discount-code-rejection";
 import { getDiscountCodeEntryEnabled } from "@/features/discounts/discount-code-entry.server";
-import { getWorkspaceAlternates, type Locale, m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import {
   getEarlyPerformanceRequestRequiredAt,
@@ -64,16 +64,13 @@ export async function generateMetadata(): Promise<Metadata> {
   return runWithRequestLocale((locale) => {
     const title = m.checkoutPayMetadataTitle({}, { locale });
     const description = m.checkoutPayMetadataDescription({}, { locale });
-    const alternates = getWorkspaceAlternates(locale, "/checkout/pay");
 
     return {
       title,
       description,
-      alternates,
       openGraph: {
         title,
         description,
-        url: alternates.canonical,
         siteName: workspaceSiteConstants.brand.name,
         locale,
         type: "website",

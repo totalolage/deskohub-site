@@ -78,4 +78,27 @@ describe("Workspace locale resolution", () => {
       )
     ).toBe("en-US");
   });
+
+  test("a request that states no language falls back to Czech", () => {
+    for (const acceptLanguage of [undefined, "", "*", "en;q=0"]) {
+      expect(
+        resolveWorkspaceLocale(
+          sources({ pathname: "/", acceptLanguage }),
+          undefined
+        )
+      ).toBe("cs-CZ");
+    }
+  });
+
+  test("Slovak readers get Czech", () => {
+    expect(
+      resolveWorkspaceLocale(
+        sources({
+          pathname: "/faq",
+          acceptLanguage: "sk-SK,sk;q=0.9,en;q=0.8",
+        }),
+        undefined
+      )
+    ).toBe("cs-CZ");
+  });
 });

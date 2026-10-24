@@ -157,7 +157,7 @@ describe.skipIf(!postgresDatabase)(
         revokeCliSession(toFormData({ sessionId: operatorSessionId }))
       );
       expect(foreignError.digest).toContain(
-        "/en-US/admin/cli/sessions?result=unchanged"
+        "/cs-CZ/admin/cli/sessions?result=unchanged"
       );
       expect((await loadSessionRow(operatorSessionId))?.revokedAt).toBeNull();
 
@@ -165,7 +165,7 @@ describe.skipIf(!postgresDatabase)(
         revokeCliSession(toFormData({ sessionId: adminSessionId }))
       );
       expect(ownError.digest).toContain(
-        "/en-US/admin/cli/sessions?result=revoked"
+        "/cs-CZ/admin/cli/sessions?result=revoked"
       );
       expect((await loadSessionRow(adminSessionId))?.revokedAt).not.toBeNull();
     });

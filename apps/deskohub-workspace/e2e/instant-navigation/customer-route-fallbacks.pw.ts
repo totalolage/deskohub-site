@@ -32,6 +32,9 @@ test("renders the not-found page for an unknown address inside the customer prov
       name: m.notFoundTitle({}, { locale }),
     })
   ).toBeVisible();
+  // Inside the locale layout, not Next's bare error document.
+  await expect(page.locator("html")).toHaveAttribute("lang", locale);
+  await expect(page).toHaveTitle(/\S/);
   await expectCookieConsentBanner(page);
 });
 

@@ -9,14 +9,13 @@ import {
 } from "@/features/accounting/backend/reservation-invoice.service";
 import { PostOrderInvoicePage } from "@/features/accounting/components/post-order-invoice-page";
 import { CheckoutFlowPageSkeleton } from "@/features/checkout/components/checkout-flow-page-skeleton";
-import { getWorkspaceAlternates, type Locale, m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
   reservationAccessTokenQueryParam,
   reservationAccessTokenSchema,
 } from "@/features/reservation/reservation-access-token";
-import { reservationInvoicePath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   getSearchParamsDecoder,
@@ -45,16 +44,10 @@ const decodeSearchParams = getSearchParamsDecoder(
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
-  const { orderId } = Option.getOrElse(decodeParams(await params), () =>
-    notFound()
-  );
+  if (Option.isNone(decodeParams(await params))) notFound();
   return runWithRequestLocale((locale) => ({
     title: m.postOrderInvoiceMetadataTitle({}, { locale }),
     description: m.postOrderInvoiceMetadataDescription({}, { locale }),
-    alternates: getWorkspaceAlternates(
-      locale,
-      `${reservationInvoicePath}/${orderId}`
-    ),
     robots: { index: false, follow: false },
     referrer: "no-referrer",
   }));

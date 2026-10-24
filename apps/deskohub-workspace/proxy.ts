@@ -3,6 +3,7 @@ import {
   getLocalizedRedirectPathname,
   setLocaleCookie,
 } from "@deskohub/i18n/next";
+import { findExactLocalePathname } from "@deskohub/i18n/pathname";
 import { getSessionCookie } from "better-auth/cookies";
 import { Result } from "effect";
 import {
@@ -19,6 +20,7 @@ import { administrationRequestPathHeader } from "@/features/administrators/admin
 import { resolveWorkspaceLocale } from "@/features/i18n/locale-resolution";
 import {
   getLocalizedPagePath,
+  localeConfig,
   localeCookieName,
   locales,
 } from "@/features/i18n/routing";
@@ -39,6 +41,7 @@ import { scheduleAgentPageRequest } from "./shared/backend/agent-traffic/agent-p
 import { resolveWorkspaceRuntimeCallbackOrigin } from "./shared/backend/config/workspace-url.config";
 import { withRequestPathname } from "./shared/backend/utils/request-pathname";
 import { markPrivateResponse } from "./shared/utils/private-response";
+import { workspaceSiteOrigin } from "./shared/utils/site-constants";
 
 const decodePathname = (pathname: string) => {
   try {
@@ -177,6 +180,22 @@ const pageLocalePreference = async (request: NextRequest) => {
   }
 };
 
+// A locale prefix in another letter case (`/en-us`) or a bare language
+// (`/en`, `/sk`) moves permanently to the exact locale, whoever asks, instead
+// of being prefixed a second time.
+const exactLocaleRedirect = (request: NextRequest) => {
+  const exactPathname = findExactLocalePathname(
+    request.nextUrl.pathname,
+    locales,
+    localeConfig.preferredLanguageToLocale
+  );
+  if (!exactPathname) return undefined;
+
+  const exactUrl = request.nextUrl.clone();
+  exactUrl.pathname = exactPathname;
+  return NextResponse.redirect(exactUrl, 308);
+};
+
 // Places a page request on the URL the Workspace locale chain resolves.
 // `forwardRequestHeaders` passes headers the proxy set on the request on to
 // the page.
@@ -184,6 +203,9 @@ async function localizedPageResponse(
   request: NextRequest,
   { forwardRequestHeaders = false } = {}
 ) {
+  const exactLocaleResponse = exactLocaleRedirect(request);
+  if (exactLocaleResponse) return exactLocaleResponse;
+
   const localeFromUrl = getLocaleFromRequestPathname(request, locales);
 
   // A reservation capability is bound to the locale it was issued in, so it is
@@ -395,7 +417,32 @@ const customerAgentSignInRedirect = (request: NextRequest) => {
   );
 };
 
+// Production also answers on its `*.vercel.app` aliases. Their page loads move
+// permanently to the canonical origin, so search engines index one host.
+// Preview deployments serve their own hosts.
+const canonicalHostRedirect = (request: NextRequest) => {
+  if (
+    env.VERCEL_ENV !== "production" ||
+    (request.method !== "GET" && request.method !== "HEAD")
+  ) {
+    return undefined;
+  }
+  const canonicalOrigin = new URL(workspaceSiteOrigin);
+  if (request.nextUrl.host === canonicalOrigin.host) return undefined;
+
+  return NextResponse.redirect(
+    new URL(
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+      canonicalOrigin
+    ),
+    308
+  );
+};
+
 export async function proxy(request: NextRequest) {
+  const canonicalHostResponse = canonicalHostRedirect(request);
+  if (canonicalHostResponse) return canonicalHostResponse;
+
   if (isAdministrationPath(request.nextUrl.pathname)) {
     return markAdministrationResponse(await administrationResponse(request));
   }

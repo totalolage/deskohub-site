@@ -1,10 +1,9 @@
 import { Option, Schema } from "effect";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getWorkspaceAlternates, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { reviewPaymentDisabledPath } from "@/features/review-accounts";
 import { ReviewPaymentDisabledPage } from "@/features/review-accounts/components/review-payment-disabled-page";
 import { workspaceSiteConstants } from "@/shared/utils";
 
@@ -27,7 +26,7 @@ const readOrderId = async (
 export async function generateMetadata({
   params,
 }: LocalizedReviewPaymentDisabledPageProps): Promise<Metadata> {
-  const orderId = await readOrderId(params);
+  await readOrderId(params);
 
   return runWithRequestLocale((locale) => {
     const title = m.reviewPaymentDisabledMetadataTitle({}, { locale });
@@ -35,19 +34,13 @@ export async function generateMetadata({
       {},
       { locale }
     );
-    const alternates = getWorkspaceAlternates(
-      locale,
-      `${reviewPaymentDisabledPath}/${orderId}`
-    );
 
     return {
       title,
       description,
-      alternates,
       openGraph: {
         title,
         description,
-        url: alternates.canonical,
         siteName: workspaceSiteConstants.brand.name,
         locale,
         type: "website",

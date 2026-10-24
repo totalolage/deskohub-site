@@ -88,6 +88,7 @@ describe("/llms.txt", () => {
     expect(response.headers.get("content-type")).toBe(
       "text/plain; charset=utf-8"
     );
+    expect(response.headers.get("x-robots-tag")).toBe("noindex");
     expect(body).toStartWith("# Deskohub Workspace\n");
     expect(markdownLinkUrls(body)).toContain(
       "https://workspace.deskohub.cz/reservation/office"
