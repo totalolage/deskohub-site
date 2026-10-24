@@ -21,18 +21,32 @@ export type GhFixtures = Readonly<Record<string, Schema.Json>>;
 
 // Stands in for the GitHub CLI: each API path answers from a fixture file and
 // any other call fails, so a test also proves which requests the step makes.
-// Every call is logged for assertions on what the step published.
+// A fixture keyed by a request field, such as `deployments@sha=<sha>`, wins
+// over the path's own. Every call is logged for assertions on what the step
+// published.
 const fakeGh = `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\\n' "$*" >> "$GH_FIXTURES/calls.log"
 path=""
+previous=""
+fields=()
 for arg in "$@"; do
   case "$arg" in
     repos/*) path="\${arg#repos/*/*/}" ;;
   esac
+  if [[ "$previous" == "-f" || "$previous" == "-F" ]]; then
+    fields+=("$arg")
+  fi
+  previous="$arg"
 done
 path="\${path%%\\?*}"
 file="$GH_FIXTURES/\${path//\\//_}.json"
+for field in "\${fields[@]}"; do
+  keyed="$GH_FIXTURES/\${path//\\//_}@\${field//\\//_}.json"
+  if [[ -f "$keyed" ]]; then
+    file="$keyed"
+  fi
+done
 if [[ ! -f "$file" ]]; then
   echo "unexpected gh call: $*" >&2
   exit 1

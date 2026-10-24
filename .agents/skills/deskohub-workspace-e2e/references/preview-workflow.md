@@ -3,6 +3,7 @@
 ## Contents
 
 - [How a run reaches a preview](#how-a-run-reaches-a-preview)
+- [Nightly run](#nightly-run)
 - [Run E2E](#run-e2e)
 - [Environment contracts](#environment-contracts)
 - [Preview database](#preview-database)
@@ -37,6 +38,20 @@ Only `test-e2e` has a concurrency group, keyed by PR and SHA with `cancel-in-pro
 Never add a workflow-level group: it would cancel at scheduling time, before eligibility is known. Never infer a skip from changed paths or reuse an older preview.
 
 The target is always the immutable `.vercel.app` deployment origin for the exact SHA, taken from the dispatch payload. Never scrape the Vercel PR comment or use a branch alias or custom domain.
+
+## Nightly run
+
+Nightly cases are too slow for the per-PR gate. They are listed in `workspaceE2ENightlyCaseIds` (`e2e/playwright-checkout/case-catalog.ts`) and run only when `WORKSPACE_E2E_NIGHTLY_CASES=true`; any other run reports them as skipped. The only nightly case is the automation journey, which waits up to one 15-minute engine tick. Don't add a path-based PR gate for it (D38).
+
+Main deploys only to production, and E2E never runs there. So `.github/workflows/workspace-e2e-nightly.yml` runs at 02:30 UTC (or on manual dispatch):
+
+1. It points the `e2e/nightly` branch at main's head. Only this workflow moves that branch.
+2. It waits up to 40 minutes for Vercel's Git preview of that exact SHA. The Neon integration backs it with the persistent `preview/e2e/nightly` branch, which the E2E run migrates. When the head hasn't moved, it reuses that SHA's existing preview without a build.
+3. It dispatches `workspace-e2e.yml` with `ref=e2e/nightly` and `include_nightly_cases=true`.
+
+A skipped or failed preview fails the nightly workflow; it never tests another commit's preview. In nightly mode, `resolve-target` accepts no PR. It requires a `workflow_dispatch` whose SHA is both the `e2e/nightly` head and a commit of main. Vercel's own events for the branch stay ineligible. Nightly runs publish no commit status, skip the PR-head checks, and don't run `cancel-superseded-run`. A nightly failure is the failed `Workspace E2E` run in Actions, plus the failed nightly workflow when the preview never came up; the repository has no other alerting.
+
+To run the nightly cases on a PR head, dispatch `workspace-e2e.yml` with `include_nightly_cases=true`. It needs the PR to be ready for review, like every run. Dispatch it from a ref whose workflow has the input.
 
 ## Run E2E
 
@@ -91,6 +106,7 @@ Never put production Nexi, Dotypos, or database credentials in Preview. Never ad
 - `NEXI_API_ORIGIN`: the sandbox origin, supplied explicitly.
 - `WORKSPACE_E2E_ALLOCATION_SHARD`, `WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED`, `WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL`: see [suite orchestration](suite-orchestration.md).
 - `WORKSPACE_E2E_EXECUTION_CONTEXT`: `manual` or `ci`. Locally it defaults to `manual`; the workflow sets `manual` for `workflow_dispatch` and `ci` for the repository dispatch. A rerun keeps its trigger's value.
+- `WORKSPACE_E2E_NIGHTLY_CASES=true`: also run the nightly cases (see [nightly run](#nightly-run)). The workflow sets it only for a dispatch with `include_nightly_cases`.
 - `WORKSPACE_E2E_REVIEW_SCREENSHOTS=true`: opt-in PR review screenshots (see [browser driving](browser-driving.md#review-screenshots)). The workflow doesn't set it.
 
 ## Preview database

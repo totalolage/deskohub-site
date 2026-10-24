@@ -1,7 +1,10 @@
 import { Effect } from "effect";
 import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
 import { WorkspaceE2ECaseService } from "../services/cases";
-import { isWorkspaceE2EOfficeCaseId } from "./case-catalog";
+import {
+  isWorkspaceE2ENightlyCaseId,
+  isWorkspaceE2EOfficeCaseId,
+} from "./case-catalog";
 import { readWorkspaceE2ERunPlan } from "./run-plan";
 import { runtimeTest } from "./runtime-fixtures";
 
@@ -53,6 +56,12 @@ export const registerWorkspaceE2ECases = (
     test(
       caseId,
       async ({ browser, browserRunner, environment, runEffect, runPlan }) => {
+        const { nightlyCasesEnabled } = await import("../e2e-env");
+        test.skip(
+          isWorkspaceE2ENightlyCaseId(caseId) &&
+            !nightlyCasesEnabled(environment),
+          "Runs only in the nightly Workspace E2E"
+        );
         const { getConfig, getDatasourceConfig } = await import("../config");
         const { writeWorkspaceE2EFailureAnnotation } = await import(
           "../github-actions"

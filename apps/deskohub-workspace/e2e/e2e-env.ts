@@ -46,7 +46,7 @@ const optionalDirectPostgresUrl = toEnvironmentSchema(
 const nonEmptyString = toEnvironmentSchema(Schema.NonEmptyString);
 const optionalUrl = toEnvironmentSchema(Schema.optional(urlStringSchema));
 const url = toEnvironmentSchema(urlStringSchema);
-const optionalReviewScreenshotOptIn = toEnvironmentSchema(
+const optionalOptIn = toEnvironmentSchema(
   Schema.optional(Schema.Literals(["true"]))
 );
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
@@ -97,8 +97,9 @@ const e2eEnvironmentSchema = Schema.Struct({
   WORKSPACE_E2E_DATABASE_URL_UNPOOLED: nonEmptyString,
   WORKSPACE_E2E_POSTHOG_HOST: optionalUrl,
   WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: optionalNonEmptyString,
+  WORKSPACE_E2E_NIGHTLY_CASES: optionalOptIn,
   WORKSPACE_E2E_PR_NUMBER: optionalPositiveInteger,
-  WORKSPACE_E2E_REVIEW_SCREENSHOTS: optionalReviewScreenshotOptIn,
+  WORKSPACE_E2E_REVIEW_SCREENSHOTS: optionalOptIn,
   WORKSPACE_E2E_RUN_CONTEXT: optionalNonEmptyString,
   WORKSPACE_E2E_TRACE_PARENT: optionalNonEmptyString,
 });
@@ -158,6 +159,8 @@ export const makeE2EEnvironment = (
       WORKSPACE_E2E_POSTHOG_HOST: runtimeEnvironment.WORKSPACE_E2E_POSTHOG_HOST,
       WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN:
         runtimeEnvironment.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN,
+      WORKSPACE_E2E_NIGHTLY_CASES:
+        runtimeEnvironment.WORKSPACE_E2E_NIGHTLY_CASES,
       WORKSPACE_E2E_PR_NUMBER: runtimeEnvironment.WORKSPACE_E2E_PR_NUMBER,
       WORKSPACE_E2E_REVIEW_SCREENSHOTS:
         runtimeEnvironment.WORKSPACE_E2E_REVIEW_SCREENSHOTS,
@@ -212,7 +215,7 @@ export const makeReviewScreenshotEnvironment = (
       WORKSPACE_E2E_REVIEW_SCREENSHOTS:
         runtimeEnvironment.WORKSPACE_E2E_REVIEW_SCREENSHOTS,
     },
-    server: { WORKSPACE_E2E_REVIEW_SCREENSHOTS: optionalReviewScreenshotOptIn },
+    server: { WORKSPACE_E2E_REVIEW_SCREENSHOTS: optionalOptIn },
   });
 
 /**
@@ -222,6 +225,14 @@ export const makeReviewScreenshotEnvironment = (
 export const reviewScreenshotsEnabled = (
   environment: Pick<E2EEnvironment, "WORKSPACE_E2E_REVIEW_SCREENSHOTS">
 ): boolean => environment.WORKSPACE_E2E_REVIEW_SCREENSHOTS === "true";
+
+/**
+ * Nightly cases are too slow for the per-PR gate, so a run includes them
+ * only when it sets WORKSPACE_E2E_NIGHTLY_CASES=true.
+ */
+export const nightlyCasesEnabled = (
+  environment: Pick<E2EEnvironment, "WORKSPACE_E2E_NIGHTLY_CASES">
+): boolean => environment.WORKSPACE_E2E_NIGHTLY_CASES === "true";
 
 /**
  * Agent evals run on the devbox only. Their harness list is local wiring

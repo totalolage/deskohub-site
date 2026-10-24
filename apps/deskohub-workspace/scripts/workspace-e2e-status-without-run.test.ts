@@ -283,6 +283,7 @@ const resolveTarget = (
       [`commits/${targetSha}/pulls`]: pulls,
     },
     {
+      EVENT_NAME: "repository_dispatch",
       TARGET_DEPLOYMENT: deployment,
       TARGET_REF: "feature/x",
       TARGET_SHA: targetSha,
@@ -373,6 +374,109 @@ describe("Workspace E2E target resolution", () => {
     expect(outputs.eligible).toBe("true");
     expect(outputs.resolution_error).toContain("More than one open PR");
     expect(outputs.pr_number).toBeUndefined();
+  });
+});
+
+const nightlyBranch = String(targetStep?.env?.NIGHTLY_BRANCH);
+
+const resolveNightlyTarget = ({
+  eventName = "workflow_dispatch",
+  mainRelation = "ahead",
+  nightlyHead = targetSha,
+}: {
+  readonly eventName?: string;
+  readonly mainRelation?: string;
+  readonly nightlyHead?: string;
+} = {}) =>
+  runStep(
+    targetStep,
+    {
+      [`commits/${targetSha}/pulls`]: [],
+      [`compare/${targetSha}...main`]: { status: mainRelation },
+      deployments: [{ creator: { login: "vercel[bot]" }, id: 11 }],
+      "deployments/11/statuses": [
+        { ...deploymentSucceeded, environment_url: `${previewUrl}/` },
+      ],
+      [`git/ref/heads/${nightlyBranch}`]: { object: { sha: nightlyHead } },
+    },
+    {
+      EVENT_NAME: eventName,
+      TARGET_DEPLOYMENT: "success",
+      TARGET_REF: nightlyBranch,
+      TARGET_SHA: targetSha,
+      TARGET_URL: previewUrl,
+    }
+  );
+
+describe("Workspace E2E nightly target resolution", () => {
+  test("accepts the nightly branch head on main without a PR", async () => {
+    const { outputs, result } = await resolveNightlyTarget();
+    expect(result.exitCode).toBe(0);
+    expect(outputs).toEqual({
+      deployment: "success",
+      eligible: "true",
+      head_ref: nightlyBranch,
+      nightly: "true",
+      sha: targetSha,
+      url: previewUrl,
+    });
+  });
+
+  test("accepts main's own head", async () => {
+    const { result } = await resolveNightlyTarget({
+      mainRelation: "identical",
+    });
+    expect(result.exitCode).toBe(0);
+  });
+
+  test("refuses a SHA the nightly branch no longer points at", async () => {
+    const { outputs, result } = await resolveNightlyTarget({
+      nightlyHead: sha("f"),
+    });
+    expect(result.exitCode).not.toBe(0);
+    expect(outputs.nightly).toBe("true");
+    expect(outputs.url).toBeUndefined();
+  });
+
+  test("refuses a nightly branch head outside main", async () => {
+    const { outputs, result } = await resolveNightlyTarget({
+      mainRelation: "diverged",
+    });
+    expect(result.exitCode).not.toBe(0);
+    expect(outputs.url).toBeUndefined();
+  });
+
+  test("leaves Vercel's own nightly branch events ineligible", async () => {
+    // Only the nightly workflow's dispatch tests the branch, after it has
+    // waited for the preview.
+    const { outputs, result } = await resolveNightlyTarget({
+      eventName: "repository_dispatch",
+    });
+    expect(result.exitCode).toBe(0);
+    expect(outputs).toEqual({ eligible: "false" });
+  });
+
+  test("publishes no PR status for a nightly target", () => {
+    const nightlyOff = "needs.resolve-target.outputs.nightly != 'true'";
+    expect(statusStep?.if).toContain("steps.target.outputs.nightly != 'true'");
+    for (const job of [
+      "cancel-superseded-run",
+      "publish-final-status",
+      "publish-status-without-run",
+    ]) {
+      expect(workflow.jobs[job]?.if).toContain(nightlyOff);
+    }
+    for (const name of [
+      "Stop unless this SHA is still the PR head",
+      "Release the lease unless this SHA is still the PR head",
+      "Publish allocation status",
+      "Publish pending commit status",
+    ]) {
+      expect(findStepByName(workflow, name)?.if).toBe(nightlyOff);
+    }
+    expect(workflow.jobs["resolve-target"]?.outputs?.nightly).toContain(
+      "steps.target.outputs.nightly"
+    );
   });
 });
 

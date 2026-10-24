@@ -10,6 +10,11 @@ on:
         required: false
         default: false
         type: boolean
+      include_nightly_cases:
+        description: Also run the nightly-only cases, such as the automation journey
+        required: false
+        default: false
+        type: boolean
       sha:
         description: Exact commit SHA to test
         required: true
@@ -17,7 +22,7 @@ on:
         description: Immutable Vercel preview URL
         required: true
       ref:
-        description: Internal PR branch name
+        description: Internal PR branch name, or e2e/nightly for a nightly target
         required: true
 
 permissions:
@@ -38,6 +43,7 @@ jobs:
       deployment: ${{ steps.target.outputs.deployment }}
       eligible: ${{ steps.target.outputs.eligible }}
       head_ref: ${{ steps.target.outputs.head_ref }}
+      nightly: ${{ steps.target.outputs.nightly }}
       pr_number: ${{ steps.target.outputs.pr_number }}
       sha: ${{ steps.target.outputs.sha }}
       status_description: ${{ steps.status-without-run.outputs.description }}
@@ -47,7 +53,11 @@ jobs:
       - name: Resolve eligible PR and immutable preview
         id: target
         env:
+          EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
+          # Only workspace-e2e-nightly.yml moves this branch, to a commit of
+          # main whose Workspace preview it waits for.
+          NIGHTLY_BRANCH: e2e/nightly
           TARGET_DEPLOYMENT: ${{ github.event_name == 'workflow_dispatch' && 'success' || github.event.client_payload.state.type }}
           TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}
           TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha || github.event.client_payload.git.sha }}
@@ -88,36 +98,64 @@ jobs:
               (.head.ref | startswith("dependabot/") | not)
             )]' <<<"$pulls")"
           eligible_count="$(jq 'length' <<<"$eligible_pulls")"
-
-          if [[ "$eligible_count" == "0" ]]; then
-            echo "No eligible open internal PR matches the exact deployment SHA"
-            echo "eligible=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # The target is now the head of an eligible PR. A failure below
-          # must leave its required status failed with a way to recover, so
-          # it records a status description before the step fails.
-          {
-            echo "deployment=$TARGET_DEPLOYMENT"
-            echo "eligible=true"
-            echo "sha=$TARGET_SHA"
-          } >> "$GITHUB_OUTPUT"
           fail() {
             echo "$1" >&2
             echo "resolution_error=$2" >> "$GITHUB_OUTPUT"
             exit 1
           }
 
-          if [[ "$eligible_count" != "1" ]]; then
-            fail 'More than one eligible PR matches the exact deployment SHA' \
-              'More than one open PR has this head; E2E needs exactly one'
+          # A nightly target is a commit of main on the nightly branch. It
+          # has no PR and no required status, so only a dispatch tests it.
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$TARGET_REF" == "$NIGHTLY_BRANCH" ]]; then
+            {
+              echo "deployment=$TARGET_DEPLOYMENT"
+              echo "eligible=true"
+              echo "nightly=true"
+              echo "sha=$TARGET_SHA"
+            } >> "$GITHUB_OUTPUT"
+            nightly_sha="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/git/ref/heads/$NIGHTLY_BRANCH" | \
+              jq -r '.object.sha')" || nightly_sha=""
+            if [[ "$nightly_sha" != "$TARGET_SHA" ]]; then
+              fail 'Target SHA is not the head of the nightly branch' \
+                'The nightly branch moved; start workspace-e2e-nightly.yml again'
+            fi
+            main_relation="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/compare/$TARGET_SHA...main" | \
+              jq -r '.status')" || main_relation=""
+            if [[ "$main_relation" != "identical" && "$main_relation" != "ahead" ]]; then
+              fail 'Nightly target SHA is not a commit of main' \
+                'The nightly branch points outside main; start workspace-e2e-nightly.yml again'
+            fi
+            echo "head_ref=$TARGET_REF" >> "$GITHUB_OUTPUT"
+          else
+            if [[ "$eligible_count" == "0" ]]; then
+              echo "No eligible open internal PR matches the exact deployment SHA"
+              echo "eligible=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            # The target is now the head of an eligible PR. A failure below
+            # must leave its required status failed with a way to recover, so
+            # it records a status description before the step fails.
+            {
+              echo "deployment=$TARGET_DEPLOYMENT"
+              echo "eligible=true"
+              echo "sha=$TARGET_SHA"
+            } >> "$GITHUB_OUTPUT"
+
+            if [[ "$eligible_count" != "1" ]]; then
+              fail 'More than one eligible PR matches the exact deployment SHA' \
+                'More than one open PR has this head; E2E needs exactly one'
+            fi
+            pr_number="$(jq -r '.[0].number' <<<"$eligible_pulls")"
+            {
+              echo "head_ref=$TARGET_REF"
+              echo "pr_number=$pr_number"
+            } >> "$GITHUB_OUTPUT"
           fi
-          pr_number="$(jq -r '.[0].number' <<<"$eligible_pulls")"
-          {
-            echo "head_ref=$TARGET_REF"
-            echo "pr_number=$pr_number"
-          } >> "$GITHUB_OUTPUT"
 
           normalized_url="$({ TARGET_URL="$TARGET_URL" node <<'NODE'
           const url = new URL(process.env.TARGET_URL);
@@ -186,6 +224,7 @@ jobs:
         id: status-without-run
         if: >-
           !cancelled() && steps.target.outputs.eligible == 'true' &&
+          steps.target.outputs.nightly != 'true' &&
           (steps.target.outcome != 'success' || steps.target.outputs.deployment != 'success')
         env:
           DEPLOYMENT: ${{ steps.target.outputs.deployment }}
@@ -319,8 +358,9 @@ jobs:
       # Runs for every SHA of a PR share its Neon preview branch, so a run
       # whose head was superseded before this job started must not lease a
       # shard or migrate. cancel-superseded-run cancels it; this step holds
-      # the job until then.
+      # the job until then. A nightly target has no PR.
       - name: Stop unless this SHA is still the PR head
+        if: needs.resolve-target.outputs.nightly != 'true'
         env:
           CANCEL_WAIT_SECONDS: 300
           GH_TOKEN: ${{ github.token }}
@@ -367,7 +407,7 @@ jobs:
         id: preferred-shard
         env:
           PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
-        run: echo "shard=$((PR_NUMBER % 3 + 1))" >> "$GITHUB_OUTPUT"
+        run: echo "shard=$((${PR_NUMBER:-0} % 3 + 1))" >> "$GITHUB_OUTPUT"
 
       # Waits while another run of this branch holds its preview database,
       # including a superseded run whose cancellation is still pending.
@@ -385,6 +425,7 @@ jobs:
       # run fails here instead of waiting to be cancelled, so the release
       # step frees the preview database for the newer head's run at once.
       - name: Release the lease unless this SHA is still the PR head
+        if: needs.resolve-target.outputs.nightly != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -401,6 +442,7 @@ jobs:
           exit 1
 
       - name: Publish allocation status
+        if: needs.resolve-target.outputs.nightly != 'true'
         env:
           ALLOCATION_SHARD: ${{ steps.lease.outputs.shard }}
           GH_TOKEN: ${{ github.token }}
@@ -418,6 +460,7 @@ jobs:
             >/dev/null
 
       - name: Publish pending commit status
+        if: needs.resolve-target.outputs.nightly != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -611,6 +654,7 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           WORKSPACE_E2E_BETTER_AUTH_SECRETS: ${{ secrets.WORKSPACE_E2E_BETTER_AUTH_SECRETS }}
           WORKSPACE_E2E_CRON_SECRET: ${{ secrets.WORKSPACE_E2E_CRON_SECRET }}
+          WORKSPACE_E2E_NIGHTLY_CASES: ${{ github.event_name == 'workflow_dispatch' && inputs.include_nightly_cases && 'true' || '' }}
           DATABASE_URL: ${{ steps.preview-database.outputs.pooled_url }}
           WORKSPACE_E2E_DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
           WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ steps.preview-database.outputs.direct_url }}
@@ -699,7 +743,10 @@ jobs:
   # code, so that job never holds actions: write.
   cancel-superseded-run:
     needs: resolve-target
-    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
+    if: >-
+      needs.resolve-target.outputs.eligible == 'true' &&
+      needs.resolve-target.outputs.deployment == 'success' &&
+      needs.resolve-target.outputs.nightly != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     permissions:
@@ -743,7 +790,7 @@ jobs:
 
   publish-final-status:
     needs: [resolve-target, test-e2e]
-    if: always() && needs.resolve-target.result == 'success' && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
+    if: always() && needs.resolve-target.result == 'success' && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success' && needs.resolve-target.outputs.nightly != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -804,6 +851,7 @@ jobs:
     needs: resolve-target
     if: >-
       !cancelled() && needs.resolve-target.outputs.eligible == 'true' &&
+      needs.resolve-target.outputs.nightly != 'true' &&
       (needs.resolve-target.result != 'success' || needs.resolve-target.outputs.deployment != 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 5
