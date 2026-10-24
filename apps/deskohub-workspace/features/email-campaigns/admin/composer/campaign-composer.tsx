@@ -223,61 +223,6 @@ export function CampaignComposer({
   return (
     <Form {...form}>
       <AdministrationPageHeader
-        actions={
-          <div className="flex flex-wrap items-center gap-3">
-            <span
-              className="inline-flex items-center gap-1.5 text-navy-blue/60 text-sm"
-              role="status"
-            >
-              {unsavedChanges ? (
-                <>
-                  <span
-                    aria-hidden
-                    className="size-2 rounded-full bg-burned-orange"
-                  />
-                  {m.emailCampaignsComposerUnsavedChanges(
-                    {},
-                    { locale: routeLocale }
-                  )}
-                </>
-              ) : (
-                draft &&
-                m.emailCampaignsComposerAllChangesSaved(
-                  {},
-                  { locale: routeLocale }
-                )
-              )}
-            </span>
-            {draft && (
-              <CampaignSendControls
-                adminInbox={adminInbox}
-                campaignId={draft.id}
-                contentLocales={draft.contentLocales}
-                unsavedChanges={unsavedChanges}
-              />
-            )}
-            <Button
-              disabled={saving || (draft !== undefined && !unsavedChanges)}
-              form="campaign-composer"
-              size="sm"
-              type="submit"
-            >
-              {saving &&
-                m.emailCampaignsComposerSaving({}, { locale: routeLocale })}
-              {!saving &&
-                (draft
-                  ? m.emailCampaignsComposerSaveDraft(
-                      {},
-                      { locale: routeLocale }
-                    )
-                  : m.emailCampaignsComposerCreateDraft(
-                      {},
-                      { locale: routeLocale }
-                    ))}
-            </Button>
-            {draft && <DeleteCampaignDraftControl campaignId={draft.id} />}
-          </div>
-        }
         description={
           draft
             ? m.emailCampaignsComposerDraftDescription(
@@ -297,6 +242,58 @@ export function CampaignComposer({
             : m.emailCampaignsComposerNewTitle({}, { locale: routeLocale }))
         }
       />
+      <div className="sticky top-16 z-30 -mx-4 mb-7 border-y border-navy-blue/10 bg-[#f6f6f3] px-4 py-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <span
+            className="inline-flex items-center gap-1.5 text-navy-blue/60 text-sm"
+            role="status"
+          >
+            {unsavedChanges ? (
+              <>
+                <span
+                  aria-hidden
+                  className="size-2 rounded-full bg-burned-orange"
+                />
+                {m.emailCampaignsComposerUnsavedChanges(
+                  {},
+                  { locale: routeLocale }
+                )}
+              </>
+            ) : (
+              draft &&
+              m.emailCampaignsComposerAllChangesSaved(
+                {},
+                { locale: routeLocale }
+              )
+            )}
+          </span>
+          {draft && (
+            <CampaignSendControls
+              adminInbox={adminInbox}
+              campaignId={draft.id}
+              contentLocales={draft.contentLocales}
+              unsavedChanges={unsavedChanges}
+            />
+          )}
+          <Button
+            disabled={saving || (draft !== undefined && !unsavedChanges)}
+            form="campaign-composer"
+            size="sm"
+            type="submit"
+          >
+            {saving &&
+              m.emailCampaignsComposerSaving({}, { locale: routeLocale })}
+            {!saving &&
+              (draft
+                ? m.emailCampaignsComposerSaveDraft({}, { locale: routeLocale })
+                : m.emailCampaignsComposerCreateDraft(
+                    {},
+                    { locale: routeLocale }
+                  ))}
+          </Button>
+          {draft && <DeleteCampaignDraftControl campaignId={draft.id} />}
+        </div>
+      </div>
       <p
         className="mb-5 rounded-lg border border-burned-orange/25 bg-burned-orange/5 px-4 py-3 text-burned-orange-ink text-sm empty:hidden"
         role="alert"
