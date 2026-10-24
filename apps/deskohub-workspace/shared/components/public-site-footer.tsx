@@ -11,7 +11,7 @@ export async function PublicSiteFooter() {
   const copyrightYear = await getCopyrightYear(locale);
   const localePath = `/${locale}`;
   const reservationPath = getCoworkReservationPath(locale);
-  const companyExtractPath = "/official-company-extract";
+  const companyExtractPath = "/official-company-extract.pdf";
   const companyAddress = `${workspaceSiteConstants.location.address.street}, ${workspaceSiteConstants.location.address.postalCode} ${workspaceSiteConstants.location.address.city} - ${workspaceSiteConstants.location.address.cityDistrict}`;
 
   return (

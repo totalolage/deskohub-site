@@ -24,7 +24,11 @@ mock.module(
   })
 );
 
-type PageModule = { readonly generateMetadata: () => Promise<Metadata> };
+type PageModule = {
+  readonly generateMetadata: (props: {
+    readonly params: Promise<Readonly<Record<string, string>>>;
+  }) => Promise<Metadata>;
+};
 
 // Route groups don't appear in URLs, so find each page file by its pathname.
 const pageFileByPathname = new Map(
@@ -48,7 +52,9 @@ describe("public page metadata", () => {
         expect(pageFile).toBeDefined();
         requestLocale = locale;
         const page: PageModule = await import(`${import.meta.dir}/${pageFile}`);
-        const metadata = await page.generateMetadata();
+        const metadata = await page.generateMetadata({
+          params: Promise.resolve({ locale }),
+        });
 
         expect(metadata.robots).toBeUndefined();
         expect(metadata.alternates).toEqual({
@@ -73,4 +79,30 @@ test("keeps the cookie settings redirect out of search results", async () => {
   const { metadata } = await import("./(minimal-header)/cookie-settings/page");
 
   expect(metadata.robots).toEqual({ index: false, follow: false });
+});
+
+// A page kept out of search results names no canonical or alternate URLs.
+describe("noindexed transactional page metadata", () => {
+  for (const pageFile of [
+    "(minimal-header)/checkout/pay/page.tsx",
+    "(minimal-header)/reservation/status/[orderId]/page.tsx",
+    "(minimal-header)/reservation/access/[orderId]/page.tsx",
+    "(minimal-header)/reservation/payment-disabled/[orderId]/page.tsx",
+    "(minimal-header)/reservation/invoice/[orderId]/page.tsx",
+  ]) {
+    test(`${pageFile} is noindexed without alternates`, async () => {
+      requestLocale = "cs-CZ";
+      const page: PageModule = await import(`${import.meta.dir}/${pageFile}`);
+      const metadata = await page.generateMetadata({
+        params: Promise.resolve({
+          locale: "cs-CZ",
+          orderId: "synthetic-order",
+        }),
+      });
+
+      expect(metadata.robots).toEqual({ index: false, follow: false });
+      expect(metadata.alternates).toBeUndefined();
+      expect(metadata.openGraph?.url).toBeUndefined();
+    });
+  }
 });

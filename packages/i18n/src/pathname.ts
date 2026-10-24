@@ -19,6 +19,29 @@ export function getLocaleFromPathname<Locale extends string>(
   );
 }
 
+/**
+ * The pathname with its locale prefix spelled exactly, for a path whose first
+ * segment loosely names a supported locale: the locale in another letter case
+ * (`/en-us/faq`) or a bare language subtag that `languageToLocale` maps
+ * (`/en/faq`). Undefined when the prefix is already exact or names no locale.
+ */
+export function findExactLocalePathname<Locale extends string>(
+  pathname: string,
+  locales: LocaleList<Locale>,
+  languageToLocale: Partial<Record<string, Locale>> = {}
+): string | undefined {
+  const [, prefix = "", ...rest] = ensureLeadingSlash(pathname).split("/");
+  if (locales.some((locale) => locale === prefix)) return undefined;
+
+  const loosePrefix = prefix.toLowerCase();
+  const locale =
+    locales.find((candidate) => candidate.toLowerCase() === loosePrefix) ??
+    (Object.hasOwn(languageToLocale, loosePrefix)
+      ? languageToLocale[loosePrefix]
+      : undefined);
+  return locale && [`/${locale}`, ...rest].join("/");
+}
+
 export function parseLocalizedPathname<Locale extends string>(
   pathname: string,
   locales: LocaleList<Locale>
