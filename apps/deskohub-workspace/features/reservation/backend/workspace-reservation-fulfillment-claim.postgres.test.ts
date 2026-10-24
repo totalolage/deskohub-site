@@ -1,20 +1,12 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import {
-  DotyposCustomerIdSchema,
-  DotyposReservationIdSchema,
-} from "@deskohub/dotypos";
 import { type EmailDeliveryId, EmailDeliveryIdSchema } from "@deskohub/email";
 import { inArray } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import { type FulfillmentState, workspaceReservations } from "@/db/schema";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
-import {
-  type WorkspaceReservationId,
-  workspaceReservationIdSchema,
-} from "@/features/reservation/persistence-contracts";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
@@ -39,46 +31,34 @@ describe.skipIf(!postgresDatabase)(
     let reservations: IWorkspaceReservationRepository;
     const fixtureReservationIds: WorkspaceReservationId[] = [];
 
-    const insertPaidReservationFixture = (input: {
+    const insertPaidReservationFixture = ({
+      fulfillmentState,
+      ...overrides
+    }: {
       readonly fulfillmentState: FulfillmentState;
       readonly activeCustomerEmailDeliveryId?: EmailDeliveryId;
     }) =>
-      Effect.gen(function* () {
-        const id = workspaceReservationIdSchema.make(
-          `reservation-${crypto.randomUUID()}`
-        );
-        fixtureReservationIds.push(id);
-        yield* postgres.db.insert(workspaceReservations).values({
-          authorAccountId: fixtureReservationAuthorId,
-          id,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(
-            `attempt-${crypto.randomUUID()}`
-          ),
-          dotyposCustomerId: DotyposCustomerIdSchema.make(
-            `customer-${crypto.randomUUID()}`
-          ),
-          dotyposReservationId: DotyposReservationIdSchema.make(
-            `dotypos-reservation-${crypto.randomUUID()}`
-          ),
-          reservationState: "confirmed",
-          paymentState: "paid",
-          paidAt,
-          reservationConfirmedAt: paidAt,
-          fulfillmentState: input.fulfillmentState,
-          ...(input.fulfillmentState === "failed" && {
-            fulfillmentFailedAt: paidAt,
-            fulfillmentFailureCode: fulfillmentEmailFailureCode,
-          }),
-          activeCustomerEmailDeliveryId: input.activeCustomerEmailDeliveryId,
-          reservationDetails: {
-            kind: "cowork",
-            entryTier: "basic",
-            coffee: false,
+      workspaceFixtures(postgres.db)
+        .reservation({
+          stage: {
+            reservation: "confirmed",
+            payment: "paid",
+            fulfillment: fulfillmentState,
           },
-          locale: "en-US",
-        });
-        return id;
-      });
+          at: paidAt,
+          overrides: {
+            ...(fulfillmentState === "failed" && {
+              fulfillmentFailureCode: fulfillmentEmailFailureCode,
+            }),
+            ...overrides,
+          },
+        })
+        .pipe(
+          Effect.map(({ id }) => {
+            fixtureReservationIds.push(id);
+            return id;
+          })
+        );
 
     beforeAll(async () => {
       reservations = await Effect.runPromise(

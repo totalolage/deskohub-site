@@ -109,13 +109,18 @@ describe.skipIf(!testDatabase)("workspace fixtures", () => {
     const customer = DotyposCustomerIdSchema.make(
       `fixture-account-${crypto.randomUUID()}`
     );
+    const createdAt = Temporal.Instant.from("2026-02-03T04:05:06Z");
+    const loginCreatedAt = Temporal.Instant.from("2026-01-02T03:04:05Z");
     const account = await Effect.runPromise(
       fixtures().account("fixture-administrator", {
         verified: false,
         deletionRequested: true,
+        legacy: true,
         linkedCustomer: customer,
         roles: ["administrator"],
         locale: "cs-CZ",
+        createdAt,
+        loginCreatedAt,
       })
     );
 
@@ -126,7 +131,10 @@ describe.skipIf(!testDatabase)("workspace fixtures", () => {
           emailVerified: authUser.emailVerified,
           deletionRequestedAt: authUser.deletionRequestedAt,
           locale: authUser.locale,
+          loginCreatedAt: authUser.createdAt,
           dotyposCustomerId: customerAccounts.dotyposCustomerId,
+          legacy: customerAccounts.legacy,
+          createdAt: customerAccounts.createdAt,
         })
         .from(authUser)
         .innerJoin(customerAccounts, eq(customerAccounts.id, authUser.id))
@@ -137,8 +145,13 @@ describe.skipIf(!testDatabase)("workspace fixtures", () => {
       emailVerified: false,
       locale: "cs-CZ",
       dotyposCustomerId: customer,
+      legacy: true,
     });
     expect(stored?.deletionRequestedAt).toBeInstanceOf(Date);
+    expect(stored?.createdAt.equals(createdAt)).toBe(true);
+    expect(stored?.loginCreatedAt.getTime()).toBe(
+      loginCreatedAt.epochMilliseconds
+    );
     const grants = await Effect.runPromise(
       database()
         .select({ role: accountRoleGrants.role })
@@ -225,5 +238,32 @@ describe.skipIf(!testDatabase)("workspace fixtures", () => {
       database().select().from(authUser).where(eq(authUser.id, accountId))
     );
     expect(logins).toEqual([]);
+  });
+  test("a role granted later records its grantor", async () => {
+    const grantor = await Effect.runPromise(
+      fixtures().account("fixture-grantor", { roles: ["administrator"] })
+    );
+    const grantee = await Effect.runPromise(
+      fixtures().account("fixture-grantee")
+    );
+
+    await Effect.runPromise(
+      fixtures().grantRole(grantee.accountId, "administrator", {
+        grantedBy: grantor.accountId,
+      })
+    );
+
+    const grants = await Effect.runPromise(
+      database()
+        .select({
+          role: accountRoleGrants.role,
+          grantedBy: accountRoleGrants.grantedByAccountId,
+        })
+        .from(accountRoleGrants)
+        .where(eq(accountRoleGrants.accountId, grantee.accountId))
+    );
+    expect(grants).toEqual([
+      { role: "administrator", grantedBy: grantor.accountId },
+    ]);
   });
 });
