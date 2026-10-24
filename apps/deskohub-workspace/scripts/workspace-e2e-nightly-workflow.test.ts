@@ -36,6 +36,7 @@ const nightlyBranch = String(targetStep?.env?.NIGHTLY_BRANCH);
 
 const sha = (digit: string) => digit.repeat(40);
 const mainSha = sha("a");
+const mainParentSha = sha("d");
 const olderMainSha = sha("b");
 const previewUrl = "https://deskohub-workspace-site-abc123-team.vercel.app";
 
@@ -59,7 +60,7 @@ const prepareTarget = (
   runStep(
     targetStep,
     {
-      "commits/main": { sha: mainSha },
+      "commits/main": { parents: [{ sha: mainParentSha }], sha: mainSha },
       "git/refs": {},
       [`git/refs/heads/${nightlyBranch}`]: {},
       ...fixtures,
@@ -108,16 +109,38 @@ describe("Workspace E2E nightly target", () => {
     expect(move).toContain(`sha=${mainSha}`);
   });
 
-  test("creates the nightly branch on the first run", async () => {
+  // Vercel built nothing for the branch created at main's head, so the
+  // first run creates it at main's parent and then moves it.
+  test("creates the nightly branch behind main's head, then moves it there", async () => {
     const { calls, result } = await prepareTarget(
       deploymentOf(mainSha, 1, succeeded)
     );
     expect(result.exitCode).toBe(0);
-    const [create, ...rest] = branchMoves(calls);
+    const [create, move, ...rest] = branchMoves(calls);
     expect(rest).toEqual([]);
     expect(create).toContain("--method POST");
     expect(create).toContain(`ref=refs/heads/${nightlyBranch}`);
-    expect(create).toContain(`sha=${mainSha}`);
+    expect(create).toContain(`sha=${mainParentSha}`);
+    expect(move).toContain("--method PATCH");
+    expect(move).toContain(`git/refs/heads/${nightlyBranch}`);
+    expect(move).toContain(`sha=${mainSha}`);
+  });
+
+  test("stops before moving the nightly branch when creating it fails", async () => {
+    // No `git/refs` fixture, so the fake gh fails the creation.
+    const { calls, outputs, result } = await runStep(
+      targetStep,
+      {
+        "commits/main": { parents: [{ sha: mainParentSha }], sha: mainSha },
+        [`git/refs/heads/${nightlyBranch}`]: {},
+      },
+      { DEPLOYMENT_WAIT_SECONDS: "0", POLL_SECONDS: "0" }
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(outputs).toEqual({});
+    const [create, ...rest] = branchMoves(calls);
+    expect(create).toContain("--method POST");
+    expect(rest).toEqual([]);
   });
 
   test("fails when Vercel skipped main's head instead of testing another commit", async () => {
@@ -139,14 +162,21 @@ describe("Workspace E2E nightly target", () => {
     expect(outputs).toEqual({});
   });
 
-  test("fails when Vercel builds no preview in time", async () => {
-    const { outputs, result } = await prepareTarget(
-      { ...nightlyHead(mainSha), [`deployments@sha=${mainSha}`]: [] },
-      { DEPLOYMENT_WAIT_SECONDS: "0" }
-    );
-    expect(result.exitCode).not.toBe(0);
-    expect(outputs).toEqual({});
-  });
+  test.each([
+    ["after moving the nightly branch", olderMainSha, 1],
+    ["for the nightly branch already at main's head", mainSha, 0],
+  ])(
+    "fails when Vercel builds no preview in time %s",
+    async (_label, head, moves) => {
+      const { calls, outputs, result } = await prepareTarget(
+        { ...nightlyHead(head), [`deployments@sha=${mainSha}`]: [] },
+        { DEPLOYMENT_WAIT_SECONDS: "0" }
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(outputs).toEqual({});
+      expect(branchMoves(calls)).toHaveLength(moves);
+    }
+  );
 
   test("dispatches Workspace E2E for the target with the nightly cases", async () => {
     const { calls, result } = await runStep(
