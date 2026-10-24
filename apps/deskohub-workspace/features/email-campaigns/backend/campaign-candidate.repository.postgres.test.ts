@@ -9,10 +9,8 @@ import {
   type AudienceCountCondition,
   audienceAttributeCatalogue,
 } from "@deskohub/workspace-admin-api";
-import { eq, inArray } from "drizzle-orm";
 import { Effect, Option } from "effect";
-import { customerAccounts, customerMarketingConsents } from "@/db/schema";
-import { authUser } from "@/db/schema/auth";
+import { customerMarketingConsents } from "@/db/schema";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
@@ -116,15 +114,10 @@ describe.skipIf(!testDatabase)(
             verified,
             locale: "en-US",
             createdAt: accountCreatedAt,
+            loginCreatedAt,
           })
         );
       }
-      await Effect.runPromise(
-        db
-          .update(authUser)
-          .set({ createdAt: new Date(loginCreatedAt.epochMilliseconds) })
-          .where(inArray(authUser.id, [accountId, unverifiedAccountId]))
-      );
       const booked = {
         reservation: "confirmed",
         payment: "paid",
@@ -631,6 +624,7 @@ describe.skipIf(!testDatabase)(
           fixtures.account("campaign-legacy", {
             id: legacyAccountId,
             linkedCustomer: legacy,
+            legacy: true,
             locale: "en-US",
             createdAt: backfilledAt,
           })
@@ -643,19 +637,8 @@ describe.skipIf(!testDatabase)(
             linkedCustomer: signup,
             locale: "en-US",
             createdAt: verifiedAt,
+            loginCreatedAt: backfilledAt,
           })
-        );
-        await Effect.runPromise(
-          db
-            .update(customerAccounts)
-            .set({ legacy: true })
-            .where(eq(customerAccounts.id, legacyAccountId))
-        );
-        await Effect.runPromise(
-          db
-            .update(authUser)
-            .set({ createdAt: new Date(backfilledAt.epochMilliseconds) })
-            .where(eq(authUser.id, signupAccountId))
         );
         const facts = (created: DatePeriodBounds, at = asOf) =>
           repository((candidates) =>

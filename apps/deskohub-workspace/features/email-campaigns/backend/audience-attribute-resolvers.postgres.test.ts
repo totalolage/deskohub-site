@@ -16,9 +16,7 @@ import type {
   CampaignEmailSourceType,
   ReservationProductFilterType,
 } from "@deskohub/workspace-admin-api";
-import { eq } from "drizzle-orm";
 import { Effect, Layer, Option } from "effect";
-import { authUser } from "@/db/schema/auth";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import type { ReservationStatusRead } from "@/features/administration/reservation-status-condition";
 import {
@@ -491,18 +489,9 @@ describe.skipIf(!testDatabase)(
           linkedCustomer: accountHolder,
           locale: "cs-CZ",
           createdAt: accountCreatedAt,
+          // An earlier login doesn't count; the resolver reads the account's date.
+          loginCreatedAt: accountCreatedAt.subtract({ hours: 30 * 24 }),
         })
-      );
-      // An earlier login doesn't count; the resolver reads the account's date.
-      await Effect.runPromise(
-        db
-          .update(authUser)
-          .set({
-            createdAt: new Date(
-              accountCreatedAt.subtract({ hours: 30 * 24 }).epochMilliseconds
-            ),
-          })
-          .where(eq(authUser.id, accountId))
       );
       const filter = JSON.stringify(group("and", []));
       await testDatabase.pool.query(

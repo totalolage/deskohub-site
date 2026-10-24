@@ -5,11 +5,7 @@ import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { eq } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
-import {
-  customerAccounts,
-  customerEvents,
-  workspaceReservations,
-} from "@/db/schema";
+import { customerEvents, workspaceReservations } from "@/db/schema";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
@@ -253,6 +249,7 @@ describe.skipIf(!testDatabase)(
         const { accountId } = await Effect.runPromise(
           workspaceFixtures(testDatabase.db).account("reconcile", {
             verified,
+            legacy,
             createdAt,
             linkedCustomer: linkedCustomer
               ? DotyposCustomerIdSchema.make(linkedCustomer)
@@ -260,14 +257,6 @@ describe.skipIf(!testDatabase)(
           })
         );
         accountIds.push(accountId);
-        if (legacy) {
-          await Effect.runPromise(
-            testDatabase.db
-              .update(customerAccounts)
-              .set({ legacy })
-              .where(eq(customerAccounts.id, accountId))
-          );
-        }
         return accountId;
       };
       const linkedCustomer = crypto.randomUUID();
