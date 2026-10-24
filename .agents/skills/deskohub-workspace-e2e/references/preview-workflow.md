@@ -90,7 +90,8 @@ Never put production Nexi, Dotypos, or database credentials in Preview. Never ad
 - `NEXI_API_ORIGIN`: the sandbox origin, supplied explicitly.
 - `WORKSPACE_E2E_ALLOCATION_SHARD`, `WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED`, `WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL`: see [suite orchestration](suite-orchestration.md).
 - `WORKSPACE_E2E_EXECUTION_CONTEXT`: `manual` or `ci`. Locally it defaults to `manual`; the workflow sets `manual` for `workflow_dispatch` and `ci` for the repository dispatch. A rerun keeps its trigger's value.
-- `WORKSPACE_E2E_REVIEW_SCREENSHOTS=true`: opt-in PR review screenshots (see [browser driving](browser-driving.md#review-screenshots)). The workflow doesn't set it.
+- `WORKSPACE_E2E_REVIEW_SCREENSHOTS=true`: opt-in general account PR review screenshots (see [browser driving](browser-driving.md#review-screenshots)). The workflow doesn't set it.
+- `WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS=true`: opt-in campaign-composer screenshots only. A manual workflow dispatch enables this with `campaign_screenshots=true`; it does not enable general account captures.
 
 ## Preview database
 

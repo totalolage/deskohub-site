@@ -34,7 +34,6 @@ import {
   type WorkspaceE2EAdministrationIdentities,
 } from "../administrators/identities";
 import { type DatasourceConfig, getDatasourceConfig } from "../config";
-import { reviewScreenshotsEnabled } from "../e2e-env";
 import {
   toWorkspaceE2EError,
   type WorkspaceE2EError,
@@ -99,7 +98,8 @@ test("previews the tagged synthetic customer as a draft marketing campaign recip
         origin,
         page,
         plan,
-        reviewScreenshots: reviewScreenshotsEnabled(environment),
+        reviewScreenshots:
+          environment.WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS === "true",
         reportFailure:
           runContext.githubRunId === undefined
             ? undefined
