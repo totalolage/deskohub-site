@@ -20,6 +20,7 @@ import { canonicalPromotionCodeSchema } from "@/features/discounts/persistence-c
 import { ReferralService } from "@/features/referrals";
 import { parseReferralCode } from "@/features/referrals/client";
 import { ReferralFeatureFlagServiceMock } from "@/features/referrals/referral-feature-flag.service.mock";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type CustomerAccountId,
@@ -43,16 +44,18 @@ const uniqueDotyposId = () =>
 const uniqueCode = () =>
   `RFL${uniqueId().replaceAll("-", "").slice(0, 10).toUpperCase()}`;
 
-const insertAuthUser = async (accountId: CustomerAccountId) => {
-  await testDatabase!.pool.query(
-    "insert into customer_accounts (id) values ($1) on conflict do nothing",
-    [accountId]
+const insertAuthUser = (
+  accountId: CustomerAccountId,
+  linkedCustomer?: DotyposCustomerId
+) =>
+  Effect.runPromise(
+    workspaceFixtures(testDatabase!.db).account("auto-linked-referral", {
+      id: accountId,
+      email: testEmailAddress(accountId),
+      verified: false,
+      linkedCustomer,
+    })
   );
-  await testDatabase!.pool.query(
-    `insert into auth."user" (id, name, email) values ($1, '', $2)`,
-    [accountId, testEmailAddress(accountId)]
-  );
-};
 
 const insertLink = async (
   accountId: CustomerAccountId,
@@ -91,8 +94,7 @@ const insertReferralCode = async (
 const insertReferrer = async () => {
   const accountId = customerAccountIdSchema.make(uniqueId());
   const customerId = uniqueDotyposId();
-  await insertAuthUser(accountId);
-  await insertLink(accountId, customerId);
+  await insertAuthUser(accountId, customerId);
   const { code, promotionCodeId } = await insertReferralCode(customerId);
   return { accountId, customerId, code, promotionCodeId };
 };

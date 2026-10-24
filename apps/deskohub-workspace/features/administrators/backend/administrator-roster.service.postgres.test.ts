@@ -3,7 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
-import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AdministratorAccountActor } from "../account-role";
 import { AccountRoleGrants } from "./account-role-grants.service";
@@ -30,7 +30,7 @@ const runRosterFailure = <A, E>(
   operation: (roster: AdministratorRoster["Service"]) => Effect.Effect<A, E>
 ) => runRoster((roster) => Effect.flip(operation(roster)));
 
-const insertAccount = async ({
+const insertAccount = ({
   emailVerified = true,
   deletionRequested = false,
   review = false,
@@ -38,21 +38,14 @@ const insertAccount = async ({
   readonly emailVerified?: boolean;
   readonly deletionRequested?: boolean;
   readonly review?: boolean;
-} = {}) => {
-  const accountId = customerAccountIdSchema.make(crypto.randomUUID());
-  const email = testEmailAddress(`roster-${accountId}`);
-  await testDatabase!.pool.query(
-    `insert into customer_accounts (id, review) values ($1, $2) on conflict do nothing`,
-    [accountId, review]
+} = {}): Promise<AdministratorAccountActor> =>
+  Effect.runPromise(
+    workspaceFixtures(testDatabase!.db).account("roster", {
+      verified: emailVerified,
+      deletionRequested,
+      review,
+    })
   );
-  await testDatabase!.pool.query(
-    `insert into auth."user" (id, name, email, email_verified, deletion_requested_at)
-     values ($1, '', $2, $3, case when $4 then now() end)`,
-    [accountId, email, emailVerified, deletionRequested]
-  );
-  const actor: AdministratorAccountActor = { accountId, email };
-  return actor;
-};
 
 const grantAdministrator = (accountId: string, grantedBy: string | null) =>
   testDatabase!.pool.query(

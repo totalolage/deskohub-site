@@ -1,9 +1,8 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
-import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { AccountRoleGrants } from "./account-role-grants.service";
 
@@ -21,18 +20,13 @@ const runGrants = <A, E>(
     )
   );
 
-const insertAccount = async ({ review = false } = {}) => {
-  const accountId = customerAccountIdSchema.make(crypto.randomUUID());
-  await testDatabase!.pool.query(
-    `insert into customer_accounts (id, review) values ($1, $2) on conflict do nothing`,
-    [accountId, review]
-  );
-  await testDatabase!.pool.query(
-    `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, true)`,
-    [accountId, testEmailAddress(`role-grant-${accountId}`)]
-  );
-  return accountId;
-};
+const insertAccount = ({ review = false } = {}) =>
+  workspaceFixtures(testDatabase!.db)
+    .account("role-grant", { review })
+    .pipe(
+      Effect.map(({ accountId }) => accountId),
+      Effect.runPromise
+    );
 
 const deleteAccount = async (accountId: string) => {
   await testDatabase!.pool.query(`delete from auth."user" where id = $1`, [
