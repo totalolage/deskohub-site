@@ -9,15 +9,15 @@ import {
   withWorkspaceE2ELocalReservationFixture,
 } from "./local-reservation-fixture";
 
-type ReservationRow = Parameters<
+type Reservation = Parameters<
   WorkspaceE2ELocalReservationTransaction["insertReservation"]
 >[0];
 
 const makeFakeDatabase = (
   options: { readonly failVerificationRead?: boolean } = {}
 ) => {
-  const reservations = new Map<string, ReservationRow>();
-  const rollback = (snapshot: Map<string, ReservationRow>) => {
+  const reservations = new Map<string, Reservation>();
+  const rollback = (snapshot: Map<string, Reservation>) => {
     reservations.clear();
     for (const [id, row] of snapshot) reservations.set(id, row);
   };
@@ -35,10 +35,11 @@ const makeFakeDatabase = (
           options.failVerificationRead
             ? Effect.fail(new Error("verification read failed"))
             : Effect.sync(() => (reservations.has(id) ? [{ id }] : [])),
-        insertReservation: (row: ReservationRow) =>
+        insertReservation: (reservation: Reservation) =>
           Effect.sync(() => {
-            if (!row.id) throw new Error("local reservation id missing");
-            reservations.set(row.id, row);
+            const id = reservation.overrides?.id;
+            if (!id) throw new Error("local reservation id missing");
+            reservations.set(id, reservation);
           }),
       };
       return use(transaction).pipe(
@@ -76,15 +77,23 @@ test("seeds one terminal local row and removes exactly that row in the finalizer
         (value) =>
           Effect.gen(function* () {
             fixture = value;
-            const row = fake.reservations.get(value.reservationId);
-            expect(row).toBeDefined();
-            if (!row) return yield* Effect.fail(new Error("row missing"));
+            const reservation = fake.reservations.get(value.reservationId);
+            expect(reservation).toBeDefined();
+            if (!reservation) {
+              return yield* Effect.fail(new Error("reservation missing"));
+            }
 
-            expect(row.checkoutAttemptKey).toBe(value.checkoutAttemptKey);
-            expect(row.checkoutSessionKey).toBe(value.checkoutSessionKey);
-            expect(row.dotyposCustomerId).toBe(value.customerId);
-            expect(row.activePaymentAttemptId).toBeNull();
-            expect(row.reservationState).toBe("hold_expired");
+            expect(reservation.overrides?.checkoutAttemptKey).toBe(
+              value.checkoutAttemptKey
+            );
+            expect(reservation.overrides?.checkoutSessionKey).toBe(
+              value.checkoutSessionKey
+            );
+            expect(reservation.customer).toBe(value.customerId);
+            expect(reservation.stage).toEqual({
+              reservation: "hold_expired",
+              payment: "expired",
+            });
             return yield* Effect.fail(new Error("exercise finalizer"));
           }),
         { database: fake.database }
