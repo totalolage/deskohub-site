@@ -15,7 +15,9 @@ interface IPublishedPublicPagesService {
    * page while its release gate is on. A gate that can't be evaluated fails
    * closed.
    */
-  readonly isPublished: (pathname: PublicPagePathname) => Effect.Effect<boolean>;
+  readonly isPublished: (
+    pathname: PublicPagePathname
+  ) => Effect.Effect<boolean>;
   /** The public pages production serves now, in registry order. */
   readonly list: Effect.Effect<ReadonlyArray<PublicPage>>;
 }

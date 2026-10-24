@@ -19,18 +19,19 @@ import { PublishedPublicPagesService } from "./published-public-pages.service";
 
 // Each release gate evaluates once per render, shared with the page's other
 // readers of that gate such as the header and the advertised prices.
-const PublishedPublicPagesRenderLayer = PublishedPublicPagesService.Default.pipe(
-  Layer.provide(
-    Layer.mergeAll(
-      Layer.succeed(MeetingRoomPageFeatureFlagService, {
-        isEnabled: Effect.promise(() => isMeetingRoomPageEnabled()),
-      }),
-      Layer.succeed(OfficeReservationFeatureFlagService, {
-        isEnabled: Effect.promise(() => isOfficePageEnabled()),
-      })
+const PublishedPublicPagesRenderLayer =
+  PublishedPublicPagesService.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.succeed(MeetingRoomPageFeatureFlagService, {
+          isEnabled: Effect.promise(() => isMeetingRoomPageEnabled()),
+        }),
+        Layer.succeed(OfficeReservationFeatureFlagService, {
+          isEnabled: Effect.promise(() => isOfficePageEnabled()),
+        })
+      )
     )
-  )
-);
+  );
 
 /**
  * Renders the not-found page while production doesn't serve the public

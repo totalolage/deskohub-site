@@ -33,7 +33,9 @@ describe("privateOrderPage", () => {
       expect(metadata.referrer).toBe("no-referrer");
       expect(metadata.alternates?.canonical).toBe(canonical);
       expect(metadata.openGraph).toMatchObject({ url: canonical });
-      expect(metadata.title).toBe(m.checkoutStatusMetadataTitle({}, { locale }));
+      expect(metadata.title).toBe(
+        m.checkoutStatusMetadataTitle({}, { locale })
+      );
     });
   }
 

@@ -136,10 +136,7 @@ export function createReservationPage<
       <ReservationPage
         fallback={definition.fallback(locale)}
         locale={locale}
-        title={publicPageDefinitions[definition.pathname].title(
-          {},
-          { locale }
-        )}
+        title={publicPageDefinitions[definition.pathname].title({}, { locale })}
       >
         <ReservationPageContent
           definition={definition}

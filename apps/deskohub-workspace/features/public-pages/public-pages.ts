@@ -36,9 +36,7 @@ export const publicPagePathnames = [
 
 export type PublicPagePathname = (typeof publicPagePathnames)[number];
 
-const publicPagePathnameSet: ReadonlySet<string> = new Set(
-  publicPagePathnames
-);
+const publicPagePathnameSet: ReadonlySet<string> = new Set(publicPagePathnames);
 
 export const isPublicPagePathname = (
   pathname: string
