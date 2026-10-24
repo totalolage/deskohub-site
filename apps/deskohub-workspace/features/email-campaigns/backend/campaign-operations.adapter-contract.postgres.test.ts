@@ -905,20 +905,21 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
     revoke: boolean,
     run: () => Promise<A>
   ): Promise<A> =>
-    (revoke
-      ? pool.query("delete from account_role_grants where account_id = $1", [
-          administrator.accountId,
-        ])
-      : Promise.resolve()
-    )
-      .then(run)
-      .finally(() =>
-        pool.query(
-          `insert into account_role_grants (account_id, role)
-           values ($1, 'administrator') on conflict do nothing`,
-          [administrator.accountId]
-        )
-      );
+    revoke
+      ? pool
+          .query("delete from account_role_grants where account_id = $1", [
+            administrator.accountId,
+          ])
+          .then(run)
+          .finally(() =>
+            Effect.runPromise(
+              workspaceFixtures(testDatabase.db).grantRole(
+                administrator.accountId,
+                "administrator"
+              )
+            )
+          )
+      : run();
 
   const outcomeOf = (
     result: Effect.Effect<unknown, CampaignOperationError>
