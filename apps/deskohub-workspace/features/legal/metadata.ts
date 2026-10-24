@@ -1,29 +1,22 @@
 import type { Metadata } from "next";
-import { getWorkspaceAlternates, type Locale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import {
   getLegalDocument,
   type LegalDocumentKey,
 } from "@/features/legal/content";
-import { workspaceSiteConstants } from "@/shared/utils";
+import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
 
 export function createLegalMetadata(
   locale: Locale,
   documentKey: LegalDocumentKey
 ): Metadata {
   const document = getLegalDocument(locale, documentKey);
-  const alternates = getWorkspaceAlternates(locale, documentKey);
 
-  return {
-    title: `${document.title} | ${workspaceSiteConstants.brand.name}`,
+  return createPublicPageMetadata({
+    locale,
+    pathname: documentKey,
+    title: { page: document.title },
     description: document.lead,
-    alternates,
-    openGraph: {
-      title: document.title,
-      description: document.lead,
-      url: alternates.canonical,
-      siteName: workspaceSiteConstants.brand.name,
-      locale,
-      type: "article",
-    },
-  } satisfies Metadata;
+    type: "article",
+  });
 }
