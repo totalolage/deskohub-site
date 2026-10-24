@@ -6,7 +6,7 @@ import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
-import { NexiCorrelationIdSchema, NexiOrderIdSchema } from "@deskohub/nexi";
+import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { testEmailAddress } from "@deskohub/test-email";
 import { asc, eq, inArray, like, sql } from "drizzle-orm";
 import { Effect, Layer, Schema } from "effect";
@@ -17,7 +17,6 @@ import {
   invoices,
   manualInvoiceActors,
   paymentAttempts,
-  workspaceReservations,
 } from "@/db/schema";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
@@ -34,8 +33,6 @@ import {
 import { manualInvoiceInputSchema } from "@/features/accounting/manual-invoice";
 import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import {
-  checkoutAttemptKeySchema,
-  checkoutSessionKeySchema,
   type PaymentAttemptId,
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
@@ -43,11 +40,7 @@ import {
   buildCoworkReservationQuote,
   type CoworkReservationQuoteOrder,
 } from "@/features/checkout/checkout-quote.test-utils";
-import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import {
-  fixtureReservationAuthorId,
-  workspaceFixtures,
-} from "@/shared/testing/workspace-fixtures.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
@@ -178,7 +171,6 @@ const createPaidFixture = async (
 ) => {
   const paid = options.paid ?? true;
   const fulfilled = options.fulfilled ?? paid;
-  const reservationId = workspaceReservationIdSchema.make(randomUUID());
   const paymentAttemptId = paymentAttemptIdSchema.make(randomUUID());
   const dotyposCustomerId = DotyposCustomerIdSchema.make(
     `${fixtureCustomerPrefix}${randomUUID()}`
@@ -189,43 +181,33 @@ const createPaidFixture = async (
   const now = Temporal.Instant.from(
     temporalInstantToIsoString(Temporal.Now.instant())
   );
-  const source = makeAccountingDocumentSnapshot({
-    workspaceReservationId: reservationId,
-    dotyposReservationId,
-    dotyposCustomerId,
-    locale: "en-US",
-    prepared,
-  });
 
-  await Effect.runPromise(
+  const reservationId = await Effect.runPromise(
     testDatabase!.db.transaction((tx) =>
       Effect.gen(function* () {
-        yield* tx.insert(workspaceReservations).values({
-          authorAccountId: fixtureReservationAuthorId,
-          id: reservationId,
-          checkoutSessionKey: checkoutSessionKeySchema.make(randomUUID()),
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(randomUUID()),
-          correlationId: NexiCorrelationIdSchema.make(randomUUID()),
-          dotyposCustomerId,
-          dotyposReservationId,
-          reservationState: paid ? "confirmed" : "held",
-          paymentState: paid ? "paid" : "pending",
-          fulfillmentState: getFixtureFulfillmentState({ fulfilled, paid }),
-          activePaymentAttemptId: paymentAttemptId,
-          reservationDetails: {
-            kind: "cowork",
-            entryTier: "basic",
-            coffee: true,
+        const reservation = yield* workspaceFixtures(tx).reservation({
+          stage: {
+            reservation: paid ? "confirmed" : "held",
+            payment: paid ? "paid" : "pending",
+            fulfillment: getFixtureFulfillmentState({ fulfilled, paid }),
           },
+          customer: dotyposCustomerId,
+          at: now,
+          overrides: {
+            dotyposReservationId,
+            activePaymentAttemptId: paymentAttemptId,
+          },
+        });
+        const source = makeAccountingDocumentSnapshot({
+          workspaceReservationId: reservation.id,
+          dotyposReservationId,
+          dotyposCustomerId,
           locale: "en-US",
-          reservationCreatedAt: now,
-          reservationConfirmedAt: paid ? now : null,
-          paidAt: paid ? now : null,
-          fulfilledAt: fulfilled ? now : null,
+          prepared,
         });
         yield* tx.insert(paymentAttempts).values({
           id: paymentAttemptId,
-          workspaceReservationId: reservationId,
+          workspaceReservationId: reservation.id,
           provider: "nexi",
           providerOrderId: NexiOrderIdSchema.make(
             `synthetic-order-${randomUUID()}`
@@ -237,13 +219,14 @@ const createPaidFixture = async (
         });
         yield* tx.insert(accountingDocumentSnapshots).values({
           paymentAttemptId,
-          workspaceReservationId: reservationId,
+          workspaceReservationId: reservation.id,
           keyId: testKey.id,
           encryptedSnapshot: encryptAccountingSnapshot(
             JSON.stringify(source),
             testKey.secret
           ),
         });
+        return reservation.id;
       })
     )
   );

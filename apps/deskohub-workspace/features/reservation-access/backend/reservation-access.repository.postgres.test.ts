@@ -2,23 +2,15 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
 import {
-  DotyposCustomerIdSchema,
-  DotyposReservationIdSchema,
-} from "@deskohub/dotypos";
-import {
   AlgoPinSchema,
   IgloohomeDeviceIdSchema,
   IgloohomePinIdSchema,
 } from "@deskohub/igloohome";
 import { NodeCrypto } from "@effect/platform-node";
 import { Effect } from "effect";
-import { reservationAccessGrants, workspaceReservations } from "@/db/schema";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
-import {
-  type WorkspaceReservationId,
-  workspaceReservationIdSchema,
-} from "@/features/reservation/persistence-contracts";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { reservationAccessGrants } from "@/db/schema";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { ReservationAccessRepository } from "./reservation-access.repository";
 
@@ -50,32 +42,13 @@ describe.skipIf(!testDatabase)(
     });
 
     const insertReservation = async () => {
-      const id = crypto.randomUUID();
-      const reservationId = workspaceReservationIdSchema.make(
-        `reservation-${id}`
-      );
-      reservationIds.push(reservationId);
-      await Effect.runPromise(
-        testDatabase.db.insert(workspaceReservations).values({
-          authorAccountId: fixtureReservationAuthorId,
-          id: reservationId,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${id}`),
-          dotyposCustomerId: DotyposCustomerIdSchema.make(`customer-${id}`),
-          dotyposReservationId: DotyposReservationIdSchema.make(
-            `dotypos-reservation-${id}`
-          ),
-          reservationState: "confirmed",
-          paymentState: "not_started",
-          fulfillmentState: "not_started",
-          reservationDetails: {
-            kind: "cowork",
-            entryTier: "basic",
-            coffee: false,
-          },
-          locale: "en-US",
+      const { id } = await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).reservation({
+          stage: { reservation: "confirmed" },
         })
       );
-      return reservationId;
+      reservationIds.push(id);
+      return id;
     };
 
     const run = <A, E>(

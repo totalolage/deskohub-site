@@ -1,21 +1,36 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
+import { Effect } from "effect";
 import type { PoolClient } from "pg";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import {
+  connectionDatabaseClient,
+  connectWorkspacePostgresTestDatabase,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 const postgresDatabase = await connectWorkspacePostgresTestDatabase();
 
-const customerId = "synthetic-claim-customer";
+const customerId = DotyposCustomerIdSchema.make("synthetic-claim-customer");
 
 /** Seeds three synthetic checkouts, one discount code and one voucher. */
 const seedClaimTargets = async (client: PoolClient) => {
-  await client.query(
-    `insert into workspace_reservations (id, checkout_attempt_key, dotypos_customer_id, dotypos_reservation_id, reservation_state, payment_state, fulfillment_state, reservation_details, locale, author_account_id)
-     select 'claim-reservation-' || n, 'claim-attempt-key-' || n, $1, 'claim-booking-' || n, 'cancelled', 'expired', 'not_started', '{"kind":"cowork","entryTier":"open-space","coffee":false}', 'en-US', $2
-       from generate_series(1, 3) n`,
-    [customerId, fixtureReservationAuthorId]
+  await Effect.runPromise(
+    connectionDatabaseClient(client).pipe(
+      Effect.flatMap((db) =>
+        workspaceFixtures(db).reservations(
+          [1, 2, 3].map((n) => ({
+            stage: { reservation: "cancelled", payment: "expired" },
+            customer: customerId,
+            overrides: {
+              id: workspaceReservationIdSchema.make(`claim-reservation-${n}`),
+            },
+          }))
+        )
+      )
+    )
   );
   await client.query(
     `insert into payment_attempts (id, workspace_reservation_id, provider, provider_order_id, state, failure_code, refund_state, amount_value, amount_exponent, currency)

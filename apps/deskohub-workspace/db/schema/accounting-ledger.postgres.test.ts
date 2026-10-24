@@ -1,9 +1,13 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { Effect } from "effect";
 import type { PoolClient } from "pg";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import {
+  connectionDatabaseClient,
+  connectWorkspacePostgresTestDatabase,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -56,26 +60,18 @@ describe.skipIf(!testDatabase)(
       client: PoolClient,
       input: { readonly attemptState?: "paid" | "failed" } = {}
     ) => {
-      const reservationId = nextId("synthetic-reservation");
       const attemptId = nextId("synthetic-attempt");
-      const customerId = nextId("synthetic-customer");
       const attemptState = input.attemptState ?? "paid";
-      await client.query(
-        `insert into workspace_reservations (
-          id, checkout_attempt_key, dotypos_customer_id, reservation_state,
-          payment_state, fulfillment_state, locale, reservation_details, paid_at,
-          author_account_id
-        ) values ($1, $2, $3, 'draft', $4, 'not_started', 'en-US',
-          '{"kind":"meeting-room"}'::jsonb, $5, $6)`,
-        [
-          reservationId,
-          nextId("synthetic-checkout"),
-          customerId,
-          attemptState === "paid" ? "paid" : "failed",
-          attemptState === "paid" ? new Date() : null,
-          fixtureReservationAuthorId,
-        ]
-      );
+      const { id: reservationId, dotyposCustomerId: customerId } =
+        await Effect.runPromise(
+          connectionDatabaseClient(client).pipe(
+            Effect.flatMap((db) =>
+              workspaceFixtures(db).reservation({
+                stage: { reservation: "draft", payment: attemptState },
+              })
+            )
+          )
+        );
       await client.query(
         `insert into payment_attempts (
           id, workspace_reservation_id, provider, state, amount_value,

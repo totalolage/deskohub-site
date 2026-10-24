@@ -1,14 +1,19 @@
 import { fileURLToPath } from "node:url";
+import * as PgClient from "@effect/sql-pg/PgClient";
+import { EffectCache } from "drizzle-orm/cache/core/cache-effect";
+import { make } from "drizzle-orm/effect-postgres";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Effect, Layer } from "effect";
-import type { Pool } from "pg";
+import { Client, type Pool, type PoolClient } from "pg";
 import {
   WorkspaceDatabase,
   type WorkspaceDatabaseClient,
 } from "@/db/database.service";
 import { makeDatabaseClient, makeDatabasePool } from "@/db/database-client";
 import { databasePoolTimeouts } from "@/db/database-pool-timeouts";
+import { relations } from "@/db/relations";
+import { DatabaseQueryLoggerLive } from "@/shared/backend/logging/database-query-logger";
 import { createScratchPostgresDatabase } from "./postgres-scratch-database.test-utils";
 import { fixtureReservationAuthorId } from "./workspace-fixtures.test-utils";
 
@@ -120,3 +125,28 @@ export const createWorkspacePostgresSuiteDatabase = async (
     throw cause;
   }
 };
+
+/**
+ * A database client on a connection the test already checked out, such as one
+ * holding an open transaction, so fixtures write inside it. The test keeps
+ * owning the connection and releases it.
+ */
+export const connectionDatabaseClient = (connection: PoolClient) =>
+  make({ relations }).pipe(
+    Effect.provide(
+      Layer.merge(
+        PgClient.layerFrom(
+          PgClient.fromClient({
+            // A pool's connections are `pg` Clients; `PoolClient` only hides
+            // the connection settings PgClient reads.
+            acquire:
+              connection instanceof Client
+                ? Effect.succeed(connection)
+                : Effect.die(new TypeError("Expected a pg Client connection")),
+            acquireForStream: false,
+          })
+        ).pipe(Layer.orDie),
+        Layer.merge(EffectCache.Default, DatabaseQueryLoggerLive)
+      )
+    )
+  );
