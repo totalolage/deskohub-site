@@ -24,6 +24,10 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import {
+  captureAnalyticsEvent,
+  discardAnalyticsEvents,
+} from "../analytics-events";
+import {
   CONSENT_UPDATED_EVENT,
   CONSENT_UPDATED_STORAGE_KEY,
 } from "../utils/consent-event";
@@ -1246,6 +1250,111 @@ describe("PostHogAnalytics", () => {
     expect(JSON.stringify(captureLog.mock.calls)).not.toContain(
       "synthetic-token"
     );
+
+    view.unmount();
+  });
+
+  test("sends events captured before the SDK loads once analytics is ready", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?analytics-events"
+    );
+    const AnalyticsBoundary = ({
+      analyticsAccepted,
+    }: {
+      readonly analyticsAccepted: boolean;
+    }) => (
+      <PostHogProvider>
+        <PostHogAnalytics
+          analyticsAccepted={analyticsAccepted}
+          posthogEnvironment="preview"
+        />
+      </PostHogProvider>
+    );
+    const capturedEventNames = () =>
+      capturedEvents
+        .map(({ event }) => event)
+        .filter((event) => event !== "$identify" && event !== "$set");
+
+    discardAnalyticsEvents();
+    setConsentCookie(["necessary"]);
+    const view = render(<AnalyticsBoundary analyticsAccepted={false} />);
+    captureAnalyticsEvent("without consent");
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    expect(init).not.toHaveBeenCalled();
+
+    setConsentCookie(["necessary", "analytics"]);
+    captureAnalyticsEvent("before load", { step: 1 });
+    captureAnalyticsEvent("before load", { step: 2 });
+    expect(init).not.toHaveBeenCalled();
+
+    await act(async () => {
+      view.rerender(<AnalyticsBoundary analyticsAccepted />);
+    });
+    expect(init).toHaveBeenCalledTimes(1);
+    expect(capturedEventNames()).toEqual([
+      "$pageview",
+      "before load",
+      "before load",
+    ]);
+    expect(
+      capturedEvents
+        .filter(({ event }) => event === "before load")
+        .map(({ properties }) => properties.step)
+    ).toEqual([1, 2]);
+
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "pending" });
+    });
+    captureAnalyticsEvent("while paused");
+    expect(capturedEventNames()).not.toContain("while paused");
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    expect(capturedEventNames().at(-1)).toBe("while paused");
+
+    await act(async () => {
+      publishAnalyticsAccountIdentity({
+        accountId: "account-a",
+        status: "authenticated",
+      });
+    });
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "pending" });
+    });
+    captureAnalyticsEvent("while leaving account a");
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    expect(capturedEventNames()).not.toContain("while leaving account a");
+
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "pending" });
+    });
+    captureAnalyticsEvent("before withdrawal");
+    setConsentCookie(["necessary"]);
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: CONSENT_UPDATED_STORAGE_KEY,
+        newValue: "synthetic-withdrawal-nonce",
+      })
+    );
+    captureAnalyticsEvent("after withdrawal");
+    setConsentCookie(["necessary", "analytics"]);
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: CONSENT_UPDATED_STORAGE_KEY,
+        newValue: "synthetic-reconsent-nonce",
+      })
+    );
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+
+    expect(capturedEventNames()).not.toContain("without consent");
+    expect(capturedEventNames()).not.toContain("before withdrawal");
+    expect(capturedEventNames()).not.toContain("after withdrawal");
 
     view.unmount();
   });

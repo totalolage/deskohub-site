@@ -41,7 +41,9 @@ mock.module("@/features/checkout/actions/apply-discount-code", () => ({
 mock.module("@/features/reservation/actions/submit-reservation", () => ({
   submitReservation: mock(),
 }));
-mock.module("posthog-js", () => ({ default: { capture } }));
+mock.module("@/features/cookie-consent/analytics-events", () => ({
+  captureAnalyticsEvent: capture,
+}));
 mock.module("@/features/cookie-consent", () => ({
   useCookieConsent: () => ({ isAccepted: () => analyticsAccepted }),
 }));

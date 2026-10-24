@@ -1,9 +1,12 @@
 "use client";
 
 import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
-import { PostHogProvider as ReactPostHogProvider } from "@posthog/react";
+import {
+  PostHogClientProvider,
+  type PostHogClientSource,
+} from "@deskohub/posthog/feature-flags/react";
 import { usePathname } from "next/navigation";
-import posthog, { type BeforeSendFn } from "posthog-js";
+import type { BeforeSendFn, PostHog } from "posthog-js";
 import { type ReactNode, useEffect } from "react";
 import { getClientEnv } from "@/client-env";
 import {
@@ -32,6 +35,11 @@ import {
   createPostHogSessionCookieStrings,
   writePostHogSessionCookie,
 } from "@/shared/utils/posthog-session-cookies";
+import { createPreloadableModule } from "@/shared/utils/preloadable-module";
+import {
+  deliverAnalyticsEvents,
+  discardAnalyticsEvents,
+} from "../analytics-events";
 import {
   CONSENT_UPDATED_EVENT,
   CONSENT_UPDATED_STORAGE_KEY,
@@ -47,7 +55,14 @@ import {
 } from "../utils/posthog-identity";
 import { createPostHogPageUrl } from "../utils/posthog-url";
 
-let hasInitializedPostHog = false;
+// The SDK stays out of the initial bundle and loads only once analytics
+// consent lets it initialize.
+const posthogModule = createPreloadableModule(() => import("posthog-js"));
+const posthogClientSource: PostHogClientSource = {
+  getClient: () => posthogModule.getLoaded()?.default,
+  subscribe: posthogModule.subscribe,
+};
+let initializedPostHog: PostHog | undefined;
 let analyticsAccountIdentity: AnalyticsAccountIdentity = { status: "pending" };
 let analyticsConsentSignal = false;
 let analyticsPathname: string | null = null;
@@ -69,6 +84,7 @@ let workspaceBrowserLogSink:
   | ((record: WorkspaceBrowserLogRecord) => void)
   | undefined;
 let detachWorkspaceBrowserLogs: (() => void) | undefined;
+let detachAnalyticsEvents: (() => void) | undefined;
 
 export function PostHogProvider({
   children,
@@ -76,7 +92,9 @@ export function PostHogProvider({
   readonly children: ReactNode;
 }) {
   return (
-    <ReactPostHogProvider client={posthog}>{children}</ReactPostHogProvider>
+    <PostHogClientProvider client={posthogClientSource}>
+      {children}
+    </PostHogClientProvider>
   );
 }
 
@@ -225,14 +243,14 @@ function PostHogClient({
   }, []);
 
   useEffect(() => {
-    if (!analyticsAccepted && !hasInitializedPostHog) {
+    if (!analyticsAccepted && !initializedPostHog) {
       clearPostHogSessionCookies();
       return;
     }
 
     if (!getCurrentAnalyticsConsent()) {
       reconcilePostHogIdentity();
-      if (!hasInitializedPostHog) clearPostHogSessionCookies();
+      if (!initializedPostHog) clearPostHogSessionCookies();
       return;
     }
 
@@ -244,17 +262,36 @@ function PostHogClient({
       return;
     }
 
-    if (!hasInitializedPostHog) {
-      initializePostHog({
-        posthogEnvironment,
-        posthogHost,
-        posthogProjectToken,
-      });
+    const startPostHog = (client: PostHog) => {
+      ensurePostHogSessionIdSubscription();
+      applyFeatureFlagOverrides(client, featureFlagOverrides);
+      reconcilePostHogIdentity();
+    };
+
+    if (initializedPostHog) {
+      startPostHog(initializedPostHog);
+      return;
     }
 
-    ensurePostHogSessionIdSubscription();
-    applyFeatureFlagOverrides(posthog, featureFlagOverrides);
-    reconcilePostHogIdentity();
+    let current = true;
+    posthogModule.load().then(
+      ({ default: sdk }) => {
+        if (!current) return;
+        const client = initializePostHog(sdk, {
+          posthogEnvironment,
+          posthogHost,
+          posthogProjectToken,
+        });
+        if (client) startPostHog(client);
+      },
+      // A failed chunk load is retried by the next consent or config change;
+      // events captured meanwhile keep waiting.
+      () => undefined
+    );
+
+    return () => {
+      current = false;
+    };
   }, [
     analyticsAccepted,
     featureFlagOverrides,
@@ -280,17 +317,21 @@ function PostHogClient({
   return null;
 }
 
-function initializePostHog({
-  posthogEnvironment,
-  posthogHost,
-  posthogProjectToken,
-}: {
-  readonly posthogEnvironment: DeploymentEnvironment;
-  readonly posthogHost: string;
-  readonly posthogProjectToken: string;
-}) {
-  if (hasInitializedPostHog) return;
-  if (!analyticsTelemetryHostAllowed) return;
+function initializePostHog(
+  posthog: PostHog,
+  {
+    posthogEnvironment,
+    posthogHost,
+    posthogProjectToken,
+  }: {
+    readonly posthogEnvironment: DeploymentEnvironment;
+    readonly posthogHost: string;
+    readonly posthogProjectToken: string;
+  }
+): PostHog | undefined {
+  if (initializedPostHog) return initializedPostHog;
+  // Consent or the telemetry host can change while the SDK loads.
+  if (!analyticsTelemetryHostAllowed || !getCurrentAnalyticsConsent()) return;
 
   posthog.init(
     posthogProjectToken,
@@ -305,9 +346,12 @@ function initializePostHog({
       optOutUseragentFilter: process.env.NODE_ENV === "development",
     })
   );
-  clearPostHogInitialPersonProperties();
-  hasInitializedPostHog = true;
-  workspaceBrowserLogSink = createWorkspaceBrowserLogSink(posthogEnvironment);
+  clearPostHogInitialPersonProperties(posthog);
+  initializedPostHog = posthog;
+  workspaceBrowserLogSink = createWorkspaceBrowserLogSink(
+    posthog,
+    posthogEnvironment
+  );
   posthog.stopSessionRecording();
   posthogIdentityController = createPostHogIdentityController(posthog, {
     deploymentEnvironment: posthogEnvironment,
@@ -315,9 +359,10 @@ function initializePostHog({
     onReady: handlePostHogReady,
     readDotyposCustomerId: getAnalyticsDotyposCustomerId,
   });
+  return posthog;
 }
 
-function clearPostHogInitialPersonProperties() {
+function clearPostHogInitialPersonProperties(posthog: PostHog) {
   // These are the posthog-js 1.418.1 persistence keys. Re-audit the keys when
   // upgrading the SDK; save_referrer/save_campaign_params do not clear old data.
   posthog.unregister("$initial_person_info");
@@ -326,9 +371,9 @@ function clearPostHogInitialPersonProperties() {
 }
 
 function ensurePostHogSessionIdSubscription() {
-  if (!hasInitializedPostHog || posthogSessionIdUnsubscribe) return;
+  if (!initializedPostHog || posthogSessionIdUnsubscribe) return;
 
-  posthogSessionIdUnsubscribe = posthog.onSessionId((sessionId) => {
+  posthogSessionIdUnsubscribe = initializedPostHog.onSessionId((sessionId) => {
     syncPostHogSessionCookies(sessionId);
   });
 }
@@ -342,8 +387,10 @@ function pausePostHogObserver() {
 }
 
 function reconcilePostHogIdentity(consented = getCurrentAnalyticsConsent()) {
-  // Browser logs held while analytics is paused never outlive its consent.
+  // Events and browser logs held while analytics is paused never outlive its
+  // consent.
   if (!analyticsTelemetryHostAllowed || !consented) {
+    discardAnalyticsEvents();
     discardWorkspaceBrowserLogs();
   }
 
@@ -371,7 +418,7 @@ function isPostHogEventAllowed(
   const identity = getAnalyticsAccountIdentity();
   if (!isPostHogIdentityReady(identity)) return false;
 
-  const sdkDistinctId = posthog.get_distinct_id();
+  const sdkDistinctId = initializedPostHog?.get_distinct_id();
   if (event.properties.distinct_id !== sdkDistinctId) return false;
   if (event.event === "$identify" && identity.status !== "authenticated") {
     return false;
@@ -394,6 +441,7 @@ function isPostHogIdentityReady(
 
 function pausePostHogForUnsafeTelemetryHost() {
   analyticsTelemetryHostAllowed = false;
+  discardAnalyticsEvents();
   posthogIdentityController?.reconcile(false, analyticsAccountIdentity);
   clearPostHogSessionCookies();
 }
@@ -405,6 +453,9 @@ function isSettledAnalyticsAccountIdentity(
 }
 
 function isSdkIdentityReady(identity: SettledAnalyticsAccountIdentity) {
+  const posthog = initializedPostHog;
+  if (!posthog) return false;
+
   const sdkUserState = posthog.get_property("$user_state");
   if (identity.status === "anonymous") return sdkUserState !== "identified";
 
@@ -416,6 +467,8 @@ function isSdkIdentityReady(identity: SettledAnalyticsAccountIdentity) {
 }
 
 function handlePostHogPause() {
+  detachAnalyticsEvents?.();
+  detachAnalyticsEvents = undefined;
   detachWorkspaceBrowserLogs?.();
   detachWorkspaceBrowserLogs = undefined;
 
@@ -427,16 +480,17 @@ function handlePostHogPause() {
     hasReadyAnalyticsConsent = false;
   }
 
-  posthog.set_config({
+  initializedPostHog?.set_config({
     advanced_disable_feature_flags: true,
     tracing_headers: [],
   });
-  posthog.stopSessionRecording();
+  initializedPostHog?.stopSessionRecording();
   clearPostHogSessionCookies();
 }
 
 function handlePostHogReady() {
-  if (!analyticsTelemetryHostAllowed) return;
+  const posthog = initializedPostHog;
+  if (!posthog || !analyticsTelemetryHostAllowed) return;
 
   const identity = getAnalyticsAccountIdentity();
   if (!isPostHogIdentityReady(identity)) return;
@@ -451,11 +505,19 @@ function handlePostHogReady() {
   if (identityChanged || wasReconsented) {
     lastCapturedPageviewPath = undefined;
   }
+  // Leaving an account resets the SDK identity; events held from the
+  // account's session must not follow the visitor to the next identity.
+  if (
+    lastReadyAnalyticsAccountIdentity?.status === "authenticated" &&
+    identityChanged
+  ) {
+    discardAnalyticsEvents();
+  }
   lastReadyAnalyticsAccountIdentity = identity;
   hasReadyAnalyticsConsent = true;
 
   syncPostHogSessionCookies();
-  clearPostHogInitialPersonProperties();
+  clearPostHogInitialPersonProperties(posthog);
   if (!analyticsTelemetryHostAllowed) return;
   posthog.set_config({
     advanced_disable_feature_flags: false,
@@ -463,6 +525,10 @@ function handlePostHogReady() {
   });
   posthog.reloadFeatureFlags();
   capturePostHogPageviewIfNeeded();
+  // Events captured while analytics was loading or paused follow the pageview.
+  detachAnalyticsEvents ??= deliverAnalyticsEvents(({ event, properties }) => {
+    posthog.capture(event, properties);
+  });
   if (identity.status === "authenticated") {
     // A sign-in recorded before this page load lands on the settled account.
     captureRecordedSignInCompletion();
@@ -477,7 +543,10 @@ function handlePostHogReady() {
 
 // Browser logs wait for the same consented, settled identity as events: a
 // record logged while analytics is paused is delivered once it resumes.
-function createWorkspaceBrowserLogSink(posthogEnvironment: string) {
+function createWorkspaceBrowserLogSink(
+  posthog: PostHog,
+  posthogEnvironment: string
+) {
   return ({ attributes, body, level }: WorkspaceBrowserLogRecord) => {
     posthog.captureLog({
       attributes: {
@@ -500,8 +569,17 @@ function sameSettledAnalyticsAccountIdentity(
   return right.status === "authenticated" && left.accountId === right.accountId;
 }
 
-function syncPostHogSessionCookies(sessionId = posthog.get_session_id()) {
-  if (!isPostHogIdentityReady(getAnalyticsAccountIdentity())) return;
+function syncPostHogSessionCookies(
+  sessionId = initializedPostHog?.get_session_id()
+) {
+  const posthog = initializedPostHog;
+  if (
+    !posthog ||
+    sessionId === undefined ||
+    !isPostHogIdentityReady(getAnalyticsAccountIdentity())
+  ) {
+    return;
+  }
 
   for (const cookie of createPostHogSessionCookieStrings({
     distinctId: posthog.get_distinct_id(),
@@ -525,7 +603,7 @@ function capturePostHogPageviewIfNeeded(pathname = analyticsPathname) {
 
   const pageUrl = createPostHogPageUrl(window.location.href);
   lastCapturedPageviewPath = pageviewPath;
-  posthog.capture("$pageview", { $current_url: pageUrl });
+  initializedPostHog?.capture("$pageview", { $current_url: pageUrl });
 }
 
 function getCurrentAnalyticsConsent() {
