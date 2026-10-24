@@ -371,10 +371,12 @@ describe.skipIf(!postgresDatabase)(
       const actor = await insertAdministrator();
       const bearer = await insertSession(actor);
       const target = await insertAccount();
-      await postgres.pool.query(
-        `insert into account_role_grants (account_id, role, granted_by_account_id)
-         values ($1, 'administrator', $2)`,
-        [target.accountId, actor.accountId]
+      await Effect.runPromise(
+        workspaceFixtures(postgres.db).grantRole(
+          target.accountId,
+          "administrator",
+          { grantedBy: actor.accountId }
+        )
       );
 
       const outcome = await callAs(bearer, (client) =>

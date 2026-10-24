@@ -4,7 +4,6 @@ import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/node-postgres";
 import { ConfigProvider, Effect, Layer, Schema } from "effect";
 import { type ReservationState, workspaceReservations } from "@/db/schema";
 import {
@@ -35,6 +34,7 @@ import {
   workspaceFixtures,
 } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
+  connectionDatabaseClient,
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
@@ -376,20 +376,23 @@ describe.skipIf(!postgresDatabase)(
       let pendingDraft: Promise<unknown> | undefined;
       try {
         await writer.query("begin");
-        await drizzle({ client: writer })
-          .insert(workspaceReservations)
-          .values({
-            authorAccountId: fixtureReservationAuthorId,
-            id: writerId,
-            checkoutSessionKey: input.checkoutSessionKey,
-            checkoutAttemptKey: input.checkoutAttemptKey,
-            reservationState: "cancelled",
-            paymentState: "not_started",
-            fulfillmentState: "not_started",
-            dotyposReservationId: `dotypos-${crypto.randomUUID()}` as never,
-            reservationCancelledAt: Temporal.Now.instant(),
-            ...draftDetails,
-          });
+        await Effect.runPromise(
+          connectionDatabaseClient(writer).pipe(
+            Effect.flatMap((db) =>
+              workspaceFixtures(db).reservation({
+                stage: { reservation: "cancelled" },
+                customer: draftDetails.dotyposCustomerId,
+                details: draftDetails.reservationDetails,
+                overrides: {
+                  id: writerId,
+                  checkoutSessionKey: input.checkoutSessionKey,
+                  checkoutAttemptKey: input.checkoutAttemptKey,
+                  reservationPurpose: draftDetails.reservationPurpose,
+                },
+              })
+            )
+          )
+        );
         const { rows } = await writer.query<{ readonly pid: number }>(
           "select pg_backend_pid()::int as pid"
         );
