@@ -1,15 +1,8 @@
-import { Option, Schema } from "effect";
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { CheckoutStatusRoute } from "@/features/checkout/components/checkout-status-route";
-import { getWorkspaceAlternates, m } from "@/features/i18n";
-import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { m } from "@/features/i18n";
+import { privateOrderPage } from "@/features/reservation/private-order-page.server";
 import { reservationStatusPath } from "@/features/reservation/routes";
-import {
-  type SearchParamsRecord,
-  workspaceSiteConstants,
-} from "@/shared/utils";
+import type { SearchParamsRecord } from "@/shared/utils";
 
 // The status refresh bounds its Nexi verification at 40 seconds (one full
 // sandbox-length request; see checkout-status.service.ts) and its Dotypos
@@ -22,41 +15,13 @@ type LocalizedCheckoutStatusPageProps = {
   searchParams: Promise<SearchParamsRecord>;
 };
 
-const decodeCheckoutStatusParams = Schema.decodeUnknownOption(
-  Schema.Struct({ orderId: workspaceReservationIdSchema })
-);
+const { generateMetadata } = privateOrderPage({
+  pathname: reservationStatusPath,
+  title: m.checkoutStatusMetadataTitle,
+  description: m.checkoutStatusMetadataDescription,
+});
 
-export async function generateMetadata({
-  params,
-}: LocalizedCheckoutStatusPageProps): Promise<Metadata> {
-  const decodedParams = decodeCheckoutStatusParams(await params);
-  const { orderId } = Option.getOrElse(decodedParams, () => notFound());
-
-  return runWithRequestLocale((locale) => {
-    const title = m.checkoutStatusMetadataTitle({}, { locale });
-    const description = m.checkoutStatusMetadataDescription({}, { locale });
-    const alternates = getWorkspaceAlternates(
-      locale,
-      `${reservationStatusPath}/${orderId}`
-    );
-
-    return {
-      title,
-      description,
-      alternates,
-      openGraph: {
-        title,
-        description,
-        url: alternates.canonical,
-        siteName: workspaceSiteConstants.brand.name,
-        locale,
-        type: "website",
-      },
-      robots: { index: false, follow: false },
-      referrer: "no-referrer",
-    } satisfies Metadata;
-  });
-}
+export { generateMetadata };
 
 export default function LocalizedCheckoutStatusPage({
   params,

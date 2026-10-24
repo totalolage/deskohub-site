@@ -1,12 +1,8 @@
-import { Option, Schema } from "effect";
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { getWorkspaceAlternates, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { privateOrderPage } from "@/features/reservation/private-order-page.server";
 import { reviewPaymentDisabledPath } from "@/features/review-accounts";
 import { ReviewPaymentDisabledPage } from "@/features/review-accounts/components/review-payment-disabled-page";
-import { workspaceSiteConstants } from "@/shared/utils";
 
 // Non-instant like the Pay page it stands in for: the reservation form's
 // Server Action redirects here.
@@ -16,47 +12,13 @@ type LocalizedReviewPaymentDisabledPageProps = {
   params: Promise<{ orderId: string }>;
 };
 
-const decodeParams = Schema.decodeUnknownOption(
-  Schema.Struct({ orderId: workspaceReservationIdSchema })
-);
+const { generateMetadata, readOrderId } = privateOrderPage({
+  pathname: reviewPaymentDisabledPath,
+  title: m.reviewPaymentDisabledMetadataTitle,
+  description: m.reviewPaymentDisabledMetadataDescription,
+});
 
-const readOrderId = async (
-  params: LocalizedReviewPaymentDisabledPageProps["params"]
-) => Option.getOrElse(decodeParams(await params), () => notFound()).orderId;
-
-export async function generateMetadata({
-  params,
-}: LocalizedReviewPaymentDisabledPageProps): Promise<Metadata> {
-  const orderId = await readOrderId(params);
-
-  return runWithRequestLocale((locale) => {
-    const title = m.reviewPaymentDisabledMetadataTitle({}, { locale });
-    const description = m.reviewPaymentDisabledMetadataDescription(
-      {},
-      { locale }
-    );
-    const alternates = getWorkspaceAlternates(
-      locale,
-      `${reviewPaymentDisabledPath}/${orderId}`
-    );
-
-    return {
-      title,
-      description,
-      alternates,
-      openGraph: {
-        title,
-        description,
-        url: alternates.canonical,
-        siteName: workspaceSiteConstants.brand.name,
-        locale,
-        type: "website",
-      },
-      robots: { index: false, follow: false },
-      referrer: "no-referrer",
-    } satisfies Metadata;
-  });
-}
+export { generateMetadata };
 
 export default async function LocalizedReviewPaymentDisabledPage({
   params,

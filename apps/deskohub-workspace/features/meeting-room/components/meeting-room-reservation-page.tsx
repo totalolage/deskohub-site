@@ -1,6 +1,6 @@
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import type { CanonicalPromotionCode } from "@/features/discounts";
-import { type Locale, m } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { preloadPageAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { isRememberedMeetingRoomReservationAvailable } from "@/features/reservation/backend/reservation-existing-customer.server";
 import { preloadPageAvailability } from "@/features/reservation/backend/workspace-availability-loader";
@@ -34,10 +34,6 @@ export const meetingRoomReservationPage = createReservationPage({
   fallback: (locale) => <MeetingRoomReservationFormFallback locale={locale} />,
   kind: "meeting-room",
   pathname: meetingRoomReservationPath,
-  metadata: (locale: Locale) => ({
-    title: m.reservationMeetingRoomMetadataTitle({}, { locale }),
-    description: m.reservationMeetingRoomMetadataDescription({}, { locale }),
-  }),
   render: renderMeetingRoomReservationContent,
 });
 

@@ -2,7 +2,10 @@ import { afterAll, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import * as envModule from "@/env";
 import { locales } from "@/features/i18n";
-import { type PublicPage, publicPages } from "@/features/public-pages";
+import {
+  type PublicPage,
+  publicPages,
+} from "@/features/public-pages/public-page-definitions";
 import { PublishedPublicPagesService } from "@/features/public-pages/backend";
 
 // The workspace env object is read once at import; route VERCEL_ENV through a

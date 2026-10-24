@@ -7,7 +7,10 @@ import { DiscountReleaseGateService } from "@/features/discounts/discount-releas
 import type { Locale } from "@/features/i18n";
 import { getLegalDocument } from "@/features/legal/content";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
-import { type PublicPage, publicPages } from "@/features/public-pages";
+import {
+  type PublicPage,
+  publicPages,
+} from "@/features/public-pages/public-page-definitions";
 import { PublishedPublicPagesService } from "@/features/public-pages/backend";
 import { publicPageMarkdown } from "@/features/public-pages/public-page-markdown";
 

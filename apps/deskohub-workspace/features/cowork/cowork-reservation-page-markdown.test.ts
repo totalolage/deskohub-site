@@ -28,8 +28,9 @@ const render = (locale: Locale, discount = 0) =>
   );
 
 /**
- * The facts the cowork reservation page shows. Left out: form controls and
- * their labels (`reservationTierLabel`, `reservationDateLabel`,
+ * The facts the cowork reservation page shows beyond the title and
+ * description its public page definition gives it. Left out: form controls
+ * and their labels (`reservationTierLabel`, `reservationDateLabel`,
  * `reservationDatePlaceholder`, `reservationMonitorLabel`), the form's
  * accessible name (`reservationFormTitle`), availability, loading, and
  * validation states, the workstation-required tooltip, the replaced-offer
@@ -37,8 +38,6 @@ const render = (locale: Locale, discount = 0) =>
  * consent fields, and the checkout step navigation.
  */
 const pageFacts = (locale: Locale) => [
-  m.checkoutOrderMetadataTitle({}, { locale }),
-  m.checkoutOrderMetadataDescription({}, { locale }),
   m.reservationOpenSpaceTitle({}, { locale }),
   m.reservationOpenSpaceDescription(
     { until: workspaceSiteConstants.openingHours.openSpaceUsableUntil },
