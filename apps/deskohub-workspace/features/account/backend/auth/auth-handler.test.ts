@@ -10,6 +10,7 @@ import {
   WorkspaceDatabaseAdvisoryLock,
   withPostgresAdvisoryLock,
 } from "@/db/postgres-advisory-lock";
+import { ReviewAccounts } from "@/features/review-accounts";
 import type { CustomerAccountId } from "../../customer-account";
 import {
   encodeAuthCallbackReturn,
@@ -90,7 +91,8 @@ const makeTestDeletionLayers = (
       Layer.mergeAll(
         Layer.mergeAll(
           CustomerAccountLinkRepository.Default,
-          CustomerAccountRepository.Default
+          CustomerAccountRepository.Default,
+          ReviewAccounts.Default
         ).pipe(
           Layer.provide(
             Layer.mergeAll(
@@ -891,6 +893,64 @@ describe.skipIf(!testDatabase)(
       );
       expect(link.rows).toHaveLength(1);
       expect(link.rows[0]?.dotypos_customer_id).not.toBeNull();
+    });
+
+    test("refuses a direct deletion request from a review account and keeps its login", async () => {
+      const calls: string[] = [];
+      const deletionLayers = makeTestDeletionLayers(
+        () => {
+          calls.push("expire");
+          return Effect.void;
+        },
+        () => {
+          calls.push("destroy-avatar");
+          return Effect.void;
+        }
+      );
+      const beforeDeleteUser = (accountId: CustomerAccountId) =>
+        runTestDeletion(deletionLayers, accountId);
+
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({ sentLinks, beforeDeleteUser });
+      const email = uniqueEmail("delete-review");
+
+      await signInForMagicLink(auth, email);
+      const verifyResponse = await verifyMagicLink(auth, sentLinks[0]!);
+      const cookie = cookieJar(getSessionCookie(verifyResponse)!);
+      const userId = (await userIdForEmail(email))!;
+      await testDatabase!.pool.query(
+        `update customer_accounts set review = true where id = $1`,
+        [userId]
+      );
+
+      const refused = await callHandler(auth, "/delete-user", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: "{}",
+      });
+      expect(refused.status).toBe(403);
+      expect(await refused.json()).toMatchObject({
+        code: "REVIEW_ACCOUNT_DELETION_REFUSED",
+      });
+      expect(calls).toEqual([]);
+
+      const user = await testDatabase!.pool.query(
+        `select deletion_requested_at from auth."user" where id = $1`,
+        [userId]
+      );
+      expect(user.rows).toEqual([{ deletion_requested_at: null }]);
+
+      const account = await testDatabase!.pool.query(
+        `select deleted_at from customer_accounts where id = $1`,
+        [userId]
+      );
+      expect(account.rows).toEqual([{ deleted_at: null }]);
+
+      const sessions = await testDatabase!.pool.query(
+        `select id from auth.session where user_id = $1`,
+        [userId]
+      );
+      expect(sessions.rows).toHaveLength(1);
     });
 
     test("keeps the auth identity and link when avatar deletion has an unknown provider outcome", async () => {

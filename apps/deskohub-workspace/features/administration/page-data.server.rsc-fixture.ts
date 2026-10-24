@@ -1,5 +1,6 @@
 /// <reference path="./page-data.server.rsc-fixture.d.ts" />
 
+import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";

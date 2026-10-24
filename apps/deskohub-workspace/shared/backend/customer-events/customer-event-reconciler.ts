@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, asc, eq, gte, isNotNull, notExists, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";

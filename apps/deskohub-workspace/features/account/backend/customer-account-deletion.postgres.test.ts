@@ -7,6 +7,7 @@ import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { customerAccounts } from "@/db/schema";
+import { ReviewAccounts } from "@/features/review-accounts";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type CustomerAccountId,
@@ -52,7 +53,8 @@ const readDeletedAt = async (account: CustomerAccountId) => {
 const makeRepositoryLayer = () =>
   Layer.mergeAll(
     CustomerAccountLinkRepository.Default,
-    CustomerAccountRepository.Default
+    CustomerAccountRepository.Default,
+    ReviewAccounts.Default
   ).pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -81,7 +83,9 @@ describe.skipIf(!testDatabase)(
         Effect.gen(function* () {
           const links = yield* CustomerAccountLinkRepository;
           const accounts = yield* CustomerAccountRepository;
+          const reviewAccounts = yield* ReviewAccounts;
           const requestDeletion = expireLinkedDotyposProfile({
+            isReviewAccount: reviewAccounts.isReviewAccount,
             markDeletionRequested: links.markDeletionRequested,
             findLink: links.find,
             expireCustomer: (customerId) => {
@@ -112,6 +116,49 @@ describe.skipIf(!testDatabase)(
       expect(await readDeletedAt(account)).not.toBeNull();
     });
 
+    test("refuses to delete a review account and leaves its login and account untouched", async () => {
+      const layer = makeRepositoryLayer();
+      const account = customerAccountIdSchema.make(uniqueId());
+      await testDatabase!.pool.query(
+        "insert into customer_accounts (id, review) values ($1, true)",
+        [account]
+      );
+      await insertAuthUser(account, testEmailAddress(`del-review-${account}`));
+      const providerCalls: string[] = [];
+
+      const outcome = await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          const accounts = yield* CustomerAccountRepository;
+          const reviewAccounts = yield* ReviewAccounts;
+          return yield* expireLinkedDotyposProfile({
+            isReviewAccount: reviewAccounts.isReviewAccount,
+            markDeletionRequested: links.markDeletionRequested,
+            findLink: links.find,
+            expireCustomer: () => {
+              providerCalls.push("expire");
+              return Effect.void;
+            },
+            destroyAvatar: () => {
+              providerCalls.push("destroy-avatar");
+              return Effect.void;
+            },
+            tombstone: accounts.tombstone,
+            withAccountLock: links.withAccountLock,
+          })(account).pipe(Effect.flip);
+        }).pipe(Effect.provide(layer))
+      );
+
+      expect(outcome._tag).toBe("ReviewAccountDeletionRefusedError");
+      expect(providerCalls).toEqual([]);
+      const marker = await testDatabase!.pool.query(
+        `select deletion_requested_at from auth."user" where id = $1`,
+        [account]
+      );
+      expect(marker.rows).toEqual([{ deletion_requested_at: null }]);
+      expect(await readDeletedAt(account)).toBeNull();
+    });
+
     test("keeps the durable marker and Dotypos customer ID when avatar destroy fails retryably", async () => {
       const layer = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
@@ -123,7 +170,9 @@ describe.skipIf(!testDatabase)(
         Effect.gen(function* () {
           const links = yield* CustomerAccountLinkRepository;
           const accounts = yield* CustomerAccountRepository;
+          const reviewAccounts = yield* ReviewAccounts;
           const requestDeletion = expireLinkedDotyposProfile({
+            isReviewAccount: reviewAccounts.isReviewAccount,
             markDeletionRequested: links.markDeletionRequested,
             findLink: links.find,
             expireCustomer: () => Effect.void,
@@ -176,7 +225,9 @@ describe.skipIf(!testDatabase)(
           Effect.gen(function* () {
             const links = yield* CustomerAccountLinkRepository;
             const accounts = yield* CustomerAccountRepository;
+            const reviewAccounts = yield* ReviewAccounts;
             return yield* expireLinkedDotyposProfile({
+              isReviewAccount: reviewAccounts.isReviewAccount,
               markDeletionRequested: links.markDeletionRequested,
               findLink: links.find,
               expireCustomer: () => Effect.void,

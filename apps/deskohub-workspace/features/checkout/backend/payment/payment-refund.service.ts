@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import { NexiService, summarizeNexiRefunds } from "@deskohub/nexi";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import {

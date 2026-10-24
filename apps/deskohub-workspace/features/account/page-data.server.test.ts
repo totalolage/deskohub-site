@@ -959,6 +959,50 @@ describe("loadCustomerAccountPage", () => {
     expect(historyLoadCalls).toBe(0);
   });
 
+  test("offers no deletion without a profile when the review marker can't be read", async () => {
+    reviewAccountEffect = Effect.fail(new Error("database unavailable"));
+    resolveEffect = resolverOutcome({ kind: "failure", reason: "unavailable" });
+
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "authenticated-unavailable",
+      assistants: [],
+      email: customerEmail,
+      deletionUnavailable: true,
+    });
+
+    for (const [linkReason, kind] of [
+      ["not-found", "completion-required"],
+      ["ambiguous", "support-required"],
+    ] as const) {
+      resolveEffect = resolverOutcome({
+        kind: "failure",
+        reason: "link-required",
+        linkReason,
+      });
+      await expect(loadPageState()).resolves.toMatchObject({
+        kind,
+        deletionUnavailable: true,
+      });
+    }
+  });
+
+  test("keeps deletion for a linked account or a pending deletion when the review marker can't be read", async () => {
+    reviewAccountEffect = Effect.fail(new Error("database unavailable"));
+
+    const linked = await loadPageState();
+    expect(linked.kind).toBe("linked");
+    expect(linked).not.toHaveProperty("deletionUnavailable");
+
+    currentUserEffect = Effect.succeed({
+      ...activeSession,
+      deletionRequested: true,
+    });
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "deletion-pending",
+      email: customerEmail,
+    });
+  });
+
   test("renders the retryable deletion state when the durable marker is set", async () => {
     currentUserEffect = Effect.succeed({
       ...activeSession,

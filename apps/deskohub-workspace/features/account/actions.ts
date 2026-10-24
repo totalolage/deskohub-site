@@ -256,6 +256,7 @@ const updateLocalePreferenceAction = defineWorkspaceAction(
 export type CustomerAccountDeletionResult =
   | { readonly status: "deleted" }
   | { readonly status: "reauthentication-required" }
+  | { readonly status: "refused" }
   | { readonly status: "failed" };
 
 const revalidateDeletionAuthority = (locale: Locale) =>
@@ -268,9 +269,9 @@ const revalidateDeletionAuthority = (locale: Locale) =>
  * Runs account deletion exclusively through Better Auth's public delete-user
  * endpoint, so its session-freshness gate and the provider-first beforeDelete
  * hook stay the single identity-deletion path. A stale or missing session
- * asks for reauthentication; an unreadable session or a retryable provider
- * failure reports a retryable failure and keeps the durable deletion marker
- * and the account untouched.
+ * asks for reauthentication; a shared review account is refused for good; an
+ * unreadable session or a retryable provider failure reports a retryable
+ * failure and keeps the durable deletion marker and the account untouched.
  */
 const deleteCustomerAccountAction = defineWorkspaceAction(
   {

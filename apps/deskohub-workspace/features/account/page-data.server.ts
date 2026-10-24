@@ -56,6 +56,11 @@ import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
  * available.
  */
 type SessionSettings = {
+  /**
+   * Present when whether the account may be deleted couldn't be read; the
+   * page then offers no deletion.
+   */
+  readonly deletionUnavailable?: true;
   /** The account's passkeys; absent while `login_passkeys` is off. */
   readonly passkeys?: AccountPasskeySettings;
   /**
@@ -327,7 +332,7 @@ const loadAuthoredHistory = (user: CustomerAccountSession) =>
  * Whether the session's account is an app-directory review account, or
  * `undefined` when the marker couldn't be read. An unknown account loads as
  * an ordinary one, whose resolution then refuses a review account, but gets
- * no sign-in methods section.
+ * no sign-in methods section and, without a profile, no deletion.
  */
 const readReviewAccount = (user: CustomerAccountSession) =>
   Effect.flatMap(ReviewAccounts, (accounts) =>
@@ -520,10 +525,18 @@ const loadAccountPageState = Effect.gen(function* () {
     },
     { concurrency: "unbounded" }
   );
+  // A review account can't be deleted, and an unreadable marker lands one
+  // in a state without a profile. A linked account or a pending deletion
+  // has passed checks that refuse a review account.
+  const deletionUnavailable =
+    reviewAccount === undefined &&
+    state.kind !== "linked" &&
+    state.kind !== "deletion-pending";
   return {
     ...state,
     ...(passkeys && { passkeys }),
     ...(assistants !== undefined && { assistants }),
+    ...(deletionUnavailable && { deletionUnavailable: true as const }),
   };
 });
 

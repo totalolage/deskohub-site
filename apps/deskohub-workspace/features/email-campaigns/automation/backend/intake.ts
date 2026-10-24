@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import type { DotyposCustomerId, DotyposService } from "@deskohub/dotypos";
 import type { AutomationFlowType as AutomationFlow } from "@deskohub/workspace-admin-api";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
