@@ -52,6 +52,19 @@ export const expectQueryLogsToCensor = (input: {
     expect(input.logs.map(({ query }) => query)).toContain(statement!.sql);
   }
 
+  expectQueryLogsToOmit(input);
+};
+
+/**
+ * Asserts that statements were logged and none of them carries a confidential
+ * value. Against a live database, pair it with a read showing the value was
+ * stored, which proves a logged statement bound it.
+ */
+export const expectQueryLogsToOmit = (input: {
+  readonly logs: readonly LoggedDatabaseQuery[];
+  readonly values: readonly string[];
+}) => {
+  expect(input.logs.length).toBeGreaterThan(0);
   const serializedLogs = JSON.stringify(input.logs);
   for (const value of input.values) {
     expect(serializedLogs).not.toContain(value);
