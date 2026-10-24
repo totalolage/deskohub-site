@@ -1,6 +1,6 @@
 import "@/shared/polyfills/temporal";
 
-import { describe, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
@@ -98,14 +98,21 @@ describe("CliAuthentication query logging", () => {
       [requestRow(true)], // the approval update
     ]);
 
+    let approvedState: string | undefined;
+
     const logs = await collectServiceQueryLogs(recording, (service) =>
-      service.approve({
-        code,
-        approvedBy: approver,
-        sessionLifetime: cliSessionLifetimeSchema.cases.Never.make({}),
-      })
+      service
+        .approve({
+          code,
+          approvedBy: approver,
+          sessionLifetime: cliSessionLifetimeSchema.cases.Never.make({}),
+        })
+        .pipe(
+          Effect.tap(({ state }) => Effect.sync(() => (approvedState = state)))
+        )
     );
 
+    expect(approvedState).toBe("approved");
     expectQueryLogsToCensor({
       recording,
       logs,
@@ -122,10 +129,22 @@ describe("CliAuthentication query logging", () => {
       [requestRow(true)], // the consuming update
     ]);
 
+    let exchanged = false;
+
     const logs = await collectServiceQueryLogs(recording, (service) =>
-      service.exchange({ code, verifier, grantToken: submittedGrantToken })
+      service
+        .exchange({ code, verifier, grantToken: submittedGrantToken })
+        .pipe(Effect.tap(() => Effect.sync(() => (exchanged = true))))
     );
 
+    // Completing means the consuming update ran too, so both statements that
+    // bind the grant token are in the log.
+    expect(exchanged).toBe(true);
+    expect(
+      recording.statements.filter(({ params }) =>
+        params.includes(submittedGrantToken)
+      )
+    ).toHaveLength(2);
     expectQueryLogsToCensor({
       recording,
       logs,
