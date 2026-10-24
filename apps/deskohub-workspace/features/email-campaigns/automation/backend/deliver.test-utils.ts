@@ -20,10 +20,8 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import {
-  fixtureReservationAuthorId,
-  type WorkspacePostgresSuiteDatabase,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import type { WorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   seedAutomatedCampaign,
   seedAutomation,

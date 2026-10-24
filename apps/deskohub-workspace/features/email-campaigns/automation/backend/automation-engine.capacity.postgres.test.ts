@@ -15,10 +15,8 @@ import type {
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, Option, References } from "effect";
 import { TestClock } from "effect/testing";
-import {
-  createWorkspacePostgresSuiteDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { nextStartWithinHorizon } from "@/shared/utils/calendar-expression";
 import {
   everyoneFilter,

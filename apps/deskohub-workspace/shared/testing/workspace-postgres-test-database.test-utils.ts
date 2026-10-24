@@ -9,17 +9,8 @@ import {
 } from "@/db/database.service";
 import { makeDatabaseClient, makeDatabasePool } from "@/db/database-client";
 import { databasePoolTimeouts } from "@/db/database-pool-timeouts";
-import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { createScratchPostgresDatabase } from "./postgres-scratch-database.test-utils";
-
-/**
- * The customer account that authors a fixture reservation naming no author of
- * its own. Every reservation has an author, and the test database always holds
- * this one.
- */
-export const fixtureReservationAuthorId = customerAccountIdSchema.make(
-  "fixture-reservation-author"
-);
+import { fixtureReservationAuthorId } from "./workspace-fixtures.test-utils";
 
 export interface WorkspacePostgresTestDatabase {
   readonly db: WorkspaceDatabaseClient;

@@ -84,14 +84,14 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import {
+  fixtureReservationAuthorId,
+  workspaceFixtures,
+} from "@/shared/testing/workspace-fixtures.test-utils";
+import {
   waitForAdvisoryLockWaiter,
   waitForPostgresLockWaiter,
 } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { createHeldReservation as createSharedHeldReservation } from "./payment-lifecycle.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 const product = { kind: "cowork", tier: "basic" } as const;
@@ -304,7 +304,10 @@ const createHeldReservation = (
   dotyposCustomerId: DotyposCustomerId
 ): Promise<Reservation> =>
   Effect.runPromise(
-    createSharedHeldReservation(testDatabase!.db, dotyposCustomerId)
+    workspaceFixtures(testDatabase!.db).reservation({
+      stage: { reservation: "held" },
+      customer: dotyposCustomerId,
+    })
   );
 
 const createOrdinaryDiscountCode = async (

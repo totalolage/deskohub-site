@@ -13,10 +13,7 @@ import {
   referralCodes,
 } from "@/db/schema";
 import { PaymentLifecycleRepository } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
-import {
-  admitPendingNexiPayment,
-  createHeldReservation,
-} from "@/features/checkout/backend/repositories/payment-lifecycle.test-utils";
+import { admitPendingNexiPayment } from "@/features/checkout/backend/repositories/payment-lifecycle.test-utils";
 import { canonicalPromotionCodeSchema } from "@/features/discounts/persistence-contracts";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import { ReferralService } from "@/features/referrals";
@@ -24,6 +21,7 @@ import { ReferralFeatureFlagService } from "@/features/referrals/referral-featur
 import { ReferralFeatureFlagServiceMock } from "@/features/referrals/referral-feature-flag.service.mock";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { NoReviewAccounts } from "@/features/review-accounts/backend/review-accounts.repository.mock";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type CustomerAccountId,
@@ -337,7 +335,10 @@ const startPayment = async (
 ) => {
   const lifecycle = await paymentLifecycle();
   const reservation = await Effect.runPromise(
-    createHeldReservation(testDatabase!.db, customerId)
+    workspaceFixtures(testDatabase!.db).reservation({
+      stage: { reservation: "held" },
+      customer: customerId,
+    })
   );
   const attempt = await Effect.runPromise(
     admitPendingNexiPayment(

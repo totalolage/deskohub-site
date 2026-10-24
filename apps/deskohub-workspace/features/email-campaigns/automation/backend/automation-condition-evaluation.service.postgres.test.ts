@@ -23,10 +23,8 @@ import {
 } from "@/db/schema";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import {
-  createWorkspacePostgresSuiteDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AudienceCondition, AudienceFilter } from "../../audience-filter";
 import {
   type AudienceEvaluationContext,

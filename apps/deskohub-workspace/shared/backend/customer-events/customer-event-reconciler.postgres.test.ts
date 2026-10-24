@@ -23,10 +23,8 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { recordCustomerEvent } from "./customer-event-outbox";
 import {
   CustomerEventReconciler,

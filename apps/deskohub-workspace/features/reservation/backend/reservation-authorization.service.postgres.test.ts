@@ -34,9 +34,9 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 

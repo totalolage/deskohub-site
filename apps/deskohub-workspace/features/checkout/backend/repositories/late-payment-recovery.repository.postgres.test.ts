@@ -36,10 +36,8 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { rejectCustomerEventInserts } from "@/shared/backend/customer-events/customer-event-outbox.test-utils";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   LatePaymentRecoveryRepository,
   LatePaymentRecoveryStateError,

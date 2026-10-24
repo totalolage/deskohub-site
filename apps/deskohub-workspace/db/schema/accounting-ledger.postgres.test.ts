@@ -2,10 +2,8 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import type { PoolClient } from "pg";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 

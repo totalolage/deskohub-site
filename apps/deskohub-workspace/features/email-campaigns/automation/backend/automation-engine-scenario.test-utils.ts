@@ -46,10 +46,10 @@ import type {
   CustomerEventKind,
 } from "@/shared/backend/customer-events/customer-event";
 import { CustomerEventReconciler } from "@/shared/backend/customer-events/customer-event-reconciler";
-import {
-  fixtureReservationAuthorId,
-  type WorkspacePostgresSuiteDatabase,
-  type WorkspacePostgresTestDatabase,
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import type {
+  WorkspacePostgresSuiteDatabase,
+  WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { AudienceFactsService } from "../../backend/audience-facts.service";
 import { CampaignCandidateRepository } from "../../backend/campaign-candidate.repository";

@@ -26,8 +26,8 @@ import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { cliSessions } from "@/db/schema";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import type { CampaignId } from "@/features/email-campaigns/campaign-identifiers";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { insertTestAdministrator } from "@/shared/testing/workspace-test-accounts.test-utils";
 import { richCampaignBodies } from "../body/campaign-body-document.test-utils";
 
 /**
@@ -751,7 +751,11 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
   const { pool } = testDatabase;
 
   beforeAll(async () => {
-    administrator = await insertTestAdministrator(testDatabase, "contract");
+    administrator = await Effect.runPromise(
+      workspaceFixtures(testDatabase.db).account("contract", {
+        roles: ["administrator"],
+      })
+    );
     await Effect.runPromise(
       makeCliAuthenticationSecret().pipe(
         Effect.flatMap(digestCliAuthenticationSecret),

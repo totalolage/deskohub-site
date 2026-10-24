@@ -14,10 +14,8 @@ import {
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { PaymentAdministrationService } from "./payment-administration.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();

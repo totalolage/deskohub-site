@@ -16,10 +16,8 @@ import { workspaceReservations } from "@/db/schema";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import type { WorkspaceReservationKind } from "@/features/reservation/reservation-kind";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { CustomerLastReservationService } from "./customer-last-reservation.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();

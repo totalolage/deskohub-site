@@ -22,10 +22,8 @@ import { customerAccounts, workspaceReservations } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import type { ReservationStatusRead } from "@/features/administration/reservation-status-condition";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type {
   AudienceCondition,
   AudienceFacts,

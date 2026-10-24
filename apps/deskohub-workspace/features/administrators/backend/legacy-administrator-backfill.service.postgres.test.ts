@@ -26,11 +26,8 @@ import {
 } from "@/features/accounting/backend/accounting-snapshot-key.service";
 import { InvoiceRepository } from "@/features/accounting/backend/invoice.repository";
 import { manualInvoiceInputSchema } from "@/features/accounting/manual-invoice";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import {
-  deleteTestAccounts,
-  insertTestAccount,
-} from "@/shared/testing/workspace-test-accounts.test-utils";
 import type { AdministratorAccountActor } from "../account-role";
 import { AccountRoleGrants } from "./account-role-grants.service";
 import { LegacyAdministratorBackfill } from "./legacy-administrator-backfill.service";
@@ -127,13 +124,16 @@ const runIsolated = <A, E>(
   }).pipe(Effect.provide(makeLayer()), Effect.runPromise);
 
 const insertAccount = (local: string) =>
-  Effect.promise(() => insertTestAccount(testDatabase!, local)).pipe(
-    Effect.tap((account) =>
-      Effect.sync(() => {
-        testAccounts.push(account);
-      })
-    )
-  );
+  workspaceFixtures(testDatabase!.db)
+    .account(local)
+    .pipe(
+      Effect.orDie,
+      Effect.tap((account) =>
+        Effect.sync(() => {
+          testAccounts.push(account);
+        })
+      )
+    );
 
 const insertCliSession = (input: {
   readonly approvedBy: AdministrationLegacyUsernameType;
@@ -221,7 +221,9 @@ describe.skipIf(!testDatabase)(
   "LegacyAdministratorBackfill on disposable Postgres",
   () => {
     afterAll(async () => {
-      await deleteTestAccounts(testDatabase!, testAccounts);
+      await Effect.runPromise(
+        workspaceFixtures(testDatabase!.db).deleteAccounts(testAccounts)
+      );
     });
 
     test("reports, then links, a legacy username's records to the account", async () => {

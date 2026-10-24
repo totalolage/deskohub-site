@@ -19,10 +19,8 @@ import {
 import { authUser } from "@/db/schema/auth";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type AudienceCondition,
   audienceFactKey,

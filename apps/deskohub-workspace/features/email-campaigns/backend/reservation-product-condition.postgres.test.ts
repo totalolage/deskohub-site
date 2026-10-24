@@ -4,10 +4,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import type { ReservationProductFilterType } from "@deskohub/workspace-admin-api";
 import { Effect } from "effect";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { CampaignCandidateRepository } from "./campaign-candidate.repository";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();

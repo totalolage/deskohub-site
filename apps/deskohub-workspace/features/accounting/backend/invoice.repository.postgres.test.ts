@@ -45,14 +45,13 @@ import {
 } from "@/features/checkout/checkout-quote.test-utils";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
-  connectWorkspacePostgresTestDatabase,
   fixtureReservationAuthorId,
+  workspaceFixtures,
+} from "@/shared/testing/workspace-fixtures.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import {
-  deleteTestAccounts,
-  insertTestAccount,
-} from "@/shared/testing/workspace-test-accounts.test-utils";
 import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
 import {
@@ -367,7 +366,9 @@ describe.skipIf(!testDatabase)(
 
     afterAll(async () => {
       await deleteFixtureInvoices();
-      await deleteTestAccounts(postgres, testAccounts);
+      await Effect.runPromise(
+        workspaceFixtures(postgres.db).deleteAccounts(testAccounts)
+      );
       const remaining = await postgres.pool.query(
         "select 1 from invoices where dotypos_customer_id like $1 limit 1",
         [`${fixtureCustomerPrefix}%`]
@@ -529,9 +530,8 @@ describe.skipIf(!testDatabase)(
     });
 
     test("issues one manual invoice for concurrent requests with the same id", async () => {
-      const issuer = await insertTestAccount(
-        postgres,
-        "invoice-repository-issuer"
+      const issuer = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account("invoice-repository-issuer")
       );
       testAccounts.push(issuer);
       const input = Schema.decodeUnknownSync(manualInvoiceInputSchema)({

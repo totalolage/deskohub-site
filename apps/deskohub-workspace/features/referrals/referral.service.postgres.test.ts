@@ -28,10 +28,8 @@ import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifie
 import { currencyCZK } from "@/features/checkout/workspace-money";
 import { canonicalPromotionCodeSchema } from "@/features/discounts/persistence-contracts";
 import { ReferralFeatureFlagServiceMock } from "@/features/referrals/referral-feature-flag.service.mock";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   getReferralInvitationDiscountId,
   getReferralReferrerDiscountId,

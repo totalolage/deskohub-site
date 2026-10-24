@@ -30,10 +30,8 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import type { CustomerEventSweepSource } from "@/shared/backend/customer-events/customer-event";
 import { CustomerEventReconciler } from "@/shared/backend/customer-events/customer-event-reconciler";
-import {
-  createWorkspacePostgresSuiteDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { ReservationActivitySweep } from "./reservation-activity-sweep.service";
 
 /**

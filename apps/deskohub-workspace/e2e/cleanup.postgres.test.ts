@@ -12,10 +12,8 @@ import { Effect } from "effect";
 import { workspaceReservations } from "@/db/schema";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { cleanupCheckoutFlowStates } from "./cleanup";
 import type { DatasourceConfig } from "./config";
 import {

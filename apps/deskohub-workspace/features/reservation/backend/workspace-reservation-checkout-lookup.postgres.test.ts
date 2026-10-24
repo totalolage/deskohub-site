@@ -30,9 +30,9 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {

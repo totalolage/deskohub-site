@@ -9,7 +9,7 @@ import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
 import { ReviewSandbox } from "@/features/review-accounts";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   createReservationAccessCookieCapability,
   reservationAccessCookieMaxAgeMilliseconds,
