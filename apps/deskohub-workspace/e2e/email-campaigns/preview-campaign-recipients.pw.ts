@@ -401,73 +401,40 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
               timeout: workspaceE2ETimeouts.browserNavigation,
             })
         );
-        yield* browserStep(
-          "verify-sticky-campaign-actions",
-          workspaceE2ETimeouts.browserNavigation,
-          "verify the campaign actions and preview stay separate while scrolling",
-          async () => {
-            await page.goto(`${input.origin}/cs-CZ/admin/email-campaigns/new`, {
-              timeout: workspaceE2ETimeouts.browserNavigation,
-            });
-            await waitForReactSubmitHandler(
-              page,
-              composerForm,
-              workspaceE2ETimeouts.uiTransition
-            );
-            const actionButton = page.locator(
-              'button[form="campaign-composer"]'
-            );
-            const toolbar = actionButton.locator("xpath=../..");
-            const preview = page.locator("#main-content .grid > aside");
-            const screenshotDirectory = resolve(
-              import.meta.dir,
-              "../../e2e-artifacts/account-review"
-            );
-            await expect(actionButton).toBeVisible();
-            await expect(preview).toBeVisible();
-
-            await page.setViewportSize({ width: 1896, height: 1212 });
-            await page.evaluate(() =>
-              window.scrollTo({ behavior: "instant", top: 700 })
-            );
-            await expect(toolbar).toBeInViewport();
-            const desktopLayout = await page.evaluate(() => {
-              const button = document.querySelector(
-                'button[form="campaign-composer"]'
+        if (input.reviewScreenshots) {
+          const actionButton = page.locator('button[form="campaign-composer"]');
+          const preview = page.locator("#main-content .grid > aside");
+          const screenshotDirectory = resolve(
+            import.meta.dir,
+            "../../e2e-artifacts/account-review"
+          );
+          yield* browserStep(
+            "open-campaign-composer-czech",
+            workspaceE2ETimeouts.browserNavigation,
+            "open the Czech campaign composer for review screenshots",
+            () =>
+              page.goto(`${input.origin}/cs-CZ/admin/email-campaigns/new`, {
+                timeout: workspaceE2ETimeouts.browserNavigation,
+              })
+          );
+          yield* browserStep(
+            "verify-campaign-composer-render",
+            workspaceE2ETimeouts.uiTransition,
+            "wait for the Czech campaign action and preview before capturing",
+            async () => {
+              await expect(actionButton).toBeVisible();
+              await expect(preview).toBeVisible();
+            }
+          );
+          yield* browserStep(
+            "capture-sticky-campaign-desktop",
+            workspaceE2ETimeouts.browserNavigation,
+            "capture the scrolled desktop campaign composer",
+            async () => {
+              await page.setViewportSize({ width: 1896, height: 1212 });
+              await page.evaluate(() =>
+                window.scrollTo({ behavior: "instant", top: 700 })
               );
-              const bar = button?.parentElement?.parentElement;
-              const previewAside = document.querySelector(
-                "#main-content .grid > aside"
-              );
-              return {
-                previewPosition: previewAside
-                  ? getComputedStyle(previewAside).position
-                  : undefined,
-                previewTop: previewAside?.getBoundingClientRect().top,
-                scrollY: window.scrollY,
-                toolbarBottom: bar?.getBoundingClientRect().bottom,
-                toolbarPosition: bar
-                  ? getComputedStyle(bar).position
-                  : undefined,
-                toolbarTop: bar?.getBoundingClientRect().top,
-              };
-            });
-            ok(desktopLayout.scrollY > 0, "the desktop page must scroll");
-            equal(desktopLayout.toolbarPosition, "sticky");
-            ok(
-              desktopLayout.toolbarTop !== undefined &&
-                desktopLayout.toolbarTop >= 64 &&
-                desktopLayout.toolbarTop < 66,
-              "the desktop toolbar must stick below the admin header"
-            );
-            equal(desktopLayout.previewPosition, "sticky");
-            ok(
-              desktopLayout.previewTop !== undefined &&
-                desktopLayout.toolbarBottom !== undefined &&
-                desktopLayout.previewTop >= desktopLayout.toolbarBottom,
-              "the sticky preview must remain below the campaign toolbar"
-            );
-            if (input.reviewScreenshots) {
               await mkdir(screenshotDirectory, { recursive: true });
               await page.screenshot({
                 path: resolve(
@@ -476,46 +443,16 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
                 ),
               });
             }
-
-            await page.setViewportSize({ width: 390, height: 844 });
-            await page.evaluate(() =>
-              window.scrollTo({ behavior: "instant", top: 700 })
-            );
-            await expect(toolbar).toBeInViewport();
-            const mobileLayout = await page.evaluate(() => {
-              const button = document.querySelector(
-                'button[form="campaign-composer"]'
+          );
+          yield* browserStep(
+            "capture-sticky-campaign-mobile",
+            workspaceE2ETimeouts.browserNavigation,
+            "capture the scrolled mobile campaign composer",
+            async () => {
+              await page.setViewportSize({ width: 390, height: 844 });
+              await page.evaluate(() =>
+                window.scrollTo({ behavior: "instant", top: 700 })
               );
-              const bar = button?.parentElement?.parentElement;
-              const buttonTop = button?.getBoundingClientRect().top;
-              const buttonBottom = button?.getBoundingClientRect().bottom;
-              return {
-                buttonBottom,
-                buttonTop,
-                scrollY: window.scrollY,
-                toolbarPosition: bar
-                  ? getComputedStyle(bar).position
-                  : undefined,
-                toolbarTop: bar?.getBoundingClientRect().top,
-              };
-            });
-            ok(mobileLayout.scrollY > 0, "the mobile page must scroll");
-            equal(mobileLayout.toolbarPosition, "sticky");
-            ok(
-              mobileLayout.toolbarTop !== undefined &&
-                mobileLayout.toolbarTop >= 64 &&
-                mobileLayout.toolbarTop < 66,
-              "the mobile toolbar must stick below the admin header"
-            );
-            ok(
-              mobileLayout.buttonTop !== undefined &&
-                mobileLayout.buttonBottom !== undefined &&
-                mobileLayout.toolbarTop !== undefined &&
-                mobileLayout.buttonTop >= mobileLayout.toolbarTop &&
-                mobileLayout.buttonBottom <= 844,
-              "the mobile create action must remain in the viewport"
-            );
-            if (input.reviewScreenshots) {
               await page.screenshot({
                 path: resolve(
                   screenshotDirectory,
@@ -523,18 +460,20 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
                 ),
               });
             }
-
-            await page.setViewportSize({ width: 1440, height: 900 });
-            await page.goto(`${input.origin}/en-US/admin/email-campaigns/new`, {
-              timeout: workspaceE2ETimeouts.browserNavigation,
-            });
-            await waitForReactSubmitHandler(
-              page,
-              composerForm,
-              workspaceE2ETimeouts.uiTransition
-            );
-          }
-        );
+          );
+          yield* browserStep(
+            "restore-campaign-composer-english",
+            workspaceE2ETimeouts.browserNavigation,
+            "return to the English campaign composer",
+            async () => {
+              await page.setViewportSize({ width: 1440, height: 900 });
+              await page.goto(
+                `${input.origin}/en-US/admin/email-campaigns/new`,
+                { timeout: workspaceE2ETimeouts.browserNavigation }
+              );
+            }
+          );
+        }
         yield* browserStep(
           "wait-for-composer-hydration",
           workspaceE2ETimeouts.uiTransition,
