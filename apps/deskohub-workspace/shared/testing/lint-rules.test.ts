@@ -423,6 +423,21 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
     ],
   },
   {
+    name: "no-eager-posthog-browser-sdk", diagnostic: "Load the PostHog browser SDK only through the consent-gated dynamic import",
+    module: "apps/deskohub-workspace/features/checkout/components/discount-rejection-analytics.tsx",
+    cases: [
+      ["rejects a static SDK import", 'import posthog from "posthog-js";\nexport const capture = posthog.capture;\n', true],
+      ["rejects a named SDK import", 'import { posthog } from "posthog-js";\nexport const client = posthog;\n', true],
+      ["rejects an inline type specifier, which keeps the import", 'import { type PostHog } from "posthog-js";\nexport type Client = PostHog;\n', true],
+      ["rejects the React bindings", 'import { usePostHog } from "@posthog/react";\nexport const useClient = usePostHog;\n', true],
+      ["rejects the SDK in the shared PostHog package", 'import posthog from "posthog-js";\nexport const client = posthog;\n', true, "packages/posthog/src/feature-flags/react.ts"],
+      ["permits a type-only import", 'import type { PostHog } from "posthog-js";\nexport type Client = PostHog;\n', false],
+      ["permits the consent-gated dynamic import", 'export const load = () => import("posthog-js");\n', false],
+      ["permits test fixtures", 'import posthog from "posthog-js";\nexport const client = posthog;\n', false, "apps/deskohub-workspace/shared/testing/posthog-identity-browser-fixture.tsx"],
+      ["permits tests", 'import posthog from "posthog-js";\nexport const client = posthog;\n', false, "apps/deskohub-workspace/features/cookie-consent/components/posthog-analytics.test.tsx"],
+    ],
+  },
+  {
     name: "no-next-runtime-imports-in-standalone-modules", diagnostic: "loaded outside the Next.js server",
     module: "apps/deskohub-workspace/db/database.service.ts",
     cases: [

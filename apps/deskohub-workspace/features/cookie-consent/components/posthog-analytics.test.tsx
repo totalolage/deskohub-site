@@ -1254,6 +1254,38 @@ describe("PostHogAnalytics", () => {
     view.unmount();
   });
 
+  test("drops events held from an account that is left before the SDK loads", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?account-change-before-load"
+    );
+
+    discardAnalyticsEvents();
+    setConsentCookie(["necessary", "analytics"]);
+    const view = render(
+      <PostHogProvider>
+        <PostHogAnalytics analyticsAccepted posthogEnvironment="preview" />
+      </PostHogProvider>
+    );
+    publishAnalyticsAccountIdentity({
+      accountId: "account-a",
+      status: "authenticated",
+    });
+    captureAnalyticsEvent("from account a");
+    publishAnalyticsAccountIdentity({ status: "pending" });
+    publishAnalyticsAccountIdentity({ status: "anonymous" });
+    captureAnalyticsEvent("after leaving account a");
+    expect(init).not.toHaveBeenCalled();
+
+    await act(async () => undefined);
+
+    expect(init).toHaveBeenCalledTimes(1);
+    const eventNames = capturedEvents.map(({ event }) => event);
+    expect(eventNames).not.toContain("from account a");
+    expect(eventNames).toContain("after leaving account a");
+
+    view.unmount();
+  });
+
   test("sends events captured before the SDK loads once analytics is ready", async () => {
     const { PostHogAnalytics, PostHogProvider } = await import(
       "./posthog-analytics?analytics-events"

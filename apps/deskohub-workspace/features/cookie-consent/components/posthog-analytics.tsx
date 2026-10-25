@@ -78,6 +78,9 @@ type SettledAnalyticsAccountIdentity = Extract<
 let lastReadyAnalyticsAccountIdentity:
   | SettledAnalyticsAccountIdentity
   | undefined;
+let lastSettledAnalyticsAccountIdentity:
+  | SettledAnalyticsAccountIdentity
+  | undefined;
 let hasReadyAnalyticsConsent = false;
 let analyticsTelemetryHostAllowed = false;
 let workspaceBrowserLogSink:
@@ -179,6 +182,7 @@ function PostHogClient({
 
     const syncAnalyticsAccountIdentity = () => {
       analyticsAccountIdentity = getAnalyticsAccountIdentity();
+      discardAnalyticsEventsAfterLeavingAccount(analyticsAccountIdentity);
       reconcilePostHogIdentity();
     };
 
@@ -439,6 +443,26 @@ function isPostHogIdentityReady(
   );
 }
 
+// Leaving an account resets the SDK identity, so events held from the
+// account's session, including those held before the SDK loaded, must not
+// follow the visitor to the next identity.
+function discardAnalyticsEventsAfterLeavingAccount(
+  identity: AnalyticsAccountIdentity
+) {
+  if (!isSettledAnalyticsAccountIdentity(identity)) return;
+
+  if (
+    lastSettledAnalyticsAccountIdentity?.status === "authenticated" &&
+    !sameSettledAnalyticsAccountIdentity(
+      lastSettledAnalyticsAccountIdentity,
+      identity
+    )
+  ) {
+    discardAnalyticsEvents();
+  }
+  lastSettledAnalyticsAccountIdentity = identity;
+}
+
 function pausePostHogForUnsafeTelemetryHost() {
   analyticsTelemetryHostAllowed = false;
   discardAnalyticsEvents();
@@ -504,14 +528,6 @@ function handlePostHogReady() {
   const wasReconsented = !hasReadyAnalyticsConsent;
   if (identityChanged || wasReconsented) {
     lastCapturedPageviewPath = undefined;
-  }
-  // Leaving an account resets the SDK identity; events held from the
-  // account's session must not follow the visitor to the next identity.
-  if (
-    lastReadyAnalyticsAccountIdentity?.status === "authenticated" &&
-    identityChanged
-  ) {
-    discardAnalyticsEvents();
   }
   lastReadyAnalyticsAccountIdentity = identity;
   hasReadyAnalyticsConsent = true;
