@@ -263,8 +263,10 @@ export function LandingPagePhotoCarousel({
                   source={image}
                   alt={getImageAlt(image, logicalIndex, locale)}
                   className="absolute inset-0"
-                  preload={isCurrent}
                   size={{ width: "fill", height: "fill" }}
+                  // The current slide's width: 78% of the content box, capped
+                  // by the stage height at each breakpoint.
+                  sizes="(min-width: 64rem) min(78vw, 823px), (min-width: 40rem) min(78vw, 691px), min(78vw, 443px)"
                   variant="gallery"
                 />
                 <span className="absolute inset-0 bg-[linear-gradient(135deg,rgba(0,2,79,0.18),transparent_42%,rgba(245,125,0,0.18))]" />
