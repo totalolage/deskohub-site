@@ -4,6 +4,7 @@ import {
   prepareWorkspaceE2EAccountJournalReconciliations,
   reconcileWorkspaceE2EAccountJournals,
 } from "../account/reconcile";
+import { instantNavigationActivityCustomerJournalOwner } from "./activity-customer-fixture";
 import {
   instantNavigationAdministratorJournalOwner,
   instantNavigationAdministratorSkipReason,
@@ -28,7 +29,10 @@ test("remove the instant navigation administrator", async () => {
       const prepared = yield* prepareWorkspaceE2EAccountJournalReconciliations(
         datasourceConfig,
         runId,
-        [instantNavigationAdministratorJournalOwner]
+        [
+          instantNavigationAdministratorJournalOwner,
+          instantNavigationActivityCustomerJournalOwner,
+        ]
       );
       yield* reconcileWorkspaceE2EAccountJournals(prepared);
     })

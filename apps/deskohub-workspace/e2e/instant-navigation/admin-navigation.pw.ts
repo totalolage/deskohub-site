@@ -2,9 +2,15 @@ import { instant } from "@next/playwright";
 import { expect, test } from "@playwright/test";
 import { m } from "@/features/administration/i18n";
 import { m as customerMessages } from "@/features/i18n";
+import { makeWorkspaceE2EAccountRecipientForRunId } from "../account/config";
+import { createSyntheticCustomerProfile } from "../account/fixtures";
+import { makeWorkspaceE2EAccountJournalRecorder } from "../account/journal";
 import { enablePreviewAccess } from "../preview-access";
+import { instantNavigationActivityCustomerJournalOwner } from "./activity-customer-fixture";
 import {
   instantNavigationAdministratorSkipReason,
+  makeInstantNavigationAdministratorRuntime,
+  readInstantNavigationAdministratorRunId,
   signInInstantNavigationAdministrator,
 } from "./administrator-session";
 import { requireBaseUrl, reviewScreenshots } from "./navigation-test-helpers";
@@ -131,6 +137,64 @@ test("hydrates the customer activity section in Czech", async ({ page }) => {
   ).toBeVisible();
 
   await page.close();
+});
+
+test.describe("customer reservation activity review screenshot", () => {
+  test.skip(!reviewScreenshots, "Review screenshot opt-in is disabled");
+  // The customer ID is part of this route, so don't persist a browser trace.
+  test.use({ trace: "off" });
+
+  test("captures the synthetic customer calendar", async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ height: 1212, width: 1896 });
+
+    const runId = await readInstantNavigationAdministratorRunId();
+    if (runId === undefined) {
+      throw new Error(
+        "The synthetic administrator setup did not record its run"
+      );
+    }
+    const { datasourceConfig, runPromise } =
+      makeInstantNavigationAdministratorRuntime();
+    const customerId = await runPromise(
+      createSyntheticCustomerProfile(datasourceConfig, {
+        email: makeWorkspaceE2EAccountRecipientForRunId(
+          runId,
+          "nav-activity-customer"
+        ),
+        firstName: "Workspace E2E Activity Customer",
+      })
+    );
+    await makeWorkspaceE2EAccountJournalRecorder(
+      instantNavigationActivityCustomerJournalOwner.ownerId,
+      instantNavigationActivityCustomerJournalOwner.journalDirectory
+    ).record({ dotyposCustomerIds: [customerId] });
+
+    try {
+      await page.goto(`/en-US/admin/customers/${customerId}`);
+    } catch {
+      throw new Error("Failed to open the synthetic customer activity page");
+    }
+
+    await expect(
+      page.getByRole("region", {
+        name: m.administrationReservationActivityCalendarLabel(
+          {},
+          { locale: "en-US" }
+        ),
+      })
+    ).toBeVisible();
+
+    const screenshotPath =
+      "e2e-artifacts/account-review/admin-customer-reservation-activity.png";
+    await page.screenshot({ fullPage: true, path: screenshotPath });
+    await testInfo.attach("admin-customer-reservation-activity", {
+      contentType: "image/png",
+      path: screenshotPath,
+    });
+    await page.close();
+  });
 });
 
 test("renders an unknown administration address in the administration frame", async ({

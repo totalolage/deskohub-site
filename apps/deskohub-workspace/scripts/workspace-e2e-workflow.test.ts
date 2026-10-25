@@ -61,6 +61,25 @@ const workflowPath = resolve(
   import.meta.dir,
   "../../../.github/workflows/workspace-e2e.yml"
 );
+const workflowDispatchInputs = (
+  Bun.YAML.parse(readFileSync(workflowPath, "utf8")) as {
+    readonly on: {
+      readonly workflow_dispatch?: {
+        readonly inputs?: Readonly<
+          Record<
+            string,
+            {
+              readonly default?: boolean | string;
+              readonly description?: string;
+              readonly required?: boolean;
+              readonly type?: string;
+            }
+          >
+        >;
+      };
+    };
+  }
+).on.workflow_dispatch?.inputs;
 const productionWorkflowPath = resolve(
   import.meta.dir,
   "../../../.github/workflows/deploy-workspace-production.yml"
@@ -365,7 +384,23 @@ describe("workspace E2E workflow", () => {
     expect(environment).toContain("WORKSPACE_E2E_VERCEL_TOKEN");
     expect(environment).toContain("WORKSPACE_E2E_VERCEL_PROJECT");
     expect(environment).toContain("WORKSPACE_E2E_BETTER_AUTH_SECRETS");
+    expect(environment).toContain("WORKSPACE_E2E_REVIEW_SCREENSHOTS");
     expect(environment).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
+  });
+
+  test("opts into review screenshots only for an opted-in manual dispatch", () => {
+    expect(workflowDispatchInputs?.review_screenshots).toEqual({
+      description:
+        "Capture synthetic PR review screenshots into the review artifact",
+      required: false,
+      default: false,
+      type: "boolean",
+    });
+    expect(
+      stepByName("Run checkout E2E").env?.WORKSPACE_E2E_REVIEW_SCREENSHOTS
+    ).toBe(
+      `\${{ github.event_name == 'workflow_dispatch' && inputs.review_screenshots && 'true' || '' }}`
+    );
   });
 
   test("generates the Igloohome client before Workspace E2E startup", async () => {
