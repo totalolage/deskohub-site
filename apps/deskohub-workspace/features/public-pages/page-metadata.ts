@@ -80,7 +80,10 @@ export function createPublicPageMetadata({
   pathname,
   ...page
 }: PublicPageMetadataInput): Metadata {
-  return createPageMetadata(page, getWorkspaceAlternates(page.locale, pathname));
+  return createPageMetadata(
+    page,
+    getWorkspaceAlternates(page.locale, pathname)
+  );
 }
 
 /**
