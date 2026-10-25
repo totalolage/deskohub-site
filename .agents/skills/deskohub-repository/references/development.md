@@ -50,7 +50,8 @@ bun turbo build --filter=<package-name>
 
 ## Next.js
 
-- Upgrade `next` and every `@next/*` package together: the app tilde ranges, the exact `@next/playwright` pin, and the `next` peer ranges in `packages/i18n` and `packages/next-effect`. Regenerate `bun.lock` with one `bun install`, then confirm `bun install --frozen-lockfile`.
+- Upgrade `next` and every `@next/*` package together: the app tilde ranges, the exact `@next/playwright` pin, and the `next` peer ranges in `packages/i18n` and `packages/next-effect`. Regenerate `bun.lock` with one `bun install`, then confirm `bun install --frozen-lockfile`. Check the lock diff for unrelated packages: Bun can re-hoist a shared dependency and change which version a direct dependent gets. If it does, rebuild the lock from the base revision with only the Next entries swapped in, and confirm a plain `bun install` keeps it.
+- `@react-email/ui`, the Workspace `email dev` preview server, pins its own exact `next`, so a Next upgrade leaves that copy behind. `email dev` refuses to start unless `@react-email/ui` matches the `react-email` version exactly, so bump the two together. `react-email` patch releases can change rendered email HTML, so treat that bump as a separate email-output change.
 - Keep strict route matching; don't set `deprecated.looseRouteMatching`. Give every sibling parallel-route slot a matching page or `default.tsx` for each URL. `next build` fails on a gap, and `next dev` shows a blocking overlay. Fixtures that copy part of the route tree must copy complete routes, as `e2e/account-legal-fixture.ts` does with the account `@modal` slot.
 - Parse RSC flight rows and resolve their references instead of asserting raw rows. The row format changes between minor versions.
 
