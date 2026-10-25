@@ -642,7 +642,12 @@ const implementation = Effect.gen(function* () {
     if (!showsCustomerContact(statusKind)) return undefined;
 
     return yield* dotypos.getCustomer(reservation.dotyposCustomerId).pipe(
-      Effect.map(getSupportContactPrefill),
+      Effect.map(
+        Option.match({
+          onNone: () => undefined,
+          onSome: getSupportContactPrefill,
+        })
+      ),
       Effect.timeoutOrElse({
         duration: summaryTimeout,
         orElse: () => Effect.undefined,

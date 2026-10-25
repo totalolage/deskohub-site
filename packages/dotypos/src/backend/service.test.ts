@@ -280,8 +280,56 @@ describe("DotyposService customer lookup", () => {
       fetchMock
     );
 
-    expect(result).toEqual(expected);
+    expect(result).toEqual(Option.some(expected));
     expect(attempts).toBe(2);
+  });
+
+  test("reads a customer Dotypos answers 404 for as none with one request", async () => {
+    let customerRequests = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers/missing") {
+        customerRequests += 1;
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithServiceRetryingInstantly(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getCustomer(dotyposCustomerId("missing"));
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual(Option.none());
+    expect(customerRequests).toBe(1);
+  });
+
+  test("fails a customer read when the access-token request answers 404", async () => {
+    const fetchMock = mockDotyposFetch(
+      () => new Response("Not found", { status: 404 })
+    );
+
+    const result = await runWithServiceRetryingInstantly(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .getCustomer(dotyposCustomerId("customer-id"))
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ExternalAPIError",
+        operation: "Get access token",
+        statusCode: 404,
+      },
+    });
   });
 
   test("fuzzily searches customer names and email without duplicates", async () => {
@@ -2342,7 +2390,7 @@ describe("DotyposService active reservation page", () => {
 });
 
 describe("DotyposService reservations", () => {
-  test("preserves a not-found status when the error body is undocumented", async () => {
+  test("reads a reservation Dotypos answers 404 for as none, even with an undocumented error body", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);
       if (url.pathname === "/signin/token") return tokenResponse();
@@ -2362,14 +2410,37 @@ describe("DotyposService reservations", () => {
       fetchMock
     );
 
-    expect(Predicate.isTagged(result, "Failure")).toBe(true);
-    if (Predicate.isTagged(result, "Failure")) {
-      expect(result.failure).toMatchObject({
+    expect(result).toMatchObject({ _tag: "Success", success: Option.none() });
+  });
+
+  test("fails a reservation read whose linked customer answers 404", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations/reservation-id") {
+        return Response.json(reservation());
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithServiceRetryingInstantly(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .getReservation(dotyposReservationId("reservation-id"))
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
         _tag: "ExternalAPIError",
-        operation: "getReservation",
+        operation: "getCustomer",
         statusCode: 404,
-      });
-    }
+      },
+    });
   });
 
   test("creates reservations with the generated array payload and retries empty responses", async () => {
@@ -3036,6 +3107,35 @@ describe("DotyposService customer discounts", () => {
     expect(result).toEqual({
       discountGroupId: dotyposDiscountGroupId("group-id"),
       discountPercent: "12.5",
+    });
+  });
+
+  test("fails a customer discount group read when the customer answers 404", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithServiceRetryingInstantly(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .getCustomerDiscountGroup({
+            customerId: dotyposCustomerId("customer-id"),
+          })
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ExternalAPIError",
+        operation: "getCustomer",
+        statusCode: 404,
+      },
     });
   });
 

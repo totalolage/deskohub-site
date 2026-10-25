@@ -1495,7 +1495,7 @@ export class AdministrationService extends Context.Service<
           Effect.map(
             (customer): LiveReservationDetails => ({
               reservation: null,
-              customer,
+              customer: Option.getOrNull(customer),
             })
           ),
           Effect.catch((cause) => {
@@ -1510,10 +1510,14 @@ export class AdministrationService extends Context.Service<
         if (!row.dotyposReservationId) return loadCustomer;
 
         return dotypos.getReservation(row.dotyposReservationId).pipe(
-          Effect.map(
-            ({ customer, reservation }): LiveReservationDetails => ({
-              customer,
-              reservation,
+          Effect.flatMap(
+            Option.match({
+              onNone: () => loadCustomer,
+              onSome: ({ customer, reservation }) =>
+                Effect.succeed<LiveReservationDetails>({
+                  customer,
+                  reservation,
+                }),
             })
           ),
           Effect.catch((cause) => {
@@ -1569,12 +1573,11 @@ export class AdministrationService extends Context.Service<
           const missingCustomers = yield* Effect.all(
             unreturnedIds.map((id) =>
               dotypos.getCustomer(id).pipe(
-                Effect.map((customer) => [id, customer] as const),
-                Effect.catchIf(
-                  (error) =>
-                    error._tag === "ExternalAPIError" &&
-                    error.statusCode === 404,
-                  () => Effect.succeed(null)
+                Effect.map(
+                  Option.match({
+                    onNone: () => null,
+                    onSome: (customer) => [id, customer] as const,
+                  })
                 ),
                 Effect.catch(
                   recoverProviderRead(
@@ -2649,6 +2652,9 @@ export class AdministrationService extends Context.Service<
       /** The Dotypos booking, or null when Dotypos no longer has it. */
       const findBookingDetails = (id: DotyposReservationId) =>
         dotypos.getReservation(id).pipe(
+          Effect.map(Option.getOrNull),
+          // A missing booking is the none above. This 404 is the booking's
+          // linked customer missing, which also reads as no booking for now.
           Effect.catchIf(
             (error) =>
               error._tag === "ExternalAPIError" && error.statusCode === 404,

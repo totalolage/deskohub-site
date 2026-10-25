@@ -25,6 +25,7 @@ import {
   Effect,
   Layer,
   Match,
+  Option,
   Schema,
 } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -484,7 +485,9 @@ const resolveCustomer = Effect.fn(
       )
     );
     const customer = yield* dotypos.getCustomer(customerId);
-    if (customer.deleted)
+    // A customer Dotypos no longer has gets the same answer as a soft-deleted
+    // one.
+    if (Option.isNone(customer) || customer.value.deleted)
       return yield* new InvoiceAdministrationCustomerError({
         reason: "customer-deleted",
         message: "The selected customer is deleted.",

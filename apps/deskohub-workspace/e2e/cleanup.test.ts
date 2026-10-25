@@ -1,7 +1,7 @@
 import { expect, mock, test } from "bun:test";
 import { ExternalAPIError } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import {
   cleanupCheckoutFlowStates,
   cleanupOwnedCheckoutFlowStates,
@@ -168,11 +168,13 @@ test("does not cancel order or fallback rows outside their journaled recipient",
         readCleanupCheckoutRows: () => Effect.succeed([]),
         readCleanupCustomerIds: () => Effect.succeed([]),
         readDotyposReservationOwner: () =>
-          Effect.succeed({
-            customerId:
-              "dotypos-customer-1" as CheckoutRow["dotypos_customer_id"],
-            email: otherRunEmail,
-          }),
+          Effect.succeed(
+            Option.some({
+              customerId:
+                "dotypos-customer-1" as CheckoutRow["dotypos_customer_id"],
+              email: otherRunEmail,
+            })
+          ),
       }
     )
   );
@@ -195,11 +197,13 @@ test("does not cancel order or fallback rows outside their journaled recipient",
         readCleanupCheckoutRows: () => Effect.succeed([foreignRow]),
         readCleanupCustomerIds: () => Effect.succeed([]),
         readDotyposReservationOwner: () =>
-          Effect.succeed({
-            customerId:
-              "dotypos-customer-1" as CheckoutRow["dotypos_customer_id"],
-            email: otherRunEmail,
-          }),
+          Effect.succeed(
+            Option.some({
+              customerId:
+                "dotypos-customer-1" as CheckoutRow["dotypos_customer_id"],
+              email: otherRunEmail,
+            })
+          ),
       }
     )
   );
@@ -230,11 +234,13 @@ test("validates ownership of a captured reservation before checkout cancellation
         readCleanupCheckoutRows: () => Effect.succeed([]),
         readCleanupCustomerIds: () => Effect.succeed([]),
         readDotyposReservationOwner: () =>
-          Effect.succeed({
-            customerId:
-              "dotypos-customer-1" as CheckoutRow["dotypos_customer_id"],
-            email: otherRunEmail,
-          }),
+          Effect.succeed(
+            Option.some({
+              customerId:
+                "dotypos-customer-1" as CheckoutRow["dotypos_customer_id"],
+              email: otherRunEmail,
+            })
+          ),
       }
     )
   );
@@ -252,12 +258,6 @@ test("treats only a missing reservation as already converged during cleanup", as
   };
   const cancelDotyposReservation = mock(() => Effect.void);
   const waitForCancelledDotyposReservations = mock(() => Effect.void);
-  const missingReservationError = new ExternalAPIError({
-    operation: "getReservation",
-    service: "Dotypos",
-    statusCode: 404,
-  });
-
   const missingReservationResult = await Effect.runPromise(
     cleanupCheckoutFlowStates(
       {
@@ -270,7 +270,7 @@ test("treats only a missing reservation as already converged during cleanup", as
         readCheckoutRow: () => Effect.succeed(undefined),
         readCleanupCheckoutRows: () => Effect.succeed([]),
         readCleanupCustomerIds: () => Effect.succeed([]),
-        readDotyposReservationOwner: () => Effect.fail(missingReservationError),
+        readDotyposReservationOwner: () => Effect.succeed(Option.none()),
         waitForCancelledDotyposReservations,
       }
     )
@@ -457,12 +457,14 @@ const ownerForCheckoutData =
     _config: DatasourceConfig,
     _reservationId: CheckoutRow["dotypos_reservation_id"]
   ) =>
-    Effect.succeed({
-      customerId: "dotypos-customer-1" as NonNullable<
-        CheckoutRow["dotypos_customer_id"]
-      >,
-      email: data.email,
-    });
+    Effect.succeed(
+      Option.some({
+        customerId: "dotypos-customer-1" as NonNullable<
+          CheckoutRow["dotypos_customer_id"]
+        >,
+        email: data.email,
+      })
+    );
 
 const makeBarrier = <A>(expectedParticipants: number) => {
   let active = 0;

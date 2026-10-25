@@ -123,6 +123,28 @@ const isDotyposError = (error: unknown): error is DotyposError =>
   Predicate.isTagged(error, "ExternalAPIError") ||
   Predicate.isTagged(error, "NetworkError");
 
+/**
+ * Reads the addressed record as some, or none when Dotypos answers 404 for
+ * it. Only the record's own request counts: the access-token request maps its
+ * failures with another operation, and a nested read of another record keeps
+ * its own operation, so their 404s still fail.
+ */
+const noneWhenNotFound =
+  (operation: "getCustomer" | "getReservation") =>
+  <A, E extends DotyposError, R>(
+    effect: Effect.Effect<A, E, R>
+  ): Effect.Effect<Option.Option<A>, E, R> =>
+    effect.pipe(
+      Effect.map(Option.some),
+      Effect.catchIf(
+        (error) =>
+          error._tag === "ExternalAPIError" &&
+          error.statusCode === 404 &&
+          error.operation === operation,
+        () => Effect.succeed(Option.none<A>())
+      )
+    );
+
 const isRetryableDotyposError = (error: DotyposError) =>
   Match.value(error).pipe(
     Match.tag("NetworkError", () => true),
@@ -678,7 +700,7 @@ const makeDotyposService = Effect.gen(function* () {
       )
   );
 
-  const getReservation = Effect.fn("getReservation")(
+  const readReservation = Effect.fn("getReservation")(
     function* (id: DotyposReservationId) {
       const reservation = yield* getReservationWithoutCustomer(id);
 
@@ -693,7 +715,7 @@ const makeDotyposService = Effect.gen(function* () {
         reservation._customerId,
         "Customer ID"
       );
-      const customerResult = yield* getCustomer(customerId);
+      const customerResult = yield* readCustomer(customerId);
       const customer = yield* decodeProviderEntity(
         DotyposCustomerSchema,
         { ...customerResult, id: customerId },
@@ -1014,7 +1036,7 @@ const makeDotyposService = Effect.gen(function* () {
       )
   );
 
-  const getCustomer = Effect.fn("getCustomer")(
+  const readCustomer = Effect.fn("getCustomer")(
     function* (id: DotyposCustomerId) {
       const customer = yield* runDotyposRequest(
         client.getCustomer(config.cloudId, id, undefined),
@@ -1047,6 +1069,13 @@ const makeDotyposService = Effect.gen(function* () {
         })
       )
   );
+
+  /** A missing linked customer still fails the reservation read. */
+  const getReservation = (id: DotyposReservationId) =>
+    readReservation(id).pipe(noneWhenNotFound("getReservation"));
+
+  const getCustomer = (id: DotyposCustomerId) =>
+    readCustomer(id).pipe(noneWhenNotFound("getCustomer"));
 
   const getCustomers = Effect.fn("getCustomers")(function* (
     options: CustomerListOptions
@@ -1691,7 +1720,7 @@ const makeDotyposService = Effect.gen(function* () {
           )
         ),
         Effect.bind("customer", ({ normalizedCustomerId }) =>
-          getCustomer(normalizedCustomerId)
+          readCustomer(normalizedCustomerId)
         ),
         Effect.bind("discountGroup", ({ customer }) =>
           loadCustomerDiscountGroup(customer)
