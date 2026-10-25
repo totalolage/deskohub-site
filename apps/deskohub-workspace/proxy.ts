@@ -441,7 +441,19 @@ export async function proxy(request: NextRequest) {
     return markRedirectPrivacy(request, normalizingRedirect);
   }
 
-  if (isAdministrationPath(request.nextUrl.pathname)) {
+  // Outside the account and the administration, a dotted path reaches the
+  // proxy only for the exact-locale redirect, so a file-like path under an
+  // exact locale goes on untouched to the localized catch-all.
+  const { pathname } = request.nextUrl;
+  if (
+    pathname.includes(".") &&
+    !isAccountPath(pathname) &&
+    !isAdministrationPath(pathname)
+  ) {
+    return NextResponse.next();
+  }
+
+  if (isAdministrationPath(pathname)) {
     return markAdministrationResponse(await administrationResponse(request));
   }
 
@@ -473,13 +485,19 @@ export async function proxy(request: NextRequest) {
 
 // Every account route, dotted segments included, passes through the proxy: the
 // account sections' layout trusts the request pathname only because the proxy
-// replaces any value a client sent.
+// replaces any value a client sent. A dotted path under a locale-shaped prefix
+// passes through too, so `/en-us/x.html` gets the exact-locale redirect: the
+// rewrite in `next.config.mjs` ignores letter case and cannot tell it from
+// `/en-US/x.html`. The prefix spells out both letter cases because matchers
+// compare them. RSC and segment requests stay out: Next strips their suffix
+// before the proxy sees the URL, so they would pass for page loads.
 export const config: MiddlewareConfig = {
   matcher: [
     "/admin/:path*",
     "/:locale/admin/:path*",
     "/account/:path*",
     "/:locale((?!api)[^/]+)/account/:path*",
+    "/([a-zA-Z]{2}-[a-zA-Z]{2}/(?!.*\\.(?:prefetch\\.)?rsc$|.*\\.segments/).*\\..*)",
     "/((?!api|_next/static|_next/image|favicon.ico|favicon.svg|.*\\..*).*)",
   ],
 };

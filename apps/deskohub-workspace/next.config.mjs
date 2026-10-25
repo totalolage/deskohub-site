@@ -129,8 +129,9 @@ const nextConfig = {
       // build assets gets the locale redirect the proxy gives other unprefixed
       // paths. Otherwise the `[locale]` route would take its first segment for
       // a locale and answer with Next's bare error document. Route matching
-      // ignores letter case, so a dotted path under a wrong-case locale
-      // (`/en-us/x.html`) still reaches that route.
+      // ignores letter case, so this rewrite also skips a dotted path under a
+      // wrong-case locale (`/en-us/x.html`); the proxy's matcher catches that
+      // one and moves it to the exact locale.
       afterFiles: [
         {
           source: `/:path((?!(?:${localeRedirectPattern})(?:/|$|\\.(?:prefetch\\.)?rsc$|\\.segments/)|api/|_next/|_vercel/|page-markdown/).*\\..*)`,

@@ -625,6 +625,89 @@ describe("locale negotiation", () => {
   });
 });
 
+describe("dotted paths under a locale prefix", () => {
+  const matchesProxy = (pathname: string) =>
+    unstable_doesMiddlewareMatch({
+      config,
+      url: `https://workspace.example${pathname}`,
+    });
+
+  test("reach the proxy whatever the prefix's letter case", () => {
+    for (const pathname of [
+      "/CS-cz/x.txt",
+      "/en-us/x.html",
+      "/EN-US/a/b.php",
+      "/cs-CZ/nope.html",
+    ]) {
+      expect(matchesProxy(pathname)).toBe(true);
+    }
+  });
+
+  test("leave root files, build assets and API routes out of the proxy", () => {
+    for (const pathname of [
+      "/robots.txt",
+      "/sitemap.xml",
+      "/llms.txt",
+      "/.well-known/security.txt",
+      indexNowKeyPathname,
+      "/favicon.ico",
+      "/favicon.png",
+      "/apple-touch-icon.png",
+      "/manifest.webmanifest",
+      "/official-company-extract.pdf",
+      "/_next/static/chunks/main.js",
+      "/api/v1/cli/file.json",
+    ]) {
+      expect(matchesProxy(pathname)).toBe(false);
+    }
+  });
+
+  // Next strips the suffix before the proxy sees the URL, so these requests
+  // would pass for page loads.
+  test("leave RSC and segment requests under a locale out of the proxy", () => {
+    for (const pathname of [
+      "/en-US/faq.rsc",
+      "/en-us/faq.rsc",
+      "/cs-CZ/pricing.prefetch.rsc",
+      "/cs-CZ/pricing.segments/_tree.segment.rsc",
+      "/en-US/faq.segments/$c$locale/__PAGE__.segment.rsc",
+    ]) {
+      expect(matchesProxy(pathname)).toBe(false);
+    }
+  });
+
+  test("move a loosely spelled locale prefix permanently to the exact locale", async () => {
+    for (const [path, exact] of [
+      ["/CS-cz/x.txt", "/cs-CZ/x.txt"],
+      ["/en-us/x.html", "/en-US/x.html"],
+      ["/EN-US/a/b.php?x=1", "/en-US/a/b.php?x=1"],
+    ]) {
+      const response = await proxy(
+        new NextRequest(`https://workspace.example${path}`)
+      );
+
+      expect(response.status).toBe(308);
+      expect(response.headers.get("location")).toBe(
+        `https://workspace.example${exact}`
+      );
+    }
+  });
+
+  test("go on untouched to the localized catch-all under an exact locale", async () => {
+    for (const path of ["/cs-CZ/nope.html", "/en-US/a/b.php"]) {
+      const response = await proxy(
+        new NextRequest(`https://workspace.example${path}`, {
+          headers: { "accept-language": "de" },
+        })
+      );
+
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.cookies.get(localeCookieName)).toBeUndefined();
+    }
+  });
+});
+
 test("continues to persist the locale for ordinary localized requests", async () => {
   const request = new NextRequest("https://workspace.example/cs-CZ");
 
