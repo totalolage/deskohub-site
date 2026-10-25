@@ -19,7 +19,7 @@ import {
   HttpApiEndpoint,
   HttpApiGroup,
 } from "effect/unstable/httpapi";
-import { publishedCustomerAgentTools } from "@/features/agent-tools/customer-agent-tools";
+import { customerAgentCatalog } from "@/features/agent-tools/customer-agent-catalog";
 import {
   administrationOperationTools,
   deriveAdministrationOperationTools,
@@ -82,7 +82,7 @@ describe("administration agent tools", () => {
   test("have unique, valid names that no customer tool uses", () => {
     const names = agentTools.map((tool) => tool.name);
     const customerNames = new Set(
-      publishedCustomerAgentTools.map((tool) => tool.name)
+      customerAgentCatalog.published.tools.map((tool) => tool.name)
     );
 
     expect(new Set(names).size).toBe(names.length);

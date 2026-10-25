@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { agentInterfacesHeading } from "@/features/agent-tools/agent-interfaces-markdown";
-import { publishedCustomerAgentTools } from "@/features/agent-tools/customer-agent-tools";
+import { customerAgentCatalog } from "@/features/agent-tools/customer-agent-catalog";
 import { getPublicOpeningHours } from "@/features/checkout/public-offerings";
 import { advertisedCatalogOfferings } from "@/features/checkout/public-offerings.test-utils";
 import { locales, m } from "@/features/i18n";
@@ -30,7 +30,7 @@ const renderLlmsTxt = (
         ...(officeOpen && { office: {} }),
       }),
       agentInterfaces: {
-        tools: publishedCustomerAgentTools,
+        ...customerAgentCatalog.published,
         siteToolsRelease: "on",
       },
     })

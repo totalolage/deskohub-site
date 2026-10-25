@@ -10,6 +10,7 @@ import type {
 } from "@modelcontextprotocol/client";
 import { DateTime, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import type { AgentToolClient } from "@/features/agent-tools/agent-tool-client";
 import { m } from "@/features/i18n";
 import type { AgentTrafficEvent } from "@/shared/backend/agent-traffic/agent-traffic-events";
 import type { RequestBudgetPolicy } from "@/shared/backend/request-budget/request-budget.service";
@@ -194,25 +195,6 @@ mock.module("@/features/reservation/actions/prepare-pay-state", () => ({
     ),
 }));
 
-const { listOfferingsTool } = await import(
-  "@/features/agent-tools/list-offerings.tool"
-);
-const { checkAvailabilityTool } = await import(
-  "@/features/agent-tools/check-availability.tool"
-);
-const { getQuoteTool } = await import("@/features/agent-tools/get-quote.tool");
-const { showBookingTool } = await import(
-  "@/features/agent-tools/show-booking.tool"
-);
-const { startReservationTool } = await import(
-  "@/features/agent-tools/start-reservation.tool"
-);
-const { getReservationStatusTool } = await import(
-  "@/features/agent-tools/get-reservation-status.tool"
-);
-const { listMyReservationsTool } = await import(
-  "@/features/agent-tools/list-my-reservations.tool"
-);
 const { agentToolLocaleField, defineSignedInAgentTool } = await import(
   "@/features/agent-tools/agent-tool"
 );
@@ -244,17 +226,21 @@ const whoamiTool = defineSignedInAgentTool({
     ),
 });
 
+// Every client is served the catalog's customer tools and `whoami` after
+// them, reading the test services.
+const { customerAgentCatalog } = await import(
+  "@/features/agent-tools/customer-agent-catalog"
+);
+mock.module("@/features/agent-tools/customer-agent-catalog", () => ({
+  customerAgentCatalog: {
+    ...customerAgentCatalog,
+    forClient: (client: AgentToolClient) => {
+      const served = customerAgentCatalog.forClient(client);
+      return { ...served, tools: [...served.tools, whoamiTool] };
+    },
+  },
+}));
 mock.module("@/features/agent-tools/customer-agent-tools", () => ({
-  publishedCustomerAgentTools: [
-    listOfferingsTool,
-    checkAvailabilityTool,
-    getQuoteTool,
-    showBookingTool,
-    startReservationTool,
-    getReservationStatusTool,
-    listMyReservationsTool,
-    whoamiTool,
-  ],
   CustomerAgentToolsLive: services.layer,
 }));
 
@@ -378,7 +364,7 @@ describe("customer MCP route", () => {
     accessTokens.clear();
   });
 
-  test("initializes as the Deskohub Workspace server with booking instructions", async () => {
+  test("initializes as the Deskohub Workspace server with the catalog's instructions for the client", async () => {
     const { result } = await rpc<InitializeResult>("initialize", {
       protocolVersion: legacyProtocolVersion,
       capabilities: {},
@@ -390,7 +376,9 @@ describe("customer MCP route", () => {
       serverInfo: { name: "dh-workspace", version: "1.0.0" },
       capabilities: { tools: expect.any(Object) },
     });
-    expect(result?.instructions).toContain("paid on the website");
+    expect(result?.instructions).toBe(
+      customerAgentCatalog.forClient("other").instructions
+    );
   });
 
   test("publishes each tool's access, so the site registers only the public read tools", async () => {

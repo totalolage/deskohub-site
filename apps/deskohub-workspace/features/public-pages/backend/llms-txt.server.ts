@@ -2,7 +2,7 @@ import "server-only";
 
 import { Effect } from "effect";
 import { cacheLife } from "next/cache";
-import { publishedCustomerAgentTools } from "@/features/agent-tools/customer-agent-tools";
+import { customerAgentCatalog } from "@/features/agent-tools/customer-agent-catalog";
 import type { GlobalRelease } from "@/features/feature-flags/backend/global-release";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { serializeMarkdown } from "@/shared/markdown/markdown";
@@ -32,7 +32,7 @@ export async function renderLlmsTxt(
           pages: releases.publishedPathnames,
           offerings: loaded,
           agentInterfaces: {
-            tools: publishedCustomerAgentTools,
+            ...customerAgentCatalog.published,
             siteToolsRelease,
           },
         })
