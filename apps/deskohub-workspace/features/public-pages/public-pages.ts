@@ -14,12 +14,14 @@ type LocalizedPagePathname<Route> = Route extends `/[locale]${infer Pathname}`
  */
 export const publicPagePathnames = [
   "/",
+  "/coworking",
   "/contact",
   "/faq",
   "/ai-assistants",
   "/pricing",
   "/meeting-room",
   "/team",
+  "/gallery",
   "/ttrpg-room",
   "/terms-and-conditions",
   "/privacy-policy",

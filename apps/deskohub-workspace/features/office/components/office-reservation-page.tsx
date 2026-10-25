@@ -1,12 +1,12 @@
 import { Schema } from "effect";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
+import { PublicOfferingsStructuredData } from "@/features/checkout/components/public-offerings-structured-data";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import { loadOfficeReservationSeatCapacity } from "@/features/office/backend/office-reservation-capacity.server";
 import { preloadPageAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { preloadPageAvailability } from "@/features/reservation/backend/workspace-availability-loader";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
-import { ReservationOfferingsStructuredData } from "@/features/reservation/components/reservation-offerings-structured-data";
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
   getOfficeReservationEndsOn,
@@ -114,7 +114,7 @@ export async function renderOfficeReservationContent({
 
   return (
     <>
-      <ReservationOfferingsStructuredData
+      <PublicOfferingsStructuredData
         locale={locale}
         offerings={getOfficePageOfferings({
           advertisedPrices: initialAdvertisedPrices,
@@ -127,7 +127,6 @@ export async function renderOfficeReservationContent({
           },
           submittedCode,
         })}
-        pathname={officeReservationPath}
       />
       <OfficeReservationForm
         checkoutSessionId={checkoutSessionId}

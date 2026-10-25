@@ -33,7 +33,10 @@ import {
 
 const date = "2099-07-30";
 
-const halfPriceSale = (subtotal: { readonly value: number }) => {
+const halfPriceSale = (
+  subtotal: { readonly value: number },
+  expiresAt?: string
+) => {
   const half = currencyCZK(subtotal.value / 2);
   return {
     discountableSubtotal: currencyCZK(subtotal.value),
@@ -43,6 +46,7 @@ const halfPriceSale = (subtotal: { readonly value: number }) => {
           id: Schema.decodeUnknownSync(discountIdSchema)("summer-sale"),
           label: "Summer sale",
           adjustment: { kind: "percentage" as const, basisPoints: 5000 },
+          ...(expiresAt && { expiresAt }),
         },
         subtotalBefore: currencyCZK(subtotal.value),
         amount: half,
@@ -92,7 +96,7 @@ const advertiseCowork = (
 };
 
 describe("getCoworkPageOfferings", () => {
-  test("offers each tier at the price its card shows", () => {
+  test("advertises each tier at the price its card shows, beside the catalog price", () => {
     const [openSpace, reservedDesk] = getCoworkPageOfferings({
       advertisedPrices: getCoworkDateAdvertisedPriceRequests({
         date,
@@ -103,10 +107,17 @@ describe("getCoworkPageOfferings", () => {
       locale: "en-US",
     });
 
-    expect(openSpace?.price).toEqual(currencyCZK(14_500));
-    expect(reservedDesk?.price).toEqual(
-      getWorkspaceProductByTier("reserved-desk").price
+    expect(openSpace?.price).toEqual(
+      getWorkspaceProductByTier("open-space").price
     );
+    expect(openSpace?.advertisedPrice).toEqual({
+      price: currencyCZK(14_500),
+      discount: currencyCZK(14_500),
+    });
+    expect(reservedDesk?.advertisedPrice).toEqual({
+      price: getWorkspaceProductByTier("reserved-desk").price,
+      discount: currencyCZK(0),
+    });
     expect(
       openSpace?.kind === "cowork" &&
         openSpace.addOns.find(({ id }) => id === "coffee")?.price
@@ -129,6 +140,10 @@ describe("getCoworkPageOfferings", () => {
       getWorkspaceProductByTier("open-space").price,
       getWorkspaceProductByTier("reserved-desk").price,
     ]);
+    expect(offerings.map(({ advertisedPrice }) => advertisedPrice)).toEqual([
+      undefined,
+      undefined,
+    ]);
   });
 
   test("ignores prices preloaded for another date", () => {
@@ -142,9 +157,7 @@ describe("getCoworkPageOfferings", () => {
       locale: "en-US",
     });
 
-    expect(openSpace?.price).toEqual(
-      getWorkspaceProductByTier("open-space").price
-    );
+    expect(openSpace?.advertisedPrice).toBeUndefined();
   });
 });
 
@@ -160,7 +173,8 @@ describe("getMeetingRoomPageOfferings", () => {
     );
     if (!fourHours) throw new Error("Expected a four-hour request");
     const { price } = workspaceMeetingRoomProductsByDurationKey["hour:4"];
-    const sale = halfPriceSale(price);
+    // The sale's booking window ends at Prague midnight starting 2 August.
+    const sale = halfPriceSale(price, "2099-08-01T22:00:00.000Z");
     const quote = {
       fingerprint: "meeting-room-hour-4-sale",
       items: [
@@ -195,8 +209,17 @@ describe("getMeetingRoomPageOfferings", () => {
 
     expect(offerings.map(({ price }) => price)).toEqual([
       workspaceMeetingRoomProductsByDurationKey["hour:1"].price,
-      currencyCZK(49_000),
+      price,
       workspaceMeetingRoomProductsByDurationKey["day:1"].price,
+    ]);
+    expect(offerings.map(({ advertisedPrice }) => advertisedPrice)).toEqual([
+      undefined,
+      {
+        price: currencyCZK(49_000),
+        discount: currencyCZK(49_000),
+        saleLastDay: "2099-08-01",
+      },
+      undefined,
     ]);
   });
 });

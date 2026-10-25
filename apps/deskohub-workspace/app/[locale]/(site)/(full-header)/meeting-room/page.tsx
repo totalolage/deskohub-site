@@ -1,7 +1,9 @@
+import { PublicOfferingsStructuredData } from "@/features/checkout/components/public-offerings-structured-data";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { MeetingRoomPage } from "@/features/meeting-room/components/meeting-room-page";
+import { loadSharedPriceList } from "@/features/pricing/backend/price-list.server";
 import {
   publicPageMetadata,
   requirePublishedPublicPage,
@@ -27,17 +29,26 @@ export const generateMetadata = publicPageMetadata("/meeting-room");
 export default async function LocalizedMeetingRoomPage() {
   return runWithRequestLocale(async (locale) => {
     await requirePublishedPublicPage("/meeting-room");
-    const [heroImages, galleryImages] = await Promise.all([
+    const [heroImages, galleryImages, priceList] = await Promise.all([
       getMeetingRoomHeroImages(),
       getMeetingRoomGalleryImages(),
+      loadSharedPriceList(locale),
     ]);
 
     return (
-      <MeetingRoomPage
-        galleryImages={galleryImages}
-        heroImage={heroImages[0]}
-        locale={locale}
-      />
+      <>
+        <PublicOfferingsStructuredData
+          locale={locale}
+          offerings={priceList.offerings.filter(
+            ({ kind }) => kind === "meeting-room"
+          )}
+        />
+        <MeetingRoomPage
+          galleryImages={galleryImages}
+          heroImage={heroImages[0]}
+          locale={locale}
+        />
+      </>
     );
   });
 }
