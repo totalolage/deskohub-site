@@ -3,15 +3,15 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { NotFoundContent } from "../not-found-content";
 
-// An unmatched path is known only per request, and a `notFound()` that reaches
-// the server-rendered shell turns the whole response into Next's bare error
-// document, without the locale layout. So the shell shows the localized 404
-// content itself, the metadata throw gives the response its 404 status, and
-// the page's own throw streams in after the shell, as on a gated page.
+// Every unmatched path gets the same answer, so the build prerenders it once
+// per locale. A `notFound()` in the page's shell would turn that prerender
+// into Next's bare error document, outside the locale layout. Instead the
+// metadata throw gives the prerender its 404 status and the shell shows the
+// localized 404 content; the page's own throw streams in after the shell, as
+// on a gated page whose flag is off.
 export const instant = true;
 
-export async function generateMetadata(): Promise<never> {
-  await connection();
+export function generateMetadata(): never {
   notFound();
 }
 
