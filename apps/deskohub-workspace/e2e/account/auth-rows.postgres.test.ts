@@ -1,27 +1,22 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { testEmailAddress } from "@deskohub/test-email";
 import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import { customerAccounts } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { E2EDatabase } from "../integrations/database.service";
 import { removeSyntheticAuthUser } from "./auth-rows";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
-const insertAuthUser = async (id: string) => {
-  await testDatabase!.pool.query(
-    "insert into customer_accounts (id) values ($1) on conflict do nothing",
-    [id]
-  );
-  await testDatabase!.pool.query(
-    `insert into auth."user" (id, name, email) values ($1, '', $2)`,
-    [id, testEmailAddress(`auth-rows-${id}`)]
-  );
-};
+const insertAuthUser = (id: string) =>
+  workspaceFixtures(testDatabase!.db)
+    .account("auth-rows", { id: customerAccountIdSchema.make(id) })
+    .pipe(Effect.runPromise);
 
 const removeAccount = (accountId: string) =>
   removeSyntheticAuthUser(accountId).pipe(

@@ -21,14 +21,23 @@ export const makeDatabasePool = (
     types: drizzleRawTypeParsers,
   });
 
+/**
+ * The services a database client runs on: the Postgres client the layer
+ * provides, the query cache, and the query logger.
+ */
+export const databaseClientServices = <E>(
+  postgres: Layer.Layer<PgClient.PgClient, E>
+) =>
+  Layer.merge(
+    postgres.pipe(Layer.orDie),
+    Layer.merge(EffectCache.Default, DatabaseQueryLoggerLive)
+  );
+
 export const makeDatabaseClient = (pool: Pool) =>
   make({ relations }).pipe(
     Effect.provide(
-      Layer.merge(
-        PgClient.layerFrom(
-          PgClient.fromPool({ acquire: Effect.succeed(pool) })
-        ).pipe(Layer.orDie),
-        Layer.merge(EffectCache.Default, DatabaseQueryLoggerLive)
+      databaseClientServices(
+        PgClient.layerFrom(PgClient.fromPool({ acquire: Effect.succeed(pool) }))
       )
     )
   );

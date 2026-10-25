@@ -1,8 +1,7 @@
-import {
-  type DotyposCustomer,
-  type DotyposCustomerId,
-  type DotyposReservation,
-  DotyposReservationIdSchema,
+import type {
+  DotyposCustomer,
+  DotyposCustomerId,
+  DotyposReservation,
 } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
@@ -11,19 +10,13 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { Effect, Fiber, Schema } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
-import {
-  emailCampaignAutomationRuns,
-  workspaceReservations,
-} from "@/db/schema";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
+import { emailCampaignAutomationRuns } from "@/db/schema";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import {
-  fixtureReservationAuthorId,
-  type WorkspacePostgresSuiteDatabase,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import type { WorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   seedAutomatedCampaign,
   seedAutomation,
@@ -165,39 +158,29 @@ export const seedDeliverReservations = async (
   visits: readonly SeedVisit[]
 ) => {
   const confirmedAt = Temporal.Instant.from("2026-10-01T10:00:00Z");
-  const rows = visits.map((visit) => {
-    const id = workspaceReservationIdSchema.make(`${prefix}-${visit.label}`);
-    return {
-      id,
-      authorAccountId: fixtureReservationAuthorId,
-      checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
-      dotyposCustomerId: visit.customer,
-      dotyposReservationId: DotyposReservationIdSchema.make(
-        `${prefix}-dotypos-${visit.label}`
-      ),
-      reservationState: "confirmed" as const,
-      reservationConfirmedAt: confirmedAt,
-      reservationCancelledAt: visit.cancelledAt ?? null,
-      paymentState: "paid" as const,
-      paidAt: confirmedAt,
-      fulfillmentState: "fulfilled" as const,
-      fulfilledAt: confirmedAt,
-      reservationDetails: {
-        kind: "cowork" as const,
-        entryTier: "open-space" as const,
-        coffee: false,
-      },
-      locale: "cs-CZ" as const,
-      createdAt: confirmedAt,
-    };
-  });
-  if (rows.length > 0) {
-    await Effect.runPromise(db.insert(workspaceReservations).values(rows));
-  }
+  const rows = await Effect.runPromise(
+    workspaceFixtures(db).reservations(
+      visits.map((visit) => ({
+        stage: {
+          reservation: "confirmed",
+          payment: "paid",
+          fulfillment: "fulfilled",
+        },
+        customer: visit.customer,
+        at: confirmedAt,
+        locale: "cs-CZ",
+        overrides: {
+          id: workspaceReservationIdSchema.make(`${prefix}-${visit.label}`),
+          reservationCancelledAt: visit.cancelledAt ?? null,
+          createdAt: confirmedAt,
+        },
+      }))
+    )
+  );
   const ids = new Map(rows.map((row, index) => [visits[index]!.label, row.id]));
   const dotypos = visits.map(
     (visit, index): DotyposReservation => ({
-      id: rows[index]!.dotyposReservationId,
+      id: rows[index]!.dotyposReservationId!,
       _branchId: "deliver-branch" as DotyposReservation["_branchId"],
       _cloudId: "deliver-cloud" as DotyposReservation["_cloudId"],
       _customerId: visit.customer,

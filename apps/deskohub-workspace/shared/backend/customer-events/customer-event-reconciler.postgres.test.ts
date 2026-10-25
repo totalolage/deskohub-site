@@ -1,32 +1,18 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
-import {
-  DotyposCustomerIdSchema,
-  DotyposReservationIdSchema,
-} from "@deskohub/dotypos";
-import { testEmailAddress } from "@deskohub/test-email";
+import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { eq } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
+import { customerEvents, workspaceReservations } from "@/db/schema";
+import type { CustomerAccountId } from "@/features/account/customer-account";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
-  customerAccounts,
-  customerEvents,
-  workspaceReservations,
-} from "@/db/schema";
-import {
-  type CustomerAccountId,
-  customerAccountIdSchema,
-} from "@/features/account/customer-account";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
-import {
-  type WorkspaceReservationId,
-  workspaceReservationIdSchema,
-} from "@/features/reservation/persistence-contracts";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+  type ReservationFixtureInput,
+  workspaceFixtures,
+} from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { recordCustomerEvent } from "./customer-event-outbox";
 import {
   CustomerEventReconciler,
@@ -92,47 +78,28 @@ describe.skipIf(!testDatabase)(
 
     /** Inserts synthetic reservations as a writer without the outbox would. */
     const insertReservations = async (
-      reservations: ReadonlyArray<
-        Partial<typeof workspaceReservations.$inferInsert>
-      >
+      reservations: readonly ReservationFixtureInput[]
     ) => {
-      const rows = reservations.map((values) => {
-        const key = crypto.randomUUID();
-        const id = workspaceReservationIdSchema.make(`reconcile-${key}`);
-        reservationIds.push(id);
-        return {
-          id,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${key}`),
-          dotyposCustomerId: DotyposCustomerIdSchema.make(`customer-${key}`),
-          dotyposReservationId: DotyposReservationIdSchema.make(
-            `dotypos-reservation-${key}`
-          ),
-          reservationState: "confirmed",
-          paymentState: "paid",
-          paidAt: Temporal.Instant.from("2090-01-01T00:00:00Z"),
-          fulfillmentState: "not_started",
-          reservationDetails: {
-            kind: "cowork",
-            entryTier: "basic",
-            coffee: false,
-          },
-          locale: "en-US",
-          ...values,
-          authorAccountId: values.authorAccountId ?? fixtureReservationAuthorId,
-        } satisfies typeof workspaceReservations.$inferInsert;
-      });
-      await Effect.runPromise(
-        testDatabase.db.insert(workspaceReservations).values(rows)
+      const rows = await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).reservations(reservations)
       );
-      return rows.map((row) => row.id);
+      const ids = rows.map((row) => row.id);
+      reservationIds.push(...ids);
+      return ids;
     };
 
-    const insertReservation = async (
-      values: Partial<typeof workspaceReservations.$inferInsert>
-    ) => {
-      const [id] = await insertReservations([values]);
+    const insertReservation = async (reservation: ReservationFixtureInput) => {
+      const [id] = await insertReservations([reservation]);
       return id!;
     };
+
+    /** A paid booking confirmed at the instant. */
+    const booked = (
+      confirmedAt: Temporal.Instant
+    ): ReservationFixtureInput => ({
+      stage: { reservation: "confirmed", payment: "paid" },
+      at: confirmedAt,
+    });
 
     const readEvents = (id: WorkspaceReservationId) =>
       Effect.runPromise(
@@ -149,9 +116,7 @@ describe.skipIf(!testDatabase)(
     test("records one booked event at the confirmation time, however often it runs", async () => {
       const now = nowInYear(2090);
       const confirmedAt = now.subtract({ hours: 1 });
-      const id = await insertReservation({
-        reservationConfirmedAt: confirmedAt,
-      });
+      const id = await insertReservation(booked(confirmedAt));
 
       expect(await reconcileAt(now)).toEqual({
         ...nothingReconciled,
@@ -167,8 +132,8 @@ describe.skipIf(!testDatabase)(
       const now = nowInYear(2091);
       const confirmedAt = now.subtract({ hours: 1 });
       const [recordedFirst, reconciledFirst] = await insertReservations([
-        { reservationConfirmedAt: confirmedAt },
-        { reservationConfirmedAt: confirmedAt },
+        booked(confirmedAt),
+        booked(confirmedAt),
       ]);
       const recordOutbox = async (id: WorkspaceReservationId) => {
         const [reservation] = await Effect.runPromise(
@@ -208,15 +173,13 @@ describe.skipIf(!testDatabase)(
       const confirmedAt = now.subtract({ hours: 3 });
       const cancelledAt = now.subtract({ hours: 2 });
       const confirmed = await insertReservation({
-        reservationState: "cancelled",
-        reservationConfirmedAt: confirmedAt,
-        reservationCancelledAt: cancelledAt,
+        stage: { reservation: "cancelled", payment: "paid" },
+        at: cancelledAt,
+        overrides: { reservationConfirmedAt: confirmedAt },
       });
       const unconfirmed = await insertReservation({
-        reservationState: "cancelled",
-        paymentState: "failed",
-        paidAt: null,
-        reservationCancelledAt: cancelledAt,
+        stage: { reservation: "cancelled", payment: "failed" },
+        at: cancelledAt,
       });
 
       expect(await reconcileAt(now)).toEqual({
@@ -235,8 +198,8 @@ describe.skipIf(!testDatabase)(
     test("ignores confirmations older than 35 days", async () => {
       const now = nowInYear(2093);
       const [tooOld, recent] = await insertReservations([
-        { reservationConfirmedAt: now.subtract({ hours: 36 * 24 }) },
-        { reservationConfirmedAt: now.subtract({ hours: 34 * 24 }) },
+        booked(now.subtract({ hours: 36 * 24 })),
+        booked(now.subtract({ hours: 34 * 24 })),
       ]);
 
       expect(await reconcileAt(now)).toEqual({
@@ -252,11 +215,12 @@ describe.skipIf(!testDatabase)(
       const ids = await insertReservations(
         Array.from(
           { length: customerEventReconcileBatchSize + 1 },
-          (_, index) => ({
-            reservationConfirmedAt: now.subtract({
-              minutes: customerEventReconcileBatchSize + 1 - index,
-            }),
-          })
+          (_, index) =>
+            booked(
+              now.subtract({
+                minutes: customerEventReconcileBatchSize + 1 - index,
+              })
+            )
         )
       );
       const newest = ids.at(-1)!;
@@ -279,31 +243,21 @@ describe.skipIf(!testDatabase)(
       const createdAt = now.subtract({ hours: 5 });
       const insertAccount = async (
         linkedCustomer: string | null,
-        emailVerified: boolean,
+        verified: boolean,
         legacy = false
       ) => {
-        const id = customerAccountIdSchema.make(crypto.randomUUID());
-        accountIds.push(id);
-        await Effect.runPromise(
-          testDatabase.db
-            .insert(customerAccounts)
-            .values({ id, createdAt, legacy })
+        const { accountId } = await Effect.runPromise(
+          workspaceFixtures(testDatabase.db).account("reconcile", {
+            verified,
+            legacy,
+            createdAt,
+            linkedCustomer: linkedCustomer
+              ? DotyposCustomerIdSchema.make(linkedCustomer)
+              : undefined,
+          })
         );
-        await testDatabase.pool.query(
-          `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, $3)`,
-          [id, testEmailAddress(`reconcile-${id}`), emailVerified]
-        );
-        if (linkedCustomer) {
-          await Effect.runPromise(
-            testDatabase.db
-              .update(customerAccounts)
-              .set({
-                dotyposCustomerId: DotyposCustomerIdSchema.make(linkedCustomer),
-              })
-              .where(eq(customerAccounts.id, id))
-          );
-        }
-        return id;
+        accountIds.push(accountId);
+        return accountId;
       };
       const linkedCustomer = crypto.randomUUID();
       const unverifiedCustomer = crypto.randomUUID();
