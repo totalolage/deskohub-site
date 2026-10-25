@@ -5,8 +5,8 @@ import { getCloudinaryImageUrl } from "@deskohub/cloudinary-image/url";
 import { useMemo, useState } from "react";
 import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
+import { getLocalizedCloudinaryContextValue } from "@deskohub/cloudinary-image/localized-context";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
-import { getLocalizedCloudinaryContextValue } from "@/features/gallery/types/localized-cloudinary-context";
 import { type Locale, m } from "@/features/i18n";
 import { UnstyledButton } from "@/shared/components/ui/unstyled-button";
 
@@ -30,7 +30,9 @@ export function MeetingRoomGallery({
         );
 
         return {
-          alt: getLocalizedCloudinaryContextValue(image, "alt", locale),
+          alt:
+            getLocalizedCloudinaryContextValue(image, "alt", locale) ||
+            m.meetingRoomGalleryImageAlt({}, { locale }),
           description: getLocalizedCloudinaryContextValue(
             image,
             "detail",
@@ -86,19 +88,27 @@ export function MeetingRoomGallery({
                 "detail",
                 locale
               );
+              const imageName = alt || caption;
 
               return (
                 <figure className="m-0 min-w-0" key={image.public_id}>
                   <UnstyledButton
-                    aria-label={m.meetingRoomGalleryOpenImage(
-                      { image: alt || caption || image.public_id },
-                      { locale }
-                    )}
+                    aria-label={
+                      imageName
+                        ? m.meetingRoomGalleryOpenImage(
+                            { image: imageName },
+                            { locale }
+                          )
+                        : m.meetingRoomGalleryOpenNumberedImage(
+                            { number: index + 1 },
+                            { locale }
+                          )
+                    }
                     className="group relative block aspect-[4/3] w-full cursor-zoom-in overflow-hidden rounded-[1.375rem] bg-navy-blue/8 p-0 text-left focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-burned-orange"
                     onClick={() => setLightboxIndex(index)}
                   >
                     <CloudinaryImage
-                      alt={alt}
+                      alt={alt || m.meetingRoomGalleryImageAlt({}, { locale })}
                       className="absolute inset-0 size-full object-cover transition-transform duration-300 group-hover:scale-[1.025] group-focus-visible:scale-[1.025]"
                       preload={false}
                       sizes="(min-width: 1280px) 30vw, (min-width: 768px) 48vw, 100vw"

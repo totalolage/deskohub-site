@@ -19,7 +19,7 @@ const asset = {
 
 describe("toGalleryPhotos", () => {
   test("uses locale-specific Cloudinary alt text and captions", () => {
-    const [photo] = toGalleryPhotos([asset], "cs-CZ");
+    const [photo] = toGalleryPhotos([asset], "cs-CZ", "Fallback");
 
     expect(photo?.alt).toBe("Český popis");
     expect(photo?.caption).toBe("Český titulek");
@@ -34,10 +34,10 @@ describe("toGalleryPhotos", () => {
         },
       ],
       "en-US",
-      (index) => `Fallback ${index + 1}`
+      "Fallback"
     );
 
-    expect(photo?.alt).toBe("Fallback 1");
+    expect(photo?.alt).toBe("Fallback");
     expect(photo?.caption).toBeUndefined();
   });
 });
