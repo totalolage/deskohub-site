@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import {
   DotyposCustomerIdSchema,
+  type DotyposService,
   ExternalAPIError,
   NetworkError,
 } from "@deskohub/dotypos";
@@ -1543,27 +1544,11 @@ describe("AdministrationService", () => {
     expect(result.dates).toBeNull();
   });
 
-  test("counts every linked reservation in the overview reservation activity", async () => {
-    setSystemTime(new Date("2026-08-26T12:00:00Z"));
-    const listInputs: unknown[] = [];
-    const database = {
-      select: () =>
-        makeQuery([
-          { id: "booking-confirmed" },
-          { id: "booking-new" },
-          { id: "booking-cancelled" },
-          { id: "booking-other-day" },
-        ]),
-    };
-    const booking = {
-      _branchId: "branch",
-      _cloudId: "cloud",
-      _customerId: "dotypos-customer",
-      endDate: "2026-08-10T23:00:00Z",
-      seats: "1",
-    };
-
-    const result = await Effect.gen(function* () {
+  const loadOverviewReservationActivity = (input: {
+    readonly linkedIds: readonly string[];
+    readonly listReservations: DotyposService["Service"]["listReservations"];
+  }) =>
+    Effect.gen(function* () {
       const administration = yield* AdministrationService;
       return yield* administration.loadReservationActivity();
     }).pipe(
@@ -1573,46 +1558,14 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: database as never })
+                WorkspaceDatabase.of({
+                  db: {
+                    select: () =>
+                      makeQuery(input.linkedIds.map((id) => ({ id }))),
+                  } as never,
+                })
               ),
-              DotyposServiceMock({
-                listReservations: (input) =>
-                  Effect.sync(() => {
-                    listInputs.push(input);
-                    return [
-                      {
-                        ...booking,
-                        id: "booking-confirmed",
-                        startDate: "2026-08-09T22:30:00Z",
-                        status: "CONFIRMED" as const,
-                      },
-                      {
-                        ...booking,
-                        id: "booking-new",
-                        startDate: "2026-08-10T08:00:00Z",
-                        status: "NEW" as const,
-                      },
-                      {
-                        ...booking,
-                        id: "booking-cancelled",
-                        startDate: "2026-08-10T18:00:00Z",
-                        status: "CANCELLED" as const,
-                      },
-                      {
-                        ...booking,
-                        id: "booking-not-linked",
-                        startDate: "2026-08-10T12:00:00Z",
-                        status: "CONFIRMED" as const,
-                      },
-                      {
-                        ...booking,
-                        id: "booking-other-day",
-                        startDate: "2026-08-12T08:00:00Z",
-                        status: "CONFIRMED" as const,
-                      },
-                    ];
-                  }),
-              }),
+              DotyposServiceMock({ listReservations: input.listReservations }),
               Layer.succeed(
                 PostHogReservationHistory,
                 PostHogReservationHistory.of({
@@ -1628,8 +1581,71 @@ describe("AdministrationService", () => {
       Effect.runPromise
     );
 
+  test("counts every linked reservation in the overview reservation activity", async () => {
+    setSystemTime(new Date("2026-08-26T12:00:00Z"));
+    const listInputs: unknown[] = [];
+    const booking = {
+      _branchId: "branch",
+      _cloudId: "cloud",
+      _customerId: "dotypos-customer",
+      endDate: "2026-08-10T23:00:00Z",
+      seats: "1",
+    };
+    const bookings = [
+      {
+        ...booking,
+        id: "booking-confirmed",
+        startDate: "2026-08-09T22:30:00Z",
+        status: "CONFIRMED" as const,
+      },
+      {
+        ...booking,
+        id: "booking-new",
+        startDate: "2026-08-10T08:00:00Z",
+        status: "NEW" as const,
+      },
+      {
+        ...booking,
+        id: "booking-cancelled",
+        startDate: "2026-08-10T18:00:00Z",
+        status: "CANCELLED" as const,
+      },
+      {
+        ...booking,
+        id: "booking-not-linked",
+        startDate: "2026-08-10T12:00:00Z",
+        status: "CONFIRMED" as const,
+      },
+      {
+        ...booking,
+        id: "booking-other-day",
+        startDate: "2026-08-12T08:00:00Z",
+        status: "CONFIRMED" as const,
+      },
+    ];
+
+    const result = await loadOverviewReservationActivity({
+      linkedIds: [
+        "booking-other-day",
+        "booking-confirmed",
+        "booking-new",
+        "booking-cancelled",
+      ],
+      listReservations: (input) =>
+        Effect.sync(() => {
+          listInputs.push(input);
+          return bookings.filter(({ id }) => input?.ids?.includes(id));
+        }),
+    });
+
     expect(listInputs).toEqual([
       {
+        ids: [
+          "booking-cancelled",
+          "booking-confirmed",
+          "booking-new",
+          "booking-other-day",
+        ],
         startsAtOrAfter: "2025-08-26T22:00:00Z",
         startsBefore: "2026-08-26T22:00:00Z",
         order: "startDateAscending",
@@ -1645,88 +1661,57 @@ describe("AdministrationService", () => {
     });
   });
 
-  test("skips the linkage query when no reservations fall in the activity range", async () => {
-    let selects = 0;
-    const result = await Effect.gen(function* () {
-      const administration = yield* AdministrationService;
-      return yield* administration.loadReservationActivity();
-    }).pipe(
-      Effect.provide(
-        AdministrationService.Default.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.succeed(
-                WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: () => {
-                      selects += 1;
-                      return makeQuery([]);
-                    },
-                  } as never,
-                })
-              ),
-              DotyposServiceMock({
-                listReservations: () => Effect.succeed([]),
-              }),
-              Layer.succeed(
-                PostHogReservationHistory,
-                PostHogReservationHistory.of({
-                  load: () => Effect.succeed({ kind: "unavailable" } as const),
-                })
-              ),
-              reservationAuthorsMock(),
-              PaymentAdministrationServiceMock({})
-            )
-          )
-        )
-      ),
-      Effect.runPromise
+  test("reads only linked bookings for the overview reservation activity, in id batches", async () => {
+    setSystemTime(new Date("2026-08-26T12:00:00Z"));
+    const linkedIds = Array.from(
+      { length: 51 },
+      (_, index) => `booking-${String(index).padStart(2, "0")}`
     );
+    const requestedIds: (readonly string[] | undefined)[] = [];
+
+    const result = await loadOverviewReservationActivity({
+      linkedIds,
+      listReservations: (input) =>
+        Effect.sync(() => {
+          requestedIds.push(input?.ids);
+          return [];
+        }),
+    });
+
+    expect(requestedIds).toEqual([
+      linkedIds.slice(0, 50),
+      linkedIds.slice(50),
+    ]);
+    expect(result.dates).toEqual([]);
+  });
+
+  test("skips the booking provider when no Workspace reservation links a booking", async () => {
+    let listCalls = 0;
+    const result = await loadOverviewReservationActivity({
+      linkedIds: [],
+      listReservations: () =>
+        Effect.sync(() => {
+          listCalls += 1;
+          return [];
+        }),
+    });
 
     expect(result.dates).toEqual([]);
-    expect(selects).toBe(0);
+    expect(listCalls).toBe(0);
   });
 
   test("keeps unavailable overview reservation activity distinct from no activity", async () => {
-    const result = await Effect.gen(function* () {
-      const administration = yield* AdministrationService;
-      return yield* administration.loadReservationActivity();
-    }).pipe(
-      Effect.provide(
-        AdministrationService.Default.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.succeed(
-                WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: { select: () => makeQuery([]) } as never,
-                })
-              ),
-              DotyposServiceMock({
-                listReservations: () =>
-                  Effect.fail(
-                    new ExternalAPIError({
-                      operation: "listReservations",
-                      service: "Dotypos",
-                      statusCode: 503,
-                    })
-                  ),
-              }),
-              Layer.succeed(
-                PostHogReservationHistory,
-                PostHogReservationHistory.of({
-                  load: () => Effect.succeed({ kind: "unavailable" } as const),
-                })
-              ),
-              reservationAuthorsMock(),
-              PaymentAdministrationServiceMock({})
-            )
-          )
-        )
-      ),
-      Effect.runPromise
-    );
+    const result = await loadOverviewReservationActivity({
+      linkedIds: ["booking-confirmed"],
+      listReservations: () =>
+        Effect.fail(
+          new ExternalAPIError({
+            operation: "listReservations",
+            service: "Dotypos",
+            statusCode: 503,
+          })
+        ),
+    });
 
     expect(result.dates).toBeNull();
   });

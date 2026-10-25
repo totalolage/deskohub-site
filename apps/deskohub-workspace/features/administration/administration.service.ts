@@ -32,6 +32,7 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   max,
   notInArray,
   or,
@@ -3261,36 +3262,59 @@ export class AdministrationService extends Context.Service<
       /**
        * Counts every live booking in the activity range that a Workspace
        * reservation links, whatever its Dotypos status or Workspace lifecycle,
-       * as the Overview reservation total does.
+       * as the Overview reservation total does. It reads only the linked
+       * bookings, because the whole year of Dotypos bookings is hundreds of
+       * pages.
        */
       const loadReservationActivity = Effect.fn(
         "AdministrationService.loadReservationActivity"
       )(function* () {
         const { from, to } = getReservationActivityRange();
         const range = { from: from.toString(), to: to.toString() };
-        const reservations = yield* dotypos
-          .listReservations({
-            ...getAdministrationReservationDateRangeBounds(range),
-            order: "startDateAscending",
-          })
+        const linkedRows = yield* db
+          .select({ id: workspaceReservations.dotyposReservationId })
+          .from(workspaceReservations)
+          .where(isNotNull(workspaceReservations.dotyposReservationId))
           .pipe(
-            Effect.catch((cause) => {
-              unstable_rethrow(cause);
-              return Effect.logWarning("Reservation activity unavailable", {
-                cause,
-                ...range,
-              }).pipe(Effect.as(null));
-            }),
-            Effect.tap((items) =>
-              Effect.annotateCurrentSpan({
-                reservationCount: items?.length ?? 0,
-                unavailable: items === null,
-              })
+            Effect.tap((rows) =>
+              Effect.annotateCurrentSpan({ linkedRowCount: rows.length })
             ),
             Effect.withSpan(
-              "AdministrationService.loadReservationActivity.reservationProvider"
+              "AdministrationService.loadReservationActivity.databaseLinkage"
             )
           );
+        const linkedReservationIds = linkedRows.flatMap(({ id }) =>
+          id ? [id] : []
+        );
+        const bounds = getAdministrationReservationDateRangeBounds(range);
+        const reservations = yield* readInIdFilterBatches(
+          linkedReservationIds.toSorted(),
+          (batchIds) =>
+            dotypos.listReservations({
+              ids: batchIds,
+              ...bounds,
+              order: "startDateAscending",
+            }),
+          { concurrency: 3 }
+        ).pipe(
+          Effect.map((batches) => batches.flat()),
+          Effect.catch((cause) => {
+            unstable_rethrow(cause);
+            return Effect.logWarning("Reservation activity unavailable", {
+              cause,
+              ...range,
+            }).pipe(Effect.as(null));
+          }),
+          Effect.tap((items) =>
+            Effect.annotateCurrentSpan({
+              reservationCount: items?.length ?? 0,
+              unavailable: items === null,
+            })
+          ),
+          Effect.withSpan(
+            "AdministrationService.loadReservationActivity.reservationProvider"
+          )
+        );
 
         if (!reservations) {
           return {
@@ -3299,43 +3323,8 @@ export class AdministrationService extends Context.Service<
           } satisfies AdministrationReservationActivity;
         }
 
-        const reservationIds = reservations.flatMap((reservation) => {
-          const id = Option.getOrUndefined(
-            decodeDotyposReservationId(reservation.id)
-          );
-          return id ? [id] : [];
-        });
-        const linkedRows = yield* Effect.gen(function* () {
-          if (reservationIds.length === 0) return [];
-          return yield* db
-            .select({ id: workspaceReservations.dotyposReservationId })
-            .from(workspaceReservations)
-            .where(
-              equalsAny(
-                workspaceReservations.dotyposReservationId,
-                reservationIds
-              )
-            );
-        }).pipe(
-          Effect.tap((rows) =>
-            Effect.annotateCurrentSpan({
-              linkedRowCount: rows.length,
-              linkageQueried: reservationIds.length > 0,
-            })
-          ),
-          Effect.withSpan(
-            "AdministrationService.loadReservationActivity.databaseLinkage"
-          )
-        );
-        const linkedReservationIds = new Set(
-          linkedRows.flatMap(({ id }) => (id ? [id] : []))
-        );
         const countByDate = new Map<string, number>();
         for (const reservation of reservations) {
-          const id = Option.getOrUndefined(
-            decodeDotyposReservationId(reservation.id)
-          );
-          if (!id || !linkedReservationIds.has(id)) continue;
           const date = getReservationDate(reservation.startDate);
           countByDate.set(date, (countByDate.get(date) ?? 0) + 1);
         }
