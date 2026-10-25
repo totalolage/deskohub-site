@@ -1,5 +1,3 @@
-import { Predicate } from "effect";
-
 export const TAG_MANAGER_IDLE_TIMEOUT_MS = 3000;
 // Safari, including every iOS browser, still ships requestIdleCallback
 // disabled. A fixed delay cannot detect idleness, so wait out the usual
@@ -91,7 +89,7 @@ export function scheduleTagManagerLoad(containerId: string): () => void {
 }
 
 function whenIdle(callback: () => void): () => void {
-  if (Predicate.isFunction(window.requestIdleCallback)) {
+  if (window.requestIdleCallback) {
     const handle = window.requestIdleCallback(callback, {
       timeout: TAG_MANAGER_IDLE_TIMEOUT_MS,
     });
