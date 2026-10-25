@@ -53,6 +53,7 @@ export function ClientGallery({
               source={image}
               blurDataURL={blurUrls?.[image.public_id]}
               variant="gallery"
+              preload
             />
           </div>
         ))}
