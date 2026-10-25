@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import type { EmailDeliveryId } from "@deskohub/email";
 import { and, eq, inArray, lt, or, type SQL, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
