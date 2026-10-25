@@ -1690,10 +1690,7 @@ describe("AdministrationService", () => {
         }),
     });
 
-    expect(requestedIds).toEqual([
-      linkedIds.slice(0, 50),
-      linkedIds.slice(50),
-    ]);
+    expect(requestedIds).toEqual([linkedIds.slice(0, 50), linkedIds.slice(50)]);
     expect(result.dates).toEqual([{ count: 2, date: "2026-08-10" }]);
   });
 
