@@ -25,9 +25,9 @@ import {
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
-import { currencyCZK } from "@/features/checkout/workspace-money";
 import { canonicalPromotionCodeSchema } from "@/features/discounts/persistence-contracts";
 import { ReferralFeatureFlagServiceMock } from "@/features/referrals/referral-feature-flag.service.mock";
+import { currencyCZK } from "@/shared/money/currencies";
 import {
   collectDatabaseQueryLogs,
   expectQueryLogsToOmit,

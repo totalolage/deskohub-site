@@ -13,13 +13,13 @@ import { Effect, Schema } from "effect";
 import type { ComponentProps } from "react";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
-import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
 import { discountIdSchema } from "@/features/discounts";
 import { mockReservationCheckoutStep } from "@/features/reservation/components/reservation-checkout-step.test-utils";
 import { mockCheckoutEmailVerification } from "@/features/reservation/components/use-checkout-email-verification.test-utils";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
 import { officeReservationDefaultValues } from "@/features/reservation/office-reservation";
 import { getOfficeAvailabilityQuery } from "@/features/reservation/workspace-availability";
+import { moneyWithValue } from "@/shared/money/money";
 import {
   workspaceUseAction,
   workspaceUseSearchParams,
@@ -451,10 +451,7 @@ describe("OfficeReservationForm", () => {
         buildOfficeReservationQuote(request.reservation.details)
       );
       const amount = undiscountedQuote.payment.expectedPrice;
-      const discountedAmount = workspaceMoneyWithValue(
-        amount.value / 2,
-        amount
-      );
+      const discountedAmount = moneyWithValue(amount.value / 2, amount);
       const quote = Effect.runSync(
         buildOfficeReservationQuote(request.reservation.details, {
           discountQuote: {

@@ -1,5 +1,5 @@
 import { Data, Effect, Match, Option, Schema } from "effect";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import type { Money } from "@/shared/money/money";
 import {
   TemporalInstantSchema,
   temporalInstantToIsoString,
@@ -35,7 +35,7 @@ export type DiscountCodeConfiguration = PromotionConfiguration & {
 export type VoucherConfiguration = PromotionConfiguration & {
   readonly kind: "voucher";
   readonly id: VoucherId;
-  readonly amount: WorkspaceMoney;
+  readonly amount: Money;
 };
 
 export type SubmittedPromotionConfiguration =

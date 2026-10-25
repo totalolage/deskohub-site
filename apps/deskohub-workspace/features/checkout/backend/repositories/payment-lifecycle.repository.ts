@@ -54,11 +54,6 @@ import { encryptAccountingSnapshot } from "@/features/accounting/backend/account
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import {
-  type WorkspaceMoney,
-  workspaceMoneyEquals,
-  workspaceMoneyWithValue,
-} from "@/features/checkout/workspace-money";
-import {
   type DiscountCommitment,
   getDiscountCommitmentPayload,
 } from "@/features/discounts/commitment";
@@ -88,6 +83,12 @@ import { evaluateReferralAttribution } from "@/features/referrals/attribution";
 import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
+import {
+  type Money,
+  moneyEquals,
+  moneyWithValue,
+  sameMoneyUnit,
+} from "@/shared/money/money";
 import {
   type PaymentAttempt,
   toPaymentAttempt,
@@ -129,14 +130,14 @@ export interface IPaymentLifecycleRepository {
   readonly createPendingNexiAttempt: (input: {
     readonly workspaceReservationId: WorkspaceReservationId;
     readonly providerOrderId: NexiOrderId;
-    readonly amount: WorkspaceMoney;
+    readonly amount: Money;
     readonly commitment: DiscountCommitment;
     readonly locale: Locale;
     readonly accountingSnapshot: AccountingDocumentSnapshot;
   }) => Effect.Effect<PaymentAttempt, PaymentLifecycleRepositoryError>;
   readonly completeInternalPayment: (input: {
     readonly workspaceReservationId: WorkspaceReservationId;
-    readonly amount: WorkspaceMoney;
+    readonly amount: Money;
     readonly commitment: DiscountCommitment;
     readonly locale: Locale;
     readonly accountingSnapshot: AccountingDocumentSnapshot;
@@ -203,7 +204,7 @@ export class PaymentLifecycleRepository extends Context.Service<
       )(function* (input: {
         readonly workspaceReservationId: WorkspaceReservationId;
         readonly providerOrderId: NexiOrderId;
-        readonly amount: WorkspaceMoney;
+        readonly amount: Money;
         readonly commitment: DiscountCommitment;
         readonly locale: Locale;
         readonly accountingSnapshot: AccountingDocumentSnapshot;
@@ -422,7 +423,7 @@ export class PaymentLifecycleRepository extends Context.Service<
         "PaymentLifecycleRepository.completeInternalPayment"
       )(function* (input: {
         readonly workspaceReservationId: WorkspaceReservationId;
-        readonly amount: WorkspaceMoney;
+        readonly amount: Money;
         readonly commitment: DiscountCommitment;
         readonly locale: Locale;
         readonly accountingSnapshot: AccountingDocumentSnapshot;
@@ -537,7 +538,7 @@ export class PaymentLifecycleRepository extends Context.Service<
 
                 if (
                   existingAttempt &&
-                  workspaceMoneyEquals(
+                  moneyEquals(
                     toPaymentAttempt(existingAttempt).amount,
                     input.amount
                   )
@@ -1073,18 +1074,18 @@ export const validateDiscountCommitment = Effect.fn(
     index,
     { application, claim },
   ] of commitment.applications.entries()) {
-    const amountInSubtotalUnit = workspaceMoneyWithValue(
+    const amountInSubtotalUnit = moneyWithValue(
       application.amount.value,
       application.subtotalBefore
     );
-    const expectedSubtotalAfter = workspaceMoneyWithValue(
+    const expectedSubtotalAfter = moneyWithValue(
       application.subtotalBefore.value - application.amount.value,
       application.subtotalBefore
     );
 
     if (
-      !workspaceMoneyEquals(amountInSubtotalUnit, application.amount) ||
-      !workspaceMoneyEquals(expectedSubtotalAfter, application.subtotalAfter)
+      !moneyEquals(amountInSubtotalUnit, application.amount) ||
+      !moneyEquals(expectedSubtotalAfter, application.subtotalAfter)
     ) {
       return yield* new DiscountClaimError({
         operation: "reserve",
@@ -1141,12 +1142,12 @@ export const validateDiscountCommitment = Effect.fn(
 
 export const validateInternalPaymentCommitment = Effect.fn(
   "PaymentLifecycle.validateInternalPaymentCommitment"
-)(function* (commitment: CommitmentPayload, amount: WorkspaceMoney) {
+)(function* (commitment: CommitmentPayload, amount: Money) {
   const claimedApplication = yield* validateDiscountCommitment(commitment);
   const finalSubtotal =
     commitment.applications.at(-1)?.application.subtotalAfter;
 
-  if (!finalSubtotal || !workspaceMoneyEquals(finalSubtotal, amount)) {
+  if (!finalSubtotal || !moneyEquals(finalSubtotal, amount)) {
     return yield* new DiscountClaimError({
       operation: "reserve",
       reason: "money_mismatch",
@@ -1202,7 +1203,7 @@ const discountAdjustmentsEqual = (
     return left.basisPoints === right.basisPoints;
   }
   if (left.kind === "fixed" && right.kind === "fixed") {
-    return workspaceMoneyEquals(left.amount, right.amount);
+    return moneyEquals(left.amount, right.amount);
   }
   return false;
 };
@@ -1480,7 +1481,7 @@ const validateAccountingDocumentSnapshotForAttempt = Effect.fn(
   readonly snapshot: AccountingDocumentSnapshot;
   readonly workspaceReservationId: WorkspaceReservationId;
   readonly paymentReference: AccountingPaymentReference;
-  readonly amount: WorkspaceMoney;
+  readonly amount: Money;
   readonly locale: Locale;
 }) {
   const snapshot = yield* decodeAccountingDocumentSnapshot(input.snapshot).pipe(
@@ -1497,7 +1498,7 @@ const validateAccountingDocumentSnapshotForAttempt = Effect.fn(
   if (
     snapshot.workspaceReservationId !== input.workspaceReservationId ||
     snapshot.locale !== input.locale ||
-    !workspaceMoneyEquals(snapshot.quote.payment.expectedPrice, input.amount) ||
+    !moneyEquals(snapshot.quote.payment.expectedPrice, input.amount) ||
     !accountingSnapshotMoneyReconciles(snapshot)
   ) {
     return yield* new AccountingDocumentSnapshotStorageError({
@@ -1514,9 +1515,8 @@ const accountingSnapshotMoneyReconciles = (
   snapshot: AccountingDocumentSnapshot
 ): boolean => {
   const { items, payment } = snapshot.quote;
-  const sameUnit = (amount: WorkspaceMoney) =>
-    amount.currency === payment.expectedPrice.currency &&
-    amount.exponent === payment.expectedPrice.exponent;
+  const sameUnit = (amount: Money) =>
+    sameMoneyUnit(amount, payment.expectedPrice);
 
   if (
     !sameUnit(payment.undiscountedPrice) ||
@@ -2237,9 +2237,9 @@ const validateVoucherClaim = Effect.fn("PaymentLifecycle.validateVoucherClaim")(
       providerReference: input.claim.voucherId,
     });
     if (
-      !workspaceMoneyEquals(availableAmount, input.claim.availableAmount) ||
+      !moneyEquals(availableAmount, input.claim.availableAmount) ||
       adjustment.kind !== "fixed" ||
-      !workspaceMoneyEquals(adjustment.amount, availableAmount) ||
+      !moneyEquals(adjustment.amount, availableAmount) ||
       input.application.amount.value > availableAmount.value ||
       input.application.discount.id !== discountId ||
       input.application.discount.label !==
@@ -2411,8 +2411,10 @@ export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
       ]);
       if (
         !application ||
-        application.currency !== voucher.issuedAmountCurrency ||
-        application.exponent !== voucher.issuedAmountExponent ||
+        !sameMoneyUnit(application, {
+          currency: voucher.issuedAmountCurrency,
+          exponent: voucher.issuedAmountExponent,
+        }) ||
         application.value > voucher.issuedAmountValue - (usage?.value ?? 0)
       ) {
         return yield* new DiscountClaimError({

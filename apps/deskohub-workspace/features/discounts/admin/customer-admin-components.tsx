@@ -5,7 +5,6 @@ import type {
   AdministrationCustomerMarketingConsent,
   AdministrationCustomerReservationActivity,
   AdministrationCustomerTransaction,
-  AdministrationMoney,
 } from "@/features/administration/administration.service";
 import {
   AdministrationFact,
@@ -15,7 +14,6 @@ import {
   CustomerReservationActivity,
   EmptyState,
   formatAdministrationDateTime,
-  formatAdministrationMoney,
   ReservationTable,
 } from "@/features/administration/components";
 import { groupCustomerReservations } from "@/features/administration/customer-activity";
@@ -25,6 +23,7 @@ import { formatDiscountAdjustment } from "@/features/checkout/format-discount-ad
 import type { Locale } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
+import { formatMoney, type Money } from "@/shared/money/money";
 import { formatCount } from "@/shared/utils/number";
 import { VoucherEditor } from "./admin-tables";
 import {
@@ -844,14 +843,9 @@ function CustomerTransactionHistory({
   );
 }
 
-const formatMoneyTotals = (
-  totals: readonly AdministrationMoney[],
-  locale: Locale
-) =>
+const formatMoneyTotals = (totals: readonly Money[], locale: Locale) =>
   totals.length > 0
-    ? totals
-        .map((total) => formatAdministrationMoney(total, locale))
-        .join(" + ")
+    ? totals.map((total) => formatMoney(total, locale)).join(" + ")
     : "—";
 
 const getSummaryStatus = (enabled: boolean, locale: Locale) =>
@@ -926,11 +920,11 @@ function VoucherSummary({
     <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-2 xl:grid-cols-4">
       <SummaryFact
         label={m.discountsColumnIssued({}, { locale })}
-        value={formatAdministrationMoney(voucher.issuedCredit, locale)}
+        value={formatMoney(voucher.issuedCredit, locale)}
       />
       <SummaryFact
         label={m.discountsColumnRemaining({}, { locale })}
-        value={formatAdministrationMoney(voucher.remainingCredit, locale)}
+        value={formatMoney(voucher.remainingCredit, locale)}
       />
       <SummaryFact
         label={m.discountsColumnStatus({}, { locale })}

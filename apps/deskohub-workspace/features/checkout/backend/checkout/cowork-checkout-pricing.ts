@@ -5,7 +5,6 @@ import {
   buildCoworkReservationQuote,
   type CoworkReservationQuote,
 } from "@/features/checkout/reservation-quote-cowork";
-import type { WorkspaceMoneyError } from "@/features/checkout/workspace-money";
 import type {
   DiscountAffirmationUnavailableError,
   DiscountQuote,
@@ -17,6 +16,7 @@ import type {
   CoworkReservationDetails,
   NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
+import type { MoneyUnitMismatch } from "@/shared/money/money";
 import {
   type ReservationAdvertisementAffirmation,
   type ReservationAdvertisementAffirmationInput,
@@ -32,7 +32,7 @@ import {
 } from "./reservation-checkout-pricing";
 
 export type CoworkCheckoutPricingError =
-  | WorkspaceMoneyError
+  | MoneyUnitMismatch
   | DiscountResolutionError
   | DiscountAffirmationUnavailableError;
 
@@ -130,7 +130,7 @@ export const coworkCheckoutPricing = reservationCheckoutPricing<
   CoworkPricingContext,
   CoworkReservationQuote,
   never,
-  WorkspaceMoneyError
+  MoneyUnitMismatch
 >({
   getPricingContext: getCoworkPricingContext,
   buildQuote: buildCoworkQuote,

@@ -44,10 +44,10 @@ import type {
   StoredWebhookEventId,
 } from "@/features/checkout/checkout-identifiers";
 import type { LegalEvidenceAcknowledgements } from "@/features/checkout/legal-evidence";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import type { VoucherId } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import type { Money } from "@/shared/money/money";
 import { matchesExpectedReservationDetails } from "../checkout/reservation-details";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
@@ -542,7 +542,7 @@ export const validateVoucherRedemptions = (
     readonly orderId: WorkspaceReservationId;
     readonly subtotalAfter: "positive" | "zero";
   }[],
-  creditPerRun: WorkspaceMoney
+  creditPerRun: Money
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
@@ -650,7 +650,7 @@ export const validateVoucherRedemptions = (
 
 interface VoucherRedemptionRow {
   readonly adjustment: {
-    readonly amount?: WorkspaceMoney;
+    readonly amount?: Money;
     readonly kind?: string;
   };
 }

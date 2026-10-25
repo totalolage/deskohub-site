@@ -14,10 +14,6 @@ import {
   buildCoworkReservationQuote,
 } from "@/features/checkout/checkout-quote.test-utils";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
-import {
-  currencyCZK,
-  toWorkspaceMoneyMajorAmount,
-} from "@/features/checkout/workspace-money";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import { m } from "@/features/i18n";
 import {
@@ -32,6 +28,8 @@ import {
   type WorkspaceAvailabilityQuery,
 } from "@/features/reservation/workspace-availability";
 import { Button } from "@/shared/components/ui/button";
+import { currencyCZK } from "@/shared/money/currencies";
+import { moneyMajorAmount } from "@/shared/money/money";
 import type { CoworkReservationForm } from "./cowork-reservation-form";
 
 const janEmail = testEmailAddress("jan");
@@ -327,7 +325,7 @@ test("offers the default selection's preloaded prices in structured data", async
       name: m.reservationOpenSpaceTitle({}, { locale: "en-US" }),
       offers: {
         url: "https://workspace.deskohub.cz/reservation/cowork",
-        price: toWorkspaceMoneyMajorAmount(displayedAmount ?? openSpacePrice),
+        price: moneyMajorAmount(displayedAmount ?? openSpacePrice),
         priceCurrency: "CZK",
       },
     });

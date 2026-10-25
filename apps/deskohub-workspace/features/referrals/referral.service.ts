@@ -28,7 +28,6 @@ import {
   type CustomerAccountId,
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
 import {
   canonicalPromotionCodeSchema,
@@ -40,6 +39,7 @@ import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
+import type { Money } from "@/shared/money/money";
 import {
   referralAdvisoryLockStatement,
   referralFirstBookingLockKey,
@@ -124,7 +124,7 @@ export interface IReferralService {
   readonly resolveReferrerCandidate: (input: {
     readonly dotyposCustomerId: DotyposCustomerId;
     readonly locale: Locale;
-    readonly remainingSubtotal: WorkspaceMoney;
+    readonly remainingSubtotal: Money;
   }) => Effect.Effect<DiscountCandidate | undefined, ReferralError>;
 }
 
@@ -713,7 +713,7 @@ export class ReferralService extends Context.Service<
         (input: {
           readonly dotyposCustomerId: DotyposCustomerId;
           readonly locale: Locale;
-          readonly remainingSubtotal: WorkspaceMoney;
+          readonly remainingSubtotal: Money;
         }) =>
           eligibleInviteeCount(input.dotyposCustomerId).pipe(
             Effect.map((count) => {
