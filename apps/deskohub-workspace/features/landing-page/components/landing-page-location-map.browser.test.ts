@@ -174,16 +174,23 @@ test.skipIf(!chromiumAvailable)(
 );
 
 test.skipIf(!chromiumAvailable)(
-  "keeps the static map when a tile fails",
+  "keeps the static map when a tile fails, until the visitor moves the map",
   async () => {
     await withLocationMap(async (page) => {
       await page.context().unroute(`${tileHost}/**`);
       await page.context().route(`${tileHost}/**`, (route) => route.abort());
-      await page.getByRole("button", { name: activateLabel }).click();
-      await page.locator(".leaflet-container").waitFor({ state: "attached" });
+      await page.keyboard.press("Tab");
+      await page.keyboard.press("Enter");
+      await page.waitForFunction(() =>
+        document.activeElement?.classList.contains("leaflet-container")
+      );
       await page.waitForLoadState("networkidle");
 
       expect(await page.locator("picture").count()).toBe(1);
+
+      // The static map no longer matches a moved view.
+      await page.keyboard.press("Equal");
+      await page.locator("picture").waitFor({ state: "detached" });
     });
   },
   60_000

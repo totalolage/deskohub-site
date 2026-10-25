@@ -46,7 +46,10 @@ export function LandingPageLocationMap({
 }: LandingPageLocationMapProps) {
   const [requested, setRequested] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [tilesLoaded, setTilesLoaded] = useState(false);
+  // The static map matches the interactive map only until it moves, and is
+  // redundant once its tiles cover it.
+  const [staticMapShown, setStaticMapShown] = useState(true);
+  const hideStaticMap = () => setStaticMapShown(false);
   const activateButtonRef = useRef<HTMLButtonElement>(null);
 
   return (
@@ -54,7 +57,7 @@ export function LandingPageLocationMap({
       aria-label={label}
       className="pointer-events-auto absolute inset-0 isolate z-0 overflow-hidden bg-[#f2efe9]"
     >
-      {!tilesLoaded && <LandingPageStaticLocationMap />}
+      {staticMapShown && <LandingPageStaticLocationMap />}
       {requested && (
         <div className="absolute inset-0">
           <Suspense>
@@ -67,7 +70,8 @@ export function LandingPageLocationMap({
                 }
                 setMounted(true);
               }}
-              onTilesLoad={() => setTilesLoaded(true)}
+              onMoveStart={hideStaticMap}
+              onTilesLoad={hideStaticMap}
             />
           </Suspense>
         </div>
@@ -129,6 +133,11 @@ function LandingPageStaticLocationMap() {
     <div className="pointer-events-none absolute inset-0" style={vars}>
       <div className="absolute top-(--narrow-marker-y) left-(--narrow-marker-x) lg:top-(--wide-marker-y) lg:left-(--wide-marker-x)">
         <picture>
+          <source
+            media="(min-width: 120rem)"
+            srcSet={locationMapFramingPath("extra-wide")}
+            {...framingSize("extra-wide")}
+          />
           <source
             media={locationMapWideMedia}
             srcSet={locationMapFramingPath("wide")}

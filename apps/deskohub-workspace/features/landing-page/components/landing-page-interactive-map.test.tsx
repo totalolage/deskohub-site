@@ -274,6 +274,28 @@ describe("LandingPageInteractiveMap", () => {
     expect(tileLoads).toBe(1);
   });
 
+  test("reports when the view starts to move after its initial framing", async () => {
+    const { LandingPageInteractiveMap } = await import(
+      "./landing-page-interactive-map"
+    );
+    window.matchMedia = (() => makeMediaQuery()) as typeof window.matchMedia;
+    let moves = 0;
+
+    render(
+      <LandingPageInteractiveMap
+        onMoveStart={() => {
+          moves += 1;
+        }}
+      />
+    );
+
+    expect(moves).toBe(0);
+    act(() => {
+      mapInstances[0]!.emit("movestart");
+    });
+    expect(moves).toBe(1);
+  });
+
   test("recreates a live map when Activity reconnects the same DOM node", async () => {
     const { LandingPageInteractiveMap } = await import(
       "./landing-page-interactive-map"

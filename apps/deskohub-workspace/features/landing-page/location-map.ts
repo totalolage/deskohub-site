@@ -39,12 +39,14 @@ const framing = (
  * interactive map's tiles, with the workspace at the marker position's
  * fraction of the image, so the page lines it up with the marker position.
  * Placed that way, each covers a map box up to its own size. `compact` serves
- * widths under 32rem, `medium` the rest of the narrow framing.
+ * widths under 32rem and `medium` the rest of the narrow framing; `wide`
+ * serves wide screens up to 120rem and `extra-wide` the ones beyond.
  */
 export const locationMapFramings = {
   compact: framing(512, 1080, locationMapMarkerPosition.narrow),
   medium: framing(1024, 1080, locationMapMarkerPosition.narrow),
   wide: framing(1920, 800, locationMapMarkerPosition.wide),
+  "extra-wide": framing(2560, 800, locationMapMarkerPosition.wide),
 };
 
 export type LocationMapFraming = keyof typeof locationMapFramings;

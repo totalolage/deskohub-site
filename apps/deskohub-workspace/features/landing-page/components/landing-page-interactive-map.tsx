@@ -33,18 +33,22 @@ const workspaceMarkerIcon = L.divIcon({
 type LandingPageInteractiveMapProps = {
   /** Runs once the map is set up in `container`, before its tiles load. */
   onMount?: (container: HTMLElement) => void;
+  /** Runs whenever the view starts to move, after the initial framing. */
+  onMoveStart?: () => void;
   /** Runs when every tile in view has loaded without an error. */
   onTilesLoad?: () => void;
 };
 
 export function LandingPageInteractiveMap({
   onMount,
+  onMoveStart,
   onTilesLoad,
 }: LandingPageInteractiveMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const handleMount = useEffectEvent((container: HTMLElement) =>
     onMount?.(container)
   );
+  const handleMoveStart = useEffectEvent(() => onMoveStart?.());
   const handleTilesLoad = useEffectEvent(() => onTilesLoad?.());
 
   useEffect(() => {
@@ -111,6 +115,7 @@ export function LandingPageInteractiveMap({
         if (!tileFailed) handleTilesLoad();
       })
       .addTo(map);
+    map.on("movestart", () => handleMoveStart());
     map.on("resize", frameMarker);
     wideFraming.addEventListener("change", frameMarker);
     handleMount(container);

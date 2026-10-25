@@ -30,7 +30,7 @@ const get = (path: string) =>
   });
 
 describe("GET /workspace-location-map/[image]", () => {
-  test.each(["compact", "medium", "wide"])(
+  test.each(["compact", "medium", "wide", "extra-wide"])(
     "renders the %s framing as WebP for the page to annotate",
     async (framing) => {
       const response = await get(`/workspace-location-map/${framing}.webp`);
