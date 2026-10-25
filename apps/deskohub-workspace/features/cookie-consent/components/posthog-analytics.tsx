@@ -7,7 +7,7 @@ import {
 } from "@deskohub/posthog/feature-flags/react";
 import { usePathname } from "next/navigation";
 import type { BeforeSendFn, PostHog } from "posthog-js";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useReducer } from "react";
 import { getClientEnv } from "@/client-env";
 import {
   getAnalyticsDotyposCustomerId,
@@ -162,6 +162,11 @@ function PostHogClient({
   posthogHost,
   posthogProjectToken,
 }: PostHogClientProps) {
+  const [loadAttempt, retryLoad] = useReducer(
+    (attempt: number) => attempt + 1,
+    0
+  );
+
   useEffect(() => {
     analyticsConsentSignal = analyticsAccepted;
   }, [analyticsAccepted]);
@@ -246,6 +251,7 @@ function PostHogClient({
     };
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadAttempt re-runs the SDK load after a failed chunk fetch.
   useEffect(() => {
     if (!analyticsAccepted && !initializedPostHog) {
       clearPostHogSessionCookies();
@@ -278,6 +284,14 @@ function PostHogClient({
     }
 
     let current = true;
+    // A failed chunk load is retried once the browser is back online or the
+    // tab regains focus; events captured meanwhile keep waiting.
+    const retryEvents = ["focus", "online"] as const;
+    const stopRetryListeners = () => {
+      for (const event of retryEvents) {
+        window.removeEventListener(event, retryLoad);
+      }
+    };
     posthogModule.load().then(
       ({ default: sdk }) => {
         if (!current) return;
@@ -288,17 +302,22 @@ function PostHogClient({
         });
         if (client) startPostHog(client);
       },
-      // A failed chunk load is retried by the next consent or config change;
-      // events captured meanwhile keep waiting.
-      () => undefined
+      () => {
+        if (!current) return;
+        for (const event of retryEvents) {
+          window.addEventListener(event, retryLoad);
+        }
+      }
     );
 
     return () => {
       current = false;
+      stopRetryListeners();
     };
   }, [
     analyticsAccepted,
     featureFlagOverrides,
+    loadAttempt,
     posthogEnvironment,
     posthogHost,
     posthogProjectToken,
@@ -392,8 +411,9 @@ function pausePostHogObserver() {
 
 function reconcilePostHogIdentity(consented = getCurrentAnalyticsConsent()) {
   // Events and browser logs held while analytics is paused never outlive its
-  // consent.
-  if (!analyticsTelemetryHostAllowed || !consented) {
+  // consent. The cookie decides: the consent signal reads as withdrawn until
+  // the consent state hydrates.
+  if (!analyticsTelemetryHostAllowed || !readAnalyticsConsentCookie()) {
     discardAnalyticsEvents();
     discardWorkspaceBrowserLogs();
   }

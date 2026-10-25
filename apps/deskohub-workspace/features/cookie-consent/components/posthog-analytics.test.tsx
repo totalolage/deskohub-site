@@ -234,6 +234,21 @@ const posthog = {
 
 mock.module("posthog-js", () => ({ default: posthog }));
 
+const preloadableModule = await import("@/shared/utils/preloadable-module");
+const { createPreloadableModule, useLoadedModule, usePreloadWhenIdle } =
+  preloadableModule;
+let failNextSdkLoad = false;
+mock.module("@/shared/utils/preloadable-module", () => ({
+  createPreloadableModule: <Module,>(importModule: () => Promise<Module>) =>
+    createPreloadableModule(() => {
+      if (!failNextSdkLoad) return importModule();
+      failNextSdkLoad = false;
+      return Promise.reject(new Error("synthetic chunk load failure"));
+    }),
+  useLoadedModule,
+  usePreloadWhenIdle,
+}));
+
 let pathname = "/account";
 mock.module("next/navigation", () => ({
   usePathname: () => pathname,
@@ -1249,6 +1264,72 @@ describe("PostHogAnalytics", () => {
     expect(captureLog).toHaveBeenCalledTimes(3);
     expect(JSON.stringify(captureLog.mock.calls)).not.toContain(
       "synthetic-token"
+    );
+
+    view.unmount();
+  });
+
+  test("keeps consented events captured before the consent state hydrates", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?consent-hydration"
+    );
+    const AnalyticsBoundary = ({
+      analyticsAccepted,
+    }: {
+      readonly analyticsAccepted: boolean;
+    }) => (
+      <PostHogProvider>
+        <PostHogAnalytics
+          analyticsAccepted={analyticsAccepted}
+          posthogEnvironment="preview"
+        />
+      </PostHogProvider>
+    );
+
+    discardAnalyticsEvents();
+    setConsentCookie(["necessary", "analytics"]);
+    captureAnalyticsEvent("before hydration");
+    const view = render(<AnalyticsBoundary analyticsAccepted={false} />);
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    await act(async () => {
+      view.rerender(<AnalyticsBoundary analyticsAccepted />);
+    });
+
+    expect(capturedEvents.map(({ event }) => event)).toContain(
+      "before hydration"
+    );
+
+    view.unmount();
+  });
+
+  test("retries a failed SDK load when the tab regains focus", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?sdk-load-retry"
+    );
+
+    discardAnalyticsEvents();
+    setConsentCookie(["necessary", "analytics"]);
+    failNextSdkLoad = true;
+    const view = render(
+      <PostHogProvider>
+        <PostHogAnalytics analyticsAccepted posthogEnvironment="preview" />
+      </PostHogProvider>
+    );
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    captureAnalyticsEvent("while the SDK failed to load");
+    expect(init).not.toHaveBeenCalled();
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    expect(init).toHaveBeenCalledTimes(1);
+    expect(capturedEvents.map(({ event }) => event)).toContain(
+      "while the SDK failed to load"
     );
 
     view.unmount();
