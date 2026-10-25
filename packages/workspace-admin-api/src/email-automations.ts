@@ -851,13 +851,27 @@ export type AutomationEngineHealth = typeof AutomationEngineHealth.Type;
 export const automationsMinimumDhwVersion = DhwVersion.make("1.24.0");
 
 /**
- * The first `dhw` release that decodes `reconcile-stalled` and any later
- * engine warning. Older binaries decode warnings as a closed list and fail on
- * the whole report exactly when the reconcile stalls, so engine health
- * refuses them.
+ * The first `dhw` release that decodes any engine warning code. Older
+ * binaries decode warnings as a closed list and reject the whole report on a
+ * code they don't know.
  */
-export const automationEngineHealthMinimumDhwVersion =
-  DhwVersion.make("1.28.0");
+export const openEngineWarningsDhwVersion = DhwVersion.make("1.28.0");
+
+/**
+ * The first `dhw` release that decodes each engine warning. The CLI API
+ * withholds a warning from older binaries rather than refusing them the
+ * report, because production serves a new code before its release publishes.
+ * A code added from now on decodes from `openEngineWarningsDhwVersion`.
+ */
+export const automationEngineWarningDhwVersions = {
+  "planner-stale": automationsMinimumDhwVersion,
+  "sweep-lagging": automationsMinimumDhwVersion,
+  "reconcile-stalled": openEngineWarningsDhwVersion,
+  "event-backlog": automationsMinimumDhwVersion,
+  "unit-backlog": automationsMinimumDhwVersion,
+  "schedule-lagging": automationsMinimumDhwVersion,
+  "falling-behind": automationsMinimumDhwVersion,
+} satisfies Record<AutomationEngineWarning, DhwVersion>;
 
 /** An input without its path parameters: what an endpoint's body or query carries. */
 const withoutPathParams = <
@@ -1056,12 +1070,7 @@ export const AdminCliAutomationsApi = HttpApiGroup.make("automations")
         success: AutomationEngineHealth,
         error: campaignErrors,
       }
-    )
-      .annotate(AdministrationOperationBehavior, readOperation)
-      .annotate(
-        MinimumDhwVersion,
-        Option.some(automationEngineHealthMinimumDhwVersion)
-      )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .annotate(MinimumDhwVersion, Option.some(automationsMinimumDhwVersion))
   .middleware(AdministrationActionRecord)

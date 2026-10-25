@@ -299,7 +299,7 @@ export {
   AutomationWait,
   type AutomationWait as AutomationWaitType,
   automationDurationUnits,
-  automationEngineHealthMinimumDhwVersion,
+  automationEngineWarningDhwVersions,
   automationFlowMaxSteps,
   automationPreviewKinds,
   automationPreviewOutcomes,
@@ -318,6 +318,7 @@ export {
   type CalendarPreviewInput as CalendarPreviewInputType,
   InSavedAudience,
   type InSavedAudience as InSavedAudienceType,
+  openEngineWarningsDhwVersion,
   scheduleMinutesOffTick,
 } from "./email-automations";
 export {
