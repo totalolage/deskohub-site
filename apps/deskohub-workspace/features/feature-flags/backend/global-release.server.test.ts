@@ -33,12 +33,10 @@ mock.module(
   })
 );
 
-const { loadOfficeGlobalRelease } = await import(
-  "./office-reservation-feature-flag.server"
-);
+const { loadGlobalRelease } = await import("./global-release.server");
 
-describe("loadOfficeGlobalRelease", () => {
-  test("reads the office gate as decided for everyone, without the request", async () => {
+describe("loadGlobalRelease", () => {
+  test("reads the flag as decided for everyone, without the request", async () => {
     for (const [officePage, release] of [
       [true, "on"],
       [false, "off"],
@@ -47,17 +45,23 @@ describe("loadOfficeGlobalRelease", () => {
       constantFlags =
         officePage === undefined ? {} : { office_page: officePage };
 
-      expect(await loadOfficeGlobalRelease()).toBe(release);
+      expect(await loadGlobalRelease("office_page")).toBe(release);
     }
     expect(headers).not.toHaveBeenCalled();
     expect(cacheLife).toHaveBeenCalledWith("minutes");
+  });
+
+  test("reads the flag it is given", async () => {
+    constantFlags = { office_page: true, referrals: false };
+
+    expect(await loadGlobalRelease("referrals")).toBe("off");
   });
 
   test("counts a release it can't read as undecided", async () => {
     constantFlags = { office_page: true };
     classificationFails = true;
     try {
-      expect(await loadOfficeGlobalRelease()).toBe("undecided");
+      expect(await loadGlobalRelease("office_page")).toBe("undecided");
     } finally {
       classificationFails = false;
     }
