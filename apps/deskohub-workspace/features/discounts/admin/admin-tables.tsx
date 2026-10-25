@@ -2,7 +2,7 @@
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { formatCurrencyName } from "@deskohub/i18n/currency";
-import type { Schema } from "effect";
+import { Option, type Schema } from "effect";
 import { ArrowUpRight, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useMemo, useRef, useState } from "react";
@@ -405,14 +405,19 @@ export function VoucherEditor({
       </p>
       <MutationForm
         actionName={`updateVoucher.${voucher.id}`}
-        buildMutation={(values) => ({
-          kind: "update-voucher",
-          voucher: {
-            id: voucher.id,
-            ...toVoucherConfigurationInput(values),
-            credit: toVoucherCreditInput(values),
-          },
-        })}
+        buildMutation={(values) =>
+          Option.map(
+            toVoucherCreditInput(values),
+            (credit): DiscountAdminMutation => ({
+              kind: "update-voucher",
+              voucher: {
+                id: voucher.id,
+                ...toVoucherConfigurationInput(values),
+                credit,
+              },
+            })
+          )
+        }
         defaultValues={voucherFormDefaults(voucher)}
         resetOnSuccessTo="submitted"
         deleteControl={
@@ -696,10 +701,15 @@ export function CreateDiscountForm({
   return (
     <MutationForm
       actionName="createDiscount"
-      buildMutation={(values) => ({
-        kind: "create-discount",
-        discount: toCreateDiscountInput(values),
-      })}
+      buildMutation={(values) =>
+        Option.map(
+          toCreateDiscountInput(values),
+          (discount): DiscountAdminMutation => ({
+            kind: "create-discount",
+            discount,
+          })
+        )
+      }
       defaultValues={discountDefinitionFormDefaults()}
       onSuccess={onCreated}
       schema={createDiscountDefinitionFormSchema(locale)}
@@ -726,18 +736,20 @@ export function CreateVoucherForm({
   return (
     <MutationForm
       actionName={customer ? "createCustomerVoucher" : "createVoucher"}
-      buildMutation={(values): DiscountAdminMutation => {
-        const voucher = {
-          ...toVoucherConfigurationInput(values),
-          credit: toVoucherCreditInput(values),
-        };
-        return customer
-          ? {
-              kind: "create-customer-voucher",
-              voucher: { customerId: customer.id, ...voucher },
-            }
-          : { kind: "create-voucher", voucher };
-      }}
+      buildMutation={(values) =>
+        Option.map(
+          toVoucherCreditInput(values),
+          (credit): DiscountAdminMutation => {
+            const voucher = { ...toVoucherConfigurationInput(values), credit };
+            return customer
+              ? {
+                  kind: "create-customer-voucher",
+                  voucher: { customerId: customer.id, ...voucher },
+                }
+              : { kind: "create-voucher", voucher };
+          }
+        )
+      }
       defaultValues={voucherFormDefaults()}
       onSuccess={onCreated}
       schema={createVoucherFormSchema(locale)}
@@ -820,13 +832,15 @@ function DiscountEditor({
       </div>
       <MutationForm
         actionName={`updateDiscount.${discount.id}`}
-        buildMutation={(values) => ({
-          kind: "update-discount",
-          discount: {
-            id: discount.id,
-            ...toCreateDiscountInput(values),
-          },
-        })}
+        buildMutation={(values) =>
+          Option.map(
+            toCreateDiscountInput(values),
+            (definition): DiscountAdminMutation => ({
+              kind: "update-discount",
+              discount: { id: discount.id, ...definition },
+            })
+          )
+        }
         defaultValues={discountDefinitionFormDefaults(discount)}
         resetOnSuccessTo="submitted"
         deleteControl={
@@ -871,13 +885,15 @@ function DiscountCodeEditor({
       </p>
       <MutationForm
         actionName={`updateDiscountCode.${code.id}`}
-        buildMutation={(values) => ({
-          kind: "update-code",
-          code: {
-            id: code.id,
-            ...toCreateDiscountCodeInput(values),
-          },
-        })}
+        buildMutation={(values) =>
+          Option.some({
+            kind: "update-code",
+            code: {
+              id: code.id,
+              ...toCreateDiscountCodeInput(values),
+            },
+          })
+        }
         defaultValues={discountCodeFormDefaults(code)}
         resetOnSuccessTo="submitted"
         requireDirty
@@ -905,7 +921,10 @@ function MutationForm<Input extends FieldValues, Values = Input>({
   onSuccess,
 }: {
   readonly actionName: string;
-  readonly buildMutation: (values: Values) => DiscountAdminMutation;
+  /** None when the values cannot form a mutation the action would accept. */
+  readonly buildMutation: (
+    values: Values
+  ) => Option.Option<DiscountAdminMutation>;
   readonly children: ReactNode;
   readonly defaultValues: DefaultValues<Input>;
   readonly deleteControl?: ReactNode;
@@ -953,6 +972,7 @@ function MutationForm<Input extends FieldValues, Values = Input>({
     submittedValuesRef.current = values;
   };
 
+  const checkFormMessage = () => m.discountsSaveFailedCheckForm({}, { locale });
   const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
     actionName,
     onSuccess: ({ data }) => {
@@ -980,7 +1000,7 @@ function MutationForm<Input extends FieldValues, Values = Input>({
       setFeedback({
         kind: "error",
         message: getDiscountAdminActionFailureMessage(error.serverError, {
-          fallback: m.discountsSaveFailedCheckForm({}, { locale }),
+          fallback: checkFormMessage(),
           locale,
         }),
       });
@@ -1003,8 +1023,14 @@ function MutationForm<Input extends FieldValues, Values = Input>({
           // Bound at event time so the submitted-values ref is only written
           // outside render.
           void form.handleSubmit((values) => {
-            recordSubmittedValues(form.getValues());
-            execute(buildMutation(values));
+            Option.match(buildMutation(values), {
+              onNone: () =>
+                setFeedback({ kind: "error", message: checkFormMessage() }),
+              onSome: (mutation) => {
+                recordSubmittedValues(form.getValues());
+                execute(mutation);
+              },
+            });
           })(event);
         }}
       >
