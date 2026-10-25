@@ -24,7 +24,7 @@ import {
 } from "./workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
-  withConnectionTransaction,
+  withHeldTransaction,
 } from "./workspace-postgres-test-database.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -51,9 +51,7 @@ describe.skipIf(!testDatabase)("workspace fixtures", () => {
     const connection = await testDatabase!.pool.connect();
     try {
       await connection.query("begin");
-      return await Effect.runPromise(
-        withConnectionTransaction(connection, use)
-      );
+      return await Effect.runPromise(withHeldTransaction(connection, use));
     } finally {
       await connection.query("rollback").catch(() => {});
       connection.release();

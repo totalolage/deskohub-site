@@ -36,7 +36,7 @@ import {
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
-  withConnectionTransaction,
+  withHeldTransaction,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type CreateWorkspaceReservationDraftInput,
@@ -377,7 +377,7 @@ describe.skipIf(!postgresDatabase)(
       try {
         await writer.query("begin");
         await Effect.runPromise(
-          withConnectionTransaction(writer, (db) =>
+          withHeldTransaction(writer, (db) =>
             workspaceFixtures(db).reservation({
               stage: { reservation: "cancelled" },
               customer: draftDetails.dotyposCustomerId,
