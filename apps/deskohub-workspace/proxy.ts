@@ -437,15 +437,23 @@ const canonicalHostRedirect = (request: NextRequest) => {
   );
 };
 
-export async function proxy(request: NextRequest) {
-  const canonicalHostResponse = canonicalHostRedirect(request);
-  if (canonicalHostResponse) return canonicalHostResponse;
+// A redirect that keeps the query can carry a reservation capability or an
+// account continuation, so a private path's redirect answers privately too.
+const markRedirectPrivacy = (request: NextRequest, response: NextResponse) => {
+  const { pathname } = request.nextUrl;
+  if (isAdministrationPath(pathname)) {
+    return markAdministrationResponse(response);
+  }
+  return isPrivateReservationPath(pathname) || isPrivateAccountPath(pathname)
+    ? markPrivateResponse(response)
+    : response;
+};
 
-  const exactLocaleResponse = exactLocaleRedirect(request);
-  if (exactLocaleResponse) {
-    return isAdministrationPath(request.nextUrl.pathname)
-      ? markAdministrationResponse(exactLocaleResponse)
-      : exactLocaleResponse;
+export async function proxy(request: NextRequest) {
+  const normalizingRedirect =
+    canonicalHostRedirect(request) ?? exactLocaleRedirect(request);
+  if (normalizingRedirect) {
+    return markRedirectPrivacy(request, normalizingRedirect);
   }
 
   if (isAdministrationPath(request.nextUrl.pathname)) {

@@ -83,6 +83,7 @@ const inspectCheckoutEntry = (
           ["https://workspace.deskohub.cz/en-US/checkout/pay?state=synthetic-summary", {}],
           ["https://immutable-preview.vercel.app/en/faq?utm_source=synthetic", {}],
           ["https://branch-preview.vercel.app/en-US/admin", { method: "HEAD" }],
+          ["https://branch-preview.vercel.app/cs-CZ/reservation/access/synthetic-order?accessToken=synthetic-token", {}],
         ];
         const results = [];
         for (const [url, options] of requests) {
@@ -207,11 +208,21 @@ test("moves Production alias page loads to the canonical origin with their path 
     [10, "https://workspace.deskohub.cz/en-US"],
     [13, "https://workspace.deskohub.cz/en/faq?utm_source=synthetic"],
     [14, "https://workspace.deskohub.cz/en-US/admin"],
+    [
+      15,
+      "https://workspace.deskohub.cz/cs-CZ/reservation/access/synthetic-order?accessToken=synthetic-token",
+    ],
   ]);
   for (const [index, canonicalUrl] of canonicalUrls) {
     expect(responses[index].status).toBe(308);
     expect(responses[index].location).toBe(canonicalUrl);
   }
+  // The query can carry a credential, so private paths redirect privately.
+  for (const index of [8, 14, 15]) {
+    expect(responses[index].cacheControl).toBe("private, no-store");
+  }
+  expect(responses[15].referrerPolicy).toBe("no-referrer");
+  expect(responses[10].cacheControl).toBeNull();
   // A Server Action finishes where it was posted; the canonical host serves.
   for (const index of [6, 12]) {
     expect(responses[index].location).toBeNull();
@@ -596,6 +607,21 @@ describe("locale negotiation", () => {
         })
       ).toEqual({ status: 308, location: `https://workspace.example${exact}` });
     }
+  });
+
+  test("keeps a credential-bearing link's exact-locale redirect private", async () => {
+    const response = await proxy(
+      new NextRequest(
+        `https://workspace.example/en/reservation/access/synthetic-order?${reservationAccessTokenQueryParam}=synthetic-token`
+      )
+    );
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(
+      `https://workspace.example/en-US/reservation/access/synthetic-order?${reservationAccessTokenQueryParam}=synthetic-token`
+    );
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
   });
 });
 
