@@ -180,10 +180,11 @@ const pageLocalePreference = async (request: NextRequest) => {
   }
 };
 
-// A locale prefix in another letter case (`/en-us`) or a bare language
-// (`/en`, `/sk`) moves permanently to the exact locale, whoever asks, instead
-// of being prefixed a second time.
+// A page load whose locale prefix is in another letter case (`/en-us`) or a
+// bare language (`/en`, `/sk`) moves permanently to the exact locale, whoever
+// asks, before any locale or sign-in redirect could prefix it a second time.
 const exactLocaleRedirect = (request: NextRequest) => {
+  if (request.method !== "GET" && request.method !== "HEAD") return undefined;
   const exactPathname = findExactLocalePathname(
     request.nextUrl.pathname,
     locales,
@@ -203,9 +204,6 @@ async function localizedPageResponse(
   request: NextRequest,
   { forwardRequestHeaders = false } = {}
 ) {
-  const exactLocaleResponse = exactLocaleRedirect(request);
-  if (exactLocaleResponse) return exactLocaleResponse;
-
   const localeFromUrl = getLocaleFromRequestPathname(request, locales);
 
   // A reservation capability is bound to the locale it was issued in, so it is
@@ -442,6 +440,13 @@ const canonicalHostRedirect = (request: NextRequest) => {
 export async function proxy(request: NextRequest) {
   const canonicalHostResponse = canonicalHostRedirect(request);
   if (canonicalHostResponse) return canonicalHostResponse;
+
+  const exactLocaleResponse = exactLocaleRedirect(request);
+  if (exactLocaleResponse) {
+    return isAdministrationPath(request.nextUrl.pathname)
+      ? markAdministrationResponse(exactLocaleResponse)
+      : exactLocaleResponse;
+  }
 
   if (isAdministrationPath(request.nextUrl.pathname)) {
     return markAdministrationResponse(await administrationResponse(request));

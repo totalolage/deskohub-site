@@ -295,7 +295,7 @@ describe("administration route boundary", () => {
 
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toBe(
-        `https://workspace.example/en-US${pathname}`
+        `https://workspace.example/cs-CZ${pathname}`
       );
     }
   });
@@ -318,7 +318,6 @@ describe("administration route boundary", () => {
   test("recognizes encoded, odd, and malformed administration path spellings", async () => {
     for (const pathname of [
       "/xx-XX/admin",
-      "/cs-cz/admin/reservations",
       "/%61dmin/reservations",
       "/cs-CZ/%61dmin",
       "/en-US/admin%2Freservations",
@@ -334,6 +333,18 @@ describe("administration route boundary", () => {
       );
       expectPrivateAdministrationResponse(response);
     }
+  });
+
+  test("moves a loosely spelled administration locale to the exact locale privately", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/cs-cz/admin/reservations")
+    );
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(
+      "https://workspace.example/cs-CZ/admin/reservations"
+    );
+    expectPrivateAdministrationResponse(response);
   });
 
   test("redirects a cookie-less localized invoice request to sign-in with its return path", async () => {
