@@ -28,4 +28,5 @@ export {
   workspaceLocationMapEmailWidth,
   workspaceLocationMapImageOptions,
   workspaceLocationMapImagePath,
+  workspaceLocationMapZoom,
 } from "./workspace-location-map";
