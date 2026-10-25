@@ -27,7 +27,8 @@ const render = (locale: Locale, discount = 0) =>
   );
 
 /**
- * The facts the meeting-room reservation page shows. Duration labels are
+ * The facts the meeting-room reservation page shows beyond the title and
+ * description its public page definition gives it. Duration labels are
  * checked with the prices. Left out: form controls and their labels
  * (`reservationMeetingRoomStartLabel`, `reservationMeetingRoomDateLabel`,
  * `reservationMeetingRoomTimeLabel`, `reservationDateLabel`,
@@ -37,8 +38,6 @@ const render = (locale: Locale, discount = 0) =>
  * billing, and consent fields, and the checkout step navigation.
  */
 const pageFacts = (locale: Locale) => [
-  m.reservationMeetingRoomMetadataTitle({}, { locale }),
-  m.reservationMeetingRoomMetadataDescription({}, { locale }),
   m.reservationTierMeetingRoomTitle({}, { locale }),
   m.reservationTierMeetingRoomDescription({}, { locale }),
   m.publicOfferingMeetingRoomUsage({}, { locale }),

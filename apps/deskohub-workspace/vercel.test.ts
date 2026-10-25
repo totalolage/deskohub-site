@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { prefixPathnameWithLocale } from "@deskohub/i18n/pathname";
 import { locales } from "@/features/i18n/routing";
-import { publicPages } from "@/features/public-pages/public-pages";
+import { publicPages } from "@/features/public-pages/public-page-definitions";
 import vercelConfig from "./vercel.json";
 
 // Vercel serves prerendered pages with the cached response's own `Vary`, so the

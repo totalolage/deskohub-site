@@ -7,10 +7,7 @@ import { faqPageMarkdown } from "@/features/faq/faq-page-markdown";
 import { type Locale, m } from "@/features/i18n";
 import type { LandingPageSaleBannerContent } from "@/features/landing-page/components/landing-page-sale-banner";
 import { landingPageMarkdown } from "@/features/landing-page/landing-page-markdown";
-import {
-  getLegalDocument,
-  type LegalDocumentKey,
-} from "@/features/legal/content";
+import type { LegalDocumentKey } from "@/features/legal/legal-document-summaries";
 import { legalPageMarkdown } from "@/features/legal/legal-page-markdown";
 import { meetingRoomPageMarkdown } from "@/features/meeting-room/meeting-room-page-markdown";
 import { meetingRoomReservationPageMarkdown } from "@/features/meeting-room/meeting-room-reservation-page-markdown";
@@ -48,8 +45,6 @@ export interface PublicPageMarkdownSources {
 
 export interface PublicPageMarkdown {
   readonly topic: PublicPageTopic;
-  /** The page's title, as its metadata names it. */
-  readonly title: (locale: Locale) => string;
   /** The facts the HTML page shows in `locale`, starting with its heading. */
   readonly render: (
     locale: Locale,
@@ -59,71 +54,37 @@ export interface PublicPageMarkdown {
 
 const legalPage = (documentKey: LegalDocumentKey): PublicPageMarkdown => ({
   topic: "legal",
-  title: (locale) => getLegalDocument(locale, documentKey).title,
   render: (locale) => Effect.succeed(legalPageMarkdown(locale, documentKey)),
 });
 
 const reservationPage = (
-  title: PublicPageMarkdown["title"],
   renderOfferings: (
     locale: Locale,
     offerings: ReadonlyArray<PublicOffering>
   ) => MarkdownBlocks
 ): PublicPageMarkdown => ({
   topic: "booking",
-  title,
   render: (locale, { offerings }) =>
     Effect.map(offerings, (loaded) => renderOfferings(locale, loaded)),
 });
 
 /**
- * The Markdown variant of every public page. Typecheck proves each page in
- * the registry has one, so a new public page must add its renderer here.
+ * The Markdown variant of every public page, starting with the heading its
+ * HTML page shows. llms.txt names the page by its definition's title instead.
+ * Typecheck proves each public page has one, so a new public page must add
+ * its renderer here.
  */
 export const publicPageMarkdown = {
-  "/": {
-    topic: "offer",
-    title: (locale) => m.landingMetadataTitle({}, { locale }),
-    render: landingPageMarkdown,
-  },
-  "/contact": {
-    topic: "contact",
-    title: (locale) => m.contactMetadataTitle({}, { locale }),
-    render: contactPageMarkdown,
-  },
-  "/faq": {
-    topic: "offer",
-    title: (locale) => m.faqMetadataTitle({}, { locale }),
-    render: faqPageMarkdown,
-  },
-  "/ai-assistants": {
-    topic: "booking",
-    title: (locale) => m.aiAssistantsMetadataTitle({}, { locale }),
-    render: aiAssistantsPageMarkdown,
-  },
-  "/pricing": {
-    topic: "prices",
-    title: (locale) => m.pricingPageTitle({}, { locale }),
-    render: pricingPageMarkdown,
-  },
-  "/meeting-room": {
-    topic: "offer",
-    title: (locale) => m.meetingRoomMetadataTitle({}, { locale }),
-    render: meetingRoomPageMarkdown,
-  },
-  "/team": {
-    topic: "offer",
-    title: (locale) => m.teamMetadataTitle({}, { locale }),
-    render: teamPageMarkdown,
-  },
-  "/ttrpg-room": {
-    topic: "offer",
-    title: (locale) => m.ttrpgRoomMetadataTitle({}, { locale }),
-    render: ttrpgRoomPageMarkdown,
-  },
+  "/": { topic: "offer", render: landingPageMarkdown },
+  "/contact": { topic: "contact", render: contactPageMarkdown },
+  "/faq": { topic: "offer", render: faqPageMarkdown },
+  "/ai-assistants": { topic: "booking", render: aiAssistantsPageMarkdown },
+  "/pricing": { topic: "prices", render: pricingPageMarkdown },
+  "/meeting-room": { topic: "offer", render: meetingRoomPageMarkdown },
+  "/team": { topic: "offer", render: teamPageMarkdown },
+  "/ttrpg-room": { topic: "offer", render: ttrpgRoomPageMarkdown },
   "/logo": {
     topic: "optional",
-    title: (locale) => m.logoVariantsTitle({}, { locale }),
     render: (locale) =>
       Effect.succeed([markdownHeading(1, m.logoVariantsTitle({}, { locale }))]),
   },
@@ -132,16 +93,9 @@ export const publicPageMarkdown = {
   "/cookie-policy": legalPage("cookie-policy"),
   "/operating-rules": legalPage("operating-rules"),
   "/marketing-communications": legalPage("marketing-communications"),
-  "/reservation/cowork": reservationPage(
-    (locale) => m.checkoutOrderMetadataTitle({}, { locale }),
-    coworkReservationPageMarkdown
-  ),
+  "/reservation/cowork": reservationPage(coworkReservationPageMarkdown),
   "/reservation/meeting-room": reservationPage(
-    (locale) => m.reservationMeetingRoomMetadataTitle({}, { locale }),
     meetingRoomReservationPageMarkdown
   ),
-  "/reservation/office": reservationPage(
-    (locale) => m.reservationOfficeMetadataTitle({}, { locale }),
-    officeReservationPageMarkdown
-  ),
+  "/reservation/office": reservationPage(officeReservationPageMarkdown),
 } satisfies Record<PublicPagePathname, PublicPageMarkdown>;

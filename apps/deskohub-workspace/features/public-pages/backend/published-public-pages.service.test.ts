@@ -7,7 +7,7 @@ import type { IWorkspaceFeatureFlagService } from "@/features/feature-flags/back
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import { MeetingRoomPageFeatureFlagService } from "@/features/meeting-room/backend/meeting-room-page-feature-flag.service";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
-import { publicPages } from "../public-pages";
+import { publicPages } from "../public-page-definitions";
 import { PublishedPublicPagesService } from "./published-public-pages.service";
 
 type FlagKey = Parameters<IWorkspaceFeatureFlagService["isEnabled"]>[0];

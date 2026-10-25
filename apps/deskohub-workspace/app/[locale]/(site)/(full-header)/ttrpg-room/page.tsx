@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { type ReactNode, Suspense } from "react";
@@ -7,13 +6,11 @@ import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-i
 import { RoomImageCarousel } from "@/features/gallery/components/room-image-carousel";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
+import { publicPageMetadata } from "@/features/public-pages/backend/public-page-route.server";
 import { getTtrpgRooms } from "@/features/ttrpg-room/ttrpg-rooms";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
 import { Skeleton } from "@/shared/components/ui/skeleton";
-
-const pathname = "/ttrpg-room";
 
 export const instant = true;
 
@@ -24,16 +21,7 @@ const getRoomImages = (
     (): readonly CloudinaryAsset[] => []
   );
 
-export async function generateMetadata(): Promise<Metadata> {
-  return runWithRequestLocale((locale) =>
-    createPublicPageMetadata({
-      locale,
-      pathname,
-      title: { absolute: m.ttrpgRoomMetadataTitle({}, { locale }) },
-      description: m.ttrpgRoomMetadataDescription({}, { locale }),
-    })
-  );
-}
+export const generateMetadata = publicPageMetadata("/ttrpg-room");
 
 export function TtrpgRoomPage({
   locale,

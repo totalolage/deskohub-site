@@ -9,7 +9,8 @@ import {
   markdownParagraph,
   markdownText,
 } from "@/shared/markdown/markdown";
-import { getLegalDocument, type LegalDocumentKey } from "./content";
+import { getLegalDocument } from "./content";
+import type { LegalDocumentKey } from "./legal-document-summaries";
 
 type LegalElementProps = {
   readonly children?: ReactNode;
