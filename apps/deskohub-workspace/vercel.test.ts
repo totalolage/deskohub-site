@@ -8,7 +8,7 @@ import vercelConfig from "./vercel.json";
 // proxy cannot add `Accept` there. A Vercel route transform appends it to every
 // public page, which answers with Markdown when `Accept` prefers it.
 const varyOnAcceptRoute = vercelConfig.routes.find(({ transforms }) =>
-  transforms.some(
+  transforms?.some(
     ({ type, op, target, args }) =>
       type === "response.headers" &&
       op === "append" &&
@@ -45,4 +45,12 @@ test("leaves other paths out of the Accept variation", () => {
   ]) {
     expect(variesOnAccept(pathname)).toBe(false);
   }
+});
+
+test("lets browsers keep the Temporal polyfill, whose URL carries its hash", () => {
+  const polyfillRoute = vercelConfig.routes.find(({ src }) =>
+    new RegExp(src).test("/polyfills/temporal.js")
+  );
+
+  expect(polyfillRoute?.headers?.["Cache-Control"]).toContain("immutable");
 });

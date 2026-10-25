@@ -7,6 +7,7 @@ import { isLocale, locales, m } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import { publicSiteShareImage } from "@/features/public-pages/page-metadata";
 import { getSharedWorkspaceSummary } from "@/features/public-pages/workspace-summary";
+import { TemporalLoader } from "@/shared/polyfills/temporal-loader";
 import { workspaceSiteOrigin } from "@/shared/utils";
 import "../globals.css";
 
@@ -88,6 +89,9 @@ export default async function LocaleLayout({
 
   return (
     <html lang={locale} className={sculpin.variable}>
+      <head>
+        <TemporalLoader />
+      </head>
       <body>
         <RouteLocaleProvider locale={locale}>{children}</RouteLocaleProvider>
       </body>
