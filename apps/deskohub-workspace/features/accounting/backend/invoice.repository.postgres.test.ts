@@ -40,7 +40,10 @@ import {
   buildCoworkReservationQuote,
   type CoworkReservationQuoteOrder,
 } from "@/features/checkout/checkout-quote.test-utils";
-import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import {
+  type FixtureAccount,
+  workspaceFixtures,
+} from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
@@ -345,7 +348,7 @@ describe.skipIf(!testDatabase)(
   "InvoiceRepository on disposable Postgres",
   () => {
     const postgres = testDatabase as WorkspacePostgresTestDatabase;
-    const testAccounts: Awaited<ReturnType<typeof insertTestAccount>>[] = [];
+    const testAccounts: FixtureAccount[] = [];
 
     afterAll(async () => {
       await deleteFixtureInvoices();

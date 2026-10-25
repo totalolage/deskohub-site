@@ -7,8 +7,8 @@ import type { PoolClient } from "pg";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
-  connectionDatabaseClient,
   connectWorkspacePostgresTestDatabase,
+  withConnectionTransaction,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 const postgresDatabase = await connectWorkspacePostgresTestDatabase();
@@ -18,17 +18,15 @@ const customerId = DotyposCustomerIdSchema.make("synthetic-claim-customer");
 /** Seeds three synthetic checkouts, one discount code and one voucher. */
 const seedClaimTargets = async (client: PoolClient) => {
   await Effect.runPromise(
-    connectionDatabaseClient(client).pipe(
-      Effect.flatMap((db) =>
-        workspaceFixtures(db).reservations(
-          [1, 2, 3].map((n) => ({
-            stage: { reservation: "cancelled", payment: "expired" },
-            customer: customerId,
-            overrides: {
-              id: workspaceReservationIdSchema.make(`claim-reservation-${n}`),
-            },
-          }))
-        )
+    withConnectionTransaction(client, (db) =>
+      workspaceFixtures(db).reservations(
+        [1, 2, 3].map((n) => ({
+          stage: { reservation: "cancelled", payment: "expired" },
+          customer: customerId,
+          overrides: {
+            id: workspaceReservationIdSchema.make(`claim-reservation-${n}`),
+          },
+        }))
       )
     )
   );

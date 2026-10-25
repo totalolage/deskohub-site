@@ -34,9 +34,9 @@ import {
   workspaceFixtures,
 } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
-  connectionDatabaseClient,
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
+  withConnectionTransaction,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type CreateWorkspaceReservationDraftInput,
@@ -377,20 +377,18 @@ describe.skipIf(!postgresDatabase)(
       try {
         await writer.query("begin");
         await Effect.runPromise(
-          connectionDatabaseClient(writer).pipe(
-            Effect.flatMap((db) =>
-              workspaceFixtures(db).reservation({
-                stage: { reservation: "cancelled" },
-                customer: draftDetails.dotyposCustomerId,
-                details: draftDetails.reservationDetails,
-                overrides: {
-                  id: writerId,
-                  checkoutSessionKey: input.checkoutSessionKey,
-                  checkoutAttemptKey: input.checkoutAttemptKey,
-                  reservationPurpose: draftDetails.reservationPurpose,
-                },
-              })
-            )
+          withConnectionTransaction(writer, (db) =>
+            workspaceFixtures(db).reservation({
+              stage: { reservation: "cancelled" },
+              customer: draftDetails.dotyposCustomerId,
+              details: draftDetails.reservationDetails,
+              overrides: {
+                id: writerId,
+                checkoutSessionKey: input.checkoutSessionKey,
+                checkoutAttemptKey: input.checkoutAttemptKey,
+                reservationPurpose: draftDetails.reservationPurpose,
+              },
+            })
           )
         );
         const { rows } = await writer.query<{ readonly pid: number }>(

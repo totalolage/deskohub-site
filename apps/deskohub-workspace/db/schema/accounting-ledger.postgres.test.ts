@@ -5,8 +5,8 @@ import { Effect } from "effect";
 import type { PoolClient } from "pg";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
-  connectionDatabaseClient,
   connectWorkspacePostgresTestDatabase,
+  withConnectionTransaction,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -64,12 +64,10 @@ describe.skipIf(!testDatabase)(
       const attemptState = input.attemptState ?? "paid";
       const { id: reservationId, dotyposCustomerId: customerId } =
         await Effect.runPromise(
-          connectionDatabaseClient(client).pipe(
-            Effect.flatMap((db) =>
-              workspaceFixtures(db).reservation({
-                stage: { reservation: "draft", payment: attemptState },
-              })
-            )
+          withConnectionTransaction(client, (db) =>
+            workspaceFixtures(db).reservation({
+              stage: { reservation: "draft", payment: attemptState },
+            })
           )
         );
       await client.query(

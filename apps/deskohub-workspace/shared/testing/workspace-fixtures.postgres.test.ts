@@ -5,8 +5,9 @@ import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { Effect, Exit } from "effect";
+import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import {
   fulfillmentStates,
   paymentStates,
@@ -21,7 +22,10 @@ import {
   type ReservationFixtureStage,
   workspaceFixtures,
 } from "./workspace-fixtures.test-utils";
-import { connectWorkspacePostgresTestDatabase } from "./workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  withConnectionTransaction,
+} from "./workspace-postgres-test-database.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -39,6 +43,22 @@ const everyStage: readonly ReservationFixtureStage[] =
 describe.skipIf(!testDatabase)("workspace fixtures", () => {
   const database = () => testDatabase!.db;
   const fixtures = () => workspaceFixtures(database());
+
+  /** Runs `use` inside a transaction the test begins and then rolls back. */
+  const inRolledBackTransaction = async <A, E>(
+    use: (db: WorkspaceDatabaseClient) => Effect.Effect<A, E>
+  ) => {
+    const connection = await testDatabase!.pool.connect();
+    try {
+      await connection.query("begin");
+      return await Effect.runPromise(
+        withConnectionTransaction(connection, use)
+      );
+    } finally {
+      await connection.query("rollback").catch(() => {});
+      connection.release();
+    }
+  };
 
   test("the database accepts a reservation at every stage", async () => {
     const results = await Effect.runPromise(
@@ -265,5 +285,73 @@ describe.skipIf(!testDatabase)("workspace fixtures", () => {
     expect(grants).toEqual([
       { role: "administrator", grantedBy: grantor.accountId },
     ]);
+  });
+
+  test("fixtures written inside a transaction the test holds roll back with it", async () => {
+    const { accountIds, reservationId } = await inRolledBackTransaction((db) =>
+      Effect.gen(function* () {
+        const held = workspaceFixtures(db);
+        const grantor = yield* held.account("fixture-held-grantor", {
+          roles: ["administrator"],
+        });
+        const grantee = yield* held.account("fixture-held-grantee");
+        yield* held.grantRole(grantee.accountId, "administrator", {
+          grantedBy: grantor.accountId,
+        });
+        const reservation = yield* held.reservation({
+          stage: { reservation: "draft" },
+        });
+        return {
+          accountIds: [grantor.accountId, grantee.accountId],
+          reservationId: reservation.id,
+        };
+      })
+    );
+
+    const remaining = await Effect.runPromise(
+      Effect.all({
+        accounts: database()
+          .select({ id: customerAccounts.id })
+          .from(customerAccounts)
+          .where(inArray(customerAccounts.id, accountIds)),
+        logins: database()
+          .select({ id: authUser.id })
+          .from(authUser)
+          .where(inArray(authUser.id, accountIds)),
+        grants: database()
+          .select({ role: accountRoleGrants.role })
+          .from(accountRoleGrants)
+          .where(inArray(accountRoleGrants.accountId, accountIds)),
+        reservations: database()
+          .select({ id: workspaceReservations.id })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, reservationId)),
+      })
+    );
+    expect(remaining).toEqual({
+      accounts: [],
+      logins: [],
+      grants: [],
+      reservations: [],
+    });
+  });
+
+  test("a fixture that fails inside a held transaction leaves the transaction usable", async () => {
+    const outcome = await inRolledBackTransaction((db) =>
+      Effect.gen(function* () {
+        const held = workspaceFixtures(db);
+        const { accountId } = yield* held.account("fixture-held-original");
+        const duplicate = yield* Effect.exit(
+          held.account("fixture-held-duplicate", { id: accountId })
+        );
+        const reservation = yield* held.reservation({
+          stage: { reservation: "draft" },
+        });
+        return { duplicateFailed: Exit.isFailure(duplicate), reservation };
+      })
+    );
+
+    expect(outcome.duplicateFailed).toBe(true);
+    expect(outcome.reservation.reservationState).toBe("draft");
   });
 });

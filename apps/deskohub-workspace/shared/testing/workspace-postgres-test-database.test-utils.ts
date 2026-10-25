@@ -1,7 +1,5 @@
 import { fileURLToPath } from "node:url";
 import * as PgClient from "@effect/sql-pg/PgClient";
-import { EffectCache } from "drizzle-orm/cache/core/cache-effect";
-import { make } from "drizzle-orm/effect-postgres";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Effect, Layer } from "effect";
@@ -10,10 +8,12 @@ import {
   WorkspaceDatabase,
   type WorkspaceDatabaseClient,
 } from "@/db/database.service";
-import { makeDatabaseClient, makeDatabasePool } from "@/db/database-client";
+import {
+  makeDatabaseClient,
+  makeDatabaseClientFrom,
+  makeDatabasePool,
+} from "@/db/database-client";
 import { databasePoolTimeouts } from "@/db/database-pool-timeouts";
-import { relations } from "@/db/relations";
-import { DatabaseQueryLoggerLive } from "@/shared/backend/logging/database-query-logger";
 import { createScratchPostgresDatabase } from "./postgres-scratch-database.test-utils";
 import { fixtureReservationAuthorId } from "./workspace-fixtures.test-utils";
 
@@ -127,26 +127,37 @@ export const createWorkspacePostgresSuiteDatabase = async (
 };
 
 /**
- * A database client on a connection the test already checked out, such as one
- * holding an open transaction, so fixtures write inside it. The test keeps
- * owning the connection and releases it.
+ * Runs `use` with a database client that writes inside the transaction the
+ * connection holds open, such as one a test began with `begin` to keep its
+ * rows uncommitted. The client's own transactions become savepoints, so the
+ * test's commit or rollback decides every write. The test keeps owning the
+ * connection and its transaction, and releases it.
  */
-export const connectionDatabaseClient = (connection: PoolClient) =>
-  make({ relations }).pipe(
-    Effect.provide(
-      Layer.merge(
-        PgClient.layerFrom(
-          PgClient.fromClient({
-            // A pool's connections are `pg` Clients; `PoolClient` only hides
-            // the connection settings PgClient reads.
-            acquire:
-              connection instanceof Client
-                ? Effect.succeed(connection)
-                : Effect.die(new TypeError("Expected a pg Client connection")),
-            acquireForStream: false,
-          })
-        ).pipe(Layer.orDie),
-        Layer.merge(EffectCache.Default, DatabaseQueryLoggerLive)
-      )
+export const withConnectionTransaction = <A, E, R>(
+  connection: PoolClient,
+  use: (db: WorkspaceDatabaseClient) => Effect.Effect<A, E, R>
+) =>
+  makeDatabaseClientFrom(
+    PgClient.layerFrom(
+      PgClient.fromClient({
+        // A pool's connections are `pg` Clients; `PoolClient` only hides
+        // the connection settings PgClient reads.
+        acquire:
+          connection instanceof Client
+            ? Effect.succeed(connection)
+            : Effect.die(new TypeError("Expected a pg Client connection")),
+        acquireForStream: false,
+      })
     )
+  ).pipe(
+    Effect.flatMap((db) =>
+      db.$client.reserve.pipe(
+        Effect.flatMap((open) =>
+          use(db).pipe(
+            Effect.provideService(db.$client.transactionService, [open, 0])
+          )
+        )
+      )
+    ),
+    Effect.scoped
   );
