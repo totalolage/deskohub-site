@@ -38,8 +38,10 @@ import {
   isManualInvoiceDocument,
   makeManualInvoiceDocument,
 } from "@/features/accounting/invoice";
+import type { InvoiceDeliveryStatus } from "@/features/accounting/invoice-email-delivery";
 import { getInvoicePresentation } from "@/features/accounting/invoice-presentation";
 import {
+  type InvoiceId,
   invoiceEnabledCurrencyDefinitions,
   invoiceIdSchema,
   invoiceVariableSymbolSchema,
@@ -64,11 +66,11 @@ import {
   temporalInstantToPlainDate,
 } from "@/shared/utils/temporal";
 import { AccountingSnapshotKeyService } from "../backend/accounting-snapshot-key.service";
+import { type Invoice, InvoiceRepository } from "../backend/invoice.repository";
 import {
-  type InvoiceDeliveryStatus,
-  type InvoiceListItem,
-  InvoiceRepository,
-} from "../backend/invoice.repository";
+  type InvoiceDeliverySummary,
+  InvoiceEmailDeliveryRepository,
+} from "../backend/invoice-email-delivery.repository";
 import { InvoiceEmailDeliveryService } from "../backend/invoice-email-delivery.service";
 import { renderInvoicePdf } from "../backend/invoice-pdf";
 import {
@@ -192,6 +194,7 @@ export class InvoiceAdministrationInProgressError extends Data.TaggedError(
 const makeInvoiceAdministrationService = Effect.gen(function* () {
   const invoices = yield* InvoiceRepository;
   const deliveries = yield* InvoiceEmailDeliveryService;
+  const deliveryLedger = yield* InvoiceEmailDeliveryRepository;
   const dotypos = yield* DotyposService;
   const creationRequests = yield* ManualInvoiceCreationRequests;
 
@@ -242,10 +245,16 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
   const list = Effect.fn("InvoiceAdministrationService.list")(
     (query: InvoiceAdministrationListQuery = {}) =>
       invoices.list().pipe(
-        Effect.map((items) => {
-          const today = getPragueDate();
-          return items.map((item) => toListItem(item, today));
-        }),
+        Effect.flatMap((stored) =>
+          deliveryLedger.status(stored.map(({ id }) => id)).pipe(
+            Effect.map((statuses) => {
+              const today = getPragueDate();
+              return stored.map((invoice) =>
+                toListItem(invoice, statuses.get(invoice.id)!, today)
+              );
+            })
+          )
+        ),
         Effect.map((items): InvoiceAdministrationPage => {
           const sorted = sortInvoiceAdministrationItems(items, query);
           const pageSize = 24;
@@ -275,11 +284,15 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
     const stored = yield* invoices.findById(id);
     if (!stored)
       return yield* new InvoiceAdministrationNotFoundError({ invoiceId });
-    const all = yield* invoices.list();
-    const listed = all.find(({ invoice }) => invoice.id === stored.id);
-    if (!listed)
-      return yield* new InvoiceAdministrationNotFoundError({ invoiceId });
-    return toDetail(listed, getPragueDate());
+    const statuses = yield* deliveryLedger.status([stored.id]);
+    return toDetail(stored, statuses.get(stored.id)!, getPragueDate());
+  });
+
+  const needsAttention = Effect.fn(
+    "InvoiceAdministrationService.needsAttention"
+  )(function* (invoiceId: InvoiceId) {
+    const statuses = yield* deliveryLedger.status([invoiceId]);
+    return statuses.get(invoiceId)!.needsAttention;
   });
 
   const getPdf = Effect.fn("InvoiceAdministrationService.getPdf")(function* (
@@ -395,12 +408,11 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
           })
         )
       );
-    const detail = yield* get(issuance.invoice.id);
     return {
       invoiceId: AdministrationInvoiceId.make(issuance.invoice.id),
       invoiceNumber: issuance.invoice.invoiceNumber,
       changed: issuance.changed,
-      needsAttention: detail.needsAttention,
+      needsAttention: yield* needsAttention(issuance.invoice.id),
     } satisfies InvoiceAdministrationCreateResult;
   });
 
@@ -412,11 +424,10 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
     if (!stored)
       return yield* new InvoiceAdministrationNotFoundError({ invoiceId });
     const result = yield* deliveries.deliverByInvoiceId({ invoiceId: id });
-    const detail = yield* get(id);
     return {
       invoiceId: AdministrationInvoiceId.make(id),
       changed: result.status === "delivered" && result.changed,
-      needsAttention: detail.needsAttention,
+      needsAttention: yield* needsAttention(stored.id),
     } satisfies InvoiceAdministrationRetryResult;
   });
 
@@ -620,7 +631,8 @@ const toCustomer = (
 };
 
 const toListItem = (
-  { invoice, delivery, needsAttention }: InvoiceListItem,
+  invoice: Invoice,
+  { customer, internal, needsAttention }: InvoiceDeliverySummary,
   today: string
 ): InvoiceAdministrationListItem => {
   const document = invoice.document;
@@ -648,17 +660,18 @@ const toListItem = (
       ? document.provenance.source
       : (document.provenance?.source ?? "legacy"),
     actor: manual ? document.provenance.actor : null,
-    delivery,
+    delivery: { customer, internal },
     needsAttention,
   };
 };
 
 const toDetail = (
-  item: InvoiceListItem,
+  invoice: Invoice,
+  delivery: InvoiceDeliverySummary,
   today: string
 ): InvoiceAdministrationDetail => {
-  const summary = toListItem(item, today);
-  const document = item.invoice.document;
+  const summary = toListItem(invoice, delivery, today);
+  const document = invoice.document;
   if (isManualInvoiceDocument(document)) {
     const payment = getManualInvoicePayment(document);
     return {
@@ -671,7 +684,7 @@ const toDetail = (
       lines: document.lines,
       buyer: document.buyer,
       // The API keeps this unprefixed; the proxy opens it in the operator's language.
-      pdfUrl: `/admin/invoices/${item.invoice.id}/pdf`,
+      pdfUrl: `/admin/invoices/${invoice.id}/pdf`,
     };
   }
   const presentation = getInvoicePresentation(document);
@@ -695,7 +708,7 @@ const toDetail = (
     })),
     buyer: document.buyer,
     // The API keeps this unprefixed; the proxy opens it in the operator's language.
-    pdfUrl: `/admin/invoices/${item.invoice.id}/pdf`,
+    pdfUrl: `/admin/invoices/${invoice.id}/pdf`,
   };
 };
 
@@ -755,6 +768,7 @@ function getDependencies() {
   );
   return Layer.mergeAll(
     InvoiceRepository.Live,
+    InvoiceEmailDeliveryRepository.Live,
     creationRequests,
     InvoiceEmailDeliveryService.Live,
     WorkspaceDotyposLayer

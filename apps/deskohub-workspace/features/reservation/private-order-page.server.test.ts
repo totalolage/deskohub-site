@@ -8,7 +8,6 @@ const { privateOrderPage } = await import("./private-order-page.server");
 const notFound = "NEXT_HTTP_ERROR_FALLBACK;404";
 
 const orderPage = privateOrderPage({
-  pathname: "/reservation/status",
   title: m.checkoutStatusMetadataTitle,
   description: m.checkoutStatusMetadataDescription,
 });
@@ -23,12 +22,12 @@ describe("privateOrderPage", () => {
       const metadata = await orderPage.generateMetadata({
         params: routeParams(locale, "order-1"),
       });
-      const canonical = `https://workspace.deskohub.cz/${locale}/reservation/status/order-1`;
 
       expect(metadata.robots).toEqual({ index: false, follow: false });
       expect(metadata.referrer).toBe("no-referrer");
-      expect(metadata.alternates?.canonical).toBe(canonical);
-      expect(metadata.openGraph).toMatchObject({ url: canonical });
+      // A noindexed page names no canonical, hreflang or Open Graph URL.
+      expect(metadata.alternates).toBeUndefined();
+      expect(metadata.openGraph?.url).toBeUndefined();
       expect(metadata.title).toBe(
         m.checkoutStatusMetadataTitle({}, { locale })
       );

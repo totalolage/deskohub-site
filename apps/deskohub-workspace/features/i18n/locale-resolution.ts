@@ -1,4 +1,5 @@
 import {
+  parseAcceptLanguage,
   resolveLocaleFromPolicy,
   resolvePreferredLocale,
 } from "@deskohub/i18n/core";
@@ -22,21 +23,29 @@ type LocaleRequestSources = {
 /**
  * The single Workspace locale chain: a signed-in customer's saved language
  * preference, then the URL path locale, the locale cookie, Accept-Language,
- * and the default locale. Guests have no saved preference.
+ * and a fallback: Czech when the request states no language, English when
+ * it names only languages the site doesn't serve. Guests have no saved
+ * preference.
  */
 export const resolveWorkspaceLocale = (
   { pathname, cookies, headers }: LocaleRequestSources,
   savedPreference: Locale | undefined
-): Locale =>
-  savedPreference ??
-  resolveLocaleFromPolicy({
+): Locale => {
+  if (savedPreference) return savedPreference;
+
+  const acceptLanguage = headers.get("accept-language");
+  return resolveLocaleFromPolicy({
     localeFromUrl: pathname && getLocaleFromPathname(pathname, locales),
     localeFromCookie: cookies.get(localeCookieName)?.value,
     localeFromPreferredLanguage: resolvePreferredLocale({
-      headerValue: headers.get("accept-language"),
+      headerValue: acceptLanguage,
       locales,
       preferredLanguageToLocale: localeConfig.preferredLanguageToLocale,
     }),
     locales,
-    fallbackLocale: localeConfig.baseLocale,
+    fallbackLocale:
+      parseAcceptLanguage(acceptLanguage).length === 0
+        ? localeConfig.unstatedLanguageLocale
+        : localeConfig.unservedLanguageLocale,
   });
+};

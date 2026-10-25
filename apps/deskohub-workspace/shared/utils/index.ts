@@ -7,6 +7,7 @@ export {
   type SupportedSearchParams,
 } from "./search-params";
 export {
+  getDeskohubBarPageUrl,
   getWorkspaceCanonicalUrl,
   workspaceSiteConstants,
   workspaceSiteOrigin,

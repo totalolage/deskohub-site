@@ -36,6 +36,7 @@ describe("security.txt", () => {
     expect(response.headers.get("Content-Type")).toBe(
       "text/plain; charset=utf-8"
     );
+    expect(response.headers.get("X-Robots-Tag")).toBe("noindex");
 
     const body = await response.text();
     expect(body.endsWith("\n")).toBe(true);

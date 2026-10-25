@@ -1,7 +1,6 @@
 import { CheckoutStatusRoute } from "@/features/checkout/components/checkout-status-route";
 import { m } from "@/features/i18n";
 import { privateOrderPage } from "@/features/reservation/private-order-page.server";
-import { reservationStatusPath } from "@/features/reservation/routes";
 import type { SearchParamsRecord } from "@/shared/utils";
 
 // The status refresh bounds its Nexi verification at 40 seconds (one full
@@ -16,7 +15,6 @@ type LocalizedCheckoutStatusPageProps = {
 };
 
 const { generateMetadata } = privateOrderPage({
-  pathname: reservationStatusPath,
   title: m.checkoutStatusMetadataTitle,
   description: m.checkoutStatusMetadataDescription,
 });
