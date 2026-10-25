@@ -201,7 +201,7 @@ const makeDatabase = () => {
   // The fixture inserts reservations as a batch and reads them back.
   const storeReservations = (inserted: InsertedRow | readonly InsertedRow[]) =>
     Effect.sync(() => {
-      const batch = Array.isArray(inserted) ? inserted : [inserted];
+      const batch = [inserted].flat();
       for (const row of batch) {
         if (!row.id) throw new Error("fixture reservation id missing");
         lastInsertedId = row.id;

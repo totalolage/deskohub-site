@@ -20,6 +20,7 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import {
+  checkoutSessionKeySchema,
   type PaymentAttemptId,
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
@@ -130,8 +131,9 @@ describe.skipIf(!testDatabase)(
           stage: { reservation: input.reservationState, payment: "expired" },
           overrides: {
             dotyposReservationId,
-            checkoutSessionKey:
-              input.checkoutSessionKey ?? `late-session-${id}`,
+            checkoutSessionKey: checkoutSessionKeySchema.make(
+              input.checkoutSessionKey ?? `late-session-${id}`
+            ),
             reservationHoldExpiresAt: input.holdExpiresAt,
             ...(input.createdAt && { createdAt: input.createdAt }),
           },

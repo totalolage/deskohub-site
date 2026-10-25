@@ -338,7 +338,7 @@ describe.skipIf(!testDatabase)(
         );
       });
 
-      test.each([
+      test.each<readonly [string, Partial<ReservationFixtureStage>]>([
         ["an unpaid booking", { payment: "pending" }],
         ["a cancelled booking", { reservation: "cancelled", payment: "paid" }],
         [
@@ -346,7 +346,7 @@ describe.skipIf(!testDatabase)(
           { payment: "paid", fulfillment: "processing" },
         ],
         ["a fulfilled booking", { payment: "paid", fulfillment: "fulfilled" }],
-      ] as const)("does not claim %s", async (_label, stage) => {
+      ])("does not claim %s", async (_label, stage) => {
         const id = await insertReservation(stage);
 
         expect(await claim(id)).toBeNull();
@@ -707,7 +707,7 @@ describe.skipIf(!testDatabase)(
         );
       });
 
-      test.each([
+      test.each<readonly [string, Partial<ReservationFixtureStage>]>([
         ["payment is pending", { payment: "pending" }],
         [
           "fulfillment is processing",
@@ -718,17 +718,14 @@ describe.skipIf(!testDatabase)(
           { payment: "paid", fulfillment: "awaiting_delivery" },
         ],
         ["the booking is already cancelled", { reservation: "cancelled" }],
-      ] as const)(
-        "does not claim a cancellation while %s",
-        async (_label, stage) => {
-          const id = await insertReservation(stage);
+      ])("does not claim a cancellation while %s", async (_label, stage) => {
+        const id = await insertReservation(stage);
 
-          expect(await claimCancellation(id)).toBeNull();
-          expect((await readReservation(id))?.reservationState).toBe(
-            stage.reservation ?? "held"
-          );
-        }
-      );
+        expect(await claimCancellation(id)).toBeNull();
+        expect((await readReservation(id))?.reservationState).toBe(
+          stage.reservation ?? "held"
+        );
+      });
 
       test("cancels the active pending payment attempt inside a forced payment cancellation", async () => {
         const id = await insertReservation({ payment: "pending" });

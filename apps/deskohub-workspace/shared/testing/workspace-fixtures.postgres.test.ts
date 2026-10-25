@@ -19,7 +19,6 @@ import { authUser } from "@/db/schema/auth";
 import { customerAccounts } from "@/db/schema/customer-accounts";
 import {
   fixtureReservationAuthorId,
-  type ReservationFixtureStage,
   workspaceFixtures,
 } from "./workspace-fixtures.test-utils";
 import {
@@ -29,16 +28,15 @@ import {
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
-const everyStage: readonly ReservationFixtureStage[] =
-  reservationStates.flatMap((reservation) =>
-    paymentStates.flatMap((payment) =>
-      fulfillmentStates.map((fulfillment) => ({
-        reservation,
-        payment,
-        fulfillment,
-      }))
-    )
-  );
+const everyStage = reservationStates.flatMap((reservation) =>
+  paymentStates.flatMap((payment) =>
+    fulfillmentStates.map((fulfillment) => ({
+      reservation,
+      payment,
+      fulfillment,
+    }))
+  )
+);
 
 describe.skipIf(!testDatabase)("workspace fixtures", () => {
   const database = () => testDatabase!.db;
