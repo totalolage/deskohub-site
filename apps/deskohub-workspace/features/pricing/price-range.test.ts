@@ -10,9 +10,7 @@ describe("getCatalogPriceRange", () => {
       const prices = getPublicCatalogOfferings({ locale })
         .map(({ price }) => price)
         .sort(
-          (left, right) =>
-            moneyMajorAmount(left) -
-            moneyMajorAmount(right)
+          (left, right) => moneyMajorAmount(left) - moneyMajorAmount(right)
         );
       const cheapest = prices[0];
       const dearest = prices[prices.length - 1];
