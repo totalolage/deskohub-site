@@ -50,7 +50,8 @@ const toFormattableAmount = (
     onNone: () => toFormattableAmount(Number(amount)),
     onSome: (decimal) => {
       // BigDecimal has no negative zero, so the sign comes from the text.
-      const sign = decimal.value === 0n && amount.startsWith("-") ? "-" : "";
+      const sign =
+        BigDecimal.isZero(decimal) && amount.startsWith("-") ? "-" : "";
       return {
         // Intl formats a numeric string as an exact decimal, not as a double.
         value:
