@@ -23,16 +23,6 @@ export interface InvoiceDeliverySummary
   readonly needsAttention: boolean;
 }
 
-/** How long a claimed delivery stays processing before another worker may reclaim it. */
-const processingLease = Temporal.Duration.from({ minutes: 1 });
-
-/** Matches a processing delivery whose claim outlived its lease. */
-const isStaleProcessing = (): SQL =>
-  sql`(${eq(invoiceEmailDeliveries.state, "processing")} and ${lt(
-    invoiceEmailDeliveries.updatedAt,
-    Temporal.Now.instant().subtract(processingLease)
-  )})`;
-
 export interface IInvoiceEmailDeliveryRepository {
   readonly claim: (input: {
     readonly invoiceId: string;
@@ -243,3 +233,13 @@ export class InvoiceEmailDeliveryRepository extends Context.Service<
 
   static Live = this.Default.pipe(Layer.provide(WorkspaceDatabase.Default));
 }
+
+/** How long a claimed delivery stays processing before another worker may reclaim it. */
+const processingLease = Temporal.Duration.from({ minutes: 1 });
+
+/** Matches a processing delivery whose claim outlived its lease. */
+const isStaleProcessing = (): SQL =>
+  sql`(${eq(invoiceEmailDeliveries.state, "processing")} and ${lt(
+    invoiceEmailDeliveries.updatedAt,
+    Temporal.Now.instant().subtract(processingLease)
+  )})`;
