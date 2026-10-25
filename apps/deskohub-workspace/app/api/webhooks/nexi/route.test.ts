@@ -4,9 +4,10 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
 import type { INexiWebhookService } from "@/features/checkout/backend/payment/nexi-webhook.service";
 
-const { NexiWebhookProcessingError } = await import(
+const nexiWebhookModule = await import(
   "@/features/checkout/backend/payment/nexi-webhook.service"
 );
+const { NexiWebhookProcessingError } = nexiWebhookModule;
 
 type NexiWebhookFailureCode = InstanceType<
   typeof NexiWebhookProcessingError
@@ -39,7 +40,7 @@ Object.assign(FakeNexiWebhookService, {
 });
 
 mock.module("@/features/checkout/backend/payment/nexi-webhook.service", () => ({
-  NexiWebhookProcessingError,
+  ...nexiWebhookModule,
   NexiWebhookService: FakeNexiWebhookService,
 }));
 

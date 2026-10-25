@@ -150,7 +150,7 @@ interface WebhookRouteOptions {
 }
 
 /** The HTTP status a refused delivery answers with. */
-export const webhookResponseStatus = (disposition: WebhookDisposition) => {
+const webhookResponseStatus = (disposition: WebhookDisposition) => {
   switch (disposition.kind) {
     case "declined":
       return 202;

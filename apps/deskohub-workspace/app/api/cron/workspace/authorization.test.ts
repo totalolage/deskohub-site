@@ -19,5 +19,6 @@ test.each(cronPaths)(
     const response = await GET(new Request(`https://workspace.test${path}`));
 
     expect(response.status).toBe(401);
+    expect(await response.text()).toBe('{"error":"Unauthorized"}');
   }
 );
