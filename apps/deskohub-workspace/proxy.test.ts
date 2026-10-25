@@ -638,6 +638,7 @@ describe("dotted paths under a locale prefix", () => {
       "/en-us/x.html",
       "/EN-US/a/b.php",
       "/cs-CZ/nope.html",
+      "/de-de/x.html",
     ]) {
       expect(matchesProxy(pathname)).toBe(true);
     }
@@ -693,8 +694,15 @@ describe("dotted paths under a locale prefix", () => {
     }
   });
 
-  test("go on untouched to the localized catch-all under an exact locale", async () => {
-    for (const path of ["/cs-CZ/nope.html", "/en-US/a/b.php"]) {
+  // Under a prefix that names no locale (`/de-de`), the `afterFiles` rewrite
+  // in `next.config.mjs` then gives the path the locale redirect.
+  test("go on untouched under an exact locale or a prefix that names none", async () => {
+    for (const path of [
+      "/cs-CZ/nope.html",
+      "/en-US/a/b.php",
+      "/de-de/x.html",
+      "/xx-YY/a.txt",
+    ]) {
       const response = await proxy(
         new NextRequest(`https://workspace.example${path}`, {
           headers: { "accept-language": "de" },

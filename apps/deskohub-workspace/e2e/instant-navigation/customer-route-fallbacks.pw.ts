@@ -40,8 +40,13 @@ test("renders the not-found page for an unknown address inside the customer prov
 
 // Dotted paths skip the proxy's page handling, so a file-like address takes
 // its own way to the localized catch-all: the locale redirect outside the
-// locales, and the exact-locale redirect under a wrong-case one.
-for (const prefix of ["", "/EN-us"]) {
+// locales, including under a prefix that names no locale, and the
+// exact-locale redirect under a wrong-case one.
+for (const [prefix, localizedPrefix] of [
+  ["", `/${locale}`],
+  ["/EN-us", `/${locale}`],
+  ["/de-de", `/${locale}/de-de`],
+] as const) {
   test(`renders the localized not-found page for an unknown file address at "${prefix}/"`, async ({
     page,
   }) => {
@@ -52,13 +57,14 @@ for (const prefix of ["", "/EN-us"]) {
 
     expect(response?.status()).toBe(404);
     expect(new URL(page.url()).pathname).toBe(
-      `/${locale}/route-fallback-unknown-file.html`
+      `${localizedPrefix}/route-fallback-unknown-file.html`
     );
     // The server's HTML is the locale layout, not Next's bare error document.
     const html = await response?.text();
     expect(html).toMatch(
       new RegExp(`<html(?![^>]*__next_error__)[^>]*\\blang="${locale}"`)
     );
+    expect(html).toMatch(/<title[^>]*>[^<]*\S[^<]*<\/title>/);
     expect(html).toMatch(/<meta name="robots" content="[^"]*noindex/);
     await expect(
       page.getByRole("heading", {
@@ -66,7 +72,6 @@ for (const prefix of ["", "/EN-us"]) {
         name: m.notFoundTitle({}, { locale }),
       })
     ).toBeVisible();
-    await expect(page).toHaveTitle(/\S/);
   });
 }
 

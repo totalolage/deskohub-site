@@ -82,6 +82,8 @@ test("sends an unmatched dotted path outside the locales to the locale redirect"
     "/en/nope.html",
     "/en-US.html",
     "/cs-CZ.example/a.php",
+    "/de-de/x.html",
+    "/xx-YY/a.txt",
   ]) {
     expect(await resolveRewrite(path)).toBe(
       `https://workspace.example/locale-redirect${path}`
