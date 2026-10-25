@@ -11,6 +11,7 @@ import {
   withPostgresAdvisoryLock,
 } from "@/db/postgres-advisory-lock";
 import { ReviewAccounts } from "@/features/review-accounts";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import type { CustomerAccountId } from "../../customer-account";
 import {
   encodeAuthCallbackReturn,
@@ -518,18 +519,13 @@ describe.skipIf(!testDatabase)(
       expect(await localeOf((await userIdForEmail(email))!)).toBe("cs-CZ");
     });
 
-    const insertLegacyAccount = async (email: string) => {
-      const id = crypto.randomUUID();
-      await testDatabase!.pool.query(
-        "insert into customer_accounts (id) values ($1) on conflict do nothing",
-        [id]
-      );
-      await testDatabase!.pool.query(
-        `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, true)`,
-        [id, email]
-      );
-      return id;
-    };
+    const insertLegacyAccount = (email: string) =>
+      workspaceFixtures(testDatabase!.db)
+        .account("legacy", { email })
+        .pipe(
+          Effect.map(({ accountId }) => accountId),
+          Effect.runPromise
+        );
 
     test("signs a legacy account in and captures its first sign-in locale without overwriting it later", async () => {
       const sentLinks: CapturedMagicLink[] = [];

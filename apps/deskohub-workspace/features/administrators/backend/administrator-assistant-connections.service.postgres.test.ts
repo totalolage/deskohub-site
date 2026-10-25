@@ -3,11 +3,8 @@ import "@/shared/testing/workspace-test-env";
 import { afterAll, describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import {
-  deleteTestAccounts,
-  insertTestAdministrator,
-} from "@/shared/testing/workspace-test-accounts.test-utils";
 import { AdministratorAssistantConnections } from "./administrator-assistant-connections.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -20,7 +17,9 @@ describe.skipIf(!testDatabase)(
     const clientId = `https://assistant-${crypto.randomUUID()}.example/client.json`;
 
     afterAll(async () => {
-      await deleteTestAccounts(testDatabase, administrators);
+      await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).deleteAccounts(administrators)
+      );
       await testDatabase.pool.query(
         "delete from administrator_assistant_connections where oauth_client_id like $1",
         [`${clientId}%`]
@@ -28,9 +27,10 @@ describe.skipIf(!testDatabase)(
     });
 
     const insertAdministrator = async () => {
-      const administrator = await insertTestAdministrator(
-        testDatabase,
-        "assistant-connection"
+      const administrator = await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).account("assistant-connection", {
+          roles: ["administrator"],
+        })
       );
       administrators.push(administrator);
       return administrator;
@@ -132,7 +132,9 @@ describe.skipIf(!testDatabase)(
       const administrator = await insertAdministrator();
       const { connectionId } = await connect(administrator);
 
-      await deleteTestAccounts(testDatabase, [administrator]);
+      await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).deleteAccounts([administrator])
+      );
 
       expect(await readConnection(connectionId)).toMatchObject({
         approved_by_account_id: null,

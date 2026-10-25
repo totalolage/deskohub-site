@@ -11,21 +11,19 @@ import {
   DotyposServiceMock,
   seededReservationReads,
 } from "@deskohub/dotypos/backend/service.mock";
-import { testEmailAddress } from "@deskohub/test-email";
 import type {
   AudienceCountOperatorType,
   CampaignEmailSourceType,
   ReservationProductFilterType,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, Option } from "effect";
-import { customerAccounts, workspaceReservations } from "@/db/schema";
-import { authUser } from "@/db/schema/auth";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import type { ReservationStatusRead } from "@/features/administration/reservation-status-condition";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+  type ReservationFixtureInput,
+  workspaceFixtures,
+} from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type {
   AudienceCondition,
   AudienceFacts,
@@ -126,79 +124,113 @@ const transitionedLater = [
   retriedLater,
   recoveredLater,
 ];
+/** Confirmed and paid at 08:30, before the event. */
 const confirmedOnEventDay = {
-  reservationConfirmedAt: onEventDay("08:30"),
-  paymentState: "paid" as const,
-  paidAt: onEventDay("08:30"),
-  fulfillmentState: "not_started" as const,
+  at: onEventDay("08:30"),
+  locale: "cs-CZ" as const,
+  /** Every reservation started its checkout at 08:00. */
+  overrides: { createdAt: onEventDay("08:00") },
 };
-const transitionedReservations = [
+const transitionedReservations: readonly ReservationFixtureInput[] = [
   {
     customer: fulfilledLater,
-    reservationState: "confirmed" as const,
+    stage: {
+      reservation: "confirmed",
+      payment: "paid",
+      fulfillment: "fulfilled",
+    },
     ...confirmedOnEventDay,
-    fulfillmentState: "fulfilled" as const,
-    fulfilledAt: onEventDay("12:00"),
+    overrides: {
+      ...confirmedOnEventDay.overrides,
+      fulfilledAt: onEventDay("12:00"),
+    },
   },
   {
     customer: cancelledLater,
-    reservationState: "cancelled" as const,
+    stage: { reservation: "cancelled", payment: "paid" },
     ...confirmedOnEventDay,
-    reservationCancelledAt: onEventDay("12:00"),
+    overrides: {
+      ...confirmedOnEventDay.overrides,
+      reservationConfirmedAt: onEventDay("08:30"),
+      reservationCancelledAt: onEventDay("12:00"),
+    },
   },
   {
     customer: holdLapsedLater,
-    reservationState: "cancelled" as const,
-    reservationHoldExpiresAt: onEventDay("11:00"),
-    reservationHoldExpiredAt: onEventDay("11:00"),
-    reservationCancelledAt: onEventDay("11:00"),
-    paymentState: "expired" as const,
-    fulfillmentState: "not_started" as const,
+    stage: { reservation: "cancelled", payment: "expired" },
+    at: onEventDay("11:00"),
+    overrides: {
+      createdAt: onEventDay("08:00"),
+      reservationHoldExpiresAt: onEventDay("11:00"),
+      reservationHoldExpiredAt: onEventDay("11:00"),
+    },
   },
   {
     customer: holdExpiredLater,
-    reservationState: "hold_expired" as const,
-    reservationHoldExpiresAt: onEventDay("11:00"),
-    paymentState: "expired" as const,
-    fulfillmentState: "not_started" as const,
+    stage: { reservation: "hold_expired", payment: "expired" },
+    // A legacy hold recorded only when it was due, not when it expired.
+    overrides: {
+      createdAt: onEventDay("08:00"),
+      reservationHoldExpiresAt: onEventDay("11:00"),
+      reservationHoldExpiredAt: null,
+    },
   },
   {
     customer: failedLater,
-    reservationState: "confirmed" as const,
+    stage: { reservation: "confirmed", payment: "paid", fulfillment: "failed" },
     ...confirmedOnEventDay,
-    fulfillmentState: "failed" as const,
-    fulfillmentFailedAt: onEventDay("12:00"),
-    fulfillmentFailureCode: "fulfillment_email_failed",
+    overrides: {
+      ...confirmedOnEventDay.overrides,
+      fulfillmentFailedAt: onEventDay("12:00"),
+      fulfillmentFailureCode: "fulfillment_email_failed",
+    },
   },
   {
     customer: cancellationFailedLater,
-    reservationState: "cancellation_failed" as const,
+    stage: { reservation: "cancellation_failed", payment: "paid" },
     ...confirmedOnEventDay,
-    updatedAt: onEventDay("12:00"),
+    overrides: {
+      ...confirmedOnEventDay.overrides,
+      reservationConfirmedAt: onEventDay("08:30"),
+      updatedAt: onEventDay("12:00"),
+    },
   },
   {
     customer: retriedLater,
-    reservationState: "confirmed" as const,
+    stage: {
+      reservation: "confirmed",
+      payment: "paid",
+      fulfillment: "processing",
+    },
     ...confirmedOnEventDay,
-    fulfillmentState: "processing" as const,
-    fulfillmentFailedAt: onEventDay("09:00"),
-    fulfillmentFailureCode: "fulfillment_email_failed",
-    updatedAt: onEventDay("12:00"),
+    overrides: {
+      ...confirmedOnEventDay.overrides,
+      fulfillmentFailedAt: onEventDay("09:00"),
+      fulfillmentFailureCode: "fulfillment_email_failed",
+      updatedAt: onEventDay("12:00"),
+    },
   },
   {
     customer: recoveredLater,
-    reservationState: "confirmed" as const,
+    stage: {
+      reservation: "confirmed",
+      payment: "paid",
+      fulfillment: "fulfilled",
+    },
     ...confirmedOnEventDay,
-    fulfillmentState: "fulfilled" as const,
-    fulfilledAt: onEventDay("11:00"),
-    fulfillmentFailedAt: onEventDay("09:00"),
-    updatedAt: onEventDay("11:00"),
+    overrides: {
+      ...confirmedOnEventDay.overrides,
+      fulfilledAt: onEventDay("11:00"),
+      fulfillmentFailedAt: onEventDay("09:00"),
+      fulfillmentFailureCode: "fulfillment_email_failed",
+      updatedAt: onEventDay("11:00"),
+    },
   },
 ];
 
 /** An account created two hours after the replayed event. */
 const accountHolder = customerId("account-holder");
-const accountId = `resolver-account-${run}`;
+const accountId = customerAccountIdSchema.make(`resolver-account-${run}`);
 const accountCreatedAt = Temporal.Instant.from("2026-10-01T12:00:00Z");
 const statusedReservations = [
   {
@@ -406,92 +438,63 @@ describe.skipIf(!testDatabase)(
     const { db } = testDatabase;
 
     beforeAll(async () => {
+      const fixtures = workspaceFixtures(db);
+      const marchFirst = Temporal.Instant.from("2026-03-01T10:00:00Z");
       await Effect.runPromise(
-        db.insert(workspaceReservations).values(
-          bookings.map(({ name, customer, bookedAt, details }) => ({
-            authorAccountId: fixtureReservationAuthorId,
-            checkoutAttemptKey: checkoutAttemptKeySchema.make(
-              `resolver-${name}-${run}`
-            ),
-            dotyposCustomerId: customer,
-            dotyposReservationId: reservationId(name),
-            reservationState: "confirmed" as const,
-            reservationConfirmedAt: Temporal.Instant.from(
-              bookedAt ?? "2026-03-01T10:00:00Z"
-            ),
-            paymentState: "paid" as const,
-            paidAt: Temporal.Instant.from("2026-03-01T10:00:00Z"),
-            fulfillmentState: "fulfilled" as const,
-            fulfilledAt: Temporal.Instant.from("2026-03-01T10:00:00Z"),
-            reservationDetails: details ?? plainCowork,
+        fixtures.reservations([
+          ...bookings.map(({ name, customer, bookedAt, details }) => ({
+            stage: {
+              reservation: "confirmed" as const,
+              payment: "paid" as const,
+              fulfillment: "fulfilled" as const,
+            },
+            customer,
+            details: details ?? plainCowork,
             locale: "cs-CZ" as const,
-            createdAt: Temporal.Instant.from("2026-03-01T10:00:00Z"),
-          }))
-        )
+            at: marchFirst,
+            overrides: {
+              dotyposReservationId: reservationId(name),
+              reservationConfirmedAt: bookedAt
+                ? Temporal.Instant.from(bookedAt)
+                : marchFirst,
+              createdAt: marchFirst,
+            },
+          })),
+          ...statusedReservations.map(({ customer, createdAt, confirmedAt }) =>
+            confirmedAt
+              ? {
+                  stage: {
+                    reservation: "confirmed" as const,
+                    payment: "paid" as const,
+                  },
+                  customer,
+                  locale: "cs-CZ" as const,
+                  at: Temporal.Instant.from(confirmedAt),
+                  overrides: { createdAt: Temporal.Instant.from(createdAt) },
+                }
+              : {
+                  stage: {
+                    reservation: "hold_expired" as const,
+                    payment: "expired" as const,
+                  },
+                  customer,
+                  locale: "cs-CZ" as const,
+                  at: Temporal.Instant.from(createdAt),
+                  overrides: { createdAt: Temporal.Instant.from(createdAt) },
+                }
+          ),
+          ...transitionedReservations,
+        ])
       );
       await Effect.runPromise(
-        db.insert(workspaceReservations).values(
-          statusedReservations.map(
-            ({ name, customer, createdAt, confirmedAt }) => ({
-              authorAccountId: fixtureReservationAuthorId,
-              checkoutAttemptKey: checkoutAttemptKeySchema.make(
-                `resolver-${name}-${run}`
-              ),
-              dotyposCustomerId: customer,
-              ...(confirmedAt
-                ? {
-                    dotyposReservationId: reservationId(name),
-                    reservationState: "confirmed" as const,
-                    reservationConfirmedAt: Temporal.Instant.from(confirmedAt),
-                    paymentState: "paid" as const,
-                    paidAt: Temporal.Instant.from(confirmedAt),
-                  }
-                : {
-                    reservationState: "hold_expired" as const,
-                    paymentState: "expired" as const,
-                  }),
-              fulfillmentState: "not_started" as const,
-              reservationDetails: plainCowork,
-              locale: "cs-CZ" as const,
-              createdAt: Temporal.Instant.from(createdAt),
-            })
-          )
-        )
-      );
-      await Effect.runPromise(
-        db.insert(workspaceReservations).values(
-          transitionedReservations.map(({ customer, ...states }) => ({
-            authorAccountId: fixtureReservationAuthorId,
-            checkoutAttemptKey: checkoutAttemptKeySchema.make(
-              `resolver-${customer}`
-            ),
-            dotyposCustomerId: customer,
-            dotyposReservationId: reservationId(customer),
-            reservationDetails: plainCowork,
-            locale: "cs-CZ" as const,
-            createdAt: onEventDay("08:00"),
-            ...states,
-          }))
-        )
-      );
-      await Effect.runPromise(
-        db.insert(customerAccounts).values({
-          id: accountId,
-          dotyposCustomerId: accountHolder,
-          createdAt: accountCreatedAt,
-        })
-      );
-      await Effect.runPromise(
-        db.insert(authUser).values({
+        fixtures.account("resolver", {
           id: accountId,
           name: "Resolver test",
-          email: testEmailAddress(`resolver-${run}`),
-          emailVerified: true,
+          linkedCustomer: accountHolder,
           locale: "cs-CZ",
+          createdAt: accountCreatedAt,
           // An earlier login doesn't count; the resolver reads the account's date.
-          createdAt: new Date(
-            accountCreatedAt.subtract({ hours: 30 * 24 }).epochMilliseconds
-          ),
+          loginCreatedAt: accountCreatedAt.subtract({ hours: 30 * 24 }),
         })
       );
       const filter = JSON.stringify(group("and", []));

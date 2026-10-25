@@ -10,7 +10,6 @@ import {
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { IgloohomeDeviceIdSchema } from "@deskohub/igloohome";
 import { NexiOrderIdSchema } from "@deskohub/nexi";
-import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option } from "effect";
 import {
   customerMarketingConsents,
@@ -18,25 +17,19 @@ import {
   paymentAttempts,
   type ReservationState,
   reservationAccessGrants,
-  workspaceReservations,
 } from "@/db/schema";
 import { ReservationAuthorDirectory } from "@/features/account";
-import {
-  type CustomerAccountId,
-  customerAccountIdSchema,
-} from "@/features/account/customer-account";
-import {
-  checkoutAttemptKeySchema,
-  paymentAttemptIdSchema,
-} from "@/features/checkout/checkout-identifiers";
+import type { CustomerAccountId } from "@/features/account/customer-account";
+import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import {
-  connectWorkspacePostgresTestDatabase,
   fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+  workspaceFixtures,
+} from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type AdministrationCustomerExportInput,
   type AdministrationCustomerListInput,
@@ -46,6 +39,12 @@ import { PaymentAdministrationServiceMock } from "./payment-administration.servi
 import { PostHogReservationHistory } from "./posthog-reservation-history";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
+
+const openSpaceDetails = {
+  kind: "cowork",
+  entryTier: "open-space",
+  coffee: false,
+} as const;
 
 type DotyposServiceOverrides = NonNullable<
   Parameters<typeof DotyposServiceMock>[0]
@@ -59,6 +58,8 @@ describe.skipIf(!testDatabase)(
     const runId = crypto.randomUUID();
     const makeCustomerId = (role: string) =>
       DotyposCustomerIdSchema.make(`${role}-customer-${runId}`);
+    const bookingId = (label: string) =>
+      DotyposReservationIdSchema.make(`booking-${label}-${runId}`);
     const authorCustomerId = makeCustomerId("author");
     const accountIds: CustomerAccountId[] = [];
 
@@ -156,38 +157,23 @@ describe.skipIf(!testDatabase)(
       readonly reservationState: ReservationState;
       readonly updatedAt?: Temporal.Instant;
     }) => {
-      const id = `${label}-${runId}`;
-      const reservationId = workspaceReservationIdSchema.make(`admin-${id}`);
-      reservationIds.push(reservationId);
-      const now = Temporal.Now.instant();
-      await Effect.runPromise(
-        testDatabase.db.insert(workspaceReservations).values({
-          authorAccountId: fixtureReservationAuthorId,
-          id: reservationId,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${id}`),
-          dotyposCustomerId: customerId,
-          dotyposReservationId: DotyposReservationIdSchema.make(
-            `booking-${id}`
-          ),
-          reservationState,
-          paymentState: "paid",
-          paidAt: now,
-          fulfillmentState,
-          ...(fulfillmentState === "fulfilled" && { fulfilledAt: now }),
-          ...(fulfillmentState === "failed" && {
-            fulfillmentFailedAt: now,
-            fulfillmentFailureCode: "fulfillment_dotypos_failed",
-          }),
-          reservationDetails: {
-            kind: "cowork",
-            entryTier: "open-space",
-            coffee: false,
+      const { id } = await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).reservation({
+          stage: {
+            reservation: reservationState,
+            payment: "paid",
+            fulfillment: fulfillmentState,
           },
-          locale: "en-US",
-          ...(updatedAt && { updatedAt }),
+          customer: customerId,
+          details: openSpaceDetails,
+          overrides: {
+            dotyposReservationId: bookingId(label),
+            ...(updatedAt && { updatedAt }),
+          },
         })
       );
-      return reservationId;
+      reservationIds.push(id);
+      return id;
     };
 
     describe("successful reservations", () => {
@@ -416,8 +402,6 @@ describe.skipIf(!testDatabase)(
 
     describe("customer list filters", () => {
       const range = { from: "2026-10-01", to: "2026-10-31" } as const;
-      const bookingId = (label: string) =>
-        DotyposReservationIdSchema.make(`booking-${label}-${runId}`);
       const booking = (label: string) => ({
         _branchId: "branch",
         _cloudId: "cloud",
@@ -1016,52 +1000,28 @@ describe.skipIf(!testDatabase)(
 
     describe("reservation author", () => {
       const insertAccount = async (linkedCustomer: DotyposCustomerId) => {
-        const accountId = customerAccountIdSchema.make(crypto.randomUUID());
-        accountIds.push(accountId);
-        await testDatabase.pool.query(
-          "insert into customer_accounts (id) values ($1)",
-          [accountId]
+        const account = await Effect.runPromise(
+          workspaceFixtures(testDatabase.db).account("admin-author", {
+            linkedCustomer,
+          })
         );
-        await testDatabase.pool.query(
-          `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, true)`,
-          [accountId, testEmailAddress(`admin-author-${accountId}`)]
-        );
-        await testDatabase.pool.query(
-          "update customer_accounts set dotypos_customer_id = $2 where id = $1",
-          [accountId, linkedCustomer]
-        );
-        return accountId;
+        accountIds.push(account.accountId);
+        return account;
       };
 
       const insertAuthoredReservation = async (
-        label: string,
         customerId: DotyposCustomerId,
-        authorAccountId: CustomerAccountId
+        author: CustomerAccountId
       ) => {
-        const reservationId = workspaceReservationIdSchema.make(
-          `admin-${label}-${runId}`
-        );
-        reservationIds.push(reservationId);
-        await Effect.runPromise(
-          testDatabase.db.insert(workspaceReservations).values({
-            id: reservationId,
-            checkoutAttemptKey: checkoutAttemptKeySchema.make(
-              `attempt-${label}-${runId}`
-            ),
-            dotyposCustomerId: customerId,
-            authorAccountId,
-            reservationState: "draft",
-            paymentState: "not_started",
-            fulfillmentState: "not_started",
-            reservationDetails: {
-              kind: "cowork",
-              entryTier: "open-space",
-              coffee: false,
-            },
-            locale: "en-US",
+        const { id } = await Effect.runPromise(
+          workspaceFixtures(testDatabase.db).reservation({
+            stage: { reservation: "draft" },
+            customer: customerId,
+            author,
           })
         );
-        return reservationId;
+        reservationIds.push(id);
+        return id;
       };
 
       test("names an author who booked for someone else and omits the customer's own", async () => {
@@ -1069,14 +1029,12 @@ describe.skipIf(!testDatabase)(
         const author = await insertAccount(authorCustomerId);
         const own = await insertAccount(customerId);
         const bookedForSomeoneElse = await insertAuthoredReservation(
-          "booked-for-someone-else",
           customerId,
-          author
+          author.accountId
         );
         const bookedForThemselves = await insertAuthoredReservation(
-          "booked-for-themselves",
           customerId,
-          own
+          own.accountId
         );
 
         const [other, self] = await Promise.all(
@@ -1090,7 +1048,7 @@ describe.skipIf(!testDatabase)(
           customerId: authorCustomerId,
           displayName: "Ada Author",
           hasName: true,
-          email: testEmailAddress(`admin-author-${author}`),
+          email: author.email,
         });
         expect(self?.author).toBeNull();
       });
@@ -1105,29 +1063,13 @@ describe.skipIf(!testDatabase)(
         >
       ) => {
         // Without a Dotypos booking, the detail loads from Neon alone.
-        const reservationId = workspaceReservationIdSchema.make(
-          `admin-${label}-${runId}`
-        );
-        reservationIds.push(reservationId);
-        await Effect.runPromise(
-          testDatabase.db.insert(workspaceReservations).values({
-            authorAccountId: fixtureReservationAuthorId,
-            id: reservationId,
-            checkoutAttemptKey: checkoutAttemptKeySchema.make(
-              `attempt-${label}-${runId}`
-            ),
-            dotyposCustomerId: makeCustomerId(label),
-            reservationState: "draft",
-            paymentState: "not_started",
-            fulfillmentState: "not_started",
-            reservationDetails: {
-              kind: "cowork",
-              entryTier: "open-space",
-              coffee: false,
-            },
-            locale: "en-US",
+        const { id: reservationId } = await Effect.runPromise(
+          workspaceFixtures(testDatabase.db).reservation({
+            stage: { reservation: "draft" },
+            customer: makeCustomerId(label),
           })
         );
+        reservationIds.push(reservationId);
         const startsAt = Temporal.Instant.from("2099-07-01T08:00:00Z");
         const [grant] = await Effect.runPromise(
           testDatabase.db
@@ -1272,8 +1214,8 @@ describe.skipIf(!testDatabase)(
           { length: reservationCount },
           (_, index) => `export-large-${index}`
         );
-        // One statement, since an insert of this many rows through Drizzle
-        // would itself pass the parameter limit.
+        // One raw statement: the fixture's chunked inserts take about three
+        // times as long for this many rows.
         await testDatabase.pool.query(
           `insert into workspace_reservations (
             id, checkout_attempt_key, author_account_id, dotypos_customer_id,
@@ -1297,11 +1239,7 @@ describe.skipIf(!testDatabase)(
           )
         );
         // Dotypos orders the bookings in the reverse of their insertion.
-        const expected = labels
-          .toReversed()
-          .map((label) =>
-            DotyposReservationIdSchema.make(`booking-${label}-${runId}`)
-          );
+        const expected = labels.toReversed().map(bookingId);
         const bookings = expected.map((id, index) => ({
           _branchId: "branch",
           _cloudId: "cloud",

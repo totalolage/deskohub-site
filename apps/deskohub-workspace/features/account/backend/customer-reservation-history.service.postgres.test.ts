@@ -17,8 +17,6 @@ import {
 import { Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
-import { workspaceReservations } from "@/db/schema";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { ReservationRecords } from "@/features/reservation/backend/reservation-records";
 import {
   type WorkspaceReservationId,
@@ -26,9 +24,10 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
 import {
-  connectWorkspacePostgresTestDatabase,
   fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+  workspaceFixtures,
+} from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type CustomerAccountId,
   customerAccountIdSchema,
@@ -81,36 +80,38 @@ const makeDotyposCustomer = (
     deleted: false,
   });
 
-const insertAuthUser = async (id: string, email: string) => {
-  await testDatabase!.pool.query(
-    "insert into customer_accounts (id) values ($1) on conflict do nothing",
-    [id]
+const insertAuthUser = (id: CustomerAccountId, email: string) =>
+  Effect.runPromise(
+    workspaceFixtures(testDatabase!.db).account("history", {
+      id,
+      email,
+      verified: false,
+    })
   );
-  await testDatabase!.pool.query(
-    `insert into auth."user" (id, name, email) values ($1, '', $2)`,
-    [id, email]
-  );
-};
 
 const insertCustomerAccount = async (input: {
   readonly id: CustomerAccountId;
   readonly deleted?: boolean;
   readonly dotyposCustomerId?: DotyposCustomerId;
 }) => {
+  const fixtures = workspaceFixtures(testDatabase!.db);
   if (input.deleted) {
-    await testDatabase!.pool.query(
-      `insert into customer_accounts (id, deleted_at) values ($1, $2)`,
-      [input.id, new Date()]
+    await Effect.runPromise(
+      fixtures.customerAccount({
+        id: input.id,
+        deletedAt: Temporal.Now.instant(),
+      })
     );
     return;
   }
-  await insertAuthUser(input.id, testEmailAddress(`h-${input.id}`));
-  if (input.dotyposCustomerId) {
-    await testDatabase!.pool.query(
-      `update customer_accounts set dotypos_customer_id = $2 where id = $1`,
-      [input.id, input.dotyposCustomerId]
-    );
-  }
+  await Effect.runPromise(
+    fixtures.account("history", {
+      id: input.id,
+      email: testEmailAddress(`h-${input.id}`),
+      verified: false,
+      linkedCustomer: input.dotyposCustomerId,
+    })
+  );
 };
 
 const insertWorkspaceReservation = async (input: {
@@ -121,23 +122,14 @@ const insertWorkspaceReservation = async (input: {
   readonly reservationState?: "held" | "confirmed";
 }) => {
   await Effect.runPromise(
-    testDatabase!.db.insert(workspaceReservations).values({
-      id: input.id,
-      checkoutAttemptKey: checkoutAttemptKeySchema.make(
-        `attempt-${uniqueId()}`
-      ),
-      dotyposCustomerId: input.dotyposCustomerId,
-      dotyposReservationId: input.dotyposReservationId,
-      authorAccountId: input.authorAccountId,
-      reservationState: input.reservationState ?? "confirmed",
-      paymentState: "not_started",
-      fulfillmentState: "not_started",
-      reservationDetails: {
-        kind: "cowork",
-        entryTier: "basic",
-        coffee: false,
+    workspaceFixtures(testDatabase!.db).reservation({
+      stage: { reservation: input.reservationState ?? "confirmed" },
+      customer: input.dotyposCustomerId,
+      author: input.authorAccountId,
+      overrides: {
+        id: input.id,
+        dotyposReservationId: input.dotyposReservationId,
       },
-      locale: "en-US",
     })
   );
 };

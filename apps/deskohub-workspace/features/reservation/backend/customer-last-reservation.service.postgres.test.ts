@@ -5,35 +5,25 @@ import {
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
   type DotyposReservation,
-  type DotyposReservationId,
-  DotyposReservationIdSchema,
   DotyposReservationSchema,
   DotyposService,
 } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { workspaceReservations } from "@/db/schema";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import type { WorkspaceReservationKind } from "@/features/reservation/reservation-kind";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { CustomerLastReservationService } from "./customer-last-reservation.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
-const uniqueId = () => crypto.randomUUID();
 const uniqueCustomerId = () =>
   DotyposCustomerIdSchema.make(
     `${Math.floor(Math.random() * 900000) + 100000}${Math.floor(
       Math.random() * 900
     )}`
   );
-const uniqueDotyposReservationId = () =>
-  DotyposReservationIdSchema.make(`dotypos-${uniqueId()}`);
-
 const makeDotyposReservation = (
   overrides: Partial<DotyposReservation> = {}
 ): DotyposReservation =>
@@ -47,37 +37,34 @@ const makeDotyposReservation = (
     ...overrides,
   });
 
-const insertReservation = async (input: {
+/**
+ * Inserts a reservation, paid and confirmed unless `confirmed` is false, and
+ * returns its Dotypos reservation id, which only a confirmed one has.
+ */
+const insertReservation = async ({
+  dotyposCustomerId,
+  reservationDetails,
+  createdAt,
+  confirmed = true,
+}: {
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly reservationDetails: StoredWorkspaceReservationDetails;
   readonly createdAt: string;
   readonly confirmed?: boolean;
-  readonly dotyposReservationId?: DotyposReservationId;
 }) => {
-  const confirmed = input.confirmed ?? true;
-  const dotyposReservationId =
-    input.dotyposReservationId ?? uniqueDotyposReservationId();
-  await Effect.runPromise(
-    testDatabase!.db.insert(workspaceReservations).values({
-      authorAccountId: fixtureReservationAuthorId,
-      checkoutAttemptKey: checkoutAttemptKeySchema.make(
-        `attempt-${uniqueId()}`
-      ),
-      dotyposCustomerId: input.dotyposCustomerId,
-      dotyposReservationId: confirmed ? dotyposReservationId : null,
-      reservationState: confirmed ? "confirmed" : "draft",
-      paymentState: confirmed ? "paid" : "not_started",
-      paidAt: confirmed ? Temporal.Instant.from(input.createdAt) : null,
-      fulfillmentState: "not_started",
-      reservationConfirmedAt: confirmed
-        ? Temporal.Instant.from(input.createdAt)
-        : null,
-      reservationDetails: input.reservationDetails,
-      locale: "en-US",
-      createdAt: Temporal.Instant.from(input.createdAt),
+  const at = Temporal.Instant.from(createdAt);
+  const reservation = await Effect.runPromise(
+    workspaceFixtures(testDatabase!.db).reservation({
+      stage: confirmed
+        ? { reservation: "confirmed", payment: "paid" }
+        : { reservation: "draft" },
+      customer: dotyposCustomerId,
+      details: reservationDetails,
+      at,
+      overrides: { createdAt: at },
     })
   );
-  return dotyposReservationId;
+  return reservation.dotyposReservationId!;
 };
 
 const loadLastReservation = async (

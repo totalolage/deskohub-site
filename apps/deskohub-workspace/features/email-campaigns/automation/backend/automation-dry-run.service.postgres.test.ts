@@ -36,12 +36,9 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import type { CustomerAccountId } from "@/features/account/customer-account";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import {
-  createWorkspacePostgresSuiteDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AudienceCondition, AudienceFilter } from "../../audience-filter";
 import { AudienceFactsService } from "../../backend/audience-facts.service";
 import { CampaignCandidateRepository } from "../../backend/campaign-candidate.repository";
@@ -389,51 +386,43 @@ describe.skipIf(!testDatabase)(
     const seedReservations = async (
       reservations: readonly SeedReservation[]
     ) => {
-      const rows = reservations.map((reservation) => {
-        const confirmedAt = reservation.bookedAt ?? ago({ hours: 24 * 60 });
-        const id = reservationIdOf(reservation.label);
-        reservationIds.push(id);
-        const cancelled = reservation.workspaceCancelledAt !== undefined;
-        return {
-          id,
-          authorAccountId: fixtureReservationAuthorId,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
-          dotyposCustomerId: reservation.customer,
-          dotyposReservationId: DotyposReservationIdSchema.make(
-            `dry-run-reservation-${runId}-${reservation.label}`
-          ),
-          reservationState: cancelled
-            ? ("cancelled" as const)
-            : ("confirmed" as const),
-          reservationConfirmedAt: confirmedAt,
-          reservationCancelledAt: reservation.workspaceCancelledAt ?? null,
-          paymentState: "paid" as const,
-          paidAt: confirmedAt,
-          fulfillmentState: "fulfilled" as const,
-          fulfilledAt: confirmedAt,
-          reservationDetails: {
-            kind: "cowork" as const,
-            entryTier: "open-space" as const,
-            coffee: false,
-          },
-          locale: "cs-CZ" as const,
-          createdAt: confirmedAt,
-        };
-      });
-      for (let index = 0; index < rows.length; index += 500) {
-        await query(
-          db
-            .insert(workspaceReservations)
-            .values(rows.slice(index, index + 500))
+      const dotyposReservationIdOf = (label: string) =>
+        DotyposReservationIdSchema.make(
+          `dry-run-reservation-${runId}-${label}`
         );
-      }
+      const rows = await query(
+        workspaceFixtures(db).reservations(
+          reservations.map((reservation) => {
+            const confirmedAt = reservation.bookedAt ?? ago({ hours: 24 * 60 });
+            const cancelledAt = reservation.workspaceCancelledAt;
+            return {
+              stage: {
+                reservation: cancelledAt ? "cancelled" : "confirmed",
+                payment: "paid",
+                fulfillment: "fulfilled",
+              },
+              customer: reservation.customer,
+              at: confirmedAt,
+              locale: "cs-CZ",
+              overrides: {
+                id: reservationIdOf(reservation.label),
+                dotyposReservationId: dotyposReservationIdOf(reservation.label),
+                createdAt: confirmedAt,
+                ...(cancelledAt && {
+                  reservationConfirmedAt: confirmedAt,
+                  reservationCancelledAt: cancelledAt,
+                }),
+              },
+            };
+          })
+        )
+      );
+      reservationIds.push(...rows.map(({ id }) => id));
       dotyposState.reservations.push(
         ...reservations.map(
           (reservation) =>
             ({
-              id: DotyposReservationIdSchema.make(
-                `dry-run-reservation-${runId}-${reservation.label}`
-              ),
+              id: dotyposReservationIdOf(reservation.label),
               _branchId: "dry-run-branch",
               _cloudId: "dry-run-cloud",
               _customerId: reservation.customer,
@@ -712,7 +701,11 @@ describe.skipIf(!testDatabase)(
         { id: `${newcomer}-account` as CustomerAccountId, legacy: false },
         { id: `${existing}-account` as CustomerAccountId, legacy: true },
       ];
-      await query(db.insert(customerAccounts).values(accounts));
+      await query(
+        Effect.forEach(accounts, (account) =>
+          workspaceFixtures(db).customerAccount(account)
+        )
+      );
       try {
         const events = await query(
           db

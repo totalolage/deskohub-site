@@ -6,7 +6,7 @@ import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
-import { NexiCorrelationIdSchema, NexiOrderIdSchema } from "@deskohub/nexi";
+import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { testEmailAddress } from "@deskohub/test-email";
 import { asc, eq, inArray, like, sql } from "drizzle-orm";
 import { Effect, Layer, Schema } from "effect";
@@ -17,7 +17,6 @@ import {
   invoices,
   manualInvoiceActors,
   paymentAttempts,
-  workspaceReservations,
 } from "@/db/schema";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
@@ -34,8 +33,6 @@ import {
 import { manualInvoiceInputSchema } from "@/features/accounting/manual-invoice";
 import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import {
-  checkoutAttemptKeySchema,
-  checkoutSessionKeySchema,
   type PaymentAttemptId,
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
@@ -43,16 +40,14 @@ import {
   buildCoworkReservationQuote,
   type CoworkReservationQuoteOrder,
 } from "@/features/checkout/checkout-quote.test-utils";
-import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import {
+  type FixtureAccount,
+  workspaceFixtures,
+} from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import {
-  deleteTestAccounts,
-  insertTestAccount,
-} from "@/shared/testing/workspace-test-accounts.test-utils";
 import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
 import {
@@ -179,7 +174,6 @@ const createPaidFixture = async (
 ) => {
   const paid = options.paid ?? true;
   const fulfilled = options.fulfilled ?? paid;
-  const reservationId = workspaceReservationIdSchema.make(randomUUID());
   const paymentAttemptId = paymentAttemptIdSchema.make(randomUUID());
   const dotyposCustomerId = DotyposCustomerIdSchema.make(
     `${fixtureCustomerPrefix}${randomUUID()}`
@@ -190,43 +184,33 @@ const createPaidFixture = async (
   const now = Temporal.Instant.from(
     temporalInstantToIsoString(Temporal.Now.instant())
   );
-  const source = makeAccountingDocumentSnapshot({
-    workspaceReservationId: reservationId,
-    dotyposReservationId,
-    dotyposCustomerId,
-    locale: "en-US",
-    prepared,
-  });
 
-  await Effect.runPromise(
+  const reservationId = await Effect.runPromise(
     testDatabase!.db.transaction((tx) =>
       Effect.gen(function* () {
-        yield* tx.insert(workspaceReservations).values({
-          authorAccountId: fixtureReservationAuthorId,
-          id: reservationId,
-          checkoutSessionKey: checkoutSessionKeySchema.make(randomUUID()),
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(randomUUID()),
-          correlationId: NexiCorrelationIdSchema.make(randomUUID()),
-          dotyposCustomerId,
-          dotyposReservationId,
-          reservationState: paid ? "confirmed" : "held",
-          paymentState: paid ? "paid" : "pending",
-          fulfillmentState: getFixtureFulfillmentState({ fulfilled, paid }),
-          activePaymentAttemptId: paymentAttemptId,
-          reservationDetails: {
-            kind: "cowork",
-            entryTier: "basic",
-            coffee: true,
+        const reservation = yield* workspaceFixtures(tx).reservation({
+          stage: {
+            reservation: paid ? "confirmed" : "held",
+            payment: paid ? "paid" : "pending",
+            fulfillment: getFixtureFulfillmentState({ fulfilled, paid }),
           },
+          customer: dotyposCustomerId,
+          at: now,
+          overrides: {
+            dotyposReservationId,
+            activePaymentAttemptId: paymentAttemptId,
+          },
+        });
+        const source = makeAccountingDocumentSnapshot({
+          workspaceReservationId: reservation.id,
+          dotyposReservationId,
+          dotyposCustomerId,
           locale: "en-US",
-          reservationCreatedAt: now,
-          reservationConfirmedAt: paid ? now : null,
-          paidAt: paid ? now : null,
-          fulfilledAt: fulfilled ? now : null,
+          prepared,
         });
         yield* tx.insert(paymentAttempts).values({
           id: paymentAttemptId,
-          workspaceReservationId: reservationId,
+          workspaceReservationId: reservation.id,
           provider: "nexi",
           providerOrderId: NexiOrderIdSchema.make(
             `synthetic-order-${randomUUID()}`
@@ -238,13 +222,14 @@ const createPaidFixture = async (
         });
         yield* tx.insert(accountingDocumentSnapshots).values({
           paymentAttemptId,
-          workspaceReservationId: reservationId,
+          workspaceReservationId: reservation.id,
           keyId: testKey.id,
           encryptedSnapshot: encryptAccountingSnapshot(
             JSON.stringify(source),
             testKey.secret
           ),
         });
+        return reservation.id;
       })
     )
   );
@@ -363,11 +348,13 @@ describe.skipIf(!testDatabase)(
   "InvoiceRepository on disposable Postgres",
   () => {
     const postgres = testDatabase as WorkspacePostgresTestDatabase;
-    const testAccounts: Awaited<ReturnType<typeof insertTestAccount>>[] = [];
+    const testAccounts: FixtureAccount[] = [];
 
     afterAll(async () => {
       await deleteFixtureInvoices();
-      await deleteTestAccounts(postgres, testAccounts);
+      await Effect.runPromise(
+        workspaceFixtures(postgres.db).deleteAccounts(testAccounts)
+      );
       const remaining = await postgres.pool.query(
         "select 1 from invoices where dotypos_customer_id like $1 limit 1",
         [`${fixtureCustomerPrefix}%`]
@@ -529,9 +516,8 @@ describe.skipIf(!testDatabase)(
     });
 
     test("issues one manual invoice for concurrent requests with the same id", async () => {
-      const issuer = await insertTestAccount(
-        postgres,
-        "invoice-repository-issuer"
+      const issuer = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account("invoice-repository-issuer")
       );
       testAccounts.push(issuer);
       const input = Schema.decodeUnknownSync(manualInvoiceInputSchema)({
