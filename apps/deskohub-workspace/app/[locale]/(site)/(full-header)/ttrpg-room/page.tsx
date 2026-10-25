@@ -192,7 +192,12 @@ async function RoomCarouselContent({
   return (
     <RoomImageCarousel
       emptyText={m.ttrpgRoomPhotosComingSoon({}, { locale })}
+      imageAlt={{
+        "ttrpg-room-bar": m.ttrpgRoomBarImageAlt,
+        "ttrpg-room-workspace": m.ttrpgRoomWorkspaceImageAlt,
+      }[tags[1]]({}, { locale })}
       images={images}
+      locale={locale}
       openLabel={label}
     />
   );
