@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  type AutomationEngineWarningType,
   AutomationTrigger,
   type AutomationEngineHealthType as EngineHealthReport,
   emailAutomationTickMinutes,
@@ -37,6 +38,7 @@ import {
 } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import { countedReservationCondition } from "@/features/reservation/backend/reservation-visits.service";
+import type { CustomerEventSweepSource } from "@/shared/backend/customer-events/customer-event";
 import { currentInstant } from "@/shared/utils/temporal";
 import type { CampaignId } from "../../campaign-identifiers";
 import {
@@ -66,6 +68,16 @@ const plannerStaleAfterSeconds = 2 * tickSeconds;
  * outlasts the next tick too.
  */
 const backlogAfterSeconds = 2 * tickSeconds;
+/**
+ * The reconcile re-pages the last 24 hours on the first tick of each
+ * Workspace hour (`dueReservationActivityWindow`) and pages that window
+ * within the tick, so its last completed window opened at most about an hour
+ * ago on a healthy engine. It has stalled once a whole hour passes without
+ * one and the next hour's hasn't completed within its first tick either. One
+ * missed hour is tolerated, as one missed tick is for the planner.
+ */
+const reconcileIntervalSeconds = 60 * 60;
+const reconcileStalledAfterSeconds = 2 * reconcileIntervalSeconds + tickSeconds;
 /**
  * A planned unit waiting longer than this is a backlog. Slots hand off as
  * units settle, between ticks too, so this doesn't scale with the tick.
@@ -105,10 +117,10 @@ const readHealth = (db: WorkspaceDatabaseClient, now: Temporal.Instant) =>
         .from(engine)
         .where(eq(engine.id, 1))
         .pipe(Effect.map(([row]) => row?.lastPlannedAt ?? null)),
-      sweptUntil: db
-        .select({ sweptUntil: min(customerEventSweeps.sweptUntil) })
-        .from(customerEventSweeps)
-        .pipe(Effect.map(([row]) => row?.sweptUntil ?? null)),
+      // Only the clock sweep trails now: the hourly reconcile's cursor is
+      // the instant its last window opened, up to an hour old when healthy.
+      sweptUntil: sweptUntil(db, "reservation-activity"),
+      reconciledUntil: sweptUntil(db, "reservation-activity-reconcile"),
       oldestUnprocessedEventAt: db
         .select({ recordedAt: min(customerEvents.recordedAt) })
         .from(customerEvents)
@@ -165,6 +177,17 @@ const readHealth = (db: WorkspaceDatabaseClient, now: Temporal.Instant) =>
   );
 
 type HealthReads = Effect.Success<ReturnType<typeof readHealth>>;
+
+/** A sweep source's cursor, or null without its row. */
+const sweptUntil = (
+  db: WorkspaceDatabaseClient,
+  source: CustomerEventSweepSource
+) =>
+  db
+    .select({ sweptUntil: customerEventSweeps.sweptUntil })
+    .from(customerEventSweeps)
+    .where(eq(customerEventSweeps.source, source))
+    .pipe(Effect.map(([row]) => row?.sweptUntil ?? null));
 
 /** One claim's duration: from its first attempt to its settlement. */
 const unitSeconds = sql`extract(epoch from ${units.settledAt} - ${units.firstAttemptAt})`;
@@ -307,6 +330,10 @@ const healthReport = (
 ): EngineHealthReport => {
   const sweepLagSeconds =
     reads.sweptUntil === null ? null : secondsSince(now, reads.sweptUntil);
+  const reconcileLagSeconds =
+    reads.reconciledUntil === null
+      ? null
+      : secondsSince(now, reads.reconciledUntil);
   const schedules = reads.schedules.map((schedule) =>
     scheduleHealth(now, schedule)
   );
@@ -317,6 +344,7 @@ const healthReport = (
   return {
     lastPlannedAt: reads.lastPlannedAt?.toString() ?? null,
     sweepLagSeconds,
+    reconcileLagSeconds,
     oldestUnprocessedEventAt:
       reads.oldestUnprocessedEventAt?.toString() ?? null,
     automations: schedules,
@@ -335,6 +363,11 @@ const healthReport = (
       ...(sweepLagSeconds !== null && sweepLagSeconds > backlogAfterSeconds
         ? (["sweep-lagging"] as const)
         : []),
+      // Without its cursor row the reconcile never runs.
+      ...(reconcileLagSeconds === null ||
+      reconcileLagSeconds > reconcileStalledAfterSeconds
+        ? (["reconcile-stalled"] as const)
+        : []),
       ...(waitedLongerThan(reads.oldestUnprocessedEventAt, backlogAfterSeconds)
         ? (["event-backlog"] as const)
         : []),
@@ -351,7 +384,7 @@ const healthReport = (
       ...(schedules.some(({ lastFire }) => lastFire?.fallingBehind)
         ? (["falling-behind"] as const)
         : []),
-    ],
+    ] satisfies ReadonlyArray<AutomationEngineWarningType>,
   };
 };
 

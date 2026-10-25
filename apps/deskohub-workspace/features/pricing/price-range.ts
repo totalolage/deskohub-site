@@ -1,12 +1,9 @@
 import { Array as Arr, Order } from "effect";
 import { getPublicCatalogOfferings } from "@/features/checkout/public-offerings";
-import {
-  formatWorkspaceMoney,
-  toWorkspaceMoneyMajorAmount,
-} from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
+import { formatMoney, moneyMajorAmount } from "@/shared/money/money";
 
-const byAmount = Order.mapInput(Order.Number, toWorkspaceMoneyMajorAmount);
+const byAmount = Order.mapInput(Order.Number, moneyMajorAmount);
 
 /**
  * The lowest to the highest regular price of the products every visitor can
@@ -19,6 +16,6 @@ export const getCatalogPriceRange = (locale: Locale): string | undefined => {
   if (!Arr.isReadonlyArrayNonEmpty(prices)) return undefined;
 
   return [Arr.min(prices, byAmount), Arr.max(prices, byAmount)]
-    .map((price) => formatWorkspaceMoney(price, locale))
+    .map((price) => formatMoney(price, locale))
     .join(" – ");
 };

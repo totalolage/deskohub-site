@@ -9,7 +9,7 @@ import {
   type ValidationError,
 } from "@deskohub/dotypos";
 import type { UpdateCustomerRequest } from "@deskohub/dotypos/generated";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Option } from "effect";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type { CustomerProfileInput } from "../contracts";
 
@@ -297,15 +297,7 @@ export class CustomerDotyposAdapter extends Context.Service<
       const dotypos = yield* DotyposService;
 
       const readCustomer = (customerId: DotyposCustomerId) =>
-        dotypos
-          .getCustomer(customerId)
-          .pipe(
-            Effect.catchTag("ExternalAPIError", (error) =>
-              error.statusCode === 404
-                ? Effect.succeed(null)
-                : Effect.fail(error)
-            )
-          );
+        dotypos.getCustomer(customerId).pipe(Effect.map(Option.getOrNull));
 
       const classifyExactEmailCustomers = Effect.fn(
         "CustomerDotyposAdapter.classifyExactEmailCustomers"

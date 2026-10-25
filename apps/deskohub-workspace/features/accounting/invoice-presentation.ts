@@ -7,9 +7,9 @@ import {
 } from "@/features/accounting/invoice";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import { getWorkspaceProductTierTitle } from "@/features/checkout/product-catalog.i18n";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
+import { formatMoney } from "@/shared/money/money";
 import {
   formatInstantDate,
   formatPlainDate,
@@ -172,12 +172,12 @@ export const getInvoicePresentation = (
         ({ amount, discount }): InvoicePresentationLine => ({
           kind: "discount",
           description: `${copy.discount}: ${discount.label}`,
-          amount: `−${formatWorkspaceMoney(amount, locale)}`,
+          amount: `−${formatMoney(amount, locale)}`,
         })
       ),
     ],
     totalLabel: copy.totalPaid,
-    total: formatWorkspaceMoney(document.quote.payment.expectedPrice, locale),
+    total: formatMoney(document.quote.payment.expectedPrice, locale),
     nonVatStatement: copy.nonVatPayer,
     footer: `${document.supplier.legalName} · ${document.supplier.contactEmail}`,
   };
@@ -328,17 +328,17 @@ const getItemLines = (
           cowork: ({ amount, tier }) => ({
             kind: "item" as const,
             description: copy.coworkProducts[tier],
-            amount: formatWorkspaceMoney(amount, document.locale),
+            amount: formatMoney(amount, document.locale),
           }),
           coffee: ({ amount }) => ({
             kind: "item" as const,
             description: copy.coffee,
-            amount: formatWorkspaceMoney(amount, document.locale),
+            amount: formatMoney(amount, document.locale),
           }),
           workstation: ({ amount }) => ({
             kind: "item" as const,
             description: copy.workstation,
-            amount: formatWorkspaceMoney(amount, document.locale),
+            amount: formatMoney(amount, document.locale),
           }),
           "meeting-room": ({ amount, duration }) => {
             const durationLabel =
@@ -348,13 +348,13 @@ const getItemLines = (
             return {
               kind: "item" as const,
               description: `${copy.meetingRoom} · ${durationLabel}`,
-              amount: formatWorkspaceMoney(amount, document.locale),
+              amount: formatMoney(amount, document.locale),
             };
           },
           office: ({ amount, dayCount, seats }) => ({
             kind: "item" as const,
             description: `${copy.office} · ${copy.day(dayCount)} · ${copy.seat(seats)}`,
-            amount: formatWorkspaceMoney(amount, document.locale),
+            amount: formatMoney(amount, document.locale),
           }),
         })
       )

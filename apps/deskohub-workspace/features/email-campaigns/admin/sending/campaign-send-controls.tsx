@@ -32,7 +32,7 @@ export function CampaignSendControls({
 }: CampaignSendControlsProps) {
   const locale = useRouteLocale();
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2 @5xl:flex-nowrap">
       <Button asChild size="sm" variant="ghost">
         <Link href={`/admin/email-campaigns/${campaignId}/recipients`}>
           <Users aria-hidden className="size-4" />

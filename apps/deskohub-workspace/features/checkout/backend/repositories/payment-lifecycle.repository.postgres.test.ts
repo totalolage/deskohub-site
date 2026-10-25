@@ -47,7 +47,6 @@ import {
 } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { calculateDiscounts } from "@/features/discounts/calculator";
 import {
   type DiscountCommitment,
@@ -83,6 +82,7 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
+import type { Money } from "@/shared/money/money";
 import {
   waitForAdvisoryLockWaiter,
   waitForPostgresLockWaiter,
@@ -108,7 +108,7 @@ const customerId = () =>
 
 type Reservation = typeof workspaceReservations.$inferSelect;
 type Admission = {
-  readonly amount: WorkspaceMoney;
+  readonly amount: Money;
   readonly commitment: DiscountCommitment;
 };
 

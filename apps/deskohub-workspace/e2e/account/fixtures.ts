@@ -5,7 +5,7 @@ import {
 } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
 import { Temporal } from "@js-temporal/polyfill";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import {
   workspaceMeetingRoomReservationTableTag,
   workspaceOfficeReservationTableTag,
@@ -99,10 +99,11 @@ export const setSyntheticCustomerProfileTags = (
     )
   );
 
+/** The synthetic profile; none when Dotypos has no customer with the id. */
 export const readSyntheticCustomerProfile = (
   config: DatasourceConfig,
   customerId: DotyposCustomerId
-): Effect.Effect<Customer, WorkspaceE2EError> =>
+): Effect.Effect<Option.Option<Customer>, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
     return yield* dotypos.getCustomer(customerId);
@@ -110,6 +111,26 @@ export const readSyntheticCustomerProfile = (
     Effect.provide(getDotyposLayer(config)),
     Effect.mapError((cause) =>
       toWorkspaceE2EError("read synthetic Dotypos profile", cause)
+    )
+  );
+
+/** The synthetic profile, failing when Dotypos has no customer with the id. */
+export const requireSyntheticCustomerProfile = (
+  config: DatasourceConfig,
+  customerId: DotyposCustomerId
+): Effect.Effect<Customer, WorkspaceE2EError> =>
+  readSyntheticCustomerProfile(config, customerId).pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: () =>
+          Effect.fail(
+            workspaceE2EError(
+              "read synthetic Dotypos profile failed: the customer does not exist",
+              { operation: "read synthetic Dotypos profile" }
+            )
+          ),
+        onSome: Effect.succeed,
+      })
     )
   );
 

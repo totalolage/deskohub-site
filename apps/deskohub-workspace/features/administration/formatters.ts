@@ -1,5 +1,5 @@
-import { formatCurrencyAmount } from "@deskohub/i18n/currency";
 import type { Locale } from "@/features/i18n";
+import { formatMoney, type Money } from "@/shared/money/money";
 import {
   temporalInstantToDate,
   temporalInstantToLocalDateTimeString,
@@ -7,7 +7,6 @@ import {
 } from "@/shared/utils";
 import { formatPlainDate } from "@/shared/utils/date-time-format";
 import type {
-  AdministrationMoney,
   AdministrationPaymentAttempt,
   AdministrationReservationSummary,
 } from "./administration.service";
@@ -57,23 +56,6 @@ export const formatAdministrationReservationDate = (
     : null;
 };
 
-/** The amount in currency units, such as 125.5 for 12550 with exponent 2. */
-export const getAdministrationMoneyAmount = ({
-  exponent,
-  value,
-}: AdministrationMoney) => value / 10 ** exponent;
-
-export const formatAdministrationMoney = (
-  money: AdministrationMoney,
-  locale: Locale
-) =>
-  formatCurrencyAmount({
-    amount: getAdministrationMoneyAmount(money),
-    currency: money.currency,
-    locale,
-    fractionDigits: money.exponent,
-  });
-
 export type AdministrationPaymentStatus = {
   /** "Paid", "Refunded", or "Partially refunded" with the refunded amount, in the locale. */
   readonly label: string;
@@ -81,7 +63,7 @@ export type AdministrationPaymentStatus = {
   readonly at: string;
   readonly refunded: boolean;
   /** The amount Deskohub keeps after a partial refund. */
-  readonly retainedAmount: AdministrationMoney | null;
+  readonly retainedAmount: Money | null;
   /** The payment still has to be refunded in the Nexi back office. */
   readonly needsRefund: boolean;
 };
@@ -117,7 +99,7 @@ export const getAdministrationPaymentStatus = (
   return {
     label: partial
       ? m.administrationPaymentStatusPartiallyRefunded(
-          { amount: formatAdministrationMoney(refundedAmount, locale) },
+          { amount: formatMoney(refundedAmount, locale) },
           { locale }
         )
       : m.administrationPaymentStatusRefunded({}, { locale }),

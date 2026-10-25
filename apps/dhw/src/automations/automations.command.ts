@@ -817,6 +817,7 @@ const formatEngineHealth = (health: AutomationEngineHealthType) =>
   [
     `Last planned\t${health.lastPlannedAt ?? "Never"}`,
     `Sweep lag\t${health.sweepLagSeconds === null ? "None" : `${health.sweepLagSeconds}s`}`,
+    `Reconcile lag\t${health.reconcileLagSeconds === null ? "None" : `${health.reconcileLagSeconds}s`}`,
     `Oldest unprocessed event\t${health.oldestUnprocessedEventAt ?? "None"}`,
     `Oldest planned unit\t${health.oldestPlannedUnitAt ?? "None"}`,
     `Deadline misses\t${health.deadlineMisses}`,

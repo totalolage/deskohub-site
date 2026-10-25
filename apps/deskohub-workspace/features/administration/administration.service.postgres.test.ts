@@ -11,7 +11,7 @@ import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { IgloohomeDeviceIdSchema } from "@deskohub/igloohome";
 import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import {
   customerMarketingConsents,
   type FulfillmentState,
@@ -107,7 +107,7 @@ describe.skipIf(!testDatabase)(
                 Layer.mergeAll(
                   testDatabase.layer,
                   DotyposServiceMock({
-                    getCustomer: () => Effect.succeed(null as never),
+                    getCustomer: () => Effect.succeed(Option.none()),
                     getCustomers: ({ ids }) =>
                       Effect.succeed(
                         ids?.includes(authorCustomerId)

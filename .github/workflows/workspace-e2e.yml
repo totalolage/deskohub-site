@@ -10,6 +10,11 @@ on:
         required: false
         default: false
         type: boolean
+      campaign_screenshots:
+        description: Capture only the email campaign composer review screenshots
+        required: false
+        default: false
+        type: boolean
       include_nightly_cases:
         description: Also run the nightly-only cases, such as the automation journey (nightly target only)
         required: false
@@ -695,6 +700,7 @@ jobs:
           WORKSPACE_E2E_POSTHOG_HOST: ${{ vars.WORKSPACE_E2E_POSTHOG_HOST }}
           WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: ${{ vars.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN }}
           WORKSPACE_E2E_ALLOCATION_SHARD: ${{ steps.lease.outputs.shard }}
+          WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.campaign_screenshots && 'true' || '' }}
           NIGHTLY_TARGET: ${{ needs.resolve-target.outputs.nightly }}
           PREVIEW_BRANCH: ${{ needs.resolve-target.outputs.head_ref }}
         run: |

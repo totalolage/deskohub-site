@@ -1,6 +1,5 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type { ReservationQuote } from "@/features/checkout/reservation-quote";
-import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import type { AppliedDiscount, DiscountCommitment } from "@/features/discounts";
 import { getDiscountCommitmentPayload } from "@/features/discounts/commitment";
 import {
@@ -9,6 +8,7 @@ import {
 } from "@/features/referrals/discount-identifiers";
 import { referralInvitationDiscountBasisPoints } from "@/features/referrals/program";
 import { calculateReferrerDiscountAmount } from "@/features/referrals/referrer-discount";
+import { moneyEquals, sameMoneyUnit } from "@/shared/money/money";
 
 export const isExpectedReferralQuoteAddition = (input: {
   readonly previous: ReservationQuote;
@@ -28,7 +28,7 @@ export const isExpectedReferralQuoteAddition = (input: {
 
   if (
     !areEqual(input.previous.items, input.current.items) ||
-    !workspaceMoneyEquals(
+    !moneyEquals(
       input.previous.payment.undiscountedPrice,
       input.current.payment.undiscountedPrice
     ) ||
@@ -140,10 +140,10 @@ export const isExpectedReferralQuoteAddition = (input: {
     referrerDifference;
 
   return (
-    input.previous.payment.expectedPrice.currency ===
-      input.current.payment.expectedPrice.currency &&
-    input.previous.payment.expectedPrice.exponent ===
-      input.current.payment.expectedPrice.exponent &&
+    sameMoneyUnit(
+      input.previous.payment.expectedPrice,
+      input.current.payment.expectedPrice
+    ) &&
     expectedCurrentTotal === BigInt(input.current.payment.expectedPrice.value)
   );
 };
@@ -206,10 +206,9 @@ const isCurrentInvitationApplication = (input: {
 const isApplicationMathValid = (application: AppliedDiscount) => {
   const { subtotalBefore, amount, subtotalAfter } = application;
   return (
-    subtotalBefore.currency === amount.currency &&
-    subtotalBefore.exponent === amount.exponent &&
+    sameMoneyUnit(subtotalBefore, amount) &&
     subtotalBefore.value >= amount.value &&
-    workspaceMoneyEquals(subtotalAfter, {
+    moneyEquals(subtotalAfter, {
       ...subtotalBefore,
       value: subtotalBefore.value - amount.value,
     })
@@ -227,8 +226,8 @@ const isReferrerApplicationForCount = (
   });
   return (
     adjustment.kind === "fixed" &&
-    workspaceMoneyEquals(adjustment.amount, application.amount) &&
-    workspaceMoneyEquals(expectedAmount, application.amount) &&
+    moneyEquals(adjustment.amount, application.amount) &&
+    moneyEquals(expectedAmount, application.amount) &&
     isApplicationMathValid(application)
   );
 };
@@ -318,7 +317,7 @@ const areReferralApplicationsInSequence = (input: {
   }
   if (
     input.invitation &&
-    !workspaceMoneyEquals(
+    !moneyEquals(
       input.invitation.subtotalBefore,
       subtotalAfterOrdinaryDiscounts
     )
@@ -329,7 +328,7 @@ const areReferralApplicationsInSequence = (input: {
     input.invitation?.subtotalAfter ?? subtotalAfterOrdinaryDiscounts;
   return (
     input.referrer === undefined ||
-    workspaceMoneyEquals(input.referrer.subtotalBefore, subtotalBeforeReferrer)
+    moneyEquals(input.referrer.subtotalBefore, subtotalBeforeReferrer)
   );
 };
 

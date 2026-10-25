@@ -1,10 +1,6 @@
 import { Context, Effect, Layer, Option, Schema, Scope } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
-import {
-  positiveWorkspaceMoneyCodec,
-  workspaceMoneyWithValue,
-} from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 import { ReferralService } from "@/features/referrals";
 import {
@@ -15,6 +11,7 @@ import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer"
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
+import { moneyWithValue, positiveMoneyCodec } from "@/shared/money/money";
 import { appendDiscounts, calculateDiscounts } from "./calculator";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import { type DiscountCommitment, makeDiscountCommitment } from "./commitment";
@@ -277,7 +274,7 @@ export class DiscountService extends Context.Service<
                       ...invitationCalculation.quote.discounts,
                       ...referrerCalculation.quote.discounts,
                     ],
-                    totalDiscount: workspaceMoneyWithValue(
+                    totalDiscount: moneyWithValue(
                       referralBaseQuote.totalDiscount.value + addedDiscount,
                       referralBaseQuote.totalDiscount
                     ),
@@ -972,7 +969,7 @@ const removeReferralDiscounts = (
   return {
     ...quote,
     discounts,
-    totalDiscount: workspaceMoneyWithValue(
+    totalDiscount: moneyWithValue(
       quote.discountableSubtotal.value - discountedSubtotal.value,
       quote.totalDiscount
     ),
@@ -1005,11 +1002,11 @@ const removeVoucherApplications = (
     discounts: quote.discounts.filter(
       ({ discount }) => !voucherIds.has(discount.id)
     ),
-    totalDiscount: workspaceMoneyWithValue(
+    totalDiscount: moneyWithValue(
       quote.totalDiscount.value - voucherAmount,
       quote.totalDiscount
     ),
-    discountedSubtotal: workspaceMoneyWithValue(
+    discountedSubtotal: moneyWithValue(
       quote.discountedSubtotal.value + voucherAmount,
       quote.discountedSubtotal
     ),
@@ -1082,7 +1079,7 @@ const requireDiscountCodesEnabled = (releaseGates: DiscountReleaseGates) =>
 const requireEligibleSubtotal = (input: {
   readonly baseQuote: DiscountQuote;
 }) =>
-  Schema.decodeEffect(positiveWorkspaceMoneyCodec)(
+  Schema.decodeEffect(positiveMoneyCodec)(
     input.baseQuote.discountedSubtotal
   ).pipe(
     Effect.asVoid,
