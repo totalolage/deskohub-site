@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import type { Locale } from "@/features/i18n";
+import { type Locale, locales } from "@/features/i18n";
 import {
   getLegalDocument,
   type LegalDocumentKey,
 } from "@/features/legal/content";
 import { runtimeImportGraph } from "@/shared/testing/runtime-import-graph.test-utils";
+import { workspaceSiteConstants } from "@/shared/utils";
 import { publicPageDefinitions, publicPages } from "./public-page-definitions";
 
 const workspaceRoot = resolve(import.meta.dir, "../..");
@@ -62,6 +63,28 @@ describe("public page content dates", () => {
         expect(getLegalDocument(locale, documentKey).updatedAt).toBe(
           longDate(publicPageDefinitions[`/${documentKey}`].contentDate, locale)
         );
+      }
+    }
+  });
+});
+
+describe("public page titles and descriptions", () => {
+  // The document title appends the site name to the page's own title.
+  test("title every page in every locale without the site name", () => {
+    for (const { title } of publicPages) {
+      for (const locale of locales) {
+        const pageTitle = title({}, { locale });
+        expect(pageTitle.trim()).not.toBe("");
+        expect(pageTitle).not.toContain(workspaceSiteConstants.brand.name);
+      }
+    }
+  });
+
+  test("fill every page description in every locale", () => {
+    for (const { description } of publicPages) {
+      if (description === undefined) continue;
+      for (const locale of locales) {
+        expect(description({}, { locale }).trim()).not.toBe("");
       }
     }
   });
