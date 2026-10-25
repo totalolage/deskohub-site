@@ -1674,7 +1674,19 @@ describe("AdministrationService", () => {
       listReservations: (input) =>
         Effect.sync(() => {
           requestedIds.push(input?.ids);
-          return [];
+          const id = input?.ids?.at(-1) ?? "";
+          return [
+            {
+              _branchId: "branch",
+              _cloudId: "cloud",
+              _customerId: "dotypos-customer",
+              endDate: "2026-08-10T23:00:00Z",
+              id,
+              seats: "1",
+              startDate: "2026-08-10T08:00:00Z",
+              status: "CONFIRMED" as const,
+            },
+          ];
         }),
     });
 
@@ -1682,7 +1694,30 @@ describe("AdministrationService", () => {
       linkedIds.slice(0, 50),
       linkedIds.slice(50),
     ]);
-    expect(result.dates).toEqual([]);
+    expect(result.dates).toEqual([{ count: 2, date: "2026-08-10" }]);
+  });
+
+  test("reports the overview reservation activity unavailable when one id batch fails", async () => {
+    const linkedIds = Array.from(
+      { length: 51 },
+      (_, index) => `booking-${String(index).padStart(2, "0")}`
+    );
+
+    const result = await loadOverviewReservationActivity({
+      linkedIds,
+      listReservations: (input) =>
+        input?.ids?.length === 1
+          ? Effect.fail(
+              new ExternalAPIError({
+                operation: "listReservations",
+                service: "Dotypos",
+                statusCode: 503,
+              })
+            )
+          : Effect.succeed([]),
+    });
+
+    expect(result.dates).toBeNull();
   });
 
   test("skips the booking provider when no Workspace reservation links a booking", async () => {
