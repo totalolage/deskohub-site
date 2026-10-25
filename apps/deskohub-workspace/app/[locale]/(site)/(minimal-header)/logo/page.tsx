@@ -11,6 +11,7 @@ export const instant = false;
 export async function generateMetadata(): Promise<Metadata> {
   return runWithRequestLocale((locale) => ({
     title: m.logoVariantsTitle({}, { locale }),
+    robots: { index: false, follow: true },
     alternates: getWorkspaceAlternates(locale, "/logo"),
   }));
 }

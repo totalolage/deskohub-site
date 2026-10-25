@@ -18,10 +18,7 @@ import { officeReservationPageMarkdown } from "@/features/office/office-reservat
 import { pricingPageMarkdown } from "@/features/pricing/pricing-page-markdown";
 import { teamPageMarkdown } from "@/features/team/team-page-markdown";
 import { ttrpgRoomPageMarkdown } from "@/features/ttrpg-room/ttrpg-room-page-markdown";
-import {
-  type MarkdownBlocks,
-  markdownHeading,
-} from "@/shared/markdown/markdown";
+import type { MarkdownBlocks } from "@/shared/markdown/markdown";
 import type { PublicPagePathname } from "./public-pages";
 
 /** What a page is about, which groups it in `llms.txt`. */
@@ -120,12 +117,6 @@ export const publicPageMarkdown = {
     topic: "offer",
     title: (locale) => m.ttrpgRoomMetadataTitle({}, { locale }),
     render: ttrpgRoomPageMarkdown,
-  },
-  "/logo": {
-    topic: "optional",
-    title: (locale) => m.logoVariantsTitle({}, { locale }),
-    render: (locale) =>
-      Effect.succeed([markdownHeading(1, m.logoVariantsTitle({}, { locale }))]),
   },
   "/terms-and-conditions": legalPage("terms-and-conditions"),
   "/privacy-policy": legalPage("privacy-policy"),

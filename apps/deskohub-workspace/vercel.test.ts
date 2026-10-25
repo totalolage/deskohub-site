@@ -34,6 +34,8 @@ test("leaves other paths out of the Accept variation", () => {
   for (const pathname of [
     "/",
     "/en-US/",
+    "/en-US/logo",
+    "/cs-CZ/logo",
     "/en-US/account",
     "/cs-CZ/reservation/status",
     "/en-US/faq/extra",
