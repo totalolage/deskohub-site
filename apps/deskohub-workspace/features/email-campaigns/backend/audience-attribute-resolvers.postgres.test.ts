@@ -127,6 +127,7 @@ const transitionedLater = [
 /** Confirmed and paid at 08:30, before the event. */
 const confirmedOnEventDay = {
   at: onEventDay("08:30"),
+  locale: "cs-CZ" as const,
   /** Every reservation started its checkout at 08:00. */
   overrides: { createdAt: onEventDay("08:00") },
 };
@@ -449,6 +450,7 @@ describe.skipIf(!testDatabase)(
             },
             customer,
             details: details ?? plainCowork,
+            locale: "cs-CZ" as const,
             at: marchFirst,
             overrides: {
               dotyposReservationId: reservationId(name),
@@ -466,6 +468,7 @@ describe.skipIf(!testDatabase)(
                     payment: "paid" as const,
                   },
                   customer,
+                  locale: "cs-CZ" as const,
                   at: Temporal.Instant.from(confirmedAt),
                   overrides: { createdAt: Temporal.Instant.from(createdAt) },
                 }
@@ -475,6 +478,7 @@ describe.skipIf(!testDatabase)(
                     payment: "expired" as const,
                   },
                   customer,
+                  locale: "cs-CZ" as const,
                   at: Temporal.Instant.from(createdAt),
                   overrides: { createdAt: Temporal.Instant.from(createdAt) },
                 }

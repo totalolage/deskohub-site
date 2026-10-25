@@ -1434,6 +1434,7 @@ describe.skipIf(!testDatabase)(
         await Effect.runPromise(
           workspaceFixtures(testDatabase!.db).account("referral-guest", {
             id: inviteeAccountId,
+            verified: false,
             linkedCustomer: fixture.invitedDotyposCustomerId,
           })
         );
@@ -2209,10 +2210,12 @@ describe.skipIf(!testDatabase)(
             Effect.all([
               accounts.account("referral-pool-invitee", {
                 id: inviteeAccountId,
+                verified: false,
                 linkedCustomer: fixture.invitedDotyposCustomerId,
               }),
               accounts.account("referral-pool-referrer", {
                 id: referrerAccountId,
+                verified: false,
                 linkedCustomer: fixture.referrerDotyposCustomerId,
               }),
             ])

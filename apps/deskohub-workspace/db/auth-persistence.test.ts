@@ -43,6 +43,7 @@ const insertAuthUser = (id: string) =>
   Effect.runPromise(
     fixtures().account("auth-persistence", {
       id: customerAccountIdSchema.make(id),
+      verified: false,
     })
   );
 
