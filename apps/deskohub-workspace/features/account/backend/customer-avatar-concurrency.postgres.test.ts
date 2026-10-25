@@ -15,8 +15,12 @@ import {
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { customerAccountIdSchema } from "../customer-account";
+import {
+  type CustomerAccountId,
+  customerAccountIdSchema,
+} from "../customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import { waitForAccountAdvisoryLockWait } from "./customer-account-lock.test-utils";
 import {
@@ -171,16 +175,14 @@ let dotyposCustomerSequence = 0;
 const uniqueDotyposCustomerId = () =>
   `${Date.now()}${dotyposCustomerSequence++}`;
 
-const insertAuthUser = async (id: string, email: string) => {
-  await testDatabase!.pool.query(
-    "insert into customer_accounts (id) values ($1) on conflict do nothing",
-    [id]
+const insertAuthUser = (id: CustomerAccountId, email: string) =>
+  Effect.runPromise(
+    workspaceFixtures(testDatabase!.db).account("avatar", {
+      id,
+      email,
+      verified: false,
+    })
   );
-  await testDatabase!.pool.query(
-    `insert into auth."user" (id, name, email) values ($1, '', $2)`,
-    [id, email]
-  );
-};
 
 const insertLink = async (account: string, dotyposCustomerId: string) => {
   await testDatabase!.pool.query(

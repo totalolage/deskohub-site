@@ -78,7 +78,7 @@ const makeFakeDatabase = () => {
     transaction: (rows) =>
       Effect.gen(function* () {
         transactionCalls.push(rows);
-        const reservationId = rows.reservation.id;
+        const reservationId = rows.reservation.overrides?.id;
         const paymentAttemptId = rows.paymentAttempt.id;
         const accessGrantId = rows.accessGrant.id;
         if (!reservationId || !paymentAttemptId || !accessGrantId) {
@@ -181,8 +181,8 @@ test("seeds the exact rows and cleans them through the finalizer", async () => {
             fixture = value;
             const rows = fakeDatabase.transactionCalls[0];
             expect(rows).toBeDefined();
-            expect(rows?.reservation.dotyposCustomerId).toBe(input.customerId);
-            expect(rows?.reservation.dotyposReservationId).toBe(
+            expect(rows?.reservation.customer).toBe(input.customerId);
+            expect(rows?.reservation.overrides?.dotyposReservationId).toBe(
               input.dotyposReservationId
             );
             expect(rows?.accessGrant.scheduledAccessStartsAt).toEqual(

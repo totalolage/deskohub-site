@@ -18,11 +18,8 @@ import type { AdministratorAccountActor } from "@/features/administrators/accoun
 import { AdministratorAssistantConnections } from "@/features/administrators/backend/administrator-assistant-connections.service";
 import { CampaignService } from "@/features/email-campaigns/backend/campaign.service";
 import { CampaignAudienceService } from "@/features/email-campaigns/backend/campaign-audience.service";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import {
-  deleteTestAccounts,
-  insertTestAdministrator,
-} from "@/shared/testing/workspace-test-accounts.test-utils";
 import { CurrentAdministrationAction } from "./administration-action";
 import {
   type AdministrationMutationScope,
@@ -223,9 +220,10 @@ describe.skipIf(!testDatabase)(
     let connectionId: AdministrationAssistantConnectionIdType;
 
     beforeAll(async () => {
-      administrator = await insertTestAdministrator(
-        testDatabase,
-        "ledger-assistant"
+      administrator = await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).account("ledger-assistant", {
+          roles: ["administrator"],
+        })
       );
       const tokenHash = await Effect.runPromise(
         makeCliAuthenticationSecret().pipe(
@@ -273,7 +271,9 @@ describe.skipIf(!testDatabase)(
         "delete from administrator_assistant_connections where id = $1",
         [connectionId]
       );
-      await deleteTestAccounts(testDatabase, [administrator]);
+      await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).deleteAccounts([administrator])
+      );
     });
 
     const assistantScope = (): AdministrationMutationScope => ({

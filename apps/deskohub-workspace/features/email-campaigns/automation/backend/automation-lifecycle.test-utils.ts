@@ -1,13 +1,10 @@
-import { testEmailAddress } from "@deskohub/test-email";
 import {
   type AutomationFlowType,
   AutomationFlow as automationFlowContractSchema,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import { customerAccounts, emailCampaignAudiences } from "@/db/schema";
-import { authUser } from "@/db/schema/auth";
-import type { CustomerAccountId } from "@/features/account/customer-account";
+import { emailCampaignAudiences } from "@/db/schema";
 import type { AudienceFilter } from "@/features/email-campaigns/audience-filter";
 import {
   deleteAutomatedCampaigns,
@@ -18,6 +15,7 @@ import type {
   CampaignAudienceId,
   CampaignId,
 } from "@/features/email-campaigns/campaign-identifiers";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import type { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AutomationPreviewId } from "../automation-identifiers";
 import { AutomationLifecycle } from "./automation-lifecycle.service";
@@ -184,19 +182,10 @@ export const automationLifecycleTestKit = (
 
   /** A Better Auth account, as the administrator who activates. */
   const seedAccount = async () => {
-    const accountId = crypto.randomUUID() as CustomerAccountId;
+    const { accountId } = await Effect.runPromise(
+      workspaceFixtures(db).account(`automation-${runId}`, { verified: false })
+    );
     accountIds.push(accountId);
-    await Effect.runPromise(
-      db.insert(customerAccounts).values({ id: accountId })
-    );
-    await Effect.runPromise(
-      db.insert(authUser).values({
-        id: accountId,
-        name: "Automation admin",
-        email: testEmailAddress(`automation-${runId}-${accountIds.length}`),
-        locale: "en-US",
-      })
-    );
     return accountId;
   };
 
