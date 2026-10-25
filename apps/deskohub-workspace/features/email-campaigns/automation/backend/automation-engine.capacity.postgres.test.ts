@@ -15,7 +15,11 @@ import type {
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, Option, References } from "effect";
 import { TestClock } from "effect/testing";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import {
+  type ReservationFixtureInput,
+  workspaceFixtures,
+} from "@/shared/testing/workspace-fixtures.test-utils";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { nextStartWithinHorizon } from "@/shared/utils/calendar-expression";
 import {
@@ -175,7 +179,7 @@ const fireSeconds = (fire: FireRow) =>
 
 describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
   if (!database) return;
-  const { pool } = database;
+  const { db, pool } = database;
   const cleanups: Array<() => Promise<void>> = [];
 
   afterEach(async () => {
@@ -252,6 +256,7 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
       );
     });
     const visitedAt = start.subtract({ hours: 24 * 30 });
+    const confirmedAt = visitedAt.subtract({ hours: 48 });
     const seeded: DotyposCustomerId[] = [];
 
     const seedCustomers = async (input: {
@@ -259,8 +264,7 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
       readonly bookings: (index: number) => number;
     }) => {
       const ids: DotyposCustomerId[] = [];
-      const reservationIds: string[] = [];
-      const reservationCustomers: DotyposCustomerId[] = [];
+      const reservations: ReservationFixtureInput[] = [];
       for (let index = 0; index < input.count; index++) {
         const id = DotyposCustomerIdSchema.make(
           `${prefix}-${String(seeded.length + index).padStart(5, "0")}`
@@ -268,12 +272,27 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
         ids.push(id);
         scenario.dotypos.customers.set(id, engineProfile(id));
         for (let booking = 0; booking < input.bookings(index); booking++) {
-          const reservationId = `${id}-r${booking}`;
-          reservationIds.push(reservationId);
-          reservationCustomers.push(id);
+          const reservationId = workspaceReservationIdSchema.make(
+            `${id}-r${booking}`
+          );
           const dotyposId = DotyposReservationIdSchema.make(
             `${reservationId}-dotypos`
           );
+          reservations.push({
+            stage: {
+              reservation: "confirmed",
+              payment: "paid",
+              fulfillment: "fulfilled",
+            },
+            customer: id,
+            at: confirmedAt,
+            locale: "cs-CZ",
+            overrides: {
+              id: reservationId,
+              dotyposReservationId: dotyposId,
+              reservationCreatedAt: confirmedAt,
+            },
+          });
           scenario.dotypos.reservations.set(dotyposId, {
             id: dotyposId,
             _branchId: "capacity-branch",
@@ -293,25 +312,7 @@ describe.skipIf(!database)("engine capacity (§5.12) on Postgres", () => {
          select id, 'hash', 'cs-CZ', '2026-01-01T00:00:00Z' from unnest($1::text[]) id`,
         [ids]
       );
-      const confirmedAt = visitedAt.subtract({ hours: 48 }).toString();
-      await pool.query(
-        `insert into workspace_reservations
-           (id, checkout_attempt_key, dotypos_customer_id, author_account_id,
-            dotypos_reservation_id, reservation_state, reservation_confirmed_at,
-            payment_state, paid_at, fulfillment_state, fulfilled_at,
-            reservation_details, locale, reservation_created_at)
-         select r.id, r.id, r.customer, $4, r.id || '-dotypos',
-                'confirmed', $3, 'paid', $3, 'fulfilled', $3,
-                '{"kind":"cowork","entryTier":"open-space","coffee":false}'::jsonb,
-                'cs-CZ', $3
-         from unnest($1::text[], $2::text[]) as r(id, customer)`,
-        [
-          reservationIds,
-          reservationCustomers,
-          confirmedAt,
-          fixtureReservationAuthorId,
-        ]
-      );
+      await Effect.runPromise(workspaceFixtures(db).reservations(reservations));
       return ids;
     };
 

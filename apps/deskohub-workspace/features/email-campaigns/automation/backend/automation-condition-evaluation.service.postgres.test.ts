@@ -6,7 +6,6 @@ import {
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
   type DotyposReservation,
-  DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import {
   DotyposServiceMock,
@@ -16,14 +15,8 @@ import {
 import type { AutomationConditionFilter } from "@deskohub/workspace-admin-api";
 import { eq } from "drizzle-orm";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
-import {
-  emailCampaignAudiences,
-  emailCampaigns,
-  workspaceReservations,
-} from "@/db/schema";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
-import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { emailCampaignAudiences, emailCampaigns } from "@/db/schema";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AudienceCondition, AudienceFilter } from "../../audience-filter";
 import {
@@ -82,64 +75,41 @@ describe.skipIf(!testDatabase)(
       reservations: readonly SeedReservation[]
     ) => {
       const confirmedAt = Temporal.Instant.from("2026-10-01T10:00:00Z");
-      const seeded = reservations.map(
-        ({ label, customer: dotyposCustomerId, startsAt }) => {
-          const workspaceReservationId = workspaceReservationIdSchema.make(
-            `automation-condition-workspace-${runId}-${label}`
-          );
-          const dotyposReservationId = DotyposReservationIdSchema.make(
-            `automation-condition-reservation-${runId}-${label}`
-          );
-          reservationIds.push(workspaceReservationId);
-          return {
-            workspaceReservationId,
-            dotyposReservationId,
-            customerId: dotyposCustomerId,
-            row: {
-              id: workspaceReservationId,
-              authorAccountId: fixtureReservationAuthorId,
-              checkoutAttemptKey: checkoutAttemptKeySchema.make(
-                workspaceReservationId
-              ),
-              dotyposCustomerId,
-              dotyposReservationId,
-              reservationState: "confirmed" as const,
-              reservationConfirmedAt: confirmedAt,
-              paymentState: "paid" as const,
-              paidAt: confirmedAt,
-              fulfillmentState: "fulfilled" as const,
-              fulfilledAt: confirmedAt,
-              reservationDetails: {
-                kind: "cowork" as const,
-                entryTier: "open-space" as const,
-                coffee: false,
-              },
-              locale: "cs-CZ" as const,
-              createdAt: confirmedAt,
+      const rows = await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).reservations(
+          reservations.map(({ customer }) => ({
+            stage: {
+              reservation: "confirmed",
+              payment: "paid",
+              fulfillment: "fulfilled",
             },
-            visit: {
-              id: dotyposReservationId,
-              _branchId: "automation-condition-branch",
-              _cloudId: "automation-condition-cloud",
-              _customerId: dotyposCustomerId,
-              startDate: (startsAt ?? now.subtract({ hours: 240 })).toString(),
-              endDate: (startsAt ?? now.subtract({ hours: 240 }))
-                .add({ hours: 2 })
-                .toString(),
-              seats: "1",
-              status: "CONFIRMED",
-            } satisfies DotyposReservation,
-          };
-        }
+            customer,
+            at: confirmedAt,
+            locale: "cs-CZ",
+            overrides: { createdAt: confirmedAt },
+          }))
+        )
       );
-      if (seeded.length > 0) {
-        await Effect.runPromise(
-          testDatabase.db
-            .insert(workspaceReservations)
-            .values(seeded.map(({ row }) => row))
-        );
-      }
-      return seeded;
+      return rows.map((row, index) => {
+        const startsAt =
+          reservations[index]!.startsAt ?? now.subtract({ hours: 240 });
+        reservationIds.push(row.id);
+        return {
+          workspaceReservationId: row.id,
+          dotyposReservationId: row.dotyposReservationId!,
+          customerId: row.dotyposCustomerId,
+          visit: {
+            id: row.dotyposReservationId!,
+            _branchId: "automation-condition-branch",
+            _cloudId: "automation-condition-cloud",
+            _customerId: row.dotyposCustomerId,
+            startDate: startsAt.toString(),
+            endDate: startsAt.add({ hours: 2 }).toString(),
+            seats: "1",
+            status: "CONFIRMED",
+          } satisfies DotyposReservation,
+        };
+      });
     };
 
     const makeDotypos = (input: {

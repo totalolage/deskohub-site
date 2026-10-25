@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import type { ReservationProductFilterType } from "@deskohub/workspace-admin-api";
 import { Effect } from "effect";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { CampaignCandidateRepository } from "./campaign-candidate.repository";
 
@@ -47,18 +47,19 @@ describe.skipIf(!testDatabase)(
     if (!testDatabase) return;
 
     beforeAll(async () => {
-      for (const role of roles) {
-        await testDatabase.pool.query(
-          `insert into workspace_reservations (checkout_attempt_key, dotypos_reservation_id, dotypos_customer_id, reservation_state, reservation_confirmed_at, payment_state, paid_at, fulfillment_state, fulfilled_at, reservation_details, locale, author_account_id)
-           values ($1, $1, $2, 'confirmed', now(), 'paid', now(), 'fulfilled', now(), $3, 'cs-CZ', $4)`,
-          [
-            `product-${role}-${run}`,
-            customer(role),
-            JSON.stringify(snapshots[role]),
-            fixtureReservationAuthorId,
-          ]
-        );
-      }
+      await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).reservations(
+          roles.map((role) => ({
+            stage: {
+              reservation: "confirmed",
+              payment: "paid",
+              fulfillment: "fulfilled",
+            },
+            customer: customer(role),
+            details: snapshots[role],
+          }))
+        )
+      );
     });
 
     afterAll(async () => {

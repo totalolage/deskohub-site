@@ -26,14 +26,8 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { emailAutomationTickMinutes } from "@deskohub/workspace-admin-api";
 import { Effect, Fiber, Layer, Result } from "effect";
 import { TestClock } from "effect/testing";
-import {
-  customerAccounts,
-  customerEvents,
-  customerMarketingConsents,
-  workspaceReservations,
-} from "@/db/schema";
+import { customerEvents, customerMarketingConsents } from "@/db/schema";
 import type { CustomerAccountId } from "@/features/account/customer-account";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
 import { MarketingManagementService } from "@/features/legal/backend/marketing-management.service";
 import { ReservationActivitySweep } from "@/features/reservation/backend/reservation-activity-sweep.service";
@@ -46,7 +40,7 @@ import type {
   CustomerEventKind,
 } from "@/shared/backend/customer-events/customer-event";
 import { CustomerEventReconciler } from "@/shared/backend/customer-events/customer-event-reconciler";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import type {
   WorkspacePostgresSuiteDatabase,
   WorkspacePostgresTestDatabase,
@@ -700,23 +694,23 @@ export const makeEngineFixtures = (
     created.reservations.push(id);
     const confirmedAt = input.startsAt.subtract({ hours: 48 });
     await Effect.runPromise(
-      db.insert(workspaceReservations).values({
-        id,
-        authorAccountId: fixtureReservationAuthorId,
-        checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
-        dotyposCustomerId: input.customer,
-        dotyposReservationId: dotyposReservationId(id),
-        reservationState: "confirmed",
-        reservationConfirmedAt: confirmedAt,
-        paymentState: "paid",
-        paidAt: confirmedAt,
-        fulfillmentState: "fulfilled",
-        fulfilledAt: confirmedAt,
-        reservationDetails: input.reservedDesk
+      workspaceFixtures(db).reservation({
+        stage: {
+          reservation: "confirmed",
+          payment: "paid",
+          fulfillment: "fulfilled",
+        },
+        customer: input.customer,
+        details: input.reservedDesk
           ? { kind: "cowork", entryTier: "reserved-desk", coffee: true }
           : { kind: "cowork", entryTier: "open-space", coffee: false },
+        at: confirmedAt,
         locale: "cs-CZ",
-        createdAt: confirmedAt,
+        overrides: {
+          id,
+          dotyposReservationId: dotyposReservationId(id),
+          createdAt: confirmedAt,
+        },
       })
     );
     moveVisit(id, input);
@@ -785,9 +779,10 @@ export const makeEngineFixtures = (
         `${prefix}-account-${created.accounts.length}` as CustomerAccountId;
       created.accounts.push(customerAccountId);
       await Effect.runPromise(
-        db
-          .insert(customerAccounts)
-          .values({ id: customerAccountId, legacy: input.legacy ?? false })
+        workspaceFixtures(db).customerAccount({
+          id: customerAccountId,
+          legacy: input.legacy ?? false,
+        })
       );
     }
     const [event] = await Effect.runPromise(
