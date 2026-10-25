@@ -23,7 +23,7 @@ import {
   makeWorkspaceE2EAccountRecipientForRunId,
   type WorkspaceE2EAccountConfig,
 } from "../account/config";
-import { readSyntheticCustomerProfile } from "../account/fixtures";
+import { requireSyntheticCustomerProfile } from "../account/fixtures";
 import type { WorkspaceE2EAccountJournalOwner } from "../account/reconcile";
 import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
 import { resolveWorkspaceE2EPreviewLogs } from "../account/vercel-log-retrieval";
@@ -453,7 +453,7 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
           yield* identities.journalCustomer(customerId);
           const linkedCustomerId =
             yield* findLinkedDotyposCustomerId(accountId);
-          const profile = yield* readSyntheticCustomerProfile(
+          const profile = yield* requireSyntheticCustomerProfile(
             datasourceConfig,
             customerId
           );

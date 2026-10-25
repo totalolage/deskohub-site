@@ -365,7 +365,24 @@ describe("workspace E2E workflow", () => {
     expect(environment).toContain("WORKSPACE_E2E_VERCEL_TOKEN");
     expect(environment).toContain("WORKSPACE_E2E_VERCEL_PROJECT");
     expect(environment).toContain("WORKSPACE_E2E_BETTER_AUTH_SECRETS");
+    expect(environment).toContain("WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS");
     expect(environment).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
+  });
+
+  test("limits workflow screenshot opt-in to the campaign composer", () => {
+    const screenshotStep = stepByName("Run checkout E2E");
+    expect(
+      screenshotStep.env?.WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS
+    ).toContain("inputs.campaign_screenshots");
+    expect(
+      screenshotStep.env?.WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS
+    ).toContain("workflow_dispatch");
+    expect(screenshotStep.env).not.toHaveProperty(
+      "WORKSPACE_E2E_REVIEW_SCREENSHOTS"
+    );
+    expect(serializedWorkflow.includes("inputs.review_screenshots")).toBe(
+      false
+    );
   });
 
   test("generates the Igloohome client before Workspace E2E startup", async () => {

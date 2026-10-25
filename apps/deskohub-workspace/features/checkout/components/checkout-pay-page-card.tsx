@@ -4,10 +4,6 @@ import Interpolate from "@doist/react-interpolate";
 import { CreditCard, RotateCcw, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import {
-  formatWorkspaceMoney,
-  type WorkspaceMoney,
-} from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -20,6 +16,7 @@ import {
 } from "@/shared/components/ui/card";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
+import { formatMoney, type Money } from "@/shared/money/money";
 
 type CheckoutPayActionVariant = "pay" | "retry";
 
@@ -141,7 +138,7 @@ export function CheckoutPaySubmitButton({
   readonly onClick?: () => void;
   readonly pending?: boolean;
   /** The amount the provider charges; a free order omits it. */
-  readonly total?: WorkspaceMoney;
+  readonly total?: Money;
   readonly variant: CheckoutPayActionVariant;
 }) {
   return (
@@ -166,7 +163,7 @@ export function CheckoutPaySubmitButton({
           }
           {total
             ? m.checkoutPayOrderAndPayAmountButton(
-                { amount: formatWorkspaceMoney(total, locale) },
+                { amount: formatMoney(total, locale) },
                 { locale }
               )
             : m.checkoutPayOrderAndPayButton({}, { locale })}

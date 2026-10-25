@@ -4,20 +4,20 @@ import {
   checkoutSummaryProductItemBaseSchema,
   checkoutSummaryProductKeyFilter,
 } from "@/features/checkout/checkout-summary-product-item";
-import { positiveWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import {
   officeReservationDayCountSchema,
   officeSeatsSchema,
   workspaceOfficeProductIdentitySchema,
 } from "@/features/reservation/office-reservation";
+import { positiveMoneyCodec } from "@/shared/money/money";
 
 const officeCheckoutSummaryProductItemBaseSchema = Schema.Struct({
   ...checkoutSummaryProductItemBaseSchema.fields,
   product: workspaceOfficeProductIdentitySchema,
   dayCount: officeReservationDayCountSchema,
   seats: officeSeatsSchema,
-  accessAmount: positiveWorkspaceMoneyCodec,
-  seatAmount: positiveWorkspaceMoneyCodec,
+  accessAmount: positiveMoneyCodec,
+  seatAmount: positiveMoneyCodec,
 });
 
 const officeProductDetailsFilter = Schema.makeFilter(
@@ -37,6 +37,6 @@ export const officeCheckoutSummaryProductItemSchema = Schema.Struct({
 
 export const officeCheckoutSummaryDiscountedProductItemSchema = Schema.Struct({
   ...officeCheckoutSummaryProductItemBaseSchema.fields,
-  originalAmount: positiveWorkspaceMoneyCodec,
+  originalAmount: positiveMoneyCodec,
   discounts: Schema.NonEmptyArray(checkoutSummaryDiscountSchema),
 }).check(checkoutSummaryProductKeyFilter, officeProductDetailsFilter);

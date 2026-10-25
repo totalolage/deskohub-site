@@ -10,8 +10,7 @@ import {
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { Effect, Layer, Option } from "effect";
 import { TestClock } from "effect/testing";
-import { type ReservationState, workspaceReservations } from "@/db/schema";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
+import type { ReservationState } from "@/db/schema";
 import { automationEngineTestLayer } from "@/features/email-campaigns/automation/backend/automation-engine.test-utils";
 import { AutomationPlanner } from "@/features/email-campaigns/automation/backend/automation-planner.service";
 import { AutomationSweepPlanning } from "@/features/email-campaigns/automation/backend/automation-sweep-planning.service";
@@ -30,10 +29,8 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import type { CustomerEventSweepSource } from "@/shared/backend/customer-events/customer-event";
 import { CustomerEventReconciler } from "@/shared/backend/customer-events/customer-event-reconciler";
-import {
-  createWorkspacePostgresSuiteDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { ReservationActivitySweep } from "./reservation-activity-sweep.service";
 
 /**
@@ -180,35 +177,32 @@ describe.skipIf(!testDatabase)(
         readonly confirmedAt?: Temporal.Instant;
       }>
     ) => {
-      const rows = reservations.map(
-        ({ label, local, confirmedAt = defaultConfirmedAt }) => {
-          const id = workspaceId(label);
-          insertedIds.push(id);
-          return {
-            authorAccountId: fixtureReservationAuthorId,
-            id,
-            checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
-            dotyposCustomerId: customerId(label),
-            dotyposReservationId: dotyposId(label),
-            reservationState: reservationStates[local],
-            reservationConfirmedAt:
-              local === "unconfirmed" ? null : confirmedAt,
-            paymentState: "paid" as const,
-            paidAt: confirmedAt,
-            fulfillmentState: "fulfilled" as const,
-            fulfilledAt: confirmedAt,
-            reservationDetails: {
-              kind: "cowork" as const,
-              entryTier: "open-space" as const,
-              coffee: false,
-            },
-            locale: "cs-CZ" as const,
-            updatedAt: confirmedAt,
-          };
-        }
-      );
       await Effect.runPromise(
-        testDatabase.db.insert(workspaceReservations).values(rows)
+        workspaceFixtures(testDatabase.db).reservations(
+          reservations.map(
+            ({ label, local, confirmedAt = defaultConfirmedAt }) => {
+              const id = workspaceId(label);
+              insertedIds.push(id);
+              return {
+                stage: {
+                  reservation: reservationStates[local],
+                  payment: "paid",
+                  fulfillment: "fulfilled",
+                },
+                customer: customerId(label),
+                at: confirmedAt,
+                overrides: {
+                  id,
+                  dotyposReservationId: dotyposId(label),
+                  // A cancelled booking was confirmed first.
+                  ...(local === "cancelled" && {
+                    reservationConfirmedAt: confirmedAt,
+                  }),
+                },
+              };
+            }
+          )
+        )
       );
     };
 

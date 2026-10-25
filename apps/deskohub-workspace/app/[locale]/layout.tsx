@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { isLocale, locales, m } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import { loadOfficeGlobalRelease } from "@/features/office/backend/office-reservation-feature-flag.server";
+import { publicSiteShareImage } from "@/features/public-pages/page-metadata";
 import { getSharedWorkspaceSummary } from "@/features/public-pages/workspace-summary";
 import { workspaceSiteOrigin } from "@/shared/utils";
 import "../globals.css";
@@ -41,11 +42,22 @@ export async function generateMetadata({
       locale,
       officeRelease: await loadOfficeGlobalRelease(),
     }),
+    // Pages that set their own card name the image through the page builder.
+    openGraph: { images: [publicSiteShareImage] },
     icons: {
-      icon: {
-        url: "/favicon.png",
+      icon: [
+        {
+          url: "/favicon.ico",
+          type: "image/x-icon",
+          sizes: "16x16 32x32 48x48",
+        },
+        { url: "/favicon.svg", type: "image/svg+xml" },
+        { url: "/favicon.png", type: "image/png", sizes: "512x512" },
+      ],
+      apple: {
+        url: "/apple-touch-icon.png",
         type: "image/png",
-        sizes: "512x512",
+        sizes: "180x180",
       },
     },
   };
@@ -54,6 +66,8 @@ export async function generateMetadata({
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // The header's brand navy.
+  themeColor: "#00024f",
 };
 
 export function generateStaticParams() {

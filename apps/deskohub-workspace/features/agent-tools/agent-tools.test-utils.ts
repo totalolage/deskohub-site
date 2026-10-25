@@ -8,7 +8,6 @@ import {
 import { Effect, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
-import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
 import {
   type DiscountAdvertisementInput,
   discountAdvertisementQuoteCodec,
@@ -22,6 +21,7 @@ import type { ReservationRecord } from "@/features/reservation/backend/reservati
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import { moneyWithValue } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 const decodeTable = Schema.decodeSync(DotyposTableSchema);
@@ -116,7 +116,7 @@ const discoverTestDiscounts =
     const amount = saleBasisPoints
       ? Math.round((discountableSubtotal.value * saleBasisPoints) / 10_000)
       : 0;
-    const after = workspaceMoneyWithValue(
+    const after = moneyWithValue(
       discountableSubtotal.value - amount,
       discountableSubtotal
     );
@@ -138,12 +138,12 @@ const discoverTestDiscounts =
                   },
                 },
                 subtotalBefore: discountableSubtotal,
-                amount: workspaceMoneyWithValue(amount, discountableSubtotal),
+                amount: moneyWithValue(amount, discountableSubtotal),
                 subtotalAfter: after,
               },
             ]
           : [],
-        totalDiscount: workspaceMoneyWithValue(amount, discountableSubtotal),
+        totalDiscount: moneyWithValue(amount, discountableSubtotal),
         discountedSubtotal: after,
       }),
     });

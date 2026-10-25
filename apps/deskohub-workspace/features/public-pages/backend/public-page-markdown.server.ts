@@ -9,7 +9,6 @@ import {
   type PublicOffering,
   type PublicPriceListOffering,
 } from "@/features/checkout/public-offerings";
-import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
 import { discoverActivePublicSales } from "@/features/discounts/active-public-sales.server";
 import {
   DiscountReleaseGateService,
@@ -22,6 +21,7 @@ import { OfficeReservationFeatureFlagService } from "@/features/office/backend/o
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { serializeMarkdown } from "@/shared/markdown/markdown";
+import { moneyWithValue } from "@/shared/money/money";
 import {
   type PublicPageMarkdownSources,
   publicPageMarkdown,
@@ -77,14 +77,14 @@ const withCatalogAdvertisedPrice = (
   // The office advertises one day with one seat.
   const price =
     offering.kind === "office"
-      ? workspaceMoneyWithValue(
+      ? moneyWithValue(
           offering.price.value + offering.seatPrice.value,
           offering.price
         )
       : offering.price;
   return {
     ...offering,
-    advertisedPrice: { price, discount: workspaceMoneyWithValue(0, price) },
+    advertisedPrice: { price, discount: moneyWithValue(0, price) },
   };
 };
 

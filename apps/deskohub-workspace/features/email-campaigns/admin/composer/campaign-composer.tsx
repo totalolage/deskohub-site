@@ -270,7 +270,7 @@ export function CampaignComposer({
 
   const saveState = (
     <span
-      className="inline-flex items-center gap-1.5 text-navy-blue/60 text-sm"
+      className="inline-flex items-center gap-1.5 text-navy-blue/60 text-sm @5xl:whitespace-nowrap"
       role="status"
     >
       {unsavedChanges ? (
@@ -323,9 +323,36 @@ export function CampaignComposer({
           </div>
         </div>
       ) : (
-        <AdministrationPageHeader
-          actions={
-            <div className="flex flex-wrap items-center gap-3">
+        <>
+          <AdministrationPageHeader
+            description={
+              savedOnce
+                ? m.emailCampaignsComposerDraftDescription(
+                    {},
+                    { locale: routeLocale }
+                  )
+                : {
+                    once: m.emailCampaignsComposerNewDescription,
+                    automated: m.emailAutomationsComposerNewDescription,
+                  }[delivery]({}, { locale: routeLocale })
+            }
+            eyebrow={m.emailCampaignsComposerEyebrow(
+              {},
+              { locale: routeLocale }
+            )}
+            title={
+              title.trim() ||
+              (savedOnce
+                ? m.emailCampaignsComposerUntitledTitle(
+                    {},
+                    { locale: routeLocale }
+                  )
+                : m.emailCampaignsComposerNewTitle({}, { locale: routeLocale }))
+            }
+          />
+          {/* Keep one toolbar row at the breakpoint where the preview also sticks. */}
+          <div className="sticky top-16 z-30 -mx-4 mb-7 border-y border-navy-blue/10 bg-[#f6f6f3] px-4 py-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 @container">
+            <div className="flex flex-wrap items-center justify-end gap-3 @5xl:flex-nowrap">
               {saveState}
               {savedOnce && (
                 <CampaignSendControls
@@ -340,29 +367,8 @@ export function CampaignComposer({
                 <DeleteCampaignDraftControl campaignId={savedOnce.id} />
               )}
             </div>
-          }
-          description={
-            savedOnce
-              ? m.emailCampaignsComposerDraftDescription(
-                  {},
-                  { locale: routeLocale }
-                )
-              : {
-                  once: m.emailCampaignsComposerNewDescription,
-                  automated: m.emailAutomationsComposerNewDescription,
-                }[delivery]({}, { locale: routeLocale })
-          }
-          eyebrow={m.emailCampaignsComposerEyebrow({}, { locale: routeLocale })}
-          title={
-            title.trim() ||
-            (savedOnce
-              ? m.emailCampaignsComposerUntitledTitle(
-                  {},
-                  { locale: routeLocale }
-                )
-              : m.emailCampaignsComposerNewTitle({}, { locale: routeLocale }))
-          }
-        />
+          </div>
+        </>
       )}
       <p
         className="mb-5 rounded-lg border border-burned-orange/25 bg-burned-orange/5 px-4 py-3 text-burned-orange-ink text-sm empty:hidden"
@@ -679,7 +685,10 @@ export function CampaignComposer({
               </Tabs>
             </ComposerSection>
           </form>
-          <aside className="min-w-0 @5xl:sticky @5xl:top-20">
+          {/* At the bottom of the page the grid pushes the sticky preview up;
+              fitting it between its offset (8rem) and the page's bottom
+              padding (2.25rem) keeps its header clear of the toolbar. */}
+          <aside className="min-w-0 @5xl:sticky @5xl:top-32 @5xl:h-[calc(100dvh-10.25rem)]">
             <CampaignEmailPreview
               fields={localeFields[locale]}
               locale={locale}

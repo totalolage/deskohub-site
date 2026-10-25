@@ -8,20 +8,16 @@ import {
   markdownParagraph,
   markdownStrong,
 } from "@/shared/markdown/markdown";
+import { formatMoney, type Money, moneyWithValue } from "@/shared/money/money";
 import type { PublicOffering } from "./public-offerings";
-import {
-  formatWorkspaceMoney,
-  type WorkspaceMoney,
-  workspaceMoneyWithValue,
-} from "./workspace-money";
 
 type OfferingOf<Kind extends PublicOffering["kind"]> = Extract<
   PublicOffering,
   { readonly kind: Kind }
 >;
 
-const perDay = (money: WorkspaceMoney, locale: Locale) =>
-  `${formatWorkspaceMoney(money, locale)}${m.coworkReservationPricePeriodSuffix({}, { locale })}`;
+const perDay = (money: Money, locale: Locale) =>
+  `${formatMoney(money, locale)}${m.coworkReservationPricePeriodSuffix({}, { locale })}`;
 
 /**
  * The public sale on the advertised booking, as the reservation page shows
@@ -29,12 +25,12 @@ const perDay = (money: WorkspaceMoney, locale: Locale) =>
  */
 const saleItems = (
   { advertisedPrice: { price, discount } }: PublicOffering,
-  formatPrice: (money: WorkspaceMoney) => string,
+  formatPrice: (money: Money) => string,
   locale: Locale,
   scope?: string
 ): ListItem[] => {
   if (discount.value === 0) return [];
-  const original = workspaceMoneyWithValue(price.value + discount.value, price);
+  const original = moneyWithValue(price.value + discount.value, price);
   const sale = `${m.checkoutSummaryDiscountedPrice({ price: formatPrice(price) }, { locale })} (${m.checkoutSummaryOriginalPrice({ price: formatPrice(original) }, { locale })})`;
   return [markdownListItem(scope ? `${scope}: ${sale}` : sale)];
 };
@@ -81,14 +77,10 @@ const offeringItem = (offering: PublicOffering, locale: Locale): ListItem => {
       return markdownBlockListItem(
         markdownParagraph(
           markdownStrong(offering.name),
-          `, ${offering.durationLabel}: ${formatWorkspaceMoney(offering.price, locale)}`
+          `, ${offering.durationLabel}: ${formatMoney(offering.price, locale)}`
         ),
         markdownList([
-          ...saleItems(
-            offering,
-            (money) => formatWorkspaceMoney(money, locale),
-            locale
-          ),
+          ...saleItems(offering, (money) => formatMoney(money, locale), locale),
           markdownListItem(offering.usage),
         ])
       );
@@ -100,16 +92,14 @@ const offeringItem = (offering: PublicOffering, locale: Locale): ListItem => {
       return markdownBlockListItem(
         markdownParagraph(markdownStrong(offering.name)),
         markdownList([
+          markdownListItem(`${oneDay}: ${formatMoney(offering.price, locale)}`),
           markdownListItem(
-            `${oneDay}: ${formatWorkspaceMoney(offering.price, locale)}`
-          ),
-          markdownListItem(
-            `${m.publicOfferingOfficeSeatPrice({}, { locale })}: ${formatWorkspaceMoney(offering.seatPrice, locale)}`
+            `${m.publicOfferingOfficeSeatPrice({}, { locale })}: ${formatMoney(offering.seatPrice, locale)}`
           ),
           // The office advertises one day with one seat.
           ...saleItems(
             offering,
-            (money) => formatWorkspaceMoney(money, locale),
+            (money) => formatMoney(money, locale),
             locale,
             `${oneDay}, ${m.reservationOfficeSeatCountOption({ count: 1 }, { locale })}`
           ),

@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { ExternalAPIError } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
-import { Effect, Layer, Result } from "effect";
+import { Effect, Layer, Option, Result } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { ReservationAuthorDirectory } from "@/features/account";
 import { AdministrationService } from "./administration.service";
@@ -72,14 +72,7 @@ const providerUnavailable = () =>
     })
   );
 
-const customerNotFound = () =>
-  Effect.fail(
-    new ExternalAPIError({
-      operation: "getCustomer",
-      service: "Dotypos",
-      statusCode: 404,
-    })
-  );
+const customerNotFound = () => Effect.succeed(Option.none());
 
 const customersFor = ({ ids }: { readonly ids: readonly string[] }) =>
   Effect.succeed(
@@ -318,7 +311,7 @@ describe("AdministrationService.exportReservations", () => {
 
     test("and exports the customer it returns", async () => {
       const { result, singleReads } = await exportOne((id) =>
-        Effect.succeed({ id, firstName: "Single", lastName: id })
+        Effect.succeed(Option.some({ id, firstName: "Single", lastName: id }))
       );
 
       expect(singleReads).toEqual(["dotypos-customer-2"]);
@@ -388,7 +381,7 @@ describe("AdministrationService.exportCustomers", () => {
   test("reads a customer the batch left out on its own", async () => {
     const result = await exportTwo({
       getCustomer: (id) =>
-        Effect.succeed({ id, firstName: "Single", lastName: id }),
+        Effect.succeed(Option.some({ id, firstName: "Single", lastName: id })),
       getCustomers: firstCustomerOnly,
     });
 
@@ -482,7 +475,7 @@ describe("AdministrationService.listReservations under the same Dotypos failures
           getCustomer: (id) =>
             Effect.sync(() => {
               singleReads.push(id);
-              return { id, firstName: "Single", lastName: id };
+              return Option.some({ id, firstName: "Single", lastName: id });
             }),
           getCustomers: providerUnavailable,
           listReservations: () => Effect.succeed([makeBooking(1)]),

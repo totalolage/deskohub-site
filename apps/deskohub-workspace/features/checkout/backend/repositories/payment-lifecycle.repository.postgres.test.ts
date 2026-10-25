@@ -4,7 +4,6 @@ import { afterAll, describe, expect, test } from "bun:test";
 import {
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
-  type DotyposReservationId,
   DotyposReservationIdSchema,
   DotyposService,
 } from "@deskohub/dotypos";
@@ -45,9 +44,7 @@ import {
   type IPaymentLifecycleRepository,
   PaymentLifecycleRepository,
 } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { calculateDiscounts } from "@/features/discounts/calculator";
 import {
   type DiscountCommitment,
@@ -79,27 +76,17 @@ import { getReferralInvitationDiscountId } from "@/features/referrals/discount-i
 import { ReferralService } from "@/features/referrals/referral.service";
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
 import { ReferralFeatureFlagServiceMock } from "@/features/referrals/referral-feature-flag.service.mock";
-import {
-  type WorkspaceReservationId,
-  workspaceReservationIdSchema,
-} from "@/features/reservation/persistence-contracts";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import type { Money } from "@/shared/money/money";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   waitForAdvisoryLockWaiter,
   waitForPostgresLockWaiter,
 } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { createHeldReservation as createSharedHeldReservation } from "./payment-lifecycle.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 const product = { kind: "cowork", tier: "basic" } as const;
-const reservationDetails = {
-  kind: "cowork",
-  entryTier: "basic",
-  coffee: false,
-} as const;
 const uniqueId = () => crypto.randomUUID();
 const customerId = () =>
   (
@@ -108,7 +95,7 @@ const customerId = () =>
 
 type Reservation = typeof workspaceReservations.$inferSelect;
 type Admission = {
-  readonly amount: WorkspaceMoney;
+  readonly amount: Money;
   readonly commitment: DiscountCommitment;
 };
 
@@ -304,7 +291,10 @@ const createHeldReservation = (
   dotyposCustomerId: DotyposCustomerId
 ): Promise<Reservation> =>
   Effect.runPromise(
-    createSharedHeldReservation(testDatabase!.db, dotyposCustomerId)
+    workspaceFixtures(testDatabase!.db).reservation({
+      stage: { reservation: "held" },
+      customer: dotyposCustomerId,
+    })
   );
 
 const createOrdinaryDiscountCode = async (
@@ -772,18 +762,9 @@ describe.skipIf(!testDatabase)(
         try {
           if (alreadyPaid) {
             await Effect.runPromise(
-              testDatabase!.db.insert(workspaceReservations).values({
-                authorAccountId: fixtureReservationAuthorId,
-                checkoutAttemptKey: `referral-history-${uniqueId()}`,
-                dotyposCustomerId: fixture.invitedDotyposCustomerId,
-                dotyposReservationId: ("dotypos-history-" +
-                  uniqueId()) as DotyposReservationId,
-                reservationState: "confirmed",
-                paymentState: "paid",
-                paidAt: Temporal.Now.instant(),
-                fulfillmentState: "not_started",
-                reservationDetails,
-                locale: "en-US",
+              workspaceFixtures(testDatabase!.db).reservation({
+                stage: { reservation: "confirmed", payment: "paid" },
+                customer: fixture.invitedDotyposCustomerId,
               })
             );
           }
@@ -1450,17 +1431,12 @@ describe.skipIf(!testDatabase)(
         ]);
 
         // Once the guest signs in, the Referrals screen counts the invitation.
-        await testDatabase!.pool.query(
-          `insert into customer_accounts (id) values ($1) on conflict do nothing`,
-          [inviteeAccountId]
-        );
-        await testDatabase!.pool.query(
-          `insert into auth."user" (id, name, email) values ($1, '', $2)`,
-          [inviteeAccountId, testEmailAddress(inviteeAccountId)]
-        );
-        await testDatabase!.pool.query(
-          "update customer_accounts set dotypos_customer_id = $2 where id = $1",
-          [inviteeAccountId, fixture.invitedDotyposCustomerId]
+        await Effect.runPromise(
+          workspaceFixtures(testDatabase!.db).account("referral-guest", {
+            id: inviteeAccountId,
+            verified: false,
+            linkedCustomer: fixture.invitedDotyposCustomerId,
+          })
         );
         const identity = {
           accountId: inviteeAccountId,
@@ -2229,26 +2205,20 @@ describe.skipIf(!testDatabase)(
         const admissionPromises: Promise<unknown>[] = [];
 
         try {
-          await testDatabase!.pool.query(
-            `insert into customer_accounts (id) values ($1), ($2) on conflict do nothing`,
-            [inviteeAccountId, referrerAccountId]
-          );
-          await testDatabase!.pool.query(
-            `insert into auth."user" (id, name, email) values ($1, '', $2), ($3, '', $4)`,
-            [
-              inviteeAccountId,
-              testEmailAddress(inviteeAccountId),
-              referrerAccountId,
-              testEmailAddress(referrerAccountId),
-            ]
-          );
-          await testDatabase!.pool.query(
-            "update customer_accounts set dotypos_customer_id = $2 where id = $1",
-            [inviteeAccountId, fixture.invitedDotyposCustomerId]
-          );
-          await testDatabase!.pool.query(
-            "update customer_accounts set dotypos_customer_id = $2 where id = $1",
-            [referrerAccountId, fixture.referrerDotyposCustomerId]
+          const accounts = workspaceFixtures(testDatabase!.db);
+          await Effect.runPromise(
+            Effect.all([
+              accounts.account("referral-pool-invitee", {
+                id: inviteeAccountId,
+                verified: false,
+                linkedCustomer: fixture.invitedDotyposCustomerId,
+              }),
+              accounts.account("referral-pool-referrer", {
+                id: referrerAccountId,
+                verified: false,
+                linkedCustomer: fixture.referrerDotyposCustomerId,
+              }),
+            ])
           );
 
           const db = await Effect.runPromise(makeDatabaseClient(pool));
@@ -2440,34 +2410,16 @@ describe.skipIf(!testDatabase)(
     /** Inserts a synthetic held reservation that has not started payment. */
     const insertHeldReservation = async () => {
       const id = crypto.randomUUID();
-      const reservationId = workspaceReservationIdSchema.make(
-        `lifecycle-reservation-${id}`
-      );
-      const dotyposCustomerId = DotyposCustomerIdSchema.make(`customer-${id}`);
       const dotyposReservationId = DotyposReservationIdSchema.make(
         `dotypos-${id}`
       );
-      reservationIds.push(reservationId);
-      await Effect.runPromise(
-        testDatabase.db.insert(workspaceReservations).values({
-          authorAccountId: fixtureReservationAuthorId,
-          id: reservationId,
-          checkoutSessionKey: `lifecycle-session-${id}`,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${id}`),
-          dotyposCustomerId,
-          dotyposReservationId,
-          reservationState: "held",
-          paymentState: "not_started",
-          fulfillmentState: "not_started",
-          reservationHoldExpiresAt: Temporal.Now.instant().add({ minutes: 15 }),
-          reservationDetails: {
-            kind: "cowork",
-            entryTier: "open-space",
-            coffee: true,
-          },
-          locale: "en-US",
+      const { id: reservationId, dotyposCustomerId } = await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).reservation({
+          stage: { reservation: "held" },
+          overrides: { dotyposReservationId },
         })
       );
+      reservationIds.push(reservationId);
       return { id, reservationId, dotyposCustomerId, dotyposReservationId };
     };
 
@@ -2771,17 +2723,17 @@ describe.skipIf(!testDatabase)(
      * Seeds a voucher whose earlier claim by the customer, on another
      * checkout, has been released.
      */
-    const seedReleasedVoucherClaim = async (customerId: string) => {
+    const seedReleasedVoucherClaim = async (customerId: DotyposCustomerId) => {
       const id = crypto.randomUUID();
       const voucherId = voucherIdSchema.make(`lifecycle-voucher-${id}`);
-      const reservationId = `lifecycle-released-claim-${id}`;
       voucherIds.push(voucherId);
-      reservationIds.push(workspaceReservationIdSchema.make(reservationId));
-      await testDatabase.pool.query(
-        `insert into workspace_reservations (id, checkout_attempt_key, dotypos_customer_id, dotypos_reservation_id, reservation_state, payment_state, fulfillment_state, reservation_details, locale, author_account_id)
-         values ($1, $1, $2, $1, 'cancelled', 'expired', 'not_started', '{"kind":"cowork","entryTier":"open-space","coffee":false}', 'en-US', $3)`,
-        [reservationId, customerId, fixtureReservationAuthorId]
+      const { id: reservationId } = await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).reservation({
+          stage: { reservation: "cancelled", payment: "expired" },
+          customer: customerId,
+        })
       );
+      reservationIds.push(reservationId);
       await testDatabase.pool.query(
         `insert into payment_attempts (id, workspace_reservation_id, provider, provider_order_id, state, failure_code, refund_state, amount_value, amount_exponent, currency)
          values ($1, $1, 'nexi', $1, 'expired', 'payment_abandoned_after_provider_cutoff', 'not_required', 29000, 2, 'CZK')`,

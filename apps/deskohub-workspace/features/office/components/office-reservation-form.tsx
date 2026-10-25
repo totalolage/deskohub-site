@@ -11,10 +11,6 @@ import {
 } from "@/features/checkout/advertised-price";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import { getWorkspaceOfficeProductTitle } from "@/features/checkout/product-catalog.i18n";
-import {
-  formatWorkspaceMoney,
-  workspaceMoneyWithValue,
-} from "@/features/checkout/workspace-money";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
@@ -66,6 +62,7 @@ import {
   FormItem,
   FormMessage,
 } from "@/shared/components/ui/form";
+import { formatMoney, moneyWithValue } from "@/shared/money/money";
 import { cn } from "@/shared/utils";
 import { OfficeDayCountInput } from "./office-day-count-input";
 import { getOfficeReservationSelectionSummary } from "./office-reservation-selection-summary";
@@ -378,7 +375,7 @@ export function OfficeReservationForm({
                   const quotedSeatAmount =
                     optionAdvertisedPrice?.quote.items[0].seatAmount;
                   const seatPrice = quotedSeatAmount
-                    ? workspaceMoneyWithValue(
+                    ? moneyWithValue(
                         quotedSeatAmount.value * seatCount,
                         quotedSeatAmount
                       )
@@ -391,7 +388,7 @@ export function OfficeReservationForm({
                       price={
                         seatPrice ? (
                           <span className="before:content-['+']">
-                            {formatWorkspaceMoney(seatPrice, locale)}
+                            {formatMoney(seatPrice, locale)}
                           </span>
                         ) : (
                           <ReservationSkeletonBlock className="h-5 w-24 bg-aquamarine-green/15" />

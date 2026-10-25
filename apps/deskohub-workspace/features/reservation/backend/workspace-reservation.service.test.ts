@@ -5,7 +5,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import type { Customer, Reservation, Table } from "@deskohub/dotypos/generated";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import {
   type WorkspaceReservation,
@@ -97,10 +97,12 @@ const detailsEffect = (input: {
   const dotypos = {
     getReservation: mock(() => {
       input.onProviderRead?.("getReservation");
-      return Effect.succeed({
-        reservation: input.dotyposReservation ?? makeDotyposReservation(),
-        customer,
-      });
+      return Effect.succeed(
+        Option.some({
+          reservation: input.dotyposReservation ?? makeDotyposReservation(),
+          customer,
+        })
+      );
     }),
     getTables: mock(() => {
       input.onProviderRead?.("getTables");
@@ -150,11 +152,13 @@ const accessTargetEffect = (input: {
             }),
             Layer.mock(DotyposService, {
               getReservation: mock(() =>
-                Effect.succeed({
-                  reservation:
-                    input.dotyposReservation ?? makeDotyposReservation(),
-                  customer,
-                })
+                Effect.succeed(
+                  Option.some({
+                    reservation:
+                      input.dotyposReservation ?? makeDotyposReservation(),
+                    customer,
+                  })
+                )
               ),
               getTables: mock(() => Effect.succeed([])),
             }),

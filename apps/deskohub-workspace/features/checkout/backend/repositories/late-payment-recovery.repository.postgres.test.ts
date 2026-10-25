@@ -20,7 +20,7 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import {
-  checkoutAttemptKeySchema,
+  checkoutSessionKeySchema,
   type PaymentAttemptId,
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
@@ -31,15 +31,10 @@ import {
   storedDiscountIdSchema,
 } from "@/features/discounts/persistence-contracts";
 import { referralFirstBookingLockKey } from "@/features/referrals/advisory-locks";
-import {
-  type WorkspaceReservationId,
-  workspaceReservationIdSchema,
-} from "@/features/reservation/persistence-contracts";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { rejectCustomerEventInserts } from "@/shared/backend/customer-events/customer-event-outbox.test-utils";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   LatePaymentRecoveryRepository,
   LatePaymentRecoveryStateError,
@@ -125,37 +120,26 @@ describe.skipIf(!testDatabase)(
       readonly createdAt?: Temporal.Instant;
     }) => {
       const id = crypto.randomUUID();
-      const dotyposCustomerId = DotyposCustomerIdSchema.make(`customer-${id}`);
-      const reservationId = workspaceReservationIdSchema.make(
-        `late-reservation-${id}`
-      );
       const paymentAttemptId = paymentAttemptIdSchema.make(
         `late-attempt-${id}`
       );
-      reservationIds.push(reservationId);
-      await Effect.runPromise(
-        testDatabase.db.insert(workspaceReservations).values({
-          authorAccountId: fixtureReservationAuthorId,
-          id: reservationId,
-          checkoutSessionKey: input.checkoutSessionKey ?? `late-session-${id}`,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${id}`),
-          dotyposCustomerId,
-          dotyposReservationId: DotyposReservationIdSchema.make(
-            `dotypos-original-${id}`
-          ),
-          reservationState: input.reservationState,
-          paymentState: "expired",
-          fulfillmentState: "not_started",
-          reservationHoldExpiresAt: input.holdExpiresAt,
-          reservationDetails: {
-            kind: "cowork",
-            entryTier: "open-space",
-            coffee: false,
+      const dotyposReservationId = DotyposReservationIdSchema.make(
+        `dotypos-original-${id}`
+      );
+      const { id: reservationId, dotyposCustomerId } = await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).reservation({
+          stage: { reservation: input.reservationState, payment: "expired" },
+          overrides: {
+            dotyposReservationId,
+            checkoutSessionKey: checkoutSessionKeySchema.make(
+              input.checkoutSessionKey ?? `late-session-${id}`
+            ),
+            reservationHoldExpiresAt: input.holdExpiresAt,
+            ...(input.createdAt && { createdAt: input.createdAt }),
           },
-          locale: "en-US",
-          ...(input.createdAt && { createdAt: input.createdAt }),
         })
       );
+      reservationIds.push(reservationId);
       await Effect.runPromise(
         testDatabase.db.insert(paymentAttempts).values({
           id: paymentAttemptId,
@@ -185,9 +169,7 @@ describe.skipIf(!testDatabase)(
         paymentAttemptId,
         dotyposCustomerId,
         id,
-        dotyposReservationId: DotyposReservationIdSchema.make(
-          `dotypos-original-${id}`
-        ),
+        dotyposReservationId,
       };
     };
 

@@ -17,11 +17,15 @@ describe("Workspace E2E environment", () => {
       GITHUB_RUN_ATTEMPT: "2",
       NEXI_API_KEY: "app-only-key",
       WORKSPACE_E2E_ALLOCATION_SHARD: "1",
+      WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS: "true",
     });
     const playwrightEnvironment = toPlaywrightEnvironment(environment);
 
     expect(playwrightEnvironment.GITHUB_RUN_ATTEMPT).toBe("2");
     expect(playwrightEnvironment.WORKSPACE_E2E_ALLOCATION_SHARD).toBe("1");
+    expect(
+      playwrightEnvironment.WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS
+    ).toBe("true");
     expect(playwrightEnvironment).not.toHaveProperty("NEXI_API_KEY");
     expect(playwrightEnvironment).not.toHaveProperty("WORKSPACE_E2E_PR_NUMBER");
     expect(makeWorkspaceE2EEnvironment(playwrightEnvironment)).toEqual(
@@ -75,6 +79,7 @@ describe("Workspace E2E environment", () => {
 
   test.each([
     { WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: "false" },
+    { WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS: "false" },
     { WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: "https://example.test" },
     {
       WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL:

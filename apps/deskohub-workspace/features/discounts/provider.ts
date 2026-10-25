@@ -1,6 +1,6 @@
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import type { Money } from "@/shared/money/money";
 import type { Discount } from "./contracts";
 import type {
   DiscountCodeId,
@@ -57,7 +57,7 @@ export type DiscountClaimInstruction =
   | {
       readonly kind: "voucher";
       readonly voucherId: VoucherId;
-      readonly availableAmount: WorkspaceMoney;
+      readonly availableAmount: Money;
       readonly dotyposCustomerId: DotyposCustomerId;
     }
   | {

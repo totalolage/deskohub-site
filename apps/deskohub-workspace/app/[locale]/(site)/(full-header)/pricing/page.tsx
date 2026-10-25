@@ -1,31 +1,20 @@
 import type { Metadata } from "next";
-import { getWorkspaceAlternates, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { PricingPage } from "@/features/pricing";
-import { workspaceSiteConstants } from "@/shared/utils";
+import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
 
 export const instant = true;
 
 export async function generateMetadata(): Promise<Metadata> {
-  return runWithRequestLocale((locale) => {
-    const title = m.pricingPageTitle({}, { locale });
-    const description = m.pricingMetadataDescription({}, { locale });
-    const alternates = getWorkspaceAlternates(locale, "/pricing");
-
-    return {
-      title,
-      description,
-      alternates,
-      openGraph: {
-        title,
-        description,
-        url: alternates.canonical,
-        siteName: workspaceSiteConstants.brand.name,
-        locale,
-        type: "website",
-      },
-    } satisfies Metadata;
-  });
+  return runWithRequestLocale((locale) =>
+    createPublicPageMetadata({
+      locale,
+      pathname: "/pricing",
+      title: { page: m.pricingPageTitle({}, { locale }) },
+      description: m.pricingMetadataDescription({}, { locale }),
+    })
+  );
 }
 
 export default async function LocalizedWorkspacePricingPage() {

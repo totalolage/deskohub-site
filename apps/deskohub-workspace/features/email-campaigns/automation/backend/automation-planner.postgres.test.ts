@@ -4,15 +4,14 @@ import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
-  customerAccounts,
   customerEvents,
   emailCampaignAutomationEngine,
   emailCampaignAutomationPreviews,
   emailCampaigns,
   emailCampaignAutomationWorkUnits as units,
 } from "@/db/schema";
-import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   holdPostgresTransaction,
   waitForPostgresLockWaiter,
@@ -320,18 +319,12 @@ describe.skipIf(!database)("automation planner", () => {
     );
 
     const accounts = await Effect.runPromise(
-      postgres.db
-        .insert(customerAccounts)
-        .values(
-          [0, 1].map(() => ({
-            id: customerAccountIdSchema.make(
-              `housekeeping-${crypto.randomUUID()}`
-            ),
-          }))
-        )
-        .returning({ id: customerAccounts.id })
+      Effect.all([
+        workspaceFixtures(postgres.db).customerAccount(),
+        workspaceFixtures(postgres.db).customerAccount(),
+      ])
     );
-    accountIds.push(...accounts.map((account) => account.id));
+    accountIds.push(...accounts);
     const events = await Effect.runPromise(
       postgres.db
         .insert(customerEvents)
@@ -342,7 +335,7 @@ describe.skipIf(!database)("automation planner", () => {
             dotyposCustomerId: dotyposCustomerIdSchema.make(
               `housekeeping-${index}`
             ),
-            customerAccountId: accounts[index]!.id,
+            customerAccountId: accounts[index]!,
           }))
         )
         .returning({ id: customerEvents.id })

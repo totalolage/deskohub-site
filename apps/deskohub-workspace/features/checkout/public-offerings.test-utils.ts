@@ -24,12 +24,8 @@ import {
   type PublicOffering,
   type PublicOfficeOffer,
 } from "@/features/checkout/public-offerings";
-import {
-  formatWorkspaceMoney,
-  type WorkspaceMoney,
-  workspaceMoneyWithValue,
-} from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
+import { formatMoney, type Money, moneyWithValue } from "@/shared/money/money";
 
 /**
  * Every bookable product, advertising its smallest booking (one cowork day,
@@ -49,7 +45,7 @@ export const advertisedCatalogOfferings = ({
     (offering) => {
       const regular =
         offering.kind === "office"
-          ? workspaceMoneyWithValue(
+          ? moneyWithValue(
               offering.price.value + offering.seatPrice.value,
               offering.price
             )
@@ -57,18 +53,15 @@ export const advertisedCatalogOfferings = ({
       return {
         ...offering,
         advertisedPrice: {
-          price: workspaceMoneyWithValue(
-            regular.value - discountValue,
-            regular
-          ),
-          discount: workspaceMoneyWithValue(discountValue, regular),
+          price: moneyWithValue(regular.value - discountValue, regular),
+          discount: moneyWithValue(discountValue, regular),
         },
       };
     }
   );
 
-const minus = (money: WorkspaceMoney, value: number) =>
-  workspaceMoneyWithValue(money.value - value, money);
+const minus = (money: Money, value: number) =>
+  moneyWithValue(money.value - value, money);
 
 /**
  * The plain-text price lines a reader sees for each product family, built
@@ -80,14 +73,11 @@ export const catalogPriceLines = (
   { discountValue = 0 }: { readonly discountValue?: number } = {}
 ) => {
   // Plain text shows the no-break spaces of formatted money as spaces.
-  const money = (amount: WorkspaceMoney) =>
-    formatWorkspaceMoney(amount, locale).replace(/\s/g, " ");
-  const perDay = (amount: WorkspaceMoney) =>
+  const money = (amount: Money) =>
+    formatMoney(amount, locale).replace(/\s/g, " ");
+  const perDay = (amount: Money) =>
     `${money(amount)}${m.coworkReservationPricePeriodSuffix({}, { locale })}`;
-  const sale = (
-    regular: WorkspaceMoney,
-    format: (amount: WorkspaceMoney) => string
-  ) =>
+  const sale = (regular: Money, format: (amount: Money) => string) =>
     discountValue === 0
       ? []
       : [
@@ -140,10 +130,7 @@ export const catalogPriceLines = (
       `${officeDay}: ${money(officeAccess)}`,
       `${m.publicOfferingOfficeSeatPrice({}, { locale })}: ${money(officeSeat)}`,
       ...sale(
-        workspaceMoneyWithValue(
-          officeAccess.value + officeSeat.value,
-          officeAccess
-        ),
+        moneyWithValue(officeAccess.value + officeSeat.value, officeAccess),
         money
       ).map(
         (line) =>

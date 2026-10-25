@@ -36,11 +36,6 @@ import {
 import { getCoworkCheckoutDetails } from "@/features/checkout/schemas/checkout-details-cowork";
 import { getMeetingRoomCheckoutDetails } from "@/features/checkout/schemas/checkout-details-meeting-room";
 import { getOfficeCheckoutDetails } from "@/features/checkout/schemas/checkout-details-office";
-import {
-  type WorkspaceMoney,
-  withWorkspaceMoneyCurrency,
-  workspaceMoneyEquals,
-} from "@/features/checkout/workspace-money";
 import type { DiscountCommitment } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import {
@@ -64,6 +59,7 @@ import {
   getWorkspaceRuntimeCallbackOrigin,
   type WorkspaceUrlConfigError,
 } from "@/shared/backend/config/workspace-url.config";
+import { type Money, moneyEquals } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { localDateTimeToInstant } from "@/shared/utils/temporal";
 import {
@@ -590,7 +586,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           readonly correlationId: NexiCorrelationId;
           readonly checkoutSessionId?: CheckoutSessionId;
           readonly locale: Locale;
-          readonly total: WorkspaceMoney;
+          readonly total: Money;
           readonly commitment: DiscountCommitment;
           readonly customer: HostedPaymentCustomer;
           readonly accountingSnapshot: AccountingDocumentSnapshot;
@@ -611,8 +607,11 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           yield* revalidatePayableReservation(input);
 
           const providerOrderId = generateNexiOrderId();
+          const nexiCurrency = getNexiCurrencyOverride();
           const nexiAmount = yield* toNexiAmount(
-            withWorkspaceMoneyCurrency(input.total, getNexiCurrencyOverride())
+            nexiCurrency
+              ? { ...input.total, currency: nexiCurrency }
+              : input.total
           ).pipe(
             Effect.mapError(
               (cause) =>
@@ -739,7 +738,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         readonly workspaceReservationId: WorkspaceReservationId;
         readonly checkoutSessionId?: CheckoutSessionId;
         readonly locale: Locale;
-        readonly total: WorkspaceMoney;
+        readonly total: Money;
         readonly commitment: DiscountCommitment;
         readonly accountingSnapshot: AccountingDocumentSnapshot;
         readonly reservation: SignedPayState["reservation"];
@@ -950,7 +949,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                 isReusableAttemptState(attempt.state) &&
                 attempt.securityToken &&
                 attempt.providerRedirectUrl &&
-                workspaceMoneyEquals(attempt.amount, state.acceptedTotal)
+                moneyEquals(attempt.amount, state.acceptedTotal)
               ) {
                 yield* Effect.annotateLogsScoped({ attempt });
                 yield* Effect.logInfo(
@@ -1030,7 +1029,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
 
             if (
               prepared.quote.fingerprint !== state.quote.fingerprint ||
-              !workspaceMoneyEquals(freshSummary.total, state.acceptedTotal)
+              !moneyEquals(freshSummary.total, state.acceptedTotal)
             ) {
               const changedKeys = getCheckoutSummaryChangedKeys(
                 acceptedSummary,

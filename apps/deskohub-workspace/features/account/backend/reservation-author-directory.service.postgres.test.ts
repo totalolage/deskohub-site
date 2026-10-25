@@ -1,9 +1,14 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
+import {
+  type DotyposCustomerId,
+  DotyposCustomerIdSchema,
+} from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
+import type { Locale } from "@/features/i18n";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type CustomerAccountId,
@@ -26,34 +31,33 @@ describe.skipIf(!testDatabase)(
 
     const insertAccount = async (options: {
       readonly identity?: boolean;
-      readonly linkedCustomer?: string;
-      readonly locale?: string;
+      readonly linkedCustomer?: DotyposCustomerId;
+      readonly locale?: Locale;
       readonly deletionRequested?: boolean;
       readonly tombstoned?: boolean;
     }) => {
+      const fixtures = workspaceFixtures(testDatabase!.db);
       const accountId = customerAccountIdSchema.make(crypto.randomUUID());
-      await query(
-        `insert into customer_accounts (id, deleted_at) values ($1, $2)`,
-        [accountId, options.tombstoned ? new Date() : null]
+      if (options.identity === false) {
+        await Effect.runPromise(
+          fixtures.customerAccount({
+            id: accountId,
+            linkedCustomer: options.linkedCustomer,
+            deletedAt: options.tombstoned ? Temporal.Now.instant() : undefined,
+          })
+        );
+        return accountId;
+      }
+      await Effect.runPromise(
+        fixtures.account("reservation-author", {
+          id: accountId,
+          email: testEmailAddress(`reservation-author-${accountId}`),
+          verified: false,
+          linkedCustomer: options.linkedCustomer,
+          locale: options.locale,
+          deletionRequested: options.deletionRequested,
+        })
       );
-      if (options.identity !== false) {
-        await query(
-          `insert into auth."user" (id, name, email, locale, deletion_requested_at)
-           values ($1, '', $2, $3, $4)`,
-          [
-            accountId,
-            testEmailAddress(`reservation-author-${accountId}`),
-            options.locale ?? null,
-            options.deletionRequested ? new Date() : null,
-          ]
-        );
-      }
-      if (options.linkedCustomer) {
-        await query(
-          `update customer_accounts set dotypos_customer_id = $2 where id = $1`,
-          [accountId, options.linkedCustomer]
-        );
-      }
       return accountId;
     };
 

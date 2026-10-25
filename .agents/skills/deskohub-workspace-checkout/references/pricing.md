@@ -94,3 +94,11 @@ When you change a deadline, make the action select it through its getter and mak
 ## Currency
 
 Keep the catalog currency through advertisement, signed summary, affirmation, and local payment attempts. Apply the non-production Nexi sandbox currency override only at Nexi call sites: HPP creation and verification arguments. It never changes customer-visible quotes or persisted payment facts and is unavailable in production.
+
+## Money
+
+Every Workspace amount is a `Money` from `apps/deskohub-workspace/shared/money/money.ts`: a scaled integer `value`, its decimal `exponent`, and an ISO `currency`. Build, combine, convert, and display amounts through that module instead of restating its rules:
+
+- Check that amounts share a currency and exponent with `sameMoneyUnit`, and total them with `sumMoney`, which fails with `MoneyUnitMismatch`. Keep a separate currency or exponent check only where the caller reports which one differs.
+- Convert exactly with `moneyToBigDecimal` and `moneyFromBigDecimal`, which fails with `MoneyPrecisionError` rather than rounding. Write plain decimal text with every minor digit, such as `125.50`, with `moneyToDecimalString`. Use `moneyMajorAmount` only where a JavaScript number is required, such as `Intl` or an external contract.
+- Display amounts with `formatMoney(money, locale)` in customer pages, emails, and the administration alike.

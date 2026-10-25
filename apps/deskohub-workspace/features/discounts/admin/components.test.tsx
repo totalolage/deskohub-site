@@ -16,6 +16,7 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import type { VoucherTableItem } from "./admin-tables";
 import type {
   AdminCustomerProfile,
   DiscountAdminDashboard,
@@ -1436,6 +1437,42 @@ describe("discount administration pages", () => {
 
     fireEvent.input(labelEn(), { target: { value: "Summer promo" } });
     expect(view.queryByRole("status")).toBeNull();
+  });
+
+  test("rejects a carried-over currency outside the catalog with the action's validation banner", async () => {
+    const voucherId = "019c91dd-c560-7e55-b9d8-c95065efd55d";
+    const captured = captureWorkspaceActions(/^updateVoucher\./);
+    const { VoucherEditor } = await import("./admin-tables");
+    const view = render(
+      <VoucherEditor
+        voucher={{
+          id: voucherId as VoucherTableItem["id"],
+          code: "GIFT100",
+          issuedCredit: { value: 10_000, exponent: 2, currency: "ZZZ" },
+          remainingCredit: { value: 10_000, exponent: 2, currency: "ZZZ" },
+          enabled: true,
+          validFrom: null,
+          validUntil: null,
+          audienceSize: 0,
+          reservedUses: 0,
+          redeemedUses: 0,
+        }}
+      />
+    );
+    const { execute, options } = captured(`updateVoucher.${voucherId}`);
+    const codeField = view.getByRole("textbox", { name: "Code" });
+
+    fireEvent.input(codeField, { target: { value: "gift101" } });
+    fireEvent.submit(codeField.closest("form")!);
+    const rejection = (await view.findByRole("alert")).textContent;
+    expect(execute).not.toHaveBeenCalled();
+    fireEvent.input(codeField, { target: { value: "gift102" } });
+    expect(view.queryByRole("alert")).toBeNull();
+
+    // The same banner the action shows when its input validation rejects a
+    // submission.
+    act(() => options.onError({ error: { validationErrors: {} } }));
+    expect(view.getByRole("alert").textContent).toBe(rejection);
   });
 
   test("shows a timed-out save in Czech on a cs-CZ route", async () => {

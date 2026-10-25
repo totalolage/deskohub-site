@@ -17,8 +17,12 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import type { DatabaseClient } from "../../db/database-client";
-import { seedWorkspaceE2EReservationAuthor } from "../account/auth-rows";
+import {
+  seedWorkspaceE2EReservationAuthor,
+  type WorkspaceE2EAuthoredReservation,
+} from "../account/auth-rows";
 import {
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
@@ -61,7 +65,7 @@ export type WorkspaceE2ELocalReservationTransaction = {
   >;
   /** Inserts the reservation with its customer's author account. */
   readonly insertReservation: (
-    row: Omit<typeof workspaceReservations.$inferInsert, "authorAccountId">
+    reservation: WorkspaceE2EAuthoredReservation
   ) => Effect.Effect<unknown, unknown>;
 };
 
@@ -116,12 +120,10 @@ const makeDatabase = (
             .select({ id: workspaceReservations.id })
             .from(workspaceReservations)
             .where(eq(workspaceReservations.id, id)),
-        insertReservation: (row) =>
-          seedWorkspaceE2EReservationAuthor(tx, row.dotyposCustomerId).pipe(
-            Effect.flatMap((authorAccountId) =>
-              tx
-                .insert(workspaceReservations)
-                .values({ ...row, authorAccountId })
+        insertReservation: (reservation) =>
+          seedWorkspaceE2EReservationAuthor(tx, reservation.customer).pipe(
+            Effect.flatMap((author) =>
+              workspaceFixtures(tx).reservation({ ...reservation, author })
             )
           ),
       })
@@ -135,31 +137,25 @@ const resolveDatabase = (
     ? Effect.succeed(dependencies.database)
     : Effect.map(E2EDatabase, ({ db }) => makeDatabase(db));
 
-const makeReservationRow = (
+/**
+ * A hold that expired as soon as it was created, keyed by the fixture's own
+ * reservation id and checkout keys.
+ */
+const makeReservation = (
   fixture: WorkspaceE2ELocalReservationFixture,
-  paymentState: WorkspaceE2ELocalReservationPaymentState
-): Omit<typeof workspaceReservations.$inferInsert, "authorAccountId"> => {
+  payment: WorkspaceE2ELocalReservationPaymentState
+): WorkspaceE2EAuthoredReservation => {
   const now = Temporal.Now.instant();
   return {
-    activeCustomerEmailDeliveryId: null,
-    activePaymentAttemptId: null,
-    checkoutAttemptKey: fixture.checkoutAttemptKey,
-    checkoutSessionKey: fixture.checkoutSessionKey,
-    dotyposReservationId: null,
-    dotyposCustomerId: fixture.customerId,
-    fulfillmentState: "not_started",
-    id: fixture.reservationId,
-    locale: "en-US",
-    paymentState,
-    reservationCreatedAt: now,
-    reservationDetails: {
-      coffee: false,
-      entryTier: "basic",
-      kind: "cowork",
+    stage: { reservation: "hold_expired", payment },
+    customer: fixture.customerId,
+    at: now,
+    overrides: {
+      id: fixture.reservationId,
+      checkoutAttemptKey: fixture.checkoutAttemptKey,
+      checkoutSessionKey: fixture.checkoutSessionKey,
+      reservationCreatedAt: now,
     },
-    reservationHoldExpiredAt: now,
-    reservationHoldExpiresAt: null,
-    reservationState: "hold_expired",
   };
 };
 
@@ -191,7 +187,7 @@ export function seedWorkspaceE2ELocalReservation(
       database.transaction((transaction) =>
         Effect.gen(function* () {
           yield* transaction.insertReservation(
-            makeReservationRow(fixture, paymentState)
+            makeReservation(fixture, paymentState)
           );
           const rows = yield* transaction.findReservation(
             fixture.reservationId
