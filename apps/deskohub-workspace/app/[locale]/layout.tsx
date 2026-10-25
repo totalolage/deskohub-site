@@ -10,18 +10,19 @@ import { getSharedWorkspaceSummary } from "@/features/public-pages/workspace-sum
 import { workspaceSiteOrigin } from "@/shared/utils";
 import "../globals.css";
 
-// Both faces declare one family, so italic text still finds the italic face.
 // Only the regular face is preloaded: few pages render italic text, and the
-// browser fetches the italic face when one does.
+// browser fetches the italic face when one does. Next names a font's family
+// after its const, so the italic face joins the regular face's `sculpin`
+// family and italic text still finds it.
 const sculpin = localFont({
   src: "../../assets/fonts/Sculpin/regular.woff2",
   weight: "400",
   style: "normal",
   display: "swap",
   variable: "--font-sculpin",
-  declarations: [{ prop: "font-family", value: "Sculpin" }],
 });
 
+// Nothing reads its variable; applying it keeps the italic face in the CSS.
 const sculpinItalic = localFont({
   src: "../../assets/fonts/Sculpin/italic.woff2",
   weight: "400",
@@ -30,7 +31,7 @@ const sculpinItalic = localFont({
   preload: false,
   adjustFontFallback: false,
   variable: "--font-sculpin-italic",
-  declarations: [{ prop: "font-family", value: "Sculpin" }],
+  declarations: [{ prop: "font-family", value: "sculpin" }],
 });
 
 export async function generateMetadata({
