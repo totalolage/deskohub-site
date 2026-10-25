@@ -368,6 +368,40 @@ describe.skipIf(!testDatabase)(
       });
     });
 
+    test("measures sweep lag by the clock sweep, not the hourly reconcile", async () => {
+      await setHeartbeats({
+        lastPlannedAt: ago({ minutes: 3 }),
+        sweptUntil: ago({ minutes: 3 }),
+      });
+      // The reconcile's cursor is when its window last opened, at the
+      // hour's first run.
+      await pool.query(
+        "update customer_event_sweeps set swept_until = $1 where source = 'reservation-activity-reconcile'",
+        [ago({ minutes: 55 }).toString()]
+      );
+
+      const report = await health();
+
+      expect(report.sweepLagSeconds).toBe(3 * 60);
+      expect(report.warnings).not.toContain("sweep-lagging");
+    });
+
+    test("warns when the clock sweep lags behind a fresh reconcile", async () => {
+      await setHeartbeats({
+        lastPlannedAt: ago({ minutes: 3 }),
+        sweptUntil: ago({ minutes: 31 }),
+      });
+      await pool.query(
+        "update customer_event_sweeps set swept_until = $1 where source = 'reservation-activity-reconcile'",
+        [ago({ minutes: 3 }).toString()]
+      );
+
+      const report = await health();
+
+      expect(report.sweepLagSeconds).toBe(31 * 60);
+      expect(report.warnings).toContain("sweep-lagging");
+    });
+
     test("warns about a stale planner, backlogs and a schedule falling behind", async () => {
       await setHeartbeats({
         lastPlannedAt: ago({ minutes: 31 }),
