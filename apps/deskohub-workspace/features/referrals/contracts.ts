@@ -1,5 +1,5 @@
 import { Data } from "effect";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import type { Money } from "@/shared/money/money";
 import type { ReferralCode } from "./client";
 
 export type ReferralAcceptance =
@@ -33,7 +33,7 @@ export type ReferralAccountSummary = {
    * the refunded share of each payment, one positive total per currency,
    * ordered by currency code. Empty when referrals have saved nothing yet.
    */
-  readonly savings: readonly WorkspaceMoney[];
+  readonly savings: readonly Money[];
 };
 
 /** The account referral summary with the customer's absolute share link. */

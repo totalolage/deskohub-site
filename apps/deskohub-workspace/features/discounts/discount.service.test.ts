@@ -11,7 +11,6 @@ import {
   Schema,
 } from "effect";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import type { ReferralService as ReferralServiceTag } from "@/features/referrals";
 import {
@@ -30,6 +29,7 @@ type LogAnnotations = Context.Service.Shape<
   typeof References.CurrentLogAnnotations
 >;
 
+import type { Money } from "@/shared/money/money";
 import {
   type ActiveSale,
   affirmedDiscountAdvertisementQuoteCodec,
@@ -67,7 +67,7 @@ const product = {
   tier: "basic",
 } satisfies WorkspaceProductIdentity;
 
-const money = (value: number): WorkspaceMoney => ({
+const money = (value: number): Money => ({
   value,
   exponent: 2,
   currency: "CZK",
@@ -1210,7 +1210,7 @@ describe("DiscountService", () => {
         providerReference: invitedCustomerId,
       },
     };
-    let referrerSubtotal: WorkspaceMoney | undefined;
+    let referrerSubtotal: Money | undefined;
     const referralService = ReferralServiceMock({
       resolveInvitationCandidate: () => Effect.succeed(invitation),
       resolveReferrerCandidate: (input) => {
@@ -1351,7 +1351,7 @@ describe("DiscountService", () => {
         promotionCodeId: referralPromotionCodeId,
       },
     };
-    let referrerSubtotal: WorkspaceMoney | undefined;
+    let referrerSubtotal: Money | undefined;
     const referralService = ReferralServiceMock({
       resolveInvitationCandidate: () => Effect.succeed(invitation),
       resolveReferrerCandidate: (input) => {

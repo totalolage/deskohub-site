@@ -26,6 +26,10 @@ import {
 } from "@/features/accounting/backend/accounting-snapshot-key.service";
 import { InvoiceRepository } from "@/features/accounting/backend/invoice.repository";
 import { manualInvoiceInputSchema } from "@/features/accounting/manual-invoice";
+import {
+  captureDatabaseQueryLogs,
+  expectQueryLogsToOmit,
+} from "@/shared/testing/workspace-database-query-log.test-utils";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { AdministratorAccountActor } from "../account-role";
@@ -224,6 +228,59 @@ describe.skipIf(!testDatabase)(
       await Effect.runPromise(
         workspaceFixtures(testDatabase!.db).deleteAccounts(testAccounts)
       );
+    });
+
+    test("keeps the backfilled email out of the query log while linking every record kind", async () => {
+      const outcome = await runIsolated(
+        Effect.gen(function* () {
+          const { db } = yield* WorkspaceDatabase;
+          const legacyUsername = uniqueUsername();
+          const target = yield* insertAccount("legacy-logged");
+          const session = yield* insertCliSession({
+            approvedBy: legacyUsername,
+          });
+          yield* insertAccessCodeEvent(legacyUsername);
+          const invoice = yield* issueManualInvoice(legacyUsername, target);
+          yield* db
+            .delete(manualInvoiceActors)
+            .where(eq(manualInvoiceActors.invoiceId, invoice));
+
+          const logs = yield* captureDatabaseQueryLogs(
+            backfill({ legacyUsername, email: target.email, dryRun: false })
+          );
+
+          const [storedSession] = yield* db
+            .select({ email: cliSessions.approvedByAccountEmail })
+            .from(cliSessions)
+            .where(eq(cliSessions.id, session));
+          const [storedEvent] = yield* db
+            .select({
+              email: standaloneAccessCodeAttemptEvents.actorAccountEmail,
+            })
+            .from(standaloneAccessCodeAttemptEvents)
+            .where(eq(standaloneAccessCodeAttemptEvents.actor, legacyUsername));
+          const [storedInvoiceActor] = yield* db
+            .select({ email: manualInvoiceActors.actorAccountEmail })
+            .from(manualInvoiceActors)
+            .where(eq(manualInvoiceActors.invoiceId, invoice));
+          return {
+            email: target.email,
+            logs,
+            storedEmails: [
+              storedSession?.email,
+              storedEvent?.email,
+              storedInvoiceActor?.email,
+            ],
+          };
+        })
+      );
+
+      expect(outcome.storedEmails).toEqual([
+        outcome.email,
+        outcome.email,
+        outcome.email,
+      ]);
+      expectQueryLogsToOmit({ logs: outcome.logs, values: [outcome.email] });
     });
 
     test("reports, then links, a legacy username's records to the account", async () => {

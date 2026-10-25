@@ -19,11 +19,11 @@ import {
   workspaceProductWorkstationAddonPrice,
 } from "@/features/checkout/product-catalog";
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
-import { currencyCZK } from "@/features/checkout/workspace-money";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import { getCoworkDateAdvertisedPriceRequests } from "@/features/reservation/cowork-advertised-price";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
+import { currencyCZK } from "@/shared/money/currencies";
 import { plainDateStringSchema } from "@/shared/utils/temporal";
 import {
   getCoworkPageOfferings,

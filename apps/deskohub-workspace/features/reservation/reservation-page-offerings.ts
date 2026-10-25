@@ -11,7 +11,6 @@ import {
   getPublicCatalogOfferings,
   type PublicCatalogOffering,
 } from "@/features/checkout/public-offerings";
-import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import {
@@ -22,6 +21,7 @@ import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reserv
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
 import type { NormalizedOfficeReservationOrder } from "@/features/reservation/office-reservation";
+import { moneyWithValue } from "@/shared/money/money";
 
 type ReservationPageOfferingsInput = {
   /** What the page preloaded for its form; anything missing keeps the catalog price. */
@@ -195,11 +195,11 @@ export const getOfficePageOfferings = ({
   // The form shows the selection's whole-range amounts; the offer is per day.
   const perDay = quoteItem
     ? {
-        price: workspaceMoneyWithValue(
+        price: moneyWithValue(
           quoteItem.accessAmount.value / quoteItem.dayCount,
           quoteItem.accessAmount
         ),
-        seatPrice: workspaceMoneyWithValue(
+        seatPrice: moneyWithValue(
           quoteItem.seatAmount.value / quoteItem.dayCount,
           quoteItem.seatAmount
         ),

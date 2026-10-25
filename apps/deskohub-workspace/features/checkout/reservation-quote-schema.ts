@@ -1,13 +1,10 @@
 import { Schema } from "effect";
-import {
-  nonNegativeWorkspaceMoneyCodec,
-  workspaceMoneyWithValue,
-} from "@/features/checkout/workspace-money";
 import { appliedDiscountCodec } from "@/features/discounts/contracts";
+import { moneyWithValue, nonNegativeMoneyCodec } from "@/shared/money/money";
 
 export const reservationQuotePaymentSchema = Schema.Struct({
-  expectedPrice: nonNegativeWorkspaceMoneyCodec,
-  undiscountedPrice: nonNegativeWorkspaceMoneyCodec,
+  expectedPrice: nonNegativeMoneyCodec,
+  undiscountedPrice: nonNegativeMoneyCodec,
   discounts: Schema.Array(appliedDiscountCodec),
 });
 
@@ -18,10 +15,7 @@ export const getReservationQuoteDiscount = ({
   expectedPrice,
   undiscountedPrice,
 }: Pick<ReservationQuotePayment, "expectedPrice" | "undiscountedPrice">) =>
-  workspaceMoneyWithValue(
-    undiscountedPrice.value - expectedPrice.value,
-    expectedPrice
-  );
+  moneyWithValue(undiscountedPrice.value - expectedPrice.value, expectedPrice);
 
 export const makeReservationQuoteSchema = <Items extends Schema.Top>(
   items: Items

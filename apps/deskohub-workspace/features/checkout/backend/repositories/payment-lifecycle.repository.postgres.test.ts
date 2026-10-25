@@ -45,7 +45,6 @@ import {
   PaymentLifecycleRepository,
 } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
 import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { calculateDiscounts } from "@/features/discounts/calculator";
 import {
   type DiscountCommitment,
@@ -78,6 +77,7 @@ import { ReferralService } from "@/features/referrals/referral.service";
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
 import { ReferralFeatureFlagServiceMock } from "@/features/referrals/referral-feature-flag.service.mock";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import type { Money } from "@/shared/money/money";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   waitForAdvisoryLockWaiter,
@@ -95,7 +95,7 @@ const customerId = () =>
 
 type Reservation = typeof workspaceReservations.$inferSelect;
 type Admission = {
-  readonly amount: WorkspaceMoney;
+  readonly amount: Money;
   readonly commitment: DiscountCommitment;
 };
 

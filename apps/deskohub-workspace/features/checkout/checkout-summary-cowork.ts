@@ -16,7 +16,7 @@ import type {
 } from "@/features/checkout/product-catalog";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
-import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
+import { moneyWithValue } from "@/shared/money/money";
 
 type CoworkReservationSummaryInput = {
   readonly entryTier: WorkspaceCoworkProductTier;
@@ -78,7 +78,7 @@ export const getCoworkCheckoutSummary = (
   if (monitorOption) {
     orderItems.push({
       key: `monitor:${monitorOption}`,
-      amount: workspaceMoneyWithValue(0, productQuoteItem.amount),
+      amount: moneyWithValue(0, productQuoteItem.amount),
     });
   }
 

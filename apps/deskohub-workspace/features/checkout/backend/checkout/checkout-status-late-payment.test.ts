@@ -4,7 +4,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import type { LatePaymentRecoveryState } from "@/db/schema";
 import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
@@ -126,10 +126,12 @@ const makeHarness = (options: {
                 } as never)
               ),
               getCustomer: mock(() =>
-                Effect.succeed({
-                  id: "customer-id",
-                  email: testEmailAddressForLate,
-                } as never)
+                Effect.succeed(
+                  Option.some({
+                    id: "customer-id",
+                    email: testEmailAddressForLate,
+                  } as never)
+                )
               ),
             })
           )

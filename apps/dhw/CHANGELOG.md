@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.28.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.27.0...dhw-v1.28.0) (2026-10-25)
+
+
+### Features
+
+* **dhw:** warn when the hourly reservation reconcile stalls ([39a999c](https://github.com/totalolage/deskohub-site/commit/39a999cb7405e8560b38f87fe9f2bdb562265ae7))
+* **dhw:** warn when the hourly reservation reconcile stalls ([ead84a5](https://github.com/totalolage/deskohub-site/commit/ead84a5c78f8a213a6930fe5590275de621a63c6))
+
 ## [1.27.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.26.0...dhw-v1.27.0) (2026-10-24)
 
 

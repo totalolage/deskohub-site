@@ -3,10 +3,6 @@ import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import {
-  currencyCZK,
-  formatWorkspaceMoney,
-} from "@/features/checkout/workspace-money";
-import {
   type CanonicalPromotionCode,
   canonicalPromotionCodeSchema,
 } from "@/features/discounts/persistence-contracts";
@@ -15,6 +11,8 @@ import { type Locale, m } from "@/features/i18n";
 import { referralCodeQueryParam } from "@/features/referrals/client";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { currencyCZK } from "@/shared/money/currencies";
+import { formatMoney } from "@/shared/money/money";
 import { makeUnusableReferralCode } from "../account/referral-fixture";
 import {
   activateHydratedBrowserElement,
@@ -828,7 +826,7 @@ const formatZeroTotalAdjustment = (locale: Locale) =>
   formatDiscountAdjustment({ kind: "percentage", basisPoints: 10_000 }, locale);
 
 const zeroTotalMoneyText = (locale: Locale) =>
-  formatWorkspaceMoney(currencyCZK(0), locale);
+  formatMoney(currencyCZK(0), locale);
 
 export const getAppliedZeroTotalPaySummaryCondition = (
   data: CheckoutData

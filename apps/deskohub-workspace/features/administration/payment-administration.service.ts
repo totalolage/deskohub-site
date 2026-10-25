@@ -28,6 +28,7 @@ import {
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceNexiLayer } from "@/shared/backend/config/nexi.config";
+import type { Money } from "@/shared/money/money";
 
 const defaultMaxRecords = 50;
 const maximumRecords = 100;
@@ -41,12 +42,6 @@ const paymentAttemptStateLabels = {
   expired: "Unsuccessful",
 } satisfies Record<PaymentAttemptState, string>;
 
-type AdministrationOrderMoney = {
-  readonly value: number;
-  readonly exponent: number;
-  readonly currency: string;
-};
-
 type AdministrationOrderLink = {
   readonly paymentAttemptId: PaymentAttemptId;
   readonly reservationId: WorkspaceReservationId;
@@ -54,9 +49,9 @@ type AdministrationOrderLink = {
   readonly refundState: PaymentRefundState;
   readonly stateLabel: string;
   readonly failureCode: string | null;
-  readonly amount: AdministrationOrderMoney;
+  readonly amount: Money;
   /** Total Nexi reports as refunded; set only when `refundState` is `refunded`. */
-  readonly refundedAmount: AdministrationOrderMoney | null;
+  readonly refundedAmount: Money | null;
   readonly refundedAt: string | null;
   readonly attemptCreatedAt: string;
   readonly providerOrderCreatedAt: string | null;

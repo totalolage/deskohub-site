@@ -18,6 +18,7 @@ import {
   within,
 } from "@testing-library/react";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
+import { formatMoney } from "@/shared/money/money";
 import {
   workspaceRouterPush,
   workspaceRouterRefresh,
@@ -30,7 +31,6 @@ import {
 import {
   BookingTable,
   formatAdministrationDateTime,
-  formatAdministrationMoney,
   PaymentAttemptList,
   RelatedReservationLink,
   ReservationTable,
@@ -757,13 +757,13 @@ describe("administration reservation components", () => {
     expect(attempts.getByText("Objednávka Nexi")).toBeDefined();
     const attemptText = readableText(attempts.container);
     expect(attemptText).toContain(
-      `Částečně vráceno ${formatAdministrationMoney(refundedAmount, "cs-CZ")} · ${formatAdministrationDateTime(refundedAt, "cs-CZ")}`.replace(
+      `Částečně vráceno ${formatMoney(refundedAmount, "cs-CZ")} · ${formatAdministrationDateTime(refundedAt, "cs-CZ")}`.replace(
         /\s+/g,
         " "
       )
     );
     expect(readableText(attempts.container.querySelector("del"))).toBe(
-      `${formatAdministrationMoney(attempt.amount, "cs-CZ")} před vrácením peněz`.replace(
+      `${formatMoney(attempt.amount, "cs-CZ")} před vrácením peněz`.replace(
         /\s+/g,
         " "
       )

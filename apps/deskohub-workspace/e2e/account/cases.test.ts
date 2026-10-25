@@ -2240,7 +2240,7 @@ mock.module("./fixtures", () => ({
     _config: DatasourceConfig,
     customerId: string
   ) => Effect.sync(() => requireExternal().expireProfile(customerId)),
-  readSyntheticCustomerProfile: (
+  requireSyntheticCustomerProfile: (
     _config: DatasourceConfig,
     customerId: string
   ) => Effect.sync(() => requireExternal().readProfile(customerId)),

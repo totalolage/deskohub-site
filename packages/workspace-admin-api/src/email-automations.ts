@@ -765,11 +765,28 @@ export const CalendarPreview = Schema.Struct({
 });
 export type CalendarPreview = typeof CalendarPreview.Type;
 
+/** The engine conditions the run log warns about. */
+export const AutomationEngineWarning = Schema.Literals([
+  "planner-stale",
+  "sweep-lagging",
+  "reconcile-stalled",
+  "event-backlog",
+  "unit-backlog",
+  "schedule-lagging",
+  "falling-behind",
+]);
+export type AutomationEngineWarning = typeof AutomationEngineWarning.Type;
+
 /** Engine health: lags, backlogs and unit durations, never customer data. */
 export const AutomationEngineHealth = Schema.Struct({
   lastPlannedAt: nullableField(Instant),
   /** How far the started/finished sweep trails now. */
   sweepLagSeconds: nullableField(Schema.Finite),
+  /**
+   * How long ago the hourly reconcile's last completed window opened: up to
+   * about an hour on a healthy engine.
+   */
+  reconcileLagSeconds: nullableField(Schema.Finite),
   oldestUnprocessedEventAt: nullableField(Instant),
   automations: listField(
     Schema.Struct({
@@ -817,17 +834,12 @@ export const AutomationEngineHealth = Schema.Struct({
   /** The most bookings one customer has, against the solo-unit threshold. */
   largestCustomerBookedCount: nullableField(count),
   soloThreshold: nullableField(count),
-  /** Codes of the conditions the run log warns about. */
-  warnings: listField(
-    Schema.Literals([
-      "planner-stale",
-      "sweep-lagging",
-      "event-backlog",
-      "unit-backlog",
-      "schedule-lagging",
-      "falling-behind",
-    ])
-  ),
+  /**
+   * Codes of the conditions the run log warns about. A code this build
+   * doesn't know still decodes, so a later server's warning shows by its code
+   * instead of failing the whole report.
+   */
+  warnings: listField(Schema.Union([AutomationEngineWarning, Schema.String])),
 });
 export type AutomationEngineHealth = typeof AutomationEngineHealth.Type;
 
@@ -837,6 +849,29 @@ export type AutomationEngineHealth = typeof AutomationEngineHealth.Type;
  * included, requires it.
  */
 export const automationsMinimumDhwVersion = DhwVersion.make("1.24.0");
+
+/**
+ * The first `dhw` release that decodes any engine warning code. Older
+ * binaries decode warnings as a closed list and reject the whole report on a
+ * code they don't know.
+ */
+export const openEngineWarningsDhwVersion = DhwVersion.make("1.28.0");
+
+/**
+ * The first `dhw` release that decodes each engine warning. The CLI API
+ * withholds a warning from older binaries rather than refusing them the
+ * report, because production serves a new code before its release publishes.
+ * A code added from now on decodes from `openEngineWarningsDhwVersion`.
+ */
+export const automationEngineWarningDhwVersions = {
+  "planner-stale": automationsMinimumDhwVersion,
+  "sweep-lagging": automationsMinimumDhwVersion,
+  "reconcile-stalled": openEngineWarningsDhwVersion,
+  "event-backlog": automationsMinimumDhwVersion,
+  "unit-backlog": automationsMinimumDhwVersion,
+  "schedule-lagging": automationsMinimumDhwVersion,
+  "falling-behind": automationsMinimumDhwVersion,
+} satisfies Record<AutomationEngineWarning, DhwVersion>;
 
 /** An input without its path parameters: what an endpoint's body or query carries. */
 const withoutPathParams = <
