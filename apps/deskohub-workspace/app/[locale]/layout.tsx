@@ -9,21 +9,27 @@ import { getSharedWorkspaceSummary } from "@/features/public-pages/workspace-sum
 import { workspaceSiteOrigin } from "@/shared/utils";
 import "../globals.css";
 
+// Both faces declare one family, so italic text still finds the italic face.
+// Only the regular face is preloaded: few pages render italic text, and the
+// browser fetches the italic face when one does.
 const sculpin = localFont({
-  src: [
-    {
-      path: "../../assets/fonts/Sculpin/regular.woff2",
-      weight: "400",
-      style: "normal",
-    },
-    {
-      path: "../../assets/fonts/Sculpin/italic.woff2",
-      weight: "400",
-      style: "italic",
-    },
-  ],
+  src: "../../assets/fonts/Sculpin/regular.woff2",
+  weight: "400",
+  style: "normal",
   display: "swap",
   variable: "--font-sculpin",
+  declarations: [{ prop: "font-family", value: "Sculpin" }],
+});
+
+const sculpinItalic = localFont({
+  src: "../../assets/fonts/Sculpin/italic.woff2",
+  weight: "400",
+  style: "italic",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
+  variable: "--font-sculpin-italic",
+  declarations: [{ prop: "font-family", value: "Sculpin" }],
 });
 
 export async function generateMetadata({
@@ -73,7 +79,10 @@ export default async function LocaleLayout({
   if (!isLocale(locale)) notFound();
 
   return (
-    <html lang={locale} className={sculpin.variable}>
+    <html
+      lang={locale}
+      className={`${sculpin.variable} ${sculpinItalic.variable}`}
+    >
       <body>
         <RouteLocaleProvider locale={locale}>{children}</RouteLocaleProvider>
       </body>
