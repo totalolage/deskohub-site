@@ -1,29 +1,19 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
-import {
-  DotyposCustomerIdSchema,
-  DotyposReservationIdSchema,
-} from "@deskohub/dotypos";
 import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { eq } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { makeDatabaseClient, makeDatabasePool } from "@/db/database-client";
-import { paymentAttempts, workspaceReservations } from "@/db/schema";
+import { paymentAttempts } from "@/db/schema";
 import {
-  checkoutAttemptKeySchema,
   type PaymentAttemptId,
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
-import {
-  type WorkspaceReservationId,
-  workspaceReservationIdSchema,
-} from "@/features/reservation/persistence-contracts";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { PaymentRefundRepository } from "./payment-refund.repository";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -66,36 +56,15 @@ describe.skipIf(!testDatabase)(
       readonly createdAt?: Temporal.Instant;
     }) => {
       const id = crypto.randomUUID();
-      const reservationId = workspaceReservationIdSchema.make(
-        `refund-reservation-${id}`
-      );
       const paymentAttemptId = paymentAttemptIdSchema.make(
         `refund-attempt-${id}`
       );
-      reservationIds.push(reservationId);
-      await Effect.runPromise(
-        testDatabase.db.insert(workspaceReservations).values({
-          authorAccountId: fixtureReservationAuthorId,
-          id: reservationId,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(`attempt-${id}`),
-          dotyposCustomerId: DotyposCustomerIdSchema.make(`customer-${id}`),
-          dotyposReservationId: DotyposReservationIdSchema.make(
-            `booking-${id}`
-          ),
-          reservationState: "cancelled",
-          paymentState: input.attemptState,
-          ...(input.attemptState === "paid" && {
-            paidAt: Temporal.Now.instant(),
-          }),
-          fulfillmentState: "not_started",
-          reservationDetails: {
-            kind: "cowork",
-            entryTier: "open-space",
-            coffee: false,
-          },
-          locale: "en-US",
+      const { id: reservationId } = await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).reservation({
+          stage: { reservation: "cancelled", payment: input.attemptState },
         })
       );
+      reservationIds.push(reservationId);
       await Effect.runPromise(
         testDatabase.db.insert(paymentAttempts).values({
           id: paymentAttemptId,

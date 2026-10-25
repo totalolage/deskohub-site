@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { resendSimulatorAddress } from "@deskohub/test-email";
-import { Layer } from "effect";
+import { Effect, Layer } from "effect";
 import type { Locale } from "@/features/i18n";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
@@ -59,6 +59,9 @@ mock.module("@/shared/backend/config/email.config", () => ({
 }));
 
 const { workspaceSendMagicLink } = await import("./auth-server");
+const { workspaceFixtures } = await import(
+  "@/shared/testing/workspace-fixtures.test-utils"
+);
 
 const CS_SUBJECT = "Přihlašovací odkaz do Deskohub Workspace";
 
@@ -69,18 +72,13 @@ const testDatabase = await connectWorkspacePostgresTestDatabase();
 const uniqueEmail = (label: string) =>
   resendSimulatorAddress("delivered", `${label}-${crypto.randomUUID()}`);
 
-const insertVerifiedUser = async (email: string, verified: boolean) => {
-  const id = crypto.randomUUID();
-  await testDatabase!.pool.query(
-    "insert into customer_accounts (id) values ($1) on conflict do nothing",
-    [id]
-  );
-  await testDatabase!.pool.query(
-    `insert into auth."user" (id, name, email, email_verified) values ($1, '', $2, $3)`,
-    [id, email, verified]
-  );
-  return id;
-};
+const insertVerifiedUser = (email: string, verified: boolean) =>
+  workspaceFixtures(testDatabase!.db)
+    .account("magic-link", { email, verified })
+    .pipe(
+      Effect.map(({ accountId }) => accountId),
+      Effect.runPromise
+    );
 
 const savePreference = async (accountId: string, locale: Locale) => {
   await testDatabase!.pool.query(

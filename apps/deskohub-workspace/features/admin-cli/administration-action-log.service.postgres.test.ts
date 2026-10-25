@@ -10,11 +10,8 @@ import { Effect, Layer } from "effect";
 import { cliSessions } from "@/db/schema";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { AdministratorAssistantConnections } from "@/features/administrators/backend/administrator-assistant-connections.service";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import {
-  deleteTestAccounts,
-  insertTestAdministrator,
-} from "@/shared/testing/workspace-test-accounts.test-utils";
 import {
   type AdministrationActionEnd,
   AdministrationActionLog,
@@ -43,7 +40,11 @@ describe.skipIf(!testDatabase)(
     ) => Effect.runPromise(effect.pipe(Effect.provide(services)));
 
     beforeAll(async () => {
-      administrator = await insertTestAdministrator(testDatabase, "action-log");
+      administrator = await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).account("action-log", {
+          roles: ["administrator"],
+        })
+      );
       await Effect.runPromise(
         testDatabase.db.insert(cliSessions).values({
           id: sessionId,
@@ -87,7 +88,9 @@ describe.skipIf(!testDatabase)(
         "delete from administrator_assistant_connections where approved_by_account_email = $1",
         [administrator.email]
       );
-      await deleteTestAccounts(testDatabase, [administrator]);
+      await Effect.runPromise(
+        workspaceFixtures(testDatabase.db).deleteAccounts([administrator])
+      );
     });
 
     const caller = (

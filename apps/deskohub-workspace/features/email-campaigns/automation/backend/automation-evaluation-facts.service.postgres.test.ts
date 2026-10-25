@@ -6,7 +6,6 @@ import {
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
   type DotyposReservation,
-  DotyposReservationIdSchema,
   dotyposIdFilterBatchSize,
   ExternalAPIError,
 } from "@deskohub/dotypos";
@@ -17,17 +16,13 @@ import {
 } from "@deskohub/dotypos/backend/service.mock";
 import type { AutomationConditionFilter } from "@deskohub/workspace-admin-api";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
-import { emailCampaignAudiences, workspaceReservations } from "@/db/schema";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
+import { emailCampaignAudiences } from "@/db/schema";
 import type {
   AudienceCondition,
   AudienceFilter,
 } from "@/features/email-campaigns/audience-filter";
-import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   AudienceFactSource,
   audienceEvaluationAt,
@@ -67,61 +62,38 @@ const insertReservations = async (
   reservations: readonly SeedReservation[]
 ) => {
   const confirmedAt = Temporal.Instant.from("2026-10-01T10:00:00Z");
-  const rows = reservations.map(
-    ({ label, customer: dotyposCustomerId, state }) => {
-      const id = workspaceReservationIdSchema.make(
-        `automation-facts-workspace-${runId}-${label}`
-      );
-      insertedIds.push(id);
-      const unconfirmed = state === "unconfirmed";
-      return {
-        id,
-        authorAccountId: fixtureReservationAuthorId,
-        checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
-        dotyposCustomerId,
-        dotyposReservationId: DotyposReservationIdSchema.make(
-          `automation-facts-reservation-${runId}-${label}`
-        ),
-        reservationState: unconfirmed
-          ? ("held" as const)
-          : ("confirmed" as const),
-        reservationConfirmedAt: unconfirmed ? null : confirmedAt,
-        paymentState: unconfirmed ? ("pending" as const) : ("paid" as const),
-        paidAt: unconfirmed ? null : confirmedAt,
-        fulfillmentState: unconfirmed
-          ? ("not_started" as const)
-          : ("fulfilled" as const),
-        fulfilledAt: unconfirmed ? null : confirmedAt,
-        reservationDetails: {
-          kind: "cowork" as const,
-          entryTier: "open-space" as const,
-          coffee: false,
-        },
-        locale: "cs-CZ" as const,
-        createdAt: confirmedAt,
-      };
-    }
+  const rows = await Effect.runPromise(
+    workspaceFixtures(db).reservations(
+      reservations.map(({ customer, state }) => ({
+        stage:
+          state === "unconfirmed"
+            ? { reservation: "held", payment: "pending" }
+            : {
+                reservation: "confirmed",
+                payment: "paid",
+                fulfillment: "fulfilled",
+              },
+        customer,
+        at: confirmedAt,
+        locale: "cs-CZ",
+        overrides: { createdAt: confirmedAt },
+      }))
+    )
   );
-  if (rows.length > 0)
-    await Effect.runPromise(db.insert(workspaceReservations).values(rows));
-
-  return reservations.map(
-    ({ label, customer: dotyposCustomerId, startsAt }) => {
-      const start = startsAt ?? now.subtract({ hours: 240 });
-      return {
-        id: DotyposReservationIdSchema.make(
-          `automation-facts-reservation-${runId}-${label}`
-        ),
-        _branchId: "automation-facts-branch",
-        _cloudId: "automation-facts-cloud",
-        _customerId: dotyposCustomerId,
-        startDate: start.toString(),
-        endDate: start.add({ hours: 2 }).toString(),
-        seats: "1",
-        status: "CONFIRMED",
-      } satisfies DotyposReservation;
-    }
-  );
+  return rows.map((row, index) => {
+    insertedIds.push(row.id);
+    const start = reservations[index]!.startsAt ?? now.subtract({ hours: 240 });
+    return {
+      id: row.dotyposReservationId!,
+      _branchId: "automation-facts-branch",
+      _cloudId: "automation-facts-cloud",
+      _customerId: row.dotyposCustomerId,
+      startDate: start.toString(),
+      endDate: start.add({ hours: 2 }).toString(),
+      seats: "1",
+      status: "CONFIRMED",
+    } satisfies DotyposReservation;
+  });
 };
 
 const tagged = (...value: string[]) =>

@@ -9,13 +9,9 @@ import {
 } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Option } from "effect";
-import { workspaceReservations } from "@/db/schema";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { cleanupCheckoutFlowStates } from "./cleanup";
 import type { DatasourceConfig } from "./config";
 import {
@@ -75,21 +71,16 @@ describe.skipIf(!testDatabase)(
       );
 
       await Effect.runPromise(
-        db.insert(workspaceReservations).values(
+        workspaceFixtures(db).reservations(
           families.flatMap(({ stored }) =>
             ["owned", "foreign"].map((owner) => ({
-              checkoutAttemptKey: checkoutAttemptKeySchema.make(
-                `cleanup-${owner}-${stored.kind}-${run}`
-              ),
-              dotyposCustomerId: customerId(owner, stored.kind),
-              dotyposReservationId: reservationId(owner, stored.kind),
-              reservationState: "held" as const,
-              paymentState: "pending" as const,
-              fulfillmentState: "not_started" as const,
-              reservationDetails: stored,
-              reservationCreatedAt: Temporal.Now.instant(),
-              locale: "en-US",
-              authorAccountId: fixtureReservationAuthorId,
+              stage: { reservation: "held", payment: "pending" } as const,
+              customer: customerId(owner, stored.kind),
+              details: stored,
+              overrides: {
+                dotyposReservationId: reservationId(owner, stored.kind),
+                reservationCreatedAt: Temporal.Now.instant(),
+              },
             }))
           )
         )

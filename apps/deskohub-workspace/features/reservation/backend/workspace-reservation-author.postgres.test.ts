@@ -3,8 +3,9 @@ import "@/shared/testing/workspace-test-env";
 import { afterEach, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { eq, inArray } from "drizzle-orm";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { customerAccounts, workspaceReservations } from "@/db/schema";
+import { findViolatedConstraint } from "@/db/sql-constraint";
 import { customerAgentClientIdSchema } from "@/features/account";
 import {
   type CustomerAccountId,
@@ -15,6 +16,7 @@ import {
   checkoutSessionKeySchema,
 } from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { agentSelectionKeySchema } from "./booking-agent";
 import {
@@ -43,12 +45,10 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
 
   /** A signed-in account, whose customer account sign-up created. */
   const newAccountId = async () => {
-    const accountId = customerAccountIdSchema.make(crypto.randomUUID());
+    const accountId = await Effect.runPromise(
+      workspaceFixtures(postgres.db).customerAccount()
+    );
     accountIds.push(accountId);
-    await postgres.db
-      .insert(customerAccounts)
-      .values({ id: accountId })
-      .pipe(Effect.runPromise);
     return accountId;
   };
 
@@ -408,34 +408,18 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
       `selection:${crypto.randomUUID()}`
     );
 
-    await expect(
-      postgres.pool.query(
-        `insert into workspace_reservations (
-          checkout_attempt_key,
-          dotypos_customer_id,
-          reservation_state,
-          payment_state,
-          fulfillment_state,
-          reservation_details,
-          locale,
-          author_account_id,
-          agent_selection_key
-        ) values ($1, $2, 'draft', 'not_started', 'not_started', $3, 'en-US', $4, $5)`,
-        [
-          `attempt:${crypto.randomUUID()}`,
-          `customer-${crypto.randomUUID()}`,
-          JSON.stringify({
-            kind: "cowork",
-            entryTier: "basic",
-            coffee: false,
-          }),
+    const error = await Effect.runPromise(
+      workspaceFixtures(postgres.db)
+        .reservation({
+          stage: { reservation: "draft" },
           author,
-          agentSelectionKey,
-        ]
-      )
-    ).rejects.toMatchObject({
-      code: "23514",
-      constraint: "workspace_reservations_agent_selection_check",
-    });
+          overrides: { agentSelectionKey },
+        })
+        .pipe(Effect.flip)
+    );
+
+    expect(findViolatedConstraint(error)).toEqual(
+      Option.some("workspace_reservations_agent_selection_check")
+    );
   });
 });

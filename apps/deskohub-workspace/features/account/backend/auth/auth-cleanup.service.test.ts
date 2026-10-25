@@ -1,9 +1,10 @@
-import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type AuthCleanupFailure,
@@ -12,17 +13,13 @@ import {
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
-const insertUser = async (id: string) => {
-  await testDatabase!.pool.query(
-    "insert into customer_accounts (id) values ($1) on conflict do nothing",
-    [id]
+const insertUser = (id: string, createdAt?: string) =>
+  Effect.runPromise(
+    workspaceFixtures(testDatabase!.db).account("cleanup", {
+      id: customerAccountIdSchema.make(id),
+      createdAt: createdAt ? Temporal.Instant.from(createdAt) : undefined,
+    })
   );
-  return testDatabase!.pool.query(
-    `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
-     values ($1, 'Cleanup Fixture', $2, true, now(), now())`,
-    [id, testEmailAddress(`${id}`)]
-  );
-};
 
 const insertSession = (id: string, userId: string, expiresAt: string) =>
   testDatabase!.pool.query(
@@ -125,10 +122,11 @@ const insertAgentClientAssertion = (id: string, expiresAt: string) =>
   );
 
 const insertCustomerAccount = (id: string, createdAt: string) =>
-  testDatabase!.pool.query(
-    `insert into customer_accounts (id, created_at)
-     values ($1, $2::timestamptz) on conflict (id) do nothing`,
-    [id, createdAt]
+  Effect.runPromise(
+    workspaceFixtures(testDatabase!.db).customerAccount({
+      id: customerAccountIdSchema.make(id),
+      createdAt: Temporal.Instant.from(createdAt),
+    })
   );
 
 const readAccountDeletions = async (runId: string) => {
@@ -191,7 +189,10 @@ describe.skipIf(!testDatabase)("AuthCleanupService", () => {
 
     await runSweep(preSweepNow);
 
-    await insertUser(`user-${runId}`);
+    await insertUser(
+      `user-${runId}`,
+      new Date(nowMs - 2 * 86_400_000).toISOString()
+    );
     await insertSession(
       `expired-session-${runId}`,
       `user-${runId}`,
@@ -219,10 +220,6 @@ describe.skipIf(!testDatabase)("AuthCleanupService", () => {
       String(nowMs - 600_000)
     );
 
-    await insertCustomerAccount(
-      `user-${runId}`,
-      new Date(nowMs - 2 * 86_400_000).toISOString()
-    );
     await insertCustomerAccount(
       `settled-orphan-${runId}`,
       new Date(nowMs - 86_400_001).toISOString()

@@ -4,12 +4,12 @@ import { makeSignature } from "better-auth/crypto";
 import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import { accountRoleGrants } from "@/db/schema/account-role-grants";
-import { authSession, authUser } from "@/db/schema/auth";
-import { customerAccounts } from "@/db/schema/customer-accounts";
+import { authSession } from "@/db/schema/auth";
 import { parseBetterAuthSecrets } from "@/features/account/backend/auth/auth-secrets";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { AccountRole } from "@/features/administrators/account-role";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { setBrowserCookie } from "../browser";
 import type { WorkspaceE2EEnvironment } from "../e2e-env";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
@@ -123,29 +123,15 @@ export const seedWorkspaceE2ESyntheticAccount = (
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
-    const accountId = account.accountId as CustomerAccountId;
     yield* runDatabaseOperation(
       "seed synthetic account",
-      db.transaction(
-        Effect.fn(function* (tx) {
-          yield* tx.insert(customerAccounts).values({
-            id: accountId,
-            dotyposCustomerId: account.linkedCustomerId ?? null,
-          });
-          yield* tx.insert(authUser).values({
-            deletionRequestedAt: null,
-            email: sensitiveDatabaseParameter(account.email),
-            emailVerified: true,
-            id: accountId,
-            name: account.name,
-          });
-          if (account.roles && account.roles.length > 0) {
-            yield* tx
-              .insert(accountRoleGrants)
-              .values(account.roles.map((role) => ({ accountId, role })));
-          }
-        })
-      )
+      workspaceFixtures(db).account("e2e-synthetic-account", {
+        id: account.accountId as CustomerAccountId,
+        email: account.email,
+        name: account.name,
+        linkedCustomer: account.linkedCustomerId,
+        roles: account.roles,
+      })
     );
   });
 

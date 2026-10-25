@@ -1,20 +1,14 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
-import { DotyposReservationIdSchema } from "@deskohub/dotypos";
 import type { AutomationFlow } from "@deskohub/workspace-admin-api";
 import { Effect } from "effect";
 import {
   customerEvents,
   emailCampaignAutomationRuns as runs,
-  workspaceReservations,
 } from "@/db/schema";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
-import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import {
-  createWorkspacePostgresSuiteDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   deleteAutomatedCampaigns,
   seedAutomatedCampaign,
@@ -186,38 +180,27 @@ describe.skipIf(!database)("AutomationIntakePlanning on Postgres", () => {
     }
     const cancelledAt = now.subtract({ minutes: 5 });
     const confirmedAt = now.subtract({ hours: 48 });
-    const reservations = Array.from({ length: 1001 }, (_, index) => ({
-      id: workspaceReservationIdSchema.make(`${prefix}-drain-${index}`),
-      customer: fixtures.customerId(`drain-${index}`),
-    }));
-    fixtures.created.reservations.push(...reservations.map(({ id }) => id));
-    await Effect.runPromise(
-      db.insert(workspaceReservations).values(
-        reservations.map(({ id, customer }) => ({
-          id,
-          authorAccountId: fixtureReservationAuthorId,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
-          dotyposCustomerId: customer,
-          dotyposReservationId: DotyposReservationIdSchema.make(
-            `${id}-dotypos`
-          ),
-          reservationState: "confirmed" as const,
-          reservationConfirmedAt: confirmedAt,
-          reservationCancelledAt: cancelledAt,
-          paymentState: "paid" as const,
-          paidAt: confirmedAt,
-          fulfillmentState: "fulfilled" as const,
-          fulfilledAt: confirmedAt,
-          reservationDetails: {
-            kind: "cowork" as const,
-            entryTier: "open-space" as const,
-            coffee: false,
-          },
-          locale: "cs-CZ" as const,
-          createdAt: confirmedAt,
-        }))
+    const reservations = (
+      await Effect.runPromise(
+        workspaceFixtures(db).reservations(
+          Array.from({ length: 1001 }, (_, index) => ({
+            stage: {
+              reservation: "confirmed",
+              payment: "paid",
+              fulfillment: "fulfilled",
+            },
+            customer: fixtures.customerId(`drain-${index}`),
+            at: confirmedAt,
+            locale: "cs-CZ",
+            overrides: {
+              reservationCancelledAt: cancelledAt,
+              createdAt: confirmedAt,
+            },
+          }))
+        )
       )
-    );
+    ).map(({ id, dotyposCustomerId }) => ({ id, customer: dotyposCustomerId }));
+    fixtures.created.reservations.push(...reservations.map(({ id }) => id));
     // Intake takes the first cancellation at once: it has no runs.
     const withRuns = reservations.slice(1);
     for (const { campaignId, versionId } of automations) {

@@ -10,16 +10,13 @@ import {
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { Effect, Layer, Option } from "effect";
-import { type ReservationState, workspaceReservations } from "@/db/schema";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
+import type { ReservationState } from "@/db/schema";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import {
-  connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   ReservationVisits,
   ReservationVisitsUnavailable,
@@ -64,32 +61,30 @@ describe.skipIf(!testDatabase)(
       }>
     ) => {
       const confirmedAt = Temporal.Instant.from("2026-10-01T10:00:00Z");
-      const rows = reservations.map(({ label, customer, state = "booked" }) => {
-        const id = workspaceId(label);
-        insertedIds.push(id);
-        return {
-          authorAccountId: fixtureReservationAuthorId,
-          id,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(id),
-          dotyposCustomerId: customer,
-          dotyposReservationId: dotyposId(label),
-          reservationState: reservationStates[state],
-          reservationConfirmedAt: state === "unconfirmed" ? null : confirmedAt,
-          paymentState: "paid" as const,
-          paidAt: confirmedAt,
-          fulfillmentState: "fulfilled" as const,
-          fulfilledAt: confirmedAt,
-          reservationDetails: {
-            kind: "cowork" as const,
-            entryTier: "open-space" as const,
-            coffee: false,
-          },
-          locale: "cs-CZ" as const,
-          updatedAt: confirmedAt,
-        };
-      });
       await Effect.runPromise(
-        testDatabase.db.insert(workspaceReservations).values(rows)
+        workspaceFixtures(testDatabase.db).reservations(
+          reservations.map(({ label, customer, state = "booked" }) => {
+            const id = workspaceId(label);
+            insertedIds.push(id);
+            return {
+              stage: {
+                reservation: reservationStates[state],
+                payment: "paid",
+                fulfillment: "fulfilled",
+              },
+              customer,
+              at: confirmedAt,
+              overrides: {
+                id,
+                dotyposReservationId: dotyposId(label),
+                // A cancelled booking was confirmed first.
+                ...(state === "cancelled" && {
+                  reservationConfirmedAt: confirmedAt,
+                }),
+              },
+            };
+          })
+        )
       );
     };
 
