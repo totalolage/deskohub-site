@@ -30,9 +30,7 @@ import {
 } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
-  getManualInvoicePayment,
   type InvoiceBuyer,
-  type InvoiceDocument,
   invoiceBuyerSchema,
   invoiceNumberSchema,
   isManualInvoiceDocument,
@@ -40,6 +38,12 @@ import {
 } from "@/features/accounting/invoice";
 import type { InvoiceDeliveryStatus } from "@/features/accounting/invoice-email-delivery";
 import { getInvoicePresentation } from "@/features/accounting/invoice-presentation";
+import {
+  getInvoicePaymentStatus,
+  getInvoiceSettlement,
+  getInvoiceTotal,
+  type InvoiceSettlement,
+} from "@/features/accounting/invoice-settlement";
 import {
   type InvoiceId,
   invoiceEnabledCurrencyDefinitions,
@@ -59,9 +63,9 @@ import {
   defaultWorkspaceCurrencyCode,
   findWorkspaceCurrencyDefinition,
 } from "@/shared/money/currencies";
-import { moneyToDecimalString } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
+  type PlainDate,
   plainDateStringSchema,
   temporalInstantToPlainDate,
 } from "@/shared/utils/temporal";
@@ -143,6 +147,8 @@ export type InvoiceAdministrationDetail = InvoiceAdministrationListItem & {
   }[];
   readonly buyer: InvoiceBuyer;
   readonly pdfUrl: string;
+  /** For the Admin UI; the administration API contract does not carry it. */
+  readonly settlement: InvoiceSettlement;
 };
 
 export type InvoiceAdministrationCustomer = {
@@ -633,16 +639,11 @@ const toCustomer = (
 const toListItem = (
   invoice: Invoice,
   { customer, internal, needsAttention }: InvoiceDeliverySummary,
-  today: string
+  today: PlainDate
 ): InvoiceAdministrationListItem => {
   const document = invoice.document;
   const manual = isManualInvoiceDocument(document);
-  const money = manual
-    ? { total: document.total, currency: document.currency }
-    : {
-        total: moneyToDecimalString(document.quote.payment.expectedPrice),
-        currency: document.quote.payment.expectedPrice.currency,
-      };
+  const total = getInvoiceTotal(document);
   return {
     id: AdministrationInvoiceId.make(invoice.id),
     invoiceNumber: invoice.invoiceNumber,
@@ -654,8 +655,9 @@ const toListItem = (
           invoice.workspaceReservationId
         )
       : null,
-    ...money,
-    paymentStatus: getInvoiceAdministrationPaymentStatus(document, today),
+    total: total.amount,
+    currency: total.currency,
+    paymentStatus: getInvoicePaymentStatus(document, today),
     source: manual
       ? document.provenance.source
       : (document.provenance?.source ?? "legacy"),
@@ -668,23 +670,35 @@ const toListItem = (
 const toDetail = (
   invoice: Invoice,
   delivery: InvoiceDeliverySummary,
-  today: string
+  today: PlainDate
 ): InvoiceAdministrationDetail => {
   const summary = toListItem(invoice, delivery, today);
   const document = invoice.document;
+  const settlement = getInvoiceSettlement(document);
+  // The contract reports the due date a manual invoice states even when
+  // nothing is due; the Admin UI shows it only when payment is requested.
+  const terms = Match.value(settlement).pipe(
+    Match.tagsExhaustive({
+      Paid: ({ paidOn }) => ({ dueDate: null, paidOn }),
+      PaymentRequested: ({ dueDate }) => ({ dueDate, paidOn: null }),
+      NothingDue: ({ statedDueDate }) => ({
+        dueDate: statedDueDate,
+        paidOn: null,
+      }),
+    })
+  );
   if (isManualInvoiceDocument(document)) {
-    const payment = getManualInvoicePayment(document);
     return {
       ...summary,
       locale: document.locale,
       serviceDate: document.serviceDate,
-      dueDate: payment.status === "due" ? payment.date : null,
-      paidOn: payment.status === "paid" ? payment.date : null,
+      ...terms,
       variableSymbol: document.variableSymbol,
       lines: document.lines,
       buyer: document.buyer,
       // The API keeps this unprefixed; the proxy opens it in the operator's language.
       pdfUrl: `/admin/invoices/${invoice.id}/pdf`,
+      settlement,
     };
   }
   const presentation = getInvoicePresentation(document);
@@ -699,8 +713,7 @@ const toDetail = (
           timeZone: workspaceSiteConstants.location.timeZone,
         }).toString()
       : null,
-    dueDate: null,
-    paidOn: null,
+    ...terms,
     variableSymbol: null,
     lines: presentation.lines.map(({ description, amount }) => ({
       description,
@@ -709,26 +722,16 @@ const toDetail = (
     buyer: document.buyer,
     // The API keeps this unprefixed; the proxy opens it in the operator's language.
     pdfUrl: `/admin/invoices/${invoice.id}/pdf`,
+    settlement,
   };
 };
 
-export const getInvoiceAdministrationPaymentStatus = (
-  document: InvoiceDocument,
-  today: string
-): AdministrationInvoicePaymentStatusType => {
-  if (!isManualInvoiceDocument(document)) return "paid";
-  const payment = getManualInvoicePayment(document);
-  if (payment.status === "paid") return "paid";
-  if (!BigDecimal.isPositive(BigDecimal.fromStringUnsafe(document.total)))
-    return "issued";
-  if (payment.date < today) return "overdue";
-  return payment.date === today ? "due" : "issued";
-};
-
 const getPragueDate = () =>
-  Temporal.Now.zonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    .toPlainDate()
-    .toString();
+  plainDateStringSchema.make(
+    Temporal.Now.zonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+      .toPlainDate()
+      .toString()
+  );
 
 export const sortInvoiceAdministrationItems = (
   items: readonly InvoiceAdministrationListItem[],

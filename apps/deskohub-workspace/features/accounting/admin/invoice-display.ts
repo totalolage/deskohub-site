@@ -1,4 +1,5 @@
 import { formatCurrencyAmount } from "@deskohub/i18n/currency";
+import { BigDecimal } from "effect";
 import type { AdministrationCustomerName } from "@/features/administration/customer-name";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
@@ -21,13 +22,13 @@ export const getInvoiceSourceLabel = (
     legacy: m.accountingInvoiceSourceLegacy,
   })[source]({}, { locale });
 
-/** Formats the decimal invoice total; render it on the server. */
+/** Formats the exact decimal invoice total; render it on the server. */
 export const formatInvoiceTotal = (
   invoice: Pick<InvoiceAdministrationListItem, "currency" | "total">,
   locale: Locale
 ) =>
   formatCurrencyAmount({
-    amount: Number(invoice.total),
+    amount: BigDecimal.fromStringUnsafe(invoice.total),
     currency: invoice.currency,
     locale,
     fractionDigits: findWorkspaceCurrencyDefinition(invoice.currency)?.exponent,
