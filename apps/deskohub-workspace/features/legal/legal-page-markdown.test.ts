@@ -7,7 +7,8 @@ import {
 } from "@/shared/markdown/markdown.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { getCanonicalLegalDocument } from "./canonical-document";
-import { getLegalDocument, type LegalDocumentKey } from "./content";
+import { getLegalDocument } from "./content";
+import type { LegalDocumentKey } from "./legal-document-summaries";
 import { legalPageMarkdown } from "./legal-page-markdown";
 
 const documentKeys = [

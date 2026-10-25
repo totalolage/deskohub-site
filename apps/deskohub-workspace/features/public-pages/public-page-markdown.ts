@@ -7,7 +7,7 @@ import { faqPageMarkdown } from "@/features/faq/faq-page-markdown";
 import { type Locale, m } from "@/features/i18n";
 import type { LandingPageSaleBannerContent } from "@/features/landing-page/components/landing-page-sale-banner";
 import { landingPageMarkdown } from "@/features/landing-page/landing-page-markdown";
-import type { LegalDocumentKey } from "@/features/legal/content";
+import type { LegalDocumentKey } from "@/features/legal/legal-document-summaries";
 import { legalPageMarkdown } from "@/features/legal/legal-page-markdown";
 import { meetingRoomPageMarkdown } from "@/features/meeting-room/meeting-room-page-markdown";
 import { meetingRoomReservationPageMarkdown } from "@/features/meeting-room/meeting-room-reservation-page-markdown";

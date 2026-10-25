@@ -1,8 +1,8 @@
 import { type LocalizedCopy, m } from "@/features/i18n";
 import {
-  getLegalDocument,
+  getLegalDocumentSummary,
   type LegalDocumentKey,
-} from "@/features/legal/content";
+} from "@/features/legal/legal-document-summaries";
 import { type PublicPagePathname, publicPagePathnames } from "./public-pages";
 
 // Route metadata, the Markdown variants and llms.txt read this registry, so
@@ -34,9 +34,10 @@ export interface PublicPageDefinition {
 }
 
 const legalPage = (documentKey: LegalDocumentKey): PublicPageDefinition => ({
-  title: (_inputs, { locale }) => getLegalDocument(locale, documentKey).title,
+  title: (_inputs, { locale }) =>
+    getLegalDocumentSummary(locale, documentKey).title,
   description: (_inputs, { locale }) =>
-    getLegalDocument(locale, documentKey).lead,
+    getLegalDocumentSummary(locale, documentKey).lead,
   article: true,
 });
 

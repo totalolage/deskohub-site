@@ -6,8 +6,7 @@ import { notFound } from "next/navigation";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
 import { MeetingRoomPageFeatureFlagService } from "@/features/meeting-room/backend/meeting-room-page-feature-flag.service";
-import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
-import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { OfficeReservationFeatureFlagRenderLayer } from "@/features/office/backend/office-reservation-feature-flag.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { createPublicPageMetadata } from "../page-metadata";
 import { publicPageDefinitions } from "../public-page-definitions";
@@ -23,9 +22,7 @@ const PublishedPublicPagesRenderLayer =
         Layer.succeed(MeetingRoomPageFeatureFlagService, {
           isEnabled: Effect.promise(() => isMeetingRoomPageEnabled()),
         }),
-        Layer.succeed(OfficeReservationFeatureFlagService, {
-          isEnabled: Effect.promise(() => isOfficePageEnabled()),
-        })
+        OfficeReservationFeatureFlagRenderLayer
       )
     )
   );
