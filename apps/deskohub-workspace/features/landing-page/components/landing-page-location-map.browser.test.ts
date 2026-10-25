@@ -86,12 +86,12 @@ const serveSite = () =>
   });
 
 /**
- * Opens the static map and hands `use` the page with a log of the scripts
+ * Opens the static map and hands `inspect` the page with a log of the scripts
  * and tiles it requested. Tiles are answered locally; anything else leaving
  * the test server is aborted.
  */
 const withLocationMap = async (
-  use: (
+  inspect: (
     page: Page,
     requests: { readonly scripts: string[]; readonly tiles: string[] }
   ) => Promise<void>
@@ -118,7 +118,7 @@ const withLocationMap = async (
     await page.goto(server.url.href);
     await page.locator("picture img").waitFor({ state: "attached" });
     await page.waitForLoadState("networkidle");
-    await use(page, requests);
+    await inspect(page, requests);
   } finally {
     await context.close();
     server.stop(true);
