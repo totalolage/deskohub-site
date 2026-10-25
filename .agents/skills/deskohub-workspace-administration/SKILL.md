@@ -15,5 +15,6 @@ Read the reference that matches the change:
 Always apply these rules:
 
 - Route the Admin UI, administration API, and `dhw` through the same application services and schemas so all three enforce the same validation.
+- The database query logger writes bound parameters at Info level. Wrap administrator and actor emails, CLI grant tokens, and codes with `sensitiveDatabaseParameter` wherever a query binds them, and cover each binding with a colocated `*.query-log.test.ts` (`expectQueryLogsToCensor`), or `expectQueryLogsToOmit` in a Postgres test.
 - Keep page loads read-only. Mutate only inside an explicit operator workflow, such as cancellation, access recovery, or a discount change.
 - Read the business specifications before changing operator-visible policy: [administration](../../../apps/deskohub-workspace/docs/administration-dashboard.md), [discounts](../../../apps/deskohub-workspace/docs/discount-codes.md), and [`dhw`](../../../apps/dhw/README.md).

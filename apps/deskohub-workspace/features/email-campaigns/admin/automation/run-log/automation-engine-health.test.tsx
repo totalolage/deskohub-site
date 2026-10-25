@@ -278,6 +278,30 @@ describe("AutomationEngineHealthIndicator", () => {
       ),
     },
     {
+      report: { warnings: ["reconcile-stalled"], reconcileLagSeconds: null },
+      line: m.emailAutomationRunsHealthReconcileStalledUnknown({}, { locale }),
+    },
+    {
+      report: { warnings: ["reconcile-stalled"], reconcileLagSeconds: 8400 },
+      line: m.emailAutomationRunsHealthReconcileStalled(
+        {
+          duration: m.emailAutomationRunsDurationHours(
+            { count: 2 },
+            { locale }
+          ),
+        },
+        { locale }
+      ),
+    },
+    {
+      // A code from a later server than this build.
+      report: { warnings: ["synthetic-later-warning"] },
+      line: m.emailAutomationRunsHealthUnrecognized(
+        { code: "synthetic-later-warning" },
+        { locale }
+      ),
+    },
+    {
       report: { warnings: ["event-backlog"], oldestUnprocessedEventAt: null },
       line: m.emailAutomationRunsHealthEventBacklogUnknown({}, { locale }),
     },

@@ -30,6 +30,21 @@ const readCliClientVersion = (
     Option.flatMap(Schema.decodeUnknownOption(DhwVersion))
   );
 
+/** The calling `dhw` binary's version, for a handler that shapes its response. */
+export const currentCliClientVersion = Effect.map(
+  HttpServerRequest.HttpServerRequest,
+  (request) => readCliClientVersion(request.headers)
+);
+
+/**
+ * Whether the calling binary is `since` or later, by the same comparison as
+ * the minimum check. A client that didn't say which version it is isn't.
+ */
+export const cliClientIsAtLeast = (
+  clientVersion: CliClientVersion,
+  since: DhwVersion
+): boolean => Option.exists(clientVersion, (version) => gte(version, since));
+
 /** An endpoint's annotations over its group's. */
 const endpointAnnotations = (
   group: HttpApiGroup.AnyWithProps,
@@ -75,7 +90,7 @@ const ensureDhwVersionSupported = (
   Option.match(Context.get(annotations, MinimumDhwVersion), {
     onNone: () => Effect.void,
     onSome: (required) =>
-      Option.exists(clientVersion, (version) => gte(version, required))
+      cliClientIsAtLeast(clientVersion, required)
         ? Effect.void
         : Effect.fail(
             outdatedDhwRefusal(Context.get(annotations, OutdatedDhwRefusal))

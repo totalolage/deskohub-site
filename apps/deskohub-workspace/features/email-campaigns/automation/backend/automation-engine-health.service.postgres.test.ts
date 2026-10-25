@@ -318,6 +318,7 @@ describe.skipIf(!testDatabase)(
       expect(report).toMatchObject({
         lastPlannedAt: ago({ minutes: 16 }).toString(),
         sweepLagSeconds: 180,
+        reconcileLagSeconds: 180,
         unitDurations: [
           { kind: "intake", samples: 2, meanSeconds: 15, maxSeconds: 20 },
         ],
@@ -366,6 +367,109 @@ describe.skipIf(!testDatabase)(
           fallingBehind: false,
         },
       });
+    });
+
+    test("measures sweep lag by the clock sweep, not the hourly reconcile", async () => {
+      await setHeartbeats({
+        lastPlannedAt: ago({ minutes: 3 }),
+        sweptUntil: ago({ minutes: 3 }),
+      });
+      // The reconcile's cursor is when its window last opened, at the
+      // hour's first run.
+      await pool.query(
+        "update customer_event_sweeps set swept_until = $1 where source = 'reservation-activity-reconcile'",
+        [ago({ minutes: 55 }).toString()]
+      );
+
+      const report = await health();
+
+      expect(report.sweepLagSeconds).toBe(3 * 60);
+      expect(report.warnings).not.toContain("sweep-lagging");
+    });
+
+    test("warns when the clock sweep lags behind a fresh reconcile", async () => {
+      await setHeartbeats({
+        lastPlannedAt: ago({ minutes: 3 }),
+        sweptUntil: ago({ minutes: 31 }),
+      });
+      await pool.query(
+        "update customer_event_sweeps set swept_until = $1 where source = 'reservation-activity-reconcile'",
+        [ago({ minutes: 3 }).toString()]
+      );
+
+      const report = await health();
+
+      expect(report.sweepLagSeconds).toBe(31 * 60);
+      expect(report.warnings).toContain("sweep-lagging");
+    });
+
+    const setReconciledUntil = (reconciledUntil: Temporal.Instant) =>
+      pool.query(
+        "update customer_event_sweeps set swept_until = $1 where source = 'reservation-activity-reconcile'",
+        [reconciledUntil.toString()]
+      );
+
+    test("keeps a reconcile that completed within two hours and a tick", async () => {
+      await setHeartbeats({
+        lastPlannedAt: ago({ minutes: 3 }),
+        sweptUntil: ago({ minutes: 3 }),
+      });
+      await setReconciledUntil(ago({ minutes: 135 }));
+
+      const report = await health();
+
+      expect(report.reconcileLagSeconds).toBe(135 * 60);
+      expect(report.warnings).toEqual([]);
+    });
+
+    test("warns when the reconcile's open window hasn't completed for longer, apart from the clock lag", async () => {
+      await setHeartbeats({
+        lastPlannedAt: ago({ minutes: 3 }),
+        sweptUntil: ago({ minutes: 3 }),
+      });
+      await setReconciledUntil(ago({ minutes: 136 }));
+      // The window that opened an hour later is stuck on its first page.
+      await pool.query(
+        "update customer_event_sweeps set window_starts_at = $1, window_ends_at = $2, next_page = 1 where source = 'reservation-activity-reconcile'",
+        [
+          ago({ hours: 25, minutes: 16 }).toString(),
+          ago({ minutes: 76 }).toString(),
+        ]
+      );
+
+      try {
+        const report = await health();
+
+        expect(report.reconcileLagSeconds).toBe(136 * 60);
+        expect(report.sweepLagSeconds).toBe(3 * 60);
+        expect(report.warnings).toEqual(["reconcile-stalled"]);
+      } finally {
+        await pool.query(
+          "update customer_event_sweeps set window_starts_at = null, window_ends_at = null, next_page = null where source = 'reservation-activity-reconcile'"
+        );
+      }
+    });
+
+    test("warns when the reconcile has no cursor to run from", async () => {
+      await setHeartbeats({
+        lastPlannedAt: ago({ minutes: 3 }),
+        sweptUntil: ago({ minutes: 3 }),
+      });
+      await pool.query(
+        "delete from customer_event_sweeps where source = 'reservation-activity-reconcile'"
+      );
+
+      try {
+        const report = await health();
+
+        expect(report.reconcileLagSeconds).toBeNull();
+        expect(report.warnings).toEqual(["reconcile-stalled"]);
+      } finally {
+        await pool.query(
+          "insert into customer_event_sweeps (source, swept_until) values ('reservation-activity-reconcile', $1)",
+          [ago({ minutes: 3 }).toString()]
+        );
+      }
     });
 
     test("warns about a stale planner, backlogs and a schedule falling behind", async () => {

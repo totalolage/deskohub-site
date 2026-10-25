@@ -3,9 +3,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { createNoindexedPageMetadata } from "@/features/public-pages/page-metadata";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { ReviewPaymentDisabledPage } from "@/features/review-accounts/components/review-payment-disabled-page";
-import { workspaceSiteConstants } from "@/shared/utils";
 
 // Non-instant like the Pay page it stands in for: the reservation form's
 // Server Action redirects here.
@@ -28,27 +28,16 @@ export async function generateMetadata({
 }: LocalizedReviewPaymentDisabledPageProps): Promise<Metadata> {
   await readOrderId(params);
 
-  return runWithRequestLocale((locale) => {
-    const title = m.reviewPaymentDisabledMetadataTitle({}, { locale });
-    const description = m.reviewPaymentDisabledMetadataDescription(
-      {},
-      { locale }
-    );
-
-    return {
-      title,
-      description,
-      openGraph: {
-        title,
-        description,
-        siteName: workspaceSiteConstants.brand.name,
-        locale,
-        type: "website",
+  return runWithRequestLocale((locale) => ({
+    ...createNoindexedPageMetadata({
+      locale,
+      title: {
+        absolute: m.reviewPaymentDisabledMetadataTitle({}, { locale }),
       },
-      robots: { index: false, follow: false },
-      referrer: "no-referrer",
-    } satisfies Metadata;
-  });
+      description: m.reviewPaymentDisabledMetadataDescription({}, { locale }),
+    }),
+    referrer: "no-referrer",
+  }));
 }
 
 export default async function LocalizedReviewPaymentDisabledPage({

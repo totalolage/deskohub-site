@@ -26,16 +26,19 @@ export function StructuredData({
 export function LocalBusinessStructuredData({
   image,
   locale,
+  priceRange,
 }: {
   /** A photo of the space. */
   readonly image: StaticImageData;
   readonly locale: Locale;
+  readonly priceRange?: string;
 }) {
   return (
     <StructuredData
       data={getLocalBusinessStructuredData({
         image: getWorkspaceCanonicalUrl(image.src),
         locale,
+        priceRange,
       })}
     />
   );

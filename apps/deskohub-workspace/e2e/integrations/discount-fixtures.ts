@@ -16,7 +16,6 @@ import {
   voucherRedemptions,
   vouchers,
 } from "@/db/schema";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type {
   CanonicalPromotionCode,
   DiscountCodeId,
@@ -31,6 +30,7 @@ import {
   voucherIdSchema,
 } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
+import type { Money } from "@/shared/money/money";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { log } from "../runtime";
 import { E2EDatabase } from "./database.service";
@@ -487,6 +487,6 @@ interface DiscountCodeFixture {
 
 interface VoucherFixture {
   readonly code: CanonicalPromotionCode;
-  readonly creditPerRun: WorkspaceMoney;
+  readonly creditPerRun: Money;
   readonly id: VoucherId;
 }

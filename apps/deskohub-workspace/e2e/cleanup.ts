@@ -2,15 +2,14 @@ import {
   type DotyposCustomerId,
   type DotyposReservationId,
   DotyposService,
-  ExternalAPIError,
 } from "@deskohub/dotypos";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 import { splitCustomerName } from "@/features/checkout/backend/reservation/dotypos-customer-policy";
 import { getWorkspaceE2EDateInterval } from "./capacity";
 import type { DatasourceConfig } from "./config";
 import {
   toWorkspaceE2EError,
-  WorkspaceE2EError,
+  type WorkspaceE2EError,
   workspaceE2EError,
 } from "./errors";
 import {
@@ -193,9 +192,9 @@ export const prepareCheckoutFlowCleanup = (
           dependencies
             .readDotyposReservationOwner(datasourceConfig, reservationId)
             .pipe(
-              Effect.map((owner) => [reservationId, owner] as const),
-              Effect.catchIf(isConfirmedMissingCheckoutReservation, () =>
-                Effect.succeed([reservationId, undefined] as const)
+              Effect.map(
+                (owner) =>
+                  [reservationId, Option.getOrUndefined(owner)] as const
               )
             )
         ),
@@ -252,20 +251,6 @@ export const prepareCheckoutFlowCleanup = (
       flowStates,
     };
   });
-
-const isConfirmedMissingCheckoutReservation = (cause: unknown): boolean => {
-  if (cause instanceof WorkspaceE2EError) {
-    return (
-      cause.cause !== undefined &&
-      isConfirmedMissingCheckoutReservation(cause.cause)
-    );
-  }
-  return (
-    cause instanceof ExternalAPIError &&
-    cause.operation === "getReservation" &&
-    cause.statusCode === 404
-  );
-};
 
 export const cleanupPreparedCheckoutFlowStates = (
   {
@@ -455,7 +440,10 @@ interface CleanupDependencies {
   readonly readDotyposReservationOwner: (
     config: DatasourceConfig,
     reservationId: DotyposReservationId
-  ) => Effect.Effect<CheckoutReservationOwner, WorkspaceE2EError>;
+  ) => Effect.Effect<
+    Option.Option<CheckoutReservationOwner>,
+    WorkspaceE2EError
+  >;
   readonly waitForCancelledDotyposReservations?: typeof waitForCancelledDotyposReservations;
 }
 
@@ -467,7 +455,7 @@ type OwnedCleanupDependencies = Pick<
 const readCheckoutCleanupReservationOwner = Effect.fn(
   "readCheckoutCleanupReservationOwner"
 )(function* (config: DatasourceConfig, reservationId: DotyposReservationId) {
-  const { customer } = yield* Effect.gen(function* () {
+  const details = yield* Effect.gen(function* () {
     const dotypos = yield* DotyposService;
     return yield* dotypos.getReservation(reservationId);
   }).pipe(
@@ -476,10 +464,10 @@ const readCheckoutCleanupReservationOwner = Effect.fn(
       toWorkspaceE2EError("read checkout cleanup reservation owner", cause)
     )
   );
-  return {
+  return Option.map(details, ({ customer }) => ({
     customerId: customer.id as DotyposCustomerId | undefined,
     email: customer.email,
-  };
+  }));
 });
 
 // Each checkout contact's email is unique to its flow, so every Dotypos

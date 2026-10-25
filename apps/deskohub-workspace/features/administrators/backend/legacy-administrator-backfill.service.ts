@@ -12,6 +12,7 @@ import { findActiveCustomerAccountByEmail } from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { InvoiceRepository } from "@/features/accounting/backend/invoice.repository";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
+import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import type { AdministratorAccountActor } from "../account-role";
 import { AccountRoleGrants } from "./account-role-grants.service";
 
@@ -132,7 +133,9 @@ export class LegacyAdministratorBackfill extends Context.Service<
           .update(cliSessions)
           .set({
             approvedByAccountId: input.account.accountId,
-            approvedByAccountEmail: input.account.email,
+            approvedByAccountEmail: sensitiveDatabaseParameter(
+              input.account.email
+            ),
           })
           .where(
             and(
@@ -158,7 +161,7 @@ export class LegacyAdministratorBackfill extends Context.Service<
           .update(accessCodeEvents)
           .set({
             actorAccountId: input.account.accountId,
-            actorAccountEmail: input.account.email,
+            actorAccountEmail: sensitiveDatabaseParameter(input.account.email),
           })
           .where(
             and(
@@ -202,7 +205,9 @@ export class LegacyAdministratorBackfill extends Context.Service<
               unlinked.map((invoiceId) => ({
                 invoiceId,
                 actorAccountId: input.account.accountId,
-                actorAccountEmail: input.account.email,
+                actorAccountEmail: sensitiveDatabaseParameter(
+                  input.account.email
+                ),
               }))
             )
             .onConflictDoNothing()

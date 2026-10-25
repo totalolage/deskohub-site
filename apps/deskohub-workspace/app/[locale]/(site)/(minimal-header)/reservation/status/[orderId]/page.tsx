@@ -4,11 +4,9 @@ import { notFound } from "next/navigation";
 import { CheckoutStatusRoute } from "@/features/checkout/components/checkout-status-route";
 import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { createNoindexedPageMetadata } from "@/features/public-pages/page-metadata";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import {
-  type SearchParamsRecord,
-  workspaceSiteConstants,
-} from "@/shared/utils";
+import type { SearchParamsRecord } from "@/shared/utils";
 
 // The status refresh bounds its Nexi verification at 40 seconds (one full
 // sandbox-length request; see checkout-status.service.ts) and its Dotypos
@@ -30,24 +28,14 @@ export async function generateMetadata({
 }: LocalizedCheckoutStatusPageProps): Promise<Metadata> {
   if (Option.isNone(decodeCheckoutStatusParams(await params))) notFound();
 
-  return runWithRequestLocale((locale) => {
-    const title = m.checkoutStatusMetadataTitle({}, { locale });
-    const description = m.checkoutStatusMetadataDescription({}, { locale });
-
-    return {
-      title,
-      description,
-      openGraph: {
-        title,
-        description,
-        siteName: workspaceSiteConstants.brand.name,
-        locale,
-        type: "website",
-      },
-      robots: { index: false, follow: false },
-      referrer: "no-referrer",
-    } satisfies Metadata;
-  });
+  return runWithRequestLocale((locale) => ({
+    ...createNoindexedPageMetadata({
+      locale,
+      title: { absolute: m.checkoutStatusMetadataTitle({}, { locale }) },
+      description: m.checkoutStatusMetadataDescription({}, { locale }),
+    }),
+    referrer: "no-referrer",
+  }));
 }
 
 export default function LocalizedCheckoutStatusPage({

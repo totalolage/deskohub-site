@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import type { Metadata } from "next";
 import { locales } from "@/features/i18n";
 import { publicPages } from "@/features/public-pages";
+import { publicSiteShareImage } from "@/features/public-pages/page-metadata";
 
 let requestLocale: string = "en-US";
 
@@ -30,6 +31,8 @@ type PageModule = {
   }) => Promise<Metadata>;
 };
 
+const openGraphLocales = { "en-US": "en_US", "cs-CZ": "cs_CZ" } as const;
+
 // Route groups don't appear in URLs, so find each page file by its pathname.
 const pageFileByPathname = new Map(
   Array.from(new Bun.Glob("**/page.tsx").scanSync(import.meta.dir), (file) => [
@@ -47,7 +50,7 @@ describe("public page metadata", () => {
     const suffix = pathname === "/" ? "" : pathname;
 
     for (const locale of locales) {
-      test(`${pathname} in ${locale} is indexable with self-canonical and hreflang alternates`, async () => {
+      test(`${pathname} in ${locale} is indexable with self-canonical and hreflang alternates and a share card`, async () => {
         const pageFile = pageFileByPathname.get(pathname);
         expect(pageFile).toBeDefined();
         requestLocale = locale;
@@ -65,11 +68,15 @@ describe("public page metadata", () => {
             "x-default": `https://workspace.deskohub.cz${pathname}`,
           },
         });
-        if (metadata.openGraph) {
-          expect(metadata.openGraph.url).toBe(
-            `https://workspace.deskohub.cz/${locale}${suffix}`
-          );
-        }
+        expect(metadata.openGraph).toMatchObject({
+          url: `https://workspace.deskohub.cz/${locale}${suffix}`,
+          locale: openGraphLocales[locale],
+          alternateLocale: locales
+            .filter((alternateLocale) => alternateLocale !== locale)
+            .map((alternateLocale) => openGraphLocales[alternateLocale]),
+          images: [publicSiteShareImage],
+        });
+        expect(metadata.twitter).toEqual({ card: "summary_large_image" });
       });
     }
   }

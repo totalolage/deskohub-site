@@ -74,8 +74,12 @@ jobs:
               "pending"' <<<"$statuses"
           }
 
+          # Vercel built nothing, not even a skipped deployment, when the
+          # branch was created at main's head, but it builds a move of the
+          # existing branch, even to a commit it has already deployed. So a
+          # missing branch is created at main's parent and then moved.
           move_nightly_branch() {
-            local sha="$1" current
+            local sha="$1" parent="$2" current
             current="$(gh api \
               -H "Accept: application/vnd.github+json" \
               "$repo/git/ref/heads/$NIGHTLY_BRANCH" 2>/dev/null | \
@@ -88,30 +92,38 @@ jobs:
                 -H "Accept: application/vnd.github+json" \
                 "$repo/git/refs" \
                 -f ref="refs/heads/$NIGHTLY_BRANCH" \
-                -f sha="$sha" >/dev/null
-            else
-              gh api --method PATCH \
-                -H "Accept: application/vnd.github+json" \
-                "$repo/git/refs/heads/$NIGHTLY_BRANCH" \
-                -f sha="$sha" \
-                -F force=true >/dev/null
+                -f sha="$parent" >/dev/null
             fi
+            gh api --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              "$repo/git/refs/heads/$NIGHTLY_BRANCH" \
+              -f sha="$sha" \
+              -F force=true >/dev/null
+            moved=true
           }
 
-          main_sha="$(gh api \
+          main="$(gh api \
             -H "Accept: application/vnd.github+json" \
-            "$repo/commits/main" | jq -r '.sha')"
-          if [[ ! "$main_sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Could not resolve the head of main" >&2
+            "$repo/commits/main")"
+          main_sha="$(jq -r '.sha' <<<"$main")"
+          main_parent="$(jq -r '.parents[0].sha // empty' <<<"$main")"
+          if [[ ! "$main_sha" =~ ^[0-9a-f]{40}$ || ! "$main_parent" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Could not resolve the head of main and its parent" >&2
             exit 1
           fi
 
-          move_nightly_branch "$main_sha"
+          moved=false
+          move_nightly_branch "$main_sha" "$main_parent"
           deadline=$((SECONDS + DEPLOYMENT_WAIT_SECONDS))
           state="$(preview_state "$main_sha")"
           while [[ "$state" == "pending" ]]; do
             if ((SECONDS >= deadline)); then
               echo "Vercel built no Workspace preview of ${main_sha:0:7} in time" >&2
+              if [[ "$moved" == "false" ]]; then
+                # Only another move makes Vercel build a commit whose move
+                # it missed.
+                echo "If Vercel shows no deployment of it, delete the $NIGHTLY_BRANCH branch and start this workflow again" >&2
+              fi
               exit 1
             fi
             sleep "$POLL_SECONDS"

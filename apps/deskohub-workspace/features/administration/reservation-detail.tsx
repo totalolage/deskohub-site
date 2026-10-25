@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
+import { formatMoney } from "@/shared/money/money";
 import { AdministrationLink as Link } from "./admin-link";
 import type { AdministrationReservationDetail as ReservationDetailData } from "./administration.service";
 import {
@@ -21,10 +22,7 @@ import {
   AdministrationFact,
 } from "./detail-components";
 import { EmptyState } from "./empty-state";
-import {
-  formatAdministrationDateTime,
-  formatAdministrationMoney,
-} from "./formatters";
+import { formatAdministrationDateTime } from "./formatters";
 import { m } from "./i18n";
 import { AdministrationDetailLoading } from "./loading";
 import { NexiOrderLink } from "./nexi-order-link";
@@ -277,7 +275,7 @@ async function ReservationDetailContent({
                     >
                       <span>{discount.label}</span>
                       <span className="font-semibold">
-                        −{formatAdministrationMoney(discount.amount, locale)}
+                        −{formatMoney(discount.amount, locale)}
                       </span>
                     </li>
                   ))}

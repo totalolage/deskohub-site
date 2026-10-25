@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import type { Money } from "@/shared/money/money";
 import { calculateDiscounts } from "./calculator";
 import { type Discount, discountIdSchema } from "./contracts";
 import type { DiscountCandidate } from "./provider";
@@ -13,11 +13,11 @@ const product = {
 
 const discountId = Schema.decodeUnknownSync(discountIdSchema);
 
-const money = (
-  value: number,
-  currency = "CZK",
-  exponent = 2
-): WorkspaceMoney => ({ value, currency, exponent });
+const money = (value: number, currency = "CZK", exponent = 2): Money => ({
+  value,
+  currency,
+  exponent,
+});
 
 const candidate = (
   discount: Discount,
@@ -40,7 +40,7 @@ const percentage = (id: string, basisPoints: number): DiscountCandidate =>
 
 const fixed = (
   id: string,
-  amount: WorkspaceMoney,
+  amount: Money,
   input: Partial<DiscountCandidate> = {}
 ): DiscountCandidate =>
   candidate(
@@ -53,7 +53,7 @@ const fixed = (
   );
 
 const calculate = (
-  discountableSubtotal: WorkspaceMoney,
+  discountableSubtotal: Money,
   candidates: readonly DiscountCandidate[]
 ) =>
   Effect.runSync(
@@ -61,7 +61,7 @@ const calculate = (
   );
 
 const calculateError = (
-  discountableSubtotal: WorkspaceMoney,
+  discountableSubtotal: Money,
   candidates: readonly DiscountCandidate[]
 ) =>
   Effect.runSync(
@@ -273,7 +273,7 @@ describe("discount calculator", () => {
         discountableSubtotal: {
           ...money(1000),
           source: "private-subtotal-source",
-        } as WorkspaceMoney,
+        } as Money,
         candidates: [
           candidate(discountWithRuntimeProviderFields, {
             provenance: {

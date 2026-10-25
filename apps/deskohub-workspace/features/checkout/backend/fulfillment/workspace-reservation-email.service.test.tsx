@@ -17,7 +17,7 @@ import {
 import type { EmailService } from "@deskohub/email/backend/service";
 import { testEmailAddress } from "@deskohub/test-email";
 import { getQueriesForElement } from "@testing-library/react";
-import { Context, Effect, Layer, Logger } from "effect";
+import { Context, Effect, Layer, Logger, Option } from "effect";
 import type { ReservationAuthor } from "@/features/account/backend/reservation-author-directory.service";
 import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import { type Locale, m } from "@/features/i18n";
@@ -278,10 +278,12 @@ const loadOpenSpaceReservationFromSyntheticSnapshot = async () => {
             Layer.mock(DotyposService, {
               getReservation: mock(() => {
                 providerReads.push("getReservation");
-                return Effect.succeed({
-                  reservation: dotyposReservation,
-                  customer,
-                });
+                return Effect.succeed(
+                  Option.some({
+                    reservation: dotyposReservation,
+                    customer,
+                  })
+                );
               }),
               getTables: mock(() => {
                 providerReads.push("getTables");

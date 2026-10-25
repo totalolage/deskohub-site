@@ -84,7 +84,7 @@ The customer's single Order and pay activation starts checkout (`features/checko
 1. Only when the action returns a hosted provider session, open the hosted page in a new tab while activation remains, mark the original tab as owner in tab-local session storage, and navigate it to status.
 2. If the browser blocks the tab or activation has expired, navigate the current tab to the provider.
 
-The card explains this handoff above the consent (`CheckoutPayProviderHandoff`), and the pay button names the signed summary total formatted with `formatWorkspaceMoney`. A zero total keeps the plain label and omits the explanation, because no provider is involved.
+The card explains this handoff above the consent (`CheckoutPayProviderHandoff`), and the pay button names the signed summary total formatted with `formatMoney`. A zero total keeps the plain label and omits the explanation, because no provider is involved.
 
 Never pre-open a placeholder tab or require a second activation. Zero-total completion, `pricing_changed`, validation failures, and any other non-provider result open or manage no tab. Keep the existing scoped Web Lock ownership (`shared/browser/return-window.ts`, `checkout-payment-window.tsx`): the owner holds an exclusive lock scoped to the status path and preempts a returned payment tab; an unmarked returned tab closes when the lock is unavailable or preempted, and stays open if the original tab is gone.
 

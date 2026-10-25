@@ -1,10 +1,6 @@
 import { expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
-import {
-  currencyCZK,
-  formatWorkspaceMoney,
-} from "@/features/checkout/workspace-money";
 import { discountCodeQueryParam } from "@/features/discounts/promotion-code";
 import { m } from "@/features/i18n";
 import {
@@ -12,6 +8,8 @@ import {
   referralCodeQueryParam,
 } from "@/features/referrals/client";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { currencyCZK } from "@/shared/money/currencies";
+import { formatMoney } from "@/shared/money/money";
 import { makeUnusableReferralCode } from "../account/referral-fixture";
 import type { CheckoutData } from "../types";
 import {
@@ -31,7 +29,7 @@ const csData = {
 } as CheckoutData;
 
 const zeroText = (data: CheckoutData) =>
-  formatWorkspaceMoney(currencyCZK(0), data.locale);
+  formatMoney(currencyCZK(0), data.locale);
 
 const runPredicate = async (script: string): Promise<boolean> => {
   const run = new Function(

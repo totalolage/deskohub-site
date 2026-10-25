@@ -30,6 +30,7 @@ import {
   getEarlyPerformanceRequestRequiredAt,
   isEarlyPerformanceRequestRequired,
 } from "@/features/legal/early-performance";
+import { createNoindexedPageMetadata } from "@/features/public-pages/page-metadata";
 import { reservationCheckoutStepQueryParam } from "@/features/reservation/reservation-checkout-step";
 import {
   getCoworkReservationPath,
@@ -45,11 +46,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/components/ui/card";
-import {
-  getSearchParam,
-  type SearchParamsRecord,
-  workspaceSiteConstants,
-} from "@/shared/utils";
+import { getSearchParam, type SearchParamsRecord } from "@/shared/utils";
 
 type LocalizedCheckoutPayPageProps = {
   searchParams: Promise<SearchParamsRecord>;
@@ -61,23 +58,13 @@ type LocalizedCheckoutPayPageProps = {
 export const instant = false;
 
 export async function generateMetadata(): Promise<Metadata> {
-  return runWithRequestLocale((locale) => {
-    const title = m.checkoutPayMetadataTitle({}, { locale });
-    const description = m.checkoutPayMetadataDescription({}, { locale });
-
-    return {
-      title,
-      description,
-      openGraph: {
-        title,
-        description,
-        siteName: workspaceSiteConstants.brand.name,
-        locale,
-        type: "website",
-      },
-      robots: { index: false, follow: false },
-    } satisfies Metadata;
-  });
+  return runWithRequestLocale((locale) =>
+    createNoindexedPageMetadata({
+      locale,
+      title: { absolute: m.checkoutPayMetadataTitle({}, { locale }) },
+      description: m.checkoutPayMetadataDescription({}, { locale }),
+    })
+  );
 }
 
 export default async function LocalizedCheckoutPayPage({

@@ -5,7 +5,6 @@ import {
   getCheckoutSummaryChangedKeys,
 } from "@/features/checkout/checkout-summary";
 import type { ReservationQuotePayment } from "@/features/checkout/reservation-quote-schema";
-import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import {
   type AffirmedDiscountAdvertisementQuote,
   affirmedDiscountAdvertisementQuoteCodec,
@@ -20,6 +19,7 @@ import {
 } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import { moneyEquals } from "@/shared/money/money";
 import { currentInstant } from "@/shared/utils";
 import {
   getSubmittedCodeMetadata,
@@ -503,7 +503,7 @@ export const reservationCheckoutPricing = <
       });
       const displayedPriceIsCurrent =
         quote.fingerprint === input.quote.fingerprint &&
-        workspaceMoneyEquals(affirmedSummary.total, displayedSummary.total);
+        moneyEquals(affirmedSummary.total, displayedSummary.total);
 
       if (!displayedPriceIsCurrent) {
         return {

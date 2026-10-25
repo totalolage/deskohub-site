@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Option } from "effect";
 import "@/shared/polyfills/temporal";
 import {
   toCreateDiscountCodeInput,
@@ -23,17 +24,27 @@ const percentageDefinition = (
   ...overrides,
 });
 
+const createdDiscount = (values: DiscountDefinitionFormValues) =>
+  Option.getOrThrow(toCreateDiscountInput(values));
+
 describe("discount administration form input", () => {
   test("converts a percentage value to stored basis points", () => {
-    expect(toCreateDiscountInput(percentageDefinition()).adjustment).toEqual({
+    expect(createdDiscount(percentageDefinition()).adjustment).toEqual({
       kind: "percentage",
       basisPoints: 1025,
     });
   });
 
+  test("ignores the inactive fixed-amount currency of a percentage discount", () => {
+    expect(
+      createdDiscount(percentageDefinition({ fixedAmountCurrency: "ZZZ" }))
+        .adjustment
+    ).toEqual({ kind: "percentage", basisPoints: 1025 });
+  });
+
   test("maps cowork tier keys to tier targets", () => {
     expect(
-      toCreateDiscountInput(
+      createdDiscount(
         percentageDefinition({
           products: ["office", "cowork:reserved-desk", "cowork:open-space"],
         })
@@ -47,14 +58,13 @@ describe("discount administration form input", () => {
 
   test("keeps the broad cowork key as the target covering every tier", () => {
     expect(
-      toCreateDiscountInput(percentageDefinition({ products: ["cowork"] }))
-        .products
+      createdDiscount(percentageDefinition({ products: ["cowork"] })).products
     ).toEqual([{ kind: "cowork" }]);
   });
 
   test("converts a fixed amount in a known catalog currency", () => {
     expect(
-      toCreateDiscountInput(
+      createdDiscount(
         percentageDefinition({
           adjustmentKind: "fixed",
           fixedAmountValue: "10000",
@@ -65,6 +75,19 @@ describe("discount administration form input", () => {
       kind: "fixed",
       amount: { value: 10_000, exponent: 2, currency: "CZK" },
     });
+  });
+
+  test("forms no discount for a fixed amount outside the catalog", () => {
+    expect(
+      Option.isNone(
+        toCreateDiscountInput(
+          percentageDefinition({
+            adjustmentKind: "fixed",
+            fixedAmountCurrency: "ZZZ",
+          })
+        )
+      )
+    ).toBe(true);
   });
 
   test("converts local code times through the Workspace time zone", () => {
@@ -92,13 +115,11 @@ describe("discount administration form input", () => {
   test("reads voucher credit in the selected catalog currency", () => {
     expect(
       toVoucherCreditInput({ voucherValue: "10000", voucherCurrency: "czk" })
-    ).toEqual({
-      value: 10_000,
-      exponent: 2,
-      currency: "CZK",
-    });
+    ).toEqual(Option.some({ value: 10_000, exponent: 2, currency: "CZK" }));
     expect(
-      toVoucherCreditInput({ voucherValue: "5000", voucherCurrency: "zzz" })
-    ).toEqual({ value: 5000, exponent: -1, currency: "" });
+      Option.isNone(
+        toVoucherCreditInput({ voucherValue: "5000", voucherCurrency: "zzz" })
+      )
+    ).toBe(true);
   });
 });
