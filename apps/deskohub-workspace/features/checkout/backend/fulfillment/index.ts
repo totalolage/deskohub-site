@@ -8,6 +8,7 @@ export {
   ResendWebhookProcessingError,
   ResendWebhookService,
 } from "./resend-webhook.service";
+export { resendWebhookRefusal } from "./resend-webhook-disposition";
 export {
   createReservationAuthorEmailPreviewHtml,
   createWorkspaceReservationCustomerEmailPreviewHtml,

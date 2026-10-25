@@ -4,20 +4,19 @@ import {
   getRequestLocale,
   runWithRequestLocale,
 } from "@/features/i18n/server/request-locale";
-import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
+import { createNoindexedPageMetadata } from "@/features/public-pages/page-metadata";
 import { HorizontalLogo, Logo } from "@/shared/components/logo";
 
 export const instant = false;
 
 export async function generateMetadata(): Promise<Metadata> {
-  return runWithRequestLocale((locale) => ({
-    ...createPublicPageMetadata({
+  return runWithRequestLocale((locale) =>
+    createNoindexedPageMetadata({
       locale,
-      pathname: "/logo",
       title: { page: m.logoVariantsTitle({}, { locale }) },
-    }),
-    robots: { index: false, follow: true },
-  }));
+      followLinks: true,
+    })
+  );
 }
 
 const SIZE = 64;

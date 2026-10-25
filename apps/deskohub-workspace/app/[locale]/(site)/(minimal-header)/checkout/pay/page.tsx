@@ -30,7 +30,7 @@ import {
   getEarlyPerformanceRequestRequiredAt,
   isEarlyPerformanceRequestRequired,
 } from "@/features/legal/early-performance";
-import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
+import { createNoindexedPageMetadata } from "@/features/public-pages/page-metadata";
 import { reservationCheckoutStepQueryParam } from "@/features/reservation/reservation-checkout-step";
 import {
   getCoworkReservationPath,
@@ -58,15 +58,13 @@ type LocalizedCheckoutPayPageProps = {
 export const instant = false;
 
 export async function generateMetadata(): Promise<Metadata> {
-  return runWithRequestLocale((locale) => ({
-    ...createPublicPageMetadata({
+  return runWithRequestLocale((locale) =>
+    createNoindexedPageMetadata({
       locale,
-      pathname: "/checkout/pay",
       title: { absolute: m.checkoutPayMetadataTitle({}, { locale }) },
       description: m.checkoutPayMetadataDescription({}, { locale }),
-    }),
-    robots: { index: false, follow: false },
-  }));
+    })
+  );
 }
 
 export default async function LocalizedCheckoutPayPage({

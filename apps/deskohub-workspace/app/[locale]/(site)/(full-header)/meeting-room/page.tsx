@@ -1,14 +1,11 @@
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
-import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
 import { MeetingRoomPage } from "@/features/meeting-room/components/meeting-room-page";
-import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
-
-const pathname = "/meeting-room";
+import {
+  publicPageMetadata,
+  requirePublishedPublicPage,
+} from "@/features/public-pages/backend/public-page-route.server";
 
 export const instant = false;
 
@@ -25,23 +22,11 @@ const getMeetingRoomGalleryImages = () =>
     tags: "meeting-room-gallery",
   }).catch((): readonly CloudinaryAsset[] => []);
 
-export async function generateMetadata(): Promise<Metadata> {
-  return runWithRequestLocale(async (locale) => {
-    if (!(await isMeetingRoomPageEnabled())) notFound();
-
-    return createPublicPageMetadata({
-      locale,
-      pathname,
-      title: { absolute: m.meetingRoomMetadataTitle({}, { locale }) },
-      description: m.meetingRoomMetadataDescription({}, { locale }),
-    });
-  });
-}
+export const generateMetadata = publicPageMetadata("/meeting-room");
 
 export default async function LocalizedMeetingRoomPage() {
   return runWithRequestLocale(async (locale) => {
-    const meetingRoomPageEnabled = await isMeetingRoomPageEnabled();
-    if (!meetingRoomPageEnabled) notFound();
+    await requirePublishedPublicPage("/meeting-room");
     const [heroImages, galleryImages] = await Promise.all([
       getMeetingRoomHeroImages(),
       getMeetingRoomGalleryImages(),

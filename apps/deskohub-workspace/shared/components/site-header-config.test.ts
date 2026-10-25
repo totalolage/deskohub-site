@@ -23,9 +23,13 @@ mock.module(
   "@/features/meeting-room/backend/meeting-room-page-feature-flag",
   () => ({ isMeetingRoomPageEnabled })
 );
+const officeFeatureFlag = await import(
+  "@/features/office/backend/office-reservation-feature-flag.server"
+);
 mock.module(
   "@/features/office/backend/office-reservation-feature-flag.server",
   () => ({
+    ...officeFeatureFlag,
     isOfficePageEnabled,
   })
 );

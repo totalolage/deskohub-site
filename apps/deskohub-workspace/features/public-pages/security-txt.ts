@@ -3,6 +3,7 @@ import {
   getWorkspaceCanonicalUrl,
   workspaceSiteConstants,
 } from "@/shared/utils/site-constants";
+import { markUnindexedResponse } from "@/shared/utils/unindexed-response";
 
 const securityTxtPathname = "/.well-known/security.txt";
 
@@ -31,7 +32,9 @@ export const securityTxt = (now: Date) => {
 export async function serveSecurityTxt() {
   await connection();
 
-  return new Response(securityTxt(new Date()), {
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
-  });
+  return markUnindexedResponse(
+    new Response(securityTxt(new Date()), {
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    })
+  );
 }

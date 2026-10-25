@@ -1,12 +1,10 @@
 import { Duration, Effect } from "effect";
-import { NextResponse } from "next/server";
 import {
   PaymentRefundService,
   refundBatchOverrunWorstCase,
 } from "@/features/checkout/backend/payment";
 import { nexiRequestWorstCaseDuration } from "@/shared/backend/config/nexi.config";
-import { isAuthorizedCronRequest } from "@/shared/backend/cron-request";
-import { defineWorkspaceRoute } from "@/shared/backend/workspace-route";
+import { defineWorkspaceCron } from "@/shared/backend/service-route";
 
 export const maxDuration = 300;
 
@@ -47,52 +45,16 @@ const cronBatchLimit = 150;
  * attempts awaiting a refund and of recent payments not yet fully refunded,
  * checked longest ago first, and records any refund an operator made there.
  */
-const reconcileRefunds = Effect.fn("reconcileRefunds")(function* () {
-  const refunds = yield* PaymentRefundService;
-  const input = {
+export const GET = defineWorkspaceCron({
+  operation: "paymentRefundReconciliationCron",
+  failureMessage: "Payment refund reconciliation failed",
+  input: () => ({
     limit: cronBatchLimit,
     budget: lookupBudget,
     worstCaseLookupDuration: nexiRequestWorstCaseDuration,
-  };
-  yield* Effect.annotateLogsScoped({ input });
-  yield* Effect.logInfo("Payment refund reconciliation started");
-
-  const result = yield* refunds.reconcileRefunds(input);
-  yield* Effect.annotateLogsScoped({ result });
-  yield* Effect.logInfo("Payment refund reconciliation completed");
-
-  return NextResponse.json(result);
-}, Effect.scoped);
-
-export const GET = defineWorkspaceRoute(
-  {
-    operation: "paymentRefundReconciliationCron",
-    cancellation: "continue-after-disconnect",
-    caller: "service",
-  },
-  (request) => {
-    if (!isAuthorizedCronRequest(request)) {
-      return Effect.logWarning(
-        "Unauthorized payment refund reconciliation cron request"
-      ).pipe(
-        Effect.as(NextResponse.json({ error: "Unauthorized" }, { status: 401 }))
-      );
-    }
-
-    return reconcileRefunds().pipe(
-      Effect.provide(PaymentRefundService.Live),
-      Effect.catch(
-        Effect.fn("handlePaymentRefundCronError")(function* (cause) {
-          yield* Effect.logError("Payment refund reconciliation cron failed", {
-            cause,
-          });
-
-          return NextResponse.json(
-            { error: "Payment refund reconciliation failed" },
-            { status: 500 }
-          );
-        })
-      )
-    );
-  }
-);
+  }),
+  run: (input) =>
+    Effect.flatMap(PaymentRefundService, (refunds) =>
+      refunds.reconcileRefunds(input)
+    ).pipe(Effect.provide(PaymentRefundService.Live)),
+});

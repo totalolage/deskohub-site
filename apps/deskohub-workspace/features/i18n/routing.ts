@@ -14,13 +14,24 @@ export const defaultLocale: Locale = baseLocale;
 
 export const localeConfig = {
   locales,
-  baseLocale: defaultLocale,
-  // Maps the browser's Accept-Language, not the saved locale preference.
+  // Czech is the primary market: a request that states no language, such as
+  // a crawler's, opens the Czech site.
+  unstatedLanguageLocale: "cs-CZ",
+  // A visitor whose languages the site doesn't serve reads English.
+  unservedLanguageLocale: "en-US",
+  // Maps the browser's Accept-Language, not the saved locale preference, and
+  // a bare language segment in the URL (`/en/faq`). Slovak readers get Czech.
   preferredLanguageToLocale: {
     cs: "cs-CZ",
+    sk: "cs-CZ",
     en: "en-US",
   },
-} as const;
+} as const satisfies {
+  readonly locales: readonly Locale[];
+  readonly unstatedLanguageLocale: Locale;
+  readonly unservedLanguageLocale: Locale;
+  readonly preferredLanguageToLocale: Readonly<Record<string, Locale>>;
+};
 
 const withLocalePrefix = (pathname: string, locale: Locale): string =>
   replaceLocaleInPathname(pathname, locale, locales);

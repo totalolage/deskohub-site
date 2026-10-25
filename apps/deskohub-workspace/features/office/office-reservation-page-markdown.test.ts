@@ -28,7 +28,8 @@ const render = (locale: Locale, { discount = 0, officeOpen = true } = {}) =>
   );
 
 /**
- * The facts the office reservation page shows. The day and seat price
+ * The facts the office reservation page shows beyond the title and
+ * description its public page definition gives it. The day and seat price
  * labels are checked with the prices. Left out: form controls and their
  * labels (`reservationOfficeDateRangeLabel`, `reservationOfficeStartDateLabel`,
  * `reservationDatePlaceholder`, `reservationOfficeDayCountLabel`,
@@ -38,8 +39,6 @@ const render = (locale: Locale, { discount = 0, officeOpen = true } = {}) =>
  * and the checkout step navigation.
  */
 const pageFacts = (locale: Locale) => [
-  m.reservationOfficeMetadataTitle({}, { locale }),
-  m.reservationOfficeMetadataDescription({}, { locale }),
   m.reservationOfficeProductTitle({}, { locale }),
   m.publicOfferingOfficeDescription({}, { locale }),
   m.publicOfferingOfficeUsage(

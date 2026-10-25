@@ -32,6 +32,7 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   max,
   notInArray,
   or,
@@ -375,17 +376,31 @@ export type AdministrationCustomerActivity = {
   readonly marketingConsent: AdministrationCustomerMarketingConsent | null;
 };
 
-export type AdministrationCustomerReservationActivity = {
+/**
+ * Reservation counts per Workspace calendar date between `from` and `to`,
+ * inclusive. Dates without reservations are omitted, and `dates` is null when
+ * the booking dates can't be loaded.
+ */
+export type AdministrationReservationActivity<
+  TDate extends
+    AdministrationReservationActivityDate = AdministrationReservationActivityDate,
+> = {
   readonly from: string;
   readonly to: string;
-  readonly dates:
-    | readonly {
-        readonly category: AdministrationCustomerReservationActivityCategory;
-        readonly date: string;
-        readonly count: number;
-      }[]
-    | null;
+  readonly dates: readonly TDate[] | null;
 };
+
+export type AdministrationReservationActivityDate = {
+  readonly date: string;
+  readonly count: number;
+};
+
+export type AdministrationCustomerReservationActivity =
+  AdministrationReservationActivity<
+    AdministrationReservationActivityDate & {
+      readonly category: AdministrationCustomerReservationActivityCategory;
+    }
+  >;
 
 export type AdministrationCustomerReservationActivityCategory =
   | `cowork-${WorkspaceCoworkProductTier}`
@@ -761,6 +776,12 @@ const getReservationTypeLabel = (
   if (row.reservationDetails.kind === "meeting-room") return "Meeting Room";
   if (row.reservationDetails.kind === "office") return "Private Office";
   return getWorkspaceProductByTier(row.reservationDetails.entryTier).label;
+};
+
+/** The 365 Workspace calendar dates ending today. */
+const getReservationActivityRange = () => {
+  const to = getCurrentWorkspaceDate();
+  return { from: to.subtract({ days: 364 }), to };
 };
 
 const getReservationDate = (startsAt: string) =>
@@ -1466,6 +1487,10 @@ export class AdministrationService extends Context.Service<
       customerId: DotyposCustomerId
     ) => Effect.Effect<
       AdministrationCustomerReservationActivity,
+      EffectDrizzleQueryError
+    >;
+    readonly loadReservationActivity: () => Effect.Effect<
+      AdministrationReservationActivity,
       EffectDrizzleQueryError
     >;
     readonly listOrders: IPaymentAdministrationService["listOrders"];
@@ -3127,9 +3152,7 @@ export class AdministrationService extends Context.Service<
       const loadCustomerReservationActivity = Effect.fn(
         "AdministrationService.loadCustomerReservationActivity"
       )(function* (customerId: DotyposCustomerId) {
-        const now = Temporal.Now.instant();
-        const to = getCurrentWorkspaceDate(now);
-        const from = to.subtract({ days: 364 });
+        const { from, to } = getReservationActivityRange();
         const reservations = yield* dotypos
           .listReservations({
             customerId,
@@ -3235,6 +3258,84 @@ export class AdministrationService extends Context.Service<
             .map(([date, activity]) => ({ date, ...activity }))
             .toSorted((left, right) => left.date.localeCompare(right.date)),
         } satisfies AdministrationCustomerReservationActivity;
+      });
+
+      /**
+       * Counts every live booking in the activity range that a Workspace
+       * reservation links, whatever its Dotypos status or Workspace lifecycle,
+       * as the Overview reservation total does. It reads only the linked
+       * bookings, because the whole year of Dotypos bookings is hundreds of
+       * pages.
+       */
+      const loadReservationActivity = Effect.fn(
+        "AdministrationService.loadReservationActivity"
+      )(function* () {
+        const { from, to } = getReservationActivityRange();
+        const range = { from: from.toString(), to: to.toString() };
+        const linkedRows = yield* db
+          .select({ id: workspaceReservations.dotyposReservationId })
+          .from(workspaceReservations)
+          .where(isNotNull(workspaceReservations.dotyposReservationId))
+          .pipe(
+            Effect.tap((rows) =>
+              Effect.annotateCurrentSpan({ linkedRowCount: rows.length })
+            ),
+            Effect.withSpan(
+              "AdministrationService.loadReservationActivity.databaseLinkage"
+            )
+          );
+        const linkedReservationIds = linkedRows.flatMap(({ id }) =>
+          id ? [id] : []
+        );
+        const bounds = getAdministrationReservationDateRangeBounds(range);
+        const reservations = yield* readInIdFilterBatches(
+          linkedReservationIds.toSorted(),
+          (batchIds) =>
+            dotypos.listReservations({
+              ids: batchIds,
+              ...bounds,
+              order: "startDateAscending",
+            }),
+          { concurrency: 3 }
+        ).pipe(
+          Effect.map((batches) => batches.flat()),
+          Effect.catch((cause) => {
+            unstable_rethrow(cause);
+            return Effect.logWarning("Reservation activity unavailable", {
+              cause,
+              ...range,
+            }).pipe(Effect.as(null));
+          }),
+          Effect.tap((items) =>
+            Effect.annotateCurrentSpan({
+              reservationCount: items?.length ?? 0,
+              unavailable: items === null,
+            })
+          ),
+          Effect.withSpan(
+            "AdministrationService.loadReservationActivity.reservationProvider"
+          )
+        );
+
+        if (!reservations) {
+          return {
+            ...range,
+            dates: null,
+          } satisfies AdministrationReservationActivity;
+        }
+
+        const countByDate = new Map<string, number>();
+        for (const reservation of reservations) {
+          const date = getReservationDate(reservation.startDate);
+          countByDate.set(date, (countByDate.get(date) ?? 0) + 1);
+        }
+
+        return {
+          ...range,
+          dates: [...countByDate]
+            .map(([date, count]) => ({ date, count }))
+            .toSorted((left, right) => left.date.localeCompare(right.date)),
+        } satisfies AdministrationReservationActivity;
       });
 
       const loadOverviewSource = Effect.fn(
@@ -3409,6 +3510,7 @@ export class AdministrationService extends Context.Service<
         loadCustomerReservations,
         loadCustomerActivity,
         loadCustomerReservationActivity,
+        loadReservationActivity,
         listOrders: paymentAdministration.listOrders,
         loadOrder: paymentAdministration.loadOrder,
         listOperations: paymentAdministration.listOperations,

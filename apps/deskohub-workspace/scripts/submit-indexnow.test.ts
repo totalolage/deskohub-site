@@ -5,7 +5,8 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveSitemap } from "next/dist/build/webpack/loaders/metadata/resolve-route-data";
 import { getWorkspaceAlternates, locales } from "@/features/i18n";
-import { indexNowKey, publicPages } from "@/features/public-pages";
+import { indexNowKey } from "@/features/public-pages";
+import { publicPages } from "@/features/public-pages/public-page-definitions";
 import { runCommand } from "./shared/command";
 
 const scriptPath = fileURLToPath(

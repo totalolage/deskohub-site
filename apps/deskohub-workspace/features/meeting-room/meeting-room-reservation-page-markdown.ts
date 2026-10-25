@@ -31,7 +31,5 @@ export const meetingRoomReservationPageMarkdown = (
           publicOfferingsMarkdown(durations, locale),
         ]
       : [],
-    summary: m.reservationMeetingRoomMetadataDescription({}, { locale }),
-    title: m.reservationMeetingRoomMetadataTitle({}, { locale }),
   });
 };

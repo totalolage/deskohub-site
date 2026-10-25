@@ -56,6 +56,7 @@ Nightly cases never run against a PR (D38). `resolve-target` passes `include_nig
 ## Run E2E
 
 - **Manual dispatch.** Run the workflow with `sha` (40 characters), `url` (immutable HTTPS deployment URL), and `ref` (internal PR head branch). The same PR guards apply, and the job fails before it allocates or mutates shared state unless GitHub deployment metadata records that URL as a successful Workspace deployment for that SHA. Set `cleanup_stale_e2e_reservations` only for an intentional stale-reservation cleanup (see [suite orchestration](suite-orchestration.md#dotypos-capacity-and-stale-reservations)).
+- **Review screenshots.** To capture the opt-in synthetic account and administration screenshots, set `review_screenshots=true`. Campaign composer captures use the separate `campaign_screenshots=true` input. Dispatch using a workflow ref that contains the input you need (for a PR preview, the PR branch), and keep `sha`, `url`, and `ref` bound to the exact PR head and its immutable deployment. Wait for the Vercel-triggered run for that PR SHA to finish first: both runs share a PR-and-SHA concurrency group with cancellation enabled. This runs the full suite, re-posts the `Workspace E2E` and `Workspace E2E allocation` statuses, and uploads screenshots in the dedicated `workspace-account-review-<run>-<attempt>` artifact; the separate general E2E artifact is uploaded on failure. If the screenshot run fails, rerun it and confirm the required status is green before merging.
 - If Vercel finishes a preview before an open internal PR exists for its SHA, the `repository_dispatch` E2E run skips with `No eligible open internal PR matches the exact deployment SHA`. Once the PR exists, restart it with the manual dispatch from `main`, using the exact SHA, immutable preview URL, and branch:
 
   ```bash
@@ -107,7 +108,7 @@ Never put production Nexi, Dotypos, or database credentials in Preview. Never ad
 - `WORKSPACE_E2E_ALLOCATION_SHARD`, `WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED`, `WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL`: see [suite orchestration](suite-orchestration.md).
 - `WORKSPACE_E2E_EXECUTION_CONTEXT`: `manual` or `ci`. Locally it defaults to `manual`; the workflow sets `manual` for `workflow_dispatch` and `ci` for the repository dispatch. A rerun keeps its trigger's value.
 - `WORKSPACE_E2E_NIGHTLY_CASES=true`: also run the nightly cases (see [nightly run](#nightly-run)). The workflow sets it only for a validated nightly target dispatched with `include_nightly_cases`.
-- `WORKSPACE_E2E_REVIEW_SCREENSHOTS=true`: opt-in general account PR review screenshots (see [browser driving](browser-driving.md#review-screenshots)). The workflow doesn't set it.
+- `WORKSPACE_E2E_REVIEW_SCREENSHOTS=true`: opt-in general account PR review screenshots, including the administration Overview and customer calendar captures (see [browser driving](browser-driving.md#review-screenshots)). A manual workflow dispatch sets it only when `review_screenshots=true`; PR preview events leave it unset.
 - `WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS=true`: opt-in campaign-composer screenshots only. A manual workflow dispatch enables this with `campaign_screenshots=true`; it does not enable general account captures.
 
 ## Preview database

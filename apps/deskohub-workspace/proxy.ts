@@ -16,6 +16,7 @@ import {
   getAccountSignInPath,
 } from "@/features/account/routes";
 import { administrationRequestPathHeader } from "@/features/administrators/administration-request-path";
+import { exactLocaleRedirect } from "@/features/i18n/exact-locale-redirect";
 import { resolveWorkspaceLocale } from "@/features/i18n/locale-resolution";
 import {
   getLocalizedPagePath,
@@ -39,6 +40,7 @@ import { scheduleAgentPageRequest } from "./shared/backend/agent-traffic/agent-p
 import { resolveWorkspaceRuntimeCallbackOrigin } from "./shared/backend/config/workspace-url.config";
 import { withRequestPathname } from "./shared/backend/utils/request-pathname";
 import { markPrivateResponse } from "./shared/utils/private-response";
+import { workspaceSiteOrigin } from "./shared/utils/site-constants";
 
 const decodePathname = (pathname: string) => {
   try {
@@ -395,8 +397,63 @@ const customerAgentSignInRedirect = (request: NextRequest) => {
   );
 };
 
+// Production also answers on its `*.vercel.app` aliases. Their page loads move
+// permanently to the canonical origin, so search engines index one host.
+// Preview deployments serve their own hosts.
+const canonicalHostRedirect = (request: NextRequest) => {
+  if (
+    env.VERCEL_ENV !== "production" ||
+    (request.method !== "GET" && request.method !== "HEAD")
+  ) {
+    return undefined;
+  }
+  const canonicalOrigin = new URL(workspaceSiteOrigin);
+  if (request.nextUrl.host === canonicalOrigin.host) return undefined;
+
+  return NextResponse.redirect(
+    new URL(
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+      canonicalOrigin
+    ),
+    308
+  );
+};
+
+// A redirect that keeps the query can carry a reservation capability or an
+// account continuation, so a private path's redirect answers privately too.
+const markRedirectPrivacy = (request: NextRequest, response: NextResponse) => {
+  const { pathname } = request.nextUrl;
+  if (isAdministrationPath(pathname)) {
+    return markAdministrationResponse(response);
+  }
+  return isPrivateReservationPath(pathname) || isPrivateAccountPath(pathname)
+    ? markPrivateResponse(response)
+    : response;
+};
+
 export async function proxy(request: NextRequest) {
-  if (isAdministrationPath(request.nextUrl.pathname)) {
+  // The exact-locale redirect comes before any locale or sign-in redirect
+  // could prefix the path a second time.
+  const normalizingRedirect =
+    canonicalHostRedirect(request) ??
+    exactLocaleRedirect(request.method, request.nextUrl);
+  if (normalizingRedirect) {
+    return markRedirectPrivacy(request, normalizingRedirect);
+  }
+
+  // Outside the account and the administration, a dotted path reaches the
+  // proxy only for the exact-locale redirect, so a file-like path under an
+  // exact locale goes on untouched to the localized catch-all.
+  const { pathname } = request.nextUrl;
+  if (
+    pathname.includes(".") &&
+    !isAccountPath(pathname) &&
+    !isAdministrationPath(pathname)
+  ) {
+    return NextResponse.next();
+  }
+
+  if (isAdministrationPath(pathname)) {
     return markAdministrationResponse(await administrationResponse(request));
   }
 
@@ -428,13 +485,19 @@ export async function proxy(request: NextRequest) {
 
 // Every account route, dotted segments included, passes through the proxy: the
 // account sections' layout trusts the request pathname only because the proxy
-// replaces any value a client sent.
+// replaces any value a client sent. A dotted path under a locale-shaped prefix
+// passes through too, so `/en-us/x.html` gets the exact-locale redirect: the
+// rewrite in `next.config.mjs` ignores letter case and cannot tell it from
+// `/en-US/x.html`. The prefix spells out both letter cases because matchers
+// compare them. RSC and segment requests stay out: Next strips their suffix
+// before the proxy sees the URL, so they would pass for page loads.
 export const config: MiddlewareConfig = {
   matcher: [
     "/admin/:path*",
     "/:locale/admin/:path*",
     "/account/:path*",
     "/:locale((?!api)[^/]+)/account/:path*",
+    "/([a-zA-Z]{2}-[a-zA-Z]{2}/(?!.*\\.(?:prefetch\\.)?rsc$|.*\\.segments/).*\\..*)",
     "/((?!api|_next/static|_next/image|favicon.ico|favicon.svg|.*\\..*).*)",
   ],
 };

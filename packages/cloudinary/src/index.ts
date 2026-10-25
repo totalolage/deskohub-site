@@ -6,6 +6,8 @@ export {
   CloudinaryRenameError,
   CloudinarySearchError,
   CloudinaryUploadError,
+  CloudinaryWebhookAuthError,
+  CloudinaryWebhookValidationError,
 } from "./errors";
 export {
   normalizeExpression,

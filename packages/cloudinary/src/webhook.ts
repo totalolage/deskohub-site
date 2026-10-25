@@ -1,24 +1,16 @@
 import "server-only";
 
 import { createHash, timingSafeEqual } from "node:crypto";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
 import {
   type CloudinaryConfig,
   CloudinaryRuntimeConfig,
   validateCloudinaryRuntimeConfig,
 } from "./config";
-
-export class CloudinaryWebhookAuthError extends Data.TaggedError(
-  "CloudinaryWebhookAuthError"
-)<{ readonly message: string }> {}
-
-export class CloudinaryWebhookValidationError extends Data.TaggedError(
-  "CloudinaryWebhookValidationError"
-)<{
-  readonly message: string;
-  readonly payload?: string;
-  readonly cause?: unknown;
-}> {}
+import {
+  CloudinaryWebhookAuthError,
+  CloudinaryWebhookValidationError,
+} from "./errors";
 
 export interface VerifiedCloudinaryWebhook {
   readonly payload: unknown;

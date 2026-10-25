@@ -49,10 +49,6 @@ export const coworkReservationPage = createReservationPage({
   fallback: (locale) => <CoworkReservationFormFallback locale={locale} />,
   kind: "cowork",
   pathname: coworkReservationPath,
-  metadata: (locale: Locale) => ({
-    title: m.checkoutOrderMetadataTitle({}, { locale }),
-    description: m.checkoutOrderMetadataDescription({}, { locale }),
-  }),
   render: renderCoworkReservationContent,
 });
 
