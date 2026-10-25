@@ -8,6 +8,7 @@ import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { checkoutSessionIdSchema } from "@/features/checkout/checkout-identifiers";
 import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   ReviewSandbox,
@@ -23,12 +24,14 @@ describe.skipIf(!testDatabase)("ReviewSandbox on disposable Postgres", () => {
   const reviewer = customerAccountIdSchema.make(crypto.randomUUID());
   const otherReviewer = customerAccountIdSchema.make(crypto.randomUUID());
 
-  beforeAll(() =>
-    testDatabase.pool.query(
-      "insert into customer_accounts (id, review) values ($1, true), ($2, true)",
-      [reviewer, otherReviewer]
-    )
-  );
+  beforeAll(() => {
+    const fixtures = workspaceFixtures(testDatabase.db);
+    return Effect.runPromise(
+      Effect.forEach([reviewer, otherReviewer], (id) =>
+        fixtures.customerAccount({ id, review: true })
+      )
+    );
+  });
 
   const run = <A, E>(
     operation: (sandbox: typeof ReviewSandbox.Service) => Effect.Effect<A, E>

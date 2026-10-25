@@ -38,7 +38,6 @@ const variantConfig: Record<
     size: { width: 600, height: 600 },
     crop: "fill",
     className: "w-full h-full",
-    preload: true,
   },
   thumbnail: {
     size: { width: 400, height: 400 },

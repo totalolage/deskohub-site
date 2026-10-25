@@ -11,6 +11,10 @@ import { CustomerAccountRepository } from "@/features/account/backend/customer-a
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
+import {
+  type ReservationFixtureInput,
+  workspaceFixtures,
+} from "@/shared/testing/workspace-fixtures.test-utils";
 import type { WorkspaceE2EError } from "../errors";
 import { workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
@@ -68,12 +72,23 @@ export const seedWorkspaceE2EReservationAuthor = Effect.fn(
     .from(customerAccounts)
     .where(eq(customerAccounts.dotyposCustomerId, customerId));
   if (linked) return linked.id;
-  const id = customerAccountIdSchema.make(
-    `e2e-reservation-author-${crypto.randomUUID()}`
-  );
-  yield* executor.insert(customerAccounts).values({ id });
-  return id;
+  return yield* workspaceFixtures(executor).customerAccount({
+    id: customerAccountIdSchema.make(
+      `e2e-reservation-author-${crypto.randomUUID()}`
+    ),
+  });
 });
+
+/**
+ * A fixture reservation of one customer, inserted with the author
+ * `seedWorkspaceE2EReservationAuthor` resolves for that customer.
+ */
+export type WorkspaceE2EAuthoredReservation = Omit<
+  ReservationFixtureInput,
+  "author" | "customer"
+> & {
+  readonly customer: DotyposCustomerId;
+};
 
 export const findLinkedDotyposCustomerId = (
   accountId: string

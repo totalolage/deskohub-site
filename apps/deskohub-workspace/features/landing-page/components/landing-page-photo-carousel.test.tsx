@@ -15,9 +15,28 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
-mock.module("@deskohub/cloudinary-image", () => ({
-  CloudinaryImage: ({ alt }: { alt: string }) => (
-    <span aria-label={alt} role="img" />
+// The real CloudinaryImage runs, so its gallery defaults reach the image.
+mock.module("next/image", () => ({
+  default: ({
+    alt,
+    fetchPriority,
+    preload,
+    priority,
+    sizes,
+  }: {
+    readonly alt: string;
+    readonly fetchPriority?: string;
+    readonly preload?: boolean;
+    readonly priority?: boolean;
+    readonly sizes?: string;
+  }) => (
+    <span
+      aria-label={alt}
+      data-image-fetch-priority={fetchPriority}
+      data-image-preload={preload || priority ? "" : undefined}
+      data-image-sizes={sizes}
+      role="img"
+    />
   ),
 }));
 
@@ -96,5 +115,28 @@ describe("LandingPagePhotoCarousel", () => {
     expect(view.getByTestId("lightbox-slides").textContent).toBe(
       `Český popis|${fallbackAlt}`
     );
+  });
+
+  // The carousel sits below the fold, so no slide competes with the hero.
+  test("loads every slide lazily at its slide width rather than the viewport's", async () => {
+    const { LandingPagePhotoCarousel } = await import(
+      "./landing-page-photo-carousel"
+    );
+    const view = render(
+      <LandingPagePhotoCarousel
+        ariaLabel="Workspace photos"
+        images={images}
+        locale="en-US"
+      />
+    );
+    const slides = view.getAllByRole("img");
+
+    expect(slides).not.toHaveLength(0);
+    for (const slide of slides) {
+      expect(slide.dataset.imagePreload).toBeUndefined();
+      expect(slide.dataset.imageFetchPriority).not.toBe("high");
+      expect(slide.dataset.imageSizes).toBeDefined();
+      expect(slide.dataset.imageSizes).not.toBe("100vw");
+    }
   });
 });

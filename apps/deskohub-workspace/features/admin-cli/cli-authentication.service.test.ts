@@ -32,15 +32,11 @@ import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identi
 import { cliAuthenticationRequestIdSchema } from "@/features/admin-cli/cli-identifiers";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import {
-  deleteTestAccounts,
-  insertTestAccount,
-  insertTestAdministrator,
-} from "@/shared/testing/workspace-test-accounts.test-utils";
 import { CliAuthentication } from "./cli-authentication.service";
 import { type CliSessionLifetime, cliSessionLifetimeSchema } from "./contracts";
 
@@ -85,8 +81,16 @@ describe.skipIf(!postgresDatabase)(
       );
       authentication = services.authentication;
       grants = services.grants;
-      alice = await insertTestAdministrator(postgres, "cli-alice");
-      bob = await insertTestAdministrator(postgres, "cli-bob");
+      alice = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account("cli-alice", {
+          roles: ["administrator"],
+        })
+      );
+      bob = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account("cli-bob", {
+          roles: ["administrator"],
+        })
+      );
       fixtureAccounts.push(alice, bob);
     });
 
@@ -120,10 +124,18 @@ describe.skipIf(!postgresDatabase)(
       }
     });
 
-    afterAll(() => deleteTestAccounts(postgres, fixtureAccounts));
+    afterAll(() =>
+      Effect.runPromise(
+        workspaceFixtures(postgres.db).deleteAccounts(fixtureAccounts)
+      )
+    );
 
     const insertAdministrator = async (label: string) => {
-      const administrator = await insertTestAdministrator(postgres, label);
+      const administrator = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account(label, {
+          roles: ["administrator"],
+        })
+      );
       fixtureAccounts.push(administrator);
       return administrator;
     };
@@ -361,7 +373,9 @@ describe.skipIf(!postgresDatabase)(
       );
       expect((await authenticateBearer(fixture.bearer))._tag).toBe("Failure");
 
-      await deleteTestAccounts(postgres, [dana]);
+      await Effect.runPromise(
+        workspaceFixtures(postgres.db).deleteAccounts([dana])
+      );
       const orphaned = await loadSessionRow(fixture.id);
       expect(orphaned?.approvedByAccountId).toBeNull();
       expect(orphaned?.approvedByAccountEmail).toBe(dana.email);
@@ -381,7 +395,9 @@ describe.skipIf(!postgresDatabase)(
       expect(legacyError).toBeInstanceOf(CliGrantRejected);
       expect(await countSessions()).toBe(sessionsBefore);
 
-      const signedInOnly = await insertTestAccount(postgres, "cli-not-admin");
+      const signedInOnly = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account("cli-not-admin")
+      );
       fixtureAccounts.push(signedInOnly);
       const ungrantedError = await Effect.runPromise(
         Effect.flip(
