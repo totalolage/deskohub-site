@@ -60,6 +60,10 @@ test("serves the administration shell and granular loading regions", async ({
 });
 
 test("hydrates the customer activity section", async ({ page }, testInfo) => {
+  // Review captures match the viewport of the Vercel comment they answer.
+  if (reviewScreenshots) {
+    await page.setViewportSize({ height: 1212, width: 1896 });
+  }
   await page.goto("/en-US/admin");
 
   const customerActivity = page.getByRole("region", {
@@ -80,6 +84,26 @@ test("hydrates the customer activity section", async ({ page }, testInfo) => {
   ).toBeVisible();
 
   if (reviewScreenshots) {
+    // The reservation activity calendar streams separately; capture it once
+    // it has rendered or reported that it is unavailable.
+    await expect(
+      page
+        .getByRole("region", {
+          name: m.administrationReservationActivityCalendarLabel(
+            {},
+            { locale: "en-US" }
+          ),
+        })
+        .or(
+          page.getByText(
+            m.administrationReservationActivityUnavailable(
+              {},
+              { locale: "en-US" }
+            )
+          )
+        )
+        .first()
+    ).toBeVisible();
     const screenshotPath =
       "e2e-artifacts/account-review/admin-overview-customer-activity.png";
     await page.screenshot({ fullPage: true, path: screenshotPath });
