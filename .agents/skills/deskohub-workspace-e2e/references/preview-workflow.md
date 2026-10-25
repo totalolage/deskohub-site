@@ -45,7 +45,7 @@ Nightly cases are too slow for the per-PR gate. They are listed in `workspaceE2E
 
 Main deploys only to production, and E2E never runs there. So `.github/workflows/workspace-e2e-nightly.yml` runs at 02:30 UTC, or on a manual dispatch from `main`; it fails at once from any other ref:
 
-1. It points the `e2e/nightly` branch at main's head. Only this workflow moves that branch.
+1. It points the `e2e/nightly` branch at main's head. Only this workflow moves that branch. Vercel builds a preview when an existing branch moves, even to a commit it already deployed and even with the workflow's `GITHUB_TOKEN`. The first run created the branch at main's head, and Vercel built nothing, not even a skipped deployment. So when the branch is missing, the workflow creates it at main's parent and then moves it to main's head. If the branch is already at main's head with no Vercel deployment of it, the wait runs out: delete the branch and start the workflow again, or let the next run after main moves fix it.
 2. It waits up to 40 minutes for Vercel's Git preview of that exact SHA. The Neon integration backs it with the persistent `preview/e2e/nightly` branch, which the E2E run migrates. When the head hasn't moved, it reuses that SHA's existing preview without a build.
 3. It dispatches main's `workspace-e2e.yml` with `ref=e2e/nightly` and `include_nightly_cases=true`.
 

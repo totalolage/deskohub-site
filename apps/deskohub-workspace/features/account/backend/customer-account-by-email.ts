@@ -2,6 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { Effect, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { authUser } from "@/db/schema/auth";
+import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import {
   type CustomerAccountId,
   customerAccountIdSchema,
@@ -27,7 +28,10 @@ export const findActiveCustomerAccountByEmail = Effect.fn(
     .where(
       and(
         // Better Auth stores login emails lowercased.
-        eq(authUser.email, email.trim().toLowerCase()),
+        eq(
+          authUser.email,
+          sensitiveDatabaseParameter(email.trim().toLowerCase())
+        ),
         eq(authUser.emailVerified, true),
         isNull(authUser.deletionRequestedAt)
       )

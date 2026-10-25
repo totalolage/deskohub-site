@@ -29,6 +29,10 @@ import { currencyCZK } from "@/features/checkout/workspace-money";
 import { canonicalPromotionCodeSchema } from "@/features/discounts/persistence-contracts";
 import { ReferralFeatureFlagServiceMock } from "@/features/referrals/referral-feature-flag.service.mock";
 import {
+  collectDatabaseQueryLogs,
+  expectQueryLogsToOmit,
+} from "@/shared/testing/workspace-database-query-log.test-utils";
+import {
   connectWorkspacePostgresTestDatabase,
   fixtureReservationAuthorId,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
@@ -1016,6 +1020,55 @@ describe.skipIf(!testDatabase)("ReferralService on disposable Postgres", () => {
       await testDatabase!.pool.query(
         "delete from customer_accounts where id = $1",
         [referrerAccountId]
+      );
+    }
+  });
+
+  test("keeps the referral code it issues out of the query log", async () => {
+    const dotyposCustomerId = uniqueDotyposId();
+    const accountId = await insertLinkedAccount(dotyposCustomerId);
+    let issuedCode: string | undefined;
+
+    try {
+      const logs = await collectDatabaseQueryLogs(
+        Effect.gen(function* () {
+          const referrals = yield* ReferralService;
+          const summary = yield* referrals.getAccountSummary({
+            customerAccountId: accountId,
+            dotyposCustomerId,
+          });
+          issuedCode = summary.code;
+        }).pipe(
+          Effect.provide(makeReferralLayer({ accountId, dotyposCustomerId }))
+        )
+      );
+
+      const { rows } = await testDatabase!.pool.query<{ code: string }>(
+        `select p.code from referral_codes r
+           join promotion_codes p on p.id = r.promotion_code_id
+           where r.referrer_dotypos_customer_id = $1`,
+        [dotyposCustomerId]
+      );
+      expect(issuedCode).toBeDefined();
+      expect(rows.map(({ code }) => code)).toEqual([issuedCode!]);
+      expectQueryLogsToOmit({ logs, values: [issuedCode!] });
+    } finally {
+      const { rows } = await testDatabase!.pool.query<{
+        promotion_code_id: string;
+      }>(
+        "delete from referral_codes where referrer_dotypos_customer_id = $1 returning promotion_code_id",
+        [dotyposCustomerId]
+      );
+      await testDatabase!.pool.query(
+        "delete from promotion_codes where id = any($1)",
+        [rows.map(({ promotion_code_id }) => promotion_code_id)]
+      );
+      await testDatabase!.pool.query('delete from auth."user" where id = $1', [
+        accountId,
+      ]);
+      await testDatabase!.pool.query(
+        "delete from customer_accounts where id = $1",
+        [accountId]
       );
     }
   });
