@@ -2,12 +2,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runtimeImportGraph } from "./module-graph";
+import { runtimeImportGraph } from "./runtime-import-graph.test-utils";
 
 let root: string;
 
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), "module-graph-"));
+  root = await mkdtemp(join(tmpdir(), "runtime-import-graph-"));
   await mkdir(join(root, "nested"));
   await writeFile(
     join(root, "entry.ts"),

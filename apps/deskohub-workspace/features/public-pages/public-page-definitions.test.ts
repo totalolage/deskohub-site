@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { runtimeImportGraph } from "@/scripts/shared/module-graph";
+import { runtimeImportGraph } from "@/shared/testing/runtime-import-graph.test-utils";
 
 const workspaceRoot = resolve(import.meta.dir, "../..");
 const renderingPackage = /^(react|react-dom|server-only|next)(\/|$)/;
