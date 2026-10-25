@@ -38,6 +38,31 @@ test("renders the not-found page for an unknown address inside the customer prov
   await expectCookieConsentBanner(page);
 });
 
+// Dotted paths skip the proxy, so a file-like address takes its own way to the
+// localized catch-all.
+test("renders the localized not-found page for an unknown file address", async ({
+  page,
+}) => {
+  await page.setExtraHTTPHeaders({ "Accept-Language": "en" });
+  const response = await page.goto("/route-fallback-unknown-file.html");
+
+  expect(response?.status()).toBe(404);
+  expect(new URL(page.url()).pathname).toBe(
+    `/${locale}/route-fallback-unknown-file.html`
+  );
+  // The server's HTML is the locale layout, not Next's bare error document.
+  expect(await response?.text()).toMatch(
+    new RegExp(`<html(?![^>]*__next_error__)[^>]*\\blang="${locale}"`)
+  );
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: m.notFoundTitle({}, { locale }),
+    })
+  ).toBeVisible();
+  await expect(page).toHaveTitle(/\S/);
+});
+
 test("renders the error page for a failing page inside the customer providers", async ({
   page,
 }) => {

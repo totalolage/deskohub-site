@@ -15,6 +15,7 @@ description: Workspace public site SEO, locale fallback, default locale, Accept-
 
 - In production the proxy 308s page loads on any host other than the canonical origin (the `*.vercel.app` aliases) to the canonical origin. Preview deployments keep their own hosts. `/api` and dotted paths skip the proxy, so crons, webhooks and queues on deployment URLs keep working.
 - The proxy matcher skips every path with a dot. A root file that must not get a locale prefix, such as the company extract (`/official-company-extract.pdf`), keeps a dotted path.
+- The proxy runs before files, so it can't tell an unmatched dotted path from a root file. An `afterFiles` rewrite in `next.config.mjs` does: Next applies it after `public/` files and non-dynamic routes but before dynamic routes such as `[locale]`. It sends a dotted path outside the locales, `/api`, `/page-markdown` and the build assets to `app/locale-redirect/[...path]`. That handler gives the path the exact-locale 308 or the negotiated 307, like the proxy, and the localized catch-all then answers 404. So a dotted root file must be a `public/` file or a non-dynamic route. A dynamic route that serves dotted paths outside the locales needs an exclusion in that rewrite; `next.config.test.ts` covers it.
 - Machine-readable files (`llms.txt`, `security.txt`, the IndexNow key) mark their responses with `markUnindexedResponse` (`shared/utils/unindexed-response.ts`).
 
 ## Indexing
@@ -25,5 +26,6 @@ description: Workspace public site SEO, locale fallback, default locale, Accept-
 ## Not-found responses
 
 - A `notFound()` that reaches the server-rendered shell (outside every Suspense boundary) makes Next send its bare `<html id="__next_error__">` document, with no `lang`, title or content; the browser then paints the boundary from the RSC payload, so a Playwright check of the visible heading still passes. Check server HTML with a plain HTTP request.
+- Without a locale prefix, an unmatched path would reach the `[locale]` layout, whose `notFound()` for an unknown locale gives the bare document. Undotted paths get the proxy's locale redirect, and dotted ones get the `afterFiles` rewrite above.
 - Unmatched paths under a locale reach `app/[locale]/(site)/[...not-found]`, which the build prerenders once per locale. Its `generateMetadata` throws `notFound()` without `connection()`, so the prerender carries the 404 status to the edge cache. Its shell renders `NotFoundContent` (`(site)/not-found-content.tsx`, shared with `(site)/not-found.tsx`) as a Suspense fallback, and the page's own `notFound()` streams after the shell. A request-time metadata throw doesn't work: the cached shell answers 200 first.
 - A gated page throws `notFound()` in `generateMetadata` as well, so crawlers get a real 404 even when browsers get the streamed boundary (see `deskohub-workspace-feature-flags`).

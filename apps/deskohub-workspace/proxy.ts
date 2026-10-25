@@ -3,7 +3,6 @@ import {
   getLocalizedRedirectPathname,
   setLocaleCookie,
 } from "@deskohub/i18n/next";
-import { findExactLocalePathname } from "@deskohub/i18n/pathname";
 import { getSessionCookie } from "better-auth/cookies";
 import { Result } from "effect";
 import {
@@ -17,10 +16,10 @@ import {
   getAccountSignInPath,
 } from "@/features/account/routes";
 import { administrationRequestPathHeader } from "@/features/administrators/administration-request-path";
+import { exactLocaleRedirect } from "@/features/i18n/exact-locale-redirect";
 import { resolveWorkspaceLocale } from "@/features/i18n/locale-resolution";
 import {
   getLocalizedPagePath,
-  localeConfig,
   localeCookieName,
   locales,
 } from "@/features/i18n/routing";
@@ -178,23 +177,6 @@ const pageLocalePreference = async (request: NextRequest) => {
   } catch {
     return undefined;
   }
-};
-
-// A page load whose locale prefix is in another letter case (`/en-us`) or a
-// bare language (`/en`, `/sk`) moves permanently to the exact locale, whoever
-// asks, before any locale or sign-in redirect could prefix it a second time.
-const exactLocaleRedirect = (request: NextRequest) => {
-  if (request.method !== "GET" && request.method !== "HEAD") return undefined;
-  const exactPathname = findExactLocalePathname(
-    request.nextUrl.pathname,
-    locales,
-    localeConfig.preferredLanguageToLocale
-  );
-  if (!exactPathname) return undefined;
-
-  const exactUrl = request.nextUrl.clone();
-  exactUrl.pathname = exactPathname;
-  return NextResponse.redirect(exactUrl, 308);
 };
 
 // Places a page request on the URL the Workspace locale chain resolves.
@@ -450,8 +432,11 @@ const markRedirectPrivacy = (request: NextRequest, response: NextResponse) => {
 };
 
 export async function proxy(request: NextRequest) {
+  // The exact-locale redirect comes before any locale or sign-in redirect
+  // could prefix the path a second time.
   const normalizingRedirect =
-    canonicalHostRedirect(request) ?? exactLocaleRedirect(request);
+    canonicalHostRedirect(request) ??
+    exactLocaleRedirect(request.method, request.nextUrl);
   if (normalizingRedirect) {
     return markRedirectPrivacy(request, normalizingRedirect);
   }
