@@ -6,7 +6,7 @@ import type {
 import { ExternalAPIError } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import {
   emptyWorkspaceE2EAccountJournal,
   parseWorkspaceE2EAccountJournal,
@@ -141,14 +141,16 @@ test("rejects a present account profile without email before either cleanup scop
         readAuthUserEmail: () => Effect.succeed(undefined),
         readCustomerProfile: (customerId) => {
           readCustomerIds.push(customerId);
-          return Effect.succeed({
-            _cloudId: "synthetic-cloud",
-            deleted: false,
-            display: true,
-            id: customerId,
-            flags: "",
-            points: null,
-          } satisfies Customer);
+          return Effect.succeed(
+            Option.some({
+              _cloudId: "synthetic-cloud",
+              deleted: false,
+              display: true,
+              id: customerId,
+              flags: "",
+              points: null,
+            } satisfies Customer)
+          );
         },
         readJournal: () => Effect.succeed(journal),
       })
@@ -209,13 +211,15 @@ test("does not treat a present account reservation with a missing customer as ab
       WorkspaceE2EAccountResourceServiceMock({
         readAuthUserEmail: () => Effect.succeed(undefined),
         readCustomerProfile: () =>
-          Effect.succeed({
-            _cloudId: "unused-cloud",
-            deleted: false,
-            display: true,
-            flags: "",
-            points: null,
-          } satisfies Customer),
+          Effect.succeed(
+            Option.some({
+              _cloudId: "unused-cloud",
+              deleted: false,
+              display: true,
+              flags: "",
+              points: null,
+            } satisfies Customer)
+          ),
         readJournal: () => Effect.succeed(journal),
         readReservationOwner: () => Effect.fail(customerReadError),
       })
@@ -296,15 +300,17 @@ test("rejects an unrelated fallback owner before checkout or account mutation", 
       readCleanupCustomerIds: () => Effect.succeed([]),
       readDotyposReservationOwner: (_config, reservationId) =>
         Effect.succeed(
-          reservationId === exactOrderRow.dotypos_reservation_id
-            ? {
-                customerId: "source-customer" as DotyposCustomerId,
-                email: exactOrderData.email,
-              }
-            : {
-                customerId: "foreign-customer" as DotyposCustomerId,
-                email: testEmailAddress("delivered+other-run"),
-              }
+          Option.some(
+            reservationId === exactOrderRow.dotypos_reservation_id
+              ? {
+                  customerId: "source-customer" as DotyposCustomerId,
+                  email: exactOrderData.email,
+                }
+              : {
+                  customerId: "foreign-customer" as DotyposCustomerId,
+                  email: testEmailAddress("delivered+other-run"),
+                }
+          )
         ),
     }
   );

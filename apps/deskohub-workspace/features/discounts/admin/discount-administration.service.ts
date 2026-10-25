@@ -544,24 +544,23 @@ export class DiscountAdministration extends Context.Service<
         "DiscountAdministration.loadActiveCustomer"
       )((customerId: DotyposCustomerId) =>
         dotypos.getCustomer(customerId).pipe(
-          Effect.catchTag("ExternalAPIError", (error) =>
-            Effect.fail(
-              error.statusCode === 404
-                ? new DiscountAdminNotFoundError({
+          Effect.map(
+            Option.filter(
+              (customer) => Boolean(customer.id) && !customer.deleted
+            )
+          ),
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  new DiscountAdminNotFoundError({
                     resource: { kind: "Dotypos customer", id: customerId },
                     message:
                       "The Dotypos customer does not exist or is deleted.",
                   })
-                : error
-            )
-          ),
-          Effect.filterOrFail(
-            (customer) => Boolean(customer.id) && !customer.deleted,
-            () =>
-              new DiscountAdminNotFoundError({
-                resource: { kind: "Dotypos customer", id: customerId },
-                message: "The Dotypos customer does not exist or is deleted.",
-              })
+                ),
+              onSome: Effect.succeed,
+            })
           )
         )
       );
@@ -996,7 +995,12 @@ export class DiscountAdministration extends Context.Service<
                   row.promotion.customers,
                   ({ dotyposCustomerId }) =>
                     dotypos.getCustomer(dotyposCustomerId).pipe(
-                      Effect.map(toAdminDotyposCustomer),
+                      Effect.map(
+                        Option.match({
+                          onNone: () => null,
+                          onSome: toAdminDotyposCustomer,
+                        })
+                      ),
                       Effect.orElseSucceed(() => null),
                       Effect.map((customer) => ({
                         customerId: dotyposCustomerId,
@@ -1194,7 +1198,12 @@ export class DiscountAdministration extends Context.Service<
                 row.promotion.customers,
                 ({ dotyposCustomerId }) =>
                   dotypos.getCustomer(dotyposCustomerId).pipe(
-                    Effect.map(toAdminDotyposCustomer),
+                    Effect.map(
+                      Option.match({
+                        onNone: () => null,
+                        onSome: toAdminDotyposCustomer,
+                      })
+                    ),
                     Effect.orElseSucceed(() => null),
                     Effect.map((customer) => ({
                       customerId: dotyposCustomerId,
