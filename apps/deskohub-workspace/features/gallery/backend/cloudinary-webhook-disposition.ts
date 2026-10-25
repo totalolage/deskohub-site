@@ -1,7 +1,7 @@
 import type {
   CloudinaryWebhookAuthError,
   CloudinaryWebhookValidationError,
-} from "@deskohub/cloudinary/server";
+} from "@deskohub/cloudinary";
 import {
   type WebhookDisposition,
   WebhookRefusal,

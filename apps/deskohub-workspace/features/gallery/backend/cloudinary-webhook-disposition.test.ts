@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import {
   CloudinaryWebhookAuthError,
   CloudinaryWebhookValidationError,
-} from "@deskohub/cloudinary/server";
+} from "@deskohub/cloudinary";
 import { Effect } from "effect";
 import { defineWebhookRoute } from "@/shared/backend/service-route";
 import {
