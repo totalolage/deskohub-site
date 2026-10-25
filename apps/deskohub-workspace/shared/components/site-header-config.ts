@@ -26,6 +26,7 @@ type SiteHeaderMenuItemId =
   | "locationMap"
   | "meetingRoom"
   | "office"
+  | "pricing"
   | "gallery"
   | "team"
   | "faq"
@@ -103,6 +104,11 @@ const createSiteHeaderConfig = (
       id: "office",
       label: m.landingNavPrivateOffice({}, { locale }),
       href: getOfficeReservationPath(locale),
+    },
+    {
+      id: "pricing",
+      label: m.landingNavPricing({}, { locale }),
+      href: `${localePath}/pricing`,
     },
     {
       id: "gallery",

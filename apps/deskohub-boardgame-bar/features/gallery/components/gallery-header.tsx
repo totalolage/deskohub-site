@@ -3,7 +3,9 @@
 import type { CloudinaryAsset } from "@deskohub/cloudinary";
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
 import { use, useEffect, useRef, useState } from "react";
+import { useLocale } from "@/features/i18n/utils/use-locale";
 import { cn } from "@/shared/utils";
+import { getImageAlt } from "../utils/get-image-alt";
 
 interface GalleryHeaderProps {
   imagesPromise: Promise<readonly CloudinaryAsset[]>;
@@ -19,6 +21,7 @@ export function GalleryHeader({
   autoPlayInterval = 3000,
 }: GalleryHeaderProps) {
   const images = use(imagesPromise);
+  const locale = useLocale();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout>(undefined);
@@ -72,6 +75,7 @@ export function GalleryHeader({
           <div key={image.public_id} className="relative min-w-full h-full">
             <CloudinaryImage
               source={image}
+              alt={getImageAlt(image, locale)}
               variant="hero"
               priority={images.indexOf(image) === 0}
             />

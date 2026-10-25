@@ -1,11 +1,23 @@
+import type { Metadata } from "next";
 import { m } from "@/features/i18n";
-import { getRequestLocale } from "@/features/i18n/server/request-locale";
-import { publicPageMetadata } from "@/features/public-pages/backend/public-page-route.server";
+import {
+  getRequestLocale,
+  runWithRequestLocale,
+} from "@/features/i18n/server/request-locale";
+import { createNoindexedPageMetadata } from "@/features/public-pages/page-metadata";
 import { HorizontalLogo, Logo } from "@/shared/components/logo";
 
 export const instant = false;
 
-export const generateMetadata = publicPageMetadata("/logo");
+export async function generateMetadata(): Promise<Metadata> {
+  return runWithRequestLocale((locale) =>
+    createNoindexedPageMetadata({
+      locale,
+      title: { page: m.logoVariantsTitle({}, { locale }) },
+      followLinks: true,
+    })
+  );
+}
 
 const SIZE = 64;
 

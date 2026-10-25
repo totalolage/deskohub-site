@@ -80,11 +80,10 @@ describe("public page titles and descriptions", () => {
     }
   });
 
-  test("fill every page description in every locale", () => {
+  test("describe every page in every locale", () => {
     for (const { description } of publicPages) {
-      if (description === undefined) continue;
       for (const locale of locales) {
-        expect(description({}, { locale }).trim()).not.toBe("");
+        expect(description?.({}, { locale }).trim()).toBeTruthy();
       }
     }
   });

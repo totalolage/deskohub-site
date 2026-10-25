@@ -59,12 +59,12 @@ export const publicPageDefinitions: Readonly<
   "/": {
     title: m.landingMetadataTitle,
     description: m.landingMetadataDescription,
-    contentDate: "2026-10-21",
+    contentDate: "2026-10-25",
   },
   "/contact": {
     title: m.contactMetadataTitle,
     description: m.contactMetadataDescription,
-    contentDate: "2026-10-19",
+    contentDate: "2026-10-25",
   },
   "/faq": {
     title: m.faqMetadataTitle,
@@ -84,20 +84,19 @@ export const publicPageDefinitions: Readonly<
   "/meeting-room": {
     title: m.meetingRoomMetadataTitle,
     description: m.meetingRoomMetadataDescription,
-    contentDate: "2026-10-21",
+    contentDate: "2026-10-25",
     releaseGate: "meeting-room-page",
   },
   "/team": {
     title: m.teamMetadataTitle,
     description: m.teamMetadataDescription,
-    contentDate: "2026-10-19",
+    contentDate: "2026-10-25",
   },
   "/ttrpg-room": {
     title: m.ttrpgRoomMetadataTitle,
     description: m.ttrpgRoomMetadataDescription,
-    contentDate: "2026-10-21",
+    contentDate: "2026-10-25",
   },
-  "/logo": { title: m.logoVariantsTitle, contentDate: "2026-10-17" },
   "/terms-and-conditions": legalPage("terms-and-conditions", "2026-08-12"),
   "/privacy-policy": legalPage("privacy-policy", "2026-10-21"),
   "/cookie-policy": legalPage("cookie-policy", "2026-10-13"),
