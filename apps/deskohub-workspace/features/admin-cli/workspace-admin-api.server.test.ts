@@ -364,6 +364,43 @@ describe("Workspace Admin API", () => {
     });
   });
 
+  test("returns reservation activity with dates or unavailable dates", async () => {
+    const withDates = {
+      from: "2025-10-23",
+      to: "2026-10-22",
+      dates: [{ date: "2026-10-20", count: 2 }],
+    };
+    const unavailable = {
+      from: "2025-10-23",
+      to: "2026-10-22",
+      dates: null,
+    };
+    let calls = 0;
+    const administration = Layer.succeed(AdministrationService, {
+      ...({} as AdministrationService["Service"]),
+      loadReservationActivity: () => {
+        calls += 1;
+        return Effect.succeed(calls === 1 ? withDates : unavailable);
+      },
+    });
+
+    const result = await callAdministrationApi(
+      (client) =>
+        Effect.gen(function* () {
+          const withActivity = yield* client.getReservationActivity({});
+          const withoutActivity = yield* client.getReservationActivity({});
+          return { withActivity, withoutActivity };
+        }),
+      { administration }
+    );
+
+    expect(calls).toBe(2);
+    expect(result).toEqual({
+      withActivity: withDates,
+      withoutActivity: unavailable,
+    });
+  });
+
   test("serves each instance's own caller when instances share a memo map", async () => {
     const instances = ["first", "second"] as const;
     type Instance = (typeof instances)[number];

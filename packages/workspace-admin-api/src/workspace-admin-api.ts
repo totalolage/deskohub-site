@@ -1690,6 +1690,26 @@ export const AdministrationCustomerActivity = Schema.Struct({
 export type AdministrationCustomerActivity =
   typeof AdministrationCustomerActivity.Type;
 
+/**
+ * Reservations per day over the last 365 days, counting every Workspace-linked
+ * live reservation, including new and cancelled ones.
+ */
+export const AdministrationReservationActivity = Schema.Struct({
+  from: administrationCalendarDate,
+  to: administrationCalendarDate,
+  /** Null when Dotypos couldn't be reached. */
+  dates: Schema.NullOr(
+    Schema.Array(
+      Schema.Struct({
+        date: administrationCalendarDate,
+        count: Schema.Number,
+      })
+    )
+  ),
+});
+export type AdministrationReservationActivity =
+  typeof AdministrationReservationActivity.Type;
+
 /** A customer's completed reservations per day over the last 365 days. */
 export const AdministrationCustomerReservationActivity = Schema.Struct({
   from: administrationCalendarDate,
@@ -2403,6 +2423,13 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
     HttpApiEndpoint.get("getOverview", "/overview", {
       success: AdministrationOverview,
     }).annotate(AdministrationOperationBehavior, readOperation)
+  )
+  .add(
+    HttpApiEndpoint.get(
+      "getReservationActivity",
+      "/overview/reservation-activity",
+      { success: AdministrationReservationActivity }
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listReservations", "/reservations", {
