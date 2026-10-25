@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import {
   getWorkspaceMeetingRoomProductTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
+import { discountIdSchema } from "@/features/discounts/contracts";
 import { workspaceProductFamilies } from "@/features/discounts/product-target";
 import { getFaqQuestions } from "@/features/faq";
 import { locales, m } from "@/features/i18n";
@@ -60,6 +61,7 @@ const coworkSaleBanner = (locale: (typeof locales)[number]) =>
     locale,
     reservationKind: "cowork",
     sale: {
+      id: Schema.decodeUnknownSync(discountIdSchema)("summer-sale"),
       title: "*Summer* sale",
       adjustment: { kind: "percentage", basisPoints: 2000 },
       products: [{ kind: "cowork" }],
