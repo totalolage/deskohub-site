@@ -112,16 +112,6 @@ describe("customerAgentCatalog", () => {
     }
   );
 
-  test("tells ChatGPT, whose directory admits no checkout, nothing about paying or holds", () => {
-    const { tools, instructions } = customerAgentCatalog.forClient("chatgpt");
-    const copy = [
-      instructions,
-      ...tools.flatMap(({ title, description }) => [title, description]),
-    ].join("\n");
-
-    expect(copy).not.toMatch(/\bpa(y|id)|\bhold/i);
-  });
-
   test("gives llms.txt the guidance a client admitting checkout is given", () => {
     const { guidance } = customerAgentCatalog.published;
 

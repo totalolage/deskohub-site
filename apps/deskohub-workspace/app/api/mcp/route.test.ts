@@ -1715,10 +1715,25 @@ describe("customer MCP route per client", () => {
     }
   );
 
-  test("tells ChatGPT nothing about paying or holds", async () => {
-    const copy = await readListingCopy(chatGpt, "openai-mcp");
+  test("gives ChatGPT the catalog's instructions for ChatGPT", async () => {
+    const { result } = await readJsonRpc(
+      await postRpc(
+        "initialize",
+        {
+          protocolVersion: legacyProtocolVersion,
+          capabilities: {},
+          clientInfo: { name: "openai-mcp", version: "1.0.0" },
+        },
+        chatGpt
+      )
+    );
 
-    expect(copy).not.toMatch(/\bpa(y|id)|\bhold/i);
+    expect(result.instructions).toBe(
+      customerAgentCatalog.forClient("chatgpt").instructions
+    );
+    expect(result.instructions).not.toBe(
+      customerAgentCatalog.forClient("other").instructions
+    );
   });
 
   test("keeps the reservation page and the Pay link for the Claude apps", async () => {

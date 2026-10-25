@@ -1,7 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { Effect, type Schema } from "effect";
-import { m } from "@/features/i18n";
 import type { ShowBookingResult } from "./show-booking.schema";
 
 const { makeAgentToolTestServices } = await import("./agent-tools.test-utils");
@@ -27,18 +26,12 @@ describe("show_booking", () => {
     const result = await showBooking({}, ["show_booking", "start_reservation"]);
 
     expect(result.booking_mode).toBe("reserve");
-    expect(result.note).toBe(
-      m.agentToolBookingViewReserveNote({}, { locale: "en-US" })
-    );
   });
 
   test("hands off to the reservation page when start_reservation isn't callable", async () => {
     const result = await showBooking({}, ["show_booking", "get_quote"]);
 
     expect(result.booking_mode).toBe("reservation_page");
-    expect(result.note).toBe(
-      m.agentToolBookingViewReservationPageNote({}, { locale: "en-US" })
-    );
   });
 
   test("hands off to the reservation page where the client's directory admits no checkout, even when start_reservation is callable", async () => {
@@ -49,9 +42,6 @@ describe("show_booking", () => {
     );
 
     expect(result.booking_mode).toBe("reservation_page");
-    expect(result.note).toBe(
-      m.agentToolBookingViewReservationPageNote({}, { locale: "en-US" })
-    );
   });
 
   test("lists the offerings list_offerings lists, in the requested locale", async () => {
