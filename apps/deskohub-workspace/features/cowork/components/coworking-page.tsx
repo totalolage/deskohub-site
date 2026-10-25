@@ -296,7 +296,8 @@ function CoworkingDesks({
                     shape="rounded"
                     caps
                     wrap
-                    className="w-full sm:w-auto"
+                    fullWidth
+                    className="sm:w-auto"
                   >
                     <Link
                       href={getReservationSelectionPath(
