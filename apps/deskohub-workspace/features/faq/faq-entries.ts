@@ -11,6 +11,17 @@ export interface FaqEntry {
   readonly answerKind: "address" | "paragraph";
 }
 
+/** The FAQ page's questions in page order, for previews of the page. */
+export const getFaqQuestions = (locale: Locale) =>
+  [
+    m.faqQuestionLocation({}, { locale }),
+    m.faqQuestionHowItWorks({}, { locale }),
+    m.faqQuestionInternet({}, { locale }),
+    m.faqQuestionFood({}, { locale }),
+    m.faqQuestionCalls({}, { locale }),
+    m.faqQuestionBusyness({}, { locale }),
+  ] as const;
+
 /** The FAQ page's questions and answers in `locale`. */
 export const getFaqEntries = (
   locale: Locale,
@@ -24,41 +35,43 @@ export const getFaqEntries = (
   const capacity = new Intl.NumberFormat(locale, {
     maximumFractionDigits: 0,
   }).format(occupancy.coworkSeatCapacity);
+  const [location, howItWorks, internet, food, calls, busyness] =
+    getFaqQuestions(locale);
 
   return [
     {
       value: "location",
-      question: m.faqQuestionLocation({}, { locale }),
+      question: location,
       answer: `${address.street}, ${address.cityDistrict}, ${address.city} ${address.postalCode}`,
       answerKind: "address",
     },
     {
       value: "how-it-works",
-      question: m.faqQuestionHowItWorks({}, { locale }),
+      question: howItWorks,
       answer: m.faqAnswerHowItWorks({}, { locale }),
       answerKind: "paragraph",
     },
     {
       value: "internet",
-      question: m.faqQuestionInternet({}, { locale }),
+      question: internet,
       answer: m.faqAnswerInternet({}, { locale }),
       answerKind: "paragraph",
     },
     {
       value: "food",
-      question: m.faqQuestionFood({}, { locale }),
+      question: food,
       answer: m.faqAnswerFood({}, { locale }),
       answerKind: "paragraph",
     },
     {
       value: "calls",
-      question: m.faqQuestionCalls({}, { locale }),
+      question: calls,
       answer: m.faqAnswerCalls({}, { locale }),
       answerKind: "paragraph",
     },
     {
       value: "busyness",
-      question: m.faqQuestionBusyness({}, { locale }),
+      question: busyness,
       answer: m.faqAnswerBusyness({ average, capacity }, { locale }),
       answerKind: "paragraph",
     },

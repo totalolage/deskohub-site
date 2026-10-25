@@ -74,6 +74,13 @@ export const workspaceSiteConstants = {
 
 export const workspaceSiteOrigin = `https://${workspaceSiteConstants.brand.domain}`;
 
+/** The Deskohub board game bar next door runs its own site. */
+const deskohubBarOrigin = "https://bar.deskohub.cz";
+
+/** A Deskohub Bar page in `locale`, such as `/contact`; the bar home by default. */
+export const getDeskohubBarPageUrl = (locale: string, pathname = "") =>
+  `${deskohubBarOrigin}/${locale}${pathname}`;
+
 type WorkspaceCanonicalSearchParams = ConstructorParameters<
   typeof URLSearchParams
 >[0];

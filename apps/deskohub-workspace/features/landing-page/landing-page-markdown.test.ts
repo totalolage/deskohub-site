@@ -1,12 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
+import {
+  getWorkspaceMeetingRoomProductTitle,
+  getWorkspaceProductTierTitle,
+} from "@/features/checkout/product-catalog.i18n";
 import { workspaceProductFamilies } from "@/features/discounts/product-target";
+import { getFaqQuestions } from "@/features/faq";
 import { locales, m } from "@/features/i18n";
 import type { PublicPageMarkdownSources } from "@/features/public-pages/public-page-markdown";
 import { serializeMarkdown } from "@/shared/markdown/markdown";
 import {
   markdownLinkUrls,
   markdownPlainText,
+  messagePlainText,
 } from "@/shared/markdown/markdown.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
@@ -65,12 +71,13 @@ const bannerSentence = ({ label }: LandingPageSaleBannerContent) =>
 // Left out on purpose: the metadata title and description, which the page
 // sends as metadata; the hero image, carousel and map labels and alt text
 // (landingHeroImageAlt, landingCarousel*, landingLocationMapAlt); and the
-// decorative contact badge (landingNavContactLabel).
+// decorative contact badge (landingNavContactLabel). The private-office note
+// (landingOfferingOffices) is HTML-only; see landingPageMarkdown.
 describe.each(locales)("landingPageMarkdown in %s", (locale) => {
   const infoEmail = workspaceSiteConstants.contact.infoEmail;
   const origin = "https://workspace.deskohub.cz";
 
-  test("shows the hero, location and contact facts in page order", async () => {
+  test("shows the hero, location, offering, amenities, questions and contact facts in page order", async () => {
     const markdown = await renderLandingPage(locale, true);
 
     expect(markdownPlainText(markdown)).toBe(
@@ -82,7 +89,41 @@ describe.each(locales)("landingPageMarkdown in %s", (locale) => {
         m.landingHeroSecondaryCta({}, { locale }),
         m.landingLocationMapTitle({}, { locale }),
         workspaceFormattedAddress,
+        m.landingLocationTransport({}, { locale }),
+        m.landingAccessTitle({}, { locale }),
+        m.landingAccessStepBook({}, { locale }),
+        m.landingAccessStepEmail({}, { locale }),
+        m.landingAccessStepKeypad({}, { locale }),
+        m.landingAccessStepStay({}, { locale }),
         m.landingLocationMapCta({}, { locale }),
+        m.landingOfferingTitle({}, { locale }),
+        messagePlainText(m.landingOfferingLead({}, { locale })),
+        m.landingOfferingCoworkTitle({}, { locale }),
+        `${getWorkspaceProductTierTitle("open-space", locale)}: ${m.landingOfferingOpenSpaceText({}, { locale })}`,
+        `${getWorkspaceProductTierTitle("reserved-desk", locale)}: ${m.landingOfferingReservedDeskText({}, { locale })}`,
+        m.coworkReservationLink({}, { locale }),
+        getWorkspaceMeetingRoomProductTitle(locale),
+        m.landingOfferingMeetingRoomText({}, { locale }),
+        m.meetingRoomReservationLink({}, { locale }),
+        m.landingOfferingMeetingRoomPageLink({}, { locale }),
+        m.landingOfferingTtrpgTitle({}, { locale }),
+        m.landingOfferingTtrpgText({}, { locale }),
+        m.landingOfferingTtrpgLink({}, { locale }),
+        messagePlainText(m.landingOfferingEvents({}, { locale })),
+        m.landingAmenitiesTitle({}, { locale }),
+        ...[
+          [m.landingAmenityInternetTitle, m.landingAmenityInternetText],
+          [m.landingAmenityWorkstationTitle, m.landingAmenityWorkstationText],
+          [m.landingAmenityCoffeeTitle, m.landingAmenityCoffeeText],
+          [m.landingAmenityFoodTitle, m.landingAmenityFoodText],
+          [m.landingAmenityCallsTitle, m.landingAmenityCallsText],
+          [m.landingAmenityBarTitle, m.landingAmenityBarText],
+        ].map(
+          ([title, text]) => `${title({}, { locale })}: ${text({}, { locale })}`
+        ),
+        m.landingFaqTeaserTitle({}, { locale }),
+        ...getFaqQuestions(locale),
+        m.landingFaqTeaserLink({}, { locale }),
         m.landingFooterContactTitle({}, { locale }),
         m.landingFooterContactLead({}, { locale }),
         infoEmail,
@@ -101,9 +142,16 @@ describe.each(locales)("landingPageMarkdown in %s", (locale) => {
       `${origin}/reservation/cowork`,
       `${origin}/contact`,
       workspaceGoogleDirectionsUrl,
+      `${origin}/pricing`,
+      `${origin}/reservation/cowork`,
+      `${origin}/reservation/meeting-room`,
+      `${origin}/meeting-room`,
+      `${origin}/ttrpg-room`,
+      `${origin}/contact`,
+      `${origin}/faq`,
       `mailto:${infoEmail}`,
       `${origin}/contact`,
-      `${origin}/#overview`,
+      `https://bar.deskohub.cz/${locale}`,
     ]);
   });
 
@@ -136,6 +184,9 @@ describe.each(locales)("landingPageMarkdown in %s", (locale) => {
 
     expect(markdownPlainText(markdown)).not.toContain(
       m.landingHeroMeetingRoomCta({}, { locale })
+    );
+    expect(markdownPlainText(markdown)).not.toContain(
+      m.landingOfferingMeetingRoomPageLink({}, { locale })
     );
     expect(markdownLinkUrls(markdown)).not.toContain(`${origin}/meeting-room`);
     expect(markdownPlainText(markdown)).toContain(

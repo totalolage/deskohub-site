@@ -1,13 +1,20 @@
 import { Effect } from "effect";
 import {
+  getWorkspaceMeetingRoomProductTitle,
+  getWorkspaceProductTierTitle,
+} from "@/features/checkout/product-catalog.i18n";
+import { getFaqQuestions } from "@/features/faq";
+import {
   getPagePath,
   getWorkspacePageUrl,
   type Locale,
   m,
 } from "@/features/i18n";
 import type { PublicPageMarkdownSources } from "@/features/public-pages/public-page-markdown";
-import { coworkReservationPath } from "@/features/reservation/routes";
-import { siteHeaderSectionIds } from "@/shared/components/site-header-config";
+import {
+  coworkReservationPath,
+  meetingRoomReservationPath,
+} from "@/features/reservation/routes";
 import {
   type MarkdownBlocks,
   markdownBlockquote,
@@ -16,10 +23,14 @@ import {
   markdownLink,
   markdownList,
   markdownListItem,
+  markdownOrderedList,
   markdownParagraph,
   markdownStrong,
 } from "@/shared/markdown/markdown";
-import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import {
+  getDeskohubBarPageUrl,
+  workspaceSiteConstants,
+} from "@/shared/utils/site-constants";
 import {
   workspaceFormattedAddress,
   workspaceGoogleDirectionsUrl,
@@ -44,8 +55,10 @@ const saleBannerMarkdown = (banner: LandingPageSaleBannerContent) =>
 
 /**
  * The home page's facts as Markdown: the hero with the sale banner while a
- * sale runs, the location and the contact band. The photo carousel is images
- * only.
+ * sale runs, the location with access, the offering, the amenities, the FAQ
+ * questions and the contact band. The photo carousel is images only. The
+ * note that private offices are not offered yet stays out: unlike the HTML
+ * page, the Markdown sources do not know whether office booking is open.
  */
 export const landingPageMarkdown = (
   locale: Locale,
@@ -53,6 +66,12 @@ export const landingPageMarkdown = (
 ): Effect.Effect<MarkdownBlocks> => {
   const contactUrl = getWorkspacePageUrl(getPagePath("/[locale]/contact"));
   const infoEmail = workspaceSiteConstants.contact.infoEmail;
+  const coworkReservationUrl = getWorkspacePageUrl(coworkReservationPath);
+  const meetingRoomReservationUrl = getWorkspacePageUrl(
+    meetingRoomReservationPath
+  );
+  const titledParagraph = (title: string, text: string) =>
+    markdownParagraph(markdownStrong(`${title}:`), " ", text);
 
   return Effect.map(saleBanner, (banner) => [
     markdownHeading(1, m.landingHeroTitle({}, { locale })),
@@ -71,7 +90,7 @@ export const landingPageMarkdown = (
         : []),
       markdownListItem(
         markdownLink(
-          getWorkspacePageUrl(coworkReservationPath),
+          coworkReservationUrl,
           m.landingHeroPrimaryCta({}, { locale })
         )
       ),
@@ -81,10 +100,103 @@ export const landingPageMarkdown = (
     ]),
     markdownHeading(2, m.landingLocationMapTitle({}, { locale })),
     markdownParagraph(workspaceFormattedAddress),
+    markdownParagraph(m.landingLocationTransport({}, { locale })),
+    markdownHeading(3, m.landingAccessTitle({}, { locale })),
+    markdownOrderedList([
+      markdownListItem(m.landingAccessStepBook({}, { locale })),
+      markdownListItem(m.landingAccessStepEmail({}, { locale })),
+      markdownListItem(m.landingAccessStepKeypad({}, { locale })),
+      markdownListItem(m.landingAccessStepStay({}, { locale })),
+    ]),
     markdownParagraph(
       markdownLink(
         workspaceGoogleDirectionsUrl,
         m.landingLocationMapCta({}, { locale })
+      )
+    ),
+    markdownHeading(2, m.landingOfferingTitle({}, { locale })),
+    markdownParagraph(
+      ...markdownInterpolate(m.landingOfferingLead({}, { locale }), {
+        pricing: (content) =>
+          markdownLink(
+            getWorkspacePageUrl(getPagePath("/[locale]/pricing")),
+            ...content
+          ),
+      })
+    ),
+    markdownHeading(3, m.landingOfferingCoworkTitle({}, { locale })),
+    titledParagraph(
+      getWorkspaceProductTierTitle("open-space", locale),
+      m.landingOfferingOpenSpaceText({}, { locale })
+    ),
+    titledParagraph(
+      getWorkspaceProductTierTitle("reserved-desk", locale),
+      m.landingOfferingReservedDeskText({}, { locale })
+    ),
+    markdownParagraph(
+      markdownLink(
+        coworkReservationUrl,
+        m.coworkReservationLink({}, { locale })
+      )
+    ),
+    markdownHeading(3, getWorkspaceMeetingRoomProductTitle(locale)),
+    markdownParagraph(m.landingOfferingMeetingRoomText({}, { locale })),
+    markdownList([
+      markdownListItem(
+        markdownLink(
+          meetingRoomReservationUrl,
+          m.meetingRoomReservationLink({}, { locale })
+        )
+      ),
+      ...(isPublished("/meeting-room")
+        ? [
+            markdownListItem(
+              markdownLink(
+                getWorkspacePageUrl(getPagePath("/[locale]/meeting-room")),
+                m.landingOfferingMeetingRoomPageLink({}, { locale })
+              )
+            ),
+          ]
+        : []),
+    ]),
+    markdownHeading(3, m.landingOfferingTtrpgTitle({}, { locale })),
+    markdownParagraph(m.landingOfferingTtrpgText({}, { locale })),
+    markdownParagraph(
+      markdownLink(
+        getWorkspacePageUrl(getPagePath("/[locale]/ttrpg-room")),
+        m.landingOfferingTtrpgLink({}, { locale })
+      )
+    ),
+    markdownParagraph(
+      ...markdownInterpolate(m.landingOfferingEvents({}, { locale }), {
+        contact: (content) => markdownLink(contactUrl, ...content),
+      })
+    ),
+    markdownHeading(2, m.landingAmenitiesTitle({}, { locale })),
+    markdownList(
+      [
+        [m.landingAmenityInternetTitle, m.landingAmenityInternetText],
+        [m.landingAmenityWorkstationTitle, m.landingAmenityWorkstationText],
+        [m.landingAmenityCoffeeTitle, m.landingAmenityCoffeeText],
+        [m.landingAmenityFoodTitle, m.landingAmenityFoodText],
+        [m.landingAmenityCallsTitle, m.landingAmenityCallsText],
+        [m.landingAmenityBarTitle, m.landingAmenityBarText],
+      ].map(([title, text]) =>
+        markdownListItem(
+          markdownStrong(`${title({}, { locale })}:`),
+          " ",
+          text({}, { locale })
+        )
+      )
+    ),
+    markdownHeading(2, m.landingFaqTeaserTitle({}, { locale })),
+    markdownList(
+      getFaqQuestions(locale).map((question) => markdownListItem(question))
+    ),
+    markdownParagraph(
+      markdownLink(
+        getWorkspacePageUrl(getPagePath("/[locale]/faq")),
+        m.landingFaqTeaserLink({}, { locale })
       )
     ),
     markdownHeading(2, m.landingFooterContactTitle({}, { locale })),
@@ -96,7 +208,7 @@ export const landingPageMarkdown = (
       ),
       markdownListItem(
         markdownLink(
-          getWorkspacePageUrl(`/#${siteHeaderSectionIds.overview}`),
+          getDeskohubBarPageUrl(locale),
           m.landingFooterBarCta({}, { locale })
         )
       ),

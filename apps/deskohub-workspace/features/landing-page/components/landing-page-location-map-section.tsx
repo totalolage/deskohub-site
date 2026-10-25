@@ -64,6 +64,30 @@ export function LandingPageLocationMapSection({
             <address className="mt-6 not-italic text-lg font-semibold leading-7">
               {workspaceFormattedAddress}
             </address>
+            <p className="mt-3 leading-7 text-navy-blue/80">
+              {m.landingLocationTransport({}, { locale })}
+            </p>
+            <h3 className="mt-7 text-2xl leading-tight">
+              {m.landingAccessTitle({}, { locale })}
+            </h3>
+            <ol className="mt-4 space-y-3 leading-6 text-navy-blue/80">
+              {[
+                m.landingAccessStepBook({}, { locale }),
+                m.landingAccessStepEmail({}, { locale }),
+                m.landingAccessStepKeypad({}, { locale }),
+                m.landingAccessStepStay({}, { locale }),
+              ].map((step, index) => (
+                <li key={step} className="grid grid-cols-[1.75rem_1fr] gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="grid size-7 place-items-center rounded-full bg-navy-blue text-sm font-semibold text-white"
+                  >
+                    {index + 1}
+                  </span>
+                  <span className="pt-0.5">{step}</span>
+                </li>
+              ))}
+            </ol>
             <Button asChild size="lg" caps className="mt-7">
               <a
                 href={workspaceGoogleDirectionsUrl}
