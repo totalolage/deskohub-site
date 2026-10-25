@@ -53,7 +53,7 @@ export function LandingPageLocationMapSection({
         />
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(244,241,234,0.8)_0%,rgba(244,241,234,0.84)_36%,rgba(244,241,234,0.14)_78%,rgba(244,241,234,0)_100%)] lg:bg-[linear-gradient(90deg,rgba(244,241,234,0.96)_0%,rgba(244,241,234,0.82)_38%,transparent_75%)]" />
 
-        <Container className="pointer-events-none relative z-10 flex min-h-184 items-start py-8 lg:min-h-136 lg:items-end lg:py-10">
+        <Container className="pointer-events-none relative z-10 flex min-h-184 items-start pt-8 pb-72 lg:min-h-136 lg:items-end lg:py-10">
           <GlassCard
             className="pointer-events-auto w-full max-w-xl rounded-4xl border border-white/45 p-6 shadow-[0_34px_90px_-55px_rgba(0,2,79,0.75)] sm:p-8"
             optics={{ frost: 2 }}
