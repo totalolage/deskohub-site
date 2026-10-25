@@ -8,6 +8,8 @@ import { cn } from "@/shared/utils";
 import "yet-another-react-lightbox/styles.css";
 import type { CloudinaryAsset } from "@deskohub/cloudinary";
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
+import { useLocale } from "@/features/i18n/utils/use-locale";
+import { getImageAlt } from "../utils/get-image-alt";
 
 interface ClientGalleryProps {
   imagesPromise: Promise<readonly CloudinaryAsset[]>;
@@ -36,6 +38,7 @@ export function ClientGallery({
 }: ClientGalleryProps) {
   const images = use(imagesPromise);
   const blurUrls = blurUrlsPromise && use(blurUrlsPromise);
+  const locale = useLocale();
 
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
@@ -51,6 +54,7 @@ export function ClientGallery({
           >
             <CloudinaryImage
               source={image}
+              alt={getImageAlt(image, locale)}
               blurDataURL={blurUrls?.[image.public_id]}
               variant="gallery"
             />
@@ -102,6 +106,7 @@ export function ClientGallery({
             <div className="relative aspect-square overflow-hidden">
               <CloudinaryImage
                 source={image}
+                alt={getImageAlt(image, locale)}
                 blurDataURL={blurUrls?.[image.public_id]}
                 variant="thumbnail"
               />
@@ -151,6 +156,7 @@ export function ClientGallery({
                 <div className="relative w-full h-full flex items-center justify-center">
                   <CloudinaryImage
                     source={image}
+                    alt={getImageAlt(image, locale)}
                     blurDataURL={blurUrls?.[image.public_id]}
                     variant="full"
                     size={{ width: displayWidth, height: displayHeight }}

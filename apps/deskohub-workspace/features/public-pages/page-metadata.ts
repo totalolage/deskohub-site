@@ -86,14 +86,25 @@ export function createPublicPageMetadata({
   );
 }
 
+type NoindexedPageMetadataInput = PageMetadataInput & {
+  /**
+   * Lets crawlers follow the page's links: the page is open to anyone but
+   * not worth a search result. Private pages leave it out.
+   */
+  readonly followLinks?: true;
+};
+
 /**
  * The metadata of a page kept out of search results: the public page's title,
  * description and share card, with no canonical, hreflang or Open Graph URL
  * that would point crawlers at a URL they must not index.
  */
-export function createNoindexedPageMetadata(page: PageMetadataInput): Metadata {
+export function createNoindexedPageMetadata({
+  followLinks,
+  ...page
+}: NoindexedPageMetadataInput): Metadata {
   return {
     ...createPageMetadata(page),
-    robots: { index: false, follow: false },
+    robots: { index: false, follow: followLinks === true },
   };
 }

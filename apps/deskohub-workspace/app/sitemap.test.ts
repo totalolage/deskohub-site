@@ -69,6 +69,7 @@ const noindexPathnames = [
   "/auth/callback",
   "/auth/sign-in",
   "/checkout/pay",
+  "/logo",
   "/cookie-settings",
   "/gallery",
   "/reservation/access",

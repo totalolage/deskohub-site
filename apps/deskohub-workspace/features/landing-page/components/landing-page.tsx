@@ -1,9 +1,13 @@
 import type { Locale } from "@/features/i18n";
 import { siteHeaderSectionIds } from "@/shared/components/site-header-config";
+import { getDeskohubBarPageUrl } from "@/shared/utils";
+import { LandingPageAmenitiesSection } from "./landing-page-amenities-section";
 import { LandingPageContactSection } from "./landing-page-contact-section";
+import { LandingPageFaqTeaserSection } from "./landing-page-faq-teaser-section";
 import { LandingPageHero } from "./landing-page-hero";
 import { landingPageHeroVars } from "./landing-page-hero-section";
 import { LandingPageLocationMapSection } from "./landing-page-location-map-section";
+import { LandingPageOfferingSection } from "./landing-page-offering-section";
 import { LandingPagePhotoCarouselSection } from "./landing-page-photo-carousel-section";
 
 type LandingPageProps = {
@@ -12,7 +16,6 @@ type LandingPageProps = {
 
 export function LandingPage({ locale }: LandingPageProps) {
   const localePath = `/${locale}`;
-  const localizedHash = (hash: string) => `${localePath}${hash}`;
   const contactHref = `${localePath}/contact`;
 
   return (
@@ -29,7 +32,7 @@ export function LandingPage({ locale }: LandingPageProps) {
         locationMapSectionId={siteHeaderSectionIds.locationMap}
       />
 
-      {/* Legacy event/TTRPG hashes land by contact while those sections are hidden. */}
+      {/* Legacy event/TTRPG hashes land on the offering, which covers both. */}
       <div
         id={siteHeaderSectionIds.events}
         aria-hidden="true"
@@ -41,10 +44,16 @@ export function LandingPage({ locale }: LandingPageProps) {
         className="scroll-mt-[var(--anchor-scroll-offset)]"
       />
 
+      <LandingPageOfferingSection locale={locale} />
+
+      <LandingPageAmenitiesSection locale={locale} />
+
+      <LandingPageFaqTeaserSection locale={locale} />
+
       <LandingPageContactSection
         locale={locale}
         contactHref={contactHref}
-        deskohubBarCtaHref={localizedHash(`#${siteHeaderSectionIds.overview}`)}
+        deskohubBarCtaHref={getDeskohubBarPageUrl({ locale })}
       />
     </main>
   );

@@ -6,10 +6,14 @@ import { ImageOff } from "lucide-react";
 import { useState } from "react";
 
 type FounderProfileImageProps = {
+  alt: string;
   publicId: CloudinaryPublicId;
 };
 
-export function FounderProfileImage({ publicId }: FounderProfileImageProps) {
+export function FounderProfileImage({
+  alt,
+  publicId,
+}: FounderProfileImageProps) {
   const [hasImageError, setHasImageError] = useState(false);
 
   return (
@@ -19,7 +23,7 @@ export function FounderProfileImage({ publicId }: FounderProfileImageProps) {
       </div>
       {!hasImageError && (
         <CloudinaryImage
-          alt=""
+          alt={alt}
           aspectRatio={1}
           className="absolute inset-0"
           gravity="auto:thirds_0"

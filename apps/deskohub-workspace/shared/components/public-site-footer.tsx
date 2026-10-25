@@ -1,7 +1,10 @@
 import { cacheLife } from "next/cache";
 import { type Locale, m } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
-import { getCoworkReservationPath } from "@/features/reservation/routes";
+import {
+  getCoworkReservationPath,
+  getMeetingRoomReservationPath,
+} from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
 import { GuardedLink as Link } from "@/shared/components/guarded-link";
 import { workspaceSiteConstants } from "@/shared/utils";
@@ -10,7 +13,6 @@ export async function PublicSiteFooter() {
   const locale = await getRequestLocale();
   const copyrightYear = await getCopyrightYear(locale);
   const localePath = `/${locale}`;
-  const reservationPath = getCoworkReservationPath(locale);
   const companyExtractPath = "/official-company-extract.pdf";
   const companyAddress = `${workspaceSiteConstants.location.address.street}, ${workspaceSiteConstants.location.address.postalCode} ${workspaceSiteConstants.location.address.city} - ${workspaceSiteConstants.location.address.cityDistrict}`;
 
@@ -135,10 +137,22 @@ export async function PublicSiteFooter() {
                 {m.footerPricingLink({}, { locale })}
               </Link>
               <Link
-                href={reservationPath}
+                href={getCoworkReservationPath(locale)}
                 className="transition-colors hover:text-sunset-yellow"
               >
-                {m.footerReservationLink({}, { locale })}
+                {m.coworkReservationLink({}, { locale })}
+              </Link>
+              <Link
+                href={getMeetingRoomReservationPath(locale)}
+                className="transition-colors hover:text-sunset-yellow"
+              >
+                {m.meetingRoomReservationLink({}, { locale })}
+              </Link>
+              <Link
+                href={`${localePath}/ttrpg-room`}
+                className="transition-colors hover:text-sunset-yellow"
+              >
+                {m.footerTtrpgRoomLink({}, { locale })}
               </Link>
               <Link
                 href={`${localePath}/ai-assistants`}

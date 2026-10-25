@@ -21,7 +21,6 @@ export const publicPagePathnames = [
   "/meeting-room",
   "/team",
   "/ttrpg-room",
-  "/logo",
   "/terms-and-conditions",
   "/privacy-policy",
   "/cookie-policy",

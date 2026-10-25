@@ -5,6 +5,7 @@ import { serializeMarkdown } from "@/shared/markdown/markdown";
 import {
   markdownLinkUrls,
   markdownPlainText,
+  messagePlainText,
 } from "@/shared/markdown/markdown.test-utils";
 import { meetingRoomPageMarkdown } from "./meeting-room-page-markdown";
 
@@ -17,7 +18,7 @@ import { meetingRoomPageMarkdown } from "./meeting-room-page-markdown";
 // (meetingRoomGalleryCta, meetingRoomGalleryTitle,
 // meetingRoomGalleryOpenImage, meetingRoomPhotosComingSoon).
 describe.each(locales)("meetingRoomPageMarkdown in %s", (locale) => {
-  test("shows the hero and every specification in page order", async () => {
+  test("shows the hero, every specification and the booking section in page order", async () => {
     const markdown = serializeMarkdown(
       await Effect.runPromise(meetingRoomPageMarkdown(locale))
     );
@@ -40,6 +41,10 @@ describe.each(locales)("meetingRoomPageMarkdown in %s", (locale) => {
         m.meetingRoomSpecProjectorText({}, { locale }),
         m.meetingRoomSpecConferenceTitle({}, { locale }),
         m.meetingRoomSpecConferenceText({}, { locale }),
+        m.meetingRoomBookingTitle({}, { locale }),
+        messagePlainText(m.meetingRoomBookingText({}, { locale })),
+        messagePlainText(m.meetingRoomTtrpgNote({}, { locale })),
+        m.meetingRoomReservationCta({}, { locale }),
       ].join("\n")
     );
     expect(markdown).toStartWith("# ");
@@ -48,12 +53,15 @@ describe.each(locales)("meetingRoomPageMarkdown in %s", (locale) => {
     );
   });
 
-  test("links the reservation call to action to the booking page", async () => {
+  test("links the reservation calls to action to the booking page and the notes to pricing and the TTRPG room", async () => {
     const markdown = serializeMarkdown(
       await Effect.runPromise(meetingRoomPageMarkdown(locale))
     );
 
     expect(markdownLinkUrls(markdown)).toEqual([
+      "https://workspace.deskohub.cz/reservation/meeting-room",
+      "https://workspace.deskohub.cz/pricing",
+      "https://workspace.deskohub.cz/ttrpg-room",
       "https://workspace.deskohub.cz/reservation/meeting-room",
     ]);
   });
