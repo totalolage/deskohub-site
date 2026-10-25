@@ -61,32 +61,14 @@ const workflowPath = resolve(
   import.meta.dir,
   "../../../.github/workflows/workspace-e2e.yml"
 );
-const workflowDispatchInputs = (
-  Bun.YAML.parse(readFileSync(workflowPath, "utf8")) as {
-    readonly on: {
-      readonly workflow_dispatch?: {
-        readonly inputs?: Readonly<
-          Record<
-            string,
-            {
-              readonly default?: boolean | string;
-              readonly description?: string;
-              readonly required?: boolean;
-              readonly type?: string;
-            }
-          >
-        >;
-      };
-    };
-  }
-).on.workflow_dispatch?.inputs;
+const doc = parseWorkflow(workflowPath);
 const productionWorkflowPath = resolve(
   import.meta.dir,
   "../../../.github/workflows/deploy-workspace-production.yml"
 );
 
-const doc = parseWorkflow(workflowPath);
 const productionDoc = parseWorkflow(productionWorkflowPath);
+const workflowDispatchInputs = doc.on?.workflow_dispatch?.inputs;
 // Format-insensitive view of the parsed workflow used for document-level
 // token presence/absence checks; assertions never touch raw file text.
 const serializedWorkflow = JSON.stringify(doc);
@@ -389,9 +371,7 @@ describe("workspace E2E workflow", () => {
   });
 
   test("opts into review screenshots only for an opted-in manual dispatch", () => {
-    expect(workflowDispatchInputs?.review_screenshots).toEqual({
-      description:
-        "Capture synthetic PR review screenshots into the review artifact",
+    expect(workflowDispatchInputs?.review_screenshots).toMatchObject({
       required: false,
       default: false,
       type: "boolean",

@@ -33,9 +33,22 @@ interface WorkflowJob {
   readonly permissions?: Record<string, string>;
 }
 
+interface WorkflowDispatchInput {
+  readonly default?: boolean | string;
+  readonly description?: string;
+  readonly required?: boolean;
+  readonly type?: string;
+}
+
 export interface WorkflowDoc {
   readonly concurrency?: WorkflowJob["concurrency"];
   readonly jobs: Readonly<Record<string, WorkflowJob>>;
+  readonly on?: Readonly<{
+    readonly schedule?: readonly { readonly cron: string }[];
+    readonly workflow_dispatch?: null | {
+      readonly inputs?: Readonly<Record<string, WorkflowDispatchInput>>;
+    };
+  }>;
   readonly permissions?: Record<string, string>;
 }
 
