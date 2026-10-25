@@ -1,9 +1,8 @@
-import { ExternalAPIError } from "@deskohub/dotypos";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
-  WorkspaceE2EError,
+  type WorkspaceE2EError,
   workspaceE2EError,
 } from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
@@ -299,21 +298,26 @@ export const prepareWorkspaceE2EAccountLaneReconciliation = (
       journal.dotyposCustomerIds,
       (id) =>
         resources.readCustomerProfile(id).pipe(
-          Effect.map((customer) => [id, customer.email ?? null] as const),
-          Effect.catchIf(isNotFound("getCustomer"), () =>
-            Effect.succeed([id, undefined] as const)
+          Effect.map(
+            (customer) =>
+              [
+                id,
+                Option.match(customer, {
+                  onNone: () => undefined,
+                  onSome: ({ email }) => email ?? null,
+                }),
+              ] as const
           )
         )
     );
     const reservationOwners = yield* Effect.forEach(
       journal.dotyposReservationIds,
       (id) =>
-        resources.readReservationOwner(id).pipe(
-          Effect.map((email) => [id, email] as const),
-          Effect.catchIf(isNotFound("getReservation"), () =>
-            Effect.succeed([id, undefined] as const)
+        resources
+          .readReservationOwner(id)
+          .pipe(
+            Effect.map((email) => [id, Option.getOrUndefined(email)] as const)
           )
-        )
     );
     const evidence = owner.proveOwnership
       ? yield* owner.proveOwnership(datasourceConfig, journal)
@@ -361,17 +365,3 @@ export const prepareWorkspaceE2EAccountJournalReconciliations = (
       )
     )
   );
-
-/** A Dotypos 404 for the operation, however deeply E2E errors wrap it. */
-export const isNotFound =
-  (operation: string) =>
-  (cause: unknown): boolean => {
-    if (cause instanceof WorkspaceE2EError) {
-      return isNotFound(operation)(cause.cause);
-    }
-    return (
-      cause instanceof ExternalAPIError &&
-      cause.operation === operation &&
-      cause.statusCode === 404
-    );
-  };

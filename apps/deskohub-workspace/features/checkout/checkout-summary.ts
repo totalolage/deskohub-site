@@ -11,10 +11,7 @@ import {
   officeCheckoutSummaryDiscountedProductItemSchema,
   officeCheckoutSummaryProductItemSchema,
 } from "@/features/checkout/checkout-summary-office-item";
-import {
-  nonNegativeWorkspaceMoneyCodec,
-  workspaceMoneyEquals,
-} from "@/features/checkout/workspace-money";
+import { moneyEquals, nonNegativeMoneyCodec } from "@/shared/money/money";
 
 export {
   type CheckoutSummaryDiscount,
@@ -27,7 +24,7 @@ const checkoutSummaryAddOnItemSchema = Schema.Struct({
     Schema.Literal("addon:workstation"),
     Schema.TemplateLiteral(["monitor:", Schema.String]),
   ]),
-  amount: nonNegativeWorkspaceMoneyCodec,
+  amount: nonNegativeMoneyCodec,
 });
 
 export const checkoutSummaryOrderItemSchema = Schema.Union([
@@ -42,7 +39,7 @@ export const checkoutSummaryOrderItemSchema = Schema.Union([
 
 const checkoutSummaryTotalItemSchema = Schema.Struct({
   key: Schema.Literal("total:final"),
-  amount: nonNegativeWorkspaceMoneyCodec,
+  amount: nonNegativeMoneyCodec,
 });
 
 const checkoutSummaryItemSchema = Schema.Union([
@@ -53,13 +50,13 @@ const checkoutSummaryItemSchema = Schema.Union([
 export const checkoutSummaryOrderSectionSchema = Schema.Struct({
   key: Schema.Literal("order"),
   items: Schema.Array(checkoutSummaryOrderItemSchema),
-  total: nonNegativeWorkspaceMoneyCodec,
+  total: nonNegativeMoneyCodec,
 });
 
 export const checkoutSummaryTotalSectionSchema = Schema.Struct({
   key: Schema.Literal("total"),
   items: Schema.Array(checkoutSummaryTotalItemSchema),
-  total: nonNegativeWorkspaceMoneyCodec,
+  total: nonNegativeMoneyCodec,
 });
 
 const checkoutSummarySectionSchema = Schema.Union([
@@ -69,7 +66,7 @@ const checkoutSummarySectionSchema = Schema.Union([
 
 export const checkoutSummarySchema = Schema.Struct({
   sections: Schema.Array(checkoutSummarySectionSchema),
-  total: nonNegativeWorkspaceMoneyCodec,
+  total: nonNegativeMoneyCodec,
 }).annotate({
   identifier: "CheckoutSummary",
   description: "Public itemized Workspace checkout summary.",
@@ -130,7 +127,7 @@ export const getCheckoutSummaryChangedKeys = (
     .filter((key) => {
       const previousSection = previousSections.get(key);
       const nextSection = nextSections.get(key);
-      return !workspaceMoneyEquals(previousSection?.total, nextSection?.total);
+      return !moneyEquals(previousSection?.total, nextSection?.total);
     })
     .sort();
   const previousItems = getSummaryItemMap(previous);

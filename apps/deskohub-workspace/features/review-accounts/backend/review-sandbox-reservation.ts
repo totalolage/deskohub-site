@@ -4,7 +4,6 @@ import {
   getWorkspaceMeetingRoomPriceForDuration,
   getWorkspaceProductByTier,
 } from "@/features/checkout/product-catalog";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { getCoworkReservationInterval } from "@/features/reservation/cowork-reservation";
 import { getStoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import { getStoredMeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
@@ -15,6 +14,7 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import type { Money } from "@/shared/money/money";
 
 /**
  * A reservation in a review account's sandbox: a sample the account always
@@ -31,7 +31,7 @@ export type ReviewSandboxReservation = {
   readonly startsAt: Temporal.Instant;
   readonly endsAt: Temporal.Instant;
   readonly seats: number;
-  readonly total: WorkspaceMoney;
+  readonly total: Money;
   readonly state: "open" | "cancelled" | "expired" | "completed";
 };
 

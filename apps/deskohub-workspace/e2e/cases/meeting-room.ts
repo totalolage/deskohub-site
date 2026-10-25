@@ -15,12 +15,12 @@ import {
   workspaceMeetingRoomReservationTableTag,
 } from "@/features/checkout/backend/reservation/workspace-table-selection";
 import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   isMeetingRoomWholeDayReservationDuration,
   type MeetingRoomReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { formatMoney } from "@/shared/money/money";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { normalizeBrowserText, waitForBrowserText } from "../browser";
 import {
@@ -551,7 +551,7 @@ const assertMeetingRoomPayPage = (
       : `Meeting room - ${meetingRoom.duration.amount} ${
           meetingRoom.duration.amount === 1 ? "hour" : "hours"
         }`;
-    const price = formatWorkspaceMoney(
+    const price = formatMoney(
       getWorkspaceMeetingRoomPriceForDuration(meetingRoom.duration),
       data.locale
     );

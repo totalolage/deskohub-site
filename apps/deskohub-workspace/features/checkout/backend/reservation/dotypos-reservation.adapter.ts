@@ -17,12 +17,9 @@ import {
   getWorkspaceOfficeProductTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
-import {
-  formatWorkspaceMoney,
-  workspaceMoneyWithValue,
-} from "@/features/checkout/workspace-money";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { getReservationDate } from "@/features/reservation/reservation-interval";
+import { formatMoney, moneyWithValue } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 import {
@@ -164,14 +161,14 @@ export const formatWorkspaceReservationNote = (
     `Payment order: ${input.paymentOrderId}`,
     `Product: ${productLabel}`,
     ...reservationRows,
-    `Price: ${formatWorkspaceMoney(
+    `Price: ${formatMoney(
       checkoutDetails.payment.expectedPrice,
       checkoutDetails.locale
     )}`,
     ...checkoutDetails.payment.discounts.map(
       ({ amount, discount }) =>
-        `Discount: ${discount.label} (${formatWorkspaceMoney(
-          workspaceMoneyWithValue(-amount.value, amount),
+        `Discount: ${discount.label} (${formatMoney(
+          moneyWithValue(-amount.value, amount),
           checkoutDetails.locale
         )})`
     ),

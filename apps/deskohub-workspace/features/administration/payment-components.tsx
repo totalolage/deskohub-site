@@ -8,10 +8,10 @@ import {
   StatusBadge,
   type StatusTone,
 } from "@/shared/components/ui/status-badge";
+import { formatMoney } from "@/shared/money/money";
 import { EmptyState } from "./empty-state";
 import {
   formatAdministrationDateTime,
-  formatAdministrationMoney,
   getAdministrationPaymentStatus,
 } from "./formatters";
 import { m } from "./i18n";
@@ -35,7 +35,7 @@ export const formatProviderMoney = (
   }
   const value = Number(amount);
   return Number.isSafeInteger(value)
-    ? formatAdministrationMoney({ currency, exponent: 2, value }, locale)
+    ? formatMoney({ currency, exponent: 2, value }, locale)
     : `${amount} ${currency}`;
 };
 
@@ -50,7 +50,7 @@ export const formatOrderMoney = (
       locale
     );
   }
-  if (order.link) return formatAdministrationMoney(order.link.amount, locale);
+  if (order.link) return formatMoney(order.link.amount, locale);
   return m.administrationPaymentNotReported({}, { locale });
 };
 

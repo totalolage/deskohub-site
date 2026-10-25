@@ -6,13 +6,11 @@ import {
 } from "@/features/checkout/product-catalog.i18n";
 import type { PublicOffering } from "@/features/checkout/public-offerings";
 import { advertisedCatalogOfferings } from "@/features/checkout/public-offerings.test-utils";
-import {
-  currencyCZK,
-  formatWorkspaceMoney,
-} from "@/features/checkout/workspace-money";
 import { type Locale, locales, m } from "@/features/i18n";
 import { serializeMarkdown } from "@/shared/markdown/markdown";
 import { markdownPlainText } from "@/shared/markdown/markdown.test-utils";
+import { currencyCZK } from "@/shared/money/currencies";
+import { formatMoney } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { pricingPageMarkdown } from "./pricing-page-markdown";
 
@@ -61,7 +59,7 @@ describe.each(locales)("pricingPageMarkdown in %s", (locale) => {
       ...[29_000, 41_000, 35_000, 98_000, 182_000, 53_000, 31_500].map(
         (value) =>
           // Plain text collapses the formatter's no-break spaces.
-          formatWorkspaceMoney(currencyCZK(value), locale).replace(/\s+/g, " ")
+          formatMoney(currencyCZK(value), locale).replace(/\s+/g, " ")
       ),
     ]) {
       expect(text).toContain(line);

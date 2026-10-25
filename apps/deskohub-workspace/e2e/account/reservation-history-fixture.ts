@@ -190,7 +190,10 @@ const readProviderReservation = (
   return Effect.gen(function* () {
     const dotypos = yield* DotyposService;
     return yield* dotypos.getReservation(input.dotyposReservationId);
-  }).pipe(Effect.provide(getDotyposLayer(input.datasourceConfig)));
+  }).pipe(
+    Effect.flatMap(Effect.fromOption),
+    Effect.provide(getDotyposLayer(input.datasourceConfig))
+  );
 };
 
 export function seedWorkspaceE2EReservationHistory(

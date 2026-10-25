@@ -3,10 +3,6 @@
 import { Info } from "lucide-react";
 import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-summary";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
-import {
-  formatWorkspaceMoney,
-  workspaceMoneyWithValue,
-} from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -15,6 +11,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/shared/components/ui/tooltip";
+import { formatMoney, moneyWithValue } from "@/shared/money/money";
 import { CheckoutSummaryDiscountCountdown } from "./checkout-summary-discount-countdown";
 
 export function CheckoutSummaryDiscountDetails({
@@ -86,10 +83,7 @@ export function CheckoutSummaryDiscountDetailsContent({
             />
           </span>
           <span className="font-semibold tabular-nums">
-            {formatWorkspaceMoney(
-              workspaceMoneyWithValue(-amount.value, amount),
-              locale
-            )}
+            {formatMoney(moneyWithValue(-amount.value, amount), locale)}
           </span>
         </li>
       ))}

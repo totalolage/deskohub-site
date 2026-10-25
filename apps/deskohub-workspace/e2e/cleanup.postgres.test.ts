@@ -8,7 +8,7 @@ import {
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import { workspaceReservations } from "@/db/schema";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
@@ -118,12 +118,14 @@ describe.skipIf(!testDatabase)(
               ),
             // Each fixture's Dotypos customer and reservation share an ID.
             readDotyposReservationOwner: (_config, id) =>
-              Effect.succeed({
-                customerId: DotyposCustomerIdSchema.make(id),
-                email:
-                  ownedEmails.get(id) ??
-                  testEmailAddress(`delivered+other-run-${run}`),
-              }),
+              Effect.succeed(
+                Option.some({
+                  customerId: DotyposCustomerIdSchema.make(id),
+                  email:
+                    ownedEmails.get(id) ??
+                    testEmailAddress(`delivered+other-run-${run}`),
+                })
+              ),
           }
         ).pipe(Effect.provideService(E2EDatabase, E2EDatabase.of({ db })))
       );

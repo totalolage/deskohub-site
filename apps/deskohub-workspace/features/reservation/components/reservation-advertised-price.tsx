@@ -1,16 +1,13 @@
 import type { ReactNode } from "react";
-import {
-  formatWorkspaceMoney,
-  type WorkspaceMoney,
-} from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
+import { formatMoney, type Money } from "@/shared/money/money";
 import { cn } from "@/shared/utils";
 
 type ReservationAdvertisedPriceProps = {
-  readonly amount: WorkspaceMoney;
+  readonly amount: Money;
   readonly className?: string;
   readonly locale: Locale;
-  readonly originalAmount?: WorkspaceMoney;
+  readonly originalAmount?: Money;
   readonly originalAmountClassName?: string;
   readonly suffix?: ReactNode;
 };
@@ -26,7 +23,7 @@ export function ReservationAdvertisedPrice({
   if (!originalAmount) {
     return (
       <span className={className}>
-        {formatWorkspaceMoney(amount, locale)}
+        {formatMoney(amount, locale)}
         {suffix}
       </span>
     );
@@ -36,7 +33,7 @@ export function ReservationAdvertisedPrice({
     <>
       <span className="sr-only">
         {m.checkoutSummaryOriginalPrice(
-          { price: formatWorkspaceMoney(originalAmount, locale) },
+          { price: formatMoney(originalAmount, locale) },
           { locale }
         )}
       </span>
@@ -47,16 +44,16 @@ export function ReservationAdvertisedPrice({
           originalAmountClassName
         )}
       >
-        {formatWorkspaceMoney(originalAmount, locale)}
+        {formatMoney(originalAmount, locale)}
       </del>
       <span className="sr-only">
         {m.checkoutSummaryDiscountedPrice(
-          { price: formatWorkspaceMoney(amount, locale) },
+          { price: formatMoney(amount, locale) },
           { locale }
         )}
       </span>
       <span className={cn("text-aquamarine-ink", className)}>
-        <span aria-hidden="true">{formatWorkspaceMoney(amount, locale)}</span>
+        <span aria-hidden="true">{formatMoney(amount, locale)}</span>
         {suffix}
       </span>
     </>

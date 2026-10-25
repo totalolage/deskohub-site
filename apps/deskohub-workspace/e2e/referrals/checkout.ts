@@ -1,14 +1,11 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { Effect } from "effect";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
-import {
-  formatWorkspaceMoney,
-  type WorkspaceMoney,
-} from "@/features/checkout/workspace-money";
 import { m } from "@/features/i18n";
 import { formatReferralInvitationDiscount } from "@/features/referrals/client";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { reservationCustomerQueryParam } from "@/features/reservation/reservation-checkout-query";
+import { formatMoney, type Money } from "@/shared/money/money";
 import {
   evalBrowserScript,
   openBrowserPage,
@@ -61,8 +58,8 @@ type OrdinaryCodeSlotObservation = {
 };
 
 export const calculateSingleInviteeReferralDiscount = (
-  remainingSubtotal: WorkspaceMoney
-): WorkspaceMoney => ({
+  remainingSubtotal: Money
+): Money => ({
   ...remainingSubtotal,
   value: Number((BigInt(remainingSubtotal.value) + 10n) / 20n),
 });
@@ -629,7 +626,7 @@ export const assertReferrerDiscountMatchesRemainingSubtotal = Effect.fn(
     );
     assert(
       referrerRow.amount ===
-        formatWorkspaceMoney(
+        formatMoney(
           { ...expectedAmount, value: -expectedAmount.value },
           locale
         ),

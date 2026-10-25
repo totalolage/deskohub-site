@@ -16,8 +16,8 @@ import {
   buildCoworkReservationQuote as buildCoworkPriceQuote,
   buildDiscountedCoworkCheckoutSummary,
 } from "@/features/checkout/checkout-quote.test-utils";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { m } from "@/features/i18n";
+import { formatMoney } from "@/shared/money/money";
 import {
   workspaceRouterPush,
   workspaceUseAction,
@@ -104,7 +104,7 @@ describe("CheckoutPayPage pricing change", () => {
     expect(
       view.queryByRole("button", {
         name: m.checkoutPayOrderAndPayAmountButton(
-          { amount: formatWorkspaceMoney(quote.summary.total, "en-US") },
+          { amount: formatMoney(quote.summary.total, "en-US") },
           { locale: "en-US" }
         ),
       })
@@ -175,7 +175,7 @@ describe("CheckoutPayPage payment navigation", () => {
     fireEvent.click(
       view.getByRole("button", {
         name: m.checkoutPayOrderAndPayAmountButton(
-          { amount: formatWorkspaceMoney(quote.summary.total, "en-US") },
+          { amount: formatMoney(quote.summary.total, "en-US") },
           { locale: "en-US" }
         ),
       })
@@ -380,7 +380,7 @@ describe("CheckoutPayPage provider handoff", () => {
       expect(
         view.getByText(m.checkoutPayProviderHandoff({}, { locale }))
       ).toBeDefined();
-      const amount = formatWorkspaceMoney(quote.summary.total, locale);
+      const amount = formatMoney(quote.summary.total, locale);
       expect(amount).toMatch(locale === "cs-CZ" ? /Kč/ : /CZK/);
       const payButton = view.getByRole("button", {
         name: m.checkoutPayOrderAndPayAmountButton({ amount }, { locale }),
@@ -395,7 +395,7 @@ describe("CheckoutPayPage provider handoff", () => {
       entryTier: "basic",
       coffee: false,
     });
-    const amount = formatWorkspaceMoney(quote.summary.total, "en-US");
+    const amount = formatMoney(quote.summary.total, "en-US");
     const payButtonName = m.checkoutPayOrderAndPayAmountButton(
       { amount },
       { locale: "en-US" }
@@ -460,7 +460,7 @@ describe("CheckoutPayPage provider handoff", () => {
     });
     const payButtonName = (summary: typeof fullPrice) =>
       m.checkoutPayOrderAndPayAmountButton(
-        { amount: formatWorkspaceMoney(summary.total, "en-US") },
+        { amount: formatMoney(summary.total, "en-US") },
         { locale: "en-US" }
       );
     expect(payButtonName(discounted)).not.toBe(payButtonName(fullPrice));

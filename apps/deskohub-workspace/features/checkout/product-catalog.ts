@@ -1,12 +1,10 @@
 import { Record } from "effect";
 import {
-  currencyCZK,
-  type WorkspaceMoney,
-} from "@/features/checkout/workspace-money";
-import {
   getMeetingRoomReservationDurationKey,
   type MeetingRoomReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
+import { currencyCZK } from "@/shared/money/currencies";
+import type { Money } from "@/shared/money/money";
 import { workspaceMeetingRoomProductsByDurationKey } from "./meeting-room-product-catalog";
 
 export { workspaceMeetingRoomCatalog } from "./meeting-room-product-catalog";
@@ -77,7 +75,7 @@ export const workspaceProductMonitorOptionTableTags = Record.map(
 type WorkspaceProductCatalogItem = {
   readonly tier: WorkspaceCoworkProductTier;
   readonly label: string;
-  readonly price: WorkspaceMoney;
+  readonly price: Money;
   readonly coffeeAddon: CoworkCoffeeAddonAvailability;
   readonly workstationAddon: CoworkWorkstationAddonAvailability;
   readonly allowedMonitorOptions: readonly WorkspaceProductMonitorOption[];
@@ -126,9 +124,9 @@ const workspaceCoworkProductsByTier = {
   },
 } satisfies Record<WorkspaceCoworkProductTier, WorkspaceProductCatalogItem>;
 
-const workspaceProductCoffeePrice: WorkspaceMoney = currencyCZK(5000);
-const workspaceOfficeBaseDailyPrice: WorkspaceMoney = currencyCZK(53_000);
-const workspaceOfficeSeatDailyPrice: WorkspaceMoney = currencyCZK(31_500);
+const workspaceProductCoffeePrice: Money = currencyCZK(5000);
+const workspaceOfficeBaseDailyPrice: Money = currencyCZK(53_000);
+const workspaceOfficeSeatDailyPrice: Money = currencyCZK(31_500);
 
 export function getWorkspaceProductByTier(tier: WorkspaceProductTier) {
   return workspaceCoworkProductsByTier[tier];
@@ -181,8 +179,7 @@ export function getWorkspaceProductCoffeeLinePriceForTier(
   return workspaceProductCoffeePrice;
 }
 
-export const workspaceProductWorkstationAddonPrice: WorkspaceMoney =
-  currencyCZK(12_000);
+export const workspaceProductWorkstationAddonPrice: Money = currencyCZK(12_000);
 
 export function getWorkspaceMeetingRoomPriceForDuration(
   duration: MeetingRoomReservationDuration
@@ -195,7 +192,7 @@ export function getWorkspaceMeetingRoomPriceForDuration(
 export function getWorkspaceOfficePrice(input: {
   readonly seats: number;
   readonly dayCount: number;
-}): WorkspaceMoney {
+}): Money {
   return currencyCZK(
     (workspaceOfficeBaseDailyPrice.value +
       workspaceOfficeSeatDailyPrice.value * input.seats) *

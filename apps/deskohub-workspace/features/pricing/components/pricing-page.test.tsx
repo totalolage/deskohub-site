@@ -13,11 +13,9 @@ import {
   getPublicCatalogOfferings,
   type PublicPriceListOffering,
 } from "@/features/checkout/public-offerings";
-import {
-  currencyCZK,
-  formatWorkspaceMoney,
-} from "@/features/checkout/workspace-money";
 import { type Locale, locales, m } from "@/features/i18n";
+import { currencyCZK } from "@/shared/money/currencies";
+import { formatMoney } from "@/shared/money/money";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -131,8 +129,7 @@ describe("PricingPage", () => {
     test(`shows every price, the office, the sale, and the opening hours in the visible server HTML in ${locale}`, async () => {
       const html = await renderPage(locale);
       const text = visibleText(html);
-      const price = (value: number) =>
-        formatWorkspaceMoney(currencyCZK(value), locale);
+      const price = (value: number) => formatMoney(currencyCZK(value), locale);
 
       for (const expected of [
         m.pricingPageTitle({}, { locale }),
@@ -206,8 +203,7 @@ describe("PricingPage", () => {
     // Aborting keeps the shell that Next.js prerenders, without the stream.
     const html = await renderPage("en-US", AbortSignal.timeout(100));
     const text = visibleText(html);
-    const price = (value: number) =>
-      formatWorkspaceMoney(currencyCZK(value), "en-US");
+    const price = (value: number) => formatMoney(currencyCZK(value), "en-US");
 
     for (const expected of [
       m.pricingPerDay({ price: price(29_000) }, { locale: "en-US" }),
@@ -229,7 +225,7 @@ describe("PricingPage", () => {
 
     expect(text).toContain(
       m.pricingPerDay(
-        { price: formatWorkspaceMoney(currencyCZK(29_000), "en-US") },
+        { price: formatMoney(currencyCZK(29_000), "en-US") },
         { locale: "en-US" }
       )
     );

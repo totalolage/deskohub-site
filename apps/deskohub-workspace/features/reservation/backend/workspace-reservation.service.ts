@@ -129,7 +129,13 @@ export class WorkspaceReservationService extends Context.Service<
           yield* getDotyposReservationId(reservation);
 
         return yield* Effect.all(
-          [dotypos.getReservation(dotyposReservationId), dotypos.getTables()],
+          [
+            // A reservation Dotypos no longer has fails the same load error.
+            dotypos
+              .getReservation(dotyposReservationId)
+              .pipe(Effect.flatMap(Effect.fromOption)),
+            dotypos.getTables(),
+          ],
           { concurrency: "inherit" }
         ).pipe(
           Effect.map(([dotyposReservationDetails, tables]) => ({
@@ -223,6 +229,7 @@ export class WorkspaceReservationService extends Context.Service<
             const dotyposReservationDetails = yield* dotypos
               .getReservation(dotyposReservationId)
               .pipe(
+                Effect.flatMap(Effect.fromOption),
                 Effect.mapError(
                   (cause) =>
                     new WorkspaceReservationDetailsError({

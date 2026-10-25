@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Customer } from "@deskohub/dotypos/generated";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Option } from "effect";
 import type { DatasourceConfig } from "../config";
 import { workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
@@ -199,21 +199,23 @@ const makeWorld = (unrelatedHold = false) => {
             }),
       readAuthUserEmail: (id) => Effect.succeed(authUsers.get(id)),
       readCustomerProfile: (id) =>
-        Effect.succeed({
-          _cloudId: "synthetic-cloud",
-          deleted: false,
-          display: true,
-          email: customers.get(id)?.email,
-          expireDate: customers.get(id)?.expired
-            ? new Date(0).toISOString()
-            : undefined,
-          flags: "",
-          id,
-          points: null,
-        } as Customer),
+        Effect.succeed(
+          Option.some({
+            _cloudId: "synthetic-cloud",
+            deleted: false,
+            display: true,
+            email: customers.get(id)?.email,
+            expireDate: customers.get(id)?.expired
+              ? new Date(0).toISOString()
+              : undefined,
+            flags: "",
+            id,
+            points: null,
+          } as Customer)
+        ),
       readJournal: () => Effect.sync(() => journal),
       readReservationOwner: (id) =>
-        Effect.succeed(reservations.get(id)?.email ?? null),
+        Effect.succeed(Option.some(reservations.get(id)?.email ?? null)),
       removeAuthUser: (id) => Effect.sync(() => void authUsers.delete(id)),
       removeRows: ({ syntheticDotyposReservationIds }) =>
         failing === "remove rows"

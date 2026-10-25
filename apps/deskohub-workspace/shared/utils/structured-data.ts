@@ -1,8 +1,9 @@
-import { getWorkspacePageUrl, type Locale, m } from "@/features/i18n";
+import { getWorkspacePageUrl, type Locale, locales, m } from "@/features/i18n";
 import {
   getWorkspaceCanonicalUrl,
   workspaceSiteConstants,
 } from "./site-constants";
+import { workspaceGoogleMapUrl } from "./workspace-location-map";
 
 const schemaOrgContext = "https://schema.org";
 
@@ -21,6 +22,9 @@ export const getStructuredDataDocument = <Nodes extends object>(
 
 /** The node every other Schema.org node references as the business. */
 export const workspaceBusinessId = getWorkspaceCanonicalUrl("/#business");
+
+/** The node that names the site in search results. */
+export const workspaceWebSiteId = getWorkspaceCanonicalUrl("/#website");
 
 const everyDayOfWeek = [
   "Monday",
@@ -51,12 +55,15 @@ export const serializeStructuredData = (data: StructuredDataDocument) =>
 export const getLocalBusinessStructuredData = ({
   image,
   locale,
+  priceRange,
 }: {
   /** An absolute URL of a photo of the space. */
   readonly image: string;
   readonly locale: Locale;
+  /** The lowest to the highest catalog price, formatted for `locale`. */
+  readonly priceRange?: string;
 }) => {
-  const { brand, contact, location, openingHours, social } =
+  const { brand, company, contact, location, openingHours, social } =
     workspaceSiteConstants;
 
   return getStructuredDataDocument({
@@ -68,10 +75,18 @@ export const getLocalBusinessStructuredData = ({
     url: getWorkspacePageUrl("/"),
     email: contact.infoEmail,
     image,
+    logo: getWorkspaceCanonicalUrl("/favicon.png"),
+    priceRange,
+    taxID: company.taxIdentificationNumber,
+    identifier: {
+      "@type": "PropertyValue",
+      propertyID: "IČO",
+      value: company.identificationNumber,
+    },
     address: {
       "@type": "PostalAddress",
       streetAddress: location.address.street,
-      addressLocality: `${location.address.city} - ${location.address.cityDistrict}`,
+      addressLocality: location.address.city,
       postalCode: location.address.postalCode,
       addressCountry: location.address.country,
     },
@@ -80,6 +95,7 @@ export const getLocalBusinessStructuredData = ({
       latitude: location.coordinates.lat,
       longitude: location.coordinates.lng,
     },
+    hasMap: workspaceGoogleMapUrl,
     sameAs: [social.instagram, social.facebook],
     // Schema.org writes a space that never closes as 00:00 to 23:59.
     ...(openingHours.alwaysOpen && {
@@ -87,3 +103,18 @@ export const getLocalBusinessStructuredData = ({
     }),
   });
 };
+
+/**
+ * The site's name for search results, on the home page. Without it, Search
+ * may label the subdomain with the name of `deskohub.cz`, the board game bar.
+ * It must match the business name and `og:site_name`.
+ */
+export const getWebSiteStructuredData = () =>
+  getStructuredDataDocument({
+    "@type": "WebSite",
+    "@id": workspaceWebSiteId,
+    name: workspaceSiteConstants.brand.name,
+    url: getWorkspacePageUrl("/"),
+    inLanguage: [...locales],
+    publisher: { "@id": workspaceBusinessId },
+  });

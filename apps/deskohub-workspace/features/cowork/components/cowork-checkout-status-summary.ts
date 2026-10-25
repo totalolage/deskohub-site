@@ -5,9 +5,9 @@ import {
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
+import { formatMoney } from "@/shared/money/money";
 
 export const getCoworkCheckoutStatusSummary = (
   summary: CheckoutCoworkStatusSummary,
@@ -57,7 +57,7 @@ export const getCoworkCheckoutStatusSummary = (
     ),
     {
       label: String(m.checkoutStatusSummaryPriceLabel({}, { locale })),
-      value: formatWorkspaceMoney(summary.price, locale),
+      value: formatMoney(summary.price, locale),
     },
   ],
 });
