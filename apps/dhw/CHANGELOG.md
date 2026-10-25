@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.28.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.27.0...dhw-v1.28.0) (2026-10-25)
+
+
+### Features
+
+* **dhw:** warn when the hourly reservation reconcile stalls ([39a999c](https://github.com/totalolage/deskohub-site/commit/39a999cb7405e8560b38f87fe9f2bdb562265ae7))
+* **dhw:** warn when the hourly reservation reconcile stalls ([ead84a5](https://github.com/totalolage/deskohub-site/commit/ead84a5c78f8a213a6930fe5590275de621a63c6))
+
+## [1.27.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.26.0...dhw-v1.27.0) (2026-10-24)
+
+
+### Features
+
+* **account:** password sign-in and a reservation sandbox for app-directory reviewers ([409ac4e](https://github.com/totalolage/deskohub-site/commit/409ac4e2f3e9349c600d9915c3032a8ab444ba81))
+* **dhw:** print run contacts and skip reasons; filter runs by skip reason ([e2b9436](https://github.com/totalolage/deskohub-site/commit/e2b943623dccea726df6107dd372d72ebeee68d0))
+* **workspace:** automation flow builder and run log ([dc4a915](https://github.com/totalolage/deskohub-site/commit/dc4a915870002333045015319e7aef3ec041196c))
+* **workspace:** serve the administration to administrators' AI agents as MCP tools ([024d815](https://github.com/totalolage/deskohub-site/commit/024d815abd37bdd56ab9537b029946ab5d3889c6))
+
 ## [1.26.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.25.0...dhw-v1.26.0) (2026-10-22)
 
 

@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { getWorkspaceOfficePrice } from "@/features/checkout/product-catalog";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
+import { formatMoney } from "@/shared/money/money";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { waitForBrowserText } from "../browser";
 import { getSubmitOfficeReservationScript } from "../browser-scripts";
@@ -157,7 +157,7 @@ const assertOfficePayPage = (
     const accessTitle = `Private office access · ${dayCount} ${dayLabel}`;
     const seatLabel = office.seats === 1 ? "office seat" : "office seats";
     const seatTitle = `${office.seats} ${seatLabel} · ${dayCount} ${dayLabel}`;
-    const price = formatWorkspaceMoney(
+    const price = formatMoney(
       getWorkspaceOfficePrice({
         dayCount,
         seats: office.seats,

@@ -3,7 +3,6 @@ import {
   type DotyposCustomerId,
   type DotyposReservationId,
   DotyposService,
-  ExternalAPIError,
 } from "@deskohub/dotypos";
 import { eq, inArray } from "drizzle-orm";
 import { Effect, Option, Schema } from "effect";
@@ -16,10 +15,7 @@ import {
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import { readSyntheticCustomerProfile } from "../account/fixtures";
 import type { WorkspaceE2EAccountJournal } from "../account/journal";
-import {
-  isNotFound,
-  type WorkspaceE2EAccountJournalEvidence,
-} from "../account/reconcile";
+import type { WorkspaceE2EAccountJournalEvidence } from "../account/reconcile";
 import type { DatasourceConfig } from "../config";
 import { toWorkspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
@@ -111,18 +107,6 @@ export const isCreatedDuringAgentEvalRun = (
   typeof customer.created === "string" &&
   Date.parse(customer.created) >= Date.parse(runStartedAt);
 
-const readCustomerIfPresent = (
-  datasourceConfig: DatasourceConfig,
-  customerId: string
-) =>
-  readSyntheticCustomerProfile(
-    datasourceConfig,
-    customerId as DotyposCustomerId
-  ).pipe(
-    Effect.map(Option.some),
-    Effect.catchIf(isNotFound("getCustomer"), () => Effect.succeedNone)
-  );
-
 /** The Dotypos and payment identifiers a run produced, for its journal and redaction. */
 export type AgentEvalRunResources = {
   readonly dotyposReservationIds: readonly string[];
@@ -155,7 +139,10 @@ export const readAgentEvalRunResources = Effect.fn("readAgentEvalRunResources")(
     const createdContactIds = yield* Effect.forEach(
       contactIds,
       (customerId) =>
-        readCustomerIfPresent(datasourceConfig, customerId).pipe(
+        readSyntheticCustomerProfile(
+          datasourceConfig,
+          customerId as DotyposCustomerId
+        ).pipe(
           Effect.map((customer) =>
             Option.isSome(customer) &&
             isCreatedDuringAgentEvalRun(customer.value, runStartedAt)
@@ -207,7 +194,10 @@ const settledCustomerIds = (
   customerIds: readonly string[]
 ) =>
   Effect.forEach(customerIds, (customerId) =>
-    readCustomerIfPresent(datasourceConfig, customerId).pipe(
+    readSyntheticCustomerProfile(
+      datasourceConfig,
+      customerId as DotyposCustomerId
+    ).pipe(
       Effect.map((customer) =>
         Option.isSome(customer) &&
         customer.value.expireDate != null &&
@@ -298,18 +288,13 @@ export const readAgentEvalPaymentLedgerReservationIds = Effect.fn(
 const readProviderReservation = Effect.fn("readProviderReservation")(
   function* (_datasourceConfig: DatasourceConfig, reservationId: string) {
     const dotypos = yield* DotyposService;
-    const { reservation } = yield* dotypos.getReservation(
+    const details = yield* dotypos.getReservation(
       reservationId as DotyposReservationId
     );
-    return Option.some(reservation);
+    return Option.map(details, ({ reservation }) => reservation);
   },
   (effect, datasourceConfig) =>
     effect.pipe(
-      Effect.catchIf(
-        (cause) =>
-          cause instanceof ExternalAPIError && cause.statusCode === 404,
-        () => Effect.succeedNone
-      ),
       Effect.provide(getDotyposLayer(datasourceConfig)),
       Effect.mapError((cause) =>
         toWorkspaceE2EError("read agent eval Dotypos reservation", cause)

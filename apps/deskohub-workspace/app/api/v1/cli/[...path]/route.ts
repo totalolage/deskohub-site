@@ -23,4 +23,5 @@ export {
   workspaceAdminApiMutationRoute as DELETE,
   workspaceAdminApiMutationRoute as PATCH,
   workspaceAdminApiMutationRoute as POST,
+  workspaceAdminApiMutationRoute as PUT,
 };

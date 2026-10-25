@@ -4,6 +4,7 @@ import { Result, Schema } from "effect";
 import {
   AutomationActivation,
   AutomationDetail,
+  AutomationEngineHealth,
   AutomationFlow,
   AutomationFlowUpdate,
   AutomationPreviewRef,
@@ -339,6 +340,68 @@ describe("automation responses", () => {
     expect(
       Result.getOrThrow(decodeEntry({ ...entry, kind: "waiting", detail: {} }))
     ).toEqual({ ...entry, kind: "waiting", detail: {} } as never);
+  });
+});
+
+describe("automation engine health", () => {
+  const report = {
+    lastPlannedAt: "2026-10-19T10:00:00.000Z",
+    sweepLagSeconds: 60,
+    reconcileLagSeconds: 8160,
+    deadlineMisses: 0,
+    warnings: ["reconcile-stalled"],
+  };
+  // `AutomationEngineHealth` as dhw 1.24.0 to 1.27.0 decode it: a closed
+  // list of warnings and no reconcile lag.
+  const ReleasedAutomationEngineHealth = Schema.Struct({
+    sweepLagSeconds: Schema.NullOr(Schema.Finite),
+    warnings: Schema.Array(
+      Schema.Literals([
+        "planner-stale",
+        "sweep-lagging",
+        "event-backlog",
+        "unit-backlog",
+        "schedule-lagging",
+        "falling-behind",
+      ])
+    ),
+  });
+
+  test("decodes a later server's warning by its code", () => {
+    const decoded = Result.getOrThrow(
+      Schema.decodeUnknownResult(AutomationEngineHealth)({
+        ...report,
+        warnings: ["reconcile-stalled", "synthetic-later-warning"],
+      })
+    );
+
+    expect(decoded.warnings).toEqual([
+      "reconcile-stalled",
+      "synthetic-later-warning",
+    ]);
+  });
+
+  test("decodes an older server's report without reconcile lag", () => {
+    const { reconcileLagSeconds: _, ...older } = report;
+    const decoded = Result.getOrThrow(
+      Schema.decodeUnknownResult(AutomationEngineHealth)({
+        ...older,
+        warnings: [],
+      })
+    );
+
+    expect(decoded.reconcileLagSeconds).toBeNull();
+  });
+
+  test("released dhw reads the reconcile lag's report but not its warning", () => {
+    const decodeReleased = Schema.decodeUnknownResult(
+      ReleasedAutomationEngineHealth
+    );
+
+    expect(Result.isSuccess(decodeReleased({ ...report, warnings: [] }))).toBe(
+      true
+    );
+    expect(Result.isFailure(decodeReleased(report))).toBe(true);
   });
 });
 

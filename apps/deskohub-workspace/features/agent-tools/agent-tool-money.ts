@@ -1,8 +1,5 @@
 import { Schema } from "effect";
-import {
-  toWorkspaceMoneyMajorAmount,
-  type WorkspaceMoney,
-} from "@/features/checkout/workspace-money";
+import { type Money, moneyMajorAmount } from "@/shared/money/money";
 
 /** An amount in major currency units, such as 290 for CZK 290. */
 export const agentToolMoneySchema = Schema.Struct({
@@ -12,7 +9,7 @@ export const agentToolMoneySchema = Schema.Struct({
 
 export type AgentToolMoney = typeof agentToolMoneySchema.Type;
 
-export const toAgentToolMoney = (money: WorkspaceMoney): AgentToolMoney => ({
-  amount: toWorkspaceMoneyMajorAmount(money),
+export const toAgentToolMoney = (money: Money): AgentToolMoney => ({
+  amount: moneyMajorAmount(money),
   currency: money.currency,
 });

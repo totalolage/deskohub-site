@@ -224,6 +224,8 @@ export {
   type AutomationDurationUnit as AutomationDurationUnitType,
   AutomationEngineHealth,
   type AutomationEngineHealth as AutomationEngineHealthType,
+  AutomationEngineWarning,
+  type AutomationEngineWarning as AutomationEngineWarningType,
   AutomationFlow,
   type AutomationFlow as AutomationFlowType,
   AutomationFlowUpdate,
@@ -297,6 +299,7 @@ export {
   AutomationWait,
   type AutomationWait as AutomationWaitType,
   automationDurationUnits,
+  automationEngineWarningDhwVersions,
   automationFlowMaxSteps,
   automationPreviewKinds,
   automationPreviewOutcomes,
@@ -315,6 +318,7 @@ export {
   type CalendarPreviewInput as CalendarPreviewInputType,
   InSavedAudience,
   type InSavedAudience as InSavedAudienceType,
+  openEngineWarningsDhwVersion,
   scheduleMinutesOffTick,
 } from "./email-automations";
 export {

@@ -367,6 +367,7 @@ describe("workspace E2E workflow", () => {
     expect(environment).toContain("WORKSPACE_E2E_VERCEL_PROJECT");
     expect(environment).toContain("WORKSPACE_E2E_BETTER_AUTH_SECRETS");
     expect(environment).toContain("WORKSPACE_E2E_REVIEW_SCREENSHOTS");
+    expect(environment).toContain("WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS");
     expect(environment).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
   });
 
@@ -380,6 +381,21 @@ describe("workspace E2E workflow", () => {
       stepByName("Run checkout E2E").env?.WORKSPACE_E2E_REVIEW_SCREENSHOTS
     ).toBe(
       `\${{ github.event_name == 'workflow_dispatch' && inputs.review_screenshots && 'true' || '' }}`
+    );
+  });
+
+  test("limits campaign screenshots to their dedicated opt-in", () => {
+    expect(workflowDispatchInputs?.campaign_screenshots).toMatchObject({
+      required: false,
+      default: false,
+      type: "boolean",
+    });
+    const screenshotStep = stepByName("Run checkout E2E");
+    expect(screenshotStep.env?.WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS).toBe(
+      `\${{ github.event_name == 'workflow_dispatch' && inputs.campaign_screenshots && 'true' || '' }}`
+    );
+    expect(screenshotStep.env?.WORKSPACE_E2E_REVIEW_SCREENSHOTS).not.toContain(
+      "inputs.campaign_screenshots"
     );
   });
 

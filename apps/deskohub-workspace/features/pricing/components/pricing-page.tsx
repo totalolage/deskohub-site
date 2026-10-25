@@ -2,11 +2,6 @@ import { Match } from "effect";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import type { PublicPriceListOffering } from "@/features/checkout/public-offerings";
-import {
-  formatWorkspaceMoney,
-  type WorkspaceMoney,
-  workspaceMoneyWithValue,
-} from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { getCoworkOfferSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
 import { getMeetingRoomReservationSelectionSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
@@ -15,6 +10,7 @@ import { getReservationSelectionPath } from "@/features/reservation/reservation-
 import { Container } from "@/shared/components/container";
 import { GuardedLink as Link } from "@/shared/components/guarded-link";
 import { Button } from "@/shared/components/ui/button";
+import { formatMoney, type Money, moneyWithValue } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   loadSharedPriceList,
@@ -205,8 +201,8 @@ const getPriceRow = (
   offering: PublicPriceListOffering,
   locale: Locale
 ): PriceRow => {
-  const format = (money: WorkspaceMoney) => formatWorkspaceMoney(money, locale);
-  const perDay = (money: WorkspaceMoney) =>
+  const format = (money: Money) => formatMoney(money, locale);
+  const perDay = (money: Money) =>
     m.pricingPerDay({ price: format(money) }, { locale });
   const reserveLabel = (product: string) =>
     m.pricingReserveLabel({ product }, { locale });
@@ -287,9 +283,9 @@ const getSale = (
 ) =>
   advertisedPrice &&
   advertisedPrice.discount.value > 0 && {
-    price: formatWorkspaceMoney(advertisedPrice.price, locale),
-    regularPrice: formatWorkspaceMoney(
-      workspaceMoneyWithValue(
+    price: formatMoney(advertisedPrice.price, locale),
+    regularPrice: formatMoney(
+      moneyWithValue(
         advertisedPrice.price.value + advertisedPrice.discount.value,
         advertisedPrice.price
       ),

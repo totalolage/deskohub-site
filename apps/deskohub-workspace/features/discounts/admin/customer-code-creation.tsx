@@ -1,7 +1,7 @@
 "use client";
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -95,6 +95,8 @@ export function DiscountCodeCreationForm({
   const discountKind =
     useWatch({ control: form.control, name: "discountKind" }) ?? "existing";
   const { register } = form;
+  const checkFormMessage = () =>
+    m.discountsCodeCreateFailedCheckForm({}, { locale });
   const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
     actionName: "createCustomerDiscountCode",
     onSuccess: ({ data }) => {
@@ -109,7 +111,7 @@ export function DiscountCodeCreationForm({
     onError: ({ error: actionError }) =>
       setError(
         getDiscountAdminActionFailureMessage(actionError.serverError, {
-          fallback: m.discountsCodeCreateFailedCheckForm({}, { locale }),
+          fallback: checkFormMessage(),
           locale,
         })
       ),
@@ -141,29 +143,35 @@ export function DiscountCodeCreationForm({
 
   const submit = (values: DiscountCodeCreationFormValues) => {
     setError(null);
-    const discount: CreateCustomerDiscountCodeAdminInput["discount"] =
+    const discount: Option.Option<
+      CreateCustomerDiscountCodeAdminInput["discount"]
+    > =
       values.discountKind === "existing"
-        ? {
+        ? Option.some({
             kind: "existing" as const,
             discountId: decodeStoredDiscountId(values.discountId),
-          }
-        : {
+          })
+        : Option.map(toCreateDiscountInput(values), (definition) => ({
             kind: "new" as const,
-            discount: toCreateDiscountInput(values),
-          };
+            discount: definition,
+          }));
+    if (Option.isNone(discount)) {
+      setError(checkFormMessage());
+      return;
+    }
     const code = toDiscountCodeConfigurationInput(values);
     if (customerId) {
       execute({
         kind: "create-customer-code",
         customerId,
         code,
-        discount,
+        discount: discount.value,
       });
     } else {
       execute({
         kind: "create-code",
         code,
-        discount,
+        discount: discount.value,
       });
     }
   };

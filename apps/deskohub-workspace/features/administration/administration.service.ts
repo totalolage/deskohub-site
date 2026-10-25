@@ -90,6 +90,7 @@ import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date
 import type { WorkspaceReservationKind } from "@/features/reservation/reservation-kind";
 import { getReservationAccessName } from "@/features/reservation-access";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import type { Money } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
 import type { AdministrationCustomerMarketingConsentState } from "./customer-list-filters";
@@ -332,19 +333,13 @@ export type AdministrationPaymentAttempt = {
   readonly providerLabel: string;
   readonly stateLabel: string;
   readonly failureCode: string | null;
-  readonly amount: AdministrationMoney;
+  readonly amount: Money;
   /** Total Nexi reports as refunded; set only when `refundState` is `refunded`. */
-  readonly refundedAmount: AdministrationMoney | null;
+  readonly refundedAmount: Money | null;
   readonly refundedAt: string | null;
   readonly createdAt: string;
   readonly providerOrderCreatedAt: string | null;
   readonly updatedAt: string;
-};
-
-export type AdministrationMoney = {
-  readonly value: number;
-  readonly exponent: number;
-  readonly currency: string;
 };
 
 export type AdministrationCustomerTransaction = {
@@ -375,8 +370,8 @@ export type AdministrationCustomerActivity = {
     readonly favoriteProduct: string | null;
     /** The product behind `favoriteProduct`, which the Admin UI names. */
     readonly favoriteReservationProduct: AdministrationReservationProduct | null;
-    readonly revenue: readonly AdministrationMoney[];
-    readonly discountSavings: readonly AdministrationMoney[];
+    readonly revenue: readonly Money[];
+    readonly discountSavings: readonly Money[];
   };
   readonly marketingConsent: AdministrationCustomerMarketingConsent | null;
 };
@@ -755,7 +750,7 @@ const toMoneyTotals = (
     readonly exponent: number;
     readonly currency: string;
   }[]
-): readonly AdministrationMoney[] =>
+): readonly Money[] =>
   rows
     .map((row) => ({ ...row, value: Number(row.value ?? 0) }))
     .toSorted((left, right) => left.currency.localeCompare(right.currency));
@@ -1520,7 +1515,7 @@ export class AdministrationService extends Context.Service<
           Effect.map(
             (customer): LiveReservationDetails => ({
               reservation: null,
-              customer,
+              customer: Option.getOrNull(customer),
             })
           ),
           Effect.catch((cause) => {
@@ -1535,10 +1530,14 @@ export class AdministrationService extends Context.Service<
         if (!row.dotyposReservationId) return loadCustomer;
 
         return dotypos.getReservation(row.dotyposReservationId).pipe(
-          Effect.map(
-            ({ customer, reservation }): LiveReservationDetails => ({
-              customer,
-              reservation,
+          Effect.flatMap(
+            Option.match({
+              onNone: () => loadCustomer,
+              onSome: ({ customer, reservation }) =>
+                Effect.succeed<LiveReservationDetails>({
+                  customer,
+                  reservation,
+                }),
             })
           ),
           Effect.catch((cause) => {
@@ -1594,12 +1593,11 @@ export class AdministrationService extends Context.Service<
           const missingCustomers = yield* Effect.all(
             unreturnedIds.map((id) =>
               dotypos.getCustomer(id).pipe(
-                Effect.map((customer) => [id, customer] as const),
-                Effect.catchIf(
-                  (error) =>
-                    error._tag === "ExternalAPIError" &&
-                    error.statusCode === 404,
-                  () => Effect.succeed(null)
+                Effect.map(
+                  Option.match({
+                    onNone: () => null,
+                    onSome: (customer) => [id, customer] as const,
+                  })
                 ),
                 Effect.catch(
                   recoverProviderRead(
@@ -2674,6 +2672,9 @@ export class AdministrationService extends Context.Service<
       /** The Dotypos booking, or null when Dotypos no longer has it. */
       const findBookingDetails = (id: DotyposReservationId) =>
         dotypos.getReservation(id).pipe(
+          Effect.map(Option.getOrNull),
+          // A missing booking is the none above. This 404 is the booking's
+          // linked customer missing, which also reads as no booking for now.
           Effect.catchIf(
             (error) =>
               error._tag === "ExternalAPIError" && error.statusCode === 404,

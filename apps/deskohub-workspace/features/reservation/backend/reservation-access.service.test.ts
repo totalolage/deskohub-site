@@ -3,7 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { type DotyposReservation, DotyposService } from "@deskohub/dotypos";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import {
   WorkspaceCheckoutAccessCodeService,
   type WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType,
@@ -139,7 +139,9 @@ const runAccess = async (options: HarnessOptions = {}) => {
   const getReservation = mock(() =>
     options.providerFails
       ? Effect.fail(new Error("provider unavailable"))
-      : Effect.succeed(options.providerReservation ?? makeProviderReservation())
+      : Effect.succeed(
+          Option.some(options.providerReservation ?? makeProviderReservation())
+        )
   );
   const resolveCustomerAccessCode = mock(
     options.resolver ?? (() => Effect.succeed(resolvedAccess))

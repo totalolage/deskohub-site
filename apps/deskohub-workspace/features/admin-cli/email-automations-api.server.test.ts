@@ -5,20 +5,23 @@ import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationCampaignId,
   AutomationDetail,
+  AutomationEngineHealth,
   AutomationPreviewId,
   AutomationRunId,
   AutomationRunStats,
   AutomationRunSummary,
   automationsMinimumDhwVersion,
+  CliClientCompatibility,
   CliInputInvalid,
   CliMutationRejected,
   CliResourceNotFound,
   CliSessionUnauthorized,
+  openEngineWarningsDhwVersion,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
-import { HttpApiTest } from "effect/unstable/httpapi";
+import { HttpApiMiddleware, HttpApiTest } from "effect/unstable/httpapi";
 import {
   AutomationDraftChanged,
   AutomationRunNotFound,
@@ -74,6 +77,16 @@ const automationDetail = Schema.decodeUnknownSync(AutomationDetail)({
   updatedAt: "2026-10-19T08:00:00Z",
 });
 
+// As the assistant's API: every request admitted, none carrying a version.
+const AssistantCompatibility = Layer.succeed(
+  CliClientCompatibility,
+  (httpEffect) => httpEffect
+);
+const AssistantClientRequests = HttpApiMiddleware.layerClient(
+  CliClientCompatibility,
+  ({ request, next }) => next(request)
+);
+
 const automationsClient = HttpApiTest.groups(WorkspaceAdminApi, [
   "automations",
 ]).pipe(Effect.map((client) => client.automations));
@@ -83,11 +96,15 @@ const callAutomationsApi = <A, E>(
   call: (client: AutomationsClient) => Effect.Effect<A, E>,
   stubs: AutomationServiceStubs = {},
   options: {
-    readonly dhwVersion?: string;
+    /** `null` calls as an AI assistant: no version, and no version check. */
+    readonly dhwVersion?: string | null;
     readonly bearer?: typeof UnauthorizedCliRequest;
   } = {}
 ) => {
-  const dhwVersion = options.dhwVersion ?? automationsMinimumDhwVersion;
+  const dhwVersion =
+    options.dhwVersion === undefined
+      ? automationsMinimumDhwVersion
+      : options.dhwVersion;
   return automationsClient.pipe(
     Effect.flatMap(call),
     Effect.provide(AdminCliAutomationsApiHandlers),
@@ -108,9 +125,15 @@ const callAutomationsApi = <A, E>(
       )
     ),
     Effect.provide(ClaimEveryCliMutation),
-    Effect.provide(CliClientCompatibilityLive),
+    Effect.provide(
+      dhwVersion === null ? AssistantCompatibility : CliClientCompatibilityLive
+    ),
     Effect.provide(UnrecordedAdministrationActions),
-    Effect.provide(cliClientVersion(dhwVersion)),
+    Effect.provide(
+      dhwVersion === null
+        ? AssistantClientRequests
+        : cliClientVersion(dhwVersion)
+    ),
     Effect.provide(NodeHttpServer.layerHttpServices),
     Effect.scoped,
     Effect.runPromise
@@ -379,6 +402,85 @@ describe("automation admin API", () => {
 
     expect(error).toBeInstanceOf(CliResourceNotFound);
     expect(error).toMatchObject({ code: "automation-run-not-found" });
+  });
+
+  const stalledEngine = {
+    engineHealth: {
+      get: Effect.succeed(
+        Schema.decodeUnknownSync(AutomationEngineHealth)({
+          lastPlannedAt: "2026-10-19T08:00:00Z",
+          sweepLagSeconds: 3600,
+          reconcileLagSeconds: 8160,
+          deadlineMisses: 0,
+          warnings: [
+            "sweep-lagging",
+            "reconcile-stalled",
+            "synthetic-later-warning",
+          ],
+        })
+      ),
+    },
+  };
+  const everyWarning = [
+    "sweep-lagging",
+    "reconcile-stalled",
+    "synthetic-later-warning",
+  ];
+  // `AutomationEngineHealth` as dhw 1.24.0 to 1.27.0 decode it: a closed list
+  // of warnings, which rejects the whole report on a code it doesn't know.
+  const ReleasedAutomationEngineHealth = Schema.Struct({
+    warnings: Schema.Array(
+      Schema.Literals([
+        "planner-stale",
+        "sweep-lagging",
+        "event-backlog",
+        "unit-backlog",
+        "schedule-lagging",
+        "falling-behind",
+      ])
+    ),
+  });
+
+  test.each(["1.24.0", "1.27.0", "1.28.0-rc.1"])(
+    "serves dhw %s engine health without the warnings it can't decode",
+    async (dhwVersion) => {
+      const health = await callAutomationsApi(
+        (client) => client.getAutomationEngineHealth(),
+        stalledEngine,
+        { dhwVersion }
+      );
+
+      expect(health.reconcileLagSeconds).toBe(8160);
+      expect(health.warnings).toEqual(["sweep-lagging"]);
+      expect(
+        Schema.decodeUnknownSync(ReleasedAutomationEngineHealth)(
+          Schema.encodeSync(AutomationEngineHealth)(health)
+        ).warnings
+      ).toEqual(["sweep-lagging"]);
+    }
+  );
+
+  test.each([openEngineWarningsDhwVersion, "1.28.0+pr.827.ead84a5", "1.29.0"])(
+    "serves dhw %s every engine warning",
+    async (dhwVersion) => {
+      const health = await callAutomationsApi(
+        (client) => client.getAutomationEngineHealth(),
+        stalledEngine,
+        { dhwVersion }
+      );
+
+      expect(health.warnings).toEqual(everyWarning);
+    }
+  );
+
+  test("serves an AI assistant, which sends no version, every engine warning", async () => {
+    const health = await callAutomationsApi(
+      (client) => client.getAutomationEngineHealth(),
+      stalledEngine,
+      { dhwVersion: null }
+    );
+
+    expect(health.warnings).toEqual(everyWarning);
   });
 
   test("describes a calendar expression", async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { currencyCZK } from "@/features/checkout/workspace-money";
+import { currencyCZK } from "@/shared/money/currencies";
 import {
   calculateReferrerDiscountAmount,
   formatReferrerDiscountPercentage,

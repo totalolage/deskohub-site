@@ -8,7 +8,7 @@ import {
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Cause, Effect, Layer } from "effect";
+import { Cause, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type ReservationAuthor,
@@ -533,7 +533,7 @@ describe("AdministrationService", () => {
                   getCustomer: (id) =>
                     Effect.sync(() => {
                       itemCalls.push(id);
-                      return { firstName: "Ada", id };
+                      return Option.some({ firstName: "Ada", id });
                     }),
                   getCustomers: () =>
                     batchFails
@@ -1141,14 +1141,7 @@ describe("AdministrationService", () => {
                 })
               ),
               DotyposServiceMock({
-                getReservation: () =>
-                  Effect.fail(
-                    new ExternalAPIError({
-                      service: "Dotypos",
-                      operation: "getReservation",
-                      statusCode: 404,
-                    })
-                  ),
+                getReservation: () => Effect.succeed(Option.none()),
                 getTables: () => Effect.succeed([]),
               }),
               Layer.succeed(
@@ -1276,20 +1269,22 @@ describe("AdministrationService", () => {
               ),
               DotyposServiceMock({
                 getReservation: () =>
-                  Effect.succeed({
-                    customer: { id: "dotypos-customer" },
-                    reservation: {
-                      _branchId: "branch",
-                      _cloudId: "cloud",
-                      _customerId: "dotypos-customer",
-                      _tableId: "table-one",
-                      id: "dotypos-booking",
-                      startDate: "2026-08-10T10:00:00Z",
-                      endDate: "2026-08-10T11:00:00Z",
-                      seats: "1",
-                      status: "CONFIRMED",
-                    },
-                  }),
+                  Effect.succeed(
+                    Option.some({
+                      customer: { id: "dotypos-customer" },
+                      reservation: {
+                        _branchId: "branch",
+                        _cloudId: "cloud",
+                        _customerId: "dotypos-customer",
+                        _tableId: "table-one",
+                        id: "dotypos-booking",
+                        startDate: "2026-08-10T10:00:00Z",
+                        endDate: "2026-08-10T11:00:00Z",
+                        seats: "1",
+                        status: "CONFIRMED",
+                      },
+                    })
+                  ),
                 getTables: () =>
                   Effect.succeed([
                     {
@@ -2085,7 +2080,9 @@ describe("AdministrationService reservation author", () => {
               ),
               DotyposServiceMock({
                 getCustomer: (id) =>
-                  Effect.succeed({ id, firstName: "Bea", lastName: "Booked" }),
+                  Effect.succeed(
+                    Option.some({ id, firstName: "Bea", lastName: "Booked" })
+                  ),
                 getCustomers: ({ ids }) =>
                   Effect.succeed(
                     ids?.includes(authorCustomerId)
