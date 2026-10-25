@@ -1,12 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { reviewScreenshotsEnabled } from "../e2e/e2e-env";
+import { makeTestE2EEnvironment } from "../e2e/e2e-env.test-fixture";
 import { workspaceE2ENonPaymentCaseIds } from "../e2e/playwright-checkout/case-catalog";
 import { runCommand } from "./shared/command";
 import {
+  evaluateWorkflowValue,
   findStepByName,
   parseWorkflow,
+  type WorkflowExpressionContext,
   type WorkflowStep,
+  workflowExpressionBoolean,
+  workflowExpressionString,
   workflowStepNames,
 } from "./shared/workflow-contract";
 
@@ -156,6 +162,40 @@ const projectByName = (config: PlaywrightCheckoutConfig, name: string) =>
 
 // Checkout case projects.
 const checkoutCaseProjectNames = ["checkout-cases"];
+
+// The screenshot opt-ins read only these contexts; any other path throws.
+const screenshotOptInContexts = ["github", "inputs"];
+
+const repositoryDispatchContext = (): WorkflowExpressionContext => ({
+  contexts: screenshotOptInContexts,
+  values: new Map([
+    ["github.event_name", workflowExpressionString("repository_dispatch")],
+  ]),
+});
+
+// A manual dispatch fills omitted inputs from their declared defaults and
+// passes boolean inputs as booleans.
+const workflowDispatchContext = (
+  inputs: Readonly<Record<string, boolean>>
+): WorkflowExpressionContext => {
+  const values = new Map([
+    ["github.event_name", workflowExpressionString("workflow_dispatch")],
+  ]);
+  for (const [name, input] of Object.entries(workflowDispatchInputs ?? {})) {
+    if (input.default !== undefined) {
+      values.set(
+        `inputs.${name}`,
+        input.type === "boolean"
+          ? workflowExpressionBoolean(String(input.default) === "true")
+          : workflowExpressionString(String(input.default))
+      );
+    }
+  }
+  for (const [name, value] of Object.entries(inputs)) {
+    values.set(`inputs.${name}`, workflowExpressionBoolean(value));
+  }
+  return { contexts: screenshotOptInContexts, values };
+};
 
 describe("workspace E2E workflow", () => {
   test("keeps the atomic allocator isolated from exact-SHA test code", () => {
@@ -371,33 +411,73 @@ describe("workspace E2E workflow", () => {
     expect(environment).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
   });
 
-  test("opts into review screenshots only for an opted-in manual dispatch", () => {
-    expect(workflowDispatchInputs?.review_screenshots).toMatchObject({
-      required: false,
-      default: false,
-      type: "boolean",
-    });
-    expect(
-      stepByName("Run checkout E2E").env?.WORKSPACE_E2E_REVIEW_SCREENSHOTS
-    ).toBe(
-      `\${{ github.event_name == 'workflow_dispatch' && inputs.review_screenshots && 'true' || '' }}`
-    );
+  test("declares both screenshot opt-ins as optional, off-by-default flags", () => {
+    for (const input of ["review_screenshots", "campaign_screenshots"]) {
+      expect(workflowDispatchInputs?.[input]).toMatchObject({
+        required: false,
+        default: false,
+        type: "boolean",
+      });
+    }
   });
 
-  test("limits campaign screenshots to their dedicated opt-in", () => {
-    expect(workflowDispatchInputs?.campaign_screenshots).toMatchObject({
-      required: false,
-      default: false,
-      type: "boolean",
-    });
-    const screenshotStep = stepByName("Run checkout E2E");
-    expect(screenshotStep.env?.WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS).toBe(
-      `\${{ github.event_name == 'workflow_dispatch' && inputs.campaign_screenshots && 'true' || '' }}`
-    );
-    expect(screenshotStep.env?.WORKSPACE_E2E_REVIEW_SCREENSHOTS).not.toContain(
-      "inputs.campaign_screenshots"
-    );
-  });
+  test.each([
+    {
+      event: "a Vercel deployment dispatch",
+      context: repositoryDispatchContext(),
+      review: false,
+      campaign: false,
+    },
+    {
+      event: "a manual dispatch with default inputs",
+      context: workflowDispatchContext({}),
+      review: false,
+      campaign: false,
+    },
+    {
+      event: "a manual dispatch asking for review screenshots",
+      context: workflowDispatchContext({ review_screenshots: true }),
+      review: true,
+      campaign: false,
+    },
+    {
+      event: "a manual dispatch asking for campaign screenshots",
+      context: workflowDispatchContext({ campaign_screenshots: true }),
+      review: false,
+      campaign: true,
+    },
+    {
+      event: "a manual dispatch asking for both",
+      context: workflowDispatchContext({
+        campaign_screenshots: true,
+        review_screenshots: true,
+      }),
+      review: true,
+      campaign: true,
+    },
+  ])(
+    "captures only the requested screenshots for $event",
+    ({ context, review, campaign }) => {
+      const stepEnvironment = stepByName("Run checkout E2E").env ?? {};
+      const environment = makeTestE2EEnvironment(
+        Object.fromEntries(
+          [
+            "WORKSPACE_E2E_REVIEW_SCREENSHOTS",
+            "WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS",
+          ].map((name) => {
+            const value = stepEnvironment[name];
+            expect(value).toBeDefined();
+            return [name, evaluateWorkflowValue(value as string, context)];
+          })
+        )
+      );
+
+      expect(reviewScreenshotsEnabled(environment)).toBe(review);
+      expect(
+        environment.WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS === "true"
+      ).toBe(campaign);
+    }
+  );
 
   test("generates the Igloohome client before Workspace E2E startup", async () => {
     const result = await runCommand(
