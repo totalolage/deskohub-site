@@ -1,11 +1,26 @@
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 import type { Locale } from "@/features/i18n";
 import {
   getLegalDocument,
   type LegalDocumentKey,
 } from "@/features/legal/content";
-import { publicPageContentDates } from "./content-dates";
-import { publicPages } from "./public-pages";
+import { runtimeImportGraph } from "@/shared/testing/runtime-import-graph.test-utils";
+import { publicPageDefinitions, publicPages } from "./public-page-definitions";
+
+const workspaceRoot = resolve(import.meta.dir, "../..");
+const renderingPackage = /^(react|react-dom|server-only|next)(\/|$)/;
+
+test("the registry loads no rendering or server-only modules", async () => {
+  const { modules, packages } = await runtimeImportGraph(
+    resolve(import.meta.dir, "public-page-definitions.ts"),
+    workspaceRoot
+  );
+
+  expect(modules.length).toBeGreaterThan(1);
+  expect(modules.filter((module) => module.endsWith(".tsx"))).toEqual([]);
+  expect(packages.filter((name) => renderingPackage.test(name))).toEqual([]);
+});
 
 const legalDocumentKeys = [
   "terms-and-conditions",
@@ -31,12 +46,12 @@ const longDate = (isoDate: string, locale: Locale) =>
   }).format(new Date(`${isoDate}T12:00:00Z`));
 
 describe("public page content dates", () => {
-  test("date every registered page with a calendar day that has passed", () => {
+  test("date every page with a calendar day that has passed", () => {
     const today = Temporal.Now.plainDateISO("Europe/Prague");
 
-    for (const { pathname } of publicPages) {
-      const date = Temporal.PlainDate.from(publicPageContentDates[pathname]);
-      expect(date.toString()).toBe(publicPageContentDates[pathname]);
+    for (const { contentDate } of publicPages) {
+      const date = Temporal.PlainDate.from(contentDate);
+      expect(date.toString()).toBe(contentDate);
       expect(Temporal.PlainDate.compare(date, today)).toBeLessThanOrEqual(0);
     }
   });
@@ -45,7 +60,7 @@ describe("public page content dates", () => {
     for (const documentKey of legalDocumentKeys) {
       for (const locale of ["en-US", "cs-CZ"] as const) {
         expect(getLegalDocument(locale, documentKey).updatedAt).toBe(
-          longDate(publicPageContentDates[`/${documentKey}`], locale)
+          longDate(publicPageDefinitions[`/${documentKey}`].contentDate, locale)
         );
       }
     }

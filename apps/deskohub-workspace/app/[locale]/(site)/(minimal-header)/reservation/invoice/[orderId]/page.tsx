@@ -1,6 +1,4 @@
 import { Effect, Option, Schema } from "effect";
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import {
@@ -11,7 +9,7 @@ import { PostOrderInvoicePage } from "@/features/accounting/components/post-orde
 import { CheckoutFlowPageSkeleton } from "@/features/checkout/components/checkout-flow-page-skeleton";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { privateOrderPage } from "@/features/reservation/private-order-page.server";
 import {
   reservationAccessTokenQueryParam,
   reservationAccessTokenSchema,
@@ -26,13 +24,17 @@ export const maxDuration = 30;
 export const instant = true;
 
 type PageProps = {
-  params: Promise<{ orderId: string }>;
+  params: Promise<{ locale: string; orderId: string }>;
   searchParams: Promise<SearchParamsRecord>;
 };
 
-const decodeParams = Schema.decodeUnknownOption(
-  Schema.Struct({ orderId: workspaceReservationIdSchema })
-);
+const { generateMetadata, readOrderId } = privateOrderPage({
+  title: m.postOrderInvoiceMetadataTitle,
+  description: m.postOrderInvoiceMetadataDescription,
+});
+
+export { generateMetadata };
+
 const decodeSearchParams = getSearchParamsDecoder(
   Schema.Struct({
     [reservationAccessTokenQueryParam]: Schema.optional(
@@ -40,18 +42,6 @@ const decodeSearchParams = getSearchParamsDecoder(
     ),
   })
 );
-
-export async function generateMetadata({
-  params,
-}: PageProps): Promise<Metadata> {
-  if (Option.isNone(decodeParams(await params))) notFound();
-  return runWithRequestLocale((locale) => ({
-    title: m.postOrderInvoiceMetadataTitle({}, { locale }),
-    description: m.postOrderInvoiceMetadataDescription({}, { locale }),
-    robots: { index: false, follow: false },
-    referrer: "no-referrer",
-  }));
-}
 
 export default async function LocalizedPostOrderInvoicePage(props: PageProps) {
   return runWithRequestLocale((locale) => (
@@ -74,9 +64,7 @@ async function PostOrderInvoiceContent({
   searchParams,
 }: PageProps & { readonly locale: Locale }) {
   await connection();
-  const { orderId } = Option.getOrElse(decodeParams(await params), () =>
-    notFound()
-  );
+  const orderId = await readOrderId(params);
   const decodedSearchParams = Option.getOrElse(
     decodeSearchParams(await searchParams),
     () => ({ accessToken: undefined })

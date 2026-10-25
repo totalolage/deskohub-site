@@ -2,12 +2,11 @@ import { afterAll, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import * as envModule from "@/env";
 import { locales } from "@/features/i18n";
+import { PublishedPublicPagesService } from "@/features/public-pages/backend";
 import {
   type PublicPage,
-  publicPageContentDates,
   publicPages,
-} from "@/features/public-pages";
-import { PublishedPublicPagesService } from "@/features/public-pages/backend";
+} from "@/features/public-pages/public-page-definitions";
 
 // The workspace env object is read once at import; route VERCEL_ENV through a
 // switchable override so one file covers every deployment.
@@ -122,12 +121,10 @@ describe("sitemap.xml", () => {
     const entries = await productionSitemap();
     const entriesByUrl = new Map(entries.map((entry) => [entry.url, entry]));
 
-    for (const { pathname } of publicPages) {
+    for (const { pathname, contentDate } of publicPages) {
       for (const locale of locales) {
         const url = `${origin}/${locale}${pathname === "/" ? "" : pathname}`;
-        expect(entriesByUrl.get(url)?.lastModified).toBe(
-          publicPageContentDates[pathname]
-        );
+        expect(entriesByUrl.get(url)?.lastModified).toBe(contentDate);
       }
     }
   });

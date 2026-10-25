@@ -11,11 +11,11 @@ import {
 } from "@/shared/markdown/markdown.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { llmsTxtMarkdown } from "./llms-txt";
-import { publicPageMarkdown } from "./public-page-markdown";
-import { type PublicPagePathname, publicPages } from "./public-pages";
+import { publicPageDefinitions } from "./public-page-definitions";
+import { type PublicPagePathname, publicPagePathnames } from "./public-pages";
 import { getWorkspaceSummary } from "./workspace-summary";
 
-const allPages = publicPages.map(({ pathname }) => pathname);
+const allPages: ReadonlyArray<PublicPagePathname> = publicPagePathnames;
 const locale = "en-US";
 
 const renderLlmsTxt = (
@@ -101,7 +101,9 @@ describe("llmsTxtMarkdown", () => {
     const text = markdownPlainText(renderLlmsTxt());
 
     for (const pathname of allPages) {
-      expect(text).toContain(publicPageMarkdown[pathname].title(locale));
+      expect(text).toContain(
+        publicPageDefinitions[pathname].title({}, { locale })
+      );
     }
   });
 

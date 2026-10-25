@@ -20,8 +20,8 @@ description: Workspace public site SEO, locale fallback, default locale, Accept-
 
 ## Indexing
 
-- A noindexed page sets no `alternates` and no `openGraph.url`. `app/[locale]/(site)/page-metadata.test.ts` covers the indexable registry pages and the noindexed transactional pages.
-- The sitemap's `lastmod` comes from `publicPageContentDates` (`features/public-pages/content-dates.ts`). When a change alters what a public page shows, move that page's date to the change's day in the same change. Never derive it from a deploy or build time. A legal page's date must match its document's `updatedAt` in both locales; `content-dates.test.ts` checks this.
+- A noindexed page takes its metadata from `createNoindexedPageMetadata` (`features/public-pages/page-metadata.ts`): the title, description and share card, `robots` noindex/nofollow, and no `alternates` or `openGraph.url`. A page about one order (reservation access, status, invoice and payment-disabled) gets it through `privateOrderPage` (`features/reservation/private-order-page.server.ts`), which also sends no referrer. `public-page-route.server.test.ts` covers the indexable registry pages, `private-order-page.server.test.ts` the order pages, and the pay and cookie settings pages their colocated `page.test.ts`.
+- The sitemap's `lastmod` comes from each page's `contentDate` in `publicPageDefinitions` (`features/public-pages/public-page-definitions.ts`). When a change alters what a public page shows, move that page's date to the change's day in the same change. Never derive it from a deploy or build time. A legal page's date must match its document's `updatedAt` in both locales; `public-page-definitions.test.ts` checks this.
 
 ## Not-found responses
 
