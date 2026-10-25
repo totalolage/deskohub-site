@@ -1,5 +1,4 @@
 import { formatCurrencyAmount } from "@deskohub/i18n/currency";
-import { BigDecimal } from "effect";
 import type { AdministrationCustomerName } from "@/features/administration/customer-name";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
@@ -28,7 +27,7 @@ export const formatInvoiceTotal = (
   locale: Locale
 ) =>
   formatCurrencyAmount({
-    amount: BigDecimal.fromStringUnsafe(invoice.total),
+    amount: invoice.total,
     currency: invoice.currency,
     locale,
     fractionDigits: findWorkspaceCurrencyDefinition(invoice.currency)?.exponent,

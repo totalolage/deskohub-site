@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { BigDecimal } from "effect";
 import { formatCurrencyAmount, formatCurrencyName } from "./currency";
 
 describe("formatCurrencyAmount", () => {
@@ -43,30 +42,41 @@ describe("formatCurrencyAmount", () => {
 });
 
 describe("formatCurrencyAmount with an exact decimal", () => {
-  const format = (amount: string, locale: string) =>
-    formatCurrencyAmount({
-      amount: BigDecimal.fromStringUnsafe(amount),
-      currency: "CZK",
-      locale,
-      fractionDigits: 2,
-    });
+  const format = (amount: string, locale: string, currency = "CZK") =>
+    formatCurrencyAmount({ amount, currency, locale, fractionDigits: 2 });
 
   test.each([
     ["410.00", 410],
     ["1234.5", 1234.5],
     ["0.01", 0.01],
     ["-100", -100],
+    ["0", 0],
+    ["-0", -0],
+    ["-0.00", -0],
+    ["-0.001", -0.001],
+    ["-0e5", -0],
+    ["+0", 0],
+    [".5", 0.5],
+    [" -0.00 ", -0],
+    ["Infinity", Number.POSITIVE_INFINITY],
   ])("formats %s like the same number", (amount, number) => {
-    for (const locale of ["cs", "en"]) {
-      expect(format(amount, locale)).toBe(
-        formatCurrencyAmount({
-          amount: number,
-          currency: "CZK",
-          locale,
-          fractionDigits: 2,
-        })
-      );
+    for (const currency of ["CZK", "EUR"]) {
+      for (const locale of ["cs", "en"]) {
+        expect(format(amount, locale, currency)).toBe(
+          formatCurrencyAmount({
+            amount: number,
+            currency,
+            locale,
+            fractionDigits: 2,
+          })
+        );
+      }
     }
+  });
+
+  test("keeps the sign of a negative zero", () => {
+    expect(format("-0.00", "en")).toStartWith("-");
+    expect(format("0.00", "en")).not.toStartWith("-");
   });
 
   test("keeps every digit a number would round", () => {
