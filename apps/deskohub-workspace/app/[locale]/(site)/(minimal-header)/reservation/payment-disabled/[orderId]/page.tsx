@@ -1,10 +1,6 @@
-import { Option, Schema } from "effect";
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
-import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { privateOrderPage } from "@/features/reservation/private-order-page.server";
 import { reviewPaymentDisabledPath } from "@/features/review-accounts";
 import { ReviewPaymentDisabledPage } from "@/features/review-accounts/components/review-payment-disabled-page";
 
@@ -13,35 +9,16 @@ import { ReviewPaymentDisabledPage } from "@/features/review-accounts/components
 export const instant = false;
 
 type LocalizedReviewPaymentDisabledPageProps = {
-  params: Promise<{ orderId: string }>;
+  params: Promise<{ locale: string; orderId: string }>;
 };
 
-const decodeParams = Schema.decodeUnknownOption(
-  Schema.Struct({ orderId: workspaceReservationIdSchema })
-);
+const { generateMetadata, readOrderId } = privateOrderPage({
+  pathname: reviewPaymentDisabledPath,
+  title: m.reviewPaymentDisabledMetadataTitle,
+  description: m.reviewPaymentDisabledMetadataDescription,
+});
 
-const readOrderId = async (
-  params: LocalizedReviewPaymentDisabledPageProps["params"]
-) => Option.getOrElse(decodeParams(await params), () => notFound()).orderId;
-
-export async function generateMetadata({
-  params,
-}: LocalizedReviewPaymentDisabledPageProps): Promise<Metadata> {
-  const orderId = await readOrderId(params);
-
-  return runWithRequestLocale((locale) => ({
-    ...createPublicPageMetadata({
-      locale,
-      pathname: `${reviewPaymentDisabledPath}/${orderId}`,
-      title: {
-        absolute: m.reviewPaymentDisabledMetadataTitle({}, { locale }),
-      },
-      description: m.reviewPaymentDisabledMetadataDescription({}, { locale }),
-    }),
-    robots: { index: false, follow: false },
-    referrer: "no-referrer",
-  }));
-}
+export { generateMetadata };
 
 export default async function LocalizedReviewPaymentDisabledPage({
   params,

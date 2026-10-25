@@ -1,9 +1,13 @@
-import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
+import {
+  type DotyposCustomerId,
+  DotyposCustomerIdSchema,
+} from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
+import type { Locale } from "@/features/i18n";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { CustomerEmailLocaleService } from "./customer-email-locale.service";
 
@@ -19,26 +23,20 @@ describe.skipIf(!testDatabase)(
     const dbLayer = () => testDatabase!.layer;
 
     const insertAccountWithLink = async (
-      dotyposCustomerId: string,
+      dotyposCustomerId: DotyposCustomerId,
       options: {
-        readonly locale?: string;
+        readonly locale?: Locale;
         readonly recordedOnAccount?: boolean;
       } = {}
     ) => {
-      const accountId = uniqueId();
-      await testDatabase!.pool.query(
-        options.recordedOnAccount
-          ? `insert into customer_accounts (id, dotypos_customer_id) values ($1, $2)`
-          : `insert into customer_accounts (id) values ($1) on conflict do nothing`,
-        options.recordedOnAccount ? [accountId, dotyposCustomerId] : [accountId]
-      );
-      await testDatabase!.pool.query(
-        `insert into auth."user" (id, name, email, locale) values ($1, '', $2, $3)`,
-        [
-          accountId,
-          testEmailAddress(`locale-${accountId}`),
-          options.locale ?? null,
-        ]
+      const { accountId } = await Effect.runPromise(
+        workspaceFixtures(testDatabase!.db).account("locale", {
+          verified: false,
+          locale: options.locale,
+          linkedCustomer: options.recordedOnAccount
+            ? dotyposCustomerId
+            : undefined,
+        })
       );
       if (!options.recordedOnAccount) {
         await testDatabase!.pool.query(

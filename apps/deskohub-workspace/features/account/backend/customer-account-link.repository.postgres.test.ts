@@ -1,3 +1,4 @@
+import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
@@ -9,8 +10,12 @@ import {
   withPostgresAdvisoryLock,
 } from "@/db/postgres-advisory-lock";
 import { rejectCustomerEventInserts } from "@/shared/backend/customer-events/customer-event-outbox.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { customerAccountIdSchema } from "../customer-account";
+import {
+  type CustomerAccountId,
+  customerAccountIdSchema,
+} from "../customer-account";
 import { CustomerAccountRepository } from "./customer-account.repository";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import { waitForAccountAdvisoryLockWait } from "./customer-account-lock.test-utils";
@@ -30,16 +35,14 @@ const makeRepositoryLayer = () =>
     )
   );
 
-const insertAuthUser = async (id: string, email: string) => {
-  await testDatabase!.pool.query(
-    "insert into customer_accounts (id) values ($1) on conflict do nothing",
-    [id]
+const insertAuthUser = (id: CustomerAccountId, email: string) =>
+  Effect.runPromise(
+    workspaceFixtures(testDatabase!.db).account("account-link", {
+      id,
+      email,
+      verified: false,
+    })
   );
-  await testDatabase!.pool.query(
-    `insert into auth."user" (id, name, email) values ($1, '', $2)`,
-    [id, email]
-  );
-};
 
 const uniqueId = () => crypto.randomUUID();
 
@@ -330,15 +333,13 @@ describe.skipIf(!testDatabase)(
       const customer = uniqueDotyposId();
       // #764 linked the silent login to its customer; its owner then
       // verifies it and completes the profile.
-      await insertAuthUser(account, testEmailAddress(`l-${account}`));
-      await testDatabase!.pool.query(
-        `update customer_accounts set dotypos_customer_id = $2, legacy = true
-         where id = $1`,
-        [account, customer]
-      );
-      await testDatabase!.pool.query(
-        `update auth."user" set email_verified = true where id = $1`,
-        [account]
+      await Effect.runPromise(
+        workspaceFixtures(testDatabase!.db).account("account-link", {
+          id: account,
+          email: testEmailAddress(`l-${account}`),
+          legacy: true,
+          linkedCustomer: DotyposCustomerIdSchema.make(customer),
+        })
       );
 
       const claimed = await Effect.runPromise(

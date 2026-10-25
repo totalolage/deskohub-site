@@ -38,6 +38,4 @@ export const coworkReservationPageMarkdown = (
           ),
         ];
       }),
-    summary: m.checkoutOrderMetadataDescription({}, { locale }),
-    title: m.checkoutOrderMetadataTitle({}, { locale }),
   });
