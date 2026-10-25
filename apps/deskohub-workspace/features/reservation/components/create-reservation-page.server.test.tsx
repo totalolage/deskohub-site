@@ -1,4 +1,4 @@
-import { expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
 import { isValidElement, type ReactElement, type ReactNode } from "react";
@@ -18,16 +18,29 @@ mock.module("next/server", () => ({
   connection: () => Promise.resolve(),
 }));
 
-// Office reservations are released unless a test closes the gate.
-let officePageEnabled = true;
-const isOfficePageEnabled = mock(() => Promise.resolve(officePageEnabled));
 const officeFeatureFlag = await import(
   "@/features/office/backend/office-reservation-feature-flag.server"
 );
+// Later test files in this process load this mock too, so outside this
+// file's tests it evaluates the real gate. Mocking a loaded module patches
+// its namespace, so the real gate is kept first.
+const { isOfficePageEnabled: realIsOfficePageEnabled } = officeFeatureFlag;
+const isOfficePageEnabled = mock(realIsOfficePageEnabled);
 mock.module(
   "@/features/office/backend/office-reservation-feature-flag.server",
   () => ({ ...officeFeatureFlag, isOfficePageEnabled })
 );
+// Office reservations are released unless a test closes the gate.
+let officePageEnabled = true;
+beforeEach(() => {
+  officePageEnabled = true;
+  isOfficePageEnabled.mockImplementation(() =>
+    Promise.resolve(officePageEnabled)
+  );
+});
+afterAll(() => {
+  isOfficePageEnabled.mockImplementation(realIsOfficePageEnabled);
+});
 
 const loadReservationCheckoutAccount = mock(
   (_kind: string): Promise<unknown> => Promise.resolve({ status: "signed-out" })
@@ -165,7 +178,6 @@ test("gates a page by its registry release gate inside its content, keeping the 
   );
   expect(isOfficePageEnabled).toHaveBeenCalledTimes(2);
   expect(render).not.toHaveBeenCalled();
-  officePageEnabled = true;
 });
 
 test("prefers the signed requested discount code over a fresh public query code", async () => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { type Locale, locales } from "@/features/i18n";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { publicSiteShareImage } from "../page-metadata";
@@ -9,12 +9,6 @@ import {
 
 let requestLocale: Locale = "en-US";
 const openGates = new Set<PublicPageReleaseGate>();
-const isMeetingRoomPageEnabled = mock(() =>
-  Promise.resolve(openGates.has("meeting-room-page"))
-);
-const isOfficePageEnabled = mock(() =>
-  Promise.resolve(openGates.has("office-page"))
-);
 
 mock.module("server-only", () => ({}));
 mock.module("next/root-params", () => ({
@@ -23,17 +17,29 @@ mock.module("next/root-params", () => ({
 const meetingRoomFeatureFlag = await import(
   "@/features/meeting-room/backend/meeting-room-page-feature-flag"
 );
+const officeFeatureFlag = await import(
+  "@/features/office/backend/office-reservation-feature-flag.server"
+);
+// Later test files in this process load these mocks too, so outside this
+// file's tests they evaluate the real gates. Mocking a loaded module patches
+// its namespace, so the real gates are kept first.
+const { isMeetingRoomPageEnabled: realIsMeetingRoomPageEnabled } =
+  meetingRoomFeatureFlag;
+const { isOfficePageEnabled: realIsOfficePageEnabled } = officeFeatureFlag;
+const isMeetingRoomPageEnabled = mock(realIsMeetingRoomPageEnabled);
+const isOfficePageEnabled = mock(realIsOfficePageEnabled);
 mock.module(
   "@/features/meeting-room/backend/meeting-room-page-feature-flag",
   () => ({ ...meetingRoomFeatureFlag, isMeetingRoomPageEnabled })
-);
-const officeFeatureFlag = await import(
-  "@/features/office/backend/office-reservation-feature-flag.server"
 );
 mock.module(
   "@/features/office/backend/office-reservation-feature-flag.server",
   () => ({ ...officeFeatureFlag, isOfficePageEnabled })
 );
+afterAll(() => {
+  isMeetingRoomPageEnabled.mockImplementation(realIsMeetingRoomPageEnabled);
+  isOfficePageEnabled.mockImplementation(realIsOfficePageEnabled);
+});
 
 const { publicPageMetadata, requirePublishedPublicPage } = await import(
   "./public-page-route.server"
@@ -50,7 +56,13 @@ beforeEach(() => {
   requestLocale = "en-US";
   openGates.clear();
   isMeetingRoomPageEnabled.mockClear();
+  isMeetingRoomPageEnabled.mockImplementation(() =>
+    Promise.resolve(openGates.has("meeting-room-page"))
+  );
   isOfficePageEnabled.mockClear();
+  isOfficePageEnabled.mockImplementation(() =>
+    Promise.resolve(openGates.has("office-page"))
+  );
 });
 
 describe("public page metadata", () => {
