@@ -77,9 +77,21 @@ export const workspaceSiteOrigin = `https://${workspaceSiteConstants.brand.domai
 /** The Deskohub board game bar next door runs its own site. */
 const deskohubBarOrigin = "https://bar.deskohub.cz";
 
-/** A Deskohub Bar page in `locale`, such as `/contact`; the bar home by default. */
-export const getDeskohubBarPageUrl = (locale: string, pathname = "") =>
-  `${deskohubBarOrigin}/${locale}${pathname}`;
+/**
+ * A Deskohub Bar page, such as `/contact`; the bar home by default. Without a
+ * locale, as agent-facing references need, the bar opens in the visitor's
+ * language.
+ */
+export const getDeskohubBarPageUrl = ({
+  locale,
+  pathname = "",
+}: {
+  readonly locale?: string;
+  readonly pathname?: string;
+} = {}) =>
+  locale
+    ? `${deskohubBarOrigin}/${locale}${pathname}`
+    : `${deskohubBarOrigin}${pathname || "/"}`;
 
 type WorkspaceCanonicalSearchParams = ConstructorParameters<
   typeof URLSearchParams

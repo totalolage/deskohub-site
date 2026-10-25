@@ -21,7 +21,7 @@ export const getTtrpgRooms = (locale: Locale) =>
       seats: m.ttrpgRoomBarCapacity({}, { locale }),
       description: m.ttrpgRoomBarChoiceText({}, { locale }),
       href: getContactHref(
-        getDeskohubBarPageUrl(locale, "/contact"),
+        getDeskohubBarPageUrl({ locale, pathname: "/contact" }),
         m.ttrpgRoomBarPrefillMessage({}, { locale })
       ),
       cta: m.ttrpgRoomBarCta({}, { locale }),

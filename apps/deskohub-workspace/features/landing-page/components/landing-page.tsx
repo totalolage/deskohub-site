@@ -53,7 +53,7 @@ export function LandingPage({ locale }: LandingPageProps) {
       <LandingPageContactSection
         locale={locale}
         contactHref={contactHref}
-        deskohubBarCtaHref={getDeskohubBarPageUrl(locale)}
+        deskohubBarCtaHref={getDeskohubBarPageUrl({ locale })}
       />
     </main>
   );

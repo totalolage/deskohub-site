@@ -58,8 +58,8 @@ const saleBannerMarkdown = (banner: LandingPageSaleBannerContent) =>
  * The home page's facts as Markdown: the hero with the sale banner while a
  * sale runs, the location with access, the offering, the amenities, the FAQ
  * questions and the contact band. The photo carousel is images only. The
- * note that private offices are not offered yet stays out: unlike the HTML
- * page, the Markdown sources do not know whether office booking is open.
+ * note that private offices are not offered yet shows while office booking
+ * is unpublished, as on the HTML page.
  */
 export const landingPageMarkdown = (
   locale: Locale,
@@ -171,7 +171,10 @@ export const landingPageMarkdown = (
     markdownParagraph(
       ...markdownInterpolate(m.landingOfferingEvents({}, { locale }), {
         contact: (content) => markdownLink(contactUrl, ...content),
-      })
+      }),
+      ...(isPublished("/reservation/office")
+        ? []
+        : [" ", m.landingOfferingOffices({}, { locale })])
     ),
     markdownHeading(2, m.landingAmenitiesTitle({}, { locale })),
     markdownList(
@@ -184,7 +187,7 @@ export const landingPageMarkdown = (
             ? [
                 " ",
                 markdownLink(
-                  getDeskohubBarPageUrl(locale),
+                  getDeskohubBarPageUrl(),
                   m.landingFooterBarCta({}, { locale })
                 ),
               ]
@@ -211,7 +214,7 @@ export const landingPageMarkdown = (
       ),
       markdownListItem(
         markdownLink(
-          getDeskohubBarPageUrl(locale),
+          getDeskohubBarPageUrl(),
           m.landingFooterBarCta({}, { locale })
         )
       ),

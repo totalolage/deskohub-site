@@ -49,7 +49,7 @@ export function LandingPageAmenitiesSection({ locale }: { locale: Locale }) {
                     <>
                       {" "}
                       <a
-                        href={getDeskohubBarPageUrl(locale)}
+                        href={getDeskohubBarPageUrl({ locale })}
                         className={textLink({ tone: "inverse" })}
                       >
                         {m.landingFooterBarCta({}, { locale })}

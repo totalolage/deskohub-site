@@ -119,6 +119,7 @@ export function TtrpgRoomPage({
 
 /** Points the Workspace room's visitors at the meeting room it is, while that page is out. */
 async function MeetingRoomNote({ locale }: { locale: Locale }) {
+  await connection();
   if (!(await isMeetingRoomPageEnabled())) return null;
 
   return (

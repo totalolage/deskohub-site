@@ -26,10 +26,14 @@ import { getLandingPageSaleBannerContent } from "./landing-page-sale-banner-cont
 
 const sources = (
   meetingRoomPublished: boolean,
-  saleBanner?: LandingPageSaleBannerContent
+  saleBanner?: LandingPageSaleBannerContent,
+  officePublished = true
 ): PublicPageMarkdownSources => ({
   isPublished: (pathname) =>
-    pathname !== "/meeting-room" || meetingRoomPublished,
+    !(
+      (pathname === "/meeting-room" && !meetingRoomPublished) ||
+      (pathname === "/reservation/office" && !officePublished)
+    ),
   offerings: Effect.succeed([]),
   saleBanner: Effect.succeed(saleBanner),
 });
@@ -37,11 +41,15 @@ const sources = (
 const renderLandingPage = async (
   locale: (typeof locales)[number],
   meetingRoomPublished: boolean,
-  saleBanner?: LandingPageSaleBannerContent
+  saleBanner?: LandingPageSaleBannerContent,
+  officePublished = true
 ) =>
   serializeMarkdown(
     await Effect.runPromise(
-      landingPageMarkdown(locale, sources(meetingRoomPublished, saleBanner))
+      landingPageMarkdown(
+        locale,
+        sources(meetingRoomPublished, saleBanner, officePublished)
+      )
     )
   );
 
@@ -72,8 +80,7 @@ const bannerSentence = ({ label }: LandingPageSaleBannerContent) =>
 // Left out on purpose: the metadata title and description, which the page
 // sends as metadata; the hero image, carousel and map labels and alt text
 // (landingHeroImageAlt, landingCarousel*, landingLocationMapAlt); and the
-// decorative contact badge (landingNavContactLabel). The private-office note
-// (landingOfferingOffices) is HTML-only; see landingPageMarkdown.
+// decorative contact badge (landingNavContactLabel).
 describe.each(locales)("landingPageMarkdown in %s", (locale) => {
   const infoEmail = workspaceSiteConstants.contact.infoEmail;
   const origin = "https://workspace.deskohub.cz";
@@ -144,11 +151,11 @@ describe.each(locales)("landingPageMarkdown in %s", (locale) => {
       `${origin}/meeting-room`,
       `${origin}/ttrpg-room`,
       `${origin}/contact`,
-      `https://bar.deskohub.cz/${locale}`,
+      "https://bar.deskohub.cz/",
       `${origin}/faq`,
       `mailto:${infoEmail}`,
       `${origin}/contact`,
-      `https://bar.deskohub.cz/${locale}`,
+      "https://bar.deskohub.cz/",
     ]);
   });
 
@@ -173,6 +180,18 @@ describe.each(locales)("landingPageMarkdown in %s", (locale) => {
     expect(markdown).toContain(`**${banner.label.adjustment}**`);
     expect(markdownLinkUrls(markdown)[0]).toBe(
       `${origin}${banner.href.slice(`/${locale}`.length)}`
+    );
+  });
+
+  test("notes that private offices are not offered while office booking is unpublished", async () => {
+    const offered = await renderLandingPage(locale, true);
+    const unpublished = await renderLandingPage(locale, true, undefined, false);
+
+    expect(markdownPlainText(offered)).not.toContain(
+      m.landingOfferingOffices({}, { locale })
+    );
+    expect(markdownPlainText(unpublished)).toContain(
+      `${messagePlainText(m.landingOfferingEvents({}, { locale }))} ${m.landingOfferingOffices({}, { locale })}`
     );
   });
 
