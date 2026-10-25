@@ -4,12 +4,10 @@ import { afterAll, describe, expect, mock, test } from "bun:test";
 import {
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
-  DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
-import { workspaceReservations } from "@/db/schema";
 import {
   CustomerAccountReservationOwnership,
   CustomerAccountResolver,
@@ -17,13 +15,15 @@ import {
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { CustomerDotyposAdapter } from "@/features/account/backend/customer-dotypos-adapter.service";
-import { customerAccountIdSchema } from "@/features/account/customer-account";
+import {
+  type CustomerAccountId,
+  customerAccountIdSchema,
+} from "@/features/account/customer-account";
 import {
   type CheckoutStatusViewModel,
   type ICheckoutStatusService,
   loadCheckoutStatusPage,
 } from "@/features/checkout/backend/checkout";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import {
   type ReservationAuthorizationInput,
   ReservationAuthorizationService,
@@ -34,20 +34,19 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
-  fixtureReservationAuthorId,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
 type Fixture = {
-  readonly accountId: string;
+  readonly accountId: CustomerAccountId;
   readonly accountEmail: ReturnType<typeof testEmailAddress>;
   readonly customerId: DotyposCustomerId;
   readonly reservationId: WorkspaceReservationId;
-  readonly dotyposReservationId: string;
 };
 
 const makeFixture = (): Fixture => {
@@ -57,31 +56,21 @@ const makeFixture = (): Fixture => {
     accountEmail: testEmailAddress(`reservation-authorization-${id}`),
     customerId: DotyposCustomerIdSchema.make(`customer-${id}`),
     reservationId: workspaceReservationIdSchema.make(`reservation-${id}`),
-    dotyposReservationId: `dotypos-reservation-${id}`,
   };
 };
 
-const insertAuthUser = async (
+/** Inserts the fixture's login, linked to its customer unless `unlinked`. */
+const insertAccount = async (
   postgres: WorkspacePostgresTestDatabase,
-  fixture: Fixture
+  fixture: Fixture,
+  { unlinked = false }: { readonly unlinked?: boolean } = {}
 ) => {
-  await postgres.pool.query(
-    `insert into customer_accounts (id) values ($1) on conflict do nothing`,
-    [fixture.accountId]
-  );
-  await postgres.pool.query(
-    `insert into auth."user" (id, name, email) values ($1, '', $2)`,
-    [fixture.accountId, fixture.accountEmail]
-  );
-};
-
-const linkCustomer = async (
-  postgres: WorkspacePostgresTestDatabase,
-  fixture: Fixture
-) => {
-  await postgres.pool.query(
-    `update customer_accounts set dotypos_customer_id = $2 where id = $1`,
-    [fixture.accountId, fixture.customerId]
+  await Effect.runPromise(
+    workspaceFixtures(postgres.db).account("reservation-authorization", {
+      id: fixture.accountId,
+      email: fixture.accountEmail,
+      linkedCustomer: unlinked ? undefined : fixture.customerId,
+    })
   );
 };
 
@@ -92,27 +81,11 @@ const insertReservation = async (
   options: { readonly authoredByAccount?: boolean } = {}
 ) => {
   await Effect.runPromise(
-    postgres.db.insert(workspaceReservations).values({
-      id: fixture.reservationId,
-      checkoutAttemptKey: checkoutAttemptKeySchema.make(
-        `attempt-${crypto.randomUUID()}`
-      ),
-      dotyposCustomerId: customerId,
-      authorAccountId: options.authoredByAccount
-        ? customerAccountIdSchema.make(fixture.accountId)
-        : fixtureReservationAuthorId,
-      dotyposReservationId: DotyposReservationIdSchema.make(
-        fixture.dotyposReservationId
-      ),
-      reservationState: "confirmed",
-      paymentState: "not_started",
-      fulfillmentState: "not_started",
-      reservationDetails: {
-        kind: "cowork",
-        entryTier: "basic",
-        coffee: false,
-      },
-      locale: "en-US",
+    workspaceFixtures(postgres.db).reservation({
+      stage: { reservation: "confirmed" },
+      customer: customerId,
+      author: options.authoredByAccount ? fixture.accountId : undefined,
+      overrides: { id: fixture.reservationId },
     })
   );
 };
@@ -171,7 +144,7 @@ const makeAuthorization = (
   );
   const authenticationLayer = Layer.succeed(CustomerAuthentication, {
     currentUser: Effect.succeed({
-      accountId: customerAccountIdSchema.make(fixture.accountId),
+      accountId: fixture.accountId,
       email: fixture.accountEmail,
       deletionRequested: false,
     }),
@@ -257,8 +230,7 @@ const runStatusLoad = async (options: {
     refreshStatus,
   };
 
-  await insertAuthUser(postgres, fixture);
-  if (!unlinked) await linkCustomer(postgres, fixture);
+  await insertAccount(postgres, fixture, { unlinked });
   if (reservationCustomerId !== undefined) {
     await insertReservation(postgres, fixture, reservationCustomerId, {
       authoredByAccount,
@@ -397,8 +369,7 @@ describe.skipIf(!testDatabase)(
       async (_label, ownsCustomer, expected) => {
         const fixture = makeFixture();
         try {
-          await insertAuthUser(postgres, fixture);
-          await linkCustomer(postgres, fixture);
+          await insertAccount(postgres, fixture);
           await insertReservation(
             postgres,
             fixture,

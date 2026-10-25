@@ -4,8 +4,8 @@ import {
   checkoutSummaryProductItemBaseSchema,
   checkoutSummaryProductKeyFilter,
 } from "@/features/checkout/checkout-summary-product-item";
-import { positiveWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
+import { positiveMoneyCodec } from "@/shared/money/money";
 
 const coworkCheckoutSummaryProductItemBaseSchema = Schema.Struct({
   ...checkoutSummaryProductItemBaseSchema.fields,
@@ -20,6 +20,6 @@ export const coworkCheckoutSummaryProductItemSchema = Schema.Struct({
 
 export const coworkCheckoutSummaryDiscountedProductItemSchema = Schema.Struct({
   ...coworkCheckoutSummaryProductItemBaseSchema.fields,
-  originalAmount: positiveWorkspaceMoneyCodec,
+  originalAmount: positiveMoneyCodec,
   discounts: Schema.NonEmptyArray(checkoutSummaryDiscountSchema),
 }).check(checkoutSummaryProductKeyFilter);

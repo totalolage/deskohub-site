@@ -1,5 +1,8 @@
-import type { AutomationEngineHealth } from "@deskohub/workspace-admin-api";
-import { Result } from "effect";
+import {
+  type AutomationEngineHealth,
+  AutomationEngineWarning,
+} from "@deskohub/workspace-admin-api";
+import { Result, Schema } from "effect";
 import {
   AdministrationAlert,
   formatAdministrationDateTime,
@@ -53,58 +56,77 @@ const formatAge = (at: string, checkedAt: number, locale: Locale) => {
       );
 };
 
-/** One engine-wide warning, with the numbers behind it. */
+type WarningLine = (
+  health: AutomationEngineHealth,
+  checkedAt: number,
+  locale: Locale
+) => string;
+
+/** Each engine-wide warning's line, with the numbers behind it. */
+const warningLines = {
+  "planner-stale": (health, checkedAt, locale) =>
+    health.lastPlannedAt === null
+      ? m.emailAutomationRunsHealthPlannerNeverRan({}, { locale })
+      : m.emailAutomationRunsHealthPlannerStale(
+          { age: formatAge(health.lastPlannedAt, checkedAt, locale) },
+          { locale }
+        ),
+  "sweep-lagging": (health, _checkedAt, locale) =>
+    health.sweepLagSeconds === null
+      ? m.emailAutomationRunsHealthSweepLaggingUnknown({}, { locale })
+      : m.emailAutomationRunsHealthSweepLagging(
+          { duration: formatDuration(health.sweepLagSeconds, locale) },
+          { locale }
+        ),
+  "reconcile-stalled": (health, _checkedAt, locale) =>
+    health.reconcileLagSeconds === null
+      ? m.emailAutomationRunsHealthReconcileStalledUnknown({}, { locale })
+      : m.emailAutomationRunsHealthReconcileStalled(
+          { duration: formatDuration(health.reconcileLagSeconds, locale) },
+          { locale }
+        ),
+  "event-backlog": (health, _checkedAt, locale) =>
+    health.oldestUnprocessedEventAt === null
+      ? m.emailAutomationRunsHealthEventBacklogUnknown({}, { locale })
+      : m.emailAutomationRunsHealthEventBacklog(
+          {
+            date: formatAdministrationDateTime(
+              health.oldestUnprocessedEventAt,
+              locale
+            ),
+          },
+          { locale }
+        ),
+  "unit-backlog": (health, _checkedAt, locale) =>
+    health.oldestPlannedUnitAt === null
+      ? m.emailAutomationRunsHealthUnitBacklogUnknown({}, { locale })
+      : m.emailAutomationRunsHealthUnitBacklog(
+          {
+            date: formatAdministrationDateTime(
+              health.oldestPlannedUnitAt,
+              locale
+            ),
+          },
+          { locale }
+        ),
+  "schedule-lagging": (_health, _checkedAt, locale) =>
+    m.emailAutomationRunsHealthScheduleLagging({}, { locale }),
+  "falling-behind": (_health, _checkedAt, locale) =>
+    m.emailAutomationRunsHealthFallingBehind({}, { locale }),
+} satisfies Record<AutomationEngineWarning, WarningLine>;
+
+const isKnownWarning = Schema.is(AutomationEngineWarning);
+
+/** One engine-wide warning; a code this build doesn't know shows as is. */
 const warningLine = (
   warning: AutomationEngineHealth["warnings"][number],
   health: AutomationEngineHealth,
   checkedAt: number,
   locale: Locale
-): string => {
-  switch (warning) {
-    case "planner-stale":
-      return health.lastPlannedAt === null
-        ? m.emailAutomationRunsHealthPlannerNeverRan({}, { locale })
-        : m.emailAutomationRunsHealthPlannerStale(
-            { age: formatAge(health.lastPlannedAt, checkedAt, locale) },
-            { locale }
-          );
-    case "sweep-lagging":
-      return health.sweepLagSeconds === null
-        ? m.emailAutomationRunsHealthSweepLaggingUnknown({}, { locale })
-        : m.emailAutomationRunsHealthSweepLagging(
-            { duration: formatDuration(health.sweepLagSeconds, locale) },
-            { locale }
-          );
-    case "event-backlog":
-      return health.oldestUnprocessedEventAt === null
-        ? m.emailAutomationRunsHealthEventBacklogUnknown({}, { locale })
-        : m.emailAutomationRunsHealthEventBacklog(
-            {
-              date: formatAdministrationDateTime(
-                health.oldestUnprocessedEventAt,
-                locale
-              ),
-            },
-            { locale }
-          );
-    case "unit-backlog":
-      return health.oldestPlannedUnitAt === null
-        ? m.emailAutomationRunsHealthUnitBacklogUnknown({}, { locale })
-        : m.emailAutomationRunsHealthUnitBacklog(
-            {
-              date: formatAdministrationDateTime(
-                health.oldestPlannedUnitAt,
-                locale
-              ),
-            },
-            { locale }
-          );
-    case "schedule-lagging":
-      return m.emailAutomationRunsHealthScheduleLagging({}, { locale });
-    case "falling-behind":
-      return m.emailAutomationRunsHealthFallingBehind({}, { locale });
-  }
-};
+): string =>
+  isKnownWarning(warning)
+    ? warningLines[warning](health, checkedAt, locale)
+    : m.emailAutomationRunsHealthUnrecognized({ code: warning }, { locale });
 
 /** What the engine reports about this campaign's own schedule. */
 const campaignLines = (

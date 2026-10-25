@@ -1,7 +1,46 @@
-import { WorkspaceAdminApi } from "@deskohub/workspace-admin-api";
-import { Effect } from "effect";
+import {
+  type AutomationEngineHealthType,
+  AutomationEngineWarning,
+  automationEngineWarningDhwVersions,
+  type DhwVersion,
+  openEngineWarningsDhwVersion,
+  WorkspaceAdminApi,
+} from "@deskohub/workspace-admin-api";
+import { Effect, Option, Schema } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { cliCampaignOperationInvoker } from "./cli-campaign-operations.server";
+import {
+  cliClientIsAtLeast,
+  currentCliClientVersion,
+} from "./cli-client-version";
+
+const isKnownWarning = Schema.is(AutomationEngineWarning);
+
+/**
+ * The report without the warnings the calling binary can't decode. Released
+ * binaries read warnings as a closed list and would reject the whole report
+ * on a newer code, so they get the rest of it instead. A request without a
+ * version gets every warning: the group's minimum refuses a binary that
+ * sends none, so it is an AI assistant, whose tools derive from the current
+ * contract.
+ */
+const engineHealthReadableBy = (
+  health: AutomationEngineHealthType,
+  clientVersion: Option.Option<DhwVersion>
+): AutomationEngineHealthType =>
+  Option.isNone(clientVersion)
+    ? health
+    : {
+        ...health,
+        warnings: health.warnings.filter((warning) =>
+          cliClientIsAtLeast(
+            clientVersion,
+            isKnownWarning(warning)
+              ? automationEngineWarningDhwVersions[warning]
+              : openEngineWarningsDhwVersion
+          )
+        ),
+      };
 
 /**
  * Every automation endpoint is the port's operation of the same name, with
@@ -55,7 +94,11 @@ export const AdminCliAutomationsApiHandlers = HttpApiBuilder.group(
         invoke("previewCalendarExpression", payload)
       )
       .handle("getAutomationEngineHealth", () =>
-        invoke("getAutomationEngineHealth", {})
+        Effect.zipWith(
+          invoke("getAutomationEngineHealth", {}),
+          currentCliClientVersion,
+          engineHealthReadableBy
+        )
       );
   })
 );

@@ -7,7 +7,6 @@ import { Effect, Layer } from "effect";
 import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
 import { workspaceMeetingRoomCatalog } from "@/features/checkout/meeting-room-product-catalog";
 import { workspaceCoworkCurrentTiers } from "@/features/checkout/product-catalog";
-import { currencyCZK } from "@/features/checkout/workspace-money";
 import { calendarSaleDiscountServiceLayer } from "@/features/discounts/calendar-sale.test-utils";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
@@ -16,6 +15,7 @@ import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reserv
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import { currencyCZK } from "@/shared/money/currencies";
 import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
 import { CheckoutPricingService } from "./checkout-pricing.service";
 import { loadPublicOfferings, loadPublicPriceList } from "./public-offerings";

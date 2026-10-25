@@ -12,7 +12,8 @@ import { campaignLocaleName } from "../sending/campaign-locale-names";
  * One locale of a campaign as a recipient's inbox shows it: the sender row
  * with subject and preview text above the email rendered in its template.
  * Shows `placeholder` until there is HTML to render. `locale` is the shown
- * email's language; the chrome around it follows the admin's.
+ * email's language; the chrome around it follows the admin's. The email is
+ * 40rem tall unless the parent's height constrains it.
  */
 export function CampaignInboxPreview({
   error,
@@ -44,7 +45,7 @@ export function CampaignInboxPreview({
         {},
         { locale: routeLocale }
       )}
-      className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white"
+      className="flex h-full flex-col overflow-hidden rounded-xl border border-navy-blue/10 bg-white"
     >
       <div className="flex items-center justify-between gap-3 border-navy-blue/10 border-b px-4 py-2.5">
         <h2 className="font-semibold text-navy-blue/65 text-xs uppercase tracking-[0.1em]">
@@ -122,7 +123,7 @@ export function CampaignInboxPreview({
       </p>
       {html ? (
         <iframe
-          className="h-[40rem] @5xl:h-[calc(100vh-17rem)] @5xl:min-h-[32rem] w-full bg-white"
+          className="min-h-0 w-full flex-[1_1_40rem] bg-white"
           sandbox=""
           srcDoc={html}
           title={m.emailCampaignsEmailPreviewFrameTitle(
@@ -131,7 +132,7 @@ export function CampaignInboxPreview({
           )}
         />
       ) : (
-        <div className="flex h-[40rem] @5xl:h-[calc(100vh-17rem)] @5xl:min-h-[32rem] items-center justify-center px-8 text-center text-navy-blue/55 text-sm">
+        <div className="flex min-h-0 flex-[1_1_40rem] items-center justify-center px-8 text-center text-navy-blue/55 text-sm">
           {placeholder}
         </div>
       )}

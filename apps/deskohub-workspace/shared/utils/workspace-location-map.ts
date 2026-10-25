@@ -7,6 +7,9 @@ export const workspaceFormattedAddress = `${workspaceAddress.street}, ${workspac
 
 export const workspaceGoogleDirectionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${workspaceCoordinates.lat},${workspaceCoordinates.lng}`;
 
+/** Google Maps centred on the space. */
+export const workspaceGoogleMapUrl = `https://www.google.com/maps/search/?api=1&query=${workspaceCoordinates.lat},${workspaceCoordinates.lng}`;
+
 export const workspaceLocationMapImagePath = "/workspace-location-map.jpeg";
 
 // The reservation email shows the map at this width.

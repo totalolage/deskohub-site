@@ -2,15 +2,15 @@ import { Effect, Schema } from "effect";
 import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
 import type { ReservationQuoteError } from "@/features/checkout/reservation-quote-error";
 import { makeReservationQuoteSchema } from "@/features/checkout/reservation-quote-schema";
-import { workspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import type { DiscountQuote } from "@/features/discounts/contracts";
 import type { MeetingRoomReservationPricingInput } from "@/features/reservation/meeting-room-reservation";
 import { meetingRoomReservationDurationSchema } from "@/features/reservation/meeting-room-reservation-duration";
+import { moneyCodec } from "@/shared/money/money";
 
 export const meetingRoomReservationQuoteItemSchema = Schema.Struct({
   type: Schema.Literal("meeting-room"),
   duration: meetingRoomReservationDurationSchema,
-  amount: workspaceMoneyCodec,
+  amount: moneyCodec,
 });
 
 type MeetingRoomReservationQuoteItem =

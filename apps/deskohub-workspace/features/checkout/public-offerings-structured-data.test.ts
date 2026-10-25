@@ -7,11 +7,8 @@ import {
   workspaceProductWorkstationAddonPrice,
 } from "@/features/checkout/product-catalog";
 import { getPublicCatalogOfferings } from "@/features/checkout/public-offerings";
-import {
-  toWorkspaceMoneyMajorAmount,
-  type WorkspaceMoney,
-} from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
+import { type Money, moneyMajorAmount } from "@/shared/money/money";
 import { getPublicOfferingsStructuredData } from "./public-offerings-structured-data";
 
 const url = "https://workspace.deskohub.cz/reservation/cowork";
@@ -35,13 +32,9 @@ const getService = (name: string, locale: Locale = "en-US") => {
   return service;
 };
 
-const unitPrice = (
-  money: WorkspaceMoney,
-  unitCode: "DAY" | "HUR",
-  value = 1
-) => ({
+const unitPrice = (money: Money, unitCode: "DAY" | "HUR", value = 1) => ({
   "@type": "UnitPriceSpecification",
-  price: toWorkspaceMoneyMajorAmount(money),
+  price: moneyMajorAmount(money),
   priceCurrency: "CZK",
   unitCode,
   referenceQuantity: { "@type": "QuantitativeValue", value, unitCode },
@@ -97,9 +90,7 @@ describe("getPublicOfferingsStructuredData", () => {
       addOn: [
         {
           name: m.reservationWorkstationLabel({}, { locale: "en-US" }),
-          price: toWorkspaceMoneyMajorAmount(
-            workspaceProductWorkstationAddonPrice
-          ),
+          price: moneyMajorAmount(workspaceProductWorkstationAddonPrice),
         },
       ],
     });

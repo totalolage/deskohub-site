@@ -9,7 +9,6 @@ import type {
   CheckoutAttemptId,
   PaymentAttemptId,
 } from "@/features/checkout/checkout-identifiers";
-import { toWorkspaceMoneyMajorAmount } from "@/features/checkout/workspace-money";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type {
   ReservationAvailabilityResult,
@@ -22,6 +21,7 @@ import {
 } from "@/shared/backend/analytics/posthog-event.service";
 import { CurrentPostHogRequestContext } from "@/shared/backend/analytics/posthog-request-context";
 import { CurrentAgentTraffic } from "@/shared/backend/workspace-request-context";
+import { moneyMajorAmount } from "@/shared/money/money";
 
 type LifecycleEventTimestamp = WorkspaceReservation["createdAt"];
 
@@ -42,7 +42,7 @@ const paymentProperties = (
   attempt: PaymentLifecycleAttempt
 ): PostHogEventProperties => ({
   currency: attempt.amount.currency,
-  revenue: toWorkspaceMoneyMajorAmount(attempt.amount),
+  revenue: moneyMajorAmount(attempt.amount),
   reservation_id: attempt.workspaceReservationId,
   payment_attempt_id: attempt.id,
   provider: attempt.provider,

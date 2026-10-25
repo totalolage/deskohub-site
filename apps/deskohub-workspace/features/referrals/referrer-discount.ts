@@ -1,4 +1,4 @@
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import type { Money } from "@/shared/money/money";
 import { referrerDiscountBasisPointsPerInvitee } from "./program";
 
 const basisPointScale = 10_000n;
@@ -17,8 +17,8 @@ const referrerReduction = (eligibleInviteeCount: number) => {
 
 export const calculateReferrerDiscountAmount = (input: {
   readonly eligibleInviteeCount: number;
-  readonly remainingSubtotal: WorkspaceMoney;
-}): WorkspaceMoney => {
+  readonly remainingSubtotal: Money;
+}): Money => {
   const { numerator, denominator } = referrerReduction(
     input.eligibleInviteeCount
   );

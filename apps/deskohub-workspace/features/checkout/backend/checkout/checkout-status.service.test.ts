@@ -106,7 +106,7 @@ const makeDotypos = <Overrides extends object>(overrides?: Overrides) => ({
       status: "CONFIRMED",
     })
   ),
-  getCustomer: mock(() => Effect.succeed({ id: "customer-id" })),
+  getCustomer: mock(() => Effect.succeed(Option.some({ id: "customer-id" }))),
   getTables: mock(() => Effect.succeed([])),
   ...overrides,
 });
@@ -877,12 +877,14 @@ describe("CheckoutStatusService", () => {
     const makeContactDotypos = () =>
       makeDotypos({
         getCustomer: mock(() =>
-          Effect.succeed({
-            id: "customer-id",
-            firstName: "Ada",
-            lastName: "Lovelace",
-            email: testEmailAddress("ada"),
-          })
+          Effect.succeed(
+            Option.some({
+              id: "customer-id",
+              firstName: "Ada",
+              lastName: "Lovelace",
+              email: testEmailAddress("ada"),
+            })
+          )
         ),
       });
 

@@ -28,7 +28,6 @@ import {
   type CustomerAccountId,
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
 import {
   canonicalPromotionCodeSchema,
@@ -39,6 +38,8 @@ import type { DiscountCandidate } from "@/features/discounts/provider";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
+import type { Money } from "@/shared/money/money";
 import {
   referralAdvisoryLockStatement,
   referralFirstBookingLockKey,
@@ -123,7 +124,7 @@ export interface IReferralService {
   readonly resolveReferrerCandidate: (input: {
     readonly dotyposCustomerId: DotyposCustomerId;
     readonly locale: Locale;
-    readonly remainingSubtotal: WorkspaceMoney;
+    readonly remainingSubtotal: Money;
   }) => Effect.Effect<DiscountCandidate | undefined, ReferralError>;
 }
 
@@ -226,7 +227,12 @@ export class ReferralService extends Context.Service<
             .select({ kind: promotionCodes.kind })
             .from(promotionCodes)
             .where(
-              eq(promotionCodes.code, canonicalPromotionCodeSchema.make(code))
+              eq(
+                promotionCodes.code,
+                sensitiveDatabaseParameter(
+                  canonicalPromotionCodeSchema.make(code)
+                )
+              )
             )
             .limit(1)
             .pipe(Effect.map((rows) => rows[0]?.kind))
@@ -252,7 +258,9 @@ export class ReferralService extends Context.Service<
               and(
                 eq(
                   promotionCodes.code,
-                  canonicalPromotionCodeSchema.make(code)
+                  sensitiveDatabaseParameter(
+                    canonicalPromotionCodeSchema.make(code)
+                  )
                 ),
                 eq(promotionCodes.kind, "referral")
               )
@@ -524,7 +532,12 @@ export class ReferralService extends Context.Service<
           .innerJoin(authUser, eq(authUser.id, customerAccounts.id))
           .where(
             and(
-              eq(promotionCodes.code, canonicalPromotionCodeSchema.make(code)),
+              eq(
+                promotionCodes.code,
+                sensitiveDatabaseParameter(
+                  canonicalPromotionCodeSchema.make(code)
+                )
+              ),
               eq(promotionCodes.kind, "referral"),
               isNull(authUser.deletionRequestedAt)
             )
@@ -700,7 +713,7 @@ export class ReferralService extends Context.Service<
         (input: {
           readonly dotyposCustomerId: DotyposCustomerId;
           readonly locale: Locale;
-          readonly remainingSubtotal: WorkspaceMoney;
+          readonly remainingSubtotal: Money;
         }) =>
           eligibleInviteeCount(input.dotyposCustomerId).pipe(
             Effect.map((count) => {
@@ -770,7 +783,9 @@ export class ReferralService extends Context.Service<
                 .insert(promotionCodes)
                 .values({
                   kind: "referral",
-                  code: canonicalPromotionCodeSchema.make(candidate),
+                  code: sensitiveDatabaseParameter(
+                    canonicalPromotionCodeSchema.make(candidate)
+                  ),
                   enabled: true,
                 })
                 .onConflictDoNothing()

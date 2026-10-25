@@ -1,10 +1,7 @@
 import { Match } from "effect";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
-import {
-  formatWorkspaceMoney,
-  workspaceMoneyWithValue,
-} from "./workspace-money";
+import { formatMoney, moneyWithValue } from "@/shared/money/money";
 
 export const formatDiscountAdjustment = (
   adjustment: DiscountAdjustment,
@@ -17,7 +14,7 @@ export const formatDiscountAdjustment = (
           style: "percent",
           maximumFractionDigits: 2,
         }).format(basisPoints / 10_000),
-      fixed: ({ amount }) => formatWorkspaceMoney(amount, locale),
+      fixed: ({ amount }) => formatMoney(amount, locale),
     })
   );
 
@@ -38,7 +35,7 @@ export const formatDiscountReduction = (
         }),
         fixed: ({ amount }): DiscountAdjustment => ({
           kind: "fixed",
-          amount: workspaceMoneyWithValue(-amount.value, amount),
+          amount: moneyWithValue(-amount.value, amount),
         }),
       })
     ),

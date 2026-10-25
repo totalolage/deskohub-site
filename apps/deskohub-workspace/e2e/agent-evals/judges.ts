@@ -1,5 +1,5 @@
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
-import { toWorkspaceMoneyMajorAmount } from "@/features/checkout/workspace-money";
+import { moneyMajorAmount } from "@/shared/money/money";
 import { escapeRegExp } from "@/shared/utils/escape-regexp";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import type { AgentEvalBrowserObservations } from "./observations";
@@ -74,7 +74,7 @@ export type AgentEvalJudgement = {
  * once they carry opening hours.
  */
 export const agentEvalFacts = {
-  reservedDeskDailyPriceCzk: toWorkspaceMoneyMajorAmount(
+  reservedDeskDailyPriceCzk: moneyMajorAmount(
     getWorkspaceProductByTier("reserved-desk").price
   ),
   openingHours: "24/7",

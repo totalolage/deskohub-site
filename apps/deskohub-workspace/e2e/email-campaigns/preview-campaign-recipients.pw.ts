@@ -1,6 +1,9 @@
 import "../../shared/polyfills/temporal";
 
 import { equal, ok } from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { type BrowserContext, expect, type Page } from "@playwright/test";
 import { eq } from "drizzle-orm";
@@ -97,6 +100,8 @@ test("previews the tagged synthetic customer as a draft marketing campaign recip
         origin,
         page,
         plan,
+        reviewScreenshots:
+          environment.WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS === "true",
         reportFailure:
           runContext.githubRunId === undefined
             ? undefined
@@ -117,6 +122,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
     readonly origin: string;
     readonly page: Page;
     readonly plan: EmailCampaignPreviewPlan;
+    readonly reviewScreenshots: boolean;
     readonly reportFailure?: WorkspaceE2EFailureReporter;
   }) {
     const telemetry = yield* E2ETelemetryService;
@@ -363,6 +369,85 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
               timeout: workspaceE2ETimeouts.browserNavigation,
             })
         );
+        if (input.reviewScreenshots) {
+          const actionButton = page.locator('button[form="campaign-composer"]');
+          const preview = page.locator("#main-content .grid > aside");
+          const screenshotDirectory = resolve(
+            dirname(fileURLToPath(import.meta.url)),
+            "../../e2e-artifacts/account-review"
+          );
+          yield* browserStep(
+            "open-campaign-composer-czech",
+            workspaceE2ETimeouts.browserNavigation,
+            "open the Czech campaign composer for review screenshots",
+            () =>
+              page.goto(`${input.origin}/cs-CZ/admin/email-campaigns/new`, {
+                timeout: workspaceE2ETimeouts.browserNavigation,
+              })
+          );
+          yield* browserStep(
+            "verify-campaign-composer-render",
+            workspaceE2ETimeouts.uiTransition,
+            "wait for the Czech campaign action and preview before capturing",
+            async () => {
+              await expect(actionButton).toBeVisible();
+              await expect(preview).toBeVisible();
+            }
+          );
+          yield* browserStep(
+            "capture-sticky-campaign-desktop",
+            workspaceE2ETimeouts.browserNavigation,
+            "capture the scrolled desktop campaign composer",
+            async () => {
+              await page.setViewportSize({ width: 1896, height: 1212 });
+              await page.evaluate(() =>
+                window.scrollTo({
+                  behavior: "instant",
+                  top: document.documentElement.scrollHeight,
+                })
+              );
+              await mkdir(screenshotDirectory, { recursive: true });
+              await page.screenshot({
+                path: resolve(
+                  screenshotDirectory,
+                  "email-campaign-composer-sticky-desktop.png"
+                ),
+              });
+            }
+          );
+          yield* browserStep(
+            "capture-sticky-campaign-mobile",
+            workspaceE2ETimeouts.browserNavigation,
+            "capture the scrolled mobile campaign composer",
+            async () => {
+              await page.setViewportSize({ width: 390, height: 844 });
+              await page.evaluate(() =>
+                window.scrollTo({
+                  behavior: "instant",
+                  top: document.documentElement.scrollHeight,
+                })
+              );
+              await page.screenshot({
+                path: resolve(
+                  screenshotDirectory,
+                  "email-campaign-composer-sticky-mobile.png"
+                ),
+              });
+            }
+          );
+          yield* browserStep(
+            "restore-campaign-composer-english",
+            workspaceE2ETimeouts.browserNavigation,
+            "return to the English campaign composer",
+            async () => {
+              await page.setViewportSize({ width: 1440, height: 900 });
+              await page.goto(
+                `${input.origin}/en-US/admin/email-campaigns/new`,
+                { timeout: workspaceE2ETimeouts.browserNavigation }
+              );
+            }
+          );
+        }
         yield* browserStep(
           "wait-for-composer-hydration",
           workspaceE2ETimeouts.uiTransition,

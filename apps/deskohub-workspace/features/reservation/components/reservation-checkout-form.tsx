@@ -13,7 +13,6 @@ import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers
 import type { CheckoutStatusSummaryPresentation } from "@/features/checkout/checkout-status-summary-presentation";
 import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-summary";
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page-skeleton";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import type { ReservationBillingSelectionInput } from "@/features/reservation/reservation-billing";
 import type {
@@ -25,6 +24,7 @@ import type {
   ReservationOrderIssuanceData,
 } from "@/features/reservation/reservation-order";
 import { Form } from "@/shared/components/ui/form";
+import type { Money } from "@/shared/money/money";
 import {
   getInvalidFormFields,
   type InvalidFormField,
@@ -89,8 +89,8 @@ type ReservationCheckoutFormProps<
     };
     /** The selection's advertised total, with the price before discounts. */
     readonly total?: {
-      readonly amount: WorkspaceMoney;
-      readonly originalAmount?: WorkspaceMoney;
+      readonly amount: Money;
+      readonly originalAmount?: Money;
     };
   };
   readonly availability: {

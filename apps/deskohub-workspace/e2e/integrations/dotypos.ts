@@ -27,6 +27,7 @@ import {
   toWorkspaceE2EError,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
+  workspaceE2EError,
 } from "../errors";
 import { pollUntil } from "../polling";
 import { assert, log } from "../runtime";
@@ -151,7 +152,9 @@ export const validateDotypos = (
     const result = yield* waitForConfirmedDotyposReservation(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        return yield* dotypos.getReservation(dotyposReservationId);
+        return yield* dotypos
+          .getReservation(dotyposReservationId)
+          .pipe(Effect.flatMap(Effect.fromOption));
       }).pipe(
         Effect.provide(getDotyposLayer(config)),
         Effect.mapError((cause) =>
@@ -403,7 +406,20 @@ export const reconcileStaleDotyposReservations = (
     return yield* reconcileStaleWorkspaceE2EReservations(interval, apply, {
       cancelReservation: dotypos.cancelReservation,
       listActiveReservations: dotypos.listActiveReservationsOverlapping,
-      loadReservation: dotypos.getReservation,
+      loadReservation: (reservationId) =>
+        dotypos.getReservation(reservationId).pipe(
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  workspaceE2EError("Dotypos reservation does not exist", {
+                    operation: "load stale Dotypos reservation",
+                  })
+                ),
+              onSome: Effect.succeed,
+            })
+          )
+        ),
       waitForCancellationConvergence: (reservationIds) =>
         waitForDotyposCancellationConvergence(
           dotypos.listActiveReservationsOverlapping(interval),
@@ -481,7 +497,7 @@ export const prepareDotyposCustomerDiscount = (
     );
     yield* dotypos.setCustomerDiscountGroup(customerId, discountGroupId);
     yield* waitForDotyposCustomerDiscountGroup(
-      dotypos.getCustomer(customerId),
+      dotypos.getCustomer(customerId).pipe(Effect.flatMap(Effect.fromOption)),
       discountGroupId,
       {
         intervalMs: workspaceE2EPollIntervalMs.datasource,
@@ -505,7 +521,7 @@ export const changeDotyposCustomerDiscount = (
     const dotypos = yield* DotyposService;
     yield* dotypos.setCustomerDiscountGroup(customerId, discountGroupId);
     yield* waitForDotyposCustomerDiscountGroup(
-      dotypos.getCustomer(customerId),
+      dotypos.getCustomer(customerId).pipe(Effect.flatMap(Effect.fromOption)),
       discountGroupId,
       {
         intervalMs: workspaceE2EPollIntervalMs.datasource,

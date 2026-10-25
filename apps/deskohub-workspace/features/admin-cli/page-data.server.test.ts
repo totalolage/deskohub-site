@@ -21,14 +21,11 @@ import { notFound } from "next/navigation";
 import { cliAuthenticationRequests, cliSessions } from "@/db/schema";
 import { cliAuthenticationRequestIdSchema } from "@/features/admin-cli/cli-identifiers";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import {
-  deleteTestAccounts,
-  insertTestAdministrator,
-} from "@/shared/testing/workspace-test-accounts.test-utils";
 
 let actingAdministrator: AdministratorAccountActor | null = null;
 
@@ -63,11 +60,23 @@ describe.skipIf(!postgresDatabase)("admin CLI page-data projections", () => {
   let operator: AdministratorAccountActor;
 
   beforeAll(async () => {
-    admin = await insertTestAdministrator(postgres, "cli-page-admin");
-    operator = await insertTestAdministrator(postgres, "cli-page-operator");
+    admin = await Effect.runPromise(
+      workspaceFixtures(postgres.db).account("cli-page-admin", {
+        roles: ["administrator"],
+      })
+    );
+    operator = await Effect.runPromise(
+      workspaceFixtures(postgres.db).account("cli-page-operator", {
+        roles: ["administrator"],
+      })
+    );
   });
 
-  afterAll(() => deleteTestAccounts(postgres, [admin, operator]));
+  afterAll(() =>
+    Effect.runPromise(
+      workspaceFixtures(postgres.db).deleteAccounts([admin, operator])
+    )
+  );
 
   afterEach(async () => {
     const requestIds = [...fixtureRequestIds];
