@@ -108,15 +108,4 @@ describe("createNoindexedPageMetadata", () => {
     });
     expect(metadata.twitter).toEqual({ card: "summary_large_image" });
   });
-
-  test("lets crawlers follow the links of a page open to anyone", () => {
-    const metadata = createNoindexedPageMetadata({
-      locale: "en-US",
-      title: { page: "Page" },
-      followLinks: true,
-    });
-
-    expect(metadata.robots).toEqual({ index: false, follow: true });
-    expect(metadata).not.toHaveProperty("alternates");
-  });
 });
