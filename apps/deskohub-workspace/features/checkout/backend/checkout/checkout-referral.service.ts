@@ -6,13 +6,13 @@ import {
 import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
-import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import { canonicalPromotionCodeSchema } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
 import { ReferralService } from "@/features/referrals";
 import type { ReferralError } from "@/features/referrals/contracts";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { moneyEquals } from "@/shared/money/money";
 import { buildFreshCheckoutPayPath } from "./checkout-pay-url";
 import { CheckoutPricingService } from "./checkout-pricing.service";
 import { isExpectedReferralQuoteAddition } from "./checkout-referral-price-change";
@@ -177,11 +177,11 @@ export class CheckoutReferralService extends Context.Service<
             getSignedPayStateCheckoutSummary(opened);
           const quoteChanged =
             prepared.quote.fingerprint !== opened.quote.fingerprint;
-          const acceptedTotalChanged = !workspaceMoneyEquals(
+          const acceptedTotalChanged = !moneyEquals(
             freshSummary.total,
             opened.acceptedTotal
           );
-          const signedTotalWasConsistent = workspaceMoneyEquals(
+          const signedTotalWasConsistent = moneyEquals(
             oldSummary.total,
             opened.acceptedTotal
           );

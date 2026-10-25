@@ -2,9 +2,9 @@ import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type { Browser, Page } from "@playwright/test";
 import { Effect } from "effect";
 import { getAccountSectionPath } from "@/features/account/routes";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { m } from "@/features/i18n";
 import { formatReferralInvitationDiscount } from "@/features/referrals/client";
+import { formatMoney } from "@/shared/money/money";
 import { accountSectionLandmarks } from "../account/account-sections";
 import { findLinkedDotyposCustomerId } from "../account/auth-rows";
 import {
@@ -544,7 +544,7 @@ const referrerScreen: ReferralCaseExecutor = (context) =>
         const screen = page.locator(accountSectionLandmarks.referrals);
         const saved = m.accountReferralsSaved(
           {
-            amount: formatWorkspaceMoney(
+            amount: formatMoney(
               { currency: "CZK", exponent: 2, value: referrerSavings.value },
               "en-US"
             ),

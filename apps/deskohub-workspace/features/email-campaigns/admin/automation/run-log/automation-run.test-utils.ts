@@ -106,6 +106,7 @@ export const automationEngineHealthFixture = (
   Schema.decodeUnknownSync(AutomationEngineHealth)({
     lastPlannedAt: "2026-10-05T07:58:00.000Z",
     sweepLagSeconds: 5,
+    reconcileLagSeconds: 1800,
     oldestUnprocessedEventAt: null,
     automations: [],
     unitDurations: [],

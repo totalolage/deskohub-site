@@ -2,9 +2,9 @@
 
 import type { CheckoutStatusSummaryPresentation } from "@/features/checkout/checkout-status-summary-presentation";
 import type { ReservationQuotePayment } from "@/features/checkout/reservation-quote-schema";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
+import type { Money } from "@/shared/money/money";
 import { ReservationAdvertisedPrice } from "./reservation-advertised-price";
 
 /** A quote's advertised total, with the price before any discount. */
@@ -32,8 +32,8 @@ export function ReservationSelectionSummary({
   readonly onChange: () => void;
   readonly summary: CheckoutStatusSummaryPresentation;
   readonly total?: {
-    readonly amount: WorkspaceMoney;
-    readonly originalAmount?: WorkspaceMoney;
+    readonly amount: Money;
+    readonly originalAmount?: Money;
   };
 }) {
   return (

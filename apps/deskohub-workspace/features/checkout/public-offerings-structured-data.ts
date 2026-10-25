@@ -1,12 +1,9 @@
 import { Match } from "effect";
 import { getWorkspaceMeetingRoomDurationTitle } from "@/features/checkout/product-catalog.i18n";
 import type { PublicCatalogOffering } from "@/features/checkout/public-offerings";
-import {
-  toWorkspaceMoneyMajorAmount,
-  type WorkspaceMoney,
-} from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { isMeetingRoomWholeDayReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
+import { type Money, moneyMajorAmount } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   getEveryDayOpeningHours,
@@ -19,13 +16,13 @@ type PriceUnit = { readonly unitCode: "DAY" | "HUR"; readonly value: number };
 
 const day: PriceUnit = { unitCode: "DAY", value: 1 };
 
-const getPrice = (money: WorkspaceMoney) => ({
-  price: toWorkspaceMoneyMajorAmount(money),
+const getPrice = (money: Money) => ({
+  price: moneyMajorAmount(money),
   priceCurrency: money.currency,
 });
 
 const getUnitPriceSpecification = (
-  money: WorkspaceMoney,
+  money: Money,
   { unitCode, value }: PriceUnit,
   name?: string
 ) => ({

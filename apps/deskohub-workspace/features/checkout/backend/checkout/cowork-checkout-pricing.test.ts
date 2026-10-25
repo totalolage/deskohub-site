@@ -3,7 +3,6 @@ import { describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Schema } from "effect";
 import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { makeDiscountCommitment } from "@/features/discounts/commitment";
 import {
   affirmedDiscountAdvertisementQuoteCodec,
@@ -20,11 +19,12 @@ import {
 } from "@/features/discounts/errors";
 import { getCoworkAdvertisedPriceReservation } from "@/features/reservation/cowork-reservation";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
+import type { Money } from "@/shared/money/money";
 import { coworkCheckoutPricing } from "./cowork-checkout-pricing";
 
 const testEmailAddressForAda = testEmailAddress("ada");
 
-const money = (value: number): WorkspaceMoney => ({
+const money = (value: number): Money => ({
   value,
   exponent: 2,
   currency: "CZK",

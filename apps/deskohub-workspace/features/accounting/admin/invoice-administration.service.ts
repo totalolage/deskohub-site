@@ -57,6 +57,7 @@ import {
   defaultWorkspaceCurrencyCode,
   findWorkspaceCurrencyDefinition,
 } from "@/shared/money/currencies";
+import { moneyToDecimalString } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
   plainDateStringSchema,
@@ -627,10 +628,7 @@ const toListItem = (
   const money = manual
     ? { total: document.total, currency: document.currency }
     : {
-        total: minorUnitsToDecimal(
-          document.quote.payment.expectedPrice.value,
-          document.quote.payment.expectedPrice.exponent
-        ),
+        total: moneyToDecimalString(document.quote.payment.expectedPrice),
         currency: document.quote.payment.expectedPrice.currency,
       };
   return {
@@ -718,16 +716,6 @@ const getPragueDate = () =>
   Temporal.Now.zonedDateTimeISO(workspaceSiteConstants.location.timeZone)
     .toPlainDate()
     .toString();
-
-const minorUnitsToDecimal = (value: number, exponent: number) => {
-  const sign = value < 0 ? "-" : "";
-  const digits = Math.abs(value)
-    .toString()
-    .padStart(exponent + 1, "0");
-  return exponent === 0
-    ? `${sign}${digits}`
-    : `${sign}${digits.slice(0, -exponent)}.${digits.slice(-exponent)}`;
-};
 
 export const sortInvoiceAdministrationItems = (
   items: readonly InvoiceAdministrationListItem[],

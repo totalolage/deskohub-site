@@ -1,5 +1,7 @@
+import { Option } from "effect";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
-import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
+import { unitOf } from "@/shared/money/currencies";
+import { type Money, moneyWithValue } from "@/shared/money/money";
 import {
   localDateTimeToTemporalInstantString,
   workspaceSiteConstants,
@@ -18,38 +20,34 @@ import type {
 } from "./form-schemas";
 import { toDiscountProductTargets } from "./product-target-options";
 
+/** None when a fixed amount's currency is outside the catalog. */
 export const toCreateDiscountInput = (
   values: DiscountDefinitionFormValues
-): CreateDiscountAdminInput => {
-  const fixedCurrency = findWorkspaceCurrencyDefinition(
-    values.fixedAmountCurrency.toUpperCase()
-  );
-
-  return {
+): Option.Option<CreateDiscountAdminInput> =>
+  Option.map(toDiscountAdjustment(values), (adjustment) => ({
     labels: {
       "cs-CZ": values.labelCs,
       "en-US": values.labelEn,
     },
-    adjustment:
-      values.adjustmentKind === "fixed"
-        ? {
-            kind: "fixed",
-            amount: {
-              value: Number(values.fixedAmountValue),
-              exponent: fixedCurrency?.exponent ?? -1,
-              currency: fixedCurrency?.code ?? "",
-            },
-          }
-        : {
-            kind: "percentage",
-            basisPoints: Math.round(Number(values.percentage) * 100),
-          },
+    adjustment,
     products: toDiscountProductTargets(values.products) as [
       WorkspaceProductTarget,
       ...WorkspaceProductTarget[],
     ],
-  };
-};
+  }));
+
+const toDiscountAdjustment = (
+  values: DiscountDefinitionFormValues
+): Option.Option<CreateDiscountAdminInput["adjustment"]> =>
+  values.adjustmentKind === "fixed"
+    ? Option.map(
+        toCatalogMoney(values.fixedAmountValue, values.fixedAmountCurrency),
+        (amount) => ({ kind: "fixed", amount })
+      )
+    : Option.some({
+        kind: "percentage",
+        basisPoints: Math.round(Number(values.percentage) * 100),
+      });
 
 export const toCreateDiscountCodeInput = (
   values: DiscountCodeFormValues
@@ -75,18 +73,11 @@ export const toDiscountCodeConfigurationInput = (
   maxUsesPerCustomer: toOptionalCount(values.maxUsesPerCustomer),
 });
 
+/** None when the voucher currency is outside the catalog. */
 export const toVoucherCreditInput = (
   values: Pick<VoucherFormValues, "voucherValue" | "voucherCurrency">
-): CreateVoucherAdminInput["credit"] => {
-  const currency = findWorkspaceCurrencyDefinition(
-    values.voucherCurrency.toUpperCase()
-  );
-  return {
-    value: Number(values.voucherValue),
-    exponent: currency?.exponent ?? -1,
-    currency: currency?.code ?? "",
-  };
-};
+): Option.Option<CreateVoucherAdminInput["credit"]> =>
+  toCatalogMoney(values.voucherValue, values.voucherCurrency);
 
 export const toVoucherConfigurationInput = (
   values: VoucherFormValues
@@ -113,3 +104,12 @@ const toOptionalLocalDateTimeInstant = (value: string) =>
 
 const toOptionalCount = (value: string) =>
   value.length === 0 ? null : Number(value);
+
+/** Entered minor units in the selected catalog currency. */
+const toCatalogMoney = (
+  minorUnits: string,
+  currencyCode: string
+): Option.Option<Money> =>
+  Option.map(unitOf(currencyCode.toUpperCase()), (unit) =>
+    moneyWithValue(Number(minorUnits), unit)
+  );

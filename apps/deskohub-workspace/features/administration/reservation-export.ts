@@ -1,10 +1,10 @@
 import type { Locale } from "@/features/i18n";
+import { moneyMajorAmount } from "@/shared/money/money";
 import type { CsvColumn } from "@/shared/utils/csv";
 import type { AdministrationReservationSummary } from "./administration.service";
 import { getAdministrationCustomerName } from "./customer-presentation";
 import {
   formatAdministrationExportDateTime,
-  getAdministrationMoneyAmount,
   getAdministrationPaymentStatus,
 } from "./formatters";
 import { m } from "./i18n";
@@ -105,7 +105,7 @@ export const getAdministrationReservationExportColumns = (
     ),
     value: (reservation) =>
       reservation.latestPayment &&
-      getAdministrationMoneyAmount(reservation.latestPayment.amount),
+      moneyMajorAmount(reservation.latestPayment.amount),
   },
   {
     header: m.administrationReservationExportColumnPaymentCurrency(

@@ -22,13 +22,13 @@ import {
   getWorkspaceProductTierTitle,
   workspaceProductTierMessages,
 } from "@/features/checkout/product-catalog.i18n";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { getCoworkAdvertisedPriceReservation } from "@/features/reservation/cowork-reservation";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import type { MeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
 import { officeReservationMaximumDurationHours } from "@/features/reservation/office-reservation";
+import type { Money } from "@/shared/money/money";
 import { joinSentences } from "@/shared/utils/sentences";
 import {
   type WorkspaceOpeningHours,
@@ -41,7 +41,7 @@ type PublicOfferingAddOn = {
   readonly id: "coffee" | "workstation";
   readonly name: string;
   /** The price per day; zero when included. */
-  readonly price: WorkspaceMoney;
+  readonly price: Money;
   readonly included: boolean;
   /** The configurations the customer chooses between, which share one price. */
   readonly options?: ReadonlyArray<{
@@ -64,7 +64,7 @@ export type PublicCatalogOffering = PublicOfferingCopy &
         readonly kind: "cowork";
         readonly tier: WorkspaceCoworkCurrentTier;
         /** Per Prague calendar day. */
-        readonly price: WorkspaceMoney;
+        readonly price: Money;
         readonly addOns: ReadonlyArray<PublicOfferingAddOn>;
       }
     | {
@@ -72,14 +72,14 @@ export type PublicCatalogOffering = PublicOfferingCopy &
         readonly duration: MeetingRoomReservationDuration;
         readonly durationLabel: string;
         /** Per booking of the duration. */
-        readonly price: WorkspaceMoney;
+        readonly price: Money;
       }
     | {
         readonly kind: "office";
         /** Office access per day, before seats. */
-        readonly price: WorkspaceMoney;
+        readonly price: Money;
         /** Per reserved seat per day. */
-        readonly seatPrice: WorkspaceMoney;
+        readonly seatPrice: Money;
         /** Absent while the office capacity cannot be read. */
         readonly maximumSeats?: number;
         /** Elapsed hours one booking may span, measured between Prague midnights. */
@@ -101,9 +101,9 @@ export type PublicOfferingListing = {
 /** The anonymous price a reservation page advertises for a smallest booking. */
 type PublicOfferingAdvertisedPrice = {
   /** Includes any public sale running now. */
-  readonly price: WorkspaceMoney;
+  readonly price: Money;
   /** The sale discount included in `price`; zero without one. */
-  readonly discount: WorkspaceMoney;
+  readonly discount: Money;
 };
 
 /** One bookable product at its regular and its advertised price. */

@@ -53,7 +53,6 @@ import {
   unnamedCustomerDisplayName,
 } from "@/features/administration/customer-name";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   type DiscountGroupListing,
   listDiscountGroups,
@@ -68,6 +67,11 @@ import {
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
+import {
+  type Money,
+  type MoneyUnit,
+  sameMoneyUnit,
+} from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils";
 import type { DiscountAdjustment } from "../contracts";
 import { toDotyposDiscountBasisPoints } from "../dotypos-discount-percentage";
@@ -122,8 +126,8 @@ export type AdminDiscountCode = {
 
 export type AdminVoucher = {
   readonly id: VoucherId;
-  readonly issuedCredit: WorkspaceMoney;
-  readonly remainingCredit: WorkspaceMoney;
+  readonly issuedCredit: Money;
+  readonly remainingCredit: Money;
   readonly code: string;
   readonly enabled: boolean;
   readonly validFrom: Temporal.Instant | null;
@@ -160,7 +164,7 @@ export type AdminDiscountCodeClaim = {
   readonly state: DiscountCodeClaimState;
   readonly paymentAttemptId: PaymentAttemptId;
   readonly workspaceReservationId: WorkspaceReservationId;
-  readonly appliedAmount: WorkspaceMoney;
+  readonly appliedAmount: Money;
   readonly reservationExpiresAt: Temporal.Instant;
   readonly reservedAt: Temporal.Instant;
   readonly redeemedAt: Temporal.Instant | null;
@@ -1918,12 +1922,9 @@ export const getAdminDiscountCodeUsage = (input: {
 
 export const voucherDenominationCanChange = (input: {
   readonly claimCount: number;
-  readonly current: Pick<WorkspaceMoney, "currency" | "exponent">;
-  readonly updated: Pick<WorkspaceMoney, "currency" | "exponent">;
-}) =>
-  input.claimCount === 0 ||
-  (input.current.currency === input.updated.currency &&
-    input.current.exponent === input.updated.exponent);
+  readonly current: MoneyUnit;
+  readonly updated: MoneyUnit;
+}) => input.claimCount === 0 || sameMoneyUnit(input.current, input.updated);
 
 export const toAdminDotyposCustomer = (
   customer: DotyposCustomer

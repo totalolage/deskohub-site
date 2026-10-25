@@ -4,9 +4,9 @@ import {
   workspaceProductIdentitySchema,
   workspaceProductKeySchema,
 } from "@/features/checkout/product-identity";
-import { nonNegativeWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import type { AppliedDiscount } from "@/features/discounts/contracts";
 import { appliedDiscountCodec } from "@/features/discounts/contracts";
+import { nonNegativeMoneyCodec } from "@/shared/money/money";
 
 export type CheckoutSummaryDiscount = Pick<
   AppliedDiscount,
@@ -36,7 +36,7 @@ const checkoutSummaryProductItemKeySchema = Schema.String.check(
 export const checkoutSummaryProductItemBaseSchema = Schema.Struct({
   key: checkoutSummaryProductItemKeySchema,
   product: workspaceProductIdentitySchema,
-  amount: nonNegativeWorkspaceMoneyCodec,
+  amount: nonNegativeMoneyCodec,
 });
 
 export const checkoutSummaryProductKeyFilter = Schema.makeFilter(

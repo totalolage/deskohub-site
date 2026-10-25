@@ -10,12 +10,6 @@ import {
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import { getWorkspaceOfficeAccessPrice } from "@/features/checkout/product-catalog";
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
-import {
-  currencyCZK,
-  toWorkspaceMoneyMajorAmount,
-  type WorkspaceMoney,
-  workspaceMoneyWithValue,
-} from "@/features/checkout/workspace-money";
 import { m } from "@/features/i18n";
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
@@ -23,6 +17,12 @@ import {
   getOfficeAvailabilityQuery,
   type WorkspaceAvailabilityQuery,
 } from "@/features/reservation/workspace-availability";
+import { currencyCZK } from "@/shared/money/currencies";
+import {
+  type Money,
+  moneyMajorAmount,
+  moneyWithValue,
+} from "@/shared/money/money";
 import type { OfficeReservationForm } from "./office-reservation-form";
 
 mock.module("next/root-params", () => ({
@@ -162,7 +162,7 @@ test("prefills safe office shape on a fresh date and quote", async () => {
 test("prices the office offer at the amounts shown for the URL selection", async () => {
   const originalNow = Temporal.Now.instant;
   Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
-  const halve = (money: WorkspaceMoney) => currencyCZK(money.value / 2);
+  const halve = (money: Money) => currencyCZK(money.value / 2);
   // A sale halves every preloaded amount, so catalog prices cannot match.
   loadAdvertisedPrices.mockImplementationOnce((requests) =>
     Effect.succeed(
@@ -225,9 +225,9 @@ test("prices the office offer at the amounts shown for the URL selection", async
         ? displayed.quote.items[0]
         : undefined;
     if (!displayedItem) throw new Error("Expected the selection's price");
-    const perDay = (money: WorkspaceMoney) =>
-      toWorkspaceMoneyMajorAmount(
-        workspaceMoneyWithValue(money.value / displayedItem.dayCount, money)
+    const perDay = (money: Money) =>
+      moneyMajorAmount(
+        moneyWithValue(money.value / displayedItem.dayCount, money)
       );
 
     expect(form.props.initialValues).toMatchObject({
@@ -241,7 +241,7 @@ test("prices the office offer at the amounts shown for the URL selection", async
       { price: perDay(displayedItem.seatAmount) },
     ]);
     expect(office.offers.priceSpecification[0].price).not.toBe(
-      toWorkspaceMoneyMajorAmount(getWorkspaceOfficeAccessPrice(1))
+      moneyMajorAmount(getWorkspaceOfficeAccessPrice(1))
     );
   } finally {
     Temporal.Now.instant = originalNow;

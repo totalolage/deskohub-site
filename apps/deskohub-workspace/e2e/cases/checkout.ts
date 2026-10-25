@@ -2,7 +2,6 @@ import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { renderWorkspaceEmailDetailsText } from "@/emails/workspace-email-detail";
 import { createWorkspaceMeetingRoomEmailDetailRows } from "@/features/checkout/backend/fulfillment/workspace-meeting-room-email-details";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { isMeetingRoomWholeDayReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   formatReservationDisplayDate,
@@ -10,6 +9,7 @@ import {
   formatReservationDisplayTimeRange,
 } from "@/features/reservation/reservation-date";
 import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval-domain";
+import { formatMoney } from "@/shared/money/money";
 import {
   activateBrowserElement,
   activateHydratedBrowserElement,
@@ -600,7 +600,7 @@ export const assertFulfilledStatusPage = ({
           throw new Error("checkout payment amount is incomplete");
         }
 
-        return formatWorkspaceMoney(
+        return formatMoney(
           {
             value: checkoutRow.amount_value,
             exponent: checkoutRow.amount_exponent,
