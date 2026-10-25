@@ -197,20 +197,27 @@ const makeDatabase = () => {
     };
   };
 
-  const makeTransaction = () => ({
-    // The fixture's synthetic reservation author isn't a reservation row.
-    insert: (table: unknown) => ({
-      values: (row: { readonly id?: string }) =>
-        table === customerAccounts
-          ? Effect.void
-          : Effect.sync(() => {
-              if (!row.id) throw new Error("fixture reservation id missing");
-              lastInsertedId = row.id;
-              rows.set(row.id, row);
-            }),
-    }),
-    select: makeSelect,
+  type InsertedRow = { readonly id?: string };
+  // The fixture inserts reservations as a batch and reads them back.
+  const storeReservations = (inserted: InsertedRow | readonly InsertedRow[]) =>
+    Effect.sync(() => {
+      const batch = Array.isArray(inserted) ? inserted : [inserted];
+      for (const row of batch) {
+        if (!row.id) throw new Error("fixture reservation id missing");
+        lastInsertedId = row.id;
+        rows.set(row.id, row);
+      }
+      return batch;
+    });
+  const insert = (table: unknown) => ({
+    values: (inserted: InsertedRow | readonly InsertedRow[]) =>
+      // The fixture's synthetic reservation author isn't a reservation row.
+      table === customerAccounts
+        ? Effect.void
+        : { returning: () => storeReservations(inserted) },
   });
+
+  const makeTransaction = () => ({ insert, select: makeSelect });
 
   const db = {
     delete: () => ({
@@ -219,14 +226,7 @@ const makeDatabase = () => {
           if (lastInsertedId) rows.delete(lastInsertedId);
         }),
     }),
-    insert: () => ({
-      values: (row: { readonly id?: string }) =>
-        Effect.sync(() => {
-          if (!row.id) throw new Error("fixture reservation id missing");
-          lastInsertedId = row.id;
-          rows.set(row.id, row);
-        }),
-    }),
+    insert,
     select: makeSelect,
     transaction: (
       use: (transaction: ReturnType<typeof makeTransaction>) => unknown
