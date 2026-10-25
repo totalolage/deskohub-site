@@ -474,6 +474,11 @@ const signInReturnReviewTargets = new Set<ReviewTarget>([
   "sign-in-pending-desktop",
 ]);
 
+const reservationCustomerReviewTargets = new Set<ReviewTarget>([
+  "reservation-customer-account-desktop",
+  "reservation-customer-contact-desktop",
+]);
+
 /** A sign-in query: exactly one `returnTo` naming a same-origin path. */
 const isSignInReturnQuery = (search: string): boolean => {
   const entries = [...new URLSearchParams(search).entries()];
@@ -481,6 +486,16 @@ const isSignInReturnQuery = (search: string): boolean => {
     entries.length === 1 &&
     entries[0]?.[0] === signInReturnParam &&
     parseSameOriginPath(entries[0][1]) !== undefined
+  );
+};
+
+/** The reservation customer review is captured on the explicit contact step. */
+const isReservationContactStepQuery = (search: string): boolean => {
+  const entries = [...new URLSearchParams(search).entries()];
+  return (
+    entries.length === 1 &&
+    entries[0]?.[0] === "step" &&
+    entries[0]?.[1] === "contact"
   );
 };
 
@@ -513,7 +528,9 @@ const validateAccountReviewPage = (
       (target === "callback-failed-cs-desktop" &&
         isCallbackFailureQuery(pageUrl.search)) ||
       (signInReturnReviewTargets.has(target) &&
-        isSignInReturnQuery(pageUrl.search));
+        isSignInReturnQuery(pageUrl.search)) ||
+      (reservationCustomerReviewTargets.has(target) &&
+        isReservationContactStepQuery(pageUrl.search));
   const allowedPaths =
     typeof metadata.path === "string" ? [metadata.path] : metadata.path;
   if (
