@@ -29,7 +29,6 @@ export const publicPages = [
   { pathname: "/meeting-room", releaseGate: "meeting-room-page" },
   { pathname: "/team" },
   { pathname: "/ttrpg-room" },
-  { pathname: "/logo" },
   { pathname: "/terms-and-conditions" },
   { pathname: "/privacy-policy" },
   { pathname: "/cookie-policy" },

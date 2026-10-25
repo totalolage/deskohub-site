@@ -35,15 +35,7 @@ export function getLandingPageSaleBannerContent({
     adjustmentKind: sale.adjustment.kind,
     statusLabel: m.landingSaleBannerStatus({}, { locale }),
     ctaLabel: m.landingSaleBannerCta({}, { locale }),
-    href: getReservationStartPath(
-      locale,
-      reservationKind,
-      new URLSearchParams({
-        utm_source: "deskohub",
-        utm_medium: "sale_banner",
-        utm_content: "home_hero",
-      })
-    ),
+    href: getReservationStartPath(locale, reservationKind),
   };
 }
 
