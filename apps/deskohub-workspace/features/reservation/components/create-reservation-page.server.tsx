@@ -16,8 +16,9 @@ import {
   discountCodeQueryParam,
   normalizeSubmittedPromotionCode,
 } from "@/features/discounts";
-import { getWorkspaceAlternates, type Locale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
 import { checkoutContactReturnState } from "@/features/reservation/backend/checkout-contact-return-state";
 import { loadReservationCheckoutAccount } from "@/features/reservation/backend/reservation-existing-customer.server";
 import {
@@ -27,11 +28,7 @@ import {
 import type { ReservationCheckoutAccount } from "@/features/reservation/reservation-existing-customer";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import {
-  getSearchParam,
-  type SearchParamsRecord,
-  workspaceSiteConstants,
-} from "@/shared/utils";
+import { getSearchParam, type SearchParamsRecord } from "@/shared/utils";
 import { ReservationPage } from "./reservation-page";
 
 type ReservationKind = ReservationOrderData["kind"];
@@ -139,21 +136,13 @@ export function createReservationPage<
       if (definition.isEnabled && !(await definition.isEnabled())) notFound();
 
       const { description, title } = definition.metadata(locale);
-      const alternates = getWorkspaceAlternates(locale, definition.pathname);
 
-      return {
-        title,
+      return createPublicPageMetadata({
+        locale,
+        pathname: definition.pathname,
+        title: { absolute: title },
         description,
-        alternates,
-        openGraph: {
-          title,
-          description,
-          url: alternates.canonical,
-          siteName: workspaceSiteConstants.brand.name,
-          locale,
-          type: "website",
-        },
-      } satisfies Metadata;
+      });
     });
   }
 
