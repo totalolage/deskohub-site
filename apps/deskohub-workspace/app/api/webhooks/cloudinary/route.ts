@@ -7,10 +7,8 @@ import { Effect, Layer } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
-import {
-  defineWorkspaceRoute,
-  WorkspaceRouteFailure,
-} from "@/shared/backend/workspace-route";
+import { cloudinaryWebhookRefusal } from "@/features/gallery/backend/cloudinary-webhook-disposition";
+import { defineWebhookRoute } from "@/shared/backend/service-route";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
 const WorkspaceCloudinaryWebhookVerifierLayer =
@@ -33,13 +31,9 @@ const processWebhook = Effect.fn("processWebhook")(function* () {
   revalidateTag(tagToRevalidate, "max");
 
   yield* Effect.logInfo("Cloudinary webhook cache invalidation completed");
-
-  const response = NextResponse.json({
-    message: "Webhook received",
-  });
   yield* Effect.logInfo("Cloudinary webhook processed");
 
-  return response;
+  return {};
 });
 
 const processWebhookRequest = Effect.fn("processCloudinaryWebhookRequest")(
@@ -59,52 +53,15 @@ const processWebhookRequest = Effect.fn("processCloudinaryWebhookRequest")(
  *
  * Receives webhooks from Cloudinary
  */
-export const POST = defineWorkspaceRoute(
+export const POST = defineWebhookRoute(
   {
     operation: "cloudinaryWebhook",
-    cancellation: "continue-after-disconnect",
-    caller: "service",
+    failureMessage: "Cloudinary webhook processing failed",
   },
   (request) =>
     processWebhookRequest(request).pipe(
-      Effect.catchTags({
-        CloudinaryWebhookAuthError: (error) =>
-          Effect.logWarning("Cloudinary webhook authentication failed").pipe(
-            Effect.andThen(Effect.fail(error))
-          ),
-        CloudinaryWebhookValidationError: (error) =>
-          Effect.logWarning("Cloudinary webhook validation failed").pipe(
-            Effect.andThen(Effect.fail(error))
-          ),
-      }),
-      Effect.catchTags({
-        CloudinaryWebhookAuthError: (error) =>
-          Effect.succeed(
-            NextResponse.json(
-              {
-                error: "Unauthorized",
-                message: error.message,
-              },
-              { status: 401 }
-            )
-          ),
-        CloudinaryWebhookValidationError: (error) =>
-          Effect.succeed(
-            NextResponse.json(
-              {
-                error: "Invalid payload",
-                message: error.message,
-              },
-              {
-                status: 400,
-              }
-            )
-          ),
-      }),
-      Effect.provide(WorkspaceCloudinaryWebhookVerifierLayer),
-      Effect.mapError(
-        WorkspaceRouteFailure.internal("Cloudinary webhook processing failed")
-      )
+      Effect.mapError(cloudinaryWebhookRefusal),
+      Effect.provide(WorkspaceCloudinaryWebhookVerifierLayer)
     )
 );
 
