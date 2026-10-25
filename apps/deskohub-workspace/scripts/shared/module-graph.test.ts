@@ -15,10 +15,16 @@ beforeAll(async () => {
       'import type { Shape } from "./types";',
       'import { view } from "./nested/view";',
       'import { Effect } from "effect";',
+      'export type { Hidden } from "./hidden";',
+      'export { shared } from "./shared";',
+      'export const load = () => import("./lazy");',
       "export const entry: Shape = { view, Effect };",
     ].join("\n")
   );
   await writeFile(join(root, "types.ts"), 'import "server-only";');
+  await writeFile(join(root, "hidden.ts"), 'import "server-only";');
+  await writeFile(join(root, "shared.ts"), "export const shared = 1;");
+  await writeFile(join(root, "lazy.ts"), 'import "next/headers";');
   await writeFile(
     join(root, "nested", "view.tsx"),
     'import { useState } from "react";\nexport const view = useState;'
@@ -30,10 +36,15 @@ afterAll(async () => {
 });
 
 describe("runtimeImportGraph", () => {
-  test("follows app imports transitively and stops at packages", async () => {
+  test("follows runtime imports, re-exports and dynamic imports", async () => {
     const graph = await runtimeImportGraph(join(root, "entry.ts"), root);
 
-    expect(graph.modules).toEqual(["entry.ts", "nested/view.tsx"]);
-    expect(graph.packages).toEqual(["effect", "react"]);
+    expect(graph.modules).toEqual([
+      "entry.ts",
+      "lazy.ts",
+      "nested/view.tsx",
+      "shared.ts",
+    ]);
+    expect(graph.packages).toEqual(["effect", "next/headers", "react"]);
   });
 });

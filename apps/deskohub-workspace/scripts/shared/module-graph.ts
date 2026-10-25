@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { dirname, extname, relative } from "node:path";
+import { dirname, extname, relative, sep } from "node:path";
 
 const transpilers: Readonly<Record<string, Bun.Transpiler>> = {
   ".ts": new Bun.Transpiler({ loader: "ts" }),
@@ -27,22 +27,22 @@ const resolveImport = (
   }
 };
 
-const isAppModule = (file: string, root: string) => {
-  const appRelative = relative(root, file);
-  return !appRelative.startsWith("..") && !appRelative.includes("node_modules");
-};
+/** Repository source, workspace packages included, rather than an install. */
+const isSourceModule = (file: string) =>
+  !file.split(sep).includes("node_modules");
 
 export type RuntimeImportGraph = {
-  /** App modules the entry loads, itself included, relative to the root. */
+  /** Source modules the entry loads, itself included, relative to the root. */
   readonly modules: readonly string[];
-  /** Package specifiers those modules import. Packages are not followed. */
+  /** Installed package specifiers those modules import, not followed. */
   readonly packages: readonly string[];
 };
 
 /**
- * Every module that loading `entry` loads at runtime, following imports that
- * resolve inside `root` and outside `node_modules`. Type-only imports drop out
- * when the source is transpiled, so they never count.
+ * Every module that loading `entry` loads at runtime. Imports that resolve to
+ * repository source, workspace packages included, are followed; installed
+ * packages are listed. Type-only imports drop out when the source is
+ * transpiled, so they never count.
  */
 export const runtimeImportGraph = async (
   entry: string,
@@ -62,7 +62,7 @@ export const runtimeImportGraph = async (
     const { imports } = transpiler.scan(await readFile(file, "utf8"));
     for (const { path: specifier } of imports) {
       const resolved = resolveImport(specifier, file);
-      if (resolved !== undefined && isAppModule(resolved, root)) {
+      if (resolved !== undefined && isSourceModule(resolved)) {
         pending.push(resolved);
       } else {
         packages.add(specifier);
