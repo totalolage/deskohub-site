@@ -5,32 +5,36 @@ import { MasonryPhotoAlbum, type Photo } from "react-photo-album";
 import "react-photo-album/masonry.css";
 import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
+import { type Locale, m } from "@/features/i18n";
 import type { GalleryPhoto } from "../types/gallery-photo";
 
 type WorkspaceAlbumPhoto = Photo & GalleryPhoto;
 
 type WorkspaceGalleryAlbumProps = {
+  locale: Locale;
   photos: readonly GalleryPhoto[];
-  openLabel: string;
 };
 
 const eagerGalleryImageCount = 3;
 
 export function WorkspaceGalleryAlbum({
+  locale,
   photos,
-  openLabel,
 }: WorkspaceGalleryAlbumProps) {
   const [lightboxIndex, setLightboxIndex] = useState(-1);
 
   const albumPhotos: readonly WorkspaceAlbumPhoto[] = useMemo(
     () =>
-      photos.map((photo) => ({
+      photos.map((photo, index) => ({
         ...photo,
         key: photo.id,
-        label: `${openLabel}: ${photo.caption ?? photo.alt}`,
+        label: m.galleryOpenImage(
+          { image: photo.caption ?? photo.alt, number: index + 1 },
+          { locale }
+        ),
         title: photo.caption,
       })),
-    [openLabel, photos]
+    [locale, photos]
   );
 
   const lightboxSlides: SlideImage[] = useMemo(

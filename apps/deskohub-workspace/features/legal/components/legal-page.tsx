@@ -1,7 +1,8 @@
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { DocumentPage } from "@/shared/components/document-page";
-import { getLegalDocument, type LegalDocumentKey } from "../content";
+import { getLegalDocument } from "../content";
+import type { LegalDocumentKey } from "../legal-document-summaries";
 
 type LegalPageProps = {
   locale: Locale;

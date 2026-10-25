@@ -1,5 +1,4 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { findStepByName, parseWorkflow } from "./shared/workflow-contract";
 import {
@@ -13,16 +12,7 @@ const nightly = parseWorkflow(
   resolve(workflowsDir, "workspace-e2e-nightly.yml")
 );
 const e2e = parseWorkflow(resolve(workflowsDir, "workspace-e2e.yml"));
-const nightlyTriggers = (
-  Bun.YAML.parse(
-    readFileSync(resolve(workflowsDir, "workspace-e2e-nightly.yml"), "utf8")
-  ) as {
-    readonly on: {
-      readonly schedule?: readonly { readonly cron: string }[];
-      readonly workflow_dispatch?: null;
-    };
-  }
-).on;
+const nightlyTriggers = nightly.on ?? {};
 
 const targetStep = findStepByName(
   nightly,

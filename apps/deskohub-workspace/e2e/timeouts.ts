@@ -62,6 +62,9 @@ export const workspaceE2ETimeouts = {
   emailCampaignCase: 4 * MINUTE,
   hostedPayment: 3 * MINUTE,
   localeCase: 3 * MINUTE,
+  // Profile creation, customer-page streaming, and profile expiration each
+  // have independent bounded provider reads in the opt-in review capture.
+  reviewScreenshotCapture: 2 * MINUTE,
   // How long the account locale-switch check holds the preference save and
   // the new-locale document, so whatever the old page renders in between
   // stays on screen long enough to observe.

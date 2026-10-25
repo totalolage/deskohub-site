@@ -33,25 +33,18 @@ import {
 } from "./agent-tool";
 import { AgentToolAdmission } from "./agent-tool-admission.service";
 import { spendSignedInCallBudgets } from "./agent-tool-call-budget";
-import {
-  type AgentToolClient,
-  admitsCheckout,
-  CurrentAgentToolClient,
-} from "./agent-tool-client";
+import type { AgentToolClient } from "./agent-tool-client";
 import {
   AgentToolError,
   type AgentToolErrorCode,
   toAgentToolErrorResult,
 } from "./agent-tool-error";
 import {
-  agentToolBusinessSummary,
-  getAgentToolBookingGuidance,
-} from "./agent-tool-guidance";
-import {
   AgentToolRequestRefused,
   authorizeAgentToolRequest,
   isAgentToolGranted,
 } from "./agent-tool-mcp-authorization";
+import type { McpRequest } from "./agent-tool-mcp-messages";
 import {
   agentToolAccessMetaKey,
   getAgentToolSecuritySchemes,
@@ -68,30 +61,6 @@ import type { CustomerAgentCaller } from "./customer-agent-caller";
 const agentToolServerVersion = "1.0.0";
 
 /**
- * The server instructions for the client and the tools it sees. The
- * products come from list_offerings, so the instructions don't repeat the
- * catalog.
- */
-const getAgentToolServerInstructions = ({
-  client,
-  tools,
-}: {
-  readonly client: AgentToolClient;
-  readonly tools: ReadonlyArray<Pick<AgentTool<unknown>, "name" | "readOnly">>;
-}) =>
-  [
-    agentToolBusinessSummary,
-    "Use list_offerings for the products on offer with their regular price and today's price including any public sale, check_availability to see whether a selection looks free, and get_quote for the exact price of a selection.",
-    ...getAgentToolBookingGuidance({
-      admitsCheckout: admitsCheckout(client),
-      startReservation: tools.find(({ name }) => name === "start_reservation"),
-      readsReservations: tools.some(
-        ({ name }) => name === "list_my_reservations"
-      ),
-    }),
-  ].join(" ");
-
-/**
  * Answers one MCP request with a set of agent tools: stateless Streamable
  * HTTP with a fresh server per request. Tools emit no progress messages, so
  * the SDK answers 2026-era calls with JSON. A browser may call only from the
@@ -104,11 +73,11 @@ const getAgentToolServerInstructions = ({
  * where the platform routes no foreign hostname to the deployment, as Vercel
  * routes only a project's own domains.
  *
- * The caller passes the tools to serve, adapted to the request's client
- * (`getCustomerAgentToolsForClient`), and the client also chooses the
- * server instructions and the view's `_meta`. Everything else follows
- * from each tool's own definition, so tools added beside the customer
- * tools are served as they are.
+ * The caller passes the tools to serve and the server instructions, both
+ * chosen for the request's client (`customerAgentCatalog`), and the client
+ * also chooses the view's `_meta`. Everything else follows from each tool's
+ * own definition, so tools added beside the customer tools are served as
+ * they are.
  *
  * An agent may send an OAuth bearer token. A token that grants nothing,
  * or a signed-in tool called without a token granting its scope, is answered
@@ -134,21 +103,25 @@ export const answerAgentToolMcpRequest = <
   RCallerTools = never,
 >({
   tools,
+  instructions,
   callerTools,
   client,
   request,
 }: {
   readonly tools: ReadonlyArray<AgentTool<R>>;
+  readonly instructions: string;
   readonly callerTools?: (
     caller: Option.Option<CustomerAgentCaller>
   ) => Effect.Effect<ReadonlyArray<AgentTool<RCaller>>, E, RCallerTools>;
   readonly client: AgentToolClient;
-  readonly request: Request;
+  readonly request: McpRequest;
 }) =>
   // One Effect type for both branches, so callers can handle its errors.
   Effect.suspend(() =>
     Option.fromNullishOr(
-      originValidationResponse(request, [new URL(request.url).hostname])
+      originValidationResponse(request.request, [
+        new URL(request.request.url).hostname,
+      ])
     ).pipe(
       Option.match({
         onSome: (rejection) =>
@@ -164,8 +137,9 @@ export const answerAgentToolMcpRequest = <
             Effect.flatMap(({ caller, tools: served }) =>
               serveAgentToolMcpRequest({
                 tools: served,
+                instructions,
                 client,
-                request,
+                request: request.request,
                 caller,
               })
             ),
@@ -200,18 +174,20 @@ const serveAgentToolMcpRequest = <R>(exchange: McpExchange<R>) =>
 /** One MCP request and the tools and caller it is served with. */
 type McpExchange<R> = {
   readonly tools: ReadonlyArray<AgentTool<R>>;
+  readonly instructions: string;
   readonly client: AgentToolClient;
   readonly request: Request;
   readonly caller: Option.Option<CustomerAgentCaller>;
 };
 
 type ToolCallServices<R> =
-  | Exclude<R, CallableAgentTools | CurrentAgentToolClient>
+  | Exclude<R, CallableAgentTools>
   | AgentToolAdmission
   | RequestBudget;
 
 const exchangeAgentToolMcpRequest = <R>({
   tools,
+  instructions,
   client,
   request,
   caller,
@@ -228,6 +204,7 @@ const exchangeAgentToolMcpRequest = <R>({
             () =>
               makeAgentToolMcpServer({
                 tools,
+                instructions,
                 client,
                 headers: request.headers,
                 caller,
@@ -285,6 +262,7 @@ type RequestRunner<R> = <A>(
 
 const makeAgentToolMcpServer = <R>({
   tools,
+  instructions,
   client,
   headers,
   caller,
@@ -292,6 +270,7 @@ const makeAgentToolMcpServer = <R>({
   runInRequest,
 }: {
   readonly tools: ReadonlyArray<AgentTool<R>>;
+  readonly instructions: string;
   readonly client: AgentToolClient;
   readonly headers: Headers;
   readonly caller: Option.Option<CustomerAgentCaller>;
@@ -317,7 +296,7 @@ const makeAgentToolMcpServer = <R>({
         },
       ],
     },
-    { instructions: getAgentToolServerInstructions({ client, tools }) }
+    { instructions }
   );
   for (const view of getAgentToolViews(tools)) {
     const resourceMeta = getViewResourceMeta({ view, siteOrigin, client });
@@ -367,10 +346,9 @@ const makeAgentToolMcpServer = <R>({
         },
       },
       (args, context) =>
-        runInRequest(
-          callAgentTool({ tool, args, headers, caller, client, callable }),
-          { signal: context.mcpReq.signal }
-        )
+        runInRequest(callAgentTool({ tool, args, headers, caller, callable }), {
+          signal: context.mcpReq.signal,
+        })
     );
   }
   listSecuritySchemes(server);
@@ -426,14 +404,12 @@ const callAgentTool = <R>({
   args,
   headers,
   caller,
-  client,
   callable,
 }: {
   readonly tool: AgentTool<R>;
   readonly args: Schema.Json;
   readonly headers: Headers;
   readonly caller: Option.Option<CustomerAgentCaller>;
-  readonly client: AgentToolClient;
   readonly callable: ReadonlySet<string>;
 }): Effect.Effect<CallToolResult, never, ToolCallServices<R>> =>
   AgentToolAdmission.pipe(
@@ -447,13 +423,7 @@ const callAgentTool = <R>({
     Effect.flatMap(() =>
       tool
         .call(args, caller)
-        .pipe(
-          Effect.provideContext(
-            Context.make(CallableAgentTools, callable).pipe(
-              Context.add(CurrentAgentToolClient, client)
-            )
-          )
-        )
+        .pipe(Effect.provideService(CallableAgentTools, callable))
     ),
     Effect.map(toToolResult),
     Effect.tap(() => recordAgentToolCall(tool.name, "success")),

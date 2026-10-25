@@ -15,6 +15,7 @@ Operators may read:
 - the administration overview, including recent and new customers and reservations awaiting refund work;
 - reservations and their current lifecycle;
 - bookings, payment orders, and payment operations;
+- all linked reservations per day over the last year;
 - customers, their Workspace reservation history, and their reservations per day over the last year;
 - discount definitions, codes, scheduled sales, and the Dotypos discount groups;
 - invoice creation defaults, and a rendered preview of an invoice before it's created;

@@ -15,7 +15,6 @@ import {
 } from "@/shared/markdown/markdown";
 import { getWorkspaceCanonicalUrl } from "@/shared/utils/site-constants";
 import type { AgentTool, AgentToolAuthorization } from "./agent-tool";
-import { agentToolBookingGuidance } from "./agent-tool-guidance";
 import { registersAsSiteTool } from "./agent-tool-metadata";
 import {
   prepareReservationToolDescription,
@@ -33,6 +32,8 @@ export type DescribedAgentTool = Pick<
 export interface AgentInterfaces {
   /** The tools the customer MCP server publishes. */
   readonly tools: ReadonlyArray<DescribedAgentTool>;
+  /** How booking works through them, as the MCP server tells agents. */
+  readonly guidance: string;
   readonly siteToolsRelease: GlobalRelease;
 }
 
@@ -120,11 +121,11 @@ export const agentInterfacesMarkdown = (
   interfaces: AgentInterfaces
 ): MarkdownBlocks => {
   const mcpServerUrl = getWorkspaceCanonicalUrl(customerMcpServerPath);
-  const { tools } = interfaces;
+  const { tools, guidance } = interfaces;
 
   return [
     markdownHeading(2, agentInterfacesHeading),
-    markdownParagraph(agentToolBookingGuidance.join(" ")),
+    markdownParagraph(guidance),
     markdownHeading(3, agentInterfacesSubheadings.mcpServer),
     markdownList([
       markdownListItem(

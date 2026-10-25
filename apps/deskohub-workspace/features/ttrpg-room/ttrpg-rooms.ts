@@ -1,5 +1,6 @@
 import { type Locale, m } from "@/features/i18n";
 import { getMeetingRoomReservationPath } from "@/features/reservation/routes";
+import { getDeskohubBarPageUrl } from "@/shared/utils";
 
 const getContactHref = (href: string, message: string) => {
   const searchParams = new URLSearchParams({ message });
@@ -18,8 +19,9 @@ export const getTtrpgRooms = (locale: Locale) =>
       eyebrow: m.ttrpgRoomBarRoomLabel({}, { locale }),
       title: m.ttrpgRoomBarChoiceTitle({}, { locale }),
       seats: m.ttrpgRoomBarCapacity({}, { locale }),
+      description: m.ttrpgRoomBarChoiceText({}, { locale }),
       href: getContactHref(
-        `https://bar.deskohub.cz/${locale}/contact`,
+        getDeskohubBarPageUrl({ locale, pathname: "/contact" }),
         m.ttrpgRoomBarPrefillMessage({}, { locale })
       ),
       cta: m.ttrpgRoomBarCta({}, { locale }),
@@ -29,6 +31,7 @@ export const getTtrpgRooms = (locale: Locale) =>
       eyebrow: m.ttrpgRoomWorkspaceRoomLabel({}, { locale }),
       title: m.ttrpgRoomWorkspaceChoiceTitle({}, { locale }),
       seats: m.ttrpgRoomWorkspaceCapacity({}, { locale }),
+      description: m.ttrpgRoomWorkspaceChoiceText({}, { locale }),
       href: getMeetingRoomReservationPath(locale),
       cta: m.ttrpgRoomWorkspaceCta({}, { locale }),
     },

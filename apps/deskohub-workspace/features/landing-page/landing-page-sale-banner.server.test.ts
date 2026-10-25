@@ -130,21 +130,13 @@ const getBanner = (
 
 describe("getActiveLandingPageSaleBanner", () => {
   test.each([
-    [
-      "mixed",
-      [coworkProduct, meetingRoomProduct],
-      "/en-US/reservation/cowork?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero",
-    ],
+    ["mixed", [coworkProduct, meetingRoomProduct], "/en-US/reservation/cowork"],
     [
       "mixed without cowork",
       [officeProduct, meetingRoomProduct],
-      "/en-US/reservation/meeting-room?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero",
+      "/en-US/reservation/meeting-room",
     ],
-    [
-      "office-only",
-      [officeProduct],
-      "/en-US/reservation/office?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero",
-    ],
+    ["office-only", [officeProduct], "/en-US/reservation/office"],
   ] as const)("builds the %s sale CTA", async (_label, products, href) => {
     const { banner } = await getBanner([sale(products)]);
 
@@ -169,7 +161,7 @@ describe("getActiveLandingPageSaleBanner", () => {
     );
 
     expect(banner).toMatchObject({
-      href: "/en-US/reservation/cowork?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero",
+      href: "/en-US/reservation/cowork",
       label: advertisedLabel(
         [coworkProduct, meetingRoomProduct],
         bookableWithoutOffice
@@ -206,7 +198,7 @@ describe("getActiveLandingPageSaleBanner", () => {
     );
 
     expect(banner).toMatchObject({
-      href: "/en-US/reservation/meeting-room?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero",
+      href: "/en-US/reservation/meeting-room",
       label: advertisedLabel([meetingRoomProduct], bookableWithoutOffice),
     });
   });
@@ -219,7 +211,7 @@ describe("getActiveLandingPageSaleBanner", () => {
     );
 
     expect(banner).toMatchObject({
-      href: "/en-US/reservation/cowork?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero",
+      href: "/en-US/reservation/cowork",
       label: advertisedLabel([
         coworkProduct,
         meetingRoomProduct,

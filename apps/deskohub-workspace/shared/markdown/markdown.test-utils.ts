@@ -29,3 +29,10 @@ export const markdownLinkUrls = (markdown: string): string[] => {
   collect(fromMarkdown(markdown));
   return urls;
 };
+
+/**
+ * A message's text with its interpolation tags removed, such as the
+ * `<pricing>` around a link, as `markdownPlainText` reads the rendered link.
+ */
+export const messagePlainText = (message: string): string =>
+  message.replace(/<\/?\w+>/g, "");

@@ -20,6 +20,11 @@ on:
         required: false
         default: false
         type: boolean
+      review_screenshots:
+        description: Capture synthetic PR review screenshots into the review artifact
+        required: false
+        default: false
+        type: boolean
       sha:
         description: Exact commit SHA to test
         required: true
@@ -683,6 +688,8 @@ jobs:
           WORKSPACE_E2E_CRON_SECRET: ${{ secrets.WORKSPACE_E2E_CRON_SECRET }}
           # Set only for a validated nightly target that asked for them.
           WORKSPACE_E2E_NIGHTLY_CASES: ${{ needs.resolve-target.outputs.nightly == 'true' && needs.resolve-target.outputs.nightly_cases == 'true' && 'true' || '' }}
+          # Set only for a manual dispatch that asked for review screenshots.
+          WORKSPACE_E2E_REVIEW_SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.review_screenshots && 'true' || '' }}
           DATABASE_URL: ${{ steps.preview-database.outputs.pooled_url }}
           WORKSPACE_E2E_DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
           WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ steps.preview-database.outputs.direct_url }}

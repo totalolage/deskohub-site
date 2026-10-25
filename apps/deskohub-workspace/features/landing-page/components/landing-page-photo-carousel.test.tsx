@@ -103,10 +103,7 @@ describe("LandingPagePhotoCarousel", () => {
         locale="cs-CZ"
       />
     );
-    const fallbackAlt = m.landingCarouselImageAlt(
-      { number: 2 },
-      { locale: "cs-CZ" }
-    );
+    const fallbackAlt = m.landingCarouselImageAlt({}, { locale: "cs-CZ" });
 
     expect(view.getAllByRole("img", { name: "Český popis" })).not.toHaveLength(
       0

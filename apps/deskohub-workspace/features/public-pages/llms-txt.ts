@@ -17,6 +17,7 @@ import {
   markdownParagraph,
 } from "@/shared/markdown/markdown";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { publicPageDefinitions } from "./public-page-definitions";
 import {
   type PublicPageTopic,
   publicPageMarkdown,
@@ -49,7 +50,7 @@ const pageLink = (pathname: PublicPagePathname): ListItem =>
   markdownListItem(
     markdownLink(
       getWorkspacePageUrl(pathname),
-      publicPageMarkdown[pathname].title(llmsTxtLocale)
+      publicPageDefinitions[pathname].title({}, { locale: llmsTxtLocale })
     )
   );
 

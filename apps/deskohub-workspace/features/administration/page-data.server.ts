@@ -127,6 +127,14 @@ export const loadAdministrationRefundAttention = cache(async () => {
   }).pipe(runAdministration("administration.refund-attention"));
 });
 
+export const loadAdministrationReservationActivity = cache(async () => {
+  await authorizeAdministratorPage();
+  return Effect.gen(function* () {
+    const administration = yield* AdministrationService;
+    return yield* administration.loadReservationActivity();
+  }).pipe(runAdministration("administration.reservation-activity"));
+});
+
 export const loadAdministrationReservationOverview = async () => {
   return getAdministrationReservationOverview(
     await loadAdministrationOverviewSource()

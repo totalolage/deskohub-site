@@ -1,4 +1,4 @@
-import { expect, mock, test } from "bun:test";
+import { beforeEach, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
 import { isValidElement, type ReactElement, type ReactNode } from "react";
@@ -17,6 +17,20 @@ mock.module("next/server", () => ({
   ...nextServer,
   connection: () => Promise.resolve(),
 }));
+
+// Office reservations are released unless a test closes the gate.
+let officePageEnabled = true;
+const isOfficePageEnabled = mock(() => Promise.resolve(officePageEnabled));
+const officeFeatureFlag = await import(
+  "@/features/office/backend/office-reservation-feature-flag.server"
+);
+mock.module(
+  "@/features/office/backend/office-reservation-feature-flag.server",
+  () => ({ ...officeFeatureFlag, isOfficePageEnabled })
+);
+beforeEach(() => {
+  officePageEnabled = true;
+});
 
 const loadReservationCheckoutAccount = mock(
   (_kind: string): Promise<unknown> => Promise.resolve({ status: "signed-out" })
@@ -92,7 +106,6 @@ test("renders the reservation shell before request-bound content resolves", asyn
   const pageDefinition = createReservationPage({
     fallback,
     kind: "cowork",
-    metadata: () => ({ description: "Description", title: "Title" }),
     pathname: "/reservation/cowork",
     render,
   });
@@ -120,16 +133,15 @@ test("renders the reservation shell before request-bound content resolves", asyn
   expect(isValidElement(pageProps.children)).toBe(true);
 });
 
-test("gates a disabled page inside its content, keeping the shell static", async () => {
+test("gates a page by its registry release gate inside its content, keeping the shell static", async () => {
+  officePageEnabled = false;
+  isOfficePageEnabled.mockClear();
   const render = mock((): ReactNode => "loaded reservation form");
   const fallback = mock((): ReactNode => "loading reservation form");
-  const isEnabled = mock(() => Promise.resolve(false));
   const pageDefinition = createReservationPage({
     fallback,
-    isEnabled,
-    kind: "cowork",
-    metadata: () => ({ description: "Description", title: "Title" }),
-    pathname: "/reservation/cowork",
+    kind: "office",
+    pathname: "/reservation/office",
     render,
   });
 
@@ -137,7 +149,7 @@ test("gates a disabled page inside its content, keeping the shell static", async
     searchParams: Promise.resolve({}),
   });
 
-  expect(isEnabled).not.toHaveBeenCalled();
+  expect(isOfficePageEnabled).not.toHaveBeenCalled();
   expect(fallback).toHaveBeenCalledWith("en-US");
 
   type ContentProps = { readonly searchParams: Promise<object> };
@@ -154,7 +166,7 @@ test("gates a disabled page inside its content, keeping the shell static", async
   await expect(pageDefinition.generateMetadata()).rejects.toThrow(
     "NEXT_HTTP_ERROR_FALLBACK;404"
   );
-  expect(isEnabled).toHaveBeenCalledTimes(2);
+  expect(isOfficePageEnabled).toHaveBeenCalledTimes(2);
   expect(render).not.toHaveBeenCalled();
 });
 
@@ -239,7 +251,6 @@ test("loads the checkout account and the page data concurrently", async () => {
     fallback: () => "loading reservation form",
     kind: "office",
     loadPageData,
-    metadata: () => ({ description: "Description", title: "Title" }),
     pathname: "/reservation/office",
     render,
   });
@@ -275,7 +286,6 @@ test("reopens the contact details sealed into a sign-in's return path", async ()
   const pageDefinition = createReservationPage({
     fallback: () => "loading reservation form",
     kind: "cowork",
-    metadata: () => ({ description: "Description", title: "Title" }),
     pathname: "/reservation/cowork",
     render,
   });

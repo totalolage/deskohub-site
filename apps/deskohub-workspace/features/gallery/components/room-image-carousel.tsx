@@ -7,16 +7,20 @@ import Image, { type StaticImageData } from "next/image";
 import { useMemo, useState } from "react";
 import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
+import { getLocalizedCloudinaryContextValue } from "@deskohub/cloudinary-image/localized-context";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import {
   useMotionSwipeCarousel,
   wrapIndex,
 } from "@/features/gallery/hooks/use-motion-swipe-carousel";
+import type { Locale } from "@/features/i18n";
 import { CarouselPositionIndicator } from "@/shared/components/carousel-position-indicator";
 import { cn } from "@/shared/utils";
 
 type RoomImageCarouselProps = {
   images: readonly CloudinaryAsset[];
+  imageAlt: string;
+  locale: Locale;
   emptyText: string;
   openLabel: string;
   fallbackImages?: readonly RoomImageCarouselFallbackImage[];
@@ -40,6 +44,7 @@ type RoomImageCarouselImage =
       height: number;
       id: CloudinaryPublicId;
       kind: "cloudinary";
+      label: string;
       source: CloudinaryAsset;
       src: string;
       width: number;
@@ -50,6 +55,7 @@ type RoomImageCarouselImage =
       height: number;
       id: string;
       kind: "static";
+      label: string;
       source: StaticImageData;
       src: string;
       width: number;
@@ -73,14 +79,10 @@ const getSlideMotion = (offset: number) => ({
   zIndex: Math.abs(offset) < 0.5 ? 2 : 1,
 });
 
-const getImageLabel = (
-  image: RoomImageCarouselImage,
-  index: number,
-  fallback: string
-) => image.caption?.trim() || image.alt.trim() || `${fallback} ${index + 1}`;
-
 export function RoomImageCarousel({
   images,
+  imageAlt,
+  locale,
   emptyText,
   openLabel,
   fallbackImages,
@@ -103,22 +105,36 @@ export function RoomImageCarousel({
       : []);
   const carouselImages: readonly RoomImageCarouselImage[] =
     images.length > 0
-      ? images.map((image, index) => ({
-          alt: image.context?.custom?.alt || `${openLabel} ${index + 1}`,
-          caption: image.context?.custom?.caption,
-          height: image.height,
-          id: image.public_id,
-          kind: "cloudinary",
-          source: image,
-          src: image.secure_url,
-          width: image.width,
-        }))
-      : normalizedFallbackImages.map((image) => ({
+      ? images.map((image, index) => {
+          const alt = getLocalizedCloudinaryContextValue(image, "alt", locale);
+          const caption = getLocalizedCloudinaryContextValue(
+            image,
+            "caption",
+            locale
+          );
+
+          return {
+            alt: alt || imageAlt,
+            caption,
+            height: image.height,
+            id: image.public_id,
+            kind: "cloudinary",
+            label: caption || alt || `${openLabel} ${index + 1}`,
+            source: image,
+            src: image.secure_url,
+            width: image.width,
+          };
+        })
+      : normalizedFallbackImages.map((image, index) => ({
           alt: image.alt,
           caption: image.caption,
           height: image.src.height,
           id: image.src.src,
           kind: "static",
+          label:
+            image.caption?.trim() ||
+            image.alt.trim() ||
+            `${openLabel} ${index + 1}`,
           source: image.src,
           src: image.src.src,
           width: image.src.width,
@@ -221,7 +237,7 @@ export function RoomImageCarousel({
             <motion.button
               animate={getSlideMotion(offset)}
               aria-hidden={isCurrent ? undefined : true}
-              aria-label={getImageLabel(image, logicalIndex, openLabel)}
+              aria-label={image.label}
               className="group absolute inset-0 cursor-zoom-in overflow-hidden bg-navy-blue text-left focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-burned-orange"
               disabled={!isCurrent}
               draggable={false}
@@ -273,9 +289,7 @@ export function RoomImageCarousel({
           activeIndex={activeIndex}
           count={carouselImages.length}
           getKey={(dotIndex) => carouselImages[dotIndex]?.id ?? dotIndex}
-          getLabel={(dotIndex) =>
-            getImageLabel(carouselImages[dotIndex]!, dotIndex, openLabel)
-          }
+          getLabel={(dotIndex) => carouselImages[dotIndex]!.label}
           onSelect={moveToIndex}
           variant="navy"
         />
