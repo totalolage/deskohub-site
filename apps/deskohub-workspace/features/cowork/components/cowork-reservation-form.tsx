@@ -1110,41 +1110,48 @@ export function CoworkReservationFormFallback({
   return (
     <SharedReservationFormFallback
       label={m.reservationFormTitle({}, { locale })}
-    >
-      {/* The tiers' static copy renders in the page shell, so readers that
-          run no script still learn the offer; only prices load with the form. */}
-      <div className="space-y-2">
-        <p className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
-          {m.reservationTierLabel({}, { locale })}
-        </p>
-        <div className="grid gap-4 md:grid-cols-2">
-          {workspaceCoworkCurrentTiers.map((tier) => (
-            <div
-              className={cn(
-                illustratedReservationTypeOptionLayout,
-                "bg-white outline outline-1 -outline-offset-1 outline-navy-blue/10"
-              )}
-              key={tier}
-            >
-              <div className="col-start-1 col-end-3 row-start-1 mb-2 flex items-start justify-between gap-2">
-                <p className="min-w-0 flex-1 break-words text-[1.375rem] font-semibold leading-7 lg:text-2xl lg:leading-8">
-                  {getWorkspaceProductTierTitle(tier, locale)}
-                </p>
-                <span
+      overview={
+        <div className="space-y-2">
+          <p className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
+            {m.reservationTierLabel({}, { locale })}
+          </p>
+          <div className="grid gap-4 md:grid-cols-2">
+            {workspaceCoworkCurrentTiers.map((tier) => (
+              <div
+                className={cn(
+                  illustratedReservationTypeOptionLayout,
+                  "bg-white outline outline-1 -outline-offset-1 outline-navy-blue/10"
+                )}
+                key={tier}
+              >
+                <div className="col-start-1 col-end-3 row-start-1 mb-2 flex items-start justify-between gap-2">
+                  <p className="min-w-0 flex-1 break-words text-[1.375rem] font-semibold leading-7 lg:text-2xl lg:leading-8">
+                    {getWorkspaceProductTierTitle(tier, locale)}
+                  </p>
+                  <span
+                    aria-hidden="true"
+                    className="mt-1 h-6 w-6 shrink-0 rounded-full border-2 border-navy-blue/25 sm:h-7 sm:w-7"
+                  />
+                </div>
+                {/* Prices load with the form; the copy around them is static. */}
+                <div
                   aria-hidden="true"
-                  className="mt-1 h-6 w-6 shrink-0 rounded-full border-2 border-navy-blue/25 sm:h-7 sm:w-7"
+                  className="col-start-1 row-start-2 mb-2 py-1"
+                >
+                  <ReservationSkeletonBlock className="h-8 w-28 bg-aquamarine-green/15 lg:h-9" />
+                </div>
+                <CoworkTierDescription
+                  locale={locale}
+                  placeholder
+                  tier={tier}
                 />
+                <CoworkTierPerks locale={locale} placeholder tier={tier} />
               </div>
-              <div className="col-start-1 row-start-2 mb-2 py-1">
-                <ReservationSkeletonBlock className="h-8 w-28 bg-aquamarine-green/15 lg:h-9" />
-              </div>
-              <CoworkTierDescription locale={locale} placeholder tier={tier} />
-              <CoworkTierPerks locale={locale} placeholder tier={tier} />
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
-
+      }
+    >
       <div className="grid gap-5 md:grid-cols-2">
         <ReservationSkeletonField />
         <ReservationSkeletonField />

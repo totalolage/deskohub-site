@@ -250,7 +250,7 @@ function CoworkingDesks({
             return (
               <article
                 aria-labelledby={`coworking-desk-${desk.tier}`}
-                className="flex flex-col rounded-[1.75rem] border border-white/14 bg-navy-blue p-6 sm:p-9"
+                className="flex min-w-0 flex-col rounded-[1.75rem] border border-white/14 bg-navy-blue p-5 sm:p-9"
                 key={desk.tier}
               >
                 <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
@@ -295,6 +295,8 @@ function CoworkingDesks({
                     size="xl"
                     shape="rounded"
                     caps
+                    wrap
+                    className="w-full sm:w-auto"
                   >
                     <Link
                       href={getReservationSelectionPath(
