@@ -1,7 +1,6 @@
 import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { privateOrderPage } from "@/features/reservation/private-order-page.server";
-import { reviewPaymentDisabledPath } from "@/features/review-accounts";
 import { ReviewPaymentDisabledPage } from "@/features/review-accounts/components/review-payment-disabled-page";
 
 // Non-instant like the Pay page it stands in for: the reservation form's
@@ -13,7 +12,6 @@ type LocalizedReviewPaymentDisabledPageProps = {
 };
 
 const { generateMetadata, readOrderId } = privateOrderPage({
-  pathname: reviewPaymentDisabledPath,
   title: m.reviewPaymentDisabledMetadataTitle,
   description: m.reviewPaymentDisabledMetadataDescription,
 });

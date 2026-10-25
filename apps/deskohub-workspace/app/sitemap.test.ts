@@ -117,6 +117,18 @@ describe("sitemap.xml", () => {
     }
   });
 
+  test("dates every page's entries by its content, the same in each locale", async () => {
+    const entries = await productionSitemap();
+    const entriesByUrl = new Map(entries.map((entry) => [entry.url, entry]));
+
+    for (const { pathname, contentDate } of publicPages) {
+      for (const locale of locales) {
+        const url = `${origin}/${locale}${pathname === "/" ? "" : pathname}`;
+        expect(entriesByUrl.get(url)?.lastModified).toBe(contentDate);
+      }
+    }
+  });
+
   test("keeps every URL absolute on the production origin", async () => {
     for (const entry of await productionSitemap()) {
       const urls = [

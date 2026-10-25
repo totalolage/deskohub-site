@@ -14,7 +14,6 @@ import {
   reservationAccessTokenQueryParam,
   reservationAccessTokenSchema,
 } from "@/features/reservation/reservation-access-token";
-import { reservationInvoicePath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   getSearchParamsDecoder,
@@ -30,7 +29,6 @@ type PageProps = {
 };
 
 const { generateMetadata, readOrderId } = privateOrderPage({
-  pathname: reservationInvoicePath,
   title: m.postOrderInvoiceMetadataTitle,
   description: m.postOrderInvoiceMetadataDescription,
 });

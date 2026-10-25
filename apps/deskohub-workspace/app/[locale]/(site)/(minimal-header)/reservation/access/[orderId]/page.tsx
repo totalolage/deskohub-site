@@ -1,7 +1,6 @@
 import { m } from "@/features/i18n";
 import { ReservationAccessRoute } from "@/features/reservation/components/reservation-access-route";
 import { privateOrderPage } from "@/features/reservation/private-order-page.server";
-import { reservationAccessPath } from "@/features/reservation/routes";
 
 export const maxDuration = 30;
 export const instant = true;
@@ -11,7 +10,6 @@ type LocalizedReservationAccessPageProps = {
 };
 
 const { generateMetadata } = privateOrderPage({
-  pathname: reservationAccessPath,
   title: m.reservationAccessMetadataTitle,
   description: m.reservationAccessMetadataDescription,
 });

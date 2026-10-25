@@ -8,6 +8,7 @@ import {
   defineWorkspaceRoute,
   WorkspaceRouteFailure,
 } from "@/shared/backend/workspace-route";
+import { markUnindexedResponse } from "@/shared/utils/unindexed-response";
 
 /**
  * `/llms.txt`, listing the public pages production serves now and the agent
@@ -30,11 +31,12 @@ export const GET = defineWorkspaceRoute(
       Effect.flatMap(([releases, siteToolsRelease]) =>
         Effect.tryPromise(() => renderLlmsTxt(releases, siteToolsRelease))
       ),
-      Effect.map(
-        (llmsTxt) =>
+      Effect.map((llmsTxt) =>
+        markUnindexedResponse(
           new NextResponse(llmsTxt, {
             headers: { "Content-Type": "text/plain; charset=utf-8" },
           })
+        )
       ),
       Effect.provide(
         Layer.mergeAll(

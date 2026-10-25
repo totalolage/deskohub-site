@@ -12,17 +12,20 @@ type PublicPageTitle =
   | { readonly page: string }
   | { readonly absolute: string };
 
-type PublicPageMetadataInput = {
+type PageMetadataInput = {
   readonly locale: Locale;
+  readonly title: PublicPageTitle;
+  /** Omitted, the page keeps the layout's description. */
+  readonly description?: string;
+  readonly type?: "website" | "article";
+};
+
+type PublicPageMetadataInput = PageMetadataInput & {
   /**
    * Unprefixed pathname; the canonical and hreflang URLs name each
    * locale's page.
    */
   readonly pathname: string;
-  readonly title: PublicPageTitle;
-  /** Omitted, the page keeps the layout's description. */
-  readonly description?: string;
-  readonly type?: "website" | "article";
 };
 
 /** The photo of the space that a shared link to any page shows. */
@@ -39,30 +42,23 @@ export const getPublicPageTitle = (title: PublicPageTitle): string =>
     ? title.absolute
     : `${title.page} | ${workspaceSiteConstants.brand.name}`;
 
-/**
- * Title, description, canonical and hreflang URLs, and the complete Open
- * Graph and Twitter card of a page on the public site. A page's `openGraph`
- * replaces the layouts' whole, so the card names the share image itself.
- */
-export function createPublicPageMetadata({
-  locale,
-  pathname,
-  title,
-  description,
-  type = "website",
-}: PublicPageMetadataInput): Metadata {
+type WorkspaceAlternates = ReturnType<typeof getWorkspaceAlternates>;
+
+function createPageMetadata(
+  { locale, title, description, type = "website" }: PageMetadataInput,
+  alternates?: WorkspaceAlternates
+): Metadata {
   const documentTitle = getPublicPageTitle(title);
-  const alternates = getWorkspaceAlternates(locale, pathname);
 
   return {
     title: documentTitle,
     ...(description !== undefined && { description }),
-    alternates,
+    ...(alternates !== undefined && { alternates }),
     openGraph: {
       type,
       title: documentTitle,
       ...(description !== undefined && { description }),
-      url: alternates.canonical,
+      ...(alternates !== undefined && { url: alternates.canonical }),
       siteName: workspaceSiteConstants.brand.name,
       locale: toOpenGraphLocale(locale),
       alternateLocale: locales
@@ -72,5 +68,32 @@ export function createPublicPageMetadata({
     },
     // The title, description and image follow from `openGraph`.
     twitter: { card: "summary_large_image" },
+  };
+}
+
+/**
+ * Title, description, canonical and hreflang URLs, and the complete Open
+ * Graph and Twitter card of a page on the public site. A page's `openGraph`
+ * replaces the layouts' whole, so the card names the share image itself.
+ */
+export function createPublicPageMetadata({
+  pathname,
+  ...page
+}: PublicPageMetadataInput): Metadata {
+  return createPageMetadata(
+    page,
+    getWorkspaceAlternates(page.locale, pathname)
+  );
+}
+
+/**
+ * The metadata of a page kept out of search results: the public page's title,
+ * description and share card, with no canonical, hreflang or Open Graph URL
+ * that would point crawlers at a URL they must not index.
+ */
+export function createNoindexedPageMetadata(page: PageMetadataInput): Metadata {
+  return {
+    ...createPageMetadata(page),
+    robots: { index: false, follow: false },
   };
 }
