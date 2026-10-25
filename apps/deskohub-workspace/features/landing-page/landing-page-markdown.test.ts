@@ -20,6 +20,7 @@ import {
   workspaceGoogleDirectionsUrl,
 } from "@/shared/utils/workspace-location-map";
 import type { LandingPageSaleBannerContent } from "./components/landing-page-sale-banner";
+import { getLandingPageAmenities } from "./landing-page-amenities";
 import { landingPageMarkdown } from "./landing-page-markdown";
 import { getLandingPageSaleBannerContent } from "./landing-page-sale-banner-content";
 
@@ -111,15 +112,10 @@ describe.each(locales)("landingPageMarkdown in %s", (locale) => {
         m.landingOfferingTtrpgLink({}, { locale }),
         messagePlainText(m.landingOfferingEvents({}, { locale })),
         m.landingAmenitiesTitle({}, { locale }),
-        ...[
-          [m.landingAmenityInternetTitle, m.landingAmenityInternetText],
-          [m.landingAmenityWorkstationTitle, m.landingAmenityWorkstationText],
-          [m.landingAmenityCoffeeTitle, m.landingAmenityCoffeeText],
-          [m.landingAmenityFoodTitle, m.landingAmenityFoodText],
-          [m.landingAmenityCallsTitle, m.landingAmenityCallsText],
-          [m.landingAmenityBarTitle, m.landingAmenityBarText],
-        ].map(
-          ([title, text]) => `${title({}, { locale })}: ${text({}, { locale })}`
+        ...getLandingPageAmenities(locale).map(({ id, title, text }) =>
+          id === "bar"
+            ? `${title}: ${text} ${m.landingFooterBarCta({}, { locale })}`
+            : `${title}: ${text}`
         ),
         m.landingFaqTeaserTitle({}, { locale }),
         ...getFaqQuestions(locale),
@@ -148,6 +144,7 @@ describe.each(locales)("landingPageMarkdown in %s", (locale) => {
       `${origin}/meeting-room`,
       `${origin}/ttrpg-room`,
       `${origin}/contact`,
+      `https://bar.deskohub.cz/${locale}`,
       `${origin}/faq`,
       `mailto:${infoEmail}`,
       `${origin}/contact`,

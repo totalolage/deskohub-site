@@ -78,7 +78,6 @@ describe("llmsTxtMarkdown", () => {
       m.landingNavContactLabel({}, { locale }),
       m.footerLegalLabel({}, { locale }),
       agentInterfacesHeading,
-      "Optional",
     ]);
   });
 

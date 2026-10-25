@@ -36,6 +36,7 @@ import {
   workspaceGoogleDirectionsUrl,
 } from "@/shared/utils/workspace-location-map";
 import type { LandingPageSaleBannerContent } from "./components/landing-page-sale-banner";
+import { getLandingPageAmenities } from "./landing-page-amenities";
 
 /** The sale banner, an aside like its HTML: the sale and its booking link. */
 const saleBannerMarkdown = (banner: LandingPageSaleBannerContent) =>
@@ -174,18 +175,20 @@ export const landingPageMarkdown = (
     ),
     markdownHeading(2, m.landingAmenitiesTitle({}, { locale })),
     markdownList(
-      [
-        [m.landingAmenityInternetTitle, m.landingAmenityInternetText],
-        [m.landingAmenityWorkstationTitle, m.landingAmenityWorkstationText],
-        [m.landingAmenityCoffeeTitle, m.landingAmenityCoffeeText],
-        [m.landingAmenityFoodTitle, m.landingAmenityFoodText],
-        [m.landingAmenityCallsTitle, m.landingAmenityCallsText],
-        [m.landingAmenityBarTitle, m.landingAmenityBarText],
-      ].map(([title, text]) =>
+      getLandingPageAmenities(locale).map(({ id, title, text }) =>
         markdownListItem(
-          markdownStrong(`${title({}, { locale })}:`),
+          markdownStrong(`${title}:`),
           " ",
-          text({}, { locale })
+          text,
+          ...(id === "bar"
+            ? [
+                " ",
+                markdownLink(
+                  getDeskohubBarPageUrl(locale),
+                  m.landingFooterBarCta({}, { locale })
+                ),
+              ]
+            : [])
         )
       )
     ),
