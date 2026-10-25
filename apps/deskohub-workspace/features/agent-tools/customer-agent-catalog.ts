@@ -60,6 +60,12 @@ const { address } = location;
 /** What the business is, for agents, from the site constants. */
 const businessSummary = `${brand.name} is a coworking space at ${address.street}, ${address.postalCode} ${address.city}${openingHours.alwaysOpen ? ", open 24/7" : ""}.`;
 
+/** Whether the listing holds a tool of each of these names. */
+const listsEvery = (
+  tools: ReadonlyArray<CustomerAgentTool>,
+  names: ReadonlyArray<string>
+) => names.every((name) => tools.some((tool) => tool.name === name));
+
 /**
  * How booking works and what agents can't do, for the tools a client sees.
  * Where the client's directory admits no checkout, nothing mentions paying.
@@ -70,11 +76,13 @@ const getBookingGuidance = (
   checkout: boolean,
   tools: ReadonlyArray<CustomerAgentTool>
 ): ReadonlyArray<string> => {
-  const listed = (name: string) => tools.find((tool) => tool.name === name);
-  const startReservation = listed(startReservationTool.name);
-  const readsReservations =
-    listed(getReservationStatusTool.name) !== undefined &&
-    listed(listMyReservationsTool.name) !== undefined;
+  const startReservation = tools.find(
+    ({ name }) => name === startReservationTool.name
+  );
+  const readsReservations = listsEvery(tools, [
+    getReservationStatusTool.name,
+    listMyReservationsTool.name,
+  ]);
 
   return [
     checkout
@@ -108,7 +116,15 @@ const getServerInstructions = (
 ) =>
   [
     businessSummary,
-    "Use list_offerings for the products on offer with their regular price and today's price including any public sale, check_availability to see whether a selection looks free, and get_quote for the exact price of a selection.",
+    ...(listsEvery(tools, [
+      listOfferingsTool.name,
+      checkAvailabilityTool.name,
+      getQuoteTool.name,
+    ])
+      ? [
+          "Use list_offerings for the products on offer with their regular price and today's price including any public sale, check_availability to see whether a selection looks free, and get_quote for the exact price of a selection.",
+        ]
+      : []),
     ...getBookingGuidance(checkout, tools),
   ].join(" ");
 
