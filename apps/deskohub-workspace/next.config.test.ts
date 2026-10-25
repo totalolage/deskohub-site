@@ -80,6 +80,8 @@ test("sends an unmatched dotted path outside the locales to the locale redirect"
     "/a/b.php",
     "/.well-known/unknown.json",
     "/en/nope.html",
+    "/en-US.html",
+    "/cs-CZ.example/a.php",
   ]) {
     expect(await resolveRewrite(path)).toBe(
       `https://workspace.example/locale-redirect${path}`
@@ -92,6 +94,8 @@ test("leaves locale, API, build asset and undotted paths to their routes", async
     "/cs-CZ/nope.html",
     "/en-US/a/b.php",
     "/en-US.rsc",
+    "/cs-CZ.prefetch.rsc",
+    "/en-US.segments/_tree.segment.rsc",
     "/api/v1/cli/file.json",
     "/_next/static/chunks/main.js",
     "/_vercel/insights/script.js",
