@@ -10,7 +10,6 @@ import {
 import { join } from "node:path";
 import { testEmailAddress } from "@deskohub/test-email";
 import React from "react";
-import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import type { CustomerProfileInput } from "@/features/account/contracts";
 import { type Locale, m } from "@/features/i18n";
 import {
@@ -220,13 +219,7 @@ const { AccountLayoutShell, useAccountLayout } = await import(
 );
 const { ReservationHistory } = await import("./reservation-history");
 
-const reservations = (
-  <ReservationHistory
-    copy={getAccountScreenCopy(locale).reservations}
-    history={history}
-    locale={locale}
-  />
-);
+const reservations = <ReservationHistory history={history} locale={locale} />;
 
 function withAccountLayout(
   children: React.ReactNode,

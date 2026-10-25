@@ -9,7 +9,11 @@ import {
   test,
 } from "bun:test";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
-import type { AccountSection } from "@/features/account/sections";
+import {
+  type AccountSection,
+  accountSectionLabel,
+} from "@/features/account/sections";
+import { type Locale, m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -27,20 +31,7 @@ const sectionKeys: readonly AccountSection[] = [
   "danger",
 ];
 
-const labels: AccountShellProps["labels"] = {
-  mobileSection: "Account section",
-  navigation: "Account navigation",
-  sections: {
-    billing: "Billing & invoices",
-    danger: "Danger zone",
-    legal: "Legal & privacy",
-    profile: "Profile & identity",
-    referrals: "Referrals",
-    reservations: "Reservations",
-    security: "Sign-in & security",
-    assistants: "Connected assistants",
-  },
-};
+const locale: Locale = "en-US";
 
 class TestResizeObserver implements ResizeObserver {
   static readonly instances: TestResizeObserver[] = [];
@@ -77,11 +68,9 @@ function makeProps(
   return {
     activeSection: "profile",
     children: <p>Account content</p>,
-    labels,
+    locale,
     onSectionChange: () => undefined,
-    sectionHref: (section) => `/en-US/account/${section}`,
     signOut: <button type="button">Sign out</button>,
-    title: "Workspace account",
     ...overrides,
   };
 }
@@ -103,14 +92,14 @@ function getDesktopLink(
   section: AccountSection
 ) {
   return getDesktopNavigation(view).getByRole("link", {
-    name: labels.sections[section],
+    name: accountSectionLabel(section, locale),
   });
 }
 
 function getMobileNavigation(view: { readonly container: HTMLElement }) {
   return within(
     view.getByRole("group", {
-      name: labels.mobileSection,
+      name: m.accountSectionLabel({}, { locale }),
     })
   );
 }
@@ -156,7 +145,7 @@ describe("AccountShell", () => {
     );
     expect(
       getDesktopNavigation(view)
-        .getByRole("link", { name: labels.sections.legal })
+        .getByRole("link", { name: accountSectionLabel("legal", locale) })
         .getAttribute("aria-current")
     ).toBe("page");
   });
@@ -197,10 +186,10 @@ describe("AccountShell", () => {
 
     for (const section of disabledSections) {
       const mobileButton = mobileNavigation.getByRole("button", {
-        name: labels.sections[section],
+        name: accountSectionLabel(section, locale),
       }) as HTMLButtonElement;
       const desktopButton = getDesktopNavigation(view).getByRole("button", {
-        name: labels.sections[section],
+        name: accountSectionLabel(section, locale),
       }) as HTMLButtonElement;
 
       expect(mobileButton.disabled).toBe(true);
@@ -209,22 +198,24 @@ describe("AccountShell", () => {
     }
     expect(
       mobileNavigation
-        .getByRole("link", { name: labels.sections.legal })
+        .getByRole("link", { name: accountSectionLabel("legal", locale) })
         .getAttribute("href")
     ).toBe("/en-US/account/legal");
 
     fireEvent.click(
       mobileNavigation.getByRole("button", {
-        name: labels.sections.profile,
+        name: accountSectionLabel("profile", locale),
       })
     );
     fireEvent.click(
       getDesktopNavigation(view).getByRole("button", {
-        name: labels.sections.profile,
+        name: accountSectionLabel("profile", locale),
       })
     );
     fireEvent.click(
-      mobileNavigation.getByRole("link", { name: labels.sections.legal })
+      mobileNavigation.getByRole("link", {
+        name: accountSectionLabel("legal", locale),
+      })
     );
     fireEvent.click(getDesktopLink(view, "legal"));
 
@@ -327,10 +318,10 @@ describe("AccountShell", () => {
       onSectionChange,
     });
     const group = view.getByRole("group", {
-      name: labels.mobileSection,
+      name: m.accountSectionLabel({}, { locale }),
     });
     const navigation = view.getByRole("navigation", {
-      name: labels.navigation,
+      name: m.accountNavigationLabel({}, { locale }),
     });
     const legend = group.querySelector("legend");
     if (!legend) throw new Error("Mobile account legend was not rendered");
@@ -341,8 +332,10 @@ describe("AccountShell", () => {
       throw new Error("Mobile account navigation was not rendered");
     const links = within(group).getAllByRole("link");
 
-    expect(navigation.getAttribute("aria-label")).toBe(labels.navigation);
-    expect(legend.textContent).toBe(labels.mobileSection);
+    expect(navigation.getAttribute("aria-label")).toBe(
+      m.accountNavigationLabel({}, { locale })
+    );
+    expect(legend.textContent).toBe(m.accountSectionLabel({}, { locale }));
     expect(navigation.querySelector("select")).toBeNull();
     expect(
       mobileNavigation.getAttribute("data-account-mobile-navigation")
@@ -352,7 +345,7 @@ describe("AccountShell", () => {
       links.map((link) => link.getAttribute("data-account-section"))
     ).toEqual(sectionKeys);
     expect(links.map((link) => link.textContent?.trim())).toEqual(
-      sectionKeys.map((section) => labels.sections[section])
+      sectionKeys.map((section) => accountSectionLabel(section, locale))
     );
     expect(links.map((link) => link.getAttribute("href"))).toEqual(
       sectionKeys.map((section) => `/en-US/account/${section}`)
@@ -362,25 +355,31 @@ describe("AccountShell", () => {
 
     expect(
       within(group)
-        .getByRole("link", { name: labels.sections.reservations })
+        .getByRole("link", {
+          name: accountSectionLabel("reservations", locale),
+        })
         .getAttribute("aria-current")
     ).toBe("page");
     expect(onSectionChange).not.toHaveBeenCalled();
     expect(
       within(group)
-        .getByRole("link", { name: labels.sections.billing })
+        .getByRole("link", { name: accountSectionLabel("billing", locale) })
         .getAttribute("aria-current")
     ).toBeNull();
 
     fireEvent.click(
-      within(group).getByRole("link", { name: labels.sections.billing })
+      within(group).getByRole("link", {
+        name: accountSectionLabel("billing", locale),
+      })
     );
 
     expect(onSectionChange).toHaveBeenCalledWith("billing");
     expect(onSectionChange).toHaveBeenCalledTimes(1);
     expect(
       within(group)
-        .getByRole("link", { name: labels.sections.reservations })
+        .getByRole("link", {
+          name: accountSectionLabel("reservations", locale),
+        })
         .getAttribute("aria-current")
     ).toBe("page");
 
@@ -393,7 +392,7 @@ describe("AccountShell", () => {
     for (const section of sectionKeys) {
       expect(
         within(group)
-          .getByRole("link", { name: labels.sections[section] })
+          .getByRole("link", { name: accountSectionLabel(section, locale) })
           .getAttribute("aria-current")
       ).toBe(section === "billing" ? "page" : null);
     }
@@ -402,7 +401,7 @@ describe("AccountShell", () => {
     for (const section of sectionKeys) {
       fireEvent.click(
         within(group).getByRole("link", {
-          name: labels.sections[section],
+          name: accountSectionLabel(section, locale),
         })
       );
     }
@@ -453,14 +452,16 @@ describe("AccountShell", () => {
       sectionPositions.billing = 240;
       sectionPositions.danger = 400;
       const view = renderShell({ activeSection: "billing" });
-      const group = view.getByRole("group", { name: labels.mobileSection });
+      const group = view.getByRole("group", {
+        name: m.accountSectionLabel({}, { locale }),
+      });
       const mobileNavigation = group.querySelector<HTMLDivElement>(
         "[data-account-mobile-navigation]"
       );
       if (!mobileNavigation)
         throw new Error("Mobile account navigation was not rendered");
       const billingButton = within(group).getByRole("link", {
-        name: labels.sections.billing,
+        name: accountSectionLabel("billing", locale),
       });
       billingButton.focus();
 
@@ -521,14 +522,16 @@ describe("AccountShell", () => {
 
     try {
       const view = renderShell({ activeSection: "billing" });
-      const group = view.getByRole("group", { name: labels.mobileSection });
+      const group = view.getByRole("group", {
+        name: m.accountSectionLabel({}, { locale }),
+      });
       const mobileNavigation = group.querySelector<HTMLDivElement>(
         "[data-account-mobile-navigation]"
       );
       if (!mobileNavigation)
         throw new Error("Mobile account navigation was not rendered");
       const billingButton = within(group).getByRole("link", {
-        name: labels.sections.billing,
+        name: accountSectionLabel("billing", locale),
       });
       const observer = getLatestResizeObserver();
 
@@ -591,14 +594,16 @@ describe("AccountShell", () => {
 
     try {
       const view = renderShell({ activeSection: "billing" });
-      const group = view.getByRole("group", { name: labels.mobileSection });
+      const group = view.getByRole("group", {
+        name: m.accountSectionLabel({}, { locale }),
+      });
       const mobileNavigation = group.querySelector<HTMLDivElement>(
         "[data-account-mobile-navigation]"
       );
       if (!mobileNavigation)
         throw new Error("Mobile account navigation was not rendered");
       const billingButton = within(group).getByRole("link", {
-        name: labels.sections.billing,
+        name: accountSectionLabel("billing", locale),
       });
       const observer = getLatestResizeObserver();
 

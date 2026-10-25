@@ -1,6 +1,5 @@
 import Interpolate from "@doist/react-interpolate";
 import Link from "next/link";
-import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { AccountSignInRedirect } from "@/features/account/components/account-sign-in-redirect";
 import { AccountWithoutProfile } from "@/features/account/components/account-without-profile";
 import { LinkedAccount } from "@/features/account/components/linked-account";
@@ -44,11 +43,7 @@ export function AccountPage({
           referralsEnabled={state.referralsEnabled}
           reservationCount={countCurrentReservations(state.history)}
           reservations={
-            <ReservationHistory
-              copy={getAccountScreenCopy(locale).reservations}
-              history={state.history}
-              locale={locale}
-            />
+            <ReservationHistory history={state.history} locale={locale} />
           }
           signupReferral={state.signupReferral}
         />
@@ -157,13 +152,7 @@ const authoredReservations = (
 ) =>
   history && {
     reservationCount: countCurrentReservations(history),
-    reservations: (
-      <ReservationHistory
-        copy={getAccountScreenCopy(locale).reservations}
-        history={history}
-        locale={locale}
-      />
-    ),
+    reservations: <ReservationHistory history={history} locale={locale} />,
   };
 
 function UnavailableCard({ locale }: { readonly locale: Locale }) {

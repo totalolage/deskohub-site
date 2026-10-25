@@ -2,10 +2,7 @@ import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { Effect } from "effect";
 import { createElement, useState } from "react";
-import {
-  AccountShell,
-  type AccountShellProps,
-} from "@/features/account/components/shell/account-shell";
+import { AccountShell } from "@/features/account/components/shell/account-shell";
 import { getAccountSectionPath } from "@/features/account/routes";
 import type { AccountSection } from "@/features/account/sections";
 import {
@@ -32,20 +29,6 @@ const sections = [
 ] as const satisfies readonly AccountSection[];
 
 const accountSectionDataAttribute = "data-account-section";
-
-const shellLabels = {
-  mobileSection: "Account section",
-  navigation: "Account navigation",
-  sections: accountSectionLabels,
-} as const satisfies AccountShellProps["labels"];
-
-const misleadingShellLabels = {
-  ...shellLabels,
-  sections: {
-    ...shellLabels.sections,
-    reservations: "Reservations and billing",
-  },
-} as const satisfies AccountShellProps["labels"];
 
 const sectionPanel = (section: AccountSection, includeLegalLink: boolean) => {
   switch (section) {
@@ -99,11 +82,9 @@ const sectionPanel = (section: AccountSection, includeLegalLink: boolean) => {
 
 function AccountShellHarness({
   includeLegalLink = true,
-  labels = shellLabels,
   reservationCount,
 }: {
   readonly includeLegalLink?: boolean;
-  readonly labels?: AccountShellProps["labels"];
   readonly reservationCount?: number;
 }) {
   const [activeSection, setActiveSection] =
@@ -120,12 +101,10 @@ function AccountShellHarness({
         // AccountShellProps' required children field without replacing them.
         // biome-ignore lint/correctness/noChildrenProp: AccountShellProps requires children in its createElement props type.
         children: null,
-        labels,
+        locale: "en-US",
         onSectionChange: setActiveSection,
         reservationCount,
-        sectionHref: (section) => getAccountSectionPath("en-US", section),
         signOut: createElement("button", { type: "button" }, "Sign out"),
-        title: "Workspace account",
       },
       ...sections.map((section) =>
         createElement(
@@ -389,12 +368,16 @@ for (const reservationCount of [0, 3] as const) {
 
 test("does not accept a misleading Reservations label prefix", async () => {
   const page = makeFakePage(1440);
-  render(
-    createElement(AccountShellHarness, {
-      labels: misleadingShellLabels,
-      reservationCount: 3,
-    })
+  render(createElement(AccountShellHarness, { reservationCount: 3 }));
+  // The shell names its sections from the catalog, so the test renames the
+  // rendered desktop link.
+  const reservationsLabel = document.querySelector(
+    '[data-account-sidebar-section="reservations"] .break-words'
   );
+  if (reservationsLabel === null) {
+    throw new Error("The desktop Reservations label is not rendered.");
+  }
+  reservationsLabel.textContent = "Reservations and billing";
 
   await expect(selectAccountSection(page, "reservations")).rejects.toThrow(
     "fake account section did not settle"
