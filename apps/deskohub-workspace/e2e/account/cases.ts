@@ -77,7 +77,7 @@ import {
   createSyntheticCustomerProfile,
   createSyntheticReservation,
   expireSyntheticCustomerProfile,
-  readSyntheticCustomerProfile,
+  requireSyntheticCustomerProfile,
 } from "./fixtures";
 import type { WorkspaceE2EAccountPasskeys } from "./passkeys";
 import { workspaceE2EAccountProfileFixture } from "./profile-fixture";
@@ -766,7 +766,7 @@ export const makeWorkspaceE2EAccountCases = ({
     );
 
   const readProviderProfile = (customerId: string) =>
-    readSyntheticCustomerProfile(
+    requireSyntheticCustomerProfile(
       datasourceConfig,
       customerId as DotyposCustomerId
     ).pipe(

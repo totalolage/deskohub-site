@@ -7,7 +7,7 @@ import {
   NetworkError,
 } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import {
   CustomerDotyposAdapter,
   customerProfileAppliesInput,
@@ -113,7 +113,7 @@ describe("CustomerDotyposAdapter", () => {
       });
 
       const profile = await runWithDotypos(
-        { getCustomer: () => Effect.succeed(customer) },
+        { getCustomer: () => Effect.succeed(Option.some(customer)) },
         (adapter) => adapter.readCustomerProfile("60111")
       );
 
@@ -140,11 +140,13 @@ describe("CustomerDotyposAdapter", () => {
         {
           getCustomer: () =>
             Effect.succeed(
-              makeCustomer({
-                lastName: "Lovelace",
-                companyName: "   ",
-                addressLine1: "",
-              })
+              Option.some(
+                makeCustomer({
+                  lastName: "Lovelace",
+                  companyName: "   ",
+                  addressLine1: "",
+                })
+              )
             ),
         },
         (adapter) => adapter.readCustomerProfile("60111")
@@ -162,7 +164,9 @@ describe("CustomerDotyposAdapter", () => {
       const profile = await runWithDotypos(
         {
           getCustomer: () =>
-            Effect.succeed(makeCustomer({ addressLine1: "Pražská 1" })),
+            Effect.succeed(
+              Option.some(makeCustomer({ addressLine1: "Pražská 1" }))
+            ),
         },
         (adapter) => adapter.readCustomerProfile("60111")
       );
@@ -184,7 +188,7 @@ describe("CustomerDotyposAdapter", () => {
       const profile = await runWithDotypos(
         {
           getCustomer: () =>
-            Effect.succeed(makeCustomer({ phone: "555-ALPHA" })),
+            Effect.succeed(Option.some(makeCustomer({ phone: "555-ALPHA" }))),
         },
         (adapter) => adapter.readCustomerProfile("60111")
       );
@@ -195,14 +199,7 @@ describe("CustomerDotyposAdapter", () => {
     test("treats definitively missing and deleted profiles as absent", async () => {
       const missing = await runWithDotypos(
         {
-          getCustomer: () =>
-            Effect.fail(
-              new ExternalAPIError({
-                service: "Dotypos",
-                operation: "getCustomer",
-                statusCode: 404,
-              })
-            ),
+          getCustomer: () => Effect.succeed(Option.none()),
         },
         (adapter) => adapter.readCustomerProfile("60111")
       );
@@ -210,7 +207,8 @@ describe("CustomerDotyposAdapter", () => {
 
       const deleted = await runWithDotypos(
         {
-          getCustomer: () => Effect.succeed(makeCustomer({ deleted: true })),
+          getCustomer: () =>
+            Effect.succeed(Option.some(makeCustomer({ deleted: true }))),
         },
         (adapter) => adapter.readCustomerProfile("60111")
       );
@@ -272,13 +270,7 @@ describe("CustomerDotyposAdapter", () => {
           },
           getCustomer: () => {
             calls.push("read");
-            return Effect.fail(
-              new ExternalAPIError({
-                service: "Dotypos",
-                operation: "getCustomer",
-                statusCode: 404,
-              })
-            );
+            return Effect.succeed(Option.none());
           },
         },
         (adapter) => adapter.reactivateCustomer("60222").pipe(Effect.result)
@@ -306,7 +298,7 @@ describe("CustomerDotyposAdapter", () => {
           },
           getCustomer: () => {
             calls.push("read");
-            return Effect.succeed(expiredCustomer);
+            return Effect.succeed(Option.some(expiredCustomer));
           },
         },
         (adapter) => adapter.reactivateCustomer("60222")
@@ -328,7 +320,7 @@ describe("CustomerDotyposAdapter", () => {
           },
           getCustomer: () => {
             calls.push("read");
-            return Effect.succeed(expiredCustomer);
+            return Effect.succeed(Option.some(expiredCustomer));
           },
         },
         (adapter) => adapter.expireCustomer("60111")
@@ -377,7 +369,7 @@ describe("CustomerDotyposAdapter", () => {
           },
           getCustomer: () => {
             calls.push("read");
-            return Effect.succeed(expiredCustomer);
+            return Effect.succeed(Option.some(expiredCustomer));
           },
         },
         (adapter) => adapter.reactivateCustomer("60222").pipe(Effect.result)
@@ -409,7 +401,9 @@ describe("CustomerDotyposAdapter", () => {
           getCustomer: () => {
             calls.push("read");
             reads += 1;
-            return Effect.succeed(reads < 3 ? activeCustomer : expiredCustomer);
+            return Effect.succeed(
+              Option.some(reads < 3 ? activeCustomer : expiredCustomer)
+            );
           },
         },
         (adapter) => adapter.expireCustomer("60111")
@@ -467,7 +461,7 @@ describe("CustomerDotyposAdapter", () => {
           },
           getCustomer: () => {
             calls.push("read");
-            return Effect.succeed(expiredCustomer);
+            return Effect.succeed(Option.some(expiredCustomer));
           },
         },
         (adapter) => adapter.expireCustomer("60111").pipe(Effect.result)
@@ -621,7 +615,9 @@ describe("CustomerDotyposAdapter", () => {
           getCustomer: () => {
             calls.push("read");
             return Effect.succeed(
-              makeCustomer({ lastName: "Old-name", phone: "+420601111222" })
+              Option.some(
+                makeCustomer({ lastName: "Old-name", phone: "+420601111222" })
+              )
             );
           },
         },
@@ -654,7 +650,9 @@ describe("CustomerDotyposAdapter", () => {
           },
           getCustomer: () => {
             calls.push("read");
-            return Effect.succeed(makeCustomer({ lastName: "Lovelace" }));
+            return Effect.succeed(
+              Option.some(makeCustomer({ lastName: "Lovelace" }))
+            );
           },
         },
         (adapter) =>
@@ -699,7 +697,7 @@ describe("CustomerDotyposAdapter", () => {
           },
           getCustomer: () => {
             calls.push("read");
-            return Effect.succeed(makeCustomer());
+            return Effect.succeed(Option.some(makeCustomer()));
           },
         },
         (adapter) =>
@@ -772,7 +770,7 @@ describe("CustomerDotyposAdapter", () => {
           },
           getCustomer: () => {
             calls.push("read");
-            return Effect.succeed(makeCustomer());
+            return Effect.succeed(Option.some(makeCustomer()));
           },
         },
         (adapter) =>

@@ -33,10 +33,6 @@ import {
   getWorkspaceProductByTier,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
-import {
-  currencyCZK,
-  formatWorkspaceMoney,
-} from "@/features/checkout/workspace-money";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import { m } from "@/features/i18n";
 import {
@@ -55,6 +51,8 @@ import {
   getWorkspaceAvailabilityRange,
   workspaceAvailabilityKeys,
 } from "@/features/reservation/workspace-availability";
+import { currencyCZK } from "@/shared/money/currencies";
+import { formatMoney } from "@/shared/money/money";
 import {
   workspaceRouterPush as push,
   workspaceUseAction,
@@ -210,7 +208,7 @@ const openSpaceOriginalPriceText = () =>
   m
     .checkoutSummaryOriginalPrice(
       {
-        price: formatWorkspaceMoney(
+        price: formatMoney(
           getWorkspaceProductByTier("open-space").price,
           "en-US"
         ),
@@ -493,7 +491,7 @@ describe("CoworkReservationForm advertised pricing", () => {
         view.container.querySelector(`[data-reservation-type-price="${tier}"]`)
           ?.textContent
       ).toContain(
-        formatWorkspaceMoney(currencyCZK(service.offers.price * 100), "en-US")
+        formatMoney(currencyCZK(service.offers.price * 100), "en-US")
       );
     }
     expect(getAdvertisedPrices).not.toHaveBeenCalled();

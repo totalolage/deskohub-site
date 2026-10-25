@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { getPublicCatalogOfferings } from "@/features/checkout/public-offerings";
-import {
-  formatWorkspaceMoney,
-  toWorkspaceMoneyMajorAmount,
-} from "@/features/checkout/workspace-money";
 import { locales } from "@/features/i18n";
+import { formatMoney, moneyMajorAmount } from "@/shared/money/money";
 import { getCatalogPriceRange } from "./price-range";
 
 describe("getCatalogPriceRange", () => {
@@ -14,18 +11,18 @@ describe("getCatalogPriceRange", () => {
         .map(({ price }) => price)
         .sort(
           (left, right) =>
-            toWorkspaceMoneyMajorAmount(left) -
-            toWorkspaceMoneyMajorAmount(right)
+            moneyMajorAmount(left) -
+            moneyMajorAmount(right)
         );
       const cheapest = prices[0];
       const dearest = prices[prices.length - 1];
       if (!cheapest || !dearest) throw new Error("The catalog is empty.");
 
       expect(getCatalogPriceRange(locale)).toBe(
-        `${formatWorkspaceMoney(cheapest, locale)} – ${formatWorkspaceMoney(dearest, locale)}`
+        `${formatMoney(cheapest, locale)} – ${formatMoney(dearest, locale)}`
       );
-      expect(toWorkspaceMoneyMajorAmount(cheapest)).toBeLessThan(
-        toWorkspaceMoneyMajorAmount(dearest)
+      expect(moneyMajorAmount(cheapest)).toBeLessThan(
+        moneyMajorAmount(dearest)
       );
     });
   }

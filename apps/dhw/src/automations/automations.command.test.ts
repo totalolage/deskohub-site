@@ -7,6 +7,7 @@ import {
   AdministrationCampaignDetail,
   AutomationDetail,
   AutomationDryRun,
+  AutomationEngineHealth,
   AutomationRunDetail,
   AutomationRunStats,
   AutomationRunSummary,
@@ -208,6 +209,7 @@ type AutomationApi = Pick<
   | "getAutomationRunStats"
   | "previewCalendarExpression"
   | "createCampaign"
+  | "getAutomationEngineHealth"
 >;
 
 const makeAutomationLayer = (overrides: Partial<AutomationApi> = {}) => {
@@ -257,6 +259,14 @@ const makeAutomationLayer = (overrides: Partial<AutomationApi> = {}) => {
       })
     ),
     createCampaign: record("createCampaign", () => campaign),
+    getAutomationEngineHealth: record("getAutomationEngineHealth", () =>
+      Schema.decodeUnknownSync(AutomationEngineHealth)({
+        lastPlannedAt: null,
+        sweepLagSeconds: null,
+        reconcileLagSeconds: null,
+        deadlineMisses: 0,
+      })
+    ),
     ...overrides,
   };
   const api = Layer.succeed(WorkspaceAdminApiClient, {
@@ -855,6 +865,31 @@ describe("dhw automations lifecycle and runs", () => {
     expect(fake.calls).toEqual([["getAutomationRun", { runId: "run-1" }]]);
     expect(fake.output.join("\n")).toContain(
       `1\t${timestamp}\tskipped\tsend\t{"reason":"no-consent"}`
+    );
+  });
+});
+
+describe("dhw automations engine-health", () => {
+  test("prints the reconcile lag and a warning code it doesn't know", async () => {
+    const fake = makeAutomationLayer({
+      getAutomationEngineHealth: () =>
+        Effect.succeed(
+          Schema.decodeUnknownSync(AutomationEngineHealth)({
+            lastPlannedAt: timestamp,
+            sweepLagSeconds: 60,
+            reconcileLagSeconds: 8160,
+            deadlineMisses: 0,
+            warnings: ["reconcile-stalled", "synthetic-later-warning"],
+          })
+        ),
+    });
+
+    await runSuccess(["automations", "engine-health"], fake.layer);
+
+    const lines = fake.output.join("\n").split("\n");
+    expect(lines).toContain("Reconcile lag\t8160s");
+    expect(lines).toContain(
+      "Warnings\treconcile-stalled, synthetic-later-warning"
     );
   });
 });

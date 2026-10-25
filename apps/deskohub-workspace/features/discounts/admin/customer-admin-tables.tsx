@@ -7,10 +7,7 @@ import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
 } from "@/features/administration/data-table";
-import {
-  formatAdministrationMoney,
-  getAdministrationPaymentStatus,
-} from "@/features/administration/formatters";
+import { getAdministrationPaymentStatus } from "@/features/administration/formatters";
 import { m } from "@/features/administration/i18n";
 import { NexiOrderLink } from "@/features/administration/nexi-order-link";
 import { PaymentAmount } from "@/features/administration/payment-status";
@@ -20,6 +17,7 @@ import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
+import { formatMoney } from "@/shared/money/money";
 import { getClaimReleaseReasonLabel } from "./claim-release-reason";
 import { CustomerPromotionCodeAction } from "./customer-admin-client";
 import type {
@@ -110,14 +108,14 @@ const getPromotionCodeBenefit = (
 ) => {
   if (item.kind === "voucher") {
     return m.discountsVoucherCreditBenefit(
-      { amount: formatAdministrationMoney(item.issuedCredit, locale) },
+      { amount: formatMoney(item.issuedCredit, locale) },
       { locale }
     );
   }
   return `${item.discountLabel} · ${
     item.discountAdjustment.kind === "percentage"
       ? formatDiscountAdjustment(item.discountAdjustment, locale)
-      : formatAdministrationMoney(item.discountAdjustment.amount, locale)
+      : formatMoney(item.discountAdjustment.amount, locale)
   }`;
 };
 
@@ -180,10 +178,7 @@ export function CustomerPromotionCodeTable({
               <span className="mt-0.5 block text-xs text-navy-blue/65">
                 {m.discountsVoucherCreditRemaining(
                   {
-                    amount: formatAdministrationMoney(
-                      row.original.remainingCredit,
-                      locale
-                    ),
+                    amount: formatMoney(row.original.remainingCredit, locale),
                   },
                   { locale }
                 )}
@@ -426,8 +421,7 @@ export function ClaimHistoryTable({
         accessorFn: (claim) => claim.appliedAmount.value,
         id: "amount",
         header: m.discountsColumnAmount({}, { locale }),
-        cell: ({ row }) =>
-          formatAdministrationMoney(row.original.appliedAmount, locale),
+        cell: ({ row }) => formatMoney(row.original.appliedAmount, locale),
         meta: { cellClassName: "whitespace-nowrap" },
       },
       {

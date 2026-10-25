@@ -14,9 +14,9 @@ import { buildFreshCheckoutPayPath } from "@/features/checkout/backend/checkout/
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
-import { currencyCZK } from "@/features/checkout/workspace-money";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { getReservationCustomerQueryMode } from "@/features/reservation/reservation-checkout-query";
+import { currencyCZK } from "@/shared/money/currencies";
 import { instantStringSchema } from "@/shared/utils/temporal";
 import { createCensoredOtelSpanExporter } from "../../shared/backend/logging/censorship";
 import { createTracingLive } from "../../shared/backend/observability/otel-tracing";

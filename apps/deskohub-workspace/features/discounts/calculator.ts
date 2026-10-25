@@ -4,10 +4,10 @@ import {
   type WorkspaceProductIdentity,
 } from "@/features/checkout/product-identity";
 import {
-  nonNegativeWorkspaceMoneyCodec,
-  type WorkspaceMoney,
-  workspaceMoneyWithValue,
-} from "@/features/checkout/workspace-money";
+  type Money,
+  moneyWithValue,
+  nonNegativeMoneyCodec,
+} from "@/shared/money/money";
 import type { AppliedDiscount, Discount, DiscountQuote } from "./contracts";
 import { DiscountCalculationError } from "./errors";
 import type { DiscountCandidate } from "./provider";
@@ -15,7 +15,7 @@ import { recoverDiscountResolution } from "./resolution-logging";
 
 type DiscountCalculationInput = {
   readonly product: WorkspaceProductIdentity;
-  readonly discountableSubtotal: WorkspaceMoney;
+  readonly discountableSubtotal: Money;
   readonly candidates: readonly DiscountCandidate[];
 };
 
@@ -32,7 +32,7 @@ export type DiscountCalculation = {
 type DiscountCalculationState = {
   readonly candidates: readonly DiscountCandidate[];
   readonly index: number;
-  readonly remaining: WorkspaceMoney;
+  readonly remaining: Money;
   readonly applications: readonly CalculatedDiscountApplication[];
 };
 
@@ -57,7 +57,7 @@ export const appendDiscounts = Effect.fn("DiscountCalculator.append")(
     }).pipe(
       Effect.bindTo("additional"),
       Effect.let("totalDiscount", ({ additional }) =>
-        workspaceMoneyWithValue(
+        moneyWithValue(
           input.baseQuote.totalDiscount.value +
             additional.quote.totalDiscount.value,
           input.baseQuote.totalDiscount
@@ -79,11 +79,9 @@ export const appendDiscounts = Effect.fn("DiscountCalculator.append")(
 );
 
 const validateDiscountableSubtotal = (input: {
-  readonly discountableSubtotal: WorkspaceMoney;
+  readonly discountableSubtotal: Money;
 }) =>
-  Schema.decodeEffect(nonNegativeWorkspaceMoneyCodec)(
-    input.discountableSubtotal
-  ).pipe(
+  Schema.decodeEffect(nonNegativeMoneyCodec)(input.discountableSubtotal).pipe(
     Effect.mapError(
       (cause) =>
         new DiscountCalculationError({
@@ -97,7 +95,7 @@ const validateDiscountableSubtotal = (input: {
 
 const calculateApplications = (input: {
   readonly candidates: readonly DiscountCandidate[];
-  readonly validatedSubtotal: WorkspaceMoney;
+  readonly validatedSubtotal: Money;
 }) =>
   applyNextCandidate({
     nextState: {
@@ -157,7 +155,7 @@ const advanceCalculationState = (input: {
 
 const getAppliedValue = (input: {
   readonly candidate: DiscountCandidate;
-  readonly remaining: WorkspaceMoney;
+  readonly remaining: Money;
 }) => {
   const { adjustment } = input.candidate.discount;
 
@@ -207,11 +205,8 @@ const toNextCalculationState = (input: {
   readonly candidate: DiscountCandidate;
   readonly appliedValue: number;
 }): DiscountCalculationState => {
-  const amount = workspaceMoneyWithValue(
-    input.appliedValue,
-    input.state.remaining
-  );
-  const subtotalAfter = workspaceMoneyWithValue(
+  const amount = moneyWithValue(input.appliedValue, input.state.remaining);
+  const subtotalAfter = moneyWithValue(
     input.state.remaining.value - input.appliedValue,
     input.state.remaining
   );
@@ -241,7 +236,7 @@ const toNextCalculationState = (input: {
 
 const toDiscountCalculation = (input: {
   readonly product: WorkspaceProductIdentity;
-  readonly validatedSubtotal: WorkspaceMoney;
+  readonly validatedSubtotal: Money;
   readonly calculation: Pick<
     DiscountCalculationState,
     "applications" | "remaining"
@@ -253,7 +248,7 @@ const toDiscountCalculation = (input: {
     discounts: input.calculation.applications.map(
       ({ application }) => application
     ),
-    totalDiscount: workspaceMoneyWithValue(
+    totalDiscount: moneyWithValue(
       input.validatedSubtotal.value - input.calculation.remaining.value,
       input.validatedSubtotal
     ),

@@ -1,5 +1,5 @@
 import { DotyposService } from "@deskohub/dotypos";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/reservation/access-code.service";
 import type { Locale } from "@/features/i18n";
@@ -78,6 +78,7 @@ const implementation = Effect.gen(function* () {
       const providerReservation = yield* dotypos
         .getReservation(reservation.dotyposReservationId)
         .pipe(
+          Effect.map(Option.getOrUndefined),
           Effect.timeoutOrElse({
             duration: providerLookupDeadline,
             orElse: () =>

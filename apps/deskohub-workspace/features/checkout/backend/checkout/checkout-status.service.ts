@@ -23,7 +23,6 @@ import type {
 } from "@/db/schema";
 import { shouldOfferReservationRetry } from "@/features/checkout/checkout-status-policy";
 import { getProviderOrderAbandonmentCutoff } from "@/features/checkout/provider-order-abandonment";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   getWorkspaceTableMap,
   type WorkspaceTableMap,
@@ -59,6 +58,7 @@ import { dotyposReservationSeatsSchema } from "@/features/reservation/reservatio
 import { ReviewSandbox } from "@/features/review-accounts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { nexiRequestTimeout } from "@/shared/backend/config/nexi.config";
+import type { Money } from "@/shared/money/money";
 import { currentInstant } from "@/shared/utils/temporal";
 import { LatePaymentVerificationService } from "../payment/late-payment-verification.service";
 import { ProviderPaymentFinalizationService } from "../payment/provider-payment-finalization.service";
@@ -92,7 +92,7 @@ export type CheckoutStatusKind =
 type CheckoutReservationStatusKind = Exclude<CheckoutStatusKind, "not_found">;
 
 type CheckoutStatusSummaryBase = {
-  readonly price: WorkspaceMoney;
+  readonly price: Money;
   readonly reservedFrom: Temporal.Instant;
   readonly reservedUntil: Temporal.Instant;
 };
@@ -642,7 +642,12 @@ const implementation = Effect.gen(function* () {
     if (!showsCustomerContact(statusKind)) return undefined;
 
     return yield* dotypos.getCustomer(reservation.dotyposCustomerId).pipe(
-      Effect.map(getSupportContactPrefill),
+      Effect.map(
+        Option.match({
+          onNone: () => undefined,
+          onSome: getSupportContactPrefill,
+        })
+      ),
       Effect.timeoutOrElse({
         duration: summaryTimeout,
         orElse: () => Effect.undefined,

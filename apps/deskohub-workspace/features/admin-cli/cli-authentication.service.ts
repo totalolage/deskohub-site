@@ -46,6 +46,7 @@ import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identifiers";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
+import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import { addCalendarDuration, currentInstant } from "@/shared/utils/temporal";
 import { revokeCliSessions } from "./administration-cli-access";
 import { type CliSessionLifetime, cliSessionLifetimeSchema } from "./contracts";
@@ -305,8 +306,10 @@ export class CliAuthentication extends Context.Service<
               .set({
                 approvedAt: now,
                 approvedByAccountId: input.approvedBy.accountId,
-                approvedByAccountEmail: input.approvedBy.email,
-                grantToken,
+                approvedByAccountEmail: sensitiveDatabaseParameter(
+                  input.approvedBy.email
+                ),
+                grantToken: sensitiveDatabaseParameter(grantToken),
                 grantExpiresAt,
                 sessionExpiresAt: toSessionExpiry(input.sessionLifetime, now),
               })
@@ -350,7 +353,10 @@ export class CliAuthentication extends Context.Service<
             and(
               eq(cliAuthenticationRequests.codeHash, codeHash),
               eq(cliAuthenticationRequests.challenge, challenge),
-              eq(cliAuthenticationRequests.grantToken, input.grantToken),
+              eq(
+                cliAuthenticationRequests.grantToken,
+                sensitiveDatabaseParameter(input.grantToken)
+              ),
               isNotNull(cliAuthenticationRequests.approvedAt),
               isNull(cliAuthenticationRequests.consumedAt),
               gt(cliAuthenticationRequests.grantExpiresAt, now)
@@ -382,7 +388,9 @@ export class CliAuthentication extends Context.Service<
             yield* tx.insert(cliSessions).values({
               id: sessionId,
               approvedByAccountId,
-              approvedByAccountEmail,
+              approvedByAccountEmail: sensitiveDatabaseParameter(
+                approvedByAccountEmail
+              ),
               tokenHash,
               clientName: request.clientName,
               cliVersion: request.cliVersion,
@@ -403,7 +411,10 @@ export class CliAuthentication extends Context.Service<
                 and(
                   eq(cliAuthenticationRequests.codeHash, codeHash),
                   eq(cliAuthenticationRequests.challenge, challenge),
-                  eq(cliAuthenticationRequests.grantToken, input.grantToken),
+                  eq(
+                    cliAuthenticationRequests.grantToken,
+                    sensitiveDatabaseParameter(input.grantToken)
+                  ),
                   isNotNull(cliAuthenticationRequests.approvedAt),
                   isNull(cliAuthenticationRequests.consumedAt),
                   gt(cliAuthenticationRequests.grantExpiresAt, now)

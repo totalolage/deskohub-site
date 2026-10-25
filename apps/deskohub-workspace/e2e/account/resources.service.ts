@@ -4,7 +4,7 @@ import {
   DotyposService,
 } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -23,6 +23,7 @@ import {
   cancelSyntheticReservation,
   expireSyntheticCustomerProfile,
   readSyntheticCustomerProfile,
+  requireSyntheticCustomerProfile,
 } from "./fixtures";
 import {
   readWorkspaceE2EAccountJournal,
@@ -50,12 +51,14 @@ interface IWorkspaceE2EAccountResourceService {
   readonly readAuthUserEmail: (
     accountId: string
   ) => Effect.Effect<string | null | undefined, WorkspaceE2EError>;
+  /** The profile; none when Dotypos has no customer with the id. */
   readonly readCustomerProfile: (
     customerId: string
-  ) => Effect.Effect<Customer, WorkspaceE2EError>;
+  ) => Effect.Effect<Option.Option<Customer>, WorkspaceE2EError>;
+  /** The owner's email; none when Dotypos has no reservation with the id. */
   readonly readReservationOwner: (
     reservationId: string
-  ) => Effect.Effect<string | null, WorkspaceE2EError>;
+  ) => Effect.Effect<Option.Option<string | null>, WorkspaceE2EError>;
   /** Cancels the reservations and waits until Dotypos reports them cancelled. */
   readonly cancelReservations: (
     reservationIds: readonly string[]
@@ -165,13 +168,13 @@ export class WorkspaceE2EAccountResourceService extends Context.Service<
 const readReservationOwnerEmail = (
   datasourceConfig: DatasourceConfig,
   reservationId: string
-): Effect.Effect<string | null, WorkspaceE2EError> =>
+): Effect.Effect<Option.Option<string | null>, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
-    const { customer } = yield* dotypos.getReservation(
+    const details = yield* dotypos.getReservation(
       reservationId as DotyposReservationId
     );
-    return customer.email ?? null;
+    return Option.map(details, ({ customer }) => customer.email ?? null);
   }).pipe(
     Effect.provide(getDotyposLayer(datasourceConfig)),
     Effect.mapError((cause) =>
@@ -221,7 +224,7 @@ const expireAndConvergeProfile = (
       customerId as DotyposCustomerId
     );
     yield* pollUntil(
-      readSyntheticCustomerProfile(
+      requireSyntheticCustomerProfile(
         datasourceConfig,
         customerId as DotyposCustomerId
       ).pipe(
