@@ -155,6 +155,10 @@ const nextConfig = {
     ];
   },
   images: {
+    // AVIF cuts the hero by about 15% and the cowork artwork by over half
+    // against WebP. It encodes slower, but only on a cache miss: local images
+    // stay cached across deployments.
+    formats: ["image/avif", "image/webp"],
     remotePatterns: [
       {
         protocol: "https",
