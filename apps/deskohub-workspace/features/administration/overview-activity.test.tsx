@@ -13,7 +13,11 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import { m } from "./i18n";
-import { CustomerActivity, ReservationActivity } from "./overview-activity";
+import {
+  CustomerActivity,
+  OverviewReservationActivityCalendar,
+  ReservationCounts,
+} from "./overview-activity";
 
 const makeCustomer = (id: string, displayName: string, hasName = true) => ({
   customer: { id, displayName, hasName, email: null, phone: null },
@@ -95,12 +99,12 @@ describe("CustomerActivity", () => {
   });
 });
 
-describe("ReservationActivity", () => {
+describe("ReservationCounts", () => {
   test("describes reservation completion in Czech", async () => {
     const view = render(
       <RouteLocaleProvider locale="cs-CZ">
         {
-          await ReservationActivity({
+          await ReservationCounts({
             locale: "cs-CZ",
             overview: Promise.resolve(overview),
           })
@@ -137,7 +141,7 @@ describe("ReservationActivity", () => {
       const view = render(
         <RouteLocaleProvider locale={locale}>
           {
-            await ReservationActivity({
+            await ReservationCounts({
               locale,
               overview: Promise.resolve(largeOverview),
             })
@@ -161,5 +165,34 @@ describe("ReservationActivity", () => {
         { locale: "en-US" }
       )
     ).toBe("0 completed out of 1 total reservation");
+  });
+});
+
+describe("OverviewReservationActivityCalendar", () => {
+  test("shades each day by its reservation count", async () => {
+    const view = render(
+      await OverviewReservationActivityCalendar({
+        activity: Promise.resolve({
+          from: "2026-01-01",
+          to: "2026-03-31",
+          dates: [
+            { count: 6, date: "2026-02-10" },
+            { count: 600, date: "2026-02-11" },
+          ],
+        }),
+        locale: "en-US",
+      })
+    );
+    const intensity = (date: string) =>
+      view.container
+        .querySelector<HTMLElement>(`time[datetime="${date}"]`)
+        ?.style.getPropertyValue("--reservation-activity-intensity");
+
+    expect(intensity("2026-02-09")).toBe("");
+    expect(intensity("2026-02-10")).toBe("50%");
+    expect(intensity("2026-02-11")).toBe("100%");
+    expect(
+      view.container.querySelectorAll("span.size-3[style]").length
+    ).toBeGreaterThan(1);
   });
 });

@@ -24,6 +24,14 @@ export interface PublicPageDefinition {
    */
   readonly titleNamesSite?: true;
   readonly description?: LocalizedCopy;
+  /**
+   * The ISO day the page's content last changed, which the sitemap publishes
+   * as `lastmod`. Search engines trust `lastmod` only while it tracks real
+   * changes, so move it in the change that alters what the page shows, and
+   * never to a deploy or build time. A legal page's date is its document's
+   * "last updated" date.
+   */
+  readonly contentDate: string;
   /** Shares the page as an article rather than a website. */
   readonly article?: true;
   /**
@@ -33,16 +41,20 @@ export interface PublicPageDefinition {
   readonly releaseGate?: PublicPageReleaseGate;
 }
 
-const legalPage = (documentKey: LegalDocumentKey): PublicPageDefinition => ({
+const legalPage = (
+  documentKey: LegalDocumentKey,
+  contentDate: string
+): PublicPageDefinition => ({
   title: (_inputs, { locale }) =>
     getLegalDocumentSummary(locale, documentKey).title,
   description: (_inputs, { locale }) =>
     getLegalDocumentSummary(locale, documentKey).lead,
+  contentDate,
   article: true,
 });
 
 /**
- * Every public page's title, description and release gate. Typecheck proves
+ * Every public page's title, description, content date and release gate. Typecheck proves
  * each public page has one. A page here must not set `robots.index` to false.
  */
 export const publicPageDefinitions: Readonly<
@@ -52,62 +64,75 @@ export const publicPageDefinitions: Readonly<
     title: m.landingMetadataTitle,
     titleNamesSite: true,
     description: m.landingMetadataDescription,
+    contentDate: "2026-10-25",
   },
   "/contact": {
     title: m.contactMetadataTitle,
     titleNamesSite: true,
     description: m.contactMetadataDescription,
+    contentDate: "2026-10-25",
   },
   "/faq": {
     title: m.faqMetadataTitle,
     titleNamesSite: true,
     description: m.faqMetadataDescription,
+    contentDate: "2026-10-21",
   },
   "/ai-assistants": {
     title: m.aiAssistantsMetadataTitle,
     titleNamesSite: true,
     description: m.aiAssistantsMetadataDescription,
+    contentDate: "2026-10-22",
   },
   "/pricing": {
     title: m.pricingPageTitle,
     description: m.pricingMetadataDescription,
+    contentDate: "2026-10-19",
   },
   "/meeting-room": {
     title: m.meetingRoomMetadataTitle,
     titleNamesSite: true,
     description: m.meetingRoomMetadataDescription,
+    contentDate: "2026-10-25",
     releaseGate: "meeting-room-page",
   },
   "/team": {
     title: m.teamMetadataTitle,
     titleNamesSite: true,
     description: m.teamMetadataDescription,
+    contentDate: "2026-10-25",
   },
   "/ttrpg-room": {
     title: m.ttrpgRoomMetadataTitle,
     titleNamesSite: true,
     description: m.ttrpgRoomMetadataDescription,
+    contentDate: "2026-10-25",
   },
-  "/logo": { title: m.logoVariantsTitle },
-  "/terms-and-conditions": legalPage("terms-and-conditions"),
-  "/privacy-policy": legalPage("privacy-policy"),
-  "/cookie-policy": legalPage("cookie-policy"),
-  "/operating-rules": legalPage("operating-rules"),
-  "/marketing-communications": legalPage("marketing-communications"),
+  "/terms-and-conditions": legalPage("terms-and-conditions", "2026-08-12"),
+  "/privacy-policy": legalPage("privacy-policy", "2026-10-21"),
+  "/cookie-policy": legalPage("cookie-policy", "2026-10-13"),
+  "/operating-rules": legalPage("operating-rules", "2026-08-12"),
+  "/marketing-communications": legalPage(
+    "marketing-communications",
+    "2026-08-05"
+  ),
   "/reservation/cowork": {
     title: m.checkoutOrderMetadataTitle,
     titleNamesSite: true,
     description: m.checkoutOrderMetadataDescription,
+    contentDate: "2026-10-21",
   },
   "/reservation/meeting-room": {
     title: m.reservationMeetingRoomMetadataTitle,
     titleNamesSite: true,
     description: m.reservationMeetingRoomMetadataDescription,
+    contentDate: "2026-10-16",
   },
   "/reservation/office": {
     title: m.reservationOfficeMetadataTitle,
     titleNamesSite: true,
     description: m.reservationOfficeMetadataDescription,
+    contentDate: "2026-10-22",
     releaseGate: "office-page",
   },
 };

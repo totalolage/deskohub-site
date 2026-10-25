@@ -1,5 +1,8 @@
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
-import type { DiscountAdjustment } from "@/features/discounts/contracts";
+import type {
+  DiscountAdjustment,
+  DiscountId,
+} from "@/features/discounts/contracts";
 import {
   type WorkspaceProductFamily,
   type WorkspaceProductTarget,
@@ -28,22 +31,15 @@ export function getLandingPageSaleBannerContent({
   bookableProducts: readonly WorkspaceProductFamily[];
   locale: Locale;
   reservationKind: ReservationOrderData["kind"];
-  sale: LandingPageSale;
+  sale: LandingPageSale & { readonly id: DiscountId };
 }): LandingPageSaleBannerContent {
   return {
     label: getLandingPageSaleBannerLabel(sale, locale, bookableProducts),
     adjustmentKind: sale.adjustment.kind,
     statusLabel: m.landingSaleBannerStatus({}, { locale }),
     ctaLabel: m.landingSaleBannerCta({}, { locale }),
-    href: getReservationStartPath(
-      locale,
-      reservationKind,
-      new URLSearchParams({
-        utm_source: "deskohub",
-        utm_medium: "sale_banner",
-        utm_content: "home_hero",
-      })
-    ),
+    href: getReservationStartPath(locale, reservationKind),
+    click: { discountId: sale.id, locale, reservationKind },
   };
 }
 

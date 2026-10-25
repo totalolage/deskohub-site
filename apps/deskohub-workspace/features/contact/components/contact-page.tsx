@@ -1,7 +1,13 @@
+import Link from "next/link";
 import { getPublicOpeningHours } from "@/features/checkout/public-offerings";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
+import {
+  getCoworkReservationPath,
+  getMeetingRoomReservationPath,
+} from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
+import { textLink } from "@/shared/components/ui/text-link";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { ContactForm, type ContactFormInitialValues } from "./contact-form";
 
@@ -50,6 +56,35 @@ export function ContactPage({ locale, initialValues }: ContactPageProps) {
                 </dt>
                 <dd className="min-w-0 font-bold">
                   {getPublicOpeningHours(locale)}
+                </dd>
+                <dt className="text-white/72">
+                  {m.contactTransportLabel({}, { locale })}:
+                </dt>
+                <dd className="min-w-0 font-bold">
+                  {m.contactTransport({}, { locale })}
+                </dd>
+                <dt className="text-white/72">
+                  {m.contactAccessLabel({}, { locale })}:
+                </dt>
+                <dd className="min-w-0 font-bold">
+                  {m.contactAccess({}, { locale })}
+                </dd>
+                <dt className="text-white/72">
+                  {m.contactBookingLabel({}, { locale })}:
+                </dt>
+                <dd className="flex min-w-0 flex-col items-start gap-1">
+                  <Link
+                    href={getCoworkReservationPath(locale)}
+                    className={textLink({ tone: "inverse" })}
+                  >
+                    {m.coworkReservationLink({}, { locale })}
+                  </Link>
+                  <Link
+                    href={getMeetingRoomReservationPath(locale)}
+                    className={textLink({ tone: "inverse" })}
+                  >
+                    {m.meetingRoomReservationLink({}, { locale })}
+                  </Link>
                 </dd>
                 <dt className="text-white/72">
                   {m.contactEmailLabel({}, { locale })}:

@@ -616,6 +616,11 @@ describe("account review screenshot capture", () => {
         target,
         url: `${baseUrl}/en-US/reservation/cowork?email=${encodeURIComponent(testEmailAddress("synthetic"))}`,
       },
+      {
+        name: `${target} with a prefilled contact on the contact step`,
+        target,
+        url: `${baseUrl}/en-US/reservation/cowork?step=contact&email=${encodeURIComponent(testEmailAddress("synthetic"))}`,
+      },
     ]),
   ] as const;
 
@@ -632,6 +637,18 @@ describe("account review screenshot capture", () => {
       expect(writeFileSpy?.mock.calls).toHaveLength(0);
     });
   }
+
+  test("allows the contact step for reservation customer screenshots", async () => {
+    for (const target of reservationCustomerReviewTargets) {
+      const fakePage = makeFakePage(
+        `${baseUrl}/en-US/reservation/cowork?step=contact`
+      );
+
+      await captureAccountReview(fakePage.page, review, target);
+
+      expect(fakePage.screenshotCalls).toHaveLength(1);
+    }
+  });
 
   test("does not include the rejected URL in its fixed error", async () => {
     const unsafeUrl = `${baseUrl}/en-US/auth/callback?token=synthetic-secret-token`;

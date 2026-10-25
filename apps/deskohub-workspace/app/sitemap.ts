@@ -18,10 +18,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     runWorkspaceEffect("sitemap.published-pages", { boundary: "route" })
   );
 
-  return pages.flatMap(({ pathname }) =>
+  return pages.flatMap(({ pathname, contentDate }) =>
     locales.map((locale) => {
       const { canonical, languages } = getWorkspaceAlternates(locale, pathname);
-      return { url: canonical, alternates: { languages } };
+      return {
+        url: canonical,
+        lastModified: contentDate,
+        alternates: { languages },
+      };
     })
   );
 }

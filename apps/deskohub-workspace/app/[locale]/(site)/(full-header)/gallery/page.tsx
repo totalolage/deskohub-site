@@ -59,15 +59,14 @@ async function GalleryContent({ locale }: { readonly locale: Locale }) {
     tags: ["gallery"],
     maxResults: 80,
   });
-  const photos = toGalleryPhotos(assets, locale, (index) =>
-    m.galleryImageFallbackAlt({ number: index + 1 }, { locale })
+  const photos = toGalleryPhotos(
+    assets,
+    locale,
+    m.galleryImageFallbackAlt({}, { locale })
   );
 
   return photos.length > 0 ? (
-    <WorkspaceGalleryAlbum
-      photos={photos}
-      openLabel={m.galleryOpenImage({}, { locale })}
-    />
+    <WorkspaceGalleryAlbum locale={locale} photos={photos} />
   ) : (
     <EmptyGallery assetsCount={assets.length} locale={locale} />
   );

@@ -69,6 +69,18 @@ describe("CustomerReservationActivity", () => {
     expect(view.getByText("Mon")).toBeDefined();
   });
 
+  test("keeps calendar days and legend swatches square", () => {
+    const view = render(
+      <CustomerReservationActivity activity={activity} locale="en-US" />
+    );
+    const squares = view.container.querySelectorAll("time, span.size-3");
+
+    expect(squares.length).toBeGreaterThan(7);
+    for (const square of squares) {
+      expect(square.className).not.toContain("rounded");
+    }
+  });
+
   test("reports unavailable activity in Czech", () => {
     const view = render(
       <CustomerReservationActivity

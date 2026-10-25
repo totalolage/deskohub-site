@@ -11,7 +11,8 @@ type CloudinaryImageProps = Omit<
   "src" | "alt" | "width" | "height" | "fill"
 > & {
   source: CloudinaryAsset | string;
-  alt?: string;
+  /** Describes the image for its context; pass "" only for a decorative image. */
+  alt: string;
   variant?: CloudinaryImageVariant;
   size?: {
     width: ImageSize;
@@ -103,15 +104,12 @@ export function CloudinaryImage({
     objectFit: config.crop === "fill" ? "cover" : "contain",
     ...style,
   };
-  const asset = typeof source === "string" ? undefined : source;
   const src = typeof source === "string" ? source : source.public_id;
-
-  const fallbackAlt = asset?.context?.custom?.alt?.trim() || src;
 
   return (
     <CldImage
       src={src}
-      alt={alt ?? fallbackAlt}
+      alt={alt}
       blurDataURL={blurDataURL}
       placeholder={blurDataURL ? "blur" : "empty"}
       className={finalClassName}

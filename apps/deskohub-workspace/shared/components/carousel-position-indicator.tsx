@@ -56,7 +56,7 @@ export function CarouselPositionIndicator({
   if (count <= 1) return null;
 
   return (
-    <div className={cn("flex", className)}>
+    <div className={cn("flex flex-wrap justify-center", className)}>
       {Array.from({ length: count }, (_, index) => (
         <UnstyledButton
           aria-current={index === activeIndex ? "true" : undefined}

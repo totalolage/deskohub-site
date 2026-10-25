@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
+  createNoindexedPageMetadata,
   createPublicPageMetadata,
   getPublicPageTitle,
   publicSiteShareImage,
@@ -87,5 +88,24 @@ describe("createPublicPageMetadata", () => {
     });
 
     expect(openGraph).toMatchObject({ type: "article" });
+  });
+});
+
+describe("createNoindexedPageMetadata", () => {
+  test("keeps the share card but names no URL for crawlers", () => {
+    const metadata = createNoindexedPageMetadata({
+      locale: "cs-CZ",
+      title: { absolute: "Full title" },
+      description: "Description",
+    });
+
+    expect(metadata.robots).toEqual({ index: false, follow: false });
+    expect(metadata).not.toHaveProperty("alternates");
+    expect(metadata.openGraph).not.toHaveProperty("url");
+    expect(metadata.openGraph).toMatchObject({
+      locale: "cs_CZ",
+      images: [publicSiteShareImage],
+    });
+    expect(metadata.twitter).toEqual({ card: "summary_large_image" });
   });
 });

@@ -71,8 +71,8 @@
   "administrationBookingViewCustomer": "Zobrazit zákazníka",
   "administrationBookingViewReservationHistory": "Zobrazit průběh rezervace a historii plateb",
   "administrationConfirmDialogCancel": "Zrušit",
-  "administrationCustomerActivityCalendarLabel": "Aktivita rezervací za posledních 365 dní",
-  "administrationCustomerActivityDay": [
+  "administrationReservationActivityCalendarLabel": "Aktivita rezervací za posledních 365 dní",
+  "administrationReservationActivityDay": [
     {
       "declarations": [
         "input count",
@@ -88,10 +88,12 @@
       }
     }
   ],
-  "administrationCustomerActivityDayEmpty": "{date}: žádné rezervace",
-  "administrationCustomerActivityTitle": "Aktivita rezervací",
-  "administrationCustomerActivityUnavailable": "Aktivita rezervací je dočasně nedostupná.",
-  "administrationCustomerActivityYearTotal": [
+  "administrationReservationActivityDayEmpty": "{date}: žádné rezervace",
+  "administrationReservationActivityLegendFewer": "Méně",
+  "administrationReservationActivityLegendMore": "Více",
+  "administrationReservationActivityTitle": "Aktivita rezervací",
+  "administrationReservationActivityUnavailable": "Aktivita rezervací je dočasně nedostupná.",
+  "administrationReservationActivityYearTotal": [
     {
       "declarations": [
         "input count",
@@ -221,6 +223,7 @@
   "administrationLoadingDiscountForm": "Načítání formuláře slevového kódu",
   "administrationLoadingPage": "Načítání stránky administrace",
   "administrationLoadingReservationActivity": "Načítání aktivity rezervací",
+  "administrationLoadingReservationCounts": "Načítání počtů rezervací",
   "administrationLoadingTableFilters": "Načítání filtrů tabulky",
   "administrationNexiOrderLinkLabel": "{order} (otevře se v XPay)",
   "administrationNexiOrderName": "Objednávka Nexi {orderId}",
@@ -344,7 +347,7 @@
   "administrationOverviewNewCustomerCountUnavailable": "Počet nových zákazníků není k dispozici",
   "administrationOverviewNewCustomersLabel": "Noví zákazníci",
   "administrationOverviewNoCustomers": "V tomto období nejsou žádní zákazníci",
-  "administrationOverviewReservationActivityTitle": "Aktivita rezervací",
+  "administrationOverviewReservationCountsTitle": "Počty rezervací",
   "administrationOverviewReservationCompletion": [
     {
       "declarations": [

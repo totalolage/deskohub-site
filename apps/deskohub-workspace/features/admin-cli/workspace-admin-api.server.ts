@@ -178,6 +178,9 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
           mapServiceFailure
         )
       )
+      .handle("getReservationActivity", () =>
+        administration.loadReservationActivity().pipe(mapServiceFailure)
+      )
       .handle("listReservations", ({ query }) =>
         administration.listReservations(query).pipe(mapServiceFailure)
       )
