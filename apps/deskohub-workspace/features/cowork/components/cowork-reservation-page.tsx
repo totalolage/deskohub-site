@@ -1,4 +1,5 @@
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
+import { PublicOfferingsStructuredData } from "@/features/checkout/components/public-offerings-structured-data";
 import { isWorkspaceCoworkCurrentProductTier } from "@/features/checkout/product-catalog";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
@@ -6,7 +7,6 @@ import { preloadPageAdvertisedPrices } from "@/features/reservation/backend/adve
 import { isRememberedCoworkOfferAvailable } from "@/features/reservation/backend/reservation-existing-customer.server";
 import { preloadPageAvailability } from "@/features/reservation/backend/workspace-availability-loader";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
-import { ReservationOfferingsStructuredData } from "@/features/reservation/components/reservation-offerings-structured-data";
 import { getCoworkDateAdvertisedPriceRequests } from "@/features/reservation/cowork-advertised-price";
 import type {
   CoworkReservationInput,
@@ -46,6 +46,13 @@ import {
 } from "./cowork-reservation-form";
 
 export const coworkReservationPage = createReservationPage({
+  breadcrumbs: (locale) => [
+    { pathname: "/coworking", name: m.coworkingBreadcrumb({}, { locale }) },
+    {
+      pathname: coworkReservationPath,
+      name: m.reservationCoworkBreadcrumb({}, { locale }),
+    },
+  ],
   fallback: (locale) => <CoworkReservationFormFallback locale={locale} />,
   kind: "cowork",
   pathname: coworkReservationPath,
@@ -171,7 +178,7 @@ export async function renderCoworkReservationContent({
 
   return (
     <>
-      <ReservationOfferingsStructuredData
+      <PublicOfferingsStructuredData
         locale={locale}
         offerings={getCoworkPageOfferings({
           advertisedPrices: initialAdvertisedPrices,
@@ -180,7 +187,6 @@ export async function renderCoworkReservationContent({
           locale,
           submittedCode,
         })}
-        pathname={coworkReservationPath}
       />
       <CoworkReservationForm
         checkoutSessionId={checkoutSessionId}

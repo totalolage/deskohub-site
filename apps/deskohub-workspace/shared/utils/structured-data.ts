@@ -118,3 +118,24 @@ export const getWebSiteStructuredData = () =>
     inLanguage: [...locales],
     publisher: { "@id": workspaceBusinessId },
   });
+
+/** One step of a breadcrumb trail: a page's short name and its URL. */
+export type BreadcrumbListItem = {
+  readonly name: string;
+  /** The exact locale page, the same URL as its canonical. */
+  readonly url: string;
+};
+
+/** Where a page sits in the site's hierarchy, from the home page down. */
+export const getBreadcrumbListStructuredData = (
+  items: ReadonlyArray<BreadcrumbListItem>
+) =>
+  getStructuredDataDocument({
+    "@type": "BreadcrumbList",
+    itemListElement: items.map(({ name, url }, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name,
+      item: url,
+    })),
+  });
