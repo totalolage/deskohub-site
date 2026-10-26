@@ -12,7 +12,6 @@ import {
 import type { Runner } from "../runtime";
 import {
   type AccountSectionPage,
-  accountSectionLabels,
   accountSectionLandmarks,
   selectAccountSection,
   selectAccountSectionInRunner,
@@ -242,9 +241,9 @@ const makeFakePage = (
 const setResponsiveNavigationVisibility = (
   mode: "desktop" | "mobile"
 ): void => {
-  const navigation = document.querySelector(
-    'nav[aria-label="Account navigation"]'
-  );
+  const navigation = document
+    .querySelector("[data-account-mobile-navigation]")
+    ?.closest("nav");
   if (!navigation) throw new Error("fake account navigation was not rendered");
 
   for (const child of Array.from(navigation.children)) {
@@ -320,14 +319,8 @@ test("selects every section through rendered desktop AccountShell controls", asy
     expect(landmark).toBeTruthy();
     expect(landmark?.closest("[hidden]")).toBeNull();
 
-    const link = Array.from(
-      document.querySelectorAll(
-        'nav[aria-label="Account navigation"] a:not([data-account-section])'
-      )
-    ).find(
-      (candidate) =>
-        candidate.textContent?.replaceAll(/\s+/g, " ").trim() ===
-        accountSectionLabels[section]
+    const link = document.querySelector(
+      `a[data-account-sidebar-section="${section}"]`
     );
     expect(link?.getAttribute("aria-current")).toBe("page");
     expect(link?.getAttribute("href")).toBe(
@@ -425,12 +418,16 @@ test("resolves the responsive section variant when viewport size is unavailable"
       const activeLinks = document.querySelectorAll(
         mode === "mobile"
           ? '[data-account-mobile-navigation] a[aria-current="page"]'
-          : 'nav[aria-label="Account navigation"] a:not([data-account-section])[aria-current="page"]'
+          : 'a[data-account-sidebar-section][aria-current="page"]'
       );
       expect(activeLinks).toHaveLength(1);
-      expect(activeLinks[0]?.textContent?.trim()).toBe(
-        accountSectionLabels[section]
-      );
+      expect(
+        activeLinks[0]?.getAttribute(
+          mode === "mobile"
+            ? "data-account-section"
+            : "data-account-sidebar-section"
+        )
+      ).toBe(section);
       expect(
         document
           .querySelector(accountSectionLandmarks[section])
@@ -467,15 +464,10 @@ test("waits for the rendered section link handler before clicking it", async () 
   });
   render(createElement(AccountShellHarness));
 
-  const billingLink = Array.from(
-    document.querySelectorAll<HTMLAnchorElement>("a")
-  ).find((link) =>
-    link.textContent
-      ?.replaceAll(/\s+/g, " ")
-      .trim()
-      .includes("Billing & Invoices")
+  const billingLink = document.querySelector<HTMLAnchorElement>(
+    'a[data-account-sidebar-section="billing"]'
   );
-  if (billingLink === undefined)
+  if (billingLink === null)
     throw new Error("rendered Billing link was not found");
   const reactPropsKey = Object.keys(billingLink).find((key) =>
     key.startsWith("__reactProps$")

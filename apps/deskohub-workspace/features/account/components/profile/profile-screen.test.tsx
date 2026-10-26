@@ -113,12 +113,14 @@ describe("ProfileScreen", () => {
   const chooseLanguage = async (view: RenderResult, name: string) => {
     await openLanguageListbox(view);
     const option = view.getByRole("option", { name });
+    const optionLabel = option.textContent ?? "";
     await act(async () => {
       option.focus();
     });
     await act(async () => {
       fireEvent.keyDown(option, { key: "Enter" });
     });
+    return optionLabel;
   };
 
   beforeEach(() => {
@@ -134,12 +136,13 @@ describe("ProfileScreen", () => {
     updateLocalePreference.mockImplementationOnce(() => saved.promise);
     const view = renderLanguageControl();
 
-    await chooseLanguage(view, czechOption);
+    const chosenLabel = await chooseLanguage(view, czechOption);
 
     expect(updateLocalePreference).toHaveBeenCalledWith({ locale: "cs-CZ" });
     expect(window.location.pathname).toBe("/en-US/account/profile");
     // The control shows the choice and stays locked while the switch runs.
-    expect(languageTrigger(view).textContent).toContain(czechOption);
+    expect(chosenLabel).not.toBe("");
+    expect(languageTrigger(view).textContent).toContain(chosenLabel);
     expect((languageTrigger(view) as HTMLButtonElement).disabled).toBe(true);
 
     await act(async () => {

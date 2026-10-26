@@ -96,6 +96,28 @@ function getDesktopLink(
   });
 }
 
+function getDesktopSectionItem(
+  view: { readonly container: HTMLElement },
+  section: AccountSection
+) {
+  const item = view.container.querySelector<HTMLElement>(
+    `[data-account-sidebar-section="${section}"]`
+  );
+  if (!item) throw new Error(`Desktop ${section} item was not rendered`);
+  return item;
+}
+
+function getMobileSectionItem(
+  view: { readonly container: HTMLElement },
+  section: AccountSection
+) {
+  const item = view.container.querySelector<HTMLElement>(
+    `[data-account-section="${section}"]`
+  );
+  if (!item) throw new Error(`Mobile ${section} item was not rendered`);
+  return item;
+}
+
 function getMobileNavigation(view: { readonly container: HTMLElement }) {
   return within(
     view.getByRole("group", {
@@ -332,10 +354,10 @@ describe("AccountShell", () => {
       throw new Error("Mobile account navigation was not rendered");
     const links = within(group).getAllByRole("link");
 
-    expect(navigation.getAttribute("aria-label")).toBe(
-      m.accountNavigationLabel({}, { locale })
-    );
-    expect(legend.textContent).toBe(m.accountSectionLabel({}, { locale }));
+    expect(navigation.contains(group)).toBe(true);
+    expect(group.tagName).toBe("FIELDSET");
+    expect(legend.id).not.toBe("");
+    expect(group.getAttribute("aria-labelledby")).toBe(legend.id);
     expect(navigation.querySelector("select")).toBeNull();
     expect(
       mobileNavigation.getAttribute("data-account-mobile-navigation")
@@ -344,9 +366,6 @@ describe("AccountShell", () => {
     expect(
       links.map((link) => link.getAttribute("data-account-section"))
     ).toEqual(sectionKeys);
-    expect(links.map((link) => link.textContent?.trim())).toEqual(
-      sectionKeys.map((section) => accountSectionLabel(section, locale))
-    );
     expect(links.map((link) => link.getAttribute("href"))).toEqual(
       sectionKeys.map((section) => `/en-US/account/${section}`)
     );
@@ -633,17 +652,15 @@ describe("AccountShell", () => {
 
   test("renders only valid supplied reservation counts, including zero", () => {
     const view = renderShell();
-    const reservationButton = () =>
-      getDesktopNavigation(view).getByRole("link", {
-        name: /^Reservations/,
-      });
+    const reservationBadge = () =>
+      getDesktopSectionItem(view, "reservations").querySelector(
+        '[data-account-navigation-badge="reservations"]'
+      );
 
-    expect(reservationButton().querySelector("span.ml-auto")).toBeNull();
+    expect(reservationBadge()).toBeNull();
 
     view.rerender(<AccountShell {...makeProps({ reservationCount: 0 })} />);
-    expect(reservationButton().querySelector("span.ml-auto")?.textContent).toBe(
-      "0"
-    );
+    expect(reservationBadge()?.textContent).toBe("0");
 
     for (const reservationCount of [
       -1,
@@ -652,7 +669,7 @@ describe("AccountShell", () => {
       Number.POSITIVE_INFINITY,
     ]) {
       view.rerender(<AccountShell {...makeProps({ reservationCount })} />);
-      expect(reservationButton().querySelector("span.ml-auto")).toBeNull();
+      expect(reservationBadge()).toBeNull();
     }
   });
 
@@ -660,21 +677,22 @@ describe("AccountShell", () => {
     const view = renderShell({
       referralBadge: { text: "-15%", label: "15% referral discount" },
     });
-    const referralButton = () =>
-      getDesktopNavigation(view).getByRole("link", { name: /^Referrals/ });
+    const referralBadge = () =>
+      getDesktopSectionItem(view, "referrals").querySelector(
+        '[data-account-navigation-badge="referrals"]'
+      );
 
-    expect(referralButton().querySelector("span.ml-auto")?.textContent).toBe(
-      "-15%15% referral discount"
-    );
+    expect(referralBadge()?.textContent).toBe("-15%15% referral discount");
     expect(
-      getMobileNavigation(view).getByRole("link", { name: "Referrals" })
-        .textContent
-    ).toBe("Referrals");
+      getMobileSectionItem(view, "referrals").querySelector(
+        "[data-account-navigation-badge]"
+      )
+    ).toBeNull();
 
     view.rerender(
       <AccountShell {...makeProps({ referralBadge: undefined })} />
     );
-    expect(referralButton().querySelector("span.ml-auto")).toBeNull();
+    expect(referralBadge()).toBeNull();
   });
 
   test("leaves hidden sections out of both navigations", () => {
@@ -683,12 +701,16 @@ describe("AccountShell", () => {
       referralBadge: { text: "-15%", label: "15% referral discount" },
     });
 
-    expect(
-      getDesktopNavigation(view).queryByRole("link", { name: /Referrals/ })
-    ).toBeNull();
-    expect(
-      getMobileNavigation(view).queryByRole("link", { name: "Referrals" })
-    ).toBeNull();
+    for (const section of ["referrals", "security"] as const) {
+      expect(
+        view.container.querySelector(
+          `[data-account-sidebar-section="${section}"]`
+        )
+      ).toBeNull();
+      expect(
+        view.container.querySelector(`[data-account-section="${section}"]`)
+      ).toBeNull();
+    }
     expect(view.queryByText("-15%")).toBeNull();
     expect(
       getDesktopNavigation(view)

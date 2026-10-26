@@ -2,6 +2,10 @@ import { expect, test } from "bun:test";
 import { createServer } from "node:http";
 import { normalizePhoneNumber } from "@deskohub/dotypos";
 import { chromium, errors, type Page } from "@playwright/test";
+import {
+  accountSectionLabel,
+  accountSections,
+} from "../../features/account/sections";
 import { playwrightChromiumAvailable } from "../../shared/testing/playwright-browser";
 import {
   isWorkspaceE2EDiagnosticCode,
@@ -9,10 +13,7 @@ import {
   type WorkspaceE2EProfileNavigationDiagnosticCode,
 } from "../errors";
 import { formatWorkspaceE2EFailureAnnotation } from "../github-actions";
-import {
-  accountSectionLabels,
-  accountSectionLandmarks,
-} from "./account-sections";
+import { accountSectionLandmarks } from "./account-sections";
 import {
   triggerProfileHistoryBack,
   verifyProfileNavigation,
@@ -275,9 +276,9 @@ const makeProfileNavigationFakePage = (
   ) => {
     if (role === "banner") return makeLocator("banner");
     if (role === "link") {
-      const section = Object.entries(accountSectionLabels).find(
-        ([, label]) => options.name === label
-      )?.[0];
+      const section = accountSections.find(
+        (candidate) => options.name === accountSectionLabel(candidate, "en-US")
+      );
       if (section) return makeLocator(`section:${section}`);
     }
     if (role === "heading") return makeLocator(`heading:${options.name ?? ""}`);

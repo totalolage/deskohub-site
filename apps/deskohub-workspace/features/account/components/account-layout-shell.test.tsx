@@ -9,6 +9,8 @@ import {
 } from "bun:test";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { accountSectionLabel } from "@/features/account/sections";
+import { m } from "@/features/i18n";
 import {
   UnsavedChangesProvider,
   useUnsavedChanges,
@@ -99,7 +101,7 @@ function getDesktopNavigation(view: { readonly container: HTMLElement }) {
 function getMobileNavigation(view: { readonly container: HTMLElement }) {
   return within(
     view.getByRole("group", {
-      name: "Account section",
+      name: m.accountSectionLabel({}, { locale: "en-US" }),
     })
   );
 }
@@ -167,14 +169,15 @@ describe("AccountLayoutShell", () => {
       </>,
       { signedIn: false }
     );
-    const sectionKeys = [
-      "Reservations",
-      "Profile & Identity",
-      "Billing & Invoices",
-      "Danger zone",
-    ];
+    const privateSections = [
+      "reservations",
+      "profile",
+      "billing",
+      "danger",
+    ] as const;
 
-    for (const label of sectionKeys) {
+    for (const section of privateSections) {
+      const label = accountSectionLabel(section, "en-US");
       expect(
         (
           getDesktopNavigation(view).getByRole("button", {
@@ -193,7 +196,7 @@ describe("AccountLayoutShell", () => {
 
     expect(
       getDesktopNavigation(view)
-        .getByRole("link", { name: "Legal & Privacy" })
+        .getByRole("link", { name: accountSectionLabel("legal", "en-US") })
         .getAttribute("href")
     ).toBe("/en-US/account/legal");
     expect(view.getByTestId("account-content")).toBeTruthy();
@@ -217,7 +220,7 @@ describe("AccountLayoutShell", () => {
 
       fireEvent.click(
         getDesktopNavigation(view).getByRole("link", {
-          name: "Legal & Privacy",
+          name: accountSectionLabel("legal", "en-US"),
         })
       );
 
@@ -233,7 +236,7 @@ describe("AccountLayoutShell", () => {
 
     fireEvent.click(
       getDesktopNavigation(view).getByRole("link", {
-        name: "Legal & Privacy",
+        name: accountSectionLabel("legal", "en-US"),
       })
     );
     expect(routerPush).toHaveBeenCalledWith("/en-US/account/legal");
@@ -242,7 +245,7 @@ describe("AccountLayoutShell", () => {
     view.rerender(layoutElement(<p>Legal</p>));
     fireEvent.click(
       getDesktopNavigation(view).getByRole("link", {
-        name: "Profile & Identity",
+        name: accountSectionLabel("profile", "en-US"),
       })
     );
 
@@ -255,13 +258,13 @@ describe("AccountLayoutShell", () => {
 
     fireEvent.click(
       getDesktopNavigation(view).getByRole("link", {
-        name: "Billing & Invoices",
+        name: accountSectionLabel("billing", "en-US"),
       })
     );
     expect(routerPush).not.toHaveBeenCalled();
     expect(
       getDesktopNavigation(view)
-        .getByRole("link", { name: "Billing & Invoices" })
+        .getByRole("link", { name: accountSectionLabel("billing", "en-US") })
         .getAttribute("aria-current")
     ).toBe("page");
 
@@ -269,7 +272,7 @@ describe("AccountLayoutShell", () => {
     view.rerender(layoutElement(<p>Account from browser back</p>));
     expect(
       getDesktopNavigation(view)
-        .getByRole("link", { name: "Danger zone" })
+        .getByRole("link", { name: accountSectionLabel("danger", "en-US") })
         .getAttribute("aria-current")
     ).toBe("page");
 
@@ -277,7 +280,7 @@ describe("AccountLayoutShell", () => {
     view.rerender(layoutElement(<p>Legal from browser back</p>));
     expect(
       getDesktopNavigation(view)
-        .getByRole("link", { name: "Legal & Privacy" })
+        .getByRole("link", { name: accountSectionLabel("legal", "en-US") })
         .getAttribute("aria-current")
     ).toBe("page");
 
@@ -285,7 +288,7 @@ describe("AccountLayoutShell", () => {
     view.rerender(layoutElement(<p>Profile from browser back</p>));
     expect(
       getDesktopNavigation(view)
-        .getByRole("link", { name: "Profile & Identity" })
+        .getByRole("link", { name: accountSectionLabel("profile", "en-US") })
         .getAttribute("aria-current")
     ).toBe("page");
   });
@@ -297,7 +300,7 @@ describe("AccountLayoutShell", () => {
 
     fireEvent.click(
       getDesktopNavigation(view).getByRole("link", {
-        name: "Profile & Identity",
+        name: accountSectionLabel("profile", "en-US"),
       })
     );
 
@@ -306,12 +309,14 @@ describe("AccountLayoutShell", () => {
     expect(window.location.search).toBe("?ref=menu");
     expect(
       getDesktopNavigation(view)
-        .getByRole("link", { name: "Profile & Identity" })
+        .getByRole("link", { name: accountSectionLabel("profile", "en-US") })
         .getAttribute("aria-current")
     ).toBe("page");
 
     fireEvent.click(
-      getDesktopNavigation(view).getByRole("link", { name: "Reservations" })
+      getDesktopNavigation(view).getByRole("link", {
+        name: accountSectionLabel("reservations", "en-US"),
+      })
     );
 
     expect(window.location.pathname).toBe("/en-US/account/reservations");
@@ -358,14 +363,18 @@ describe("AccountLayoutShell", () => {
     });
 
     expect(
-      getDesktopNavigation(view).queryByRole("link", { name: /Referrals/ })
+      view.container.querySelector('[data-account-sidebar-section="referrals"]')
     ).toBeNull();
     expect(
-      getMobileNavigation(view).queryByRole("link", { name: "Referrals" })
+      getMobileNavigation(view).queryByRole("link", {
+        name: accountSectionLabel("referrals", "en-US"),
+      })
     ).toBeNull();
     expect(
       getDesktopNavigation(view)
-        .getByRole("link", { name: "Reservations" })
+        .getByRole("link", {
+          name: accountSectionLabel("reservations", "en-US"),
+        })
         .getAttribute("aria-current")
     ).toBe("page");
 
@@ -374,7 +383,9 @@ describe("AccountLayoutShell", () => {
     expect(view.queryByText("-15%")).toBeNull();
     expect(
       getDesktopNavigation(view)
-        .getByRole("link", { name: "Reservations" })
+        .getByRole("link", {
+          name: accountSectionLabel("reservations", "en-US"),
+        })
         .getAttribute("aria-current")
     ).toBe("page");
     expect(routerPush).not.toHaveBeenCalled();
@@ -398,12 +409,14 @@ describe("AccountLayoutShell", () => {
 
     expect(
       getDesktopNavigation(view).queryByRole("link", {
-        name: "Sign-in & security",
+        name: accountSectionLabel("security", "en-US"),
       })
     ).toBeNull();
     expect(
       getDesktopNavigation(view)
-        .getByRole("link", { name: "Reservations" })
+        .getByRole("link", {
+          name: accountSectionLabel("reservations", "en-US"),
+        })
         .getAttribute("aria-current")
     ).toBe("page");
   });
@@ -414,7 +427,7 @@ describe("AccountLayoutShell", () => {
 
     expect(
       getDesktopNavigation(view)
-        .getByRole("link", { name: "Sign-in & security" })
+        .getByRole("link", { name: accountSectionLabel("security", "en-US") })
         .getAttribute("aria-current")
     ).toBe("page");
   });

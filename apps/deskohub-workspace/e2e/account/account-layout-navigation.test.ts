@@ -4,7 +4,10 @@ import type { Page } from "@playwright/test";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { createElement, useState } from "react";
 import { AccountShell } from "@/features/account/components/shell/account-shell";
-import type { AccountSection } from "@/features/account/sections";
+import {
+  type AccountSection,
+  accountSectionLabel,
+} from "@/features/account/sections";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -91,7 +94,7 @@ const sectionPanel = (section: AccountSection) => {
         createElement(
           "h2",
           { id: "account-billing-title" },
-          "Billing & Invoices"
+          accountSectionLabel("billing", "en-US")
         ),
         createElement("select", { id: "account-profile-billing-kind" })
       );

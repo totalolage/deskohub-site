@@ -9,6 +9,7 @@ import {
   readAuthCallbackReturnTo,
   signInCallbackReturnParam,
 } from "@/features/account/routes";
+import { accountSectionLabel } from "@/features/account/sections";
 import { m } from "@/features/i18n";
 import { referralCodeCookieName } from "@/features/referrals/referral-code-cookie";
 import type { DatasourceConfig } from "../config";
@@ -1669,7 +1670,7 @@ class FakeBrowser {
       return;
     }
     if (
-      selector.includes("Danger zone") ||
+      selector.includes(accountSectionLabel("danger", "en-US")) ||
       selector.includes(`${accountSectionDataAttribute}="danger"`)
     ) {
       this.selectAccountSection("danger");
@@ -1690,11 +1691,11 @@ class FakeBrowser {
         : "Save profile";
       return;
     }
-    if (selector.includes("Billing & Invoices")) {
+    if (selector.includes(accountSectionLabel("billing", "en-US"))) {
       this.selectAccountSection("billing");
       return;
     }
-    if (selector.includes("Profile & Identity")) {
+    if (selector.includes(accountSectionLabel("profile", "en-US"))) {
       if (this.pageLocale() !== "en-US") {
         throw new Error("the English account navigation was clicked in Czech");
       }
