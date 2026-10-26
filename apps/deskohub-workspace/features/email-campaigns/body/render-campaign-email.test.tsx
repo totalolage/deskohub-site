@@ -159,7 +159,7 @@ describe("renderCampaignEmail", () => {
   test("gives an operational email a reason line and no unsubscribe link", async () => {
     const email = await render(CampaignEmailFooter.Operational());
 
-    expect(email.html).toContain("Toto provozní sdělení vám posíláme");
+    expect(email.html).toContain("Toto provozní sdělení ti posíláme");
     expect(email.html).not.toContain("marketing-preferences");
     expect(email.html).not.toContain("Odhlásit odběr");
   });
@@ -172,7 +172,7 @@ describe("renderCampaignEmail", () => {
 
     expect(email.html).toContain(operationalReason);
     expect(email.text).toContain(operationalReason);
-    expect(email.html).not.toContain("Toto provozní sdělení vám posíláme");
+    expect(email.html).not.toContain("Toto provozní sdělení ti posíláme");
   });
 
   test("ignores the operational reason in a marketing email", async () => {

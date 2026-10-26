@@ -24,9 +24,9 @@ const englishCopy = {
 };
 const czechCopy = {
   label: "Načítání přihlášení…",
-  title: "Jste přihlášeni",
+  title: "Přihlášení proběhlo",
   returning:
-    "Vracíme vás tam, kde jste skončili. Dokončit můžete přímo v tomto prohlížeči.",
+    "Vracíme tě zpět. Dokončit můžeš přímo v tomto prohlížeči.",
 };
 
 type CdpHandler = (params: unknown) => Promise<unknown> | unknown;
@@ -462,7 +462,7 @@ describe("collectCallbackDocumentSnapshot", () => {
         locationHref: czechCallbackUrl,
         card: {
           ariaLabel: czechCopy.label,
-          body: { text: "Přesměrujeme vás na účet…" },
+          body: { text: "Přesměrujeme tě na účet…" },
         },
       })
     ).toBe(false);

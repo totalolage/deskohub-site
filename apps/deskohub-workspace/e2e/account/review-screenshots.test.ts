@@ -40,9 +40,9 @@ const englishCard = {
   title: "You are signed in",
 } as const;
 const czechCard = {
-  body: "Vracíme vás tam, kde jste skončili. Dokončit můžete přímo v tomto prohlížeči.",
+  body: "Vracíme tě zpět. Dokončit můžeš přímo v tomto prohlížeči.",
   label: "Načítání přihlášení…",
-  title: "Jste přihlášeni",
+  title: "Přihlášení proběhlo",
 } as const;
 const selection = "/cs-CZ/reservation/cowork?selection=synthetic-1";
 const enSelection = "/en-US/reservation/cowork?selection=synthetic-1";
@@ -936,7 +936,7 @@ describe("account review screenshot capture", () => {
     [
       "the account body",
       czechCallbackUrl,
-      { card: { ...czechCard, body: "Přesměrujeme vás na účet…" } },
+      { card: { ...czechCard, body: "Přesměrujeme tě na účet…" } },
     ],
     [
       "a hidden heading",

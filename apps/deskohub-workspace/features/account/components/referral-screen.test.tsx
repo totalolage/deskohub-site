@@ -77,11 +77,11 @@ describe("ReferralScreen", () => {
       headings: [
         "Doporučení",
         "Globální sleva",
-        "Váš doporučovací kód",
-        "Váš doporučovací odkaz",
+        "Tvůj doporučovací kód",
+        "Tvůj doporučovací odkaz",
         "Jak doporučení fungují",
       ],
-      countSummary: "Doporučení započítaná do vaší slevy: 3 z 5.",
+      countSummary: "Doporučení započítaná do tvé slevy: 3 z 5.",
       discount: "15 %",
       // Text queries collapse the no-break space Intl puts before the symbol.
       saved: "Ušetřeno 92,34 Kč!",
@@ -137,9 +137,9 @@ describe("ReferralScreen", () => {
     [
       "cs-CZ",
       [
-        "Sdílejte svůj kód nebo odkaz a nový zákazník získá slevu 15 % na svou první rezervaci ve Workspace!",
-        "Za každého pozvaného, který nás navštívil během posledních 30 dnů, získáte další slevu 5 %. Slevy se skládají!",
-        "To znamená, že stačí jen 5 doporučení a máte slevu přes 20 %!",
+        "Sdílej svůj kód nebo odkaz a nový zákazník získá slevu 15 % na svou první rezervaci ve Workspace!",
+        "Za každého pozvaného, který nás navštívil během posledních 30 dnů, získáš další slevu 5 %. Slevy se skládají!",
+        "To znamená, že stačí jen 5 doporučení a máš slevu přes 20 %!",
       ],
     ],
   ] as const)(
