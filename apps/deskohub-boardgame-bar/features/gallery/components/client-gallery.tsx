@@ -57,6 +57,7 @@ export function ClientGallery({
               alt={getImageAlt(image, locale)}
               blurDataURL={blurUrls?.[image.public_id]}
               variant="gallery"
+              preload
             />
           </div>
         ))}

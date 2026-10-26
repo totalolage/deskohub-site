@@ -13,6 +13,22 @@ Code: `features/account/analytics-identity.ts`,
   details stay private.
 - The app has one root `PostHogProvider` (`app/[locale]/layout.tsx`).
   Initialize PostHog only after analytics consent.
+- The browser SDK isn't in the initial bundle. `posthog-analytics.tsx` loads
+  `posthog-js` with a dynamic import once consent and a safe telemetry host
+  allow initialization; the `no-eager-posthog-browser-sdk` lint rule rejects
+  static value imports of `posthog-js` or `@posthog/react` (which imports the
+  SDK at module load) in Workspace and `@deskohub/posthog` source. Use
+  `import type` for SDK types.
+- Capture browser events with `captureAnalyticsEvent`
+  (`features/cookie-consent/analytics-events.ts`), never the SDK directly.
+  Without an analytics consent cookie it keeps nothing. Otherwise the event
+  waits in an in-memory outbox of 50 until analytics is ready (SDK loaded,
+  consented, identity settled), then goes out after the ready `$pageview` in
+  capture order, also across pauses such as a focus refresh. Every reconcile
+  without consent or with an unsafe telemetry host discards held events, and
+  so does a ready identity that replaces an authenticated one (sign-out or
+  account switch), so an account's events never follow the visitor to the
+  reset identity.
 - Derive the distinct ID with `getPostHogAccountDistinctId`, and call
   `identify(id)` without properties. A consented anonymous browser history may
   merge into the account at that call.
@@ -134,8 +150,8 @@ non-production traffic apart:
 - Sign-in analytics live in `features/account/sign-in-analytics.ts`:
   `sign-in completed` with `method: "link" | "code" | "passkey"`, `sign-in
   code rejected` with `reason`, `passkey added` with `source: "prompt" |
-  "settings"`, `passkey removed`, and `passkey prompt dismissed`. PostHog drops events until the new account identity
-  settles on the next page, so a finished sign-in is recorded in the tab's
+  "settings"`, `passkey removed`, and `passkey prompt dismissed`. The new account identity
+  settles only on the next page, so a finished sign-in is recorded in the tab's
   sessionStorage (only with analytics consent) and captured from the PostHog
   ready handler once the identity is authenticated. Never add the email or
   code to these payloads.
