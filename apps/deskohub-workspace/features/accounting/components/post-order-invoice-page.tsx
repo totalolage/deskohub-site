@@ -51,7 +51,6 @@ export function PostOrderInvoicePage({
     resolver: effectSchemaResolver(postOrderInvoiceAddressFormSchema),
   });
   const { execute, isExecuting } = useWorkspaceAction(managePostOrderInvoice, {
-    actionName: "managePostOrderInvoice",
     onSuccess: ({ data }) => {
       if (data?.status === "resent") {
         setDeliveryFailed(false);

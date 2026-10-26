@@ -8,13 +8,16 @@ import {
 } from "@/features/account";
 import { type Locale, locales } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
-import type { MarketingPreferencesMutationFailureReason } from "@/features/legal/marketing-preferences";
+import type {
+  MarketingPreferencesMutationFailureReason,
+  MarketingPreferencesRejection,
+  MarketingPreferencesRejectionReason,
+} from "@/features/legal/marketing-preferences";
 import {
   marketingManagementLive,
   marketingPreferencesLive,
 } from "@/features/legal/marketing-preferences-composition.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
-import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { CustomerMarketingConsentRepository } from "./backend/customer-marketing-consent.repository";
 import {
   type MarketingManagementError,
@@ -155,12 +158,7 @@ const saveMarketingPreferencesEffect = (
 ) =>
   saveMarketingPreferences(input, marketingCookies).pipe(
     Effect.provide(layers),
-    Effect.mapError((failure) =>
-      failure instanceof MarketingPreferencesMutationError
-        ? failure
-        : mutationError("unavailable")
-    ),
-    Effect.mapError(toPublicMutationError)
+    settleMutationRejection
   );
 
 const confirmMarketingManagementEffect = (
@@ -170,12 +168,7 @@ const confirmMarketingManagementEffect = (
 ) =>
   confirmMarketingManagement(input, marketingCookies).pipe(
     Effect.provide(layers),
-    Effect.mapError((failure) =>
-      failure instanceof MarketingPreferencesMutationError
-        ? failure
-        : mutationError("unavailable")
-    ),
-    Effect.mapError(toPublicMutationError)
+    settleMutationRejection
   );
 
 const clearMarketingManagementEffect = (
@@ -202,12 +195,7 @@ const clearMarketingManagementEffect = (
         marketingCookies
       ).pipe(Effect.provide(layers), Effect.as({ status: "cleared" as const }));
     }),
-    Effect.mapError((failure) =>
-      failure instanceof MarketingPreferencesMutationError
-        ? failure
-        : mutationError("unavailable")
-    ),
-    Effect.mapError(toPublicMutationError)
+    settleMutationRejection
   );
 
 const loadMarketingPreferencesAuthority = Effect.fn(function* (
@@ -286,14 +274,30 @@ const mapManagementMutationFailure = (
     ? mutationError("invalid-link")
     : mutationError("unavailable");
 
-const toPublicMutationError = (
-  failure: MarketingPreferencesMutationError
-): PublicSafeActionError =>
-  new PublicSafeActionError({
-    // The client maps the reason code to localized copy.
-    message: failure.reason,
-    cause: failure,
-  });
+/**
+ * Returns a refusal the customer can act on as result data. An unavailable
+ * dependency stays a failure, so the runtime logs it and reports it as
+ * unexpected.
+ */
+const settleMutationRejection = <A, E>(
+  effect: Effect.Effect<A, E | MarketingPreferencesMutationError>
+) =>
+  effect.pipe(
+    Effect.catchIf(
+      (
+        failure
+      ): failure is MarketingPreferencesMutationError & {
+        readonly reason: MarketingPreferencesRejectionReason;
+      } =>
+        failure instanceof MarketingPreferencesMutationError &&
+        failure.reason !== "unavailable",
+      ({ reason }) =>
+        Effect.succeed<MarketingPreferencesRejection>({
+          status: "rejected",
+          reason,
+        })
+    )
+  );
 
 const createSaveMarketingPreferencesAction = (
   marketingCookies: MarketingManagementCookieOperations

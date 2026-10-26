@@ -543,20 +543,19 @@ describe("CreateStandaloneAccessCodeForm", () => {
     expect(execute).toHaveBeenCalledTimes(2);
   });
 
-  test("shows a timed-out attempt in Czech on a cs-CZ route", async () => {
+  test("shows the server's localized failure as sent", async () => {
     withActionOptions();
     const view = await renderForm("cs-CZ");
 
     act(() => {
       actionOptions?.onError({
-        error: { serverError: "Request timed out. Please try again." },
+        error: { serverError: "Server neodpověděl včas. Zkuste to znovu." },
       });
     });
 
     expect(
       view.getByText("Server neodpověděl včas. Zkuste to znovu.")
     ).toBeDefined();
-    expect(view.queryByText("Request timed out. Please try again.")).toBeNull();
   });
 
   test("shows the one-time pin result in Czech on a cs-CZ route", async () => {

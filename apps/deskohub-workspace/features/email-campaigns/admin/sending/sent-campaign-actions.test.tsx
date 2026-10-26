@@ -8,18 +8,18 @@ import {
   mock,
   test,
 } from "bun:test";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   workspaceRouterPush,
   workspaceRouterRefresh,
-  workspaceUseAction,
 } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import { campaignIdSchema } from "../../campaign-identifiers";
+import { captureCampaignOperations } from "../campaign-operation-actions.test-utils";
 
 mock.module("next/navigation", () => ({
   useParams: () => ({ locale: "en-US" }),
@@ -29,10 +29,8 @@ mock.module("next/navigation", () => ({
   }),
 }));
 
-const runCampaignOperation = mock();
-
 mock.module("../campaign-operations.actions", () => ({
-  runCampaignOperation,
+  runCampaignOperation: mock(),
 }));
 
 const { SentCampaignActions } = await import("./sent-campaign-actions");
@@ -40,30 +38,19 @@ const { SentCampaignActions } = await import("./sent-campaign-actions");
 const campaignId = campaignIdSchema.make("synthetic-campaign");
 const includeUnconfirmedLabel =
   "Also resend to unconfirmed recipients (they may receive it twice)";
-const retryExecute = mock();
-type ActionOptions = {
-  readonly actionName: string;
-  readonly onSuccess: (result: {
-    readonly data: unknown;
-    readonly input: unknown;
-  }) => void;
-};
-let retryOptions: ActionOptions | undefined;
+const operations = captureCampaignOperations();
+const retryLabels = {
+  "en-US": "Retry undelivered",
+  "cs-CZ": "Znovu odeslat nedoručeným",
+} as const;
+const retry = (
+  view: ReturnType<typeof render>,
+  locale: keyof typeof retryLabels = "en-US"
+) => fireEvent.click(view.getByRole("button", { name: retryLabels[locale] }));
 
 describe("SentCampaignActions", () => {
   beforeAll(() => registerWorkspaceComponentTestEnv());
-  beforeEach(() => {
-    retryExecute.mockClear();
-    workspaceUseAction.mockReset();
-    workspaceUseAction.mockImplementation(((
-      _action: typeof runCampaignOperation,
-      options: ActionOptions
-    ) => {
-      const retry = options.actionName === "email-campaigns.retryCampaign";
-      if (retry) retryOptions = options;
-      return { execute: retry ? retryExecute : mock(), isExecuting: false };
-    }) as never);
-  });
+  beforeEach(() => operations.install());
   afterEach(() => cleanup());
   afterAll(() => unregisterWorkspaceComponentTestEnv());
 
@@ -81,15 +68,13 @@ describe("SentCampaignActions", () => {
         .getByRole("checkbox", { name: includeUnconfirmedLabel })
         .getAttribute("aria-checked")
     ).toBe("false");
-    fireEvent.click(view.getByRole("button", { name: "Retry undelivered" }));
+    retry(view);
 
-    expect(retryExecute.mock.calls).toEqual([
-      [
-        {
-          operation: "retryCampaign",
-          input: { campaignId, includeUnconfirmed: false },
-        },
-      ],
+    expect(operations.requests("retryCampaign")).toEqual([
+      {
+        operation: "retryCampaign",
+        input: { campaignId, includeUnconfirmed: false },
+      },
     ]);
   });
 
@@ -105,15 +90,13 @@ describe("SentCampaignActions", () => {
     fireEvent.click(
       view.getByRole("checkbox", { name: includeUnconfirmedLabel })
     );
-    fireEvent.click(view.getByRole("button", { name: "Retry undelivered" }));
+    retry(view);
 
-    expect(retryExecute.mock.calls).toEqual([
-      [
-        {
-          operation: "retryCampaign",
-          input: { campaignId, includeUnconfirmed: true },
-        },
-      ],
+    expect(operations.requests("retryCampaign")).toEqual([
+      {
+        operation: "retryCampaign",
+        input: { campaignId, includeUnconfirmed: true },
+      },
     ]);
   });
 
@@ -160,12 +143,11 @@ describe("SentCampaignActions", () => {
         </RouteLocaleProvider>
       );
 
-      act(() =>
-        retryOptions?.onSuccess({
-          data: { _tag: "Success", output: { retriedCount: 1000 } },
-          input: { operation: "retryCampaign", input: {} },
-        })
-      );
+      retry(view, locale);
+      operations.respond("retryCampaign", {
+        _tag: "Success",
+        output: { retriedCount: 1000 },
+      });
 
       expect(view.container.textContent).toContain(message);
     }
@@ -187,17 +169,13 @@ describe("SentCampaignActions", () => {
       />
     );
 
-    act(() =>
-      retryOptions?.onSuccess({
-        data: {
-          _tag: "Failure",
-          category: "OperationConflict",
-          code,
-          message: "English port message",
-        },
-        input: { operation: "retryCampaign", input: {} },
-      })
-    );
+    retry(view);
+    operations.respond("retryCampaign", {
+      _tag: "Failure",
+      category: "OperationConflict",
+      code,
+      message: "English port message",
+    });
 
     expect(view.container.textContent).toContain(message);
     expect(view.container.textContent).not.toContain("English port message");

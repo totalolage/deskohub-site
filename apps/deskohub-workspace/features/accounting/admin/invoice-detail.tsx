@@ -10,7 +10,6 @@ import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
-import { getInvoiceAdminActionFailureMessage } from "./action-failure-message";
 import { retryAdministrationInvoice } from "./actions";
 import type { InvoiceAdministrationDetail } from "./invoice-administration.service";
 
@@ -52,17 +51,14 @@ export function InvoiceDetailActions({
   const { execute, isExecuting } = useWorkspaceAction(
     retryAdministrationInvoice,
     {
-      actionName: "retryAdministrationInvoice",
       onSuccess: () => {
         setError(null);
         router.refresh();
       },
       onError: ({ error: actionError }) =>
         setError(
-          getInvoiceAdminActionFailureMessage(actionError.serverError, {
-            fallback: m.accountingInvoiceRetryDeliveryError({}, { locale }),
-            locale,
-          })
+          actionError.serverError ??
+            m.accountingInvoiceRetryDeliveryError({}, { locale })
         ),
       onTransportError: () =>
         setError(m.accountingInvoiceRetryDeliveryError({}, { locale })),

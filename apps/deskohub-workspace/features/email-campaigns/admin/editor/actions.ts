@@ -8,6 +8,7 @@ import { CampaignImageService } from "@/features/email-campaigns/backend/campaig
 import type { Locale } from "@/features/i18n";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
+import { emailCampaignsActionFailureCopy } from "../campaign-operation-failure";
 
 const campaignImageMaxMegabytes = 5;
 const campaignImageMaxBytes = campaignImageMaxMegabytes * 1024 * 1024;
@@ -73,6 +74,7 @@ const uploadCampaignImageAction = defineWorkspaceAction(
     operation: "email-campaigns.admin.upload-image",
     schema: campaignImageUploadSchema,
     logInput: false,
+    failureCopy: emailCampaignsActionFailureCopy,
   },
   ({ file }, { locale }) =>
     validateCampaignImage(file, locale).pipe(

@@ -23,6 +23,7 @@ For Workspace forms, also read [references/workspace-forms.md](references/worksp
 - The React Compiler memoizes render-only derivations. Add `useMemo` or `useCallback` only where identity is observable: effect dependencies, inputs to identity-compared hooks, and third-party props such as lightbox `slides` or photo-album `photos`.
 - Don't key a component by server state that its own `router.refresh()` changes. The remount drops local feedback and focus. Adjust local state from changed props during render instead.
 - `useWorkspaceAction` reports a thrown (transport) action failure as `hasErrored` with no `serverError` and runs `onError` for it. Handle it in `onError`. If you also pass `onTransportError`, the hook skips `onError` for transport-only failures, so put the handling in one place.
+- The server already localizes `serverError`, so render `serverError ?? <your transport fallback copy>`. Don't match or translate its text on the client.
 
 ## Copy and locale
 

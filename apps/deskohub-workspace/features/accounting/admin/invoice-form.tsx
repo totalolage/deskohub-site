@@ -38,7 +38,6 @@ import { Label } from "@/shared/components/ui/label";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { formatCount } from "@/shared/utils/number";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
-import { getInvoiceAdminActionFailureMessage } from "./action-failure-message";
 import {
   createAdministrationInvoice,
   previewAdministrationInvoice,
@@ -264,7 +263,6 @@ export function InvoiceCreationForm({
   const { execute: search, isExecuting: isSearching } = useWorkspaceAction(
     searchAdministrationInvoiceCustomers,
     {
-      actionName: "searchAdministrationInvoiceCustomers",
       onSuccess: ({ data }) => {
         if (!data) return;
         setSearchError(null);
@@ -273,10 +271,8 @@ export function InvoiceCreationForm({
       },
       onError: ({ error: actionError }) =>
         setSearchError(
-          getInvoiceAdminActionFailureMessage(actionError.serverError, {
-            fallback: m.accountingInvoiceFormSearchError({}, { locale }),
-            locale,
-          })
+          actionError.serverError ??
+            m.accountingInvoiceFormSearchError({}, { locale })
         ),
       onTransportError: () =>
         setSearchError(m.accountingInvoiceFormSearchError({}, { locale })),
@@ -285,7 +281,6 @@ export function InvoiceCreationForm({
   const { execute: create, isExecuting: isCreating } = useWorkspaceAction(
     createAdministrationInvoice,
     {
-      actionName: "createAdministrationInvoice",
       onSuccess: ({ data }) => {
         if (data) {
           draftRef.current = null;
@@ -300,10 +295,8 @@ export function InvoiceCreationForm({
       },
       onError: ({ error: actionError }) =>
         setCreateError(
-          getInvoiceAdminActionFailureMessage(actionError.serverError, {
-            fallback: m.accountingInvoiceFormCreateError({}, { locale }),
-            locale,
-          })
+          actionError.serverError ??
+            m.accountingInvoiceFormCreateError({}, { locale })
         ),
       onTransportError: () =>
         setCreateError(m.accountingInvoiceFormCreateError({}, { locale })),
@@ -312,7 +305,6 @@ export function InvoiceCreationForm({
   const { execute: preview, isExecuting: isPreviewing } = useWorkspaceAction(
     previewAdministrationInvoice,
     {
-      actionName: "previewAdministrationInvoice",
       onSuccess: ({ data }) => {
         if (!data) return;
         setPreviewError(null);
@@ -320,10 +312,8 @@ export function InvoiceCreationForm({
       },
       onError: ({ error: actionError }) =>
         setPreviewError(
-          getInvoiceAdminActionFailureMessage(actionError.serverError, {
-            fallback: m.accountingInvoiceFormPreviewError({}, { locale }),
-            locale,
-          })
+          actionError.serverError ??
+            m.accountingInvoiceFormPreviewError({}, { locale })
         ),
       onTransportError: () =>
         setPreviewError(m.accountingInvoiceFormPreviewError({}, { locale })),

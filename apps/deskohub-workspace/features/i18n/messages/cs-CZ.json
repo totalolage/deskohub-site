@@ -165,6 +165,8 @@
   "errorPageTitle": "Něco se pokazilo.",
   "errorPageDescription": "Stránku se nepodařilo načíst. Zkus to prosím znovu.",
   "errorPageRetry": "Zkusit znovu",
+  "actionTimedOut": "Požadavek trval příliš dlouho. Zkus to prosím znovu.",
+  "actionFailedUnexpectedly": "Při zpracování požadavku se něco pokazilo.",
   "emailPreviewTitle": "Náhledy e-mailů Workspace",
   "emailPreviewNavigationLabel": "Šablony náhledů e-mailů",
   "landingUiHeroVisualTag": "Rytmus pracovního prostoru",

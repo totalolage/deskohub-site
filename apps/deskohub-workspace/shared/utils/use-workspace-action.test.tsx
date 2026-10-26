@@ -28,7 +28,6 @@ const renderWorkspaceAction = (
   const onTransportError = mock();
   const { result } = renderHook(() =>
     useWorkspaceAction(action, {
-      actionName: "test",
       onError,
       ...(withTransportHandler && { onTransportError }),
     })
@@ -107,7 +106,7 @@ describe("useWorkspaceAction", () => {
           if (!call) throw new Error("Unexpected call");
           return call();
         },
-        { actionName: "test", onSuccess, onTransportError }
+        { onSuccess, onTransportError }
       )
     );
 
@@ -143,7 +142,7 @@ describe("useWorkspaceAction", () => {
           new Promise<ActionResult>((_, reject) => {
             rejectCall = reject;
           }),
-        { actionName: "test", onTransportError }
+        { onTransportError }
       )
     );
 

@@ -16,12 +16,12 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import { captureCampaignOperations } from "../../campaign-operation-actions.test-utils";
 import {
   activeVersionFixture,
   automationDetailFixture,
   fixtureCampaignId,
 } from "./automation-detail.test-utils";
-import { captureCampaignOperations } from "./campaign-operation-actions.test-utils";
 
 mock.module("../../campaign-operations.actions", () => ({
   runCampaignOperation: mock(),

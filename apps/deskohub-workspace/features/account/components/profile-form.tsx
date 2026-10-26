@@ -187,7 +187,6 @@ export function ProfileForm({
   };
 
   const lookupAres = useWorkspaceAction(lookupAresBusiness, {
-    actionName: "account.ares-lookup",
     onSuccess: ({ data }) => {
       const lookupResult = data as AresBusinessLookupResult | undefined;
       if (!lookupResult) return;
@@ -261,7 +260,6 @@ export function ProfileForm({
   const { execute, hasErrored, isExecuting, result } = useWorkspaceAction(
     action,
     {
-      actionName: "account.profile",
       onSuccess: ({ data }) => {
         if (data?.status === "referral-code-unavailable") {
           showReferralCodeUnavailable();

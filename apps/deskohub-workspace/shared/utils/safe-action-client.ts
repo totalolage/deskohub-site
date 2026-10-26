@@ -1,7 +1,7 @@
 import { Data } from "effect";
 import { createSafeActionClient } from "next-safe-action";
+import { baseLocale, isLocale, type LocalizedCopy } from "@/features/i18n";
 import { localeMiddleware } from "./action-middleware/locale";
-import { actionRuntimeFailureMessages } from "./action-runtime-failure";
 
 export type SafeActionFailure =
   | Error
@@ -16,17 +16,22 @@ export class PublicSafeActionError extends Data.TaggedError(
   readonly cause?: SafeActionFailure;
 }> {}
 
-export const actionClient = createSafeActionClient({
-  handleServerError(error) {
-    if (error.name === "ZodError") {
-      return actionRuntimeFailureMessages.invalidInput;
-    }
+/**
+ * The safe-action client behind one Workspace action. A public error keeps its
+ * message; any other failure, including a defect or a runtime that could not
+ * start, reports `unexpectedFailure` in the action's locale.
+ */
+export const createWorkspaceActionClient = (unexpectedFailure: LocalizedCopy) =>
+  createSafeActionClient({
+    handleServerError(error, { ctx }) {
+      if (error instanceof PublicSafeActionError) {
+        return error.message;
+      }
 
-    if (error instanceof PublicSafeActionError) {
-      return error.message;
-    }
-
-    return actionRuntimeFailureMessages.unexpected;
-  },
-  defaultValidationErrorsShape: "flattened",
-}).use(localeMiddleware);
+      // A failure before the locale middleware ran leaves no locale behind.
+      const locale =
+        "locale" in ctx && isLocale(ctx.locale) ? ctx.locale : baseLocale;
+      return unexpectedFailure({}, { locale });
+    },
+    defaultValidationErrorsShape: "flattened",
+  }).use(localeMiddleware);

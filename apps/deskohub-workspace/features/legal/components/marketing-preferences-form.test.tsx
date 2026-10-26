@@ -849,7 +849,7 @@ test("keeps save feedback and the focused switch when refreshed props report the
 
 test("announces the invalid-link rejection reason when continuing a replayed link", async () => {
   confirmMarketingManagementAction.mockImplementationOnce(() =>
-    Promise.resolve({ serverError: "invalid-link" })
+    Promise.resolve({ data: { status: "rejected", reason: "invalid-link" } })
   );
   const view = renderForm({
     context: "synthetic-replayed-confirm-context",
@@ -873,7 +873,7 @@ test("announces the invalid-link rejection reason when continuing a replayed lin
 test("announces a stale-context save rejection in the visitor's locale", async () => {
   const locale = "cs-CZ" as const;
   saveMarketingPreferencesAction.mockImplementationOnce(() =>
-    Promise.resolve({ serverError: "stale-context" })
+    Promise.resolve({ data: { status: "rejected", reason: "stale-context" } })
   );
   const view = renderForm(
     {

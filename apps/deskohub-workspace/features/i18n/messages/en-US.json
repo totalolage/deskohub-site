@@ -164,6 +164,8 @@
   "errorPageTitle": "Something went wrong.",
   "errorPageDescription": "The page could not be loaded. Please try again.",
   "errorPageRetry": "Try again",
+  "actionTimedOut": "Request timed out. Please try again.",
+  "actionFailedUnexpectedly": "Something went wrong while executing the operation.",
   "emailPreviewTitle": "Workspace email previews",
   "emailPreviewNavigationLabel": "Email preview templates",
   "landingUiHeroVisualTag": "Workspace flow",

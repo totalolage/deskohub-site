@@ -34,7 +34,6 @@ export function useCheckoutEmailVerification({
   const [error, setError] = useState<string>();
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const seal = useWorkspaceAction(sealCheckoutContact, {
-    actionName: "sealCheckoutContact",
     onSuccess: async ({ data, input }) => {
       if (!data) {
         setError(m.reservationErrorMessage({}, { locale }));

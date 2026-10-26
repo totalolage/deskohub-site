@@ -45,7 +45,9 @@ mock.module("next/navigation", () => ({
 
 mock.module("@/shared/utils/use-workspace-action", () => ({
   useWorkspaceAction: (
-    action: (input: unknown) => Promise<{ serverError?: string }>,
+    action: (
+      input: unknown
+    ) => Promise<{ readonly data?: unknown; readonly serverError?: string }>,
     options: {
       onSuccess?: (args: {
         readonly data?: unknown;
@@ -63,7 +65,7 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
         if (result.serverError) {
           options.onError?.({ error: result });
         } else {
-          options.onSuccess?.({ input });
+          options.onSuccess?.({ data: result.data, input });
         }
         return result;
       } catch (error) {

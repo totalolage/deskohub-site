@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Duration, Effect, Schema } from "effect";
-import { getActionRuntimeFailure } from "../utils/action-runtime-failure";
+import { m as administrationMessages } from "@/features/administration/i18n";
+import { type Locale, m } from "@/features/i18n";
 
 let actionHeaderReads = 0;
 let actionRequestHeaders: Record<string, string> = {};
+let failHeaderReads = false;
 let scheduledTelemetryFlushes = 0;
 
 mock.module("server-only", () => ({}));
@@ -30,6 +32,7 @@ mock.module("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, getAll: () => [] }),
   headers: async () => {
     actionHeaderReads += 1;
+    if (failHeaderReads) throw new Error("Synthetic header failure");
     return new Headers({
       referer: "https://deskohub.test/en-US",
       ...actionRequestHeaders,
@@ -40,6 +43,7 @@ mock.module("next/headers", () => ({
 describe("Workspace actions", () => {
   afterEach(() => {
     actionRequestHeaders = {};
+    failHeaderReads = false;
   });
 
   test("starts the lifecycle after validation and provides Bot protection", async () => {
@@ -227,32 +231,201 @@ describe("Workspace actions", () => {
     );
 
     await expect(action("input")).resolves.toEqual({
-      serverError: "Something went wrong while executing the operation.",
+      serverError: m.actionFailedUnexpectedly({}, { locale: "en-US" }),
     });
-    expect(
-      getActionRuntimeFailure(
-        "Something went wrong while executing the operation."
-      )
-    ).toBe("unexpected");
   });
 
-  test("reports an action that outlives its deadline as a timeout", async () => {
-    const { defineWorkspaceAction } = await import("./workspace-action");
-    const action = defineWorkspaceAction(
-      {
-        deadline: Duration.millis(10),
-        operation: "test.timeout",
-        schema: Schema.toStandardSchemaV1(Schema.String),
-      },
-      () => Effect.never
+  describe("runtime failures in the action's locale", () => {
+    const locales = ["cs-CZ", "en-US"] as const satisfies readonly Locale[];
+    const requestFrom = (locale: Locale) => {
+      actionRequestHeaders = { referer: `https://deskohub.test/${locale}` };
+    };
+
+    test("customer copy differs per locale", () => {
+      expect(m.actionTimedOut({}, { locale: "cs-CZ" })).not.toBe(
+        m.actionTimedOut({}, { locale: "en-US" })
+      );
+      expect(m.actionFailedUnexpectedly({}, { locale: "cs-CZ" })).not.toBe(
+        m.actionFailedUnexpectedly({}, { locale: "en-US" })
+      );
+    });
+
+    test.each(locales)("reports a timeout in %s", async (locale) => {
+      const { defineWorkspaceAction } = await import("./workspace-action");
+      const action = defineWorkspaceAction(
+        {
+          deadline: Duration.millis(10),
+          operation: "test.timeout",
+          schema: Schema.toStandardSchemaV1(Schema.String),
+        },
+        () => Effect.never
+      );
+      requestFrom(locale);
+
+      await expect(action("input")).resolves.toEqual({
+        serverError: m.actionTimedOut({}, { locale }),
+      });
+    });
+
+    test.each(locales)(
+      "reports a failure the action didn't make public in %s",
+      async (locale) => {
+        const { defineWorkspaceAction } = await import("./workspace-action");
+        const action = defineWorkspaceAction(
+          {
+            operation: "test.unexpected",
+            schema: Schema.toStandardSchemaV1(Schema.String),
+          },
+          () => Effect.fail(new Error("Internal failure"))
+        );
+        requestFrom(locale);
+
+        await expect(action("input")).resolves.toEqual({
+          serverError: m.actionFailedUnexpectedly({}, { locale }),
+        });
+      }
     );
 
-    await expect(action("input")).resolves.toEqual({
-      serverError: "Request timed out. Please try again.",
+    test.each(locales)("reports a defect in %s", async (locale) => {
+      const { defineWorkspaceAction } = await import("./workspace-action");
+      const action = defineWorkspaceAction(
+        {
+          operation: "test.defect",
+          schema: Schema.toStandardSchemaV1(Schema.String),
+        },
+        () => Effect.die(new Error("Synthetic defect"))
+      );
+      requestFrom(locale);
+
+      await expect(action("input")).resolves.toEqual({
+        serverError: m.actionFailedUnexpectedly({}, { locale }),
+      });
     });
-    expect(
-      getActionRuntimeFailure("Request timed out. Please try again.")
-    ).toBe("timeout");
+
+    // A runtime that cannot start rejects the action's run before it enters
+    // the Effect, which the safe-action client sees as a thrown error.
+    test.each(locales)(
+      "reports a run that rejects before the Effect starts in %s",
+      async (locale) => {
+        const { createWorkspaceActionClient } = await import(
+          "../utils/safe-action-client"
+        );
+        const action = createWorkspaceActionClient(
+          m.actionFailedUnexpectedly
+        ).action(() => Promise.reject(new Error("Runtime could not start")));
+        requestFrom(locale);
+
+        await expect(action()).resolves.toEqual({
+          serverError: m.actionFailedUnexpectedly({}, { locale }),
+        });
+      }
+    );
+
+    test("reports a failure before the locale is known in the base locale", async () => {
+      const { baseLocale } = await import("@/features/i18n");
+      const { defineWorkspaceAction } = await import("./workspace-action");
+      const action = defineWorkspaceAction(
+        {
+          operation: "test.locale-failure",
+          schema: Schema.toStandardSchemaV1(Schema.String),
+        },
+        () => Effect.succeed("unreachable")
+      );
+      failHeaderReads = true;
+
+      await expect(action("input")).resolves.toEqual({
+        serverError: m.actionFailedUnexpectedly({}, { locale: baseLocale }),
+      });
+    });
+  });
+
+  describe("failure copy and fallback", () => {
+    const failureCopy = {
+      timeout: administrationMessages.administrationActionTimedOut,
+      unexpected: administrationMessages.administrationActionFailedUnexpectedly,
+    };
+    const fallback =
+      administrationMessages.administrationReservationLookupFailed;
+    const locale = "cs-CZ";
+
+    test("an action's failure copy replaces the customer copy", async () => {
+      const { defineWorkspaceAction } = await import("./workspace-action");
+      const timeout = defineWorkspaceAction(
+        {
+          deadline: Duration.millis(10),
+          failureCopy,
+          operation: "test.area-timeout",
+          schema: Schema.toStandardSchemaV1(Schema.String),
+        },
+        () => Effect.never
+      );
+      const unexpected = defineWorkspaceAction(
+        {
+          failureCopy,
+          operation: "test.area-unexpected",
+          schema: Schema.toStandardSchemaV1(Schema.String),
+        },
+        () => Effect.die(new Error("Synthetic defect"))
+      );
+      actionRequestHeaders = { referer: `https://deskohub.test/${locale}` };
+
+      await expect(timeout("input")).resolves.toEqual({
+        serverError: failureCopy.timeout({}, { locale }),
+      });
+      await expect(unexpected("input")).resolves.toEqual({
+        serverError: failureCopy.unexpected({}, { locale }),
+      });
+    });
+
+    test("the fallback replaces a typed failure but not a defect, a timeout, or a public error", async () => {
+      const { defineWorkspaceAction } = await import("./workspace-action");
+      const { PublicSafeActionError } = await import(
+        "../utils/safe-action-client"
+      );
+      const define = <E extends Error>(
+        operation: string,
+        handler: () => Effect.Effect<never, E>,
+        deadline?: Duration.Input
+      ) =>
+        defineWorkspaceAction(
+          {
+            ...(deadline !== undefined && { deadline }),
+            failureCopy,
+            fallback,
+            operation,
+            schema: Schema.toStandardSchemaV1(Schema.String),
+          },
+          handler
+        );
+      const typedFailure = define("test.fallback-failure", () =>
+        Effect.fail(new Error("Internal failure"))
+      );
+      const defect = define("test.fallback-defect", () =>
+        Effect.die(new Error("Synthetic defect"))
+      );
+      const timeout = define(
+        "test.fallback-timeout",
+        () => Effect.never,
+        Duration.millis(10)
+      );
+      const publicFailure = define("test.fallback-public", () =>
+        Effect.fail(new PublicSafeActionError({ message: "Public failure" }))
+      );
+      actionRequestHeaders = { referer: `https://deskohub.test/${locale}` };
+
+      await expect(typedFailure("input")).resolves.toEqual({
+        serverError: fallback({}, { locale }),
+      });
+      await expect(defect("input")).resolves.toEqual({
+        serverError: failureCopy.unexpected({}, { locale }),
+      });
+      await expect(timeout("input")).resolves.toEqual({
+        serverError: failureCopy.timeout({}, { locale }),
+      });
+      await expect(publicFailure("input")).resolves.toEqual({
+        serverError: "Public failure",
+      });
+    });
   });
 
   test("supports stateful form actions explicitly", async () => {

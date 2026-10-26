@@ -27,11 +27,13 @@ import type { InvoiceFormOutput } from "./invoice-form";
 
 const billingEmail = testEmailAddress("billing");
 
-mock.module("./actions", () => ({
+// Distinct functions, so a hook mock can tell which action the form wired.
+const invoiceActions = {
   createAdministrationInvoice: async () => ({}),
   previewAdministrationInvoice: async () => ({}),
   searchAdministrationInvoiceCustomers: async () => ({}),
-}));
+};
+mock.module("./actions", () => invoiceActions);
 mock.module("next/navigation", () => ({
   useParams: () => ({ locale: "en-US" }),
   useRouter: () => ({ push: workspaceRouterPush }),
@@ -280,9 +282,8 @@ const fillValidPersonInvoice = (view: InvoiceFormView) => {
 
 const mockPreviewAction = () => {
   const preview = mock();
-  workspaceUseAction.mockImplementation((_action, options) => {
-    const actionName = (options as { readonly actionName: string }).actionName;
-    if (actionName === "previewAdministrationInvoice") {
+  workspaceUseAction.mockImplementation((action) => {
+    if (action === invoiceActions.previewAdministrationInvoice) {
       return { execute: preview, isExecuting: false } as never;
     }
     return { execute: mock(), isExecuting: false } as never;
@@ -475,17 +476,16 @@ test("retries creation with the same id for an unchanged invoice and a new id af
   let createOnError:
     | ((result: { error: { serverError: string } }) => void)
     | undefined;
-  workspaceUseAction.mockImplementation((_action, options) => {
+  workspaceUseAction.mockImplementation((action, options) => {
     const actionOptions = options as {
-      readonly actionName: string;
       readonly onSuccess?: typeof previewOnSuccess;
       readonly onError?: typeof createOnError;
     };
-    if (actionOptions.actionName === "previewAdministrationInvoice") {
+    if (action === invoiceActions.previewAdministrationInvoice) {
       previewOnSuccess = actionOptions.onSuccess;
       return { execute: preview, isExecuting: false } as never;
     }
-    if (actionOptions.actionName === "createAdministrationInvoice") {
+    if (action === invoiceActions.createAdministrationInvoice) {
       createOnError = actionOptions.onError;
       return { execute: create, isExecuting: false } as never;
     }
@@ -533,16 +533,15 @@ test("leaves an unedited suggested variable symbol to the server", async () => {
   let previewOnSuccess:
     | ((result: { data: { dataUrl: string } }) => void)
     | undefined;
-  workspaceUseAction.mockImplementation((_action, options) => {
+  workspaceUseAction.mockImplementation((action, options) => {
     const actionOptions = options as {
-      readonly actionName: string;
       readonly onSuccess?: typeof previewOnSuccess;
     };
-    if (actionOptions.actionName === "previewAdministrationInvoice") {
+    if (action === invoiceActions.previewAdministrationInvoice) {
       previewOnSuccess = actionOptions.onSuccess;
       return { execute: preview, isExecuting: false } as never;
     }
-    if (actionOptions.actionName === "createAdministrationInvoice") {
+    if (action === invoiceActions.createAdministrationInvoice) {
       return { execute: create, isExecuting: false } as never;
     }
     return { execute: mock(), isExecuting: false } as never;
@@ -579,17 +578,16 @@ test("keeps the draft id when a whitespace-only edit produces the same payload",
   let createOnError:
     | ((result: { error: { serverError: string } }) => void)
     | undefined;
-  workspaceUseAction.mockImplementation((_action, options) => {
+  workspaceUseAction.mockImplementation((action, options) => {
     const actionOptions = options as {
-      readonly actionName: string;
       readonly onSuccess?: typeof previewOnSuccess;
       readonly onError?: typeof createOnError;
     };
-    if (actionOptions.actionName === "previewAdministrationInvoice") {
+    if (action === invoiceActions.previewAdministrationInvoice) {
       previewOnSuccess = actionOptions.onSuccess;
       return { execute: preview, isExecuting: false } as never;
     }
-    if (actionOptions.actionName === "createAdministrationInvoice") {
+    if (action === invoiceActions.createAdministrationInvoice) {
       createOnError = actionOptions.onError;
       return { execute: create, isExecuting: false } as never;
     }

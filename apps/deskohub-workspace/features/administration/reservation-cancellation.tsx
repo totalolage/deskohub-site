@@ -30,7 +30,6 @@ import {
   FormMessage,
 } from "@/shared/components/ui/form";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
-import { getAdministrationActionFailureMessage } from "./action-failure-message";
 import { cancelAdministrationReservation } from "./actions";
 import { m } from "./i18n";
 import { AdministrationAlert } from "./notice";
@@ -104,7 +103,6 @@ export function ReservationCancellation({
   const { execute, isExecuting } = useWorkspaceAction(
     cancelAdministrationReservation,
     {
-      actionName: "cancelAdministrationReservation",
       onSuccess: ({ data }) => {
         if (!data) return;
         setOpen(false);
@@ -120,13 +118,8 @@ export function ReservationCancellation({
       },
       onError: ({ error: actionError }) =>
         setError(
-          getAdministrationActionFailureMessage(actionError.serverError, {
-            fallback: m.administrationReservationCancellationFailed(
-              {},
-              { locale }
-            ),
-            locale,
-          })
+          actionError.serverError ??
+            m.administrationReservationCancellationFailed({}, { locale })
         ),
       onTransportError: () =>
         setError(
