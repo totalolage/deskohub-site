@@ -1,12 +1,9 @@
 import "server-only";
 
-import {
-  CliAuthenticationCode,
-  type CliAuthenticationCodeType,
-} from "@deskohub/workspace-admin-api";
+import { CliAuthenticationCode } from "@deskohub/workspace-admin-api";
 import { Effect, Option, Schema } from "effect";
-import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
+import { runAdministrationPage } from "@/features/administrators/server/administration-request.server";
 import type {
   CliApprovalRequest,
   CliSessionAdministrationItem,
@@ -27,45 +24,34 @@ export type CliSessionsPageData = {
   readonly sessions: ReadonlyArray<CliSessionAdministrationItem>;
 };
 
-export const loadCliAuthenticationApproval = async (
+export const loadCliAuthenticationApproval = (
   code: CliAuthenticationCodeInput
-): Promise<CliApprovalPageData | null> => {
-  const administrator = await authorizeAdministratorPage();
-  const decoded = Schema.decodeUnknownOption(CliAuthenticationCode)(code);
-  if (Option.isNone(decoded)) return null;
+): Promise<CliApprovalPageData | null> =>
+  runAdministrationPage(
+    "cli-authentication.inspect-approval",
+    Effect.gen(function* () {
+      const administrator = yield* CurrentAdministrator;
+      const decoded = Schema.decodeUnknownOption(CliAuthenticationCode)(code);
+      if (Option.isNone(decoded)) return null;
+      const authentication = yield* CliAuthentication;
+      return {
+        administratorEmail: administrator.email,
+        request: yield* authentication.inspectApproval(decoded.value),
+      };
+    }),
+    CliAuthentication.Live
+  );
 
-  return {
-    administratorEmail: administrator.email,
-    request: await CliAuthentication.pipe(
-      Effect.flatMap((authentication) =>
-        authentication.inspectApproval(decoded.value)
-      ),
-      Effect.provide(CliAuthentication.Live),
-      runWorkspaceEffect("cli-authentication.inspect-approval", {
-        boundary: "page",
-      })
-    ),
-  };
-};
-
-export const loadCliSessions = async (): Promise<CliSessionsPageData> => {
-  const administrator = await authorizeAdministratorPage();
-  return {
-    administratorEmail: administrator.email,
-    sessions: await CliAuthentication.pipe(
-      Effect.flatMap((authentication) =>
-        authentication.listSessions(administrator.accountId)
-      ),
-      Effect.provide(CliAuthentication.Live),
-      runWorkspaceEffect("cli-authentication.list-sessions", {
-        boundary: "page",
-      })
-    ),
-  };
-};
-
-export const decodeCliAuthenticationCode = (code: CliAuthenticationCodeInput) =>
-  Schema.decodeUnknownEffect(CliAuthenticationCode)(code) as Effect.Effect<
-    CliAuthenticationCodeType,
-    Schema.SchemaError
-  >;
+export const loadCliSessions = (): Promise<CliSessionsPageData> =>
+  runAdministrationPage(
+    "cli-authentication.list-sessions",
+    Effect.gen(function* () {
+      const administrator = yield* CurrentAdministrator;
+      const authentication = yield* CliAuthentication;
+      return {
+        administratorEmail: administrator.email,
+        sessions: yield* authentication.listSessions(administrator.accountId),
+      };
+    }),
+    CliAuthentication.Live
+  );
