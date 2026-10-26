@@ -3,7 +3,10 @@ import {
   type DotyposCustomer,
   type DotyposCustomerId,
   type DotyposReadFailure,
+  DotyposRejected,
   DotyposService,
+  DotyposUnavailable,
+  DotyposVersionConflict,
   type FindCustomerResult,
   normalizePhoneNumber,
 } from "@deskohub/dotypos";
@@ -29,20 +32,51 @@ class CustomerRereadFailure extends Data.TaggedError("CustomerRereadFailure")<{
 }> {}
 
 /**
- * Stage 3 compatibility: the patch failures the adapter settled by rereading
- * before the outcome tags, i.e. a lost connection or HTTP 429 or 5xx,
- * including a synthetic 502. An unreadable or status-less response still
- * fails at once, and an exhausted 429 or ETag read is still settled. Stage 5
+ * The attempt that ended a patch call. A replayed write stays uncertain after
+ * a later attempt fails differently, and carries that last attempt as cause.
+ */
+const terminalAttempt = (
+  failure: DotyposConditionalWriteFailure
+): DotyposConditionalWriteFailure =>
+  failure._tag === "DotyposUncertain" &&
+  (failure.cause instanceof DotyposUnavailable ||
+    failure.cause instanceof DotyposRejected ||
+    failure.cause instanceof DotyposVersionConflict)
+    ? failure.cause
+    : failure;
+
+/**
+ * Stage 3 compatibility: the adapter judges the terminal attempt as it did
+ * before the outcome tags. A lost connection or HTTP 429 or 5xx, including a
+ * synthetic 502, an exhausted rate limit and a failed ETag read, is settled
+ * by rereading; an unreadable or status-less response fails at once. Stage 5
  * may narrow this to DotyposUncertain.
  */
-const settlesByReread = (failure: DotyposConditionalWriteFailure): boolean =>
-  failure._tag === "DotyposVersionConflict"
-    ? false
-    : failure.reason === "transport" ||
-      failure.reason === "timeout" ||
-      failure.reason === "rate-limited" ||
-      failure.reason === "server" ||
-      (failure.httpStatus !== undefined && failure.httpStatus >= 500);
+const settlesByReread = (failure: DotyposConditionalWriteFailure): boolean => {
+  const attempt = terminalAttempt(failure);
+  if (attempt._tag === "DotyposVersionConflict") return false;
+  return (
+    attempt.reason === "transport" ||
+    attempt.reason === "timeout" ||
+    attempt.reason === "rate-limited" ||
+    attempt.reason === "server" ||
+    (attempt.httpStatus !== undefined && attempt.httpStatus >= 500)
+  );
+};
+
+/**
+ * Stage 3 compatibility: besides a settled failure, any terminal 409 or 412
+ * gets the one replay, as before the outcome tags.
+ */
+const replaysPatch = (failure: DotyposConditionalWriteFailure): boolean => {
+  const attempt = terminalAttempt(failure);
+  return (
+    attempt._tag === "DotyposVersionConflict" ||
+    attempt.httpStatus === 409 ||
+    attempt.httpStatus === 412 ||
+    settlesByReread(failure)
+  );
+};
 
 export type DotyposCustomerError =
   | DotyposConditionalWriteFailure
@@ -396,8 +430,8 @@ export class CustomerDotyposAdapter extends Context.Service<
       /**
        * Patches the customer and settles a possibly applied failure by
        * rereading it. At most two patch executions run, each of which the
-       * package may replay: a second one follows a version conflict or a
-       * settled failure the reread shows unapplied. Reread failures are never
+       * package may replay: a second one follows a 409 or 412 or a settled
+       * failure the reread shows unapplied. Reread failures are never
        * retried. None means the customer does not exist.
        */
       const patchWithReread = Effect.fn(
@@ -423,13 +457,10 @@ export class CustomerDotyposAdapter extends Context.Service<
           failure._tag !== "CustomerRereadFailure";
 
         return yield* attempt.pipe(
-          Effect.catchIf(
-            (failure) =>
-              isPatchFailure(failure) &&
-              (failure._tag === "DotyposVersionConflict" ||
-                settlesByReread(failure)),
-            () => attempt
-          ),
+          Effect.retry({
+            times: 1,
+            while: (failure) => isPatchFailure(failure) && replaysPatch(failure),
+          }),
           // The final settlement read after the second execution.
           Effect.catchIf(
             (failure) => isPatchFailure(failure) && settlesByReread(failure),
