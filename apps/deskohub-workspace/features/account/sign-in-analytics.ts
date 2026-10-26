@@ -1,7 +1,7 @@
 "use client";
 
 import { Option, Schema } from "effect";
-import posthog from "posthog-js";
+import { captureAnalyticsEvent } from "@/features/cookie-consent/analytics-events";
 import {
   readSessionStorageItem,
   writeSessionStorageItem,
@@ -54,9 +54,10 @@ const readRecordedMethod = (): SignInMethod | undefined => {
 };
 
 /**
- * Notes a finished sign-in in this tab. PostHog drops events until the new
- * account identity settles, which happens only after the next page load, so
- * the completion event is captured later by
+ * Notes a finished sign-in in this tab. The new account identity settles only
+ * after the next page load, and an event captured now would go out under the
+ * identity analytics settles on first, so the completion event is captured
+ * later by
  * `captureRecordedSignInCompletion`. Without analytics consent nothing is
  * stored. `keepRecorded` leaves an earlier fresh record (a code sign-in that
  * passes through the link callback) in place.
@@ -81,27 +82,18 @@ export const captureRecordedSignInCompletion = (): void => {
   const method = readRecordedMethod();
   writeSessionStorageItem(completionStorageKey, null);
   if (method === undefined) return;
-  posthog.capture(SIGN_IN_COMPLETED_EVENT, { method });
+  captureAnalyticsEvent(SIGN_IN_COMPLETED_EVENT, { method });
 };
 
 export const captureSignInCodeRejection = (
   reason: SignInCodeRejectionReason
-): void => {
-  if (!hasAnalyticsConsent()) return;
-  posthog.capture(SIGN_IN_CODE_REJECTED_EVENT, { reason });
-};
+): void => captureAnalyticsEvent(SIGN_IN_CODE_REJECTED_EVENT, { reason });
 
-export const capturePasskeyAdded = (source: PasskeyAddedSource): void => {
-  if (!hasAnalyticsConsent()) return;
-  posthog.capture(PASSKEY_ADDED_EVENT, { source });
-};
+export const capturePasskeyAdded = (source: PasskeyAddedSource): void =>
+  captureAnalyticsEvent(PASSKEY_ADDED_EVENT, { source });
 
-export const capturePasskeyRemoved = (): void => {
-  if (!hasAnalyticsConsent()) return;
-  posthog.capture(PASSKEY_REMOVED_EVENT);
-};
+export const capturePasskeyRemoved = (): void =>
+  captureAnalyticsEvent(PASSKEY_REMOVED_EVENT);
 
-export const capturePasskeyPromptDismissed = (): void => {
-  if (!hasAnalyticsConsent()) return;
-  posthog.capture(PASSKEY_PROMPT_DISMISSED_EVENT);
-};
+export const capturePasskeyPromptDismissed = (): void =>
+  captureAnalyticsEvent(PASSKEY_PROMPT_DISMISSED_EVENT);

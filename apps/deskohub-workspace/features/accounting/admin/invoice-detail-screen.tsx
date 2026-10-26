@@ -1,5 +1,5 @@
-import { BigDecimal } from "effect";
 import { Suspense } from "react";
+import { InvoiceSettlement } from "@/features/accounting/invoice-settlement";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationDetailSection,
@@ -82,19 +82,21 @@ async function InvoiceDetailContent({
                   <InvoicePaymentStatusBadge status={invoice.paymentStatus} />
                 </dd>
               </div>
-              {invoice.dueDate &&
-                BigDecimal.isPositive(
-                  BigDecimal.fromStringUnsafe(invoice.total)
-                ) && (
-                  <div>
-                    <dt className="text-navy-blue/60">
-                      {m.accountingInvoiceDetailDueDate({}, { locale })}
-                    </dt>
-                    <dd className="font-semibold">
-                      {formatAdministrationPlainDate(invoice.dueDate, locale)}
-                    </dd>
-                  </div>
-                )}
+              {InvoiceSettlement.$is("PaymentRequested")(
+                invoice.settlement
+              ) && (
+                <div>
+                  <dt className="text-navy-blue/60">
+                    {m.accountingInvoiceDetailDueDate({}, { locale })}
+                  </dt>
+                  <dd className="font-semibold">
+                    {formatAdministrationPlainDate(
+                      invoice.settlement.dueDate,
+                      locale
+                    )}
+                  </dd>
+                </div>
+              )}
               {invoice.paidOn && (
                 <div>
                   <dt className="text-navy-blue/60">

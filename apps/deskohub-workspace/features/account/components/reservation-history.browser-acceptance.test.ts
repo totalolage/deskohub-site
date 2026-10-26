@@ -2,13 +2,10 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { type Browser, chromium, type Locator } from "@playwright/test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import type {
   CustomerReservationHistory,
   CustomerReservationSummary,
 } from "@/features/account/contracts";
-import { getAccountSectionPath } from "@/features/account/routes";
-import type { AccountSection } from "@/features/account/sections";
 import { getWorkspaceMeetingRoomProductTitle } from "@/features/checkout/product-catalog.i18n";
 import { m } from "@/features/i18n";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
@@ -17,7 +14,6 @@ import { ReservationHistory } from "./reservation-history";
 import { AccountShell } from "./shell/account-shell";
 
 const locale = "en-US" as const;
-const copy = getAccountScreenCopy(locale);
 const productTitle = getWorkspaceMeetingRoomProductTitle(locale);
 
 const reservation = (
@@ -68,15 +64,11 @@ const renderReservationsScreen = () =>
       AccountShell,
       {
         activeSection: "reservations",
-        labels: copy.shell,
+        locale,
         onSectionChange: () => undefined,
-        sectionHref: (section: AccountSection) =>
-          getAccountSectionPath(locale, section),
         signOut: null,
-        title: m.accountTitle({}, { locale }),
       },
       createElement(ReservationHistory, {
-        copy: copy.reservations,
         history,
         locale,
       })
@@ -117,21 +109,30 @@ const readFeaturedCardLayout = async ({
           .querySelector("aside")
           ?.nextElementSibling?.getBoundingClientRect().width ?? 0
     );
-    const assignedDeskLabel = page.getByText(copy.reservations.assignedDesk, {
-      exact: true,
-    });
+    const assignedDeskLabel = page.getByText(
+      m.accountReservationAssignedDesk({}, { locale }),
+      {
+        exact: true,
+      }
+    );
     const product = await box(
       page.getByRole("heading", { level: 3, name: productTitle }).locator("..")
     );
     const validity = await box(
-      page.getByText(copy.reservations.validity, { exact: true }).locator("..")
+      page
+        .getByText(m.accountReservationValidity({}, { locale }), {
+          exact: true,
+        })
+        .locator("..")
     );
     const desk = await box(assignedDeskLabel.locator("../.."));
     const assignedDeskLineHeight = await assignedDeskLabel.evaluate((element) =>
       Number.parseFloat(getComputedStyle(element).lineHeight)
     );
     const pastTableHeaderVisible = await page
-      .getByRole("columnheader", { name: copy.reservations.date })
+      .getByRole("columnheader", {
+        name: m.accountReservationDate({}, { locale }),
+      })
       .isVisible();
 
     return {

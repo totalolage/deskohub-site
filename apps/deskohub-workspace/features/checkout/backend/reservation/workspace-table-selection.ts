@@ -1,9 +1,5 @@
-import {
-  type DotyposTable,
-  type DotyposTableId,
-  ValidationError,
-} from "@deskohub/dotypos";
-import { Effect, Match, Result, Schema } from "effect";
+import type { DotyposTable, DotyposTableId } from "@deskohub/dotypos";
+import { Data, Effect, Match, Result, Schema } from "effect";
 import {
   type WorkspaceCoworkProductTier,
   type WorkspaceProductMonitorOption,
@@ -130,6 +126,15 @@ export const getWorkspaceTableCandidatesByPredicate = (
     return isCandidateTable(new Set(table.tags ?? []));
   });
 
+/** A Dotypos workspace table reports a seat capacity Workspace can't use. */
+export class InvalidDotyposTableSeats extends Data.TaggedError(
+  "InvalidDotyposTableSeats"
+)<{
+  readonly tableId: DotyposTableId | undefined;
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
 const decodeSeatCapacity = Schema.decodeUnknownResult(
   workspaceTableSeatCapacitySchema
 );
@@ -138,7 +143,8 @@ const decodeTableSeatCapacity = (table: DotyposTable) =>
   Result.mapError(
     decodeSeatCapacity(table.seats),
     (cause) =>
-      new ValidationError({
+      new InvalidDotyposTableSeats({
+        tableId: table.id,
         message: `Dotypos workspace table ${table.id ?? table.name} has an invalid seat capacity.`,
         cause,
       })
@@ -154,7 +160,10 @@ export const getWorkspaceTableSeatCapacity = Effect.fn(
  */
 export const decodeTableCandidates = (
   tables: readonly DotyposTable[]
-): Result.Result<readonly WorkspaceTableCandidate[], ValidationError> => {
+): Result.Result<
+  readonly WorkspaceTableCandidate[],
+  InvalidDotyposTableSeats
+> => {
   const candidates: WorkspaceTableCandidate[] = [];
 
   for (const table of tables) {

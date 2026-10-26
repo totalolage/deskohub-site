@@ -20,6 +20,7 @@ import {
   publicPageMetadata,
   requirePublishedPublicPage,
 } from "@/features/public-pages/backend/public-page-route.server";
+import type { PublicPageBreadcrumb } from "@/features/public-pages/components/public-page-breadcrumbs";
 import { publicPageDefinitions } from "@/features/public-pages/public-page-definitions";
 import type { PublicPagePathname } from "@/features/public-pages/public-pages";
 import { checkoutContactReturnState } from "@/features/reservation/backend/checkout-contact-return-state";
@@ -60,6 +61,13 @@ type ReservationPageDefinition<
   Kind extends ReservationKind,
   PageData = undefined,
 > = {
+  /**
+   * The pages above this one, ending with it, when a landing page leads
+   * here. The home page goes first on its own.
+   */
+  readonly breadcrumbs?: (
+    locale: Locale
+  ) => ReadonlyArray<PublicPageBreadcrumb>;
   readonly fallback: (locale: Locale) => ReactNode;
   readonly kind: Kind;
   /**
@@ -134,6 +142,7 @@ export function createReservationPage<
   async function Page({ searchParams }: LocalizedReservationPageProps) {
     return runWithRequestLocale(async (locale) => (
       <ReservationPage
+        breadcrumbs={definition.breadcrumbs?.(locale)}
         fallback={definition.fallback(locale)}
         locale={locale}
         title={publicPageDefinitions[definition.pathname].title({}, { locale })}

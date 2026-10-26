@@ -56,14 +56,12 @@ export const publicPageMetadata =
   (pathname: PublicPagePathname) => async (): Promise<Metadata> =>
     runWithRequestLocale(async (locale) => {
       await requirePublishedPublicPage(pathname);
-      const { title, titleNamesSite, description, article } =
-        publicPageDefinitions[pathname];
-      const pageTitle = title({}, { locale });
+      const { title, description, article } = publicPageDefinitions[pathname];
 
       return createPublicPageMetadata({
         locale,
         pathname,
-        title: titleNamesSite ? { absolute: pageTitle } : { page: pageTitle },
+        title: { page: title({}, { locale }) },
         description: description?.({}, { locale }),
         type: article ? "article" : "website",
       });

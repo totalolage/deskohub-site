@@ -1,5 +1,7 @@
-import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
-import type { AccountPageSection } from "@/features/account/sections";
+import {
+  type AccountPageSection,
+  accountSectionLabel,
+} from "@/features/account/sections";
 import { type Locale, m } from "@/features/i18n";
 
 /**
@@ -15,6 +17,6 @@ export const getAccountPageTitle = (
   section === undefined
     ? m.accountMetadataTitle({}, { locale })
     : m.accountSectionMetadataTitle(
-        { section: getAccountScreenCopy(locale).shell.sections[section] },
+        { section: accountSectionLabel(section, locale) },
         { locale }
       );

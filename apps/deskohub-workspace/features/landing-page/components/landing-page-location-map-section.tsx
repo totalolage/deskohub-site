@@ -49,6 +49,7 @@ export function LandingPageLocationMapSection({
       </div>
       <div className="relative min-h-184 lg:min-h-136 pt-(--separator-height)">
         <LandingPageLocationMap
+          activateLabel={m.landingLocationMapActivate({}, { locale })}
           label={m.landingLocationMapAlt({}, { locale })}
         />
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(244,241,234,0.8)_0%,rgba(244,241,234,0.84)_36%,rgba(244,241,234,0.14)_78%,rgba(244,241,234,0)_100%)] lg:bg-[linear-gradient(90deg,rgba(244,241,234,0.96)_0%,rgba(244,241,234,0.82)_38%,transparent_75%)]" />

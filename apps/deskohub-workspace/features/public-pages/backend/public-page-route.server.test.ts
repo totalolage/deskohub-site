@@ -54,7 +54,7 @@ beforeEach(() => {
 });
 
 describe("public page metadata", () => {
-  for (const { pathname, title, titleNamesSite, article } of publicPages) {
+  for (const { pathname, title, article } of publicPages) {
     const suffix = pathname === "/" ? "" : pathname;
 
     for (const locale of locales) {
@@ -62,10 +62,7 @@ describe("public page metadata", () => {
         requestLocale = locale;
         openGates.add("meeting-room-page").add("office-page");
         const metadata = await pageMetadata(pathname);
-        const pageTitle = title({}, { locale });
-        const documentTitle = titleNamesSite
-          ? pageTitle
-          : `${pageTitle} | ${workspaceSiteConstants.brand.name}`;
+        const documentTitle = `${title({}, { locale })} | ${workspaceSiteConstants.brand.name}`;
 
         expect(metadata.robots).toBeUndefined();
         expect(metadata.title).toBe(documentTitle);

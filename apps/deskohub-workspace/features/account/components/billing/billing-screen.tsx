@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { useId } from "react";
 import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
-import type { Locale } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 
 /*
@@ -18,22 +18,7 @@ import { Button } from "@/shared/components/ui/button";
  * FORM: This shell never owns form markup, fields, values, or persistence; the caller owns them.
  */
 
-export interface BillingScreenCopy {
-  readonly title: string;
-  readonly currency: string;
-  readonly paymentMethodsTitle: string;
-  readonly paymentMethodsUnavailable: string;
-  readonly addPaymentCard: string;
-  readonly removePaymentCard: string;
-  readonly billingDetailsTitle: string;
-  readonly invoiceHistoryTitle: string;
-  readonly invoiceHistoryUnavailable: string;
-  readonly downloadInvoice: string;
-  readonly exportInvoices: string;
-}
-
 export interface BillingScreenProps {
-  readonly copy: BillingScreenCopy;
   readonly locale: Locale;
   readonly children: ReactNode;
   readonly footer?: ReactNode;
@@ -41,7 +26,6 @@ export interface BillingScreenProps {
 
 export function BillingScreen({
   children,
-  copy,
   footer,
   locale,
 }: BillingScreenProps) {
@@ -56,7 +40,7 @@ export function BillingScreen({
     <AccountSectionPanel
       className="min-w-0"
       footer={footer}
-      title={copy.title}
+      title={m.accountSectionBilling({}, { locale })}
       titleId={titleId}
     >
       <section aria-labelledby={paymentMethodsTitleId} className="min-w-0">
@@ -64,7 +48,7 @@ export function BillingScreen({
           id={paymentMethodsTitleId}
           className="break-words text-[15px] font-bold uppercase tracking-[0.075em] text-[#344258]"
         >
-          {copy.paymentMethodsTitle}
+          {m.accountBillingPaymentMethodsTitle({}, { locale })}
         </h3>
         <div className="mt-4 grid min-w-0 gap-4 @xl:grid-cols-2">
           <FutureFeatureTooltip locale={locale}>
@@ -74,7 +58,7 @@ export function BillingScreen({
                 className="size-5 shrink-0 text-[#8291a6]"
               />
               <span className="min-w-0 max-w-full break-words">
-                {copy.addPaymentCard}
+                {m.accountBillingAddPaymentCard({}, { locale })}
               </span>
             </Button>
           </FutureFeatureTooltip>
@@ -88,7 +72,7 @@ export function BillingScreen({
           id={billingDetailsTitleId}
           className="min-w-0 break-words text-lg font-semibold text-[#344258]"
         >
-          {copy.billingDetailsTitle}
+          {m.accountBillingDetailsTitle({}, { locale })}
         </h3>
         <div className="mt-6 min-w-0">{children}</div>
       </section>
@@ -101,7 +85,7 @@ export function BillingScreen({
             id={invoiceHistoryTitleId}
             className="min-w-0 flex-1 break-words text-lg font-semibold text-[#344258]"
           >
-            {copy.invoiceHistoryTitle}
+            {m.accountBillingInvoiceHistoryTitle({}, { locale })}
           </h3>
           <div className="flex w-full min-w-0 flex-wrap gap-2 @xl:w-auto">
             <FutureFeatureTooltip locale={locale}>
@@ -115,7 +99,7 @@ export function BillingScreen({
               >
                 <Download aria-hidden="true" className="size-4 shrink-0" />
                 <span className="min-w-0 break-words">
-                  {copy.downloadInvoice}
+                  {m.accountBillingDownloadInvoice({}, { locale })}
                 </span>
               </Button>
             </FutureFeatureTooltip>
@@ -130,7 +114,7 @@ export function BillingScreen({
               >
                 <FileDown aria-hidden="true" className="size-4 shrink-0" />
                 <span className="min-w-0 break-words">
-                  {copy.exportInvoices}
+                  {m.accountBillingExportInvoices({}, { locale })}
                 </span>
               </Button>
             </FutureFeatureTooltip>
@@ -141,7 +125,7 @@ export function BillingScreen({
             id={invoiceHistoryUnavailableId}
             className="min-w-0 break-words text-sm leading-6 text-[#51627c]"
           >
-            {copy.invoiceHistoryUnavailable}
+            {m.accountBillingInvoiceHistoryUnavailable({}, { locale })}
           </p>
         </div>
       </section>

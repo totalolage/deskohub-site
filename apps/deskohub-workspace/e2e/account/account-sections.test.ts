@@ -2,10 +2,7 @@ import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { Effect } from "effect";
 import { createElement, useState } from "react";
-import {
-  AccountShell,
-  type AccountShellProps,
-} from "@/features/account/components/shell/account-shell";
+import { AccountShell } from "@/features/account/components/shell/account-shell";
 import { getAccountSectionPath } from "@/features/account/routes";
 import type { AccountSection } from "@/features/account/sections";
 import {
@@ -15,7 +12,6 @@ import {
 import type { Runner } from "../runtime";
 import {
   type AccountSectionPage,
-  accountSectionLabels,
   accountSectionLandmarks,
   selectAccountSection,
   selectAccountSectionInRunner,
@@ -32,20 +28,6 @@ const sections = [
 ] as const satisfies readonly AccountSection[];
 
 const accountSectionDataAttribute = "data-account-section";
-
-const shellLabels = {
-  mobileSection: "Account section",
-  navigation: "Account navigation",
-  sections: accountSectionLabels,
-} as const satisfies AccountShellProps["labels"];
-
-const misleadingShellLabels = {
-  ...shellLabels,
-  sections: {
-    ...shellLabels.sections,
-    reservations: "Reservations and billing",
-  },
-} as const satisfies AccountShellProps["labels"];
 
 const sectionPanel = (section: AccountSection, includeLegalLink: boolean) => {
   switch (section) {
@@ -99,11 +81,9 @@ const sectionPanel = (section: AccountSection, includeLegalLink: boolean) => {
 
 function AccountShellHarness({
   includeLegalLink = true,
-  labels = shellLabels,
   reservationCount,
 }: {
   readonly includeLegalLink?: boolean;
-  readonly labels?: AccountShellProps["labels"];
   readonly reservationCount?: number;
 }) {
   const [activeSection, setActiveSection] =
@@ -120,12 +100,10 @@ function AccountShellHarness({
         // AccountShellProps' required children field without replacing them.
         // biome-ignore lint/correctness/noChildrenProp: AccountShellProps requires children in its createElement props type.
         children: null,
-        labels,
+        locale: "en-US",
         onSectionChange: setActiveSection,
         reservationCount,
-        sectionHref: (section) => getAccountSectionPath("en-US", section),
         signOut: createElement("button", { type: "button" }, "Sign out"),
-        title: "Workspace account",
       },
       ...sections.map((section) =>
         createElement(
@@ -263,9 +241,9 @@ const makeFakePage = (
 const setResponsiveNavigationVisibility = (
   mode: "desktop" | "mobile"
 ): void => {
-  const navigation = document.querySelector(
-    'nav[aria-label="Account navigation"]'
-  );
+  const navigation = document
+    .querySelector("[data-account-mobile-navigation]")
+    ?.closest("nav");
   if (!navigation) throw new Error("fake account navigation was not rendered");
 
   for (const child of Array.from(navigation.children)) {
@@ -341,14 +319,8 @@ test("selects every section through rendered desktop AccountShell controls", asy
     expect(landmark).toBeTruthy();
     expect(landmark?.closest("[hidden]")).toBeNull();
 
-    const link = Array.from(
-      document.querySelectorAll(
-        'nav[aria-label="Account navigation"] a:not([data-account-section])'
-      )
-    ).find(
-      (candidate) =>
-        candidate.textContent?.replaceAll(/\s+/g, " ").trim() ===
-        accountSectionLabels[section]
+    const link = document.querySelector(
+      `a[data-account-sidebar-section="${section}"]`
     );
     expect(link?.getAttribute("aria-current")).toBe("page");
     expect(link?.getAttribute("href")).toBe(
@@ -389,12 +361,16 @@ for (const reservationCount of [0, 3] as const) {
 
 test("does not accept a misleading Reservations label prefix", async () => {
   const page = makeFakePage(1440);
-  render(
-    createElement(AccountShellHarness, {
-      labels: misleadingShellLabels,
-      reservationCount: 3,
-    })
+  render(createElement(AccountShellHarness, { reservationCount: 3 }));
+  // The shell names its sections from the catalog, so the test renames the
+  // rendered desktop link.
+  const reservationsLabel = document.querySelector(
+    '[data-account-sidebar-section="reservations"] .break-words'
   );
+  if (reservationsLabel === null) {
+    throw new Error("The desktop Reservations label is not rendered.");
+  }
+  reservationsLabel.textContent = "Reservations and billing";
 
   await expect(selectAccountSection(page, "reservations")).rejects.toThrow(
     "fake account section did not settle"
@@ -442,12 +418,16 @@ test("resolves the responsive section variant when viewport size is unavailable"
       const activeLinks = document.querySelectorAll(
         mode === "mobile"
           ? '[data-account-mobile-navigation] a[aria-current="page"]'
-          : 'nav[aria-label="Account navigation"] a:not([data-account-section])[aria-current="page"]'
+          : 'a[data-account-sidebar-section][aria-current="page"]'
       );
       expect(activeLinks).toHaveLength(1);
-      expect(activeLinks[0]?.textContent?.trim()).toBe(
-        accountSectionLabels[section]
-      );
+      expect(
+        activeLinks[0]?.getAttribute(
+          mode === "mobile"
+            ? "data-account-section"
+            : "data-account-sidebar-section"
+        )
+      ).toBe(section);
       expect(
         document
           .querySelector(accountSectionLandmarks[section])
@@ -484,15 +464,10 @@ test("waits for the rendered section link handler before clicking it", async () 
   });
   render(createElement(AccountShellHarness));
 
-  const billingLink = Array.from(
-    document.querySelectorAll<HTMLAnchorElement>("a")
-  ).find((link) =>
-    link.textContent
-      ?.replaceAll(/\s+/g, " ")
-      .trim()
-      .includes("Billing & Invoices")
+  const billingLink = document.querySelector<HTMLAnchorElement>(
+    'a[data-account-sidebar-section="billing"]'
   );
-  if (billingLink === undefined)
+  if (billingLink === null)
     throw new Error("rendered Billing link was not found");
   const reactPropsKey = Object.keys(billingLink).find((key) =>
     key.startsWith("__reactProps$")

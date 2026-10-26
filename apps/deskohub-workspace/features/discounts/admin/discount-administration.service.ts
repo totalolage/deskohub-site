@@ -5,7 +5,7 @@ import {
   DotyposService,
   type ExternalAPIError,
   type NetworkError,
-  ValidationError,
+  type ValidationError,
 } from "@deskohub/dotypos";
 import type {
   Customer as DotyposCustomer,
@@ -516,6 +516,7 @@ export interface IDiscountAdministration {
     | NetworkError
     | ValidationError
     | DiscountAdminNotFoundError
+    | InvalidDotyposDiscountPercentage
   >;
 }
 
@@ -1627,7 +1628,8 @@ export class DiscountAdministration extends Context.Service<
           if (
             toDotyposDiscountBasisPoints(group.discountPercent) === undefined
           ) {
-            return yield* new ValidationError({
+            return yield* new InvalidDotyposDiscountPercentage({
+              discountGroupId: input.discountGroupId,
               message:
                 "The Dotypos discount group has an invalid discount percentage.",
             });
@@ -1717,6 +1719,14 @@ export class DiscountAdminNotFoundError extends Data.TaggedError(
   "DiscountAdminNotFoundError"
 )<{
   readonly resource: DiscountAdminMissingResource;
+  readonly message: string;
+}> {}
+
+/** A Dotypos discount group reports a percentage Workspace can't apply. */
+class InvalidDotyposDiscountPercentage extends Data.TaggedError(
+  "InvalidDotyposDiscountPercentage"
+)<{
+  readonly discountGroupId: DotyposDiscountGroupId;
   readonly message: string;
 }> {}
 
