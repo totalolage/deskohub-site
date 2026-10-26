@@ -19,7 +19,6 @@ import { standaloneAccessCodeAttemptEvents as events } from "@/db/schema";
 import { quotedSqlList } from "@/db/schema/sql-list";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import type {
   StandaloneAccessCodeFailureCode,
   StandaloneAccessCodeProviderVariance,
@@ -58,12 +57,6 @@ const toAttemptEventActor = (
   actor: null,
   actorAccountId: actor.accountId,
   actorAccountEmail: actor.email,
-});
-
-/** An event's actor columns as inserted, with the email kept out of query logs. */
-const toAttemptEventActorValues = (actor: AttemptEventActor) => ({
-  ...actor,
-  actorAccountEmail: sensitiveDatabaseParameter(actor.actorAccountEmail),
 });
 
 export interface StandaloneAccessCodeCreatedAttemptTerminal {
@@ -233,9 +226,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           .values({
             attemptId: input.attempt.attemptId,
             eventKind: "started",
-            ...toAttemptEventActorValues(
-              toAttemptEventActor(input.attempt.actor)
-            ),
+            ...toAttemptEventActor(input.attempt.actor),
             source: input.attempt.source,
             name: input.attempt.name,
             deviceId: input.attempt.deviceId,
@@ -273,7 +264,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           .values({
             attemptId: input.attempt.attemptId,
             eventKind: input.eventKind,
-            ...toAttemptEventActorValues(input.actor),
+            ...input.actor,
             source: input.attempt.source,
             name: input.attempt.name,
             deviceId: input.attempt.deviceId,
@@ -442,9 +433,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           .values({
             attemptId: input.prior.attemptId,
             eventKind: "reconciled",
-            ...toAttemptEventActorValues(
-              toAttemptEventActor(input.attempt.actor)
-            ),
+            ...toAttemptEventActor(input.attempt.actor),
             source: input.attempt.source,
             name: input.prior.name,
             deviceId: input.prior.deviceId,

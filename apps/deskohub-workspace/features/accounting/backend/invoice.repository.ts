@@ -39,7 +39,6 @@ import {
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import {
   AccountingDocumentSnapshotRepository,
@@ -665,7 +664,7 @@ export class InvoiceRepository extends Context.Service<
             yield* tx.insert(manualInvoiceActors).values({
               invoiceId: normalized.invoiceId,
               actorAccountId: issuedBy.accountId,
-              actorAccountEmail: sensitiveDatabaseParameter(issuedBy.email),
+              actorAccountEmail: issuedBy.email,
             });
             return { changed: true } as const;
           })

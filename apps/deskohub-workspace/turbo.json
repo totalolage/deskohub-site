@@ -12,7 +12,11 @@
       "inputs": ["$TURBO_DEFAULT$"]
     },
     "lint:knip": {
-      "dependsOn": ["i18n:compile", "booking-widget:build"],
+      "dependsOn": [
+        "i18n:compile",
+        "booking-widget:build",
+        "temporal-polyfill:build"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "../../knip.jsonc",
@@ -29,6 +33,7 @@
         "@deskohub/nexi#generate",
         "i18n:compile",
         "booking-widget:build",
+        "temporal-polyfill:build",
         "typecheck"
       ],
       "passThroughEnv": ["BETTER_AUTH_SECRETS", "REVIEW_ACCOUNT_CREDENTIALS"]
@@ -52,7 +57,8 @@
       "inputs": [
         "features/i18n/messages/*.json",
         "project.inlang/settings.json",
-        "project.inlang/project_id"
+        "project.inlang/project_id",
+        "package.json"
       ],
       "outputs": ["features/i18n/paraglide/**"]
     },
@@ -60,7 +66,8 @@
       "env": ["!NEXT_PUBLIC_VERCEL_*"],
       "inputs": [
         "features/administration/i18n/messages/**/*.json",
-        "features/administration/i18n/project.inlang/settings.json"
+        "features/administration/i18n/project.inlang/settings.json",
+        "package.json"
       ],
       "outputs": ["features/administration/i18n/paraglide/**"]
     },
@@ -84,7 +91,8 @@
         "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
         "i18n:compile",
-        "booking-widget:build"
+        "booking-widget:build",
+        "temporal-polyfill:build"
       ]
     },
     "test": {
@@ -95,7 +103,8 @@
         "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
         "i18n:compile",
-        "booking-widget:build"
+        "booking-widget:build",
+        "temporal-polyfill:build"
       ],
       "passThroughEnv": ["WORKSPACE_TEST_DATABASE_URL"]
     },
@@ -118,6 +127,7 @@
         "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
         "i18n:compile",
+        "temporal-polyfill:build",
         "typegen"
       ]
     },
@@ -135,6 +145,22 @@
         "!**/generated/**"
       ],
       "outputs": ["features/agent-tools/booking-widget/generated/**"]
+    },
+    "temporal-polyfill:build": {
+      "env": ["!NEXT_PUBLIC_VERCEL_*"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!**/*.test.{ts,tsx}",
+        "!**/*.test-utils.ts",
+        "!e2e/**",
+        "!**/generated/**",
+        "!public/polyfills/**",
+        "$TURBO_ROOT$/packages/workspace-admin-api/src/site-time-zone.ts"
+      ],
+      "outputs": [
+        "public/polyfills/**",
+        "shared/polyfills/generated/**"
+      ]
     }
   }
 }

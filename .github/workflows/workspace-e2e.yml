@@ -680,6 +680,24 @@ jobs:
           "$browser_path" --version
           echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$browser_path" >> "$GITHUB_ENV"
 
+      - name: Resolve Workspace Playwright version
+        id: playwright
+        working-directory: apps/deskohub-workspace
+        run: echo "version=$(bun -p 'require("@playwright/test/package.json").version')" >> "$GITHUB_OUTPUT"
+
+      # The WebKit project covers Safari and iOS, which get the Temporal
+      # polyfill. Restores only the browser download; the install step below
+      # still installs WebKit's system packages on every run.
+      - name: Cache Workspace Playwright WebKit
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-webkit-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install Workspace Playwright WebKit
+        working-directory: apps/deskohub-workspace
+        run: bun ./node_modules/@playwright/test/cli.js install --with-deps webkit
+
       - name: Run checkout E2E
         env:
           TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}

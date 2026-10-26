@@ -20,7 +20,6 @@ import { canonicalPromotionCodeSchema } from "@/features/discounts/contracts";
 import { parseReferralCode } from "@/features/referrals/client";
 import { getReferralReferrerDiscountId } from "@/features/referrals/discount-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import type { DatabaseClient } from "../../db/database-client";
 import type { WorkspaceE2EError } from "../errors";
@@ -72,7 +71,7 @@ const insertReferralCode = Effect.fn("seedWorkspaceE2EReferralCode")(function* (
   const [promotion] = yield* tx
     .insert(promotionCodes)
     .values({
-      code: sensitiveDatabaseParameter(canonicalPromotionCodeSchema.make(code)),
+      code: canonicalPromotionCodeSchema.make(code),
       enabled: true,
       kind: "referral",
       validFrom: null,

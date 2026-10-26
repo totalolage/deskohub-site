@@ -15,6 +15,7 @@ import type { Locale } from "@/features/i18n";
 import inlangSettings from "../../project.inlang/settings.json" with {
   type: "json",
 };
+import { sensitiveText } from "../sensitive-text";
 import { customerAccounts } from "./customer-accounts";
 import { quotedSqlList } from "./sql-list";
 
@@ -29,7 +30,7 @@ export const authUser = authSchema.table(
       .primaryKey()
       .references(() => customerAccounts.id, { onDelete: "restrict" }),
     name: text("name").notNull(),
-    email: text("email").notNull(),
+    email: sensitiveText("email").notNull(),
     emailVerified: boolean("email_verified").default(false).notNull(),
     image: text("image"),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -58,15 +59,15 @@ export const authSession = authSchema.table(
   {
     id: text("id").primaryKey(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    token: text("token").notNull(),
+    token: sensitiveText("token").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .$onUpdate(() => new Date()),
-    ipAddress: text("ip_address"),
-    userAgent: text("user_agent"),
+    ipAddress: sensitiveText("ip_address"),
+    userAgent: sensitiveText("user_agent"),
     userId: text("user_id")
       .notNull()
       .references(() => authUser.id, { onDelete: "cascade" }),
@@ -88,9 +89,9 @@ export const authAccount = authSchema.table(
     userId: text("user_id")
       .notNull()
       .references(() => authUser.id, { onDelete: "cascade" }),
-    accessToken: text("access_token"),
-    refreshToken: text("refresh_token"),
-    idToken: text("id_token"),
+    accessToken: sensitiveText("access_token"),
+    refreshToken: sensitiveText("refresh_token"),
+    idToken: sensitiveText("id_token"),
     accessTokenExpiresAt: timestamp("access_token_expires_at", {
       withTimezone: true,
     }),
@@ -98,7 +99,7 @@ export const authAccount = authSchema.table(
       withTimezone: true,
     }),
     scope: text("scope"),
-    password: text("password"),
+    password: sensitiveText("password"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -116,8 +117,8 @@ export const authVerification = authSchema.table(
   "verification",
   {
     id: text("id").primaryKey(),
-    identifier: text("identifier").notNull(),
-    value: text("value").notNull(),
+    identifier: sensitiveText("identifier").notNull(),
+    value: sensitiveText("value").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -136,7 +137,7 @@ export const authRateLimit = authSchema.table(
   "rate_limit",
   {
     id: text("id").primaryKey(),
-    key: text("key").notNull(),
+    key: sensitiveText("key").notNull(),
     count: integer("count").notNull(),
     lastRequest: bigint("last_request", { mode: "number" }).notNull(),
   },
@@ -156,7 +157,7 @@ export const authPasskey = authSchema.table(
   "passkey",
   {
     id: text("id").primaryKey(),
-    name: text("name"),
+    name: sensitiveText("name"),
     publicKey: text("public_key").notNull(),
     userId: text("user_id")
       .notNull()
@@ -182,7 +183,7 @@ export const authOauthClient = authSchema.table(
   {
     id: text("id").primaryKey(),
     clientId: text("client_id").notNull(),
-    clientSecret: text("client_secret"),
+    clientSecret: sensitiveText("client_secret"),
     clientDiscoveryId: text("client_discovery_id"),
     disabled: boolean("disabled").default(false),
     skipConsent: boolean("skip_consent"),
@@ -285,7 +286,7 @@ export const authOauthRefreshToken = authSchema.table(
   "oauth_refresh_token",
   {
     id: text("id").primaryKey(),
-    token: text("token").notNull(),
+    token: sensitiveText("token").notNull(),
     clientId: text("client_id")
       .notNull()
       .references(() => authOauthClient.clientId, { onDelete: "cascade" }),
@@ -307,7 +308,7 @@ export const authOauthRefreshToken = authSchema.table(
     createdAt: timestamp("created_at", { withTimezone: true }),
     revoked: timestamp("revoked", { withTimezone: true }),
     rotatedAt: timestamp("rotated_at", { withTimezone: true }),
-    rotationReplayResponse: text("rotation_replay_response"),
+    rotationReplayResponse: sensitiveText("rotation_replay_response"),
     rotationReplayExpiresAt: timestamp("rotation_replay_expires_at", {
       withTimezone: true,
     }),
@@ -332,7 +333,7 @@ export const authOauthAccessToken = authSchema.table(
   "oauth_access_token",
   {
     id: text("id").primaryKey(),
-    token: text("token"),
+    token: sensitiveText("token"),
     clientId: text("client_id")
       .notNull()
       .references(() => authOauthClient.clientId, { onDelete: "cascade" }),

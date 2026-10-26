@@ -30,6 +30,8 @@
         "e2e/agent-evals/harness.stub-fixture.ts",
         // Bundled by path from the booking view's index.html.
         "features/agent-tools/booking-widget/booking-widget.tsx",
+        // Bundled by path into the Temporal polyfill and its <head> loader.
+        "shared/polyfills/*.browser.ts",
         // Bundled by path for browser-rendered test fixtures.
         "shared/testing/posthog-identity-browser-fixture.tsx",
         "types/*.d.ts"
@@ -37,9 +39,13 @@
       // drizzle.config.ts decodes DATABASE_URL at module load, so the plugin cannot
       // load it; drizzle-kit stays verified via binaries from the db:* scripts.
       "drizzle": false,
-      // Registry name served by the @effect/tsgo-patched native TypeScript
-      // (`prepare` script), not an installable module.
-      "ignoreDependencies": ["@effect/language-service"]
+      "ignoreDependencies": [
+        // Registry name served by the @effect/tsgo-patched native TypeScript
+        // (`prepare` script), not an installable module.
+        "@effect/language-service",
+        // Preview server the `email:dev` CLI resolves from the project at runtime.
+        "@react-email/ui"
+      ]
     }
   }
 }
