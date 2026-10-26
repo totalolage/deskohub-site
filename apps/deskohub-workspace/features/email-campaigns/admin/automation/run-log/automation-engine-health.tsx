@@ -194,7 +194,10 @@ export function AutomationEngineHealthIndicator({
   if (Result.isFailure(health)) {
     return (
       <p className="flex items-center gap-2 text-sm text-navy-blue/65 max-sm:items-start">
-        <span aria-hidden className="size-2 rounded-full bg-navy-blue/35 max-sm:mt-1.5 max-sm:shrink-0" />
+        <span
+          aria-hidden
+          className="size-2 rounded-full bg-navy-blue/35 max-sm:mt-1.5 max-sm:shrink-0"
+        />
         {m.emailAutomationRunsHealthUnavailable({}, { locale })}
       </p>
     );
