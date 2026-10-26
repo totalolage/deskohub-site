@@ -22,7 +22,7 @@ import { formatWorkspaceE2EDuration } from "../timeouts";
 
 type E2EExecutionContext = "ci" | "manual";
 export type E2EOutcome = "cancelled" | "failed" | "passed" | "timed_out";
-export type E2EFailureKind = "defect" | "error" | "timeout";
+type E2EFailureKind = "defect" | "error" | "timeout";
 type E2EPhaseId =
   | "case-construction"
   | "case-finalization"
