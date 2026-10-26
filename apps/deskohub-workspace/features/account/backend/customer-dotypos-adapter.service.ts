@@ -2,11 +2,8 @@ import {
   type DotyposConditionalWriteFailure,
   type DotyposCustomer,
   type DotyposCustomerId,
-  type DotyposReadFailure,
-  DotyposRejected,
   DotyposService,
-  DotyposUnavailable,
-  DotyposVersionConflict,
+  type DotyposUncertain,
   type FindCustomerResult,
   normalizePhoneNumber,
 } from "@deskohub/dotypos";
@@ -22,58 +19,6 @@ class DotyposCustomerMissing extends Data.TaggedError(
 )<{
   readonly customerId: DotyposCustomerId;
 }> {}
-
-/**
- * A failed settlement reread, kept apart from patch failures so a failed
- * reread is never retried.
- */
-class CustomerRereadFailure extends Data.TaggedError("CustomerRereadFailure")<{
-  readonly cause: DotyposReadFailure;
-}> {}
-
-/**
- * The attempt that ended a patch call. A replayed write stays uncertain after
- * a later attempt fails differently, and carries that last attempt as cause.
- */
-const terminalAttempt = (
-  failure: DotyposConditionalWriteFailure
-): DotyposConditionalWriteFailure =>
-  failure._tag === "DotyposUncertain" &&
-  (failure.cause instanceof DotyposUnavailable ||
-    failure.cause instanceof DotyposRejected ||
-    failure.cause instanceof DotyposVersionConflict)
-    ? failure.cause
-    : failure;
-
-/**
- * The adapter judges the terminal attempt. A lost connection, a timeout, an
- * exhausted rate limit or a server failure, including a failed ETag read, is
- * settled by rereading; an unusable response fails at once.
- */
-const settlesByReread = (failure: DotyposConditionalWriteFailure): boolean => {
-  const attempt = terminalAttempt(failure);
-  if (attempt._tag === "DotyposVersionConflict") return false;
-  return (
-    attempt.reason === "transport" ||
-    attempt.reason === "timeout" ||
-    attempt.reason === "rate-limited" ||
-    attempt.reason === "server"
-  );
-};
-
-/** Besides a settled failure, a terminal version conflict gets the one replay. */
-const replaysPatch = (failure: DotyposConditionalWriteFailure): boolean =>
-  terminalAttempt(failure)._tag === "DotyposVersionConflict" ||
-  settlesByReread(failure);
-
-/**
- * Expiration reads a terminal not-found, including a replayed patch answered
- * 404, as a missing customer; it stays a failure elsewhere.
- */
-const endsNotFound = (failure: DotyposConditionalWriteFailure): boolean => {
-  const attempt = terminalAttempt(failure);
-  return attempt._tag === "DotyposRejected" && attempt.reason === "not-found";
-};
 
 export type DotyposCustomerError =
   | DotyposConditionalWriteFailure
@@ -425,11 +370,11 @@ export class CustomerDotyposAdapter extends Context.Service<
       };
 
       /**
-       * Patches the customer and settles a possibly applied failure by
-       * rereading it. At most two patch executions run, each of which the
-       * package may replay: a second one follows a version conflict or a
-       * settled failure the reread shows unapplied. Reread failures are never
-       * retried. None means the customer does not exist.
+       * Patches the customer and settles an uncertain patch by rereading it.
+       * At most two patch executions run, each of which the package may
+       * replay: a second one follows a version conflict or an uncertain patch
+       * the reread shows unapplied. Reread failures carry read tags only, so
+       * they are never retried. None means the customer does not exist.
        */
       const patchWithReread = Effect.fn(
         "CustomerDotyposAdapter.patchWithReread"
@@ -438,35 +383,33 @@ export class CustomerDotyposAdapter extends Context.Service<
         readonly payload: UpdateCustomerRequest;
         readonly isApplied: (customer: DotyposCustomer) => boolean;
       }) {
-        // A missing customer is not an applied patch.
-        const settle = <Failure>(failure: Failure) =>
-          dotypos.getCustomer(input.customerId).pipe(
-            Effect.mapError((cause) => new CustomerRereadFailure({ cause })),
-            Effect.filterOrFail(Option.exists(input.isApplied), () => failure)
-          );
         // Each execution sends a fresh patch request.
-        const attempt = Effect.suspend(() =>
+        const patchOnce = Effect.suspend(() =>
           dotypos.patchCustomer(input.customerId, input.payload)
-        ).pipe(Effect.catchIf(settlesByReread, settle));
-        const isPatchFailure = (
-          failure: DotyposConditionalWriteFailure | CustomerRereadFailure
-        ): failure is DotyposConditionalWriteFailure =>
-          failure._tag !== "CustomerRereadFailure";
+        );
+        // A missing customer is not an applied patch.
+        const settle = (uncertain: DotyposUncertain) =>
+          dotypos
+            .getCustomer(input.customerId)
+            .pipe(
+              Effect.filterOrFail(
+                Option.exists(input.isApplied),
+                () => uncertain
+              )
+            );
 
-        return yield* attempt.pipe(
-          Effect.retry({
-            times: 1,
-            while: (failure) =>
-              isPatchFailure(failure) && replaysPatch(failure),
+        return yield* patchOnce.pipe(
+          Effect.catchTags({
+            // Re-merge policy: one more conditional attempt, without a reread.
+            DotyposVersionConflict: () => patchOnce,
+            // The reread shows the patch did not land: one conditional replay.
+            DotyposUncertain: (uncertain) =>
+              settle(uncertain).pipe(
+                Effect.catchTag("DotyposUncertain", () => patchOnce)
+              ),
           }),
           // The final settlement read after the second execution.
-          Effect.catchIf(
-            (failure) => isPatchFailure(failure) && settlesByReread(failure),
-            settle
-          ),
-          Effect.catchTag("CustomerRereadFailure", ({ cause }) =>
-            Effect.fail(cause)
-          )
+          Effect.catchTag("DotyposUncertain", settle)
         );
       });
 
@@ -506,11 +449,7 @@ export class CustomerDotyposAdapter extends Context.Service<
             payload: expirationPatch(true),
             isApplied: (customer) =>
               customer.deleted || isCustomerProfileExpired(customer),
-          }).pipe(
-            Effect.catchIf(endsNotFound, () =>
-              Effect.succeed(Option.none<DotyposCustomer>())
-            )
-          )
+          })
       );
 
       const reactivateCustomer = Effect.fn(

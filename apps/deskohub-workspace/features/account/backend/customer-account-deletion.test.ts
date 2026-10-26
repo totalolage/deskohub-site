@@ -241,9 +241,15 @@ describe("Customer account deletion", () => {
       expect(logCodes).toContain("account.deletion.retryable");
     });
 
-    test("treats a replayed expiration patch that ends in 404 as a missing profile", async () => {
+    test("treats a replayed expiration patch that ends in 404 as a missing profile once the replay finds none", async () => {
+      let patches = 0;
       const { result, calls, logCodes } = await deleteWithDotypos({
-        patchCustomer: () => Effect.fail(replayNotFound),
+        patchCustomer: () => {
+          patches += 1;
+          return patches === 1
+            ? Effect.fail(replayNotFound)
+            : Effect.succeed(Option.none<DotyposCustomer>());
+        },
         getCustomer: () => Effect.succeed(Option.none<DotyposCustomer>()),
       });
 
@@ -258,7 +264,7 @@ describe("Customer account deletion", () => {
       const { result, calls, logCodes } = await deleteWithDotypos({
         patchCustomer: () =>
           Effect.fail(
-            new DotyposUnavailable({
+            new DotyposUncertain({
               operation: "patchCustomer",
               request: "customer.patch",
               reason: "server",
