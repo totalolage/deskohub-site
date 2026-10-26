@@ -1,14 +1,15 @@
 /**
- * Temporal APIs by namespace: static members, which must be functions, and
- * instance members, which are methods or getters on the namespace's
- * prototype.
+ * Temporal APIs by namespace: static functions, and the methods and getters
+ * on a class's prototype. A namespace with instance members is a class, so
+ * must be a constructor too.
  */
 export type TemporalApis = Readonly<
   Record<
     string,
     {
       readonly static?: readonly string[];
-      readonly prototype?: readonly string[];
+      readonly methods?: readonly string[];
+      readonly getters?: readonly string[];
     }
   >
 >;
@@ -19,79 +20,113 @@ export type TemporalApis = Readonly<
  * with the source.
  */
 export const requiredTemporalApis = {
-  Duration: { static: ["from"], prototype: ["days"] },
+  Duration: {
+    static: ["from"],
+    methods: ["toJSON", "toLocaleString", "toString"],
+    getters: ["days"],
+  },
   Instant: {
     static: ["compare", "from", "fromEpochMilliseconds"],
-    prototype: [
+    methods: [
       "add",
-      "epochMilliseconds",
-      "epochNanoseconds",
       "equals",
       "round",
       "subtract",
+      "toJSON",
+      "toLocaleString",
       "toString",
       "toZonedDateTimeISO",
     ],
+    getters: ["epochMilliseconds", "epochNanoseconds"],
   },
-  Now: { static: ["instant", "plainDateISO", "zonedDateTimeISO"] },
+  Now: {
+    static: ["instant", "plainDateISO", "zonedDateTimeISO"],
+  },
   PlainDate: {
     static: ["compare", "from"],
-    prototype: [
+    methods: [
       "add",
-      "day",
-      "dayOfWeek",
-      "daysInMonth",
       "equals",
-      "month",
       "subtract",
+      "toJSON",
       "toLocaleString",
       "toPlainDateTime",
       "toString",
       "toZonedDateTime",
       "until",
-      "weekOfYear",
       "with",
+    ],
+    getters: [
+      "day",
+      "dayOfWeek",
+      "daysInMonth",
+      "month",
+      "weekOfYear",
       "year",
       "yearOfWeek",
     ],
   },
   PlainDateTime: {
     static: ["compare", "from"],
-    prototype: [
+    methods: [
       "add",
       "equals",
-      "hour",
-      "microsecond",
-      "millisecond",
-      "minute",
-      "nanosecond",
-      "second",
+      "toJSON",
+      "toLocaleString",
       "toPlainDate",
       "toPlainTime",
       "toString",
       "toZonedDateTime",
       "with",
     ],
-  },
-  PlainTime: {
-    static: ["from"],
-    prototype: [
+    getters: [
       "hour",
       "microsecond",
       "millisecond",
       "minute",
       "nanosecond",
       "second",
-      "toString",
     ],
   },
-  PlainYearMonth: { static: ["from"], prototype: ["daysInMonth"] },
+  PlainMonthDay: {
+    methods: ["toJSON", "toLocaleString", "toString"],
+  },
+  PlainTime: {
+    static: ["from"],
+    methods: ["toJSON", "toLocaleString", "toString"],
+    getters: [
+      "hour",
+      "microsecond",
+      "millisecond",
+      "minute",
+      "nanosecond",
+      "second",
+    ],
+  },
+  PlainYearMonth: {
+    static: ["from"],
+    methods: ["toJSON", "toLocaleString", "toString"],
+    getters: ["daysInMonth"],
+  },
   ZonedDateTime: {
     static: ["compare"],
-    prototype: [
+    methods: [
       "add",
       "equals",
       "getTimeZoneTransition",
+      "startOfDay",
+      "subtract",
+      "toInstant",
+      "toJSON",
+      "toLocaleString",
+      "toPlainDate",
+      "toPlainDateTime",
+      "toPlainTime",
+      "toString",
+      "with",
+      "withTimeZone",
+    ],
+    getters: [
       "hour",
       "hoursInDay",
       "microsecond",
@@ -102,25 +137,16 @@ export const requiredTemporalApis = {
       "offset",
       "offsetNanoseconds",
       "second",
-      "startOfDay",
-      "subtract",
-      "toInstant",
-      "toPlainDate",
-      "toPlainDateTime",
-      "toPlainTime",
-      "toString",
-      "with",
-      "withTimeZone",
       "year",
     ],
   },
 } as const satisfies TemporalApis;
 
 /**
- * Whether `temporal` has every API in `apis`, and whether the date arithmetic
- * and time zone conversions Workspace code relies on give the right answers
- * in `timeZone` across a daylight saving change. Built into the `<head>`
- * loader, and asserted by the browser entry.
+ * Whether `temporal` has every API in `apis` in a form code can call, and
+ * whether the date arithmetic and time zone conversions Workspace code relies
+ * on give the right answers in `timeZone` across a daylight saving change.
+ * Built into the `<head>` loader, and asserted by the browser entry.
  */
 export function isTemporalComplete(
   // biome-ignore lint/plugin: feature-detects the host's Temporal global, which may be missing or partial.
@@ -128,21 +154,32 @@ export function isTemporalComplete(
   apis: TemporalApis,
   timeZone: string
 ): boolean {
+  // biome-ignore lint/plugin: feature detection of a host API, not parsing of input; unlike `instanceof`, it holds for a function from another realm.
+  const isFunction = (value: unknown) => typeof value === "function";
   try {
     // biome-ignore lint/plugin: the namespaces of a host global that may be partial.
     const namespaces = temporal as Record<string, Record<string, unknown>>;
     for (const [name, members] of Object.entries(apis)) {
       const namespace = namespaces[name];
-      for (const member of members.static ?? []) {
-        // biome-ignore lint/plugin: feature detection of a host API, not parsing of input.
-        if (typeof namespace?.[member] !== "function") return false;
+      // A namespace with instance members is a class, so must be a
+      // constructor. `Reflect.construct` throws if it isn't, without calling it.
+      if (members.methods !== undefined || members.getters !== undefined) {
+        Reflect.construct(Object, [], namespace);
       }
-      // Reading a getter off the prototype throws, so only check that the
-      // prototype defines the member itself rather than inheriting
-      // `Object.prototype`'s `toString`.
+      for (const member of members.static ?? []) {
+        if (!isFunction(namespace?.[member])) return false;
+      }
+      // Read descriptors rather than values, since reading a getter off the
+      // prototype throws, and only the prototype's own, so that
+      // `Object.prototype`'s `toString` doesn't count.
       const prototype = Object(namespace?.prototype);
-      for (const member of members.prototype ?? []) {
-        if (!Object.hasOwn(prototype, member)) return false;
+      const descriptor = (member: string) =>
+        Object.getOwnPropertyDescriptor(prototype, member);
+      for (const member of members.methods ?? []) {
+        if (!isFunction(descriptor(member)?.value)) return false;
+      }
+      for (const member of members.getters ?? []) {
+        if (!isFunction(descriptor(member)?.get)) return false;
       }
     }
 

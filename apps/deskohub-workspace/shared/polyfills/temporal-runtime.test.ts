@@ -41,44 +41,104 @@ const withNamespace = <Namespace extends TemporalNamespace>(
   [namespace]: replacement,
 });
 
-/** The polyfill with one instance member missing from a class's prototype. */
-const withoutInstanceMember = (
+/**
+ * The polyfill with one class rebuilt on `standIn`, with the class's static
+ * members and a prototype with `prototypeMembers`.
+ */
+const withRebuiltClass = (
   namespace: Exclude<TemporalNamespace, "Now">,
-  member: string
+  standIn: () => void,
+  prototypeMembers: PropertyDescriptorMap
 ): TemporalCandidate => {
   const temporalClass = PolyfillTemporal[namespace];
-  const { [member]: _missing, ...members } = Object.getOwnPropertyDescriptors(
-    temporalClass.prototype
+  const prototype = Object.create(
+    Object.getPrototypeOf(temporalClass.prototype),
+    prototypeMembers
   );
   return withNamespace(
     namespace,
-    Object.defineProperties(
-      {},
-      {
-        ...Object.getOwnPropertyDescriptors(temporalClass),
-        prototype: {
-          value: Object.create(
-            Object.getPrototypeOf(temporalClass.prototype),
-            members
-          ),
-        },
-      }
-    )
+    Object.defineProperties(standIn, {
+      ...Object.getOwnPropertyDescriptors(temporalClass),
+      prototype: { value: prototype },
+    })
   );
 };
 
-/** A Temporal that keeps every static entry point but lacks a method. */
-const withoutInstanceMethod = withoutInstanceMember(
-  "ZonedDateTime",
-  "toPlainDateTime"
-);
+/**
+ * The polyfill with one instance member of a class replaced by `descriptor`,
+ * or missing without one.
+ */
+const withInstanceMember = (
+  namespace: Exclude<TemporalNamespace, "Now">,
+  member: string,
+  descriptor?: PropertyDescriptor
+) => {
+  const { [member]: _replaced, ...members } = Object.getOwnPropertyDescriptors(
+    PolyfillTemporal[namespace].prototype
+  );
+  // biome-ignore lint/complexity/useArrowFunction: a constructible stand-in for the class.
+  return withRebuiltClass(namespace, function () {}, {
+    ...members,
+    ...(descriptor && { [member]: descriptor }),
+  });
+};
 
-/** Every API in `apis`, as `PlainDate.from` or `PlainDate.prototype.add`. */
+/**
+ * Temporal globals that lack, or can't use, an API Workspace code uses. The
+ * members they break aren't ones the time zone probes reach.
+ */
+const incompleteTemporals: readonly (readonly [string, TemporalCandidate])[] = [
+  ["is missing", undefined],
+  ["is empty", {}],
+  ["lacks an entry point", withNamespace("PlainYearMonth", {})],
+  [
+    "has a class that isn't a constructor",
+    withRebuiltClass(
+      "Duration",
+      () => {},
+      Object.getOwnPropertyDescriptors(PolyfillTemporal.Duration.prototype)
+    ),
+  ],
+  [
+    "lacks an instance method",
+    withInstanceMember("ZonedDateTime", "toPlainDateTime"),
+  ],
+  [
+    "has an undefined instance method",
+    withInstanceMember("ZonedDateTime", "toPlainDateTime", {
+      value: undefined,
+    }),
+  ],
+  [
+    "has an instance method that isn't a function",
+    withInstanceMember("ZonedDateTime", "toPlainDateTime", { value: {} }),
+  ],
+  [
+    "has a getter without a function",
+    withInstanceMember("ZonedDateTime", "offset", { get: undefined }),
+  ],
+  [
+    "has a method in place of a getter",
+    withInstanceMember("ZonedDateTime", "offset", { value: () => "+01:00" }),
+  ],
+];
+
+/**
+ * Every API in `apis`: `PlainDate` for a class, `PlainDate.from` for a static
+ * function, `PlainDate.prototype.add` for a method, and
+ * `get PlainDate.prototype.day` for a getter.
+ */
 const listTemporalApis = (apis: TemporalApis) =>
   Object.entries(apis).flatMap(([namespace, members]) => [
+    ...(members.methods !== undefined || members.getters !== undefined
+      ? [namespace]
+      : []),
     ...(members.static ?? []).map((member) => `${namespace}.${member}`),
-    ...(members.prototype ?? []).map(
+    ...(members.methods ?? []).map(
       (member) => `${namespace}.prototype.${member}`
+    ),
+    ...(members.getters ?? []).map(
+      (member) => `get ${namespace}.prototype.${member}`
     ),
   ]);
 
@@ -88,15 +148,24 @@ const isTemporalNamespace = (node: ts.Node): node is ts.ModuleBlock =>
   node.parent.name.text === "Temporal" &&
   ts.isSourceFile(node.parent.parent);
 
+/** Whether `node` is declared inside the `Temporal` namespace. */
+const isDeclaredInTemporal = (node: ts.Declaration) =>
+  ts.findAncestor(node, isTemporalNamespace) !== undefined;
+
 /**
- * `PlainDate.` for a static member of a Temporal declaration and
- * `PlainDate.prototype.` for an instance member, in both the TypeScript lib's
- * declaration style and the polyfill's.
+ * `PlainDate.` for a static member of a Temporal declaration,
+ * `PlainDate.prototype.` for an instance method, and
+ * `get PlainDate.prototype.` for an instance getter, in both the TypeScript
+ * lib's declaration style and the polyfill's.
  */
 const temporalApiPrefix = (member: ts.Declaration) => {
   const owner = member.parent;
   const scope = owner.parent;
-  // `class PlainDate { static from(); add() }`
+  const instancePrefix = (className: string) =>
+    ts.isMethodDeclaration(member) || ts.isMethodSignature(member)
+      ? `${className}.prototype.`
+      : `get ${className}.prototype.`;
+  // `class PlainDate { static from(); add(); readonly day }`
   if (
     ts.isClassDeclaration(owner) &&
     owner.name &&
@@ -104,7 +173,7 @@ const temporalApiPrefix = (member: ts.Declaration) => {
   ) {
     return ts.canHaveModifiers(member) && ts.hasStaticModifier(member)
       ? `${owner.name.text}.`
-      : `${owner.name.text}.prototype.`;
+      : instancePrefix(owner.name.text);
   }
   // `namespace Now { function instant() }`
   if (ts.isModuleBlock(owner) && isTemporalNamespace(owner.parent.parent)) {
@@ -126,7 +195,7 @@ const temporalApiPrefix = (member: ts.Declaration) => {
       if (!ts.isVariableStatement(statement)) continue;
       for (const { name, type } of statement.declarationList.declarations) {
         if (!ts.isIdentifier(name)) continue;
-        if (name.text === owner.name.text) return `${name.text}.prototype.`;
+        if (name.text === owner.name.text) return instancePrefix(name.text);
         if (
           type !== undefined &&
           ts.isTypeReferenceNode(type) &&
@@ -140,6 +209,11 @@ const temporalApiPrefix = (member: ts.Declaration) => {
   }
   return undefined;
 };
+
+/** The polyfill's classes, as opposed to the `Now` namespace. */
+const temporalClassNames = Object.entries(PolyfillTemporal)
+  .filter(([, namespace]) => namespace instanceof Function)
+  .map(([name]) => name);
 
 /**
  * The polyfill's static functions and instance members, but not the `length`
@@ -158,14 +232,31 @@ const temporalMemberNames = new Set(
 );
 
 /**
- * The Temporal APIs Workspace code uses, named as `listTemporalApis` names
- * them. The type checker resolves each member access, so instance members
- * count wherever their values come from, as do destructured members. Only
- * accesses by a member name Temporal has reach the type checker. Computed
- * keys and the `toString` that string conversion calls go unseen: resolving
- * them would send most of the app's expressions to the type checker.
+ * The instance methods JavaScript calls without code naming them: string
+ * conversion calls `toString`, `JSON.stringify` calls `toJSON`, and
+ * `Array.prototype.toLocaleString` calls `toLocaleString`. A Temporal value
+ * can reach them inside any object or array, which the scan can't follow, so
+ * every class counts as using them. `valueOf` is left out: Temporal's throws,
+ * so no working code converts a Temporal value to a number or compares two
+ * with `<`.
  */
-const usedTemporalApis = () => {
+const implicitlyCalledMethods = ["toJSON", "toLocaleString", "toString"];
+
+/**
+ * The Temporal APIs Workspace code uses, named as `listTemporalApis` names
+ * them, and the places it reads members of a Temporal value in a way the scan
+ * can't name: by a key whose type isn't a union of string literals, or
+ * through `Reflect`.
+ *
+ * The type checker resolves each member access, so instance members count
+ * wherever their values come from, as do destructured members and computed
+ * keys whose type is a union of string literals. Only accesses by a member
+ * name Temporal has reach the type checker, and a value typed `any` hides its
+ * accesses from both. Every class counts as used along with
+ * `implicitlyCalledMethods`: `new`, `instanceof` and `extends` need the class
+ * itself, and any API can hand code an instance of a class it never names.
+ */
+const scanTemporalUses = () => {
   const config = ts.getParsedCommandLineOfConfigFile(
     resolve(appRoot, "tsconfig.json"),
     {},
@@ -187,28 +278,82 @@ const usedTemporalApis = () => {
   });
   const checker = program.getTypeChecker();
 
-  const used = new Set<string>();
+  /** The types a value at `node` can have, apart from `null` and `undefined`. */
+  const valueTypes = (node: ts.Node) => {
+    const type = checker.getApparentType(
+      checker.getNonNullableType(checker.getTypeAtLocation(node))
+    );
+    return type.isUnion() ? type.types : [type];
+  };
+  /** Whether a value at `node` can be a Temporal value, or extend one. */
+  const isTemporalValue = (node: ts.Node) =>
+    valueTypes(node).some((type) =>
+      checker
+        .getPropertiesOfType(type)
+        .some((property) =>
+          (property.declarations ?? []).some(isDeclaredInTemporal)
+        )
+    );
+  /** The member names `key` can be, unless it can be any other string or a symbol. */
+  const keyNames = (key: ts.Expression) => {
+    const type = checker.getTypeAtLocation(key);
+    const types = type.isUnion() ? type.types : [type];
+    return types.every((type) => type.isStringLiteral())
+      ? types.map((type) => type.value)
+      : undefined;
+  };
+
+  const used = new Set<string>(
+    temporalClassNames.flatMap((name) => [
+      name,
+      ...implicitlyCalledMethods.map((member) => `${name}.prototype.${member}`),
+    ])
+  );
+  const unresolvedAccesses: string[] = [];
+  const reportUnresolvedAccess = (node: ts.Node) => {
+    const source = node.getSourceFile();
+    const { line } = source.getLineAndCharacterOfPosition(node.getStart());
+    unresolvedAccesses.push(
+      `${relative(appRoot, source.fileName)}:${line + 1}`
+    );
+  };
   const recordAccess = (receiver: ts.Node, member: string) => {
     if (!temporalMemberNames.has(member)) return;
-    const type = checker.getApparentType(
-      checker.getNonNullableType(checker.getTypeAtLocation(receiver))
-    );
-    for (const part of type.isUnion() ? type.types : [type]) {
-      const property = checker.getPropertyOfType(part, member);
+    for (const type of valueTypes(receiver)) {
+      const property = checker.getPropertyOfType(type, member);
       for (const declaration of property?.declarations ?? []) {
         const prefix = temporalApiPrefix(declaration);
         if (prefix !== undefined) used.add(`${prefix}${member}`);
       }
     }
   };
+  /** Records an access by a computed key, or reports one it can't resolve. */
+  const recordKeyedAccess = (
+    receiver: ts.Node,
+    key: ts.Expression,
+    at: ts.Node
+  ) => {
+    const names = keyNames(key);
+    if (names !== undefined) {
+      for (const name of names) recordAccess(receiver, name);
+    } else if (isTemporalValue(receiver)) {
+      reportUnresolvedAccess(at);
+    }
+  };
   const visit = (node: ts.Node) => {
     if (ts.isPropertyAccessExpression(node)) {
       recordAccess(node.expression, node.name.text);
+    } else if (ts.isElementAccessExpression(node)) {
+      recordKeyedAccess(node.expression, node.argumentExpression, node);
     } else if (
-      ts.isElementAccessExpression(node) &&
-      ts.isStringLiteralLike(node.argumentExpression)
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "Reflect" &&
+      node.arguments[0] !== undefined &&
+      isTemporalValue(node.arguments[0])
     ) {
-      recordAccess(node.expression, node.argumentExpression.text);
+      reportUnresolvedAccess(node);
     } else if (
       ts.isBindingElement(node) &&
       ts.isObjectBindingPattern(node.parent) &&
@@ -217,6 +362,8 @@ const usedTemporalApis = () => {
       const key = node.propertyName ?? node.name;
       if (ts.isIdentifier(key) || ts.isStringLiteralLike(key)) {
         recordAccess(node.parent, key.text);
+      } else if (ts.isComputedPropertyName(key)) {
+        recordKeyedAccess(node.parent, key.expression, node);
       }
     }
     ts.forEachChild(node, visit);
@@ -230,7 +377,7 @@ const usedTemporalApis = () => {
       visit(source);
     }
   }
-  return [...used];
+  return { used: [...used], unresolvedAccesses };
 };
 
 describe("isTemporalComplete", () => {
@@ -238,14 +385,23 @@ describe("isTemporalComplete", () => {
     expect(isComplete(PolyfillTemporal)).toBe(true);
   });
 
-  test.each([
-    ["no Temporal", undefined],
-    ["an empty Temporal", {}],
-    ["a Temporal without one entry point", withNamespace("PlainYearMonth", {})],
-    ["a Temporal without one instance method", withoutInstanceMethod],
-  ])("rejects %s", (_case, temporal) => {
-    expect(isComplete(temporal)).toBe(false);
+  test("accepts a Temporal whose class is rebuilt with the same members", () => {
+    const offset = Object.getOwnPropertyDescriptor(
+      PolyfillTemporal.ZonedDateTime.prototype,
+      "offset"
+    );
+
+    expect(
+      isComplete(withInstanceMember("ZonedDateTime", "offset", offset))
+    ).toBe(true);
   });
+
+  test.each(incompleteTemporals)(
+    "rejects a Temporal that %s",
+    (_case, temporal) => {
+      expect(isComplete(temporal)).toBe(false);
+    }
+  );
 
   test("rejects a Temporal without the site's time zone data", () => {
     expect(
@@ -253,10 +409,11 @@ describe("isTemporalComplete", () => {
     ).toBe(false);
   });
 
-  test("checks exactly the Temporal APIs Workspace code uses", () => {
-    expect(listTemporalApis(requiredTemporalApis).sort()).toEqual(
-      usedTemporalApis().sort()
-    );
+  test("checks every class, its implicitly called methods, and each other Temporal API Workspace code uses", () => {
+    const { used, unresolvedAccesses } = scanTemporalUses();
+
+    expect(unresolvedAccesses).toEqual([]);
+    expect(listTemporalApis(requiredTemporalApis).sort()).toEqual(used.sort());
   }, 180_000);
 });
 
@@ -284,12 +441,8 @@ describe("temporal-polyfill:build", () => {
     expect(write).not.toHaveBeenCalled();
   });
 
-  test.each([
-    ["missing", undefined],
-    ["missing an entry point", withNamespace("PlainYearMonth", {})],
-    ["missing an instance method", withoutInstanceMethod],
-  ])(
-    "the loader inserts the polyfill where Temporal is %s",
+  test.each(incompleteTemporals)(
+    "the loader inserts the polyfill where Temporal %s",
     (_case, temporal) => {
       const { context, write } = browserContext(temporal);
 
@@ -302,12 +455,8 @@ describe("temporal-polyfill:build", () => {
     }
   );
 
-  test.each([
-    ["missing", undefined],
-    ["missing an entry point", withNamespace("PlainYearMonth", {})],
-    ["missing an instance method", withoutInstanceMethod],
-  ])(
-    "the polyfill installs a complete Temporal where it is %s",
+  test.each(incompleteTemporals)(
+    "the polyfill installs a complete Temporal where the native one %s",
     (_case, temporal) => {
       const { context } = browserContext(temporal);
 
