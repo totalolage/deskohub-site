@@ -1,7 +1,4 @@
-const campaignLinkProtocols: ReadonlySet<string> = new Set([
-  "https:",
-  "mailto:",
-]);
+import { isCampaignLinkHref } from "../../body/campaign-body-rules";
 
 const completeCampaignLinkHref = (value: string) => {
   if (/^[a-z][a-z\d+.-]*:/i.test(value)) return value;
@@ -16,7 +13,5 @@ const completeCampaignLinkHref = (value: string) => {
  */
 export const normalizeCampaignLinkHref = (input: string) => {
   const href = completeCampaignLinkHref(input.trim());
-  return campaignLinkProtocols.has(URL.parse(href)?.protocol ?? "")
-    ? href
-    : undefined;
+  return isCampaignLinkHref(href) ? href : undefined;
 };

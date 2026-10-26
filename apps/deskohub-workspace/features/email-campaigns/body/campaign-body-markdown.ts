@@ -2,14 +2,17 @@ import { MarkdownManager } from "@tiptap/markdown";
 import { Effect, Schema } from "effect";
 import { Marked } from "marked";
 import {
-  CampaignBodyDocument,
+  type CampaignBodyDocument,
+  campaignBodyDocument,
   campaignBodyFormatVersion,
+  campaignImageCloudName,
   UnfinishedCampaignBodyDocument,
 } from "./campaign-body-document";
 import {
   campaignBodyExtensions,
   campaignBodySchema,
 } from "./campaign-body-extensions";
+import { emptyCampaignBody } from "./campaign-body-rules";
 import { InvalidCampaignBody } from "./invalid-campaign-body";
 
 /**
@@ -26,9 +29,6 @@ const markdownManager = new MarkdownManager({
   extensions: campaignBodyExtensions,
 });
 
-/** What the editor holds for a body nobody has written yet. */
-const emptyCampaignBody = { type: "doc", content: [{ type: "paragraph" }] };
-
 /** The TipTap document Markdown spells, not yet checked against any rules. */
 const markdownDoc = (markdown: string) =>
   markdown.trim() === ""
@@ -38,8 +38,6 @@ const markdownDoc = (markdown: string) =>
         catch: InvalidCampaignBody.fromCause,
       });
 
-const decodeCampaignBodyDocument =
-  Schema.decodeUnknownEffect(CampaignBodyDocument);
 const decodeUnfinishedCampaignBodyDocument = Schema.decodeUnknownEffect(
   UnfinishedCampaignBodyDocument
 );
@@ -51,7 +49,10 @@ const decodeUnfinishedCampaignBodyDocument = Schema.decodeUnknownEffect(
 export const parseCampaignBodyMarkdown = Effect.fn("parseCampaignBodyMarkdown")(
   function* (markdown: string) {
     const doc = yield* markdownDoc(markdown);
-    return yield* decodeCampaignBodyDocument({
+    const imageCloudName = yield* campaignImageCloudName;
+    return yield* Schema.decodeUnknownEffect(
+      campaignBodyDocument(imageCloudName)
+    )({
       formatVersion: campaignBodyFormatVersion,
       doc,
     }).pipe(Effect.mapError(InvalidCampaignBody.fromCause));

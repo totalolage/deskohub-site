@@ -1,7 +1,7 @@
 "use client";
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
-import { Schema } from "effect";
+import { Match, Option, Schema } from "effect";
 import { useForm } from "react-hook-form";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
@@ -24,6 +24,7 @@ import {
   FormMessage,
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
+import { campaignButtonLabelIssue } from "../../body/campaign-body-rules";
 import { normalizeCampaignLinkHref } from "./campaign-link-href";
 
 export type CtaButtonValues = {
@@ -35,10 +36,18 @@ export type CtaButtonValues = {
 const createCtaButtonFields = (locale: Locale) =>
   Schema.Struct({
     label: Schema.String.check(
-      Schema.makeFilter(
-        (label) =>
-          label.trim().length > 0 ||
-          m.emailCampaignsCtaLabelRequired({}, { locale })
+      Schema.makeFilter((label) =>
+        // Checks the label as the button keeps it: trimmed.
+        Option.match(campaignButtonLabelIssue(label.trim(), ["label"]), {
+          onNone: () => true,
+          onSome: (issue) =>
+            Match.valueTags(issue, {
+              ButtonLabelMissing: () =>
+                m.emailCampaignsCtaLabelRequired({}, { locale }),
+              ButtonLabelLineBreaks: () =>
+                m.emailCampaignsBodyButtonLabelLineBreaks({}, { locale }),
+            }),
+        })
       )
     ),
     href: Schema.String.check(
