@@ -1081,7 +1081,7 @@
   "accountSignOut": "Odhlásit se",
   "accountSignOutFailed": "Odhlášení se nepodařilo. Zkus to prosím znovu.",
   "accountUnavailableTitle": "Zákaznické účty jsou dočasně nedostupné",
-  "accountUnavailableDescription": "Tvůj účet teď nemůžeme zobrazit. Rezervace je stále možné vytvářet i bez účtu.",
+  "accountUnavailableDescription": "Tvůj účet teď nemůžeme zobrazit. Zkus to prosím za chvíli.",
   "accountProfileTitle": "Profil",
   "accountProfileUnsavedChanges": "Máš neuložené změny profilu. Opustit stránku?",
   "accountProfileFirstNameLabel": "Jméno",

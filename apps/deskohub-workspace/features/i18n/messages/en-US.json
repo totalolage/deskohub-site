@@ -1073,7 +1073,7 @@
   "accountSignOut": "Sign out",
   "accountSignOutFailed": "We could not sign you out. Please try again.",
   "accountUnavailableTitle": "Customer accounts are temporarily unavailable",
-  "accountUnavailableDescription": "We cannot reach your account right now. Reservations can still be made without an account.",
+  "accountUnavailableDescription": "We cannot reach your account right now. Please try again in a moment.",
   "accountProfileTitle": "Profile",
   "accountProfileUnsavedChanges": "You have unsaved profile changes. Leave this page?",
   "accountProfileFirstNameLabel": "First name",
