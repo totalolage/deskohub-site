@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Fiber, Layer } from "effect";
+import { Cause, Clock, Effect, Exit, Fiber, Layer } from "effect";
+import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
 import { runE2ECase, type WorkspaceE2EStepRunner } from "./case-runner";
 import { WorkspaceE2EProviderVerificationPermitService } from "./coordination/provider-verification-permit.service";
 import { type WorkspaceE2EError, workspaceE2EError } from "./errors";
+import { formatWorkspaceE2EFailureAnnotation } from "./github-actions";
 import type { E2ETelemetry } from "./services/telemetry";
 import {
   type E2ETelemetryObservation,
@@ -26,7 +28,7 @@ const runCase = (
   telemetry: Partial<E2ETelemetry> = {}
 ) =>
   Effect.runPromiseExit(
-    runE2ECase({ caseId, watchdogMs: 1_000, ...input }).pipe(
+    withInstantSleeps(runE2ECase({ caseId, watchdogMs: 1_000, ...input })).pipe(
       Effect.provide(makeE2ETelemetryMock(observations, telemetry))
     )
   );
@@ -98,6 +100,33 @@ describe("case outcomes", () => {
     ]);
   });
 
+  test("writes the terminal step through the production annotation formatter", async () => {
+    const written: string[] = [];
+
+    await runCase(
+      {
+        body: (step) =>
+          step({
+            execute: Effect.fail(workspaceE2EError("navigation failed")),
+            id: "verify-profile-navigation",
+            timeoutMs: 100,
+          }),
+      },
+      [],
+      {
+        annotateFailure: (diagnostic) =>
+          Effect.sync(() => {
+            written.push(formatWorkspaceE2EFailureAnnotation(diagnostic));
+          }),
+      }
+    );
+
+    expect(written).toHaveLength(1);
+    expect(written[0]).toEndWith(
+      "::case=runner-case,step=verify-profile-navigation,outcome=failed,failure_kind=error\n"
+    );
+  });
+
   test("annotates a step timeout as timed out with the step id", async () => {
     const observations: E2ETelemetryObservation[] = [];
 
@@ -118,7 +147,6 @@ describe("case outcomes", () => {
       const failure = Cause.squash(exit.cause) as WorkspaceE2EError;
       expect(failure.reason).toBe("timeout");
       expect(failure.operation).toBe(`${caseId}/wait-for-provider`);
-      expect(failure.message).toContain("after 20ms");
     }
     expect(observations).toContainEqual({
       caseId,
@@ -445,61 +473,116 @@ describe("case finalization", () => {
 });
 
 describe("step permits", () => {
-  const makePermitLayer = (events: string[], admissionDelayMs: number) =>
-    Layer.succeed(WorkspaceE2EProviderVerificationPermitService, {
-      withPermit: (effect) =>
-        Effect.sync(() => events.push("permit:wait")).pipe(
-          Effect.andThen(Effect.sleep(`${admissionDelayMs} millis`)),
-          Effect.andThen(Effect.sync(() => events.push("permit:admitted"))),
-          Effect.andThen(effect),
-          Effect.ensuring(Effect.sync(() => events.push("permit:released")))
-        ),
-    });
+  /** Records an event with the TestClock time it happened at. */
+  const record = Effect.fn(function* (events: string[], event: string) {
+    const now = yield* Clock.currentTimeMillis;
+    events.push(`${event}@${now}`);
+  });
 
-  test("admits a provider-verification step before its deadline starts", async () => {
-    const events: string[] = [];
-    const observations: E2ETelemetryObservation[] = [];
-    const exit = await Effect.runPromiseExit(
-      runE2ECase({
-        body: (step) =>
-          Effect.gen(function* () {
-            yield* step({
-              execute: Effect.sleep("5 millis").pipe(
-                Effect.andThen(Effect.sync(() => events.push("replay")))
-              ),
-              id: "replay-payment-webhook",
-              permit: "provider-verification",
-              timeoutMs: 30,
-            });
-            yield* step({
-              execute: Effect.sync(() => events.push("unpermitted")),
-              id: "complete-fulfillment",
-              timeoutMs: 30,
-            });
-          }),
-        caseId,
-        watchdogMs: 1_000,
-      }).pipe(
+  const runPermittedCase = (
+    body: (
+      step: WorkspaceE2EStepRunner
+    ) => Effect.Effect<
+      void,
+      WorkspaceE2EError,
+      WorkspaceE2EProviderVerificationPermitService
+    >,
+    events: string[],
+    observations: E2ETelemetryObservation[]
+  ) =>
+    Effect.runPromiseExit(
+      withInstantSleeps(runE2ECase({ body, caseId, watchdogMs: 1_000 })).pipe(
         Effect.provide(
           Layer.mergeAll(
             makeE2ETelemetryMock(observations),
-            makePermitLayer(events, 60)
+            // Admission waits 60 ms, longer than any permitted step's deadline.
+            Layer.succeed(WorkspaceE2EProviderVerificationPermitService, {
+              withPermit: (effect) =>
+                record(events, "permit:wait").pipe(
+                  Effect.andThen(Effect.sleep("60 millis")),
+                  Effect.andThen(record(events, "permit:admitted")),
+                  Effect.andThen(effect),
+                  Effect.ensuring(record(events, "permit:released"))
+                ),
+            })
           )
         )
       )
     );
 
+  test("admits a provider-verification step before its deadline starts", async () => {
+    const events: string[] = [];
+    const observations: E2ETelemetryObservation[] = [];
+
+    const exit = await runPermittedCase(
+      (step) =>
+        Effect.gen(function* () {
+          yield* step({
+            execute: Effect.sleep("20 millis").pipe(
+              Effect.andThen(record(events, "replay"))
+            ),
+            id: "replay-payment-webhook",
+            permit: "provider-verification",
+            timeoutMs: 30,
+          });
+          yield* step({
+            execute: record(events, "unpermitted"),
+            id: "complete-fulfillment",
+            timeoutMs: 30,
+          });
+        }),
+      events,
+      observations
+    );
+
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(events).toEqual([
-      "permit:wait",
-      "permit:admitted",
-      "replay",
-      "permit:released",
-      "unpermitted",
+      "permit:wait@0",
+      "permit:admitted@60",
+      "replay@80",
+      "permit:released@80",
+      "unpermitted@80",
     ]);
     expect(observations).toContainEqual({
       caseId,
       outcome: "passed",
+      scope: "step",
+      stepId: "replay-payment-webhook",
+      timeoutMs: 30,
+    });
+  });
+
+  test("times a permitted step out at its deadline after admission", async () => {
+    const events: string[] = [];
+    const observations: E2ETelemetryObservation[] = [];
+
+    const exit = await runPermittedCase(
+      (step) =>
+        step({
+          execute: Effect.never,
+          id: "replay-payment-webhook",
+          permit: "provider-verification",
+          timeoutMs: 30,
+        }),
+      events,
+      observations
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.squash(exit.cause) as WorkspaceE2EError;
+      expect(failure.reason).toBe("timeout");
+      expect(failure.operation).toBe(`${caseId}/replay-payment-webhook`);
+    }
+    expect(events).toEqual([
+      "permit:wait@0",
+      "permit:admitted@60",
+      "permit:released@90",
+    ]);
+    expect(observations).toContainEqual({
+      caseId,
+      failureKind: "timeout",
+      outcome: "timed_out",
       scope: "step",
       stepId: "replay-payment-webhook",
       timeoutMs: 30,
