@@ -47,8 +47,7 @@ const getAdministrationReservationAction = defineAdministrationAction(
     schema: reservationLookupStandardSchema,
     logInput: false,
     capabilities: AdministrationService.Live,
-    publicFailure: (_, locale) =>
-      m.administrationReservationLookupUnavailable({}, { locale }),
+    fallback: m.administrationReservationLookupUnavailable,
   },
   findReservation
 );

@@ -63,6 +63,8 @@ export const mockAdministratorAccess = (
           grant: () => Effect.die("unused"),
           revoke: () => Effect.die("unused"),
           has: () => Effect.sync(() => access === "administrator"),
+          lockHeld: () => Effect.die("unused"),
+          list: () => Effect.die("unused"),
         })
       ),
     })
