@@ -114,8 +114,6 @@ const appRoot = resolve(import.meta.dir, "../..");
 const scannedModule = /(?<!\.d)\.(?:ts|tsx)$/;
 const testModule = /\.test\.tsx?$/;
 const schemaModule = /(?:^|\/)schema(?:\/[\w-]+)?$/;
-// Text every module the scan can flag contains: an import from a schema module.
-const schemaImport = /\bfrom\s*["'](?:[^"']*\/)?schema(?:\/[\w-]+)?["']/;
 
 // Operators whose value skips the column encoder even on a bare column.
 const encoderSkippingOperators = new Set([
@@ -147,14 +145,21 @@ const sensitiveColumnKeys = Map.groupBy(
 );
 
 /**
- * Whether a module passes the cheap text checks every flagged module passes:
- * it imports a schema module and names a table with a sensitive column.
+ * Whether a module may import a table with a sensitive column from a schema
+ * module, which every module the scan can flag does. Without a backslash a
+ * module has no escapes, so it must spell out "schema" and the table's export
+ * name; text checks settle most modules. TypeScript's import scanner settles
+ * the rest, past comments and escapes, without parsing them.
  */
-const mayBindSensitiveColumns = (sourceText: string) =>
-  schemaImport.test(sourceText) &&
-  [...sensitiveColumnKeys.keys()].some((exportName) =>
-    sourceText.includes(exportName)
-  );
+const mayImportSensitiveTable = (sourceText: string) =>
+  (sourceText.includes("\\") ||
+    (sourceText.includes("schema") &&
+      sensitiveColumnKeys
+        .keys()
+        .some((exportName) => sourceText.includes(exportName)))) &&
+  ts
+    .preProcessFile(sourceText, true, false)
+    .importedFiles.some(({ fileName }) => schemaModule.test(fileName));
 
 /** Maps each local binding of a schema table export to that export's name. */
 const schemaTableBindings = (source: ts.SourceFile) => {
@@ -336,7 +341,7 @@ describe("sensitive column values bound outside the column encoder", () => {
       db.update(codes).set({ code: excludedColumn(codes.code) });
     `;
 
-    expect(mayBindSensitiveColumns(source)).toBe(true);
+    expect(mayImportSensitiveTable(source)).toBe(true);
     expect(
       findSensitiveColumnsBoundOutsideTheirEncoder("fixture.ts", source)
     ).toEqual([
@@ -350,6 +355,18 @@ describe("sensitive column values bound outside the column encoder", () => {
       "fixture.ts:15",
       "fixture.ts:18",
     ]);
+  });
+
+  test("parses every module that imports a schema module", () => {
+    const source = `
+      import { promotionCodes as codes } from /* tables */ "@/db/sch\\u0065ma";
+      ilike(codes.code, pattern);
+    `;
+
+    expect(mayImportSensitiveTable(source)).toBe(true);
+    expect(
+      findSensitiveColumnsBoundOutsideTheirEncoder("fixture.ts", source)
+    ).toEqual(["fixture.ts:3"]);
   });
 
   test("are marked where the app binds them", async () => {
@@ -368,7 +385,7 @@ describe("sensitive column values bound outside the column encoder", () => {
       }))
     );
     const findings = sources
-      .filter(({ text }) => mayBindSensitiveColumns(text))
+      .filter(({ text }) => mayImportSensitiveTable(text))
       .flatMap(({ path, text }) =>
         findSensitiveColumnsBoundOutsideTheirEncoder(path, text)
       );

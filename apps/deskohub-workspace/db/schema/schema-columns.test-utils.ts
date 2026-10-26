@@ -49,8 +49,6 @@ export const schemaColumns = schemaTables.flatMap(
     }))
 );
 
-export type SchemaColumn = (typeof schemaColumns)[number];
-
 /** Whether `words` contains `fragment` as a run of whole words. */
 export const containsWordRun = (
   words: readonly string[],
