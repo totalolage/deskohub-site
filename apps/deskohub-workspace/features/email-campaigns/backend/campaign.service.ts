@@ -24,7 +24,6 @@ import type {
   AutomationFlowInvalid,
   AutomationScheduleMinutesNotAllowed,
 } from "../automation/errors";
-import { campaignImageCloudName } from "../body/campaign-body-document";
 import {
   type CampaignLocalizedContent,
   type CampaignPurpose,
@@ -35,6 +34,7 @@ import {
   type CampaignContentChanges,
   changeCampaignContent,
 } from "../body/campaign-content-change";
+import { campaignImageCloudName } from "../body/campaign-image-account";
 import type { CampaignAudienceId, CampaignId } from "../campaign-identifiers";
 import {
   type CampaignDelivery,

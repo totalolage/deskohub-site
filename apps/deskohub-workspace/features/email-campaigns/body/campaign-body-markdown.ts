@@ -5,7 +5,6 @@ import {
   type CampaignBodyDocument,
   campaignBodyDocument,
   campaignBodyFormatVersion,
-  campaignImageCloudName,
   UnfinishedCampaignBodyDocument,
 } from "./campaign-body-document";
 import {
@@ -13,6 +12,7 @@ import {
   campaignBodySchema,
 } from "./campaign-body-extensions";
 import { emptyCampaignBody } from "./campaign-body-rules";
+import { campaignImageCloudName } from "./campaign-image-account";
 import { InvalidCampaignBody } from "./invalid-campaign-body";
 
 /**

@@ -8,13 +8,13 @@ import {
 import {
   type CampaignBodyDocument,
   campaignBodyDocument,
-  campaignImageCloudName,
   UnfinishedCampaignBodyDocument,
 } from "./campaign-body-document";
 import {
   parseCampaignBodyMarkdown,
   parseUnfinishedCampaignBodyMarkdown,
 } from "./campaign-body-markdown";
+import { campaignImageCloudName } from "./campaign-image-account";
 import { InvalidCampaignBody } from "./invalid-campaign-body";
 
 /** A locale's body as the campaign port takes it. */

@@ -3,7 +3,7 @@ import {
   AdministrationCampaignBodyNode as CampaignBodyNode,
   campaignBodyFormatVersion,
 } from "@deskohub/workspace-admin-api";
-import { Config, Effect, type Option, Schema } from "effect";
+import { type Option, Schema } from "effect";
 import {
   type CampaignBodyIssue,
   campaignBodyIssues,
@@ -50,15 +50,6 @@ export const campaignBodyDocument = (imageCloudName: Option.Option<string>) =>
 export type CampaignBodyDocument = ReturnType<
   typeof campaignBodyDocument
 >["Type"];
-
-/**
- * The Cloudinary account campaign images must come from, read from config
- * when a body is decoded. Scripts and CLI contracts run without it, and their
- * image-free bodies still decode.
- */
-export const campaignImageCloudName = Config.option(
-  Config.string("NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME")
-).pipe(Effect.orDie);
 
 /**
  * A body still being written, as a preview renders it. Decoding checks only
