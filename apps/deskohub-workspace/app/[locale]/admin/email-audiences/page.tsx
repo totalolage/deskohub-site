@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationPage,
   AdministrationTableCount,
@@ -36,7 +37,9 @@ async function EmailAudiences() {
       <AdministrationTableToolbar
         actions={
           <Button asChild size="sm">
-            <Link href="/admin/email-audiences/new">
+            <Link
+              href={administrationHref("/[locale]/admin/email-audiences/new")}
+            >
               {m.emailCampaignsAudienceListNew({}, { locale })}
             </Link>
           </Button>

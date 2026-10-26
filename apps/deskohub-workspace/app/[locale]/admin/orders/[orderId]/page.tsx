@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { AdministrationRecordLink } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationAlert,
   AdministrationFact,
@@ -170,7 +171,10 @@ export async function OrderAdministrationDetail({
             </h2>
             {order.link ? (
               <AdministrationRecordLink
-                href={`/admin/reservations/${order.link.reservationId}`}
+                href={administrationHref(
+                  "/[locale]/admin/reservations/[reservationId]",
+                  { reservationId: order.link.reservationId }
+                )}
               >
                 <span className="block font-semibold">
                   {m.administrationOrderViewReservation({}, { locale })}

@@ -3,10 +3,10 @@
 import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { ConfirmDialog } from "@/features/administration/confirm-dialog";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import { getLocalizedPagePath } from "@/features/i18n/routing";
 import { Button } from "@/shared/components/ui/button";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { CampaignOperationFailureCopy } from "../campaign-operation-failure";
@@ -32,7 +32,9 @@ export function DeleteCampaignDraftControl({
   const { execute, isExecuting } = useCampaignOperation("deleteCampaign", {
     failureCopy: draftDeleteFailureCopy,
     onSuccess: () =>
-      router.push(localizeAdministrationHref("/admin/email-campaigns", locale)),
+      router.push(
+        getLocalizedPagePath(locale, "/[locale]/admin/email-campaigns")
+      ),
     onFailure: setError,
   });
 

@@ -5,11 +5,11 @@ import { CheckCircle2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { type Control, useForm, useWatch } from "react-hook-form";
-import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { AdministrationPageHeader } from "@/features/administration/components";
 import { m } from "@/features/administration/i18n";
 import { m as customerMessages, type Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import { getLocalizedPagePath } from "@/features/i18n/routing";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
@@ -218,7 +218,11 @@ export function CampaignComposer({
       setCreated(true);
       form.reset(form.getValues());
       router.push(
-        localizeAdministrationHref(`/admin/email-campaigns/${id}`, routeLocale)
+        getLocalizedPagePath(
+          routeLocale,
+          "/[locale]/admin/email-campaigns/[campaignId]",
+          { campaignId: id }
+        )
       );
     },
     onFailure: setSaveError,

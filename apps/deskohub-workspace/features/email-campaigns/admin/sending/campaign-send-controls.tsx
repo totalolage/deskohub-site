@@ -2,6 +2,7 @@
 
 import { Users } from "lucide-react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -34,7 +35,12 @@ export function CampaignSendControls({
   return (
     <div className="flex flex-wrap items-center gap-2 @5xl:flex-nowrap">
       <Button asChild size="sm" variant="ghost">
-        <Link href={`/admin/email-campaigns/${campaignId}/recipients`}>
+        <Link
+          href={administrationHref(
+            "/[locale]/admin/email-campaigns/[campaignId]/recipients",
+            { campaignId }
+          )}
+        >
           <Users aria-hidden className="size-4" />
           {m.emailCampaignsSendPreviewRecipients({}, { locale })}
         </Link>

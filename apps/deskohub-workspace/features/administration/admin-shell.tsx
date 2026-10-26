@@ -41,6 +41,10 @@ import {
 } from "@/shared/components/ui/sheet";
 import { cn } from "@/shared/utils";
 import { AdministrationLink as Link } from "./admin-link";
+import {
+  type AdministrationHref,
+  administrationHref,
+} from "./administration-href";
 import { m } from "./i18n";
 import { AdministrationBreadcrumbLoading } from "./loading";
 
@@ -48,7 +52,7 @@ import { AdministrationBreadcrumbLoading } from "./loading";
 type ShellMessage = typeof m.shellNavigationOverview;
 
 type NavigationEntry = {
-  readonly href: string;
+  readonly href: AdministrationHref;
   readonly icon: ComponentType<SVGProps<SVGSVGElement>>;
   readonly label: ShellMessage;
 };
@@ -57,14 +61,18 @@ const navigation = [
   {
     label: m.shellNavigationSectionOperations,
     items: [
-      { href: "/admin", icon: CircleGauge, label: m.shellNavigationOverview },
       {
-        href: "/admin/reservations",
+        href: administrationHref("/[locale]/admin"),
+        icon: CircleGauge,
+        label: m.shellNavigationOverview,
+      },
+      {
+        href: administrationHref("/[locale]/admin/reservations"),
         icon: CalendarRange,
         label: m.shellNavigationReservations,
       },
       {
-        href: "/admin/customers",
+        href: administrationHref("/[locale]/admin/customers"),
         icon: Users,
         label: m.shellNavigationCustomers,
       },
@@ -73,10 +81,18 @@ const navigation = [
   {
     label: m.shellNavigationSectionDiscounts,
     items: [
-      { href: "/admin/codes", icon: Ticket, label: m.shellNavigationCodes },
-      { href: "/admin/vouchers", icon: Gift, label: m.shellNavigationVouchers },
       {
-        href: "/admin/sales",
+        href: administrationHref("/[locale]/admin/codes"),
+        icon: Ticket,
+        label: m.shellNavigationCodes,
+      },
+      {
+        href: administrationHref("/[locale]/admin/vouchers"),
+        icon: Gift,
+        label: m.shellNavigationVouchers,
+      },
+      {
+        href: administrationHref("/[locale]/admin/sales"),
         icon: BadgePercent,
         label: m.shellNavigationSales,
       },
@@ -86,12 +102,12 @@ const navigation = [
     label: m.shellNavigationSectionEmail,
     items: [
       {
-        href: "/admin/email-campaigns",
+        href: administrationHref("/[locale]/admin/email-campaigns"),
         icon: Mail,
         label: m.shellNavigationCampaigns,
       },
       {
-        href: "/admin/email-audiences",
+        href: administrationHref("/[locale]/admin/email-audiences"),
         icon: ListFilter,
         label: m.shellNavigationAudiences,
       },
@@ -101,22 +117,22 @@ const navigation = [
     label: m.shellNavigationSectionAdministration,
     items: [
       {
-        href: "/admin/invoices",
+        href: administrationHref("/[locale]/admin/invoices"),
         icon: FileText,
         label: m.shellNavigationInvoices,
       },
       {
-        href: "/admin/access-codes",
+        href: administrationHref("/[locale]/admin/access-codes"),
         icon: KeyRound,
         label: m.shellNavigationAccessCodes,
       },
       {
-        href: "/admin/administrators",
+        href: administrationHref("/[locale]/admin/administrators"),
         icon: ShieldCheck,
         label: m.administratorsNavigation,
       },
       {
-        href: "/admin/cli/sessions",
+        href: administrationHref("/[locale]/admin/cli/sessions"),
         icon: SquareTerminal,
         label: m.shellNavigationCliSessions,
       },
@@ -128,9 +144,9 @@ const navigation = [
 }[];
 
 // Navigation hrefs are unprefixed; the current pathname carries the locale.
-const isActive = (pathname: string, href: string) => {
+const isActive = (pathname: string, href: AdministrationHref) => {
   const unprefixedPathname = stripLocaleFromPathname(pathname, locales);
-  return href === "/admin"
+  return href === administrationHref("/[locale]/admin")
     ? unprefixedPathname === href
     : unprefixedPathname.startsWith(href);
 };
@@ -254,11 +270,15 @@ export function AdministrationBreadcrumbs({
 }: {
   readonly entityLabel?: string;
   readonly segmentLabels?: Readonly<Record<string, string>>;
-  readonly segments: readonly string[];
+  readonly segments: readonly ["admin", ...string[]];
 }) {
   const locale = useRouteLocale();
+  const crumbHref = (index: number): AdministrationHref =>
+    index === 0
+      ? administrationHref("/[locale]/admin")
+      : `/admin/${segments.slice(1, index + 1).join("/")}`;
   const crumbs = segments.map((segment, index) => ({
-    href: `/${segments.slice(0, index + 1).join("/")}`,
+    href: crumbHref(index),
     label:
       segmentLabels?.[segment] ||
       (index === segments.length - 1 && entityLabel) ||
@@ -324,7 +344,10 @@ function Brand({
   readonly locale: Locale;
 }) {
   return (
-    <Link className="flex min-w-0 items-center gap-3" href="/admin">
+    <Link
+      className="flex min-w-0 items-center gap-3"
+      href={administrationHref("/[locale]/admin")}
+    >
       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-burned-orange text-sm font-semibold text-white">
         D
       </span>

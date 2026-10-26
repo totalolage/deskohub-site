@@ -14,7 +14,11 @@ import {
   useWatch,
 } from "react-hook-form";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
-import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import {
+  type AdministrationHref,
+  administrationHref,
+  localizeAdministrationHref,
+} from "@/features/administration/administration-href";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
@@ -196,7 +200,9 @@ export function DiscountCodesAdminTable({
         cell: ({ row }) => (
           <Link
             className="font-mono font-semibold underline decoration-navy-blue/25 underline-offset-4 hover:decoration-navy-blue"
-            href={`/admin/codes/${row.original.id}`}
+            href={administrationHref("/[locale]/admin/codes/[codeId]", {
+              codeId: row.original.id,
+            })}
           >
             {row.original.code}
           </Link>
@@ -310,7 +316,9 @@ export function VouchersAdminTable({
         cell: ({ row }) => (
           <Link
             className="font-mono font-semibold underline decoration-navy-blue/25 underline-offset-4 hover:decoration-navy-blue"
-            href={`/admin/vouchers/${row.original.id}`}
+            href={administrationHref("/[locale]/admin/vouchers/[voucherId]", {
+              voucherId: row.original.id,
+            })}
           >
             {row.original.code}
           </Link>
@@ -393,7 +401,7 @@ export function VoucherEditor({
   voucher,
 }: {
   readonly deletable?: boolean;
-  readonly deleteRedirect?: string;
+  readonly deleteRedirect?: AdministrationHref;
   readonly voucher: VoucherTableItem;
 }) {
   const router = useRouter();

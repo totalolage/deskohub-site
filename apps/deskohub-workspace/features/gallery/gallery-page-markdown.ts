@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import {
-  getPagePath,
+  getUnprefixedPagePath,
   getWorkspacePageUrl,
   type Locale,
   m,
@@ -27,7 +27,7 @@ export const galleryPageMarkdown = (
       ...markdownInterpolate(m.galleryPageIntro({}, { locale }), {
         coworking: (content) =>
           markdownLink(
-            getWorkspacePageUrl(getPagePath("/[locale]/coworking")),
+            getWorkspacePageUrl(getUnprefixedPagePath("/[locale]/coworking")),
             ...content
           ),
         reservation: (content) =>

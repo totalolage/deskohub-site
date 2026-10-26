@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
@@ -53,7 +54,9 @@ const createColumns = (
     cell: ({ row }) => (
       <Link
         className="font-mono underline decoration-navy-blue/25 underline-offset-4 hover:decoration-navy-blue"
-        href={`/admin/customers/${row.original.dotyposCustomerId}`}
+        href={administrationHref("/[locale]/admin/customers/[customerId]", {
+          customerId: row.original.dotyposCustomerId,
+        })}
       >
         {row.original.dotyposCustomerId}
       </Link>
@@ -118,7 +121,10 @@ export function SentRecipientTable({
               <p className="flex items-center justify-between gap-3">
                 <Link
                   className="font-mono underline decoration-navy-blue/25 underline-offset-4 hover:decoration-navy-blue"
-                  href={`/admin/customers/${recipient.dotyposCustomerId}`}
+                  href={administrationHref(
+                    "/[locale]/admin/customers/[customerId]",
+                    { customerId: recipient.dotyposCustomerId }
+                  )}
                 >
                   {recipient.dotyposCustomerId}
                 </Link>

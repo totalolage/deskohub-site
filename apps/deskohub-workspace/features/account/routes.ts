@@ -4,11 +4,7 @@ import {
   defaultAccountSection,
   isAccountSection,
 } from "@/features/account/sections";
-import {
-  getLocalizedDynamicPagePath,
-  getLocalizedPagePath,
-  type Locale,
-} from "@/features/i18n";
+import { getLocalizedPagePath, type Locale } from "@/features/i18n";
 import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
 
 /**
@@ -156,7 +152,7 @@ export const getAccountSectionPath = (
 ) =>
   section === "legal"
     ? getLocalizedPagePath(locale, "/[locale]/account/legal")
-    : getLocalizedDynamicPagePath(locale, "/[locale]/account/[section]", {
+    : getLocalizedPagePath(locale, "/[locale]/account/[section]", {
         section,
       });
 

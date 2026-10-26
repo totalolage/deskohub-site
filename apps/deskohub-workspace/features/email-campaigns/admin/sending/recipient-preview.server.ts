@@ -8,7 +8,7 @@ import type {
 } from "@deskohub/workspace-admin-api";
 import { Effect, Match, Option } from "effect";
 import { notFound, redirect } from "next/navigation";
-import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import { getLocalizedPagePath } from "@/features/i18n/routing";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import type { CampaignId } from "../../campaign-identifiers";
 import { describeAudienceFilter } from "../audience-filter-summary";
@@ -136,9 +136,10 @@ export const loadRecipientPreview = async (
       "not-found": () => notFound(),
       "not-draft": () =>
         redirect(
-          localizeAdministrationHref(
-            `/admin/email-campaigns/${campaignId}`,
-            locale
+          getLocalizedPagePath(
+            locale,
+            "/[locale]/admin/email-campaigns/[campaignId]",
+            { campaignId }
           )
         ),
       "no-audience": ({ campaign }): RecipientPreview => ({

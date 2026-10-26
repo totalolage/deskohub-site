@@ -1,5 +1,7 @@
 import { expect, mock, test } from "bun:test";
 
+import { getUnprefixedPagePath } from "../routing";
+
 const revalidatedPaths: string[] = [];
 
 mock.module("next/cache", () => ({
@@ -13,7 +15,11 @@ test("revalidates the page in every locale", async () => {
     "./revalidate-localized-path"
   );
 
-  revalidateLocalizedPath("/admin/invoices/invoice-id");
+  revalidateLocalizedPath(
+    getUnprefixedPagePath("/[locale]/admin/invoices/[invoiceId]", {
+      invoiceId: "invoice-id",
+    })
+  );
 
   expect(revalidatedPaths.sort()).toEqual([
     "/cs-CZ/admin/invoices/invoice-id",

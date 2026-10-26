@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import {
-  getPagePath,
+  getUnprefixedPagePath,
   getWorkspacePageUrl,
   type Locale,
   m,
@@ -28,7 +28,7 @@ export const teamPageMarkdown = (
       ...markdownInterpolate(m.teamAboutBody({}, { locale }), {
         contact: (content) =>
           markdownLink(
-            getWorkspacePageUrl(getPagePath("/[locale]/contact")),
+            getWorkspacePageUrl(getUnprefixedPagePath("/[locale]/contact")),
             ...content
           ),
       })

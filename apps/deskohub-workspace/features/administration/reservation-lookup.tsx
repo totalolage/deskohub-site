@@ -8,6 +8,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import { getLocalizedPagePath } from "@/features/i18n/routing";
 import { Button } from "@/shared/components/ui/button";
 import {
   Form,
@@ -22,7 +23,6 @@ import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { getAdministrationActionFailureMessage } from "./action-failure-message";
 import { getAdministrationReservation } from "./actions";
-import { localizeAdministrationHref } from "./administration-href";
 import type { ReservationLookupInput } from "./contracts";
 import { m } from "./i18n";
 import { AdministrationAlert } from "./notice";
@@ -76,9 +76,10 @@ export function ReservationLookup({
         }
         setError(null);
         router.push(
-          localizeAdministrationHref(
-            `/admin/reservations/${encodeURIComponent(data.reservationId)}`,
-            locale
+          getLocalizedPagePath(
+            locale,
+            "/[locale]/admin/reservations/[reservationId]",
+            { reservationId: data.reservationId }
           )
         );
       },

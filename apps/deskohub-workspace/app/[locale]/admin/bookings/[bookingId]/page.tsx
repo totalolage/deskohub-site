@@ -5,6 +5,10 @@ import {
   AdministrationLink as Link,
 } from "@/features/administration/admin-link";
 import {
+  type AdministrationHref,
+  administrationHref,
+} from "@/features/administration/administration-href";
+import {
   getAdministrationBookingGuestCount,
   getAdministrationBookingStatusLabel,
 } from "@/features/administration/booking-presentation";
@@ -152,7 +156,10 @@ export async function BookingAdministrationDetail({
               />
               {references.customerId && (
                 <BookingReference
-                  href={`/admin/customers/${references.customerId}`}
+                  href={administrationHref(
+                    "/[locale]/admin/customers/[customerId]",
+                    { customerId: references.customerId }
+                  )}
                   label={m.administrationBookingReferenceCustomer(
                     {},
                     { locale }
@@ -162,7 +169,10 @@ export async function BookingAdministrationDetail({
               )}
               {references.workspaceReservationId && (
                 <BookingReference
-                  href={`/admin/reservations/${references.workspaceReservationId}`}
+                  href={administrationHref(
+                    "/[locale]/admin/reservations/[reservationId]",
+                    { reservationId: references.workspaceReservationId }
+                  )}
                   label={m.administrationBookingReferenceReservation(
                     {},
                     { locale }
@@ -180,7 +190,10 @@ export async function BookingAdministrationDetail({
           >
             {booking.customer && booking.customerId ? (
               <AdministrationRecordLink
-                href={`/admin/customers/${booking.customerId}`}
+                href={administrationHref(
+                  "/[locale]/admin/customers/[customerId]",
+                  { customerId: booking.customerId }
+                )}
               >
                 <span className="block font-semibold">
                   {getAdministrationCustomerName(booking.customer, locale)}
@@ -203,7 +216,10 @@ export async function BookingAdministrationDetail({
           >
             {booking.linkedReservation ? (
               <AdministrationRecordLink
-                href={`/admin/reservations/${booking.linkedReservation.id}`}
+                href={administrationHref(
+                  "/[locale]/admin/reservations/[reservationId]",
+                  { reservationId: booking.linkedReservation.id }
+                )}
               >
                 <span className="block font-semibold">
                   {getAdministrationReservationProductTitle(
@@ -235,7 +251,7 @@ function BookingReference({
   label,
   value,
 }: {
-  readonly href?: string;
+  readonly href?: AdministrationHref;
   readonly label: string;
   readonly value: string;
 }) {

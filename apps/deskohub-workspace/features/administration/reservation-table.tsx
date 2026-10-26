@@ -10,6 +10,10 @@ import type {
   AdministrationReservationSort,
   AdministrationReservationSummary,
 } from "./administration.service";
+import {
+  type AdministrationHref,
+  administrationHref,
+} from "./administration-href";
 import { getAdministrationCustomerName } from "./customer-presentation";
 import {
   AdministrationDataTable,
@@ -59,7 +63,7 @@ function ReservationStatusBadge({
 
 export type ReservationTableSorting =
   AdministrationTableSorting<AdministrationReservationSort> & {
-    readonly basePath: string;
+    readonly basePath: AdministrationHref;
   };
 
 export function ReservationTable({
@@ -187,7 +191,10 @@ export function ReservationTable({
                     <p className="font-semibold">
                       <Link
                         className="underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-                        href={`/admin/reservations/${reservation.id}`}
+                        href={administrationHref(
+                          "/[locale]/admin/reservations/[reservationId]",
+                          { reservationId: reservation.id }
+                        )}
                       >
                         {(showCustomer &&
                           reservation.customer &&
@@ -269,7 +276,10 @@ function ReservationDate({
     <>
       <Link
         className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
-        href={`/admin/reservations/${reservation.id}`}
+        href={administrationHref(
+          "/[locale]/admin/reservations/[reservationId]",
+          { reservationId: reservation.id }
+        )}
       >
         {formatAdministrationReservationDate(reservation, locale) ??
           m.administrationReservationDateUnavailable({}, { locale })}
@@ -346,7 +356,9 @@ function ReservationCustomer({
     <>
       <Link
         className="relative z-10 font-medium hover:underline"
-        href={`/admin/customers/${reservation.customerId}`}
+        href={administrationHref("/[locale]/admin/customers/[customerId]", {
+          customerId: reservation.customerId,
+        })}
       >
         {getAdministrationCustomerName(reservation.customer, locale)}
       </Link>

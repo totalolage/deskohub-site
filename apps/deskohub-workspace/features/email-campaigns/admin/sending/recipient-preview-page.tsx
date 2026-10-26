@@ -1,5 +1,6 @@
 import { ArrowLeft, RotateCw } from "lucide-react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationAlert,
   AdministrationDetailSection,
@@ -28,7 +29,10 @@ export async function RecipientPreviewPage({
     loadRecipientPreview(campaignId),
     getRequestLocale(),
   ]);
-  const campaignHref = `/admin/email-campaigns/${campaignId}`;
+  const campaignHref = administrationHref(
+    "/[locale]/admin/email-campaigns/[campaignId]",
+    { campaignId }
+  );
   return (
     <AdministrationPage>
       <AdministrationPageHeader
@@ -63,7 +67,12 @@ export async function RecipientPreviewPage({
         <AdministrationAlert role="alert" status="error">
           <p>{m.emailCampaignsRecipientPreviewUnavailable({}, { locale })}</p>
           <Button asChild className="mt-3" size="sm" variant="secondary">
-            <Link href={`${campaignHref}/recipients`}>
+            <Link
+              href={administrationHref(
+                "/[locale]/admin/email-campaigns/[campaignId]/recipients",
+                { campaignId }
+              )}
+            >
               <RotateCw aria-hidden className="size-4" />
               {m.emailCampaignsRecipientPreviewTryAgain({}, { locale })}
             </Link>

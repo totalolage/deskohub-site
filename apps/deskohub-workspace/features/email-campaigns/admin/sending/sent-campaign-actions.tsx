@@ -3,9 +3,9 @@
 import { Copy, RotateCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
-import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import { getLocalizedPagePath } from "@/features/i18n/routing";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import type { CampaignId } from "../../campaign-identifiers";
@@ -47,7 +47,11 @@ export function SentCampaignActions({
     failureCopy: duplicateFailureCopy,
     onSuccess: (copy) =>
       router.push(
-        localizeAdministrationHref(`/admin/email-campaigns/${copy.id}`, locale)
+        getLocalizedPagePath(
+          locale,
+          "/[locale]/admin/email-campaigns/[campaignId]",
+          { campaignId: copy.id }
+        )
       ),
     onFailure: showFailure,
   });

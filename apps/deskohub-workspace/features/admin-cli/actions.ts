@@ -3,7 +3,10 @@
 import { CliSessionId } from "@deskohub/workspace-admin-api";
 import { Effect, Predicate, Schema } from "effect";
 import { redirect } from "next/navigation";
-import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import {
+  administrationHref,
+  localizeAdministrationHref,
+} from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import { resolveActionLocale } from "@/features/i18n/server/action-locale";
@@ -46,7 +49,7 @@ export async function approveCliAuthentication(formData: FormData) {
   });
   redirect(
     localizeAdministrationHref(
-      `/admin/cli/authenticate?${search}`,
+      `${administrationHref("/[locale]/admin/cli/authenticate")}?${search}`,
       await resolveActionLocale()
     )
   );
@@ -77,13 +80,13 @@ export async function revokeCliSession(formData: FormData) {
     runWorkspaceEffect("cli-authentication.revoke", { boundary: "action" })
   );
 
-  revalidateLocalizedPath("/admin/cli/sessions");
+  revalidateLocalizedPath(administrationHref("/[locale]/admin/cli/sessions"));
   const search = new URLSearchParams({
     result: revoked ? "revoked" : "unchanged",
   });
   redirect(
     localizeAdministrationHref(
-      `/admin/cli/sessions?${search}`,
+      `${administrationHref("/[locale]/admin/cli/sessions")}?${search}`,
       await resolveActionLocale()
     )
   );
@@ -108,7 +111,11 @@ const renameCliSessionAction = defineWorkspaceAction(
           message: m.adminCliRenameSessionMissing({}, { locale }),
         });
       }
-      yield* Effect.sync(() => revalidateLocalizedPath("/admin/cli/sessions"));
+      yield* Effect.sync(() =>
+        revalidateLocalizedPath(
+          administrationHref("/[locale]/admin/cli/sessions")
+        )
+      );
       return { notice: m.adminCliRenameSaved({}, { locale }) };
     },
     (effect, _input, { locale }) =>

@@ -44,6 +44,7 @@ import { authUser } from "@/db/schema/auth";
 import "@/shared/polyfills/temporal";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identifiers";
+import { administrationHref } from "@/features/administration/administration-href";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { addCalendarDuration, currentInstant } from "@/shared/utils/temporal";
@@ -228,7 +229,9 @@ export class CliAuthentication extends Context.Service<
         return {
           code,
           // The proxy opens this unprefixed CLI URL in the operator's language.
-          approvalPath: `/admin/cli/authenticate?code=${encodeURIComponent(code)}`,
+          approvalPath: `${administrationHref(
+            "/[locale]/admin/cli/authenticate"
+          )}?code=${encodeURIComponent(code)}`,
           expiresAt: toIsoString(expiresAt),
         };
       });

@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { Fragment, useRef, useState } from "react";
 import { get, useController, useForm } from "react-hook-form";
 import { AdministrationLink } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
@@ -333,7 +334,10 @@ function FlowToolbar({
                   mapping={{
                     link: (
                       <AdministrationLink
-                        href={`/admin/email-campaigns/${campaignId}/preview`}
+                        href={administrationHref(
+                          "/[locale]/admin/email-campaigns/[campaignId]/preview",
+                          { campaignId }
+                        )}
                         className="font-semibold text-burned-orange underline-offset-4 hover:underline"
                       />
                     ),

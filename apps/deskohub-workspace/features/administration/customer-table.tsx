@@ -10,6 +10,7 @@ import type {
   AdministrationCustomerSort,
   AdministrationCustomerSummary,
 } from "./administration.service";
+import { administrationHref } from "./administration-href";
 import type { AdministrationCustomerMarketingConsentState } from "./customer-list-filters";
 import {
   getAdministrationCustomerMarketingConsentLabel,
@@ -38,7 +39,9 @@ const getColumns = (
     cell: ({ row }) => (
       <Link
         className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
-        href={`/admin/customers/${row.original.customerId}`}
+        href={administrationHref("/[locale]/admin/customers/[customerId]", {
+          customerId: row.original.customerId,
+        })}
       >
         {row.original.customer
           ? getAdministrationCustomerName(row.original.customer, locale)
@@ -166,7 +169,7 @@ export function AdministrationCustomerTable({
         sorting
           ? (field, direction) =>
               getAdministrationTableSortHref({
-                basePath: "/admin/customers",
+                basePath: administrationHref("/[locale]/admin/customers"),
                 direction,
                 field,
                 params: sorting.params,
@@ -179,7 +182,10 @@ export function AdministrationCustomerTable({
             <li key={item.customerId}>
               <Link
                 className="block px-4 py-4 transition-colors hover:bg-navy-blue/[0.025] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-navy-blue/40"
-                href={`/admin/customers/${item.customerId}`}
+                href={administrationHref(
+                  "/[locale]/admin/customers/[customerId]",
+                  { customerId: item.customerId }
+                )}
               >
                 <p className="font-semibold">
                   {item.customer

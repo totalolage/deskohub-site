@@ -5,7 +5,7 @@ import {
 } from "@/features/checkout/product-catalog.i18n";
 import { getFaqQuestions } from "@/features/faq";
 import {
-  getPagePath,
+  getUnprefixedPagePath,
   getWorkspacePageUrl,
   type Locale,
   m,
@@ -65,7 +65,9 @@ export const landingPageMarkdown = (
   locale: Locale,
   { isPublished, saleBanner }: PublicPageMarkdownSources
 ): Effect.Effect<MarkdownBlocks> => {
-  const contactUrl = getWorkspacePageUrl(getPagePath("/[locale]/contact"));
+  const contactUrl = getWorkspacePageUrl(
+    getUnprefixedPagePath("/[locale]/contact")
+  );
   const infoEmail = workspaceSiteConstants.contact.infoEmail;
   const coworkReservationUrl = getWorkspacePageUrl(coworkReservationPath);
   const meetingRoomReservationUrl = getWorkspacePageUrl(
@@ -83,7 +85,9 @@ export const landingPageMarkdown = (
         ? [
             markdownListItem(
               markdownLink(
-                getWorkspacePageUrl(getPagePath("/[locale]/meeting-room")),
+                getWorkspacePageUrl(
+                  getUnprefixedPagePath("/[locale]/meeting-room")
+                ),
                 m.landingHeroMeetingRoomCta({}, { locale })
               )
             ),
@@ -120,7 +124,7 @@ export const landingPageMarkdown = (
       ...markdownInterpolate(m.landingOfferingLead({}, { locale }), {
         pricing: (content) =>
           markdownLink(
-            getWorkspacePageUrl(getPagePath("/[locale]/pricing")),
+            getWorkspacePageUrl(getUnprefixedPagePath("/[locale]/pricing")),
             ...content
           ),
       })
@@ -143,7 +147,7 @@ export const landingPageMarkdown = (
       ),
       markdownListItem(
         markdownLink(
-          getWorkspacePageUrl(getPagePath("/[locale]/coworking")),
+          getWorkspacePageUrl(getUnprefixedPagePath("/[locale]/coworking")),
           m.landingOfferingCoworkPageLink({}, { locale })
         )
       ),
@@ -161,7 +165,9 @@ export const landingPageMarkdown = (
         ? [
             markdownListItem(
               markdownLink(
-                getWorkspacePageUrl(getPagePath("/[locale]/meeting-room")),
+                getWorkspacePageUrl(
+                  getUnprefixedPagePath("/[locale]/meeting-room")
+                ),
                 m.landingOfferingMeetingRoomPageLink({}, { locale })
               )
             ),
@@ -172,7 +178,7 @@ export const landingPageMarkdown = (
     markdownParagraph(m.landingOfferingTtrpgText({}, { locale })),
     markdownParagraph(
       markdownLink(
-        getWorkspacePageUrl(getPagePath("/[locale]/ttrpg-room")),
+        getWorkspacePageUrl(getUnprefixedPagePath("/[locale]/ttrpg-room")),
         m.landingOfferingTtrpgLink({}, { locale })
       )
     ),
@@ -209,7 +215,7 @@ export const landingPageMarkdown = (
     ),
     markdownParagraph(
       markdownLink(
-        getWorkspacePageUrl(getPagePath("/[locale]/faq")),
+        getWorkspacePageUrl(getUnprefixedPagePath("/[locale]/faq")),
         m.landingFaqTeaserLink({}, { locale })
       )
     ),

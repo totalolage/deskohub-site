@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationPage,
   AdministrationTableCount,
@@ -139,7 +140,7 @@ function BookingResults({
         }}
       />
       <Pagination
-        basePath="/admin/bookings"
+        basePath={administrationHref("/[locale]/admin/bookings")}
         locale={locale}
         page={result.page}
         pageCount={result.pageCount}

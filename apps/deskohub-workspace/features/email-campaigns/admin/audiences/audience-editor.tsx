@@ -6,7 +6,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { get, useForm, useWatch } from "react-hook-form";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
-import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import {
+  administrationHref,
+  localizeAdministrationHref,
+} from "@/features/administration/administration-href";
 import {
   AdministrationPage,
   AdministrationPageHeader,
@@ -47,7 +50,7 @@ import { asRootGroup } from "./audience-filter-editing";
 import { AudienceStatusBadge, audienceHref } from "./audience-list";
 import type { AudienceEditorData } from "./audience-page-data.server";
 
-const audienceListHref = "/admin/email-audiences";
+const audienceListHref = administrationHref("/[locale]/admin/email-audiences");
 
 /** Which content an audience of one locale's speakers needs. */
 const singleLocaleNotes = {

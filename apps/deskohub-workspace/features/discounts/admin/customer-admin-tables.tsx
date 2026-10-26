@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import type { AdministrationCustomerTransaction } from "@/features/administration/administration.service";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
@@ -99,8 +100,10 @@ const getPromotionCodeHref = (item: {
   readonly kind: CustomerPromotionCodeItem["kind"];
 }) =>
   item.kind === "voucher"
-    ? `/admin/vouchers/${item.id}`
-    : `/admin/codes/${item.id}`;
+    ? administrationHref("/[locale]/admin/vouchers/[voucherId]", {
+        voucherId: item.id,
+      })
+    : administrationHref("/[locale]/admin/codes/[codeId]", { codeId: item.id });
 
 const getPromotionCodeBenefit = (
   item: CustomerPromotionCodeItem,
@@ -290,7 +293,10 @@ export function CustomerTransactionHistoryTable({
         cell: ({ row }) => (
           <Link
             className="font-semibold underline decoration-navy-blue/20 underline-offset-4"
-            href={`/admin/reservations/${row.original.reservation.id}`}
+            href={administrationHref(
+              "/[locale]/admin/reservations/[reservationId]",
+              { reservationId: row.original.reservation.id }
+            )}
           >
             {getAdministrationReservationProductTitle(
               row.original.reservation.product,
@@ -362,7 +368,10 @@ export function ClaimHistoryTable({
             cell: ({ row }) => (
               <Link
                 className="font-semibold underline underline-offset-4"
-                href={`/admin/customers/${row.original.dotyposCustomerId}`}
+                href={administrationHref(
+                  "/[locale]/admin/customers/[customerId]",
+                  { customerId: row.original.dotyposCustomerId }
+                )}
               >
                 {m.discountsViewCustomer({}, { locale })}
               </Link>
@@ -443,7 +452,10 @@ export function ClaimHistoryTable({
         cell: ({ row }) => (
           <Link
             className="font-semibold underline underline-offset-4"
-            href={`/admin/reservations/${row.original.workspaceReservationId}`}
+            href={administrationHref(
+              "/[locale]/admin/reservations/[reservationId]",
+              { reservationId: row.original.workspaceReservationId }
+            )}
           >
             {m.discountsOpenReservation({}, { locale })}
           </Link>

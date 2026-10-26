@@ -146,9 +146,9 @@ glossary defines the customer account, reservation author, and tombstone.
   modal closed. The dialog makes the background inert, closing it goes back to
   `/account`, and deletion leaves through a document navigation.
 - Build account, section, and sign-in URLs with `features/account/routes.ts`.
-  Its helpers pass Next's generated `/[locale]/...` route patterns to
-  `getLocalizedPagePath` or, for `[section]`, `getLocalizedDynamicPagePath`, so
-  typecheck proves the pages exist (the app doesn't enable `typedRoutes`).
+  Its helpers pass Next's generated `/[locale]/...` route patterns, with any
+  `[section]` value, to `getLocalizedPagePath`, so typecheck proves the pages
+  exist (the app doesn't enable `typedRoutes`).
 - Sign-in continues to `?returnTo=` (`signInReturnParam`) instead of the
   account when it is a same-origin path; `getAccountSignInPath(locale,
   returnTo)` adds it. The sign-in page passes it into the magic-link callback

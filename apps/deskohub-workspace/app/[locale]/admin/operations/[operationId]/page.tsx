@@ -1,6 +1,10 @@
 import { Suspense } from "react";
 import { AdministrationRecordLink } from "@/features/administration/admin-link";
 import {
+  type AdministrationHref,
+  administrationHref,
+} from "@/features/administration/administration-href";
+import {
   AdministrationAlert,
   AdministrationDetailSection,
   AdministrationFact,
@@ -139,7 +143,9 @@ export async function OperationAdministrationDetail({
             <RelatedEntity
               href={
                 operation.orderId
-                  ? `/admin/orders/${encodeURIComponent(operation.orderId)}`
+                  ? administrationHref("/[locale]/admin/orders/[orderId]", {
+                      orderId: operation.orderId,
+                    })
                   : undefined
               }
               label={
@@ -151,7 +157,10 @@ export async function OperationAdministrationDetail({
             <RelatedEntity
               href={
                 detail.linkedReservationId
-                  ? `/admin/reservations/${detail.linkedReservationId}`
+                  ? administrationHref(
+                      "/[locale]/admin/reservations/[reservationId]",
+                      { reservationId: detail.linkedReservationId }
+                    )
                   : undefined
               }
               label={
@@ -175,7 +184,7 @@ function RelatedEntity({
   label,
   title,
 }: {
-  readonly href?: string;
+  readonly href?: AdministrationHref;
   readonly label: string;
   readonly title: string;
 }) {

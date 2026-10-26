@@ -437,7 +437,8 @@ export type AdministrationTimelineItem = {
   readonly description: string;
   readonly occurredAt: string;
   readonly tone: "neutral" | "positive" | "warning";
-  readonly href?: string;
+  /** A fragment that links to the entry's record on the same page. */
+  readonly href?: `#${string}`;
 };
 
 /**

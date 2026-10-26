@@ -11,6 +11,7 @@ import { ArrowRight, Hourglass, ListFilter, Send } from "lucide-react";
 import type { ReactNode } from "react";
 import { useId } from "react";
 import { AdministrationLink } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import { type Locale, locales } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -321,7 +322,10 @@ export function SendStepCard({
         })}
       </dl>
       <AdministrationLink
-        href={`/admin/email-campaigns/${campaign.id}/email`}
+        href={administrationHref(
+          "/[locale]/admin/email-campaigns/[campaignId]/email",
+          { campaignId: campaign.id }
+        )}
         className="inline-flex items-center gap-1.5 font-semibold text-burned-orange text-sm hover:underline"
       >
         {m.emailAutomationFlowSendEditEmail({}, { locale })}

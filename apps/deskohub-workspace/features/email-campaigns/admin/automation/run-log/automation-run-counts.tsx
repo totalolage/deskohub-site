@@ -5,6 +5,7 @@ import {
 } from "@deskohub/workspace-admin-api";
 import type { ReactNode } from "react";
 import { AdministrationLink } from "@/features/administration/admin-link";
+import type { AdministrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import type { AdministrationListParams } from "@/features/administration/list-href";
 import type { Locale } from "@/features/i18n";
@@ -30,7 +31,7 @@ function CountTile({
 }: {
   readonly breakdown?: readonly CountLine[];
   readonly count: number;
-  readonly href: (params: AdministrationListParams) => string;
+  readonly href: (params: AdministrationListParams) => AdministrationHref;
   readonly label: string;
   readonly locale: Locale;
   readonly tone?: "neutral" | "positive" | "attention";
@@ -93,7 +94,7 @@ export function AutomationRunCounts({
 }: {
   readonly flow: AutomationFlow | null;
   /** The run list with the counts' version and `params`. */
-  readonly href: (params: AdministrationListParams) => string;
+  readonly href: (params: AdministrationListParams) => AdministrationHref;
   readonly locale: Locale;
   /** Which versions the counts cover, such as "All versions". */
   readonly scope: ReactNode;

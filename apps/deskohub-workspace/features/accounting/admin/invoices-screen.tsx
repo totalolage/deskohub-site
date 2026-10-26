@@ -1,6 +1,7 @@
 import { FilePlus2 } from "lucide-react";
 import { Suspense } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationPage,
   AdministrationPageHeader,
@@ -34,7 +35,7 @@ export async function InvoicesAdministrationScreen({
       <AdministrationPageHeader
         actions={
           <Button asChild>
-            <Link href="/admin/invoices/new">
+            <Link href={administrationHref("/[locale]/admin/invoices/new")}>
               <FilePlus2 aria-hidden className="size-4" />{" "}
               {m.accountingInvoiceListNewInvoice({}, { locale })}
             </Link>
@@ -108,7 +109,7 @@ async function InvoiceCollection({
         query={result.query}
       />
       <Pagination
-        basePath="/admin/invoices"
+        basePath={administrationHref("/[locale]/admin/invoices")}
         locale={locale}
         page={result.items.page}
         pageCount={result.items.pageCount}

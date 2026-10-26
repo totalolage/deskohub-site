@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { AdministrationLink } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationPage,
   AdministrationPageHeader,
@@ -30,7 +31,7 @@ export async function AutomatedCampaignFrame({
   readonly children: ReactNode;
 }) {
   const locale = await getRequestLocale();
-  const base = `/admin/email-campaigns/${campaign.id}`;
+  const params = { campaignId: campaign.id };
   return (
     <AdministrationPage>
       <AdministrationPageHeader
@@ -71,10 +72,38 @@ export async function AutomatedCampaignFrame({
         <ul className="grid w-full grid-cols-[repeat(4,auto)] gap-1 rounded-md border border-navy-blue/15 bg-navy-blue/5 p-1 sm:inline-flex sm:h-10 sm:w-auto sm:items-center">
           {(
             [
-              ["flow", base, m.emailAutomationsSectionFlow],
-              ["email", `${base}/email`, m.emailAutomationsSectionEmail],
-              ["preview", `${base}/preview`, m.emailAutomationsSectionPreview],
-              ["runs", `${base}/runs`, m.emailAutomationsSectionRuns],
+              [
+                "flow",
+                administrationHref(
+                  "/[locale]/admin/email-campaigns/[campaignId]",
+                  params
+                ),
+                m.emailAutomationsSectionFlow,
+              ],
+              [
+                "email",
+                administrationHref(
+                  "/[locale]/admin/email-campaigns/[campaignId]/email",
+                  params
+                ),
+                m.emailAutomationsSectionEmail,
+              ],
+              [
+                "preview",
+                administrationHref(
+                  "/[locale]/admin/email-campaigns/[campaignId]/preview",
+                  params
+                ),
+                m.emailAutomationsSectionPreview,
+              ],
+              [
+                "runs",
+                administrationHref(
+                  "/[locale]/admin/email-campaigns/[campaignId]/runs",
+                  params
+                ),
+                m.emailAutomationsSectionRuns,
+              ],
             ] as const
           ).map(([key, href, label]) => (
             <li key={key}>

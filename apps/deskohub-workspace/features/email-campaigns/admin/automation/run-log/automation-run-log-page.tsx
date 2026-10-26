@@ -1,5 +1,9 @@
 import { Option, Result } from "effect";
 import { AdministrationLink } from "@/features/administration/admin-link";
+import {
+  type AdministrationHref,
+  administrationHref,
+} from "@/features/administration/administration-href";
 import { AdministrationAlert } from "@/features/administration/components";
 import { m } from "@/features/administration/i18n";
 import {
@@ -31,7 +35,7 @@ function LoadFailure({
   locale,
 }: {
   readonly failure: AutomationRunLogFailure;
-  readonly firstPageHref?: string | undefined;
+  readonly firstPageHref?: AdministrationHref | undefined;
   readonly locale: Locale;
 }) {
   return (
@@ -73,7 +77,10 @@ export async function AutomationRunLogPage({
   const locale = await getRequestLocale();
   const filters = parseAutomationRunFilters(searchParams);
   const log = await loadAutomationRunLog(automated, filters);
-  const basePath = `/admin/email-campaigns/${automated.campaign.id}/runs`;
+  const basePath = administrationHref(
+    "/[locale]/admin/email-campaigns/[campaignId]/runs",
+    { campaignId: automated.campaign.id }
+  );
   const current = automationRunFilterParams(filters);
   const listHref = (params: AdministrationListParams) =>
     getAdministrationListHref(basePath, { ...current, ...params });

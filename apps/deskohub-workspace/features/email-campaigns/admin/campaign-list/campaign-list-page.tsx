@@ -1,6 +1,7 @@
 import { Plus } from "lucide-react";
 import { Suspense } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationPage,
   AdministrationTableCount,
@@ -53,7 +54,9 @@ export async function CampaignListPage({
           <div className="flex flex-wrap items-end justify-end gap-3">
             <CampaignDeliveryFilterForm delivery={await delivery} />
             <Button asChild size="md">
-              <Link href="/admin/email-campaigns/new">
+              <Link
+                href={administrationHref("/[locale]/admin/email-campaigns/new")}
+              >
                 <Plus aria-hidden className="size-4" />
                 {m.emailCampaignsListNewCampaign({}, { locale })}
               </Link>
