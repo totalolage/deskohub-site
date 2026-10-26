@@ -1475,7 +1475,7 @@
   "faqQuestionMeetingRoom": "How long can I book the meeting room for?",
   "faqAnswerMeetingRoom": "For an hour, 4 hours or a whole day. It seats up to 10 people and has a TV, a screen and a projector. You can <meetingRoomReservation>book it</meetingRoomReservation> online.",
   "faqQuestionTtrpg": "Can I play TTRPGs here?",
-  "faqAnswerTtrpg": "Yes. For a campaign or a one-shot, book a <ttrpg>private room</ttrpg>: a quiet room in the Workspace or a smaller room at Deskohub Bar.",
+  "faqAnswerTtrpg": "Yes. For a campaign or a one-shot, book a quiet <ttrpg>private room</ttrpg> in the Workspace online. The smaller room at Deskohub Bar is by arrangement.",
   "faqQuestionEvents": "Do you host company events?",
   "faqAnswerEvents": "We host company events and other gatherings by arrangement. <contact>Write to us</contact> about what you're planning.",
   "faqQuestionOffices": "Do you have private offices?",

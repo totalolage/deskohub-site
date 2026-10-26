@@ -74,7 +74,7 @@ export const publicPageDefinitions: Readonly<
   "/faq": {
     title: m.faqMetadataTitle,
     description: m.faqMetadataDescription,
-    contentDate: "2026-10-25",
+    contentDate: "2026-10-26",
   },
   "/ai-assistants": {
     title: m.aiAssistantsMetadataTitle,
