@@ -15,6 +15,7 @@ import { referralCodeCookieName } from "@/features/referrals/referral-code-cooki
 import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
 import type { DatasourceConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
+import { formatWorkspaceE2EFailureAnnotation } from "../github-actions";
 import { E2EDatabase } from "../integrations/database.service";
 import type { BrowserCommandResult, Runner } from "../runtime";
 import { makeE2ETelemetryMock } from "../services/telemetry.mock";
@@ -2548,6 +2549,18 @@ const runLane = async (
     await executeCase(selected, scenario, stepIds);
     operationsByCase[caseId] = scenario.operations.slice(operationsBefore);
   }
+  // A failed case's annotation names its terminal step only when the
+  // production formatter keeps the step id.
+  for (const stepId of stepIds) {
+    expect(
+      formatWorkspaceE2EFailureAnnotation({
+        caseId: "account-anonymous-redirect",
+        failureKind: "error",
+        outcome: "failed",
+        stepId,
+      })
+    ).toContain(`,step=${stepId},`);
+  }
   return { operationsByCase, skippedCaseIds };
 };
 
@@ -2650,9 +2663,7 @@ test("executes every account lane case within the magic-link ledger", async () =
   ).toBe(signInReturns.assistant.returnTo);
   expect(scenario.external.languageSaves).toEqual(["cs-CZ", "en-US"]);
   expect(scenario.external.localePreference).toBe("en-US");
-  expect(stepIds).toContain(
-    "signs the same account back in onto the saved Czech site"
-  );
+  expect(stepIds).toContain("sign-in-onto-saved-czech-site");
 
   const operationEvents = scenario.external.events.filter(({ type }) =>
     ["send", "receive", "logout", "consume", "deletion", "replay"].includes(
@@ -2837,9 +2848,7 @@ test("signs in with an emailed code and keeps every link journey when sign-in co
   // ledger is unchanged.
   expect(scenario.retries).toEqual([]);
   expect(operationsByCase).toEqual(workspaceE2EAccountMagicLinkLedger);
-  expect(stepIds).toContain(
-    "signs in with the emailed code into the completion state"
-  );
+  expect(stepIds).toContain("sign-in-with-emailed-code");
 
   const operationEvents = scenario.external.events.filter(({ type }) =>
     [
@@ -2932,16 +2941,10 @@ test("creates, signs in with, manages, and reauthenticates with a passkey when p
     "confirm-deletion",
     "remove-authenticator",
   ]);
-  expect(
-    stepIds.indexOf(
-      "adds the virtual passkey authenticator before the reactivation sign-in"
-    )
-  ).toBeLessThan(
-    stepIds.indexOf(
-      "reactivates the retained profile in the browser that opens the link"
-    )
+  expect(stepIds.indexOf("add-virtual-passkey-authenticator")).toBeLessThan(
+    stepIds.indexOf("reactivate-retained-profile")
   );
-  expect(stepIds).toContain("creates a passkey from the post-sign-in prompt");
+  expect(stepIds).toContain("create-passkey-from-prompt");
   // The account survives the passkey confirmation and keeps one passkey.
   expect(scenario.external.passkeysByUserId).toEqual(
     new Map([["auth-reactivated", 1]])
@@ -2987,7 +2990,7 @@ test("fails closed before external side effects when the accepted request handof
   );
 
   expect(Exit.isFailure(exit)).toBe(true);
-  expect(stepIds).toEqual(["requires the first accepted main request handoff"]);
+  expect(stepIds).toEqual(["require-first-accepted-request-handoff"]);
   expect(scenario.external.browserActions).toEqual([]);
   expect(scenario.external.events).toEqual([]);
   expect(scenario.external.authReads).toEqual([]);
@@ -3013,7 +3016,7 @@ test("fails closed before any sign-in request when the share-link handoff is mis
   );
 
   expect(Exit.isFailure(exit)).toBe(true);
-  expect(stepIds).toEqual(["requires the share-link sign-in handoff"]);
+  expect(stepIds).toEqual(["require-share-link-sign-in-handoff"]);
   expect(scenario.external.browserActions).toEqual([]);
   expect(scenario.external.events).toEqual([]);
   expect(scenario.operations).toEqual([]);
@@ -3035,9 +3038,7 @@ test("fails closed before external side effects when the reauthentication handof
   );
 
   expect(Exit.isFailure(exit)).toBe(true);
-  expect(stepIds).toEqual([
-    "requires the reauthentication handoff from the marker case",
-  ]);
+  expect(stepIds).toEqual(["require-reauthentication-handoff"]);
   expect(scenario.external.browserActions).toEqual([]);
   expect(scenario.external.events).toEqual([]);
   expect(scenario.external.authReads).toEqual([]);
@@ -3069,9 +3070,7 @@ test("fails when the reauthentication handoff names a different linked customer"
   );
 
   expect(Exit.isFailure(exit)).toBe(true);
-  expect(stepIds).toContain(
-    "signs the same account back in onto the saved Czech site"
-  );
+  expect(stepIds).toContain("sign-in-onto-saved-czech-site");
   expect(scenario.external.createdAuthIds).toEqual(["auth-original"]);
   expect(scenario.external.deletionObservations).toEqual([]);
   expect(scenario.external.reauthenticationObservations).toEqual([
@@ -3151,14 +3150,14 @@ const runLanguageCase = async (
 };
 
 const languageCaseStepIds = [
-  "opens the English profile of the reactivated account",
-  "chooses Čeština, which saves it and moves the site to Czech",
-  "shows Čeština selected on the Czech profile",
-  "redirects a conflicting en-US URL and cookie to the saved Czech locale",
-  "keeps Čeština selected on the Czech profile after the redirect",
-  "switches to English through the header language switcher",
-  "redirects a Czech account URL to the switched English preference",
-  "shows English (US) as the saved language after the switch",
+  "open-english-profile",
+  "choose-czech-language",
+  "assert-czech-selected",
+  "redirect-conflicting-locale-to-czech",
+  "assert-czech-selected-after-redirect",
+  "switch-to-english-in-header",
+  "redirect-czech-url-to-english",
+  "assert-english-saved-after-switch",
 ];
 
 test("makes the saved language preference the site locale and switches it back from the header", async () => {
@@ -3208,9 +3207,7 @@ test("rejects a proxy that lets the URL locale outrank the saved preference", as
   expect(Exit.isFailure(exit)).toBe(true);
   // The Czech save still navigates to Czech, but the conflicting en-US URL
   // and cookie keep the English page.
-  expect(stepIds.at(-1)).toBe(
-    "redirects a conflicting en-US URL and cookie to the saved Czech locale"
-  );
+  expect(stepIds.at(-1)).toBe("redirect-conflicting-locale-to-czech");
   expect(scenario.external.localePreference).toBe("cs-CZ");
 });
 
@@ -3221,9 +3218,7 @@ test("rejects a header switch that does not save the preference", async () => {
 
   expect(Exit.isFailure(exit)).toBe(true);
   // A plain link is redirected straight back to the saved Czech locale.
-  expect(stepIds.at(-1)).toBe(
-    "switches to English through the header language switcher"
-  );
+  expect(stepIds.at(-1)).toBe("switch-to-english-in-header");
   expect(scenario.external.switcherSaves).toEqual([]);
   expect(scenario.external.localePreference).toBe("cs-CZ");
 });
@@ -3240,7 +3235,5 @@ test("rejects a Czech save that the saved preference does not keep", async () =>
   });
 
   expect(Exit.isFailure(exit)).toBe(true);
-  expect(stepIds.at(-1)).toBe(
-    "chooses Čeština, which saves it and moves the site to Czech"
-  );
+  expect(stepIds.at(-1)).toBe("choose-czech-language");
 });

@@ -117,7 +117,7 @@ test("finalizes and reports a failed verification step", async () => {
         execute: Effect.sync(() => events.push("case:cleanup")).pipe(
           Effect.asVoid
         ),
-        id: "cleanup transition fixture",
+        id: "cleanup-transition-fixture",
         timeoutMs: workspaceE2ETimeouts.providerTransition,
       };
       return Effect.sync(() => events.push("case:execute")).pipe(
@@ -129,7 +129,7 @@ test("finalizes and reports a failed verification step", async () => {
     execute: Effect.sync(() => events.push("verification:body")).pipe(
       Effect.andThen(Effect.fail(failure))
     ),
-    id: "checks profile re-entry and unsaved navigation",
+    id: "verify-profile-navigation",
     timeoutMs: workspaceE2ETimeouts.providerTransition,
   };
   const exit = await Effect.runPromiseExit(
@@ -204,7 +204,7 @@ test("preserves verification failure when case cleanup also fails", async () => 
       Effect.succeed({
         cleanup: runStep({
           execute: Effect.fail(cleanupFailure),
-          id: "cleanup transition fixture",
+          id: "cleanup-transition-fixture",
           timeoutMs: workspaceE2ETimeouts.providerTransition,
         }),
       })
@@ -218,7 +218,7 @@ test("preserves verification failure when case cleanup also fails", async () => 
       verifyPages: [
         {
           execute: Effect.fail(primaryFailure),
-          id: "checks account history",
+          id: "verify-account-history",
           timeoutMs: workspaceE2ETimeouts.providerTransition,
         },
       ],
@@ -233,7 +233,7 @@ test("preserves verification failure when case cleanup also fails", async () => 
     failureKind: "error",
     outcome: "failed",
     scope: "step",
-    stepId: "cleanup transition fixture",
+    stepId: "cleanup-transition-fixture",
     timeoutMs: workspaceE2ETimeouts.providerTransition,
   });
   expect(writeWorkspaceE2EAccountJournal).toHaveBeenCalledTimes(1);
@@ -249,7 +249,7 @@ test("surfaces a cleanup-only failure", async () => {
       Effect.succeed({
         cleanup: runStep({
           execute: Effect.fail(cleanupFailure),
-          id: "cleanup transition fixture",
+          id: "cleanup-transition-fixture",
           timeoutMs: workspaceE2ETimeouts.providerTransition,
         }),
       })
@@ -271,7 +271,7 @@ test("surfaces a cleanup-only failure", async () => {
     failureKind: "error",
     outcome: "failed",
     scope: "step",
-    stepId: "cleanup transition fixture",
+    stepId: "cleanup-transition-fixture",
     timeoutMs: workspaceE2ETimeouts.providerTransition,
   });
   expect(writeWorkspaceE2EAccountJournal).toHaveBeenCalledTimes(1);
@@ -286,7 +286,7 @@ test("bounds the case cleanup step by its semantic timeout", async () => {
       Effect.succeed({
         cleanup: runStep({
           execute: Effect.sleep("60 seconds"),
-          id: "cleanup transition fixture",
+          id: "cleanup-transition-fixture",
           timeoutMs: 1_000,
         }),
       })
@@ -312,7 +312,7 @@ test("bounds the case cleanup step by its semantic timeout", async () => {
     failureKind: "timeout",
     outcome: "timed_out",
     scope: "step",
-    stepId: "cleanup transition fixture",
+    stepId: "cleanup-transition-fixture",
     timeoutMs: 1_000,
   });
   expect(observations).toContainEqual({
@@ -320,7 +320,7 @@ test("bounds the case cleanup step by its semantic timeout", async () => {
     failureKind: "timeout",
     outcome: "timed_out",
     scope: "annotation",
-    stepId: "cleanup transition fixture",
+    stepId: "cleanup-transition-fixture",
   });
   expect(writeWorkspaceE2EAccountJournal).toHaveBeenCalledTimes(1);
 });
