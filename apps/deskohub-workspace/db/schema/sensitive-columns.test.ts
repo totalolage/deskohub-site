@@ -1,9 +1,9 @@
 /**
  * The database query logger writes every statement's bound parameters at Info
  * level and blanks only those marked sensitive. `sensitiveText` columns mark
- * every value Drizzle binds through the column's encoder, so this suite
- * enumerates them from the schema and drives each through the real query
- * logger.
+ * every value Drizzle binds through the column's encoder. This suite checks
+ * which columns use it; `sensitive-columns.postgres.test.ts` drives each one
+ * through the real query logger against Postgres.
  *
  * Values bound outside the encoder stay visible unless the call site marks
  * them: raw `sql` templates, `like`-style operators, comparisons whose left
@@ -19,67 +19,11 @@
  */
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import {
-  type Column,
-  eq,
-  getTableColumns,
-  inArray,
-  is,
-  ne,
-  or,
-  SQL,
-} from "drizzle-orm";
-import { getTableConfig, PgDialect, PgTable } from "drizzle-orm/pg-core";
-import { Effect } from "effect";
 import ts from "typescript";
-import { WorkspaceDatabase } from "@/db/database.service";
 import { commandOutput } from "@/scripts/shared/command";
-import { getSensitiveDatabaseQueryParameterIndexes } from "@/shared/backend/logging/database-query-parameter-classifier";
-import {
-  collectDatabaseQueryLogs,
-  expectQueryLogsToCensor,
-} from "@/shared/testing/workspace-database-query-log.test-utils";
-import { makeRecordingWorkspaceDatabase } from "@/shared/testing/workspace-recording-database.test-utils";
-import * as authSchema from "./auth";
-import * as workspaceSchema from "./index";
+import { containsWordRun, schemaColumns } from "./schema-columns.test-utils";
 
-const dialect = new PgDialect();
-
-const isSensitiveColumn = (column: Column) => {
-  const encoded = column.mapToDriverValue("synthetic");
-  return (
-    is(encoded, SQL) &&
-    getSensitiveDatabaseQueryParameterIndexes(dialect.sqlToQuery(encoded).sql)
-      .size > 0
-  );
-};
-
-// Drizzle-kit generates migrations from exactly these two modules.
-const tables = Object.entries({ ...workspaceSchema, ...authSchema })
-  .filter((entry): entry is [string, PgTable] => is(entry[1], PgTable))
-  .map(([exportName, table]) => {
-    const config = getTableConfig(table);
-    return {
-      exportName,
-      table,
-      id: `${config.schema ?? "public"}.${config.name}`,
-    };
-  });
-
-const columns = tables.flatMap(({ exportName, table, id }) =>
-  Object.entries(getTableColumns(table)).map(([key, column]) => ({
-    id: `${id}.${column.name}`,
-    exportName,
-    key,
-    table,
-    column,
-    words: column.name.split("_"),
-    sqlType: column.getSQLType(),
-    sensitive: isSensitiveColumn(column),
-  }))
-);
-
-const sensitiveColumns = columns.filter(({ sensitive }) => sensitive);
+const sensitiveColumns = schemaColumns.filter(({ sensitive }) => sensitive);
 
 // Column-name word sequences that indicate a secret or a value identifying a
 // person. A fragment matches a whole run of words, so "token" also covers
@@ -127,17 +71,9 @@ const nonSensitiveColumns = new Map([
   ],
 ]);
 
-const containsWordRun = (
-  words: readonly string[],
-  fragment: readonly string[]
-) =>
-  words.some((_, start) =>
-    fragment.every((word, offset) => words[start + offset] === word)
-  );
-
 describe("sensitive schema columns", () => {
   test("stores columns named for secrets or personal identifiers as sensitive text", () => {
-    const unmarked = columns
+    const unmarked = schemaColumns
       .filter(
         ({ id, words, sqlType, sensitive }) =>
           sqlType === "text" &&
@@ -156,7 +92,7 @@ describe("sensitive schema columns", () => {
   });
 
   test("keeps every listed column backed by a real column", () => {
-    const columnIds = columns.map(({ id }) => id);
+    const columnIds = schemaColumns.map(({ id }) => id);
 
     for (const id of [
       ...sensitiveColumnsWithoutTelltaleNames,
@@ -172,66 +108,14 @@ describe("sensitive schema columns", () => {
       expect(sqlType).toBe("text");
     }
   });
-
-  test.each(sensitiveColumns.map(({ id }, index) => [id, index] as const))(
-    "censors %s in written and compared values",
-    async (_, index) => {
-      const { table, key, column } = sensitiveColumns[index]!;
-      const recording = await makeRecordingWorkspaceDatabase();
-      const value = (statement: string) =>
-        `synthetic-sensitive-${index}-${statement}`;
-      const values = [
-        "insert",
-        "conflict-insert",
-        "conflict-set",
-        "update",
-        "update-where",
-        "eq",
-        "ne",
-        "in-first",
-        "in-second",
-        "delete",
-      ].map(value);
-
-      const logs = await collectDatabaseQueryLogs(
-        Effect.gen(function* () {
-          const { db } = yield* WorkspaceDatabase;
-          yield* db.insert(table).values({ [key]: value("insert") } as never);
-          yield* db
-            .insert(table)
-            .values({ [key]: value("conflict-insert") } as never)
-            .onConflictDoUpdate({
-              target: column,
-              set: { [key]: value("conflict-set") } as never,
-            });
-          yield* db
-            .update(table)
-            .set({ [key]: value("update") } as never)
-            .where(eq(column, value("update-where")));
-          yield* db
-            .select()
-            .from(table)
-            .where(
-              or(
-                eq(column, value("eq")),
-                ne(column, value("ne")),
-                inArray(column, [value("in-first"), value("in-second")])
-              )
-            );
-          yield* db.delete(table).where(eq(column, value("delete")));
-        }).pipe(Effect.provide(recording.layer))
-      );
-
-      expect(recording.statements).toHaveLength(5);
-      expectQueryLogsToCensor({ recording, logs, values });
-    }
-  );
 });
 
 const appRoot = resolve(import.meta.dir, "../..");
 const scannedModule = /(?<!\.d)\.(?:ts|tsx)$/;
 const testModule = /\.test\.tsx?$/;
 const schemaModule = /(?:^|\/)schema(?:\/[\w-]+)?$/;
+// Text every module the scan can flag contains: an import from a schema module.
+const schemaImport = /\bfrom\s*["'](?:[^"']*\/)?schema(?:\/[\w-]+)?["']/;
 
 // Operators whose value skips the column encoder even on a bare column.
 const encoderSkippingOperators = new Set([
@@ -261,6 +145,16 @@ const sensitiveColumnKeys = Map.groupBy(
   sensitiveColumns,
   ({ exportName }) => exportName
 );
+
+/**
+ * Whether a module passes the cheap text checks every flagged module passes:
+ * it imports a schema module and names a table with a sensitive column.
+ */
+const mayBindSensitiveColumns = (sourceText: string) =>
+  schemaImport.test(sourceText) &&
+  [...sensitiveColumnKeys.keys()].some((exportName) =>
+    sourceText.includes(exportName)
+  );
 
 /** Maps each local binding of a schema table export to that export's name. */
 const schemaTableBindings = (source: ts.SourceFile) => {
@@ -442,6 +336,7 @@ describe("sensitive column values bound outside the column encoder", () => {
       db.update(codes).set({ code: excludedColumn(codes.code) });
     `;
 
+    expect(mayBindSensitiveColumns(source)).toBe(true);
     expect(
       findSensitiveColumnsBoundOutsideTheirEncoder("fixture.ts", source)
     ).toEqual([
@@ -466,14 +361,17 @@ describe("sensitive column values bound outside the column encoder", () => {
       .split("\0")
       .filter((path) => scannedModule.test(path) && !testModule.test(path));
 
-    const findings: string[] = [];
-    for (const path of paths) {
-      const sourceText = await Bun.file(resolve(appRoot, path)).text();
-      if (!sourceText.includes("schema")) continue;
-      findings.push(
-        ...findSensitiveColumnsBoundOutsideTheirEncoder(path, sourceText)
+    const sources = await Promise.all(
+      paths.map(async (path) => ({
+        path,
+        text: await Bun.file(resolve(appRoot, path)).text(),
+      }))
+    );
+    const findings = sources
+      .filter(({ text }) => mayBindSensitiveColumns(text))
+      .flatMap(({ path, text }) =>
+        findSensitiveColumnsBoundOutsideTheirEncoder(path, text)
       );
-    }
 
     expect(findings).toEqual([]);
   });

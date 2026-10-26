@@ -1,5 +1,5 @@
 import { expect } from "bun:test";
-import { Effect, Logger, Predicate, References } from "effect";
+import { Effect, type Exit, Logger, Predicate, References } from "effect";
 import type { RecordingWorkspaceDatabase } from "./workspace-recording-database.test-utils";
 
 export interface LoggedDatabaseQuery {
@@ -9,12 +9,18 @@ export interface LoggedDatabaseQuery {
 
 /**
  * Runs an effect and records what the Workspace database query logger emits
- * for each statement, after censorship. The effect's own outcome is ignored so
- * tests can drive a call site against canned rows that make it fail later.
+ * for each statement, after censorship, beside the effect's exit.
  */
-export const captureDatabaseQueryLogs = <A, E, R>(
+export const captureDatabaseQueryLogsWithExit = <A, E, R>(
   effect: Effect.Effect<A, E, R>
-): Effect.Effect<readonly LoggedDatabaseQuery[], never, R> =>
+): Effect.Effect<
+  {
+    readonly logs: readonly LoggedDatabaseQuery[];
+    readonly exit: Exit.Exit<A, E>;
+  },
+  never,
+  R
+> =>
   Effect.suspend(() => {
     const logged: LoggedDatabaseQuery[] = [];
     const captureLogger = Logger.make((options) => {
@@ -32,9 +38,19 @@ export const captureDatabaseQueryLogs = <A, E, R>(
     return effect.pipe(
       Effect.exit,
       Effect.provide(Logger.layer([captureLogger])),
-      Effect.as(logged)
+      Effect.map((exit) => ({ logs: logged, exit }))
     );
   });
+
+/**
+ * Runs an effect and records what the Workspace database query logger emits
+ * for each statement, after censorship. The effect's own outcome is ignored so
+ * tests can drive a call site against canned rows that make it fail later.
+ */
+export const captureDatabaseQueryLogs = <A, E, R>(
+  effect: Effect.Effect<A, E, R>
+): Effect.Effect<readonly LoggedDatabaseQuery[], never, R> =>
+  captureDatabaseQueryLogsWithExit(effect).pipe(Effect.map(({ logs }) => logs));
 
 /** Runs `captureDatabaseQueryLogs` for an effect without requirements. */
 export const collectDatabaseQueryLogs = <A, E>(
