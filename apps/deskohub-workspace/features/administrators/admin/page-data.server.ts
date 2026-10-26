@@ -3,11 +3,11 @@ import "server-only";
 import { Effect } from "effect";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { formatInstantDateTime } from "@/shared/utils/date-time-format";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { AdministratorRoster } from "../backend/administrator-roster.service";
-import { authorizeAdministratorPage } from "../server/administrator-authorization.server";
+import { CurrentAdministrator } from "../backend/current-administrator";
+import { runAdministrationPage } from "../server/administration-request.server";
 
 /** One administrator as the roster page shows it. */
 export type AdministratorListItem = {
@@ -26,13 +26,16 @@ export type AdministratorsPageData = {
 };
 
 export const loadAdministrators = async (): Promise<AdministratorsPageData> => {
-  const actor = await authorizeAdministratorPage();
-  const locale = await getRequestLocale();
-  const grants = await AdministratorRoster.pipe(
-    Effect.flatMap((roster) => roster.list),
-    Effect.provide(AdministratorRoster.Live),
-    runWorkspaceEffect("administrators.list", { boundary: "page" })
+  const { actor, grants } = await runAdministrationPage(
+    "administrators.list",
+    Effect.gen(function* () {
+      const actor = yield* CurrentAdministrator;
+      const roster = yield* AdministratorRoster;
+      return { actor, grants: yield* roster.list };
+    }),
+    AdministratorRoster.Live
   );
+  const locale = await getRequestLocale();
   return {
     actorAccountId: actor.accountId,
     administrators: grants.map(
