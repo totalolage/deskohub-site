@@ -3,7 +3,10 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { cn } from "@/shared/utils";
-import { localizeAdministrationHref } from "./administration-href";
+import {
+  type AdministrationHref,
+  localizeAdministrationHref,
+} from "./administration-href";
 
 const controlClassName =
   "h-10 w-full rounded-lg border border-navy-blue/15 bg-white px-3 text-sm text-navy-blue outline-none transition focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/15 disabled:cursor-not-allowed disabled:opacity-50";
@@ -60,7 +63,7 @@ export function AdministrationFilterForm({
   variant = "toolbar",
   ...props
 }: Omit<ComponentProps<"form">, "action"> & {
-  readonly action?: string;
+  readonly action?: AdministrationHref;
   readonly variant?: "standalone" | "toolbar";
 }) {
   const locale = useRouteLocale();

@@ -5,6 +5,7 @@ import { Archive, Eye, Pause, Play, Rocket } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AdministrationLink } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import { ConfirmDialog } from "@/features/administration/confirm-dialog";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -61,7 +62,10 @@ export function AutomationLifecycleActions({
   });
   const { campaignId, status } = automation;
   if (status === "archived") return null;
-  const previewHref = `/admin/email-campaigns/${campaignId}/preview`;
+  const previewHref = administrationHref(
+    "/[locale]/admin/email-campaigns/[campaignId]/preview",
+    { campaignId }
+  );
   const pending =
     pause.isExecuting || resume.isExecuting || archive.isExecuting;
 

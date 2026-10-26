@@ -6,7 +6,10 @@ import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
-import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import {
+  administrationHref,
+  localizeAdministrationHref,
+} from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
 import { storedDiscountIdSchema } from "@/features/discounts/persistence-contracts";
@@ -78,7 +81,11 @@ export function DiscountCodeCreationForm({
   const locale = useRouteLocale();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const customerPath = customerId ? `/admin/customers/${customerId}` : null;
+  const customerPath = customerId
+    ? administrationHref("/[locale]/admin/customers/[customerId]", {
+        customerId,
+      })
+    : null;
   const close = () => {
     if (completion === "back") router.back();
     else if (customerPath)

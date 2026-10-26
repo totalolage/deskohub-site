@@ -1,6 +1,7 @@
 "use server";
 
 import { Effect } from "effect";
+import { administrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
@@ -16,7 +17,7 @@ import {
   revokeAdministratorStandardSchema,
 } from "./contracts";
 
-const administratorsPath = "/admin/administrators";
+const administratorsPath = administrationHref("/[locale]/admin/administrators");
 
 const grantAdministratorAction = defineWorkspaceAction(
   {

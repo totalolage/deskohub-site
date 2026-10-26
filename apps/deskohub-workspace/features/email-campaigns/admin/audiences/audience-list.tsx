@@ -3,7 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
-import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import {
+  administrationHref,
+  localizeAdministrationHref,
+} from "@/features/administration/administration-href";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
@@ -16,7 +19,9 @@ import { cn } from "@/shared/utils";
 import type { AudienceListItem } from "./audience-page-data.server";
 
 export const audienceHref = (audienceId: string) =>
-  `/admin/email-audiences/${audienceId}`;
+  administrationHref("/[locale]/admin/email-audiences/[audienceId]", {
+    audienceId,
+  });
 
 export function AudienceStatusBadge({
   archived,

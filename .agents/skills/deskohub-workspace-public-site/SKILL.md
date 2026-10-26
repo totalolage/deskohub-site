@@ -9,7 +9,7 @@ description: Workspace public site SEO, locale fallback, default locale, Accept-
 
 - `resolveWorkspaceLocale` (`features/i18n/locale-resolution.ts`) ends in a fallback that `localeConfig` (`features/i18n/routing.ts`) names: Czech when the request states no language (crawlers usually send no `Accept-Language`), English when it names only languages the site doesn't serve. Slovak maps to Czech. Paraglide's `baseLocale` and `defaultLocale` stay `en-US`: they drive message fallback and non-request defaults such as agent tools, not visitor negotiation.
 - A locale prefix in another letter case (`/en-us`) or a bare language from `preferredLanguageToLocale` (`/en`, `/sk`) gets a 308 to the exact locale, decided by the URL alone (`findExactLocalePathname` in `@deskohub/i18n/pathname`). Any other unprefixed path gets the negotiated locale with a 307 and `Vary: Accept-Language`.
-- Internal links stay locale-agnostic (`getPagePath`, `getWorkspacePageUrl`). Canonical, hreflang and sitemap URLs name the exact locale page (`getWorkspaceAlternates`). `x-default` is the locale-agnostic URL, so it follows negotiation and opens Czech for crawlers.
+- Internal links stay locale-agnostic (`getUnprefixedPagePath`, `getWorkspacePageUrl`). Canonical, hreflang and sitemap URLs name the exact locale page (`getWorkspaceAlternates`). `x-default` is the locale-agnostic URL, so it follows negotiation and opens Czech for crawlers.
 
 ## Hosts and root files
 

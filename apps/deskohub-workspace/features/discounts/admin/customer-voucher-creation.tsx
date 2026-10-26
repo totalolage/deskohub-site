@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import { getLocalizedPagePath } from "@/features/i18n/routing";
 import {
   Dialog,
   DialogContent,
@@ -36,9 +36,10 @@ export function CustomerVoucherCreationForm({
         if (completion === "back") router.back();
         else
           router.replace(
-            localizeAdministrationHref(
-              `/admin/customers/${customer.id}`,
-              locale
+            getLocalizedPagePath(
+              locale,
+              "/[locale]/admin/customers/[customerId]",
+              { customerId: customer.id }
             )
           );
       }}

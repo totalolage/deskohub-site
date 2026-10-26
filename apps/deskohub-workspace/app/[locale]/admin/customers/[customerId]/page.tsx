@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationNoticeBanner,
   AdministrationPage,
@@ -74,7 +75,9 @@ export async function DiscountCustomerAdminDetail({
             )}{" "}
             <Link
               className="font-semibold underline underline-offset-4"
-              href={`/admin/reservations?customerId=${encodeURIComponent(customerId)}`}
+              href={`${administrationHref(
+                "/[locale]/admin/reservations"
+              )}?customerId=${encodeURIComponent(customerId)}`}
             >
               {m.administrationCustomerDetailViewAllReservations(
                 {},

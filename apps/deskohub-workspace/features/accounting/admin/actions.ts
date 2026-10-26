@@ -6,6 +6,7 @@ import {
   AdministrationInvoiceId,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Match, Schema } from "effect";
+import { administrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
@@ -43,8 +44,12 @@ const createInvoiceAction = defineWorkspaceAction(
         administrator,
       });
       yield* Effect.sync(() => {
-        revalidateLocalizedPath("/admin/invoices");
-        revalidateLocalizedPath(`/admin/invoices/${result.invoiceId}`);
+        revalidateLocalizedPath(administrationHref("/[locale]/admin/invoices"));
+        revalidateLocalizedPath(
+          administrationHref("/[locale]/admin/invoices/[invoiceId]", {
+            invoiceId: result.invoiceId,
+          })
+        );
       });
       return result;
     },
@@ -151,8 +156,14 @@ const retryInvoiceAction = defineWorkspaceAction(
           const administration = yield* InvoiceAdministrationService;
           const result = yield* administration.retry(input.invoiceId);
           yield* Effect.sync(() => {
-            revalidateLocalizedPath("/admin/invoices");
-            revalidateLocalizedPath(`/admin/invoices/${input.invoiceId}`);
+            revalidateLocalizedPath(
+              administrationHref("/[locale]/admin/invoices")
+            );
+            revalidateLocalizedPath(
+              administrationHref("/[locale]/admin/invoices/[invoiceId]", {
+                invoiceId: input.invoiceId,
+              })
+            );
           });
           return result;
         })

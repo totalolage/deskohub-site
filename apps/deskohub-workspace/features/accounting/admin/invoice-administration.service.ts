@@ -56,6 +56,10 @@ import {
   normalizeManualInvoiceLines,
   toManualInvoiceProvenance,
 } from "@/features/accounting/manual-invoice";
+import {
+  type AdministrationHref,
+  administrationHref,
+} from "@/features/administration/administration-href";
 import { unnamedCustomerDisplayName } from "@/features/administration/customer-name";
 import { getAdministrationPagination } from "@/features/administration/listing";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
@@ -146,7 +150,7 @@ export type InvoiceAdministrationDetail = InvoiceAdministrationListItem & {
     readonly price: string;
   }[];
   readonly buyer: InvoiceBuyer;
-  readonly pdfUrl: string;
+  readonly pdfUrl: AdministrationHref;
   /** For the Admin UI; the administration API contract does not carry it. */
   readonly settlement: InvoiceSettlement;
 };
@@ -697,7 +701,9 @@ const toDetail = (
       lines: document.lines,
       buyer: document.buyer,
       // The API keeps this unprefixed; the proxy opens it in the operator's language.
-      pdfUrl: `/admin/invoices/${invoice.id}/pdf`,
+      pdfUrl: administrationHref("/[locale]/admin/invoices/[invoiceId]/pdf", {
+        invoiceId: invoice.id,
+      }),
       settlement,
     };
   }
@@ -721,7 +727,9 @@ const toDetail = (
     })),
     buyer: document.buyer,
     // The API keeps this unprefixed; the proxy opens it in the operator's language.
-    pdfUrl: `/admin/invoices/${invoice.id}/pdf`,
+    pdfUrl: administrationHref("/[locale]/admin/invoices/[invoiceId]/pdf", {
+      invoiceId: invoice.id,
+    }),
     settlement,
   };
 };

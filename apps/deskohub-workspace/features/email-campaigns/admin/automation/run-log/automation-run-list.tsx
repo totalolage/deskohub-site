@@ -8,6 +8,10 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { Option } from "effect";
 import { AdministrationLink } from "@/features/administration/admin-link";
+import {
+  type AdministrationHref,
+  administrationHref,
+} from "@/features/administration/administration-href";
 import { formatAdministrationDateTime } from "@/features/administration/components";
 import { EmptyState } from "@/features/administration/empty-state";
 import {
@@ -67,7 +71,7 @@ function AutomationRunFilterForm({
   locale,
   versions,
 }: {
-  readonly action: string;
+  readonly action: AdministrationHref;
   readonly filters: AutomationRunFilters;
   readonly flow: AutomationFlow | null;
   readonly locale: Locale;
@@ -216,7 +220,7 @@ function AutomationRunFilterForm({
 
 interface RunRowCopy {
   readonly run: AutomationRunSummary;
-  readonly href: string;
+  readonly href: AdministrationHref;
   readonly started: string;
   readonly ended: string | null;
   readonly trigger: string;
@@ -356,13 +360,13 @@ export function AutomationRunList({
   runs,
   versions,
 }: {
-  readonly basePath: string;
+  readonly basePath: AdministrationHref;
   readonly filtered: boolean;
   readonly filters: AutomationRunFilters;
   readonly flow: AutomationFlow | null;
   readonly flows: AutomationFlowsByVersion;
   /** The run list with the current filters and `params`. */
-  readonly href: (params: AdministrationListParams) => string;
+  readonly href: (params: AdministrationListParams) => AdministrationHref;
   readonly locale: Locale;
   readonly nextCursor: string | null;
   readonly runs: readonly AutomationRunSummary[];
@@ -371,7 +375,10 @@ export function AutomationRunList({
   const rows = runs.map(
     (run): RunRowCopy => ({
       run,
-      href: `${basePath}/${run.runId}`,
+      href: administrationHref(
+        "/[locale]/admin/email-campaigns/[campaignId]/runs/[runId]",
+        { campaignId: run.campaignId, runId: run.runId }
+      ),
       started: formatAdministrationDateTime(run.startedAt, locale),
       ended:
         run.endedAt === null

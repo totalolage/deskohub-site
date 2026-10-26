@@ -9,6 +9,7 @@ import type {
   AdministrationBookingSort,
   AdministrationBookingSummary,
 } from "./administration.service";
+import { administrationHref } from "./administration-href";
 import {
   getAdministrationBookingGuestCount,
   getAdministrationBookingStatusLabel,
@@ -58,7 +59,9 @@ const getColumns = (
       <>
         <Link
           className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
-          href={`/admin/bookings/${row.original.id}`}
+          href={administrationHref("/[locale]/admin/bookings/[bookingId]", {
+            bookingId: row.original.id,
+          })}
         >
           {formatAdministrationDateTime(row.original.startsAt, locale)}
         </Link>
@@ -79,7 +82,9 @@ const getColumns = (
       row.original.customer && row.original.customerId ? (
         <Link
           className="relative z-10 font-medium hover:underline"
-          href={`/admin/customers/${row.original.customerId}`}
+          href={administrationHref("/[locale]/admin/customers/[customerId]", {
+            customerId: row.original.customerId,
+          })}
         >
           {getAdministrationCustomerName(row.original.customer, locale)}
         </Link>
@@ -123,7 +128,10 @@ const getColumns = (
       row.original.linkedReservation ? (
         <Link
           className="relative z-10 font-medium hover:underline"
-          href={`/admin/reservations/${row.original.linkedReservation.id}`}
+          href={administrationHref(
+            "/[locale]/admin/reservations/[reservationId]",
+            { reservationId: row.original.linkedReservation.id }
+          )}
         >
           {getAdministrationReservationProductTitle(
             row.original.linkedReservation.product,
@@ -173,7 +181,7 @@ export function BookingTable({
         sorting
           ? (field, direction) =>
               getAdministrationTableSortHref({
-                basePath: "/admin/bookings",
+                basePath: administrationHref("/[locale]/admin/bookings"),
                 direction,
                 field,
                 params: sorting.params,
@@ -186,7 +194,10 @@ export function BookingTable({
             <li key={booking.id}>
               <Link
                 className="block px-4 py-4 hover:bg-navy-blue/[0.025]"
-                href={`/admin/bookings/${booking.id}`}
+                href={administrationHref(
+                  "/[locale]/admin/bookings/[bookingId]",
+                  { bookingId: booking.id }
+                )}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>

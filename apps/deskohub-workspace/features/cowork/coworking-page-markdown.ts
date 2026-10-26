@@ -1,10 +1,11 @@
 import { getWorkspaceProductTierTitle } from "@/features/checkout/product-catalog.i18n";
 import type { PublicOffering } from "@/features/checkout/public-offerings";
 import {
-  getPagePath,
+  getUnprefixedPagePath,
   getWorkspacePageUrl,
   type Locale,
   m,
+  type StaticLocalizedPageRoute,
 } from "@/features/i18n";
 import { getOfferingSale } from "@/features/pricing/offering-sale";
 import { getCoworkOfferSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
@@ -27,8 +28,8 @@ import {
   getCoworkingSteps,
 } from "./coworking-page-content";
 
-const pageUrl = (route: Parameters<typeof getPagePath>[0]) =>
-  getWorkspacePageUrl(getPagePath(route));
+const pageUrl = (route: StaticLocalizedPageRoute) =>
+  getWorkspacePageUrl(getUnprefixedPagePath(route));
 
 /**
  * The coworking page's facts as Markdown, in page order: the hero, both

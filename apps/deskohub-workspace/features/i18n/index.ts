@@ -12,9 +12,8 @@ export {
 } from "./paraglide/runtime.js";
 export {
   defaultLocale,
-  getLocalizedDynamicPagePath,
   getLocalizedPagePath,
-  getPagePath,
+  getUnprefixedPagePath,
   type StaticLocalizedPageRoute,
   withLocalePrefixAndSearch,
 } from "./routing";

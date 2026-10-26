@@ -5,6 +5,7 @@ import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Badge } from "@/shared/components/ui/badge";
 import { cn } from "@/shared/utils";
 import { formatCount } from "@/shared/utils/number";
+import type { AdministrationHref } from "./administration-href";
 import {
   type AdministrationListExportFailure,
   AdministrationTableExport,
@@ -22,11 +23,12 @@ export function AdministrationTableToolbar({
   readonly actions?: ReactNode;
   readonly count: ReactNode;
   /**
-   * The list's CSV export path for its current filters, such as one from
-   * `getAdministrationListExportHref`. Adds the export control to the actions
-   * and shows its failures below the controls.
+   * The list's CSV export path for its current filters: the export route
+   * from `administrationHref` with the same params the list's sort links and
+   * pagination carry, so the file matches what the operator sees. Adds the
+   * export control to the actions and shows its failures below the controls.
    */
-  readonly exportHref?: Promise<string>;
+  readonly exportHref?: Promise<AdministrationHref>;
   readonly filters?: ReactNode;
   /** The accessible name of the controls section, such as "Order table controls". */
   readonly label: string;

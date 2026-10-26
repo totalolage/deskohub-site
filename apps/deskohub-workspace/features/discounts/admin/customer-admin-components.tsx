@@ -6,6 +6,7 @@ import type {
   AdministrationCustomerReservationActivity,
   AdministrationCustomerTransaction,
 } from "@/features/administration/administration.service";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationFact,
   AdministrationNoticeBanner,
@@ -70,12 +71,12 @@ export function CodeAdministrationDetailPage({
       <AdministrationNoticeBanner notice={notice} />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/admin/codes">
+          <Link href={administrationHref("/[locale]/admin/codes")}>
             {m.discountsBackToCodes({}, { locale })}
           </Link>
         </Button>
         <Button asChild size="sm" variant="secondary">
-          <Link href="/admin/codes">
+          <Link href={administrationHref("/[locale]/admin/codes")}>
             {m.discountsEditOrDeleteCode({}, { locale })}
           </Link>
         </Button>
@@ -130,7 +131,10 @@ export function CodeAdministrationDetailPage({
                   <div>
                     <Link
                       className="font-semibold underline decoration-navy-blue/25 underline-offset-4"
-                      href={`/admin/customers/${customerId}`}
+                      href={administrationHref(
+                        "/[locale]/admin/customers/[customerId]",
+                        { customerId }
+                      )}
                     >
                       {customer
                         ? formatDiscountAdminCustomerName(customer, locale)
@@ -184,7 +188,7 @@ export function CodeAdministrationDetailPage({
           <AddCodeCustomerForm codeId={code.id} />
           <Link
             className="mt-4 inline-block text-sm font-semibold underline underline-offset-4"
-            href="/admin/customers"
+            href={administrationHref("/[locale]/admin/customers")}
           >
             {m.discountsFindDotyposCustomer({}, { locale })}
           </Link>
@@ -223,7 +227,7 @@ export function VoucherAdministrationDetailPage({
       <AdministrationNoticeBanner notice={notice} />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/admin/vouchers">
+          <Link href={administrationHref("/[locale]/admin/vouchers")}>
             {m.discountsBackToVouchers({}, { locale })}
           </Link>
         </Button>
@@ -237,7 +241,7 @@ export function VoucherAdministrationDetailPage({
         </h2>
         <VoucherEditor
           deletable
-          deleteRedirect="/admin/vouchers"
+          deleteRedirect={administrationHref("/[locale]/admin/vouchers")}
           voucher={{
             ...voucher,
             validFrom: voucher.validFrom?.toString() ?? null,
@@ -289,7 +293,10 @@ export function VoucherAdministrationDetailPage({
                   <div>
                     <Link
                       className="font-semibold underline decoration-navy-blue/25 underline-offset-4"
-                      href={`/admin/customers/${customerId}`}
+                      href={administrationHref(
+                        "/[locale]/admin/customers/[customerId]",
+                        { customerId }
+                      )}
                     >
                       {customer
                         ? formatDiscountAdminCustomerName(customer, locale)
@@ -478,7 +485,9 @@ export function CustomerAdministrationDetailPage({
                 {m.discountsCustomerReservationsTruncated({}, { locale })}{" "}
                 <Link
                   className="font-semibold underline underline-offset-4"
-                  href={`/admin/reservations?customerId=${encodeURIComponent(profile.customer.id)}`}
+                  href={`${administrationHref(
+                    "/[locale]/admin/reservations"
+                  )}?customerId=${encodeURIComponent(profile.customer.id)}`}
                 >
                   {m.discountsCustomerViewAllReservations({}, { locale })}
                 </Link>
@@ -577,7 +586,10 @@ export function CustomerAdministrationDetailPage({
               <div className="flex flex-wrap gap-2">
                 <Button asChild size="sm">
                   <Link
-                    href={`/admin/customers/${profile.customer.id}/create-code`}
+                    href={administrationHref(
+                      "/[locale]/admin/customers/[customerId]/create-code",
+                      { customerId: profile.customer.id }
+                    )}
                   >
                     <Plus aria-hidden className="size-4" />
                     {m.discountsCodeCreateSubmit({}, { locale })}
@@ -585,7 +597,10 @@ export function CustomerAdministrationDetailPage({
                 </Button>
                 <Button asChild size="sm">
                   <Link
-                    href={`/admin/customers/${profile.customer.id}/create-voucher`}
+                    href={administrationHref(
+                      "/[locale]/admin/customers/[customerId]/create-voucher",
+                      { customerId: profile.customer.id }
+                    )}
                   >
                     <Plus aria-hidden className="size-4" />
                     {m.discountsVoucherCreateSubmit({}, { locale })}

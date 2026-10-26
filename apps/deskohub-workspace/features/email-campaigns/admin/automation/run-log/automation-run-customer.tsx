@@ -1,11 +1,14 @@
 import type { AutomationRunSummary } from "@deskohub/workspace-admin-api";
 import { AdministrationLink } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 
 /** The admin page of a run's Dotypos customer. */
 const automationRunCustomerHref = (run: AutomationRunSummary) =>
-  `/admin/customers/${encodeURIComponent(run.customerId)}`;
+  administrationHref("/[locale]/admin/customers/[customerId]", {
+    customerId: run.customerId,
+  });
 
 /** Whether Dotypos couldn't be read for any of `runs`' customers. */
 export const automationRunContactsUnavailable = (

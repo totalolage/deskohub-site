@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useState } from "react";
 import { type DefaultValues, type FieldValues, useForm } from "react-hook-form";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
@@ -216,7 +217,12 @@ export function CustomerSearch({
                       </p>
                     </div>
                     <Button asChild size="sm" variant="secondary">
-                      <Link href={`/admin/customers/${customer.id}`}>
+                      <Link
+                        href={administrationHref(
+                          "/[locale]/admin/customers/[customerId]",
+                          { customerId: customer.id }
+                        )}
+                      >
                         {m.discountsOpenCustomer({}, { locale })}
                       </Link>
                     </Button>

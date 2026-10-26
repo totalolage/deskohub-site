@@ -9,6 +9,10 @@ import { automationPreviewOutcomes } from "@deskohub/workspace-admin-api";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AdministrationLink } from "@/features/administration/admin-link";
 import {
+  type AdministrationHref,
+  administrationHref,
+} from "@/features/administration/administration-href";
+import {
   AdministrationAlert,
   AdministrationDetailSection,
   AdministrationFact,
@@ -110,8 +114,11 @@ export function AutomationDryRunResults({
   readonly locale: Locale;
 }) {
   const replay = dryRun.kind === "replay";
-  const pageHref = (pageCursor?: string) =>
-    `/admin/email-campaigns/${dryRun.campaignId}/preview?${new URLSearchParams({
+  const pageHref = (pageCursor?: string): AdministrationHref =>
+    `${administrationHref(
+      "/[locale]/admin/email-campaigns/[campaignId]/preview",
+      { campaignId: dryRun.campaignId }
+    )}?${new URLSearchParams({
       preview: dryRun.previewId,
       ...(pageCursor && { cursor: pageCursor }),
     })}`;

@@ -7,7 +7,11 @@ import type {
 import { Play, Rocket, RotateCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import {
+  type AdministrationHref,
+  administrationHref,
+  localizeAdministrationHref,
+} from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
@@ -17,8 +21,14 @@ import {
   dryRunFailureCopy,
 } from "./automation-failure-copy";
 
-const previewHref = (campaignId: AdministrationCampaignId, previewId: string) =>
-  `/admin/email-campaigns/${campaignId}/preview?${new URLSearchParams({ preview: previewId })}`;
+const previewHref = (
+  campaignId: AdministrationCampaignId,
+  previewId: string
+): AdministrationHref =>
+  `${administrationHref(
+    "/[locale]/admin/email-campaigns/[campaignId]/preview",
+    { campaignId }
+  )}?${new URLSearchParams({ preview: previewId })}`;
 
 /**
  * Starts a dry run of the working copy and keeps its job in the URL, so the

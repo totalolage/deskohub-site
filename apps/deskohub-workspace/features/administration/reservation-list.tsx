@@ -2,13 +2,11 @@ import { Suspense } from "react";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { AdministrationLink as Link } from "./admin-link";
+import { administrationHref } from "./administration-href";
 import { Pagination } from "./components";
 import { ReservationsAdministrationFilterForm } from "./filter-forms";
 import { m } from "./i18n";
-import {
-  getAdministrationListExportHref,
-  getAdministrationListHref,
-} from "./list-href";
+import { getAdministrationListHref } from "./list-href";
 import {
   AdministrationCollectionLoading,
   AdministrationCountLoading,
@@ -82,8 +80,8 @@ export async function AdministrationReservationList({
           </Suspense>
         }
         exportHref={input.then((resolvedInput) =>
-          getAdministrationListExportHref(
-            "/admin/reservations",
+          getAdministrationListHref(
+            administrationHref("/[locale]/admin/reservations/export"),
             getAdministrationReservationListParams(resolvedInput)
           )
         )}
@@ -184,10 +182,13 @@ function ReservationResults({
           <p>{m.administrationReservationListCustomerNotice({}, { locale })}</p>
           <Link
             className="font-semibold hover:underline"
-            href={getAdministrationListHref("/admin/reservations", {
-              ...listParams,
-              customerId: undefined,
-            })}
+            href={getAdministrationListHref(
+              administrationHref("/[locale]/admin/reservations"),
+              {
+                ...listParams,
+                customerId: undefined,
+              }
+            )}
           >
             {m.administrationReservationListCustomerClear({}, { locale })}
           </Link>
@@ -206,14 +207,14 @@ function ReservationResults({
       <ReservationTable
         reservations={result.items}
         sorting={{
-          basePath: "/admin/reservations",
+          basePath: administrationHref("/[locale]/admin/reservations"),
           direction: input.direction ?? "desc",
           field: input.sort ?? "created",
           params: listParams,
         }}
       />
       <Pagination
-        basePath="/admin/reservations"
+        basePath={administrationHref("/[locale]/admin/reservations")}
         locale={locale}
         page={result.page}
         pageCount={result.pageCount}

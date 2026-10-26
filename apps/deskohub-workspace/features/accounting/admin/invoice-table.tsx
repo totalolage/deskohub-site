@@ -4,7 +4,7 @@ import { CircleAlert, Download, RotateCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
-import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationAlert,
   AdministrationDataTable,
@@ -15,6 +15,7 @@ import { m } from "@/features/administration/i18n";
 import { getAdministrationTableSortHref } from "@/features/administration/table-sort";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import { getLocalizedPagePath } from "@/features/i18n/routing";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
@@ -45,7 +46,9 @@ const getInvoiceColumns = (
     cell: ({ row }) => (
       <Link
         className="font-semibold underline underline-offset-4"
-        href={`/admin/invoices/${row.original.id}`}
+        href={administrationHref("/[locale]/admin/invoices/[invoiceId]", {
+          invoiceId: row.original.id,
+        })}
       >
         {row.original.invoiceNumber}
       </Link>
@@ -144,7 +147,7 @@ export function InvoiceAdministrationTable({
       getRowId={(item) => item.id}
       getSortHref={(field, direction) =>
         getAdministrationTableSortHref({
-          basePath: "/admin/invoices",
+          basePath: administrationHref("/[locale]/admin/invoices"),
           field,
           direction,
         })
@@ -158,7 +161,10 @@ export function InvoiceAdministrationTable({
                 <div className="min-w-0">
                   <Link
                     className="font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-                    href={`/admin/invoices/${invoice.id}`}
+                    href={administrationHref(
+                      "/[locale]/admin/invoices/[invoiceId]",
+                      { invoiceId: invoice.id }
+                    )}
                   >
                     {invoice.invoiceNumber}
                   </Link>
@@ -232,9 +238,10 @@ function InvoiceRowActions({
         >
           <a
             download
-            href={localizeAdministrationHref(
-              `/admin/invoices/${invoice.id}/pdf`,
-              locale
+            href={getLocalizedPagePath(
+              locale,
+              "/[locale]/admin/invoices/[invoiceId]/pdf",
+              { invoiceId: invoice.id }
             )}
           >
             <Download aria-hidden className="size-4" />

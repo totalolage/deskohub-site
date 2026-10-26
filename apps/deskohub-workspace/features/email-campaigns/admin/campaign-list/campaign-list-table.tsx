@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
-import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
@@ -12,6 +12,7 @@ import { EmptyState } from "@/features/administration/empty-state";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import { getLocalizedPagePath } from "@/features/i18n/routing";
 import { Badge } from "@/shared/components/ui/badge";
 import { AutomationStatusBadge } from "../automation/automation-badges";
 import { CampaignPurposeBadge, CampaignStatusBadge } from "./campaign-badges";
@@ -31,7 +32,10 @@ const campaignListColumns = (
     cell: ({ row }) => (
       <Link
         className="font-semibold underline decoration-navy-blue/25 underline-offset-4 hover:decoration-navy-blue"
-        href={`/admin/email-campaigns/${row.original.id}`}
+        href={administrationHref(
+          "/[locale]/admin/email-campaigns/[campaignId]",
+          { campaignId: row.original.id }
+        )}
       >
         {row.original.title}
       </Link>
@@ -118,7 +122,10 @@ export function CampaignListTable({
             <li key={campaign.id}>
               <Link
                 className="block px-4 py-4 transition-colors hover:bg-navy-blue/[0.025] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-navy-blue/40"
-                href={`/admin/email-campaigns/${campaign.id}`}
+                href={administrationHref(
+                  "/[locale]/admin/email-campaigns/[campaignId]",
+                  { campaignId: campaign.id }
+                )}
               >
                 <span className="block font-semibold">{campaign.title}</span>
                 <span className="mt-2 flex flex-wrap gap-1.5">
@@ -145,9 +152,10 @@ export function CampaignListTable({
       }
       onRowActivate={(campaign) =>
         router.push(
-          localizeAdministrationHref(
-            `/admin/email-campaigns/${campaign.id}`,
-            locale
+          getLocalizedPagePath(
+            locale,
+            "/[locale]/admin/email-campaigns/[campaignId]",
+            { campaignId: campaign.id }
           )
         )
       }

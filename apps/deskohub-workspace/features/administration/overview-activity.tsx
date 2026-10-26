@@ -5,6 +5,10 @@ import type {
   AdministrationOverviewMetric,
   AdministrationReservationActivity,
 } from "./administration.service";
+import {
+  type AdministrationHref,
+  administrationHref,
+} from "./administration-href";
 import { getAdministrationCustomerName } from "./customer-presentation";
 import { m } from "./i18n";
 import type {
@@ -196,7 +200,10 @@ function CustomerActivityMetric({
                 <li key={customerId}>
                   <Link
                     className="block break-words font-semibold transition-colors hover:text-aquamarine-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-navy-blue/40"
-                    href={`/admin/customers/${customerId}`}
+                    href={administrationHref(
+                      "/[locale]/admin/customers/[customerId]",
+                      { customerId }
+                    )}
                   >
                     {customer
                       ? getAdministrationCustomerName(customer, locale)
@@ -230,7 +237,7 @@ function OverviewMetric({
   metric,
   note,
 }: {
-  readonly href: string;
+  readonly href: AdministrationHref;
   readonly label: string;
   readonly locale: Locale;
   readonly metric: AdministrationOverviewMetric;
@@ -289,4 +296,5 @@ const getReservationRangeHref = ({
 }: {
   readonly from: string;
   readonly to: string;
-}) => `/admin/reservations?from=${from}&to=${to}`;
+}): AdministrationHref =>
+  `${administrationHref("/[locale]/admin/reservations")}?from=${from}&to=${to}`;

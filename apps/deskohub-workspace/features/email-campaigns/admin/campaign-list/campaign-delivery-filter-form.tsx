@@ -1,6 +1,7 @@
 "use client";
 
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationFilterField,
   AdministrationFilterForm,
@@ -20,7 +21,7 @@ export function CampaignDeliveryFilterForm({
   const locale = useRouteLocale();
   return (
     <AdministrationFilterForm
-      action="/admin/email-campaigns"
+      action={administrationHref("/[locale]/admin/email-campaigns")}
       variant="standalone"
     >
       <AdministrationFilterField
@@ -50,7 +51,7 @@ export function CampaignDeliveryFilterForm({
       >
         {delivery && (
           <Button asChild size="md" variant="ghost">
-            <Link href="/admin/email-campaigns">
+            <Link href={administrationHref("/[locale]/admin/email-campaigns")}>
               {m.administrationFilterClear({}, { locale })}
             </Link>
           </Button>

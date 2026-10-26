@@ -3,6 +3,7 @@ import type {
   DotyposReservationId,
 } from "@deskohub/dotypos";
 import { ArrowRight } from "lucide-react";
+import NextLink from "next/link";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { Button } from "@/shared/components/ui/button";
@@ -14,6 +15,10 @@ import type {
   AdministrationReservationSummary,
   AdministrationTimelineItem,
 } from "./administration.service";
+import {
+  type AdministrationHref,
+  administrationHref,
+} from "./administration-href";
 import { getAdministrationCustomerName } from "./customer-presentation";
 import {
   formatAdministrationDateTime,
@@ -192,9 +197,13 @@ function ReservationTimelineEntry({
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="font-semibold">
             {item.href ? (
-              <Link className="underline underline-offset-4" href={item.href}>
+              <NextLink
+                className="underline underline-offset-4"
+                href={item.href}
+                prefetch={false}
+              >
                 {title}
-              </Link>
+              </NextLink>
             ) : (
               title
             )}
@@ -224,7 +233,9 @@ export function RelatedReservationLink({
   return (
     <Link
       className="group flex items-center justify-between gap-3 rounded-lg px-3 py-3 hover:bg-navy-blue/[0.035]"
-      href={`/admin/reservations/${reservation.id}`}
+      href={administrationHref("/[locale]/admin/reservations/[reservationId]", {
+        reservationId: reservation.id,
+      })}
     >
       <span className="min-w-0">
         <span className="block text-sm font-semibold">
@@ -312,7 +323,9 @@ export function ReservationReferences({
         />
       )}
       <Reference
-        href={`/admin/customers/${references.customerId}`}
+        href={administrationHref("/[locale]/admin/customers/[customerId]", {
+          customerId: references.customerId,
+        })}
         label={m.administrationReservationReferenceCustomer({}, { locale })}
         value={references.customerId}
       />
@@ -325,7 +338,7 @@ function Reference({
   label,
   value,
 }: {
-  readonly href?: string;
+  readonly href?: AdministrationHref;
   readonly label: string;
   readonly value: string;
 }) {
@@ -354,7 +367,7 @@ export function Pagination({
   pageParam = "page",
   params = {},
 }: {
-  readonly basePath: string;
+  readonly basePath: AdministrationHref;
   readonly locale: Locale;
   readonly page: number;
   readonly pageCount: number;

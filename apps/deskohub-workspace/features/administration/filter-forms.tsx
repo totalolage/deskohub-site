@@ -14,6 +14,10 @@ import type {
   AdministrationCustomerListInput,
   AdministrationReservationStatusFilter,
 } from "./administration.service";
+import {
+  type AdministrationHref,
+  administrationHref,
+} from "./administration-href";
 import { administrationCustomerMarketingConsentStates } from "./customer-list-filters";
 import { getAdministrationCustomerMarketingConsentLabel } from "./customer-presentation";
 import {
@@ -61,7 +65,9 @@ function ReservationDateShortcutLinks({
   getHref,
   shortcuts,
 }: {
-  readonly getHref: (range: AdministrationReservationDateRange) => string;
+  readonly getHref: (
+    range: AdministrationReservationDateRange
+  ) => AdministrationHref;
   readonly shortcuts: ReservationDateShortcuts;
 }) {
   const locale = useRouteLocale();
@@ -114,7 +120,7 @@ export function OrdersAdministrationFilterForm({
 
   return (
     <AdministrationFilterForm
-      action="/admin/orders"
+      action={administrationHref("/[locale]/admin/orders")}
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         const nativeForm = event.currentTarget;
         void form.handleSubmit(() => nativeForm.submit())(event);
@@ -177,7 +183,7 @@ export function BookingsAdministrationFilterForm({
 
   return (
     <AdministrationFilterForm
-      action="/admin/bookings"
+      action={administrationHref("/[locale]/admin/bookings")}
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         const nativeForm = event.currentTarget;
         void form.handleSubmit(() => nativeForm.submit())(event);
@@ -237,7 +243,7 @@ export function OperationsAdministrationFilterForm({
 
   return (
     <AdministrationFilterForm
-      action="/admin/operations"
+      action={administrationHref("/[locale]/admin/operations")}
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         const nativeForm = event.currentTarget;
         void form.handleSubmit(() => nativeForm.submit())(event);
@@ -352,7 +358,7 @@ export function ReservationsAdministrationFilterForm({
   const shortcutHref = (range: {
     readonly from?: string;
     readonly to?: string;
-  }) => {
+  }): AdministrationHref => {
     const search = new URLSearchParams();
     for (const [key, value] of Object.entries({
       customerId: input.customerId,
@@ -365,12 +371,14 @@ export function ReservationsAdministrationFilterForm({
     })) {
       if (value) search.set(key, value);
     }
-    return `/admin/reservations?${search.toString()}`;
+    return `${administrationHref(
+      "/[locale]/admin/reservations"
+    )}?${search.toString()}`;
   };
 
   return (
     <AdministrationFilterForm
-      action="/admin/reservations"
+      action={administrationHref("/[locale]/admin/reservations")}
       className="2xl:grid-cols-[10rem_12rem_10rem_10rem]"
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         const nativeForm = event.currentTarget;
@@ -484,7 +492,7 @@ export function ReservationsAdministrationFilterForm({
             input.to ||
             input.type) && (
             <Button asChild size="md" variant="ghost">
-              <Link href="/admin/reservations">
+              <Link href={administrationHref("/[locale]/admin/reservations")}>
                 {m.administrationFilterClear({}, { locale })}
               </Link>
             </Button>
@@ -523,7 +531,9 @@ export function CustomersAdministrationFilterForm({
     resolver: effectSchemaResolver(customerFilterSchema),
     values,
   });
-  const shortcutHref = (range: AdministrationReservationDateRange) => {
+  const shortcutHref = (
+    range: AdministrationReservationDateRange
+  ): AdministrationHref => {
     const search = new URLSearchParams();
     for (const [key, value] of Object.entries({
       ...params,
@@ -532,12 +542,14 @@ export function CustomersAdministrationFilterForm({
     })) {
       if (value) search.set(key, value);
     }
-    return `/admin/customers?${search.toString()}`;
+    return `${administrationHref(
+      "/[locale]/admin/customers"
+    )}?${search.toString()}`;
   };
 
   return (
     <AdministrationFilterForm
-      action="/admin/customers"
+      action={administrationHref("/[locale]/admin/customers")}
       className="2xl:grid-cols-[12rem_10rem_10rem]"
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         const nativeForm = event.currentTarget;
@@ -612,7 +624,7 @@ export function CustomersAdministrationFilterForm({
         >
           {(input.from || input.to || input.marketingConsent) && (
             <Button asChild size="md" variant="ghost">
-              <Link href="/admin/customers">
+              <Link href={administrationHref("/[locale]/admin/customers")}>
                 {m.administrationFilterClear({}, { locale })}
               </Link>
             </Button>

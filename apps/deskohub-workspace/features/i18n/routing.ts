@@ -1,6 +1,6 @@
 import { replaceLocaleInPathname } from "@deskohub/i18n/pathname";
 import { Predicate } from "effect";
-import type { AppRoutes } from "@/.next/types/routes";
+import type { AppRouteHandlerRoutes, AppRoutes } from "@/.next/types/routes";
 import {
   baseLocale,
   cookieName,
@@ -44,61 +44,77 @@ export type StaticLocalizedPageRoute = Exclude<
 >;
 
 /**
- * Builds a page path without a locale prefix from a route Next generated
- * from the app directory, so typecheck proves the page exists. The proxy
- * redirects it to the visitor's locale.
+ * A page or route handler Next generated under the locale segment, except
+ * catch-all routes, which a path builder can't fill.
  */
-export const getPagePath = (route: StaticLocalizedPageRoute): string =>
-  route.slice(localeRouteSegment.length);
-
-/**
- * Builds a localized page path from a route Next generated from the app
- * directory, so typecheck proves the page exists.
- */
-export const getLocalizedPagePath = (
-  locale: Locale,
-  route: StaticLocalizedPageRoute
-): string => `/${locale}${route.slice(localeRouteSegment.length)}`;
-
-type DynamicLocalizedPageRoute = Exclude<
-  Extract<AppRoutes, `${typeof localeRouteSegment}/${string}[${string}`>,
+export type LocalizedRoute = Exclude<
+  Extract<
+    AppRoutes | AppRouteHandlerRoutes,
+    `${typeof localeRouteSegment}/${string}`
+  >,
   `${string}[...${string}` | `${string}[[...${string}`
 >;
 
-type PageRouteParamName<Route extends string> =
-  Route extends `${string}[${infer Name}]${infer Rest}`
-    ? Name | PageRouteParamName<Rest>
+type RoutePathname<Route extends LocalizedRoute> =
+  Route extends `${typeof localeRouteSegment}${infer Pathname}`
+    ? Pathname
     : never;
 
-type LocalizedPageRouteParams<Route extends DynamicLocalizedPageRoute> =
-  Readonly<
-    Record<
-      PageRouteParamName<
-        Route extends `${typeof localeRouteSegment}${infer Path}` ? Path : never
+type RouteParamName<Pathname extends string> =
+  Pathname extends `${string}[${infer Name}]${infer Rest}`
+    ? Name | RouteParamName<Rest>
+    : never;
+
+type FilledPathname<Pathname extends string> =
+  Pathname extends `${infer Head}[${string}]${infer Rest}`
+    ? `${Head}${string}${FilledPathname<Rest>}`
+    : Pathname;
+
+/** The path a route builds to, with each `[param]` segment filled. */
+export type UnprefixedRoutePath<Route extends LocalizedRoute> = FilledPathname<
+  RoutePathname<Route>
+>;
+
+/** The values a route's `[param]` segments take; a static route takes none. */
+export type LocalizedRouteParams<Route extends LocalizedRoute> = [
+  RouteParamName<RoutePathname<Route>>,
+] extends [never]
+  ? []
+  : [
+      params: Readonly<
+        Record<RouteParamName<RoutePathname<Route>>, string | number>
       >,
-      string
-    >
-  >;
+    ];
 
 /**
- * Builds a localized path to a dynamic page Next generated from the app
- * directory, filling each `[param]` segment with its encoded value, so
- * typecheck proves the page exists and every parameter is given.
+ * Builds a path without a locale prefix to a page or route handler Next
+ * generated from the app directory, filling each `[param]` segment with its
+ * encoded value, so typecheck proves the route exists and every parameter is
+ * given. The proxy redirects it to the visitor's locale; place it under a
+ * locale with `getLocalizedPagePath` instead when the locale is known.
  */
-export const getLocalizedDynamicPagePath = <
-  Route extends DynamicLocalizedPageRoute,
->(
-  locale: Locale,
+export const getUnprefixedPagePath = <Route extends LocalizedRoute>(
   route: Route,
-  params: LocalizedPageRouteParams<Route>
-): string => {
-  const values: Readonly<Record<string, string>> = params;
-  return `/${locale}${route
+  ...[params]: LocalizedRouteParams<Route>
+): UnprefixedRoutePath<Route> => {
+  const values: Readonly<Record<string, string | number>> = params ?? {};
+  return route
     .slice(localeRouteSegment.length)
     .replace(/\[([^\]]+)\]/g, (_, name: string) =>
       encodeURIComponent(values[name] ?? "")
-    )}`;
+    ) as UnprefixedRoutePath<Route>;
 };
+
+/**
+ * Builds a localized path to a page or route handler Next generated from the
+ * app directory, with each `[param]` segment filled and encoded, so typecheck
+ * proves the route exists and every parameter is given.
+ */
+export const getLocalizedPagePath = <Route extends LocalizedRoute>(
+  locale: Locale,
+  route: Route,
+  ...params: LocalizedRouteParams<Route>
+): string => `/${locale}${getUnprefixedPagePath(route, ...params)}`;
 
 export const withLocalePrefixAndSearch = (
   pathname: string,

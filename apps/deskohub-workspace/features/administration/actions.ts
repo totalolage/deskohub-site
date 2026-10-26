@@ -7,6 +7,7 @@ import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-local
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { AdministrationService } from "./administration.service";
+import { administrationHref } from "./administration-href";
 import {
   type ReservationCancellationInput,
   type ReservationLookupInput,
@@ -78,7 +79,10 @@ const cancelAdministrationReservationAction = defineWorkspaceAction(
           const result = yield* administration.cancel(input);
           yield* Effect.sync(() =>
             revalidateLocalizedPath(
-              `/admin/reservations/${input.reservationId}`
+              administrationHref(
+                "/[locale]/admin/reservations/[reservationId]",
+                { reservationId: input.reservationId }
+              )
             )
           );
           return result;
@@ -131,7 +135,10 @@ const mutateReservationAccessAction = defineWorkspaceAction(
           const grant = yield* administration.mutate(input);
           yield* Effect.sync(() =>
             revalidateLocalizedPath(
-              `/admin/reservations/${input.reservationId}`
+              administrationHref(
+                "/[locale]/admin/reservations/[reservationId]",
+                { reservationId: input.reservationId }
+              )
             )
           );
           return { grantState: grant.state };

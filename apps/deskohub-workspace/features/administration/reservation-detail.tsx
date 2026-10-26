@@ -4,6 +4,7 @@ import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { formatMoney } from "@/shared/money/money";
 import { AdministrationLink as Link } from "./admin-link";
 import type { AdministrationReservationDetail as ReservationDetailData } from "./administration.service";
+import { administrationHref } from "./administration-href";
 import {
   formatAdministrationPlainDate,
   formatAdministrationReservationDate,
@@ -200,7 +201,10 @@ async function ReservationDetailContent({
               {reservation.customer ? (
                 <Link
                   className="font-semibold underline decoration-navy-blue/20 underline-offset-4"
-                  href={`/admin/customers/${reservation.customerId}`}
+                  href={administrationHref(
+                    "/[locale]/admin/customers/[customerId]",
+                    { customerId: reservation.customerId }
+                  )}
                 >
                   {getAdministrationCustomerName(reservation.customer, locale)}
                 </Link>
@@ -387,7 +391,9 @@ async function ReservationDetailContent({
               )}
               <Link
                 className="mt-2 block px-3 py-2 text-sm font-semibold hover:underline"
-                href={`/admin/reservations?date=${reservation.date}`}
+                href={`${administrationHref(
+                  "/[locale]/admin/reservations"
+                )}?date=${reservation.date}`}
               >
                 {m.administrationReservationDetailSameDateViewAll(
                   {},
@@ -420,7 +426,10 @@ function ReservationAuthorFact({
               {author.customerId ? (
                 <Link
                   className="font-semibold underline decoration-navy-blue/20 underline-offset-4"
-                  href={`/admin/customers/${author.customerId}`}
+                  href={administrationHref(
+                    "/[locale]/admin/customers/[customerId]",
+                    { customerId: author.customerId }
+                  )}
                 >
                   {getAdministrationCustomerName(author, locale)}
                 </Link>

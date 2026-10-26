@@ -7,7 +7,10 @@ import { useRouteLocale } from "@/features/i18n/route-locale";
 import { runWorkspaceBrowserEffect } from "@/shared/browser/workspace-browser-effect";
 import { reportWorkspaceBrowserFailure } from "@/shared/browser/workspace-browser-logs";
 import { Button } from "@/shared/components/ui/button";
-import { localizeAdministrationHref } from "./administration-href";
+import {
+  type AdministrationHref,
+  localizeAdministrationHref,
+} from "./administration-href";
 import { m } from "./i18n";
 import { administrationListSourceUnavailableCode } from "./list-export";
 import { AdministrationAlert } from "./notice";
@@ -137,7 +140,7 @@ export function AdministrationTableExport({
   href,
   onFailureChange,
 }: {
-  readonly href: Promise<string>;
+  readonly href: Promise<AdministrationHref>;
   readonly onFailureChange: (
     failure: AdministrationListExportFailure | null
   ) => void;
@@ -185,7 +188,7 @@ function ExportControl({
   href,
   onFailureChange,
 }: {
-  readonly href: Promise<string>;
+  readonly href: Promise<AdministrationHref>;
   readonly onFailureChange: (
     failure: AdministrationListExportFailure | null
   ) => void;

@@ -1,5 +1,6 @@
 import { ArrowLeft } from "lucide-react";
 import { AdministrationLink } from "@/features/administration/admin-link";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationDetailSection,
   AdministrationFact,
@@ -32,7 +33,10 @@ export async function AutomationRunPage({
     <div className="@container grid gap-5">
       <AdministrationLink
         className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-navy-blue/70 hover:text-navy-blue"
-        href={`/admin/email-campaigns/${automated.campaign.id}/runs`}
+        href={administrationHref(
+          "/[locale]/admin/email-campaigns/[campaignId]/runs",
+          { campaignId: automated.campaign.id }
+        )}
       >
         <ArrowLeft aria-hidden className="size-4" />
         {m.emailAutomationRunsBackToList({}, { locale })}

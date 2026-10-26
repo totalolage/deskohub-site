@@ -15,6 +15,7 @@ import type {
   SafeActionResult,
   ValidationErrors,
 } from "next-safe-action";
+import { administrationHref } from "@/features/administration/administration-href";
 import { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
 import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
@@ -141,14 +142,26 @@ const campaignOperationAction = defineWorkspaceAction(
 
 /** Every page that lists or shows what a campaign mutation can change. */
 const revalidateCampaignPages = (request: CampaignOperationRequest) => {
-  revalidateLocalizedPath("/admin/email-campaigns");
-  revalidateLocalizedPath("/admin/email-audiences");
+  revalidateLocalizedPath(
+    administrationHref("/[locale]/admin/email-campaigns")
+  );
+  revalidateLocalizedPath(
+    administrationHref("/[locale]/admin/email-audiences")
+  );
   Match.value(request.input).pipe(
     Match.when({ campaignId: Match.string }, ({ campaignId }) =>
-      revalidateLocalizedPath(`/admin/email-campaigns/${campaignId}`)
+      revalidateLocalizedPath(
+        administrationHref("/[locale]/admin/email-campaigns/[campaignId]", {
+          campaignId,
+        })
+      )
     ),
     Match.when({ audienceId: Match.string }, ({ audienceId }) =>
-      revalidateLocalizedPath(`/admin/email-audiences/${audienceId}`)
+      revalidateLocalizedPath(
+        administrationHref("/[locale]/admin/email-audiences/[audienceId]", {
+          audienceId,
+        })
+      )
     ),
     Match.orElse(() => undefined)
   );

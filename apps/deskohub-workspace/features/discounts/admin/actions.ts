@@ -1,6 +1,7 @@
 "use server";
 
 import { Effect } from "effect";
+import { administrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import type { Locale } from "@/features/i18n";
@@ -106,10 +107,14 @@ const getMutatedCustomerPath = (
   input: Parameters<typeof discountAdminMutationAction>[0]
 ) => {
   if (input.kind === "create-customer-code") {
-    return `/admin/customers/${input.customerId}`;
+    return administrationHref("/[locale]/admin/customers/[customerId]", {
+      customerId: input.customerId,
+    });
   }
   if (input.kind === "create-customer-voucher") {
-    return `/admin/customers/${input.voucher.customerId}`;
+    return administrationHref("/[locale]/admin/customers/[customerId]", {
+      customerId: input.voucher.customerId,
+    });
   }
   return null;
 };

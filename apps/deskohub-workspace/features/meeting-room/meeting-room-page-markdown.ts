@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import {
-  getPagePath,
+  getUnprefixedPagePath,
   getWorkspacePageUrl,
   type Locale,
   m,
@@ -55,7 +55,7 @@ export const meetingRoomPageMarkdown = (
       ...markdownInterpolate(m.meetingRoomBookingText({}, { locale }), {
         pricing: (content) =>
           markdownLink(
-            getWorkspacePageUrl(getPagePath("/[locale]/pricing")),
+            getWorkspacePageUrl(getUnprefixedPagePath("/[locale]/pricing")),
             ...content
           ),
       })
@@ -64,7 +64,7 @@ export const meetingRoomPageMarkdown = (
       ...markdownInterpolate(m.meetingRoomTtrpgNote({}, { locale }), {
         ttrpg: (content) =>
           markdownLink(
-            getWorkspacePageUrl(getPagePath("/[locale]/ttrpg-room")),
+            getWorkspacePageUrl(getUnprefixedPagePath("/[locale]/ttrpg-room")),
             ...content
           ),
       })

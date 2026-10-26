@@ -5,6 +5,7 @@ import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { AdministrationLink as Link } from "./admin-link";
+import { administrationHref } from "./administration-href";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
@@ -53,7 +54,9 @@ export function OrderTable({
           <>
             <Link
               className="font-mono text-xs font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-              href={`/admin/orders/${encodeURIComponent(row.original.orderId)}`}
+              href={administrationHref("/[locale]/admin/orders/[orderId]", {
+                orderId: row.original.orderId,
+              })}
             >
               {row.original.orderId}
             </Link>
@@ -109,7 +112,10 @@ export function OrderTable({
           row.original.link ? (
             <Link
               className="font-medium hover:underline"
-              href={`/admin/reservations/${row.original.link.reservationId}`}
+              href={administrationHref(
+                "/[locale]/admin/reservations/[reservationId]",
+                { reservationId: row.original.link.reservationId }
+              )}
             >
               {m.administrationOrderViewReservation({}, { locale })}
             </Link>
@@ -176,7 +182,10 @@ export function OperationTable({
             {row.original.operationId ? (
               <Link
                 className="font-mono text-xs font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-                href={`/admin/operations/${encodeURIComponent(row.original.operationId)}`}
+                href={administrationHref(
+                  "/[locale]/admin/operations/[operationId]",
+                  { operationId: row.original.operationId }
+                )}
               >
                 {row.original.operationId}
               </Link>
@@ -200,7 +209,9 @@ export function OperationTable({
           row.original.orderId ? (
             <Link
               className="font-mono text-xs hover:underline"
-              href={`/admin/orders/${encodeURIComponent(row.original.orderId)}`}
+              href={administrationHref("/[locale]/admin/orders/[orderId]", {
+                orderId: row.original.orderId,
+              })}
             >
               {row.original.orderId}
             </Link>
@@ -262,7 +273,10 @@ export function OperationTable({
           row.original.linkedReservationId ? (
             <Link
               className="font-medium hover:underline"
-              href={`/admin/reservations/${row.original.linkedReservationId}`}
+              href={administrationHref(
+                "/[locale]/admin/reservations/[reservationId]",
+                { reservationId: row.original.linkedReservationId }
+              )}
             >
               {m.administrationOperationViewReservation({}, { locale })}
             </Link>

@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/shared/components/ui/table";
 import { cn } from "@/shared/utils";
+import type { AdministrationHref } from "./administration-href";
 import { m } from "./i18n";
 import { AdministrationSortHead } from "./sort-head";
 import {
@@ -85,7 +86,7 @@ export function AdministrationDataTable<T extends RowData>({
   readonly getSortHref?: (
     columnId: string,
     direction: "asc" | "desc"
-  ) => string | undefined;
+  ) => AdministrationHref | undefined;
   readonly mobile?: ReactNode;
   readonly onRowActivate?: (item: T, expanded: boolean) => void;
   readonly renderActions?: (item: T, expanded: boolean) => ReactNode;
