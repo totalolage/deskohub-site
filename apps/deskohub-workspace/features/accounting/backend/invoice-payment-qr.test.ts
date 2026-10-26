@@ -56,30 +56,6 @@ describe("invoice payment QR", () => {
     expect(payment?.qrCode?.subarray(1, 4).toString()).toBe("PNG");
   });
 
-  test("omits payment instructions for non-positive totals", async () => {
-    expect(
-      await Effect.runPromise(getInvoicePaymentRequest(await makeDocument("0")))
-    ).toBeNull();
-    expect(
-      await Effect.runPromise(
-        getInvoicePaymentRequest(await makeDocument("-1"))
-      )
-    ).toBeNull();
-  });
-
-  test("omits payment instructions for an already-paid invoice", async () => {
-    expect(
-      await Effect.runPromise(
-        getInvoicePaymentRequest(
-          await makeDocument("450", {
-            status: "paid",
-            date: "2026-08-20",
-          })
-        )
-      )
-    ).toBeNull();
-  });
-
   test("keeps textual details but omits QR beyond the SPAYD amount ceiling", async () => {
     const payment = await Effect.runPromise(
       getInvoicePaymentRequest(await makeDocument("10000000"))

@@ -28,11 +28,11 @@ const {
   CallableAgentTools,
   defineAgentTool,
   defineSignedInAgentTool,
-  selectAgentTools,
 } = await import("./agent-tool");
 const { CustomerAgentAuthorization } = await import("@/features/account");
 const { AgentToolAdmission } = await import("./agent-tool-admission.service");
 const { answerAgentToolMcpRequest } = await import("./agent-tool-mcp-handler");
+const { readMcpRequest } = await import("./agent-tool-mcp-messages");
 
 const endpoint = "http://deskohub.test/api/mcp";
 
@@ -65,11 +65,15 @@ const slowTool = defineAgentTool({
 
 const answer = (request: Request, admitted = true) =>
   Effect.runPromise(
-    answerAgentToolMcpRequest({
-      tools: [slowTool],
-      client: "other",
-      request,
-    }).pipe(
+    readMcpRequest(request).pipe(
+      Effect.flatMap((mcpRequest) =>
+        answerAgentToolMcpRequest({
+          tools: [slowTool],
+          instructions: "Synthetic instructions.",
+          client: "other",
+          request: mcpRequest,
+        })
+      ),
       Effect.provide(
         Layer.succeed(AgentToolAdmission, {
           isCallAllowed: () => Effect.succeed(admitted),
@@ -306,21 +310,14 @@ describe("tools a call's caller may call", () => {
 
   const callCallableTools = async ({
     scopes,
-    transactional = true,
   }: {
     readonly scopes?: ReadonlyArray<
       "reservations:create" | "reservations:read"
     >;
-    readonly transactional?: boolean;
   }) => {
     const response = await Effect.runPromise(
-      answerAgentToolMcpRequest({
-        tools: selectAgentTools(tools, {
-          access: ["public", "signed-in"],
-          transactional,
-        }),
-        client: "other",
-        request: new Request(endpoint, {
+      readMcpRequest(
+        new Request(endpoint, {
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -334,8 +331,16 @@ describe("tools a call's caller may call", () => {
             method: "tools/call",
             params: { name: "callable_tools", arguments: {} },
           }),
-        }),
-      }).pipe(
+        })
+      ).pipe(
+        Effect.flatMap((request) =>
+          answerAgentToolMcpRequest({
+            tools,
+            instructions: "Synthetic instructions.",
+            client: "other",
+            request,
+          })
+        ),
         Effect.provide(
           Layer.mergeAll(
             Layer.succeed(AgentToolAdmission, {
@@ -375,14 +380,5 @@ describe("tools a call's caller may call", () => {
         scopes: ["reservations:create", "reservations:read"],
       })
     ).resolves.toEqual({ names: ["book", "callable_tools", "read_bookings"] });
-  });
-
-  test("leaves out tools a read-only deployment doesn't publish, whatever the token grants", async () => {
-    await expect(
-      callCallableTools({
-        scopes: ["reservations:create", "reservations:read"],
-        transactional: false,
-      })
-    ).resolves.toEqual({ names: ["callable_tools", "read_bookings"] });
   });
 });

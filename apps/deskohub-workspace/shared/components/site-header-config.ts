@@ -24,6 +24,7 @@ const siteHeaderSectionIds = {
 
 type SiteHeaderMenuItemId =
   | "locationMap"
+  | "coworking"
   | "meetingRoom"
   | "office"
   | "pricing"
@@ -94,6 +95,11 @@ const createSiteHeaderConfig = (
       id: "locationMap",
       label: m.landingNavWhereToFindUs({}, { locale }),
       href: localizedHash(`#${siteHeaderSectionIds.locationMap}`),
+    },
+    {
+      id: "coworking",
+      label: m.landingNavCoworking({}, { locale }),
+      href: `${localePath}/coworking`,
     },
     {
       id: "meetingRoom",

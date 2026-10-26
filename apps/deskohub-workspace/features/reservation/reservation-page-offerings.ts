@@ -7,10 +7,14 @@ import {
   isOfficeAdvertisedPrice,
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
+import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import {
   getPublicCatalogOfferings,
   type PublicCatalogOffering,
+  type PublicOfferingAdvertisedPrice,
+  type PublicPriceListOffering,
 } from "@/features/checkout/public-offerings";
+import { getReservationQuoteDiscountLastDay } from "@/features/checkout/reservation-quote-schema";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import {
@@ -39,7 +43,34 @@ const findAdvertisedPrice = (
   )?.advertisedPrice;
 
 /**
- * The cowork offerings at the prices the cowork form first shows for the
+ * The price the product's order line advertises, with the sale it includes
+ * against the line's regular amount.
+ */
+const getProductAdvertisedPrice = (
+  advertisedPrice: AdvertisedPrice,
+  product: WorkspaceProductIdentity
+): PublicOfferingAdvertisedPrice | undefined => {
+  const item = getAdvertisedProductItem(advertisedPrice, product);
+  if (!item) return undefined;
+
+  const regularAmount =
+    "originalAmount" in item && item.originalAmount
+      ? item.originalAmount
+      : item.amount;
+  const discount = moneyWithValue(
+    regularAmount.value - item.amount.value,
+    item.amount
+  );
+  const saleLastDay =
+    discount.value > 0
+      ? getReservationQuoteDiscountLastDay(advertisedPrice.quote.payment)
+      : undefined;
+
+  return { price: item.amount, discount, ...(saleLastDay && { saleLastDay }) };
+};
+
+/**
+ * The cowork offerings with the prices the cowork form first shows for the
  * page's selection.
  */
 export const getCoworkPageOfferings = ({
@@ -92,7 +123,7 @@ export const getCoworkPageOfferings = ({
     .filter((offering) => offering.kind === "cowork")
     .map((offering) => {
       // Like the tier card, take the first price the form loads for the tier.
-      const tierAmount = formRequests
+      const tierAdvertisedPrice = formRequests
         .filter(
           ({ reservation: { details } }) => details.entryTier === offering.tier
         )
@@ -100,30 +131,30 @@ export const getCoworkPageOfferings = ({
           const advertisedPrice = findCoworkAdvertisedPrice(request);
           return (
             advertisedPrice &&
-            getAdvertisedProductItem(advertisedPrice, {
+            getProductAdvertisedPrice(advertisedPrice, {
               kind: "cowork",
               tier: offering.tier,
-            })?.amount
+            })
           );
         })
-        .find((amount) => amount !== undefined);
+        .find((price) => price !== undefined);
 
       return {
         ...offering,
-        price: tierAmount ?? offering.price,
+        ...(tierAdvertisedPrice && { advertisedPrice: tierAdvertisedPrice }),
         addOns: offering.addOns.map((addOn) => ({
           ...addOn,
           price: addOn.included
             ? addOn.price
             : (addOnAmounts[addOn.id] ?? addOn.price),
         })),
-      } satisfies PublicCatalogOffering;
+      } satisfies PublicPriceListOffering;
     });
 };
 
 /**
- * The meeting-room offerings at the prices the meeting-room form first shows
- * for the page's start time.
+ * The meeting-room offerings with the prices the meeting-room form first
+ * shows for the page's start time.
  */
 export const getMeetingRoomPageOfferings = ({
   advertisedPrices,
@@ -149,17 +180,19 @@ export const getMeetingRoomPageOfferings = ({
       );
       const advertisedPrice =
         request && findAdvertisedPrice(advertisedPrices, request);
-      const amount =
+      const durationAdvertisedPrice =
         advertisedPrice &&
-        getAdvertisedProductItem(advertisedPrice, {
+        getProductAdvertisedPrice(advertisedPrice, {
           kind: "meeting-room",
           duration: offering.duration,
-        })?.amount;
+        });
 
       return {
         ...offering,
-        price: amount ?? offering.price,
-      } satisfies PublicCatalogOffering;
+        ...(durationAdvertisedPrice && {
+          advertisedPrice: durationAdvertisedPrice,
+        }),
+      } satisfies PublicPriceListOffering;
     });
 };
 

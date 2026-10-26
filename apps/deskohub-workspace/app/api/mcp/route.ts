@@ -9,9 +9,9 @@ import {
   AgentToolAdmission,
   answerAgentToolMcpRequest,
   CustomerAgentToolsLive,
-  getCustomerAgentToolsForClient,
+  customerAgentCatalog,
   identifyAgentToolClient,
-  publishedCustomerAgentTools,
+  readMcpRequest,
 } from "@/features/agent-tools";
 import { RequestBudget } from "@/shared/backend/request-budget/request-budget.service";
 import {
@@ -23,8 +23,9 @@ import {
  * The customer MCP server: stateless Streamable HTTP. POST carries every
  * request; GET and DELETE, which only sessions use, are answered with 405.
  * Browsers may call it only from the host serving the request. Every client
- * sees every tool, as `getCustomerAgentToolsForClient` adapts them: ChatGPT's
- * `start_reservation` only links the prefilled reservation page. Signed-in
+ * sees every tool, with the instructions for them, as `customerAgentCatalog`
+ * lists them: ChatGPT's `start_reservation` only links the prefilled
+ * reservation page. Signed-in
  * tools need a bearer access token from the Workspace OAuth server; a call
  * without a usable one is answered with an OAuth challenge. Each tool call
  * is counted by the caller's agent category.
@@ -41,19 +42,17 @@ const handleMcpRequest = defineWorkspaceRoute(
     caller: "client",
   },
   (request: Request) =>
-    identifyAgentToolClient(request).pipe(
-      Effect.flatMap((client) =>
-        answerAgentToolMcpRequest({
-          tools: getCustomerAgentToolsForClient({
-            client,
-            tools: publishedCustomerAgentTools,
-          }),
+    readMcpRequest(request).pipe(
+      Effect.flatMap((mcpRequest) => {
+        const client = identifyAgentToolClient(mcpRequest);
+        return answerAgentToolMcpRequest({
+          ...customerAgentCatalog.forClient(client),
           // Appended after the customer tools, never adapted per client.
           callerTools: AdministrationAgentAccess.forCaller,
           client,
-          request,
-        })
-      ),
+          request: mcpRequest,
+        });
+      }),
       Effect.catchTag("AdministrationAgentAccessUnavailable", () =>
         Effect.succeed(
           new Response(null, {

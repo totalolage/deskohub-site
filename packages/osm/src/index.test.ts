@@ -179,6 +179,114 @@ describe("generateStaticMapImage", () => {
     });
   });
 
+  test("lands the coordinate on the focus pixel", async () => {
+    // At zoom 1, latitude 0 and longitude 0 is the corner the four tiles share.
+    const tileColors: Record<string, string> = {
+      "0/0": "#ff0000",
+      "1/0": "#00ff00",
+      "0/1": "#0000ff",
+      "1/1": "#ffffff",
+    };
+    const fetch = makeFetch(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const [, x, y] = new URL(url).pathname.match(/\/1\/(\d)\/(\d)\.png$/)!;
+      const tile = await sharp({
+        create: {
+          width: 256,
+          height: 256,
+          channels: 3,
+          background: tileColors[`${x}/${y}`]!,
+        },
+      })
+        .png()
+        .toBuffer();
+      return new Response(tile, {
+        status: 200,
+        headers: { "Content-Type": "image/png" },
+      });
+    });
+
+    const image = await runWithFetch(
+      generateStaticMapImage({
+        ...staticMapOptions,
+        zoom: 1,
+        width: 120,
+        height: 100,
+        tileSize: 256,
+        focus: { x: 30, y: 80 },
+        marker: false,
+        attribution: false,
+        quality: 100,
+      }),
+      fetch
+    );
+    const { data, info } = await sharp(image)
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const colorAt = (x: number, y: number) => {
+      const offset = (y * info.width + x) * info.channels;
+      return [...data.subarray(offset, offset + 3)].map((channel) =>
+        channel > 127 ? 1 : 0
+      );
+    };
+
+    expect(colorAt(25, 75)).toEqual([1, 0, 0]);
+    expect(colorAt(35, 75)).toEqual([0, 1, 0]);
+    expect(colorAt(25, 85)).toEqual([0, 0, 1]);
+    expect(colorAt(35, 85)).toEqual([1, 1, 1]);
+  });
+
+  test("renders WebP without the marker or attribution when asked", async () => {
+    const tile = await sharp({
+      create: {
+        width: 256,
+        height: 256,
+        channels: 3,
+        background: "#ffffff",
+      },
+    })
+      .png()
+      .toBuffer();
+    const fetch = makeFetch(
+      async () =>
+        new Response(tile, {
+          status: 200,
+          headers: { "Content-Type": "image/png" },
+        })
+    );
+    const render = (options: {
+      readonly attribution?: boolean;
+      readonly marker?: boolean;
+    }) =>
+      runWithFetch(
+        generateStaticMapImage({
+          ...staticMapOptions,
+          width: 200,
+          height: 160,
+          tileSize: 256,
+          format: "webp",
+          ...options,
+        }),
+        fetch
+      );
+    const darkestChannel = async (image: Buffer) =>
+      Math.min(...(await sharp(image).stats()).channels.map(({ min }) => min));
+
+    const plain = await render({ attribution: false, marker: false });
+    expect(await sharp(plain).metadata()).toMatchObject({
+      format: "webp",
+      width: 200,
+      height: 160,
+    });
+    expect(await darkestChannel(plain)).toBeGreaterThan(240);
+    expect(
+      await darkestChannel(await render({ attribution: false }))
+    ).toBeLessThan(200);
+    expect(await darkestChannel(await render({ marker: false }))).toBeLessThan(
+      200
+    );
+  });
+
   test("fails a stalled tile request", async () => {
     const fetch = makeFetch(() => new Promise<Response>(() => {}));
 

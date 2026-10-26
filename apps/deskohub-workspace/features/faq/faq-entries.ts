@@ -1,79 +1,241 @@
+import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import { type Locale, m } from "@/features/i18n";
+import {
+  coworkReservationPath,
+  meetingRoomReservationPath,
+} from "@/features/reservation/routes";
+import { formatMoney } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import type { FaqOccupancyStats } from "./backend/faq-occupancy";
 
-/** A question on the FAQ page with its answer, in page order. */
-export interface FaqEntry {
+/**
+ * The pages an answer links through its tags, by unprefixed path. The page
+ * prefixes the visitor's locale; the Markdown links the locale-agnostic URL.
+ */
+export const faqAnswerLinkPaths = {
+  aiAssistants: "/ai-assistants",
+  contact: "/contact",
+  coworking: "/coworking",
+  meetingRoomReservation: meetingRoomReservationPath,
+  operatingRules: "/operating-rules",
+  pricing: "/pricing",
+  reservation: coworkReservationPath,
+  terms: "/terms-and-conditions",
+  ttrpg: "/ttrpg-room",
+} as const;
+
+/** A question on the FAQ page with its answer. */
+interface FaqEntry {
   readonly value: string;
   readonly question: string;
+  /** Plain text, or a sentence whose tags name `faqAnswerLinkPaths` links. */
   readonly answer: string;
   /** An address answer is marked up as an address. */
   readonly answerKind: "address" | "paragraph";
 }
 
-/** The FAQ page's questions in page order, for previews of the page. */
+/** A topic on the FAQ page with its questions, in page order. */
+export interface FaqGroup {
+  readonly value: string;
+  readonly title: string;
+  readonly entries: ReadonlyArray<FaqEntry>;
+}
+
+/** What the FAQ answers depend on beyond their copy. */
+export interface FaqFacts extends FaqOccupancyStats {
+  /** Private offices can be booked, so the page doesn't say they can't. */
+  readonly officesOffered: boolean;
+}
+
+/** The FAQ questions the home page previews, answered on the FAQ page. */
 export const getFaqQuestions = (locale: Locale) =>
   [
-    m.faqQuestionLocation({}, { locale }),
+    m.faqQuestionDesks({}, { locale }),
     m.faqQuestionHowItWorks({}, { locale }),
+    m.faqQuestionPrice({}, { locale }),
     m.faqQuestionInternet({}, { locale }),
-    m.faqQuestionFood({}, { locale }),
     m.faqQuestionCalls({}, { locale }),
-    m.faqQuestionBusyness({}, { locale }),
+    m.faqQuestionLocation({}, { locale }),
   ] as const;
 
-/** The FAQ page's questions and answers in `locale`. */
-export const getFaqEntries = (
+const paragraph = (
+  value: string,
+  question: string,
+  answer: string
+): FaqEntry => ({ value, question, answer, answerKind: "paragraph" });
+
+/** The FAQ page's topics, questions and answers in `locale`. */
+export const getFaqGroups = (
   locale: Locale,
-  occupancy: FaqOccupancyStats
-): ReadonlyArray<FaqEntry> => {
-  const address = workspaceSiteConstants.location.address;
+  { averageReservationsPerDay, coworkSeatCapacity, officesOffered }: FaqFacts
+): ReadonlyArray<FaqGroup> => {
+  const { address } = workspaceSiteConstants.location;
+  const until = workspaceSiteConstants.openingHours.openSpaceUsableUntil;
   const average = new Intl.NumberFormat(locale, {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
-  }).format(occupancy.averageReservationsPerDay);
+  }).format(averageReservationsPerDay);
   const capacity = new Intl.NumberFormat(locale, {
     maximumFractionDigits: 0,
-  }).format(occupancy.coworkSeatCapacity);
-  const [location, howItWorks, internet, food, calls, busyness] =
-    getFaqQuestions(locale);
+  }).format(coworkSeatCapacity);
+  const dayPrice = (tier: "open-space" | "reserved-desk") =>
+    formatMoney(getWorkspaceProductByTier(tier).price, locale);
 
   return [
     {
+      value: "coworking",
+      title: m.faqGroupCoworking({}, { locale }),
+      entries: [
+        paragraph(
+          "desks",
+          m.faqQuestionDesks({}, { locale }),
+          m.faqAnswerDesks({ until }, { locale })
+        ),
+        paragraph(
+          "price",
+          m.faqQuestionPrice({}, { locale }),
+          m.faqAnswerPrice(
+            {
+              openSpacePrice: dayPrice("open-space"),
+              reservedDeskPrice: dayPrice("reserved-desk"),
+            },
+            { locale }
+          )
+        ),
+        paragraph(
+          "opening-hours",
+          m.faqQuestionOpeningHours({}, { locale }),
+          m.faqAnswerOpeningHours({ until }, { locale })
+        ),
+        paragraph(
+          "several-days",
+          m.faqQuestionSeveralDays({}, { locale }),
+          m.faqAnswerSeveralDays({}, { locale })
+        ),
+        paragraph(
+          "coffee",
+          m.faqQuestionCoffee({}, { locale }),
+          m.faqAnswerCoffee({}, { locale })
+        ),
+        paragraph(
+          "monitors",
+          m.faqQuestionMonitors({}, { locale }),
+          m.faqAnswerMonitors({}, { locale })
+        ),
+        paragraph(
+          "internet",
+          m.faqQuestionInternet({}, { locale }),
+          m.faqAnswerInternet({}, { locale })
+        ),
+        paragraph(
+          "food",
+          m.faqQuestionFood({}, { locale }),
+          m.faqAnswerFood({}, { locale })
+        ),
+        paragraph(
+          "calls",
+          m.faqQuestionCalls({}, { locale }),
+          m.faqAnswerCalls({}, { locale })
+        ),
+        paragraph(
+          "busyness",
+          m.faqQuestionBusyness({}, { locale }),
+          m.faqAnswerBusyness({ average, capacity }, { locale })
+        ),
+      ],
+    },
+    {
+      value: "booking",
+      title: m.faqGroupBooking({}, { locale }),
+      entries: [
+        paragraph(
+          "how-it-works",
+          m.faqQuestionHowItWorks({}, { locale }),
+          m.faqAnswerHowItWorks({}, { locale })
+        ),
+        paragraph(
+          "account",
+          m.faqQuestionAccount({}, { locale }),
+          m.faqAnswerAccount({}, { locale })
+        ),
+        paragraph(
+          "pin",
+          m.faqQuestionPin({}, { locale }),
+          m.faqAnswerPin({}, { locale })
+        ),
+        paragraph(
+          "cancellation",
+          m.faqQuestionCancellation({}, { locale }),
+          m.faqAnswerCancellation({}, { locale })
+        ),
+        paragraph(
+          "sales",
+          m.faqQuestionSales({}, { locale }),
+          m.faqAnswerSales({}, { locale })
+        ),
+        paragraph(
+          "ai-assistants",
+          m.faqQuestionAiAssistants({}, { locale }),
+          m.faqAnswerAiAssistants({}, { locale })
+        ),
+      ],
+    },
+    {
+      value: "rooms-and-events",
+      title: m.faqGroupRoomsAndEvents({}, { locale }),
+      entries: [
+        paragraph(
+          "meeting-room",
+          m.faqQuestionMeetingRoom({}, { locale }),
+          m.faqAnswerMeetingRoom({}, { locale })
+        ),
+        paragraph(
+          "ttrpg",
+          m.faqQuestionTtrpg({}, { locale }),
+          m.faqAnswerTtrpg({}, { locale })
+        ),
+        paragraph(
+          "events",
+          m.faqQuestionEvents({}, { locale }),
+          m.faqAnswerEvents({}, { locale })
+        ),
+        ...(officesOffered
+          ? []
+          : [
+              paragraph(
+                "offices",
+                m.faqQuestionOffices({}, { locale }),
+                m.faqAnswerOffices({}, { locale })
+              ),
+            ]),
+      ],
+    },
+    {
       value: "location",
-      question: location,
-      answer: `${address.street}, ${address.cityDistrict}, ${address.city} ${address.postalCode}`,
-      answerKind: "address",
-    },
-    {
-      value: "how-it-works",
-      question: howItWorks,
-      answer: m.faqAnswerHowItWorks({}, { locale }),
-      answerKind: "paragraph",
-    },
-    {
-      value: "internet",
-      question: internet,
-      answer: m.faqAnswerInternet({}, { locale }),
-      answerKind: "paragraph",
-    },
-    {
-      value: "food",
-      question: food,
-      answer: m.faqAnswerFood({}, { locale }),
-      answerKind: "paragraph",
-    },
-    {
-      value: "calls",
-      question: calls,
-      answer: m.faqAnswerCalls({}, { locale }),
-      answerKind: "paragraph",
-    },
-    {
-      value: "busyness",
-      question: busyness,
-      answer: m.faqAnswerBusyness({ average, capacity }, { locale }),
-      answerKind: "paragraph",
+      title: m.faqGroupLocation({}, { locale }),
+      entries: [
+        {
+          value: "location",
+          question: m.faqQuestionLocation({}, { locale }),
+          answer: `${address.street}, ${address.cityDistrict}, ${address.city} ${address.postalCode}`,
+          answerKind: "address",
+        },
+        paragraph(
+          "transport",
+          m.faqQuestionTransport({}, { locale }),
+          m.faqAnswerTransport({}, { locale })
+        ),
+        paragraph(
+          "bar",
+          m.faqQuestionBar({}, { locale }),
+          m.faqAnswerBar({}, { locale })
+        ),
+        paragraph(
+          "rules",
+          m.faqQuestionRules({}, { locale }),
+          m.faqAnswerRules({}, { locale })
+        ),
+      ],
     },
   ];
 };

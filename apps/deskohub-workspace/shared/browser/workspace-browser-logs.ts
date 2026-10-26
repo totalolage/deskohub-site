@@ -1,8 +1,9 @@
-import { Effect, Option, Predicate, References } from "effect";
+import { Effect, Predicate, References } from "effect";
 import {
   censorErrorClassificationValue,
   classifyErrorType,
 } from "@/shared/utils/log-classification";
+import { createOutbox } from "@/shared/utils/outbox";
 
 type WorkspaceBrowserLogAttributes = Record<string, string | number | boolean>;
 
@@ -20,9 +21,7 @@ export interface WorkspaceBrowserLogRecord {
 
 type WorkspaceBrowserLogSink = (record: WorkspaceBrowserLogRecord) => void;
 
-const maxPendingRecords = 50;
-const pendingRecords: WorkspaceBrowserLogRecord[] = [];
-let attachedSink: WorkspaceBrowserLogSink | undefined;
+const outbox = createOutbox<WorkspaceBrowserLogRecord>({ capacity: 50 });
 
 /**
  * Attaches the sink that receives browser logs, first the records logged
@@ -31,24 +30,10 @@ let attachedSink: WorkspaceBrowserLogSink | undefined;
  */
 export const deliverWorkspaceBrowserLogs = (
   sink: WorkspaceBrowserLogSink
-): (() => void) => {
-  attachedSink = sink;
-  for (const record of pendingRecords.splice(0)) deliverRecord(sink, record);
-
-  return () => {
-    if (attachedSink === sink) attachedSink = undefined;
-  };
-};
+): (() => void) => outbox.attach(sink);
 
 /** Drops records still waiting for a sink, such as after consent withdrawal. */
-export const discardWorkspaceBrowserLogs = (): void => {
-  pendingRecords.length = 0;
-};
-
-const deliverRecord = Option.liftThrowable(
-  (sink: WorkspaceBrowserLogSink, record: WorkspaceBrowserLogRecord) =>
-    sink(record)
-);
+export const discardWorkspaceBrowserLogs = (): void => outbox.discard();
 
 /**
  * Records one censored failure for PostHog Logs, annotated with the
@@ -62,7 +47,7 @@ export const reportWorkspaceBrowserFailure = (
 ): Effect.Effect<void> =>
   Effect.withFiber((fiber) =>
     Effect.sync(() =>
-      holdOrDeliver(
+      outbox.post(
         toFailureRecord(
           failureCode,
           cause,
@@ -71,14 +56,6 @@ export const reportWorkspaceBrowserFailure = (
       )
     )
   ).pipe(Effect.ignoreCause);
-
-const holdOrDeliver = (failure: WorkspaceBrowserLogRecord) => {
-  if (attachedSink !== undefined) {
-    deliverRecord(attachedSink, failure);
-  } else if (pendingRecords.length < maxPendingRecords) {
-    pendingRecords.push(failure);
-  }
-};
 
 const toFailureRecord = <Annotations>(
   failureCode: string,

@@ -27,6 +27,7 @@ import {
   makeTestManualInvoiceDocument,
 } from "@/features/accounting/invoice.test-utils";
 import type { InvoiceEmailDeliveryAudience } from "@/features/accounting/invoice-email-delivery";
+import { invoiceIdSchema } from "@/features/accounting/manual-invoice";
 import { m } from "@/features/i18n";
 import { workspaceDefaultFromAddress } from "@/shared/backend/config/email.config";
 import * as emailRendering from "@/shared/backend/email/render-react-email";
@@ -86,7 +87,7 @@ beforeEach(() => {
 
 const document = makeCoworkInvoiceDocument("en-US");
 const invoice = {
-  id: "invoice-id",
+  id: invoiceIdSchema.make("01980000-0000-7000-8000-00000000000a"),
   workspaceReservationId: document.workspaceReservationId,
   paymentAttemptId: document.paymentAttemptId,
   dotyposCustomerId: document.dotyposCustomerId,
@@ -290,7 +291,8 @@ describe("invoice email delivery", () => {
     expect(sentMessages[2]).toMatchObject({
       to: { email: frozenRecipientEmail },
       tags: ["workspace-invoice-customer"],
-      idempotencyKey: "workspace-invoice-customer-resend-invoice-id-2",
+      idempotencyKey:
+        "workspace-invoice-customer-resend-01980000-0000-7000-8000-00000000000a-2",
     });
     expect(harness.claimResend).toHaveBeenCalledTimes(1);
   });
@@ -527,6 +529,7 @@ const makeHarness = (options: {
     claimResend,
     markAccepted,
     markFailed,
+    status: () => Effect.die("status is not part of delivery"),
   };
   const selectedInvoice =
     options.invoice === undefined ? invoice : options.invoice;
