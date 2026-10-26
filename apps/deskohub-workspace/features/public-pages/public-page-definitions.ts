@@ -89,7 +89,7 @@ export const publicPageDefinitions: Readonly<
   "/meeting-room": {
     title: m.meetingRoomMetadataTitle,
     description: m.meetingRoomMetadataDescription,
-    contentDate: "2026-10-25",
+    contentDate: "2026-10-26",
     releaseGate: "meeting-room-page",
   },
   "/team": {
