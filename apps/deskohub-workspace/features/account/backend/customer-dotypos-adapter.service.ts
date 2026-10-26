@@ -459,7 +459,8 @@ export class CustomerDotyposAdapter extends Context.Service<
         return yield* attempt.pipe(
           Effect.retry({
             times: 1,
-            while: (failure) => isPatchFailure(failure) && replaysPatch(failure),
+            while: (failure) =>
+              isPatchFailure(failure) && replaysPatch(failure),
           }),
           // The final settlement read after the second execution.
           Effect.catchIf(
