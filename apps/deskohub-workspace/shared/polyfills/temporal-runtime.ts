@@ -143,6 +143,16 @@ export const requiredTemporalApis = {
 } as const satisfies TemporalApis;
 
 /**
+ * Whether a host value is a function. Unlike `instanceof Function`, this holds
+ * for a function from another realm too.
+ */
+// biome-ignore lint/plugin: feature-detects a host value, which may be anything.
+function isFunction(value: unknown): value is (...args: never[]) => unknown {
+  // biome-ignore lint/plugin: feature detection of a host API, not parsing of input.
+  return typeof value === "function";
+}
+
+/**
  * Whether `temporal` has every API in `apis` in a form code can call, and
  * whether the date arithmetic and time zone conversions Workspace code relies
  * on give the right answers in `timeZone` across a daylight saving change.
@@ -154,8 +164,6 @@ export function isTemporalComplete(
   apis: TemporalApis,
   timeZone: string
 ): boolean {
-  // biome-ignore lint/plugin: feature detection of a host API, not parsing of input; unlike `instanceof`, it holds for a function from another realm.
-  const isFunction = (value: unknown) => typeof value === "function";
   try {
     // biome-ignore lint/plugin: the namespaces of a host global that may be partial.
     const namespaces = temporal as Record<string, Record<string, unknown>>;
@@ -164,6 +172,7 @@ export function isTemporalComplete(
       // A namespace with instance members is a class, so must be a
       // constructor. `Reflect.construct` throws if it isn't, without calling it.
       if (members.methods !== undefined || members.getters !== undefined) {
+        if (!isFunction(namespace)) return false;
         Reflect.construct(Object, [], namespace);
       }
       for (const member of members.static ?? []) {

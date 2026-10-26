@@ -245,8 +245,10 @@ const implicitlyCalledMethods = ["toJSON", "toLocaleString", "toString"];
 /**
  * The Temporal APIs Workspace code uses, named as `listTemporalApis` names
  * them, and the places it reads members of a Temporal value in a way the scan
- * can't name: by a key whose type isn't a union of string literals, or
- * through `Reflect`.
+ * can't name: by a key whose type isn't a union of string literals, or by
+ * calling a `Reflect` method on it directly. The `Reflect` check errs toward
+ * failing, even on calls that read no member, and an aliased `Reflect`
+ * escapes it.
  *
  * The type checker resolves each member access, so instance members count
  * wherever their values come from, as do destructured members and computed
