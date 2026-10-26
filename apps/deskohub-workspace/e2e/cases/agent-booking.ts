@@ -234,7 +234,7 @@ const executeAgentBooking = Effect.fn("AgentBooking.execute")(function* (
       locale: "cs-CZ",
       server,
     }),
-    id: "deny-agent-consent-cs-CZ",
+    id: "deny-agent-consent-cs-cz",
     timeoutMs: config.timeouts.customerAgentConsent,
   });
   yield* tryWorkspaceE2ESync("read denied agent authorization", () =>
@@ -252,7 +252,7 @@ const executeAgentBooking = Effect.fn("AgentBooking.execute")(function* (
       locale: booking.state.data.locale,
       server,
     }),
-    id: `allow-agent-consent-${booking.state.data.locale}`,
+    id: `allow-agent-consent-${booking.state.data.locale.toLowerCase()}`,
     timeoutMs: config.timeouts.customerAgentConsent,
   });
   const accessToken = yield* runStep({
