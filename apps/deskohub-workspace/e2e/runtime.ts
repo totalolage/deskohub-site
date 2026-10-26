@@ -1,29 +1,23 @@
-import { copyFile, mkdir, rename, rm, writeFile } from "node:fs/promises";
-import { devNull, tmpdir } from "node:os";
+import { mkdir, rename, writeFile } from "node:fs/promises";
+import { devNull } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type {
-  Browser,
-  BrowserContext,
-  ConsoleMessage,
-  Frame,
-  Page,
-  Request,
-  Response,
-} from "@playwright/test";
+import type { Browser, Frame, Page } from "@playwright/test";
+import { Cause, Effect, Exit, Scope } from "effect";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
-import { escapeRegExp } from "../shared/utils/escape-regexp";
-import {
-  formatNexiBuildFailureLine,
-  isNexiBuildApiUrl,
-  listNexiBuildFailureCodes,
-  summarizeNexiBuildFailureBody,
-  toNexiBuildEndpoint,
-} from "./checkout/nexi-build-api";
+import { E2EBrowserSession } from "./browser-session";
+import { toWorkspaceE2EError, type WorkspaceE2EError } from "./errors";
+import { redact } from "./redaction";
+
+export {
+  addDatabaseUrlRedactions,
+  addRedaction,
+  redact,
+  redactDiagnosticText,
+} from "./redaction";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 export const workspaceDir = resolve(scriptDir, "..");
-const redactions = new Map<string, "substring" | "token">();
 
 type RunBrowserOptions = {
   allowFailure?: boolean;
@@ -47,31 +41,48 @@ export type Runner = {
     options?: RunBrowserOptions
   ): Promise<BrowserCommandResult>;
   readonly close?: () => Promise<void>;
+  /**
+   * The browser session behind an argv `--session` id, so a migrated helper
+   * drives the same context as the argv commands around it.
+   */
+  readonly session?: (
+    id: string
+  ) => Effect.Effect<E2EBrowserSession, WorkspaceE2EError>;
 };
 
-type PlaywrightSession = {
-  closePromise?: Promise<void>;
-  readonly consoleMessages: string[];
-  readonly context: BrowserContext;
-  currentFrame: Frame;
-  currentPage: Page;
-  readonly errors: string[];
-  harStarted: boolean;
-  readonly networkRequests: string[];
+/**
+ * One argv session: the browser session plus the state only the argv
+ * protocol needs, namely tab ids and the iframe that commands target. Any
+ * change of the active page drops the selected iframe.
+ */
+type ArgvSession = {
+  readonly browserSession: E2EBrowserSession;
+  readonly scope: Scope.Closeable;
+} & ArgvPageState;
+
+type ArgvPageState = {
+  frame?: Frame;
   readonly pageIds: Map<Page, string>;
-  readonly primedOrigins: Set<string>;
-  rawHarPath?: string;
 };
 
-const maximumDiagnosticEntries = 500;
-
+/**
+ * The argv browser protocol over `E2EBrowserSession`, kept until every
+ * caller drives the session directly. Each `--session` id lazily opens one
+ * session; `close` closes them all.
+ */
 export const makePlaywrightBrowserRunner = (
   browser: Browser,
   options: { readonly recordHar?: boolean } = {}
-): Runner =>
-  makePlaywrightRuntimeRunner(new PlaywrightRuntime(browser, options));
+): Runner => {
+  const sessions = new Map<string, Promise<ArgvSession>>();
+  const getSession = (id: string) => {
+    const existing = sessions.get(id);
+    if (existing) return existing;
+    const created = openArgvSession(browser, id, options.recordHar);
+    sessions.set(id, created);
+    return created;
+  };
 
-const makePlaywrightRuntimeRunner = (runtime: PlaywrightRuntime): Runner => {
   const run = (async (
     command: "playwright",
     args: string[],
@@ -82,7 +93,8 @@ const makePlaywrightRuntimeRunner = (runtime: PlaywrightRuntime): Runner => {
 
     try {
       const stdout = redact(
-        await runtime.execute(
+        await execute(
+          getSession,
           args,
           options.input,
           options.timeoutMs,
@@ -106,342 +118,388 @@ const makePlaywrightRuntimeRunner = (runtime: PlaywrightRuntime): Runner => {
       return { exitCode: 1, stderr, stdout: "" };
     }
   }) as Runner;
-  Object.defineProperty(run, "close", {
-    enumerable: true,
-    value: () => runtime.close(),
+  Object.defineProperties(run, {
+    close: {
+      enumerable: true,
+      value: async () => {
+        const opened = await Promise.allSettled(sessions.values());
+        await Promise.allSettled(
+          opened.flatMap((entry) =>
+            entry.status === "fulfilled"
+              ? [runArgvEffect(Scope.close(entry.value.scope, Exit.void))]
+              : []
+          )
+        );
+      },
+    },
+    session: {
+      enumerable: true,
+      value: (id: string) =>
+        Effect.tryPromise({
+          catch: (cause) => toWorkspaceE2EError("open browser session", cause),
+          try: () => getSession(id),
+        }).pipe(Effect.map(({ browserSession }) => browserSession)),
+    },
   });
   return run;
 };
 
-class PlaywrightRuntime {
-  private readonly sessionPromises = new Map<
-    string,
-    Promise<PlaywrightSession>
-  >();
+const openArgvSession = (
+  browser: Browser,
+  id: string,
+  recordHar: boolean | undefined
+): Promise<ArgvSession> =>
+  runArgvEffect(
+    Effect.gen(function* () {
+      const pageState: ArgvPageState = { pageIds: new Map() };
+      const scope = yield* Scope.make();
+      const browserSession = yield* E2EBrowserSession.open({
+        browser,
+        id,
+        onActivate: () => {
+          pageState.frame = undefined;
+        },
+        recordHar,
+      }).pipe(
+        Scope.provide(scope),
+        Effect.onError((cause) => Scope.close(scope, Exit.failCause(cause)))
+      );
+      return Object.assign(pageState, { browserSession, scope });
+    })
+  );
 
-  constructor(
-    private readonly browser: Browser,
-    private readonly options: { readonly recordHar?: boolean } = {}
-  ) {}
+/**
+ * The argv runner's one Effect edge. An aborted command rejects with the
+ * signal's reason at once; the case finalizer closes the context, which
+ * stops the browser work. Any other failure rejects with its own cause.
+ */
+const runArgvEffect = async <A, E>(
+  effect: Effect.Effect<A, E>,
+  signal?: AbortSignal
+): Promise<A> => {
+  const exit = await Effect.runPromiseExit(effect, { signal });
+  if (Exit.isSuccess(exit)) return exit.value;
+  if (Cause.hasInterruptsOnly(exit.cause))
+    throw signal?.reason ?? new DOMException("Aborted", "AbortError");
+  throw Cause.squash(exit.cause);
+};
 
-  async execute(
-    args: string[],
-    input: string | undefined,
-    timeoutMs = 120_000,
-    signal?: AbortSignal
-  ) {
-    const sessionId = args[0] === "--session" ? args[1] : undefined;
-    if (!sessionId) throw new Error("Playwright session is required");
-    const commandArgs = args.slice(2);
+const execute = (
+  getSession: (id: string) => Promise<ArgvSession>,
+  args: string[],
+  input: string | undefined,
+  timeoutMs = 120_000,
+  signal?: AbortSignal
+) => {
+  const sessionId = args[0] === "--session" ? args[1] : undefined;
+  if (!sessionId) throw new Error("Playwright session is required");
+  const commandArgs = args.slice(2);
 
-    return this.interruptible(signal, async () => {
-      const session = await this.getSession(sessionId);
-      return this.runCommand(session, commandArgs, input, timeoutMs);
-    });
-  }
-
-  async close() {
-    const sessions = await Promise.allSettled(this.sessionPromises.values());
-    await Promise.allSettled(
-      sessions.flatMap((entry) =>
-        entry.status === "fulfilled" ? [this.finalizeSession(entry.value)] : []
+  return runArgvEffect(
+    // A failed session opening rejects with its own cause.
+    Effect.promise(() => getSession(sessionId)).pipe(
+      Effect.flatMap((session) =>
+        Effect.suspend(() => runCommand(session, commandArgs, input, timeoutMs))
       )
-    );
-  }
+    ),
+    signal
+  );
+};
 
-  private async runCommand(
-    session: PlaywrightSession,
-    args: string[],
-    input: string | undefined,
-    timeoutMs: number
-  ): Promise<string> {
-    const { command, commandArgs, headers, json } = parseBrowserCommand(args);
-    const page = () => session.currentPage;
-    const frame = () => session.currentFrame;
-    const locator = (selector: string) =>
-      frame().locator(toPlaywrightSelector(selector));
-    const actionLocator = (selector: string) =>
-      locator(selector).filter({ visible: true });
+const runCommand = (
+  session: ArgvSession,
+  args: string[],
+  input: string | undefined,
+  timeoutMs: number
+): Effect.Effect<string, unknown> => {
+  const { browserSession } = session;
+  const { command, commandArgs, headers, json } = parseBrowserCommand(args);
+  const frame = (page: Page) => session.frame ?? page.mainFrame();
+  const actionLocator = (page: Page, selector: string) =>
+    frame(page)
+      .locator(toPlaywrightSelector(selector))
+      .filter({ visible: true });
+  const drive = <A>(
+    label: string,
+    operation: (page: Page) => Promise<A>,
+    deadlineMs?: number
+  ) => driveArgv(browserSession, label, operation, deadlineMs);
+  const asDone = Effect.as("");
 
-    switch (command) {
-      case "open": {
-        const url = requireArgument(commandArgs[0], "browser URL");
-        if (headers) await primePreviewAccess(session, url, headers, timeoutMs);
-        await page().goto(url, { timeout: timeoutMs, waitUntil: "load" });
-        session.currentFrame = page().mainFrame();
-        return page().url();
-      }
-      case "wait": {
-        if (commandArgs[0] !== "--fn")
-          throw new Error("Only Playwright function waits are supported");
-        await frame().waitForFunction(
-          requireArgument(commandArgs[1], "browser wait condition"),
-          undefined,
-          { timeout: timeoutMs }
-        );
-        return "";
-      }
-      case "eval": {
-        if (commandArgs[0] !== "--stdin" || input === undefined)
-          throw new Error("Playwright evaluation input is required");
-        const value = await withinCommandTimeout(
-          frame().evaluate(input),
-          timeoutMs,
-          "frame.evaluate"
-        );
-        return serializeBrowserValue(value);
-      }
-      case "fill":
-        await actionLocator(
-          requireArgument(commandArgs[0], "fill target")
-        ).fill(requireArgument(commandArgs[1], "fill value"), {
+  switch (command) {
+    case "open": {
+      const url = requireArgument(commandArgs[0], "browser URL");
+      const bypassSecret = headers?.["x-vercel-protection-bypass"];
+      const navigate = drive("open", async (page) => {
+        await page.goto(url, { timeout: timeoutMs, waitUntil: "load" });
+        session.frame = undefined;
+        return page.url();
+      });
+      return bypassSecret
+        ? browserSession
+            .primePreviewAccess(url, bypassSecret, { timeoutMs })
+            .pipe(Effect.mapError(toArgvFailure), Effect.andThen(navigate))
+        : navigate;
+    }
+    case "wait": {
+      if (commandArgs[0] !== "--fn")
+        throw new Error("Only Playwright function waits are supported");
+      const condition = requireArgument(
+        commandArgs[1],
+        "browser wait condition"
+      );
+      return drive("wait", (page) =>
+        frame(page).waitForFunction(condition, undefined, {
           timeout: timeoutMs,
-        });
-        return "";
-      case "type":
-        await actionLocator(
-          requireArgument(commandArgs[0], "type target")
-        ).pressSequentially(requireArgument(commandArgs[1], "type value"), {
+        })
+      ).pipe(asDone);
+    }
+    case "eval": {
+      if (commandArgs[0] !== "--stdin" || input === undefined)
+        throw new Error("Playwright evaluation input is required");
+      return drive(
+        "frame.evaluate",
+        (page) => frame(page).evaluate(input),
+        timeoutMs
+      ).pipe(Effect.map(serializeBrowserValue));
+    }
+    case "fill": {
+      const target = requireArgument(commandArgs[0], "fill target");
+      const value = requireArgument(commandArgs[1], "fill value");
+      return drive("fill", (page) =>
+        actionLocator(page, target).fill(value, { timeout: timeoutMs })
+      ).pipe(asDone);
+    }
+    case "type": {
+      const target = requireArgument(commandArgs[0], "type target");
+      const value = requireArgument(commandArgs[1], "type value");
+      return drive("type", (page) =>
+        actionLocator(page, target).pressSequentially(value, {
           delay: 50,
           timeout: timeoutMs,
-        });
-        return "";
-      case "click":
-        await actionLocator(
-          requireArgument(commandArgs[0], "click target")
-        ).click({ timeout: timeoutMs });
-        return "";
-      case "focus":
-        await actionLocator(
-          requireArgument(commandArgs[0], "focus target")
-        ).focus({ timeout: timeoutMs });
-        return "";
-      case "press":
-        await page().keyboard.press(
-          requireArgument(commandArgs[0], "keyboard key")
-        );
-        return "";
-      case "snapshot": {
-        const body = frame().locator("body");
+        })
+      ).pipe(asDone);
+    }
+    case "click": {
+      const target = requireArgument(commandArgs[0], "click target");
+      return drive("click", (page) =>
+        actionLocator(page, target).click({ timeout: timeoutMs })
+      ).pipe(asDone);
+    }
+    case "focus": {
+      const target = requireArgument(commandArgs[0], "focus target");
+      return drive("focus", (page) =>
+        actionLocator(page, target).focus({ timeout: timeoutMs })
+      ).pipe(asDone);
+    }
+    case "press": {
+      const key = requireArgument(commandArgs[0], "keyboard key");
+      return drive("press", (page) => page.keyboard.press(key)).pipe(asDone);
+    }
+    case "snapshot":
+      return drive("snapshot", async (page) => {
+        const body = frame(page).locator("body");
         await body.waitFor({ state: "attached", timeout: timeoutMs });
-        return body.ariaSnapshot({
-          mode: "ai",
-          timeout: timeoutMs,
-        });
-      }
-      case "screenshot": {
-        const path = requireArgument(commandArgs[0], "screenshot path");
-        assert(path.length > 0, "screenshot path is required");
-        await page().screenshot({
+        return body.ariaSnapshot({ mode: "ai", timeout: timeoutMs });
+      });
+    case "screenshot": {
+      const path = requireArgument(commandArgs[0], "screenshot path");
+      assert(path.length > 0, "screenshot path is required");
+      return drive("screenshot", (page) =>
+        page.screenshot({
           animations: "disabled",
           fullPage: true,
           path,
           timeout: timeoutMs,
-        });
-        return "";
-      }
-      case "get":
-        if (commandArgs[0] === "url") return page().url();
-        if (commandArgs[0] === "value")
-          return actionLocator(
-            requireArgument(commandArgs[1], "value target")
-          ).inputValue({ timeout: timeoutMs });
-        throw new Error(
-          `Unsupported Playwright get operation: ${commandArgs[0]}`
+        })
+      ).pipe(asDone);
+    }
+    case "get":
+      if (commandArgs[0] === "url")
+        return drive("get url", async (page) => page.url());
+      if (commandArgs[0] === "value") {
+        const target = requireArgument(commandArgs[1], "value target");
+        return drive("get value", (page) =>
+          actionLocator(page, target).inputValue({ timeout: timeoutMs })
         );
-      case "tab": {
-        if (commandArgs[0] === "list")
+      }
+      throw new Error(
+        `Unsupported Playwright get operation: ${commandArgs[0]}`
+      );
+    case "tab": {
+      if (commandArgs[0] === "list")
+        return drive("tab list", async (page) => {
+          const tabs = page.context().pages();
           return serializeBrowserValue({
             data: {
-              tabs: session.context.pages().map((tab) => ({
-                active: tab === session.currentPage,
-                tabId: requirePageId(session, tab),
+              tabs: tabs.map((tab) => ({
+                active: tab === page,
+                tabId: requirePageId(session, tabs, tab),
               })),
             },
             success: true,
           });
-        const closing = commandArgs[0] === "close";
-        const tabId = requireArgument(
-          commandArgs[closing ? 1 : 0],
-          "browser tab id"
-        );
+        });
+      const closing = commandArgs[0] === "close";
+      const tabId = requireArgument(
+        commandArgs[closing ? 1 : 0],
+        "browser tab id"
+      );
+      return drive("tab", async (page) => {
+        const tabs = page.context().pages();
+        for (const tab of tabs) requirePageId(session, tabs, tab);
         const target = [...session.pageIds].find(([, id]) => id === tabId)?.[0];
         if (!target || target.isClosed())
           throw new Error(`Playwright tab ${tabId} is unavailable`);
-        if (closing) {
-          await target.close();
-          return "";
-        }
-        session.currentPage = target;
-        session.currentFrame = target.mainFrame();
-        await target.bringToFront();
-        return "";
-      }
-      case "frame": {
-        const target = requireArgument(commandArgs[0], "browser frame");
+        if (closing) await target.close();
+        return target;
+      }).pipe(
+        Effect.flatMap((target) =>
+          closing
+            ? Effect.void
+            : browserSession
+                .activate(target)
+                .pipe(Effect.mapError(toArgvFailure))
+        ),
+        asDone
+      );
+    }
+    case "frame": {
+      const target = requireArgument(commandArgs[0], "browser frame");
+      return drive("frame", async (page) => {
         if (target === "main") {
-          session.currentFrame = page().mainFrame();
+          session.frame = undefined;
           return "";
         }
-        const handle = await actionLocator(target).elementHandle({
+        const handle = await actionLocator(page, target).elementHandle({
           timeout: timeoutMs,
         });
         const contentFrame = await handle?.contentFrame();
         if (!contentFrame)
           throw new Error("Playwright frame target unavailable");
-        session.currentFrame = contentFrame;
+        session.frame = contentFrame;
         return "";
+      });
+    }
+    case "console":
+      return commandArgs[0] === "--clear"
+        ? browserSession.clearDiagnostics("console").pipe(asDone)
+        : browserSession.diagnostics.pipe(
+            Effect.map(({ console }) => console.join("\n"))
+          );
+    case "errors":
+      return commandArgs[0] === "--clear"
+        ? browserSession.clearDiagnostics("errors").pipe(asDone)
+        : browserSession.diagnostics.pipe(
+            Effect.map(({ errors }) => errors.join("\n\n"))
+          );
+    case "network":
+      if (commandArgs[0] === "requests")
+        return commandArgs[1] === "--clear"
+          ? browserSession.clearDiagnostics("requests").pipe(asDone)
+          : browserSession.diagnostics.pipe(
+              Effect.map(({ requests }) => requests.join("\n"))
+            );
+      // The session records its HAR from the start; the argv start command
+      // stays a no-op.
+      if (commandArgs[0] === "har" && commandArgs[1] === "start")
+        return Effect.succeed("");
+      if (commandArgs[0] === "har" && commandArgs[1] === "stop") {
+        const destination = commandArgs[2];
+        return browserSession
+          .close(
+            destination && destination !== devNull
+              ? { harPath: destination }
+              : {}
+          )
+          .pipe(Effect.mapError(toArgvFailure), asDone);
       }
-      case "console":
-        if (commandArgs[0] === "--clear") {
-          session.consoleMessages.length = 0;
-          return "";
-        }
-        return session.consoleMessages.join("\n");
-      case "errors":
-        if (commandArgs[0] === "--clear") {
-          session.errors.length = 0;
-          return "";
-        }
-        return session.errors.join("\n\n");
-      case "network":
-        if (commandArgs[0] === "requests") {
-          if (commandArgs[1] === "--clear") {
-            session.networkRequests.length = 0;
-            return "";
-          }
-          return session.networkRequests.join("\n");
-        }
-        if (commandArgs[0] === "har" && commandArgs[1] === "start") {
-          session.harStarted = true;
-          return "";
-        }
-        if (commandArgs[0] === "har" && commandArgs[1] === "stop") {
-          await this.closeSession(session);
-          const destination = commandArgs[2];
-          if (session.rawHarPath) {
-            if (destination && destination !== devNull)
-              await copyFile(session.rawHarPath, destination);
-            await rm(session.rawHarPath, { force: true });
-          }
-          return "";
-        }
-        throw new Error(
-          `Unsupported Playwright network operation: ${commandArgs.join(" ")}`
-        );
-      case "cookie": {
-        if (commandArgs[1] !== "--stdin" || input === undefined)
-          throw new Error("Playwright cookie input is required");
-        if (commandArgs[0] === "set") {
-          await session.context.addCookies([parseHttpsOnlyCookie(input)]);
-          return "";
-        }
-        if (commandArgs[0] === "get") {
-          const query = parseCookieQuery(input);
-          const cookie = (await session.context.cookies(query.url)).find(
+      throw new Error(
+        `Unsupported Playwright network operation: ${commandArgs.join(" ")}`
+      );
+    case "cookie": {
+      if (commandArgs[1] !== "--stdin" || input === undefined)
+        throw new Error("Playwright cookie input is required");
+      if (commandArgs[0] === "set")
+        return browserSession
+          .setSessionCookie(parseHttpsOnlyCookie(input))
+          .pipe(Effect.mapError(toArgvFailure), asDone);
+      if (commandArgs[0] === "get") {
+        const query = parseCookieQuery(input);
+        return drive("cookie get", async (page) => {
+          const cookie = (await page.context().cookies(query.url)).find(
             ({ name }) => name === query.name
           );
           return JSON.stringify(describeCookie(cookie, query.value));
-        }
-        throw new Error("Unsupported Playwright cookie operation");
+        });
       }
-      case "close":
-        await this.closeSession(session);
-        if (session.rawHarPath) await rm(session.rawHarPath, { force: true });
-        return "";
-      default:
-        throw new Error(
-          `Unsupported Playwright browser operation: ${json ? "--json " : ""}${command} ${commandArgs.join(" ")}`.trim()
-        );
+      throw new Error("Unsupported Playwright cookie operation");
     }
+    case "close":
+      return browserSession
+        .close()
+        .pipe(Effect.mapError(toArgvFailure), asDone);
+    default:
+      throw new Error(
+        `Unsupported Playwright browser operation: ${json ? "--json " : ""}${command} ${commandArgs.join(" ")}`.trim()
+      );
   }
+};
 
-  private async getSession(sessionId: string) {
-    const existing = this.sessionPromises.get(sessionId);
-    if (existing) return existing;
+/**
+ * Drives the active page and fails with Playwright's own error, which the
+ * argv protocol reports verbatim. `deadlineMs` bounds work Playwright does
+ * not, such as an evaluation; exceeding it fails as Playwright's own
+ * timeouts read.
+ */
+const driveArgv = <A>(
+  browserSession: E2EBrowserSession,
+  label: string,
+  operation: (page: Page) => Promise<A>,
+  deadlineMs: number | undefined
+): Effect.Effect<A, unknown> => {
+  let failure: { readonly cause: unknown } | undefined;
+  return browserSession
+    .use(
+      label,
+      (page) =>
+        operation(page).catch((cause: unknown) => {
+          failure = { cause };
+          throw cause;
+        }),
+      { timeoutMs: deadlineMs }
+    )
+    .pipe(
+      Effect.mapError((error) => {
+        if (failure) return failure.cause;
+        return deadlineMs !== undefined && error.reason === "timeout"
+          ? new Error(`${label}: Timeout ${deadlineMs}ms exceeded.`)
+          : toArgvFailure(error);
+      })
+    );
+};
 
-    const created = this.createSession(sessionId);
-    this.sessionPromises.set(sessionId, created);
-    return created;
+// Keeps a session failure classified as it was when Playwright raised it:
+// browser.ts treats only a `TimeoutError` as a timeout.
+const toArgvFailure = (error: WorkspaceE2EError) => {
+  const failure = new Error(error.message);
+  if (error.reason === "timeout") failure.name = "TimeoutError";
+  return failure;
+};
+
+const requirePageId = (
+  session: ArgvSession,
+  tabs: readonly Page[],
+  page: Page
+) => {
+  for (const tab of tabs) {
+    if (!session.pageIds.has(tab))
+      session.pageIds.set(tab, `t${session.pageIds.size + 1}`);
   }
-
-  private async createSession(sessionId: string): Promise<PlaywrightSession> {
-    const recordHar = this.options.recordHar !== false;
-    const rawHarPath = recordHar
-      ? resolve(
-          tmpdir(),
-          `${sessionId.replaceAll(/[^a-zA-Z0-9_-]/g, "-")}-${crypto.randomUUID()}.har`
-        )
-      : undefined;
-    let context: BrowserContext | undefined;
-    try {
-      context = await this.browser.newContext({
-        recordHar: rawHarPath
-          ? { content: "embed", mode: "full", path: rawHarPath }
-          : undefined,
-        viewport: { height: 900, width: 1440 },
-      });
-      const initialPage = await context.newPage();
-      const session = {
-        closePromise: undefined,
-        consoleMessages: [],
-        context,
-        currentFrame: initialPage.mainFrame(),
-        currentPage: initialPage,
-        errors: [],
-        harStarted: false,
-        networkRequests: [],
-        pageIds: new Map<Page, string>(),
-        primedOrigins: new Set<string>(),
-        rawHarPath,
-      } satisfies PlaywrightSession;
-      context.on("page", (page) => registerPage(session, page, true));
-      registerPage(session, initialPage, true);
-      return session;
-    } catch (cause) {
-      await context?.close().catch(() => undefined);
-      if (rawHarPath) await rm(rawHarPath, { force: true });
-      throw cause;
-    }
-  }
-
-  private async finalizeSession(session: PlaywrightSession) {
-    try {
-      await this.closeSession(session);
-    } finally {
-      if (session.rawHarPath) await rm(session.rawHarPath, { force: true });
-    }
-  }
-
-  private async closeSession(session: PlaywrightSession) {
-    session.closePromise ??= session.context.close({
-      reason: "Workspace E2E case complete",
-    });
-    await session.closePromise;
-  }
-
-  private async interruptible<A>(
-    signal: AbortSignal | undefined,
-    operation: () => Promise<A>
-  ): Promise<A> {
-    if (!signal) return operation();
-    if (signal.aborted) throw signal.reason;
-
-    return new Promise<A>((resolvePromise, rejectPromise) => {
-      const abort = () => {
-        // The case finalizer closes the context. Genuine failures capture their
-        // diagnostics first; interrupted siblings enter that finalizer directly.
-        rejectPromise(
-          signal.reason ?? new DOMException("Aborted", "AbortError")
-        );
-      };
-      signal.addEventListener("abort", abort, { once: true });
-      operation()
-        .then(resolvePromise, rejectPromise)
-        .finally(() => signal.removeEventListener("abort", abort));
-    });
-  }
-}
+  const pageId = session.pageIds.get(page);
+  if (!pageId) throw new Error("Playwright tab is unavailable");
+  return pageId;
+};
 
 /**
  * Decodes one cookie for the session's own context. Cookie values never
@@ -561,145 +619,8 @@ const parseBrowserCommand = (args: string[]) => {
   };
 };
 
-const primePreviewAccess = async (
-  session: PlaywrightSession,
-  target: string,
-  headers: Record<string, string>,
-  timeoutMs: number
-) => {
-  const origin = new URL(target).origin;
-  if (session.primedOrigins.has(origin)) return;
-  const response = await session.context.request.get(
-    new URL("/favicon.svg", origin).toString(),
-    { headers, maxRedirects: 3, timeout: timeoutMs }
-  );
-  try {
-    if (!response.ok())
-      throw new Error(
-        `Playwright preview bypass probe failed with ${response.status()}`
-      );
-    session.primedOrigins.add(origin);
-  } finally {
-    await response.dispose();
-  }
-};
-
-const registerPage = (
-  session: PlaywrightSession,
-  page: Page,
-  makeCurrent: boolean
-) => {
-  const alreadyRegistered = session.pageIds.has(page);
-  requirePageId(session, page);
-  if (makeCurrent) {
-    session.currentPage = page;
-    session.currentFrame = page.mainFrame();
-  }
-  if (alreadyRegistered) return;
-  page.on("console", (message) =>
-    pushDiagnostic(session.consoleMessages, formatConsoleMessage(message))
-  );
-  page.on("pageerror", (error) =>
-    pushDiagnostic(session.errors, error.stack ?? error.message)
-  );
-  page.on("close", () => {
-    if (session.currentPage !== page) return;
-    const replacement = session.context
-      .pages()
-      .findLast((candidate) => !candidate.isClosed());
-    if (!replacement) return;
-    session.currentPage = replacement;
-    session.currentFrame = replacement.mainFrame();
-  });
-  page.on("request", (request) =>
-    pushDiagnostic(session.networkRequests, formatRequest(request))
-  );
-  page.on("response", (response) => {
-    pushDiagnostic(session.networkRequests, formatResponse(response));
-    recordNexiBuildFailure(session, response);
-  });
-  page.on("requestfailed", (request) =>
-    pushDiagnostic(
-      session.networkRequests,
-      `${formatRequest(request)} failed: ${request.failure()?.errorText ?? "unknown"}`
-    )
-  );
-};
-
-const requirePageId = (session: PlaywrightSession, page: Page) => {
-  const existing = session.pageIds.get(page);
-  if (existing) return existing;
-  const pageId = `t${session.pageIds.size + 1}`;
-  session.pageIds.set(page, pageId);
-  return pageId;
-};
-
-const pushDiagnostic = (entries: string[], value: string) => {
-  entries.push(value);
-  if (entries.length > maximumDiagnosticEntries)
-    entries.splice(0, entries.length - maximumDiagnosticEntries);
-};
-
-// A failed Nexi hosted-field call states its reason only in the response
-// body. Record the provider codes alone, never the URL or body, so the driver
-// can name the rejection while the run continues.
-const recordNexiBuildFailure = (
-  session: PlaywrightSession,
-  response: Response
-) => {
-  const status = response.status();
-  if (status < 400) return;
-  let url: URL;
-  try {
-    url = new URL(response.url());
-  } catch {
-    return;
-  }
-  if (!isNexiBuildApiUrl(url)) return;
-  response.text().then(
-    (text) => {
-      const summary = summarizeNexiBuildFailureBody(text);
-      const codes = summary ? listNexiBuildFailureCodes(summary) : [];
-      if (codes.length === 0) return;
-      pushDiagnostic(
-        session.networkRequests,
-        formatNexiBuildFailureLine({
-          codes,
-          endpoint: toNexiBuildEndpoint(url),
-          status,
-        })
-      );
-    },
-    () => undefined
-  );
-};
-
-const formatConsoleMessage = (message: ConsoleMessage) =>
-  `[${message.type()}] ${message.text()}`;
-
-const formatRequest = (request: Request) =>
-  `${request.method()} ${request.url()}`;
-
-const formatResponse = (response: Response) =>
-  `${response.status()} ${response.request().method()} ${response.url()}`;
-
 const toPlaywrightSelector = (selector: string) =>
   selector.startsWith("@") ? `aria-ref=${selector.slice(1)}` : selector;
-
-const withinCommandTimeout = <A>(
-  operation: Promise<A>,
-  timeoutMs: number,
-  label: string
-): Promise<A> => {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const budget = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error(`${label}: Timeout ${timeoutMs}ms exceeded.`)),
-      timeoutMs
-    );
-  });
-  return Promise.race([operation, budget]).finally(() => clearTimeout(timer));
-};
 
 const serializeBrowserValue = (value: unknown) => {
   if (typeof value === "string") return value;
@@ -759,96 +680,6 @@ export const parseUrl = (value: string) => {
   } catch {
     return undefined;
   }
-};
-
-export const addRedaction = (value: string | undefined, force = false) => {
-  if (!value || (!force && value.length <= 6)) return;
-  const mode = force && value.length <= 6 ? "token" : "substring";
-  for (const variant of [
-    value,
-    encodeURIComponent(value),
-    new URLSearchParams({ value }).toString().slice("value=".length),
-  ]) {
-    const existingMode = redactions.get(variant);
-    redactions.set(
-      variant,
-      existingMode === "substring" || mode === "substring"
-        ? "substring"
-        : "token"
-    );
-  }
-};
-
-export const addDatabaseUrlRedactions = (value: string | undefined) => {
-  addRedaction(value);
-  if (!value) return;
-
-  const url = parseUrl(value);
-  if (!url) return;
-  [
-    url.host,
-    url.hostname,
-    url.pathname,
-    url.pathname.slice(1),
-    url.username,
-    url.password,
-  ].forEach((part) => {
-    addRedaction(part, true);
-  });
-};
-
-export const redact = (text: string) => {
-  let output = text;
-  for (const [secret, mode] of redactions) {
-    output =
-      mode === "token"
-        ? output.replace(
-            new RegExp(
-              `(?<![A-Za-z0-9])${escapeRegExp(secret)}(?![A-Za-z0-9])`,
-              "g"
-            ),
-            "[redacted]"
-          )
-        : output.replaceAll(secret, "[redacted]");
-  }
-  return output;
-};
-
-/**
- * Redacts registered secrets, whole URLs, and token-like runs from free text
- * bound for a diagnostic or artifact.
- */
-export const redactDiagnosticText = (text: string) =>
-  redact(text)
-    .replace(/https?:\/\/\S+/g, "[url]")
-    .replace(/[A-Za-z0-9_-]{32,}/g, "[token]");
-
-export const redactJsonValue = (
-  value: unknown,
-  sanitizeText: (text: string) => string = redact
-): unknown => {
-  if (typeof value === "string") return sanitizeText(value);
-  if (typeof value === "number") {
-    const text = String(value);
-    const sanitized = sanitizeText(text);
-    return sanitized === text ? value : sanitized;
-  }
-  if (Array.isArray(value))
-    return value.map((item) => redactJsonValue(item, sanitizeText));
-  if (value === null || typeof value !== "object") return value;
-
-  const sanitized: Record<string, unknown> = Object.create(null);
-  for (const [key, item] of Object.entries(value)) {
-    const sanitizedKey = sanitizeText(key);
-    let uniqueKey = sanitizedKey;
-    let ordinal = 2;
-    while (Object.hasOwn(sanitized, uniqueKey)) {
-      uniqueKey = `${sanitizedKey}#${ordinal}`;
-      ordinal += 1;
-    }
-    sanitized[uniqueKey] = redactJsonValue(item, sanitizeText);
-  }
-  return sanitized;
 };
 
 export function assert(condition: unknown, message: string): asserts condition {

@@ -3,6 +3,7 @@
 ## Contents
 
 - [What belongs in E2E](#what-belongs-in-e2e)
+- [Browser session](#browser-session)
 - [Hydration and interaction](#hydration-and-interaction)
 - [Preparation before a state-creating action](#preparation-before-a-state-creating-action)
 - [Streamed pages](#streamed-pages)
@@ -13,6 +14,13 @@
 Assert in E2E only what needs the deployed stack: server rendering, auth gating, persistence, provider and webhook round trips, and streaming and navigation handoffs. Put CSS animation, layout geometry, focus, and markup facts in real-browser component tests (`*.browser-acceptance.test.ts` with `shared/testing/playwright-browser.ts`) or `@testing-library/react` tests, and keep only a readiness sentinel in E2E.
 
 Run a check every paid case could repeat, such as post-fulfillment support or reserve-again, on one opted-in case instead of the shared checkout flow.
+
+## Browser session
+
+- New browser code drives `E2EBrowserSession` (`e2e/browser-session.ts`) with native Playwright: `session.use(label, (page) => …)` on the active page and `session.evaluate(label, fn, arg, { timeoutMs })`. Playwright serializes `fn`, so it must not close over anything. Don't add argv commands to the `Runner` in `e2e/runtime.ts`; it is a shim over the session and goes once no caller needs it.
+- While a case still runs on the argv `Runner`, get its session with `run.session(sessionId)`; both then drive the same context.
+- The session owns the context lifecycle, the HAR (closed, then sanitized, then handed out), capped console, error, and network capture across every page, bypass priming, and failure classification. Its failures name only the label and `failed`, `timed out`, or `stopped because the browser session closed`; never attach a Playwright cause to a report yourself.
+- Pass `timeoutMs` only for work Playwright doesn't bound, such as `page.evaluate`; Playwright actions take their own `timeout`.
 
 ## Hydration and interaction
 
