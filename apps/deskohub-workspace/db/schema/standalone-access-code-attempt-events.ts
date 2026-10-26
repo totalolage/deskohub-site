@@ -26,6 +26,7 @@ import {
 } from "@/features/access-codes/standalone-access-code";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { instant } from "../instant";
+import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
 import { authUser } from "./auth";
 import { quotedSqlList } from "./sql-list";
@@ -48,7 +49,7 @@ export const standaloneAccessCodeAttemptEvents = pgTable(
     actorAccountId: text("actor_account_id")
       .$type<CustomerAccountId>()
       .references(() => authUser.id, { onDelete: "set null" }),
-    actorAccountEmail: text("actor_account_email"),
+    actorAccountEmail: sensitiveText("actor_account_email"),
     source: text("source").notNull().$type<StandaloneAccessCodeSource>(),
     name: text("name")
       .notNull()

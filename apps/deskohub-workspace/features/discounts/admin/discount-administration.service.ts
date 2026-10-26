@@ -66,7 +66,6 @@ import {
 } from "@/shared/backend/config/calendar-resource.config";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import {
   type Money,
   type MoneyUnit,
@@ -2106,7 +2105,7 @@ const toPromotionCodeValues = (
     | CreateCustomerVoucherAdminInput
     | UpdateVoucherAdminInput
 ) => ({
-  code: sensitiveDatabaseParameter(input.code),
+  code: input.code,
   enabled: input.enabled,
   validFrom:
     input.validFrom === null ? null : Temporal.Instant.from(input.validFrom),

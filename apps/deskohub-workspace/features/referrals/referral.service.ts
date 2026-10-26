@@ -38,7 +38,6 @@ import type { DiscountCandidate } from "@/features/discounts/provider";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import type { Money } from "@/shared/money/money";
 import {
   referralAdvisoryLockStatement,
@@ -227,12 +226,7 @@ export class ReferralService extends Context.Service<
             .select({ kind: promotionCodes.kind })
             .from(promotionCodes)
             .where(
-              eq(
-                promotionCodes.code,
-                sensitiveDatabaseParameter(
-                  canonicalPromotionCodeSchema.make(code)
-                )
-              )
+              eq(promotionCodes.code, canonicalPromotionCodeSchema.make(code))
             )
             .limit(1)
             .pipe(Effect.map((rows) => rows[0]?.kind))
@@ -258,9 +252,7 @@ export class ReferralService extends Context.Service<
               and(
                 eq(
                   promotionCodes.code,
-                  sensitiveDatabaseParameter(
-                    canonicalPromotionCodeSchema.make(code)
-                  )
+                  canonicalPromotionCodeSchema.make(code)
                 ),
                 eq(promotionCodes.kind, "referral")
               )
@@ -532,12 +524,7 @@ export class ReferralService extends Context.Service<
           .innerJoin(authUser, eq(authUser.id, customerAccounts.id))
           .where(
             and(
-              eq(
-                promotionCodes.code,
-                sensitiveDatabaseParameter(
-                  canonicalPromotionCodeSchema.make(code)
-                )
-              ),
+              eq(promotionCodes.code, canonicalPromotionCodeSchema.make(code)),
               eq(promotionCodes.kind, "referral"),
               isNull(authUser.deletionRequestedAt)
             )
@@ -783,9 +770,7 @@ export class ReferralService extends Context.Service<
                 .insert(promotionCodes)
                 .values({
                   kind: "referral",
-                  code: sensitiveDatabaseParameter(
-                    canonicalPromotionCodeSchema.make(candidate)
-                  ),
+                  code: canonicalPromotionCodeSchema.make(candidate),
                   enabled: true,
                 })
                 .onConflictDoNothing()

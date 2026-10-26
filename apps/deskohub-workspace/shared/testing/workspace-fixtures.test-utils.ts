@@ -25,7 +25,6 @@ import type { AccountRole } from "@/features/administrators/account-role";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import type { Locale } from "@/features/i18n";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 
 /** A synthetic login: the customer account id and its login email. */
 export type FixtureAccount = {
@@ -318,7 +317,7 @@ export const workspaceFixtures = (db: WorkspaceDatabaseClient) => {
             yield* tx.insert(authUser).values({
               id,
               name,
-              email: sensitiveDatabaseParameter(email),
+              email: email,
               emailVerified: verified,
               deletionRequestedAt: deletionRequested ? new Date() : null,
               locale: locale ?? null,

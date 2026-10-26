@@ -22,6 +22,7 @@ import type {
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import type { Locale } from "@/features/i18n";
 import { instant } from "../instant";
+import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
 
 export type DiscountLabels = Readonly<Record<Locale, string>>;
@@ -101,7 +102,7 @@ export const promotionCodes = pgTable(
       .default(postgresUuidV7)
       .$type<PromotionCodeId>(),
     kind: text("kind").notNull().$type<PromotionCodeKind>(),
-    code: text("code").notNull().$type<CanonicalPromotionCode>(),
+    code: sensitiveText("code").notNull().$type<CanonicalPromotionCode>(),
     enabled: boolean("enabled").notNull(),
     validFrom: instant("valid_from"),
     validUntil: instant("valid_until"),
@@ -153,7 +154,7 @@ export const discountCodes = pgTable(
   "discount_codes",
   {
     id: text("id").primaryKey().default(postgresUuidV7).$type<DiscountCodeId>(),
-    code: text("code").notNull().$type<CanonicalPromotionCode>(),
+    code: sensitiveText("code").notNull().$type<CanonicalPromotionCode>(),
     enabled: boolean("enabled").notNull(),
     validFrom: instant("valid_from"),
     validUntil: instant("valid_until"),

@@ -31,6 +31,7 @@ import {
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identifiers";
 import { instant } from "../instant";
+import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
 import { administratorAssistantConnections } from "./administrator-assistant-connections";
 import { authUser } from "./auth";
@@ -48,8 +49,8 @@ export const cliSessions = pgTable(
     approvedByAccountId: text("approved_by_account_id")
       .$type<CustomerAccountId>()
       .references(() => authUser.id, { onDelete: "set null" }),
-    approvedByAccountEmail: text("approved_by_account_email"),
-    tokenHash: text("token_hash").notNull(),
+    approvedByAccountEmail: sensitiveText("approved_by_account_email"),
+    tokenHash: sensitiveText("token_hash").notNull(),
     clientName: text("client_name").notNull(),
     cliVersion: text("cli_version").notNull(),
     buildTarget: text("build_target").notNull().$type<CliBuildTargetType>(),
@@ -111,7 +112,7 @@ export const cliAuthenticationRequests = pgTable(
       .primaryKey()
       .default(postgresUuidV7)
       .$type<CliAuthenticationRequestId>(),
-    codeHash: text("code_hash").notNull(),
+    codeHash: sensitiveText("code_hash").notNull(),
     challenge: text("challenge").notNull(),
     clientName: text("client_name").notNull(),
     cliVersion: text("cli_version").notNull(),
@@ -124,8 +125,8 @@ export const cliAuthenticationRequests = pgTable(
     approvedByAccountId: text("approved_by_account_id")
       .$type<CustomerAccountId>()
       .references(() => authUser.id, { onDelete: "set null" }),
-    approvedByAccountEmail: text("approved_by_account_email"),
-    grantToken: text("grant_token"),
+    approvedByAccountEmail: sensitiveText("approved_by_account_email"),
+    grantToken: sensitiveText("grant_token"),
     grantExpiresAt: instant("grant_expires_at"),
     sessionExpiresAt: instant("session_expires_at"),
     consumedAt: instant("consumed_at"),
