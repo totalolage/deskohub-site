@@ -68,7 +68,6 @@ export function DeleteAccountCard({
 
   const { execute, hasErrored, isExecuting, isIdle, result, reset } =
     useWorkspaceAction(deleteCustomerAccount, {
-      actionName: "account.delete",
       onSuccess: ({ data }) => {
         if (data?.status === "deleted") {
           completeAnalyticsAccountSignOut();

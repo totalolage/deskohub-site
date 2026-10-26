@@ -51,19 +51,21 @@ export function isManagedMarketingState(
   );
 }
 
-const marketingPreferencesMutationFailureReasons = [
-  "invalid-link",
-  "pending-confirmation-required",
-  "stale-context",
-  "unavailable",
-] as const;
+/**
+ * Why a marketing-preferences action refused the request. The action returns
+ * it as result data, and the form shows the reason's own copy.
+ */
+export type MarketingPreferencesRejectionReason =
+  | "invalid-link"
+  | "pending-confirmation-required"
+  | "stale-context";
+
+/** What a refused marketing-preferences action returns. */
+export type MarketingPreferencesRejection = {
+  readonly status: "rejected";
+  readonly reason: MarketingPreferencesRejectionReason;
+};
 
 export type MarketingPreferencesMutationFailureReason =
-  (typeof marketingPreferencesMutationFailureReasons)[number];
-
-export const isMarketingPreferencesMutationFailureReason = (
-  serverError: string | undefined
-): serverError is MarketingPreferencesMutationFailureReason =>
-  marketingPreferencesMutationFailureReasons.some(
-    (reason) => reason === serverError
-  );
+  | MarketingPreferencesRejectionReason
+  | "unavailable";

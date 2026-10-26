@@ -13,12 +13,18 @@ import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-local
 import {
   defineWorkspaceAction,
   type WorkspaceActionContext,
+  type WorkspaceActionFailureCopy,
 } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { InvoiceAdministrationService } from "./invoice-administration.service";
 import { getInvoiceCustomerErrorMessage } from "./invoice-display";
 
 const strict = { errors: "all", onExcessProperty: "error" } as const;
+
+const failureCopy: WorkspaceActionFailureCopy = {
+  timeout: m.accountingActionTimedOut,
+  unexpected: m.accountingActionFailedUnexpectedly,
+};
 
 const invoiceCreateInputSchema = Schema.toStandardSchemaV1(
   AdministrationInvoiceCreateInput,
@@ -32,6 +38,7 @@ type InvoiceCreateActionContext = WorkspaceActionContext<
 const createInvoiceAction = defineWorkspaceAction(
   {
     operation: "invoice-administration.create",
+    failureCopy,
     schema: invoiceCreateInputSchema,
     logInput: false,
   },
@@ -82,6 +89,7 @@ const createInvoiceAction = defineWorkspaceAction(
 const previewInvoiceAction = defineWorkspaceAction(
   {
     operation: "invoice-administration.preview",
+    failureCopy,
     schema: invoiceCreateInputSchema,
     logInput: false,
   },
@@ -114,6 +122,7 @@ const previewInvoiceAction = defineWorkspaceAction(
 const searchCustomersAction = defineWorkspaceAction(
   {
     operation: "invoice-administration.search-customers",
+    failureCopy,
     schema: Schema.toStandardSchemaV1(AdministrationCustomerSearchQuery, {
       parseOptions: strict,
     }),
@@ -144,6 +153,7 @@ const searchCustomersAction = defineWorkspaceAction(
 const retryInvoiceAction = defineWorkspaceAction(
   {
     operation: "invoice-administration.retry-delivery",
+    failureCopy,
     schema: Schema.toStandardSchemaV1(
       Schema.Struct({ invoiceId: AdministrationInvoiceId }),
       { parseOptions: strict }

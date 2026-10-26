@@ -22,6 +22,7 @@ import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-local
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { CampaignOperations } from "../backend/campaign-operations.service";
 import { OperationRequestLedger } from "../backend/operation-request-ledger.service";
+import { emailCampaignsActionFailureCopy } from "./campaign-operation-failure";
 
 const campaignOperationNames = Object.keys(campaignOperations) as [
   CampaignOperationName,
@@ -106,6 +107,7 @@ const campaignOperationAction = defineWorkspaceAction(
     }),
     // Inputs can hold test recipients' addresses.
     logInput: false,
+    failureCopy: emailCampaignsActionFailureCopy,
   },
   ({ operation, input }) =>
     requireAdministratorAuthorization.pipe(

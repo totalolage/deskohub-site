@@ -21,7 +21,6 @@ type UseWorkspaceActionOptions<
   ShapedErrors,
   Data,
 > = HookBaseOptions<ServerError, Schema, ShapedErrors, Data> & {
-  readonly actionName: string;
   readonly onTransportError?: (args: {
     readonly error: unknown;
     readonly input: WorkspaceActionTransportErrorInput<Schema>;
@@ -37,12 +36,7 @@ export function useWorkspaceAction<
   safeActionFn: SingleInputActionFn<ServerError, Schema, ShapedErrors, Data>,
   opts: UseWorkspaceActionOptions<ServerError, Schema, ShapedErrors, Data>
 ): UseActionHookReturn<ServerError, Schema, ShapedErrors, Data> {
-  const {
-    actionName: _actionName,
-    onError,
-    onTransportError,
-    ...hookOptions
-  } = opts;
+  const { onError, onTransportError, ...hookOptions } = opts;
   const action = useAction(safeActionFn, {
     ...hookOptions,
     ...(onError && {

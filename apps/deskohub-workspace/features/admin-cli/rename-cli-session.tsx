@@ -34,7 +34,6 @@ import {
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
-import { getAdminCliActionFailureMessage } from "./action-failure-message";
 import { renameCliSession } from "./actions";
 import { renameCliSessionSchema } from "./contracts";
 
@@ -94,7 +93,6 @@ export function RenameCliSession({
     }),
   });
   const { execute, isExecuting } = useWorkspaceAction(renameCliSession, {
-    actionName: "renameCliSession",
     onSuccess: ({ data }) => {
       if (!data) return;
       setOpen(false);
@@ -102,10 +100,7 @@ export function RenameCliSession({
     },
     onError: ({ error: actionError }) =>
       setError(
-        getAdminCliActionFailureMessage(actionError.serverError, {
-          fallback: m.adminCliRenameFailed({}, { locale }),
-          locale,
-        })
+        actionError.serverError ?? m.adminCliRenameFailed({}, { locale })
       ),
     onTransportError: () => setError(m.adminCliRenameFailed({}, { locale })),
   });

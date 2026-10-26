@@ -46,7 +46,6 @@ export function GrantAdministratorForm({
     }),
   });
   const { executeAsync, isExecuting } = useWorkspaceAction(grantAdministrator, {
-    actionName: "grantAdministrator",
     onSuccess: ({ data }) => {
       if (!data) return;
       form.reset(grantAdministratorFormDefaults);

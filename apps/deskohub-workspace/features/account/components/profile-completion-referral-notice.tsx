@@ -45,7 +45,6 @@ export function ProfileCompletionReferralNotice({
 }) {
   const router = useRouter();
   const dismiss = useWorkspaceAction(acknowledgeSignupReferralNotice, {
-    actionName: "account.acknowledge-signup-referral",
     onSuccess: () => router.refresh(),
   });
 

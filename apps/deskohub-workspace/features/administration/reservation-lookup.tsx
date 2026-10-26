@@ -21,7 +21,6 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
-import { getAdministrationActionFailureMessage } from "./action-failure-message";
 import { getAdministrationReservation } from "./actions";
 import type { ReservationLookupInput } from "./contracts";
 import { m } from "./i18n";
@@ -67,7 +66,6 @@ export function ReservationLookup({
   const { execute, isExecuting } = useWorkspaceAction(
     getAdministrationReservation,
     {
-      actionName: "getAdministrationReservation",
       onSuccess: ({ data }) => {
         if (!data) return;
         if (!data.reservationId) {
@@ -85,10 +83,8 @@ export function ReservationLookup({
       },
       onError: ({ error: actionError }) =>
         setError(
-          getAdministrationActionFailureMessage(actionError.serverError, {
-            fallback: m.administrationReservationLookupFailed({}, { locale }),
-            locale,
-          })
+          actionError.serverError ??
+            m.administrationReservationLookupFailed({}, { locale })
         ),
       onTransportError: () =>
         setError(m.administrationReservationLookupFailed({}, { locale })),

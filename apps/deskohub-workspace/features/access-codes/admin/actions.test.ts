@@ -10,8 +10,8 @@ import {
   AdministrationStandaloneAccessCodePin,
 } from "@deskohub/workspace-admin-api";
 import { Context, Effect, Layer, Schema } from "effect";
-import { DEFAULT_SERVER_ERROR_MESSAGE } from "next-safe-action";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { m } from "@/features/administration/i18n";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 
 interface StubCreateCall {
@@ -198,7 +198,10 @@ describe("createStandaloneAccessCode action", () => {
     const { createStandaloneAccessCode } = await import("./actions");
 
     await expect(createStandaloneAccessCode(validInput)).resolves.toEqual({
-      serverError: DEFAULT_SERVER_ERROR_MESSAGE,
+      serverError: m.accessCodesActionFailedUnexpectedly(
+        {},
+        { locale: "en-US" }
+      ),
     });
   });
 

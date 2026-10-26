@@ -96,6 +96,11 @@ const renameCliSessionAction = defineWorkspaceAction(
   {
     operation: "cli-authentication.rename-session",
     schema: renameCliSessionStandardSchema,
+    failureCopy: {
+      timeout: m.adminCliActionTimedOut,
+      unexpected: m.adminCliActionFailedUnexpectedly,
+    },
+    fallback: m.adminCliRenameFailed,
   },
   Effect.fn(
     function* (input, { locale }) {
@@ -118,18 +123,7 @@ const renameCliSessionAction = defineWorkspaceAction(
       );
       return { notice: m.adminCliRenameSaved({}, { locale }) };
     },
-    (effect, _input, { locale }) =>
-      effect.pipe(
-        Effect.provide(CliAuthentication.Live),
-        Effect.mapError((cause) =>
-          cause instanceof PublicSafeActionError
-            ? cause
-            : new PublicSafeActionError({
-                message: m.adminCliRenameFailed({}, { locale }),
-                cause,
-              })
-        )
-      )
+    (effect) => effect.pipe(Effect.provide(CliAuthentication.Live))
   )
 );
 

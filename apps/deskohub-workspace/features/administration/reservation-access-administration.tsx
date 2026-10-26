@@ -8,7 +8,6 @@ import { isReservationAccessProvisioningStale } from "@/features/reservation-acc
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
-import { getAdministrationActionFailureMessage } from "./action-failure-message";
 import { mutateReservationAccess } from "./actions";
 import type { AdministrationReservationAccessGrant } from "./administration.service";
 import { AdministrationDetailSection, AdministrationFact } from "./components";
@@ -26,17 +25,11 @@ export function ReservationAccessAdministration({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const { execute, isExecuting } = useWorkspaceAction(mutateReservationAccess, {
-    actionName: "mutateReservationAccess",
     onSuccess: () => router.refresh(),
     onError: ({ error: actionError }) =>
       setError(
-        getAdministrationActionFailureMessage(actionError.serverError, {
-          fallback: m.administrationReservationAccessRecoveryFailed(
-            {},
-            { locale }
-          ),
-          locale,
-        })
+        actionError.serverError ??
+          m.administrationReservationAccessRecoveryFailed({}, { locale })
       ),
     onTransportError: () =>
       setError(m.administrationReservationAccessRecoveryFailed({}, { locale })),

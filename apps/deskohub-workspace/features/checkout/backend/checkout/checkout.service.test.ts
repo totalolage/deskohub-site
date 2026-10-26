@@ -936,9 +936,7 @@ describe("CheckoutService", () => {
       expect(exit).toMatchObject({
         _tag: "Failure",
         cause: {
-          reasons: [
-            { error: { message: "Request timed out. Please try again." } },
-          ],
+          reasons: [{ error: { _tag: "WorkspaceActionTimeout" } }],
         },
       });
       expect(harness.attachHostedPaymentPage).toHaveBeenCalledWith({
@@ -1044,9 +1042,7 @@ describe("CheckoutService", () => {
         expect(exit).toMatchObject({
           _tag: "Failure",
           cause: {
-            reasons: [
-              { error: { message: "Request timed out. Please try again." } },
-            ],
+            reasons: [{ error: { _tag: "WorkspaceActionTimeout" } }],
           },
         });
       });

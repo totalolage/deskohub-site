@@ -33,5 +33,7 @@
   "administratorsRevokeUnchanged": "Účet {email} už roli administrátora neměl.",
   "administratorsRevokeSelf": "Svou vlastní roli administrátora odebrat nemůžete.",
   "administratorsRevokeFailed": "Roli administrátora se nepodařilo odebrat. Zkuste to znovu.",
-  "administratorsServerUnreachable": "Server je nedostupný. Zkuste to znovu."
+  "administratorsServerUnreachable": "Server je nedostupný. Zkuste to znovu.",
+  "administratorsActionTimedOut": "Server neodpověděl včas. Zkuste to znovu.",
+  "administratorsActionFailedUnexpectedly": "Na serveru se něco pokazilo. Zkuste to znovu."
 }

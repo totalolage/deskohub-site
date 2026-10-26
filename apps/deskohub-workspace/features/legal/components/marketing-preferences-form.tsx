@@ -12,8 +12,7 @@ import {
 } from "@/features/legal/actions";
 import {
   isManagedMarketingState,
-  isMarketingPreferencesMutationFailureReason,
-  type MarketingPreferencesMutationFailureReason,
+  type MarketingPreferencesRejectionReason,
   type MarketingPreferencesState,
 } from "@/features/legal/marketing-preferences";
 import { Button } from "@/shared/components/ui/button";
@@ -47,7 +46,7 @@ type MarketingFeedbackKind = "save" | "confirm" | "clear";
 type MarketingFeedback = {
   readonly kind: MarketingFeedbackKind;
   readonly outcome: "success" | "error";
-  readonly reason?: MarketingPreferencesMutationFailureReason;
+  readonly reason?: MarketingPreferencesRejectionReason;
 };
 
 function MarketingPreferencesFormContent({
@@ -90,22 +89,22 @@ function MarketingPreferencesFormContent({
     setFeedback({ kind, outcome: "success" });
     router.refresh();
   };
-  // The server reports a failure reason code; announce its catalog copy.
-  const markError = (kind: MarketingFeedbackKind, serverError?: string) =>
-    setFeedback({
-      kind,
-      outcome: "error",
-      reason: isMarketingPreferencesMutationFailureReason(serverError)
-        ? serverError
-        : undefined,
-    });
+  // A refused request returns its reason as data; announce the reason's copy.
+  const markError = (
+    kind: MarketingFeedbackKind,
+    reason?: MarketingPreferencesRejectionReason
+  ) => setFeedback({ kind, outcome: "error", reason });
 
   const revertToConfirmed = () => setChecked(confirmedActive);
 
   const { executeAsync: executeSave, isExecuting: isSaving } =
     useWorkspaceAction(saveMarketingPreferencesAction, {
-      actionName: "legal.marketing-preferences.save",
-      onSuccess: ({ input }) => {
+      onSuccess: ({ data, input }) => {
+        if (data?.status === "rejected") {
+          revertToConfirmed();
+          markError("save", data.reason);
+          return;
+        }
         setConfirmedActive(input.granted);
         markSuccess("save");
       },
@@ -115,7 +114,7 @@ function MarketingPreferencesFormContent({
         // request cannot roll back a newer retry.
         if (error.thrownError !== undefined) return;
         revertToConfirmed();
-        markError("save", error.serverError);
+        markError("save");
       },
       onTransportError: () => {
         revertToConfirmed();
@@ -124,16 +123,20 @@ function MarketingPreferencesFormContent({
     });
   const { executeAsync: executeConfirm, isExecuting: isConfirming } =
     useWorkspaceAction(confirmMarketingManagementAction, {
-      actionName: "legal.marketing-preferences.confirm",
-      onSuccess: () => markSuccess("confirm"),
-      onError: ({ error }) => markError("confirm", error.serverError),
+      onSuccess: ({ data }) =>
+        data?.status === "rejected"
+          ? markError("confirm", data.reason)
+          : markSuccess("confirm"),
+      onError: () => markError("confirm"),
       onTransportError: () => markError("confirm"),
     });
   const { executeAsync: executeClear, isExecuting: isClearing } =
     useWorkspaceAction(clearMarketingManagementAction, {
-      actionName: "legal.marketing-preferences.clear",
-      onSuccess: () => markSuccess("clear"),
-      onError: ({ error }) => markError("clear", error.serverError),
+      onSuccess: ({ data }) =>
+        data?.status === "rejected"
+          ? markError("clear", data.reason)
+          : markSuccess("clear"),
+      onError: () => markError("clear"),
       onTransportError: () => markError("clear"),
     });
 

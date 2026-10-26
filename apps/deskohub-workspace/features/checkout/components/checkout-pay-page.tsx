@@ -55,7 +55,6 @@ export function CheckoutPayPage({
     isExecuting,
     result: submitReservationResult,
   } = useWorkspaceAction(submitReservation, {
-    actionName: "submitReservation",
     onSuccess: ({ data }) => {
       if (data?.status === "pricing_changed") {
         router.push(data.freshPayUrl);
