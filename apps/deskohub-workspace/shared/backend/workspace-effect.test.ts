@@ -12,11 +12,8 @@ mock.module("@/instrumentation", () => ({
   },
 }));
 
-const {
-  defineWorkspaceTask,
-  runWorkspaceEffect,
-  runWorkspaceEffectOrElse,
-} = await import("./workspace-effect");
+const { defineWorkspaceTask, runWorkspaceEffect, runWorkspaceEffectOrElse } =
+  await import("./workspace-effect");
 
 describe("Workspace Effect execution", () => {
   test("provides the censored Workspace logger", async () => {

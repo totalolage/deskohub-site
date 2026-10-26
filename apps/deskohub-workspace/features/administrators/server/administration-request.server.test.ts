@@ -135,7 +135,11 @@ describe("runAdministrationPage", () => {
 
   test.each([
     ["sends a signed-out visitor to sign-in", "signed-out", "redirect"],
-    ["answers an account without the grant with a 404", "not-administrator", "not-found"],
+    [
+      "answers an account without the grant with a 404",
+      "not-administrator",
+      "not-found",
+    ],
   ] as const)("%s before the query starts", async (_, state, kind) => {
     access.set(state);
 
@@ -158,7 +162,10 @@ describe("defineAdministrationAction", () => {
     });
 
   const writeNote = (
-    outcome: Effect.Effect<void, NotebookFull | PublicSafeActionError> = Effect.void
+    outcome: Effect.Effect<
+      void,
+      NotebookFull | PublicSafeActionError
+    > = Effect.void
   ) =>
     defineAdministrationAction(
       {
@@ -186,20 +193,19 @@ describe("defineAdministrationAction", () => {
     expect(revalidatedPaths).toEqual([`1:${reservationPath("reservation-1")}`]);
   });
 
-  test.each([
-    "not-administrator",
-    "signed-out",
-    "unavailable",
-  ] as const)("fails closed for a caller who is %s", async (state) => {
-    access.set(state);
+  test.each(["not-administrator", "signed-out", "unavailable"] as const)(
+    "fails closed for a caller who is %s",
+    async (state) => {
+      access.set(state);
 
-    const result = await writeNote()({ reservationId: "reservation-1" });
+      const result = await writeNote()({ reservationId: "reservation-1" });
 
-    expect(result).toHaveProperty("serverError");
-    expect(result).not.toHaveProperty("data");
-    expect(notebookBuilds).toBe(0);
-    expect(revalidatedPaths).toEqual([]);
-  });
+      expect(result).toHaveProperty("serverError");
+      expect(result).not.toHaveProperty("data");
+      expect(notebookBuilds).toBe(0);
+      expect(revalidatedPaths).toEqual([]);
+    }
+  );
 
   test("answers a caller who isn't an administrator with unauthorizedResult", async () => {
     access.set("not-administrator");
@@ -268,9 +274,7 @@ describe("defineAdministrationAction", () => {
   test("rejects invalid input before the guard runs", async () => {
     const reads = access.reads();
 
-    const result = await writeNote()({
-      reservationId: 1 as unknown as string,
-    });
+    const result = await writeNote()(JSON.parse('{ "reservationId": 1 }'));
 
     expect(result).toHaveProperty("validationErrors");
     expect(access.reads()).toBe(reads);

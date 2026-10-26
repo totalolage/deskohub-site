@@ -120,10 +120,12 @@ type AdministrationValidationErrors<S extends StandardSchemaV1> =
   FlattenedValidationErrors<ValidationErrors<S>>;
 
 /** An operator action, as the Admin UI calls it. */
-export type AdministrationAction<
-  S extends StandardSchemaV1,
-  A,
-> = SingleInputActionFn<string, S, AdministrationValidationErrors<S>, A>;
+type AdministrationAction<S extends StandardSchemaV1, A> = SingleInputActionFn<
+  string,
+  S,
+  AdministrationValidationErrors<S>,
+  A
+>;
 
 interface SettledAdministrationAction<A> {
   readonly result: A;

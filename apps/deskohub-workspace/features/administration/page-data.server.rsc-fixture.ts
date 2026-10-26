@@ -24,9 +24,7 @@ mock.module("next/navigation", () => ({
   redirect: () => {
     throw new Error("unexpected redirect");
   },
-  unstable_rethrow: (error: unknown) => {
-    if (error instanceof NotFoundSignal) throw error;
-  },
+  unstable_rethrow: () => {},
 }));
 mock.module("next/server", () => ({
   after: () => undefined,
