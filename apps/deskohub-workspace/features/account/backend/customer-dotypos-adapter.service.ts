@@ -17,7 +17,7 @@ import { MissingDotyposId } from "@/shared/backend/missing-dotypos-id";
 import type { CustomerProfileInput } from "../contracts";
 
 /** A profile update or reactivation addressed a Dotypos customer that does not exist. */
-export class DotyposCustomerMissing extends Data.TaggedError(
+class DotyposCustomerMissing extends Data.TaggedError(
   "DotyposCustomerMissing"
 )<{
   readonly customerId: DotyposCustomerId;
