@@ -3,7 +3,7 @@ import type {
   NetworkError,
   ValidationError,
 } from "@deskohub/dotypos";
-import { Data, Effect, Option, Schema } from "effect";
+import { Data, Effect, Match, Option, Schema } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type { ReservationVisitsUnavailable } from "@/features/reservation/backend/reservation-visits.service";
@@ -98,7 +98,17 @@ export class AutomationUnitFetchFailure extends Data.TaggedError(
     unavailable: ReservationVisitsUnavailable
   ) =>
     new AutomationUnitFetchFailure({
-      code: dotyposFailureCode(unavailable.cause),
+      code: Match.value(unavailable.cause).pipe(
+        Match.tagsExhaustive({
+          ExternalAPIError: dotyposFailureCode,
+          NetworkError: dotyposFailureCode,
+          ValidationError: dotyposFailureCode,
+          // The codes these checks stored while they raised Dotypos errors.
+          // C19 stage 5 replaces both with the Dotypos failure codes.
+          UnexpectedDotyposReservationPage: () => "dotypos-502",
+          InvalidDotyposReservationInterval: () => "dotypos-invalid-response",
+        })
+      ),
       cause: unavailable,
     });
 }

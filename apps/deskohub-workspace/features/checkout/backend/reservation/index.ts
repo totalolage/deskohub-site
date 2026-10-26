@@ -18,6 +18,7 @@ export {
   getWorkspaceTableCandidatesByPredicate,
   getWorkspaceTableSeatCapacity,
   hasCandidateCapacity,
+  InvalidDotyposTableSeats,
   isWorkspaceCoworkTableCandidate,
   workspaceMeetingRoomReservationTableTag,
   workspaceOfficeReservationTableTag,

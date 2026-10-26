@@ -808,11 +808,10 @@ describe("CustomerDotyposAdapter", () => {
             .pipe(Effect.result)
       );
 
-      expect(outcome._tag).toBe("Failure");
-      if (outcome._tag === "Failure") {
-        const error = outcome.failure as ExternalAPIError;
-        expect(error.statusCode).toBe(502);
-      }
+      expect(outcome).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "MissingDotyposId", entity: "customer" },
+      });
     });
   });
 });

@@ -9,6 +9,7 @@ import {
 } from "@deskohub/dotypos";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import type { SharedSnapshotLoadFailure } from "@/shared/backend/shared-snapshot";
 import {
   type ReservationRecord,
   toReservationRecord,
@@ -17,6 +18,7 @@ import {
 export type ReservationRecordsError =
   | ExternalAPIError
   | NetworkError
+  | SharedSnapshotLoadFailure
   | ValidationError;
 
 /** The reservation details customers and their agents read. */

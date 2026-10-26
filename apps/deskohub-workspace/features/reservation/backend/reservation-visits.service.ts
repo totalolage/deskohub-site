@@ -5,10 +5,10 @@ import {
   type DotyposReservationStatus,
   DotyposService,
   dotyposIdFilterBatchSize,
-  ExternalAPIError,
+  type ExternalAPIError,
   type NetworkError,
   readInIdFilterBatches,
-  ValidationError,
+  type ValidationError,
 } from "@deskohub/dotypos";
 import { and, count, inArray, isNotNull, type SQL } from "drizzle-orm";
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
@@ -43,6 +43,16 @@ type ReservationVisitsPage = {
   readonly nextPage: Option.Option<number>;
 };
 
+/** Dotypos paged a reservation read filtered to at most one page of ids. */
+export class UnexpectedDotyposReservationPage extends Data.TaggedError(
+  "UnexpectedDotyposReservationPage"
+)<{ readonly message: string }> {}
+
+/** A Dotypos reservation's start and end don't form a valid interval. */
+export class InvalidDotyposReservationInterval extends Data.TaggedError(
+  "InvalidDotyposReservationInterval"
+)<{ readonly message: string }> {}
+
 /**
  * Dotypos couldn't answer a visit read. It carries only the Dotypos error,
  * never reservation values; the caller retries through queue redelivery.
@@ -50,10 +60,19 @@ type ReservationVisitsPage = {
 export class ReservationVisitsUnavailable extends Data.TaggedError(
   "ReservationVisitsUnavailable"
 )<{
-  readonly cause: ValidationError | ExternalAPIError | NetworkError;
+  readonly cause:
+    | ValidationError
+    | ExternalAPIError
+    | NetworkError
+    | UnexpectedDotyposReservationPage
+    | InvalidDotyposReservationInterval;
 }> {
   static fromDotypos = (
-    cause: ValidationError | ExternalAPIError | NetworkError
+    cause:
+      | ValidationError
+      | ExternalAPIError
+      | NetworkError
+      | UnexpectedDotyposReservationPage
   ) => new ReservationVisitsUnavailable({ cause });
 }
 
@@ -272,11 +291,8 @@ export class ReservationVisits extends Context.Service<
                 Effect.filterOrFail(
                   (result) => Option.isNone(result.nextPage),
                   () =>
-                    new ExternalAPIError({
-                      service: "Dotypos",
-                      operation: "listReservationsPage",
+                    new UnexpectedDotyposReservationPage({
                       message: "Dotypos paged an id-filtered reservation read",
-                      statusCode: 502,
                     })
                 ),
                 Effect.mapError(ReservationVisitsUnavailable.fromDotypos)
@@ -382,7 +398,7 @@ const toVisit = (
     Effect.mapError(
       () =>
         new ReservationVisitsUnavailable({
-          cause: new ValidationError({
+          cause: new InvalidDotyposReservationInterval({
             message: "Dotypos returned an invalid reservation interval",
           }),
         })
