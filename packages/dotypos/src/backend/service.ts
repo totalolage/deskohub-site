@@ -632,7 +632,7 @@ export interface IDotyposService {
     readonly includeDeleted?: boolean;
   }) => Effect.Effect<readonly DotyposProduct[], DotyposReadFailure>;
   readonly getCategories: () => Effect.Effect<
-    readonly DotyposCategory[],
+    DotyposCategory[],
     DotyposReadFailure
   >;
 
