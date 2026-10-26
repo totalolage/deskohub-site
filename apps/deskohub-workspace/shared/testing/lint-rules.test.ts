@@ -700,6 +700,18 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
     ],
   },
   {
+    name: "no-provider-status-branching", diagnostic: "Don't read a provider outcome's httpStatus",
+    module: `${accountBackend}/example.ts`,
+    cases: [
+      ["rejects branching on the status", "export const limited = (failure) => failure.httpStatus === 429;\n", true],
+      ["rejects an optional status read", "export const status = (failure) => failure?.httpStatus;\n", true],
+      ["rejects a computed status read", 'export const status = (failure) => failure["httpStatus"];\n', true],
+      ["permits the failure log fields", 'export const log = (failure) => Effect.logError("Read failed", dotyposFailureLogFields(failure));\n', false],
+      ["permits test modules", "export const limited = (failure) => failure.httpStatus === 429;\n", false, `${accountBackend}/example.test.ts`],
+      ["permits test utility modules", "export const limited = (failure) => failure.httpStatus === 429;\n", false, `${accountBackend}/example.test-utils.ts`],
+    ],
+  },
+  {
     name: "no-generic-provider-error-tags", diagnostic: "Name provider errors with the port prefix",
     module: "packages/example/src/errors.ts",
     cases: [

@@ -230,24 +230,33 @@ describe("Customer account deletion", () => {
       return { ...outcome, logCodes };
     };
 
-    test("treats an access-token 404 on the expiration patch as a missing profile", async () => {
+    test("keeps deletion retryable when an access-token 404 ends the expiration patch", async () => {
       const { result, calls, logCodes } = await deleteWithDotypos({
         patchCustomer: () => Effect.fail(tokenNotFound),
       });
 
-      expect(result._tag).toBe("Success");
-      expect(calls).toContain("destroy-avatar");
-      expect(calls).toContain("tombstone");
-      expect(logCodes).toContain("dotypos.customer-expiration.missing");
-      expect(logCodes).not.toContain("account.deletion.retryable");
+      expect(result._tag).toBe("Failure");
+      expect(calls).not.toContain("tombstone");
+      expect(logCodes).not.toContain("dotypos.customer-expiration.missing");
+      expect(logCodes).toContain("account.deletion.retryable");
     });
 
-    test("treats a replayed expiration patch that ends in 404 as a missing profile", async () => {
+    test("treats a replayed expiration patch that ends in 404 as a missing profile once the replay finds none", async () => {
+      const dotyposCalls: string[] = [];
       const { result, calls, logCodes } = await deleteWithDotypos({
-        patchCustomer: () => Effect.fail(replayNotFound),
-        getCustomer: () => Effect.succeed(Option.none<DotyposCustomer>()),
+        patchCustomer: () => {
+          dotyposCalls.push("patch");
+          return dotyposCalls.length === 1
+            ? Effect.fail(replayNotFound)
+            : Effect.succeed(Option.none<DotyposCustomer>());
+        },
+        getCustomer: () => {
+          dotyposCalls.push("read");
+          return Effect.succeed(Option.none<DotyposCustomer>());
+        },
       });
 
+      expect(dotyposCalls).toEqual(["patch", "read", "patch"]);
       expect(result._tag).toBe("Success");
       expect(calls).toContain("destroy-avatar");
       expect(calls).toContain("tombstone");
@@ -255,11 +264,31 @@ describe("Customer account deletion", () => {
       expect(logCodes).not.toContain("account.deletion.retryable");
     });
 
-    test("treats an access-token 404 on the settlement reread as a missing profile", async () => {
+    test("keeps deletion retryable while replayed expiration patches stay uncertain and rereads find none", async () => {
+      const dotyposCalls: string[] = [];
+      const { result, calls, logCodes } = await deleteWithDotypos({
+        patchCustomer: () => {
+          dotyposCalls.push("patch");
+          return Effect.fail(replayNotFound);
+        },
+        getCustomer: () => {
+          dotyposCalls.push("read");
+          return Effect.succeed(Option.none<DotyposCustomer>());
+        },
+      });
+
+      expect(dotyposCalls).toEqual(["patch", "read", "patch", "read"]);
+      expect(result._tag).toBe("Failure");
+      expect(calls).not.toContain("tombstone");
+      expect(logCodes).not.toContain("dotypos.customer-expiration.missing");
+      expect(logCodes).toContain("account.deletion.retryable");
+    });
+
+    test("keeps deletion retryable when an access-token 404 ends the settlement reread", async () => {
       const { result, calls, logCodes } = await deleteWithDotypos({
         patchCustomer: () =>
           Effect.fail(
-            new DotyposUnavailable({
+            new DotyposUncertain({
               operation: "patchCustomer",
               request: "customer.patch",
               reason: "server",
@@ -277,9 +306,10 @@ describe("Customer account deletion", () => {
           ),
       });
 
-      expect(result._tag).toBe("Success");
-      expect(calls).toContain("tombstone");
-      expect(logCodes).toContain("dotypos.customer-expiration.missing");
+      expect(result._tag).toBe("Failure");
+      expect(calls).not.toContain("tombstone");
+      expect(logCodes).not.toContain("dotypos.customer-expiration.missing");
+      expect(logCodes).toContain("account.deletion.retryable");
     });
 
     test("keeps deletion retryable when the expiration fails with a 503", async () => {

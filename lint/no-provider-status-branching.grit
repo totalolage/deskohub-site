@@ -1,0 +1,24 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// A provider outcome's httpStatus is diagnostic only. Workspace code branches
+// on the outcome tag and reason, and logs the status through the provider's
+// failure log fields (dotyposFailureLogFields).
+file($name, $body) where {
+  $name <: r".*apps/.*\.(?:ts|tsx)$",
+  not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
+  $body <: r"(?s).*\bhttpStatus\b.*",
+  $body <: contains bubble {
+    or {
+      `$_.httpStatus` as $read,
+      `$_?.httpStatus` as $read,
+      `$_["httpStatus"]` as $read
+    } where {
+      register_diagnostic(
+        span = $read,
+        message = "Don't read a provider outcome's httpStatus; branch on its tag and reason, and log it with dotyposFailureLogFields.",
+        severity = "error"
+      )
+    }
+  }
+}

@@ -146,8 +146,8 @@ const noneWhenNotFound =
     );
 
 /**
- * Stage 3 compatibility: an access-token 404 stays DotyposRejected{unauthorized}
- * but still reads as an empty first list page, as every 404 did before the
+ * Compatibility: an access-token 404 stays DotyposRejected{unauthorized} but
+ * still reads as an empty first list page, as every 404 did before the
  * outcome tags.
  */
 const isAccessTokenNotFound = (failure: DotyposAttemptFailure) =>
@@ -324,8 +324,6 @@ const getNextDotyposPageNumber = <Request extends DotyposRequest>(input: {
       () =>
         dotyposInvalidResponse(input.call, {
           message: `Dotypos returned an invalid next page: ${input.nextPage}`,
-          // Stage 3 keeps the synthetic status that stored automation codes read.
-          httpStatus: 502,
         })
     )
   );
@@ -739,8 +737,6 @@ const makeDotyposService: Effect.Effect<
             ...call,
             reason: "empty-response",
             message: "Dotypos returned an empty array.",
-            // Stage 3 keeps the synthetic status of the pre-outcome error.
-            httpStatus: 502,
           })
         );
   };
@@ -754,8 +750,6 @@ const makeDotyposService: Effect.Effect<
       Effect.mapError((cause) =>
         dotyposInvalidResponse(call, {
           message: "Dotypos returned malformed entity identifiers.",
-          // Stage 3 keeps the synthetic status that stored automation codes read.
-          httpStatus: 502,
           cause,
         })
       )
@@ -1299,8 +1293,6 @@ const makeDotyposService: Effect.Effect<
     ) {
       return yield* dotyposInvalidResponse(call, {
         message: "Dotypos paged an id-filtered customer read",
-        // Stage 3 keeps the synthetic status that stored automation codes read.
-        httpStatus: 502,
       });
     }
     return page.data ?? [];

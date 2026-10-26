@@ -534,7 +534,7 @@ describe.skipIf(!testDatabase)(
       if (Exit.isFailure(exit)) {
         expect(Cause.squash(exit.cause)).toMatchObject({
           _tag: "AutomationUnitFetchFailure",
-          code: "dotypos-429",
+          code: "dotypos-unavailable",
         });
       }
     });

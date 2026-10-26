@@ -62,7 +62,7 @@ A provider package's errors are part of its port, not its transport. Every provi
 
 Rules:
 
-- Each tag carries `operation` (the public operation), a closed `reason` literal, and diagnostic fields: `request`, `httpStatus`, `message`, `cause`. Branch on the tag. Use `reason` only for diagnostics and for the rare caller that needs a cause, such as honoring a rate limit. `httpStatus` is for logs only.
+- Each tag carries `operation` (the public operation), a closed `reason` literal, and diagnostic fields: `request`, `httpStatus`, `message`, `cause`. Branch on the tag. Use `reason` only for diagnostics and for the rare caller that needs a cause, such as honoring a rate limit. `httpStatus` is for logs only: apps log it through the provider's failure log fields, and the `no-provider-status-branching` Grit rule rejects any other read in app code.
 - Provider facts that callers act on get their own tag, `<Prefix><Fact>`, such as `DotyposVersionConflict`. Business results, such as a payment state or an already-confirmed reservation, are success values.
 - A lookup whose caller gives absence a meaning returns `Option`. A list returns empty. Any other absence is `<Prefix>Rejected` with reason `not-found`.
 - A write that got a 2xx with an unreadable body is `<Prefix>Uncertain` with reason `invalid-response`. A read with an unreadable body is `<Prefix>Rejected`.
