@@ -5,7 +5,7 @@ import {
   DotyposCustomerIdSchema,
   type DotyposReservation,
   DotyposReservationIdSchema,
-  ExternalAPIError,
+  DotyposUnavailable,
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { Effect, Layer, Option } from "effect";
@@ -76,10 +76,10 @@ const activityDotypos = (pageSize: number) => {
         requests.push({ window, page, failed });
         if (failed) {
           return Effect.fail(
-            new ExternalAPIError({
-              service: "dotypos",
+            new DotyposUnavailable({
               operation: "listActiveReservationsPage",
-              statusCode: 503,
+              reason: "server",
+              httpStatus: 503,
             })
           );
         }

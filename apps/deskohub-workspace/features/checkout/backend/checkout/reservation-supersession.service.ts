@@ -1,8 +1,4 @@
-import type {
-  ExternalAPIError,
-  NetworkError,
-  ValidationError,
-} from "@deskohub/dotypos";
+import type { DotyposReadFailure } from "@deskohub/dotypos";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
@@ -19,9 +15,7 @@ type ReservationSupersessionError =
   | SealedStateTokenError
   | EffectDrizzleQueryError
   | WorkspaceReservationDetailsMalformedError
-  | ExternalAPIError
-  | NetworkError
-  | ValidationError;
+  | DotyposReadFailure;
 
 interface IReservationSupersessionService {
   readonly findCurrent: (input: {

@@ -1,11 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { ExternalAPIError, NetworkError } from "@deskohub/dotypos";
-import { Effect } from "effect";
+import {
+  type DotyposCustomer,
+  DotyposRejected,
+  DotyposService,
+  DotyposUnavailable,
+  DotyposUncertain,
+} from "@deskohub/dotypos";
+import { Effect, Layer, Logger, Option } from "effect";
 import { customerAccountIdSchema } from "../customer-account";
 import {
   type CustomerAccountDeletionDependencies,
   expireLinkedDotyposProfile,
 } from "./customer-account-deletion";
+import { CustomerAvatarProviderError } from "./customer-avatar.service";
+import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 
 const accountId = customerAccountIdSchema.make("auth-user-1");
 
@@ -13,7 +21,9 @@ const makeDependencies = (
   overrides: {
     readonly link?: string | null;
     readonly reviewAccount?: boolean;
-    readonly expireOutcome?: Effect.Effect<void, unknown>;
+    readonly expireOutcome?: ReturnType<
+      CustomerAccountDeletionDependencies["expireCustomer"]
+    >;
     readonly avatarOutcome?: Effect.Effect<void, unknown>;
   } & Partial<CustomerAccountDeletionDependencies> = {}
 ) => {
@@ -35,9 +45,9 @@ const makeDependencies = (
     },
     expireCustomer: () => {
       calls.push("expire");
-      return (overrides.expireOutcome ?? Effect.void) as Effect.Effect<
-        void,
-        never
+      return (overrides.expireOutcome ??
+        Effect.succeed(Option.some({} as never))) as ReturnType<
+        CustomerAccountDeletionDependencies["expireCustomer"]
       >;
     },
     destroyAvatar: () => {
@@ -100,7 +110,10 @@ describe("Customer account deletion", () => {
   test("keeps the durable marker when the provider call fails retryably", async () => {
     const { dependencies, calls } = makeDependencies({
       expireOutcome: Effect.fail(
-        new NetworkError({ message: "connection reset" })
+        new DotyposUncertain({
+          operation: "patchCustomer",
+          reason: "transport",
+        })
       ),
     });
 
@@ -121,9 +134,7 @@ describe("Customer account deletion", () => {
 
   test("leaves no tombstone while the avatar cleanup can still be retried", async () => {
     const { dependencies, calls } = makeDependencies({
-      avatarOutcome: Effect.fail(
-        new NetworkError({ message: "connection reset" })
-      ),
+      avatarOutcome: Effect.fail(new CustomerAvatarProviderError({})),
     });
 
     const outcome = await Effect.runPromise(
@@ -136,13 +147,7 @@ describe("Customer account deletion", () => {
 
   test("tolerates a definitively missing provider profile", async () => {
     const { dependencies, calls } = makeDependencies({
-      expireOutcome: Effect.fail(
-        new ExternalAPIError({
-          service: "Dotypos",
-          operation: "patchCustomer",
-          statusCode: 404,
-        })
-      ),
+      expireOutcome: Effect.succeed(Option.none()),
     });
 
     const outcome = await Effect.runPromise(
@@ -170,5 +175,130 @@ describe("Customer account deletion", () => {
       "tombstone",
       "lock-release",
     ]);
+  });
+
+  describe("with the Dotypos adapter", () => {
+    const tokenNotFound = new DotyposRejected({
+      operation: "patchCustomer",
+      request: "customer.version",
+      reason: "unauthorized",
+      httpStatus: 404,
+    });
+    const replayNotFound = new DotyposUncertain({
+      operation: "patchCustomer",
+      request: "customer.patch",
+      reason: "server",
+      httpStatus: 404,
+      cause: new DotyposRejected({
+        operation: "patchCustomer",
+        request: "customer.patch",
+        reason: "not-found",
+        httpStatus: 404,
+      }),
+    });
+
+    const deleteWithDotypos = async (
+      dotypos: Partial<DotyposService["Service"]>
+    ) => {
+      const logCodes: unknown[] = [];
+      const capturingLogger = Logger.make(({ message }) => {
+        const [, annotations] = Array.isArray(message) ? message : [];
+        logCodes.push((annotations as { code?: unknown } | undefined)?.code);
+      });
+      const outcome = await Effect.runPromise(
+        Effect.gen(function* () {
+          const adapter = yield* CustomerDotyposAdapter;
+          const { dependencies, calls } = makeDependencies({
+            expireCustomer: (customerId) => {
+              calls.push("expire");
+              return adapter.expireCustomer(customerId);
+            },
+          });
+          const result = yield* expireLinkedDotyposProfile(dependencies)(
+            accountId
+          ).pipe(Effect.result);
+          return { result, calls };
+        }).pipe(
+          Effect.provide(
+            CustomerDotyposAdapter.Default.pipe(
+              Layer.provide(Layer.mock(DotyposService, dotypos))
+            )
+          ),
+          Effect.provide(Logger.layer([capturingLogger]))
+        )
+      );
+      return { ...outcome, logCodes };
+    };
+
+    test("treats an access-token 404 on the expiration patch as a missing profile", async () => {
+      const { result, calls, logCodes } = await deleteWithDotypos({
+        patchCustomer: () => Effect.fail(tokenNotFound),
+      });
+
+      expect(result._tag).toBe("Success");
+      expect(calls).toContain("destroy-avatar");
+      expect(calls).toContain("tombstone");
+      expect(logCodes).toContain("dotypos.customer-expiration.missing");
+      expect(logCodes).not.toContain("account.deletion.retryable");
+    });
+
+    test("treats a replayed expiration patch that ends in 404 as a missing profile", async () => {
+      const { result, calls, logCodes } = await deleteWithDotypos({
+        patchCustomer: () => Effect.fail(replayNotFound),
+        getCustomer: () => Effect.succeed(Option.none<DotyposCustomer>()),
+      });
+
+      expect(result._tag).toBe("Success");
+      expect(calls).toContain("destroy-avatar");
+      expect(calls).toContain("tombstone");
+      expect(logCodes).toContain("dotypos.customer-expiration.missing");
+      expect(logCodes).not.toContain("account.deletion.retryable");
+    });
+
+    test("treats an access-token 404 on the settlement reread as a missing profile", async () => {
+      const { result, calls, logCodes } = await deleteWithDotypos({
+        patchCustomer: () =>
+          Effect.fail(
+            new DotyposUnavailable({
+              operation: "patchCustomer",
+              request: "customer.patch",
+              reason: "server",
+              httpStatus: 503,
+            })
+          ),
+        getCustomer: () =>
+          Effect.fail(
+            new DotyposRejected({
+              operation: "getCustomer",
+              request: "customer.get",
+              reason: "unauthorized",
+              httpStatus: 404,
+            })
+          ),
+      });
+
+      expect(result._tag).toBe("Success");
+      expect(calls).toContain("tombstone");
+      expect(logCodes).toContain("dotypos.customer-expiration.missing");
+    });
+
+    test("keeps deletion retryable when the expiration fails with a 503", async () => {
+      const { result, calls, logCodes } = await deleteWithDotypos({
+        patchCustomer: () =>
+          Effect.fail(
+            new DotyposUnavailable({
+              operation: "patchCustomer",
+              request: "customer.patch",
+              reason: "server",
+              httpStatus: 503,
+            })
+          ),
+        getCustomer: () => Effect.succeed(Option.none<DotyposCustomer>()),
+      });
+
+      expect(result._tag).toBe("Failure");
+      expect(calls).not.toContain("tombstone");
+      expect(logCodes).toContain("account.deletion.retryable");
+    });
   });
 });

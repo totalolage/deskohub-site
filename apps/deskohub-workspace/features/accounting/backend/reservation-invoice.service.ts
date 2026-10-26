@@ -1,8 +1,6 @@
 import {
+  type DotyposConditionalWriteFailure,
   DotyposService,
-  type ExternalAPIError,
-  type NetworkError,
-  type ValidationError,
 } from "@deskohub/dotypos";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Result } from "effect";
@@ -39,12 +37,10 @@ import {
 type ReservationInvoiceProcessingError =
   | AccountingDocumentSnapshotStorageError
   | EffectDrizzleQueryError
-  | ExternalAPIError
+  | DotyposConditionalWriteFailure
   | InvoiceEmailDeliveryError
   | InvoiceRepositoryError
-  | NetworkError
-  | WorkspaceReservationDetailsMalformedError
-  | ValidationError;
+  | WorkspaceReservationDetailsMalformedError;
 
 class PostOrderInvoiceUnavailableError extends Data.TaggedError(
   "PostOrderInvoiceUnavailableError"

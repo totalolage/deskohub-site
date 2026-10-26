@@ -6,7 +6,7 @@ import {
   type DotyposReservation,
   type DotyposReservationId,
   DotyposService,
-  ExternalAPIError,
+  DotyposUnavailable,
 } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -1513,10 +1513,9 @@ describe.skipIf(!testDatabase)(
           () => [],
           () =>
             Effect.fail(
-              new ExternalAPIError({
+              new DotyposUnavailable({
                 operation: "listReservations",
-                service: "Dotypos",
-                statusCode: 503,
+                reason: "server",
               })
             )
         );

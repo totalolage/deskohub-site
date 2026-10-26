@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { DotyposService, ExternalAPIError } from "@deskohub/dotypos";
+import { DotyposRejected, DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import {
   availabilityTags,
@@ -16,9 +16,9 @@ mock.module("next/cache", () => ({ revalidateTag }));
 
 const { ReservationWritesExpireSharedReads } = await import("./dotypos.config");
 
-const failure = new ExternalAPIError({
-  service: "dotypos",
+const failure = new DotyposRejected({
   operation: "cancelReservation",
+  reason: "invalid-response",
   message: "Synthetic timeout",
 });
 const getTables = mock(() => Effect.succeed([]));

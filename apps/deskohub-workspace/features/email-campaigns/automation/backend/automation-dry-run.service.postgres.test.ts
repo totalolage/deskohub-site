@@ -7,7 +7,7 @@ import {
   DotyposCustomerIdSchema,
   type DotyposReservation,
   DotyposReservationIdSchema,
-  ExternalAPIError,
+  DotyposUnavailable,
 } from "@deskohub/dotypos";
 import {
   DotyposServiceMock,
@@ -162,7 +162,11 @@ const dotypos = DotyposServiceMock({
     if (dotyposState.failNextCustomerPage) {
       dotyposState.failNextCustomerPage = false;
       return Effect.fail(
-        new ExternalAPIError({ message: "Unavailable", statusCode: 503 })
+        new DotyposUnavailable({
+          operation: "getCustomersPage",
+          reason: "server",
+          httpStatus: 503,
+        })
       );
     }
     return seededCustomerReads(dotyposState.customers).getCustomersPage(ids);

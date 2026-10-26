@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { NetworkError } from "@deskohub/dotypos";
+import { DotyposUncertain } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Cause, Effect } from "effect";
@@ -74,7 +74,12 @@ const makeDependencies = (
     reactivate: () => {
       calls.push("reactivate");
       return overrides.reactivation === "fails"
-        ? Effect.fail(new NetworkError({ message: "dotypos unavailable" }))
+        ? Effect.fail(
+            new DotyposUncertain({
+              operation: "patchCustomer",
+              reason: "transport",
+            })
+          )
         : Effect.succeed(undefined);
     },
     withAccountLock: (_accountId, effect) => {

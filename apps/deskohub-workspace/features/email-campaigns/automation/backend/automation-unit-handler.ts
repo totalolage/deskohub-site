@@ -1,8 +1,4 @@
-import type {
-  ExternalAPIError,
-  NetworkError,
-  ValidationError,
-} from "@deskohub/dotypos";
+import type { DotyposReadFailure } from "@deskohub/dotypos";
 import { Data, Effect, Match, Option, Schema } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
@@ -89,10 +85,11 @@ export class AutomationUnitFetchFailure extends Data.TaggedError(
   readonly code: string;
   readonly cause?: unknown;
 }> {
-  static readonly fromDotypos = (
-    cause: ValidationError | ExternalAPIError | NetworkError
-  ) =>
-    new AutomationUnitFetchFailure({ code: dotyposFailureCode(cause), cause });
+  static readonly fromDotypos = (cause: DotyposReadFailure) =>
+    new AutomationUnitFetchFailure({
+      code: legacyDotyposFailureCode(cause),
+      cause,
+    });
 
   static readonly fromReservationVisits = (
     unavailable: ReservationVisitsUnavailable
@@ -100,9 +97,8 @@ export class AutomationUnitFetchFailure extends Data.TaggedError(
     new AutomationUnitFetchFailure({
       code: Match.value(unavailable.cause).pipe(
         Match.tagsExhaustive({
-          ExternalAPIError: dotyposFailureCode,
-          NetworkError: dotyposFailureCode,
-          ValidationError: dotyposFailureCode,
+          DotyposUnavailable: legacyDotyposFailureCode,
+          DotyposRejected: legacyDotyposFailureCode,
           // The codes these checks stored while they raised Dotypos errors.
           // C19 stage 5 replaces both with the Dotypos failure codes.
           UnexpectedDotyposReservationPage: () => "dotypos-502",
@@ -113,21 +109,47 @@ export class AutomationUnitFetchFailure extends Data.TaggedError(
     });
 }
 
+/**
+ * C19 stage 3 only: reproduces the `last_error_code` values stored before the
+ * Dotypos outcome tags, so stored codes stay byte-identical. It is the only
+ * Workspace reader of `httpStatus`; stage 5 replaces it with
+ * `dotyposFailureCode`.
+ */
+const legacyStatusCode = (httpStatus: number | undefined) =>
+  httpStatus === undefined ? "dotypos-error" : `dotypos-${httpStatus}`;
+
 /** A low-cardinality `last_error_code` for a failed Dotypos read. */
-const dotyposFailureCode = (
-  cause: ValidationError | ExternalAPIError | NetworkError
-) => {
-  switch (cause._tag) {
-    case "ExternalAPIError":
-      return cause.statusCode === undefined
-        ? "dotypos-error"
-        : `dotypos-${cause.statusCode}`;
-    case "NetworkError":
-      return "dotypos-network";
-    case "ValidationError":
-      return "dotypos-invalid-response";
-  }
-};
+const legacyDotyposFailureCode = Match.type<DotyposReadFailure>().pipe(
+  Match.tagsExhaustive({
+    DotyposUnavailable: (failure) =>
+      Match.value(failure.reason).pipe(
+        // Was NetworkError.
+        Match.when(Match.is("transport", "timeout"), () => "dotypos-network"),
+        Match.when(Match.is("rate-limited", "server", "empty-response"), () =>
+          legacyStatusCode(failure.httpStatus)
+        ),
+        Match.exhaustive
+      ),
+    DotyposRejected: (failure) =>
+      failure.httpStatus !== undefined
+        ? // HTTP 4xx, an unreadable 2xx (200) or the legacy synthetic 502.
+          legacyStatusCode(failure.httpStatus)
+        : Match.value(failure.reason).pipe(
+            // Was the package ValidationError.
+            Match.when(
+              Match.is("invalid-request", "ambiguous-match"),
+              () => "dotypos-invalid-response"
+            ),
+            // Was a status-less ExternalAPIError. Unauthorized and not-found
+            // always carry a status; they are listed to keep the match total.
+            Match.when(
+              Match.is("invalid-response", "unauthorized", "not-found"),
+              () => "dotypos-error"
+            ),
+            Match.exhaustive
+          ),
+  })
+);
 
 /**
  * A commit whose lifecycle recheck failed (§5.4): the automation is no

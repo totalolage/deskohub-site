@@ -1,14 +1,12 @@
 import {
   type DotyposCustomerId,
+  type DotyposReadFailure,
   type DotyposReservation,
   type DotyposReservationId,
   type DotyposReservationStatus,
   DotyposService,
   dotyposIdFilterBatchSize,
-  type ExternalAPIError,
-  type NetworkError,
   readInIdFilterBatches,
-  type ValidationError,
 } from "@deskohub/dotypos";
 import { and, count, inArray, isNotNull, type SQL } from "drizzle-orm";
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
@@ -61,18 +59,12 @@ export class ReservationVisitsUnavailable extends Data.TaggedError(
   "ReservationVisitsUnavailable"
 )<{
   readonly cause:
-    | ValidationError
-    | ExternalAPIError
-    | NetworkError
+    | DotyposReadFailure
     | UnexpectedDotyposReservationPage
     | InvalidDotyposReservationInterval;
 }> {
   static fromDotypos = (
-    cause:
-      | ValidationError
-      | ExternalAPIError
-      | NetworkError
-      | UnexpectedDotyposReservationPage
+    cause: DotyposReadFailure | UnexpectedDotyposReservationPage
   ) => new ReservationVisitsUnavailable({ cause });
 }
 

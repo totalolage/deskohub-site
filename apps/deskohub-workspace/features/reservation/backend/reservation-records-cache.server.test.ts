@@ -3,10 +3,11 @@ import "@/shared/testing/workspace-test-env";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   DotyposCustomerIdSchema,
+  type DotyposReadFailure,
+  DotyposRejected,
   type DotyposReservationId,
   DotyposReservationIdSchema,
   DotyposService,
-  ExternalAPIError,
   type ReservationListOptions,
 } from "@deskohub/dotypos";
 import type { Reservation as DotyposReservation } from "@deskohub/dotypos/generated";
@@ -14,7 +15,7 @@ import { Effect, Layer } from "effect";
 import { reservationRecordTags } from "@/shared/utils/cache-tags";
 import { ReservationRecords } from "./reservation-records";
 
-let providerFailure: ExternalAPIError | undefined;
+let providerFailure: DotyposReadFailure | undefined;
 
 const reservationId = DotyposReservationIdSchema.make("synthetic-reservation");
 const customerId = DotyposCustomerIdSchema.make("synthetic-customer");
@@ -160,9 +161,9 @@ describe("shared reservation records", () => {
   });
 
   test("keep a failed load out of the shared cache", async () => {
-    providerFailure = new ExternalAPIError({
-      service: "dotypos",
+    providerFailure = new DotyposRejected({
       operation: "getReservation",
+      reason: "invalid-response",
       message: "Synthetic outage",
     });
 

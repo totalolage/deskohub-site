@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Deferred, Effect, Fiber, Semaphore } from "effect";
+import { Deferred, Effect, Fiber, Option, Semaphore } from "effect";
 import { SqlError } from "effect/unstable/sql";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import {
@@ -107,7 +107,7 @@ const makeDeletion = (options: {
           options.events.push("deletion-mark");
         }),
       findLink: () => Effect.succeed(null),
-      expireCustomer: () => Effect.void,
+      expireCustomer: () => Effect.succeed(Option.none()),
       destroyAvatar: () => Effect.void,
       tombstone: () => Effect.void,
       withAccountLock: options.lock.withAccountLock,

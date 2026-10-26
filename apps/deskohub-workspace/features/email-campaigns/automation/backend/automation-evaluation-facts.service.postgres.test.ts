@@ -5,9 +5,10 @@ import {
   type DotyposCustomer,
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
+  type DotyposReadFailure,
   type DotyposReservation,
+  DotyposUnavailable,
   dotyposIdFilterBatchSize,
-  ExternalAPIError,
 } from "@deskohub/dotypos";
 import {
   DotyposServiceMock,
@@ -117,7 +118,7 @@ const lastVisit = (
 const makeDotypos = (input: {
   readonly customers?: readonly DotyposCustomer[];
   readonly reservations?: readonly DotyposReservation[];
-  readonly customerPageError?: ExternalAPIError;
+  readonly customerPageError?: DotyposReadFailure;
 }) => {
   const customers = input.customers ?? [];
   const customerReads = seededCustomerReads(customers);
@@ -511,10 +512,10 @@ describe.skipIf(!testDatabase)(
 
     test("maps a Dotypos 429 to one failed fetch attempt", async () => {
       const dotypos = makeDotypos({
-        customerPageError: new ExternalAPIError({
-          service: "Dotypos",
+        customerPageError: new DotyposUnavailable({
           operation: "getCustomersPage",
-          statusCode: 429,
+          reason: "rate-limited",
+          httpStatus: 429,
           message: "rate limited",
         }),
       });

@@ -6,7 +6,7 @@ import {
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
   type DotyposService,
-  ExternalAPIError,
+  DotyposUnavailable,
 } from "@deskohub/dotypos";
 import {
   DotyposServiceMock,
@@ -719,7 +719,11 @@ describe.skipIf(!testDatabase)(
       const unavailable = DotyposServiceMock({
         getCustomersPage: () =>
           Effect.fail(
-            new ExternalAPIError({ message: "Unavailable", statusCode: 503 })
+            new DotyposUnavailable({
+              operation: "getCustomersPage",
+              reason: "server",
+              httpStatus: 503,
+            })
           ),
       });
 

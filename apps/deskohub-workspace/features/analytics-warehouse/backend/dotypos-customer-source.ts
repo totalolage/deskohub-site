@@ -4,15 +4,14 @@ import {
   type CustomerChanges,
   CustomerVersionSelection,
   type DotyposCustomer,
+  type DotyposReadFailure,
   DotyposService,
   type DotyposTimestamp,
   DotyposTimestampFromString,
   DotyposTimestampSchema,
+  dotyposFailureLogFields,
   dotyposTimestampFromDateTime,
-  type ExternalAPIError,
   formatDotyposTimestamp,
-  type NetworkError,
-  type ValidationError,
 } from "@deskohub/dotypos";
 import { isMatchingSecret } from "@deskohub/secret-comparison";
 import {
@@ -60,16 +59,22 @@ export const respondWithDotyposCustomerSource = (request: Request) =>
         deferRequest(retryAt),
       RequestBudgetUnavailable: (error) =>
         failUpstream(error, 503, "The export budget is unavailable."),
-      ExternalAPIError: (error) =>
-        error.statusCode === 429
-          ? failUpstream(error, 429, "Dotypos is rate limiting requests.").pipe(
+      DotyposUnavailable: (error) =>
+        Match.value(error.reason).pipe(
+          Match.when("rate-limited", () =>
+            failUpstream(error, 429, "Dotypos is rate limiting requests.").pipe(
               Effect.map(
                 withRetryAfter(Duration.toSeconds(dotyposRateLimitBackoff))
               )
             )
-          : failUpstream(error, 502, unavailableMessage),
-      NetworkError: (error) => failUpstream(error, 502, unavailableMessage),
-      ValidationError: (error) => failUpstream(error, 502, unavailableMessage),
+          ),
+          Match.when(
+            Match.is("server", "transport", "timeout", "empty-response"),
+            () => failUpstream(error, 502, unavailableMessage)
+          ),
+          Match.exhaustive
+        ),
+      DotyposRejected: (error) => failUpstream(error, 502, unavailableMessage),
       UnexpectedDotyposCustomerPage: (error) =>
         failUpstream(error, 502, unavailableMessage),
       UnpageableDotyposCustomerGroup: (error) =>
@@ -706,9 +711,7 @@ const withRetryAfter = (seconds: number) => (response: NextResponse) => {
  */
 const failUpstream = (
   error:
-    | ExternalAPIError
-    | NetworkError
-    | ValidationError
+    | DotyposReadFailure
     | RequestBudgetUnavailable
     | UnexpectedDotyposCustomerPage
     | UnpageableDotyposCustomerGroup,
@@ -717,6 +720,9 @@ const failUpstream = (
 ) =>
   Effect.logError("Dotypos customer source could not read Dotypos", {
     errorTag: error._tag,
-    upstreamStatusCode: "statusCode" in error ? error.statusCode : undefined,
+    upstreamStatusCode:
+      error._tag === "DotyposUnavailable" || error._tag === "DotyposRejected"
+        ? dotyposFailureLogFields(error).dotyposHttpStatus
+        : undefined,
     statusCode: status,
   }).pipe(Effect.as(NextResponse.json({ error: message }, { status })));

@@ -1,11 +1,9 @@
 import {
   type DotyposCustomerId,
+  type DotyposReadFailure,
   type DotyposReservationId,
   DotyposService,
-  type ExternalAPIError,
-  type NetworkError,
   readInIdFilterBatches,
-  type ValidationError,
 } from "@deskohub/dotypos";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
@@ -16,10 +14,8 @@ import {
 } from "./reservation-record";
 
 export type ReservationRecordsError =
-  | ExternalAPIError
-  | NetworkError
-  | SharedSnapshotLoadFailure
-  | ValidationError;
+  | DotyposReadFailure
+  | SharedSnapshotLoadFailure;
 
 /** The reservation details customers and their agents read. */
 export interface ReservationRecordReads {

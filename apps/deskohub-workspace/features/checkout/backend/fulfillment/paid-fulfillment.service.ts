@@ -348,11 +348,13 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
                         Match.tagsExhaustive({
                           DotyposReservationCancelledError: () =>
                             "dotypos_reservation_unfulfillable" as const,
-                          ExternalAPIError: () =>
+                          DotyposUnavailable: () =>
                             "dotypos_reservation_failed" as const,
-                          NetworkError: () =>
+                          DotyposRejected: () =>
                             "dotypos_reservation_failed" as const,
-                          ValidationError: () =>
+                          DotyposUncertain: () =>
+                            "dotypos_reservation_failed" as const,
+                          DotyposVersionConflict: () =>
                             "dotypos_reservation_failed" as const,
                         })
                       ),

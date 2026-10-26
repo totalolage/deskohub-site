@@ -3,6 +3,7 @@ import "server-only";
 import {
   type DotyposCustomerId,
   DotyposService,
+  dotyposFailureLogFields,
   getCustomerDisplayName,
   readInIdFilterBatches,
 } from "@deskohub/dotypos";
@@ -50,7 +51,7 @@ export const readAutomationCustomerContacts = Effect.fn(
     Effect.catch((cause) =>
       Effect.logWarning("Customer contacts couldn't be read", {
         errorTag: cause._tag,
-        statusCode: "statusCode" in cause ? cause.statusCode : undefined,
+        statusCode: dotyposFailureLogFields(cause).dotyposHttpStatus,
       }).pipe(
         Effect.as(
           Option.none<

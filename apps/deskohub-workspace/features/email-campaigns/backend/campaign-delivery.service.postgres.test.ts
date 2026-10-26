@@ -5,7 +5,8 @@ import {
   type DotyposCustomer,
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
-  NetworkError as DotyposNetworkError,
+  type DotyposReadFailure,
+  DotyposUnavailable,
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
@@ -165,7 +166,7 @@ describe.skipIf(!testDatabase)(
       );
     let readCustomers: (
       ids: readonly DotyposCustomerId[]
-    ) => Effect.Effect<DotyposCustomer[], DotyposNetworkError> = readProfiles;
+    ) => Effect.Effect<DotyposCustomer[], DotyposReadFailure> = readProfiles;
     const profile = (
       id: DotyposCustomerId,
       overrides: Partial<DotyposCustomer> = {}
@@ -1026,7 +1027,10 @@ describe.skipIf(!testDatabase)(
             }).pipe(
               Effect.andThen(
                 Effect.fail(
-                  new DotyposNetworkError({ message: "Dotypos timed out" })
+                  new DotyposUnavailable({
+                    operation: "getCustomers",
+                    reason: "transport",
+                  })
                 )
               )
             )

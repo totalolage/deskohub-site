@@ -612,7 +612,11 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
     cases: [
       ["rejects a class variable", button("className={classes}"), true],
       ["rejects a forwarded className", button('className={cn("mt-4", className)}'), true],
-      ["rejects an interpolated template", button("className={`mt-${size}`}"), true],
+      [
+        "rejects an interpolated template",
+        button("className={`mt-$" + "{size}`}"),
+        true,
+      ],
       ["rejects a fallback operand", button('className={open || "mt-4"}'), true],
       ["rejects another class helper", button("className={layoutClasses()}"), true],
       ["permits literal and conditional cn classes", button('className={cn("mt-4", open && "hidden")}'), false],
@@ -681,6 +685,41 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["permits the server runner", 'import { NextEffect } from "@deskohub/next-effect";\n', false, "apps/deskohub-workspace/shared/backend/workspace-effect.ts"],
       ["permits the standalone runner", 'import { NextEffect } from "@deskohub/next-effect";\n', false, "apps/deskohub-workspace/shared/backend/standalone-workspace-effect.ts"],
       ["permits the action boundary", 'import { EffectAction } from "@deskohub/next-effect/effect-action";\n', false, "apps/deskohub-workspace/shared/backend/workspace-action.ts"],
+    ],
+  },
+  {
+    name: "no-borrowed-provider-outcomes", diagnostic: "Only the provider package constructs its outcomes",
+    module: `${accountBackend}/example.ts`,
+    cases: [
+      ["rejects constructing a provider outcome", 'export const missing = new DotyposRejected({ operation: "getCustomer", reason: "not-found" });\n', true],
+      ["rejects yielding a constructed provider outcome", 'export const load = Effect.gen(function* () { return yield* new DotyposUnavailable({ operation: "getCustomer", reason: "server" }); });\n', true],
+      ["permits test modules", 'export const missing = new DotyposRejected({ operation: "getCustomer", reason: "not-found" });\n', false, `${accountBackend}/example.test.ts`],
+      ["permits test utility modules", 'export const missing = new DotyposRejected({ operation: "getCustomer", reason: "not-found" });\n', false, `${accountBackend}/example.test-utils.ts`],
+      ["permits a non-outcome name", "export const value = new DotyposCustomerSomething();\n", false],
+      ["permits matching an outcome", 'export const recover = (effect) => effect.pipe(Effect.catchTag("DotyposRejected", () => Effect.void));\n', false],
+    ],
+  },
+  {
+    name: "no-generic-provider-error-tags", diagnostic: "Name provider errors with the port prefix",
+    module: "packages/example/src/errors.ts",
+    cases: [
+      [
+        "rejects a generic Data tag",
+        `export class ${["ExternalAPI", "Error"].join("")} extends Data.TaggedError("${["ExternalAPI", "Error"].join("")}")<{}> {}\n`,
+        true,
+      ],
+      [
+        "rejects a multi-line generic schema tag",
+        `export class ${["Network", "Error"].join("")} extends Schema.TaggedErrorClass<${["Network", "Error"].join("")}>()(\n  "${["Network", "Error"].join("")}",\n  {}\n) {}\n`,
+        true,
+      ],
+      ["permits a prefixed outcome tag", 'export class DotyposRejected extends Schema.TaggedErrorClass<DotyposRejected>()("DotyposRejected", {}) {}\n', false],
+      [
+        "permits the generic tag while Nexi is excluded",
+        `export class ${["ExternalAPI", "Error"].join("")} extends Data.TaggedError("${["ExternalAPI", "Error"].join("")}")<{}> {}\n`,
+        false,
+        "packages/nexi/src/errors.ts",
+      ],
     ],
   },
 ];

@@ -8,7 +8,7 @@ import {
   expect,
   test,
 } from "bun:test";
-import { type DotyposCustomerId, ExternalAPIError } from "@deskohub/dotypos";
+import { type DotyposCustomerId, DotyposUnavailable } from "@deskohub/dotypos";
 import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import type { AutomationFlowType } from "@deskohub/workspace-admin-api";
 import { Effect } from "effect";
@@ -2446,12 +2446,6 @@ describe.skipIf(!database)(
     const iso = (value: Date | string | null | undefined) =>
       databaseInstant(value)?.toString() ?? null;
 
-    const dotyposUnavailable = new ExternalAPIError({
-      service: "dotypos",
-      operation: "test",
-      statusCode: 503,
-      message: "Unavailable",
-    });
     const scenario = await makeAutomationEngineScenario({
       database,
       now: start,
@@ -2868,7 +2862,13 @@ describe.skipIf(!database)(
         const regular = await lapsedRegular("blocked-regular");
         scenario.dotypos.onRequest(({ method }) =>
           method === "listReservationsPage" || method === "listReservations"
-            ? Effect.fail(dotyposUnavailable)
+            ? Effect.fail(
+                new DotyposUnavailable({
+                  operation: method,
+                  reason: "server",
+                  httpStatus: 503,
+                })
+              )
             : Effect.void
         );
 
@@ -3081,7 +3081,15 @@ describe.skipIf(!database)(
 
         // Dotypos goes down; a second visit that finished on the hour is
         // recorded a minute later.
-        scenario.dotypos.onRequest(() => Effect.fail(dotyposUnavailable));
+        scenario.dotypos.onRequest(({ method }) =>
+          Effect.fail(
+            new DotyposUnavailable({
+              operation: method,
+              reason: "server",
+              httpStatus: 503,
+            })
+          )
+        );
         const down = before.add({ minutes: 1 });
         const lateEvent = await fixtures.recordEvent({
           kind: "reservation-finished",

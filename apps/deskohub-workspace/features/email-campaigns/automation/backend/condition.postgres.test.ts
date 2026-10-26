@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import {
   type DotyposCustomer,
   type DotyposCustomerId,
-  NetworkError,
+  DotyposUnavailable,
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import type { AutomationConditionFilter } from "@deskohub/workspace-admin-api";
@@ -143,7 +143,12 @@ describe.skipIf(!database)("condition units on Postgres", () => {
       dotypos.profilePages += 1;
       const wanted = new Set<string>(ids);
       return dotypos.failing
-        ? Effect.fail(new NetworkError({ message: "Dotypos is down" }))
+        ? Effect.fail(
+            new DotyposUnavailable({
+              operation: "getCustomersPage",
+              reason: "transport",
+            })
+          )
         : Effect.succeed(
             dotypos.profiles.filter(
               ({ id }) => id !== undefined && wanted.has(id)

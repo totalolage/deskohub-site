@@ -1,12 +1,10 @@
 import {
+  type DotyposReadFailure,
   type DotyposReservationId,
   type DotyposReservationInterval,
   DotyposService,
   type DotyposTable,
   type DotyposTableId,
-  type ExternalAPIError,
-  type NetworkError,
-  type ValidationError,
 } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Match } from "effect";
@@ -140,13 +138,11 @@ export interface IWorkspaceTableAssignmentService {
     reservation: WorkspaceTableAssignmentReservation
   ) => Effect.Effect<
     DotyposTableId,
-    | ExternalAPIError
+    | DotyposReadFailure
     | InvalidDotyposTableSeats
-    | NetworkError
     | ReservationIntervalValidationError
     | TableAssignmentUnavailableError
     | TableAssignmentUnconfigured
-    | ValidationError
   >;
 }
 

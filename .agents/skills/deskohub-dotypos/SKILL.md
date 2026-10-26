@@ -37,6 +37,16 @@ If a real response fails generated decoding, fix the OpenAPI schema and regenera
 - Prefer waiting for a slow Dotypos answer over failing the flow. The per-request timeout defaults to `dotyposApiTimeoutDefaultMilliseconds` (30 seconds, `@deskohub/dotypos/api-timeout`), and E2E uses the same value. Any budget that wraps a Dotypos call, such as an E2E finalizer, must leave room for at least one full per-request timeout.
 - A page whose `maxDuration` can't fit the per-request timeout plus retries caps its own Dotypos reads with `Effect.timeoutOrElse` and renders a degraded state. The reservation status page (`maxDuration = 60`) and access page (`maxDuration = 30`) cap theirs at 8 seconds. The cap bounds only the Dotypos reads; later steps, such as Igloohome issuance, can still run past `maxDuration`. Leave the shared default unchanged for these pages.
 
+## Failure outcomes
+
+`@deskohub/dotypos` reports failures as `DotyposUnavailable`, `DotyposRejected`, `DotyposUncertain`, `DotyposVersionConflict` and `DotyposReservationCancelledError`, following the provider-outcome convention in `deskohub-effect-v4` (services-and-layers.md, "Report provider outcomes").
+
+- `getCustomer`, `getReservation` and `patchCustomer` return `Option`: `none` means Dotypos has no such record. A missing reservation at confirm time is `DotyposRejected{not-found}`.
+- Annotate error channels with `DotyposReadFailure`, `DotyposWriteFailure` or `DotyposConditionalWriteFailure`.
+- Log a failure with `dotyposFailureLogFields(failure)` and store `dotyposFailureCode(failure)` as a failure code.
+- The status-to-outcome classifier, the retry ceilings (`src/backend/request-profiles.ts`) and ETag replay stay private to the package. To change how a status or request is treated, edit the classifier or the table and the table-driven test in `src/backend/service.test.ts`. Creation requests retry only `rate-limited` and `empty-response`.
+- In tests, fail a `DotyposServiceMock` operation with the public classes, for example `new DotyposUnavailable({ operation: "getCustomer", reason: "timeout" })`. Return `Option.none()` for a missing record. Never fabricate an HTTP status.
+
 ## Customer records
 
 - Dotypos filters customer `email` only with `email|like|value`, a case-insensitive substring match (`ILIKE '%value%'`). Treat results as candidates and identify a customer only by a whole-address, case-insensitive comparison. Customers whose emails differ only by case are ambiguous; never merge them silently.

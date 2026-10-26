@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { runInNewContext } from "node:vm";
+import { DotyposUnavailable } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
@@ -626,6 +627,31 @@ describe("censorLogValue", () => {
       )
     );
     expect(JSON.stringify(dynamicCensored)).not.toContain(privateValue);
+  });
+
+  test("retains the classification fields of a logged Dotypos outcome", () => {
+    const privateValue = testEmailAddress("private");
+    const failure = new DotyposUnavailable({
+      operation: "getCustomersPage",
+      request: "customers.page",
+      reason: "server",
+      httpStatus: 503,
+      message: privateValue,
+      cause: { email: privateValue },
+    });
+
+    const censored = censorLogValue({ cause: failure });
+
+    expect(censored).toMatchObject({
+      cause: {
+        _tag: "DotyposUnavailable",
+        reason: "server",
+        operation: "getCustomersPage",
+        request: "customers.page",
+        httpStatus: 503,
+      },
+    });
+    expect(JSON.stringify(censored)).not.toContain(privateValue);
   });
 
   test("projects native errors from another realm", () => {

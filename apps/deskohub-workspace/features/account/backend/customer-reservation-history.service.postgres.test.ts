@@ -12,7 +12,7 @@ import {
   DotyposReservationIdSchema,
   DotyposReservationSchema,
   DotyposService,
-  ExternalAPIError,
+  DotyposUnavailable,
 } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -206,10 +206,9 @@ const makeHistoryLayer = (
                 options.customerReads?.push([...ids]);
                 return options.failNames
                   ? Effect.fail(
-                      new ExternalAPIError({
-                        service: "dotypos",
+                      new DotyposUnavailable({
                         operation: "getCustomers",
-                        statusCode: 503,
+                        reason: "server",
                       })
                     )
                   : Effect.succeed(

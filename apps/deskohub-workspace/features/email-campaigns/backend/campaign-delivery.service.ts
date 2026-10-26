@@ -993,9 +993,8 @@ export class CampaignDeliveryService extends Context.Service<
           ),
           // The batch may have been delivered, so it waits for a replay.
           Effect.catchTags({
-            NetworkError: () => incomplete(input.context),
-            ValidationError: () => incomplete(input.context),
-            ExternalAPIError: () => incomplete(input.context),
+            DotyposUnavailable: () => incomplete(input.context),
+            DotyposRejected: () => incomplete(input.context),
             WorkspaceUrlConfigError: () => incomplete(input.context),
           })
         );
@@ -1253,9 +1252,8 @@ export class CampaignDeliveryService extends Context.Service<
           ),
           Effect.catchTags({
             EmailServiceError: (cause) => failUnrequested(input, cause),
-            NetworkError: (cause) => failUnrequested(input, cause),
-            ValidationError: (cause) => failUnrequested(input, cause),
-            ExternalAPIError: (cause) => failUnrequested(input, cause),
+            DotyposUnavailable: (cause) => failUnrequested(input, cause),
+            DotyposRejected: (cause) => failUnrequested(input, cause),
             WorkspaceUrlConfigError: (cause) => failUnrequested(input, cause),
           }),
           Effect.withSpan("CampaignDeliveryService.prepareNextBatch")

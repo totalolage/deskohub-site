@@ -1,10 +1,8 @@
 import {
+  type DotyposReadFailure,
   type DotyposReservationInterval,
   DotyposService,
   type DotyposTable,
-  type ExternalAPIError,
-  type NetworkError,
-  type ValidationError,
 } from "@deskohub/dotypos";
 import type {
   GoogleCalendarError,
@@ -19,11 +17,9 @@ import {
 import type { ReservationRecord } from "./reservation-record";
 
 export type AvailabilityInventoryError =
-  | ExternalAPIError
+  | DotyposReadFailure
   | GoogleCalendarError
-  | NetworkError
-  | SharedSnapshotLoadFailure
-  | ValidationError;
+  | SharedSnapshotLoadFailure;
 
 /** The provider reads that availability is computed from. */
 export interface AvailabilityInventory {

@@ -16,6 +16,8 @@ export const errorClassificationKeys = [
   "errorCode",
   "status",
   "statusCode",
+  "httpStatus",
+  "request",
   "constraint",
 ] as const;
 
