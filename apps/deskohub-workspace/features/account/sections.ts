@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { type Locale, m } from "@/features/i18n";
 
 /**
  * The account's sections in navigation order. Each opens at its own path,
@@ -22,6 +23,22 @@ export type AccountSection = typeof accountSectionSchema.Type;
 export const defaultAccountSection: AccountSection = "reservations";
 
 export const isAccountSection = Schema.is(accountSectionSchema);
+
+/**
+ * A section's name as the navigation, the account shell and the page title
+ * show it.
+ */
+export const accountSectionLabel = (section: AccountSection, locale: Locale) =>
+  ({
+    reservations: m.accountSectionReservations,
+    referrals: m.accountSectionReferrals,
+    profile: m.accountSectionProfile,
+    security: m.accountSectionSecurity,
+    assistants: m.accountSectionAssistants,
+    billing: m.accountSectionBilling,
+    legal: m.accountSectionLegal,
+    danger: m.accountSectionDanger,
+  })[section]({}, { locale });
 
 /**
  * A section the signed-in account page renders at `/account/<section>`.

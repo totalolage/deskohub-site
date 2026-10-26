@@ -11,7 +11,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import {
   type AccountNavigationBadge,
   AccountShell,
@@ -220,8 +219,6 @@ export function AccountLayoutShell({
     return children;
   }
 
-  const copy = getAccountScreenCopy(locale);
-
   return (
     <AccountShell
       activeSection={activeSection}
@@ -233,14 +230,12 @@ export function AccountLayoutShell({
             referralsEnabled,
           })
       )}
-      labels={copy.shell}
+      locale={locale}
       onSectionChange={changeSection}
-      sectionHref={(section) => getAccountSectionPath(locale, section)}
       referralBadge={referralsEnabled ? referralBadge : undefined}
       reservationCount={reservationCount}
       signOut={signedIn ? <SignOutButton locale={locale} /> : null}
       sidebarFooter={<AccountHelp locale={locale} />}
-      title={m.accountTitle({}, { locale })}
     >
       <AccountLayoutContext.Provider value={contextValue}>
         {children}

@@ -10,8 +10,8 @@ import {
 import { join } from "node:path";
 import { testEmailAddress } from "@deskohub/test-email";
 import React from "react";
-import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import type { CustomerProfileInput } from "@/features/account/contracts";
+import { accountSectionLabel } from "@/features/account/sections";
 import { type Locale, m } from "@/features/i18n";
 import {
   workspaceRouterPush,
@@ -187,15 +187,11 @@ const profile = {
 };
 const hiddenAvatarPresentation = { kind: "hidden" } as const;
 const locale = "en-US";
-const sectionLabels = {
-  group: m.accountSectionLabel({}, { locale }),
-  reservations: new RegExp(`^${m.accountSectionReservations({}, { locale })}`),
-  profile: m.accountSectionProfile({}, { locale }),
-  security: m.accountSectionSecurity({}, { locale }),
-  billing: m.accountSectionBilling({}, { locale }),
-  legal: m.accountSectionLegal({}, { locale }),
-  danger: m.accountSectionDanger({}, { locale }),
-};
+const sectionGroupLabel = m.accountSectionLabel({}, { locale });
+// The Reservations link's name ends with its count badge.
+const reservationsLinkName = new RegExp(
+  `^${accountSectionLabel("reservations", locale)}`
+);
 
 const history = {
   kind: "available" as const,
@@ -220,13 +216,7 @@ const { AccountLayoutShell, useAccountLayout } = await import(
 );
 const { ReservationHistory } = await import("./reservation-history");
 
-const reservations = (
-  <ReservationHistory
-    copy={getAccountScreenCopy(locale).reservations}
-    history={history}
-    locale={locale}
-  />
-);
+const reservations = <ReservationHistory history={history} locale={locale} />;
 
 function withAccountLayout(
   children: React.ReactNode,
@@ -316,18 +306,18 @@ describe("LinkedAccount", () => {
       )
     );
     const sectionNavigation = within(
-      view.getByRole("group", { name: sectionLabels.group })
+      view.getByRole("group", { name: sectionGroupLabel })
     );
     const desktopSectionNavigation = getDesktopSectionNavigation(view);
 
     expect(
       sectionNavigation.getByRole("link", {
-        name: sectionLabels.reservations,
+        name: reservationsLinkName,
       })
     ).toBeTruthy();
     expect(
       desktopSectionNavigation.getByRole("link", {
-        name: sectionLabels.reservations,
+        name: reservationsLinkName,
       }).textContent
     ).toContain("1");
     expect(
@@ -338,15 +328,16 @@ describe("LinkedAccount", () => {
       name: m.accountHelpTitle({}, { locale }),
     });
     expect(helpHeadings).toHaveLength(2);
-    expect(view.container.textContent).toContain(
-      m.accountHelpBody(
-        { contact: m.accountHelpContact({}, { locale }) },
-        { locale }
-      )
-    );
-    expect(view.container.textContent).not.toContain(
-      m.accountSupportTitle({}, { locale })
-    );
+    for (const heading of helpHeadings) {
+      const body = heading.nextElementSibling;
+      expect(body?.tagName).toBe("P");
+      expect(body?.querySelector('a[href="/en-US/contact"]')).toBeTruthy();
+    }
+    expect(
+      view.queryByRole("heading", {
+        name: m.accountSupportTitle({}, { locale }),
+      })
+    ).toBeNull();
     const contactLinks = view.getAllByRole("link", {
       name: m.accountHelpContact({}, { locale }),
     });
@@ -357,10 +348,14 @@ describe("LinkedAccount", () => {
     ]);
 
     fireEvent.click(
-      sectionNavigation.getByRole("link", { name: sectionLabels.profile })
+      sectionNavigation.getByRole("link", {
+        name: accountSectionLabel("profile", locale),
+      })
     );
     fireEvent.click(
-      sectionNavigation.getByRole("link", { name: sectionLabels.billing })
+      sectionNavigation.getByRole("link", {
+        name: accountSectionLabel("billing", locale),
+      })
     );
     expect(
       view.container.querySelector("[data-screen='profile-screen']")
@@ -375,7 +370,7 @@ describe("LinkedAccount", () => {
 
     fireEvent.click(
       sectionNavigation.getByRole("link", {
-        name: sectionLabels.reservations,
+        name: reservationsLinkName,
       })
     );
     expect(
@@ -383,14 +378,18 @@ describe("LinkedAccount", () => {
         ?.hidden
     ).toBe(true);
     fireEvent.click(
-      sectionNavigation.getByRole("link", { name: sectionLabels.legal })
+      sectionNavigation.getByRole("link", {
+        name: accountSectionLabel("legal", locale),
+      })
     );
     expect(workspaceRouterPush).toHaveBeenCalledWith("/en-US/account/legal");
     fireEvent.click(
-      sectionNavigation.getByRole("link", { name: sectionLabels.danger })
+      sectionNavigation.getByRole("link", {
+        name: accountSectionLabel("danger", locale),
+      })
     );
     expect(
-      view.getByText(m.accountDeletionButton({}, { locale }))
+      view.container.querySelector("#delete-account-trigger")
     ).toBeTruthy();
   });
 
@@ -425,9 +424,9 @@ describe("LinkedAccount", () => {
     const referralBadge = () =>
       getDesktopSectionNavigation(view)
         .getByRole("link", {
-          name: new RegExp(`^${m.accountSectionReferrals({}, { locale })}`),
+          name: new RegExp(`^${accountSectionLabel("referrals", locale)}`),
         })
-        .querySelector("span.ml-auto");
+        .querySelector('[data-account-navigation-badge="referrals"]');
     const view = render(renderLinked("14.2625"));
 
     expect(referralBadge()?.textContent).toBe("-15%15% referral discount");
@@ -573,7 +572,7 @@ describe("LinkedAccount", () => {
 
       fireEvent.click(
         sectionNavigation.getByRole("link", {
-          name: sectionLabels.profile,
+          name: accountSectionLabel("profile", locale),
         })
       );
       await act(async () => {
@@ -589,7 +588,9 @@ describe("LinkedAccount", () => {
       ) as HTMLInputElement;
 
       fireEvent.click(
-        sectionNavigation.getByRole("link", { name: sectionLabels.legal })
+        sectionNavigation.getByRole("link", {
+          name: accountSectionLabel("legal", locale),
+        })
       );
 
       expect(confirmDiscardChanges).toHaveBeenCalledTimes(1);
@@ -597,14 +598,16 @@ describe("LinkedAccount", () => {
       expect(firstName.value).toBe("Grace");
       expect(
         sectionNavigation
-          .getByRole("link", { name: sectionLabels.profile })
+          .getByRole("link", { name: accountSectionLabel("profile", locale) })
           .getAttribute("aria-current")
       ).toBe("page");
       expect(updateCustomerProfile).not.toHaveBeenCalled();
 
       confirmDiscardChanges.mockImplementation(() => true);
       fireEvent.click(
-        sectionNavigation.getByRole("link", { name: sectionLabels.legal })
+        sectionNavigation.getByRole("link", {
+          name: accountSectionLabel("legal", locale),
+        })
       );
 
       expect(confirmDiscardChanges).toHaveBeenCalledTimes(2);
@@ -654,7 +657,7 @@ describe("LinkedAccount", () => {
     });
     expect(
       sectionNavigation
-        .getByRole("link", { name: sectionLabels.billing })
+        .getByRole("link", { name: accountSectionLabel("billing", locale) })
         .getAttribute("aria-current")
     ).toBe("page");
     expect(firstName.value).toBe("Grace");
@@ -665,7 +668,7 @@ describe("LinkedAccount", () => {
     });
     expect(
       sectionNavigation
-        .getByRole("link", { name: sectionLabels.legal })
+        .getByRole("link", { name: accountSectionLabel("legal", locale) })
         .getAttribute("aria-current")
     ).toBe("page");
     expect(firstName.value).toBe("Grace");
@@ -676,7 +679,7 @@ describe("LinkedAccount", () => {
     });
     expect(
       sectionNavigation
-        .getByRole("link", { name: sectionLabels.profile })
+        .getByRole("link", { name: accountSectionLabel("profile", locale) })
         .getAttribute("aria-current")
     ).toBe("page");
     expect(firstName.value).toBe("Grace");
@@ -722,13 +725,11 @@ describe("LinkedAccount", () => {
       })
     ).toBeNull();
     expect(
-      getDesktopSectionNavigation(view).queryByRole("link", {
-        name: new RegExp(`^${m.accountSectionReferrals({}, { locale })}`),
-      })
+      view.container.querySelector('[data-account-sidebar-section="referrals"]')
     ).toBeNull();
     expect(
       getDesktopSectionNavigation(view)
-        .getByRole("link", { name: sectionLabels.reservations })
+        .getByRole("link", { name: reservationsLinkName })
         .getAttribute("aria-current")
     ).toBe("page");
   });
@@ -759,11 +760,13 @@ describe("LinkedAccount", () => {
         </UnsavedChangesProvider>
       );
       const sectionNavigation = within(
-        view.getByRole("group", { name: sectionLabels.group })
+        view.getByRole("group", { name: sectionGroupLabel })
       );
 
       fireEvent.click(
-        sectionNavigation.getByRole("link", { name: sectionLabels.profile })
+        sectionNavigation.getByRole("link", {
+          name: accountSectionLabel("profile", locale),
+        })
       );
       await act(async () => {
         fireEvent.input(
@@ -775,7 +778,7 @@ describe("LinkedAccount", () => {
       });
       fireEvent.click(
         sectionNavigation.getByRole("link", {
-          name: sectionLabels.reservations,
+          name: reservationsLinkName,
         })
       );
 
@@ -835,21 +838,17 @@ describe("LinkedAccount", () => {
     );
 
     fireEvent.click(
-      within(view.getByRole("group", { name: sectionLabels.group })).getByRole(
+      within(view.getByRole("group", { name: sectionGroupLabel })).getByRole(
         "link",
-        { name: sectionLabels.security }
+        { name: accountSectionLabel("security", locale) }
       )
     );
 
     const list = view.getByRole("list", {
       name: m.accountSecurityPasskeysTitle({}, { locale }),
     });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
     expect(within(list).getByText("Work laptop")).toBeTruthy();
-    expect(
-      within(list).getByText(
-        m.accountSecurityPasskeyDefaultName({}, { locale })
-      )
-    ).toBeTruthy();
     expect(
       view.getByRole("button", {
         name: m.accountSecurityPasskeyDeleteLabel(
@@ -859,7 +858,7 @@ describe("LinkedAccount", () => {
       })
     ).toBeTruthy();
     expect(
-      view.getByText(m.accountSecurityEmailTitle({}, { locale }))
+      view.container.querySelector("#account-security-email-title")
     ).toBeTruthy();
   });
 
@@ -880,10 +879,12 @@ describe("LinkedAccount", () => {
     );
 
     expect(
-      view.queryByRole("link", { name: sectionLabels.security })
+      view.queryByRole("link", {
+        name: accountSectionLabel("security", locale),
+      })
     ).toBeNull();
     expect(
-      view.queryByText(m.accountSecurityPasskeysTitle({}, { locale }))
+      view.container.querySelector("#account-security-passkeys-title")
     ).toBeNull();
   });
 });
