@@ -3261,11 +3261,31 @@ export class AdministrationService extends Context.Service<
       });
 
       /**
+       * Reads the linked bookings that start in the range, in id filter
+       * batches. Listing every Dotypos booking in a range instead costs
+       * hundreds of sequential pages on a busy cloud.
+       */
+      const listLinkedBookings = (
+        ids: readonly DotyposReservationId[],
+        range: AdministrationReservationDateRange
+      ) => {
+        const bounds = getAdministrationReservationDateRangeBounds(range);
+        return readInIdFilterBatches(
+          ids.toSorted(),
+          (batchIds) =>
+            dotypos.listReservations({
+              ids: batchIds,
+              ...bounds,
+              order: "startDateAscending",
+            }),
+          { concurrency: 3 }
+        ).pipe(Effect.map((batches) => batches.flat()));
+      };
+
+      /**
        * Counts every live booking in the activity range that a Workspace
        * reservation links, whatever its Dotypos status or Workspace lifecycle,
-       * as the Overview reservation total does. It reads only the linked
-       * bookings, because the whole year of Dotypos bookings is hundreds of
-       * pages.
+       * as the Overview reservation total does.
        */
       const loadReservationActivity = Effect.fn(
         "AdministrationService.loadReservationActivity"
@@ -3284,21 +3304,10 @@ export class AdministrationService extends Context.Service<
               "AdministrationService.loadReservationActivity.databaseLinkage"
             )
           );
-        const linkedReservationIds = linkedRows.flatMap(({ id }) =>
-          id ? [id] : []
-        );
-        const bounds = getAdministrationReservationDateRangeBounds(range);
-        const reservations = yield* readInIdFilterBatches(
-          linkedReservationIds.toSorted(),
-          (batchIds) =>
-            dotypos.listReservations({
-              ids: batchIds,
-              ...bounds,
-              order: "startDateAscending",
-            }),
-          { concurrency: 3 }
+        const reservations = yield* listLinkedBookings(
+          linkedRows.flatMap(({ id }) => (id ? [id] : [])),
+          range
         ).pipe(
-          Effect.map((batches) => batches.flat()),
           Effect.catch((cause) => {
             unstable_rethrow(cause);
             return Effect.logWarning("Reservation activity unavailable", {
@@ -3347,73 +3356,57 @@ export class AdministrationService extends Context.Service<
           from: ranges.lastSevenDays.from,
           to: ranges.upcoming.to,
         };
-        const reservations = yield* dotypos
-          .listReservations({
-            ...getAdministrationReservationDateRangeBounds(overviewRange),
-            order: "startDateAscending",
+        const linkedRows: readonly AdministrationOverviewRow[] = yield* db
+          .select({
+            id: workspaceReservations.dotyposReservationId,
+            customerId: workspaceReservations.dotyposCustomerId,
+            failureCode: workspaceReservations.failureCode,
+            fulfillmentState: workspaceReservations.fulfillmentState,
+            paymentState: workspaceReservations.paymentState,
+            reservationState: workspaceReservations.reservationState,
           })
+          .from(workspaceReservations)
+          .where(isNotNull(workspaceReservations.dotyposReservationId))
           .pipe(
-            Effect.map((items) => ({
-              kind: "available" as const,
-              items,
-            })),
-            Effect.catch((cause) => {
-              unstable_rethrow(cause);
-              return Effect.logWarning("Reservation overview unavailable", {
-                cause,
-                ...overviewRange,
-              }).pipe(Effect.as({ kind: "unavailable" as const }));
-            }),
-            Effect.tap((result) =>
-              Effect.annotateCurrentSpan({
-                reservationCount:
-                  result.kind === "available" ? result.items.length : 0,
-                unavailable: result.kind === "unavailable",
-              })
+            Effect.tap((rows) =>
+              Effect.annotateCurrentSpan({ linkedRowCount: rows.length })
             ),
             Effect.withSpan(
-              "AdministrationService.loadOverviewSource.reservationProvider"
+              "AdministrationService.loadOverviewSource.databaseLinkage"
             )
           );
-        const reservationIds =
-          reservations.kind === "available"
-            ? reservations.items.flatMap((reservation) => {
-                const id = Option.getOrUndefined(
-                  decodeDotyposReservationId(reservation.id)
-                );
-                return id ? [id] : [];
-              })
-            : [];
-        const rows = yield* Effect.gen(function* () {
-          if (reservationIds.length === 0)
-            return [] as readonly AdministrationOverviewRow[];
-          return yield* db
-            .select({
-              id: workspaceReservations.dotyposReservationId,
-              customerId: workspaceReservations.dotyposCustomerId,
-              failureCode: workspaceReservations.failureCode,
-              fulfillmentState: workspaceReservations.fulfillmentState,
-              paymentState: workspaceReservations.paymentState,
-              reservationState: workspaceReservations.reservationState,
-            })
-            .from(workspaceReservations)
-            .where(
-              inArray(
-                workspaceReservations.dotyposReservationId,
-                reservationIds
-              )
-            );
-        }).pipe(
-          Effect.tap((linkedRows) =>
+        const reservations = yield* listLinkedBookings(
+          linkedRows.flatMap(({ id }) => (id ? [id] : [])),
+          overviewRange
+        ).pipe(
+          Effect.map((items) => ({
+            kind: "available" as const,
+            items,
+          })),
+          Effect.catch((cause) => {
+            unstable_rethrow(cause);
+            return Effect.logWarning("Reservation overview unavailable", {
+              cause,
+              ...overviewRange,
+            }).pipe(Effect.as({ kind: "unavailable" as const }));
+          }),
+          Effect.tap((result) =>
             Effect.annotateCurrentSpan({
-              linkedRowCount: linkedRows.length,
-              linkageQueried: reservationIds.length > 0,
+              reservationCount:
+                result.kind === "available" ? result.items.length : 0,
+              unavailable: result.kind === "unavailable",
             })
           ),
           Effect.withSpan(
-            "AdministrationService.loadOverviewSource.databaseLinkage"
+            "AdministrationService.loadOverviewSource.reservationProvider"
           )
         );
+        const listedIds = new Set(
+          reservations.kind === "available"
+            ? reservations.items.map(({ id }) => id)
+            : []
+        );
+        const rows = linkedRows.filter(({ id }) => id && listedIds.has(id));
         return { currentDate, ranges, reservations, rows };
       });
 
