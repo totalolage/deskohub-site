@@ -1,6 +1,5 @@
 import { expect } from "bun:test";
 import { Effect, type Exit, Logger, Predicate, References } from "effect";
-import type { RecordingWorkspaceDatabase } from "./workspace-recording-database.test-utils";
 
 export interface LoggedDatabaseQuery {
   readonly query: string;
@@ -57,26 +56,6 @@ export const collectDatabaseQueryLogs = <A, E>(
   effect: Effect.Effect<A, E>
 ): Promise<readonly LoggedDatabaseQuery[]> =>
   Effect.runPromise(captureDatabaseQueryLogs(effect));
-
-/**
- * Asserts that each confidential value reached the database as a bound
- * parameter of a logged statement, yet never appears in the query log.
- */
-export const expectQueryLogsToCensor = (input: {
-  readonly recording: Pick<RecordingWorkspaceDatabase, "statements">;
-  readonly logs: readonly LoggedDatabaseQuery[];
-  readonly values: readonly string[];
-}) => {
-  for (const value of input.values) {
-    const statement = input.recording.statements.find(({ params }) =>
-      params.includes(value)
-    );
-    expect(statement).toBeDefined();
-    expect(input.logs.map(({ query }) => query)).toContain(statement!.sql);
-  }
-
-  expectQueryLogsToOmit(input);
-};
 
 /**
  * Asserts that statements were logged and none of them carries a confidential
