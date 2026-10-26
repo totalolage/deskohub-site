@@ -121,7 +121,7 @@ export function AutomationDryRunResults({
         title={m.emailAutomationActivationResultsTitle({}, { locale })}
       >
         <div className="space-y-5">
-          <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <dl className="grid grid-cols-2 gap-4 max-sm:[&>div]:flex max-sm:[&>div]:flex-col max-sm:[&>div]:justify-between sm:grid-cols-3">
             {automationPreviewOutcomes.map((outcome) => (
               <AdministrationFact
                 key={outcome}
@@ -290,7 +290,7 @@ function DryRunRows({
       >
         {rows.map(({ key, row, name, detail, triggeredAt, sendAt }) => (
           <li className="space-y-1.5 py-3 text-sm" key={key}>
-            <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex flex-col items-start gap-1.5">
               <CustomerCell detail={detail} name={name} />
               <OutcomeCell flow={flow} locale={locale} row={row} />
             </div>

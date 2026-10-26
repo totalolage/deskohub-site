@@ -23,7 +23,7 @@
     "effect": "4.0.0-beta.85"
   },
   "peerDependencies": {
-    "next": "^16.4.0",
+    "next": "^16.4.3",
     "next-safe-action": "^8.0.7",
     "react": "^19.2.7"
   },

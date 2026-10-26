@@ -1,22 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { is } from "drizzle-orm";
-import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
-import * as authSchema from "./auth";
-import * as workspaceSchema from "./index";
-
-// Drizzle-kit generates migrations from exactly these two modules.
-const tables = [...Object.values(workspaceSchema), ...Object.values(authSchema)]
-  .filter((value): value is PgTable => is(value, PgTable))
-  .map(getTableConfig);
-
-const columns = tables.flatMap((table) =>
-  table.columns.map((column) => ({
-    id: `${table.schema ?? "public"}.${table.name}.${column.name}`,
-    table: table.name,
-    words: column.name.split("_"),
-    sqlType: column.getSQLType(),
-  }))
-);
+import {
+  containsWordRun,
+  schemaColumns,
+  schemaTables,
+} from "./schema-columns.test-utils";
 
 // Column-name word sequences that indicate customer contact data, billing
 // identity, or raw provider payloads. A fragment matches a whole run of words,
@@ -110,17 +97,9 @@ const allowedColumns = new Map([
   ],
 ]);
 
-const containsWordRun = (
-  words: readonly string[],
-  fragment: readonly string[]
-) =>
-  words.some((_, start) =>
-    fragment.every((word, offset) => words[start + offset] === word)
-  );
-
 describe("database schema no-PII persistence", () => {
   test("has no customer contact, billing, or raw payload columns", () => {
-    const violations = columns
+    const violations = schemaColumns
       .filter(({ words }) =>
         forbiddenColumnFragments.some((fragment) =>
           containsWordRun(words, fragment)
@@ -133,7 +112,7 @@ describe("database schema no-PII persistence", () => {
   });
 
   test("keeps every allowlisted exception backed by a real column", () => {
-    const columnIds = columns.map(({ id }) => id);
+    const columnIds = schemaColumns.map(({ id }) => id);
 
     for (const allowed of allowedColumns.keys()) {
       expect(columnIds).toContain(allowed);
@@ -141,7 +120,7 @@ describe("database schema no-PII persistence", () => {
   });
 
   test("stores confidential accounting documents only as pgcrypto ciphertext", () => {
-    const binaryColumns = columns
+    const binaryColumns = schemaColumns
       .filter(({ sqlType }) => sqlType === "bytea")
       .map(({ id }) => id)
       .toSorted();
@@ -159,14 +138,15 @@ describe("database schema no-PII persistence", () => {
       "invoice_email_deliveries",
       "late_payment_recoveries",
     ]);
-    const structuredColumns = columns
+    const structuredColumns = schemaColumns
       .filter(
-        ({ table, sqlType }) =>
-          payloadFreeTables.has(table) && ["json", "jsonb"].includes(sqlType)
+        ({ tableName, sqlType }) =>
+          payloadFreeTables.has(tableName) &&
+          ["json", "jsonb"].includes(sqlType)
       )
       .map(({ id }) => id);
 
-    expect(tables.map(({ name }) => name)).toEqual(
+    expect(schemaTables.map(({ name }) => name)).toEqual(
       expect.arrayContaining([...payloadFreeTables])
     );
     expect(structuredColumns).toEqual([]);

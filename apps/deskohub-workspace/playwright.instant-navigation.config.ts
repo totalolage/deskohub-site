@@ -42,6 +42,13 @@ export default defineConfig({
         "administrator-setup.pw.ts",
       ],
     },
+    {
+      // Safari and every iOS browser run WebKit, which gets the Temporal
+      // polyfill from the `<head>` loader.
+      name: "webkit",
+      testMatch: "temporal-runtime.pw.ts",
+      use: { browserName: "webkit", launchOptions: {} },
+    },
   ],
   testDir: "./e2e/instant-navigation",
   testMatch: "**/*.pw.ts",

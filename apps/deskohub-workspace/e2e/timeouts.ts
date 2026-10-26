@@ -74,6 +74,9 @@ export const workspaceE2ETimeouts = {
   // Edits, reloads, and restoration checks on one reservation form, with no
   // submission: at most two edit-and-reload rounds or two page selections.
   reservationUrlStateCase: 4 * MINUTE,
+  // How long the Temporal polyfill tests hold the polyfill response, so the
+  // app's own scripts arrive first and have to wait for it.
+  temporalPolyfillResponseDelay: 3 * SECOND,
   uiTransition: 45 * SECOND,
   zeroTotalCheckoutCase: 5 * MINUTE,
 } as const;

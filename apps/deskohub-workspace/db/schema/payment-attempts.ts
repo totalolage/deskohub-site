@@ -15,6 +15,7 @@ import {
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { instant } from "../instant";
+import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
 import { quotedSqlList } from "./sql-list";
 import { workspaceReservations } from "./workspace-reservations";
@@ -66,7 +67,7 @@ export const paymentAttempts = pgTable(
       .references(() => workspaceReservations.id, { onDelete: "cascade" }),
     provider: text("provider").notNull().$type<PaymentProvider>(),
     providerOrderId: text("provider_order_id").$type<NexiOrderId>(),
-    securityToken: text("security_token"),
+    securityToken: sensitiveText("security_token"),
     state: text("state").notNull().$type<PaymentAttemptState>(),
     refundState: text("refund_state")
       .notNull()
@@ -85,7 +86,7 @@ export const paymentAttempts = pgTable(
     amountValue: integer("amount_value").notNull(),
     amountExponent: integer("amount_exponent").notNull(),
     currency: text("currency").notNull(),
-    providerRedirectUrl: text("provider_redirect_url"),
+    providerRedirectUrl: sensitiveText("provider_redirect_url"),
     lastWebhookEventId: text(
       "last_webhook_event_id"
     ).$type<NexiWebhookEventId>(),

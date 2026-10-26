@@ -2,14 +2,15 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
+import { loadGlobalRelease } from "@/features/feature-flags/backend/global-release.server";
 import { isLocale, locales, m } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
-import { loadOfficeGlobalRelease } from "@/features/office/backend/office-reservation-feature-flag.server";
 import {
   getPublicPageTitle,
   publicSiteShareImage,
 } from "@/features/public-pages/page-metadata";
 import { getSharedWorkspaceSummary } from "@/features/public-pages/workspace-summary";
+import { TemporalLoader } from "@/shared/polyfills/temporal-loader";
 import { workspaceSiteOrigin } from "@/shared/utils";
 import "../globals.css";
 
@@ -51,7 +52,7 @@ export async function generateMetadata({
     // the office gate only as decided for everyone.
     description: getSharedWorkspaceSummary({
       locale,
-      officeRelease: await loadOfficeGlobalRelease(),
+      officeRelease: await loadGlobalRelease("office_page"),
     }),
     // Pages that set their own card name the image through the page builder.
     openGraph: { images: [publicSiteShareImage] },
@@ -102,6 +103,9 @@ export default async function LocaleLayout({
       lang={locale}
       className={`${sculpin.variable} ${sculpinItalic.variable}`}
     >
+      <head>
+        <TemporalLoader />
+      </head>
       <body>
         <RouteLocaleProvider locale={locale}>{children}</RouteLocaleProvider>
       </body>

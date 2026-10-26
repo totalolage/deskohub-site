@@ -26,6 +26,14 @@ beforeAll(async () => {
   await writeFile(join(root, "shared.ts"), "export const shared = 1;");
   await writeFile(join(root, "lazy.ts"), 'import "next/headers";');
   await writeFile(
+    join(root, "form.tsx"),
+    'import { save } from "./actions";\nexport const form = save;'
+  );
+  await writeFile(
+    join(root, "actions.ts"),
+    '"use server";\nimport { shared } from "./shared";\nexport const save = async () => shared;'
+  );
+  await writeFile(
     join(root, "nested", "view.tsx"),
     'import { useState } from "react";\nexport const view = useState;'
   );
@@ -46,5 +54,23 @@ describe("runtimeImportGraph", () => {
       "shared.ts",
     ]);
     expect(graph.packages).toEqual(["effect", "next/headers", "react"]);
+  });
+
+  test("joins the graphs of several entries", async () => {
+    const graph = await runtimeImportGraph(
+      [join(root, "lazy.ts"), join(root, "shared.ts")],
+      root
+    );
+
+    expect(graph.modules).toEqual(["lazy.ts", "shared.ts"]);
+    expect(graph.packages).toEqual(["next/headers"]);
+  });
+
+  test("neither loads nor follows a module it only references", async () => {
+    const graph = await runtimeImportGraph(join(root, "form.tsx"), root, {
+      isReference: (sourceText) => sourceText.startsWith('"use server"'),
+    });
+
+    expect(graph.modules).toEqual(["form.tsx"]);
   });
 });

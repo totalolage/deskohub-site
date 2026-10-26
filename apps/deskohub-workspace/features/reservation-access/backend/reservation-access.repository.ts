@@ -10,7 +10,6 @@ import { Context, Crypto, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { reservationAccessGrants } from "@/db/schema";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import {
   makeReservationAccessName,
   type ReservationAccessGrant,
@@ -282,7 +281,7 @@ export class ReservationAccessRepository extends Context.Service<
               .set({
                 state: "issued",
                 providerCredentialId: input.pinId,
-                accessCode: sensitiveDatabaseParameter(input.accessCode),
+                accessCode: input.accessCode,
                 issuedAt: input.issuedAt,
                 failedAt: null,
                 failureCode: null,

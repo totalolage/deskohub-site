@@ -272,12 +272,30 @@ export function AdministrationBreadcrumbs({
       aria-label={m.shellBreadcrumbLabel({}, { locale })}
       className="min-w-0"
     >
-      <ol className="flex min-w-0 items-center gap-1.5 text-sm text-navy-blue/65">
+      {/* Below lg the trail has its own row, so it wraps instead of
+          truncating every label; a phone drops the Overview root, which the
+          brand already links to. */}
+      <ol className="flex min-w-0 items-center gap-1.5 text-sm text-navy-blue/65 max-lg:flex-wrap max-lg:gap-y-1">
         {crumbs.map((crumb, index) => {
           const last = index === crumbs.length - 1;
+          const phoneRoot = index === 0 && !last;
           return (
-            <li className="flex min-w-0 items-center gap-1.5" key={crumb.href}>
-              {index > 0 && <ChevronRight aria-hidden className="size-3.5" />}
+            <li
+              className={cn(
+                "flex min-w-0 items-center gap-1.5 max-lg:max-w-full",
+                phoneRoot && "max-sm:hidden"
+              )}
+              key={crumb.href}
+            >
+              {index > 0 && (
+                <ChevronRight
+                  aria-hidden
+                  className={cn(
+                    "size-3.5 max-lg:shrink-0",
+                    index === 1 && "max-sm:hidden"
+                  )}
+                />
+              )}
               {last ? (
                 <span className="truncate font-semibold text-navy-blue">
                   {crumb.label}

@@ -1,10 +1,18 @@
 /**
+ * In the browser, the `<head>` loader (`temporal-loader.browser.ts`) installs
+ * the polyfill wherever Temporal is missing or incomplete, before any app
+ * module evaluates, and the browser entry asserts it did
+ * (`temporal-installed.ts`). Client code never loads the installer or the
+ * polyfill package, which would ship the polyfill to every browser.
+ *
  * `instrumentation.ts` installs the Temporal polyfill for the running server,
  * but Next loads route modules without it while it collects page data at
- * build time. A module that reads `Temporal` while it loads (a top-level
- * const, a static class field, an immediately invoked function) must import
- * `@/shared/polyfills/temporal` itself, or bind `Temporal` from
+ * build time. A server module that reads `Temporal` while it loads (a
+ * top-level const, a static class field, an immediately invoked function)
+ * must import `@/shared/polyfills/temporal` itself, or bind `Temporal` from
  * `@js-temporal/polyfill`, so the build never sees `Temporal is not defined`.
+ * A module that client code loads can do neither, so it reads `Temporal` only
+ * after it loads.
  *
  * Reads through `globalThis`, `window`, `self`, or `global` count as well.
  * Bun ships Temporal, so `*.test.*` modules are exempt. Uses inside function
@@ -14,13 +22,29 @@
  * function that reads `Temporal`.
  */
 import { describe, expect, test } from "bun:test";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import ts from "typescript";
 import { commandOutput } from "@/scripts/shared/command";
+import { runtimeImportGraph } from "@/shared/testing/runtime-import-graph.test-utils";
 
 const appRoot = resolve(import.meta.dir, "../..");
 const polyfillModule = resolve(appRoot, "shared/polyfills/temporal");
 const polyfillInstaller = `${polyfillModule}.ts`;
+const temporalInstalledAssertion = "shared/polyfills/temporal-installed.ts";
+/** The modules that install Temporal or check it, so read it while loading. */
+const temporalRuntimeModules = new Set(
+  [
+    polyfillInstaller,
+    "shared/polyfills/temporal-loader.browser.ts",
+    temporalInstalledAssertion,
+  ].map((path) => resolve(appRoot, path))
+);
+const clientEntry = "instrumentation-client.ts";
+/** Whether the module starts with the directive, after any comments. */
+const hasDirective = (directive: string, sourceText: string) =>
+  new RegExp(
+    String.raw`^(?:\s|//[^\n]*|/\*[\s\S]*?\*/)*["']${directive}["']`
+  ).test(sourceText);
 
 const scannedModule = /(?<!\.d)\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 const testModule = /\.test\.[cm]?[jt]sx?$/;
@@ -33,9 +57,8 @@ const resolveAppModule = (path: string, specifier: string) => {
   return undefined;
 };
 
-/** Whether the module is the polyfill installer or imports it for effect. */
+/** Whether the module imports the polyfill installer for effect. */
 const loadsPolyfill = (path: string, source: ts.SourceFile) =>
-  resolve(appRoot, path) === polyfillInstaller ||
   source.statements.some((statement) => {
     if (
       !ts.isImportDeclaration(statement) ||
@@ -234,16 +257,23 @@ const bindsLocally = (source: ts.SourceFile) => {
 /** 1-based `line:column` of each load-time `Temporal` reference. */
 const findLoadTimeTemporalReads = (
   path: string,
-  sourceText: string
+  sourceText: string,
+  {
+    loadedByClient = false,
+  }: {
+    /** Client code loads the module, so the installer can't cover its reads. */
+    readonly loadedByClient?: boolean;
+  } = {}
 ): string[] => {
   if (!sourceText.includes("Temporal")) return [];
+  if (temporalRuntimeModules.has(resolve(appRoot, path))) return [];
   const source = ts.createSourceFile(
     path,
     sourceText,
     ts.ScriptTarget.Latest,
     true
   );
-  if (loadsPolyfill(path, source)) return [];
+  if (!loadedByClient && loadsPolyfill(path, source)) return [];
   const references: ts.Node[] = [];
   const visit = (node: ts.Node): void => {
     const reference = temporalReference(node);
@@ -419,10 +449,12 @@ describe("load-time Temporal reads", () => {
 
   const globalRead = "const now = Temporal.Now.instant();";
 
-  test("exempts only the polyfill installer itself", () => {
-    expect(
-      findLoadTimeTemporalReads("shared/polyfills/temporal.ts", globalRead)
-    ).toEqual([]);
+  test.each([
+    "shared/polyfills/temporal.ts",
+    "shared/polyfills/temporal-loader.browser.ts",
+    "shared/polyfills/temporal-installed.ts",
+  ])("exempts the Temporal runtime module %s", (path) => {
+    expect(findLoadTimeTemporalReads(path, globalRead)).toEqual([]);
   });
 
   test.each(["shared/polyfills/temporal.tsx", "shared/polyfills/temporal.mts"])(
@@ -432,24 +464,102 @@ describe("load-time Temporal reads", () => {
     }
   );
 
-  test("every Workspace module that reads Temporal while loading imports the polyfill", async () => {
-    const listing = await commandOutput(
-      ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-      { cwd: appRoot }
-    );
-    const paths = listing
-      .split("\0")
-      .filter((path) => scannedModule.test(path) && !testModule.test(path));
+  test("doesn't let a module client code loads rely on the installer", () => {
+    expect(
+      findLoadTimeTemporalReads(
+        "features/example/example.ts",
+        `import "@/shared/polyfills/temporal";\n${globalRead}`,
+        { loadedByClient: true }
+      )
+    ).not.toEqual([]);
+  });
+});
 
+const listing = await commandOutput(
+  ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+  { cwd: appRoot }
+);
+const paths = listing
+  .split("\0")
+  .filter((path) => scannedModule.test(path) && !testModule.test(path));
+const sources = new Map(
+  await Promise.all(
+    paths.map(
+      async (path) =>
+        [path, await Bun.file(resolve(appRoot, path)).text()] as const
+    )
+  )
+);
+
+// Everything the browser bundles: the client entry and each client module.
+// Client code calls Server Action modules by reference, not bundling them.
+const clientGraph = await runtimeImportGraph(
+  [
+    clientEntry,
+    ...paths.filter((path) =>
+      hasDirective("use client", sources.get(path) ?? "")
+    ),
+  ].map((path) => resolve(appRoot, path)),
+  appRoot,
+  { isReference: (sourceText) => hasDirective("use server", sourceText) }
+);
+const clientModules = new Set(clientGraph.modules);
+/** Workspace package modules the browser bundles, which `sources` lacks. */
+const clientPackageSources = new Map(
+  await Promise.all(
+    clientGraph.modules
+      .filter((path) => !sources.has(path) && scannedModule.test(path))
+      .map(
+        async (path) =>
+          [path, await Bun.file(resolve(appRoot, path)).text()] as const
+      )
+  )
+);
+// `@deskohub/workspace-admin-api` binds the polyfill for its command-line
+// consumers, so administration screens that import it bundle that binding.
+const polyfillBindings = new Set([
+  "../../packages/workspace-admin-api/src/calendar-date.ts",
+  "../../packages/workspace-admin-api/src/workspace-admin-api.ts",
+]);
+
+describe("Workspace Temporal runtime", () => {
+  test("the browser entry asserts the Temporal the <head> loader installs", async () => {
+    const entry = await runtimeImportGraph(
+      resolve(appRoot, clientEntry),
+      appRoot
+    );
+
+    expect(entry.modules).toContain(temporalInstalledAssertion);
+  });
+
+  test("client code never bundles the Temporal polyfill", () => {
+    const importsPolyfillPackage = /["']@js-temporal\/polyfill["']/;
+
+    expect(clientGraph.modules.length).toBeGreaterThan(1);
+    expect(clientGraph.modules).not.toContain(
+      relative(appRoot, polyfillInstaller)
+    );
+    expect(
+      clientGraph.modules.filter(
+        (path) =>
+          !polyfillBindings.has(path) &&
+          importsPolyfillPackage.test(
+            sources.get(path) ?? clientPackageSources.get(path) ?? ""
+          )
+      )
+    ).toEqual([]);
+  });
+
+  test("every Workspace module that reads Temporal while loading has it installed", () => {
     const findings: string[] = [];
-    for (const path of paths) {
-      const sourceText = await Bun.file(resolve(appRoot, path)).text();
-      for (const position of findLoadTimeTemporalReads(path, sourceText)) {
-        findings.push(`${path}:${position}`);
-      }
+    for (const [path, sourceText] of [...sources, ...clientPackageSources]) {
+      const reads = findLoadTimeTemporalReads(path, sourceText, {
+        loadedByClient: clientModules.has(path),
+      });
+      for (const position of reads) findings.push(`${path}:${position}`);
     }
 
-    expect(paths.length).toBeGreaterThan(0);
+    expect(sources.size).toBeGreaterThan(0);
     expect(findings).toEqual([]);
   });
 });

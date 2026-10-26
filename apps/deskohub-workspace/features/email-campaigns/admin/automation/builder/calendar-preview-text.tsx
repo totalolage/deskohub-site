@@ -44,7 +44,7 @@ export function CalendarNextStarts({
         <p className="font-semibold uppercase tracking-[0.1em]">
           {m.emailAutomationFlowCalendarNextFires({}, { locale })}
         </p>
-        <ol className="mt-1 flex flex-wrap gap-x-3 gap-y-1 tabular-nums">
+        <ol className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 tabular-nums @md:flex @md:flex-wrap">
           {preview.nextStarts.map((start) => (
             <li key={start}>{start}</li>
           ))}

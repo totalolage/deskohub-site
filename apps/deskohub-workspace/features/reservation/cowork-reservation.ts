@@ -1,5 +1,3 @@
-import "@/shared/polyfills/temporal";
-
 import { Match, Schema, SchemaGetter } from "effect";
 import type { WorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
@@ -47,9 +45,12 @@ const decodeLocalDateTime = Schema.decodeUnknownSync(localDateTimeSchema);
 const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
 const decodeInstant = Schema.decodeSync(instantStringSchema);
 
-const openSpaceExclusiveEndHour = Temporal.PlainTime.from(
-  workspaceSiteConstants.openingHours.openSpaceUsableUntil
-).hour;
+// Read on call, not at load: the server build loads this module without the
+// polyfill, and client code must not bundle the installer.
+const getOpenSpaceExclusiveEndHour = () =>
+  Temporal.PlainTime.from(
+    workspaceSiteConstants.openingHours.openSpaceUsableUntil
+  ).hour;
 
 /**
  * Shared tier-aware cowork interval constructor used by availability,
@@ -91,7 +92,9 @@ const getCoworkLocalInterval = (
   if (tier === "open-space") {
     return {
       startsAt: decodeLocalDateTime(`${date}T00:00`),
-      endsAt: decodeLocalDateTime(`${date}T${openSpaceExclusiveEndHour}:00`),
+      endsAt: decodeLocalDateTime(
+        `${date}T${getOpenSpaceExclusiveEndHour()}:00`
+      ),
     };
   }
 
@@ -131,7 +134,7 @@ export const isCoworkOpenSpaceDayCutoffReached = (input: {
   const cutoff = today
     .toZonedDateTime(workspaceSiteConstants.location.timeZone)
     .with({
-      hour: openSpaceExclusiveEndHour,
+      hour: getOpenSpaceExclusiveEndHour(),
       minute: 0,
       second: 0,
       millisecond: 0,

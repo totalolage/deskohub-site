@@ -42,6 +42,7 @@ import inlangSettings from "../../project.inlang/settings.json" with {
   type: "json",
 };
 import { instant } from "../instant";
+import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
 import { emailCampaignAutomationVersions } from "./email-campaign-automations";
 import { quotedSqlList } from "./sql-list";
@@ -296,7 +297,7 @@ export const emailCampaignConfirmationCodes = pgTable(
       .references(() => emailCampaigns.id, { onDelete: "cascade" })
       .$type<CampaignId>(),
     // A keyed hash of the code; the plaintext exists only in the test email.
-    codeHash: text("code_hash").notNull(),
+    codeHash: sensitiveText("code_hash").notNull(),
     contentHash: text("content_hash").notNull().$type<CampaignContentHash>(),
     issuedAt: instant("issued_at").notNull(),
     expiresAt: instant("expires_at").notNull(),
