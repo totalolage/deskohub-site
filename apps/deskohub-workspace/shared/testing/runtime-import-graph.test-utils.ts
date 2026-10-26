@@ -39,27 +39,40 @@ export type RuntimeImportGraph = {
 };
 
 /**
- * Every module that loading `entry` loads at runtime. Imports that resolve to
- * repository source, workspace packages included, are followed; installed
- * packages are listed. Type-only imports drop out when the source is
- * transpiled, so they never count.
+ * Every module that loading `entry`, or each of several entries, loads at
+ * runtime. Imports that resolve to repository source, workspace packages
+ * included, are followed; installed packages are listed. Type-only imports
+ * drop out when the source is transpiled, so they never count. A module
+ * whose source `isReference` matches, such as a Server Action module a client
+ * bundle calls by reference, is neither loaded nor followed.
  */
 export const runtimeImportGraph = async (
-  entry: string,
-  root: string
+  entry: string | readonly string[],
+  root: string,
+  {
+    isReference = () => false,
+  }: { readonly isReference?: (sourceText: string) => boolean } = {}
 ): Promise<RuntimeImportGraph> => {
+  const visited = new Set<string>();
   const modules = new Set<string>();
   const packages = new Set<string>();
-  const pending = [entry];
+  const pending = [entry].flat();
 
   for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
-    if (modules.has(file)) continue;
-    modules.add(file);
+    if (visited.has(file)) continue;
+    visited.add(file);
 
     const transpiler = transpilers[extname(file)];
-    if (transpiler === undefined) continue;
+    if (transpiler === undefined) {
+      modules.add(file);
+      continue;
+    }
 
-    const { imports } = transpiler.scan(await readFile(file, "utf8"));
+    const sourceText = await readFile(file, "utf8");
+    if (isReference(sourceText)) continue;
+    modules.add(file);
+
+    const { imports } = transpiler.scan(sourceText);
     for (const { path: specifier } of imports) {
       const resolved = resolveImport(specifier, file);
       if (resolved !== undefined && isSourceModule(resolved)) {
