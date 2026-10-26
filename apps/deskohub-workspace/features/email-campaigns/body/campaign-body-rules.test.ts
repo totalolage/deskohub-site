@@ -207,7 +207,7 @@ describe("campaignButtonLabelIssue", () => {
 describe("isCampaignLinkHref", () => {
   test.each<[string | null, boolean]>([
     ["https://deskohub.cz", true],
-    ["mailto:team@example.test", true],
+    [`mailto:${testEmailAddress("team")}`, true],
     ["http://deskohub.cz", false],
     ["javascript:alert(1)", false],
     ["deskohub.cz", false],
