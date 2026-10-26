@@ -24,6 +24,10 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import {
+  captureAnalyticsEvent,
+  discardAnalyticsEvents,
+} from "../analytics-events";
+import {
   CONSENT_UPDATED_EVENT,
   CONSENT_UPDATED_STORAGE_KEY,
 } from "../utils/consent-event";
@@ -229,6 +233,21 @@ const posthog = {
 };
 
 mock.module("posthog-js", () => ({ default: posthog }));
+
+const preloadableModule = await import("@/shared/utils/preloadable-module");
+const { createPreloadableModule, useLoadedModule, usePreloadWhenIdle } =
+  preloadableModule;
+let failNextSdkLoad = false;
+mock.module("@/shared/utils/preloadable-module", () => ({
+  createPreloadableModule: <Module,>(importModule: () => Promise<Module>) =>
+    createPreloadableModule(() => {
+      if (!failNextSdkLoad) return importModule();
+      failNextSdkLoad = false;
+      return Promise.reject(new Error("synthetic chunk load failure"));
+    }),
+  useLoadedModule,
+  usePreloadWhenIdle,
+}));
 
 let pathname = "/account";
 mock.module("next/navigation", () => ({
@@ -1246,6 +1265,209 @@ describe("PostHogAnalytics", () => {
     expect(JSON.stringify(captureLog.mock.calls)).not.toContain(
       "synthetic-token"
     );
+
+    view.unmount();
+  });
+
+  test("keeps consented events captured before the consent state hydrates", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?consent-hydration"
+    );
+    const AnalyticsBoundary = ({
+      analyticsAccepted,
+    }: {
+      readonly analyticsAccepted: boolean;
+    }) => (
+      <PostHogProvider>
+        <PostHogAnalytics
+          analyticsAccepted={analyticsAccepted}
+          posthogEnvironment="preview"
+        />
+      </PostHogProvider>
+    );
+
+    discardAnalyticsEvents();
+    setConsentCookie(["necessary", "analytics"]);
+    captureAnalyticsEvent("before hydration");
+    const view = render(<AnalyticsBoundary analyticsAccepted={false} />);
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    await act(async () => {
+      view.rerender(<AnalyticsBoundary analyticsAccepted />);
+    });
+
+    expect(capturedEvents.map(({ event }) => event)).toContain(
+      "before hydration"
+    );
+
+    view.unmount();
+  });
+
+  test("retries a failed SDK load when the tab regains focus", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?sdk-load-retry"
+    );
+
+    discardAnalyticsEvents();
+    setConsentCookie(["necessary", "analytics"]);
+    failNextSdkLoad = true;
+    const view = render(
+      <PostHogProvider>
+        <PostHogAnalytics analyticsAccepted posthogEnvironment="preview" />
+      </PostHogProvider>
+    );
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    captureAnalyticsEvent("while the SDK failed to load");
+    expect(init).not.toHaveBeenCalled();
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    expect(init).toHaveBeenCalledTimes(1);
+    expect(capturedEvents.map(({ event }) => event)).toContain(
+      "while the SDK failed to load"
+    );
+
+    view.unmount();
+  });
+
+  test("drops events held from an account that is left before the SDK loads", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?account-change-before-load"
+    );
+
+    discardAnalyticsEvents();
+    setConsentCookie(["necessary", "analytics"]);
+    const view = render(
+      <PostHogProvider>
+        <PostHogAnalytics analyticsAccepted posthogEnvironment="preview" />
+      </PostHogProvider>
+    );
+    publishAnalyticsAccountIdentity({
+      accountId: "account-a",
+      status: "authenticated",
+    });
+    captureAnalyticsEvent("from account a");
+    publishAnalyticsAccountIdentity({ status: "pending" });
+    publishAnalyticsAccountIdentity({ status: "anonymous" });
+    captureAnalyticsEvent("after leaving account a");
+    expect(init).not.toHaveBeenCalled();
+
+    await act(async () => undefined);
+
+    expect(init).toHaveBeenCalledTimes(1);
+    const eventNames = capturedEvents.map(({ event }) => event);
+    expect(eventNames).not.toContain("from account a");
+    expect(eventNames).toContain("after leaving account a");
+
+    view.unmount();
+  });
+
+  test("sends events captured before the SDK loads once analytics is ready", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?analytics-events"
+    );
+    const AnalyticsBoundary = ({
+      analyticsAccepted,
+    }: {
+      readonly analyticsAccepted: boolean;
+    }) => (
+      <PostHogProvider>
+        <PostHogAnalytics
+          analyticsAccepted={analyticsAccepted}
+          posthogEnvironment="preview"
+        />
+      </PostHogProvider>
+    );
+    const capturedEventNames = () =>
+      capturedEvents
+        .map(({ event }) => event)
+        .filter((event) => event !== "$identify" && event !== "$set");
+
+    discardAnalyticsEvents();
+    setConsentCookie(["necessary"]);
+    const view = render(<AnalyticsBoundary analyticsAccepted={false} />);
+    captureAnalyticsEvent("without consent");
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    expect(init).not.toHaveBeenCalled();
+
+    setConsentCookie(["necessary", "analytics"]);
+    captureAnalyticsEvent("before load", { step: 1 });
+    captureAnalyticsEvent("before load", { step: 2 });
+    expect(init).not.toHaveBeenCalled();
+
+    await act(async () => {
+      view.rerender(<AnalyticsBoundary analyticsAccepted />);
+    });
+    expect(init).toHaveBeenCalledTimes(1);
+    expect(capturedEventNames()).toEqual([
+      "$pageview",
+      "before load",
+      "before load",
+    ]);
+    expect(
+      capturedEvents
+        .filter(({ event }) => event === "before load")
+        .map(({ properties }) => properties.step)
+    ).toEqual([1, 2]);
+
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "pending" });
+    });
+    captureAnalyticsEvent("while paused");
+    expect(capturedEventNames()).not.toContain("while paused");
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    expect(capturedEventNames().at(-1)).toBe("while paused");
+
+    await act(async () => {
+      publishAnalyticsAccountIdentity({
+        accountId: "account-a",
+        status: "authenticated",
+      });
+    });
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "pending" });
+    });
+    captureAnalyticsEvent("while leaving account a");
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    expect(capturedEventNames()).not.toContain("while leaving account a");
+
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "pending" });
+    });
+    captureAnalyticsEvent("before withdrawal");
+    setConsentCookie(["necessary"]);
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: CONSENT_UPDATED_STORAGE_KEY,
+        newValue: "synthetic-withdrawal-nonce",
+      })
+    );
+    captureAnalyticsEvent("after withdrawal");
+    setConsentCookie(["necessary", "analytics"]);
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: CONSENT_UPDATED_STORAGE_KEY,
+        newValue: "synthetic-reconsent-nonce",
+      })
+    );
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+
+    expect(capturedEventNames()).not.toContain("without consent");
+    expect(capturedEventNames()).not.toContain("before withdrawal");
+    expect(capturedEventNames()).not.toContain("after withdrawal");
 
     view.unmount();
   });

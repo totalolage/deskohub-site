@@ -102,6 +102,7 @@ test("leaves locale, API, build asset and undotted paths to their routes", async
     "/_next/static/chunks/main.js",
     "/_vercel/insights/script.js",
     "/page-markdown/cs-CZ/faq.md",
+    "/workspace-location-map/wide.webp",
     "/nope",
   ]) {
     expect(await resolveRewrite(path)).toBeNull();
