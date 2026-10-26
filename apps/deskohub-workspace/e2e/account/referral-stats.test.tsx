@@ -1,6 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
-import { getAccountSectionPath } from "@/features/account/routes";
 import { m } from "@/features/i18n";
 import {
   formatReferralDiscount,
@@ -11,7 +10,6 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { accountSectionLabels } from "./account-sections";
 import { referralStatsCondition } from "./referral-stats";
 
 // Radix resolves its layout-effect hook on import, so load the components
@@ -44,13 +42,8 @@ const renderReferrals = (input: {
   render(
     <AccountShell
       activeSection="referrals"
-      labels={{
-        mobileSection: "Account section",
-        navigation: "Account navigation",
-        sections: accountSectionLabels,
-      }}
+      locale={locale}
       onSectionChange={() => {}}
-      sectionHref={(section) => getAccountSectionPath(locale, section)}
       referralBadge={
         input.discount === "0"
           ? undefined
@@ -63,7 +56,6 @@ const renderReferrals = (input: {
             }
       }
       signOut={null}
-      title="My Workspace"
     >
       <ReferralScreen
         locale={locale}

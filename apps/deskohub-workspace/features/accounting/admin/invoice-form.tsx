@@ -192,6 +192,9 @@ export function InvoiceCreationForm({
 }) {
   const router = useRouter();
   const locale = useRouteLocale();
+  // A currency outside the offered list accepts whole units only.
+  const getCurrencyExponent = (code: string) =>
+    currencies.find((option) => option.code === code)?.exponent ?? 0;
   const draftRef = useRef<{
     readonly fingerprint: string;
     readonly invoiceId: string;
@@ -374,10 +377,12 @@ export function InvoiceCreationForm({
     setPreviewError(null);
     setPreviewUrl(null);
     setReview(nextReview);
-    const exponent =
-      currencies.find(({ code }) => code === nextReview.currency)?.exponent ??
-      0;
-    if (getInvoiceReviewTotal(nextReview.lines, exponent) !== null) {
+    if (
+      getInvoiceReviewTotal(
+        nextReview.lines,
+        getCurrencyExponent(nextReview.currency)
+      ) !== null
+    ) {
       preview({
         ...nextReview,
         variableSymbol: nextReview.variableSymbol ?? suggestedVariableSymbol,
@@ -394,13 +399,9 @@ export function InvoiceCreationForm({
     search({ query: normalizedQuery });
   };
 
-  const currencyExponent =
-    currencies.find(({ code }) => code === currency)?.exponent ?? 0;
-  const reviewCurrencyExponent = review
-    ? (currencies.find(({ code }) => code === review.currency)?.exponent ?? 0)
-    : 0;
+  const currencyExponent = getCurrencyExponent(currency);
   const reviewTotal = review
-    ? getInvoiceReviewTotal(review.lines, reviewCurrencyExponent)
+    ? getInvoiceReviewTotal(review.lines, getCurrencyExponent(review.currency))
     : null;
 
   return (

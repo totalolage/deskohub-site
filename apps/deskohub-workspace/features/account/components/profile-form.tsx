@@ -19,7 +19,6 @@ import {
 import { refreshAnalyticsDotyposCustomerId } from "@/features/account/analytics-customer-link";
 import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
 import type { CustomerProfileBilling } from "@/features/account/backend/customer-dotypos-adapter.service";
-import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { BillingScreen } from "@/features/account/components/billing/billing-screen";
 import { AvatarControl } from "@/features/account/components/profile/avatar-control";
 import { ProfileScreen } from "@/features/account/components/profile/profile-screen";
@@ -143,7 +142,6 @@ export function ProfileForm({
 
   const isComplete = mode === "complete";
   const isInitialCompletion = isComplete && !hasCompletedInitialProfile;
-  const screenCopy = getAccountScreenCopy(locale);
 
   const form = useForm<ProfileFormValues>({
     resolver: createProfileFormResolver(locale),
@@ -983,7 +981,6 @@ export function ProfileForm({
                       />
                     ) : undefined
                   }
-                  copy={screenCopy.profile}
                   email={email}
                   firstName={savedIdentity.firstName}
                   footer={section === "profile" ? formFooter : undefined}
@@ -995,7 +992,6 @@ export function ProfileForm({
               </div>
               <div hidden={section !== "billing"}>
                 <BillingScreen
-                  copy={screenCopy.billing}
                   footer={section === "billing" ? formFooter : undefined}
                   locale={locale}
                 >

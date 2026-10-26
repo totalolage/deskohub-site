@@ -12,6 +12,13 @@ const selectWorkspaceTableFromCandidates = (
   ...args: Parameters<typeof selectWorkspaceTableFromCandidatesEffect>
 ) => Effect.runSync(selectWorkspaceTableFromCandidatesEffect(...args));
 
+const selectionFailure = (
+  ...args: Parameters<typeof selectWorkspaceTableFromCandidatesEffect>
+) =>
+  Effect.runSync(
+    Effect.flip(selectWorkspaceTableFromCandidatesEffect(...args))
+  );
+
 const makeTable = (input: {
   readonly id: string;
   readonly name: string;
@@ -151,16 +158,13 @@ describe("selectWorkspaceTableFromCandidates", () => {
       const invalid = makeTable({ id: label, name: "1", seats });
       const valid = makeTable({ id: `valid-${label}`, name: "2" });
 
-      expect(() =>
-        selectWorkspaceTableFromCandidates([invalid], [invalid], new Map())
-      ).toThrow("invalid seat capacity");
-      expect(() =>
-        selectWorkspaceTableFromCandidates(
-          [invalid, valid],
-          [invalid, valid],
-          new Map()
-        )
-      ).toThrow("invalid seat capacity");
+      expect(selectionFailure([invalid], [invalid], new Map())).toMatchObject({
+        _tag: "InvalidDotyposTableSeats",
+        tableId: label,
+      });
+      expect(
+        selectionFailure([invalid, valid], [invalid, valid], new Map())
+      ).toMatchObject({ _tag: "InvalidDotyposTableSeats", tableId: label });
     }
   });
 

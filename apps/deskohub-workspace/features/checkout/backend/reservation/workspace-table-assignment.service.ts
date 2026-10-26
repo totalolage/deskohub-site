@@ -6,7 +6,7 @@ import {
   type DotyposTableId,
   type ExternalAPIError,
   type NetworkError,
-  ValidationError,
+  type ValidationError,
 } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Match } from "effect";
@@ -27,6 +27,7 @@ import {
   getReservationIntervalNormalization,
   type ReservationInterval,
 } from "@/features/reservation/reservation-interval";
+import { ReservationIntervalValidationError } from "@/features/reservation/reservation-interval-domain";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { getAssignableDotyposTableId } from "./dotypos-table-id";
 import {
@@ -38,6 +39,7 @@ import {
 import {
   getWorkspaceTableCandidatesByPredicate,
   getWorkspaceTableSeatCapacity,
+  type InvalidDotyposTableSeats,
   isWorkspaceCoworkTableCandidate,
   selectWorkspaceTableFromCandidates,
   workspaceCoworkOpenSpaceTableTag,
@@ -114,6 +116,17 @@ export const getWorkspaceReservationInterval = (
     )
   );
 
+/**
+ * No active, visible Dotypos table carries the tags a reservation needs, so
+ * Workspace's table configuration can't serve it at all.
+ */
+export class TableAssignmentUnconfigured extends Data.TaggedError(
+  "TableAssignmentUnconfigured"
+)<{
+  readonly requiredTags: readonly string[];
+  readonly message: string;
+}> {}
+
 /** Every matching table is already occupied for the reservation interval. */
 export class TableAssignmentUnavailableError extends Data.TaggedError(
   "TableAssignmentUnavailableError"
@@ -128,8 +141,11 @@ export interface IWorkspaceTableAssignmentService {
   ) => Effect.Effect<
     DotyposTableId,
     | ExternalAPIError
+    | InvalidDotyposTableSeats
     | NetworkError
+    | ReservationIntervalValidationError
     | TableAssignmentUnavailableError
+    | TableAssignmentUnconfigured
     | ValidationError
   >;
 }
@@ -315,7 +331,10 @@ const getReservationAssignment = (
 
 const getReservationOccupancyInput = (
   reservation: WorkspaceTableAssignmentReservation
-): Effect.Effect<Temporal.PlainDate | ReservationInterval, ValidationError> =>
+): Effect.Effect<
+  Temporal.PlainDate | ReservationInterval,
+  ReservationIntervalValidationError
+> =>
   Match.value(reservation).pipe(
     Match.discriminatorsExhaustive("kind")({
       // Occupancy must use the tier's authoritative reservation interval
@@ -327,7 +346,8 @@ const getReservationOccupancyInput = (
         ).pipe(
           Effect.mapError(
             (cause) =>
-              new ValidationError({
+              new ReservationIntervalValidationError({
+                path: cause.path,
                 message: `Workspace cowork reservation interval must be valid for date: ${date}`,
                 cause,
               })
@@ -338,10 +358,6 @@ const getReservationOccupancyInput = (
       office: (officeReservation) =>
         getReservationIntervalNormalization(
           getOfficeReservationIntervalInput(officeReservation)
-        ).pipe(
-          Effect.mapError(
-            (cause) => new ValidationError({ message: cause.message, cause })
-          )
         ),
     })
   );
@@ -366,7 +382,8 @@ const validateTableAssignment = (input: {
     Effect.filterOrFail(
       ({ matchingTables }) => matchingTables.length > 0,
       ({ assignment }) =>
-        new ValidationError({
+        new TableAssignmentUnconfigured({
+          requiredTags: assignment.requiredTags,
           message: `No active visible Dotypos workspace table matches tags: ${assignment.requiredTags.join(
             ", "
           )}`,

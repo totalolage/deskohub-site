@@ -1,6 +1,10 @@
 import type { Page } from "@playwright/test";
 import { Effect } from "effect";
-import type { AccountSection } from "@/features/account/sections";
+import {
+  type AccountSection,
+  accountSectionLabel,
+} from "@/features/account/sections";
+import { m } from "@/features/i18n";
 import {
   clickBrowserElement,
   evalBrowserScript,
@@ -11,21 +15,12 @@ import { waitForReactClickHandler } from "../react-handlers";
 import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 
-const accountNavigationLabel = "Account navigation";
+/** The pages these helpers drive render in English. */
+const locale = "en-US";
+const accountNavigationLabel = m.accountNavigationLabel({}, { locale });
 const desktopBreakpoint = 768;
 const accountSectionDataAttribute = "data-account-section";
 const accountMobileNavigationSelector = `nav[aria-label=${JSON.stringify(accountNavigationLabel)}] [data-account-mobile-navigation]`;
-
-export const accountSectionLabels = {
-  reservations: "Reservations",
-  referrals: "Referrals",
-  profile: "Profile & Identity",
-  security: "Sign-in & security",
-  assistants: "Connected assistants",
-  billing: "Billing & Invoices",
-  legal: "Legal & Privacy",
-  danger: "Danger zone",
-} as const satisfies Readonly<Record<AccountSection, string>>;
 
 /**
  * Stable controls that are only visible when their owning account panel is
@@ -144,7 +139,7 @@ const makeAccountSectionWaitInput = (
     accountSectionDataAttribute,
     desktop,
     landmark: accountSectionLandmarks[section],
-    label: copy?.label ?? accountSectionLabels[section],
+    label: copy?.label ?? accountSectionLabel(section, locale),
     mobileNavigationSelector: `nav[aria-label=${JSON.stringify(navigationLabel)}] [data-account-mobile-navigation]`,
     navigationLabel,
     section,
@@ -190,7 +185,7 @@ const accountSectionHydrationAnchors: Readonly<
 };
 
 const accountSectionLinkSelector = (section: AccountSection) =>
-  `nav[aria-label=${JSON.stringify(accountNavigationLabel)}] a:not([data-account-section]):has-text(${JSON.stringify(accountSectionLabels[section])})`;
+  `nav[aria-label=${JSON.stringify(accountNavigationLabel)}] a:not([data-account-section]):has-text(${JSON.stringify(accountSectionLabel(section, locale))})`;
 
 const accountMobileSectionLinkSelector = (section: AccountSection) =>
   `${accountMobileNavigationSelector} a[${accountSectionDataAttribute}=${JSON.stringify(section)}]`;
@@ -239,7 +234,7 @@ export const isAccountSectionOffered = (
         )
       ).some((link) => link.textContent?.includes(label) === true),
     {
-      label: accountSectionLabels[section],
+      label: accountSectionLabel(section, locale),
       navigationLabel: accountNavigationLabel,
     }
   );
@@ -250,7 +245,7 @@ export const selectAccountSection = async (
   onStage?: (stage: AccountSectionSelectionStage) => void
 ): Promise<void> => {
   const timeout = workspaceE2ETimeouts.browserAction;
-  const label = accountSectionLabels[section];
+  const label = accountSectionLabel(section, locale);
   const sectionLink = page.getByRole("link", {
     exact: false,
     name: label,

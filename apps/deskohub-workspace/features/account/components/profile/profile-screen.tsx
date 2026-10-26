@@ -8,7 +8,13 @@ import {
   type LocalePreferenceSaving,
   switchLocale,
 } from "@/features/account/switch-locale";
-import { isLocale, type Locale, locales } from "@/features/i18n";
+import {
+  isLocale,
+  type Locale,
+  type LocalizedCopy,
+  locales,
+  m,
+} from "@/features/i18n";
 import { Label } from "@/shared/components/ui/label";
 import {
   Select,
@@ -17,10 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
-import {
-  EmailVerificationStatus,
-  type EmailVerificationStatusCopy,
-} from "./email-verification-status";
+import { EmailVerificationStatus } from "./email-verification-status";
 
 /*
  * Direction: extend the account's quiet Sculpin operate surface with a white
@@ -33,22 +36,10 @@ import {
  * through the surrounding Dotypos profile form.
  */
 
-export interface ProfileScreenCopy {
-  readonly title: string;
-  readonly memberFallback: string;
-  readonly verifiedEmail: string;
-  readonly emailLabel: string;
-  readonly emailVerification: EmailVerificationStatusCopy;
-  readonly languageLabel: string;
-  readonly languageOptionCs: string;
-  readonly languageOptionEn: string;
-}
-
 export interface ProfileScreenProps {
   readonly firstName: string;
   readonly lastName: string | null;
   readonly email: string;
-  readonly copy: ProfileScreenCopy;
   readonly locale: Locale;
   readonly children: ReactNode;
   readonly footer?: ReactNode;
@@ -56,16 +47,14 @@ export interface ProfileScreenProps {
 }
 
 /**
- * Every Inlang locale must have a translated label key, so adding a locale
+ * Every Inlang locale must have a translated label message, so adding a locale
  * to the tuple is a compile error until this record gains its label. The
  * option list derives from the tuple, keeping the selector exhaustive.
  */
-type LanguageOptionLabelKey = "languageOptionCs" | "languageOptionEn";
-
-const languageOptionLabels: Readonly<Record<Locale, LanguageOptionLabelKey>> = {
-  "cs-CZ": "languageOptionCs",
-  "en-US": "languageOptionEn",
-};
+const languageOptionLabels = {
+  "cs-CZ": m.accountProfileScreenLanguageOptionCs,
+  "en-US": m.accountProfileScreenLanguageOptionEn,
+} satisfies Readonly<Record<Locale, LocalizedCopy>>;
 
 // The profile renders only for a signed-in customer, so a choice always saves
 // the preference before the document moves to the chosen locale.
@@ -77,7 +66,6 @@ const signedInLocalePreference: LocalePreferenceSaving = {
 export function ProfileScreen({
   avatar,
   children,
-  copy,
   email,
   firstName,
   footer,
@@ -90,7 +78,8 @@ export function ProfileScreen({
   const nameParts = [firstName, lastName ?? ""]
     .map((name) => name.trim())
     .filter((name) => name.length > 0);
-  const displayName = nameParts.join(" ") || copy.memberFallback;
+  const displayName =
+    nameParts.join(" ") || m.accountProfileScreenMemberFallback({}, { locale });
 
   const handleLanguageChange = (value: string) => {
     if (!isLocale(value) || switchingLocale !== null) return;
@@ -103,7 +92,7 @@ export function ProfileScreen({
       className="min-w-0"
       data-screen="profile-screen"
       footer={footer}
-      title={copy.title}
+      title={m.accountProfileScreenTitle({}, { locale })}
       titleId={titleId}
     >
       <div className="flex min-w-0 flex-col gap-5 @xl:flex-row @xl:items-start">
@@ -114,7 +103,9 @@ export function ProfileScreen({
           </p>
           <span className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#eef0ff] px-2.5 py-1 text-sm font-semibold text-[#3536c9]">
             <Check aria-hidden="true" className="size-4 shrink-0" />
-            <span className="break-words">{copy.verifiedEmail}</span>
+            <span className="break-words">
+              {m.accountProfileScreenVerifiedEmail({}, { locale })}
+            </span>
           </span>
         </div>
       </div>
@@ -130,14 +121,11 @@ export function ProfileScreen({
             className="block text-[13px] font-bold uppercase leading-5 tracking-[0.04em] text-[#344258]"
             id={`${languageId}-email-label`}
           >
-            {copy.emailLabel}
+            {m.accountProfileEmailLabel({}, { locale })}
           </legend>
           <div className="flex min-h-11 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-[#cad3df] bg-[#f8fafc] px-3 py-2 text-base leading-6 text-[#202b3d]">
             <span className="min-w-0 flex-1 break-all">{email}</span>
-            <EmailVerificationStatus
-              copy={copy.emailVerification}
-              emailVerified={true}
-            />
+            <EmailVerificationStatus emailVerified={true} locale={locale} />
           </div>
         </fieldset>
       </div>
@@ -147,7 +135,7 @@ export function ProfileScreen({
           className="block text-[13px] font-bold uppercase leading-5 tracking-[0.04em] text-[#344258]"
           htmlFor={languageId}
         >
-          {copy.languageLabel}
+          {m.accountProfileScreenLanguageLabel({}, { locale })}
         </Label>
         <Select
           disabled={switchingLocale !== null}
@@ -163,7 +151,7 @@ export function ProfileScreen({
           <SelectContent>
             {locales.map((optionLocale) => (
               <SelectItem key={optionLocale} value={optionLocale}>
-                {copy[languageOptionLabels[optionLocale]]}
+                {languageOptionLabels[optionLocale]({}, { locale })}
               </SelectItem>
             ))}
           </SelectContent>
