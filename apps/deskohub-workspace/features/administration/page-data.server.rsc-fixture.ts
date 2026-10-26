@@ -2,11 +2,12 @@
 
 import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
+import "@/shared/testing/flight-request-storage";
 
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
-import { renderToReadableStream } from "next/dist/compiled/react-server-dom-webpack/server.edge";
 import React, { Suspense } from "react";
+import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
 import type {
   AdministrationOverview,
   AdministrationOverviewSource,
@@ -14,13 +15,25 @@ import type {
 } from "./administration.service";
 
 mock.module("server-only", () => ({}));
+class NotFoundSignal extends Error {}
+
 mock.module("next/navigation", () => ({
-  notFound: () => {},
-  unstable_rethrow: () => {},
+  notFound: () => {
+    throw new NotFoundSignal();
+  },
+  redirect: () => {
+    throw new Error("unexpected redirect");
+  },
+  unstable_rethrow: (error: unknown) => {
+    if (error instanceof NotFoundSignal) throw error;
+  },
+}));
+mock.module("next/server", () => ({
+  after: () => undefined,
+  connection: () => Promise.resolve(),
 }));
 
-let authorized = true;
-let authorizationCalls = 0;
+const access = mockAdministratorAccess("administration-rsc-fixture");
 let sourceCalls = 0;
 let overviewCalls = 0;
 let blockedOverview: Promise<AdministrationOverview> | null = null;
@@ -52,6 +65,10 @@ const customerOverview = {
   newCustomers: { customers: [], unavailable: true, value: 0 },
 } satisfies AdministrationOverview;
 
+// Imported after the request storage the renderer detects on load.
+const { renderToReadableStream } = await import(
+  "next/dist/compiled/react-server-dom-webpack/server.edge"
+);
 const { AdministrationService } = await import("./administration.service");
 const originalLive = AdministrationService.Live;
 const unused = (..._args: readonly unknown[]) => Effect.die("not expected");
@@ -87,15 +104,6 @@ AdministrationService.Live = Layer.succeed(AdministrationService, {
   loadOperation: unused,
 } satisfies AdministrationServiceType["Service"]);
 
-mock.module(
-  "@/features/administrators/server/administrator-authorization.server",
-  () => ({
-    authorizeAdministratorPage: async () => {
-      authorizationCalls += 1;
-      if (!authorized) throw new Error("unauthorized");
-    },
-  })
-);
 const renderRequest = async () => {
   const { loadAdministrationOverview, loadAdministrationReservationOverview } =
     await import("./page-data.server");
@@ -138,8 +146,7 @@ const renderRequest = async () => {
 
 describe("administration overview page data RSC fixture", () => {
   afterEach(() => {
-    authorized = true;
-    authorizationCalls = 0;
+    access.set("administrator");
     sourceCalls = 0;
     overviewCalls = 0;
     blockedOverview = null;
@@ -169,17 +176,19 @@ describe("administration overview page data RSC fixture", () => {
   });
 
   test("loads a fresh source for another request", async () => {
+    const reads = access.reads();
     const first = await renderRequest();
     await new Response(first.stream).text();
     const second = await renderRequest();
     await new Response(second.stream).text();
 
     expect(sourceCalls).toBe(2);
-    expect(authorizationCalls).toBe(2);
+    // Every loader of a request shares the request's one session read.
+    expect(access.reads() - reads).toBe(2);
   });
 
   test("does not access the service when authorization fails", async () => {
-    authorized = false;
+    access.set("not-administrator");
     const { stream } = await renderRequest();
 
     await new Response(stream).text();

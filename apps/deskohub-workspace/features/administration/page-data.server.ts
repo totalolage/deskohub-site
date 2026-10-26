@@ -1,12 +1,14 @@
 import "server-only";
 
-import { Effect, Option, Predicate } from "effect";
-import { notFound } from "next/navigation";
+import { Effect, Layer, Option, Predicate } from "effect";
 import { cache } from "react";
-import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
+import type { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
+import {
+  AdministrationRecordNotFound,
+  runAdministrationPage,
+} from "@/features/administrators/server/administration-request.server";
 import type { Locale } from "@/features/i18n";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { parsePlainDate } from "@/shared/utils/temporal";
 import {
   type AdministrationBookingListInput,
@@ -30,12 +32,12 @@ import {
 } from "./reservation-date-range";
 import { getAdministrationReservationProductTitle } from "./reservation-product";
 import {
+  decodeDotyposCustomerRouteId,
+  decodeDotyposReservationRouteId,
+  decodeNexiOperationRouteId,
+  decodeNexiOrderRouteId,
+  decodeWorkspaceReservationRouteId,
   getDotyposCustomerRouteId,
-  requireDotyposCustomerRouteId,
-  requireDotyposReservationRouteId,
-  requireNexiOperationRouteId,
-  requireNexiOrderRouteId,
-  requireWorkspaceReservationRouteId,
 } from "./route-identifiers.server";
 
 export type AdministrationSearchParams = Promise<
@@ -95,45 +97,56 @@ const parseBookingSortDirection = (
 ): NonNullable<AdministrationBookingListInput["direction"]> =>
   value === "desc" ? "desc" : "asc";
 
-const runAdministration =
-  (operation: string) =>
-  <A, E>(effect: Effect.Effect<A, E, AdministrationService>) =>
-    effect.pipe(
-      Effect.provide(AdministrationService.Live),
-      runWorkspaceEffect(operation, { boundary: "route" })
-    );
+/** Runs an administration page query against the administration service. */
+const runAdministration = <A, E>(
+  operation: string,
+  query: Effect.Effect<
+    A,
+    E | AdministrationRecordNotFound,
+    AdministrationService | CurrentAdministrator
+  >
+) => runAdministrationPage(operation, query, AdministrationService.Live);
 
-const loadAdministrationOverviewSource = cache(async () => {
-  await authorizeAdministratorPage();
-  return Effect.gen(function* () {
-    const administration = yield* AdministrationService;
-    return yield* administration.loadOverviewSource();
-  }).pipe(runAdministration("administration.overview-source"));
-});
+const loadAdministrationOverviewSource = cache(() =>
+  runAdministration(
+    "administration.overview-source",
+    Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadOverviewSource();
+    })
+  )
+);
 
 export const loadAdministrationOverview = async () => {
   const source = await loadAdministrationOverviewSource();
-  return Effect.gen(function* () {
-    const administration = yield* AdministrationService;
-    return yield* administration.loadOverview(source);
-  }).pipe(runAdministration("administration.overview"));
+  return runAdministration(
+    "administration.overview",
+    Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadOverview(source);
+    })
+  );
 };
 
-export const loadAdministrationRefundAttention = cache(async () => {
-  await authorizeAdministratorPage();
-  return Effect.gen(function* () {
-    const administration = yield* AdministrationService;
-    return yield* administration.countReservationsNeedingRefund();
-  }).pipe(runAdministration("administration.refund-attention"));
-});
+export const loadAdministrationRefundAttention = cache(() =>
+  runAdministration(
+    "administration.refund-attention",
+    Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.countReservationsNeedingRefund();
+    })
+  )
+);
 
-export const loadAdministrationReservationActivity = cache(async () => {
-  await authorizeAdministratorPage();
-  return Effect.gen(function* () {
-    const administration = yield* AdministrationService;
-    return yield* administration.loadReservationActivity();
-  }).pipe(runAdministration("administration.reservation-activity"));
-});
+export const loadAdministrationReservationActivity = cache(() =>
+  runAdministration(
+    "administration.reservation-activity",
+    Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadReservationActivity();
+    })
+  )
+);
 
 export const loadAdministrationReservationOverview = async () => {
   return getAdministrationReservationOverview(
@@ -183,24 +196,28 @@ export const parseAdministrationReservationExportSearchParams = (
   return input;
 };
 
-const getAdministrationReservationListInput = async (
+const getAdministrationReservationListInput = (
   searchParams: AdministrationSearchParams
-) => {
-  await authorizeAdministratorPage();
-  return parseAdministrationReservationListSearchParams(await searchParams);
-};
+) =>
+  runAdministrationPage(
+    "administration.reservations-input",
+    Effect.promise(() => searchParams).pipe(
+      Effect.map(parseAdministrationReservationListSearchParams)
+    ),
+    Layer.empty
+  );
 
 const loadAdministrationReservationList = async (
   input: Promise<AdministrationReservationListInput>
 ) => {
-  const [, resolvedInput] = await Promise.all([
-    authorizeAdministratorPage(),
-    input,
-  ]);
-  return Effect.gen(function* () {
-    const administration = yield* AdministrationService;
-    return yield* administration.listReservations(resolvedInput);
-  }).pipe(runAdministration("administration.reservations"));
+  const resolvedInput = await input;
+  return runAdministration(
+    "administration.reservations",
+    Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listReservations(resolvedInput);
+    })
+  );
 };
 
 export const loadAdministrationReservationsPage = (
@@ -210,25 +227,29 @@ export const loadAdministrationReservationsPage = (
   return { input, result: loadAdministrationReservationList(input) };
 };
 
-export const loadAdministrationReservation = cache(async (id: string) => {
-  await authorizeAdministratorPage();
-  const reservationId = requireWorkspaceReservationRouteId(id);
-  const detail = await Effect.gen(function* () {
-    const administration = yield* AdministrationService;
-    return yield* administration.loadReservation(reservationId);
-  }).pipe(runAdministration("administration.reservation"));
-  if (!detail) notFound();
-  return detail;
-});
+export const loadAdministrationReservation = cache((id: string) =>
+  runAdministration(
+    "administration.reservation",
+    Effect.gen(function* () {
+      const reservationId = yield* decodeWorkspaceReservationRouteId(id);
+      const administration = yield* AdministrationService;
+      const detail = yield* administration.loadReservation(reservationId);
+      if (!detail) return yield* new AdministrationRecordNotFound();
+      return detail;
+    })
+  )
+);
 
 export const loadAdministrationReservationBreadcrumbLabel = cache(
   async (id: string, locale: Locale) => {
-    await authorizeAdministratorPage();
-    const reservationId = requireWorkspaceReservationRouteId(id);
-    const product = await Effect.gen(function* () {
-      const administration = yield* AdministrationService;
-      return yield* administration.loadReservationProduct(reservationId);
-    }).pipe(runAdministration("administration.reservation-breadcrumb"));
+    const product = await runAdministration(
+      "administration.reservation-breadcrumb",
+      Effect.gen(function* () {
+        const reservationId = yield* decodeWorkspaceReservationRouteId(id);
+        const administration = yield* AdministrationService;
+        return yield* administration.loadReservationProduct(reservationId);
+      })
+    );
     return product && getAdministrationReservationProductTitle(product, locale);
   }
 );
@@ -248,14 +269,14 @@ const getAdministrationBookingListInput = async (
 const loadAdministrationBookingList = async (
   input: ReturnType<typeof getAdministrationBookingListInput>
 ) => {
-  const [, resolvedInput] = await Promise.all([
-    authorizeAdministratorPage(),
-    input,
-  ]);
-  return Effect.gen(function* () {
-    const administration = yield* AdministrationService;
-    return yield* administration.listBookings(resolvedInput);
-  }).pipe(runAdministration("administration.bookings"));
+  const resolvedInput = await input;
+  return runAdministration(
+    "administration.bookings",
+    Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listBookings(resolvedInput);
+    })
+  );
 };
 
 export const loadAdministrationBookingsPage = (
@@ -265,25 +286,29 @@ export const loadAdministrationBookingsPage = (
   return { input, result: loadAdministrationBookingList(input) };
 };
 
-export const loadAdministrationBooking = cache(async (id: string) => {
-  await authorizeAdministratorPage();
-  const bookingId = requireDotyposReservationRouteId(id);
-  const detail = await Effect.gen(function* () {
-    const administration = yield* AdministrationService;
-    return yield* administration.loadBooking(bookingId);
-  }).pipe(runAdministration("administration.booking"));
-  if (!detail) notFound();
-  return detail;
-});
+export const loadAdministrationBooking = cache((id: string) =>
+  runAdministration(
+    "administration.booking",
+    Effect.gen(function* () {
+      const bookingId = yield* decodeDotyposReservationRouteId(id);
+      const administration = yield* AdministrationService;
+      const detail = yield* administration.loadBooking(bookingId);
+      if (!detail) return yield* new AdministrationRecordNotFound();
+      return detail;
+    })
+  )
+);
 
 export const loadAdministrationBookingBreadcrumbLabel = cache(
   async (id: string, locale: Locale) => {
-    await authorizeAdministratorPage();
-    const bookingId = requireDotyposReservationRouteId(id);
-    const breadcrumb = await Effect.gen(function* () {
-      const administration = yield* AdministrationService;
-      return yield* administration.loadBookingBreadcrumb(bookingId);
-    }).pipe(runAdministration("administration.booking-breadcrumb"));
+    const breadcrumb = await runAdministration(
+      "administration.booking-breadcrumb",
+      Effect.gen(function* () {
+        const bookingId = yield* decodeDotyposReservationRouteId(id);
+        const administration = yield* AdministrationService;
+        return yield* administration.loadBookingBreadcrumb(bookingId);
+      })
+    );
     return breadcrumb
       ? (breadcrumb.tableName ??
           formatAdministrationDateTime(breadcrumb.startsAt, locale))
@@ -320,24 +345,28 @@ export const parseAdministrationCustomerExportSearchParams = (
   return input;
 };
 
-const getAdministrationCustomerListInput = async (
+const getAdministrationCustomerListInput = (
   searchParams: AdministrationSearchParams
-) => {
-  await authorizeAdministratorPage();
-  return parseAdministrationCustomerListSearchParams(await searchParams);
-};
+) =>
+  runAdministrationPage(
+    "administration.customers-input",
+    Effect.promise(() => searchParams).pipe(
+      Effect.map(parseAdministrationCustomerListSearchParams)
+    ),
+    Layer.empty
+  );
 
 const loadAdministrationCustomerList = async (
   input: ReturnType<typeof getAdministrationCustomerListInput>
 ) => {
-  const [, resolvedInput] = await Promise.all([
-    authorizeAdministratorPage(),
-    input,
-  ]);
-  return Effect.gen(function* () {
-    const administration = yield* AdministrationService;
-    return yield* administration.listCustomers(resolvedInput);
-  }).pipe(runAdministration("administration.customers"));
+  const resolvedInput = await input;
+  return runAdministration(
+    "administration.customers",
+    Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listCustomers(resolvedInput);
+    })
+  );
 };
 
 export const loadAdministrationCustomersPage = (
@@ -347,45 +376,47 @@ export const loadAdministrationCustomersPage = (
   return { input, result: loadAdministrationCustomerList(input) };
 };
 
-export const loadAdministrationCustomerReservations = async (
+export const loadAdministrationCustomerReservations = (
   customerId: string,
   searchParams: AdministrationSearchParams
-) => {
-  await authorizeAdministratorPage();
-  const decodedCustomerId = requireDotyposCustomerRouteId(customerId);
-  const params = await searchParams;
-  const page = parsePage(firstParam(params.reservationsPage));
-  return Effect.gen(function* () {
-    const administration = yield* AdministrationService;
-    return yield* administration.loadCustomerReservations({
-      customerId: decodedCustomerId,
-      page,
-    });
-  }).pipe(runAdministration("administration.customer-reservations"));
-};
+) =>
+  runAdministration(
+    "administration.customer-reservations",
+    Effect.gen(function* () {
+      const decodedCustomerId = yield* decodeDotyposCustomerRouteId(customerId);
+      const params = yield* Effect.promise(() => searchParams);
+      const administration = yield* AdministrationService;
+      return yield* administration.loadCustomerReservations({
+        customerId: decodedCustomerId,
+        page: parsePage(firstParam(params.reservationsPage)),
+      });
+    })
+  );
 
-export const loadAdministrationCustomerActivity = cache(
-  async (customerId: string) => {
-    await authorizeAdministratorPage();
-    const decodedCustomerId = requireDotyposCustomerRouteId(customerId);
-    return Effect.gen(function* () {
+export const loadAdministrationCustomerActivity = cache((customerId: string) =>
+  runAdministration(
+    "administration.customer-activity",
+    Effect.gen(function* () {
+      const decodedCustomerId = yield* decodeDotyposCustomerRouteId(customerId);
       const administration = yield* AdministrationService;
       return yield* administration.loadCustomerActivity(decodedCustomerId);
-    }).pipe(runAdministration("administration.customer-activity"));
-  }
+    })
+  )
 );
 
 export const loadAdministrationCustomerReservationActivity = cache(
-  async (customerId: string) => {
-    await authorizeAdministratorPage();
-    const decodedCustomerId = requireDotyposCustomerRouteId(customerId);
-    return Effect.gen(function* () {
-      const administration = yield* AdministrationService;
-      return yield* administration.loadCustomerReservationActivity(
-        decodedCustomerId
-      );
-    }).pipe(runAdministration("administration.customer-reservation-activity"));
-  }
+  (customerId: string) =>
+    runAdministration(
+      "administration.customer-reservation-activity",
+      Effect.gen(function* () {
+        const decodedCustomerId =
+          yield* decodeDotyposCustomerRouteId(customerId);
+        const administration = yield* AdministrationService;
+        return yield* administration.loadCustomerReservationActivity(
+          decodedCustomerId
+        );
+      })
+    )
 );
 
 const getAdministrationOrderRange = async (
@@ -401,18 +432,18 @@ const getAdministrationOrderRange = async (
 const loadAdministrationOrderList = async (
   range: ReturnType<typeof getAdministrationOrderRange>
 ) => {
-  const [, resolvedRange] = await Promise.all([
-    authorizeAdministratorPage(),
-    range,
-  ]);
-  return Effect.gen(function* () {
-    const administration = yield* AdministrationService;
-    return yield* administration.listOrders({
-      fromTime: resolvedRange.fromTime,
-      toTime: resolvedRange.toTime,
-      maxRecords: 50,
-    });
-  }).pipe(runAdministration("administration.orders"));
+  const resolvedRange = await range;
+  return runAdministration(
+    "administration.orders",
+    Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listOrders({
+        fromTime: resolvedRange.fromTime,
+        toTime: resolvedRange.toTime,
+        maxRecords: 50,
+      });
+    })
+  );
 };
 
 export const loadAdministrationOrdersPage = (
@@ -422,14 +453,16 @@ export const loadAdministrationOrdersPage = (
   return { range, result: loadAdministrationOrderList(range) };
 };
 
-export const loadAdministrationOrder = cache(async (orderId: string) => {
-  await authorizeAdministratorPage();
-  const decodedOrderId = requireNexiOrderRouteId(orderId);
-  return Effect.gen(function* () {
-    const administration = yield* AdministrationService;
-    return yield* administration.loadOrder(decodedOrderId);
-  }).pipe(runAdministration("administration.order"));
-});
+export const loadAdministrationOrder = cache((orderId: string) =>
+  runAdministration(
+    "administration.order",
+    Effect.gen(function* () {
+      const decodedOrderId = yield* decodeNexiOrderRouteId(orderId);
+      const administration = yield* AdministrationService;
+      return yield* administration.loadOrder(decodedOrderId);
+    })
+  )
+);
 
 const getAdministrationOperationListInput = async (
   searchParams: AdministrationSearchParams
@@ -449,21 +482,20 @@ const getAdministrationOperationListInput = async (
 const loadAdministrationOperationList = async (
   criteria: ReturnType<typeof getAdministrationOperationListInput>
 ) => {
-  const [, resolvedCriteria] = await Promise.all([
-    authorizeAdministratorPage(),
-    criteria,
-  ]);
-  const { input, range } = resolvedCriteria;
-  return Effect.gen(function* () {
-    const administration = yield* AdministrationService;
-    return yield* administration.listOperations({
-      fromTime: range.fromTime,
-      toTime: range.toTime,
-      maxRecords: 100,
-      channel: input.channel,
-      operationType: input.operationType,
-    });
-  }).pipe(runAdministration("administration.operations"));
+  const { input, range } = await criteria;
+  return runAdministration(
+    "administration.operations",
+    Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listOperations({
+        fromTime: range.fromTime,
+        toTime: range.toTime,
+        maxRecords: 100,
+        channel: input.channel,
+        operationType: input.operationType,
+      });
+    })
+  );
 };
 
 export const loadAdministrationOperationsPage = (
@@ -473,13 +505,13 @@ export const loadAdministrationOperationsPage = (
   return { criteria, result: loadAdministrationOperationList(criteria) };
 };
 
-export const loadAdministrationOperation = cache(
-  async (operationId: string) => {
-    await authorizeAdministratorPage();
-    const decodedOperationId = requireNexiOperationRouteId(operationId);
-    return Effect.gen(function* () {
+export const loadAdministrationOperation = cache((operationId: string) =>
+  runAdministration(
+    "administration.operation",
+    Effect.gen(function* () {
+      const decodedOperationId = yield* decodeNexiOperationRouteId(operationId);
       const administration = yield* AdministrationService;
       return yield* administration.loadOperation(decodedOperationId);
-    }).pipe(runAdministration("administration.operation"));
-  }
+    })
+  )
 );
