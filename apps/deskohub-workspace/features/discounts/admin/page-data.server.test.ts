@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer, Predicate } from "effect";
 import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
@@ -33,6 +33,7 @@ let administration: Partial<
 const calls: string[] = [];
 
 // Answers only the reads a test sets; any other read is a test failure.
+const originalLive = DiscountAdministration.Live;
 DiscountAdministration.Live = Layer.succeed(
   DiscountAdministration,
   new Proxy({} as Administration, {
@@ -72,6 +73,10 @@ const pageOutcome = async <A>(load: () => Promise<A>) => {
     throw signal;
   }
 };
+
+afterAll(() => {
+  DiscountAdministration.Live = originalLive;
+});
 
 beforeEach(() => {
   access.set("administrator");

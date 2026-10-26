@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer, Predicate } from "effect";
 import { administrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
@@ -49,6 +49,7 @@ let administration: Partial<
 const calls: string[] = [];
 
 // Answers only the calls a test sets; any other call is a test failure.
+const originalLive = DiscountAdministration.Live;
 DiscountAdministration.Live = Layer.succeed(
   DiscountAdministration,
   new Proxy({} as Administration, {
@@ -83,6 +84,10 @@ const customerCode = {
     discountId: "019c91dd-c560-7e55-b9d8-c95065efd51d",
   },
 } as const;
+
+afterAll(() => {
+  DiscountAdministration.Live = originalLive;
+});
 
 beforeEach(() => {
   access.set("administrator");
