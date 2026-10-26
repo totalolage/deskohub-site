@@ -1,6 +1,6 @@
 ---
 name: deskohub-workspace-administration
-description: Workspace admin dashboard, /admin pages, /[locale]/admin, admin sign-in, admin access gate, administrator role, account role grants, Administrators page, admin 404, admin localization, admin i18n, admin Czech copy, admin Inlang catalogs, admin language switcher, administration API, administration operation annotations, destructive operations, credential fields, dhw CLI, dhw minimum version, MCP admin tools, administrators' AI agents, administration agent tools, CLI sessions, operator cancellation and refunds, access recovery, standalone access codes, invoices, discount codes, vouchers, sales administration, reservation product-details backfill.
+description: Workspace admin dashboard, /admin pages, admin page loaders, admin Server Actions, runAdministrationPage, defineAdministrationAction, CurrentAdministrator, /[locale]/admin, admin sign-in, admin access gate, administrator role, account role grants, Administrators page, admin 404, admin localization, admin i18n, admin Czech copy, admin Inlang catalogs, admin language switcher, administration API, administration operation annotations, destructive operations, credential fields, dhw CLI, dhw minimum version, MCP admin tools, administrators' AI agents, administration agent tools, CLI sessions, operator cancellation and refunds, access recovery, standalone access codes, invoices, discount codes, vouchers, sales administration, reservation product-details backfill.
 ---
 
 # Deskohub Workspace administration
