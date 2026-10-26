@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
+import { m } from "@/features/i18n";
 import { CustomerAccountAccessError } from "./customer-account";
 
 const revalidatePath = mock(
@@ -306,8 +307,10 @@ describe("customer avatar actions", () => {
     const uploadResult = await uploadCustomerAvatar(form);
     const removeResult = await removeCustomerAvatar();
 
-    const unavailableMessage =
-      "We cannot reach your account right now. Reservations can still be made without an account.";
+    const unavailableMessage = m.accountUnavailableDescription(
+      {},
+      { locale: "en-US" }
+    );
     expect(uploadResult.serverError).toBe(unavailableMessage);
     expect(removeResult.serverError).toBe(unavailableMessage);
     expect(areAccountAvatarsEnabled).toHaveBeenCalledTimes(2);
@@ -334,8 +337,10 @@ describe("customer avatar actions", () => {
     const uploadResult = await uploadCustomerAvatar(form);
     const removeResult = await removeCustomerAvatar();
 
-    const unavailableMessage =
-      "We cannot reach your account right now. Reservations can still be made without an account.";
+    const unavailableMessage = m.accountUnavailableDescription(
+      {},
+      { locale: "en-US" }
+    );
     expect(uploadResult.serverError).toBe(unavailableMessage);
     expect(removeResult.serverError).toBe(unavailableMessage);
     expect(resolverCalls).toBe(0);
