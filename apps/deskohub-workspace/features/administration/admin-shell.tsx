@@ -291,11 +291,11 @@ export function AdministrationBreadcrumbs({
                 <ChevronRight
                   aria-hidden
                   className={cn(
-                    "size-3.5 shrink-0",
+                    "size-3.5 max-lg:shrink-0",
                     index === 1 && "max-sm:hidden"
                   )}
                 />
-              )}}
+              )}
               {last ? (
                 <span className="truncate font-semibold text-navy-blue">
                   {crumb.label}

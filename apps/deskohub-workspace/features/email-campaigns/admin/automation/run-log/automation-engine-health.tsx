@@ -193,8 +193,8 @@ export function AutomationEngineHealthIndicator({
 }) {
   if (Result.isFailure(health)) {
     return (
-      <p className="flex items-center gap-2 text-sm text-navy-blue/65">
-        <span aria-hidden className="size-2 rounded-full bg-navy-blue/35" />
+      <p className="flex items-center gap-2 text-sm text-navy-blue/65 max-sm:items-start">
+        <span aria-hidden className="size-2 rounded-full bg-navy-blue/35 max-sm:mt-1.5 max-sm:shrink-0" />
         {m.emailAutomationRunsHealthUnavailable({}, { locale })}
       </p>
     );
@@ -210,11 +210,11 @@ export function AutomationEngineHealthIndicator({
       : formatAge(report.lastPlannedAt, checkedAt, locale);
   return (
     <div className="grid gap-3">
-      <p className="flex items-center gap-2 text-sm text-navy-blue/65">
+      <p className="flex items-center gap-2 text-sm text-navy-blue/65 max-sm:items-start">
         <span
           aria-hidden
           className={cn(
-            "size-2 rounded-full",
+            "size-2 rounded-full max-sm:mt-1.5 max-sm:shrink-0",
             warnings.length === 0 ? "bg-aquamarine-ink" : "bg-burned-orange"
           )}
         />

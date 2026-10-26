@@ -234,7 +234,7 @@ function RunCard({
 }) {
   return (
     <li className="grid gap-2 rounded-xl border border-navy-blue/10 bg-white p-4 text-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-col items-start gap-1.5">
         <AdministrationLink
           className="font-semibold underline underline-offset-4"
           href={row.href}

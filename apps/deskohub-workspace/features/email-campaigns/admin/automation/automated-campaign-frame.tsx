@@ -65,9 +65,10 @@ export async function AutomatedCampaignFrame({
         aria-label={m.emailAutomationsSectionsLabel({}, { locale })}
         className="mb-6"
       >
-        {/* On a phone the tabs share the width and wrap their labels, so
-            every section stays visible without sideways scrolling. */}
-        <ul className="grid w-full grid-cols-4 gap-1 rounded-md border border-navy-blue/15 bg-navy-blue/5 p-1 sm:inline-flex sm:h-10 sm:w-auto sm:items-center">
+        {/* On a phone the tabs share the width by their label length and
+            wrap long labels, so every section stays visible without
+            sideways scrolling. */}
+        <ul className="grid w-full grid-cols-[repeat(4,auto)] gap-1 rounded-md border border-navy-blue/15 bg-navy-blue/5 p-1 sm:inline-flex sm:h-10 sm:w-auto sm:items-center">
           {(
             [
               ["flow", base, m.emailAutomationsSectionFlow],
