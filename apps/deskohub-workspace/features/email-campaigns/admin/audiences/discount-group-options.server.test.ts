@@ -2,14 +2,21 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
 
-const authorizeAdministratorPage = mock(async () => "Fixture Operator");
-mock.module(
-  "@/features/administrators/server/administrator-authorization.server",
-  () => ({ authorizeAdministratorPage })
-);
+const access = mockAdministratorAccess("discount-group-options");
 
 let discountGroupsResult: Effect.Effect<unknown, unknown> = Effect.succeed([]);
+mock.module("next/server", () => ({
+  after: () => undefined,
+  connection: () => Promise.resolve(),
+}));
+mock.module("@/instrumentation", () => ({
+  postHogLoggerProvider: {
+    forceFlush: () => Promise.resolve(),
+    getLogger: () => ({ emit: () => undefined }),
+  },
+}));
 mock.module("@/features/i18n/server/request-locale", () => ({
   getRequestLocale: async () => "en-US",
 }));
@@ -19,28 +26,19 @@ mock.module("@/shared/backend/config/dotypos.config", () => ({
     getDiscountGroups,
   } as never),
 }));
-mock.module("@/shared/backend/workspace-effect", () => ({
-  runWorkspaceEffect:
-    (
-      _operation: string,
-      _options?: {
-        readonly boundary?: "action" | "page" | "route" | "run" | "task";
-        readonly signal?: AbortSignal;
-      }
-    ) =>
-    <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
-      Effect.runPromise(effect),
-}));
 
 const { DotyposRejected, DotyposService } = await import("@deskohub/dotypos");
 const { loadDiscountGroupOptions } = await import(
   "./discount-group-options.server"
 );
 
+let readsBefore = 0;
+
 beforeEach(() => {
+  access.set("administrator");
   discountGroupsResult = Effect.succeed([]);
   getDiscountGroups.mockClear();
-  authorizeAdministratorPage.mockClear();
+  readsBefore = access.reads();
 });
 
 describe("loadDiscountGroupOptions", () => {
@@ -60,7 +58,7 @@ describe("loadDiscountGroupOptions", () => {
       { id: "2", name: "Group 2" },
       { id: "10", name: "Zulu" },
     ]);
-    expect(authorizeAdministratorPage).toHaveBeenCalledTimes(1);
+    expect(access.reads() - readsBefore).toBe(1);
     expect(getDiscountGroups).toHaveBeenCalledTimes(1);
   });
 
@@ -75,7 +73,17 @@ describe("loadDiscountGroupOptions", () => {
 
     await expect(loadDiscountGroupOptions()).resolves.toBeUndefined();
 
-    expect(authorizeAdministratorPage).toHaveBeenCalledTimes(1);
+    expect(access.reads() - readsBefore).toBe(1);
     expect(getDiscountGroups).toHaveBeenCalledTimes(1);
+  });
+
+  test("doesn't read Dotypos for an account without the grant", async () => {
+    access.set("not-administrator");
+
+    await expect(loadDiscountGroupOptions()).rejects.toMatchObject({
+      digest: "NEXT_HTTP_ERROR_FALLBACK;404",
+    });
+
+    expect(getDiscountGroups).not.toHaveBeenCalled();
   });
 });

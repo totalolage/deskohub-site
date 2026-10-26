@@ -2,7 +2,7 @@ import "server-only";
 
 import { Effect } from "effect";
 import { m } from "@/features/administration/i18n";
-import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
+import { runAdministrationPage } from "@/features/administrators/server/administration-request.server";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { campaignBodyFormatVersion } from "../../body/campaign-body-document";
@@ -16,8 +16,8 @@ import {
 } from "../../body/render-campaign-email";
 import { loadAudienceOptions } from "../audiences/audience-page-data.server";
 import {
+  campaignOperationCapabilities,
   invokeCampaignOperation,
-  runCampaignPageQuery,
 } from "../campaign-operation-query.server";
 import type { CampaignComposerTemplate } from "./campaign-composer";
 
@@ -114,22 +114,25 @@ const loadAdminInbox = invokeCampaignOperation("getCampaignSettings", {}).pipe(
   Effect.map(({ testSendInbox }) => testSendInbox)
 );
 
-const loadComposerOptions = (locale: Locale) =>
-  runCampaignPageQuery(
+const loadComposerOptions = () =>
+  runAdministrationPage(
     "email-campaigns.admin.load-composer",
-    Effect.all(
-      { templates: loadTemplates(locale), adminInbox: loadAdminInbox },
-      { concurrency: "unbounded" }
-    )
+    Effect.promise(() => getRequestLocale()).pipe(
+      Effect.flatMap((locale) =>
+        Effect.all(
+          { templates: loadTemplates(locale), adminInbox: loadAdminInbox },
+          { concurrency: "unbounded" }
+        )
+      )
+    ),
+    campaignOperationCapabilities
   );
 
 /** Audiences, templates, and the test inbox the composer offers. */
 export const loadCampaignComposerOptions = async () => {
-  await authorizeAdministratorPage();
-  const locale = await getRequestLocale();
   const [audiences, options] = await Promise.all([
     loadAudienceOptions(),
-    loadComposerOptions(locale),
+    loadComposerOptions(),
   ]);
   return { audiences, ...options };
 };
