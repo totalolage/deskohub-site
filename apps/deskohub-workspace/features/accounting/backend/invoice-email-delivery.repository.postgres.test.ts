@@ -6,6 +6,7 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { InvoiceEmailDeliveryAudience } from "@/features/accounting/invoice-email-delivery";
+import { invoiceIdSchema } from "@/features/accounting/manual-invoice";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type IInvoiceEmailDeliveryRepository,
@@ -49,7 +50,7 @@ const insertInvoice = async () => {
      returning id`,
     [`WS-FV-TEST-${crypto.randomUUID()}`, sequence]
   );
-  return result.rows[0]!.id;
+  return invoiceIdSchema.make(result.rows[0]!.id);
 };
 
 const readDelivery = async (
@@ -67,9 +68,25 @@ const readDelivery = async (
   return result.rows[0];
 };
 
-const freshProcessingBefore = () =>
-  Temporal.Now.instant().subtract({ minutes: 1 });
-const staleProcessingBefore = () => Temporal.Now.instant().add({ minutes: 1 });
+// Ages a delivery as if its worker had gone quiet for that many seconds.
+const ageDelivery = async (
+  invoiceId: string,
+  audience: InvoiceEmailDeliveryAudience,
+  seconds: number
+) => {
+  await testDatabase!.pool.query(
+    `update invoice_email_deliveries
+     set updated_at = updated_at - make_interval(secs => $3)
+     where invoice_id = $1 and audience = $2`,
+    [invoiceId, audience, seconds]
+  );
+};
+
+const expireLease = (
+  invoiceId: string,
+  audience: InvoiceEmailDeliveryAudience
+) => ageDelivery(invoiceId, audience, 60 * 60);
+
 const acceptedAt = Temporal.Instant.from("2026-06-01T10:05:00Z");
 
 describe.skipIf(!testDatabase)(
@@ -81,7 +98,6 @@ describe.skipIf(!testDatabase)(
         repository.claim({
           invoiceId,
           audience: "customer",
-          staleProcessingBefore: freshProcessingBefore(),
         });
 
       const outcomes = await runRepository((repository) =>
@@ -128,7 +144,6 @@ describe.skipIf(!testDatabase)(
             repository.claim({
               invoiceId,
               audience: "customer",
-              staleProcessingBefore: freshProcessingBefore(),
             })
           )
         )
@@ -145,12 +160,10 @@ describe.skipIf(!testDatabase)(
           const customerAfterAcceptance = yield* repository.claim({
             invoiceId,
             audience: "customer",
-            staleProcessingBefore: freshProcessingBefore(),
           });
           const internal = yield* repository.claim({
             invoiceId,
             audience: "internal",
-            staleProcessingBefore: freshProcessingBefore(),
           });
           yield* repository.markFailed({
             invoiceId,
@@ -161,7 +174,6 @@ describe.skipIf(!testDatabase)(
           const internalRetry = yield* repository.claim({
             invoiceId,
             audience: "internal",
-            staleProcessingBefore: freshProcessingBefore(),
           });
           yield* repository.markAccepted({
             invoiceId,
@@ -205,12 +217,11 @@ describe.skipIf(!testDatabase)(
           const first = yield* repository.claim({
             invoiceId,
             audience: "internal",
-            staleProcessingBefore: freshProcessingBefore(),
           });
+          yield* Effect.promise(() => expireLease(invoiceId, "internal"));
           const stale = yield* repository.claim({
             invoiceId,
             audience: "internal",
-            staleProcessingBefore: staleProcessingBefore(),
           });
           return { first, stale };
         })
@@ -227,11 +238,7 @@ describe.skipIf(!testDatabase)(
 
       const outcomes = await runRepository((repository) =>
         Effect.gen(function* () {
-          yield* repository.claim({
-            invoiceId,
-            audience: "customer",
-            staleProcessingBefore: freshProcessingBefore(),
-          });
+          yield* repository.claim({ invoiceId, audience: "customer" });
           yield* repository.markAccepted({
             invoiceId,
             audience: "customer",
@@ -239,18 +246,10 @@ describe.skipIf(!testDatabase)(
             providerDeliveryId: EmailDeliveryIdSchema.make("email-1"),
             acceptedAt,
           });
-          const resend = yield* repository.claimResend({
-            invoiceId,
-            staleProcessingBefore: freshProcessingBefore(),
-          });
-          const whileResending = yield* repository.claimResend({
-            invoiceId,
-            staleProcessingBefore: freshProcessingBefore(),
-          });
-          const staleResend = yield* repository.claimResend({
-            invoiceId,
-            staleProcessingBefore: staleProcessingBefore(),
-          });
+          const resend = yield* repository.claimResend({ invoiceId });
+          const whileResending = yield* repository.claimResend({ invoiceId });
+          yield* Effect.promise(() => expireLease(invoiceId, "customer"));
+          const staleResend = yield* repository.claimResend({ invoiceId });
           return { resend, whileResending, staleResend };
         })
       );
@@ -273,16 +272,9 @@ describe.skipIf(!testDatabase)(
 
       await runRepository((repository) =>
         Effect.gen(function* () {
-          yield* repository.claim({
-            invoiceId,
-            audience: "customer",
-            staleProcessingBefore: freshProcessingBefore(),
-          });
-          yield* repository.claim({
-            invoiceId,
-            audience: "customer",
-            staleProcessingBefore: staleProcessingBefore(),
-          });
+          yield* repository.claim({ invoiceId, audience: "customer" });
+          yield* Effect.promise(() => expireLease(invoiceId, "customer"));
+          yield* repository.claim({ invoiceId, audience: "customer" });
           yield* repository.markAccepted({
             invoiceId,
             audience: "customer",
@@ -302,6 +294,105 @@ describe.skipIf(!testDatabase)(
       expect(await readDelivery(invoiceId, "customer")).toEqual({
         state: "processing",
         attempt_count: 2,
+      });
+    });
+
+    test("reports each requested invoice with missing audiences defaulted", async () => {
+      const [undelivered, accepted, failed] = await Promise.all([
+        insertInvoice(),
+        insertInvoice(),
+        insertInvoice(),
+      ]);
+
+      const statuses = await runRepository((repository) =>
+        Effect.gen(function* () {
+          for (const audience of ["customer", "internal"] as const) {
+            yield* repository.claim({ invoiceId: accepted, audience });
+            yield* repository.markAccepted({
+              invoiceId: accepted,
+              audience,
+              attemptNumber: 1,
+              providerDeliveryId: EmailDeliveryIdSchema.make(
+                `${audience}-email`
+              ),
+              acceptedAt,
+            });
+          }
+          yield* repository.claim({ invoiceId: failed, audience: "customer" });
+          yield* repository.markFailed({
+            invoiceId: failed,
+            audience: "customer",
+            attemptNumber: 1,
+            failureCode: "pdf_render_failed",
+          });
+          return yield* repository.status([undelivered, accepted, failed]);
+        })
+      );
+
+      expect(Object.fromEntries(statuses)).toEqual({
+        [undelivered]: {
+          customer: "missing",
+          internal: "missing",
+          needsAttention: true,
+        },
+        [accepted]: {
+          customer: "accepted",
+          internal: "accepted",
+          needsAttention: false,
+        },
+        [failed]: {
+          customer: "failed",
+          internal: "missing",
+          needsAttention: true,
+        },
+      });
+      expect(
+        await runRepository((repository) => repository.status([]))
+      ).toEqual(new Map());
+    });
+
+    test("flags a processing delivery once its one-minute lease lets a claim reclaim it", async () => {
+      const invoiceId = await insertInvoice();
+
+      const outcomes = await runRepository((repository) =>
+        Effect.gen(function* () {
+          for (const audience of ["customer", "internal"] as const) {
+            yield* repository.claim({ invoiceId, audience });
+          }
+          yield* Effect.promise(() => ageDelivery(invoiceId, "internal", 30));
+          const inFlight = yield* repository.status([invoiceId]);
+          const inFlightClaim = yield* repository.claim({
+            invoiceId,
+            audience: "internal",
+          });
+          yield* Effect.promise(() => ageDelivery(invoiceId, "internal", 60));
+          const stale = yield* repository.status([invoiceId]);
+          const staleClaim = yield* repository.claim({
+            invoiceId,
+            audience: "internal",
+          });
+          return {
+            inFlight: inFlight.get(invoiceId),
+            inFlightClaim,
+            stale: stale.get(invoiceId),
+            staleClaim,
+          };
+        })
+      );
+
+      expect(outcomes).toEqual({
+        inFlight: {
+          customer: "processing",
+          internal: "processing",
+          needsAttention: false,
+        },
+        inFlightClaim: null,
+        stale: {
+          customer: "processing",
+          internal: "processing",
+          needsAttention: true,
+        },
+        staleClaim: { attemptNumber: 2 },
       });
     });
   }
