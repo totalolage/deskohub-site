@@ -46,11 +46,9 @@ const terminalAttempt = (
     : failure;
 
 /**
- * Stage 3 compatibility: the adapter judges the terminal attempt as it did
- * before the outcome tags. A lost connection or HTTP 429 or 5xx, including a
- * synthetic 502, an exhausted rate limit and a failed ETag read, is settled
- * by rereading; an unreadable or status-less response fails at once. Stage 5
- * may narrow this to DotyposUncertain.
+ * The adapter judges the terminal attempt. A lost connection, a timeout, an
+ * exhausted rate limit or a server failure, including a failed ETag read, is
+ * settled by rereading; an unusable response fails at once.
  */
 const settlesByReread = (failure: DotyposConditionalWriteFailure): boolean => {
   const attempt = terminalAttempt(failure);
@@ -59,32 +57,23 @@ const settlesByReread = (failure: DotyposConditionalWriteFailure): boolean => {
     attempt.reason === "transport" ||
     attempt.reason === "timeout" ||
     attempt.reason === "rate-limited" ||
-    attempt.reason === "server" ||
-    (attempt.httpStatus !== undefined && attempt.httpStatus >= 500)
+    attempt.reason === "server"
   );
 };
 
+/** Besides a settled failure, a terminal version conflict gets the one replay. */
+const replaysPatch = (failure: DotyposConditionalWriteFailure): boolean =>
+  terminalAttempt(failure)._tag === "DotyposVersionConflict" ||
+  settlesByReread(failure);
+
 /**
- * Stage 3 compatibility: besides a settled failure, any terminal 409 or 412
- * gets the one replay, as before the outcome tags.
+ * Expiration reads a terminal not-found, including a replayed patch answered
+ * 404, as a missing customer; it stays a failure elsewhere.
  */
-const replaysPatch = (failure: DotyposConditionalWriteFailure): boolean => {
+const endsNotFound = (failure: DotyposConditionalWriteFailure): boolean => {
   const attempt = terminalAttempt(failure);
-  return (
-    attempt._tag === "DotyposVersionConflict" ||
-    attempt.httpStatus === 409 ||
-    attempt.httpStatus === 412 ||
-    settlesByReread(failure)
-  );
+  return attempt._tag === "DotyposRejected" && attempt.reason === "not-found";
 };
-
-/**
- * Stage 3 compatibility: expiration reads any 404 that ends it as a missing
- * customer, as before the outcome tags. That includes an access-token 404 and
- * a replay or settlement reread answered 404, which stay failures elsewhere.
- */
-const endsNotFound = (failure: DotyposConditionalWriteFailure): boolean =>
-  terminalAttempt(failure).httpStatus === 404;
 
 export type DotyposCustomerError =
   | DotyposConditionalWriteFailure
@@ -438,8 +427,8 @@ export class CustomerDotyposAdapter extends Context.Service<
       /**
        * Patches the customer and settles a possibly applied failure by
        * rereading it. At most two patch executions run, each of which the
-       * package may replay: a second one follows a 409 or 412 or a settled
-       * failure the reread shows unapplied. Reread failures are never
+       * package may replay: a second one follows a version conflict or a
+       * settled failure the reread shows unapplied. Reread failures are never
        * retried. None means the customer does not exist.
        */
       const patchWithReread = Effect.fn(

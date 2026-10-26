@@ -663,7 +663,7 @@ describe.skipIf(!database)("condition units on Postgres", () => {
       const [unit] = await unitsOf(seeded.campaignId);
       expect(unit).toMatchObject({
         status: "enqueued",
-        lastErrorCode: "dotypos-network",
+        lastErrorCode: "dotypos-unavailable",
       });
       expect(await readAutomationRun(database.db, runId!)).toMatchObject({
         status: "active",

@@ -706,8 +706,10 @@ const withRetryAfter = (seconds: number) => (response: NextResponse) => {
 };
 
 /**
- * Logs only the failure's tag and status code: Dotypos failures can carry
- * customer values in their causes. PostHog retries 429 and 5xx answers.
+ * Logs only the failure's classification, never its cause: Dotypos failures
+ * can carry customer values in their causes. A Dotypos failure logs its
+ * `dotyposFailureLogFields`, any other failure its tag. PostHog retries 429
+ * and 5xx answers.
  */
 const failUpstream = (
   error:
@@ -719,10 +721,8 @@ const failUpstream = (
   message: string
 ) =>
   Effect.logError("Dotypos customer source could not read Dotypos", {
-    errorTag: error._tag,
-    upstreamStatusCode:
-      error._tag === "DotyposUnavailable" || error._tag === "DotyposRejected"
-        ? dotyposFailureLogFields(error).dotyposHttpStatus
-        : undefined,
+    ...(error._tag === "DotyposUnavailable" || error._tag === "DotyposRejected"
+      ? dotyposFailureLogFields(error)
+      : { errorTag: error._tag }),
     statusCode: status,
   }).pipe(Effect.as(NextResponse.json({ error: message }, { status })));

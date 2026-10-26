@@ -276,7 +276,7 @@ describe.skipIf(!database)("automation unit processor", () => {
           fetch: () =>
             failures-- > 0
               ? Effect.fail(
-                  new AutomationUnitFetchFailure({ code: "dotypos-429" })
+                  new AutomationUnitFetchFailure({ code: "dotypos-unavailable" })
                 )
               : Effect.void,
         }),
@@ -293,12 +293,12 @@ describe.skipIf(!database)("automation unit processor", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     expect(Exit.isFailure(exit) && Cause.squash(exit.cause)).toMatchObject({
       _tag: "AutomationUnitRedelivery",
-      code: "dotypos-429",
+      code: "dotypos-unavailable",
     });
     expect(await readUnit(failing.id)).toMatchObject({
       status: "enqueued",
       claimId: null,
-      lastErrorCode: "dotypos-429",
+      lastErrorCode: "dotypos-unavailable",
       attempts: 1,
     });
     expect((await readUnit(failing.id)).enqueuedAt?.equals(startedAt)).toBe(

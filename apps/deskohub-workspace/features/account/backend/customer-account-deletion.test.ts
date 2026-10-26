@@ -230,16 +230,15 @@ describe("Customer account deletion", () => {
       return { ...outcome, logCodes };
     };
 
-    test("treats an access-token 404 on the expiration patch as a missing profile", async () => {
+    test("keeps deletion retryable when an access-token 404 ends the expiration patch", async () => {
       const { result, calls, logCodes } = await deleteWithDotypos({
         patchCustomer: () => Effect.fail(tokenNotFound),
       });
 
-      expect(result._tag).toBe("Success");
-      expect(calls).toContain("destroy-avatar");
-      expect(calls).toContain("tombstone");
-      expect(logCodes).toContain("dotypos.customer-expiration.missing");
-      expect(logCodes).not.toContain("account.deletion.retryable");
+      expect(result._tag).toBe("Failure");
+      expect(calls).not.toContain("tombstone");
+      expect(logCodes).not.toContain("dotypos.customer-expiration.missing");
+      expect(logCodes).toContain("account.deletion.retryable");
     });
 
     test("treats a replayed expiration patch that ends in 404 as a missing profile", async () => {
@@ -255,7 +254,7 @@ describe("Customer account deletion", () => {
       expect(logCodes).not.toContain("account.deletion.retryable");
     });
 
-    test("treats an access-token 404 on the settlement reread as a missing profile", async () => {
+    test("keeps deletion retryable when an access-token 404 ends the settlement reread", async () => {
       const { result, calls, logCodes } = await deleteWithDotypos({
         patchCustomer: () =>
           Effect.fail(
@@ -277,9 +276,10 @@ describe("Customer account deletion", () => {
           ),
       });
 
-      expect(result._tag).toBe("Success");
-      expect(calls).toContain("tombstone");
-      expect(logCodes).toContain("dotypos.customer-expiration.missing");
+      expect(result._tag).toBe("Failure");
+      expect(calls).not.toContain("tombstone");
+      expect(logCodes).not.toContain("dotypos.customer-expiration.missing");
+      expect(logCodes).toContain("account.deletion.retryable");
     });
 
     test("keeps deletion retryable when the expiration fails with a 503", async () => {

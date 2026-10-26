@@ -564,6 +564,7 @@ describe("CustomerDotyposAdapter", () => {
       }
     });
 
+    // Malformed entity identifiers in the answer also fail without a status.
     for (const httpStatus of [undefined, 200]) {
       test(`fails an unreadable patch response (status ${httpStatus}) without rereading or retrying`, async () => {
         const calls: string[] = [];
@@ -599,33 +600,6 @@ describe("CustomerDotyposAdapter", () => {
         }
       });
     }
-
-    test("settles a synthetic 502 patch response by rereading", async () => {
-      const calls: string[] = [];
-
-      await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(
-              new DotyposUncertain({
-                operation: "patchCustomer",
-                request: "customer.patch",
-                reason: "invalid-response",
-                httpStatus: 502,
-              })
-            );
-          },
-          getCustomer: () => {
-            calls.push("read");
-            return Effect.succeed(Option.some(expiredCustomer));
-          },
-        },
-        (adapter) => adapter.expireCustomer("60111")
-      );
-
-      expect(calls).toEqual(["patch", "read"]);
-    });
 
     test("fails a replayed patch whose last attempt was rejected without rereading", async () => {
       const calls: string[] = [];
@@ -696,7 +670,7 @@ describe("CustomerDotyposAdapter", () => {
       expect(outcome._tag).toBe("Failure");
     });
 
-    test("replays once without rereading when the version read answers 409", async () => {
+    test("fails without replaying or rereading when the version read answers 409", async () => {
       const calls: string[] = [];
 
       const outcome = await runWithDotypos(
@@ -720,7 +694,7 @@ describe("CustomerDotyposAdapter", () => {
         (adapter) => adapter.expireCustomer("60111").pipe(Effect.result)
       );
 
-      expect(calls).toEqual(["patch", "patch"]);
+      expect(calls).toEqual(["patch"]);
       expect(outcome._tag).toBe("Failure");
     });
 
