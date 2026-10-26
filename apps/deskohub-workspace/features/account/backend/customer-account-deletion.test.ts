@@ -242,22 +242,46 @@ describe("Customer account deletion", () => {
     });
 
     test("treats a replayed expiration patch that ends in 404 as a missing profile once the replay finds none", async () => {
-      let patches = 0;
+      const dotyposCalls: string[] = [];
       const { result, calls, logCodes } = await deleteWithDotypos({
         patchCustomer: () => {
-          patches += 1;
-          return patches === 1
+          dotyposCalls.push("patch");
+          return dotyposCalls.length === 1
             ? Effect.fail(replayNotFound)
             : Effect.succeed(Option.none<DotyposCustomer>());
         },
-        getCustomer: () => Effect.succeed(Option.none<DotyposCustomer>()),
+        getCustomer: () => {
+          dotyposCalls.push("read");
+          return Effect.succeed(Option.none<DotyposCustomer>());
+        },
       });
 
+      expect(dotyposCalls).toEqual(["patch", "read", "patch"]);
       expect(result._tag).toBe("Success");
       expect(calls).toContain("destroy-avatar");
       expect(calls).toContain("tombstone");
       expect(logCodes).toContain("dotypos.customer-expiration.missing");
       expect(logCodes).not.toContain("account.deletion.retryable");
+    });
+
+    test("keeps deletion retryable while replayed expiration patches stay uncertain and rereads find none", async () => {
+      const dotyposCalls: string[] = [];
+      const { result, calls, logCodes } = await deleteWithDotypos({
+        patchCustomer: () => {
+          dotyposCalls.push("patch");
+          return Effect.fail(replayNotFound);
+        },
+        getCustomer: () => {
+          dotyposCalls.push("read");
+          return Effect.succeed(Option.none<DotyposCustomer>());
+        },
+      });
+
+      expect(dotyposCalls).toEqual(["patch", "read", "patch", "read"]);
+      expect(result._tag).toBe("Failure");
+      expect(calls).not.toContain("tombstone");
+      expect(logCodes).not.toContain("dotypos.customer-expiration.missing");
+      expect(logCodes).toContain("account.deletion.retryable");
     });
 
     test("keeps deletion retryable when an access-token 404 ends the settlement reread", async () => {
