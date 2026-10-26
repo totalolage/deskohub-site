@@ -21,13 +21,13 @@ export const getInvoiceSourceLabel = (
     legacy: m.accountingInvoiceSourceLegacy,
   })[source]({}, { locale });
 
-/** Formats the decimal invoice total; render it on the server. */
+/** Formats the exact decimal invoice total; render it on the server. */
 export const formatInvoiceTotal = (
   invoice: Pick<InvoiceAdministrationListItem, "currency" | "total">,
   locale: Locale
 ) =>
   formatCurrencyAmount({
-    amount: Number(invoice.total),
+    amount: invoice.total,
     currency: invoice.currency,
     locale,
     fractionDigits: findWorkspaceCurrencyDefinition(invoice.currency)?.exponent,

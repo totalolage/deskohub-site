@@ -8,7 +8,7 @@ import {
 } from "@/features/account";
 import { administrationAgentScope } from "@/features/account/agent-scopes";
 import type { AgentToolAuthorization } from "./agent-tool";
-import { readMcpMessages } from "./agent-tool-mcp-messages";
+import type { McpRequest } from "./agent-tool-mcp-messages";
 import type { CustomerAgentCaller } from "./customer-agent-caller";
 
 /**
@@ -53,29 +53,27 @@ export const authorizeAgentToolRequest = <
         caller: Option.Option<CustomerAgentCaller>
       ) => Effect.Effect<ReadonlyArray<Tool>, E, R>)
     | undefined;
-  readonly request: Request;
-}) =>
-  readToolCalls(request).pipe(
-    Effect.flatMap((toolCalls) => {
-      const refuse = (reason: CustomerAgentChallengeReason) =>
-        refuseRequest(reason, toolCalls);
-      return authorizeBearerToken(request, refuse).pipe(
-        Effect.flatMap((caller) =>
-          (callerTools === undefined
-            ? Effect.succeed<ReadonlyArray<Tool>>([])
-            : callerTools(caller)
-          ).pipe(
-            Effect.map((added) => [...tools, ...added]),
-            Effect.tap((served) =>
-              authorizeCalledTools({ tools: served, toolCalls, caller, refuse })
-            ),
-            Effect.map((served) => ({ caller, tools: served }))
-          )
-        )
-      );
-    }),
+  readonly request: McpRequest;
+}) => {
+  const toolCalls = getToolCalls(request.messages);
+  const refuse = (reason: CustomerAgentChallengeReason) =>
+    refuseRequest(reason, toolCalls);
+  return authorizeBearerToken(request.request, refuse).pipe(
+    Effect.flatMap((caller) =>
+      (callerTools === undefined
+        ? Effect.succeed<ReadonlyArray<Tool>>([])
+        : callerTools(caller)
+      ).pipe(
+        Effect.map((added) => [...tools, ...added]),
+        Effect.tap((served) =>
+          authorizeCalledTools({ tools: served, toolCalls, caller, refuse })
+        ),
+        Effect.map((served) => ({ caller, tools: served }))
+      )
+    ),
     Effect.withSpan("agentTools.authorizeRequest")
   );
+};
 
 /** Refuses a call of a tool the caller's token doesn't grant. */
 const authorizeCalledTools = Effect.fn("agentTools.authorizeCalledTools")(
@@ -233,10 +231,6 @@ type ToolCallMessage = typeof toolCallMessageSchema.Type;
 
 const decodeToolCall = Schema.decodeUnknownOption(toolCallMessageSchema);
 
-/** The tool calls in the request's JSON-RPC message, or batch. */
-const readToolCalls = (request: Request) =>
-  readMcpMessages(request).pipe(
-    Effect.map((messages) =>
-      messages.flatMap((message) => Option.toArray(decodeToolCall(message)))
-    )
-  );
+/** The tool calls among the request's JSON-RPC messages. */
+const getToolCalls = (messages: McpRequest["messages"]) =>
+  messages.flatMap((message) => Option.toArray(decodeToolCall(message)));

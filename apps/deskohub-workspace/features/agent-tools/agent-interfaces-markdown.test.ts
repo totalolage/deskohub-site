@@ -10,13 +10,13 @@ import {
   agentInterfacesSubheadings,
   type DescribedAgentTool,
 } from "./agent-interfaces-markdown";
-import { publishedCustomerAgentTools } from "./customer-agent-tools";
+import { customerAgentCatalog } from "./customer-agent-catalog";
 import { prepareReservationToolName } from "./webmcp/prepare-reservation-site-tool-description";
 
 const render = (interfaces: Partial<AgentInterfaces> = {}) =>
   serializeMarkdown(
     agentInterfacesMarkdown({
-      tools: publishedCustomerAgentTools,
+      ...customerAgentCatalog.published,
       siteToolsRelease: "on",
       ...interfaces,
     })
@@ -36,7 +36,7 @@ const listedTools = (markdown: string, subheading: string) => {
 };
 
 const namesWithAccess = (access: DescribedAgentTool["access"]) =>
-  publishedCustomerAgentTools
+  customerAgentCatalog.published.tools
     .filter((tool) => tool.access === access)
     .map(({ name }) => name);
 
@@ -61,7 +61,7 @@ describe("agentInterfacesMarkdown", () => {
   test("names each signed-in tool's scope", () => {
     const markdown = render();
 
-    for (const tool of publishedCustomerAgentTools) {
+    for (const tool of customerAgentCatalog.published.tools) {
       if (tool.access !== "signed-in") continue;
       const item = markdown
         .split("\n")
@@ -72,7 +72,7 @@ describe("agentInterfacesMarkdown", () => {
 
   test("leaves out a section without tools", () => {
     const markdown = render({
-      tools: publishedCustomerAgentTools.filter(
+      tools: customerAgentCatalog.published.tools.filter(
         (tool) => tool.access === "public"
       ),
     });
@@ -96,7 +96,7 @@ describe("agentInterfacesMarkdown", () => {
   });
 
   test("lists the public tools without a view and prepare_reservation as site tools", () => {
-    const siteTools = publishedCustomerAgentTools
+    const siteTools = customerAgentCatalog.published.tools
       .filter((tool) => tool.access === "public" && tool.view === undefined)
       .map(({ name }) => name);
 

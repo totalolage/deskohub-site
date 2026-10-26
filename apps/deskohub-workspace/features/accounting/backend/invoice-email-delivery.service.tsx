@@ -4,14 +4,15 @@ import {
   EmailServiceError,
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
-import { BigDecimal, Context, Data, Effect, Layer, Match } from "effect";
+import { Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { InvoiceDeliveryEmail } from "@/emails/invoice-delivery";
 import { env } from "@/env";
+import { isManualInvoiceDocument } from "@/features/accounting/invoice";
 import {
-  getManualInvoicePayment,
-  isManualInvoiceDocument,
-} from "@/features/accounting/invoice";
+  getInvoiceSettlement,
+  InvoiceSettlement,
+} from "@/features/accounting/invoice-settlement";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { m } from "@/features/i18n";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
@@ -114,17 +115,12 @@ export class InvoiceEmailDeliveryService extends Context.Service<
         const manualDocument = isManualInvoiceDocument(input.invoice.document)
           ? input.invoice.document
           : null;
-        const manualPayment = manualDocument
-          ? getManualInvoicePayment(manualDocument)
-          : null;
         const content = Match.value(input.audience).pipe(
           Match.when("customer", () => {
             const locale = input.invoice.document.locale;
-            const asksForPayment =
-              manualPayment?.status === "due" &&
-              BigDecimal.isPositive(
-                BigDecimal.fromStringUnsafe(manualDocument?.total ?? "0")
-              );
+            const asksForPayment = InvoiceSettlement.$is("PaymentRequested")(
+              getInvoiceSettlement(input.invoice.document)
+            );
             const manualBody = asksForPayment
               ? m.invoiceManualEmailBodyPaymentDetails(
                   { invoiceNumber: input.invoice.invoiceNumber },

@@ -1,9 +1,11 @@
 import { generateQrCodePngBuffer } from "@deskohub/qr-code";
 import { BigDecimal, Data, Effect } from "effect";
+import type { InvoiceDocument } from "@/features/accounting/invoice";
 import {
-  getManualInvoicePayment,
-  type ManualInvoiceDocument,
-} from "@/features/accounting/invoice";
+  getInvoiceSettlement,
+  getInvoiceTotal,
+  InvoiceSettlement,
+} from "@/features/accounting/invoice-settlement";
 import { findInvoicePaymentAccount } from "@/features/accounting/manual-invoice";
 import {
   findWorkspaceCurrencyDefinition,
@@ -30,20 +32,21 @@ class InvoicePaymentQrError extends Data.TaggedError("InvoicePaymentQrError")<{
 }> {}
 
 export const getInvoicePaymentRequest = Effect.fn("getInvoicePaymentRequest")(
-  function* (document: ManualInvoiceDocument) {
-    const payment = getManualInvoicePayment(document);
-    if (payment.status === "paid") return null;
-    const total = BigDecimal.fromStringUnsafe(document.total);
-    if (!BigDecimal.isPositive(total)) return null;
+  function* (document: InvoiceDocument) {
+    const settlement = getInvoiceSettlement(document);
+    if (!InvoiceSettlement.$is("PaymentRequested")(settlement)) return null;
+    const invoiceTotal = getInvoiceTotal(document);
+    const total = BigDecimal.fromStringUnsafe(invoiceTotal.amount);
 
-    const account = findInvoicePaymentAccount(document.currency);
-    const currency = findWorkspaceCurrencyDefinition(document.currency);
-    if (!account || !currency) return null;
+    const currency = findWorkspaceCurrencyDefinition(invoiceTotal.currency);
+    if (!currency) return null;
+    const account = findInvoicePaymentAccount(currency.code);
+    if (!account) return null;
 
     const amount = formatAmount(total, currency.exponent);
 
     const qrPayload =
-      document.currency !== "CZK" ||
+      currency.code !== "CZK" ||
       BigDecimal.isGreaterThan(total, maximumQrPayment)
         ? null
         : [
@@ -51,9 +54,9 @@ export const getInvoicePaymentRequest = Effect.fn("getInvoicePaymentRequest")(
             `ACC:${account.iban}`,
             `AM:${amount}`,
             "CC:CZK",
-            `DT:${payment.date.replaceAll("-", "")}`,
+            `DT:${settlement.dueDate.replaceAll("-", "")}`,
             `MSG:FAKTURA ${document.invoiceNumber}`,
-            `X-VS:${document.variableSymbol}`,
+            `X-VS:${settlement.variableSymbol}`,
           ].join("*");
     const qrCode = qrPayload
       ? yield* Effect.tryPromise({
@@ -74,10 +77,10 @@ export const getInvoicePaymentRequest = Effect.fn("getInvoicePaymentRequest")(
 
     return {
       ...account,
-      variableSymbol: document.variableSymbol,
-      dueDate: payment.date,
+      variableSymbol: settlement.variableSymbol,
+      dueDate: settlement.dueDate,
       amount,
-      currency: document.currency,
+      currency: currency.code,
       qrPayload,
       qrCode,
     } satisfies InvoicePaymentRequest;

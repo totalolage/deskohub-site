@@ -1,0 +1,27 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// The PostHog browser SDK loads only after analytics consent, through the
+// dynamic import in features/cookie-consent/components/posthog-analytics.tsx.
+// A static value import anywhere else puts the whole SDK back in the initial
+// bundle; `@posthog/react` imports it at module load. Type-only imports are
+// erased, and test fixtures and scripts never ship to the browser.
+file($name, $body) where {
+  $name <: r".*(?:apps/deskohub-workspace|packages/posthog/src)/.*\.(?:ts|tsx)$",
+  not $name <: r".*\.test\.(?:ts|tsx)$",
+  not $name <: r".*apps/deskohub-workspace/(?:scripts|shared/testing)/.*",
+  $body <: r"(?s).*(?:posthog-js|@posthog/react).*",
+  $body <: contains bubble {
+    JsImport() as $import where {
+      $import <: contains JsModuleSource() as $source where {
+        $source <: r"^['\"](?:posthog-js|@posthog/react)(?:/[^'\"]*)?['\"]$"
+      },
+      not $import <: r"(?s)^import\s+type\s.*",
+      register_diagnostic(
+        span = $import,
+        message = "Load the PostHog browser SDK only through the consent-gated dynamic import in posthog-analytics.tsx; import its types with `import type`.",
+        severity = "error"
+      )
+    }
+  }
+}
