@@ -1,11 +1,13 @@
-import {
-  type DotyposReservationId,
-  type DotyposReservationInterval,
-  ValidationError,
+import type {
+  DotyposReservationId,
+  DotyposReservationInterval,
 } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer, Match, Option, Result } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { excludeDotyposReservationsById } from "@/features/checkout/backend/reservation";
+import {
+  excludeDotyposReservationsById,
+  type InvalidDotyposTableSeats,
+} from "@/features/checkout/backend/reservation";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
 import { getMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
@@ -61,6 +63,23 @@ import {
 } from "./google-calendar-workspace-limitations.service";
 import { WorkspaceReservationRepository } from "./workspace-reservation.repository";
 
+/**
+ * The caller asked for an impossible availability range, date, or interval.
+ * The availability route answers it with 400.
+ */
+export class AvailabilityQueryInvalid extends Data.TaggedError(
+  "AvailabilityQueryInvalid"
+)<{ readonly message: string }> {}
+
+/**
+ * Why availability couldn't be computed: an invalid query, a provider read
+ * failure, or a Dotypos table without a valid seat capacity.
+ */
+type AvailabilityError =
+  | AvailabilityQueryInvalid
+  | AvailabilityInventoryError
+  | InvalidDotyposTableSeats;
+
 export class WorkspaceTableUnavailableError extends Data.TaggedError(
   "WorkspaceTableUnavailableError"
 )<{
@@ -97,7 +116,7 @@ export interface IWorkspaceAvailabilityService {
    */
   readonly getAvailability: (
     input: WorkspaceAvailabilityRequest
-  ) => Effect.Effect<WorkspaceAvailability, AvailabilityInventoryError>;
+  ) => Effect.Effect<WorkspaceAvailability, AvailabilityError>;
   /**
    * Advisory free meeting-room starts on one date, each evaluated by the
    * single-interval rules against the shared-snapshot entries every single
@@ -106,14 +125,11 @@ export interface IWorkspaceAvailabilityService {
    */
   readonly getMeetingRoomStartTimes: (
     input: MeetingRoomStartTimesRequest
-  ) => Effect.Effect<MeetingRoomStartTimes, AvailabilityInventoryError>;
+  ) => Effect.Effect<MeetingRoomStartTimes, AvailabilityError>;
   /** Fails unless the reservation is available in live provider data. */
   readonly ensureAvailable: (
     query: WorkspaceAvailabilityEnsureQuery
-  ) => Effect.Effect<
-    void,
-    AvailabilityInventoryError | WorkspaceTableUnavailableError
-  >;
+  ) => Effect.Effect<void, AvailabilityError | WorkspaceTableUnavailableError>;
 }
 
 export type WorkspaceAvailabilityOccupancyExclusion = {
@@ -550,7 +566,7 @@ const getDateRange = Effect.fn(function* (from: string, to: string) {
   const end = yield* parsePlainDate(to);
 
   if (Temporal.PlainDate.compare(start, end) > 0) {
-    return yield* new ValidationError({
+    return yield* new AvailabilityQueryInvalid({
       message: "Availability range start must be before range end",
     });
   }
@@ -609,14 +625,14 @@ const parsePlainDate = (date: string) =>
   Effect.try({
     try: () => Temporal.PlainDate.from(date),
     catch: () =>
-      new ValidationError({
+      new AvailabilityQueryInvalid({
         message: `Availability date must be a valid YYYY-MM-DD date: ${date}`,
       }),
   });
 
 const getAvailabilityReservation = (
   query: WorkspaceAvailabilityQuery
-): Effect.Effect<ReservationInterval | undefined, ValidationError> =>
+): Effect.Effect<ReservationInterval | undefined, AvailabilityQueryInvalid> =>
   Match.value(query).pipe(
     Match.discriminatorsExhaustive("kind")({
       "meeting-room": ({ startsAt, endsAt }) =>
@@ -672,7 +688,7 @@ const toAvailabilityIntervalError = (
   _error: ReservationIntervalError,
   context = ""
 ) =>
-  new ValidationError({
+  new AvailabilityQueryInvalid({
     message: `Availability interval must be valid${context}.`,
   });
 

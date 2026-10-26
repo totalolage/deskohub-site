@@ -1,8 +1,4 @@
-import type {
-  DotyposTable,
-  DotyposTableId,
-  ValidationError,
-} from "@deskohub/dotypos";
+import type { DotyposTable, DotyposTableId } from "@deskohub/dotypos";
 import { Match, Result } from "effect";
 import {
   decodeTableCandidates,
@@ -11,6 +7,7 @@ import {
   getWorkspaceTableCandidates,
   getWorkspaceTableCandidatesByPredicate,
   hasCandidateCapacity,
+  type InvalidDotyposTableSeats,
   isWorkspaceCoworkTableCandidate,
   toTableBookings,
   type WorkspaceCoworkTableCandidateQuery,
@@ -75,7 +72,7 @@ type Occupancy = ReadonlyMap<DotyposTableId, number>;
  */
 export const evaluateAvailability = (
   input: AvailabilityEvaluationInput
-): Result.Result<AvailabilityEvaluation, ValidationError> => {
+): Result.Result<AvailabilityEvaluation, InvalidDotyposTableSeats> => {
   const { query, dates, reservation, selectedDate, fullyOccupiedDates } = input;
   const inventory = createInventoryView(input.tables, input.reservations);
   const shouldCheckRangeDateSelection =
@@ -207,7 +204,7 @@ const createInventoryView = (
   const occupancyByInterval = new Map<string, Occupancy>();
   const coworkIntervals = new Map<string, ReservationInterval>();
   const candidatesByKey = new Map<string, readonly WorkspaceTableCandidate[]>();
-  let seatCapacityError: ValidationError | undefined;
+  let seatCapacityError: InvalidDotyposTableSeats | undefined;
 
   const getOccupancy = (interval: ReservationInterval) => {
     const key = `${interval.startsAt}/${interval.endsAt}`;

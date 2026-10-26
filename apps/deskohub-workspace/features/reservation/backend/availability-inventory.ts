@@ -11,6 +11,7 @@ import type {
   GoogleCalendarEventQuery,
 } from "@deskohub/google-calendar";
 import { Context, Effect, Layer } from "effect";
+import type { SharedSnapshotLoadFailure } from "@/shared/backend/shared-snapshot";
 import {
   GoogleCalendarWorkspaceLimitationsService,
   type WorkspaceCalendarLimitation,
@@ -21,6 +22,7 @@ export type AvailabilityInventoryError =
   | ExternalAPIError
   | GoogleCalendarError
   | NetworkError
+  | SharedSnapshotLoadFailure
   | ValidationError;
 
 /** The provider reads that availability is computed from. */
