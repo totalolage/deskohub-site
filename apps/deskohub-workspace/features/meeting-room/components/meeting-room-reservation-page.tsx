@@ -1,11 +1,11 @@
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
+import { PublicOfferingsStructuredData } from "@/features/checkout/components/public-offerings-structured-data";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import { preloadPageAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { isRememberedMeetingRoomReservationAvailable } from "@/features/reservation/backend/reservation-existing-customer.server";
 import { preloadPageAvailability } from "@/features/reservation/backend/workspace-availability-loader";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
-import { ReservationOfferingsStructuredData } from "@/features/reservation/components/reservation-offerings-structured-data";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import type { NormalizedMeetingRoomReservationOrder } from "@/features/reservation/meeting-room-reservation";
 import {
@@ -124,7 +124,7 @@ export async function renderMeetingRoomReservationContent({
 
   return (
     <>
-      <ReservationOfferingsStructuredData
+      <PublicOfferingsStructuredData
         locale={locale}
         offerings={getMeetingRoomPageOfferings({
           advertisedPrices: initialAdvertisedPrices,
@@ -132,7 +132,6 @@ export async function renderMeetingRoomReservationContent({
           startDateTime: initialValues.startDateTime,
           submittedCode,
         })}
-        pathname={meetingRoomReservationPath}
       />
       <MeetingRoomReservationForm
         checkoutSessionId={checkoutSessionId}

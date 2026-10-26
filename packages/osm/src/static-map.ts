@@ -30,7 +30,26 @@ export interface StaticMapImageOptions {
    * legible when the image is shown downscaled. Defaults to 1.
    */
   readonly attributionScale?: number;
+  /**
+   * Draws the attribution into the image. Defaults to true. Turn it off only
+   * when the page shows the attribution over the image itself, for example
+   * because the page crops the image to its viewport.
+   */
+  readonly attribution?: boolean;
+  /** Draws the location marker at the coordinate. Defaults to true. */
+  readonly marker?: boolean;
+  /** The image pixel the coordinate lands on. Defaults to the image centre. */
+  readonly focus?: StaticMapFocus;
+  /** Defaults to JPEG. */
+  readonly format?: StaticMapImageFormat;
 }
+
+interface StaticMapFocus {
+  readonly x: number;
+  readonly y: number;
+}
+
+type StaticMapImageFormat = "jpeg" | "webp";
 
 export interface StaticMapAttributionFont {
   readonly file: string;
@@ -50,7 +69,7 @@ export const generateStaticMapImage = Effect.fn("osm.generateStaticMapImage")(
     return Effect.succeed(input).pipe(
       Effect.bind("composites", fetchTileComposites),
       Effect.bind("tiledMap", renderTiledMap),
-      Effect.bind("attribution", renderAttribution),
+      Effect.bind("overlays", renderOverlays),
       Effect.bind("image", renderStaticMap),
       Effect.map(({ image }) => image)
     );
@@ -70,13 +89,17 @@ interface TilePlacement {
 }
 
 interface StaticMapInput {
+  readonly attribution: boolean;
   readonly attributionFont: StaticMapAttributionFont | undefined;
   readonly attributionScale: number;
   readonly baseHeight: number;
   readonly baseWidth: number;
   readonly extractLeft: number;
   readonly extractTop: number;
+  readonly focus: StaticMapFocus;
+  readonly format: StaticMapImageFormat;
   readonly height: number;
+  readonly marker: boolean;
   readonly quality: number;
   readonly tileUrl: string;
   readonly tiles: readonly TilePlacement[];
@@ -161,41 +184,48 @@ const renderAttribution = ({
       }),
   });
 
+const renderOverlays = (input: StaticMapInput) =>
+  Effect.all([
+    ...(input.marker
+      ? [
+          Effect.succeed(
+            createMarkerSvg(input.width, input.height, input.focus)
+          ),
+        ]
+      : []),
+    ...(input.attribution ? [renderAttribution(input)] : []),
+  ]);
+
 const renderStaticMap = ({
-  attribution,
   extractLeft,
   extractTop,
+  format,
   height,
+  overlays,
   quality,
   tiledMap,
   width,
 }: StaticMapInput & {
-  readonly attribution: Buffer;
+  readonly overlays: readonly Buffer[];
   readonly tiledMap: Buffer;
 }) =>
   Effect.tryPromise({
-    try: () =>
-      sharp(tiledMap)
+    try: () => {
+      const image = sharp(tiledMap)
         .extract({
           left: extractLeft,
           top: extractTop,
           width,
           height,
         })
-        .composite([
-          {
-            input: createMarkerSvg(width, height),
-            left: 0,
-            top: 0,
-          },
-          {
-            input: attribution,
-            left: 0,
-            top: 0,
-          },
-        ])
-        .jpeg({ quality, mozjpeg: true })
-        .toBuffer(),
+        .composite(overlays.map((input) => ({ input, left: 0, top: 0 })));
+
+      return (
+        format === "webp"
+          ? image.webp({ quality })
+          : image.jpeg({ quality, mozjpeg: true })
+      ).toBuffer();
+    },
     catch: (cause) =>
       new ImageRenderingError({
         cause,
@@ -270,10 +300,14 @@ const createStaticMapInput = (
     options.zoom,
     tileSize
   );
+  const focus = options.focus ?? {
+    x: options.width / 2,
+    y: options.height / 2,
+  };
   // Snap the viewport to whole pixels before choosing tiles, so the crop
   // offset and the tile range agree and the crop stays inside the canvas.
-  const left = Math.round(center.x - options.width / 2);
-  const top = Math.round(center.y - options.height / 2);
+  const left = Math.round(center.x - focus.x);
+  const top = Math.round(center.y - focus.y);
   const startTileX = Math.floor(left / tileSize);
   const startTileY = Math.floor(top / tileSize);
   const endTileX = Math.floor((left + options.width - 1) / tileSize);
@@ -298,13 +332,17 @@ const createStaticMapInput = (
   }
 
   return {
+    attribution: options.attribution ?? true,
     attributionFont: options.attributionFont,
     attributionScale: options.attributionScale ?? 1,
     baseWidth: (endTileX - startTileX + 1) * tileSize,
     baseHeight: (endTileY - startTileY + 1) * tileSize,
     extractLeft: left - startTileX * tileSize,
     extractTop: top - startTileY * tileSize,
+    focus,
+    format: options.format ?? "jpeg",
     height: options.height,
+    marker: options.marker ?? true,
     quality: options.quality ?? staticMapDefaults.quality,
     tileUrl: options.tileUrl ?? defaultTileUrl,
     tiles,
@@ -344,11 +382,15 @@ const buildTileUrl = (template: string, { x, y, z }: TileCoordinate): string =>
     .replaceAll("{y}", String(y))
     .replaceAll("{z}", String(z));
 
-const createMarkerSvg = (width: number, height: number) => {
+const createMarkerSvg = (
+  width: number,
+  height: number,
+  focus: StaticMapFocus
+) => {
   const markerWidth = 56;
   const markerHeight = 72;
-  const left = width / 2 - markerWidth / 2;
-  const top = height / 2 - markerHeight;
+  const left = focus.x - markerWidth / 2;
+  const top = focus.y - markerHeight;
 
   return Buffer.from(`
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">

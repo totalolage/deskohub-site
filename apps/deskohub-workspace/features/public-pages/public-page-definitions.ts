@@ -66,6 +66,11 @@ export const publicPageDefinitions: Readonly<
     description: m.landingMetadataDescription,
     contentDate: "2026-10-25",
   },
+  "/coworking": {
+    title: m.coworkingMetadataTitle,
+    description: m.coworkingMetadataDescription,
+    contentDate: "2026-10-25",
+  },
   "/contact": {
     title: m.contactMetadataTitle,
     titleNamesSite: true,
@@ -76,7 +81,7 @@ export const publicPageDefinitions: Readonly<
     title: m.faqMetadataTitle,
     titleNamesSite: true,
     description: m.faqMetadataDescription,
-    contentDate: "2026-10-21",
+    contentDate: "2026-10-25",
   },
   "/ai-assistants": {
     title: m.aiAssistantsMetadataTitle,
@@ -102,6 +107,11 @@ export const publicPageDefinitions: Readonly<
     description: m.teamMetadataDescription,
     contentDate: "2026-10-25",
   },
+  "/gallery": {
+    title: m.galleryMetadataTitle,
+    description: m.galleryMetadataDescription,
+    contentDate: "2026-10-25",
+  },
   "/ttrpg-room": {
     title: m.ttrpgRoomMetadataTitle,
     titleNamesSite: true,
@@ -120,7 +130,7 @@ export const publicPageDefinitions: Readonly<
     title: m.checkoutOrderMetadataTitle,
     titleNamesSite: true,
     description: m.checkoutOrderMetadataDescription,
-    contentDate: "2026-10-21",
+    contentDate: "2026-10-25",
   },
   "/reservation/meeting-room": {
     title: m.reservationMeetingRoomMetadataTitle,

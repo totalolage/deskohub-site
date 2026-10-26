@@ -38,6 +38,7 @@
     "./lint/no-direct-next-effect-imports.grit",
     "./lint/no-direct-process-env.grit",
     "./lint/no-eager-feature-flag-providers.grit",
+    "./lint/no-eager-posthog-browser-sdk.grit",
     "./lint/no-heavy-breadcrumb-imports.grit",
     "./lint/no-known-value-widening.grit",
     "./lint/no-local-administration-chrome.grit",

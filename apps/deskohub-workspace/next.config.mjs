@@ -125,16 +125,16 @@ const nextConfig = {
       beforeFiles: [],
       // The proxy skips dotted paths, so it can't tell an unmatched one from a
       // root file. Once every file and non-dynamic route has had its turn, a
-      // dotted path outside the locales, their RSC requests, `/api` and the
-      // build assets gets the locale redirect the proxy gives other unprefixed
-      // paths. Otherwise the `[locale]` route would take its first segment for
-      // a locale and answer with Next's bare error document. Route matching
-      // ignores letter case, so this rewrite also skips a dotted path under a
-      // wrong-case locale (`/en-us/x.html`); the proxy's matcher catches that
-      // one and moves it to the exact locale.
+      // dotted path outside the locales, their RSC requests, `/api`, the static
+      // map framings and the build assets gets the locale redirect the proxy
+      // gives other unprefixed paths. Otherwise the `[locale]` route would take
+      // its first segment for a locale and answer with Next's bare error
+      // document. Route matching ignores letter case, so this rewrite also
+      // skips a dotted path under a wrong-case locale (`/en-us/x.html`); the
+      // proxy's matcher catches that one and moves it to the exact locale.
       afterFiles: [
         {
-          source: `/:path((?!(?:${localeRedirectPattern})(?:/|$|\\.(?:prefetch\\.)?rsc$|\\.segments/)|api/|_next/|_vercel/|page-markdown/).*\\..*)`,
+          source: `/:path((?!(?:${localeRedirectPattern})(?:/|$|\\.(?:prefetch\\.)?rsc$|\\.segments/)|api/|_next/|_vercel/|page-markdown/|workspace-location-map/).*\\..*)`,
           destination: "/locale-redirect/:path",
         },
       ],
@@ -176,6 +176,10 @@ const nextConfig = {
     ];
   },
   images: {
+    // AVIF cuts the hero by about 15% and the cowork artwork by over half
+    // against WebP. It encodes slower, but only on a cache miss: local images
+    // stay cached across deployments.
+    formats: ["image/avif", "image/webp"],
     remotePatterns: [
       {
         protocol: "https",

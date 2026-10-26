@@ -79,6 +79,9 @@ export async function LandingPageOfferingSection({
                     {m.coworkReservationLink({}, { locale })}
                   </Link>
                 </Button>
+                <Link href={`${localePath}/coworking`} className={textLink()}>
+                  {m.landingOfferingCoworkPageLink({}, { locale })}
+                </Link>
               </OfferingActions>
             </OfferingRow>
 

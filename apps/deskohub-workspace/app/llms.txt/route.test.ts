@@ -123,7 +123,7 @@ describe("/llms.txt", () => {
     "/checkout/pay",
     "/reservation/status",
     "/admin",
-    "/gallery",
+    "/logo",
     "/testing",
   ])("never links %s", async (pathname) => {
     const urls = markdownLinkUrls(await (await getLlmsTxt()).text());

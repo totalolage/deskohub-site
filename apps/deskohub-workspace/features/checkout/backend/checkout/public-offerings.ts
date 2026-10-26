@@ -1,12 +1,12 @@
 import { Effect, Option } from "effect";
 import {
+  getPublicOfferingAdvertisedPrice,
   getPublicOfferingListings,
   type PublicOffering,
   type PublicOfferingListing,
   type PublicOfficeOffer,
   type PublicPriceListOffering,
 } from "@/features/checkout/public-offerings";
-import { getReservationQuoteDiscount } from "@/features/checkout/reservation-quote-schema";
 import type { Locale } from "@/features/i18n";
 import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-advisory-seat-capacity";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
@@ -117,10 +117,7 @@ const advertisePublicOffering = ({
     Effect.map(({ quote: { payment }, discountsComplete }) => ({
       offering: {
         ...offering,
-        advertisedPrice: {
-          price: payment.expectedPrice,
-          discount: getReservationQuoteDiscount(payment),
-        },
+        advertisedPrice: getPublicOfferingAdvertisedPrice(payment),
       } satisfies PublicOffering,
       complete: discountsComplete,
     }))
