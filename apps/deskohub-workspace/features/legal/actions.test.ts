@@ -39,6 +39,8 @@ const requestCookies = mock(async () => cookieStore);
 
 mock.module("next/headers", () => ({ cookies: requestCookies }));
 
+const unexpectedFailure = "Unexpected action failure";
+
 type ActionResult = {
   readonly data?: unknown;
   readonly serverError?: string;
@@ -66,7 +68,8 @@ type ActionHandler = (
   input: ActionInput,
   context: { readonly clientInput: ActionInput; readonly locale: "en-US" }
 ) => Effect.Effect<
-  { readonly status: "saved" | "confirmed" | "cleared" },
+  | { readonly status: "saved" | "confirmed" | "cleared" }
+  | { readonly status: "rejected"; readonly reason: string },
   Error,
   never
 >;
@@ -80,13 +83,10 @@ mock.module("@/shared/backend/workspace-action", () => ({
           handler(input, { clientInput: input, locale: "en-US" })
         );
         return { data };
-      } catch (error) {
-        return {
-          serverError:
-            error instanceof Error
-              ? error.message
-              : "We could not update your marketing preference. Please try again.",
-        };
+      } catch {
+        // The runtime reports a failure the action didn't make public as
+        // unexpected copy.
+        return { serverError: unexpectedFailure };
       }
     },
 }));
@@ -280,7 +280,7 @@ describe("marketing preference actions", () => {
         context: getPendingMarketingManagementContext("different-token"),
       })
     ).resolves.toEqual({
-      serverError: "stale-context",
+      data: { status: "rejected", reason: "stale-context" },
     });
     expect(currentScenario.exchange).not.toHaveBeenCalled();
     expect(setMarketingManagementSessionCookie).not.toHaveBeenCalled();
@@ -299,7 +299,7 @@ describe("marketing preference actions", () => {
         context: getPendingMarketingManagementContext(pendingToken),
       })
     ).resolves.toEqual({
-      serverError: "invalid-link",
+      data: { status: "rejected", reason: "invalid-link" },
     });
     expect(setMarketingManagementSessionCookie).not.toHaveBeenCalled();
   });
@@ -377,7 +377,7 @@ describe("marketing preference actions", () => {
         source: "link",
       })
     ).resolves.toEqual({
-      serverError: "pending-confirmation-required",
+      data: { status: "rejected", reason: "pending-confirmation-required" },
     });
     expect(currentScenario.grant).not.toHaveBeenCalled();
     expect(currentScenario.withdraw).not.toHaveBeenCalled();
@@ -402,7 +402,7 @@ describe("marketing preference actions", () => {
         source: "link",
       })
     ).resolves.toEqual({
-      serverError: "stale-context",
+      data: { status: "rejected", reason: "stale-context" },
     });
     expect(currentScenario.grant).not.toHaveBeenCalled();
   });
@@ -475,7 +475,7 @@ describe("marketing preference actions", () => {
         }),
       })
     ).resolves.toEqual({
-      serverError: "stale-context",
+      data: { status: "rejected", reason: "stale-context" },
     });
 
     expect(currentScenario.revoke).not.toHaveBeenCalled();
@@ -497,7 +497,7 @@ describe("marketing preference actions", () => {
     };
 
     await expect(clearMarketingManagementAction(input)).resolves.toEqual({
-      serverError: "unavailable",
+      serverError: unexpectedFailure,
     });
     expect(currentScenario.cookies).toEqual({
       pending: undefined,

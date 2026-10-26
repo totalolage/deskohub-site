@@ -64,7 +64,6 @@ import {
 } from "@/shared/utils";
 import { formatCount } from "@/shared/utils/number";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
-import { getDiscountAdminActionFailureMessage } from "./action-failure-message";
 import { mutateDiscountAdmin } from "./actions";
 import type { DiscountAdminMutation } from "./contracts";
 import type { AdminCalendarSale } from "./discount-administration.service";
@@ -412,7 +411,6 @@ export function VoucherEditor({
         {voucher.id}
       </p>
       <MutationForm
-        actionName={`updateVoucher.${voucher.id}`}
         buildMutation={(values) =>
           Option.map(
             toVoucherCreditInput(values),
@@ -708,7 +706,6 @@ export function CreateDiscountForm({
   const locale = useRouteLocale();
   return (
     <MutationForm
-      actionName="createDiscount"
       buildMutation={(values) =>
         Option.map(
           toCreateDiscountInput(values),
@@ -743,7 +740,6 @@ export function CreateVoucherForm({
   const locale = useRouteLocale();
   return (
     <MutationForm
-      actionName={customer ? "createCustomerVoucher" : "createVoucher"}
       buildMutation={(values) =>
         Option.map(
           toVoucherCreditInput(values),
@@ -839,7 +835,6 @@ function DiscountEditor({
         <code className="mt-1 block break-all text-xs">{discount.id}</code>
       </div>
       <MutationForm
-        actionName={`updateDiscount.${discount.id}`}
         buildMutation={(values) =>
           Option.map(
             toCreateDiscountInput(values),
@@ -892,7 +887,6 @@ function DiscountCodeEditor({
         {code.id}
       </p>
       <MutationForm
-        actionName={`updateDiscountCode.${code.id}`}
         buildMutation={(values) =>
           Option.some({
             kind: "update-code",
@@ -916,7 +910,6 @@ function DiscountCodeEditor({
 }
 
 function MutationForm<Input extends FieldValues, Values = Input>({
-  actionName,
   buildMutation,
   children,
   defaultValues,
@@ -928,7 +921,6 @@ function MutationForm<Input extends FieldValues, Values = Input>({
   submitLabel,
   onSuccess,
 }: {
-  readonly actionName: string;
   /** None when the values cannot form a mutation the action would accept. */
   readonly buildMutation: (
     values: Values
@@ -982,7 +974,6 @@ function MutationForm<Input extends FieldValues, Values = Input>({
 
   const checkFormMessage = () => m.discountsSaveFailedCheckForm({}, { locale });
   const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
-    actionName,
     onSuccess: ({ data }) => {
       if (!data) return;
       // Rebase the defaults onto the submitted snapshot while retaining every
@@ -1007,10 +998,7 @@ function MutationForm<Input extends FieldValues, Values = Input>({
     onError: ({ error }) => {
       setFeedback({
         kind: "error",
-        message: getDiscountAdminActionFailureMessage(error.serverError, {
-          fallback: checkFormMessage(),
-          locale,
-        }),
+        message: error.serverError ?? checkFormMessage(),
       });
     },
     onTransportError: () => {
@@ -1085,7 +1073,6 @@ function DeleteButton({
   const locale = useRouteLocale();
   const [error, setError] = useState<string | null>(null);
   const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
-    actionName: "deleteDiscountAdminItem",
     onSuccess: ({ data }) => {
       if (!data) return;
       onDeleted?.();
@@ -1093,10 +1080,7 @@ function DeleteButton({
     },
     onError: ({ error: actionError }) => {
       setError(
-        getDiscountAdminActionFailureMessage(actionError.serverError, {
-          fallback: m.discountsDeleteFailed({}, { locale }),
-          locale,
-        })
+        actionError.serverError ?? m.discountsDeleteFailed({}, { locale })
       );
     },
     onTransportError: () => {

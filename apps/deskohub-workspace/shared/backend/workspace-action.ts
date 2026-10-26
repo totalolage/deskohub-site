@@ -4,17 +4,15 @@ import {
   type EffectActionState,
 } from "@deskohub/next-effect/effect-action";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Duration, Effect, Predicate, References } from "effect";
+import { Data, Duration, Effect, Predicate, References } from "effect";
 import { headers } from "next/headers";
 import type {
   FlattenedValidationErrors,
   ValidationErrors,
 } from "next-safe-action";
-import type { Locale } from "@/features/i18n";
-import { actionRuntimeFailureMessages } from "../utils/action-runtime-failure";
-import { formatError } from "../utils/error-formatting";
+import { type Locale, type LocalizedCopy, m } from "@/features/i18n";
 import {
-  actionClient,
+  createWorkspaceActionClient,
   PublicSafeActionError,
   type SafeActionFailure,
 } from "../utils/safe-action-client";
@@ -39,6 +37,27 @@ type WorkspaceActionValidationIssue = {
   readonly path: readonly string[];
 };
 
+/**
+ * Copy for the failures the action runtime reports by itself, rendered in the
+ * action's locale. Messages from the catalog that owns the action's screens
+ * pass as is.
+ */
+export interface WorkspaceActionFailureCopy {
+  /** The action outlived its deadline. */
+  readonly timeout: LocalizedCopy;
+  /**
+   * A failure the action didn't make public, including a defect or a runtime
+   * that could not start.
+   */
+  readonly unexpected: LocalizedCopy;
+}
+
+/** The runtime failure copy of a customer-facing action. */
+const customerActionFailureCopy: WorkspaceActionFailureCopy = {
+  timeout: m.actionTimedOut,
+  unexpected: m.actionFailedUnexpectedly,
+};
+
 export interface WorkspaceActionOptions<S extends StandardSchemaV1> {
   /**
    * How long the whole action may run before the customer is told to try
@@ -46,6 +65,17 @@ export interface WorkspaceActionOptions<S extends StandardSchemaV1> {
    * whose provider requests cannot fit.
    */
   readonly deadline?: Duration.Input;
+  /**
+   * Copy for the runtime's own failures. Defaults to the customer catalog; an
+   * administration area passes its catalog's copy.
+   */
+  readonly failureCopy?: WorkspaceActionFailureCopy;
+  /**
+   * Shown for a failure the handler fails with but didn't make public, in
+   * place of `failureCopy.unexpected`. The original failure is still logged.
+   * A defect stays unexpected.
+   */
+  readonly fallback?: LocalizedCopy;
   /**
    * Set to false for inputs containing data that must not be persisted in
    * telemetry, such as customer contact details.
@@ -64,21 +94,30 @@ export interface WorkspaceActionContext<S extends StandardSchemaV1> {
 /** The deadline of an action that sets none of its own. */
 export const workspaceActionDeadline = Duration.seconds(45);
 
-/** Fails an action that outlives `deadline` with a retryable public error. */
+/** An action outlived its deadline. */
+class WorkspaceActionTimeout extends Data.TaggedError(
+  "WorkspaceActionTimeout"
+) {}
+
+/** Fails an action that outlives `deadline` with a `WorkspaceActionTimeout`. */
 export const withActionDeadline =
   (deadline: Duration.Input) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     effect.pipe(
       Effect.timeoutOrElse({
         duration: deadline,
-        orElse: () =>
-          Effect.fail(
-            new PublicSafeActionError({
-              message: actionRuntimeFailureMessages.timeout,
-            })
-          ),
+        orElse: () => Effect.fail(new WorkspaceActionTimeout()),
       })
     );
+
+const getFailureCopy = ({
+  failureCopy = customerActionFailureCopy,
+}: Pick<WorkspaceActionOptions<StandardSchemaV1>, "failureCopy">) =>
+  failureCopy;
+
+const createActionClient = <S extends StandardSchemaV1>(
+  options: WorkspaceActionOptions<S>
+) => createWorkspaceActionClient(getFailureCopy(options).unexpected);
 
 export const defineWorkspaceAction = <
   S extends StandardSchemaV1,
@@ -91,7 +130,7 @@ export const defineWorkspaceAction = <
     context: WorkspaceActionContext<S>
   ) => Effect.Effect<A, E, BotProtectionService>
 ) =>
-  EffectAction.fromClient(actionClient, {
+  EffectAction.fromClient(createActionClient(options), {
     run: runWorkspaceEffect(options.operation, { boundary: "action" }),
   })
     .inputSchema(options.schema, {
@@ -120,7 +159,7 @@ export const defineWorkspaceStateAction = <
     state: EffectActionState<string, S, WorkspaceActionValidationErrors<S>, A>
   ) => Effect.Effect<A, E, BotProtectionService>
 ) =>
-  EffectAction.fromClient(actionClient, {
+  EffectAction.fromClient(createActionClient(options), {
     run: runWorkspaceEffect(options.operation, { boundary: "action" }),
   })
     .inputSchema(options.schema, {
@@ -143,7 +182,10 @@ const prepareWorkspaceAction = <
   E extends SafeActionFailure,
 >(
   args: WorkspaceActionArgs<S>,
-  options: Pick<WorkspaceActionOptions<S>, "deadline" | "logInput">,
+  options: Pick<
+    WorkspaceActionOptions<S>,
+    "deadline" | "failureCopy" | "fallback" | "logInput"
+  >,
   handler: () => Effect.Effect<A, E, BotProtectionService>
 ) => {
   const logged = Effect.gen(function* () {
@@ -162,7 +204,17 @@ const prepareWorkspaceAction = <
     Effect.tapError((error) =>
       Effect.logError("Action failed").pipe(Effect.annotateLogs({ error }))
     ),
-    Effect.mapError(mapSafeActionFailure)
+    Effect.mapError((error) =>
+      error instanceof PublicSafeActionError
+        ? error
+        : new PublicSafeActionError({
+            message: (options.fallback ?? getFailureCopy(options).unexpected)(
+              {},
+              { locale: args.ctx.locale }
+            ),
+            cause: error,
+          })
+    )
   );
 
   const invocation = readActionHeaders.pipe(
@@ -170,7 +222,18 @@ const prepareWorkspaceAction = <
       logged.pipe(withWorkspaceRequestContext(requestHeaders))
     ),
     Effect.provideService(References.MinimumLogLevel, "All"),
-    withActionDeadline(options.deadline ?? workspaceActionDeadline)
+    withActionDeadline(options.deadline ?? workspaceActionDeadline),
+    Effect.mapError((error) =>
+      error instanceof WorkspaceActionTimeout
+        ? new PublicSafeActionError({
+            message: getFailureCopy(options).timeout(
+              {},
+              { locale: args.ctx.locale }
+            ),
+            cause: error,
+          })
+        : error
+    )
   );
 
   return Effect.andThen(scheduleWorkspaceTelemetryFlush(), invocation);
@@ -275,15 +338,4 @@ const formatWorkspaceActionValidationPath = (
     formatted = formatted ? `${formatted}.${segment}` : segment;
   }
   return formatted;
-};
-
-const mapSafeActionFailure = (error: SafeActionFailure) => {
-  if (error instanceof PublicSafeActionError) {
-    return error;
-  }
-
-  const formatted = formatError(error);
-  return new Error(formatted.code || "INTERNAL_ACTION_ERROR", {
-    cause: error,
-  });
 };

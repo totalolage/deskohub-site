@@ -33,5 +33,7 @@
   "administratorsRevokeUnchanged": "{email} no longer had the administrator role.",
   "administratorsRevokeSelf": "You can't revoke your own administrator role.",
   "administratorsRevokeFailed": "The administrator role could not be revoked. Try again.",
-  "administratorsServerUnreachable": "The server could not be reached. Try again."
+  "administratorsServerUnreachable": "The server could not be reached. Try again.",
+  "administratorsActionTimedOut": "The server took too long to respond. Try again.",
+  "administratorsActionFailedUnexpectedly": "Something went wrong on the server. Try again."
 }

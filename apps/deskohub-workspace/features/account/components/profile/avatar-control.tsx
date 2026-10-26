@@ -118,7 +118,6 @@ export function AvatarControl({
     setStatus({ kind: "failed", message });
 
   const upload = useWorkspaceAction(uploadCustomerAvatar, {
-    actionName: "account.upload-avatar",
     onSuccess: ({ data }) => {
       if (data) handleOutcome(data);
     },
@@ -133,7 +132,6 @@ export function AvatarControl({
       reportFailure(m.accountProfileAvatarErrorGeneric({}, { locale })),
   });
   const remove = useWorkspaceAction(removeCustomerAvatar, {
-    actionName: "account.remove-avatar",
     onSuccess: ({ data }) => {
       if (data) handleOutcome(data);
     },

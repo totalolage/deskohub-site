@@ -9,7 +9,7 @@ import {
   test,
 } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Profiler, StrictMode } from "react";
+import { Profiler, StrictMode, useEffect, useRef, useState } from "react";
 import { loadFixtureReservations } from "@/features/administration/fixtures";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
@@ -17,6 +17,7 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import type { VoucherTableItem } from "./admin-tables";
+import type { DiscountAdminMutation } from "./contracts";
 import type {
   AdminCustomerProfile,
   DiscountAdminDashboard,
@@ -54,12 +55,13 @@ mock.module("next/navigation", () => ({
   unstable_rethrow: () => {},
 }));
 
+const mutateDiscountAdmin = mock();
 mock.module("./actions", () => ({
   createDiscountAdminForm: mock(),
   createDiscountCodeAdminForm: mock(),
   deleteDiscountAdminForm: mock(),
   deleteDiscountCodeAdminForm: mock(),
-  mutateDiscountAdmin: mock(),
+  mutateDiscountAdmin,
   searchDiscountAdminCustomers: mock(),
   updateDiscountAdminForm: mock(),
   updateDiscountCodeAdminForm: mock(),
@@ -86,44 +88,68 @@ type CapturedWorkspaceAction = {
   };
 };
 
-// The execute identity must stay stable across component re-renders, so each
-// action name is captured once and reused for every subsequent call.
-const captureWorkspaceActions = (pattern: RegExp) => {
-  const capturedActions = new Map<string, CapturedWorkspaceAction>();
-  workspaceUseAction.mockImplementation((_action, options) => {
-    const candidate = options as {
-      actionName?: string;
-      onSuccess?: CapturedWorkspaceAction["options"]["onSuccess"];
-      onError?: CapturedWorkspaceAction["options"]["onError"];
-      onTransportError?: CapturedWorkspaceAction["options"]["onTransportError"];
-    };
-    if (candidate?.actionName && pattern.test(candidate.actionName)) {
-      let captured = capturedActions.get(candidate.actionName);
-      if (!captured) {
-        captured = {
-          execute: mock(),
-          options: {
-            onSuccess: candidate.onSuccess!,
-            onError: candidate.onError!,
-            onTransportError: candidate.onTransportError!,
-          },
+// Every discount mutation runs through one action, so a form's hook is found
+// by the kinds of mutation it executes. A form that has not executed one yet is
+// found as the only mounted mutation hook.
+const captureWorkspaceActions = () => {
+  type LatestOptions = { current: CapturedWorkspaceAction["options"] };
+  const mounted = new Set<LatestOptions>();
+  const executions: {
+    readonly mutation: DiscountAdminMutation;
+    readonly options: LatestOptions;
+  }[] = [];
+  const captures: {
+    readonly kinds: readonly DiscountAdminMutation["kind"][];
+    readonly execute: ReturnType<typeof mock>;
+  }[] = [];
+  workspaceUseAction.mockImplementation(
+    function useCapturedWorkspaceAction(action, options) {
+      const latestOptions = useRef(options as LatestOptions["current"]);
+      latestOptions.current = options as LatestOptions["current"];
+      const isMutation = action === mutateDiscountAdmin;
+      useEffect(() => {
+        if (!isMutation) return;
+        mounted.add(latestOptions);
+        return () => {
+          mounted.delete(latestOptions);
         };
-        capturedActions.set(candidate.actionName, captured);
-      } else {
-        captured.options = {
-          onSuccess: candidate.onSuccess!,
-          onError: candidate.onError!,
-          onTransportError: candidate.onTransportError!,
-        };
-      }
-      return { execute: captured.execute, isExecuting: false, result: {} };
+      }, [isMutation]);
+      // The execute identity must stay stable across component re-renders.
+      const [execute] = useState(() => (mutation: DiscountAdminMutation) => {
+        if (!isMutation) return;
+        executions.push({ mutation, options: latestOptions });
+        for (const capture of captures) {
+          if (capture.kinds.includes(mutation.kind)) capture.execute(mutation);
+        }
+      });
+      return { execute, isExecuting: false, result: {} };
     }
-    return { execute: mock(), isExecuting: false, result: {} };
-  });
-  return (actionName: string): CapturedWorkspaceAction => {
-    const captured = capturedActions.get(actionName);
-    expect(captured).toBeDefined();
-    return captured!;
+  );
+  return (
+    ...kinds: DiscountAdminMutation["kind"][]
+  ): CapturedWorkspaceAction => {
+    const executionsOfKinds = () =>
+      executions.filter(({ mutation }) => kinds.includes(mutation.kind));
+    const execute = mock();
+    for (const { mutation } of executionsOfKinds()) execute(mutation);
+    captures.push({ kinds, execute });
+    const options = () => {
+      const executed = executionsOfKinds().at(-1);
+      if (executed) return executed.options.current;
+      const [only, ...others] = mounted;
+      if (!only || others.length > 0) {
+        throw new Error(`No single form to report ${kinds.join(" or ")} to`);
+      }
+      return only.current;
+    };
+    return {
+      execute,
+      options: {
+        onSuccess: (result) => options().onSuccess(result),
+        onError: (result) => options().onError(result),
+        onTransportError: () => options().onTransportError(),
+      },
+    };
   };
 };
 
@@ -995,7 +1021,7 @@ describe("discount administration pages", () => {
   });
 
   test("creates a customer voucher and returns to the customer", async () => {
-    const captured = captureWorkspaceActions(/^createCustomerVoucher$/);
+    const captured = captureWorkspaceActions();
     const { CustomerVoucherCreationForm } = await import(
       "./customer-voucher-creation"
     );
@@ -1020,7 +1046,7 @@ describe("discount administration pages", () => {
       view.getByRole("button", { name: "Create voucher" }).closest("form")!
     );
 
-    const action = captured("createCustomerVoucher");
+    const action = captured("create-customer-voucher");
     await waitFor(() =>
       expect(action.execute).toHaveBeenCalledWith({
         kind: "create-customer-voucher",
@@ -1044,9 +1070,7 @@ describe("discount administration pages", () => {
   });
 
   test("adds and removes a customer from a voucher audience", async () => {
-    const captured = captureWorkspaceActions(
-      /^manageCustomerVoucherEligibility$/
-    );
+    const captured = captureWorkspaceActions();
     const { CustomerPromotionCodeAction } = await import(
       "./customer-admin-client"
     );
@@ -1077,7 +1101,12 @@ describe("discount administration pages", () => {
     fireEvent.click(
       unrestricted.getByRole("button", { name: "Limit to only this user" })
     );
-    const action = captured("manageCustomerVoucherEligibility");
+    const action = captured(
+      "add-voucher-customer",
+      "remove-voucher-customer",
+      "delete-voucher",
+      "make-voucher-unrestricted"
+    );
     expect(action.execute).toHaveBeenLastCalledWith({
       kind: "add-voucher-customer",
       voucherId,
@@ -1149,7 +1178,7 @@ describe("discount administration pages", () => {
   });
 
   test("rebases the discount editor onto submitted values after success", async () => {
-    const captured = captureWorkspaceActions(/^updateDiscount\./);
+    const captured = captureWorkspaceActions();
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
       <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
@@ -1166,9 +1195,7 @@ describe("discount administration pages", () => {
     );
     expect(save).toHaveProperty("disabled", false);
 
-    const { execute, options } = captured(
-      "updateDiscount.019c91dd-c560-7e55-b9d8-c95065efd51d"
-    );
+    const { execute, options } = captured("update-discount");
     fireEvent.submit(save.closest("form")!);
     await waitFor(() =>
       expect(execute).toHaveBeenCalledWith({
@@ -1220,7 +1247,7 @@ describe("discount administration pages", () => {
   });
 
   test("keeps edits made during a save in flight dirty after success", async () => {
-    const captured = captureWorkspaceActions(/^updateDiscount\./);
+    const captured = captureWorkspaceActions();
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
       <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
@@ -1237,9 +1264,7 @@ describe("discount administration pages", () => {
     // Submit value A.
     fireEvent.input(labelEn(), { target: { value: "Submitted label" } });
     fireEvent.submit(saveButton().closest("form")!);
-    const { execute, options } = captured(
-      "updateDiscount.019c91dd-c560-7e55-b9d8-c95065efd51d"
-    );
+    const { execute, options } = captured("update-discount");
     await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
 
     // Edit to B while the request is still in flight.
@@ -1273,7 +1298,7 @@ describe("discount administration pages", () => {
   });
 
   test("keeps a reverted in-flight edit dirty instead of absorbing it into the snapshot", async () => {
-    const captured = captureWorkspaceActions(/^updateDiscount\./);
+    const captured = captureWorkspaceActions();
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
       <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
@@ -1290,9 +1315,7 @@ describe("discount administration pages", () => {
     // Submit value A.
     fireEvent.input(labelEn(), { target: { value: "Submitted label" } });
     fireEvent.submit(saveButton().closest("form")!);
-    const { execute, options } = captured(
-      "updateDiscount.019c91dd-c560-7e55-b9d8-c95065efd51d"
-    );
+    const { execute, options } = captured("update-discount");
     await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
 
     // Revert to the original value O while the request is still in flight.
@@ -1326,9 +1349,7 @@ describe("discount administration pages", () => {
   });
 
   test("registers product and enabled checkboxes in the update payloads", async () => {
-    const captured = captureWorkspaceActions(
-      /^(updateDiscount|updateDiscountCode)\./
-    );
+    const captured = captureWorkspaceActions();
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
       <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
@@ -1347,9 +1368,7 @@ describe("discount administration pages", () => {
     expect(meetingRoom).toBeDefined();
     fireEvent.click(meetingRoom!);
     fireEvent.submit(discountForm);
-    const { execute: discountExecute } = captured(
-      "updateDiscount.019c91dd-c560-7e55-b9d8-c95065efd51d"
-    );
+    const { execute: discountExecute } = captured("update-discount");
     await waitFor(() =>
       expect(discountExecute).toHaveBeenCalledWith({
         kind: "update-discount",
@@ -1373,9 +1392,7 @@ describe("discount administration pages", () => {
       { target: { value: "summer11" } }
     );
     fireEvent.submit(codeForm);
-    const { execute: codeExecute } = captured(
-      "updateDiscountCode.019c91dd-c560-7e55-b9d8-c95065efd52d"
-    );
+    const { execute: codeExecute } = captured("update-code");
     await waitFor(() =>
       expect(codeExecute).toHaveBeenCalledWith({
         kind: "update-code",
@@ -1394,7 +1411,7 @@ describe("discount administration pages", () => {
   });
 
   test("keeps create feedback through the reset to defaults until the next edit", async () => {
-    const captured = captureWorkspaceActions(/^createDiscount$/);
+    const captured = captureWorkspaceActions();
     const { CreateDiscountForm } = await import("./admin-tables");
     const view = render(
       <StrictMode>
@@ -1405,7 +1422,7 @@ describe("discount administration pages", () => {
       view.getByRole("textbox", {
         name: "English (en-US)",
       }) as HTMLInputElement;
-    const { execute, options } = captured("createDiscount");
+    const { execute, options } = captured("create-discount");
 
     act(() =>
       options.onError({ error: { serverError: "The discount was rejected." } })
@@ -1441,7 +1458,7 @@ describe("discount administration pages", () => {
 
   test("rejects a carried-over currency outside the catalog with the action's validation banner", async () => {
     const voucherId = "019c91dd-c560-7e55-b9d8-c95065efd55d";
-    const captured = captureWorkspaceActions(/^updateVoucher\./);
+    const captured = captureWorkspaceActions();
     const { VoucherEditor } = await import("./admin-tables");
     const view = render(
       <VoucherEditor
@@ -1459,7 +1476,7 @@ describe("discount administration pages", () => {
         }}
       />
     );
-    const { execute, options } = captured(`updateVoucher.${voucherId}`);
+    const { execute, options } = captured("update-voucher");
     const codeField = view.getByRole("textbox", { name: "Code" });
 
     fireEvent.input(codeField, { target: { value: "gift101" } });
@@ -1475,8 +1492,8 @@ describe("discount administration pages", () => {
     expect(view.getByRole("alert").textContent).toBe(rejection);
   });
 
-  test("shows a timed-out save in Czech on a cs-CZ route", async () => {
-    const captured = captureWorkspaceActions(/^createDiscount$/);
+  test("shows the server's failure as sent on a cs-CZ route", async () => {
+    const captured = captureWorkspaceActions();
     const { RouteLocaleProvider } = await import(
       "@/features/i18n/route-locale"
     );
@@ -1486,16 +1503,7 @@ describe("discount administration pages", () => {
         <CreateDiscountForm />
       </RouteLocaleProvider>
     );
-    const { options } = captured("createDiscount");
-
-    act(() =>
-      options.onError({
-        error: { serverError: "Request timed out. Please try again." },
-      })
-    );
-    expect(view.getByRole("alert").textContent).toBe(
-      "Server neodpověděl včas. Zkuste to znovu."
-    );
+    const { options } = captured("create-discount");
 
     act(() =>
       options.onError({
@@ -1570,7 +1578,7 @@ describe("discount administration pages", () => {
   });
 
   test("shows and edits cowork tier targets in the code table", async () => {
-    const captured = captureWorkspaceActions(/^updateDiscount\./);
+    const captured = captureWorkspaceActions();
     const [discount] = dashboard.discounts;
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
@@ -1612,9 +1620,7 @@ describe("discount administration pages", () => {
     );
     fireEvent.submit(discountForm);
     await waitFor(() =>
-      expect(
-        captured(`updateDiscount.${discount.id}`).execute
-      ).toHaveBeenCalledWith({
+      expect(captured("update-discount").execute).toHaveBeenCalledWith({
         kind: "update-discount",
         discount: {
           id: discount.id,
@@ -1631,7 +1637,7 @@ describe("discount administration pages", () => {
   });
 
   test("sets and clears a customer discount group", async () => {
-    const captured = captureWorkspaceActions(/^setCustomerDiscountGroup$/);
+    const captured = captureWorkspaceActions();
     const { CustomerDiscountGroupForm } = await import(
       "./customer-admin-client"
     );
@@ -1649,7 +1655,7 @@ describe("discount administration pages", () => {
 
     fireEvent.change(select, { target: { value: "group-1" } });
     fireEvent.submit(form);
-    const { execute } = captured("setCustomerDiscountGroup");
+    const { execute } = captured("set-customer-discount-group");
     await waitFor(() =>
       expect(execute).toHaveBeenCalledWith({
         kind: "set-customer-discount-group",

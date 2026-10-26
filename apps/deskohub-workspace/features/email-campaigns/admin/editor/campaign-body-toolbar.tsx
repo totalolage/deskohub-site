@@ -42,7 +42,6 @@ import {
 } from "@/shared/components/ui/tooltip";
 import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
-import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
 import { uploadCampaignImage } from "./actions";
 import { normalizeCampaignLinkHref } from "./campaign-link-href";
 import { CtaButtonDialog, type CtaButtonValues } from "./cta-button-dialog";
@@ -454,19 +453,15 @@ function ImageUploadControl({
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string>();
   const upload = useWorkspaceAction(uploadCampaignImage, {
-    actionName: "uploadCampaignImage",
     onSuccess: ({ data }) => {
       setError(undefined);
       editor?.chain().focus().setImage({ src: data.url, alt: "" }).run();
     },
     onError: ({ error }) =>
       setError(
-        getEmailCampaignAdminActionFailureMessage(error.serverError, {
-          fallback:
-            error.validationErrors?.formErrors?.[0] ??
-            m.emailCampaignsImageUploadFailed({}, { locale }),
-          locale,
-        })
+        error.serverError ??
+          error.validationErrors?.formErrors?.[0] ??
+          m.emailCampaignsImageUploadFailed({}, { locale })
       ),
   });
 

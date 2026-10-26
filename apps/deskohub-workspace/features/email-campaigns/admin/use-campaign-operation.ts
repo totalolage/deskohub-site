@@ -8,7 +8,6 @@ import type {
 } from "@deskohub/workspace-admin-api";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
-import { getEmailCampaignAdminActionFailureMessage } from "./action-failure-message";
 import {
   type CampaignOperationFailureCopy,
   describeCampaignOperationFailure,
@@ -51,7 +50,6 @@ export function useCampaignOperation<Name extends CampaignOperationName>(
     CampaignOperationValidationErrors<Name>,
     CampaignOperationResult<Name>
   >(runCampaignOperation<Name>, {
-    actionName: `email-campaigns.${operation}`,
     onSuccess: ({ data, input }) => {
       if (data?._tag === "Success") onSuccess?.(data.output, input.input);
       if (data?._tag === "Failure") {
@@ -62,12 +60,7 @@ export function useCampaignOperation<Name extends CampaignOperationName>(
       }
     },
     onError: ({ error }) =>
-      onFailure(
-        getEmailCampaignAdminActionFailureMessage(error.serverError, {
-          fallback: failureCopy.fallback(locale),
-          locale,
-        })
-      ),
+      onFailure(error.serverError ?? failureCopy.fallback(locale)),
     onTransportError: () => onFailure(failureCopy.fallback(locale)),
   });
 

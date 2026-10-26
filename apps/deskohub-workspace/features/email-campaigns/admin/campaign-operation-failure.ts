@@ -1,6 +1,13 @@
 import { EMAIL_TEST_DOMAIN } from "@deskohub/test-email";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
+import type { WorkspaceActionFailureCopy } from "@/shared/backend/workspace-action";
+
+/** How the action runtime words its own failures in campaign actions. */
+export const emailCampaignsActionFailureCopy: WorkspaceActionFailureCopy = {
+  timeout: m.emailCampaignsActionTimedOut,
+  unexpected: m.emailCampaignsActionFailedUnexpectedly,
+};
 
 /** Admin copy for one failure, in the admin's locale. */
 type FailureCopy = (locale: Locale) => string;

@@ -45,7 +45,6 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
-import { getDiscountAdminActionFailureMessage } from "./action-failure-message";
 import { mutateDiscountAdmin, searchDiscountAdminCustomers } from "./actions";
 import type { DiscountAdminMutation } from "./contracts";
 import { formatDiscountAdminCustomerName } from "./customer-display-name";
@@ -97,7 +96,6 @@ export function CustomerSearch({
   const { execute, isExecuting } = useWorkspaceAction(
     searchDiscountAdminCustomers,
     {
-      actionName: "searchDiscountAdminCustomers",
       onSuccess: ({ data }) => {
         if (!data) return;
         setError(null);
@@ -106,10 +104,8 @@ export function CustomerSearch({
       onError: ({ error: actionError }) => {
         setResult(null);
         setError(
-          getDiscountAdminActionFailureMessage(actionError.serverError, {
-            fallback: m.discountsCustomerSearchFailed({}, { locale }),
-            locale,
-          })
+          actionError.serverError ??
+            m.discountsCustomerSearchFailed({}, { locale })
         );
       },
       onTransportError: () => {
@@ -245,7 +241,6 @@ export function AddCodeCustomerForm({
   const locale = useRouteLocale();
   return (
     <AdminMutationForm
-      actionName="addCodeCustomer"
       buildMutation={(values) => ({
         kind: "add-code-customer",
         codeId,
@@ -290,7 +285,6 @@ export function AddVoucherCustomerForm({
   const locale = useRouteLocale();
   return (
     <AdminMutationForm
-      actionName="addVoucherCustomer"
       buildMutation={(values) => ({
         kind: "add-voucher-customer",
         voucherId,
@@ -343,7 +337,6 @@ export function CustomerDiscountGroupForm({
 
   return (
     <AdminMutationForm
-      actionName="setCustomerDiscountGroup"
       buildMutation={(values) => ({
         kind: "set-customer-discount-group",
         customerId,
@@ -405,14 +398,10 @@ export function AdminMutationButton({
   const locale = useRouteLocale();
   const [error, setError] = useState<string | null>(null);
   const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
-    actionName: mutation.kind,
     onSuccess: () => router.refresh(),
     onError: ({ error: actionError }) =>
       setError(
-        getDiscountAdminActionFailureMessage(actionError.serverError, {
-          fallback: m.discountsSaveFailed({}, { locale }),
-          locale,
-        })
+        actionError.serverError ?? m.discountsSaveFailed({}, { locale })
       ),
     onTransportError: () =>
       setError(m.discountsSaveFailedRetry({}, { locale })),
@@ -528,20 +517,13 @@ export function CustomerPromotionCodeAction({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
-    actionName:
-      promotion.kind === "voucher"
-        ? "manageCustomerVoucherEligibility"
-        : "manageCustomerCodeEligibility",
     onSuccess: () => {
       setOpen(false);
       router.refresh();
     },
     onError: ({ error: actionError }) =>
       setError(
-        getDiscountAdminActionFailureMessage(actionError.serverError, {
-          fallback: m.discountsSaveFailed({}, { locale }),
-          locale,
-        })
+        actionError.serverError ?? m.discountsSaveFailed({}, { locale })
       ),
     onTransportError: () =>
       setError(m.discountsSaveFailedRetry({}, { locale })),
@@ -672,7 +654,6 @@ export function CustomerPromotionCodeAction({
 }
 
 function AdminMutationForm<Input extends FieldValues, Values = Input>({
-  actionName,
   buildMutation,
   children,
   defaultValues,
@@ -680,7 +661,6 @@ function AdminMutationForm<Input extends FieldValues, Values = Input>({
   schema,
   submitLabel,
 }: {
-  readonly actionName: string;
   readonly buildMutation: (values: Values) => DiscountAdminMutation;
   readonly children: (api: {
     readonly control: ReturnType<
@@ -715,7 +695,6 @@ function AdminMutationForm<Input extends FieldValues, Values = Input>({
   // edited while the request is in flight.
   const [submittedValues, setSubmittedValues] = useState<Input | null>(null);
   const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
-    actionName,
     onSuccess: ({ data }) => {
       if (!data) return;
       setFeedback({ kind: "success", message: data.notice });
@@ -733,10 +712,7 @@ function AdminMutationForm<Input extends FieldValues, Values = Input>({
     onError: ({ error }) =>
       setFeedback({
         kind: "error",
-        message: getDiscountAdminActionFailureMessage(error.serverError, {
-          fallback: m.discountsSaveFailed({}, { locale }),
-          locale,
-        }),
+        message: error.serverError ?? m.discountsSaveFailed({}, { locale }),
       }),
     onTransportError: () =>
       setFeedback({

@@ -75,7 +75,6 @@ export function useReservationCheckout({
     isExecuting,
     result,
   } = useWorkspaceAction(preparePayState, {
-    actionName: "preparePayState",
     onSuccess: ({ data }) => {
       if (data?.status === "error") {
         setSubmissionError(data.message);

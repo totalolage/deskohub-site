@@ -4,7 +4,10 @@ import { AdministrationWorkspaceReservationId } from "@deskohub/workspace-admin-
 import { Effect, Schema } from "effect";
 import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
-import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
+import {
+  defineWorkspaceAction,
+  type WorkspaceActionFailureCopy,
+} from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { AdministrationService } from "./administration.service";
 import { administrationHref } from "./administration-href";
@@ -28,6 +31,11 @@ import {
   getReservationCancellationErrorMessage,
 } from "./reservation-error-messages";
 
+const failureCopy: WorkspaceActionFailureCopy = {
+  timeout: m.administrationActionTimedOut,
+  unexpected: m.administrationActionFailedUnexpectedly,
+};
+
 const findReservation = Effect.fn("AdministrationService.findReservation")(
   function* (input: ReservationLookupInput) {
     const administration = yield* AdministrationService;
@@ -40,6 +48,7 @@ const findReservation = Effect.fn("AdministrationService.findReservation")(
 const getAdministrationReservationAction = defineWorkspaceAction(
   {
     operation: "administration.get-reservation",
+    failureCopy,
     schema: reservationLookupStandardSchema,
     logInput: false,
   },
@@ -69,6 +78,7 @@ export const getAdministrationReservation: typeof getAdministrationReservationAc
 const cancelAdministrationReservationAction = defineWorkspaceAction(
   {
     operation: "administration.cancel-reservation",
+    failureCopy,
     schema: reservationCancellationStandardSchema,
   },
   (input: ReservationCancellationInput, { locale }) =>
@@ -125,6 +135,7 @@ const reservationAccessMutationSchema = Schema.toStandardSchemaV1(
 const mutateReservationAccessAction = defineWorkspaceAction(
   {
     operation: "administration.mutate-reservation-access",
+    failureCopy,
     schema: reservationAccessMutationSchema,
   },
   (input, { locale }) =>

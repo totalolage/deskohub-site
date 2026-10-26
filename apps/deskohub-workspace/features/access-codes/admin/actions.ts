@@ -66,20 +66,8 @@ const createStandaloneAccessCodeWorkflow = Effect.fn(
       Result.succeed(attempted.success)
     );
   },
-  (effect, _input, { locale }) =>
-    effect.pipe(
-      Effect.provide(StandaloneAccessCodeAdministration.Live),
-      Effect.mapError(
-        (cause) =>
-          new PublicSafeActionError({
-            message:
-              cause instanceof PublicSafeActionError
-                ? cause.message
-                : m.accessCodesCreateFailed({}, { locale }),
-            cause,
-          })
-      )
-    )
+  (effect) =>
+    effect.pipe(Effect.provide(StandaloneAccessCodeAdministration.Live))
 );
 
 const createStandaloneAccessCodeAction = defineWorkspaceAction(
@@ -87,6 +75,11 @@ const createStandaloneAccessCodeAction = defineWorkspaceAction(
     operation: "access-codes.create-standalone",
     schema: createStandaloneAccessCodeInputSchema,
     logInput: false,
+    failureCopy: {
+      timeout: m.accessCodesActionTimedOut,
+      unexpected: m.accessCodesActionFailedUnexpectedly,
+    },
+    fallback: m.accessCodesCreateFailed,
   },
   createStandaloneAccessCodeWorkflow
 );

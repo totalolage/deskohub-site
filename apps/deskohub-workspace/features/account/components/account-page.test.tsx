@@ -49,7 +49,6 @@ const acknowledgeSignupReferralNotice = mock(() =>
 const completeCustomerProfile = mock((_input: CustomerProfileInput) =>
   Promise.resolve({ data: { status: "completed" } })
 );
-const executedWorkspaceActionNames: string[] = [];
 mock.module("@/features/account/analytics-identity", () => ({
   beginAnalyticsAccountTransition,
   completeAnalyticsAccountSignOut,
@@ -73,7 +72,6 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
   useWorkspaceAction: (
     action: (input: never) => Promise<unknown>,
     options?: {
-      readonly actionName?: string;
       readonly onSuccess?: (args: { readonly data?: unknown }) => void;
     }
   ) => {
@@ -87,9 +85,6 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
       result,
       isExecuting,
       execute: (input: never) => {
-        if (options?.actionName !== undefined) {
-          executedWorkspaceActionNames.push(options.actionName);
-        }
         setExecuting(true);
         void action(input).then((outcome) => {
           setExecuting(false);
@@ -215,7 +210,6 @@ describe("AccountPage states", () => {
   afterEach(() => {
     cleanup();
     completeCustomerProfile.mockClear();
-    executedWorkspaceActionNames.length = 0;
     workspaceRouterRefresh.mockClear();
     workspaceRouterRefresh.mockImplementation(() => undefined);
     workspaceRouterReplace.mockClear();

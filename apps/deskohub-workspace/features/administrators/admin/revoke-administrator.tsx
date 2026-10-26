@@ -30,7 +30,6 @@ export function RevokeAdministrator({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { execute, isExecuting } = useWorkspaceAction(revokeAdministrator, {
-    actionName: "revokeAdministrator",
     onSuccess: ({ data }) => {
       if (!data) return;
       setOpen(false);

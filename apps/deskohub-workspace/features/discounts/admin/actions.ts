@@ -6,7 +6,10 @@ import { m } from "@/features/administration/i18n";
 import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import type { Locale } from "@/features/i18n";
 import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
-import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
+import {
+  defineWorkspaceAction,
+  type WorkspaceActionFailureCopy,
+} from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { refreshCalendarDiscountSourceAfterMutation } from "./calendar-discount-source-maintenance.server";
 import {
@@ -18,6 +21,11 @@ import {
 import { DiscountAdministration } from "./discount-administration.service";
 import { executeDiscountAdminMutation } from "./execute-discount-admin-mutation";
 import { getDiscountAdminMutationErrorMessage } from "./mutation-error-message";
+
+const failureCopy: WorkspaceActionFailureCopy = {
+  timeout: m.discountsActionTimedOut,
+  unexpected: m.discountsActionFailedUnexpectedly,
+};
 
 const discountAdminMutationNotices = {
   "create-discount": m.discountsNoticeDiscountCreated,
@@ -60,6 +68,7 @@ const executeDiscountAdminActionMutation = Effect.fn(
 const discountAdminMutationAction = defineWorkspaceAction(
   {
     operation: "discount-administration.mutate",
+    failureCopy,
     schema: discountAdminMutationStandardSchema,
   },
   (input, { locale }) =>
@@ -86,6 +95,7 @@ const executeCustomerSearch = Effect.fn(
 const discountAdminCustomerSearchAction = defineWorkspaceAction(
   {
     operation: "discount-administration.search-customers",
+    failureCopy,
     schema: discountAdminCustomerSearchStandardSchema,
     logInput: false,
   },

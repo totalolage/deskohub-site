@@ -591,9 +591,7 @@ describe("applyDiscountCodeToPayState", () => {
         expect(exit).toMatchObject({
           _tag: "Failure",
           cause: {
-            reasons: [
-              { error: { message: "Request timed out. Please try again." } },
-            ],
+            reasons: [{ error: { _tag: "WorkspaceActionTimeout" } }],
           },
         });
       });
