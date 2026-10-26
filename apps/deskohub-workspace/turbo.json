@@ -57,7 +57,8 @@
       "inputs": [
         "features/i18n/messages/*.json",
         "project.inlang/settings.json",
-        "project.inlang/project_id"
+        "project.inlang/project_id",
+        "package.json"
       ],
       "outputs": ["features/i18n/paraglide/**"]
     },
@@ -65,7 +66,8 @@
       "env": ["!NEXT_PUBLIC_VERCEL_*"],
       "inputs": [
         "features/administration/i18n/messages/**/*.json",
-        "features/administration/i18n/project.inlang/settings.json"
+        "features/administration/i18n/project.inlang/settings.json",
+        "package.json"
       ],
       "outputs": ["features/administration/i18n/paraglide/**"]
     },
