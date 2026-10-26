@@ -5,30 +5,18 @@ import {
   beforeEach,
   describe,
   expect,
-  mock,
   setSystemTime,
   test,
 } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Data, Effect, Layer } from "effect";
+import { Effect, Layer } from "effect";
 import type {
   AdministrationCustomerExportInput,
   AdministrationCustomerSummary,
 } from "@/features/administration/administration.service";
+import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
 
-class TestUnauthorizedError extends Data.TaggedError(
-  "AdministratorUnauthorizedError"
-)<{ readonly message: string }> {}
-
-let authorization: Effect.Effect<unknown, unknown> = Effect.void;
-
-mock.module(
-  "@/features/administrators/server/administrator-authorization.server",
-  () => ({
-    authorizeAdministratorPage: async () => {},
-    requireAdministratorAuthorization: Effect.suspend(() => authorization),
-  })
-);
+const access = mockAdministratorAccess();
 
 const { AdministrationListSourceUnavailableError, AdministrationService } =
   await import("@/features/administration/administration.service");
@@ -98,7 +86,7 @@ const customers: readonly AdministrationCustomerSummary[] = [
 
 beforeEach(() => {
   setSystemTime(new Date("2026-08-11T10:00:00Z"));
-  authorization = Effect.void;
+  access.set("administrator");
   exportInputs.length = 0;
   exportResult = Effect.succeed(customers);
 });
@@ -115,11 +103,7 @@ const readCsv = async (response: Response) => {
 
 describe("GET /[locale]/admin/customers/export", () => {
   test("hides the export from anyone the administrator guard refuses, before reading customers", async () => {
-    authorization = Effect.fail(
-      new TestUnauthorizedError({
-        message: "signed out or not an administrator",
-      })
-    );
+    access.set("not-administrator");
 
     const response = await requestExport("?marketingConsent=granted");
 
