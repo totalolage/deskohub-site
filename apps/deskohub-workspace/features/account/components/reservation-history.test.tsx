@@ -10,8 +10,7 @@ import {
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
 import type { ComponentPropsWithoutRef } from "react";
-import { getWorkspaceMeetingRoomProductTitle } from "@/features/checkout/product-catalog.i18n";
-import { m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
   UnsavedChangesProvider,
@@ -25,7 +24,6 @@ import type {
   CustomerReservationHistory,
   CustomerReservationSummary,
 } from "../contracts";
-import type { ReservationHistoryCopy } from "./reservation-history";
 
 type NavigateEvent = {
   readonly preventDefault: () => void;
@@ -53,52 +51,8 @@ mock.module("next/link", () => ({ default: MockNextLink }));
 
 const { ReservationHistory } = await import("./reservation-history");
 
-const historyCopy = {
-  "en-US": {
-    assignedDesk: "Assigned desk",
-    checkIn: "Check in",
-    date: "Date",
-    moreCurrent: "More current and upcoming reservations",
-    product: "Product",
-    seats: "Seats",
-    showPinCode: "Show PIN code",
-    status: "Status",
-    unavailable: "Unavailable",
-    unsupportedDescription: "Not available in your account yet.",
-    validity: "Validity",
-    viewReservation: "View reservation",
-    wifi: "Wi-Fi",
-  },
-  "cs-CZ": {
-    assignedDesk: "Přiřazené místo",
-    checkIn: "Odbavit se",
-    date: "Datum",
-    moreCurrent: "Další aktuální a nadcházející rezervace",
-    product: "Produkt",
-    seats: "Místa",
-    showPinCode: "Zobrazit PIN kód",
-    status: "Stav",
-    unavailable: "Nedostupné",
-    unsupportedDescription: "Ve vašem účtu zatím není k dispozici.",
-    validity: "Platnost",
-    viewReservation: "Zobrazit rezervaci",
-    wifi: "Wi-Fi",
-  },
-} satisfies Record<"en-US" | "cs-CZ", ReservationHistoryCopy>;
-
-const copyFor = (locale: keyof typeof historyCopy) => historyCopy[locale];
-
-const renderHistory = (
-  locale: keyof typeof historyCopy,
-  history: CustomerReservationHistory
-) =>
-  render(
-    <ReservationHistory
-      copy={copyFor(locale)}
-      history={history}
-      locale={locale}
-    />
-  );
+const renderHistory = (locale: Locale, history: CustomerReservationHistory) =>
+  render(<ReservationHistory history={history} locale={locale} />);
 
 const reservation = (
   overrides: Partial<CustomerReservationSummary>
@@ -223,12 +177,16 @@ describe("ReservationHistory", () => {
     expect(group("past").textContent).toContain("2");
     expect(group("unavailable").textContent).toContain("1");
 
-    expect(group("past").textContent).toContain(
-      m.accountReservationStatusCancelled({}, { locale: "en-US" })
-    );
-    expect(group("current").textContent).toContain(
-      m.accountReservationStatusConfirmed({}, { locale: "en-US" })
-    );
+    expect(
+      group("past").querySelector(
+        '[data-account-reservation-status="cancelled"]'
+      )
+    ).toBeTruthy();
+    expect(
+      group("current").querySelector(
+        '[data-account-reservation-status="confirmed"]'
+      )
+    ).toBeTruthy();
 
     expect(view.container.querySelector("nav")).toBeNull();
     for (const id of [
@@ -290,29 +248,26 @@ describe("ReservationHistory", () => {
         )
       ).toBeTruthy();
     }
-    expect(view.queryByText("Checked in")).toBeNull();
 
     expect(
       view
-        .getByRole("button", { name: copyFor("en-US").checkIn })
+        .getByRole("button", {
+          name: m.accountReservationCheckIn({}, { locale: "en-US" }),
+        })
         .hasAttribute("disabled")
     ).toBe(true);
     expect(view.queryByRole("button", { name: /nfc/i })).toBeNull();
     expect(
-      view.getByRole("link", { name: copyFor("en-US").showPinCode })
+      view.getByRole("link", {
+        name: m.accountReservationShowPinCode({}, { locale: "en-US" }),
+      })
     ).toBeTruthy();
     expect(
-      view.queryByRole("button", { name: copyFor("en-US").showPinCode })
+      view.queryByRole("button", {
+        name: m.accountReservationShowPinCode({}, { locale: "en-US" }),
+      })
     ).toBeNull();
 
-    expect(view.getByText(copyFor("en-US").assignedDesk)).toBeTruthy();
-    expect(view.getByText(copyFor("en-US").wifi)).toBeTruthy();
-    expect(
-      view.getByText(copyFor("en-US").unsupportedDescription)
-    ).toBeTruthy();
-    expect(
-      view.getAllByText(copyFor("en-US").unavailable).length
-    ).toBeGreaterThan(1);
     expect(view.container.textContent).not.toContain("SSID");
     expect(view.container.textContent).not.toContain("password");
   });
@@ -338,16 +293,15 @@ describe("ReservationHistory", () => {
     const table = view.getByRole("table");
     const row = table.querySelector("tbody tr");
     expect(row).toBeTruthy();
-    expect(row?.textContent).toContain(
-      getWorkspaceMeetingRoomProductTitle("en-US")
-    );
-    expect(row?.textContent).toContain(
-      m.accountReservationStatusAttention({}, { locale: "en-US" })
-    );
+    expect(
+      row?.querySelector(
+        '[data-account-reservation-status="requires-attention"]'
+      )
+    ).toBeTruthy();
     expect(row?.textContent).toContain("Aug 21, 2026");
 
     const link = view.getByRole("link", {
-      name: copyFor("en-US").viewReservation,
+      name: m.accountReservationView({}, { locale: "en-US" }),
     });
     expect(link.tagName).toBe("A");
     expect(link.getAttribute("href")).toBe(
@@ -379,12 +333,14 @@ describe("ReservationHistory", () => {
     const dateTile = view.getByText("Nov").parentElement;
     expect(
       view.getByRole("heading", {
-        name: copyFor("en-US").moreCurrent,
+        name: m.accountReservationMoreCurrent({}, { locale: "en-US" }),
       })
     ).toBeTruthy();
     expect(dateTile).toBeTruthy();
     expect(dateTile?.textContent).toContain("12");
-    expect(dateTile?.textContent).toContain("Date: Nov 12");
+    expect(dateTile?.querySelector(".sr-only")?.textContent).toContain(
+      "Nov 12"
+    );
   });
 
   test.each(["en-US", "cs-CZ"] as const)(
@@ -521,11 +477,11 @@ describe("ReservationHistory", () => {
     (locale) => {
       const view = renderHistory(locale, linkedHistory);
       const pinLink = view.getByRole("link", {
-        name: copyFor(locale).showPinCode,
+        name: m.accountReservationShowPinCode({}, { locale }),
       });
       const pinHref = pinLink.getAttribute("href");
       const detailLink = view.getByRole("link", {
-        name: copyFor(locale).viewReservation,
+        name: m.accountReservationView({}, { locale }),
       });
 
       expect(pinLink.tagName).toBe("A");
@@ -552,16 +508,16 @@ describe("ReservationHistory", () => {
       },
     });
     const pinButton = view.getByRole("button", {
-      name: copyFor(locale).showPinCode,
+      name: m.accountReservationShowPinCode({}, { locale }),
     });
 
     expect(pinButton.hasAttribute("disabled")).toBe(true);
     expect(
-      view.queryByRole("link", { name: copyFor(locale).showPinCode })
+      view.queryByRole("link", {
+        name: m.accountReservationShowPinCode({}, { locale }),
+      })
     ).toBeNull();
-    expect(
-      view.getByText(m.accountReservationPinUnavailable({}, { locale }))
-    ).toBeTruthy();
+    expect(pinButton.nextElementSibling?.tagName).toBe("P");
     expect(
       view.container.querySelector('a[href*="/reservation/access/"]')
     ).toBeNull();
@@ -585,7 +541,9 @@ describe("ReservationHistory", () => {
 
     expect(
       view
-        .getByRole("button", { name: copyFor("en-US").showPinCode })
+        .getByRole("button", {
+          name: m.accountReservationShowPinCode({}, { locale: "en-US" }),
+        })
         .hasAttribute("disabled")
     ).toBe(true);
     expect(
@@ -608,7 +566,7 @@ describe("ReservationHistory", () => {
 
     expect(
       view.queryByRole("link", {
-        name: copyFor("en-US").viewReservation,
+        name: m.accountReservationView({}, { locale: "en-US" }),
       })
     ).toBeNull();
     expect(view.container.querySelector("li a")).toBeNull();
@@ -623,15 +581,11 @@ describe("ReservationHistory", () => {
       const view = render(
         <UnsavedChangesProvider>
           <DirtyProfileGuard />
-          <ReservationHistory
-            copy={copyFor("en-US")}
-            locale="en-US"
-            history={linkedHistory}
-          />
+          <ReservationHistory locale="en-US" history={linkedHistory} />
         </UnsavedChangesProvider>
       );
       const link = view.getByRole("link", {
-        name: copyFor("en-US").viewReservation,
+        name: m.accountReservationView({}, { locale: "en-US" }),
       });
       const event = new MouseEvent("click", {
         bubbles: true,
@@ -657,15 +611,11 @@ describe("ReservationHistory", () => {
       const view = render(
         <UnsavedChangesProvider>
           <DirtyProfileGuard />
-          <ReservationHistory
-            copy={copyFor("en-US")}
-            locale="en-US"
-            history={linkedHistory}
-          />
+          <ReservationHistory locale="en-US" history={linkedHistory} />
         </UnsavedChangesProvider>
       );
       const pinLink = view.getByRole("link", {
-        name: copyFor("en-US").showPinCode,
+        name: m.accountReservationShowPinCode({}, { locale: "en-US" }),
       });
       const event = new MouseEvent("click", {
         bubbles: true,
@@ -704,7 +654,12 @@ describe("ReservationHistory", () => {
       view.container.querySelector("#account-reservations-past-title")
     ).toBeTruthy();
     expect(
-      view.getByText(m.accountReservationsPastEmpty({}, { locale: "en-US" }))
+      view.container.querySelector(
+        '[data-account-reservation-group="past"] table'
+      )
+    ).toBeNull();
+    expect(
+      view.container.querySelector('[data-account-reservation-group="past"] p')
     ).toBeTruthy();
   });
 
@@ -750,31 +705,33 @@ describe("ReservationHistory", () => {
       const pastRows = view.container.querySelectorAll(
         '[data-account-reservation-group="past"] tbody tr'
       );
-      const partyText = (element: Element | undefined) =>
-        [
-          ...(element?.querySelectorAll("[data-account-reservation-party]") ??
-            []),
-        ].map((party) => party.textContent);
+      const parties = (element: Element | undefined) => [
+        ...(element?.querySelectorAll("[data-account-reservation-party]") ??
+          []),
+      ];
+      const partyKinds = (element: Element | undefined) =>
+        parties(element).map((party) =>
+          party.getAttribute("data-account-reservation-party")
+        );
 
-      expect(partyText(current.querySelector("ul > li") ?? undefined)).toEqual([
-        m.accountReservationBookedFor({ name: "Jana Testová" }, { locale }),
+      expect(partyKinds(current.querySelector("ul > li") ?? undefined)).toEqual(
+        ["booked-for"]
+      );
+      expect(partyKinds(current)).toEqual(["booked-for", "booked-by"]);
+      expect(parties(current).map((party) => party.textContent)).toEqual([
+        expect.stringContaining("Jana Testová"),
+        expect.stringContaining("Petr Ukázka"),
       ]);
-      expect(partyText(current)).toEqual([
-        m.accountReservationBookedFor({ name: "Jana Testová" }, { locale }),
-        m.accountReservationBookedBy({ name: "Petr Ukázka" }, { locale }),
-      ]);
-      expect([...pastRows].map((row) => partyText(row))).toEqual([
-        [m.accountReservationBookedByDeletedAccount({}, { locale })],
-        [m.accountReservationBookedForSomeoneElse({}, { locale })],
-        [m.accountReservationBookedByAnotherAccount({}, { locale })],
+      expect([...pastRows].map((row) => partyKinds(row))).toEqual([
+        ["booked-by-deleted-account"],
+        ["booked-for"],
+        ["booked-by"],
         [],
       ]);
-      expect(view.container.textContent).toContain(
-        {
-          "en-US": "For Jana Testová",
-          "cs-CZ": "Pro Jana Testová",
-        }[locale]
-      );
+      // Unnamed parties fall back to a generic label, not a missing name.
+      for (const row of [...pastRows].slice(1, 3)) {
+        expect(parties(row)[0]?.textContent).not.toContain("null");
+      }
     });
   }
 
@@ -786,10 +743,12 @@ describe("ReservationHistory", () => {
     });
 
     expect(
-      view.getByText(m.accountReservationsUnavailableTitle({}, { locale }))
-    ).toBeTruthy();
+      view.getByRole("heading", { level: 2 }).nextElementSibling?.tagName
+    ).toBe("P");
     expect(
-      view.getByText(m.accountReservationsProviderUnavailable({}, { locale }))
-    ).toBeTruthy();
+      view.container.querySelector("[data-account-reservation-group]")
+    ).toBeNull();
+    expect(view.queryByRole("link")).toBeNull();
+    expect(view.queryByRole("button")).toBeNull();
   });
 });

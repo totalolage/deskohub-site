@@ -28,22 +28,6 @@ import {
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { isMidnight } from "@/shared/utils/temporal";
 
-export type ReservationHistoryCopy = {
-  readonly product: string;
-  readonly validity: string;
-  readonly assignedDesk: string;
-  readonly wifi: string;
-  readonly unavailable: string;
-  readonly checkIn: string;
-  readonly showPinCode: string;
-  readonly unsupportedDescription: string;
-  readonly viewReservation: string;
-  readonly date: string;
-  readonly seats: string;
-  readonly status: string;
-  readonly moreCurrent: string;
-};
-
 const getReservationTitle = (
   reservation: CustomerReservationSummary,
   locale: Locale
@@ -174,11 +158,9 @@ const getReservationHref = (
   `/${locale}${reservationStatusPath}/${encodeURIComponent(workspaceReservationId)}`;
 
 export function ReservationHistory({
-  copy,
   history,
   locale,
 }: {
-  readonly copy: ReservationHistoryCopy;
   readonly history: CustomerReservationHistory;
   readonly locale: Locale;
 }) {
@@ -193,19 +175,13 @@ export function ReservationHistory({
     <div className="min-w-0 space-y-8">
       {groups.current.length > 0 && (
         <CurrentReservationGroup
-          copy={copy}
           locale={locale}
           reservations={groups.current}
         />
       )}
-      <PastReservationGroup
-        copy={copy}
-        locale={locale}
-        reservations={groups.past}
-      />
+      <PastReservationGroup locale={locale} reservations={groups.past} />
       {hasUndatedReservations && (
         <UndatedReservationGroup
-          copy={copy}
           locale={locale}
           reservations={groups.unavailable}
         />
@@ -215,11 +191,9 @@ export function ReservationHistory({
 }
 
 function CurrentReservationGroup({
-  copy,
   locale,
   reservations,
 }: {
-  readonly copy: ReservationHistoryCopy;
   readonly locale: Locale;
   readonly reservations: readonly CustomerReservationSummary[];
 }) {
@@ -237,7 +211,6 @@ function CurrentReservationGroup({
     >
       <ul className="m-0 min-w-0 list-none space-y-3 p-0">
         <FeaturedReservationItem
-          copy={copy}
           locale={locale}
           reservation={featuredReservation}
         />
@@ -246,12 +219,11 @@ function CurrentReservationGroup({
       {additionalReservations.length > 0 && (
         <div className="mt-7 min-w-0">
           <h3 className="mb-3 break-words text-sm font-semibold uppercase tracking-[0.12em] text-[#64748b]">
-            {copy.moreCurrent}
+            {m.accountReservationMoreCurrent({}, { locale })}
           </h3>
           <ul className="m-0 min-w-0 list-none space-y-3 p-0">
             {additionalReservations.map((reservation) => (
               <CompactReservationItem
-                copy={copy}
                 key={reservation.id}
                 locale={locale}
                 reservation={reservation}
@@ -265,11 +237,9 @@ function CurrentReservationGroup({
 }
 
 function FeaturedReservationItem({
-  copy,
   locale,
   reservation,
 }: {
-  readonly copy: ReservationHistoryCopy;
   readonly locale: Locale;
   readonly reservation: CustomerReservationSummary;
 }) {
@@ -294,7 +264,7 @@ function FeaturedReservationItem({
           </div>
           <div className="min-w-0 max-w-full text-left @xl:max-w-[45%] @xl:text-right">
             <span className="block text-xs font-semibold uppercase tracking-[0.1em] text-[#64748b]">
-              {copy.product}
+              {m.accountReservationProduct({}, { locale })}
             </span>
             <span className="mt-1 block break-words text-sm font-semibold leading-5 text-[#344258]">
               {title}
@@ -307,7 +277,7 @@ function FeaturedReservationItem({
         <div className="grid min-w-0 gap-6 px-6 py-6 @4xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(10rem,0.8fr)] @4xl:py-5">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#64748b]">
-              {copy.product}
+              {m.accountReservationProduct({}, { locale })}
             </p>
             <h3 className="mt-2 break-words text-xl font-semibold leading-tight tracking-[-0.02em] text-[#00024f]">
               {title}
@@ -316,7 +286,7 @@ function FeaturedReservationItem({
               <Users aria-hidden="true" className="size-4 shrink-0" />
               <span>
                 {reservation.seats === null
-                  ? copy.unavailable
+                  ? m.accountFeatureUnavailable({}, { locale })
                   : m.accountReservationSeats(
                       { count: reservation.seats },
                       { locale }
@@ -335,7 +305,7 @@ function FeaturedReservationItem({
 
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#64748b]">
-              {copy.validity}
+              {m.accountReservationValidity({}, { locale })}
             </p>
             {period ? (
               <p className="mt-3 flex min-w-0 items-start gap-2 break-words text-sm leading-6 text-[#344258] @4xl:mt-2">
@@ -346,21 +316,27 @@ function FeaturedReservationItem({
                 <span>{period}</span>
               </p>
             ) : (
-              <p className="mt-3 text-sm text-[#64748b]">{copy.unavailable}</p>
+              <p className="mt-3 text-sm text-[#64748b]">
+                {m.accountFeatureUnavailable({}, { locale })}
+              </p>
             )}
           </div>
 
           <div className="min-w-0 rounded-xl bg-[#f6f8fa] p-4 text-sm text-[#475569]">
             <div className="flex min-w-0 items-start justify-between gap-3">
-              <span className="min-w-0 break-words">{copy.assignedDesk}</span>
+              <span className="min-w-0 break-words">
+                {m.accountReservationAssignedDesk({}, { locale })}
+              </span>
               <span className="shrink-0 font-medium text-[#475569]">
-                {copy.unavailable}
+                {m.accountFeatureUnavailable({}, { locale })}
               </span>
             </div>
             <div className="mt-3 flex min-w-0 items-start justify-between gap-3">
-              <span className="min-w-0 break-words">{copy.wifi}</span>
+              <span className="min-w-0 break-words">
+                {m.accountReservationWifi({}, { locale })}
+              </span>
               <span className="shrink-0 font-medium text-[#475569]">
-                {copy.unavailable}
+                {m.accountFeatureUnavailable({}, { locale })}
               </span>
             </div>
           </div>
@@ -377,7 +353,7 @@ function FeaturedReservationItem({
                 type="button"
                 variant="secondary"
               >
-                {copy.checkIn}
+                {m.accountReservationCheckIn({}, { locale })}
               </Button>
             </FutureFeatureTooltip>
             {reservation.workspaceReservationId &&
@@ -392,7 +368,7 @@ function FeaturedReservationItem({
                 <GuardedLink
                   href={`/${locale}${reservationAccessPath}/${encodeURIComponent(reservation.workspaceReservationId)}`}
                 >
-                  {copy.showPinCode}
+                  {m.accountReservationShowPinCode({}, { locale })}
                 </GuardedLink>
               </Button>
             ) : (
@@ -405,7 +381,7 @@ function FeaturedReservationItem({
                   type="button"
                   variant="secondary"
                 >
-                  {copy.showPinCode}
+                  {m.accountReservationShowPinCode({}, { locale })}
                 </Button>
                 <p className="mt-2 max-w-sm break-words text-xs leading-5 text-[#64748b]">
                   {reservation.reviewSandbox
@@ -417,12 +393,11 @@ function FeaturedReservationItem({
           </div>
           <div className="flex min-w-0 flex-col gap-3 @3xl:items-end @4xl:contents">
             <p className="max-w-sm break-words text-sm leading-5 text-[#64748b] @4xl:col-start-1 @4xl:row-start-1 @4xl:max-w-none @4xl:text-xs @4xl:leading-5">
-              {copy.unsupportedDescription}
+              {m.accountFeatureUnavailableDescription({}, { locale })}
             </p>
             {reservation.workspaceReservationId && (
               <div className="@4xl:col-start-2 @4xl:row-span-2 @4xl:row-start-1 @4xl:flex @4xl:items-center @4xl:justify-self-end">
                 <ReservationDetailLink
-                  copy={copy}
                   locale={locale}
                   reservation={reservation}
                 />
@@ -436,11 +411,9 @@ function FeaturedReservationItem({
 }
 
 function CompactReservationItem({
-  copy,
   locale,
   reservation,
 }: {
-  readonly copy: ReservationHistoryCopy;
   readonly locale: Locale;
   readonly reservation: CustomerReservationSummary;
 }) {
@@ -453,10 +426,10 @@ function CompactReservationItem({
         <div className="flex min-w-0 flex-col gap-4 @2xl:flex-row @2xl:items-center">
           <div className="flex size-14 shrink-0 flex-col items-center justify-center rounded-xl border border-[#dbe4ff] bg-[#f3f6ff] px-1 text-center text-[#344258]">
             <span className="sr-only">
-              {copy.date}:{" "}
+              {m.accountReservationDate({}, { locale })}:{" "}
               {dateTile
                 ? `${dateTile.month} ${dateTile.day}`
-                : copy.unavailable}
+                : m.accountFeatureUnavailable({}, { locale })}
             </span>
             {dateTile ? (
               <>
@@ -469,13 +442,15 @@ function CompactReservationItem({
               </>
             ) : (
               <span className="break-words text-[10px] font-semibold uppercase leading-3 text-[#64748b]">
-                {copy.unavailable}
+                {m.accountFeatureUnavailable({}, { locale })}
               </span>
             )}
           </div>
 
           <div className="min-w-0 flex-1">
-            <p className="sr-only">{copy.product}</p>
+            <p className="sr-only">
+              {m.accountReservationProduct({}, { locale })}
+            </p>
             <h4 className="break-words text-base font-semibold leading-5 text-[#00024f]">
               {getReservationTitle(reservation, locale)}
             </h4>
@@ -490,15 +465,17 @@ function CompactReservationItem({
                 </span>
               ) : (
                 <span>
-                  <span className="sr-only">{copy.validity}: </span>
-                  {copy.unavailable}
+                  <span className="sr-only">
+                    {m.accountReservationValidity({}, { locale })}:{" "}
+                  </span>
+                  {m.accountFeatureUnavailable({}, { locale })}
                 </span>
               )}
               <span className="inline-flex items-center gap-1.5">
                 <Users aria-hidden="true" className="size-4 shrink-0" />
                 <span>
                   {reservation.seats === null
-                    ? copy.unavailable
+                    ? m.accountFeatureUnavailable({}, { locale })
                     : m.accountReservationSeats(
                         { count: reservation.seats },
                         { locale }
@@ -515,7 +492,9 @@ function CompactReservationItem({
           </div>
 
           <div className="flex min-w-0 flex-col items-stretch gap-3 @2xl:flex-row @2xl:items-center">
-            <span className="sr-only">{copy.status}: </span>
+            <span className="sr-only">
+              {m.accountReservationStatus({}, { locale })}:{" "}
+            </span>
             <StatusBadge
               className="max-w-full min-w-0 self-start break-words whitespace-normal"
               data-account-reservation-status={reservation.status}
@@ -523,11 +502,7 @@ function CompactReservationItem({
             >
               {getStatusLabel(reservation.status, locale)}
             </StatusBadge>
-            <ReservationDetailLink
-              copy={copy}
-              locale={locale}
-              reservation={reservation}
-            />
+            <ReservationDetailLink locale={locale} reservation={reservation} />
           </div>
         </div>
       </article>
@@ -536,11 +511,9 @@ function CompactReservationItem({
 }
 
 function PastReservationGroup({
-  copy,
   locale,
   reservations,
 }: {
-  readonly copy: ReservationHistoryCopy;
   readonly locale: Locale;
   readonly reservations: readonly CustomerReservationSummary[];
 }) {
@@ -563,22 +536,16 @@ function PastReservationGroup({
           empty={m.accountReservationsPastEmpty({}, { locale })}
         />
       ) : (
-        <PastReservationTable
-          copy={copy}
-          locale={locale}
-          reservations={reservations}
-        />
+        <PastReservationTable locale={locale} reservations={reservations} />
       )}
     </AccountSectionPanel>
   );
 }
 
 function PastReservationTable({
-  copy,
   locale,
   reservations,
 }: {
-  readonly copy: ReservationHistoryCopy;
   readonly locale: Locale;
   readonly reservations: readonly CustomerReservationSummary[];
 }) {
@@ -591,19 +558,21 @@ function PastReservationTable({
         <thead className="hidden border-b border-[#dfe4ec] text-xs font-semibold uppercase tracking-[0.1em] text-[#64748b] @4xl:table-header-group">
           <tr className="block @4xl:table-row">
             <th className="px-3 py-3 @4xl:w-[30%]" scope="col">
-              {copy.date}
+              {m.accountReservationDate({}, { locale })}
             </th>
             <th className="px-3 py-3 @4xl:w-[25%]" scope="col">
-              {copy.product}
+              {m.accountReservationProduct({}, { locale })}
             </th>
             <th className="px-3 py-3 @4xl:w-[12%]" scope="col">
-              {copy.seats}
+              {m.accountReservationSeatsLabel({}, { locale })}
             </th>
             <th className="px-3 py-3 @4xl:w-[17%]" scope="col">
-              {copy.status}
+              {m.accountReservationStatus({}, { locale })}
             </th>
             <th className="px-3 py-3 text-right @4xl:w-[16%]" scope="col">
-              <span className="sr-only">{copy.viewReservation}</span>
+              <span className="sr-only">
+                {m.accountReservationView({}, { locale })}
+              </span>
             </th>
           </tr>
         </thead>
@@ -616,18 +585,18 @@ function PastReservationTable({
               <td className="block min-w-0 break-words px-0 py-1 align-top text-sm text-[#344258] @4xl:table-cell @4xl:w-[30%] @4xl:px-3 @4xl:py-4">
                 <div className="flex min-w-0 items-baseline justify-between gap-4 @4xl:block">
                   <span className="block shrink-0 text-xs font-semibold uppercase tracking-[0.08em] text-[#64748b] @4xl:hidden">
-                    {copy.date}
+                    {m.accountReservationDate({}, { locale })}
                   </span>
                   <span className="break-words">
                     {formatReservationPeriod(reservation, locale) ??
-                      copy.unavailable}
+                      m.accountFeatureUnavailable({}, { locale })}
                   </span>
                 </div>
               </td>
               <td className="block min-w-0 break-words px-0 py-1 align-top text-sm font-semibold text-[#344258] @4xl:table-cell @4xl:w-[25%] @4xl:px-3 @4xl:py-4">
                 <div className="flex min-w-0 items-baseline justify-between gap-4 @4xl:block">
                   <span className="block shrink-0 text-xs font-semibold uppercase tracking-[0.08em] text-[#64748b] @4xl:hidden">
-                    {copy.product}
+                    {m.accountReservationProduct({}, { locale })}
                   </span>
                   <span className="min-w-0 break-words">
                     {getReservationTitle(reservation, locale)}
@@ -645,11 +614,11 @@ function PastReservationTable({
               <td className="block min-w-0 break-words px-0 py-1 align-top text-sm text-[#344258] @4xl:table-cell @4xl:w-[12%] @4xl:px-3 @4xl:py-4">
                 <div className="flex min-w-0 items-baseline justify-between gap-4 @4xl:block">
                   <span className="block shrink-0 text-xs font-semibold uppercase tracking-[0.08em] text-[#64748b] @4xl:hidden">
-                    {copy.seats}
+                    {m.accountReservationSeatsLabel({}, { locale })}
                   </span>
                   <span className="break-words">
                     {reservation.seats === null
-                      ? copy.unavailable
+                      ? m.accountFeatureUnavailable({}, { locale })
                       : m.accountReservationSeats(
                           { count: reservation.seats },
                           { locale }
@@ -660,7 +629,7 @@ function PastReservationTable({
               <td className="block min-w-0 px-0 py-1 align-top text-sm text-[#344258] @4xl:table-cell @4xl:w-[17%] @4xl:px-3 @4xl:py-4">
                 <div className="flex min-w-0 items-baseline justify-between gap-4 @4xl:block">
                   <span className="block shrink-0 text-xs font-semibold uppercase tracking-[0.08em] text-[#64748b] @4xl:hidden">
-                    {copy.status}
+                    {m.accountReservationStatus({}, { locale })}
                   </span>
                   <StatusBadge
                     className="max-w-full min-w-0 break-words whitespace-normal"
@@ -674,7 +643,6 @@ function PastReservationTable({
               <td className="block min-w-0 px-0 pt-3 align-top text-right @4xl:table-cell @4xl:w-[16%] @4xl:px-3 @4xl:py-4">
                 <div className="flex min-w-0 justify-end">
                   <ReservationDetailLink
-                    copy={copy}
                     locale={locale}
                     presentation="text"
                     reservation={reservation}
@@ -690,11 +658,9 @@ function PastReservationTable({
 }
 
 function UndatedReservationGroup({
-  copy,
   locale,
   reservations,
 }: {
-  readonly copy: ReservationHistoryCopy;
   readonly locale: Locale;
   readonly reservations: readonly CustomerReservationSummary[];
 }) {
@@ -719,7 +685,6 @@ function UndatedReservationGroup({
       <ul className="m-0 min-w-0 list-none space-y-3 p-0">
         {reservations.map((reservation) => (
           <CompactReservationItem
-            copy={copy}
             key={reservation.id}
             locale={locale}
             reservation={reservation}
@@ -749,12 +714,10 @@ function ReservationPartyNote({
 }
 
 function ReservationDetailLink({
-  copy,
   locale,
   presentation = "button",
   reservation,
 }: {
-  readonly copy: ReservationHistoryCopy;
   readonly locale: Locale;
   readonly presentation?: "button" | "text";
   readonly reservation: CustomerReservationSummary;
@@ -766,14 +729,18 @@ function ReservationDetailLink({
   if (presentation === "text") {
     return (
       <Button asChild variant="link" wrap>
-        <GuardedLink href={href}>{copy.viewReservation}</GuardedLink>
+        <GuardedLink href={href}>
+          {m.accountReservationView({}, { locale })}
+        </GuardedLink>
       </Button>
     );
   }
 
   return (
     <Button asChild size="sm" variant="secondary" wrap>
-      <GuardedLink href={href}>{copy.viewReservation}</GuardedLink>
+      <GuardedLink href={href}>
+        {m.accountReservationView({}, { locale })}
+      </GuardedLink>
     </Button>
   );
 }

@@ -1,12 +1,10 @@
 "use client";
 
 import { LogOut } from "lucide-react";
-import { getAccountSectionPath } from "@/features/account/routes";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Skeleton } from "@/shared/components/ui/skeleton";
-import { getAccountScreenCopy } from "./account-screen-copy";
 import { AccountShell, type AccountShellProps } from "./shell/account-shell";
 
 const disabledAccountSections = [
@@ -41,11 +39,9 @@ export function AccountLoading({ locale }: { readonly locale: Locale }) {
       activeSection="reservations"
       disabledSections={disabledAccountSections}
       hiddenSections={hiddenAccountSections}
-      labels={getAccountScreenCopy(locale).shell}
+      locale={locale}
       onSectionChange={noopSectionChange}
-      sectionHref={(section) => getAccountSectionPath(locale, section)}
       signOut={<AccountSignOutLoading locale={locale} />}
-      title={m.accountTitle({}, { locale })}
     >
       <AccountContentLoading locale={locale} />
     </AccountShell>

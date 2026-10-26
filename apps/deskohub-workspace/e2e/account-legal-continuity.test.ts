@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { Page, Route } from "@playwright/test";
 import { getAccountSectionPath } from "@/features/account/routes";
+import {
+  type AccountSection,
+  accountSectionLabel,
+} from "@/features/account/sections";
 import { type Locale, m } from "@/features/i18n";
 import {
   type AccountLegalFixture,
@@ -321,15 +325,15 @@ const holdRscNavigation = async (
   };
 };
 
-const accountSectionLabels = (locale: Locale) => ({
-  billing: m.accountSectionBilling({}, { locale }),
-  danger: m.accountSectionDanger({}, { locale }),
-  legal: m.accountSectionLegal({}, { locale }),
-  profile: m.accountSectionProfile({}, { locale }),
-  reservations: m.accountSectionReservations({}, { locale }),
-});
+const continuitySections = [
+  "billing",
+  "danger",
+  "legal",
+  "profile",
+  "reservations",
+] as const satisfies readonly AccountSection[];
 
-type AccountSection = keyof ReturnType<typeof accountSectionLabels>;
+type ContinuitySection = (typeof continuitySections)[number];
 type ViewportMode = "desktop" | "mobile";
 type ContinuityDirection = "account-to-legal" | "legal-to-account";
 
@@ -342,11 +346,11 @@ const accountNavigation = (page: Page, locale: Locale) =>
 const accountSectionLink = (
   page: Page,
   locale: Locale,
-  section: AccountSection
+  section: ContinuitySection
 ) =>
   accountNavigation(page, locale).getByRole("link", {
     exact: true,
-    name: accountSectionLabels(locale)[section],
+    name: accountSectionLabel(section, locale),
   });
 
 const assertAccountNavigationControls = async (
@@ -368,7 +372,8 @@ const assertAccountNavigationControls = async (
   });
   expect(await mobileGroup.isVisible()).toBe(mode === "mobile");
 
-  for (const [section, label] of Object.entries(accountSectionLabels(locale))) {
+  for (const section of continuitySections) {
+    const label = accountSectionLabel(section, locale);
     const privateSection = section !== "legal";
     const enabled = !privateSection || privateNavigationEnabled;
     const links = navigation.getByRole("link", {
@@ -385,10 +390,7 @@ const assertAccountNavigationControls = async (
     expect(await buttons.count()).toBe(enabled ? 0 : 2);
 
     if (enabled) {
-      const expectedHref = getAccountSectionPath(
-        locale,
-        section as AccountSection
-      );
+      const expectedHref = getAccountSectionPath(locale, section);
       expect(
         await links.evaluateAll(
           (elements, href) =>
@@ -862,9 +864,8 @@ const assertAnonymousLegalRoute = async (
     await restoreTopScroll(page);
 
     const navigation = accountNavigation(page, locale);
-    for (const [section, label] of Object.entries(
-      accountSectionLabels(locale)
-    )) {
+    for (const section of continuitySections) {
+      const label = accountSectionLabel(section, locale);
       const links = navigation.getByRole("link", {
         exact: true,
         includeHidden: true,

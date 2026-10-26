@@ -3,13 +3,11 @@ import { testEmailAddress } from "@deskohub/test-email";
 import type { Page } from "@playwright/test";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { createElement, useState } from "react";
-import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
+import { AccountShell } from "@/features/account/components/shell/account-shell";
 import {
-  AccountShell,
-  type AccountShellProps,
-} from "@/features/account/components/shell/account-shell";
-import { getAccountSectionPath } from "@/features/account/routes";
-import type { AccountSection } from "@/features/account/sections";
+  type AccountSection,
+  accountSectionLabel,
+} from "@/features/account/sections";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -20,7 +18,6 @@ import {
   runAccountLayoutNavigationPhase,
   verifyAccountLayoutNavigation,
 } from "./account-layout-navigation";
-import { accountSectionLabels } from "./account-sections";
 
 mock.module("next/navigation", () => ({
   useRouter: () => ({ refresh: () => undefined }),
@@ -54,14 +51,6 @@ const sections = [
   "danger",
 ] as const satisfies readonly AccountSection[];
 
-const shellLabels = {
-  mobileSection: "Account section",
-  navigation: "Account navigation",
-  sections: accountSectionLabels,
-} as const satisfies AccountShellProps["labels"];
-
-const profileCopy = getAccountScreenCopy("en-US").profile;
-
 const sectionPanel = (section: AccountSection) => {
   switch (section) {
     case "reservations":
@@ -78,13 +67,13 @@ const sectionPanel = (section: AccountSection) => {
       );
     case "profile":
       return createElement(ProfileScreen, {
-        copy: profileCopy,
         // ProfileScreen's typed createElement overload requires children in props.
         // biome-ignore lint/correctness/noChildrenProp: the required child must be present in the props object.
         children: createElement("input", { id: "account-profile-first-name" }),
         email: testEmailAddress("synthetic"),
         firstName: "E2E",
         lastName: null,
+        locale: "en-US",
       });
     case "security":
       return createElement(
@@ -105,7 +94,7 @@ const sectionPanel = (section: AccountSection) => {
         createElement(
           "h2",
           { id: "account-billing-title" },
-          "Billing & Invoices"
+          accountSectionLabel("billing", "en-US")
         ),
         createElement("select", { id: "account-profile-billing-kind" })
       );
@@ -149,11 +138,9 @@ function AccountShellHarness({
         // biome-ignore lint/correctness/noChildrenProp: AccountShellProps requires children in this createElement call.
         children: null,
         hiddenSections,
-        labels: shellLabels,
+        locale: "en-US",
         onSectionChange: selectSection,
-        sectionHref: (section) => getAccountSectionPath("en-US", section),
         signOut: createElement("button", { type: "button" }, "Sign out"),
-        title: "Workspace account",
       },
       ...sections.map((section) =>
         createElement(
