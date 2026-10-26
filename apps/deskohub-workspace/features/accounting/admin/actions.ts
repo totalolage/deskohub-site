@@ -8,14 +8,9 @@ import {
 import { Effect, Match, Schema } from "effect";
 import { administrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
-import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
-import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
-import {
-  defineWorkspaceAction,
-  type WorkspaceActionContext,
-  type WorkspaceActionFailureCopy,
-} from "@/shared/backend/workspace-action";
-import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
+import { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
+import { defineAdministrationAction } from "@/features/administrators/server/administration-request.server";
+import type { WorkspaceActionFailureCopy } from "@/shared/backend/workspace-action";
 import { InvoiceAdministrationService } from "./invoice-administration.service";
 import { getInvoiceCustomerErrorMessage } from "./invoice-display";
 
@@ -31,95 +26,67 @@ const invoiceCreateInputSchema = Schema.toStandardSchemaV1(
   { parseOptions: strict }
 );
 
-type InvoiceCreateActionContext = WorkspaceActionContext<
-  typeof invoiceCreateInputSchema
->;
+const invoicePaths = (invoiceId: string) => [
+  administrationHref("/[locale]/admin/invoices"),
+  administrationHref("/[locale]/admin/invoices/[invoiceId]", { invoiceId }),
+];
 
-const createInvoiceAction = defineWorkspaceAction(
+const createInvoiceAction = defineAdministrationAction(
   {
     operation: "invoice-administration.create",
     failureCopy,
     schema: invoiceCreateInputSchema,
     logInput: false,
+    fallback: m.accountingInvoiceCreateFailed,
+    capabilities: InvoiceAdministrationService.Live,
+    // The service messages stay English: the administration API forwards
+    // them to `dhw`.
+    publicFailure: (cause, locale) =>
+      Match.value(cause).pipe(
+        Match.tag("InvoiceAdministrationCustomerError", ({ reason }) =>
+          getInvoiceCustomerErrorMessage(reason, locale)
+        ),
+        Match.tag("InvoiceAdministrationInProgressError", () =>
+          m.accountingInvoiceCreateInProgress({}, { locale })
+        ),
+        Match.orElse(() => undefined)
+      ),
+    revalidates: (_input, { invoiceId }: { readonly invoiceId: string }) =>
+      invoicePaths(invoiceId),
   },
-  Effect.fn(
-    function* (input, _context: InvoiceCreateActionContext) {
-      const administrator = yield* requireAdministratorAuthorization;
-      const administration = yield* InvoiceAdministrationService;
-      const result = yield* administration.create(input, {
-        source: "admin-ui",
-        administrator,
-      });
-      yield* Effect.sync(() => {
-        revalidateLocalizedPath(administrationHref("/[locale]/admin/invoices"));
-        revalidateLocalizedPath(
-          administrationHref("/[locale]/admin/invoices/[invoiceId]", {
-            invoiceId: result.invoiceId,
-          })
-        );
-      });
-      return result;
-    },
-    (effect, _input, { locale }) =>
-      effect.pipe(
-        Effect.provide(InvoiceAdministrationService.Live),
-        Effect.mapError(
-          (cause) =>
-            new PublicSafeActionError({
-              // The service messages stay English: the administration API
-              // forwards them to `dhw`.
-              message: Match.value(cause).pipe(
-                Match.tag("InvoiceAdministrationCustomerError", ({ reason }) =>
-                  getInvoiceCustomerErrorMessage(reason, locale)
-                ),
-                Match.tag("InvoiceAdministrationInProgressError", () =>
-                  m.accountingInvoiceCreateInProgress({}, { locale })
-                ),
-                Match.orElse(() =>
-                  m.accountingInvoiceCreateFailed({}, { locale })
-                )
-              ),
-              cause,
-            })
-        )
-      )
-  )
+  Effect.fn(function* (input) {
+    const administrator = yield* CurrentAdministrator;
+    const administration = yield* InvoiceAdministrationService;
+    return yield* administration.create(input, {
+      source: "admin-ui",
+      administrator,
+    });
+  })
 );
 
-const previewInvoiceAction = defineWorkspaceAction(
+const previewInvoiceAction = defineAdministrationAction(
   {
     operation: "invoice-administration.preview",
     failureCopy,
     schema: invoiceCreateInputSchema,
     logInput: false,
+    fallback: m.accountingInvoiceFormPreviewError,
+    capabilities: InvoiceAdministrationService.Live,
   },
-  Effect.fn(
-    function* (input, _context: InvoiceCreateActionContext) {
-      const administrator = yield* requireAdministratorAuthorization;
-      const administration = yield* InvoiceAdministrationService;
-      const pdf = yield* administration.preview(input, {
-        source: "admin-ui",
-        administrator,
-      });
-      return {
-        dataUrl: `data:application/pdf;base64,${Buffer.from(pdf).toString("base64")}`,
-      };
-    },
-    (effect, _input, { locale }) =>
-      effect.pipe(
-        Effect.provide(InvoiceAdministrationService.Live),
-        Effect.mapError(
-          (cause) =>
-            new PublicSafeActionError({
-              message: m.accountingInvoiceFormPreviewError({}, { locale }),
-              cause,
-            })
-        )
-      )
-  )
+  Effect.fn(function* (input) {
+    const administrator = yield* CurrentAdministrator;
+    const administration = yield* InvoiceAdministrationService;
+    const pdf = yield* administration.preview(input, {
+      source: "admin-ui",
+      administrator,
+    });
+    return {
+      dataUrl: `data:application/pdf;base64,${Buffer.from(pdf).toString("base64")}`,
+    };
+  })
 );
 
-const searchCustomersAction = defineWorkspaceAction(
+const searchCustomersAction = defineAdministrationAction(
   {
     operation: "invoice-administration.search-customers",
     failureCopy,
@@ -127,30 +94,16 @@ const searchCustomersAction = defineWorkspaceAction(
       parseOptions: strict,
     }),
     logInput: false,
+    fallback: m.accountingInvoiceCustomerSearchUnavailable,
+    capabilities: InvoiceAdministrationService.Live,
   },
-  (input, { locale }) =>
-    requireAdministratorAuthorization.pipe(
-      Effect.andThen(
-        Effect.gen(function* () {
-          const administration = yield* InvoiceAdministrationService;
-          return yield* administration.searchCustomers(input.query);
-        })
-      ),
-      Effect.provide(InvoiceAdministrationService.Live),
-      Effect.mapError(
-        (cause) =>
-          new PublicSafeActionError({
-            message: m.accountingInvoiceCustomerSearchUnavailable(
-              {},
-              { locale }
-            ),
-            cause,
-          })
-      )
-    )
+  Effect.fn(function* (input) {
+    const administration = yield* InvoiceAdministrationService;
+    return yield* administration.searchCustomers(input.query);
+  })
 );
 
-const retryInvoiceAction = defineWorkspaceAction(
+const retryInvoiceAction = defineAdministrationAction(
   {
     operation: "invoice-administration.retry-delivery",
     failureCopy,
@@ -158,35 +111,14 @@ const retryInvoiceAction = defineWorkspaceAction(
       Schema.Struct({ invoiceId: AdministrationInvoiceId }),
       { parseOptions: strict }
     ),
+    fallback: m.accountingInvoiceRetryDeliveryError,
+    capabilities: InvoiceAdministrationService.Live,
+    revalidates: ({ invoiceId }) => invoicePaths(invoiceId),
   },
-  (input, { locale }) =>
-    requireAdministratorAuthorization.pipe(
-      Effect.andThen(
-        Effect.gen(function* () {
-          const administration = yield* InvoiceAdministrationService;
-          const result = yield* administration.retry(input.invoiceId);
-          yield* Effect.sync(() => {
-            revalidateLocalizedPath(
-              administrationHref("/[locale]/admin/invoices")
-            );
-            revalidateLocalizedPath(
-              administrationHref("/[locale]/admin/invoices/[invoiceId]", {
-                invoiceId: input.invoiceId,
-              })
-            );
-          });
-          return result;
-        })
-      ),
-      Effect.provide(InvoiceAdministrationService.Live),
-      Effect.mapError(
-        (cause) =>
-          new PublicSafeActionError({
-            message: m.accountingInvoiceRetryDeliveryError({}, { locale }),
-            cause,
-          })
-      )
-    )
+  Effect.fn(function* (input) {
+    const administration = yield* InvoiceAdministrationService;
+    return yield* administration.retry(input.invoiceId);
+  })
 );
 
 export const createAdministrationInvoice: typeof createInvoiceAction = async (
