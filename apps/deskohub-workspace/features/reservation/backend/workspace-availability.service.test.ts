@@ -403,7 +403,7 @@ describe("WorkspaceAvailabilityService", () => {
           }),
         ],
       })
-    ).rejects.toMatchObject({ _tag: "ValidationError" });
+    ).rejects.toMatchObject({ _tag: "InvalidDotyposTableSeats" });
   });
 
   test("loads only the active reservation interval covering Prague dates", async () => {

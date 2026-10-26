@@ -5,7 +5,10 @@ import type { ReactNode } from "react";
 import { loadGlobalRelease } from "@/features/feature-flags/backend/global-release.server";
 import { isLocale, locales, m } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
-import { publicSiteShareImage } from "@/features/public-pages/page-metadata";
+import {
+  getPublicPageTitle,
+  publicSiteShareImage,
+} from "@/features/public-pages/page-metadata";
 import { getSharedWorkspaceSummary } from "@/features/public-pages/workspace-summary";
 import { TemporalLoader } from "@/shared/polyfills/temporal-loader";
 import { workspaceSiteOrigin } from "@/shared/utils";
@@ -43,7 +46,8 @@ export async function generateMetadata({
 
   return {
     metadataBase: new URL(workspaceSiteOrigin),
-    title: m.workspaceMetadataTitle({}, { locale }),
+    // Pages without a title of their own share the home page's.
+    title: getPublicPageTitle({ page: m.landingMetadataTitle({}, { locale }) }),
     // The products every visitor can book. The layout is static, so it reads
     // the office gate only as decided for everyone.
     description: getSharedWorkspaceSummary({

@@ -1,6 +1,5 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
-import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
@@ -17,7 +16,7 @@ afterAll(unregisterWorkspaceComponentTestEnv);
 
 test("adding a payment card is a disabled tile action until cards are supported", () => {
   const view = render(
-    <BillingScreen copy={getAccountScreenCopy("en-US").billing} locale="en-US">
+    <BillingScreen locale="en-US">
       <p>Billing details</p>
     </BillingScreen>
   );

@@ -18,7 +18,12 @@ import {
   useLayoutEffect,
   useRef,
 } from "react";
-import type { AccountSection } from "@/features/account/sections";
+import { getAccountSectionPath } from "@/features/account/routes";
+import {
+  type AccountSection,
+  accountSectionLabel,
+} from "@/features/account/sections";
+import { type Locale, m } from "@/features/i18n";
 import { NavItem } from "@/shared/components/ui/nav-item";
 import { cn } from "@/shared/utils";
 import { AccountFrame, revealAccountContentStart } from "./account-frame";
@@ -39,17 +44,11 @@ export interface AccountNavigationBadge {
 
 export interface AccountShellProps {
   readonly activeSection: AccountSection;
-  /** The path each section opens at; a plain click selects it in place. */
-  readonly sectionHref: (section: AccountSection) => string;
+  /** Names the navigation and sections; each section links to its path. */
+  readonly locale: Locale;
   readonly onSectionChange: (section: AccountSection) => void;
   readonly children: ReactNode;
   readonly signOut: ReactNode;
-  readonly title: string;
-  readonly labels: {
-    readonly navigation: string;
-    readonly mobileSection: string;
-    readonly sections: Readonly<Record<AccountSection, string>>;
-  };
   readonly reservationCount?: number;
   /** Badge beside Referrals, such as "-15%"; hidden when absent. */
   readonly referralBadge?: AccountNavigationBadge;
@@ -64,14 +63,12 @@ export function AccountShell({
   children,
   disabledSections = [],
   hiddenSections = [],
-  labels,
+  locale,
   onSectionChange,
   referralBadge,
   reservationCount,
-  sectionHref,
   sidebarFooter,
   signOut,
-  title,
 }: AccountShellProps) {
   const mobileSectionId = useId();
   const validReservationCount =
@@ -168,7 +165,10 @@ export function AccountShell({
     disabledSections.includes(section) ? (
       content
     ) : (
-      <a href={sectionHref(section)} onClick={selectSection(section)}>
+      <a
+        href={getAccountSectionPath(locale, section)}
+        onClick={selectSection(section)}
+      >
         {content}
       </a>
     );
@@ -178,7 +178,7 @@ export function AccountShell({
       contentRef={contentRef}
       navigation={
         <nav
-          aria-label={labels.navigation}
+          aria-label={m.accountNavigationLabel({}, { locale })}
           className="-mx-4 min-w-0 rounded-none border-0 bg-white p-0 sm:-mx-6 md:mx-0 md:rounded-[20px] md:border md:border-[#dfe4ec] md:p-4"
         >
           <div className="md:hidden">
@@ -187,7 +187,7 @@ export function AccountShell({
               className="min-w-0 border-0 p-0"
             >
               <legend className="sr-only" id={mobileSectionId}>
-                {labels.mobileSection}
+                {m.accountSectionLabel({}, { locale })}
               </legend>
               <div
                 className="flex min-w-0 touch-pan-x snap-x snap-proximity flex-nowrap gap-2 overflow-x-auto"
@@ -207,7 +207,7 @@ export function AccountShell({
                   >
                     {sectionItemContent(
                       section.key,
-                      labels.sections[section.key]
+                      accountSectionLabel(section.key, locale)
                     )}
                   </NavItem>
                 ))}
@@ -235,7 +235,7 @@ export function AccountShell({
                       <>
                         <Icon aria-hidden="true" />
                         <span className="min-w-0 break-words">
-                          {labels.sections[section.key]}
+                          {accountSectionLabel(section.key, locale)}
                         </span>
                         {section.key === "reservations" &&
                           validReservationCount !== undefined && (
@@ -264,7 +264,7 @@ export function AccountShell({
       }
       sidebarFooter={sidebarFooter}
       signOut={signOut}
-      title={title}
+      title={m.accountTitle({}, { locale })}
     >
       {children}
     </AccountFrame>
