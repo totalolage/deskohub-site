@@ -129,6 +129,10 @@ test("overlaps reservation cleanup with browser finalization", async () => {
   const cleanupStarted = new Promise<void>((resolveStarted) => {
     resolveCleanupStarted = resolveStarted;
   });
+  let resolveBrowserClosing: () => void = () => undefined;
+  const browserClosing = new Promise<void>((resolveClosing) => {
+    resolveBrowserClosing = resolveClosing;
+  });
   const cleanupLayer = Layer.succeed(WorkspaceE2ECleanupService, {
     cleanupCheckoutStates: () => Effect.succeed(undefined),
     cleanupOwnedCheckoutStates: () =>
@@ -137,7 +141,9 @@ test("overlaps reservation cleanup with browser finalization", async () => {
           cleanupActive = true;
           resolveCleanupStarted();
         }),
-        () => Effect.sleep("50 millis"),
+        // Cleanup holds until the browser closes, so serial finalizers
+        // deadlock and fail on the test timeout instead of racing a clock.
+        () => Effect.promise(() => browserClosing),
         () =>
           Effect.sync(() => {
             cleanupActive = false;
@@ -146,11 +152,9 @@ test("overlaps reservation cleanup with browser finalization", async () => {
   });
   const run: Runner = async (_command, args) => {
     if (args.includes("close")) {
-      await Promise.race([
-        cleanupStarted,
-        new Promise<void>((resolveTimeout) => setTimeout(resolveTimeout, 250)),
-      ]);
+      await cleanupStarted;
       if (cleanupActive) browserClosedDuringCleanup = true;
+      resolveBrowserClosing();
     }
     return {
       exitCode: args.includes("har") && args.includes("start") ? 1 : 0,
