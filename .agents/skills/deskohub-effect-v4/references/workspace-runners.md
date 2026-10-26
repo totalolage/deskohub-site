@@ -1,6 +1,6 @@
 # Workspace runners
 
-Every Workspace Effect runs through one runner or boundary. Server runners live in `apps/deskohub-workspace/shared/backend/`: `workspace-effect.ts` (`runWorkspaceEffect`, `runWorkspaceEffectOrElse`, `defineWorkspaceTask`, `defineWorkspacePage`), `workspace-action.ts` (`defineWorkspaceAction`), `workspace-route.ts` (`defineWorkspaceRoute`), and `service-route.ts` (`defineWorkspaceCron`, `defineWebhookRoute`). The browser runner is `shared/browser/workspace-browser-effect.ts`.
+Every Workspace Effect runs through one runner or boundary. Server runners live in `apps/deskohub-workspace/shared/backend/`: `workspace-effect.ts` (`runWorkspaceEffect`, `runWorkspaceEffectOrElse`, `defineWorkspaceTask`), `workspace-action.ts` (`defineWorkspaceAction`), `workspace-route.ts` (`defineWorkspaceRoute`), and `service-route.ts` (`defineWorkspaceCron`, `defineWebhookRoute`). The browser runner is `shared/browser/workspace-browser-effect.ts`.
 
 ## Actions and routes
 
