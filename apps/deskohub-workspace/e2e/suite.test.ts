@@ -11,14 +11,12 @@ import { workspaceE2EError } from "./errors";
 import { withinWorkspaceE2EDeadline } from "./polling";
 import type { Runner } from "./runtime";
 import { WorkspaceE2ECleanupService } from "./services/cleanup";
+import type { WorkspaceE2EFailureDiagnostic } from "./services/telemetry";
 import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
 } from "./services/telemetry.mock";
-import {
-  runWorkspaceE2ECase,
-  type WorkspaceE2EFailureDiagnostic,
-} from "./suite";
+import { runWorkspaceE2ECase } from "./suite";
 import { workspaceE2ETimeouts } from "./timeouts";
 import type { WorkspaceE2ECase } from "./types";
 

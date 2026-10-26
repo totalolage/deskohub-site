@@ -13,11 +13,7 @@ import {
   type WorkspaceE2EProviderVerificationPermit,
   WorkspaceE2EProviderVerificationPermitService,
 } from "./coordination/provider-verification-permit.service";
-import {
-  type WorkspaceE2EDiagnosticCode,
-  WorkspaceE2EError,
-  workspaceE2ETimeoutError,
-} from "./errors";
+import { WorkspaceE2EError, workspaceE2ETimeoutError } from "./errors";
 import type { E2EDatabase } from "./integrations/database.service";
 import { withinWorkspaceE2EDeadline } from "./polling";
 import type { Runner } from "./runtime";
@@ -27,12 +23,12 @@ import {
   WorkspaceE2ECleanupService,
 } from "./services/cleanup";
 import {
-  type E2EFailureKind,
   type E2EOutcome,
   type E2EResult,
   type E2ETelemetry,
   E2ETelemetryService,
   toE2EResult,
+  type WorkspaceE2EFailureDiagnostic,
 } from "./services/telemetry";
 import {
   formatWorkspaceE2EDuration,
@@ -49,14 +45,6 @@ const e2eOutcomeStatus: Record<E2EOutcome, string> = {
   failed: "FAIL",
   passed: "PASS",
   timed_out: "TIMEOUT",
-};
-
-export type WorkspaceE2EFailureDiagnostic = {
-  readonly caseId: string;
-  readonly diagnosticCode?: WorkspaceE2EDiagnosticCode;
-  readonly failureKind: E2EFailureKind;
-  readonly outcome: "failed" | "timed_out";
-  readonly stepId?: string;
 };
 
 export type WorkspaceE2EFailureReporter = (

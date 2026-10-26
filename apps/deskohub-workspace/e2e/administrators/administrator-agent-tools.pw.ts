@@ -19,6 +19,7 @@ import { customerAgentTestClientMetadata } from "@/features/account/customer-age
 import { m } from "@/features/i18n";
 import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
 import { openAdminBrowserPage, sanitizedBrowserOperation } from "../admin-case";
+import type { WorkspaceE2EStepRunner } from "../case-runner";
 import { getConfig, type WorkspaceE2EConfig } from "../config";
 import {
   administrationAgentRequestedScopes,
@@ -36,7 +37,6 @@ import {
   startCustomerAgentAuthorization,
 } from "../customer-agent/mcp";
 import { tryWorkspaceE2EPromise, tryWorkspaceE2ESync } from "../errors";
-import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import { runtimeTest as test } from "../playwright-checkout/runtime-fixtures";
 import { waitForReactClickHandler } from "../react-handlers";
 import { addRedaction, assert, parseUrl, workspaceDir } from "../runtime";
@@ -44,10 +44,7 @@ import {
   workspaceE2EAdministratorAgentToolsPlaywrightTimeout,
   workspaceE2ETimeouts,
 } from "../timeouts";
-import {
-  type AdministratorCaseStep,
-  runAdministratorCase,
-} from "./administrator-case";
+import { runAdministratorCase } from "./administrator-case";
 import { makeWorkspaceE2EAdministrationIdentities } from "./identities";
 
 const consentLocale = "en-US";
@@ -100,23 +97,19 @@ test("lists the administration tools to an administrator's agent after the custo
         caseId,
         context,
         origin,
-        reportFailure:
-          runContext.githubRunId === undefined
-            ? undefined
-            : writeWorkspaceE2EFailureAnnotation,
         timeoutMs: workspaceE2ETimeouts.administratorAgentToolsCase,
         body: Effect.fn(function* (step) {
-          const administrator = yield* step(
-            "sign-in-seeded-administrator",
-            workspaceE2ETimeouts.datasource,
-            Effect.gen(function* () {
+          const administrator = yield* step({
+            execute: Effect.gen(function* () {
               const account = yield* identities.seed("aat-admin", [
                 "administrator",
               ]);
               yield* identities.signIn(account, { context, origin });
               return account;
-            })
-          );
+            }),
+            id: "sign-in-seeded-administrator",
+            timeoutMs: workspaceE2ETimeouts.datasource,
+          });
           const { accessToken, scopes } = yield* connectTestAgent({
             administrator: true,
             config,
@@ -126,25 +119,23 @@ test("lists the administration tools to an administrator's agent after the custo
           });
           evidence = yield* Effect.scoped(
             Effect.gen(function* () {
-              const mcp = yield* step(
-                "connect-agent-mcp",
-                workspaceE2ETimeouts.customerMcpRequest,
-                connectCustomerMcp({ accessToken, config })
-              );
-              const catalog = yield* step(
-                "list-administration-tools",
-                workspaceE2ETimeouts.customerMcpRequest,
-                Effect.flatMap(listAgentTools(mcp, config), (tools) =>
+              const mcp = yield* step({
+                execute: connectCustomerMcp({ accessToken, config }),
+                id: "connect-agent-mcp",
+                timeoutMs: workspaceE2ETimeouts.customerMcpRequest,
+              });
+              const catalog = yield* step({
+                execute: Effect.flatMap(listAgentTools(mcp, config), (tools) =>
                   tryWorkspaceE2ESync(
                     "check the administration tool catalog",
                     () => checkAdministrationCatalog(tools)
                   )
-                )
-              );
-              const read = yield* step(
-                "call-administration-read",
-                workspaceE2ETimeouts.customerMcpRequest,
-                Effect.flatMap(
+                ),
+                id: "list-administration-tools",
+                timeoutMs: workspaceE2ETimeouts.customerMcpRequest,
+              });
+              const read = yield* step({
+                execute: Effect.flatMap(
                   callAgentTool(mcp, config, readToolName, {}),
                   (result) =>
                     tryWorkspaceE2ESync(
@@ -161,13 +152,13 @@ test("lists the administration tools to an administrator's agent after the custo
                         return { structuredKeys: keysOf(structured) };
                       }
                     )
-                )
-              );
+                ),
+                id: "call-administration-read",
+                timeoutMs: workspaceE2ETimeouts.customerMcpRequest,
+              });
               const sessionId = crypto.randomUUID();
-              const destructive = yield* step(
-                "preview-administration-destructive-call",
-                workspaceE2ETimeouts.customerMcpRequest,
-                Effect.flatMap(
+              const destructive = yield* step({
+                execute: Effect.flatMap(
                   callAgentTool(mcp, config, destructiveToolName, {
                     sessionId,
                   }),
@@ -180,8 +171,10 @@ test("lists the administration tools to an administrator's agent after the custo
                           sessionId
                         )
                     )
-                )
-              );
+                ),
+                id: "preview-administration-destructive-call",
+                timeoutMs: workspaceE2ETimeouts.customerMcpRequest,
+              });
               return {
                 case: caseId,
                 scopes,
@@ -199,11 +192,11 @@ test("lists the administration tools to an administrator's agent after the custo
           );
           // The token keeps its administration scope; the tools follow the
           // live grant.
-          yield* step(
-            "revoke-administrator-grant",
-            workspaceE2ETimeouts.datasource,
-            identities.revokeRoles(administrator)
-          );
+          yield* step({
+            execute: identities.revokeRoles(administrator),
+            id: "revoke-administrator-grant",
+            timeoutMs: workspaceE2ETimeouts.datasource,
+          });
           const afterRevocation = yield* expectNoAdministrationTools({
             accessToken,
             config,
@@ -247,20 +240,16 @@ test("lists no administration tools to a customer's agent that asks for the admi
         caseId,
         context,
         origin,
-        reportFailure:
-          runContext.githubRunId === undefined
-            ? undefined
-            : writeWorkspaceE2EFailureAnnotation,
         timeoutMs: workspaceE2ETimeouts.administratorAgentToolsCase,
         body: Effect.fn(function* (step) {
-          yield* step(
-            "sign-in-seeded-customer",
-            workspaceE2ETimeouts.datasource,
-            Effect.gen(function* () {
+          yield* step({
+            execute: Effect.gen(function* () {
               const member = yield* identities.seed("aatc-member", []);
               yield* identities.signIn(member, { context, origin });
-            })
-          );
+            }),
+            id: "sign-in-seeded-customer",
+            timeoutMs: workspaceE2ETimeouts.datasource,
+          });
           const { accessToken, scopes } = yield* connectTestAgent({
             administrator: false,
             config,
@@ -301,18 +290,24 @@ const connectTestAgent = Effect.fn("connectTestAgent")(function* ({
   readonly config: WorkspaceE2EConfig;
   readonly context: BrowserContext;
   readonly page: Page;
-  readonly step: AdministratorCaseStep;
+  readonly step: WorkspaceE2EStepRunner;
 }) {
-  const server = yield* step(
-    "discover-agent-authorization",
-    workspaceE2ETimeouts.customerMcpRequest,
-    discoverCustomerAgentAuthorization(config)
-  );
-  const { callback, request } = yield* step(
-    "allow-agent-consent",
-    workspaceE2ETimeouts.customerAgentConsent,
-    allowAgentConsent({ administrator, config, context, page, server })
-  );
+  const server = yield* step({
+    execute: discoverCustomerAgentAuthorization(config),
+    id: "discover-agent-authorization",
+    timeoutMs: workspaceE2ETimeouts.customerMcpRequest,
+  });
+  const { callback, request } = yield* step({
+    execute: allowAgentConsent({
+      administrator,
+      config,
+      context,
+      page,
+      server,
+    }),
+    id: "allow-agent-consent",
+    timeoutMs: workspaceE2ETimeouts.customerAgentConsent,
+  });
   const expected = administrator
     ? administrationAgentRequestedScopes
     : administrationAgentRequestedScopes.filter(
@@ -321,10 +316,8 @@ const connectTestAgent = Effect.fn("connectTestAgent")(function* ({
   const withheld: readonly CustomerAgentRequestedScope[] = administrator
     ? []
     : [administrationAgentScope];
-  const accessToken = yield* step(
-    "exchange-agent-code",
-    workspaceE2ETimeouts.customerMcpRequest,
-    Effect.flatMap(
+  const accessToken = yield* step({
+    execute: Effect.flatMap(
       tryWorkspaceE2ESync("read agent authorization response", () => {
         assert(
           callback.kind === "code",
@@ -343,8 +336,10 @@ const connectTestAgent = Effect.fn("connectTestAgent")(function* ({
           server,
           withheldScopes: withheld,
         })
-    )
-  );
+    ),
+    id: "exchange-agent-code",
+    timeoutMs: workspaceE2ETimeouts.customerMcpRequest,
+  });
   // What the exchange verified, not the raw grant, which may carry more.
   return {
     accessToken,
@@ -467,17 +462,15 @@ const expectNoAdministrationTools = Effect.fn("expectNoAdministrationTools")(
   }: {
     readonly accessToken: string;
     readonly config: WorkspaceE2EConfig;
-    readonly step: AdministratorCaseStep;
+    readonly step: WorkspaceE2EStepRunner;
   }) {
-    const mcp = yield* step(
-      "connect-agent-mcp-without-administration",
-      workspaceE2ETimeouts.customerMcpRequest,
-      connectCustomerMcp({ accessToken, config })
-    );
-    const tools = yield* step(
-      "list-tools-without-administration",
-      workspaceE2ETimeouts.customerMcpRequest,
-      Effect.flatMap(listAgentTools(mcp, config), (listed) =>
+    const mcp = yield* step({
+      execute: connectCustomerMcp({ accessToken, config }),
+      id: "connect-agent-mcp-without-administration",
+      timeoutMs: workspaceE2ETimeouts.customerMcpRequest,
+    });
+    const tools = yield* step({
+      execute: Effect.flatMap(listAgentTools(mcp, config), (listed) =>
         tryWorkspaceE2ESync("check the tool catalog", () => {
           assert(listed.length > 0, "The agent lists no tools");
           assert(
@@ -486,13 +479,15 @@ const expectNoAdministrationTools = Effect.fn("expectNoAdministrationTools")(
           );
           return { administration: 0, total: listed.length };
         })
-      )
-    );
-    const refusal = yield* step(
-      "refuse-administration-call",
-      workspaceE2ETimeouts.customerMcpRequest,
-      expectUnknownTool(mcp, config, readToolName)
-    );
+      ),
+      id: "list-tools-without-administration",
+      timeoutMs: workspaceE2ETimeouts.customerMcpRequest,
+    });
+    const refusal = yield* step({
+      execute: expectUnknownTool(mcp, config, readToolName),
+      id: "refuse-administration-call",
+      timeoutMs: workspaceE2ETimeouts.customerMcpRequest,
+    });
     return { calls: { [readToolName]: refusal }, tools };
   },
   Effect.scoped
