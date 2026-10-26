@@ -24,7 +24,7 @@ describe("Magic-link email renderer", () => {
 
   test.each([
     ["en-US", "Or enter this code:", "The code expires in 10 minutes."],
-    ["cs-CZ", "Nebo zadejte tento kód:", "Kód platí 10 minut."],
+    ["cs-CZ", "Nebo zadej tento kód:", "Kód platí 10 minut."],
   ] as const)(
     "puts the %s sign-in code alone on exactly one bare text line",
     async (locale, intro, expiry) => {

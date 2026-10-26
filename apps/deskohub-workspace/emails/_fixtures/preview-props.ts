@@ -188,7 +188,7 @@ export const workspaceCampaignPreviewProps = {
     },
   }),
   footer: {
-    note: "Tento e-mail dostáváte, protože jste souhlasili se zasíláním marketingových sdělení od Deskohub Workspace.",
+    note: "Tento e-mail dostáváš, protože máme tvůj souhlas se zasíláním marketingových sdělení od Deskohub Workspace.",
     link: {
       label: "Odhlásit odběr nebo změnit nastavení",
       href: `https://${workspaceSiteConstants.brand.domain}/cs-CZ/marketing-preferences/access?token=preview`,

@@ -99,8 +99,8 @@ describe("callback URL grammar", () => {
     });
     expect(signedInCallbackCopy(czechLanding)).toEqual({
       label: "Načítání přihlášení…",
-      title: "Jste přihlášeni",
-      body: "Vracíme vás tam, kde jste skončili. Dokončit můžete přímo v tomto prohlížeči.",
+      title: "Přihlášení proběhlo",
+      body: "Vracíme tě zpět. Dokončit můžeš přímo v tomto prohlížeči.",
     });
   });
 

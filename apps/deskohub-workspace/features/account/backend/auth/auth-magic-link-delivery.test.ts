@@ -141,7 +141,7 @@ describe.skipIf(!testDatabase)(
       expect(queued).toBe(1);
       const [sent] = resendSends.filter((send) => send.to.includes(email));
       expect(sent?.subject).toBe(CS_SUBJECT);
-      expect(sent?.text).toContain("Nebo zadejte tento kód:");
+      expect(sent?.text).toContain("Nebo zadej tento kód:");
       expect(sent?.text.match(/^[ \t]*\d{6}[ \t]*$/gm)).toEqual(["482913"]);
     });
 

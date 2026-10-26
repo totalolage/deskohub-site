@@ -29,9 +29,9 @@ const englishCard = {
   title: "You are signed in",
 } as const;
 const czechCard = {
-  body: "Vracíme vás tam, kde jste skončili. Dokončit můžete přímo v tomto prohlížeči.",
+  body: "Vracíme tě zpět. Dokončit můžeš přímo v tomto prohlížeči.",
   label: "Načítání přihlášení…",
-  title: "Jste přihlášeni",
+  title: "Přihlášení proběhlo",
 } as const;
 const selection = "/cs-CZ/reservation/cowork?selection=synthetic-1";
 const czechExpectation = {
@@ -939,7 +939,7 @@ describe("account callback handoff review", () => {
     ["the English card", { card: englishCard }, czechCallbackUrl],
     [
       "the account body",
-      { card: { ...czechCard, body: "Přesměrujeme vás na účet…" } },
+      { card: { ...czechCard, body: "Přesměrujeme tě na účet…" } },
       czechCallbackUrl,
     ],
   ] as const) {
