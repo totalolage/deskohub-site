@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Exit, Layer } from "effect";
+import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
 import { automationServiceStubs } from "../backend/campaign-operations.test-utils";
 import type { ICampaignSendService } from "../backend/campaign-send.service";
 import {
@@ -10,6 +11,7 @@ import {
 } from "../campaign-identifiers";
 import { CampaignConfirmationRejected, CampaignReadOnly } from "../errors";
 
+const access = mockAdministratorAccess("campaign-operations-actions");
 const revalidatePath = mock((_path: string) => undefined);
 
 mock.module("next/cache", () => ({
@@ -30,6 +32,9 @@ mock.module("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, getAll: () => [] }),
   headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),
 }));
+mock.module("next/root-params", () => ({
+  locale: () => Promise.resolve("en-US"),
+}));
 
 const operationsModule = await import("../backend/campaign-operations.service");
 const grantsModule = await import(
@@ -41,27 +46,6 @@ const recipientModule = await import("../backend/campaign-recipient.service");
 const sendModule = await import("../backend/campaign-send.service");
 const sendStatusModule = await import(
   "../backend/campaign-send-status.service"
-);
-const realAuthorizationModule = await import(
-  "@/features/administrators/server/administrator-authorization.server"
-);
-const realUnauthorizedError = await Effect.runPromise(
-  Effect.flip(realAuthorizationModule.requireAdministratorAuthorization)
-);
-
-const administrator = {
-  accountId: "synthetic-administrator-account",
-  email: "synthetic-administrator",
-};
-let authorizationResult: Effect.Effect<unknown, unknown> =
-  Effect.succeed(administrator);
-mock.module(
-  "@/features/administrators/server/administrator-authorization.server",
-  () => ({
-    requireAdministratorAuthorization: Effect.suspend(
-      () => authorizationResult
-    ),
-  })
 );
 
 const campaignId = campaignIdSchema.make("synthetic-campaign");
@@ -143,7 +127,7 @@ const { toCampaignPreviewInput } = await import(
 );
 
 beforeEach(() => {
-  authorizationResult = Effect.succeed(administrator);
+  access.set("administrator");
   holdsGrant = true;
   sendResult = Effect.succeed({});
   deleteResult = Effect.void;
@@ -245,21 +229,26 @@ describe("runCampaignOperation", () => {
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 
-  test("refuses a caller without an administrator session", async () => {
-    authorizationResult = Effect.fail(realUnauthorizedError);
+  test.each(["signed-out", "not-administrator", "unavailable"] as const)(
+    "refuses a %s caller as data",
+    async (caller) => {
+      access.set(caller);
 
-    const result = await runCampaignOperation({
-      operation: "deleteCampaign",
-      input: { campaignId },
-    });
+      const result = await runCampaignOperation({
+        operation: "deleteCampaign",
+        input: { campaignId },
+      });
 
-    expect(result?.data).toMatchObject({
-      _tag: "Failure",
-      category: "OperationUnauthorized",
-      code: "administrator-required",
-    });
-    expect(deleteCampaign).not.toHaveBeenCalled();
-  });
+      expect(result?.data).toMatchObject({
+        _tag: "Failure",
+        category: "OperationUnauthorized",
+        code: "administrator-required",
+      });
+      expect(result?.serverError).toBeUndefined();
+      expect(deleteCampaign).not.toHaveBeenCalled();
+      expect(revalidatePath).not.toHaveBeenCalled();
+    }
+  );
 
   test("refuses an administrator whose grant was revoked", async () => {
     holdsGrant = false;
@@ -310,7 +299,7 @@ describe("composer preview", () => {
         Effect.flatMap((operations) =>
           operations.invoke("previewCampaignTemplate", input)
         ),
-        Effect.provideService(CurrentAdministrator, administrator as never),
+        Effect.provideService(CurrentAdministrator, access.administrator),
         Effect.provide(
           Layer.mergeAll(
             OperationRequestLedger.unscoped,

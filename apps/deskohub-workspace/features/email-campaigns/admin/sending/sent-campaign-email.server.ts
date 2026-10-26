@@ -2,10 +2,11 @@ import "server-only";
 
 import type { AdministrationCampaignDetailType } from "@deskohub/workspace-admin-api";
 import { Effect } from "effect";
+import { runAdministrationPage } from "@/features/administrators/server/administration-request.server";
 import { campaignLocales } from "../../recipient-locale";
 import {
+  campaignOperationCapabilities,
   invokeCampaignOperation,
-  runCampaignPageQuery,
 } from "../campaign-operation-query.server";
 
 const sentCampaignEmails = Effect.fn("loadSentCampaignEmails")(function* (
@@ -44,7 +45,8 @@ const sentCampaignEmails = Effect.fn("loadSentCampaignEmails")(function* (
 export const loadSentCampaignEmails = (
   campaign: AdministrationCampaignDetailType
 ) =>
-  runCampaignPageQuery(
+  runAdministrationPage(
     "email-campaigns.admin.render-sent-campaign",
-    sentCampaignEmails(campaign)
+    sentCampaignEmails(campaign),
+    campaignOperationCapabilities
   );

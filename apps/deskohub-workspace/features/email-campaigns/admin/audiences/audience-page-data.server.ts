@@ -1,10 +1,12 @@
 import "server-only";
 
 import type { AdministrationCampaignAudienceType } from "@deskohub/workspace-admin-api";
-import { Effect, Option } from "effect";
-import { notFound } from "next/navigation";
+import { Effect } from "effect";
 import { formatAdministrationDateTime } from "@/features/administration/formatters";
-import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
+import {
+  AdministrationRecordNotFound,
+  runAdministrationPage,
+} from "@/features/administrators/server/administration-request.server";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import {
@@ -14,8 +16,8 @@ import {
 import type { CampaignAudienceId } from "../../campaign-identifiers";
 import { describeAudienceFilter } from "../audience-filter-summary";
 import {
+  campaignOperationCapabilities,
   invokeCampaignOperation,
-  runCampaignPageQuery,
 } from "../campaign-operation-query.server";
 import { loadAudienceValueLookups } from "./audience-value-lookups.server";
 
@@ -48,9 +50,10 @@ export type AudienceEditorData = {
 
 /** Every audience, archived ones included. */
 const listAudiences = () =>
-  runCampaignPageQuery(
+  runAdministrationPage(
     "email-campaigns.admin.list-audiences",
-    invokeCampaignOperation("listCampaignAudiences", {})
+    invokeCampaignOperation("listCampaignAudiences", {}),
+    campaignOperationCapabilities
   );
 
 const byTitle = (left: { title: string }, right: { title: string }) =>
@@ -63,7 +66,6 @@ const isArchived = (audience: AdministrationCampaignAudienceType) =>
 export const loadAudienceList = async (): Promise<
   readonly AudienceListItem[]
 > => {
-  await authorizeAdministratorPage();
   const [audiences, lookups, locale] = await Promise.all([
     listAudiences(),
     loadAudienceValueLookups(),
@@ -89,7 +91,6 @@ export const loadAudienceList = async (): Promise<
 export const loadAudienceOptions = async (): Promise<
   readonly AudienceOption[]
 > => {
-  await authorizeAdministratorPage();
   const [audiences, lookups, locale] = await Promise.all([
     listAudiences(),
     loadAudienceValueLookups(),
@@ -107,19 +108,21 @@ export const loadAudienceOptions = async (): Promise<
 };
 
 /** The audience the editor opens, or the not-found page. */
-export const loadAudienceEditor = async (
+export const loadAudienceEditor = (
   audienceId: CampaignAudienceId
-): Promise<AudienceEditorData> => {
-  await authorizeAdministratorPage();
-  const audience = await runCampaignPageQuery(
+): Promise<AudienceEditorData> =>
+  runAdministrationPage(
     "email-campaigns.admin.load-audience",
     invokeCampaignOperation("getCampaignAudience", { audienceId }).pipe(
-      Effect.map(Option.some),
-      Effect.catchTag("OperationNotFound", () => Effect.succeedNone)
-    )
+      Effect.map(({ id, title, filter, archivedAt }) => ({
+        id,
+        title,
+        filter,
+        archived: archivedAt !== null,
+      })),
+      Effect.catchTag("OperationNotFound", () =>
+        Effect.fail(new AdministrationRecordNotFound())
+      )
+    ),
+    campaignOperationCapabilities
   );
-  const { id, title, filter, archivedAt } = Option.getOrElse(audience, () =>
-    notFound()
-  );
-  return { id, title, filter, archived: archivedAt !== null };
-};
