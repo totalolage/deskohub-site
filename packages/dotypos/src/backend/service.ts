@@ -145,6 +145,16 @@ const noneWhenNotFound =
       )
     );
 
+/**
+ * Stage 3 compatibility: an access-token 404 stays DotyposRejected{unauthorized}
+ * but still reads as an empty first list page, as every 404 did before the
+ * outcome tags.
+ */
+const isAccessTokenNotFound = (failure: DotyposAttemptFailure) =>
+  failure._tag === "DotyposRejected" &&
+  failure.reason === "unauthorized" &&
+  failure.httpStatus === 404;
+
 /** Dotypos answers a list page without records with 404. */
 const emptyFirstPageWhenNotFound =
   (page: number) =>
@@ -153,7 +163,8 @@ const emptyFirstPageWhenNotFound =
   ): Effect.Effect<DotyposPage<A>, E, R> =>
     effect.pipe(
       Effect.catchIf(
-        (failure) => page === 1 && isNotFound(failure),
+        (failure) =>
+          page === 1 && (isNotFound(failure) || isAccessTokenNotFound(failure)),
         () => Effect.succeed({ data: [] })
       )
     );

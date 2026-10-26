@@ -1743,6 +1743,26 @@ describe("DotyposService customer changes", () => {
     expect(changes).toEqual({ customers: [], hasMore: false });
   });
 
+  test("reads an access-token 404 as an empty export", async () => {
+    const fetchMock = mockDotyposFetch(
+      () => new Response("Not found", { status: 404 })
+    );
+
+    const changes = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listCustomerChanges({
+          selection: CustomerVersionSelection.Undated({
+            createdFrom: Option.none(),
+          }),
+        });
+      }),
+      fetchMock
+    );
+
+    expect(changes).toEqual({ customers: [], hasMore: false });
+  });
+
   test("leaves a rejected or rate-limited read to the caller instead of retrying it", async () => {
     for (const status of [400, 429]) {
       const fetchMock = mockDotyposFetch((request) => {
@@ -1788,6 +1808,25 @@ describe("DotyposService customer page", () => {
     fetchMock.mock.calls
       .map((call) => new URL(getUrl(call as FetchCall)))
       .filter((url) => url.pathname === "/clouds/cloud-id/customers");
+
+  test("reads an access-token 404 as an empty page", async () => {
+    const fetchMock = mockDotyposFetch(
+      () => new Response("Not found", { status: 404 })
+    );
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getCustomersPage([
+          dotyposCustomerId("customer-1"),
+        ]);
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([]);
+    expect(customerListRequests(fetchMock)).toHaveLength(0);
+  });
 
   test("reads up to 50 selected customers with one request", async () => {
     const ids = Array.from({ length: dotyposIdFilterBatchSize }, (_, index) =>
