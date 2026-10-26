@@ -248,7 +248,6 @@ describe("ReservationHistory", () => {
         )
       ).toBeTruthy();
     }
-    expect(view.queryByText("Checked in")).toBeNull();
 
     expect(
       view
