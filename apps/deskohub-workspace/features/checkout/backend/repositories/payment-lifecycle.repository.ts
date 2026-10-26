@@ -82,7 +82,6 @@ import {
 import { evaluateReferralAttribution } from "@/features/referrals/attribution";
 import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import {
   type Money,
   moneyEquals,
@@ -722,10 +721,8 @@ export class PaymentLifecycleRepository extends Context.Service<
           .update(paymentAttempts)
           .set({
             state: "pending",
-            securityToken: sensitiveDatabaseParameter(input.securityToken),
-            providerRedirectUrl: sensitiveDatabaseParameter(
-              input.providerRedirectUrl
-            ),
+            securityToken: input.securityToken,
+            providerRedirectUrl: input.providerRedirectUrl,
             providerOrderCreatedAt,
             updatedAt: providerOrderCreatedAt,
           })

@@ -325,7 +325,7 @@ export const readSyntheticAccountState = (
         })
         .from(authUser)
         .leftJoin(customerAccounts, eq(customerAccounts.id, authUser.id))
-        .where(eq(authUser.email, sensitiveDatabaseParameter(email)))
+        .where(eq(authUser.email, email))
     );
     const row = rows[0];
     return classifyWorkspaceE2EAccountState({

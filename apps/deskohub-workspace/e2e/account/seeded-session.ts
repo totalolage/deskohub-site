@@ -8,7 +8,6 @@ import { authSession } from "@/db/schema/auth";
 import { parseBetterAuthSecrets } from "@/features/account/backend/auth/auth-secrets";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { AccountRole } from "@/features/administrators/account-role";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { setBrowserCookie } from "../browser";
 import type { WorkspaceE2EEnvironment } from "../e2e-env";
@@ -177,9 +176,7 @@ const issueWorkspaceE2ESyntheticSession = ({
         expiresAt: new Date(now.getTime() + seededSessionLifetimeMs),
         id: crypto.randomUUID(),
         ipAddress: "",
-        // The database query logger keeps its own censor, so the bearer
-        // token must be marked sensitive rather than only redacted here.
-        token: sensitiveDatabaseParameter(token),
+        token,
         updatedAt: now,
         userAgent: "",
         userId: accountId,
