@@ -19,16 +19,9 @@ import {
   type WorkspaceE2ECleanup,
   WorkspaceE2ECleanupService,
 } from "./services/cleanup";
-import type {
-  E2ETelemetryService,
-  WorkspaceE2EFailureDiagnostic,
-} from "./services/telemetry";
+import type { E2ETelemetryService } from "./services/telemetry";
 import type { WorkspaceE2ETimeouts } from "./timeouts";
 import type { WorkspaceE2ECase } from "./types";
-
-export type WorkspaceE2EFailureReporter = (
-  diagnostic: WorkspaceE2EFailureDiagnostic
-) => void;
 
 /** The case's browser session, shared by its body, failure capture, and cleanup. */
 type WorkspaceE2ECaseBrowser = {

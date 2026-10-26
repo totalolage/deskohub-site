@@ -9,7 +9,6 @@ import { Effect } from "effect";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceE2EStep } from "../case-runner";
 import { WorkspaceE2EError, workspaceE2EError } from "../errors";
-import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import type { E2EDatabase } from "../integrations/database.service";
 import { readWorkspaceE2ERunPlan } from "../playwright-checkout/run-plan";
 import { runtimeTest } from "../playwright-checkout/runtime-fixtures";
@@ -519,7 +518,6 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         runEffect(
           runWorkspaceE2EAccountCase({
             journalRef: accountLane.journalRef,
-            reportFailure: writeWorkspaceE2EFailureAnnotation,
             session: accountLane.session,
             testCase: selected,
             ...(verifyPages ? { verifyPages } : {}),

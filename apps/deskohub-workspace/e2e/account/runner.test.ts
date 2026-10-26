@@ -5,6 +5,7 @@ import { FetchHttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EStep } from "../case-runner";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
+import type { E2ETelemetry } from "../services/telemetry";
 import type { E2ETelemetryObservation } from "../services/telemetry.mock";
 import { makeE2ETelemetryMock } from "../services/telemetry.mock";
 import { workspaceE2ETimeouts } from "../timeouts";
@@ -54,9 +55,12 @@ const makeJournalRef = (): WorkspaceE2EAccountJournalRef => ({
   record: async () => undefined,
 });
 
-const makeRunnerLayer = (observations: E2ETelemetryObservation[]) =>
+const makeRunnerLayer = (
+  observations: E2ETelemetryObservation[],
+  telemetry: Partial<E2ETelemetry> = {}
+) =>
   Layer.mergeAll(
-    makeE2ETelemetryMock(observations),
+    makeE2ETelemetryMock(observations, telemetry),
     Layer.succeed(E2EDatabase, E2EDatabase.of({ db: {} as never })),
     httpClientLayer,
     TestClock.layer()
@@ -102,11 +106,6 @@ test("finalizes and reports a failed verification step", async () => {
   const observations: E2ETelemetryObservation[] = [];
   const events: string[] = [];
   journalFlushObserver = () => events.push("journal:flush");
-  const failures: {
-    readonly caseId: string;
-    readonly failureKind: "defect" | "error" | "timeout";
-    readonly outcome: "failed" | "timed_out";
-  }[] = [];
   const journalRef = makeJournalRef();
   const failure = workspaceE2EError(
     "verify profile navigation and unsaved changes failed"
@@ -136,7 +135,6 @@ test("finalizes and reports a failed verification step", async () => {
   const exit = await Effect.runPromiseExit(
     runWorkspaceE2EAccountCase({
       journalRef,
-      reportFailure: (failure) => failures.push(failure),
       session: "account-runner-test",
       testCase,
       verifyPages: [verifyPage],
@@ -181,11 +179,15 @@ test("finalizes and reports a failed verification step", async () => {
     phaseId: "case-finalization",
     scope: "phase",
   });
-  expect(failures).toEqual([
+  expect(
+    observations.filter((observation) => observation.scope === "annotation")
+  ).toEqual([
     {
       caseId: testCase.id,
       failureKind: "error",
       outcome: "failed",
+      scope: "annotation",
+      stepId: verifyPage.id,
     },
   ]);
   expect(writeWorkspaceE2EAccountJournal).toHaveBeenCalledTimes(1);
@@ -313,6 +315,13 @@ test("bounds the case cleanup step by its semantic timeout", async () => {
     stepId: "cleanup transition fixture",
     timeoutMs: 1_000,
   });
+  expect(observations).toContainEqual({
+    caseId: testCase.id,
+    failureKind: "timeout",
+    outcome: "timed_out",
+    scope: "annotation",
+    stepId: "cleanup transition fixture",
+  });
   expect(writeWorkspaceE2EAccountJournal).toHaveBeenCalledTimes(1);
 });
 
@@ -387,8 +396,6 @@ test("stops verification after a failed page and preserves the failure", async (
       const fiber = yield* Effect.forkChild(
         runWorkspaceE2EAccountCase({
           journalRef: makeJournalRef(),
-          reportFailure: (reported) =>
-            events.push(`reported:${reported.outcome}`),
           session: "account-runner-test",
           testCase,
           verifyPages,
@@ -396,7 +403,16 @@ test("stops verification after a failed page and preserves the failure", async (
       );
       yield* TestClock.adjust("60 seconds");
       return yield* Fiber.join(fiber);
-    }).pipe(Effect.provide(makeRunnerLayer(observations)))
+    }).pipe(
+      Effect.provide(
+        makeRunnerLayer(observations, {
+          annotateFailure: (reported) =>
+            Effect.sync(() => {
+              events.push(`reported:${reported.outcome}`);
+            }),
+        })
+      )
+    )
   );
 
   expect(Exit.isFailure(exit)).toBe(true);
