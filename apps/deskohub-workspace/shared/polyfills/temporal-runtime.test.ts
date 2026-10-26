@@ -149,7 +149,7 @@ const temporalApiPrefix = (member: ts.Declaration) => {
 const temporalMemberNames = new Set(
   Object.values(PolyfillTemporal).flatMap((namespace) => [
     ...Object.getOwnPropertyNames(namespace).filter(
-      (name) => typeof Object(namespace)[name] === "function"
+      (name) => Object(namespace)[name] instanceof Function
     ),
     ...Object.getOwnPropertyNames(Object(namespace).prototype ?? {}).filter(
       (name) => name !== "constructor"
