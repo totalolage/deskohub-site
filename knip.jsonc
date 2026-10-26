@@ -39,9 +39,13 @@
       // drizzle.config.ts decodes DATABASE_URL at module load, so the plugin cannot
       // load it; drizzle-kit stays verified via binaries from the db:* scripts.
       "drizzle": false,
-      // Registry name served by the @effect/tsgo-patched native TypeScript
-      // (`prepare` script), not an installable module.
-      "ignoreDependencies": ["@effect/language-service"]
+      "ignoreDependencies": [
+        // Registry name served by the @effect/tsgo-patched native TypeScript
+        // (`prepare` script), not an installable module.
+        "@effect/language-service",
+        // Preview server the `email:dev` CLI resolves from the project at runtime.
+        "@react-email/ui"
+      ]
     }
   }
 }
