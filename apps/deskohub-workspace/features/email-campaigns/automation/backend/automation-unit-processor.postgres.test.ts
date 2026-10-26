@@ -276,7 +276,9 @@ describe.skipIf(!database)("automation unit processor", () => {
           fetch: () =>
             failures-- > 0
               ? Effect.fail(
-                  new AutomationUnitFetchFailure({ code: "dotypos-unavailable" })
+                  new AutomationUnitFetchFailure({
+                    code: "dotypos-unavailable",
+                  })
                 )
               : Effect.void,
         }),

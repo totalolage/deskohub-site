@@ -192,10 +192,11 @@ failure event is logged as `Dotypos customer source could not read Dotypos`.
 For a Dotypos failure it carries the `dotyposFailureLogFields`:
 `dotyposCode` (`dotypos-rejected` for a rejected sort or filter or an unusable
 answer, `dotypos-unavailable` for an outage), `dotyposReason`,
-`dotyposOperation`, `dotyposRequest`, and `dotyposHttpStatus` when Dotypos
-answered. Otherwise its `errorTag` is `UnpageableDotyposCustomerGroup` when a
-timestamp group cannot be split, or `UnexpectedDotyposCustomerPage` for a
-missing ID or a selection/order violation.
+`dotyposOperation`, `dotyposRequest`, and `dotyposHttpStatus` when the
+failure carries a Dotypos HTTP status. Otherwise its `errorTag` is
+`UnpageableDotyposCustomerGroup` when a timestamp group cannot be split, or
+`UnexpectedDotyposCustomerPage` for a missing ID or a selection/order
+violation.
 
 The `position` field on the preceding `Dotypos customer source served a page`
 event identifies the selection kind (`Undated`, `ChangedAt`, `ChangedFrom`,

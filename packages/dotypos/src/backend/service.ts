@@ -146,8 +146,8 @@ const noneWhenNotFound =
     );
 
 /**
- * Stage 3 compatibility: an access-token 404 stays DotyposRejected{unauthorized}
- * but still reads as an empty first list page, as every 404 did before the
+ * Compatibility: an access-token 404 stays DotyposRejected{unauthorized} but
+ * still reads as an empty first list page, as every 404 did before the
  * outcome tags.
  */
 const isAccessTokenNotFound = (failure: DotyposAttemptFailure) =>
