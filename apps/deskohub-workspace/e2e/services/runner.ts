@@ -9,7 +9,6 @@ import type { WorkspaceE2EEnvironment } from "../e2e-env";
 import { toWorkspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
 import { addDatabaseUrlRedactions } from "../runtime";
-import { WorkspaceE2ECaseService } from "./cases";
 import { WorkspaceE2ECleanupService } from "./cleanup";
 import {
   type E2ERunContext,
@@ -25,7 +24,7 @@ export const makeWorkspaceE2ECaseRuntimeLive = (
     environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
   );
   const datasourceConfig = getDatasourceConfig(environment);
-  const support = Layer.mergeAll(
+  return Layer.mergeAll(
     FetchHttpClient.layer,
     WorkspaceE2ECleanupService.Default,
     WorkspaceE2EHostedPaymentPermitService.Default.pipe(
@@ -37,8 +36,6 @@ export const makeWorkspaceE2ECaseRuntimeLive = (
     ),
     E2EDatabase.layer(datasourceConfig)
   );
-
-  return WorkspaceE2ECaseService.Default.pipe(Layer.provideMerge(support));
 };
 
 const makeWorkspaceE2EProviderVerificationPermitLive = (

@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
-import { WorkspaceE2ECaseService } from "../services/cases";
 import {
   isWorkspaceE2ENightlyCaseId,
   isWorkspaceE2EOfficeCaseId,
@@ -62,23 +61,25 @@ export const registerWorkspaceE2ECases = (
             !nightlyCasesEnabled(environment),
           "Runs only in the nightly Workspace E2E"
         );
+        const { makeWorkspaceE2ECases } = await import("../cases");
         const { getConfig, getDatasourceConfig } = await import("../config");
         const { workspaceDir } = await import("../runtime");
+        const { runWorkspaceE2ECase } = await import("../suite");
         const { writeWorkspaceE2ECaseJournal } = await import("./run-plan");
         const config = getConfig(environment);
         const datasourceConfig = getDatasourceConfig(environment);
 
         const planned = await runEffect(
           Effect.gen(function* () {
-            const caseService = yield* WorkspaceE2ECaseService;
             const flowStates: import("../types").CheckoutFlowState[] = [];
-            const cases = yield* caseService.reconstructCases({
+            const cases = yield* makeWorkspaceE2ECases({
               allocation: runPlan.runContext.allocation,
               config,
               datasourceConfig,
               flowStates,
               preparation: runPlan.preparation,
               run: browserRunner,
+              traceConstruction: false,
             });
             const selected = cases.find((testCase) => testCase.id === caseId);
             return selected;
@@ -109,16 +110,13 @@ export const registerWorkspaceE2ECases = (
         );
         try {
           await runEffect(
-            Effect.gen(function* () {
-              const caseService = yield* WorkspaceE2ECaseService;
-              yield* caseService.runCase({
-                artifactRoot: `${workspaceDir}/e2e-artifacts/checkout/cases`,
-                datasourceConfig,
-                run: browserRunner,
-                sessionPrefix: `workspace-checkout-e2e-${runPlan.runContext.runId}`,
-                testCase: selected,
-                timeouts: config.timeouts,
-              });
+            runWorkspaceE2ECase({
+              artifactRoot: `${workspaceDir}/e2e-artifacts/checkout/cases`,
+              datasourceConfig,
+              run: browserRunner,
+              sessionPrefix: `workspace-checkout-e2e-${runPlan.runContext.runId}`,
+              testCase: selected,
+              timeouts: config.timeouts,
             })
           );
         } finally {

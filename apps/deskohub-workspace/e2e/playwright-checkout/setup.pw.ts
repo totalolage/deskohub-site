@@ -2,6 +2,7 @@ import "../../shared/polyfills/temporal";
 
 import { expect, test } from "@playwright/test";
 import { Effect } from "effect";
+import { makeWorkspaceE2ECases } from "../cases";
 import { prepareDiscountAvailabilityE2E } from "../cases/discounts";
 import { prepareMeetingRoomE2E } from "../cases/meeting-room";
 import { prepareOfficeE2E } from "../cases/office";
@@ -19,7 +20,6 @@ import {
   assertSafeDatabaseUrl,
   type Runner,
 } from "../runtime";
-import { WorkspaceE2ECaseService } from "../services/cases";
 import { E2ETelemetryService } from "../services/telemetry";
 import {
   isWorkspaceE2EOfficeCaseId,
@@ -127,8 +127,7 @@ test("prepare the workspace checkout run", async () => {
               { concurrency: "unbounded" }
             );
           const preparation = { ...prepared, customerDiscountGroup };
-          const caseService = yield* WorkspaceE2ECaseService;
-          const cases = yield* caseService.makeCases({
+          const cases = yield* makeWorkspaceE2ECases({
             allocation: runContext.allocation,
             config,
             datasourceConfig,

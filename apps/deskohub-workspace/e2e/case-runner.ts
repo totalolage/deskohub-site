@@ -12,7 +12,7 @@ import {
 import { formatWorkspaceE2EDuration } from "./timeouts";
 
 /** A suite-wide limit a step holds for its timed execution. */
-export type WorkspaceE2EStepPermit = "provider-verification";
+type WorkspaceE2EStepPermit = "provider-verification";
 
 /**
  * One semantic step. A permit admits the step before its deadline starts; the
