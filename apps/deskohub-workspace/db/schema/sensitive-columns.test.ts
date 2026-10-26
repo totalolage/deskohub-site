@@ -6,12 +6,16 @@
  * logger.
  *
  * Values bound outside the encoder stay visible unless the call site marks
- * them: raw `sql` templates, `like`-style operators, and comparisons whose
- * left side is an expression such as `lower(column)`. A static scan of the
- * app's non-test modules flags those uses of sensitive columns. It resolves
- * table bindings by their schema export names and import renames, so it
- * misses a table reached through another binding, and it does not read
- * relational-query filter objects.
+ * them: raw `sql` templates, `like`-style operators, comparisons whose left
+ * side is an expression such as `lower(column)`, and `sql.param`,
+ * `sql.placeholder`, `sql.raw`, or `sql` values compared with or written to a
+ * sensitive column. A static scan of the app's non-test modules flags those.
+ * It errs on the strict side: a template that references a sensitive column
+ * and binds any unmarked value is flagged even when the value belongs to
+ * another column, so mark it or split the template. It resolves tables by
+ * their schema export names and import renames, so it misses a table reached
+ * through another binding, and it does not read relational-query filter
+ * objects or written rows built away from their `values` or `set` call.
  */
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
@@ -132,7 +136,7 @@ const containsWordRun = (
   );
 
 describe("sensitive schema columns", () => {
-  test("store every secret or identifying text column as sensitive text", () => {
+  test("stores columns named for secrets or personal identifiers as sensitive text", () => {
     const unmarked = columns
       .filter(
         ({ id, words, sqlType, sensitive }) =>
@@ -249,6 +253,10 @@ const comparisonOperators = new Set([
   ...encoderSkippingOperators,
 ]);
 
+// Calls that put a value into SQL without a column: `sql.param`,
+// `sql.placeholder`, and `sql.raw`, or the bare `param` and `placeholder`.
+const rawSqlValueFunctions = new Set(["param", "placeholder", "raw"]);
+
 const sensitiveColumnKeys = Map.groupBy(
   sensitiveColumns,
   ({ exportName }) => exportName
@@ -281,7 +289,12 @@ const findSensitiveColumnsBoundOutsideTheirEncoder = (
   path: string,
   sourceText: string
 ) => {
-  const source = ts.createSourceFile(path, sourceText, ts.ScriptTarget.Latest);
+  const source = ts.createSourceFile(
+    path,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true
+  );
   const bindings = schemaTableBindings(source);
   if (bindings.size === 0) return [];
 
@@ -312,6 +325,51 @@ const findSensitiveColumnsBoundOutsideTheirEncoder = (
     (ts.isPropertyAccessExpression(node) &&
       ts.isIdentifier(node.expression) &&
       bindings.has(node.expression.text));
+  const isSqlTemplate = (
+    node: ts.Node
+  ): node is ts.TaggedTemplateExpression & {
+    readonly template: ts.TemplateExpression;
+  } =>
+    ts.isTaggedTemplateExpression(node) &&
+    ts.isIdentifier(node.tag) &&
+    node.tag.text === "sql" &&
+    ts.isTemplateExpression(node.template);
+  const bindsUnmarkedValue = (template: ts.TemplateExpression) =>
+    template.templateSpans.some(
+      ({ expression }) => !(isReference(expression) || isMarked(expression))
+    );
+  // SQL that the column encoder never sees: a template binding a value, or a
+  // raw parameter, placeholder, or inlined string.
+  const isEncoderSkippingValue = (node: ts.Expression) =>
+    (isSqlTemplate(node) && bindsUnmarkedValue(node.template)) ||
+    (ts.isCallExpression(node) &&
+      ((ts.isPropertyAccessExpression(node.expression) &&
+        ts.isIdentifier(node.expression.expression) &&
+        node.expression.expression.text === "sql" &&
+        rawSqlValueFunctions.has(node.expression.name.text)) ||
+        (ts.isIdentifier(node.expression) &&
+          rawSqlValueFunctions.has(node.expression.text))));
+  const isWrittenRow = (row: ts.ObjectLiteralExpression) => {
+    const parent = ts.isArrayLiteralExpression(row.parent)
+      ? row.parent.parent
+      : row.parent;
+    if (
+      ts.isCallExpression(parent) &&
+      ts.isPropertyAccessExpression(parent.expression)
+    ) {
+      return ["values", "set"].includes(parent.expression.name.text);
+    }
+    return (
+      ts.isPropertyAssignment(parent) &&
+      ts.isIdentifier(parent.name) &&
+      parent.name.text === "set"
+    );
+  };
+  const sensitiveKeys = new Set(
+    [...bindings.values()].flatMap((exportName) =>
+      (sensitiveColumnKeys.get(exportName) ?? []).map(({ key }) => key)
+    )
+  );
 
   const findings: string[] = [];
   const report = (node: ts.Node) => {
@@ -322,16 +380,11 @@ const findSensitiveColumnsBoundOutsideTheirEncoder = (
   };
   const visit = (node: ts.Node): void => {
     if (
-      ts.isTaggedTemplateExpression(node) &&
-      ts.isIdentifier(node.tag) &&
-      node.tag.text === "sql" &&
-      ts.isTemplateExpression(node.template) &&
+      isSqlTemplate(node) &&
       node.template.templateSpans.some(({ expression }) =>
         isSensitiveColumnReference(expression)
       ) &&
-      node.template.templateSpans.some(
-        ({ expression }) => !(isReference(expression) || isMarked(expression))
-      )
+      bindsUnmarkedValue(node.template)
     ) {
       report(node);
     }
@@ -341,12 +394,23 @@ const findSensitiveColumnsBoundOutsideTheirEncoder = (
       comparisonOperators.has(node.expression.text)
     ) {
       const [left, right] = node.arguments;
-      const bypassesEncoder = encoderSkippingOperators.has(node.expression.text)
-        ? left !== undefined && referencesSensitiveColumn(left)
-        : left !== undefined &&
-          !isSensitiveColumnReference(left) &&
-          referencesSensitiveColumn(left);
-      if (bypassesEncoder && !(right && isMarked(right))) report(node);
+      const bypassesEncoder =
+        left !== undefined &&
+        (encoderSkippingOperators.has(node.expression.text) ||
+        !isSensitiveColumnReference(left)
+          ? referencesSensitiveColumn(left) && !(right && isMarked(right))
+          : right !== undefined && isEncoderSkippingValue(right));
+      if (bypassesEncoder) report(node);
+    }
+    if (
+      ts.isPropertyAssignment(node) &&
+      ts.isIdentifier(node.name) &&
+      sensitiveKeys.has(node.name.text) &&
+      ts.isObjectLiteralExpression(node.parent) &&
+      isWrittenRow(node.parent) &&
+      isEncoderSkippingValue(node.initializer)
+    ) {
+      report(node);
     }
     ts.forEachChild(node, visit);
   };
@@ -366,11 +430,31 @@ describe("sensitive column values bound outside the column encoder", () => {
       eq(sql\`lower(\${codes.code})\`, sensitiveDatabaseParameter(value));
       eq(codes.code, value);
       inArray(codes.code, values);
+      eq(codes.code, sql.param(value));
+      eq(codes.code, sql.placeholder("code"));
+      eq(codes.code, sql\`\${value}\`);
+      db.update(codes).set({ code: sql\`upper(\${value})\` });
+      db.insert(codes).values([{ code: sql.raw(value) }]);
+      db.insert(codes).values({ code: value }).onConflictDoUpdate({
+        target: codes.code,
+        set: { code: sql.param(value) },
+      });
+      db.update(codes).set({ code: excludedColumn(codes.code) });
     `;
 
     expect(
       findSensitiveColumnsBoundOutsideTheirEncoder("fixture.ts", source)
-    ).toEqual(["fixture.ts:3", "fixture.ts:6", "fixture.ts:7"]);
+    ).toEqual([
+      "fixture.ts:3",
+      "fixture.ts:6",
+      "fixture.ts:7",
+      "fixture.ts:11",
+      "fixture.ts:12",
+      "fixture.ts:13",
+      "fixture.ts:14",
+      "fixture.ts:15",
+      "fixture.ts:18",
+    ]);
   });
 
   test("are marked where the app binds them", async () => {
