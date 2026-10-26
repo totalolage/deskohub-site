@@ -9,6 +9,8 @@ import { cn } from "@/shared/utils";
 
 type CheckoutFlowLayoutProps = {
   readonly activeStepKey: CheckoutFlowStage;
+  /** Where the page sits on the site, above the steps. */
+  readonly breadcrumbs?: ReactNode;
   readonly children: ReactNode;
   readonly locale: Locale;
   readonly stepLinks?: Partial<Record<CheckoutStepKey, CheckoutStepLink>>;
@@ -140,6 +142,7 @@ export function CheckoutSteps({
 
 export function CheckoutFlowLayout({
   activeStepKey,
+  breadcrumbs,
   children,
   locale,
   stepLinks,
@@ -152,6 +155,7 @@ export function CheckoutFlowLayout({
         <div className="absolute -right-28 bottom-24 -z-10 h-72 w-72 rounded-full bg-aquamarine-green/14 blur-3xl" />
 
         <Container className="flex flex-col gap-6">
+          {breadcrumbs}
           {steps ?? (
             <CheckoutSteps
               activeStepKey={activeStepKey}

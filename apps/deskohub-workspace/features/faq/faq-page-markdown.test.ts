@@ -21,8 +21,9 @@ import { serializeMarkdown } from "@/shared/markdown/markdown";
 import {
   markdownLinkUrls,
   markdownPlainText,
+  messagePlainText,
 } from "@/shared/markdown/markdown.test-utils";
-import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { getFaqGroups } from "./faq-entries";
 
 const coworkTableId = "synthetic-cowork-table";
 
@@ -73,36 +74,69 @@ const formattedOccupancy = {
   "cs-CZ": { average: "0,6", capacity: "4" },
 } as const;
 
+const renderMarkdown = async (
+  locale: (typeof locales)[number],
+  officePublished = false
+) =>
+  serializeMarkdown(
+    await Effect.runPromise(
+      faqPageMarkdown(locale, {
+        isPublished: (pathname) =>
+          officePublished || pathname !== "/reservation/office",
+      })
+    )
+  );
+
 // Left out on purpose: the metadata title and description, which the page
 // sends as metadata.
 describe.each(locales)("faqPageMarkdown in %s", (locale) => {
-  test("shows every question with its answer, the busyness from last month's reservations", async () => {
-    const { address } = workspaceSiteConstants.location;
-    const markdown = serializeMarkdown(
-      await Effect.runPromise(faqPageMarkdown(locale))
-    );
+  test("shows every topic with its questions and answers, the busyness from last month's reservations", async () => {
+    const markdown = await renderMarkdown(locale);
+    const groups = getFaqGroups(locale, {
+      averageReservationsPerDay: 0.6,
+      coworkSeatCapacity: 4,
+      officesOffered: false,
+    });
 
     expect(markdownPlainText(markdown)).toBe(
       [
         m.faqPageTitle({}, { locale }),
-        m.faqQuestionLocation({}, { locale }),
-        `${address.street}, ${address.cityDistrict}, ${address.city} ${address.postalCode}`,
-        m.faqQuestionHowItWorks({}, { locale }),
-        m.faqAnswerHowItWorks({}, { locale }),
-        m.faqQuestionInternet({}, { locale }),
-        m.faqAnswerInternet({}, { locale }),
-        m.faqQuestionFood({}, { locale }),
-        m.faqAnswerFood({}, { locale }),
-        m.faqQuestionCalls({}, { locale }),
-        m.faqAnswerCalls({}, { locale }),
-        m.faqQuestionBusyness({}, { locale }),
-        m.faqAnswerBusyness(formattedOccupancy[locale], { locale }),
+        ...groups.flatMap((group) => [
+          group.title,
+          ...group.entries.flatMap((entry) => [
+            entry.question,
+            // Plain text collapses the no-break spaces in formatted prices.
+            messagePlainText(entry.answer).replace(/\s+/g, " "),
+          ]),
+        ]),
       ].join("\n")
     );
     expect(markdown).toStartWith(`# ${m.faqPageTitle({}, { locale })}`);
+    expect(markdown).toContain(`\n## ${groups[0]?.title}\n`);
     expect(markdown).toContain(
-      `\n## ${m.faqQuestionBusyness({}, { locale })}\n`
+      `\n### ${m.faqQuestionBusyness({}, { locale })}\n`
     );
-    expect(markdownLinkUrls(markdown)).toEqual([]);
+    expect(markdown).toContain(
+      m.faqAnswerBusyness(formattedOccupancy[locale], { locale })
+    );
+  });
+
+  test("links answers to locale-agnostic site pages", async () => {
+    const urls = markdownLinkUrls(await renderMarkdown(locale));
+
+    expect(urls.length).toBeGreaterThan(0);
+    for (const url of urls) {
+      expect(url).toStartWith("https://workspace.deskohub.cz/");
+      expect(new URL(url).pathname).not.toMatch(/^\/(en-US|cs-CZ)(\/|$)/);
+    }
+  });
+
+  test("says private offices aren't offered only while the office page is unpublished", async () => {
+    const question = m.faqQuestionOffices({}, { locale });
+
+    expect(markdownPlainText(await renderMarkdown(locale))).toContain(question);
+    expect(markdownPlainText(await renderMarkdown(locale, true))).not.toContain(
+      question
+    );
   });
 });
