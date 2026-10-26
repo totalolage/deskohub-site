@@ -11,6 +11,7 @@ import {
   administrationActionOutcomes,
 } from "@/features/admin-cli/administration-action";
 import { instant } from "../instant";
+import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
 import { administratorAssistantConnections } from "./administrator-assistant-connections";
 import { authUser } from "./auth";
@@ -36,7 +37,7 @@ export const administrationActions = pgTable(
       .$type<CustomerAccountId>()
       .references(() => authUser.id, { onDelete: "set null" }),
     /** The account's login email when it acted. */
-    actorAccountEmail: text("actor_account_email").notNull(),
+    actorAccountEmail: sensitiveText("actor_account_email").notNull(),
     cliSessionId: text("cli_session_id")
       .$type<CliSessionIdType>()
       .references(() => cliSessions.id),

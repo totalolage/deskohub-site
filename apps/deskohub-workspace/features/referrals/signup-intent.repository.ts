@@ -19,7 +19,6 @@ import {
   canonicalPromotionCodeSchema,
   type PromotionCodeId,
 } from "@/features/discounts/persistence-contracts";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import type { ReferralCode } from "./client";
 
 /** The referral code a first-time profile completion asked to record. */
@@ -133,12 +132,7 @@ export class ReferralSignupIntentRepository extends Context.Service<
           )
           .where(
             and(
-              eq(
-                promotionCodes.code,
-                sensitiveDatabaseParameter(
-                  canonicalPromotionCodeSchema.make(code)
-                )
-              ),
+              eq(promotionCodes.code, canonicalPromotionCodeSchema.make(code)),
               eq(promotionCodes.kind, "referral")
             )
           )

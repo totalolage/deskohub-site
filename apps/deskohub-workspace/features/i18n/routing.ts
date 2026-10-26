@@ -1,5 +1,4 @@
 import { replaceLocaleInPathname } from "@deskohub/i18n/pathname";
-import { Predicate } from "effect";
 import type { AppRoutes } from "@/.next/types/routes";
 import {
   baseLocale,
@@ -106,9 +105,7 @@ export const withLocalePrefixAndSearch = (
   searchParams: Pick<URLSearchParams, "toString"> | string
 ): string => {
   const localizedPathname = withLocalePrefix(pathname, locale);
-  const rawSearchString = Predicate.isString(searchParams)
-    ? searchParams
-    : searchParams.toString();
+  const rawSearchString = String(searchParams);
   const searchString = rawSearchString.startsWith("?")
     ? rawSearchString.slice(1)
     : rawSearchString;

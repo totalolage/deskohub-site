@@ -12,6 +12,7 @@ import type {
 } from "@/features/reservation-access/reservation-access";
 import { reservationAccessGrantStates } from "@/features/reservation-access/reservation-access";
 import { instant } from "../instant";
+import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
 import { quotedSqlList } from "./sql-list";
 import { workspaceReservations } from "./workspace-reservations";
@@ -34,7 +35,7 @@ export const reservationAccessGrants = pgTable(
     providerCredentialId: text(
       "provider_credential_id"
     ).$type<IgloohomePinId>(),
-    accessCode: text("access_code").$type<AlgoPin>(),
+    accessCode: sensitiveText("access_code").$type<AlgoPin>(),
     accessName: text("access_name"),
     scheduledAccessStartsAt: instant("reservation_starts_at").notNull(),
     accessStartsAt: instant("access_starts_at").notNull(),

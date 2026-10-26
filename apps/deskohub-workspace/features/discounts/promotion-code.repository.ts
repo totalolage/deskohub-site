@@ -4,7 +4,6 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { discountCodes, promotionCodes, vouchers } from "@/db/schema";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import type {
   CanonicalPromotionCode,
   DiscountCodeId,
@@ -87,9 +86,7 @@ export class PromotionCodeRepository extends Context.Service<
               eq(discountCodes.promotionCodeId, promotionCodes.id)
             )
             .leftJoin(vouchers, eq(vouchers.promotionCodeId, promotionCodes.id))
-            .where(
-              eq(promotionCodes.code, sensitiveDatabaseParameter(input.code))
-            )
+            .where(eq(promotionCodes.code, input.code))
             .limit(1);
 
           if (!row || (row.kind !== "discount" && row.kind !== "voucher")) {

@@ -199,19 +199,13 @@ for (const { locale, viewport } of [
 }
 
 test.skipIf(!chromiumAvailable)(
-  "keeps the campaign create action in view while the mobile page scrolls",
+  "lets the wrapped campaign toolbar scroll away with the mobile page",
   async () => {
     const page = await openCampaignComposer(mobileViewport);
     try {
-      for (const top of [700, "bottom"] as const) {
-        const layout = await page.evaluate((scrollTop) => {
-          window.scrollTo({
-            behavior: "instant",
-            top:
-              scrollTop === "bottom"
-                ? document.documentElement.scrollHeight
-                : scrollTop,
-          });
+      const measure = (scrollTop: number) =>
+        page.evaluate((top) => {
+          window.scrollTo({ behavior: "instant", top });
           const button = document.querySelector(
             'button[form="campaign-composer"]'
           );
@@ -219,19 +213,16 @@ test.skipIf(!chromiumAvailable)(
           return {
             buttonBottom: button?.getBoundingClientRect().bottom,
             scrollY: window.scrollY,
+            toolbarBottom: bar?.getBoundingClientRect().bottom,
             toolbarPosition: bar ? getComputedStyle(bar).position : undefined,
-            toolbarTop: bar?.getBoundingClientRect().top,
           };
-        }, top);
-        expect(layout.scrollY).toBeGreaterThan(0);
-        expect(layout.toolbarPosition).toBe("sticky");
-        expect(layout.toolbarTop).toBeGreaterThanOrEqual(64);
-        expect(layout.toolbarTop).toBeLessThan(66);
-        expect(layout.buttonBottom).toBeLessThan(mobileViewport.height);
-      }
-      await page
-        .locator('button[form="campaign-composer"]')
-        .waitFor({ state: "visible" });
+        }, scrollTop);
+      const top = await measure(0);
+      expect(top.toolbarPosition).toBe("static");
+      expect(top.buttonBottom).toBeLessThan(mobileViewport.height);
+      const scrolled = await measure(700);
+      expect(scrolled.scrollY).toBeGreaterThan(0);
+      expect(scrolled.toolbarBottom).toBeLessThan(0);
     } finally {
       await page.close();
     }

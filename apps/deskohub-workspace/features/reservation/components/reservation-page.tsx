@@ -51,7 +51,9 @@ export function ReservationPage({
         </Suspense>
       }
     >
-      <h1 className="sr-only">{title}</h1>
+      <h1 className="text-4xl leading-tight text-balance sm:text-5xl">
+        {title}
+      </h1>
       <Suspense fallback={fallback}>
         <QueryProvider>{children}</QueryProvider>
       </Suspense>

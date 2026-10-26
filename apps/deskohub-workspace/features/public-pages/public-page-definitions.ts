@@ -14,15 +14,11 @@ export type PublicPageReleaseGate = "meeting-room-page" | "office-page";
 
 export interface PublicPageDefinition {
   /**
-   * The page's own title: its metadata, its llms.txt link, and a reservation
-   * page's Markdown heading. Other pages' Markdown keeps their content heading.
+   * The page's own title, without the site name that the document title
+   * appends: its metadata, its llms.txt link, and a reservation page's h1 and
+   * Markdown heading. Other pages keep their content heading.
    */
   readonly title: LocalizedCopy;
-  /**
-   * The title already names the site, so the document title is the title as
-   * written rather than the title followed by the site name.
-   */
-  readonly titleNamesSite?: true;
   readonly description?: LocalizedCopy;
   /**
    * The ISO day the page's content last changed, which the sitemap publishes
@@ -62,7 +58,6 @@ export const publicPageDefinitions: Readonly<
 > = {
   "/": {
     title: m.landingMetadataTitle,
-    titleNamesSite: true,
     description: m.landingMetadataDescription,
     contentDate: "2026-10-25",
   },
@@ -73,37 +68,32 @@ export const publicPageDefinitions: Readonly<
   },
   "/contact": {
     title: m.contactMetadataTitle,
-    titleNamesSite: true,
     description: m.contactMetadataDescription,
     contentDate: "2026-10-25",
   },
   "/faq": {
     title: m.faqMetadataTitle,
-    titleNamesSite: true,
     description: m.faqMetadataDescription,
-    contentDate: "2026-10-25",
+    contentDate: "2026-10-26",
   },
   "/ai-assistants": {
     title: m.aiAssistantsMetadataTitle,
-    titleNamesSite: true,
     description: m.aiAssistantsMetadataDescription,
     contentDate: "2026-10-22",
   },
   "/pricing": {
-    title: m.pricingPageTitle,
+    title: m.pricingMetadataTitle,
     description: m.pricingMetadataDescription,
     contentDate: "2026-10-19",
   },
   "/meeting-room": {
     title: m.meetingRoomMetadataTitle,
-    titleNamesSite: true,
     description: m.meetingRoomMetadataDescription,
-    contentDate: "2026-10-25",
+    contentDate: "2026-10-26",
     releaseGate: "meeting-room-page",
   },
   "/team": {
     title: m.teamMetadataTitle,
-    titleNamesSite: true,
     description: m.teamMetadataDescription,
     contentDate: "2026-10-25",
   },
@@ -114,7 +104,6 @@ export const publicPageDefinitions: Readonly<
   },
   "/ttrpg-room": {
     title: m.ttrpgRoomMetadataTitle,
-    titleNamesSite: true,
     description: m.ttrpgRoomMetadataDescription,
     contentDate: "2026-10-25",
   },
@@ -127,22 +116,19 @@ export const publicPageDefinitions: Readonly<
     "2026-08-05"
   ),
   "/reservation/cowork": {
-    title: m.checkoutOrderMetadataTitle,
-    titleNamesSite: true,
-    description: m.checkoutOrderMetadataDescription,
+    title: m.reservationCoworkMetadataTitle,
+    description: m.reservationCoworkMetadataDescription,
     contentDate: "2026-10-25",
   },
   "/reservation/meeting-room": {
     title: m.reservationMeetingRoomMetadataTitle,
-    titleNamesSite: true,
     description: m.reservationMeetingRoomMetadataDescription,
-    contentDate: "2026-10-16",
+    contentDate: "2026-10-25",
   },
   "/reservation/office": {
     title: m.reservationOfficeMetadataTitle,
-    titleNamesSite: true,
     description: m.reservationOfficeMetadataDescription,
-    contentDate: "2026-10-22",
+    contentDate: "2026-10-25",
     releaseGate: "office-page",
   },
 };
