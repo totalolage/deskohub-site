@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { DotyposService, ExternalAPIError } from "@deskohub/dotypos";
+import { DotyposService, DotyposVersionConflict } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Schema } from "effect";
 import {
@@ -143,10 +143,8 @@ describe("reservation invoice processing", () => {
   });
 
   test("does not issue when committed billing persistence fails", async () => {
-    const billingFailure = new ExternalAPIError({
-      service: "Dotypos",
+    const billingFailure = new DotyposVersionConflict({
       operation: "patchCustomer",
-      statusCode: 412,
     });
     const harness = makeHarness(
       makeSource({
@@ -370,7 +368,7 @@ const runWithHarness = <A, E>(
 const makeHarness = (
   source: AccountingDocumentSnapshot | null,
   options: {
-    readonly billingFailure?: ExternalAPIError;
+    readonly billingFailure?: DotyposVersionConflict;
     readonly existingInvoice?: object;
     readonly issuedInvoice?: object;
     readonly issueChanged?: boolean;

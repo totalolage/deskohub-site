@@ -1,11 +1,10 @@
 import {
+  type DotyposConditionalWriteFailure,
   DotyposCustomerIdSchema,
   type DotyposDiscountGroupId,
   DotyposDiscountGroupIdSchema,
+  type DotyposReadFailure,
   DotyposService,
-  type ExternalAPIError,
-  type NetworkError,
-  type ValidationError,
 } from "@deskohub/dotypos";
 import type {
   Customer as DotyposCustomer,
@@ -329,9 +328,7 @@ export interface IDiscountAdministration {
     DiscountCodeId,
     | EffectDrizzleQueryError
     | SqlError
-    | ExternalAPIError
-    | NetworkError
-    | ValidationError
+    | DotyposReadFailure
     | DiscountAdminNotFoundError
     | DiscountAdminConflictError
   >;
@@ -365,9 +362,7 @@ export interface IDiscountAdministration {
     VoucherId,
     | EffectDrizzleQueryError
     | SqlError
-    | ExternalAPIError
-    | NetworkError
-    | ValidationError
+    | DotyposReadFailure
     | DiscountAdminNotFoundError
     | DiscountAdminConflictError
   >;
@@ -403,14 +398,11 @@ export interface IDiscountAdministration {
   >;
   readonly searchCustomers: (
     input: DiscountAdminCustomerSearch
-  ) => Effect.Effect<
-    AdminCustomerSearchResult,
-    ExternalAPIError | NetworkError | ValidationError
-  >;
+  ) => Effect.Effect<AdminCustomerSearchResult, DotyposReadFailure>;
   /** Every Dotypos discount group, for choosing one by name. */
   readonly listDiscountGroups: () => Effect.Effect<
     readonly DiscountGroupListing[],
-    ExternalAPIError | NetworkError | ValidationError
+    DotyposReadFailure
   >;
   readonly loadCustomerProfile: (input: {
     readonly customerId: DotyposCustomerId;
@@ -418,19 +410,14 @@ export interface IDiscountAdministration {
     AdminCustomerProfile,
     | EffectDrizzleQueryError
     | SqlError
-    | ExternalAPIError
-    | NetworkError
-    | ValidationError
+    | DotyposReadFailure
     | DiscountAdminNotFoundError
   >;
   readonly loadCustomerBreadcrumbLabel: (input: {
     readonly customerId: DotyposCustomerId;
   }) => Effect.Effect<
     AdministrationCustomerName,
-    | ExternalAPIError
-    | NetworkError
-    | ValidationError
-    | DiscountAdminNotFoundError
+    DotyposReadFailure | DiscountAdminNotFoundError
   >;
   readonly loadCustomerCodeCreation: (input: {
     readonly customerId: DotyposCustomerId;
@@ -438,19 +425,14 @@ export interface IDiscountAdministration {
     AdminCustomerCodeCreation,
     | EffectDrizzleQueryError
     | SqlError
-    | ExternalAPIError
-    | NetworkError
-    | ValidationError
+    | DotyposReadFailure
     | DiscountAdminNotFoundError
   >;
   readonly loadCustomerVoucherCreation: (input: {
     readonly customerId: DotyposCustomerId;
   }) => Effect.Effect<
     AdminCustomerVoucherCreation,
-    | ExternalAPIError
-    | NetworkError
-    | ValidationError
-    | DiscountAdminNotFoundError
+    DotyposReadFailure | DiscountAdminNotFoundError
   >;
   readonly addCodeCustomer: (input: {
     readonly codeId: DiscountCodeId;
@@ -459,9 +441,7 @@ export interface IDiscountAdministration {
     void,
     | EffectDrizzleQueryError
     | SqlError
-    | ExternalAPIError
-    | NetworkError
-    | ValidationError
+    | DotyposReadFailure
     | DiscountAdminNotFoundError
   >;
   readonly removeCodeCustomer: (input: {
@@ -487,9 +467,7 @@ export interface IDiscountAdministration {
     void,
     | EffectDrizzleQueryError
     | SqlError
-    | ExternalAPIError
-    | NetworkError
-    | ValidationError
+    | DotyposReadFailure
     | DiscountAdminNotFoundError
   >;
   readonly removeVoucherCustomer: (input: {
@@ -513,9 +491,7 @@ export interface IDiscountAdministration {
     readonly discountGroupId: DotyposDiscountGroupId | null;
   }) => Effect.Effect<
     void,
-    | ExternalAPIError
-    | NetworkError
-    | ValidationError
+    | DotyposConditionalWriteFailure
     | DiscountAdminNotFoundError
     | InvalidDotyposDiscountPercentage
   >;

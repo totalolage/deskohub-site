@@ -48,9 +48,30 @@ Treat services, providers, repositories, and external clients as Effect capabili
 ## Call external providers
 
 - Bound every outbound request with a timeout that fails with the capability's typed error. Pass the `Effect.tryPromise` abort signal to promise-based SDKs so a timeout or interruption cancels the request.
-- Retry idempotent reads on transient failures. A timeout, transport failure, or 5xx can follow a committed create or send, so retry writes only when the provider honors an idempotency key that stays the same across attempts. Otherwise retry only failures that prove nothing was applied, such as 429 or an empty creation response.
+- Retry idempotent reads on Unavailable failures. Retry a write only when the provider honors a stable idempotency key or an `If-Match` precondition. Otherwise retry only failures that prove nothing was applied, such as 429 or an empty creation response. Keep each operation's retry ceiling in one private table in the provider package, guarded by a test that pins the table and the request counts.
 - When a provider rejects a cached credential with 401, invalidate the cached credential.
 - Keep the original error as `cause` unless it carries request bodies, credentials, or personal data. Then strip those parts and log only tags, identifiers, status codes, and field names.
+
+### Report provider outcomes
+
+A provider package's errors are part of its port, not its transport. Every provider failure is one of three tags, named `<Prefix><Outcome>`, where the prefix is the service class name without `Service` (`DotyposService` → `Dotypos`):
+
+- `<Prefix>Unavailable`: the provider could not serve the request and nothing was applied. A later attempt can succeed.
+- `<Prefix>Rejected`: the provider refused, or answered unusably in a way a retry would repeat. Nothing was applied.
+- `<Prefix>Uncertain`: a write may have been applied. Only writes raise it; read signatures exclude it. The caller settles before acting, by rereading, replaying with the same key, or reconciling.
+
+Rules:
+
+- Each tag carries `operation` (the public operation), a closed `reason` literal, and diagnostic fields: `request`, `httpStatus`, `message`, `cause`. Branch on the tag. Use `reason` only for diagnostics and for the rare caller that needs a cause, such as honoring a rate limit. `httpStatus` is for logs only.
+- Provider facts that callers act on get their own tag, `<Prefix><Fact>`, such as `DotyposVersionConflict`. Business results, such as a payment state or an already-confirmed reservation, are success values.
+- A lookup whose caller gives absence a meaning returns `Option`. A list returns empty. Any other absence is `<Prefix>Rejected` with reason `not-found`.
+- A write that got a 2xx with an unreadable body is `<Prefix>Uncertain` with reason `invalid-response`. A read with an unreadable body is `<Prefix>Rejected`.
+- A surfaced failure means the package's own retries are spent. Callers retry at a coarser grain: a queue, a job, or a user action.
+- Uncertainty is sticky within one call. Once an attempt of a replayed write was uncertain, the call fails `<Prefix>Uncertain` unless it succeeds.
+- Export one stable machine code per tag (`<prefix>-unavailable`, …) and a log-fields helper. Failure codes and log annotations use these, not HTTP statuses.
+- Export the read, write and conditional-write unions (`<Prefix>ReadFailure`, `<Prefix>WriteFailure`, `<Prefix>ConditionalWriteFailure`) and annotate with them instead of listing tags.
+- Only the provider package and tests construct its outcome classes. Application conditions get application-owned errors. The `no-borrowed-provider-outcomes` Grit rule enforces this.
+- Each provider package keeps a colocated `errors.test.ts` with the type assertions: the tags are prefixed, reads exclude `Uncertain`, and the codes are total. Its service test holds the table-driven classification test over its fake transport.
 
 ## Name and run operations
 

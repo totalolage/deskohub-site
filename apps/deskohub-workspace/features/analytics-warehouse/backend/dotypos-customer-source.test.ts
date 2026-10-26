@@ -5,8 +5,9 @@ import {
   CustomerVersionSelection,
   type DotyposCustomer,
   DotyposCustomerSchema,
+  type DotyposReadFailure,
   DotyposTimestampFromString,
-  ExternalAPIError,
+  DotyposUnavailable,
   formatDotyposTimestamp,
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
@@ -124,13 +125,13 @@ type SourceRun = {
 
 type ListCustomerChanges = (
   options: CustomerChangesOptions
-) => Effect.Effect<CustomerChanges, ExternalAPIError>;
+) => Effect.Effect<CustomerChanges, DotyposReadFailure>;
 
 const requestSource = async (input: {
   readonly url?: string;
   readonly authorization?: string | null;
   readonly token?: string | null;
-  readonly changes?: Effect.Effect<CustomerChanges, ExternalAPIError>;
+  readonly changes?: Effect.Effect<CustomerChanges, DotyposReadFailure>;
   readonly dotypos?: ListCustomerChanges;
   readonly budget?: Effect.Effect<RequestBudgetSpend, RequestBudgetUnavailable>;
 }): Promise<SourceRun> => {
@@ -919,10 +920,10 @@ describe("Dotypos customer source", () => {
   test("passes a Dotypos rate limit on with a Retry-After so PostHog backs off", async () => {
     const { response, listRequests } = await requestSource({
       changes: Effect.fail(
-        new ExternalAPIError({
-          service: "Dotypos",
+        new DotyposUnavailable({
           operation: "listCustomerChanges",
-          statusCode: 429,
+          reason: "rate-limited",
+          httpStatus: 429,
           cause: excludedValueMarker,
         })
       ),
@@ -939,10 +940,9 @@ describe("Dotypos customer source", () => {
   test("answers 502 when Dotypos fails", async () => {
     const { response } = await requestSource({
       changes: Effect.fail(
-        new ExternalAPIError({
-          service: "Dotypos",
+        new DotyposUnavailable({
           operation: "listCustomerChanges",
-          statusCode: 500,
+          reason: "server",
         })
       ),
     });

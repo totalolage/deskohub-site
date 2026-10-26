@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { ExternalAPIError } from "@deskohub/dotypos";
+import { DotyposRejected } from "@deskohub/dotypos";
 import { IgloohomeService } from "@deskohub/igloohome";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
@@ -620,9 +620,9 @@ describe("Workspace Admin API", () => {
               { id: "11", name: null },
             ])
           : Effect.fail(
-              new ExternalAPIError({
-                service: "dotypos",
+              new DotyposRejected({
                 operation: "getDiscountGroups",
+                reason: "invalid-response",
                 message: "Synthetic provider failure",
               })
             );

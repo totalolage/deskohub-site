@@ -1,6 +1,7 @@
 import {
   Cache,
   Context,
+  Data,
   Effect,
   Exit,
   Layer,
@@ -16,19 +17,49 @@ import {
 } from "effect/unstable/http";
 import { DotyposRuntimeConfig, type DotyposRuntimeConfigObj } from "../config";
 import {
-  type DotyposProviderError,
-  ExternalAPIError,
-  NetworkError,
-} from "../errors";
-import {
   type DotyposClient,
   type ErrorResponse as DotyposErrorResponse,
   ErrorResponse,
   make,
 } from "../generated/effect.gen";
 
+/** The error body Dotypos sends with a failed request. */
+type DotyposProviderError = {
+  readonly error?: string;
+  readonly errorDescription?: string;
+  readonly code?: number;
+};
+
+/**
+ * What went wrong on the wire, before the package classifies it into a public
+ * outcome by the request's profile:
+ * - `status`: Dotypos answered with this HTTP status. A 2xx status means its
+ *   body could not be read.
+ * - `transport`: the request never got an answer.
+ * - `unreadable`: anything else, such as a response that failed generated
+ *   decoding. It carries no status.
+ */
+export type DotyposWireOutcome =
+  | {
+      readonly kind: "status";
+      readonly status: number;
+      readonly providerError: DotyposProviderError | undefined;
+    }
+  | { readonly kind: "transport" }
+  | { readonly kind: "unreadable" };
+
+/**
+ * A failed Dotypos exchange. `fromAccessToken` marks failures of the
+ * access-token request, which runs before the addressed request is sent.
+ */
+export class DotyposWireFailure extends Data.TaggedError("DotyposWireFailure")<{
+  readonly outcome: DotyposWireOutcome;
+  readonly fromAccessToken: boolean;
+  readonly cause?: unknown;
+}> {}
+
 interface IDotyposAccessToken {
-  readonly get: Effect.Effect<string, ExternalAPIError | NetworkError>;
+  readonly get: Effect.Effect<string, DotyposWireFailure>;
   /** Forgets a cached token that Dotypos no longer accepts. */
   readonly invalidate: Effect.Effect<void>;
 }
@@ -82,7 +113,7 @@ export class DotyposAccessToken extends Context.Service<
             .pipe(
               Effect.map((response) => response.accessToken),
               Effect.mapError((error) =>
-                mapDotyposClientError(error, "Get access token", config.apiUrl)
+                toDotyposWireFailure(error, { fromAccessToken: true })
               )
             ),
         {
@@ -137,17 +168,15 @@ export class DotyposGeneratedClient extends Context.Service<
   );
 }
 
-export const mapDotyposClientError = (
+/**
+ * Describes a failed Dotypos exchange. An access-token failure that surfaces
+ * through the addressed request keeps its access-token origin.
+ */
+export const toDotyposWireFailure = (
   error: unknown,
-  operation: string,
-  apiUrl: string
-): ExternalAPIError | NetworkError => {
-  if (Predicate.isTagged(error, "ExternalAPIError")) {
-    return error as ExternalAPIError;
-  }
-  if (Predicate.isTagged(error, "NetworkError")) {
-    return error as NetworkError;
-  }
+  { fromAccessToken }: { readonly fromAccessToken: boolean }
+): DotyposWireFailure => {
+  if (error instanceof DotyposWireFailure) return error;
 
   if (HttpClientError.isHttpClientError(error)) {
     const reason = error.reason;
@@ -155,9 +184,9 @@ export const mapDotyposClientError = (
       Predicate.isTagged(reason, "TransportError") ||
       Predicate.isTagged(reason, "InvalidUrlError")
     ) {
-      return new NetworkError({
-        message: "Failed to connect to Dotypos",
-        url: error.request.url || apiUrl,
+      return new DotyposWireFailure({
+        outcome: { kind: "transport" },
+        fromAccessToken,
         cause: error,
       });
     }
@@ -165,44 +194,41 @@ export const mapDotyposClientError = (
     const providerErrorInput = Predicate.hasProperty(reason, "description")
       ? reason.description
       : undefined;
-    const providerError = parseProviderError(
-      Predicate.isString(providerErrorInput) ||
-        Schema.is(ErrorResponse)(providerErrorInput)
-        ? providerErrorInput
-        : undefined
-    );
-    return toExternalApiError({
-      operation,
-      providerError,
-      statusCode: error.response?.status,
+    return statusFailure({
+      providerError: parseProviderError(
+        Predicate.isString(providerErrorInput) ||
+          Schema.is(ErrorResponse)(providerErrorInput)
+          ? providerErrorInput
+          : undefined
+      ),
+      status: error.response?.status,
+      fromAccessToken,
     });
   }
 
   if (isGeneratedClientError(error)) {
-    const providerError = parseProviderError(
-      Predicate.isString(error.cause) || Schema.is(ErrorResponse)(error.cause)
-        ? error.cause
-        : undefined
-    );
-    return toExternalApiError({
-      operation,
-      providerError,
-      statusCode: error.response.status,
+    return statusFailure({
+      providerError: parseProviderError(
+        Predicate.isString(error.cause) || Schema.is(ErrorResponse)(error.cause)
+          ? error.cause
+          : undefined
+      ),
+      status: error.response.status,
+      fromAccessToken,
     });
   }
 
-  if (Predicate.isError(error)) {
-    if (
-      error.name === "AbortError" ||
+  if (
+    Predicate.isError(error) &&
+    (error.name === "AbortError" ||
       error.message.includes("fetch") ||
-      error.message.includes("ECONNREFUSED")
-    ) {
-      return new NetworkError({
-        message: "Failed to connect to Dotypos",
-        url: apiUrl,
-        cause: error,
-      });
-    }
+      error.message.includes("ECONNREFUSED"))
+  ) {
+    return new DotyposWireFailure({
+      outcome: { kind: "transport" },
+      fromAccessToken,
+      cause: error,
+    });
   }
 
   const providerError = parseProviderError(
@@ -211,16 +237,16 @@ export const mapDotyposClientError = (
       : undefined
   );
   if (providerError) {
-    return toExternalApiError({
-      operation,
+    return statusFailure({
       providerError,
-      statusCode: providerError.code ?? 500,
+      status: providerError.code ?? 500,
+      fromAccessToken,
     });
   }
 
-  return new ExternalAPIError({
-    service: "Dotypos",
-    operation,
+  return new DotyposWireFailure({
+    outcome: { kind: "unreadable" },
+    fromAccessToken,
     cause: error,
   });
 };
@@ -262,19 +288,26 @@ const isGeneratedClientError = (
   Predicate.hasProperty(error, "response") &&
   Predicate.hasProperty(error, "cause");
 
-const toExternalApiError = ({
-  operation,
+/**
+ * A failure Dotypos answered with a status. It keeps only the parsed provider
+ * error, never the request or response, as the cause.
+ */
+const statusFailure = ({
   providerError,
-  statusCode,
+  status,
+  fromAccessToken,
 }: {
-  operation: string;
-  providerError: DotyposProviderError | undefined;
-  statusCode: number | undefined;
-}) =>
-  new ExternalAPIError({
-    service: "Dotypos",
-    operation,
-    statusCode: statusCode ?? providerError?.code,
-    message: "Dotypos API request failed",
-    providerError,
+  readonly providerError: DotyposProviderError | undefined;
+  readonly status: number | undefined;
+  readonly fromAccessToken: boolean;
+}) => {
+  const httpStatus = status ?? providerError?.code;
+  return new DotyposWireFailure({
+    outcome:
+      httpStatus === undefined
+        ? { kind: "unreadable" }
+        : { kind: "status", status: httpStatus, providerError },
+    fromAccessToken,
+    ...(providerError && { cause: providerError }),
   });
+};

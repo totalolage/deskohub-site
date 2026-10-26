@@ -3,10 +3,9 @@ import {
   type DotyposCustomer,
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
+  type DotyposReadFailure,
   type DotyposReservation,
   DotyposReservationIdSchema,
-  type ExternalAPIError,
-  type NetworkError,
 } from "@deskohub/dotypos";
 import {
   DotyposServiceMock,
@@ -105,7 +104,7 @@ export type EngineDotyposMethod =
   | "listActiveReservationsPage";
 
 /** A failure a Dotypos read can return: a network error or an HTTP status. */
-export type EngineDotyposFailure = NetworkError | ExternalAPIError;
+export type EngineDotyposFailure = DotyposReadFailure;
 
 /**
  * Runs before each Dotypos request and may delay it (an `Effect.sleep` on

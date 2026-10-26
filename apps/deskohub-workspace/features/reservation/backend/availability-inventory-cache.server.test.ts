@@ -2,7 +2,11 @@ import "@/shared/testing/workspace-test-env";
 import "@/shared/polyfills/temporal";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { DotyposService, ExternalAPIError } from "@deskohub/dotypos";
+import {
+  type DotyposReadFailure,
+  DotyposService,
+  DotyposUnavailable,
+} from "@deskohub/dotypos";
 import type {
   Reservation as DotyposReservation,
   Table as DotyposTable,
@@ -17,7 +21,7 @@ const {
   WorkspaceCalendarLimitation,
 } = limitationsModule;
 
-let providerFailure: ExternalAPIError | undefined;
+let providerFailure: DotyposReadFailure | undefined;
 
 const table: DotyposTable = {
   _cloudId: "synthetic-cloud",
@@ -141,9 +145,9 @@ describe("shared availability inventory", () => {
   });
 
   test("keeps a failed load out of the shared cache", async () => {
-    providerFailure = new ExternalAPIError({
-      service: "dotypos",
+    providerFailure = new DotyposUnavailable({
       operation: "getTables",
+      reason: "server",
       message: "Synthetic outage",
     });
 

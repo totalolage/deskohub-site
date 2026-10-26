@@ -1,11 +1,9 @@
 import {
   type DotyposCustomerId,
+  type DotyposReadFailure,
   type DotyposReservation,
   type DotyposReservationId,
   DotyposService,
-  type ExternalAPIError,
-  type NetworkError,
-  type ValidationError,
 } from "@deskohub/dotypos";
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
@@ -28,9 +26,7 @@ import { parseInstant } from "@/shared/utils/temporal";
 type CustomerLastReservationError =
   | EffectDrizzleQueryError
   | SqlError
-  | ExternalAPIError
-  | NetworkError
-  | ValidationError;
+  | DotyposReadFailure;
 
 const toInstant = (value: string | null | undefined) =>
   value ? Option.getOrNull(parseInstant(value)) : null;

@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
-import { NetworkError } from "@deskohub/dotypos";
+import { DotyposUnavailable } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Schema } from "effect";
 import {
@@ -64,7 +64,10 @@ const getAvailability = mock<IWorkspaceAvailabilityService["getAvailability"]>(
   (input) => {
     if (input.query === failingQuery) {
       return Effect.fail(
-        new NetworkError({ message: "Dotypos is unavailable" })
+        new DotyposUnavailable({
+          operation: "listActiveReservationsOverlapping",
+          reason: "transport",
+        })
       );
     }
     if (input.query === defectQuery) return Effect.die(new Error("defect"));
@@ -155,7 +158,12 @@ describe("loadAvailability", () => {
 
   test("loads ordinary availability while the replacement lookup is unavailable", async () => {
     findCurrent.mockImplementationOnce(() =>
-      Effect.fail(new NetworkError({ message: "Dotypos is unavailable" }))
+      Effect.fail(
+        new DotyposUnavailable({
+          operation: "getReservation",
+          reason: "transport",
+        })
+      )
     );
 
     await run(loadAvailability({ query: coworkQuery, replacementToken }));
@@ -205,7 +213,12 @@ describe("preloadAvailability", () => {
 
   test("leaves every query to the client while the replacement lookup is unavailable", async () => {
     findCurrent.mockImplementationOnce(() =>
-      Effect.fail(new NetworkError({ message: "Dotypos is unavailable" }))
+      Effect.fail(
+        new DotyposUnavailable({
+          operation: "getReservation",
+          reason: "transport",
+        })
+      )
     );
 
     const preloaded = await run(

@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { ExternalAPIError, NetworkError } from "@deskohub/dotypos";
-import { Effect } from "effect";
+import { DotyposUncertain } from "@deskohub/dotypos";
+import { Effect, Option } from "effect";
 import { customerAccountIdSchema } from "../customer-account";
 import {
   type CustomerAccountDeletionDependencies,
   expireLinkedDotyposProfile,
 } from "./customer-account-deletion";
+import { CustomerAvatarProviderError } from "./customer-avatar.service";
 
 const accountId = customerAccountIdSchema.make("auth-user-1");
 
@@ -13,7 +14,9 @@ const makeDependencies = (
   overrides: {
     readonly link?: string | null;
     readonly reviewAccount?: boolean;
-    readonly expireOutcome?: Effect.Effect<void, unknown>;
+    readonly expireOutcome?: ReturnType<
+      CustomerAccountDeletionDependencies["expireCustomer"]
+    >;
     readonly avatarOutcome?: Effect.Effect<void, unknown>;
   } & Partial<CustomerAccountDeletionDependencies> = {}
 ) => {
@@ -35,9 +38,9 @@ const makeDependencies = (
     },
     expireCustomer: () => {
       calls.push("expire");
-      return (overrides.expireOutcome ?? Effect.void) as Effect.Effect<
-        void,
-        never
+      return (overrides.expireOutcome ??
+        Effect.succeed(Option.some({} as never))) as ReturnType<
+        CustomerAccountDeletionDependencies["expireCustomer"]
       >;
     },
     destroyAvatar: () => {
@@ -100,7 +103,10 @@ describe("Customer account deletion", () => {
   test("keeps the durable marker when the provider call fails retryably", async () => {
     const { dependencies, calls } = makeDependencies({
       expireOutcome: Effect.fail(
-        new NetworkError({ message: "connection reset" })
+        new DotyposUncertain({
+          operation: "patchCustomer",
+          reason: "transport",
+        })
       ),
     });
 
@@ -121,9 +127,7 @@ describe("Customer account deletion", () => {
 
   test("leaves no tombstone while the avatar cleanup can still be retried", async () => {
     const { dependencies, calls } = makeDependencies({
-      avatarOutcome: Effect.fail(
-        new NetworkError({ message: "connection reset" })
-      ),
+      avatarOutcome: Effect.fail(new CustomerAvatarProviderError({})),
     });
 
     const outcome = await Effect.runPromise(
@@ -136,13 +140,7 @@ describe("Customer account deletion", () => {
 
   test("tolerates a definitively missing provider profile", async () => {
     const { dependencies, calls } = makeDependencies({
-      expireOutcome: Effect.fail(
-        new ExternalAPIError({
-          service: "Dotypos",
-          operation: "patchCustomer",
-          statusCode: 404,
-        })
-      ),
+      expireOutcome: Effect.succeed(Option.none()),
     });
 
     const outcome = await Effect.runPromise(

@@ -1,12 +1,12 @@
 import {
+  type DotyposConditionalWriteFailure,
   type DotyposCustomer,
   type DotyposCustomerId,
+  type DotyposReadFailure,
   DotyposService,
-  type ExternalAPIError,
+  type DotyposUncertain,
   type FindCustomerResult,
-  type NetworkError,
   normalizePhoneNumber,
-  type ValidationError,
 } from "@deskohub/dotypos";
 import type { UpdateCustomerRequest } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Option } from "effect";
@@ -14,11 +14,25 @@ import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { MissingDotyposId } from "@/shared/backend/missing-dotypos-id";
 import type { CustomerProfileInput } from "../contracts";
 
+/** A profile update or reactivation addressed a Dotypos customer that does not exist. */
+export class DotyposCustomerMissing extends Data.TaggedError(
+  "DotyposCustomerMissing"
+)<{
+  readonly customerId: DotyposCustomerId;
+}> {}
+
+/**
+ * A failed settlement reread, kept apart from patch failures so a failed
+ * reread is never retried.
+ */
+class CustomerRereadFailure extends Data.TaggedError("CustomerRereadFailure")<{
+  readonly cause: DotyposReadFailure;
+}> {}
+
 export type DotyposCustomerError =
-  | ValidationError
-  | ExternalAPIError
-  | NetworkError
-  | MissingDotyposId;
+  | DotyposConditionalWriteFailure
+  | MissingDotyposId
+  | DotyposCustomerMissing;
 
 export type CustomerProfileBilling = {
   readonly kind: "personal" | "business";
@@ -83,27 +97,6 @@ const isCustomerProfileExpired = (
   now: Date = new Date()
 ): boolean =>
   customer.expireDate != null && new Date(customer.expireDate) <= now;
-
-const isUncertainDotyposError = (error: DotyposCustomerError): boolean => {
-  if (error._tag === "NetworkError") return true;
-  if (error._tag === "ExternalAPIError") {
-    const status = error.statusCode;
-    return status != null && (status === 429 || status >= 500);
-  }
-  return false;
-};
-
-/**
- * A rejected profile patch, kept apart from reread failures so the patch
- * retry policy never retries a failed reread.
- */
-class CustomerPatchRejected extends Data.TaggedError("CustomerPatchRejected")<{
-  readonly error: DotyposCustomerError;
-}> {}
-
-const isEtagConflictError = (error: DotyposCustomerError): boolean =>
-  error._tag === "ExternalAPIError" &&
-  (error.statusCode === 409 || error.statusCode === 412);
 
 const nonEmpty = (value: string | null | undefined): string | null => {
   const trimmed = value?.trim();
@@ -281,9 +274,10 @@ interface ICustomerDotyposAdapter {
     customerId: DotyposCustomerId,
     profile: CustomerProfileInput
   ) => Effect.Effect<void, DotyposCustomerError>;
+  /** None means the Dotypos customer is already missing. */
   readonly expireCustomer: (
     customerId: DotyposCustomerId
-  ) => Effect.Effect<void, DotyposCustomerError>;
+  ) => Effect.Effect<Option.Option<DotyposCustomer>, DotyposCustomerError>;
   readonly reactivateCustomer: (
     customerId: DotyposCustomerId
   ) => Effect.Effect<void, DotyposCustomerError>;
@@ -384,60 +378,72 @@ export class CustomerDotyposAdapter extends Context.Service<
         };
       };
 
+      /**
+       * Patches the customer and settles an uncertain patch by rereading it.
+       * At most two patch executions run, each of which the package may
+       * replay: a second one follows a version conflict, an uncertain patch
+       * the reread shows unapplied, or an unavailable Dotypos. Reread
+       * failures are never retried. None means the customer does not exist.
+       */
       const patchWithReread = Effect.fn(
         "CustomerDotyposAdapter.patchWithReread"
       )(function* (input: {
         readonly customerId: DotyposCustomerId;
         readonly payload: UpdateCustomerRequest;
-        readonly isApplied: (customer: DotyposCustomer | null) => boolean;
+        readonly isApplied: (customer: DotyposCustomer) => boolean;
       }) {
-        const confirmApplied = (rejection: CustomerPatchRejected) =>
-          readCustomer(input.customerId).pipe(
-            Effect.filterOrFail(input.isApplied, () => rejection),
-            Effect.asVoid
+        // An uncertain patch is settled by rereading. A missing customer is
+        // not an applied patch.
+        const settle = (uncertain: DotyposUncertain) =>
+          dotypos.getCustomer(input.customerId).pipe(
+            Effect.mapError((cause) => new CustomerRereadFailure({ cause })),
+            Effect.filterOrFail(Option.exists(input.isApplied), () => uncertain)
           );
-        const isUncertainRejection = (
-          failure: CustomerPatchRejected | DotyposCustomerError
-        ): failure is CustomerPatchRejected =>
-          failure instanceof CustomerPatchRejected &&
-          isUncertainDotyposError(failure.error);
-
-        // Each attempt issues a fresh patch request. An uncertain rejection
-        // may still have been applied, so the attempt rereads before treating
-        // it as failed. Only the patch rejection is retried, never a reread
-        // failure.
+        // Each execution sends a fresh patch request.
         const attempt = Effect.suspend(() =>
           dotypos.patchCustomer(input.customerId, input.payload)
-        ).pipe(
-          Effect.asVoid,
-          Effect.mapError((error) => new CustomerPatchRejected({ error })),
-          Effect.catchIf(isUncertainRejection, confirmApplied)
-        );
+        ).pipe(Effect.catchTag("DotyposUncertain", settle));
 
         return yield* attempt.pipe(
-          Effect.retry({
-            times: 1,
-            while: (failure) =>
-              failure instanceof CustomerPatchRejected &&
-              (isEtagConflictError(failure.error) ||
-                isUncertainDotyposError(failure.error)),
+          Effect.catchTags({
+            DotyposVersionConflict: () => attempt,
+            DotyposUncertain: () => attempt,
+            DotyposUnavailable: () => attempt,
           }),
-          // A retried attempt that stays uncertain gets one final reread.
-          Effect.catchIf(isUncertainRejection, confirmApplied),
-          Effect.mapError((failure) =>
-            failure instanceof CustomerPatchRejected ? failure.error : failure
+          // The final settlement read after the second execution.
+          Effect.catchTag("DotyposUncertain", settle),
+          Effect.catchTag("CustomerRereadFailure", ({ cause }) =>
+            Effect.fail(cause)
           )
         );
       });
 
+      /** Patches a customer that must exist; a missing one fails DotyposCustomerMissing. */
+      const patchExistingWithReread = (input: {
+        readonly customerId: DotyposCustomerId;
+        readonly payload: UpdateCustomerRequest;
+        readonly isApplied: (customer: DotyposCustomer) => boolean;
+      }) =>
+        patchWithReread(input).pipe(
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  new DotyposCustomerMissing({ customerId: input.customerId })
+                ),
+              onSome: () => Effect.void,
+            })
+          )
+        );
+
       const updateCustomerProfile = Effect.fn(
         "CustomerDotyposAdapter.updateCustomerProfile"
       )((customerId: DotyposCustomerId, profile: CustomerProfileInput) =>
-        patchWithReread({
+        patchExistingWithReread({
           customerId,
           payload: toUpdateRequest(profile),
           isApplied: (customer) =>
-            customer != null && customerProfileAppliesInput(customer, profile),
+            customerProfileAppliesInput(customer, profile),
         })
       );
 
@@ -447,21 +453,18 @@ export class CustomerDotyposAdapter extends Context.Service<
             customerId,
             payload: expirationPatch(true),
             isApplied: (customer) =>
-              customer != null &&
-              (customer.deleted || isCustomerProfileExpired(customer)),
+              customer.deleted || isCustomerProfileExpired(customer),
           })
       );
 
       const reactivateCustomer = Effect.fn(
         "CustomerDotyposAdapter.reactivateCustomer"
       )((customerId: DotyposCustomerId) =>
-        patchWithReread({
+        patchExistingWithReread({
           customerId,
           payload: expirationPatch(false),
           isApplied: (customer) =>
-            customer != null &&
-            !customer.deleted &&
-            !isCustomerProfileExpired(customer),
+            !customer.deleted && !isCustomerProfileExpired(customer),
         })
       );
 

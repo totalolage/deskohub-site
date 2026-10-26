@@ -6,7 +6,7 @@ import {
   DotyposCustomerIdSchema,
   type DotyposReservation,
   DotyposReservationIdSchema,
-  ExternalAPIError,
+  DotyposUnavailable,
 } from "@deskohub/dotypos";
 import type {
   AudienceFilter,
@@ -147,10 +147,10 @@ const visitedThisYear: AudienceFilter = {
   value: { _tag: "Last", count: 1, unit: "year" },
 };
 
-const rateLimited = new ExternalAPIError({
-  service: "Dotypos",
+const rateLimited = new DotyposUnavailable({
   operation: "listReservationsPage",
-  statusCode: 429,
+  reason: "rate-limited",
+  httpStatus: 429,
   message: "rate limited",
 });
 

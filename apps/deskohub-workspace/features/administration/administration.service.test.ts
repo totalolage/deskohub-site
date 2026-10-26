@@ -3,8 +3,7 @@ import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import {
   DotyposCustomerIdSchema,
   type DotyposService,
-  ExternalAPIError,
-  NetworkError,
+  DotyposUnavailable,
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { testEmailAddress } from "@deskohub/test-email";
@@ -272,10 +271,9 @@ describe("AdministrationService", () => {
                   Effect.succeed([{ id: "dotypos-customer" }]),
                 listReservations: () =>
                   Effect.fail(
-                    new ExternalAPIError({
+                    new DotyposUnavailable({
                       operation: "listReservations",
-                      service: "Dotypos",
-                      statusCode: 503,
+                      reason: "server",
                     })
                   ),
               }),
@@ -538,10 +536,9 @@ describe("AdministrationService", () => {
                   getCustomers: () =>
                     batchFails
                       ? Effect.fail(
-                          new ExternalAPIError({
+                          new DotyposUnavailable({
                             operation: "getCustomers",
-                            service: "Dotypos",
-                            statusCode: 503,
+                            reason: "server",
                           })
                         )
                       : Effect.succeed([]),
@@ -896,10 +893,9 @@ describe("AdministrationService", () => {
                     listInputs.push(input);
                     if (reservationsUnavailable) {
                       return Effect.fail(
-                        new ExternalAPIError({
+                        new DotyposUnavailable({
                           operation: "listReservations",
-                          service: "Dotypos",
-                          statusCode: 503,
+                          reason: "server",
                         })
                       );
                     }
@@ -1248,10 +1244,9 @@ describe("AdministrationService", () => {
       listReservations: (input) =>
         input?.ids?.length === 1
           ? Effect.fail(
-              new ExternalAPIError({
+              new DotyposUnavailable({
                 operation: "listReservations",
-                service: "Dotypos",
-                statusCode: 503,
+                reason: "server",
               })
             )
           : Effect.succeed([]),
@@ -1351,12 +1346,14 @@ describe("AdministrationService", () => {
   });
 
   test("propagates Dotypos failures other than a missing booking", async () => {
-    const unavailable = new ExternalAPIError({
-      service: "Dotypos",
+    const unavailable = new DotyposUnavailable({
       operation: "getReservation",
-      statusCode: 503,
+      reason: "server",
     });
-    const offline = new NetworkError({ message: "Dotypos is unreachable" });
+    const offline = new DotyposUnavailable({
+      operation: "getReservation",
+      reason: "transport",
+    });
 
     for (const [failure, operation] of [
       [unavailable, "loadBooking"],
@@ -1702,10 +1699,9 @@ describe("AdministrationService", () => {
               DotyposServiceMock({
                 listReservations: () =>
                   Effect.fail(
-                    new ExternalAPIError({
+                    new DotyposUnavailable({
                       operation: "listReservations",
-                      service: "Dotypos",
-                      statusCode: 503,
+                      reason: "server",
                     })
                   ),
               }),
@@ -1888,10 +1884,9 @@ describe("AdministrationService", () => {
       listReservations: (input) =>
         input?.ids?.length === 1
           ? Effect.fail(
-              new ExternalAPIError({
+              new DotyposUnavailable({
                 operation: "listReservations",
-                service: "Dotypos",
-                statusCode: 503,
+                reason: "server",
               })
             )
           : Effect.succeed([]),
@@ -1920,10 +1915,9 @@ describe("AdministrationService", () => {
       linkedIds: ["booking-confirmed"],
       listReservations: () =>
         Effect.fail(
-          new ExternalAPIError({
+          new DotyposUnavailable({
             operation: "listReservations",
-            service: "Dotypos",
-            statusCode: 503,
+            reason: "server",
           })
         ),
     });

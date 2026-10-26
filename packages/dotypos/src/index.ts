@@ -9,6 +9,7 @@ export type {
   DotyposCustomerDiscountGroup,
   DotyposCustomerLookupData,
   FindCustomerOptions,
+  IDotyposService,
   ReservationListOptions,
   ReservationPage,
 } from "./backend/service";
@@ -24,11 +25,23 @@ export {
   makeDotyposRuntimeConfigLayer,
 } from "./config";
 
+export type {
+  DotyposConditionalWriteFailure,
+  DotyposFailure,
+  DotyposReadFailure,
+  DotyposWriteFailure,
+} from "./errors";
 export {
+  DotyposFailureCode,
+  DotyposOperation,
+  DotyposRejected,
+  DotyposRequest,
   DotyposReservationCancelledError,
-  ExternalAPIError,
-  NetworkError,
-  ValidationError,
+  DotyposUnavailable,
+  DotyposUncertain,
+  DotyposVersionConflict,
+  dotyposFailureCode,
+  dotyposFailureLogFields,
 } from "./errors";
 export type { DotyposTimestamp } from "./timestamp";
 export {

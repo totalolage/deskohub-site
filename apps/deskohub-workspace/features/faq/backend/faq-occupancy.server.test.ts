@@ -10,7 +10,7 @@ import {
   setSystemTime,
   test,
 } from "bun:test";
-import { DotyposService, ExternalAPIError } from "@deskohub/dotypos";
+import { DotyposRejected, DotyposService } from "@deskohub/dotypos";
 import type {
   Reservation as DotyposReservation,
   Table as DotyposTable,
@@ -19,7 +19,7 @@ import { Effect, Layer } from "effect";
 
 let tables: readonly DotyposTable[] = [];
 let reservations: readonly DotyposReservation[] = [];
-let providerFailure: ExternalAPIError | undefined;
+let providerFailure: DotyposRejected | undefined;
 let requestedBounds:
   | {
       readonly startsAtOrAfter?: string;
@@ -136,9 +136,9 @@ describe("loadFaqOccupancyStats", () => {
   });
 
   test("preserves a Dotypos failure instead of returning zero aggregates", async () => {
-    providerFailure = new ExternalAPIError({
-      service: "Dotypos",
+    providerFailure = new DotyposRejected({
       operation: "listReservations",
+      reason: "invalid-response",
       message: "Synthetic Dotypos provider failure",
     });
 

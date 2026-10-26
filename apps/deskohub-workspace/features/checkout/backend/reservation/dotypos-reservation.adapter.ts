@@ -4,10 +4,8 @@ import {
   type DotyposReservationStatus,
   DotyposService,
   type DotyposTableId,
-  type ExternalAPIError,
-  type NetworkError,
+  type DotyposWriteFailure,
   type Reservation,
-  type ValidationError,
 } from "@deskohub/dotypos";
 import { Effect, Match } from "effect";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
@@ -45,13 +43,11 @@ export const createWorkspaceDotyposReservation: (
   input: CreateWorkspaceDotyposReservationInput
 ) => Effect.Effect<
   Reservation,
-  | ExternalAPIError
+  | DotyposWriteFailure
   | InvalidDotyposTableSeats
-  | NetworkError
   | ReservationIntervalValidationError
   | TableAssignmentUnavailableError
-  | TableAssignmentUnconfigured
-  | ValidationError,
+  | TableAssignmentUnconfigured,
   DotyposService | WorkspaceTableAssignmentService
 > = Effect.fn("createWorkspaceDotyposReservation")(
   function* (input) {

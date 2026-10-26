@@ -9,6 +9,7 @@ import {
   DotyposRuntimeConfig,
   DotyposService,
   type DotyposTable,
+  type DotyposWriteFailure,
 } from "@deskohub/dotypos";
 import type {
   Customer,
@@ -403,7 +404,10 @@ export const reconcileStaleDotyposReservations = (
 ): Effect.Effect<WorkspaceE2EStaleReservationReport, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
-    return yield* reconcileStaleWorkspaceE2EReservations(interval, apply, {
+    return yield* reconcileStaleWorkspaceE2EReservations<
+      DotyposWriteFailure | WorkspaceE2EError,
+      never
+    >(interval, apply, {
       cancelReservation: dotypos.cancelReservation,
       listActiveReservations: dotypos.listActiveReservationsOverlapping,
       loadReservation: (reservationId) =>

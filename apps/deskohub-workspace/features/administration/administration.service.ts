@@ -1,16 +1,14 @@
 import {
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
+  type DotyposReadFailure,
   type DotyposReservationId,
   DotyposReservationIdSchema,
   DotyposService,
   type DotyposTableId,
   DotyposTableIdSchema,
-  type ExternalAPIError,
   getCustomerDisplayName,
-  type NetworkError,
   readInIdFilterBatches,
-  type ValidationError,
 } from "@deskohub/dotypos";
 import type {
   Customer as DotyposCustomer,
@@ -1433,25 +1431,19 @@ export class AdministrationService extends Context.Service<
       input: AdministrationBookingListInput
     ) => Effect.Effect<
       AdministrationBookingPage,
-      | EffectDrizzleQueryError
-      | ExternalAPIError
-      | NetworkError
-      | ValidationError
+      EffectDrizzleQueryError | DotyposReadFailure
     >;
     readonly loadBooking: (
       id: DotyposReservationId
     ) => Effect.Effect<
       AdministrationBookingDetail | null,
-      | EffectDrizzleQueryError
-      | ExternalAPIError
-      | NetworkError
-      | ValidationError
+      EffectDrizzleQueryError | DotyposReadFailure
     >;
     readonly loadBookingBreadcrumb: (
       id: DotyposReservationId
     ) => Effect.Effect<
       { readonly startsAt: string; readonly tableName: string | null } | null,
-      ExternalAPIError | NetworkError | ValidationError
+      DotyposReadFailure
     >;
     readonly listCustomers: (
       input: AdministrationCustomerListInput
@@ -2673,11 +2665,13 @@ export class AdministrationService extends Context.Service<
       const findBookingDetails = (id: DotyposReservationId) =>
         dotypos.getReservation(id).pipe(
           Effect.map(Option.getOrNull),
-          // A missing booking is the none above. This 404 is the booking's
-          // linked customer missing, which also reads as no booking for now.
+          // A missing booking is the none above, so a not-found rejection
+          // here is the booking's linked customer missing, which also reads
+          // as no booking for now.
           Effect.catchIf(
-            (error) =>
-              error._tag === "ExternalAPIError" && error.statusCode === 404,
+            (failure) =>
+              failure._tag === "DotyposRejected" &&
+              failure.reason === "not-found",
             () => Effect.succeed(null)
           )
         );

@@ -5,7 +5,7 @@ import {
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
-  ExternalAPIError,
+  DotyposUnavailable,
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { IgloohomeDeviceIdSchema } from "@deskohub/igloohome";
@@ -702,10 +702,9 @@ describe.skipIf(!testDatabase)(
           {
             listReservations: () =>
               Effect.fail(
-                new ExternalAPIError({
+                new DotyposUnavailable({
                   operation: "listReservations",
-                  service: "Dotypos",
-                  statusCode: 503,
+                  reason: "server",
                 })
               ),
           }
@@ -761,10 +760,9 @@ describe.skipIf(!testDatabase)(
             {
               listReservations: () =>
                 Effect.fail(
-                  new ExternalAPIError({
+                  new DotyposUnavailable({
                     operation: "listReservations",
-                    service: "Dotypos",
-                    statusCode: 503,
+                    reason: "server",
                   })
                 ),
             }

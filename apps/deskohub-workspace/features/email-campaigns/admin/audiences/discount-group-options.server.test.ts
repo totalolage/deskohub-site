@@ -32,7 +32,7 @@ mock.module("@/shared/backend/workspace-effect", () => ({
       Effect.runPromise(effect),
 }));
 
-const { DotyposService, ExternalAPIError } = await import("@deskohub/dotypos");
+const { DotyposRejected, DotyposService } = await import("@deskohub/dotypos");
 const { loadDiscountGroupOptions } = await import(
   "./discount-group-options.server"
 );
@@ -64,11 +64,11 @@ describe("loadDiscountGroupOptions", () => {
     expect(getDiscountGroups).toHaveBeenCalledTimes(1);
   });
 
-  test("resolves to undefined when Dotypos returns an ExternalAPIError", async () => {
+  test("resolves to undefined when Dotypos returns a rejection", async () => {
     discountGroupsResult = Effect.fail(
-      new ExternalAPIError({
-        service: "dotypos",
+      new DotyposRejected({
         operation: "getDiscountGroups",
+        reason: "invalid-response",
         message: "Synthetic provider outage",
       })
     );

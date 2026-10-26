@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { ValidationError } from "@deskohub/dotypos";
+import { DotyposRejected } from "@deskohub/dotypos";
 import { Data, Effect, Layer } from "effect";
 import { InvalidDotyposTableSeats } from "@/features/checkout/backend/reservation/workspace-table-selection";
 import { AvailabilityQueryInvalid } from "@/features/reservation/backend/workspace-availability.service";
@@ -14,7 +14,7 @@ let availabilityFailure:
   | AvailabilityQueryInvalid
   | InvalidDotyposTableSeats
   | SyntheticAvailabilityOutage
-  | ValidationError
+  | DotyposRejected
   | null = null;
 const loadedAvailabilityQueries: unknown[] = [];
 const loadedStartTimesQueries: unknown[] = [];
@@ -104,7 +104,10 @@ describe("workspace availability route", () => {
       tableId: undefined,
       message: "synthetic seat capacity detail",
     }),
-    new ValidationError({ message: "synthetic Dotypos validation detail" }),
+    new DotyposRejected({
+      operation: "getTables",
+      reason: "invalid-request",
+    }),
   ])("answers a Dotypos response failure with 500: %#", async (failure) => {
     availabilityFailure = failure;
     const { GET } = await loadRoute();

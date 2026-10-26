@@ -1,10 +1,10 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, setSystemTime, spyOn, test } from "bun:test";
-import { NetworkError } from "@deskohub/dotypos";
+import { DotyposUncertain } from "@deskohub/dotypos";
 import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
-import { Deferred, Effect, Fiber, Layer } from "effect";
+import { Deferred, Effect, Fiber, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   WorkspaceDatabaseAdvisoryLock,
@@ -81,7 +81,7 @@ const makeFailingVerificationDatabase = (
 };
 
 const makeTestDeletionLayers = (
-  expireCustomer: () => Effect.Effect<void, unknown>,
+  expireCustomer: () => Effect.Effect<Option.Option<never>, unknown>,
   destroyAvatar: () => Effect.Effect<
     void,
     CustomerAvatarProviderError | CustomerAvatarUnavailableError
@@ -809,7 +809,7 @@ describe.skipIf(!testDatabase)(
       const calls: string[] = [];
       const deletionLayers = makeTestDeletionLayers(() => {
         calls.push("expire");
-        return Effect.void;
+        return Effect.succeed(Option.some({} as never));
       });
       const beforeDeleteUser = (accountId: CustomerAccountId) =>
         runTestDeletion(deletionLayers, accountId);
@@ -854,7 +854,12 @@ describe.skipIf(!testDatabase)(
 
     test("keeps the account, link, and durable marker when deletion fails retryably", async () => {
       const deletionLayers = makeTestDeletionLayers(() =>
-        Effect.fail(new NetworkError({ message: "provider unreachable" }))
+        Effect.fail(
+          new DotyposUncertain({
+            operation: "patchCustomer",
+            reason: "transport",
+          })
+        )
       );
       const beforeDeleteUser = (accountId: CustomerAccountId) =>
         runTestDeletion(deletionLayers, accountId);
@@ -896,7 +901,7 @@ describe.skipIf(!testDatabase)(
       const deletionLayers = makeTestDeletionLayers(
         () => {
           calls.push("expire");
-          return Effect.void;
+          return Effect.succeed(Option.some({} as never));
         },
         () => {
           calls.push("destroy-avatar");
@@ -951,7 +956,7 @@ describe.skipIf(!testDatabase)(
 
     test("keeps the auth identity and link when avatar deletion has an unknown provider outcome", async () => {
       const deletionLayers = makeTestDeletionLayers(
-        () => Effect.void,
+        () => Effect.succeed(Option.some({} as never)),
         () => Effect.fail(new CustomerAvatarProviderError({}))
       );
       const beforeDeleteUser = (accountId: CustomerAccountId) =>
@@ -1028,7 +1033,9 @@ describe.skipIf(!testDatabase)(
     });
 
     test("serializes deletion behind the account advisory lock", async () => {
-      const deletionLayers = makeTestDeletionLayers(() => Effect.void);
+      const deletionLayers = makeTestDeletionLayers(() =>
+        Effect.succeed(Option.some({} as never))
+      );
       const beforeDeleteUser = (accountId: CustomerAccountId) =>
         runTestDeletion(deletionLayers, accountId);
 

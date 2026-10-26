@@ -1,5 +1,5 @@
 import { expect, mock, test } from "bun:test";
-import { ExternalAPIError } from "@deskohub/dotypos";
+import { DotyposRejected } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Option } from "effect";
 import {
@@ -287,10 +287,10 @@ test("treats only a missing reservation as already converged during cleanup", as
     }
   );
 
-  const customerNotFoundError = new ExternalAPIError({
-    operation: "getCustomer",
-    service: "Dotypos",
-    statusCode: 404,
+  const linkedCustomerMissing = new DotyposRejected({
+    operation: "getReservation",
+    request: "customer.get",
+    reason: "not-found",
   });
   const customerNotFoundResult = await Effect.runPromise(
     cleanupCheckoutFlowStates(
@@ -304,7 +304,7 @@ test("treats only a missing reservation as already converged during cleanup", as
         readCheckoutRow: () => Effect.succeed(undefined),
         readCleanupCheckoutRows: () => Effect.succeed([]),
         readCleanupCustomerIds: () => Effect.succeed([]),
-        readDotyposReservationOwner: () => Effect.fail(customerNotFoundError),
+        readDotyposReservationOwner: () => Effect.fail(linkedCustomerMissing),
         waitForCancelledDotyposReservations,
       }
     )

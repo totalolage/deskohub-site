@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
-import { ExternalAPIError } from "@deskohub/dotypos";
+import { DotyposUnavailable } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { Effect, Layer, Option, Result } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -65,10 +65,9 @@ const makeBooking = (index: number, startDate = "2026-08-20T08:00:00Z") => ({
 
 const providerUnavailable = () =>
   Effect.fail(
-    new ExternalAPIError({
+    new DotyposUnavailable({
       operation: "listReservations",
-      service: "Dotypos",
-      statusCode: 503,
+      reason: "server",
     })
   );
 

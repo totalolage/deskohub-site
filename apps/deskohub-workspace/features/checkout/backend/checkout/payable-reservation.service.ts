@@ -1,9 +1,4 @@
-import {
-  DotyposService,
-  type ExternalAPIError,
-  type NetworkError,
-  type ValidationError,
-} from "@deskohub/dotypos";
+import { type DotyposReadFailure, DotyposService } from "@deskohub/dotypos";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
@@ -41,9 +36,7 @@ interface IPayableReservationService {
     | SealedStateTokenError
     | EffectDrizzleQueryError
     | WorkspaceReservationDetailsMalformedError
-    | ExternalAPIError
-    | NetworkError
-    | ValidationError
+    | DotyposReadFailure
   >;
 }
 

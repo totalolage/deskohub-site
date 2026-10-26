@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import {
   type DotyposCustomer,
   type DotyposCustomerId,
-  ExternalAPIError,
+  DotyposUnavailable,
 } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { is } from "drizzle-orm";
@@ -562,7 +562,11 @@ describe.skipIf(!database)("automation facts at rest (§5.13)", async () => {
 
     await scenario.plan(fireAt);
     const restore = scenario.dotypos.fail(
-      new ExternalAPIError({ message: "Unavailable", statusCode: 503 })
+      new DotyposUnavailable({
+        operation: "getCustomersPage",
+        reason: "server",
+        httpStatus: 503,
+      })
     );
     let failed = 0;
     for (

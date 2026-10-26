@@ -3,7 +3,7 @@ import type {
   DotyposCustomerId,
   DotyposReservationId,
 } from "@deskohub/dotypos";
-import { ExternalAPIError } from "@deskohub/dotypos";
+import { DotyposRejected } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Option } from "effect";
@@ -194,10 +194,10 @@ test("does not treat a present account reservation with a missing customer as ab
   const customerReadError = workspaceE2EError(
     "read reservation customer failed",
     {
-      cause: new ExternalAPIError({
-        operation: "getCustomer",
-        service: "Dotypos",
-        statusCode: 404,
+      cause: new DotyposRejected({
+        operation: "getReservation",
+        request: "customer.get",
+        reason: "not-found",
       }),
       operation: "read account reservation owner",
     }

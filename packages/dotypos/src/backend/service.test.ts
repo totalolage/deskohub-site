@@ -24,7 +24,10 @@ import type {
   Reservation,
   Table,
 } from "../generated/effect.gen";
-import { DotyposTimestampSchema } from "../timestamp";
+import {
+  DotyposTimestampFromString,
+  DotyposTimestampSchema,
+} from "../timestamp";
 import {
   DotyposCategorySchema,
   DotyposCustomerIdSchema,
@@ -37,7 +40,12 @@ import {
 } from "../types";
 import { dotyposIdFilterBatchSize } from "../utils/id-filter-batches";
 import { DotyposAccessToken, DotyposGeneratedClient } from "./api";
-import { CustomerVersionSelection, DotyposService } from "./service";
+import { dotyposRequestProfiles } from "./request-profiles";
+import {
+  CustomerVersionSelection,
+  DotyposService,
+  type IDotyposService,
+} from "./service";
 
 const adaAddress = testEmailAddress("ada");
 const mixedCaseAdaAddress = testEmailAddress("Ada");
@@ -325,9 +333,11 @@ describe("DotyposService customer lookup", () => {
     expect(result).toMatchObject({
       _tag: "Failure",
       failure: {
-        _tag: "ExternalAPIError",
-        operation: "Get access token",
-        statusCode: 404,
+        _tag: "DotyposRejected",
+        reason: "unauthorized",
+        operation: "getCustomer",
+        request: "customer.get",
+        httpStatus: 404,
       },
     });
   });
@@ -846,9 +856,11 @@ describe("DotyposService customer lookup", () => {
     );
 
     expect(error).toMatchObject({
-      _tag: "ExternalAPIError",
-      service: "Dotypos",
-      statusCode: 500,
+      _tag: "DotyposUnavailable",
+      reason: "server",
+      operation: "findCustomer",
+      request: "customers.lookup",
+      httpStatus: 500,
     });
   });
 
@@ -937,7 +949,7 @@ describe("DotyposService customer lookup", () => {
     expect(updateAttempts).toBeGreaterThan(1);
   });
 
-  test("logs createCustomer failures with provider details", async () => {
+  test("keeps provider error details out of createCustomer logs", async () => {
     const logs: CapturedLog[] = [];
     const providerDescription = `firstName=Ada; lastName=Lovelace; email=${adaSecretAddress}; phone=+420 777 123 456; ${"x".repeat(700)}`;
     const fetchMock = mockDotyposFetch((request) => {
@@ -977,22 +989,16 @@ describe("DotyposService customer lookup", () => {
 
     expect(Predicate.isTagged(result, "Failure")).toBe(true);
     if (!Predicate.isTagged(result, "Failure")) return;
-    expect(Predicate.isTagged(result.failure, "ExternalAPIError")).toBe(true);
-    if (!Predicate.isTagged(result.failure, "ExternalAPIError")) return;
+    expect(Predicate.isTagged(result.failure, "DotyposRejected")).toBe(true);
+    if (!Predicate.isTagged(result.failure, "DotyposRejected")) return;
 
     expect(result.failure).toMatchObject({
-      _tag: "ExternalAPIError",
-      service: "Dotypos",
-      operation: "createCustomer",
-      statusCode: 400,
-      message: "Dotypos API request failed",
-      providerError: {
-        error: "validation_failed",
-        errorDescription: providerDescription,
-        code: 400,
-      },
+      _tag: "DotyposRejected",
+      reason: "invalid-request",
+      operation: "findOrCreateCustomer",
+      request: "customer.createAfterLookup",
+      httpStatus: 400,
     });
-    expect(result.failure.cause).toBeUndefined();
 
     const failureLog = logs.find((log) =>
       messageParts(log.message).includes("Dotypos customer creation failed")
@@ -1005,14 +1011,8 @@ describe("DotyposService customer lookup", () => {
         typeof part === "object" && part !== null
     );
     expect(payload).toMatchObject({
-      errorTag: "ExternalAPIError",
+      errorTag: "DotyposRejected",
       operation: "createCustomer",
-      statusCode: 400,
-      providerError: {
-        error: "validation_failed",
-        errorDescription: providerDescription,
-        code: 400,
-      },
     });
     expect(failureLog.annotations).toMatchObject({
       lookupFields: ["email", "phone"],
@@ -1463,7 +1463,12 @@ describe("DotyposService customer lookup", () => {
       fetchMock
     );
 
-    expect(Predicate.isTagged(error, "ValidationError")).toBe(true);
+    expect(error).toMatchObject({
+      _tag: "DotyposRejected",
+      reason: "ambiguous-match",
+      operation: "findOrCreateCustomer",
+      request: "customers.lookup",
+    });
   });
 
   test.each([
@@ -1765,7 +1770,13 @@ describe("DotyposService customer changes", () => {
 
       expect(result).toMatchObject({
         _tag: "Failure",
-        failure: { _tag: "ExternalAPIError", statusCode: status },
+        failure: {
+          _tag: status === 429 ? "DotyposUnavailable" : "DotyposRejected",
+          reason: status === 429 ? "rate-limited" : "invalid-request",
+          operation: "listCustomerChanges",
+          request: "customers.changes",
+          httpStatus: status,
+        },
       });
       expect(customerListRequests(fetchMock)).toHaveLength(1);
     }
@@ -1835,7 +1846,11 @@ describe("DotyposService customer page", () => {
     expect(empty).toEqual([]);
     expect(tooMany).toMatchObject({
       _tag: "Failure",
-      failure: { _tag: "ValidationError" },
+      failure: {
+        _tag: "DotyposRejected",
+        reason: "invalid-request",
+        operation: "getCustomersPage",
+      },
     });
     expect(customerListRequests(fetchMock)).toHaveLength(0);
   });
@@ -1848,7 +1863,13 @@ describe("DotyposService customer page", () => {
           { error: "rate_limited", error_description: "Too many requests" },
           { status: 429 }
         ),
-      error: { _tag: "ExternalAPIError", statusCode: 429 },
+      error: {
+        _tag: "DotyposUnavailable",
+        reason: "rate-limited",
+        operation: "getCustomersPage",
+        request: "customers.page",
+        httpStatus: 429,
+      },
     },
     {
       failure: "a server error",
@@ -1857,14 +1878,25 @@ describe("DotyposService customer page", () => {
           { error: "unavailable", error_description: "Unavailable" },
           { status: 503 }
         ),
-      error: { _tag: "ExternalAPIError", statusCode: 503 },
+      error: {
+        _tag: "DotyposUnavailable",
+        reason: "server",
+        operation: "getCustomersPage",
+        request: "customers.page",
+        httpStatus: 503,
+      },
     },
     {
       failure: "a network error",
       respond: () => {
         throw new TypeError("fetch failed");
       },
-      error: { _tag: "NetworkError" },
+      error: {
+        _tag: "DotyposUnavailable",
+        reason: "transport",
+        operation: "getCustomersPage",
+        request: "customers.page",
+      },
     },
   ])(
     "leaves $failure to the caller instead of retrying it",
@@ -1934,7 +1966,12 @@ describe("DotyposService customer page", () => {
 
     expect(result).toMatchObject({
       _tag: "Failure",
-      failure: { _tag: "NetworkError" },
+      failure: {
+        _tag: "DotyposUnavailable",
+        reason: "timeout",
+        operation: "getCustomersPage",
+        request: "customers.page",
+      },
     });
     expect(customerRequests).toBe(1);
   });
@@ -1962,10 +1999,11 @@ describe("DotyposService customer page", () => {
     expect(result).toMatchObject({
       _tag: "Failure",
       failure: {
-        _tag: "ExternalAPIError",
+        _tag: "DotyposRejected",
+        reason: "invalid-response",
         operation: "getCustomersPage",
-        message: "Dotypos paged an id-filtered customer read",
-        statusCode: 502,
+        request: "customers.page",
+        httpStatus: 502,
       },
     });
     expect(customerListRequests(fetchMock)).toHaveLength(1);
@@ -2031,7 +2069,13 @@ describe("DotyposService reservation page", () => {
           { error: "rate_limited", error_description: "Too many requests" },
           { status: 429 }
         ),
-      error: { _tag: "ExternalAPIError", statusCode: 429 },
+      error: {
+        _tag: "DotyposUnavailable",
+        reason: "rate-limited",
+        operation: "listReservationsPage",
+        request: "reservations.page",
+        httpStatus: 429,
+      },
     },
     {
       failure: "a server error",
@@ -2040,14 +2084,25 @@ describe("DotyposService reservation page", () => {
           { error: "unavailable", error_description: "Unavailable" },
           { status: 503 }
         ),
-      error: { _tag: "ExternalAPIError", statusCode: 503 },
+      error: {
+        _tag: "DotyposUnavailable",
+        reason: "server",
+        operation: "listReservationsPage",
+        request: "reservations.page",
+        httpStatus: 503,
+      },
     },
     {
       failure: "a network error",
       respond: () => {
         throw new TypeError("fetch failed");
       },
-      error: { _tag: "NetworkError" },
+      error: {
+        _tag: "DotyposUnavailable",
+        reason: "transport",
+        operation: "listReservationsPage",
+        request: "reservations.page",
+      },
     },
   ])(
     "leaves $failure to the caller instead of retrying it",
@@ -2117,7 +2172,12 @@ describe("DotyposService reservation page", () => {
 
     expect(result).toMatchObject({
       _tag: "Failure",
-      failure: { _tag: "NetworkError" },
+      failure: {
+        _tag: "DotyposUnavailable",
+        reason: "timeout",
+        operation: "listReservationsPage",
+        request: "reservations.page",
+      },
     });
     expect(reservationRequests).toBe(1);
   });
@@ -2146,7 +2206,13 @@ describe("DotyposService reservation page", () => {
 
       expect(result).toMatchObject({
         _tag: "Failure",
-        failure: { _tag: "ExternalAPIError", statusCode: 502 },
+        failure: {
+          _tag: "DotyposRejected",
+          reason: "invalid-response",
+          operation: "listReservationsPage",
+          request: "reservations.page",
+          httpStatus: 502,
+        },
       });
       expect(reservationListRequests(fetchMock)).toHaveLength(1);
     }
@@ -2173,7 +2239,11 @@ describe("DotyposService reservation page", () => {
     expect(empty).toEqual({ reservations: [], nextPage: Option.none() });
     expect(invalid).toMatchObject({
       _tag: "Failure",
-      failure: { _tag: "ValidationError" },
+      failure: {
+        _tag: "DotyposRejected",
+        reason: "invalid-request",
+        operation: "listReservationsPage",
+      },
     });
     expect(reservationListRequests(fetchMock)).toHaveLength(0);
   });
@@ -2235,7 +2305,13 @@ describe("DotyposService active reservation page", () => {
           { error: "rate_limited", error_description: "Too many requests" },
           { status: 429 }
         ),
-      error: { _tag: "ExternalAPIError", statusCode: 429 },
+      error: {
+        _tag: "DotyposUnavailable",
+        reason: "rate-limited",
+        operation: "listActiveReservationsPage",
+        request: "reservations.page",
+        httpStatus: 429,
+      },
     },
     {
       failure: "a server error",
@@ -2244,14 +2320,25 @@ describe("DotyposService active reservation page", () => {
           { error: "unavailable", error_description: "Unavailable" },
           { status: 503 }
         ),
-      error: { _tag: "ExternalAPIError", statusCode: 503 },
+      error: {
+        _tag: "DotyposUnavailable",
+        reason: "server",
+        operation: "listActiveReservationsPage",
+        request: "reservations.page",
+        httpStatus: 503,
+      },
     },
     {
       failure: "a network error",
       respond: () => {
         throw new TypeError("fetch failed");
       },
-      error: { _tag: "NetworkError" },
+      error: {
+        _tag: "DotyposUnavailable",
+        reason: "transport",
+        operation: "listActiveReservationsPage",
+        request: "reservations.page",
+      },
     },
   ])(
     "leaves $failure to the caller instead of retrying it",
@@ -2321,7 +2408,12 @@ describe("DotyposService active reservation page", () => {
 
     expect(result).toMatchObject({
       _tag: "Failure",
-      failure: { _tag: "NetworkError" },
+      failure: {
+        _tag: "DotyposUnavailable",
+        reason: "timeout",
+        operation: "listActiveReservationsPage",
+        request: "reservations.page",
+      },
     });
     expect(reservationRequests).toBe(1);
   });
@@ -2350,7 +2442,13 @@ describe("DotyposService active reservation page", () => {
 
       expect(result).toMatchObject({
         _tag: "Failure",
-        failure: { _tag: "ExternalAPIError", statusCode: 502 },
+        failure: {
+          _tag: "DotyposRejected",
+          reason: "invalid-response",
+          operation: "listActiveReservationsPage",
+          request: "reservations.page",
+          httpStatus: 502,
+        },
       });
       expect(reservationListRequests(fetchMock)).toHaveLength(1);
     }
@@ -2382,7 +2480,11 @@ describe("DotyposService active reservation page", () => {
     for (const result of results) {
       expect(result).toMatchObject({
         _tag: "Failure",
-        failure: { _tag: "ValidationError" },
+        failure: {
+          _tag: "DotyposRejected",
+          reason: "invalid-request",
+          operation: "listActiveReservationsPage",
+        },
       });
     }
     expect(reservationListRequests(fetchMock)).toHaveLength(0);
@@ -2436,9 +2538,11 @@ describe("DotyposService reservations", () => {
     expect(result).toMatchObject({
       _tag: "Failure",
       failure: {
-        _tag: "ExternalAPIError",
-        operation: "getCustomer",
-        statusCode: 404,
+        _tag: "DotyposRejected",
+        reason: "not-found",
+        operation: "getReservation",
+        request: "customer.get",
+        httpStatus: 404,
       },
     });
   });
@@ -2712,7 +2816,11 @@ describe("DotyposService reservations", () => {
       fetchMock
     );
 
-    expect(errors._tag).toBe("ValidationError");
+    expect(errors).toMatchObject({
+      _tag: "DotyposRejected",
+      reason: "invalid-request",
+      operation: "updateReservation",
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -2743,9 +2851,10 @@ describe("DotyposService reservations", () => {
     );
 
     expect(error).toMatchObject({
-      _tag: "ExternalAPIError",
-      operation: "getReservation",
-      message: "Reservation ETag header was missing.",
+      _tag: "DotyposRejected",
+      reason: "invalid-response",
+      operation: "updateReservation",
+      request: "reservation.version",
     });
     expect(
       fetchMock.mock.calls.some(
@@ -2936,9 +3045,11 @@ describe("DotyposService customer discounts", () => {
     );
 
     expect(error).toMatchObject({
-      _tag: "ExternalAPIError",
+      _tag: "DotyposRejected",
+      reason: "not-found",
       operation: "getDiscountGroups",
-      statusCode: 404,
+      request: "discountGroups.list",
+      httpStatus: 404,
     });
   });
 
@@ -3019,9 +3130,48 @@ describe("DotyposService customer discounts", () => {
     );
 
     expect(error).toMatchObject({
-      _tag: "ExternalAPIError",
-      operation: "getCustomer",
-      message: "Customer ETag header was missing.",
+      _tag: "DotyposRejected",
+      reason: "invalid-response",
+      operation: "updateCustomerBillingDetails",
+      request: "customer.version",
+    });
+    expect(requests.some(({ method }) => method === "PATCH")).toBe(false);
+  });
+
+  test("fails a billing patch of a missing customer with the original not-found failure", async () => {
+    const requests: Request[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      requests.push(request.clone());
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      return new Response("Not found", { status: 404 });
+    });
+
+    const error = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .updateCustomerBillingDetails(dotyposCustomerId("customer-id"), {
+            addressLine1: "",
+            addressLine2: "",
+            city: "",
+            zip: "",
+            country: "",
+            companyName: "",
+            companyId: "",
+            vatId: "",
+          })
+          .pipe(Effect.flip);
+      }),
+      fetchMock
+    );
+
+    expect(error).toMatchObject({
+      _tag: "DotyposRejected",
+      reason: "not-found",
+      operation: "updateCustomerBillingDetails",
+      request: "customer.version",
+      httpStatus: 404,
     });
     expect(requests.some(({ method }) => method === "PATCH")).toBe(false);
   });
@@ -3072,9 +3222,10 @@ describe("DotyposService customer discounts", () => {
     );
 
     expect(error).toMatchObject({
-      _tag: "ExternalAPIError",
-      operation: "patchCustomer",
-      statusCode: 412,
+      _tag: "DotyposVersionConflict",
+      operation: "updateCustomerBillingDetails",
+      request: "customer.patch",
+      httpStatus: 412,
     });
     expect(requests.filter(({ method }) => method === "PATCH")).toHaveLength(1);
   });
@@ -3132,9 +3283,11 @@ describe("DotyposService customer discounts", () => {
     expect(result).toMatchObject({
       _tag: "Failure",
       failure: {
-        _tag: "ExternalAPIError",
-        operation: "getCustomer",
-        statusCode: 404,
+        _tag: "DotyposRejected",
+        reason: "not-found",
+        operation: "getCustomerDiscountGroup",
+        request: "customer.get",
+        httpStatus: 404,
       },
     });
   });
@@ -3457,7 +3610,11 @@ describe("DotyposService reservation listing", () => {
 
     expect(result).toMatchObject({
       _tag: "Failure",
-      failure: { _tag: "ValidationError" },
+      failure: {
+        _tag: "DotyposRejected",
+        reason: "invalid-request",
+        operation: "listReservations",
+      },
     });
   });
 
@@ -3502,9 +3659,11 @@ describe("DotyposService reservation listing", () => {
     expect(Predicate.isTagged(result, "Failure")).toBe(true);
     if (Predicate.isTagged(result, "Failure")) {
       expect(result.failure).toMatchObject({
-        _tag: "ExternalAPIError",
+        _tag: "DotyposRejected",
+        reason: "not-found",
         operation: "listReservations",
-        statusCode: 404,
+        request: "reservations.list",
+        httpStatus: 404,
       });
     }
     expect(requestedPages).toEqual(["1", "2"]);
@@ -3534,10 +3693,11 @@ describe("DotyposService reservation listing", () => {
     expect(Predicate.isTagged(result, "Failure")).toBe(true);
     if (Predicate.isTagged(result, "Failure")) {
       expect(result.failure).toMatchObject({
-        _tag: "ExternalAPIError",
-        service: "Dotypos",
+        _tag: "DotyposRejected",
+        reason: "unauthorized",
         operation: "listReservations",
-        statusCode: 403,
+        request: "reservations.list",
+        httpStatus: 403,
       });
     }
   });
@@ -3634,10 +3794,11 @@ describe("DotyposService paginated list responses", () => {
         expect(result).toMatchObject({
           _tag: "Failure",
           failure: {
-            _tag: "ExternalAPIError",
-            service: "Dotypos",
+            _tag: "DotyposRejected",
+            reason: "invalid-response",
             operation,
-            message: "Dotypos returned a malformed list response.",
+            request:
+              operation === "getTables" ? "tables.list" : "reservations.list",
           },
         });
         expect(logText(logs)).not.toContain(providerPayloadMarker);
@@ -3714,11 +3875,1567 @@ describe("DotyposService paginated list responses", () => {
     expect(result).toMatchObject({
       _tag: "Failure",
       failure: {
-        _tag: "ExternalAPIError",
+        _tag: "DotyposRejected",
+        reason: "invalid-response",
         operation: "listReservations",
-        message: "Dotypos returned a malformed list response.",
+        request: "reservations.list",
       },
     });
     expect(requestedPages).toEqual([1, 2]);
+  });
+});
+
+type FailureOutcomeOperation =
+  | "getCustomer"
+  | "getCustomers"
+  | "cancelReservation"
+  | "patchCustomer"
+  | "confirmReservation"
+  | "createReservation"
+  | "createCustomer";
+
+const failureOutcomeOperations = {
+  getCustomer: {
+    kind: "read",
+    request: "customer.get",
+    method: "GET",
+    path: "/clouds/cloud-id/customers/customer-id",
+  },
+  getCustomers: {
+    kind: "read",
+    request: "customers.list",
+    method: "GET",
+    path: "/clouds/cloud-id/customers",
+  },
+  cancelReservation: {
+    kind: "write",
+    request: "reservation.delete",
+    method: "DELETE",
+    path: "/clouds/cloud-id/reservations/reservation-id",
+  },
+  patchCustomer: {
+    kind: "conditional",
+    request: "customer.patch",
+    method: "PATCH",
+    path: "/clouds/cloud-id/customers/customer-id",
+  },
+  confirmReservation: {
+    kind: "conditional",
+    request: "reservation.patch",
+    method: "PATCH",
+    path: "/clouds/cloud-id/reservations/reservation-id",
+  },
+  createReservation: {
+    kind: "creation",
+    request: "reservation.create",
+    method: "POST",
+    path: "/clouds/cloud-id/reservations",
+  },
+  createCustomer: {
+    kind: "creation",
+    request: "customer.create",
+    method: "POST",
+    path: "/clouds/cloud-id/customers",
+  },
+} as const;
+
+type FailureOutcomeInput =
+  | {
+      readonly label: string;
+      readonly kind:
+        | "success"
+        | "invalid-identifier"
+        | "non-json"
+        | "malformed-page"
+        | "empty-array"
+        | "fetch-failed"
+        | "timeout";
+      readonly operations: readonly FailureOutcomeOperation[];
+    }
+  | {
+      readonly label: string;
+      readonly kind: "status";
+      readonly status: number;
+      readonly operations: readonly FailureOutcomeOperation[];
+    };
+
+const allFailureOutcomeOperations = Object.keys(
+  failureOutcomeOperations
+) as FailureOutcomeOperation[];
+const responseOperations = allFailureOutcomeOperations.filter(
+  (operation) => operation !== "cancelReservation"
+);
+const creationOutcomeOperations = [
+  "createReservation",
+  "createCustomer",
+] as const;
+
+const failureOutcomeInputs: readonly FailureOutcomeInput[] = [
+  {
+    label: "200 decodable",
+    kind: "success",
+    operations: allFailureOutcomeOperations,
+  },
+  {
+    label: "200 invalid identifier",
+    kind: "invalid-identifier",
+    operations: responseOperations,
+  },
+  {
+    label: "200 non-JSON body",
+    kind: "non-json",
+    operations: responseOperations,
+  },
+  {
+    label: "200 malformed page",
+    kind: "malformed-page",
+    operations: ["getCustomers"],
+  },
+  {
+    label: "200 empty creation array",
+    kind: "empty-array",
+    operations: creationOutcomeOperations,
+  },
+  ...[400, 401, 403, 404, 409, 412, 429, 500, 503].map(
+    (status): FailureOutcomeInput => ({
+      label: `${status}`,
+      kind: "status",
+      status,
+      operations: allFailureOutcomeOperations,
+    })
+  ),
+  {
+    label: "fetch failed",
+    kind: "fetch-failed",
+    operations: allFailureOutcomeOperations,
+  },
+  {
+    label: "timeout",
+    kind: "timeout",
+    operations: allFailureOutcomeOperations,
+  },
+];
+
+const failureOutcomeRows = failureOutcomeInputs.flatMap((input) =>
+  input.operations.map((operation) => ({
+    label: input.label,
+    kind: input.kind,
+    ...(input.kind === "status" && { status: input.status }),
+    operation,
+  }))
+);
+
+const failureOutcomeReservationInput = {
+  customerId: dotyposCustomerId("customer-id"),
+  tableId: dotyposTableId("table-id"),
+  startDate: new Date("2026-06-20T10:00:00.000Z"),
+  endDate: new Date("2026-06-20T12:00:00.000Z"),
+  seats: 2,
+  status: "NEW" as const,
+};
+
+const failureOutcomeCustomerDetails = {
+  firstName: "Ada",
+  lastName: "Lovelace",
+  email: adaAddress,
+  phone: "+420 777 123 456",
+  addressLine1: "",
+  addressLine2: "",
+  city: "",
+  zip: "",
+  country: "",
+  companyName: "",
+  companyId: "",
+  vatId: "",
+};
+
+const invokeFailureOutcomeOperation = (
+  dotypos: IDotyposService,
+  operation: FailureOutcomeOperation
+): Effect.Effect<unknown, unknown, never> => {
+  switch (operation) {
+    case "getCustomer":
+      return dotypos.getCustomer(dotyposCustomerId("customer-id"));
+    case "getCustomers":
+      return dotypos.getCustomers({
+        ids: [dotyposCustomerId("customer-id")],
+      });
+    case "cancelReservation":
+      return dotypos.cancelReservation(dotyposReservationId("reservation-id"));
+    case "patchCustomer":
+      return dotypos.patchCustomer(dotyposCustomerId("customer-id"), {
+        firstName: "Grace",
+      });
+    case "confirmReservation":
+      return dotypos.confirmReservation(dotyposReservationId("reservation-id"));
+    case "createReservation":
+      return dotypos.createReservation(failureOutcomeReservationInput);
+    case "createCustomer":
+      return dotypos.createCustomer(failureOutcomeCustomerDetails);
+  }
+};
+
+const successOutcomeResponse = (operation: FailureOutcomeOperation) => {
+  switch (operation) {
+    case "getCustomer":
+      return Response.json(customer());
+    case "getCustomers":
+      return Response.json({
+        data: [customer()],
+        nextPage: null,
+        lastPage: "1",
+      });
+    case "cancelReservation":
+      return Response.json(reservation({ status: "CANCELLED" }));
+    case "patchCustomer":
+      return Response.json(customer({ firstName: "Grace" }));
+    case "confirmReservation":
+      return Response.json(reservation({ status: "CONFIRMED" }));
+    case "createReservation":
+      return Response.json([reservation()]);
+    case "createCustomer":
+      return Response.json([customer()]);
+  }
+};
+
+const outcomeResponse = (
+  request: Request,
+  operation: FailureOutcomeOperation,
+  kind: FailureOutcomeInput["kind"],
+  status?: number
+): Response | Promise<Response> => {
+  if (kind === "status") {
+    return Response.json(
+      { error: "synthetic_failure", code: status },
+      { status }
+    );
+  }
+  if (kind === "fetch-failed") throw new TypeError("fetch failed");
+  if (kind === "timeout") {
+    return new Promise<Response>((_resolve, reject) => {
+      const rejectOnAbort = () => reject(request.signal.reason);
+      if (request.signal.aborted) rejectOnAbort();
+      else
+        request.signal.addEventListener("abort", rejectOnAbort, { once: true });
+    });
+  }
+  if (kind === "non-json") {
+    return new Response("not-json", {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  if (kind === "malformed-page") return Response.json({ data: "not-an-array" });
+  if (kind === "empty-array") return Response.json([]);
+  if (kind === "invalid-identifier") {
+    if (operation === "getCustomer") {
+      return Response.json({ ...customer(), id: "" });
+    }
+    if (operation === "getCustomers") {
+      return Response.json({
+        data: [{ ...customer(), id: "" }],
+        nextPage: null,
+        lastPage: "1",
+      });
+    }
+    if (operation === "patchCustomer")
+      return Response.json({ ...customer(), id: "" });
+    if (operation === "confirmReservation") {
+      return Response.json({ ...reservation(), id: "" });
+    }
+    if (operation === "createReservation") {
+      return Response.json([{ ...reservation(), id: "" }]);
+    }
+    if (operation === "createCustomer") {
+      return Response.json([{ ...customer(), id: "" }]);
+    }
+  }
+  return successOutcomeResponse(operation);
+};
+
+const failureOutcomeRetryCount = (
+  operation: FailureOutcomeOperation,
+  input: { readonly kind: string; readonly status?: number }
+) => {
+  const retry =
+    dotyposRequestProfiles[failureOutcomeOperations[operation].request].retry;
+  if (retry === "none") return 1;
+  if (input.kind === "status") {
+    if (input.status === 429) return retry === "creation" ? 4 : 4;
+    if ((input.status ?? 0) >= 500) {
+      return retry === "transient" || retry === "replay" ? 4 : 1;
+    }
+  }
+  if (input.kind === "fetch-failed" || input.kind === "timeout") {
+    return retry === "transient" || retry === "replay" ? 4 : 1;
+  }
+  if (input.kind === "empty-array" && retry === "creation") return 4;
+  return 1;
+};
+
+const failureOutcomeExpectation = (
+  operation: FailureOutcomeOperation,
+  input: { readonly kind: string; readonly status?: number }
+) => {
+  const spec = failureOutcomeOperations[operation];
+  if (input.kind === "success") {
+    return {
+      success:
+        operation === "getCustomer" || operation === "patchCustomer"
+          ? "some"
+          : "value",
+    } as const;
+  }
+  if (
+    input.kind === "status" &&
+    input.status === 404 &&
+    (operation === "getCustomer" || operation === "patchCustomer")
+  ) {
+    return { success: "none" } as const;
+  }
+  if (
+    input.kind === "status" &&
+    input.status === 404 &&
+    operation === "getCustomers"
+  ) {
+    return { success: "empty" } as const;
+  }
+
+  let tag: string;
+  let reason: string | undefined;
+  let httpStatus: number | undefined;
+  switch (input.kind) {
+    case "invalid-identifier":
+      tag = spec.kind === "read" ? "DotyposRejected" : "DotyposUncertain";
+      reason = "invalid-response";
+      // A blank created id fails the returned-id check, which never carried a
+      // status; entity decoding keeps its synthetic 502.
+      httpStatus = operation === "createReservation" ? undefined : 502;
+      break;
+    case "non-json":
+      tag = spec.kind === "read" ? "DotyposRejected" : "DotyposUncertain";
+      reason = "invalid-response";
+      httpStatus = 200;
+      break;
+    case "malformed-page":
+      tag = "DotyposRejected";
+      reason = "invalid-response";
+      break;
+    case "empty-array":
+      tag = "DotyposUnavailable";
+      reason = "empty-response";
+      httpStatus = 502;
+      break;
+    case "fetch-failed":
+      tag = spec.kind === "read" ? "DotyposUnavailable" : "DotyposUncertain";
+      reason = "transport";
+      break;
+    case "timeout":
+      tag = spec.kind === "read" ? "DotyposUnavailable" : "DotyposUncertain";
+      reason = "timeout";
+      break;
+    case "status":
+      httpStatus = input.status;
+      if (input.status === 401 || input.status === 403) {
+        tag = "DotyposRejected";
+        reason = "unauthorized";
+      } else if (input.status === 404) {
+        tag = "DotyposRejected";
+        reason = "not-found";
+      } else if (
+        (input.status === 409 || input.status === 412) &&
+        spec.kind === "conditional"
+      ) {
+        tag = "DotyposVersionConflict";
+      } else if (input.status === 429) {
+        tag = "DotyposUnavailable";
+        reason = "rate-limited";
+      } else if ((input.status ?? 0) >= 500) {
+        tag = spec.kind === "read" ? "DotyposUnavailable" : "DotyposUncertain";
+        reason = "server";
+      } else {
+        tag = "DotyposRejected";
+        reason = "invalid-request";
+      }
+      break;
+    default:
+      throw new Error(`Unexpected outcome input: ${input.kind}`);
+  }
+  return {
+    failure: {
+      _tag: tag,
+      ...(reason !== undefined && { reason }),
+      operation,
+      request: spec.request,
+      ...(httpStatus !== undefined && { httpStatus }),
+    },
+  } as const;
+};
+
+describe("DotyposService failure classification table", () => {
+  test.each(failureOutcomeRows)("$operation: $label", async (row) => {
+    const spec = failureOutcomeOperations[row.operation];
+    let targetAttempts = 0;
+    let preflightAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        (row.operation === "patchCustomer" ||
+          row.operation === "confirmReservation") &&
+        request.method === "GET" &&
+        url.pathname === spec.path
+      ) {
+        preflightAttempts += 1;
+        return row.operation === "patchCustomer"
+          ? Response.json(customer(), { headers: { ETag: '"customer-v1"' } })
+          : Response.json(reservation({ status: "NEW" }), {
+              headers: { ETag: '"reservation-v1"' },
+            });
+      }
+      if (request.method === spec.method && url.pathname === spec.path) {
+        targetAttempts += 1;
+        return outcomeResponse(
+          request,
+          row.operation,
+          row.kind,
+          "status" in row ? row.status : undefined
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithServiceRetryingInstantly(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* invokeFailureOutcomeOperation(
+          dotypos,
+          row.operation
+        ).pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    const expected = failureOutcomeExpectation(row.operation, row);
+    if ("success" in expected) {
+      expect(result).toMatchObject({ _tag: "Success" });
+      if (!Predicate.isTagged(result, "Success")) return;
+      if (expected.success === "none") {
+        expect((result as { success: unknown }).success).toEqual(Option.none());
+      } else if (expected.success === "some") {
+        expect(
+          Option.isSome((result as { success: Option.Option<unknown> }).success)
+        ).toBe(true);
+      } else if (expected.success === "empty") {
+        expect((result as { success: unknown }).success).toEqual([]);
+      }
+    } else {
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: expected.failure,
+      });
+      if (!Predicate.isTagged(result, "Failure")) return;
+      const failure = result.failure as { readonly httpStatus?: number };
+      expect(failure.httpStatus).toBe(expected.failure.httpStatus);
+      expect(Object.hasOwn(failure, "httpStatus")).toBe(
+        expected.failure.httpStatus !== undefined
+      );
+    }
+    expect(targetAttempts).toBe(failureOutcomeRetryCount(row.operation, row));
+    if (
+      row.operation === "patchCustomer" ||
+      row.operation === "confirmReservation"
+    ) {
+      expect(preflightAttempts).toBe(1);
+    }
+  });
+
+  test("classifies a bad reservation customer identifier as a read response failure", async () => {
+    let reservationReads = 0;
+    let customerReads = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations/reservation-id") {
+        reservationReads += 1;
+        return Response.json({ ...reservation(), _customerId: "" });
+      }
+      if (url.pathname === "/clouds/cloud-id/customers/customer-id") {
+        customerReads += 1;
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .getReservation(dotyposReservationId("reservation-id"))
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "DotyposRejected",
+        reason: "invalid-response",
+        operation: "getReservation",
+        request: "reservation.get",
+      },
+    });
+    expect(reservationReads).toBe(1);
+    expect(customerReads).toBe(0);
+  });
+
+  test("keeps an access-token server failure unavailable before reservation creation", async () => {
+    let tokenRequests = 0;
+    let reservationPosts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") {
+        tokenRequests += 1;
+        return Response.json(
+          { error: "unavailable", code: 503 },
+          { status: 503 }
+        );
+      }
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        reservationPosts += 1;
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithServiceRetryingInstantly(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .createReservation(failureOutcomeReservationInput)
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "DotyposUnavailable",
+        reason: "server",
+        operation: "createReservation",
+        request: "reservation.create",
+        httpStatus: 503,
+      },
+    });
+    expect(tokenRequests).toBe(1);
+    expect(reservationPosts).toBe(0);
+  });
+
+  test("times out while the reservation access-token request hangs without sending a POST", async () => {
+    let tokenStarted!: () => void;
+    const tokenStartedPromise = new Promise<void>((resolve) => {
+      tokenStarted = resolve;
+    });
+    let reservationPosts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") {
+        tokenStarted();
+        return new Promise<Response>((_resolve, reject) => {
+          request.signal.addEventListener(
+            "abort",
+            () => reject(request.signal.reason),
+            { once: true }
+          );
+        });
+      }
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        reservationPosts += 1;
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .createReservation(failureOutcomeReservationInput)
+            .pipe(Effect.result);
+        }).pipe(
+          Effect.provide(
+            makeServiceLayer(fetchMock, { ...config, apiTimeout: 1000 })
+          ),
+          Effect.forkChild
+        );
+        yield* Effect.promise(() => tokenStartedPromise);
+        yield* TestClock.adjust(999);
+        expect(fiber.pollUnsafe()).toBeUndefined();
+        yield* TestClock.adjust(1);
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "DotyposUncertain",
+        reason: "timeout",
+        operation: "createReservation",
+        request: "reservation.create",
+      },
+    });
+    expect(reservationPosts).toBe(0);
+  });
+});
+
+type CreationOutcomeStep =
+  | "429"
+  | "empty-array"
+  | "503"
+  | "fetch-failed"
+  | "timeout"
+  | "success"
+  | "bad-identifier";
+
+type CreationRetryScenario = {
+  readonly label: string;
+  readonly steps: readonly CreationOutcomeStep[];
+  readonly expectedPostCount: number;
+  readonly expectedTag?: string;
+  readonly expectedReason?: string;
+  readonly expectedHttpStatus?: number;
+};
+
+const creationRetryScenarios: readonly CreationRetryScenario[] = [
+  {
+    label: "429 four times",
+    steps: ["429", "429", "429", "429"],
+    expectedPostCount: 4,
+    expectedTag: "DotyposUnavailable",
+    expectedReason: "rate-limited",
+    expectedHttpStatus: 429,
+  },
+  {
+    label: "429 then success",
+    steps: ["429", "success"],
+    expectedPostCount: 2,
+  },
+  {
+    label: "empty array four times",
+    steps: ["empty-array", "empty-array", "empty-array", "empty-array"],
+    expectedPostCount: 4,
+    expectedTag: "DotyposUnavailable",
+    expectedReason: "empty-response",
+    expectedHttpStatus: 502,
+  },
+  {
+    label: "503 once",
+    steps: ["503"],
+    expectedPostCount: 1,
+    expectedTag: "DotyposUncertain",
+    expectedReason: "server",
+    expectedHttpStatus: 503,
+  },
+  {
+    label: "fetch failure once",
+    steps: ["fetch-failed"],
+    expectedPostCount: 1,
+    expectedTag: "DotyposUncertain",
+    expectedReason: "transport",
+  },
+  {
+    label: "timeout once",
+    steps: ["timeout"],
+    expectedPostCount: 1,
+    expectedTag: "DotyposUncertain",
+    expectedReason: "timeout",
+  },
+  {
+    label: "bad returned identifier",
+    steps: ["bad-identifier"],
+    expectedPostCount: 1,
+    expectedTag: "DotyposUncertain",
+    expectedReason: "invalid-response",
+  },
+];
+
+type CreationOutcomeOperation =
+  | "createReservation"
+  | "findOrCreateCustomer"
+  | "createCustomer";
+
+const runCreationOutcomeOperation = (
+  dotypos: IDotyposService,
+  operation: CreationOutcomeOperation
+): Effect.Effect<unknown, unknown, never> => {
+  switch (operation) {
+    case "createReservation":
+      return dotypos.createReservation(failureOutcomeReservationInput);
+    case "findOrCreateCustomer":
+      return dotypos.findOrCreateCustomer({
+        firstName: "Ada",
+        lastName: "Lovelace",
+        email: adaAddress,
+        phone: "+420 777 123 456",
+      });
+    case "createCustomer":
+      return dotypos.createCustomer(failureOutcomeCustomerDetails);
+  }
+};
+
+const creationScriptResponse = (
+  request: Request,
+  operation: CreationOutcomeOperation,
+  step: CreationOutcomeStep
+): Response | Promise<Response> => {
+  if (step === "429" || step === "503") {
+    const status = Number(step);
+    return Response.json(
+      { error: "synthetic_failure", code: status },
+      { status }
+    );
+  }
+  if (step === "empty-array") return Response.json([]);
+  if (step === "fetch-failed") throw new TypeError("fetch failed");
+  if (step === "timeout") {
+    return new Promise<Response>((_resolve, reject) => {
+      const rejectOnAbort = () => reject(request.signal.reason);
+      if (request.signal.aborted) rejectOnAbort();
+      else
+        request.signal.addEventListener("abort", rejectOnAbort, { once: true });
+    });
+  }
+  if (step === "bad-identifier") {
+    return operation === "createReservation"
+      ? Response.json([{ ...reservation(), id: "" }])
+      : Response.json([{ ...customer(), id: "" }]);
+  }
+  return operation === "createReservation"
+    ? Response.json([reservation()])
+    : Response.json([customer()]);
+};
+
+const makeCreationScriptFetch = (
+  operation: CreationOutcomeOperation,
+  steps: readonly CreationOutcomeStep[]
+) => {
+  let attempt = 0;
+  const postPath =
+    operation === "createReservation"
+      ? "/clouds/cloud-id/reservations"
+      : "/clouds/cloud-id/customers";
+  const fetchMock = mockDotyposFetch((request) => {
+    const url = new URL(request.url);
+    if (url.pathname === "/signin/token") return tokenResponse();
+    if (
+      operation === "findOrCreateCustomer" &&
+      request.method === "GET" &&
+      url.pathname === postPath
+    ) {
+      return Response.json({ data: [], nextPage: null, lastPage: "1" });
+    }
+    if (request.method === "POST" && url.pathname === postPath) {
+      const step = steps[Math.min(attempt, steps.length - 1)] ?? "success";
+      attempt += 1;
+      return creationScriptResponse(request, operation, step);
+    }
+    return new Response("Not found", { status: 404 });
+  });
+  return { fetchMock, postPath };
+};
+
+describe("DotyposService creation retry guard", () => {
+  test.each(
+    creationRetryScenarios.flatMap((scenario) =>
+      (["createReservation", "findOrCreateCustomer"] as const).map(
+        (operation) => ({ operation, scenario })
+      )
+    )
+  )("$operation: $scenario.label", async ({ operation, scenario }) => {
+    const { fetchMock, postPath } = makeCreationScriptFetch(
+      operation,
+      scenario.steps
+    );
+    const result = await runWithServiceRetryingInstantly(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* runCreationOutcomeOperation(dotypos, operation).pipe(
+          Effect.result
+        );
+      }),
+      fetchMock
+    );
+
+    let request: string;
+    if (operation === "createReservation") request = "reservation.create";
+    else if (operation === "findOrCreateCustomer") {
+      request = "customer.createAfterLookup";
+    } else request = "customer.create";
+    const postCount = fetchMock.mock.calls.filter((call) => {
+      const request = getRequest(call as FetchCall);
+      return (
+        request.method === "POST" && new URL(request.url).pathname === postPath
+      );
+    }).length;
+    expect(postCount).toBe(scenario.expectedPostCount);
+    if (!scenario.expectedTag) {
+      expect(result).toMatchObject({ _tag: "Success" });
+      return;
+    }
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: scenario.expectedTag,
+        reason: scenario.expectedReason,
+        operation,
+        request,
+        ...(scenario.expectedHttpStatus !== undefined && {
+          httpStatus: scenario.expectedHttpStatus,
+        }),
+      },
+    });
+  });
+
+  test.each([...creationRetryScenarios])(
+    "createCustomer never retries: $label",
+    async (scenario) => {
+      const { fetchMock, postPath } = makeCreationScriptFetch(
+        "createCustomer",
+        scenario.steps
+      );
+      const result = await runWithServiceRetryingInstantly(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .createCustomer(failureOutcomeCustomerDetails)
+            .pipe(Effect.result);
+        }),
+        fetchMock
+      );
+      const postCount = fetchMock.mock.calls.filter((call) => {
+        const request = getRequest(call as FetchCall);
+        return (
+          request.method === "POST" &&
+          new URL(request.url).pathname === postPath
+        );
+      }).length;
+      expect(postCount).toBe(1);
+
+      if (!scenario.expectedTag) {
+        expect(result).toMatchObject({ _tag: "Failure" });
+        if (!Predicate.isTagged(result, "Failure")) return;
+        expect((result as { failure: unknown }).failure).toMatchObject({
+          _tag: "DotyposUnavailable",
+          reason: "rate-limited",
+          operation: "createCustomer",
+          request: "customer.create",
+          httpStatus: 429,
+        });
+        return;
+      }
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: scenario.expectedTag,
+          reason: scenario.expectedReason,
+          operation: "createCustomer",
+          request: "customer.create",
+          ...(scenario.expectedHttpStatus !== undefined && {
+            httpStatus: scenario.expectedHttpStatus,
+          }),
+        },
+      });
+    }
+  );
+
+  test("pins every request profile to the spec table", () => {
+    expect(dotyposRequestProfiles).toEqual({
+      "reservation.get": { effect: "read", repeat: "safe", retry: "transient" },
+      "reservation.status": {
+        effect: "read",
+        repeat: "safe",
+        retry: "transient",
+      },
+      "reservation.create": {
+        effect: "write",
+        repeat: "unsafe",
+        retry: "creation",
+      },
+      "reservation.version": {
+        effect: "read",
+        repeat: "safe",
+        retry: "transient",
+      },
+      "reservation.patch": {
+        effect: "write",
+        repeat: "conditional",
+        retry: "replay",
+      },
+      "reservation.delete": {
+        effect: "write",
+        repeat: "unsafe",
+        retry: "none",
+      },
+      "customer.get": { effect: "read", repeat: "safe", retry: "transient" },
+      "customer.version": {
+        effect: "read",
+        repeat: "safe",
+        retry: "transient",
+      },
+      "customer.patch": {
+        effect: "write",
+        repeat: "conditional",
+        retry: "replay",
+      },
+      "customer.fill": {
+        effect: "write",
+        repeat: "idempotent",
+        retry: "replay",
+      },
+      "customer.create": { effect: "write", repeat: "unsafe", retry: "none" },
+      "customer.createAfterLookup": {
+        effect: "write",
+        repeat: "unsafe",
+        retry: "creation",
+      },
+      "customers.list": { effect: "read", repeat: "safe", retry: "transient" },
+      "customers.page": { effect: "read", repeat: "safe", retry: "none" },
+      "customers.changes": { effect: "read", repeat: "safe", retry: "none" },
+      "customers.search": {
+        effect: "read",
+        repeat: "safe",
+        retry: "transient",
+      },
+      "customers.lookup": {
+        effect: "read",
+        repeat: "safe",
+        retry: "transient",
+      },
+      "discountGroup.get": {
+        effect: "read",
+        repeat: "safe",
+        retry: "transient",
+      },
+      "discountGroups.list": {
+        effect: "read",
+        repeat: "safe",
+        retry: "transient",
+      },
+      "tables.list": { effect: "read", repeat: "safe", retry: "transient" },
+      "reservations.list": {
+        effect: "read",
+        repeat: "safe",
+        retry: "transient",
+      },
+      "reservations.page": { effect: "read", repeat: "safe", retry: "none" },
+      "products.list": { effect: "read", repeat: "safe", retry: "transient" },
+      "categories.list": { effect: "read", repeat: "safe", retry: "transient" },
+    });
+    expect(Object.keys(dotyposRequestProfiles)).toHaveLength(24);
+  });
+});
+
+type PatchReplayRow = {
+  readonly label: string;
+  readonly version:
+    | "success"
+    | "not-found"
+    | "server-four-times"
+    | "missing-etag";
+  readonly patches: readonly (number | "success")[];
+  readonly expected:
+    | "some"
+    | "none"
+    | {
+        readonly _tag: string;
+        readonly reason?: string;
+        readonly httpStatus?: number;
+        readonly request: string;
+      };
+  readonly expectedPatchCount: number;
+};
+
+const patchReplayRows: readonly PatchReplayRow[] = [
+  {
+    label: "503 then 200 replays with the same ETag",
+    version: "success",
+    patches: [503, "success"],
+    expected: "some",
+    expectedPatchCount: 2,
+  },
+  {
+    label: "503 then 412 stays uncertain after replay",
+    version: "success",
+    patches: [503, 412],
+    expected: {
+      _tag: "DotyposUncertain",
+      reason: "conflict-after-replay",
+      request: "customer.patch",
+      httpStatus: 412,
+    },
+    expectedPatchCount: 2,
+  },
+  {
+    label: "412 without an earlier uncertain attempt is a version conflict",
+    version: "success",
+    patches: [412],
+    expected: {
+      _tag: "DotyposVersionConflict",
+      request: "customer.patch",
+      httpStatus: 412,
+    },
+    expectedPatchCount: 1,
+  },
+  {
+    label: "503 then 404 stays uncertain instead of becoming none",
+    version: "success",
+    patches: [503, 404],
+    expected: {
+      _tag: "DotyposUncertain",
+      reason: "server",
+      request: "customer.patch",
+      httpStatus: 404,
+    },
+    expectedPatchCount: 2,
+  },
+  {
+    label: "ETag GET 404 returns none without a PATCH",
+    version: "not-found",
+    patches: [],
+    expected: "none",
+    expectedPatchCount: 0,
+  },
+  {
+    label: "first PATCH 404 returns none",
+    version: "success",
+    patches: [404],
+    expected: "none",
+    expectedPatchCount: 1,
+  },
+  {
+    label: "four ETag GET 503 responses fail before PATCH",
+    version: "server-four-times",
+    patches: [],
+    expected: {
+      _tag: "DotyposUnavailable",
+      reason: "server",
+      request: "customer.version",
+      httpStatus: 503,
+    },
+    expectedPatchCount: 0,
+  },
+  {
+    label: "missing ETag is an invalid response before PATCH",
+    version: "missing-etag",
+    patches: [],
+    expected: {
+      _tag: "DotyposRejected",
+      reason: "invalid-response",
+      request: "customer.version",
+    },
+    expectedPatchCount: 0,
+  },
+  {
+    label: "503 then three 429 responses keeps the first uncertainty",
+    version: "success",
+    patches: [503, 429, 429, 429],
+    expected: {
+      _tag: "DotyposUncertain",
+      reason: "server",
+      request: "customer.patch",
+      httpStatus: 429,
+    },
+    expectedPatchCount: 4,
+  },
+];
+
+describe("DotyposService conditional-write replay", () => {
+  test.each([...patchReplayRows])("$label", async (row) => {
+    let versionReads = 0;
+    let patchIndex = 0;
+    const ifMatchHeaders: Array<string | null> = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/customers/customer-id" &&
+        request.method === "GET"
+      ) {
+        versionReads += 1;
+        if (row.version === "not-found") {
+          return new Response("Not found", { status: 404 });
+        }
+        if (row.version === "server-four-times") {
+          return new Response("Unavailable", { status: 503 });
+        }
+        return Response.json(customer(), {
+          headers:
+            row.version === "missing-etag" ? {} : { ETag: '"customer-v1"' },
+        });
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/customers/customer-id" &&
+        request.method === "PATCH"
+      ) {
+        ifMatchHeaders.push(request.headers.get("if-match"));
+        const patch = row.patches[Math.min(patchIndex, row.patches.length - 1)];
+        patchIndex += 1;
+        if (patch === "success") {
+          return Response.json(customer({ firstName: "Grace" }));
+        }
+        return new Response("Failure", { status: patch ?? 404 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithServiceRetryingInstantly(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .patchCustomer(dotyposCustomerId("customer-id"), {
+            firstName: "Grace",
+          })
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    if (row.expected === "some") {
+      expect(result).toMatchObject({ _tag: "Success" });
+      if (Predicate.isTagged(result, "Success")) {
+        expect(Option.isSome(result.success)).toBe(true);
+      }
+    } else if (row.expected === "none") {
+      expect(result).toMatchObject({ _tag: "Success", success: Option.none() });
+    } else {
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: row.expected._tag,
+          ...(row.expected.reason && { reason: row.expected.reason }),
+          operation: "patchCustomer",
+          request: row.expected.request,
+          ...(row.expected.httpStatus !== undefined && {
+            httpStatus: row.expected.httpStatus,
+          }),
+        },
+      });
+      if (Predicate.isTagged(result, "Failure")) {
+        const failure = result.failure as { readonly httpStatus?: number };
+        expect(failure.httpStatus).toBe(row.expected.httpStatus);
+        expect(Object.hasOwn(failure, "httpStatus")).toBe(
+          row.expected.httpStatus !== undefined
+        );
+      }
+    }
+    expect(versionReads).toBe(row.version === "server-four-times" ? 4 : 1);
+    expect(patchIndex).toBe(row.expectedPatchCount);
+    if (row.label === "503 then 200 replays with the same ETag") {
+      expect(ifMatchHeaders).toEqual(['"customer-v1"', '"customer-v1"']);
+    }
+  });
+
+  test.each([
+    {
+      label: "CANCELLED cannot be revived",
+      version: "CANCELLED",
+      patchStatus: undefined,
+      expected: "DotyposReservationCancelledError",
+      patchCount: 0,
+    },
+    {
+      label: "CONFIRMED skips PATCH",
+      version: "CONFIRMED",
+      patchStatus: undefined,
+      expected: "success",
+      patchCount: 0,
+    },
+    {
+      label: "version GET 404 is not-found",
+      version: "NEW",
+      getStatus: 404,
+      patchStatus: undefined,
+      expected: "DotyposRejected",
+      reason: "not-found",
+      request: "reservation.version",
+      httpStatus: 404,
+      patchCount: 0,
+    },
+    {
+      label: "NEW and PATCH 412 is a version conflict",
+      version: "NEW",
+      patchStatus: 412,
+      expected: "DotyposVersionConflict",
+      request: "reservation.patch",
+      httpStatus: 412,
+      patchCount: 1,
+    },
+  ])("confirmReservation: $label", async (row) => {
+    let versionReads = 0;
+    let patchCount = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations/reservation-id" &&
+        request.method === "GET"
+      ) {
+        versionReads += 1;
+        if (row.getStatus === 404)
+          return new Response("Not found", { status: 404 });
+        return Response.json(reservation({ status: row.version }), {
+          headers: { ETag: '"reservation-v1"' },
+        });
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/reservations/reservation-id" &&
+        request.method === "PATCH"
+      ) {
+        patchCount += 1;
+        if (row.patchStatus)
+          return new Response("Precondition failed", {
+            status: row.patchStatus,
+          });
+        return Response.json(reservation({ status: "CONFIRMED" }));
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithServiceRetryingInstantly(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .confirmReservation(dotyposReservationId("reservation-id"))
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    if (row.expected === "success") {
+      expect(result).toMatchObject({ _tag: "Success" });
+    } else if (row.expected === "DotyposReservationCancelledError") {
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "DotyposReservationCancelledError",
+          reservationId: "reservation-id",
+        },
+      });
+    } else {
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: row.expected,
+          ...(row.reason && { reason: row.reason }),
+          operation: "confirmReservation",
+          request: row.request,
+          ...(row.httpStatus !== undefined && { httpStatus: row.httpStatus }),
+        },
+      });
+    }
+    expect(versionReads).toBe(1);
+    expect(patchCount).toBe(row.patchCount);
+  });
+});
+
+type SingleReadPageOperation =
+  | "getCustomersPage"
+  | "listCustomerChanges"
+  | "listReservationsPage";
+
+const singleReadPageSpecs = {
+  getCustomersPage: {
+    request: "customers.page",
+    path: "/clouds/cloud-id/customers",
+  },
+  listCustomerChanges: {
+    request: "customers.changes",
+    path: "/clouds/cloud-id/customers",
+  },
+  listReservationsPage: {
+    request: "reservations.page",
+    path: "/clouds/cloud-id/reservations",
+  },
+} as const;
+
+const invokeSingleReadPage = (
+  dotypos: IDotyposService,
+  operation: SingleReadPageOperation
+): Effect.Effect<unknown, unknown, never> => {
+  switch (operation) {
+    case "getCustomersPage":
+      return dotypos.getCustomersPage([dotyposCustomerId("customer-id")]);
+    case "listCustomerChanges":
+      return dotypos.listCustomerChanges({
+        selection: CustomerVersionSelection.ChangedFrom({
+          versionDate: failureOutcomeChangedSince,
+        }),
+      });
+    case "listReservationsPage":
+      return dotypos.listReservationsPage({ page: 1 });
+  }
+};
+
+describe("DotyposService read retry boundary", () => {
+  test.each(Object.keys(singleReadPageSpecs) as SingleReadPageOperation[])(
+    "$operation does not retry a page 503",
+    async (operation) => {
+      const spec = singleReadPageSpecs[operation];
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        return new Response("Unavailable", { status: 503 });
+      });
+      const result = await runWithServiceRetryingInstantly(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* invokeSingleReadPage(dotypos, operation).pipe(
+            Effect.result
+          );
+        }),
+        fetchMock
+      );
+      const pageRequests = fetchMock.mock.calls.filter((call) => {
+        const request = getRequest(call as FetchCall);
+        return (
+          request.method === "GET" &&
+          new URL(request.url).pathname === spec.path
+        );
+      });
+
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "DotyposUnavailable",
+          reason: "server",
+          operation,
+          request: spec.request,
+          httpStatus: 503,
+        },
+      });
+      expect(pageRequests).toHaveLength(1);
+    }
+  );
+
+  test("does not retry a generated products decode failure", async () => {
+    let productRequests = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/products") {
+        productRequests += 1;
+        return Response.json({ data: [{}] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithServiceRetryingInstantly(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getProducts({}).pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "DotyposRejected",
+        reason: "invalid-response",
+        operation: "getProducts",
+        request: "products.list",
+      },
+    });
+    if (Predicate.isTagged(result, "Failure")) {
+      expect(result.failure.httpStatus).toBeUndefined();
+      expect(Object.hasOwn(result.failure, "httpStatus")).toBe(false);
+    }
+    expect(productRequests).toBe(1);
+  });
+
+  test.each([
+    {
+      label: "reservation 404",
+      linkedCustomer: false,
+      missingCustomerId: false,
+    },
+    {
+      label: "linked customer 404",
+      linkedCustomer: true,
+      missingCustomerId: false,
+    },
+    {
+      label: "missing customer ID",
+      linkedCustomer: false,
+      missingCustomerId: true,
+    },
+  ])("getReservation read boundary: $label", async (row) => {
+    let reservationReads = 0;
+    let customerReads = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations/reservation-id") {
+        reservationReads += 1;
+        if (!row.linkedCustomer && !row.missingCustomerId) {
+          return new Response("Not found", { status: 404 });
+        }
+        return Response.json({
+          ...reservation(),
+          ...(row.missingCustomerId && { _customerId: "" }),
+        });
+      }
+      if (url.pathname === "/clouds/cloud-id/customers/customer-id") {
+        customerReads += 1;
+        return new Response("Not found", { status: 404 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+    const result = await runWithServiceRetryingInstantly(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .getReservation(dotyposReservationId("reservation-id"))
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    if (!row.linkedCustomer && !row.missingCustomerId) {
+      expect(result).toMatchObject({ _tag: "Success", success: Option.none() });
+      expect(customerReads).toBe(0);
+    } else if (row.linkedCustomer) {
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "DotyposRejected",
+          reason: "not-found",
+          operation: "getReservation",
+          request: "customer.get",
+          httpStatus: 404,
+        },
+      });
+      expect(customerReads).toBe(1);
+    } else {
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "DotyposRejected",
+          reason: "invalid-response",
+          operation: "getReservation",
+          request: "reservation.get",
+          httpStatus: 502,
+        },
+      });
+      if (Predicate.isTagged(result, "Failure")) {
+        expect(result.failure.httpStatus).toBe(502);
+      }
+      expect(customerReads).toBe(0);
+    }
+    expect(reservationReads).toBe(1);
+  });
+});
+
+const failureOutcomeChangedSince = Schema.decodeUnknownSync(
+  DotyposTimestampFromString
+)("2026-06-20T10:00:00.000Z");
+
+describe("DotyposService package input validation", () => {
+  test.each([
+    { family: "reservation dates", operation: "createReservation" },
+    { family: "customer id filter", operation: "getCustomersPage" },
+    { family: "ambiguous customer lookup", operation: "findOrCreateCustomer" },
+  ])("rejects invalid $family inputs before writes", async (row) => {
+    const duplicateCustomers = [
+      customer({ id: "candidate-1", email: adaAddress }),
+      customer({ id: "candidate-2", email: adaAddress }),
+    ];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        row.operation === "findOrCreateCustomer" &&
+        url.pathname === "/clouds/cloud-id/customers" &&
+        request.method === "GET"
+      ) {
+        return url.searchParams.get("filter")?.includes("email|like|")
+          ? Response.json({
+              data: duplicateCustomers,
+              nextPage: null,
+              lastPage: "1",
+            })
+          : Response.json({ data: [], nextPage: null, lastPage: "1" });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithServiceRetryingInstantly(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        switch (row.operation) {
+          case "createReservation":
+            return yield* dotypos
+              .createReservation({
+                ...failureOutcomeReservationInput,
+                startDate: new Date("invalid"),
+              })
+              .pipe(Effect.result);
+          case "getCustomersPage":
+            return yield* dotypos
+              .getCustomersPage(
+                Array.from({ length: dotyposIdFilterBatchSize + 1 }, (_, i) =>
+                  dotyposCustomerId(`customer-${i + 1}`)
+                )
+              )
+              .pipe(Effect.result);
+          case "findOrCreateCustomer":
+            return yield* dotypos
+              .findOrCreateCustomer({
+                firstName: "Ada",
+                lastName: "Lovelace",
+                email: adaAddress,
+                phone: "+420 777 123 456",
+              })
+              .pipe(Effect.result);
+        }
+      }),
+      fetchMock
+    );
+
+    const expected =
+      row.operation === "findOrCreateCustomer"
+        ? {
+            reason: "ambiguous-match",
+            operation: "findOrCreateCustomer",
+            request: "customers.lookup" as const,
+          }
+        : {
+            reason: "invalid-request",
+            operation: row.operation,
+          };
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "DotyposRejected", ...expected },
+    });
+    if (Predicate.isTagged(result, "Failure")) {
+      expect(result.failure.request).toBe(expected.request);
+      expect(Object.hasOwn(result.failure, "request")).toBe(
+        expected.request !== undefined
+      );
+      expect(result.failure.httpStatus).toBeUndefined();
+    }
+    const customerPosts = fetchMock.mock.calls.filter((call) => {
+      const request = getRequest(call as FetchCall);
+      return (
+        request.method === "POST" &&
+        new URL(request.url).pathname === "/clouds/cloud-id/customers"
+      );
+    });
+    expect(customerPosts).toHaveLength(0);
+    if (row.operation !== "findOrCreateCustomer") {
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
   });
 });

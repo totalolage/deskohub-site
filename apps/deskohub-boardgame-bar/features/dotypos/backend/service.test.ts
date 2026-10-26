@@ -135,7 +135,7 @@ describe("DotyposService.getMenuItems", () => {
 
   test("recovers failed category products load", async () => {
     setBoardgameTestEnv();
-    const { ValidationError } = await import("@deskohub/dotypos");
+    const { DotyposRejected } = await import("@deskohub/dotypos");
 
     const result = await runWithShared(
       (DotyposService) =>
@@ -146,7 +146,12 @@ describe("DotyposService.getMenuItems", () => {
       {
         getCategories: mock(() => Effect.succeed([category({ id: "broken" })])),
         getProducts: mock(() =>
-          Effect.fail(new ValidationError({ message: "nope" }))
+          Effect.fail(
+            new DotyposRejected({
+              operation: "getProducts",
+              reason: "invalid-request",
+            })
+          )
         ),
       }
     );

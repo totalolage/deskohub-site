@@ -1,5 +1,5 @@
-import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { Context, Data, Effect, Layer } from "effect";
+import type { DotyposCustomer, DotyposCustomerId } from "@deskohub/dotypos";
+import { Context, Data, Effect, Layer, Option } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { ReviewAccounts } from "@/features/review-accounts";
 import type { CustomerAccountId } from "../customer-account";
@@ -46,9 +46,10 @@ export type CustomerAccountDeletionDependencies = {
   readonly findLink: (
     accountId: CustomerAccountId
   ) => Effect.Effect<DotyposCustomerId | null, CustomerAccountLinkError>;
+  /** None means the Dotypos customer is already missing. */
   readonly expireCustomer: (
     customerId: DotyposCustomerId
-  ) => Effect.Effect<void, DotyposCustomerError>;
+  ) => Effect.Effect<Option.Option<DotyposCustomer>, DotyposCustomerError>;
   readonly destroyAvatar: (
     accountId: CustomerAccountId
   ) => Effect.Effect<
@@ -89,18 +90,18 @@ export const expireLinkedDotyposProfile = (
 
           const linkedCustomerId = yield* dependencies.findLink(accountId);
           if (linkedCustomerId) {
-            yield* dependencies
-              .expireCustomer(linkedCustomerId)
-              .pipe(
-                Effect.catchTag("ExternalAPIError", (error) =>
-                  error.statusCode === 404
-                    ? Effect.logWarning(
-                        "Customer account deletion: Dotypos profile already missing.",
-                        { code: "dotypos.customer-expiration.missing" }
-                      )
-                    : Effect.fail(error)
-                )
-              );
+            yield* dependencies.expireCustomer(linkedCustomerId).pipe(
+              Effect.tap(
+                Option.match({
+                  onNone: () =>
+                    Effect.logWarning(
+                      "Customer account deletion: Dotypos profile already missing.",
+                      { code: "dotypos.customer-expiration.missing" }
+                    ),
+                  onSome: () => Effect.void,
+                })
+              )
+            );
           }
 
           // The media asset goes before identity removal: an uncertain

@@ -3,7 +3,7 @@ import {
   type DotyposCustomer,
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
-  NetworkError,
+  DotyposUnavailable,
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { testEmailAddress } from "@deskohub/test-email";
@@ -407,7 +407,12 @@ describe("CampaignRecipientService.resolve", () => {
       candidates: [facts("1"), facts("2")],
       dotypos: {
         getCustomers: () =>
-          Effect.fail(new NetworkError({ message: "connection reset" })),
+          Effect.fail(
+            new DotyposUnavailable({
+              operation: "getCustomers",
+              reason: "transport",
+            })
+          ),
       },
     });
     expect(Exit.isFailure(exit) && Cause.squash(exit.cause)).toMatchObject({

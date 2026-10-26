@@ -6,7 +6,7 @@ import {
   DotyposCustomerIdSchema,
   type DotyposReservation,
   DotyposReservationIdSchema,
-  ExternalAPIError,
+  DotyposUnavailable,
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { Effect, Layer, Option } from "effect";
@@ -426,19 +426,22 @@ describe.skipIf(!testDatabase)(
       const customer = customerId("failing");
       await insert([{ label: "failing", customer }]);
       let requests = 0;
-      const rateLimited = Effect.suspend(() => {
-        requests += 1;
-        return Effect.fail(
-          new ExternalAPIError({
-            service: "Dotypos",
-            operation: "listReservationsPage",
-            statusCode: 429,
-          })
-        );
-      });
+      const rateLimited = (
+        operation: "listReservationsPage" | "listActiveReservationsPage"
+      ) =>
+        Effect.suspend(() => {
+          requests += 1;
+          return Effect.fail(
+            new DotyposUnavailable({
+              operation,
+              reason: "rate-limited",
+            })
+          );
+        });
       const failing = DotyposServiceMock({
-        listReservationsPage: () => rateLimited,
-        listActiveReservationsPage: () => rateLimited,
+        listReservationsPage: () => rateLimited("listReservationsPage"),
+        listActiveReservationsPage: () =>
+          rateLimited("listActiveReservationsPage"),
       });
 
       const failures = await Effect.runPromise(
@@ -464,7 +467,10 @@ describe.skipIf(!testDatabase)(
 
       for (const failure of failures) {
         expect(failure).toBeInstanceOf(ReservationVisitsUnavailable);
-        expect(failure.cause).toMatchObject({ statusCode: 429 });
+        expect(failure.cause).toMatchObject({
+          _tag: "DotyposUnavailable",
+          reason: "rate-limited",
+        });
       }
       expect(requests).toBe(2);
     });
