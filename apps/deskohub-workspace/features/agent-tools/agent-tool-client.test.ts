@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { identifyAgentToolClient } from "./agent-tool-client";
+import { readMcpRequest } from "./agent-tool-mcp-messages";
 
 const mcpRequest = ({
   body,
@@ -48,7 +49,9 @@ const toolsList = (envelopeClient?: string) => ({
 });
 
 const identify = (request: Request) =>
-  Effect.runPromise(identifyAgentToolClient(request));
+  Effect.runPromise(
+    readMcpRequest(request).pipe(Effect.map(identifyAgentToolClient))
+  );
 
 describe("identifyAgentToolClient", () => {
   test.each([

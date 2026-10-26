@@ -769,18 +769,26 @@ export function CoworkReservationForm({
   );
 }
 
+/**
+ * A tier card's description. The loading fallback's `placeholder` copy
+ * leaves out the form's data hooks, so only the form's copy matches them.
+ */
 function CoworkTierDescription({
   locale,
+  placeholder = false,
   tier,
 }: {
   readonly locale: Locale;
+  readonly placeholder?: boolean;
   readonly tier: WorkspaceCoworkCurrentTier;
 }) {
   return (
     <div
       className="relative z-10 col-start-1 row-start-3 mb-3 min-h-[5.625rem] max-w-full break-words pt-1 text-sm leading-5 text-navy-blue/70"
-      data-cowork-tier-showcase={tier}
-      data-reservation-type-description={tier}
+      {...(!placeholder && {
+        "data-cowork-tier-showcase": tier,
+        "data-reservation-type-description": tier,
+      })}
     >
       <span className="box-decoration-clone rounded-sm bg-white/85 px-1 py-0.5 group-has-[input:checked]:bg-[color:color-mix(in_srgb,var(--color-burned-orange)_8%,white)]/85">
         {getWorkspaceProductMessage(
@@ -792,11 +800,17 @@ function CoworkTierDescription({
   );
 }
 
+/**
+ * A tier card's perks. The loading fallback's `placeholder` copy leaves out
+ * the form's data hooks and element IDs.
+ */
 function CoworkTierPerks({
   locale,
+  placeholder = false,
   tier,
 }: {
   readonly locale: Locale;
+  readonly placeholder?: boolean;
   readonly tier: WorkspaceCoworkCurrentTier;
 }) {
   const content: WorkspaceProductTierCardMessages =
@@ -810,12 +824,21 @@ function CoworkTierPerks({
   return (
     <div
       className="relative z-10 col-start-1 col-end-3 row-start-4 pb-1 text-sm leading-5 text-navy-blue/70"
-      data-reservation-type-perks={tier}
+      {...(!placeholder && { "data-reservation-type-perks": tier })}
     >
-      <span id={perksLabelId} className="sr-only">
-        {getWorkspaceProductMessage(content.perksLabel, locale)}
-      </span>
-      <ul aria-labelledby={perksLabelId} className="space-y-2">
+      {placeholder ? (
+        <span className="sr-only">
+          {getWorkspaceProductMessage(content.perksLabel, locale)}
+        </span>
+      ) : (
+        <span id={perksLabelId} className="sr-only">
+          {getWorkspaceProductMessage(content.perksLabel, locale)}
+        </span>
+      )}
+      <ul
+        {...(!placeholder && { "aria-labelledby": perksLabelId })}
+        className="space-y-2"
+      >
         {content.perks.map((perk, index) => {
           const text = getWorkspaceProductMessage(perk.message, locale);
           const PerkIcon = perkIcons[index];
@@ -1087,46 +1110,48 @@ export function CoworkReservationFormFallback({
   return (
     <SharedReservationFormFallback
       label={m.reservationFormTitle({}, { locale })}
-    >
-      <div className="space-y-2">
-        <ReservationSkeletonBlock className="h-4 w-28" />
-        <div className="grid gap-4 md:grid-cols-2">
-          {workspaceCoworkCurrentTiers.map((tier) => (
-            <div
-              className={cn(
-                illustratedReservationTypeOptionLayout,
-                "bg-white outline outline-1 -outline-offset-1 outline-navy-blue/10"
-              )}
-              key={tier}
-            >
-              <div className="col-start-1 col-end-3 row-start-1 mb-2 flex items-start justify-between gap-2">
-                <ReservationSkeletonBlock className="h-7 w-32 lg:h-8" />
-                <ReservationSkeletonBlock className="mt-1 h-6 w-6 shrink-0 rounded-full sm:h-7 sm:w-7" />
+      overview={
+        <div className="space-y-2">
+          <p className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
+            {m.reservationTierLabel({}, { locale })}
+          </p>
+          <div className="grid gap-4 md:grid-cols-2">
+            {workspaceCoworkCurrentTiers.map((tier) => (
+              <div
+                className={cn(
+                  illustratedReservationTypeOptionLayout,
+                  "bg-white outline outline-1 -outline-offset-1 outline-navy-blue/10"
+                )}
+                key={tier}
+              >
+                <div className="col-start-1 col-end-3 row-start-1 mb-2 flex items-start justify-between gap-2">
+                  <p className="min-w-0 flex-1 break-words text-[1.375rem] font-semibold leading-7 lg:text-2xl lg:leading-8">
+                    {getWorkspaceProductTierTitle(tier, locale)}
+                  </p>
+                  <span
+                    aria-hidden="true"
+                    className="mt-1 h-6 w-6 shrink-0 rounded-full border-2 border-navy-blue/25 sm:h-7 sm:w-7"
+                  />
+                </div>
+                {/* Prices load with the form; the copy around them is static. */}
+                <div
+                  aria-hidden="true"
+                  className="col-start-1 row-start-2 mb-2 py-1"
+                >
+                  <ReservationSkeletonBlock className="h-8 w-28 bg-aquamarine-green/15 lg:h-9" />
+                </div>
+                <CoworkTierDescription
+                  locale={locale}
+                  placeholder
+                  tier={tier}
+                />
+                <CoworkTierPerks locale={locale} placeholder tier={tier} />
               </div>
-              <div className="col-start-1 row-start-2 mb-2 py-1">
-                <ReservationSkeletonBlock className="h-8 w-28 bg-aquamarine-green/15 lg:h-9" />
-              </div>
-              <div className="col-start-1 row-start-3 mb-3 min-h-[5.625rem] space-y-2 pt-1">
-                <ReservationSkeletonBlock className="h-3 w-full" />
-                <ReservationSkeletonBlock className="h-3 w-11/12" />
-                <ReservationSkeletonBlock className="h-3 w-4/5" />
-              </div>
-              <div className="col-start-1 col-end-3 row-start-4 space-y-2 pb-1">
-                {workspaceProductTierCardMessages[tier].perks.map((perk) => (
-                  <div
-                    className="flex items-center gap-2"
-                    key={getWorkspaceProductMessage(perk.message, locale)}
-                  >
-                    <ReservationSkeletonBlock className="h-8 w-8 shrink-0 rounded-full" />
-                    <ReservationSkeletonBlock className="h-3 w-40" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
-
+      }
+    >
       <div className="grid gap-5 md:grid-cols-2">
         <ReservationSkeletonField />
         <ReservationSkeletonField />

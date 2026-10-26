@@ -3,14 +3,6 @@ import { administrationAgentScope } from "@/features/account/agent-scopes";
 import type { AgentToolAuthorization } from "./agent-tool";
 
 /**
- * Who may call a tool: anyone, a customer who signed in through the
- * Workspace OAuth server, or an administrator's agent.
- */
-const agentToolAccesses = ["public", "signed-in", "administration"] as const;
-
-export type AgentToolAccess = (typeof agentToolAccesses)[number];
-
-/**
  * The tool `_meta` key that publishes who may call a tool. `tools/list`
  * answers every client with the public and the signed-in tools alike, so a
  * client that sends no access token, such as the site's WebMCP

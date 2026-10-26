@@ -4,7 +4,6 @@ import { Context, Data, Effect, Layer, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
-  invoiceEmailDeliveries,
   invoiceNumberCounters,
   invoices,
   manualInvoiceActors,
@@ -74,27 +73,13 @@ class ManualInvoiceConflictError extends Data.TaggedError(
 }> {}
 
 export interface Invoice {
-  readonly id: string;
+  readonly id: InvoiceId;
   readonly workspaceReservationId: string | null;
   readonly paymentAttemptId: string | null;
   readonly dotyposCustomerId: string;
   readonly invoiceNumber: InvoiceNumber;
   readonly issuedAt: Temporal.Instant;
   readonly document: InvoiceDocument;
-}
-
-export type InvoiceDeliveryStatus =
-  | "missing"
-  | "processing"
-  | "accepted"
-  | "failed";
-
-export interface InvoiceListItem {
-  readonly invoice: Invoice;
-  readonly delivery: Readonly<
-    Record<"customer" | "internal", InvoiceDeliveryStatus>
-  >;
-  readonly needsAttention: boolean;
 }
 
 interface InvoiceIssuance {
@@ -160,8 +145,9 @@ export interface IInvoiceRepository {
   readonly issueManual: (
     input: ManualInvoiceIssueInput
   ) => Effect.Effect<ManualInvoiceIssuance, InvoiceRepositoryError>;
+  /** Decrypts every invoice. */
   readonly list: () => Effect.Effect<
-    readonly InvoiceListItem[],
+    readonly Invoice[],
     EffectDrizzleQueryError | InvoiceStorageError
   >;
   /** Decrypts every manual invoice to read who issued it, and through what. */
@@ -276,7 +262,7 @@ export class InvoiceRepository extends Context.Service<
           yield* validateStoredInvoice({ row, document });
 
           return {
-            id: row.id,
+            id: invoiceIdSchema.make(row.id),
             workspaceReservationId: row.workspaceReservationId,
             paymentAttemptId: row.paymentAttemptId,
             dotyposCustomerId: row.dotyposCustomerId,
@@ -712,69 +698,14 @@ export class InvoiceRepository extends Context.Service<
       });
 
       const list = Effect.fn("InvoiceRepository.list")(function* () {
-        const rows = yield* db
-          .select({
-            invoiceId: invoices.id,
-            audience: invoiceEmailDeliveries.audience,
-            state: invoiceEmailDeliveries.state,
-            updatedAt: invoiceEmailDeliveries.updatedAt,
-          })
-          .from(invoices)
-          .leftJoin(
-            invoiceEmailDeliveries,
-            eq(invoiceEmailDeliveries.invoiceId, invoices.id)
-          );
-        const grouped = new Map<
-          string,
-          {
-            customer: InvoiceDeliveryStatus;
-            internal: InvoiceDeliveryStatus;
-            stale: boolean;
-          }
-        >();
-        const staleBefore = Temporal.Now.instant().subtract({ minutes: 1 });
-        for (const row of rows) {
-          const state = grouped.get(row.invoiceId) ?? {
-            customer: "missing",
-            internal: "missing",
-            stale: false,
-          };
-          if (row.audience && row.state) state[row.audience] = row.state;
-          if (
-            row.state === "processing" &&
-            row.updatedAt &&
-            Temporal.Instant.compare(row.updatedAt, staleBefore) < 0
-          ) {
-            state.stale = true;
-          }
-          grouped.set(row.invoiceId, state);
-        }
-
+        const rows = yield* db.select({ id: invoices.id }).from(invoices);
         // ponytail: decrypting the small invoice ledger in-process keeps one
         // repository path; add SQL pagination when the ledger is measurably large.
-        const loaded = yield* Effect.all([...grouped.keys()].map(findById), {
-          concurrency: "inherit",
-        });
-        return loaded.flatMap((invoice): InvoiceListItem[] => {
-          if (!invoice) return [];
-          const state = grouped.get(invoice.id)!;
-          const delivery = {
-            customer: state.customer,
-            internal: state.internal,
-          } as const;
-          return [
-            {
-              invoice,
-              delivery,
-              needsAttention:
-                state.stale ||
-                delivery.customer === "missing" ||
-                delivery.customer === "failed" ||
-                delivery.internal === "missing" ||
-                delivery.internal === "failed",
-            },
-          ];
-        });
+        const loaded = yield* Effect.all(
+          rows.map(({ id }) => findById(id)),
+          { concurrency: "inherit" }
+        );
+        return loaded.filter((invoice) => invoice !== null);
       });
 
       const listManualInvoiceProvenance = Effect.fn(

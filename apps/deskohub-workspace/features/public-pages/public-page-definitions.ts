@@ -61,6 +61,11 @@ export const publicPageDefinitions: Readonly<
     description: m.landingMetadataDescription,
     contentDate: "2026-10-25",
   },
+  "/coworking": {
+    title: m.coworkingMetadataTitle,
+    description: m.coworkingMetadataDescription,
+    contentDate: "2026-10-25",
+  },
   "/contact": {
     title: m.contactMetadataTitle,
     description: m.contactMetadataDescription,
@@ -69,7 +74,7 @@ export const publicPageDefinitions: Readonly<
   "/faq": {
     title: m.faqMetadataTitle,
     description: m.faqMetadataDescription,
-    contentDate: "2026-10-21",
+    contentDate: "2026-10-25",
   },
   "/ai-assistants": {
     title: m.aiAssistantsMetadataTitle,
@@ -90,6 +95,11 @@ export const publicPageDefinitions: Readonly<
   "/team": {
     title: m.teamMetadataTitle,
     description: m.teamMetadataDescription,
+    contentDate: "2026-10-25",
+  },
+  "/gallery": {
+    title: m.galleryMetadataTitle,
+    description: m.galleryMetadataDescription,
     contentDate: "2026-10-25",
   },
   "/ttrpg-room": {

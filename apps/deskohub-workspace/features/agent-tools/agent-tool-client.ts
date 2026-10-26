@@ -1,5 +1,5 @@
-import { Context, Effect, Option, Schema } from "effect";
-import { readMcpMessages } from "./agent-tool-mcp-messages";
+import { Option, Schema } from "effect";
+import type { McpRequest } from "./agent-tool-mcp-messages";
 
 /**
  * The app an MCP request comes from, as far as it changes what the server
@@ -9,19 +9,6 @@ import { readMcpMessages } from "./agent-tool-mcp-messages";
  * is `other`.
  */
 export type AgentToolClient = "chatgpt" | "claude" | "other";
-
-/** The client of the MCP request a tool call runs in. */
-export class CurrentAgentToolClient extends Context.Service<
-  CurrentAgentToolClient,
-  AgentToolClient
->()("@deskohub-workspace/agent-tools/CurrentAgentToolClient") {}
-
-/**
- * Whether the client's directory admits links that start a checkout and
- * copy about paying. ChatGPT's admits commerce only for physical goods, so
- * its customers finish on the prefilled reservation page instead.
- */
-export const admitsCheckout = (client: AgentToolClient) => client !== "chatgpt";
 
 /**
  * The `clientInfo` names directory apps send: ChatGPT as `openai-mcp`, the
@@ -74,26 +61,25 @@ const getClientInfoName = ({ params }: typeof clientInfoMessageSchema.Type) =>
  * which `initialize` and every 2026-07-28 request send, and otherwise by
  * the User-Agent, which 2025-era requests after `initialize` rely on.
  */
-export const identifyAgentToolClient = Effect.fn("agentTools.identifyClient")(
-  function* (request: Request) {
-    const messages = yield* readMcpMessages(request);
-    return Option.match(
-      Option.firstSomeOf(
-        messages.map((message) =>
-          Option.map(decodeClientInfoMessage(message), getClientInfoName)
-        )
-      ),
-      {
-        onSome: (name) => clientInfoNames.get(name.toLowerCase()) ?? "other",
-        onNone: () => {
-          const userAgent =
-            request.headers.get("user-agent")?.toLowerCase() ?? "";
-          return (
-            userAgentTokens.find(([token]) => userAgent.includes(token))?.[1] ??
-            "other"
-          );
-        },
-      }
-    );
-  }
-);
+export const identifyAgentToolClient = ({
+  request,
+  messages,
+}: McpRequest): AgentToolClient =>
+  Option.match(
+    Option.firstSomeOf(
+      messages.map((message) =>
+        Option.map(decodeClientInfoMessage(message), getClientInfoName)
+      )
+    ),
+    {
+      onSome: (name) => clientInfoNames.get(name.toLowerCase()) ?? "other",
+      onNone: () => {
+        const userAgent =
+          request.headers.get("user-agent")?.toLowerCase() ?? "";
+        return (
+          userAgentTokens.find(([token]) => userAgent.includes(token))?.[1] ??
+          "other"
+        );
+      },
+    }
+  );

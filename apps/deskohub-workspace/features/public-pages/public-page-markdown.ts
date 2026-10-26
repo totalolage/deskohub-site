@@ -3,7 +3,9 @@ import { aiAssistantsPageMarkdown } from "@/features/ai-assistants/ai-assistants
 import type { PublicOffering } from "@/features/checkout/public-offerings";
 import { contactPageMarkdown } from "@/features/contact/contact-page-markdown";
 import { coworkReservationPageMarkdown } from "@/features/cowork/cowork-reservation-page-markdown";
+import { coworkingPageMarkdown } from "@/features/cowork/coworking-page-markdown";
 import { faqPageMarkdown } from "@/features/faq/faq-page-markdown";
+import { galleryPageMarkdown } from "@/features/gallery/gallery-page-markdown";
 import type { Locale } from "@/features/i18n";
 import type { LandingPageSaleBannerContent } from "@/features/landing-page/components/landing-page-sale-banner";
 import { landingPageMarkdown } from "@/features/landing-page/landing-page-markdown";
@@ -73,12 +75,18 @@ const reservationPage = (
  */
 export const publicPageMarkdown = {
   "/": { topic: "offer", render: landingPageMarkdown },
+  "/coworking": {
+    topic: "offer",
+    render: (locale, { offerings }) =>
+      Effect.map(offerings, (loaded) => coworkingPageMarkdown(locale, loaded)),
+  },
   "/contact": { topic: "contact", render: contactPageMarkdown },
   "/faq": { topic: "offer", render: faqPageMarkdown },
   "/ai-assistants": { topic: "booking", render: aiAssistantsPageMarkdown },
   "/pricing": { topic: "prices", render: pricingPageMarkdown },
   "/meeting-room": { topic: "offer", render: meetingRoomPageMarkdown },
   "/team": { topic: "offer", render: teamPageMarkdown },
+  "/gallery": { topic: "offer", render: galleryPageMarkdown },
   "/ttrpg-room": { topic: "offer", render: ttrpgRoomPageMarkdown },
   "/terms-and-conditions": legalPage("terms-and-conditions"),
   "/privacy-policy": legalPage("privacy-policy"),

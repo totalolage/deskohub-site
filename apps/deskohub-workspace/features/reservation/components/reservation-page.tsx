@@ -4,10 +4,16 @@ import {
   CheckoutSteps,
 } from "@/features/checkout/components/checkout-flow-layout";
 import type { Locale } from "@/features/i18n";
+import {
+  type PublicPageBreadcrumb,
+  PublicPageBreadcrumbs,
+} from "@/features/public-pages/components/public-page-breadcrumbs";
 import { QueryProvider } from "@/shared/components/query-provider";
 import { ReservationCheckoutSteps } from "./reservation-checkout-steps";
 
 type ReservationPageProps = {
+  /** The pages above this one, ending with it, when it has a place on the site. */
+  readonly breadcrumbs?: ReadonlyArray<PublicPageBreadcrumb>;
   readonly children: ReactNode;
   readonly fallback: ReactNode;
   readonly locale: Locale;
@@ -15,6 +21,7 @@ type ReservationPageProps = {
 };
 
 export function ReservationPage({
+  breadcrumbs,
   children,
   fallback,
   locale,
@@ -23,6 +30,15 @@ export function ReservationPage({
   return (
     <CheckoutFlowLayout
       activeStepKey="chooseSpace"
+      breadcrumbs={
+        breadcrumbs && (
+          <PublicPageBreadcrumbs
+            crumbs={breadcrumbs}
+            locale={locale}
+            tone="inverse"
+          />
+        )
+      }
       locale={locale}
       steps={
         // The step lives in the URL, which the prerendered shell can't read.

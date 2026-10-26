@@ -134,12 +134,20 @@ export const landingPageMarkdown = (
       getWorkspaceProductTierTitle("reserved-desk", locale),
       m.landingOfferingReservedDeskText({}, { locale })
     ),
-    markdownParagraph(
-      markdownLink(
-        coworkReservationUrl,
-        m.coworkReservationLink({}, { locale })
-      )
-    ),
+    markdownList([
+      markdownListItem(
+        markdownLink(
+          coworkReservationUrl,
+          m.coworkReservationLink({}, { locale })
+        )
+      ),
+      markdownListItem(
+        markdownLink(
+          getWorkspacePageUrl(getPagePath("/[locale]/coworking")),
+          m.landingOfferingCoworkPageLink({}, { locale })
+        )
+      ),
+    ]),
     markdownHeading(3, getWorkspaceMeetingRoomProductTitle(locale)),
     markdownParagraph(m.landingOfferingMeetingRoomText({}, { locale })),
     markdownList([
