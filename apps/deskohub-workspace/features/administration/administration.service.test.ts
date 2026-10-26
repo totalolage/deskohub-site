@@ -903,7 +903,11 @@ describe("AdministrationService", () => {
                         })
                       );
                     }
-                    return Effect.succeed(overviewReservations);
+                    return Effect.succeed(
+                      overviewReservations.filter(({ id }) =>
+                        input?.ids?.includes(id)
+                      )
+                    );
                   },
                 }),
                 Layer.succeed(
@@ -1123,6 +1127,190 @@ describe("AdministrationService", () => {
     expect(overview.today).toEqual(reservationOverview.today);
     expect(overview.upcoming).toEqual(reservationOverview.upcoming);
     expect(overview.lastSevenDays).toEqual(reservationOverview.lastSevenDays);
+  });
+
+  const loadLinkedOverview = (input: {
+    readonly linkedIds: readonly string[];
+    readonly listReservations: DotyposService["Service"]["listReservations"];
+  }) =>
+    Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      const source = yield* administration.loadOverviewSource();
+      return { overview: yield* administration.loadOverview(source), source };
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({
+                  db: {
+                    select: () =>
+                      makeQuery(
+                        input.linkedIds.map((id) => ({
+                          customerId: "customer",
+                          failureCode: null,
+                          fulfillmentState: "fulfilled",
+                          id,
+                          paymentState: "paid",
+                          reservationState: "confirmed",
+                        }))
+                      ),
+                  } as never,
+                })
+              ),
+              DotyposServiceMock({
+                getCustomers: (options) =>
+                  Effect.succeed(
+                    options.ids.map((id) => ({
+                      created: "2026-01-01T00:00:00Z",
+                      firstName: id,
+                      id,
+                    }))
+                  ),
+                listReservations: input.listReservations,
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              reservationAuthorsMock(),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+  test("reads only linked bookings for the overview source, in id batches", async () => {
+    setSystemTime(new Date("2026-08-26T12:00:00Z"));
+    const linkedIds = Array.from(
+      { length: 51 },
+      (_, index) => `booking-${String(index).padStart(2, "0")}`
+    );
+    const listInputs: Parameters<
+      DotyposService["Service"]["listReservations"]
+    >[0][] = [];
+
+    const { source } = await loadLinkedOverview({
+      linkedIds,
+      listReservations: (input) =>
+        Effect.sync(() => {
+          listInputs.push(input);
+          return (input?.ids ?? []).slice(-1).map((id) => ({
+            _branchId: "branch",
+            _cloudId: "cloud",
+            _customerId: "customer",
+            endDate: "2026-08-26T09:00:00Z",
+            id,
+            seats: "1",
+            startDate: "2026-08-26T08:00:00Z",
+            status: "CONFIRMED" as const,
+          }));
+        }),
+    });
+
+    expect(listInputs).toEqual([
+      {
+        ids: linkedIds.slice(0, 50),
+        order: "startDateAscending",
+        startsAtOrAfter: "2026-08-19T22:00:00Z",
+        startsBefore: "2026-09-25T22:00:00Z",
+      },
+      {
+        ids: linkedIds.slice(50),
+        order: "startDateAscending",
+        startsAtOrAfter: "2026-08-19T22:00:00Z",
+        startsBefore: "2026-09-25T22:00:00Z",
+      },
+    ]);
+    expect(source.rows.map(({ id }) => id)).toEqual([
+      "booking-49",
+      "booking-50",
+    ]);
+    expect(getAdministrationReservationOverview(source).today).toEqual({
+      completed: 2,
+      unavailable: false,
+      value: 2,
+    });
+  });
+
+  test("reports the overview source unavailable when one id batch fails", async () => {
+    const { source } = await loadLinkedOverview({
+      linkedIds: Array.from(
+        { length: 51 },
+        (_, index) => `booking-${String(index).padStart(2, "0")}`
+      ),
+      listReservations: (input) =>
+        input?.ids?.length === 1
+          ? Effect.fail(
+              new ExternalAPIError({
+                operation: "listReservations",
+                service: "Dotypos",
+                statusCode: 503,
+              })
+            )
+          : Effect.succeed([]),
+    });
+
+    expect(source.reservations).toEqual({ kind: "unavailable" });
+    expect(source.rows).toEqual([]);
+  });
+
+  test("counts a customer once across overview id batches, by their latest booking", async () => {
+    setSystemTime(new Date("2026-08-26T12:00:00Z"));
+    const bookings = [
+      ["booking-00", "customer-a", "2026-08-26T06:00:00Z"],
+      ["booking-01", "customer-b", "2026-08-26T08:00:00Z"],
+      ["booking-50", "customer-a", "2026-08-26T10:00:00Z"],
+    ].map(([id, customerId, startDate]) => ({
+      _branchId: "branch",
+      _cloudId: "cloud",
+      _customerId: customerId,
+      endDate: startDate,
+      id,
+      seats: "1",
+      startDate,
+      status: "CONFIRMED" as const,
+    }));
+
+    const { overview } = await loadLinkedOverview({
+      linkedIds: Array.from(
+        { length: 51 },
+        (_, index) => `booking-${String(index).padStart(2, "0")}`
+      ),
+      listReservations: (input) =>
+        Effect.succeed(bookings.filter(({ id }) => input?.ids?.includes(id))),
+    });
+
+    expect(overview.lastSevenDays).toEqual({
+      completed: 3,
+      unavailable: false,
+      value: 3,
+    });
+    expect(overview.uniqueCustomers.value).toBe(2);
+    expect(
+      overview.uniqueCustomers.customers.map(({ customerId }) => customerId)
+    ).toEqual(["customer-a", "customer-b"]);
+  });
+
+  test("skips the booking provider for the overview source when no Workspace reservation links a booking", async () => {
+    let listCalls = 0;
+    const { source } = await loadLinkedOverview({
+      linkedIds: [],
+      listReservations: () =>
+        Effect.sync(() => {
+          listCalls += 1;
+          return [];
+        }),
+    });
+
+    expect(source.reservations).toEqual({ kind: "available", items: [] });
+    expect(listCalls).toBe(0);
   });
 
   test("returns no booking when Dotypos reports it missing", async () => {
