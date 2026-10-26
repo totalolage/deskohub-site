@@ -153,7 +153,7 @@ describe("public page Markdown route", () => {
       ["reservation", "status", "019edbcf-5026-7ecc-821b-eda46998eaaa"],
     ],
     ["en-US", ["admin"]],
-    ["en-US", ["gallery"]],
+    ["en-US", ["logo"]],
     ["en-US", ["testing"]],
     ["de-DE", ["contact"]],
   ])(

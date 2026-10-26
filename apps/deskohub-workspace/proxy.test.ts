@@ -1448,7 +1448,7 @@ describe("page Markdown negotiation", () => {
     "/en-US/account",
     "/en-US/checkout/pay?state=synthetic",
     "/en-US/reservation/status/019edbcf-5026-7ecc-821b-eda46998eaaa",
-    "/en-US/gallery",
+    "/en-US/logo",
     "/en-US/cookie-settings",
     "/en-US/testing",
     "/en-US/unknown-page",

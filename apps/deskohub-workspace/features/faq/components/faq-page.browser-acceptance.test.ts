@@ -3,8 +3,20 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Browser, chromium, type Locator } from "@playwright/test";
+import { browserModuleStubPlugin } from "@/shared/testing/browser-module-stubs.test-utils";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles.test-utils";
+
+// The harness runs outside a Next.js app, so answer links render as plain
+// anchors.
+const nextModuleStubs: Readonly<Record<string, string>> = {
+  "next/link": `
+    import { createElement } from "react";
+    export default function Link({ href, onNavigate: _onNavigate, prefetch: _prefetch, scroll: _scroll, ...props }) {
+      return createElement("a", { ...props, href: String(href) });
+    }
+  `,
+};
 
 const chromiumAvailable = await playwrightChromiumAvailable();
 let browser: Browser | undefined;
@@ -22,6 +34,7 @@ beforeAll(async () => {
     minify: true,
     naming: "faq-page-harness.js",
     outdir: buildDirectory,
+    plugins: [browserModuleStubPlugin(nextModuleStubs)],
     target: "browser",
   });
   if (!build.success) {
