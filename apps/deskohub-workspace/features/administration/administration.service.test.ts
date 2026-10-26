@@ -1129,13 +1129,14 @@ describe("AdministrationService", () => {
     expect(overview.lastSevenDays).toEqual(reservationOverview.lastSevenDays);
   });
 
-  const loadOverviewSource = (input: {
+  const loadLinkedOverview = (input: {
     readonly linkedIds: readonly string[];
     readonly listReservations: DotyposService["Service"]["listReservations"];
   }) =>
     Effect.gen(function* () {
       const administration = yield* AdministrationService;
-      return yield* administration.loadOverviewSource();
+      const source = yield* administration.loadOverviewSource();
+      return { overview: yield* administration.loadOverview(source), source };
     }).pipe(
       Effect.provide(
         AdministrationService.Default.pipe(
@@ -1159,7 +1160,17 @@ describe("AdministrationService", () => {
                   } as never,
                 })
               ),
-              DotyposServiceMock({ listReservations: input.listReservations }),
+              DotyposServiceMock({
+                getCustomers: (options) =>
+                  Effect.succeed(
+                    options.ids.map((id) => ({
+                      created: "2026-01-01T00:00:00Z",
+                      firstName: id,
+                      id,
+                    }))
+                  ),
+                listReservations: input.listReservations,
+              }),
               Layer.succeed(
                 PostHogReservationHistory,
                 PostHogReservationHistory.of({
@@ -1185,7 +1196,7 @@ describe("AdministrationService", () => {
       DotyposService["Service"]["listReservations"]
     >[0][] = [];
 
-    const source = await loadOverviewSource({
+    const { source } = await loadLinkedOverview({
       linkedIds,
       listReservations: (input) =>
         Effect.sync(() => {
@@ -1229,7 +1240,7 @@ describe("AdministrationService", () => {
   });
 
   test("reports the overview source unavailable when one id batch fails", async () => {
-    const source = await loadOverviewSource({
+    const { source } = await loadLinkedOverview({
       linkedIds: Array.from(
         { length: 51 },
         (_, index) => `booking-${String(index).padStart(2, "0")}`
@@ -1250,9 +1261,46 @@ describe("AdministrationService", () => {
     expect(source.rows).toEqual([]);
   });
 
+  test("counts a customer once across overview id batches, by their latest booking", async () => {
+    setSystemTime(new Date("2026-08-26T12:00:00Z"));
+    const bookings = [
+      ["booking-00", "customer-a", "2026-08-26T06:00:00Z"],
+      ["booking-01", "customer-b", "2026-08-26T08:00:00Z"],
+      ["booking-50", "customer-a", "2026-08-26T10:00:00Z"],
+    ].map(([id, customerId, startDate]) => ({
+      _branchId: "branch",
+      _cloudId: "cloud",
+      _customerId: customerId,
+      endDate: startDate,
+      id,
+      seats: "1",
+      startDate,
+      status: "CONFIRMED" as const,
+    }));
+
+    const { overview } = await loadLinkedOverview({
+      linkedIds: Array.from(
+        { length: 51 },
+        (_, index) => `booking-${String(index).padStart(2, "0")}`
+      ),
+      listReservations: (input) =>
+        Effect.succeed(bookings.filter(({ id }) => input?.ids?.includes(id))),
+    });
+
+    expect(overview.lastSevenDays).toEqual({
+      completed: 3,
+      unavailable: false,
+      value: 3,
+    });
+    expect(overview.uniqueCustomers.value).toBe(2);
+    expect(
+      overview.uniqueCustomers.customers.map(({ customerId }) => customerId)
+    ).toEqual(["customer-a", "customer-b"]);
+  });
+
   test("skips the booking provider for the overview source when no Workspace reservation links a booking", async () => {
     let listCalls = 0;
-    const source = await loadOverviewSource({
+    const { source } = await loadLinkedOverview({
       linkedIds: [],
       listReservations: () =>
         Effect.sync(() => {
