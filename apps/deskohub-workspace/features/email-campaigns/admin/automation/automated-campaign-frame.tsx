@@ -64,9 +64,12 @@ export async function AutomatedCampaignFrame({
       <AutomationStateNotice automation={automation} locale={locale} />
       <nav
         aria-label={m.emailAutomationsSectionsLabel({}, { locale })}
-        className="-mx-4 mb-6 overflow-x-auto px-4 sm:mx-0 sm:px-0"
+        className="mb-6"
       >
-        <ul className="inline-flex h-10 items-center gap-1 rounded-md border border-navy-blue/15 bg-navy-blue/5 p-1">
+        {/* On a phone the tabs share the width by their label length and
+            wrap long labels, so every section stays visible without
+            sideways scrolling. */}
+        <ul className="grid w-full grid-cols-[repeat(4,auto)] gap-1 rounded-md border border-navy-blue/15 bg-navy-blue/5 p-1 sm:inline-flex sm:h-10 sm:w-auto sm:items-center">
           {(
             [
               [
@@ -107,7 +110,7 @@ export async function AutomatedCampaignFrame({
               <AdministrationLink
                 aria-current={key === section ? "page" : undefined}
                 className={cn(
-                  "inline-flex h-8 items-center whitespace-nowrap rounded px-3 font-medium text-navy-blue/70 text-sm transition hover:text-navy-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange",
+                  "flex h-full min-h-8 items-center justify-center rounded px-1.5 py-1 text-center font-medium text-navy-blue/70 text-sm transition max-sm:leading-tight sm:inline-flex sm:h-8 sm:whitespace-nowrap sm:px-3 sm:py-0 hover:text-navy-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange",
                   key === section && "bg-white text-navy-blue shadow-sm"
                 )}
                 href={href}

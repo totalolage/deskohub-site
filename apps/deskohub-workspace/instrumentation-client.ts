@@ -1,4 +1,4 @@
-import "./shared/polyfills/temporal";
+import "./shared/polyfills/temporal-installed";
 
 import { initBotId } from "botid/client/core";
 import { getClientEnv } from "./client-env";

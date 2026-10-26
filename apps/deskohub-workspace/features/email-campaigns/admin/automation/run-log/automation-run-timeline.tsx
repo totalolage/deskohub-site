@@ -193,7 +193,7 @@ export function AutomationRunTimeline({
               )}
             />
             <div className="min-w-0">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 max-sm:flex-col max-sm:items-start max-sm:gap-y-0">
                 <h3 className="font-semibold">{title}</h3>
                 <time
                   className="text-xs text-navy-blue/65 tabular-nums"

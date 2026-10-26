@@ -119,6 +119,23 @@ describe("localized route layout", () => {
     expect(viewport.themeColor).toBeDefined();
   });
 
+  test("starts the document head with the Temporal loader", async () => {
+    const { default: LocaleLayout } = await import("./layout");
+    const { TemporalLoader } = await import(
+      "@/shared/polyfills/temporal-loader"
+    );
+    type Element = { type: unknown; props: { children?: unknown } };
+    const html = (await LocaleLayout({
+      children: page,
+      params: Promise.resolve({ locale: "en-US" }),
+    })) as Element;
+    const [head] = [html.props.children].flat() as Element[];
+    const [first] = [head?.props.children].flat() as Element[];
+
+    expect(head?.type).toBe("head");
+    expect(first?.type).toBe(TemporalLoader);
+  });
+
   test("rejects an unknown locale", async () => {
     const { default: LocaleLayout } = await import("./layout");
     await expect(

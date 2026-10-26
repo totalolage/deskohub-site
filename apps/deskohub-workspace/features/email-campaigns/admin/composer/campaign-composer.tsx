@@ -354,9 +354,11 @@ export function CampaignComposer({
                 : m.emailCampaignsComposerNewTitle({}, { locale: routeLocale }))
             }
           />
-          {/* Keep one toolbar row at the breakpoint where the preview also sticks. */}
-          <div className="sticky top-16 z-30 -mx-4 mb-7 border-y border-navy-blue/10 bg-[#f6f6f3] px-4 py-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 @container">
-            <div className="flex flex-wrap items-center justify-end gap-3 @5xl:flex-nowrap">
+          {/* Keep one toolbar row at the breakpoint where the preview also sticks.
+              On a phone the wrapped toolbar would cover too much of the
+              screen, so it scrolls with the page there. */}
+          <div className="z-30 -mx-4 mb-7 border-y border-navy-blue/10 bg-[#f6f6f3] px-4 py-2 sm:sticky sm:top-16 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 @container">
+            <div className="flex flex-wrap items-center justify-start gap-3 sm:justify-end @5xl:flex-nowrap">
               {saveState}
               {savedOnce && (
                 <CampaignSendControls
@@ -629,11 +631,11 @@ export function CampaignComposer({
                       {},
                       { locale: routeLocale }
                     )}
-                    className="flex w-full sm:inline-flex sm:w-auto"
+                    className="flex h-auto w-full sm:inline-flex sm:h-9 sm:w-auto"
                   >
                     {editable.map((option) => (
                       <TabsTrigger
-                        className="flex-1 px-2 sm:flex-none sm:px-3"
+                        className="h-auto min-h-7 flex-1 flex-wrap gap-y-0.5 self-stretch whitespace-normal px-2 py-1 sm:h-7 sm:flex-none sm:flex-nowrap sm:self-auto sm:whitespace-nowrap sm:px-3 sm:py-0"
                         key={option}
                         value={option}
                       >
