@@ -7,6 +7,7 @@ import {
 import type { Browser } from "@playwright/test";
 import { Effect } from "effect";
 import type { Locale } from "@/features/i18n";
+import type { WorkspaceE2EStep } from "../case-runner";
 import { WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import type { E2EDatabase } from "../integrations/database.service";
@@ -14,13 +15,13 @@ import { readWorkspaceE2ERunPlan } from "../playwright-checkout/run-plan";
 import { runtimeTest } from "../playwright-checkout/runtime-fixtures";
 import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
-import type { WorkspaceE2EStep } from "../types";
 import { verifyAccountLayoutNavigation } from "./account-layout-navigation";
 import {
   findAuthUserIdByEmail,
   findLinkedDotyposCustomerId,
 } from "./auth-rows";
 import { withCallbackHandoffReview } from "./callback-handoff";
+import type { WorkspaceE2ESignInReturns } from "./cases";
 import {
   type WorkspaceE2EAccountCaseId,
   workspaceE2EAccountCaseIds,
@@ -68,7 +69,6 @@ import {
   type SignInHandoffReviewStage,
   signInHandoffReviewTargetByStage,
 } from "./review-targets";
-import type { WorkspaceE2ESignInReturns } from "./cases";
 import type { WorkspaceE2EAccountLifecycleHandoff } from "./types";
 import {
   resolveWorkspaceE2EPreviewLogs,

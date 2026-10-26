@@ -12,13 +12,13 @@ import {
 import { accountSectionLabel } from "@/features/account/sections";
 import { m } from "@/features/i18n";
 import { referralCodeCookieName } from "@/features/referrals/referral-code-cookie";
+import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
 import type { DatasourceConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
 import type { BrowserCommandResult, Runner } from "../runtime";
 import { makeE2ETelemetryMock } from "../services/telemetry.mock";
 import { workspaceE2ETimeouts } from "../timeouts";
-import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../types";
 import {
   type WorkspaceE2EAccountCaseId,
   workspaceE2EAccountCaseIds,

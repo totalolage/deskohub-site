@@ -31,6 +31,7 @@ import {
   getSubmitMeetingRoomReservationScript,
   submitPreparedMeetingRoomReservationScript,
 } from "../browser-scripts";
+import type { WorkspaceE2EStepRunner } from "../case-runner";
 import {
   type MeetingRoomCheckoutSlot,
   makeMeetingRoomCheckoutData,
@@ -62,7 +63,6 @@ import type {
   CheckoutFlowState,
   CheckoutRow,
   WorkspaceE2ECase,
-  WorkspaceE2EStepRunner,
 } from "../types";
 import {
   assertHeldMeetingRoomSlotAvailability,

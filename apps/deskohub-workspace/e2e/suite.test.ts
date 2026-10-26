@@ -3,15 +3,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { Cause, Effect, Exit, Layer } from "effect";
-import { makeCoworkCheckoutData } from "./checkout/data";
 import type { DatasourceConfig } from "./config";
 import { WorkspaceE2EHostedPaymentPermitServiceMock } from "./coordination/hosted-payment-permit.service.mock";
 import { WorkspaceE2EProviderVerificationPermitServiceMock } from "./coordination/provider-verification-permit.service.mock";
 import { workspaceE2EError } from "./errors";
-import { withinWorkspaceE2EDeadline } from "./polling";
 import type { Runner } from "./runtime";
 import { WorkspaceE2ECleanupService } from "./services/cleanup";
-import type { WorkspaceE2EFailureDiagnostic } from "./services/telemetry";
 import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
@@ -53,62 +50,38 @@ test("runs one Playwright-owned case with a stable isolated session", async () =
   );
 });
 
-test("reports the semantic step that timed out", async () => {
+test("captures failure artifacts before closing the browser session", async () => {
   const artifactRoot = await mkdtemp(
-    resolve(tmpdir(), "workspace-e2e-step-timeout-")
+    resolve(tmpdir(), "workspace-e2e-failure-artifacts-")
   );
-  const testCase: WorkspaceE2ECase = {
-    checkoutStates: [],
-    execute: ({ runStep }) =>
-      runStep({
-        execute: Effect.never,
-        id: "wait-for-provider",
-        timeoutMs: 20,
-      }),
-    id: "checkout-timeout",
-    timeoutMs: 1_000,
+  const browserOperations: string[] = [];
+  const run: Runner = async (_command, args) => {
+    if (args.includes("console")) browserOperations.push("capture-console");
+    if (args.includes("close")) browserOperations.push("browser-close");
+    return { exitCode: 0, stderr: "", stdout: "" };
   };
 
   try {
-    const telemetryEvents: E2ETelemetryObservation[] = [];
-    const failureDiagnostics: WorkspaceE2EFailureDiagnostic[] = [];
     const exit = await Effect.runPromiseExit(
       runWorkspaceE2ECase({
         artifactRoot,
         datasourceConfig: testDatasourceConfig,
-        reportFailure: (diagnostic) => failureDiagnostics.push(diagnostic),
-        run: makeTestRunner(),
-        sessionPrefix: "workspace-e2e-timeout",
-        testCase,
+        run,
+        sessionPrefix: "workspace-e2e-failure-artifacts",
+        testCase: {
+          checkoutStates: [],
+          execute: () => Effect.fail(workspaceE2EError("checkout failed")),
+          id: "failure-artifacts",
+          timeoutMs: 1_000,
+        },
         timeouts: workspaceE2ETimeouts,
-      }).pipe(Effect.provide(makeTestSuiteLayer(telemetryEvents)))
+      }).pipe(Effect.provide(makeTestSuiteLayer()))
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      expect(String(Cause.squash(exit.cause))).toContain(
-        "checkout-timeout/wait-for-provider"
-      );
-    }
-    expect(telemetryEvents).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          caseId: "checkout-timeout",
-          failureKind: "timeout",
-          outcome: "timed_out",
-          scope: "step",
-          stepId: "wait-for-provider",
-          timeoutMs: 20,
-        }),
-      ])
-    );
-    expect(failureDiagnostics).toEqual([
-      {
-        caseId: "checkout-timeout",
-        failureKind: "timeout",
-        outcome: "timed_out",
-        stepId: "wait-for-provider",
-      },
+    expect([...new Set(browserOperations)]).toEqual([
+      "capture-console",
+      "browser-close",
     ]);
   } finally {
     await rm(artifactRoot, { force: true, recursive: true });
@@ -216,7 +189,6 @@ test("overlaps reservation cleanup with browser finalization", async () => {
 
 test("propagates browser finalizer failures", async () => {
   const telemetryEvents: E2ETelemetryObservation[] = [];
-  const failureDiagnostics: WorkspaceE2EFailureDiagnostic[] = [];
   const testCase: WorkspaceE2ECase = {
     checkoutStates: [],
     execute: () => Effect.void,
@@ -231,7 +203,6 @@ test("propagates browser finalizer failures", async () => {
     runWorkspaceE2ECase({
       artifactRoot: "/tmp/workspace-e2e-finalizer-test",
       datasourceConfig: testDatasourceConfig,
-      reportFailure: (diagnostic) => failureDiagnostics.push(diagnostic),
       run,
       sessionPrefix: "workspace-e2e-finalizer",
       testCase,
@@ -252,29 +223,12 @@ test("propagates browser finalizer failures", async () => {
     scope: "case",
     timeoutMs: 1_000,
   });
-  expect(failureDiagnostics).toEqual([
-    {
-      caseId: "finalizer-failure",
-      failureKind: "defect",
-      outcome: "failed",
-    },
-  ]);
-});
-
-test("bounds an execution with a real deadline that fails as a timeout", async () => {
-  const failure = await Effect.runPromise(
-    Effect.flip(
-      withinWorkspaceE2EDeadline(
-        Effect.never,
-        "access-code-creation/assert-step",
-        20
-      )
-    )
-  );
-
-  expect(failure.reason).toBe("timeout");
-  expect(failure.operation).toBe("access-code-creation/assert-step");
-  expect(failure.message).toContain("after 20ms");
+  expect(telemetryEvents).toContainEqual({
+    caseId: "finalizer-failure",
+    failureKind: "defect",
+    outcome: "failed",
+    scope: "annotation",
+  });
 });
 
 const makeTestRunner = (): Runner => async (_command, args) => ({

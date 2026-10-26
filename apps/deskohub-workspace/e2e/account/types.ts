@@ -1,9 +1,9 @@
 import type { Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
+import type { WorkspaceE2EStepRunner } from "../case-runner";
 import type { WorkspaceE2EError } from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
 import type { E2ETelemetryService } from "../services/telemetry";
-import type { WorkspaceE2EStepRunner } from "../types";
 import type { WorkspaceE2EAccountCaseId } from "./catalog";
 import type { WorkspaceE2EAccountJournal } from "./journal";
 

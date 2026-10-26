@@ -63,9 +63,6 @@ export const registerWorkspaceE2ECases = (
           "Runs only in the nightly Workspace E2E"
         );
         const { getConfig, getDatasourceConfig } = await import("../config");
-        const { writeWorkspaceE2EFailureAnnotation } = await import(
-          "../github-actions"
-        );
         const { workspaceDir } = await import("../runtime");
         const { writeWorkspaceE2ECaseJournal } = await import("./run-plan");
         const config = getConfig(environment);
@@ -117,9 +114,6 @@ export const registerWorkspaceE2ECases = (
               yield* caseService.runCase({
                 artifactRoot: `${workspaceDir}/e2e-artifacts/checkout/cases`,
                 datasourceConfig,
-                ...(runPlan.runContext.githubRunId
-                  ? { reportFailure: writeWorkspaceE2EFailureAnnotation }
-                  : {}),
                 run: browserRunner,
                 sessionPrefix: `workspace-checkout-e2e-${runPlan.runContext.runId}`,
                 testCase: selected,

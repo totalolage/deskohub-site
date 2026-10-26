@@ -9,6 +9,7 @@ import {
   waitForBrowserUrl,
 } from "../browser";
 import { getPrefilledReservationConditionScript } from "../browser-scripts";
+import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
 import {
   prepareReservationSelection,
   submitReservationForPayPage,
@@ -22,13 +23,7 @@ import { readDotyposReservationStatus } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { assert, log, parseUrl } from "../runtime";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
-import type {
-  CheckoutData,
-  CheckoutFlowState,
-  CheckoutRow,
-  WorkspaceE2EStep,
-  WorkspaceE2EStepRunner,
-} from "../types";
+import type { CheckoutData, CheckoutFlowState, CheckoutRow } from "../types";
 
 export const assertReservationReplacement = ({
   config,

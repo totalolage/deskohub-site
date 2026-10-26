@@ -1,4 +1,5 @@
 import { Cause, Effect, Exit, Option } from "effect";
+import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
 import {
   WorkspaceE2EError,
   workspaceE2EError,
@@ -9,7 +10,6 @@ import { log } from "../runtime";
 import { E2ETelemetryService } from "../services/telemetry";
 import type { WorkspaceE2EFailureReporter } from "../suite";
 import { formatWorkspaceE2EDuration } from "../timeouts";
-import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../types";
 import { writeWorkspaceE2EAccountJournal } from "./journal";
 import type {
   WorkspaceE2EAccountCase,

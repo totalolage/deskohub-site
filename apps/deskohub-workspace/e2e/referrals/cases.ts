@@ -31,6 +31,7 @@ import {
   waitForBrowserReactFormSubmit,
   waitForBrowserText,
 } from "../browser";
+import type { WorkspaceE2EStepRunner } from "../case-runner";
 import { assertDisplayedDiscounts } from "../cases/discounts";
 import {
   type DatasourceConfig,
@@ -47,11 +48,7 @@ import { waitForReactClickHandler } from "../react-handlers";
 import type { WorkspaceE2ERunId } from "../run-identifiers";
 import { assert, type Runner } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
-import type {
-  CheckoutFlowState,
-  WorkspaceE2ECase,
-  WorkspaceE2EStepRunner,
-} from "../types";
+import type { CheckoutFlowState, WorkspaceE2ECase } from "../types";
 import {
   applyCodeAndReadFreshPayUrl,
   assertOrdinaryCodeSlotAvailable,

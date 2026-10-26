@@ -2,16 +2,16 @@ import { afterEach, expect, mock, test } from "bun:test";
 import { Cause, Effect, Exit, Fiber, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
+import type { WorkspaceE2EStep } from "../case-runner";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
 import type { E2ETelemetryObservation } from "../services/telemetry.mock";
 import { makeE2ETelemetryMock } from "../services/telemetry.mock";
 import { workspaceE2ETimeouts } from "../timeouts";
-import type { WorkspaceE2EStep } from "../types";
 import type { WorkspaceE2EAccountJournal } from "./journal";
 import type {
-  WorkspaceE2EAccountCaseCompletion,
   WorkspaceE2EAccountCase,
+  WorkspaceE2EAccountCaseCompletion,
   WorkspaceE2EAccountJournalRef,
 } from "./types";
 

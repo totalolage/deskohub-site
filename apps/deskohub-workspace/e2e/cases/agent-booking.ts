@@ -14,6 +14,7 @@ import type { WorkspaceE2EAccountJournalOwner } from "../account/reconcile";
 import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { openBrowserPage, waitForBrowserUrl } from "../browser";
+import type { WorkspaceE2EStepRunner } from "../case-runner";
 import {
   makeCoworkCheckoutData,
   requireCheckoutDate,
@@ -56,11 +57,7 @@ import { waitForReactClickHandler } from "../react-handlers";
 import { bindCheckoutContact } from "../referrals/checkout";
 import { addRedaction, assert, parseUrl, type Runner } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
-import type {
-  CheckoutFlowState,
-  WorkspaceE2ECase,
-  WorkspaceE2EStepRunner,
-} from "../types";
+import type { CheckoutFlowState, WorkspaceE2ECase } from "../types";
 import { executeCheckoutFlow } from "./checkout";
 
 export const agentBookingCaseId = "checkout-agent-booking";
