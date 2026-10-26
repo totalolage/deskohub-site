@@ -3261,28 +3261,6 @@ export class AdministrationService extends Context.Service<
       });
 
       /**
-       * Reads the linked bookings that start in the range, in id filter
-       * batches. Listing every Dotypos booking in a range instead costs
-       * hundreds of sequential pages on a busy cloud.
-       */
-      const listLinkedBookings = (
-        ids: readonly DotyposReservationId[],
-        range: AdministrationReservationDateRange
-      ) => {
-        const bounds = getAdministrationReservationDateRangeBounds(range);
-        return readInIdFilterBatches(
-          ids.toSorted(),
-          (batchIds) =>
-            dotypos.listReservations({
-              ids: batchIds,
-              ...bounds,
-              order: "startDateAscending",
-            }),
-          { concurrency: 3 }
-        ).pipe(Effect.map((batches) => batches.flat()));
-      };
-
-      /**
        * Counts every live booking in the activity range that a Workspace
        * reservation links, whatever its Dotypos status or Workspace lifecycle,
        * as the Overview reservation total does.
@@ -3409,6 +3387,28 @@ export class AdministrationService extends Context.Service<
         const rows = linkedRows.filter(({ id }) => id && listedIds.has(id));
         return { currentDate, ranges, reservations, rows };
       });
+
+      /**
+       * Reads the linked bookings that start in the range, in id filter
+       * batches. Listing every Dotypos booking in a range instead costs
+       * hundreds of sequential pages on a busy cloud.
+       */
+      const listLinkedBookings = (
+        ids: readonly DotyposReservationId[],
+        range: AdministrationReservationDateRange
+      ) => {
+        const bounds = getAdministrationReservationDateRangeBounds(range);
+        return readInIdFilterBatches(
+          ids.toSorted(),
+          (batchIds) =>
+            dotypos.listReservations({
+              ids: batchIds,
+              ...bounds,
+              order: "startDateAscending",
+            }),
+          { concurrency: 3 }
+        ).pipe(Effect.map((batches) => batches.flat()));
+      };
 
       const loadOverview = Effect.fn("AdministrationService.loadOverview")(
         function* (source: AdministrationOverviewSource) {
