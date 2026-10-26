@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  findExactLocalePathname,
   getLocaleFromPathname,
   parseLocalizedPathname,
   pathnameHasLocale,
@@ -51,5 +52,43 @@ describe("replace, prefix, and variants", () => {
     );
     expect(replaceLocaleInPathname("/zh-Hant-HK", "fr", locales)).toBe("/fr");
     expect(replaceLocaleInPathname("/", "fr", locales)).toBe("/fr");
+  });
+});
+
+describe("exact locale prefix", () => {
+  const languageToLocale = { zh: "zh-Hant-HK", fr: "fr" } as const;
+
+  test("respells a locale prefix written in another letter case", () => {
+    expect(findExactLocalePathname("/ZH-hant-hk/shop", locales)).toBe(
+      "/zh-Hant-HK/shop"
+    );
+    expect(findExactLocalePathname("/EN", locales)).toBe("/en");
+  });
+
+  test("expands a mapped bare language subtag, keeping the rest of the path", () => {
+    expect(
+      findExactLocalePathname("/zh/shop/item", locales, languageToLocale)
+    ).toBe("/zh-Hant-HK/shop/item");
+    expect(findExactLocalePathname("/ZH/", locales, languageToLocale)).toBe(
+      "/zh-Hant-HK/"
+    );
+  });
+
+  test("leaves exact prefixes, unknown segments, and inherited keys alone", () => {
+    expect(
+      findExactLocalePathname("/fr/about", locales, languageToLocale)
+    ).toBe(undefined);
+    expect(findExactLocalePathname("/", locales, languageToLocale)).toBe(
+      undefined
+    );
+    expect(findExactLocalePathname("/france", locales, languageToLocale)).toBe(
+      undefined
+    );
+    expect(
+      findExactLocalePathname("/constructor/x", locales, languageToLocale)
+    ).toBe(undefined);
+    expect(findExactLocalePathname("/de/x", locales, languageToLocale)).toBe(
+      undefined
+    );
   });
 });

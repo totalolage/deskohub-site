@@ -1,8 +1,6 @@
 import "server-only";
 
 import { Effect, Option } from "effect";
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import type { ReactNode } from "react";
 import {
@@ -18,7 +16,13 @@ import {
 } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
+import {
+  publicPageMetadata,
+  requirePublishedPublicPage,
+} from "@/features/public-pages/backend/public-page-route.server";
+import type { PublicPageBreadcrumb } from "@/features/public-pages/components/public-page-breadcrumbs";
+import { publicPageDefinitions } from "@/features/public-pages/public-page-definitions";
+import type { PublicPagePathname } from "@/features/public-pages/public-pages";
 import { checkoutContactReturnState } from "@/features/reservation/backend/checkout-contact-return-state";
 import { loadReservationCheckoutAccount } from "@/features/reservation/backend/reservation-existing-customer.server";
 import {
@@ -57,18 +61,20 @@ type ReservationPageDefinition<
   Kind extends ReservationKind,
   PageData = undefined,
 > = {
-  readonly fallback: (locale: Locale) => ReactNode;
   /**
-   * Release gate shared by the metadata and the page content. Memoize it per
-   * render so both share one evaluation.
+   * The pages above this one, ending with it, when a landing page leads
+   * here. The home page goes first on its own.
    */
-  readonly isEnabled?: () => boolean | Promise<boolean>;
+  readonly breadcrumbs?: (
+    locale: Locale
+  ) => ReadonlyArray<PublicPageBreadcrumb>;
+  readonly fallback: (locale: Locale) => ReactNode;
   readonly kind: Kind;
-  readonly metadata: (locale: Locale) => {
-    readonly description: string;
-    readonly title: string;
-  };
-  readonly pathname: string;
+  /**
+   * The page's public pathname, whose definition gives its title,
+   * description and release gate.
+   */
+  readonly pathname: PublicPagePathname;
   readonly render: (
     context: ReservationPageContext<Kind, PageData>
   ) => ReactNode | Promise<ReactNode>;
@@ -131,27 +137,15 @@ export function createReservationPage<
   const Kind extends ReservationKind,
   PageData = undefined,
 >(definition: ReservationPageDefinition<Kind, PageData>) {
-  async function generateMetadata(): Promise<Metadata> {
-    return runWithRequestLocale(async (locale) => {
-      if (definition.isEnabled && !(await definition.isEnabled())) notFound();
-
-      const { description, title } = definition.metadata(locale);
-
-      return createPublicPageMetadata({
-        locale,
-        pathname: definition.pathname,
-        title: { absolute: title },
-        description,
-      });
-    });
-  }
+  const generateMetadata = publicPageMetadata(definition.pathname);
 
   async function Page({ searchParams }: LocalizedReservationPageProps) {
     return runWithRequestLocale(async (locale) => (
       <ReservationPage
+        breadcrumbs={definition.breadcrumbs?.(locale)}
         fallback={definition.fallback(locale)}
         locale={locale}
-        title={definition.metadata(locale).title}
+        title={publicPageDefinitions[definition.pathname].title({}, { locale })}
       >
         <ReservationPageContent
           definition={definition}
@@ -174,7 +168,7 @@ async function ReservationPageContent<Kind extends ReservationKind, PageData>({
   await connection();
   // The release gate may read the request subject, so it stays out of the
   // prerendered shell. Disabled pages stream the not-found boundary instead.
-  if (definition.isEnabled && !(await definition.isEnabled())) notFound();
+  await requirePublishedPublicPage(definition.pathname);
   const resolvedSearchParams = await searchParams;
 
   return runWithRequestLocale(async (locale) => {

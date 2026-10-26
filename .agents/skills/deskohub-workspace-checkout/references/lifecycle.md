@@ -49,7 +49,7 @@ Dotypos owns customer and reservation facts. Nexi owns external payment facts. T
 - Allowed: Dotypos and Deskohub IDs, HMAC checkout keys, provider order and operation IDs, active email delivery IDs, Nexi `securityToken` (on `payment_attempts` only), legal document paths and hashes, state enums, timestamps, normalized failure codes, amounts, currencies, and quote fingerprints.
 - Server actions hold PII in memory only to find or create the Dotypos customer and derive transient key payloads. Nexi HPP creation may send the signed customer name, email, and phone as `order.customerInfo`; adapters never log or persist them.
 - Shape repository inputs so PII has no destination field. `jsonb` schemas exclude contact fields, notes, and raw provider envelopes.
-- Wrap every confidential SQL scalar with `sensitiveDatabaseParameter`; structured parameters pass through the shared recursive censor.
+- Store confidential text in `sensitiveText` columns, and wrap confidential scalars that skip a column encoder, such as raw `sql` template values, with `sensitiveDatabaseParameter`; structured parameters pass through the shared recursive censor.
 - A new column or JSON field that can carry customer-authored free text needs a separate privacy review.
 - Never recreate a `checkout_return_state_tokens` table. Return pages derive context from signed URL state, route parameters, Nexi verification, and the durable rows.
 - Administration reads current Nexi orders on demand and exposes only allowlisted fields; it persists no provider snapshot.

@@ -1,6 +1,9 @@
 import { normalizePhoneNumber } from "@deskohub/dotypos";
 import { expect, type Page } from "@playwright/test";
-import type { AccountSection } from "@/features/account/sections";
+import {
+  type AccountSection,
+  accountSectionLabel,
+} from "@/features/account/sections";
 import {
   type WorkspaceE2EProfileNavigationDiagnosticCode,
   workspaceE2EError,
@@ -8,7 +11,6 @@ import {
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   type AccountSectionSelectionStage,
-  accountSectionLabels,
   accountSectionLandmarks,
   selectAccountSection,
 } from "./account-sections";
@@ -134,7 +136,7 @@ export async function verifyProfileNavigation(
       page.getByRole("heading", {
         exact: true,
         level: 2,
-        name: accountSectionLabels.billing,
+        name: accountSectionLabel("billing", "en-US"),
       })
     ).toBeVisible({ timeout: workspaceE2ETimeouts.browserAction });
     const originalBilling = {
@@ -190,7 +192,7 @@ export async function verifyProfileNavigation(
       page.getByRole("heading", {
         exact: true,
         level: 2,
-        name: accountSectionLabels.billing,
+        name: accountSectionLabel("billing", "en-US"),
       })
     ).toBeVisible({ timeout: workspaceE2ETimeouts.browserAction });
     await selectProfileSection();

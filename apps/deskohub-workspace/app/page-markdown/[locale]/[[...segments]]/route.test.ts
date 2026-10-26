@@ -7,8 +7,11 @@ import { DiscountReleaseGateService } from "@/features/discounts/discount-releas
 import type { Locale } from "@/features/i18n";
 import { getLegalDocument } from "@/features/legal/content";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
-import { type PublicPage, publicPages } from "@/features/public-pages";
 import { PublishedPublicPagesService } from "@/features/public-pages/backend";
+import {
+  type PublicPage,
+  publicPages,
+} from "@/features/public-pages/public-page-definitions";
 import { publicPageMarkdown } from "@/features/public-pages/public-page-markdown";
 
 // Outside a Next.js render there is no cache to configure.
@@ -150,7 +153,7 @@ describe("public page Markdown route", () => {
       ["reservation", "status", "019edbcf-5026-7ecc-821b-eda46998eaaa"],
     ],
     ["en-US", ["admin"]],
-    ["en-US", ["gallery"]],
+    ["en-US", ["logo"]],
     ["en-US", ["testing"]],
     ["de-DE", ["contact"]],
   ])(

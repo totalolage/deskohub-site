@@ -9,7 +9,7 @@ Code: `features/reservation-access/`, table `reservation_access_grants` (`db/sch
 - The access page resolves the PIN on every authorized request and shows it, with the exact programmed start and end, while the reservation is paid, locally confirmed, and live-confirmed in Dotypos.
 - Never time-gate disclosure or clear an issued PIN by the application clock. Igloohome's programmed AlgoPIN bounds alone decide when the lock accepts it. Local bounds exist only for issuance, customer explanation, and schedule-change recovery.
 - The signed access capability binds the reservation and locale, not a copied interval, so live Dotypos timing stays authoritative. Sign it with `RESERVATION_ACCESS_TOKEN_SECRET`, not the Pay-state keyring or provider credentials, and keep that secret for at least the longest future reservation lifetime.
-- Never log, annotate, or return the PIN outside the authorized access response. Pass it as a `sensitiveDatabaseParameter`. Operator views show grant metadata only.
+- Never log, annotate, or return the PIN outside the authorized access response. It lives in the `sensitiveText` `access_code` column, so the query log censors it. Operator views show grant metadata only.
 
 ## Issuance
 

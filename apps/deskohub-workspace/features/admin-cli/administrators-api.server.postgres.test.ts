@@ -27,14 +27,13 @@ import { AccountRoleGrants } from "@/features/administrators/backend/account-rol
 import { AdministratorRoster } from "@/features/administrators/backend/administrator-roster.service";
 import { LegacyAdministratorBackfill } from "@/features/administrators/backend/legacy-administrator-backfill.service";
 import {
+  type FixtureAccountOptions,
+  workspaceFixtures,
+} from "@/shared/testing/workspace-fixtures.test-utils";
+import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import {
-  deleteTestAccounts,
-  insertTestAccount,
-  insertTestAdministrator,
-} from "@/shared/testing/workspace-test-accounts.test-utils";
 import { AdminCliAdministratorsApiHandlers } from "./administrators-api.server";
 import {
   UnrecordedAdministrationActions,
@@ -75,25 +74,24 @@ describe.skipIf(!postgresDatabase)(
             .where(inArray(cliSessions.id, fixtureSessionIds))
         );
       }
-      await deleteTestAccounts(postgres, fixtureAccounts);
+      await Effect.runPromise(
+        workspaceFixtures(postgres.db).deleteAccounts(fixtureAccounts)
+      );
     });
 
-    const insertAccount = async (
-      options?: Parameters<typeof insertTestAccount>[2]
-    ) => {
-      const account = await insertTestAccount(
-        postgres,
-        "administrators-api",
-        options
+    const insertAccount = async (options?: FixtureAccountOptions) => {
+      const account = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account("administrators-api", options)
       );
       fixtureAccounts.push(account);
       return account;
     };
 
     const insertAdministrator = async () => {
-      const administrator = await insertTestAdministrator(
-        postgres,
-        "administrators-api"
+      const administrator = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account("administrators-api", {
+          roles: ["administrator"],
+        })
       );
       fixtureAccounts.push(administrator);
       return administrator;
@@ -373,10 +371,12 @@ describe.skipIf(!postgresDatabase)(
       const actor = await insertAdministrator();
       const bearer = await insertSession(actor);
       const target = await insertAccount();
-      await postgres.pool.query(
-        `insert into account_role_grants (account_id, role, granted_by_account_id)
-         values ($1, 'administrator', $2)`,
-        [target.accountId, actor.accountId]
+      await Effect.runPromise(
+        workspaceFixtures(postgres.db).grantRole(
+          target.accountId,
+          "administrator",
+          { grantedBy: actor.accountId }
+        )
       );
 
       const outcome = await callAs(bearer, (client) =>
@@ -430,7 +430,7 @@ describe.skipIf(!postgresDatabase)(
     });
 
     test.each([
-      ["an unverified", { emailVerified: false }],
+      ["an unverified", { verified: false }],
       ["a pending-deletion", { deletionRequested: true }],
     ] as const)(
       "refuses to grant the role to %s account",

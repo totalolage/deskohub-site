@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+import Interpolate from "@doist/react-interpolate";
+import Link from "next/link";
 import { connection } from "next/server";
 import { type ReactNode, Suspense } from "react";
 import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
@@ -7,18 +8,15 @@ import { WorkspaceGalleryAlbum } from "@/features/gallery/components/workspace-g
 import { toGalleryPhotos } from "@/features/gallery/types/gallery-photo";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { publicPageMetadata } from "@/features/public-pages/backend/public-page-route.server";
+import { getCoworkReservationPath } from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
 import { Skeleton } from "@/shared/components/ui/skeleton";
+import { textLink } from "@/shared/components/ui/text-link";
 
 export const instant = true;
 
-export async function generateMetadata(): Promise<Metadata> {
-  return runWithRequestLocale((locale) => ({
-    title: m.galleryMetadataTitle({}, { locale }),
-    description: m.galleryMetadataDescription({}, { locale }),
-    robots: { index: false, follow: false },
-  }));
-}
+export const generateMetadata = publicPageMetadata("/gallery");
 
 export default async function GalleryPage() {
   return runWithRequestLocale((locale) => (
@@ -41,13 +39,39 @@ function Gallery({
 }) {
   return (
     <main className="mt-(--site-header-height) min-h-dvh overflow-x-clip bg-[#f4f1ea] text-navy-blue">
-      <h1 className="sr-only">{m.gallerySrTitle({}, { locale })}</h1>
       <section className="relative isolate py-6 sm:py-8 lg:py-10">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_12%_8%,rgba(236,164,35,0.22),transparent_30%),radial-gradient(circle_at_88%_18%,rgba(221,72,10,0.16),transparent_28%),linear-gradient(180deg,#f4f1ea_0%,#ffffff_48%,#f4f1ea_100%)]"
         />
-        <Container className="max-w-7xl">{children}</Container>
+        <Container className="max-w-7xl">
+          <header className="mb-6 max-w-3xl pt-4 sm:mb-8 sm:pt-6">
+            <h1 className="text-4xl leading-tight text-balance sm:text-5xl">
+              {m.galleryPageTitle({}, { locale })}
+            </h1>
+            <p className="mt-4 text-lg leading-8 text-navy-blue/74">
+              <Interpolate
+                string={m.galleryPageIntro({}, { locale })}
+                mapping={{
+                  coworking: (content) => (
+                    <Link href={`/${locale}/coworking`} className={textLink()}>
+                      {content}
+                    </Link>
+                  ),
+                  reservation: (content) => (
+                    <Link
+                      href={getCoworkReservationPath(locale)}
+                      className={textLink()}
+                    >
+                      {content}
+                    </Link>
+                  ),
+                }}
+              />
+            </p>
+          </header>
+          {children}
+        </Container>
       </section>
     </main>
   );
@@ -59,15 +83,14 @@ async function GalleryContent({ locale }: { readonly locale: Locale }) {
     tags: ["gallery"],
     maxResults: 80,
   });
-  const photos = toGalleryPhotos(assets, locale, (index) =>
-    m.galleryImageFallbackAlt({ number: index + 1 }, { locale })
+  const photos = toGalleryPhotos(
+    assets,
+    locale,
+    m.galleryImageFallbackAlt({}, { locale })
   );
 
   return photos.length > 0 ? (
-    <WorkspaceGalleryAlbum
-      photos={photos}
-      openLabel={m.galleryOpenImage({}, { locale })}
-    />
+    <WorkspaceGalleryAlbum locale={locale} photos={photos} />
   ) : (
     <EmptyGallery assetsCount={assets.length} locale={locale} />
   );

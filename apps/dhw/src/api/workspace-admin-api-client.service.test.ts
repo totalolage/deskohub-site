@@ -17,6 +17,7 @@ import {
   AdministrationNexiOperationId,
   AdministrationOperation,
   AdministrationOrder,
+  AdministrationReservationActivity,
   AdministrationReservationSummary,
   AdministrationStandaloneAccessCodeAttemptId,
   AdministrationStandaloneAccessCodeCreateInput,
@@ -954,6 +955,34 @@ describe("WorkspaceAdminApiClient", () => {
             "customer-1"
           )
         )
+    );
+
+    expect(result).toEqual(activity);
+  });
+
+  test("gets reservation activity", async () => {
+    const token = Redacted.make(
+      Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43))
+    );
+    const activity = Schema.decodeUnknownSync(
+      AdministrationReservationActivity
+    )({
+      from: "2026-08-01",
+      to: "2026-08-02",
+      dates: [{ date: "2026-08-01", count: 2 }],
+    });
+
+    const result = await runClientTest(
+      async (request) => {
+        const url = new URL(request.url);
+        expect(request.method).toBe("GET");
+        expect(url.pathname).toBe("/api/v1/cli/overview/reservation-activity");
+        expect(request.headers.get("authorization")).toBe(
+          `Bearer ${Redacted.value(token)}`
+        );
+        return Response.json(activity);
+      },
+      (client) => client.getReservationActivity(token)
     );
 
     expect(result).toEqual(activity);

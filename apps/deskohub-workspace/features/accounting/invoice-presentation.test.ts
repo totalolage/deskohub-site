@@ -202,20 +202,21 @@ describe("invoice presentation", () => {
   });
 
   test.each(["0", "-100"])(
-    "does not request payment for a %s total manual invoice",
+    "prints no payment facts for a %s total manual invoice",
     (price) => {
-      const presentation = getInvoicePresentation(
+      const nothingDue = getInvoicePresentation(
         makeTestManualInvoiceDocument("en-US", price)
       );
+      const requested = getInvoicePresentation(
+        makeTestManualInvoiceDocument("en-US")
+      );
 
-      expect(presentation.status).toBe("Issued");
-      expect(presentation.totalLabel).toBe("Total");
-      expect(presentation.factColumns.flat()).not.toContainEqual(
-        expect.objectContaining({ label: "Due date" })
-      );
-      expect(presentation.factColumns.flat()).not.toContainEqual(
-        expect.objectContaining({ label: "Variable symbol" })
-      );
+      expect(nothingDue.factColumns[0][1]).toBeNull();
+      expect(nothingDue.factColumns[1][2]).toBeNull();
+      expect(requested.factColumns[0][1]).not.toBeNull();
+      expect(requested.factColumns[1][2]).not.toBeNull();
+      expect(nothingDue.status).not.toBe(requested.status);
+      expect(nothingDue.totalLabel).not.toBe(requested.totalLabel);
     }
   );
 

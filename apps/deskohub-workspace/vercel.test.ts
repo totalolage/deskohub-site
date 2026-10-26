@@ -1,14 +1,14 @@
 import { expect, test } from "bun:test";
 import { prefixPathnameWithLocale } from "@deskohub/i18n/pathname";
 import { locales } from "@/features/i18n/routing";
-import { publicPages } from "@/features/public-pages/public-pages";
+import { publicPages } from "@/features/public-pages/public-page-definitions";
 import vercelConfig from "./vercel.json";
 
 // Vercel serves prerendered pages with the cached response's own `Vary`, so the
 // proxy cannot add `Accept` there. A Vercel route transform appends it to every
 // public page, which answers with Markdown when `Accept` prefers it.
 const varyOnAcceptRoute = vercelConfig.routes.find(({ transforms }) =>
-  transforms.some(
+  transforms?.some(
     ({ type, op, target, args }) =>
       type === "response.headers" &&
       op === "append" &&
@@ -34,6 +34,8 @@ test("leaves other paths out of the Accept variation", () => {
   for (const pathname of [
     "/",
     "/en-US/",
+    "/en-US/logo",
+    "/cs-CZ/logo",
     "/en-US/account",
     "/cs-CZ/reservation/status",
     "/en-US/faq/extra",
@@ -43,4 +45,12 @@ test("leaves other paths out of the Accept variation", () => {
   ]) {
     expect(variesOnAccept(pathname)).toBe(false);
   }
+});
+
+test("lets browsers keep the Temporal polyfill, whose URL carries its hash", () => {
+  const polyfillRoute = vercelConfig.routes.find(({ src }) =>
+    new RegExp(src).test("/polyfills/temporal.js")
+  );
+
+  expect(polyfillRoute?.headers?.["Cache-Control"]).toContain("immutable");
 });

@@ -5,7 +5,7 @@ import {
   DotyposService,
   type ExternalAPIError,
   type NetworkError,
-  ValidationError,
+  type ValidationError,
 } from "@deskohub/dotypos";
 import type {
   Customer as DotyposCustomer,
@@ -66,7 +66,6 @@ import {
 } from "@/shared/backend/config/calendar-resource.config";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import {
   type Money,
   type MoneyUnit,
@@ -517,6 +516,7 @@ export interface IDiscountAdministration {
     | NetworkError
     | ValidationError
     | DiscountAdminNotFoundError
+    | InvalidDotyposDiscountPercentage
   >;
 }
 
@@ -1628,7 +1628,8 @@ export class DiscountAdministration extends Context.Service<
           if (
             toDotyposDiscountBasisPoints(group.discountPercent) === undefined
           ) {
-            return yield* new ValidationError({
+            return yield* new InvalidDotyposDiscountPercentage({
+              discountGroupId: input.discountGroupId,
               message:
                 "The Dotypos discount group has an invalid discount percentage.",
             });
@@ -1718,6 +1719,14 @@ export class DiscountAdminNotFoundError extends Data.TaggedError(
   "DiscountAdminNotFoundError"
 )<{
   readonly resource: DiscountAdminMissingResource;
+  readonly message: string;
+}> {}
+
+/** A Dotypos discount group reports a percentage Workspace can't apply. */
+class InvalidDotyposDiscountPercentage extends Data.TaggedError(
+  "InvalidDotyposDiscountPercentage"
+)<{
+  readonly discountGroupId: DotyposDiscountGroupId;
   readonly message: string;
 }> {}
 
@@ -2096,7 +2105,7 @@ const toPromotionCodeValues = (
     | CreateCustomerVoucherAdminInput
     | UpdateVoucherAdminInput
 ) => ({
-  code: sensitiveDatabaseParameter(input.code),
+  code: input.code,
   enabled: input.enabled,
   validFrom:
     input.validFrom === null ? null : Temporal.Instant.from(input.validFrom),

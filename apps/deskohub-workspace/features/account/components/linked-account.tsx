@@ -3,7 +3,6 @@
 import { type ReactNode, useEffect } from "react";
 import type { CustomerProfile } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { useAccountLayout } from "@/features/account/components/account-layout-shell";
-import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { CustomerAgentConnectionsSection } from "@/features/account/components/customer-agent-connections/customer-agent-connections-section";
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
 import { SignInSecuritySection } from "@/features/account/components/passkeys/sign-in-security-section";
@@ -17,6 +16,7 @@ import type {
 } from "@/features/account/contracts";
 import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
 import type { AccountPasskeySettings } from "@/features/account/passkeys";
+import { accountSectionLabel } from "@/features/account/sections";
 import { type Locale, m } from "@/features/i18n";
 import {
   formatReferralDiscount,
@@ -67,7 +67,6 @@ export function LinkedAccount({
     setReservationCount,
   } = useAccountLayout();
   const profileSection = activeSection === "billing" ? "billing" : "profile";
-  const copy = getAccountScreenCopy(locale);
   const accountPasskeys = useAccountPasskeys(passkeys);
 
   const referralDiscount = referralsEnabled
@@ -150,7 +149,7 @@ export function LinkedAccount({
         <DeleteAccountCard
           deletionPending={false}
           email={email}
-          heading={copy.dangerTitle}
+          heading={accountSectionLabel("danger", locale)}
           locale={locale}
           passkeys={accountPasskeys}
         />

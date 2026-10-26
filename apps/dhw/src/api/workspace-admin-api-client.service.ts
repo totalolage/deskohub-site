@@ -67,6 +67,7 @@ import {
   type AdministrationOverviewType,
   type AdministrationReservationAccessGrantType,
   type AdministrationReservationAccessMutationType,
+  type AdministrationReservationActivityType,
   type AdministrationReservationCancellationInputType,
   type AdministrationReservationCancellationResultType,
   type AdministrationReservationDetailType,
@@ -178,6 +179,12 @@ interface IWorkspaceAdminApiClient {
     accessToken: Redacted.Redacted<CliAccessTokenType>
   ) => Effect.Effect<
     AdministrationOverviewType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly getReservationActivity: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>
+  ) => Effect.Effect<
+    AdministrationReservationActivityType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
   readonly listReservations: (
@@ -777,6 +784,16 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           ),
           Effect.mapError(sanitizeSessionError)
         )
+    ),
+    getReservationActivity: Effect.fn(
+      "WorkspaceAdminApiClient.getReservationActivity"
+    )((accessToken: Redacted.Redacted<CliAccessTokenType>) =>
+      makeClient(accessToken).pipe(
+        Effect.flatMap((authorized) =>
+          authorized.administration.getReservationActivity({})
+        ),
+        Effect.mapError(sanitizeSessionError)
+      )
     ),
     listReservations: Effect.fn("WorkspaceAdminApiClient.listReservations")(
       (

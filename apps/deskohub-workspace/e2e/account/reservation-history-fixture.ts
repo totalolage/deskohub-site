@@ -19,8 +19,6 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import {
-  checkoutAttemptKeySchema,
-  checkoutSessionKeySchema,
   type PaymentAttemptId,
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
@@ -34,6 +32,7 @@ import {
   type ReservationAccessGrantId,
   reservationAccessGrantIdSchema,
 } from "@/features/reservation-access/reservation-access";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import type { DatabaseClient } from "../../db/database-client";
 import type { DatasourceConfig } from "../config";
 import {
@@ -45,7 +44,10 @@ import { E2EDatabase } from "../integrations/database.service";
 import { runDatabaseOperation } from "../integrations/database-operation";
 import { getDotyposLayer } from "../integrations/dotypos";
 import { assert } from "../runtime";
-import { seedWorkspaceE2EReservationAuthor } from "./auth-rows";
+import {
+  seedWorkspaceE2EReservationAuthor,
+  type WorkspaceE2EAuthoredReservation,
+} from "./auth-rows";
 
 const fixtureAmount = {
   exponent: 2,
@@ -68,11 +70,7 @@ export type WorkspaceE2EReservationHistoryFixture = {
 type WorkspaceE2EReservationHistoryRows = {
   readonly accessGrant: typeof reservationAccessGrants.$inferInsert;
   readonly paymentAttempt: typeof paymentAttempts.$inferInsert;
-  /** Inserted with its customer's author account. */
-  readonly reservation: Omit<
-    typeof workspaceReservations.$inferInsert,
-    "authorAccountId"
-  >;
+  readonly reservation: WorkspaceE2EAuthoredReservation;
 };
 
 export type WorkspaceE2EReservationHistoryProviderProjection = {
@@ -157,15 +155,16 @@ const makeReservationHistoryDatabase = (
       .from(workspaceReservations)
       .where(eq(workspaceReservations.id, id)),
   transaction: (rows) =>
-    db.transaction((tx) =>
-      Effect.gen(function* () {
-        const authorAccountId = yield* seedWorkspaceE2EReservationAuthor(
+    db.transaction(
+      Effect.fn(function* (tx) {
+        const author = yield* seedWorkspaceE2EReservationAuthor(
           tx,
-          rows.reservation.dotyposCustomerId
+          rows.reservation.customer
         );
-        yield* tx
-          .insert(workspaceReservations)
-          .values({ ...rows.reservation, authorAccountId });
+        yield* workspaceFixtures(tx).reservation({
+          ...rows.reservation,
+          author,
+        });
         yield* tx.insert(paymentAttempts).values(rows.paymentAttempt);
         yield* tx.insert(reservationAccessGrants).values(rows.accessGrant);
       })
@@ -301,29 +300,18 @@ export function seedWorkspaceE2EReservationHistory(
       "seed account reservation history rows",
       database.transaction({
         reservation: {
-          id: ids.reservationId,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(
-            `account-history-attempt-${crypto.randomUUID()}`
-          ),
-          checkoutSessionKey: checkoutSessionKeySchema.make(
-            `account-history-session-${crypto.randomUUID()}`
-          ),
-          dotyposCustomerId: input.customerId,
-          dotyposReservationId,
-          reservationState: "confirmed",
-          paymentState: "paid",
-          fulfillmentState: "fulfilled",
-          activePaymentAttemptId: null,
-          reservationDetails: {
-            coffee: false,
-            entryTier: "basic",
-            kind: "cowork",
+          stage: {
+            reservation: "confirmed",
+            payment: "paid",
+            fulfillment: "fulfilled",
           },
-          locale: "en-US",
-          reservationCreatedAt: now,
-          reservationConfirmedAt: now,
-          paidAt: now,
-          fulfilledAt: now,
+          customer: input.customerId,
+          at: now,
+          overrides: {
+            id: ids.reservationId,
+            dotyposReservationId,
+            reservationCreatedAt: now,
+          },
         },
         paymentAttempt: {
           id: ids.paymentAttemptId,

@@ -20,6 +20,7 @@ import {
 } from "@testing-library/react";
 import { Schema } from "effect";
 import type { ComponentProps } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import {
   type AdvertisedPrice,
   type AdvertisedPriceRequest,
@@ -29,23 +30,28 @@ import {
   buildCoworkCheckoutSummary,
   buildCoworkReservationQuote,
 } from "@/features/checkout/checkout-quote.test-utils";
+import { PublicOfferingsStructuredData } from "@/features/checkout/components/public-offerings-structured-data";
 import {
   getWorkspaceProductByTier,
+  workspaceCoworkCurrentTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
+import {
+  getWorkspaceProductMessage,
+  getWorkspaceProductTierTitle,
+  workspaceProductTierCardMessages,
+} from "@/features/checkout/product-catalog.i18n";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import { m } from "@/features/i18n";
 import {
   continueAndSubmitReservation,
   mockReservationCheckoutStep,
 } from "@/features/reservation/components/reservation-checkout-step.test-utils";
-import { ReservationOfferingsStructuredData } from "@/features/reservation/components/reservation-offerings-structured-data";
 import { mockCheckoutEmailVerification } from "@/features/reservation/components/use-checkout-email-verification.test-utils";
 import { getCoworkDateAdvertisedPriceRequests } from "@/features/reservation/cowork-advertised-price";
 import { coworkReservationDefaultValues } from "@/features/reservation/cowork-reservation";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { getCoworkPageOfferings } from "@/features/reservation/reservation-page-offerings";
-import { coworkReservationPath } from "@/features/reservation/routes";
 import {
   getCoworkAvailabilityQueries,
   getWorkspaceAvailabilityRange,
@@ -117,7 +123,9 @@ mock.module("@/features/reservation/actions/submit-reservation", () => ({
 mockCheckoutEmailVerification();
 mockReservationCheckoutStep();
 
-const { CoworkReservationForm } = await import("./cowork-reservation-form");
+const { CoworkReservationForm, CoworkReservationFormFallback } = await import(
+  "./cowork-reservation-form"
+);
 
 const money = (value: number) => ({
   value,
@@ -458,7 +466,7 @@ describe("CoworkReservationForm advertised pricing", () => {
 
     const view = render(
       <QueryClientProvider client={new QueryClient()}>
-        <ReservationOfferingsStructuredData
+        <PublicOfferingsStructuredData
           locale="en-US"
           offerings={getCoworkPageOfferings({
             advertisedPrices: initialAdvertisedPrices,
@@ -466,7 +474,6 @@ describe("CoworkReservationForm advertised pricing", () => {
             date: initialValues.date,
             locale: "en-US",
           })}
-          pathname={coworkReservationPath}
         />
         <CoworkReservationForm
           checkoutCustomer={{ status: "signed-out" }}
@@ -2387,5 +2394,37 @@ describe("CoworkReservationForm advertised pricing", () => {
         process.env.TZ = originalTimeZone;
       }
     }
+  });
+});
+
+describe("CoworkReservationFormFallback", () => {
+  test("puts each tier's static copy in the page shell without the form's hooks", () => {
+    const html = renderToStaticMarkup(
+      <CoworkReservationFormFallback locale="cs-CZ" />
+    );
+    // The shell HTML escapes text the way React writes it.
+    const shellText = (text: string) => renderToStaticMarkup(<>{text}</>);
+
+    for (const tier of workspaceCoworkCurrentTiers) {
+      expect(html).toContain(
+        shellText(getWorkspaceProductTierTitle(tier, "cs-CZ"))
+      );
+      expect(html).toContain(
+        shellText(
+          getWorkspaceProductMessage(
+            workspaceProductTierCardMessages[tier].description,
+            "cs-CZ"
+          )
+        )
+      );
+      for (const perk of workspaceProductTierCardMessages[tier].perks) {
+        expect(html).toContain(
+          shellText(getWorkspaceProductMessage(perk.message, "cs-CZ"))
+        );
+      }
+    }
+    expect(html).not.toMatch(
+      /data-reservation-type-description|data-reservation-type-perks|data-cowork-tier-showcase|id="cowork-tier-perks-label/
+    );
   });
 });

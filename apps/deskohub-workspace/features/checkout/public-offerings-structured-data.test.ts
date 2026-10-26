@@ -8,10 +8,11 @@ import {
 } from "@/features/checkout/product-catalog";
 import { getPublicCatalogOfferings } from "@/features/checkout/public-offerings";
 import { type Locale, m } from "@/features/i18n";
+import { currencyCZK } from "@/shared/money/currencies";
 import { type Money, moneyMajorAmount } from "@/shared/money/money";
 import { getPublicOfferingsStructuredData } from "./public-offerings-structured-data";
 
-const url = "https://workspace.deskohub.cz/reservation/cowork";
+const bookingUrl = (path: string) => `https://workspace.deskohub.cz${path}`;
 const business = { "@id": "https://workspace.deskohub.cz/#business" };
 
 const getServices = (locale: Locale = "en-US") =>
@@ -21,7 +22,6 @@ const getServices = (locale: Locale = "en-US") =>
       locale,
       office: { maximumSeats: 4 },
     }),
-    url,
   })["@graph"];
 
 const getService = (name: string, locale: Locale = "en-US") => {
@@ -56,9 +56,74 @@ describe("getPublicOfferingsStructuredData", () => {
       expect(service).toMatchObject({
         "@type": "Service",
         provider: business,
-        offers: { "@type": "Offer", url, priceCurrency: "CZK" },
+        offers: { "@type": "Offer", priceCurrency: "CZK" },
       });
+      expect(service.offers).not.toHaveProperty("priceValidUntil");
     }
+  });
+
+  test("offers each product on the page that books it", () => {
+    expect(getServices().map(({ offers }) => offers.url)).toEqual([
+      bookingUrl("/reservation/cowork"),
+      bookingUrl("/reservation/cowork"),
+      bookingUrl("/reservation/meeting-room"),
+      bookingUrl("/reservation/meeting-room"),
+      bookingUrl("/reservation/meeting-room"),
+      bookingUrl("/reservation/office"),
+    ]);
+  });
+
+  test("dates a sale price and strikes through the regular price beside it", () => {
+    const [openSpace] = getPublicCatalogOfferings({ locale: "en-US" });
+    if (!openSpace) throw new Error("Expected the Open Space offering");
+    const [service] = getPublicOfferingsStructuredData({
+      locale: "en-US",
+      offerings: [
+        {
+          ...openSpace,
+          advertisedPrice: {
+            price: currencyCZK(21_750),
+            discount: currencyCZK(7_250),
+            saleLastDay: "2099-08-01",
+          },
+        },
+      ],
+    })["@graph"];
+
+    expect(service?.offers).toMatchObject({
+      price: 217.5,
+      priceValidUntil: "2099-08-01",
+      priceSpecification: [
+        unitPrice(currencyCZK(21_750), "DAY"),
+        {
+          ...unitPrice(currencyCZK(29_000), "DAY"),
+          priceType: "https://schema.org/StrikethroughPrice",
+        },
+      ],
+    });
+  });
+
+  test("keeps the regular price without a sale", () => {
+    const [openSpace] = getPublicCatalogOfferings({ locale: "en-US" });
+    if (!openSpace) throw new Error("Expected the Open Space offering");
+    const [service] = getPublicOfferingsStructuredData({
+      locale: "en-US",
+      offerings: [
+        {
+          ...openSpace,
+          advertisedPrice: {
+            price: openSpace.price,
+            discount: currencyCZK(0),
+          },
+        },
+      ],
+    })["@graph"];
+
+    expect(service?.offers).toMatchObject({
+      price: 290,
+      priceSpecification: [unitPrice(openSpace.price, "DAY")],
+    });
+    expect(service?.offers).not.toHaveProperty("priceValidUntil");
   });
 
   test("prices each cowork tier per day with its paid extras", () => {

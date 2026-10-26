@@ -1,9 +1,10 @@
 import { type ReactNode, useLayoutEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { AccountShell } from "@/features/account/components/shell/account-shell";
-import { getAccountSectionPath } from "@/features/account/routes";
-import type { AccountSection } from "@/features/account/sections";
+import {
+  type AccountSection,
+  accountSectionLabel,
+} from "@/features/account/sections";
 import { type Locale, m } from "@/features/i18n";
 import "../../app/globals.css";
 
@@ -51,23 +52,19 @@ const readFixtureVariants = () => ({
   sidebar: readVariant("sidebar", ["normal", "tall"], "normal"),
 });
 
-type AccountScreenCopy = ReturnType<typeof getAccountScreenCopy>;
-
 function SyntheticContent({
   activeSection,
-  copy,
   locale,
   variant,
 }: {
   readonly activeSection: AccountSection;
-  readonly copy: AccountScreenCopy;
   readonly locale: Locale;
   readonly variant: ContentVariant;
 }) {
   let description: string;
   switch (activeSection) {
     case "billing": {
-      description = copy.billing.paymentMethodsUnavailable;
+      description = m.accountBillingPaymentMethodsUnavailable({}, { locale });
       break;
     }
     case "danger": {
@@ -79,11 +76,11 @@ function SyntheticContent({
       break;
     }
     case "profile": {
-      description = copy.profile.verifiedEmail;
+      description = m.accountProfileScreenVerifiedEmail({}, { locale });
       break;
     }
     case "reservations": {
-      description = copy.reservations.unsupportedDescription;
+      description = m.accountFeatureUnavailableDescription({}, { locale });
       break;
     }
   }
@@ -101,7 +98,7 @@ function SyntheticContent({
       }}
     >
       <h2 id="account-sticky-content-heading">
-        {copy.shell.sections[activeSection]}
+        {accountSectionLabel(activeSection, locale)}
       </h2>
       {contentLines[variant].map((line) => (
         <p key={line}>{description}</p>
@@ -196,7 +193,6 @@ function SyntheticPageFooter({ locale }: { readonly locale: Locale }) {
 
 function Fixture() {
   const { content, locale, sidebar } = readFixtureVariants();
-  const copy = getAccountScreenCopy(locale);
   const [activeSection, setActiveSection] = useState<AccountSection>("profile");
 
   useLayoutEffect(() => {
@@ -207,7 +203,6 @@ function Fixture() {
   const children: ReactNode = (
     <SyntheticContent
       activeSection={activeSection}
-      copy={copy}
       locale={locale}
       variant={content}
     />
@@ -224,17 +219,15 @@ function Fixture() {
       >
         <AccountShell
           activeSection={activeSection}
-          labels={copy.shell}
+          locale={locale}
           onSectionChange={setActiveSection}
           reservationCount={2}
-          sectionHref={(section) => getAccountSectionPath(locale, section)}
           signOut={
             <button type="button">{m.accountSignOut({}, { locale })}</button>
           }
           sidebarFooter={
             <SyntheticSidebarFooter locale={locale} variant={sidebar} />
           }
-          title={m.accountTitle({}, { locale })}
         >
           {children}
         </AccountShell>

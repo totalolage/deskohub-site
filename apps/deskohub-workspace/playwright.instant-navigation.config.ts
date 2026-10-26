@@ -8,9 +8,9 @@ import {
 import { workspaceE2ETimeouts } from "./e2e/timeouts";
 
 // Read-only navigation runs as its own invocation beside the checkout graph:
-// it takes no lease and must not gate checkout setup. Only its administration
-// navigation seeds data: one synthetic administrator, journaled in this
-// config's own output directory and deleted by its teardown project.
+// it takes no lease and must not gate checkout setup. Administration navigation
+// seeds one synthetic administrator. The opt-in review capture also creates
+// and expires one synthetic Dotypos profile for the customer calendar page.
 export default defineConfig({
   ...workspaceE2EPlaywrightDefaults,
   outputDir: "./e2e-artifacts/instant-navigation",
@@ -41,6 +41,13 @@ export default defineConfig({
         "administrator-cleanup.pw.ts",
         "administrator-setup.pw.ts",
       ],
+    },
+    {
+      // Safari and every iOS browser run WebKit, which gets the Temporal
+      // polyfill from the `<head>` loader.
+      name: "webkit",
+      testMatch: "temporal-runtime.pw.ts",
+      use: { browserName: "webkit", launchOptions: {} },
     },
   ],
   testDir: "./e2e/instant-navigation",

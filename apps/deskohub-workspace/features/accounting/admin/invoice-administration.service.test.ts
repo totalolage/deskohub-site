@@ -17,17 +17,21 @@ import {
   makeCoworkInvoiceDocument,
   makeTestManualInvoiceDocument,
 } from "@/features/accounting/invoice.test-utils";
+import { invoiceIdSchema } from "@/features/accounting/manual-invoice";
 import {
   type Invoice,
   InvoiceRepository,
   type ManualInvoiceIssuance,
 } from "../backend/invoice.repository";
 import {
+  type InvoiceDeliverySummary,
+  InvoiceEmailDeliveryRepository,
+} from "../backend/invoice-email-delivery.repository";
+import {
   type InvoiceEmailDeliveryResult,
   InvoiceEmailDeliveryService,
 } from "../backend/invoice-email-delivery.service";
 import {
-  getInvoiceAdministrationPaymentStatus,
   type InvoiceAdministrationListItem,
   InvoiceAdministrationService,
   sortInvoiceAdministrationItems,
@@ -66,6 +70,23 @@ const issuer = {
   },
 } as const;
 
+const deliveredEverywhere: InvoiceDeliverySummary = {
+  customer: "accepted",
+  internal: "accepted",
+  needsAttention: false,
+};
+
+const deliveryLedger = (
+  summaryOf: (invoiceId: string) => InvoiceDeliverySummary = () =>
+    deliveredEverywhere
+) =>
+  Layer.mock(InvoiceEmailDeliveryRepository, {
+    status: (invoiceIds) =>
+      Effect.succeed(
+        new Map(invoiceIds.map((id) => [id, summaryOf(id)] as const))
+      ),
+  });
+
 describe("InvoiceAdministrationService", () => {
   test("projects reservation and customer references", async () => {
     const document = {
@@ -74,7 +95,7 @@ describe("InvoiceAdministrationService", () => {
       fulfilledAt: "2026-08-10T22:30:00Z" as never,
     };
     const invoice = {
-      id: "01980000-0000-7000-8000-000000000009",
+      id: invoiceIdSchema.make("01980000-0000-7000-8000-000000000009"),
       workspaceReservationId: "workspace-reservation",
       paymentAttemptId: "payment-attempt",
       dotyposCustomerId: "dotypos-customer",
@@ -82,13 +103,10 @@ describe("InvoiceAdministrationService", () => {
       issuedAt: Temporal.Instant.from(document.issuedAt),
       document,
     } satisfies Invoice;
-    const listed = {
-      invoice,
-      delivery: {
-        customer: "accepted" as const,
-        internal: "accepted" as const,
-      },
-      needsAttention: false,
+    const failedInternally: InvoiceDeliverySummary = {
+      customer: "accepted",
+      internal: "failed",
+      needsAttention: true,
     };
     const manualDocument = makeTestManualInvoiceDocument("en-US");
     const manualInvoice = {
@@ -106,9 +124,11 @@ describe("InvoiceAdministrationService", () => {
           Layer.mock(DotyposService, {}),
           Layer.mock(InvoiceRepository, {
             findById: () => Effect.succeed(invoice),
-            list: () =>
-              Effect.succeed([listed, { ...listed, invoice: manualInvoice }]),
+            list: () => Effect.succeed([manualInvoice, invoice]),
           }),
+          deliveryLedger((id) =>
+            id === invoice.id ? failedInternally : deliveredEverywhere
+          ),
           Layer.mock(InvoiceEmailDeliveryService, {}),
           Layer.mock(ManualInvoiceCreationRequests, {})
         )
@@ -124,9 +144,15 @@ describe("InvoiceAdministrationService", () => {
       expect(projected).toMatchObject({
         customerId: "dotypos-customer",
         reservationId: "workspace-reservation",
+        delivery: { customer: "accepted", internal: "failed" },
+        needsAttention: true,
       });
     }
-    expect(result[0].items[1]?.reservationId).toBeNull();
+    expect(result[0].items[1]).toMatchObject({
+      reservationId: null,
+      delivery: { customer: "accepted", internal: "accepted" },
+      needsAttention: false,
+    });
     expect(result[1].serviceDate).toBe("2026-08-11");
   });
 
@@ -143,6 +169,7 @@ describe("InvoiceAdministrationService", () => {
               ] as never),
           }),
           Layer.mock(InvoiceRepository, {}),
+          Layer.mock(InvoiceEmailDeliveryRepository, {}),
           Layer.mock(InvoiceEmailDeliveryService, {}),
           Layer.mock(ManualInvoiceCreationRequests, {})
         )
@@ -170,6 +197,7 @@ describe("InvoiceAdministrationService", () => {
         Layer.mergeAll(
           Layer.mock(DotyposService, { createCustomer: providerMutation }),
           Layer.mock(InvoiceRepository, { issueManual: repositoryMutation }),
+          Layer.mock(InvoiceEmailDeliveryRepository, {}),
           Layer.mock(InvoiceEmailDeliveryService, {
             deliverByInvoiceId: deliveryMutation,
           }),
@@ -231,22 +259,8 @@ describe("InvoiceAdministrationService", () => {
           Layer.mock(InvoiceRepository, {
             findById: () => Effect.succeed(stored),
             issueManual,
-            list: () =>
-              Effect.succeed(
-                stored
-                  ? [
-                      {
-                        invoice: stored,
-                        delivery: {
-                          customer: "accepted" as const,
-                          internal: "accepted" as const,
-                        },
-                        needsAttention: false,
-                      },
-                    ]
-                  : []
-              ),
           }),
+          deliveryLedger(),
           Layer.mock(InvoiceEmailDeliveryService, {
             deliverByInvoiceId: () =>
               Effect.succeed({
@@ -370,18 +384,8 @@ describe("InvoiceAdministrationService", () => {
                   changed: true,
                 } satisfies ManualInvoiceIssuance;
               }),
-            list: () =>
-              Effect.succeed(
-                [...stored.values()].map((invoice) => ({
-                  invoice,
-                  delivery: {
-                    customer: "accepted" as const,
-                    internal: "accepted" as const,
-                  },
-                  needsAttention: false,
-                }))
-              ),
           }),
+          deliveryLedger(),
           Layer.mock(InvoiceEmailDeliveryService, {
             deliverByInvoiceId: () =>
               Effect.succeed({
@@ -488,57 +492,5 @@ describe("invoice administration sorting", () => {
         direction: "asc",
       })
     ).toEqual([overdue, paid]);
-  });
-});
-
-describe("invoice administration payment status", () => {
-  const manual = makeTestManualInvoiceDocument("en-US");
-
-  test("keeps reservation invoices paid", () => {
-    expect(
-      getInvoiceAdministrationPaymentStatus(
-        makeCoworkInvoiceDocument("en-US"),
-        "2099-01-01"
-      )
-    ).toBe("paid");
-  });
-
-  test("derives manual status from the Prague calendar date", () => {
-    expect(getInvoiceAdministrationPaymentStatus(manual, "2026-08-31")).toBe(
-      "issued"
-    );
-    expect(getInvoiceAdministrationPaymentStatus(manual, "2026-09-01")).toBe(
-      "due"
-    );
-    expect(getInvoiceAdministrationPaymentStatus(manual, "2026-09-02")).toBe(
-      "overdue"
-    );
-  });
-
-  test("keeps an already-paid manual invoice paid", () => {
-    expect(
-      getInvoiceAdministrationPaymentStatus(
-        makeTestManualInvoiceDocument("en-US", "450", {
-          status: "paid",
-          date: "2026-08-20",
-        }),
-        "2099-01-01"
-      )
-    ).toBe("paid");
-  });
-
-  test("keeps zero and negative manual totals issued after their due date", () => {
-    expect(
-      getInvoiceAdministrationPaymentStatus(
-        makeTestManualInvoiceDocument("en-US", "0"),
-        "2026-09-02"
-      )
-    ).toBe("issued");
-    expect(
-      getInvoiceAdministrationPaymentStatus(
-        makeTestManualInvoiceDocument("en-US", "-1"),
-        "2026-09-02"
-      )
-    ).toBe("issued");
   });
 });

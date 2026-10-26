@@ -7,6 +7,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { AdministratorAgentAuthorization } from "@/features/administrators/backend/administrator-agent-authorization.service";
 import { AdministratorRoster } from "@/features/administrators/backend/administrator-roster.service";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   type CustomerAccountId,
   customerAccountIdSchema,
@@ -2663,9 +2664,11 @@ const grantCarriesAdministration = async (auth: TestAuth, token: string) => {
 
 /** Grants the administrator role to a signed-in test account. */
 const grantAdministrator = (accountId: string) =>
-  testDatabase!.pool.query(
-    `insert into account_role_grants (account_id, role) values ($1, 'administrator')`,
-    [accountId]
+  Effect.runPromise(
+    workspaceFixtures(testDatabase!.db).grantRole(
+      customerAccountIdSchema.make(accountId),
+      "administrator"
+    )
   );
 
 /** Revokes the role as another administrator does from the roster. */

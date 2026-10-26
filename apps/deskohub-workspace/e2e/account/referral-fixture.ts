@@ -15,21 +15,12 @@ import {
   referralInvitationClaims,
   workspaceReservations,
 } from "@/db/schema";
-import { authUser } from "@/db/schema/auth";
-import { customerAccounts } from "@/db/schema/customer-accounts";
-import {
-  type CustomerAccountId,
-  customerAccountIdSchema,
-} from "@/features/account/customer-account";
-import {
-  checkoutAttemptKeySchema,
-  checkoutSessionKeySchema,
-} from "@/features/checkout/checkout-identifiers";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { canonicalPromotionCodeSchema } from "@/features/discounts/contracts";
 import { parseReferralCode } from "@/features/referrals/client";
 import { getReferralReferrerDiscountId } from "@/features/referrals/discount-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import type { DatabaseClient } from "../../db/database-client";
 import type { WorkspaceE2EError } from "../errors";
 import { workspaceE2EError } from "../errors";
@@ -80,7 +71,7 @@ const insertReferralCode = Effect.fn("seedWorkspaceE2EReferralCode")(function* (
   const [promotion] = yield* tx
     .insert(promotionCodes)
     .values({
-      code: sensitiveDatabaseParameter(canonicalPromotionCodeSchema.make(code)),
+      code: canonicalPromotionCodeSchema.make(code),
       enabled: true,
       kind: "referral",
       validFrom: null,
@@ -125,16 +116,11 @@ const insertReferralCode = Effect.fn("seedWorkspaceE2EReferralCode")(function* (
  */
 const insertReferralOwner = Effect.fn("seedWorkspaceE2EReferralOwner")(
   function* (tx: DatabaseTransaction, owner: WorkspaceE2EReferralOwnerInput) {
-    yield* tx.insert(customerAccounts).values({
+    yield* workspaceFixtures(tx).account("e2e-referral-owner", {
       id: customerAccountIdSchema.make(owner.accountId),
-      dotyposCustomerId: owner.dotyposCustomerId,
-    });
-    yield* tx.insert(authUser).values({
-      deletionRequestedAt: null,
-      email: sensitiveDatabaseParameter(owner.email),
-      emailVerified: true,
-      id: owner.accountId,
+      email: owner.email,
       name: owner.name,
+      linkedCustomer: owner.dotyposCustomerId,
     });
     return yield* insertReferralCode(tx, owner.dotyposCustomerId);
   }
@@ -146,40 +132,38 @@ const insertReferralOwner = Effect.fn("seedWorkspaceE2EReferralOwner")(
  */
 const seededReservationIdPrefix = "account-referral-history-";
 
-const makePaidHistoryRow = (input: {
-  readonly authorAccountId: CustomerAccountId;
-  readonly dotyposCustomerId: DotyposCustomerId;
-  readonly dotyposReservationId: DotyposReservationId;
-  readonly paidAt: Date;
-}): typeof workspaceReservations.$inferInsert => {
+/**
+ * Inserts a confirmed booking of the customer's Dotypos reservation, paid when
+ * it was created, with the customer's author account, and returns the row.
+ */
+const insertPaidHistoryReservation = Effect.fn(
+  "seedWorkspaceE2EReferralPaidHistory"
+)(function* (
+  tx: DatabaseTransaction,
+  input: {
+    readonly dotyposCustomerId: DotyposCustomerId;
+    readonly dotyposReservationId: DotyposReservationId;
+    readonly paidAt: Date;
+  }
+) {
   const paidAt = Temporal.Instant.fromEpochMilliseconds(input.paidAt.getTime());
-  return {
-    authorAccountId: input.authorAccountId,
-    checkoutAttemptKey: checkoutAttemptKeySchema.make(
-      `account-referral-attempt-${crypto.randomUUID()}`
+  return yield* workspaceFixtures(tx).reservation({
+    stage: { reservation: "confirmed", payment: "paid" },
+    customer: input.dotyposCustomerId,
+    author: yield* seedWorkspaceE2EReservationAuthor(
+      tx,
+      input.dotyposCustomerId
     ),
-    checkoutSessionKey: checkoutSessionKeySchema.make(
-      `account-referral-session-${crypto.randomUUID()}`
-    ),
-    dotyposCustomerId: input.dotyposCustomerId,
-    dotyposReservationId: input.dotyposReservationId,
-    fulfillmentState: "not_started",
-    id: workspaceReservationIdSchema.make(
-      `${seededReservationIdPrefix}${crypto.randomUUID()}`
-    ),
-    locale: "en-US",
-    paidAt,
-    paymentState: "paid",
-    reservationConfirmedAt: paidAt,
-    reservationCreatedAt: paidAt,
-    reservationDetails: {
-      coffee: false,
-      entryTier: "basic",
-      kind: "cowork",
+    at: paidAt,
+    overrides: {
+      id: workspaceReservationIdSchema.make(
+        `${seededReservationIdPrefix}${crypto.randomUUID()}`
+      ),
+      dotyposReservationId: input.dotyposReservationId,
+      reservationCreatedAt: paidAt,
     },
-    reservationState: "confirmed",
-  };
-};
+  });
+});
 
 export type WorkspaceE2EReferralInviteeInput = {
   readonly invitedDotyposCustomerId: DotyposCustomerId;
@@ -211,17 +195,11 @@ export const seedWorkspaceE2EReferralInvitee = (
             referrerDotyposCustomerId: input.referrerDotyposCustomerId,
           });
           if (input.paidVisit) {
-            yield* tx.insert(workspaceReservations).values(
-              makePaidHistoryRow({
-                authorAccountId: yield* seedWorkspaceE2EReservationAuthor(
-                  tx,
-                  input.invitedDotyposCustomerId
-                ),
-                dotyposCustomerId: input.invitedDotyposCustomerId,
-                dotyposReservationId: input.paidVisit.dotyposReservationId,
-                paidAt: input.paidVisit.endedAt,
-              })
-            );
+            yield* insertPaidHistoryReservation(tx, {
+              dotyposCustomerId: input.invitedDotyposCustomerId,
+              dotyposReservationId: input.paidVisit.dotyposReservationId,
+              paidAt: input.paidVisit.endedAt,
+            });
           }
         })
       )
@@ -245,16 +223,11 @@ export const seedWorkspaceE2EReferrerSavings = (input: {
       "seed synthetic referrer savings",
       db.transaction(
         Effect.fn(function* (tx) {
-          const reservation = makePaidHistoryRow({
-            authorAccountId: yield* seedWorkspaceE2EReservationAuthor(
-              tx,
-              input.referrerDotyposCustomerId
-            ),
+          const reservation = yield* insertPaidHistoryReservation(tx, {
             dotyposCustomerId: input.referrerDotyposCustomerId,
             dotyposReservationId: input.dotyposReservationId,
             paidAt: input.paidAt,
           });
-          yield* tx.insert(workspaceReservations).values(reservation);
           const [attempt] = yield* tx
             .insert(paymentAttempts)
             .values({
@@ -266,7 +239,7 @@ export const seedWorkspaceE2EReferrerSavings = (input: {
                 `e2e-referral-savings-${crypto.randomUUID()}`
               ),
               state: "paid",
-              workspaceReservationId: reservation.id!,
+              workspaceReservationId: reservation.id,
             })
             .returning({ id: paymentAttempts.id });
           if (!attempt) {
@@ -297,7 +270,7 @@ export const seedWorkspaceE2EReferrerSavings = (input: {
             subtotalBeforeCurrency: "CZK",
             subtotalBeforeExponent: 2,
             subtotalBeforeValue: input.saved.subtotal,
-            workspaceReservationId: reservation.id!,
+            workspaceReservationId: reservation.id,
           });
         })
       )

@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { check, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { instant } from "../instant";
+import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
 import { authUser } from "./auth";
 
@@ -22,7 +23,9 @@ export const administratorAssistantConnections = pgTable(
       .$type<CustomerAccountId>()
       .references(() => authUser.id, { onDelete: "set null" }),
     /** The account's login email when the connection was first used. */
-    approvedByAccountEmail: text("approved_by_account_email").notNull(),
+    approvedByAccountEmail: sensitiveText(
+      "approved_by_account_email"
+    ).notNull(),
     /** The assistant's OAuth client ID: its metadata document URL. */
     oauthClientId: text("oauth_client_id").notNull(),
     /** The name the assistant's metadata document published. */

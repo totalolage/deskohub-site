@@ -1,12 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
+import {
+  getWorkspaceMeetingRoomProductTitle,
+  getWorkspaceProductTierTitle,
+} from "@/features/checkout/product-catalog.i18n";
+import { discountIdSchema } from "@/features/discounts/contracts";
 import { workspaceProductFamilies } from "@/features/discounts/product-target";
+import { getFaqQuestions } from "@/features/faq";
 import { locales, m } from "@/features/i18n";
 import type { PublicPageMarkdownSources } from "@/features/public-pages/public-page-markdown";
 import { serializeMarkdown } from "@/shared/markdown/markdown";
 import {
   markdownLinkUrls,
   markdownPlainText,
+  messagePlainText,
 } from "@/shared/markdown/markdown.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
@@ -14,15 +21,20 @@ import {
   workspaceGoogleDirectionsUrl,
 } from "@/shared/utils/workspace-location-map";
 import type { LandingPageSaleBannerContent } from "./components/landing-page-sale-banner";
+import { getLandingPageAmenities } from "./landing-page-amenities";
 import { landingPageMarkdown } from "./landing-page-markdown";
 import { getLandingPageSaleBannerContent } from "./landing-page-sale-banner-content";
 
 const sources = (
   meetingRoomPublished: boolean,
-  saleBanner?: LandingPageSaleBannerContent
+  saleBanner?: LandingPageSaleBannerContent,
+  officePublished = true
 ): PublicPageMarkdownSources => ({
   isPublished: (pathname) =>
-    pathname !== "/meeting-room" || meetingRoomPublished,
+    !(
+      (pathname === "/meeting-room" && !meetingRoomPublished) ||
+      (pathname === "/reservation/office" && !officePublished)
+    ),
   offerings: Effect.succeed([]),
   saleBanner: Effect.succeed(saleBanner),
 });
@@ -30,11 +42,15 @@ const sources = (
 const renderLandingPage = async (
   locale: (typeof locales)[number],
   meetingRoomPublished: boolean,
-  saleBanner?: LandingPageSaleBannerContent
+  saleBanner?: LandingPageSaleBannerContent,
+  officePublished = true
 ) =>
   serializeMarkdown(
     await Effect.runPromise(
-      landingPageMarkdown(locale, sources(meetingRoomPublished, saleBanner))
+      landingPageMarkdown(
+        locale,
+        sources(meetingRoomPublished, saleBanner, officePublished)
+      )
     )
   );
 
@@ -45,6 +61,7 @@ const coworkSaleBanner = (locale: (typeof locales)[number]) =>
     locale,
     reservationKind: "cowork",
     sale: {
+      id: Schema.decodeUnknownSync(discountIdSchema)("summer-sale"),
       title: "*Summer* sale",
       adjustment: { kind: "percentage", basisPoints: 2000 },
       products: [{ kind: "cowork" }],
@@ -70,7 +87,7 @@ describe.each(locales)("landingPageMarkdown in %s", (locale) => {
   const infoEmail = workspaceSiteConstants.contact.infoEmail;
   const origin = "https://workspace.deskohub.cz";
 
-  test("shows the hero, location and contact facts in page order", async () => {
+  test("shows the hero, location, offering, amenities, questions and contact facts in page order", async () => {
     const markdown = await renderLandingPage(locale, true);
 
     expect(markdownPlainText(markdown)).toBe(
@@ -82,7 +99,37 @@ describe.each(locales)("landingPageMarkdown in %s", (locale) => {
         m.landingHeroSecondaryCta({}, { locale }),
         m.landingLocationMapTitle({}, { locale }),
         workspaceFormattedAddress,
+        m.landingLocationTransport({}, { locale }),
+        m.landingAccessTitle({}, { locale }),
+        m.landingAccessStepBook({}, { locale }),
+        m.landingAccessStepEmail({}, { locale }),
+        m.landingAccessStepKeypad({}, { locale }),
+        m.landingAccessStepStay({}, { locale }),
         m.landingLocationMapCta({}, { locale }),
+        m.landingOfferingTitle({}, { locale }),
+        messagePlainText(m.landingOfferingLead({}, { locale })),
+        m.landingOfferingCoworkTitle({}, { locale }),
+        `${getWorkspaceProductTierTitle("open-space", locale)}: ${m.landingOfferingOpenSpaceText({}, { locale })}`,
+        `${getWorkspaceProductTierTitle("reserved-desk", locale)}: ${m.landingOfferingReservedDeskText({}, { locale })}`,
+        m.coworkReservationLink({}, { locale }),
+        m.landingOfferingCoworkPageLink({}, { locale }),
+        getWorkspaceMeetingRoomProductTitle(locale),
+        m.landingOfferingMeetingRoomText({}, { locale }),
+        m.meetingRoomReservationLink({}, { locale }),
+        m.landingOfferingMeetingRoomPageLink({}, { locale }),
+        m.landingOfferingTtrpgTitle({}, { locale }),
+        m.landingOfferingTtrpgText({}, { locale }),
+        m.landingOfferingTtrpgLink({}, { locale }),
+        messagePlainText(m.landingOfferingEvents({}, { locale })),
+        m.landingAmenitiesTitle({}, { locale }),
+        ...getLandingPageAmenities(locale).map(({ id, title, text }) =>
+          id === "bar"
+            ? `${title}: ${text} ${m.landingFooterBarCta({}, { locale })}`
+            : `${title}: ${text}`
+        ),
+        m.landingFaqTeaserTitle({}, { locale }),
+        ...getFaqQuestions(locale),
+        m.landingFaqTeaserLink({}, { locale }),
         m.landingFooterContactTitle({}, { locale }),
         m.landingFooterContactLead({}, { locale }),
         infoEmail,
@@ -101,9 +148,18 @@ describe.each(locales)("landingPageMarkdown in %s", (locale) => {
       `${origin}/reservation/cowork`,
       `${origin}/contact`,
       workspaceGoogleDirectionsUrl,
+      `${origin}/pricing`,
+      `${origin}/reservation/cowork`,
+      `${origin}/coworking`,
+      `${origin}/reservation/meeting-room`,
+      `${origin}/meeting-room`,
+      `${origin}/ttrpg-room`,
+      `${origin}/contact`,
+      "https://bar.deskohub.cz/",
+      `${origin}/faq`,
       `mailto:${infoEmail}`,
       `${origin}/contact`,
-      `${origin}/#overview`,
+      "https://bar.deskohub.cz/",
     ]);
   });
 
@@ -131,11 +187,26 @@ describe.each(locales)("landingPageMarkdown in %s", (locale) => {
     );
   });
 
+  test("notes that private offices are not offered while office booking is unpublished", async () => {
+    const offered = await renderLandingPage(locale, true);
+    const unpublished = await renderLandingPage(locale, true, undefined, false);
+
+    expect(markdownPlainText(offered)).not.toContain(
+      m.landingOfferingOffices({}, { locale })
+    );
+    expect(markdownPlainText(unpublished)).toContain(
+      `${messagePlainText(m.landingOfferingEvents({}, { locale }))} ${m.landingOfferingOffices({}, { locale })}`
+    );
+  });
+
   test("leaves out the meeting room call to action while that page is unpublished", async () => {
     const markdown = await renderLandingPage(locale, false);
 
     expect(markdownPlainText(markdown)).not.toContain(
       m.landingHeroMeetingRoomCta({}, { locale })
+    );
+    expect(markdownPlainText(markdown)).not.toContain(
+      m.landingOfferingMeetingRoomPageLink({}, { locale })
     );
     expect(markdownLinkUrls(markdown)).not.toContain(`${origin}/meeting-room`);
     expect(markdownPlainText(markdown)).toContain(

@@ -18,13 +18,17 @@ const makeTable = (input: Partial<Table> & Pick<Table, "id">): Table => ({
 
 describe("getOfficeReservationSeatCapacity", () => {
   test("rejects multiple assignable office tables", () => {
-    expect(() =>
-      getSeatCapacity([
-        makeTable({ id: "office-small", seats: "4" }),
-        makeTable({ id: "office-large", seats: "8" }),
-        makeTable({ id: "cowork", seats: "20", tags: ["tier:basic"] }),
-      ])
-    ).toThrow("exactly one assignable office table");
+    expect(
+      Effect.runSync(
+        Effect.flip(
+          getOfficeReservationSeatCapacity([
+            makeTable({ id: "office-small", seats: "4" }),
+            makeTable({ id: "office-large", seats: "8" }),
+            makeTable({ id: "cowork", seats: "20", tags: ["tier:basic"] }),
+          ])
+        )
+      )
+    ).toMatchObject({ _tag: "OfficeTableUnconfigured" });
   });
 
   test("ignores unavailable office tables when one assignable table remains", () => {

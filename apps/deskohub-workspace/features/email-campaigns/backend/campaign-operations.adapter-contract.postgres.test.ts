@@ -26,8 +26,8 @@ import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { cliSessions } from "@/db/schema";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import type { CampaignId } from "@/features/email-campaigns/campaign-identifiers";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { insertTestAdministrator } from "@/shared/testing/workspace-test-accounts.test-utils";
 import { richCampaignBodies } from "../body/campaign-body-document.test-utils";
 
 /**
@@ -751,7 +751,11 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
   const { pool } = testDatabase;
 
   beforeAll(async () => {
-    administrator = await insertTestAdministrator(testDatabase, "contract");
+    administrator = await Effect.runPromise(
+      workspaceFixtures(testDatabase.db).account("contract", {
+        roles: ["administrator"],
+      })
+    );
     await Effect.runPromise(
       makeCliAuthenticationSecret().pipe(
         Effect.flatMap(digestCliAuthenticationSecret),
@@ -901,20 +905,21 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
     revoke: boolean,
     run: () => Promise<A>
   ): Promise<A> =>
-    (revoke
-      ? pool.query("delete from account_role_grants where account_id = $1", [
-          administrator.accountId,
-        ])
-      : Promise.resolve()
-    )
-      .then(run)
-      .finally(() =>
-        pool.query(
-          `insert into account_role_grants (account_id, role)
-           values ($1, 'administrator') on conflict do nothing`,
-          [administrator.accountId]
-        )
-      );
+    revoke
+      ? pool
+          .query("delete from account_role_grants where account_id = $1", [
+            administrator.accountId,
+          ])
+          .then(run)
+          .finally(() =>
+            Effect.runPromise(
+              workspaceFixtures(testDatabase.db).grantRole(
+                administrator.accountId,
+                "administrator"
+              )
+            )
+          )
+      : run();
 
   const outcomeOf = (
     result: Effect.Effect<unknown, CampaignOperationError>

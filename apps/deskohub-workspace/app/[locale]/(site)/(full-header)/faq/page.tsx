@@ -1,33 +1,25 @@
-import type { Metadata } from "next";
 import { FaqPage } from "@/features/faq";
 import { loadFaqOccupancyStats } from "@/features/faq/backend/faq-occupancy.server";
-import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
-
-const pathname = "/faq";
+import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
+import { publicPageMetadata } from "@/features/public-pages/backend/public-page-route.server";
 
 export const instant = false;
 
-export async function generateMetadata(): Promise<Metadata> {
-  return runWithRequestLocale((locale) =>
-    createPublicPageMetadata({
-      locale,
-      pathname: pathname,
-      title: { absolute: m.faqMetadataTitle({}, { locale }) },
-      description: m.faqMetadataDescription({}, { locale }),
-    })
-  );
-}
+export const generateMetadata = publicPageMetadata("/faq");
 
 export default async function LocalizedFaqPage() {
-  const occupancy = await loadFaqOccupancyStats();
+  const [occupancy, officePageEnabled] = await Promise.all([
+    loadFaqOccupancyStats(),
+    isOfficePageEnabled(),
+  ]);
 
   return runWithRequestLocale((locale) => (
     <FaqPage
       averageReservationsPerDay={occupancy.averageReservationsPerDay}
       coworkSeatCapacity={occupancy.coworkSeatCapacity}
       locale={locale}
+      officesOffered={officePageEnabled}
     />
   ));
 }

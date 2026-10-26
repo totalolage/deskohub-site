@@ -3,13 +3,19 @@ import "@/shared/testing/workspace-test-env";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { ValidationError } from "@deskohub/dotypos";
 import { Data, Effect, Layer } from "effect";
+import { InvalidDotyposTableSeats } from "@/features/checkout/backend/reservation/workspace-table-selection";
+import { AvailabilityQueryInvalid } from "@/features/reservation/backend/workspace-availability.service";
 
 class SyntheticAvailabilityOutage extends Data.TaggedError(
   "SyntheticAvailabilityOutage"
 )<{ readonly message: string }> {}
 
-let availabilityFailure: ValidationError | SyntheticAvailabilityOutage | null =
-  null;
+let availabilityFailure:
+  | AvailabilityQueryInvalid
+  | InvalidDotyposTableSeats
+  | SyntheticAvailabilityOutage
+  | ValidationError
+  | null = null;
 const loadedAvailabilityQueries: unknown[] = [];
 const loadedStartTimesQueries: unknown[] = [];
 const syntheticStartTimes = {
@@ -67,8 +73,8 @@ describe("workspace availability route", () => {
     await expect(response.json()).resolves.toEqual({ unavailableDates: [] });
   });
 
-  test("answers a validation failure with 400 and its message", async () => {
-    availabilityFailure = new ValidationError({
+  test("answers an invalid query with 400 and its message", async () => {
+    availabilityFailure = new AvailabilityQueryInvalid({
       message: "Synthetic availability query is invalid",
     });
     const { GET } = await loadRoute();
@@ -91,6 +97,20 @@ describe("workspace availability route", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Workspace availability could not be loaded",
     });
+  });
+
+  test.each([
+    new InvalidDotyposTableSeats({
+      tableId: undefined,
+      message: "synthetic seat capacity detail",
+    }),
+    new ValidationError({ message: "synthetic Dotypos validation detail" }),
+  ])("answers a Dotypos response failure with 500: %#", async (failure) => {
+    availabilityFailure = failure;
+    const { GET } = await loadRoute();
+    const response = await GET(new Request(requestUrl));
+
+    expect(response.status).toBe(500);
   });
 
   describe("meeting-room interval mode", () => {

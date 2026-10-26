@@ -6,7 +6,6 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { customerMarketingManagementTokens } from "@/db/schema/customer-marketing-management-tokens";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 
 const tokenByteLength = 32;
 const tokenTextLength = 43;
@@ -58,7 +57,7 @@ export class MarketingManagementService extends Context.Service<
         yield* db
           .insert(customerMarketingManagementTokens)
           .values({
-            tokenHash: sensitiveDatabaseParameter(hashToken(token)),
+            tokenHash: hashToken(token),
             dotyposCustomerId: customerId,
             purpose: "link",
             expiresAt: now.add({ hours: linkLifetimeDays * 24 }),
@@ -89,10 +88,7 @@ export class MarketingManagementService extends Context.Service<
                 .set({ revokedAt: now })
                 .where(
                   and(
-                    eq(
-                      customerMarketingManagementTokens.tokenHash,
-                      sensitiveDatabaseParameter(linkHash)
-                    ),
+                    eq(customerMarketingManagementTokens.tokenHash, linkHash),
                     eq(customerMarketingManagementTokens.purpose, "link"),
                     isNull(customerMarketingManagementTokens.revokedAt),
                     gt(customerMarketingManagementTokens.expiresAt, now)
@@ -111,7 +107,7 @@ export class MarketingManagementService extends Context.Service<
                 link.expiresAt
               );
               yield* tx.insert(customerMarketingManagementTokens).values({
-                tokenHash: sensitiveDatabaseParameter(sessionHash),
+                tokenHash: sessionHash,
                 dotyposCustomerId: link.dotyposCustomerId,
                 purpose: "session",
                 expiresAt,
@@ -145,10 +141,7 @@ export class MarketingManagementService extends Context.Service<
           .from(customerMarketingManagementTokens)
           .where(
             and(
-              eq(
-                customerMarketingManagementTokens.tokenHash,
-                sensitiveDatabaseParameter(hashToken(token))
-              ),
+              eq(customerMarketingManagementTokens.tokenHash, hashToken(token)),
               eq(customerMarketingManagementTokens.purpose, "session"),
               isNull(customerMarketingManagementTokens.revokedAt),
               gt(
@@ -176,10 +169,7 @@ export class MarketingManagementService extends Context.Service<
           .set({ revokedAt: Temporal.Now.instant() })
           .where(
             and(
-              eq(
-                customerMarketingManagementTokens.tokenHash,
-                sensitiveDatabaseParameter(tokenHash)
-              ),
+              eq(customerMarketingManagementTokens.tokenHash, tokenHash),
               eq(customerMarketingManagementTokens.purpose, "session"),
               isNull(customerMarketingManagementTokens.revokedAt)
             )
@@ -192,12 +182,7 @@ export class MarketingManagementService extends Context.Service<
         const [existing] = yield* db
           .select({ purpose: customerMarketingManagementTokens.purpose })
           .from(customerMarketingManagementTokens)
-          .where(
-            eq(
-              customerMarketingManagementTokens.tokenHash,
-              sensitiveDatabaseParameter(tokenHash)
-            )
-          )
+          .where(eq(customerMarketingManagementTokens.tokenHash, tokenHash))
           .limit(1)
           .pipe(Effect.mapError(() => unavailableError()));
 

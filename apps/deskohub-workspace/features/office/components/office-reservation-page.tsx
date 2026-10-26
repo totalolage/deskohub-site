@@ -1,13 +1,12 @@
 import { Schema } from "effect";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
+import { PublicOfferingsStructuredData } from "@/features/checkout/components/public-offerings-structured-data";
 import type { CanonicalPromotionCode } from "@/features/discounts";
-import { type Locale, m } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { loadOfficeReservationSeatCapacity } from "@/features/office/backend/office-reservation-capacity.server";
-import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
 import { preloadPageAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { preloadPageAvailability } from "@/features/reservation/backend/workspace-availability-loader";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
-import { ReservationOfferingsStructuredData } from "@/features/reservation/components/reservation-offerings-structured-data";
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
   getOfficeReservationEndsOn,
@@ -42,12 +41,7 @@ export const officeReservationPage = createReservationPage({
   fallback: (locale) => <OfficeReservationFormFallback locale={locale} />,
   kind: "office",
   pathname: officeReservationPath,
-  isEnabled: isOfficePageEnabled,
   loadPageData: loadOfficeReservationSeatCapacity,
-  metadata: (locale: Locale) => ({
-    title: m.reservationOfficeMetadataTitle({}, { locale }),
-    description: m.reservationOfficeMetadataDescription({}, { locale }),
-  }),
   render: renderOfficeReservationContent,
 });
 
@@ -120,7 +114,7 @@ export async function renderOfficeReservationContent({
 
   return (
     <>
-      <ReservationOfferingsStructuredData
+      <PublicOfferingsStructuredData
         locale={locale}
         offerings={getOfficePageOfferings({
           advertisedPrices: initialAdvertisedPrices,
@@ -133,7 +127,6 @@ export async function renderOfficeReservationContent({
           },
           submittedCode,
         })}
-        pathname={officeReservationPath}
       />
       <OfficeReservationForm
         checkoutSessionId={checkoutSessionId}

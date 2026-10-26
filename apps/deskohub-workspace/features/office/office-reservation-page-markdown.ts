@@ -28,6 +28,4 @@ export const officeReservationPageMarkdown = (
         markdownParagraph(office.description),
         publicOfferingsMarkdown([office], locale),
       ]),
-    summary: m.reservationOfficeMetadataDescription({}, { locale }),
-    title: m.reservationOfficeMetadataTitle({}, { locale }),
   });

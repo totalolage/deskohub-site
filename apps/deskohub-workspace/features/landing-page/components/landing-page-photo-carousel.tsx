@@ -1,6 +1,7 @@
 "use client";
 
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
+import { getLocalizedCloudinaryContextValue } from "@deskohub/cloudinary-image/localized-context";
 import { motion, type Transition } from "motion/react";
 import { useMemo, useState } from "react";
 import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
@@ -9,7 +10,6 @@ import {
   useMotionSwipeCarousel,
   wrapIndex,
 } from "@/features/gallery/hooks/use-motion-swipe-carousel";
-import { getLocalizedCloudinaryContextValue } from "@/features/gallery/types/localized-cloudinary-context";
 import { type Locale, m } from "@/features/i18n";
 import { CarouselPositionIndicator } from "@/shared/components/carousel-position-indicator";
 import { cn } from "@/shared/utils";
@@ -88,9 +88,9 @@ const getSlideMotion = (offset: number) => {
   };
 };
 
-const getImageAlt = (image: CloudinaryAsset, index: number, locale: Locale) =>
+const getImageAlt = (image: CloudinaryAsset, locale: Locale) =>
   getLocalizedCloudinaryContextValue(image, "alt", locale) ||
-  m.landingCarouselImageAlt({ number: index + 1 }, { locale });
+  m.landingCarouselImageAlt({}, { locale });
 
 const getSlideZIndex = (offset: number) => {
   if (Math.abs(offset) < 0.5) return 20;
@@ -140,7 +140,7 @@ export function LandingPagePhotoCarousel({
   };
   const lightboxSlides: SlideImage[] = useMemo(
     () =>
-      images.map((image, index) => {
+      images.map((image) => {
         const caption = getLocalizedCloudinaryContextValue(
           image,
           "caption",
@@ -148,7 +148,7 @@ export function LandingPagePhotoCarousel({
         );
 
         return {
-          alt: getImageAlt(image, index, locale),
+          alt: getImageAlt(image, locale),
           description: caption,
           height: image.height,
           src: image.secure_url,
@@ -261,10 +261,12 @@ export function LandingPagePhotoCarousel({
               <span className="relative block h-full overflow-hidden rounded-[1.25rem] bg-navy-blue sm:rounded-[1.85rem]">
                 <CloudinaryImage
                   source={image}
-                  alt={getImageAlt(image, logicalIndex, locale)}
+                  alt={getImageAlt(image, locale)}
                   className="absolute inset-0"
-                  preload={isCurrent}
                   size={{ width: "fill", height: "fill" }}
+                  // The current slide's width: 78% of the content box, capped
+                  // by the stage height at each breakpoint.
+                  sizes="(min-width: 64rem) min(78vw, 823px), (min-width: 40rem) min(78vw, 691px), min(78vw, 443px)"
                   variant="gallery"
                 />
                 <span className="absolute inset-0 bg-[linear-gradient(135deg,rgba(0,2,79,0.18),transparent_42%,rgba(245,125,0,0.18))]" />

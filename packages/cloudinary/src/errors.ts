@@ -1,3 +1,4 @@
+import * as Data from "effect/Data";
 import * as Schema from "effect/Schema";
 import { CloudinaryPublicIdSchema } from "./schema";
 
@@ -55,3 +56,15 @@ export class CloudinaryRenameError extends Schema.TaggedErrorClass<CloudinaryRen
     httpCode: Schema.optional(Schema.Finite),
   }
 ) {}
+
+export class CloudinaryWebhookAuthError extends Data.TaggedError(
+  "CloudinaryWebhookAuthError"
+)<{ readonly message: string }> {}
+
+export class CloudinaryWebhookValidationError extends Data.TaggedError(
+  "CloudinaryWebhookValidationError"
+)<{
+  readonly message: string;
+  readonly payload?: string;
+  readonly cause?: unknown;
+}> {}

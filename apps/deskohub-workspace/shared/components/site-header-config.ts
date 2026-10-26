@@ -24,8 +24,10 @@ const siteHeaderSectionIds = {
 
 type SiteHeaderMenuItemId =
   | "locationMap"
+  | "coworking"
   | "meetingRoom"
   | "office"
+  | "pricing"
   | "gallery"
   | "team"
   | "faq"
@@ -95,6 +97,11 @@ const createSiteHeaderConfig = (
       href: localizedHash(`#${siteHeaderSectionIds.locationMap}`),
     },
     {
+      id: "coworking",
+      label: m.landingNavCoworking({}, { locale }),
+      href: `${localePath}/coworking`,
+    },
+    {
       id: "meetingRoom",
       label: m.landingNavMeetingRoom({}, { locale }),
       href: `${localePath}/meeting-room`,
@@ -103,6 +110,11 @@ const createSiteHeaderConfig = (
       id: "office",
       label: m.landingNavPrivateOffice({}, { locale }),
       href: getOfficeReservationPath(locale),
+    },
+    {
+      id: "pricing",
+      label: m.landingNavPricing({}, { locale }),
+      href: `${localePath}/pricing`,
     },
     {
       id: "gallery",

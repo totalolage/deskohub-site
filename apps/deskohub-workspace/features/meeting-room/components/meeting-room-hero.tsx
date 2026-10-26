@@ -1,4 +1,5 @@
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
+import { getLocalizedCloudinaryContextValue } from "@deskohub/cloudinary-image/localized-context";
 import { ArrowDown, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
@@ -114,7 +115,10 @@ export function MeetingRoomHero({ image, locale }: MeetingRoomHeroProps) {
             <div className="relative aspect-[9/10] overflow-hidden rounded-t-[15.625rem] rounded-b-[1.625rem] border border-white/25 bg-white/6">
               {image ? (
                 <CloudinaryImage
-                  alt={m.meetingRoomHeroImageAlt({}, { locale })}
+                  alt={
+                    getLocalizedCloudinaryContextValue(image, "alt", locale) ??
+                    m.meetingRoomHeroImageAlt({}, { locale })
+                  }
                   className="absolute inset-0 size-full object-cover brightness-[0.74] contrast-[1.08] saturate-[0.76]"
                   preload
                   sizes="(min-width: 1024px) 46vw, (min-width: 640px) 75vw, 92vw"

@@ -1,5 +1,3 @@
-import { Predicate } from "effect";
-
 type ConsentStatus = "granted" | "denied";
 
 export interface ConsentState {
@@ -32,7 +30,7 @@ function getGtmQueueWindow(): GtmQueueWindow | undefined {
 
   window.dataLayer = window.dataLayer || [];
 
-  if (Predicate.isFunction(window.gtag)) return window as GtmQueueWindow;
+  if (window.gtag) return window as GtmQueueWindow;
 
   window.gtag = function gtag(...gtagArguments) {
     window.dataLayer?.push(gtagArguments);

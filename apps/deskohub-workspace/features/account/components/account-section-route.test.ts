@@ -37,16 +37,12 @@ mock.module("@/features/account/components/account-page", () => ({
 mock.module("@/features/account/components/account-loading", () => ({
   AccountContentLoading,
 }));
-mock.module("@/features/account/components/account-screen-copy", () => ({
-  getAccountScreenCopy: () => ({
-    shell: { sections: { billing: "synthetic-billing" } },
-  }),
-}));
 const i18n = await import("@/features/i18n");
 mock.module("@/features/i18n", () => ({
   ...i18n,
   m: {
     accountMetadataDescription: () => "synthetic-description",
+    accountSectionBilling: () => "synthetic-billing",
     accountSectionMetadataTitle: ({ section }: { readonly section: string }) =>
       `${section} | synthetic-title`,
   },

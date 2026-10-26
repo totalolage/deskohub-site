@@ -102,6 +102,7 @@ const toLandingPageSaleBannerContent = (input: {
     locale: input.locale,
     reservationKind: getBannerReservationKind(input.sale),
     sale: {
+      id: input.sale.discount.id,
       title: input.sale.discount.label,
       adjustment: input.sale.discount.adjustment,
       products: input.sale.products,

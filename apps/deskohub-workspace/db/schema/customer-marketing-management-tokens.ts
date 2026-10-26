@@ -2,13 +2,14 @@ import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { sql } from "drizzle-orm";
 import { check, pgTable, text } from "drizzle-orm/pg-core";
 import { instant } from "../instant";
+import { sensitiveText } from "../sensitive-text";
 
 type CustomerMarketingManagementTokenPurpose = "link" | "session";
 
 export const customerMarketingManagementTokens = pgTable(
   "customer_marketing_management_tokens",
   {
-    tokenHash: text("token_hash").primaryKey(),
+    tokenHash: sensitiveText("token_hash").primaryKey(),
     dotyposCustomerId: text("dotypos_customer_id")
       .notNull()
       .$type<DotyposCustomerId>(),

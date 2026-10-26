@@ -7,7 +7,7 @@ import {
   type ExternalAPIError,
   type NetworkError,
   type Reservation,
-  ValidationError,
+  type ValidationError,
 } from "@deskohub/dotypos";
 import { Effect, Match } from "effect";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
@@ -19,16 +19,19 @@ import {
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { getReservationDate } from "@/features/reservation/reservation-interval";
+import type { ReservationIntervalValidationError } from "@/features/reservation/reservation-interval-domain";
 import { formatMoney, moneyWithValue } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 import {
   getWorkspaceReservationInterval,
   type TableAssignmentUnavailableError,
+  type TableAssignmentUnconfigured,
   type WorkspaceTableAssignmentReservation,
   WorkspaceTableAssignmentService,
 } from "./workspace-table-assignment.service";
 import { workspaceBookingSeatCount } from "./workspace-table-occupancy";
+import type { InvalidDotyposTableSeats } from "./workspace-table-selection";
 
 export interface CreateWorkspaceDotyposReservationInput {
   readonly paymentOrderId: WorkspaceReservationId;
@@ -43,8 +46,11 @@ export const createWorkspaceDotyposReservation: (
 ) => Effect.Effect<
   Reservation,
   | ExternalAPIError
+  | InvalidDotyposTableSeats
   | NetworkError
+  | ReservationIntervalValidationError
   | TableAssignmentUnavailableError
+  | TableAssignmentUnconfigured
   | ValidationError,
   DotyposService | WorkspaceTableAssignmentService
 > = Effect.fn("createWorkspaceDotyposReservation")(
@@ -58,10 +64,6 @@ export const createWorkspaceDotyposReservation: (
     const tableAssignments = yield* WorkspaceTableAssignmentService;
     const { startsAt, endsAt } = yield* getWorkspaceReservationInterval(
       input.reservation
-    ).pipe(
-      Effect.mapError(
-        (cause) => new ValidationError({ message: cause.message, cause })
-      )
     );
     const tableId: DotyposTableId = yield* tableAssignments.assignTableId(
       input.reservation

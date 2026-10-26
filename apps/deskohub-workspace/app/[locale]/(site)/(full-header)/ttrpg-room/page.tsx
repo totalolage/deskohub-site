@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import Interpolate from "@doist/react-interpolate";
 import Link from "next/link";
 import { connection } from "next/server";
 import { type ReactNode, Suspense } from "react";
@@ -7,13 +7,13 @@ import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-i
 import { RoomImageCarousel } from "@/features/gallery/components/room-image-carousel";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
+import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
+import { publicPageMetadata } from "@/features/public-pages/backend/public-page-route.server";
 import { getTtrpgRooms } from "@/features/ttrpg-room/ttrpg-rooms";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
 import { Skeleton } from "@/shared/components/ui/skeleton";
-
-const pathname = "/ttrpg-room";
+import { textLink } from "@/shared/components/ui/text-link";
 
 export const instant = true;
 
@@ -24,16 +24,7 @@ const getRoomImages = (
     (): readonly CloudinaryAsset[] => []
   );
 
-export async function generateMetadata(): Promise<Metadata> {
-  return runWithRequestLocale((locale) =>
-    createPublicPageMetadata({
-      locale,
-      pathname,
-      title: { absolute: m.ttrpgRoomMetadataTitle({}, { locale }) },
-      description: m.ttrpgRoomMetadataDescription({}, { locale }),
-    })
-  );
-}
+export const generateMetadata = publicPageMetadata("/ttrpg-room");
 
 export function TtrpgRoomPage({
   locale,
@@ -50,6 +41,9 @@ export function TtrpgRoomPage({
         <h1 className="max-w-4xl text-5xl leading-[0.96] text-balance sm:text-7xl">
           {m.ttrpgRoomHeroTitle({}, { locale })}
         </h1>
+        <p className="mt-8 max-w-3xl text-lg leading-8 text-navy-blue/74 sm:text-xl">
+          {m.ttrpgRoomHeroLead({}, { locale })}
+        </p>
 
         <section className="mt-14 grid border-y border-navy-blue/18 md:grid-cols-2 md:divide-x md:divide-navy-blue/18">
           {getTtrpgRooms(locale).map((room) => (
@@ -62,14 +56,62 @@ export function TtrpgRoomPage({
                 {room.title}
               </h2>
               <p className="mt-5 text-2xl text-navy-blue/74">{room.seats}</p>
+              <p className="mt-4 max-w-xl leading-7 text-navy-blue/74">
+                {room.description}
+              </p>
               <Button asChild size="lg" caps className="mt-8">
                 <Link href={room.href}>{room.cta}</Link>
               </Button>
             </article>
           ))}
         </section>
+
+        <section
+          aria-labelledby="ttrpg-room-sessions-heading"
+          className="mt-16 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-16"
+        >
+          <h2
+            id="ttrpg-room-sessions-heading"
+            className="text-4xl leading-tight text-balance sm:text-5xl"
+          >
+            {m.ttrpgRoomGalleryTitle({}, { locale })}
+          </h2>
+          <div className="space-y-5 text-lg leading-8 text-navy-blue/74">
+            <p>{m.ttrpgRoomGalleryText({}, { locale })}</p>
+            <p>
+              {m.ttrpgRoomBookingNote({}, { locale })}{" "}
+              <Link href={`/${locale}/contact`} className={textLink()}>
+                {m.ttrpgRoomBookingNoteLink({}, { locale })}
+              </Link>
+            </p>
+            <Suspense fallback={null}>
+              <MeetingRoomNote locale={locale} />
+            </Suspense>
+          </div>
+        </section>
       </Container>
     </main>
+  );
+}
+
+/** Points the Workspace room's visitors at the meeting room it is, while that page is out. */
+async function MeetingRoomNote({ locale }: { locale: Locale }) {
+  await connection();
+  if (!(await isMeetingRoomPageEnabled())) return null;
+
+  return (
+    <p>
+      <Interpolate
+        string={m.ttrpgRoomMeetingRoomNote({}, { locale })}
+        mapping={{
+          meetingRoom: (content) => (
+            <Link href={`/${locale}/meeting-room`} className={textLink()}>
+              {content}
+            </Link>
+          ),
+        }}
+      />
+    </p>
   );
 }
 
@@ -128,7 +170,12 @@ async function RoomCarouselContent({
   return (
     <RoomImageCarousel
       emptyText={m.ttrpgRoomPhotosComingSoon({}, { locale })}
+      imageAlt={{
+        "ttrpg-room-bar": m.ttrpgRoomBarImageAlt,
+        "ttrpg-room-workspace": m.ttrpgRoomWorkspaceImageAlt,
+      }[tags[1]]({}, { locale })}
       images={images}
+      locale={locale}
       openLabel={label}
     />
   );

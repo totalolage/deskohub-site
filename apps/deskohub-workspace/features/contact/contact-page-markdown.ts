@@ -1,6 +1,11 @@
 import { Effect } from "effect";
 import type { PhrasingContent } from "mdast";
-import { type Locale, m } from "@/features/i18n";
+import { getPublicOpeningHours } from "@/features/checkout/public-offerings";
+import { getWorkspacePageUrl, type Locale, m } from "@/features/i18n";
+import {
+  coworkReservationPath,
+  meetingRoomReservationPath,
+} from "@/features/reservation/routes";
 import {
   type MarkdownBlocks,
   markdownHeading,
@@ -31,6 +36,18 @@ export const contactPageMarkdown = (
         `${location.address.street}, ${location.address.cityDistrict}, ${location.address.postalCode} ${location.address.city}`
       ),
       detail(
+        m.contactOpeningHoursLabel({}, { locale }),
+        getPublicOpeningHours(locale)
+      ),
+      detail(
+        m.contactTransportLabel({}, { locale }),
+        m.contactTransport({}, { locale })
+      ),
+      detail(
+        m.contactAccessLabel({}, { locale }),
+        m.contactAccess({}, { locale })
+      ),
+      detail(
         m.contactEmailLabel({}, { locale }),
         markdownLink(`mailto:${contact.infoEmail}`, contact.infoEmail)
       ),
@@ -41,6 +58,21 @@ export const contactPageMarkdown = (
       detail(
         m.contactTaxIdLabel({}, { locale }),
         company.taxIdentificationNumber
+      ),
+    ]),
+    markdownHeading(2, m.contactBookingLabel({}, { locale })),
+    markdownList([
+      markdownListItem(
+        markdownLink(
+          getWorkspacePageUrl(coworkReservationPath),
+          m.coworkReservationLink({}, { locale })
+        )
+      ),
+      markdownListItem(
+        markdownLink(
+          getWorkspacePageUrl(meetingRoomReservationPath),
+          m.meetingRoomReservationLink({}, { locale })
+        )
       ),
     ]),
   ]);
