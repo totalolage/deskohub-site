@@ -340,29 +340,80 @@ describe("case finalization", () => {
     expect(events).toEqual(["on-failure:true", "cleanup"]);
   });
 
-  test("keeps the case failure when the annotation writer throws", async () => {
-    const observations: E2ETelemetryObservation[] = [];
-    const failure = workspaceE2EError("assertion failed");
+  test.each([
+    [
+      "inside its Effect",
+      (): Effect.Effect<void> =>
+        Effect.sync(() => {
+          throw new Error("stdout closed");
+        }),
+    ],
+    [
+      "before returning its Effect",
+      (): Effect.Effect<void> => {
+        throw new Error("adapter broken");
+      },
+    ],
+  ])(
+    "keeps the case failure when the annotation writer throws %s",
+    async (_, annotateFailure) => {
+      const failure = workspaceE2EError("assertion failed");
 
-    const exit = await runCase(
+      const exit = await runCase(
+        {
+          body: (step) =>
+            step({
+              execute: Effect.fail(failure),
+              id: "assert",
+              timeoutMs: 100,
+            }),
+        },
+        [],
+        { annotateFailure }
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        expect(Cause.hasDies(exit.cause)).toBe(false);
+        expect(Cause.squash(exit.cause)).toBe(failure);
+      }
+    }
+  );
+
+  test("lets a failing cleanup replace the body or watchdog failure", async () => {
+    const observations: E2ETelemetryObservation[] = [];
+    const cleanupFailure = workspaceE2EError("journal flush failed");
+
+    const failed = await runCase(
       {
         body: (step) =>
-          step({ execute: Effect.fail(failure), id: "assert", timeoutMs: 100 }),
-      },
-      observations,
-      {
-        annotateFailure: () =>
-          Effect.sync(() => {
-            throw new Error("stdout closed");
+          step({
+            execute: Effect.fail(workspaceE2EError("verification failed")),
+            id: "verify",
+            timeoutMs: 100,
           }),
-      }
+        cleanup: Effect.fail(cleanupFailure),
+      },
+      []
+    );
+    const timedOut = await runCase(
+      {
+        body: () => Effect.never,
+        cleanup: Effect.fail(cleanupFailure),
+        watchdogMs: 20,
+      },
+      observations
     );
 
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      expect(Cause.hasDies(exit.cause)).toBe(false);
-      expect(Cause.squash(exit.cause)).toBe(failure);
+    for (const exit of [failed, timedOut]) {
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        expect(Cause.squash(exit.cause)).toBe(cleanupFailure);
+      }
     }
+    expect(annotations(observations)).toEqual([
+      { caseId, failureKind: "error", outcome: "failed", scope: "annotation" },
+    ]);
   });
 
   test("reports the last step that did not pass", async () => {

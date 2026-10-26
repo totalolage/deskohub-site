@@ -191,19 +191,21 @@ export const runE2ECase = <R, RC = never, RF = never>(input: {
             return Effect.void;
           }
           const diagnosticCode = findWorkspaceE2EDiagnosticCode(cause);
-          return telemetry
-            .annotateFailure({
+          // Suspended so an adapter that throws before returning its Effect is
+          // isolated too.
+          return Effect.suspend(() =>
+            telemetry.annotateFailure({
               caseId,
               ...(diagnosticCode ? { diagnosticCode } : {}),
               failureKind: result.failureKind,
               outcome: result.outcome,
               ...(terminalStepId ? { stepId: terminalStepId } : {}),
             })
-            .pipe(
-              Effect.catchCause(() =>
-                Effect.sync(() => log("Workspace E2E failure reporter failed"))
-              )
-            );
+          ).pipe(
+            Effect.catchCause(() =>
+              Effect.sync(() => log("Workspace E2E failure reporter failed"))
+            )
+          );
         })
       );
   });
