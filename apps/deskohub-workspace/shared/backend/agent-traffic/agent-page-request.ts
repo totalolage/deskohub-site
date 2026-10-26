@@ -39,6 +39,7 @@ const agentPageRoutes = {
   "/[locale]/checkout/pay": true,
   "/[locale]/contact": true,
   "/[locale]/cookie-policy": true,
+  "/[locale]/coworking": true,
   "/[locale]/cookie-settings": true,
   "/[locale]/dotypos-tables": true,
   "/[locale]/email-preview/contact-business": true,

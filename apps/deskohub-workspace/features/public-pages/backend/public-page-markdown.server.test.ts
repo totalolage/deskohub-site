@@ -9,7 +9,7 @@ import { DiscountDefinitionRepositoryMock } from "@/features/discounts/discount-
 import type { DiscountReleaseGates } from "@/features/discounts/discount-release-gate.service";
 import { storedDiscountIdSchema } from "@/features/discounts/persistence-contracts";
 import { m } from "@/features/i18n";
-import { publicPages } from "@/features/public-pages/public-pages";
+import { publicPages } from "@/features/public-pages/public-page-definitions";
 import { salesCalendarIdSchema } from "@/shared/backend/config/calendar-resource.config";
 
 // Outside a Next.js render there is no cache; record what each render asks

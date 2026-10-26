@@ -22,6 +22,11 @@ import {
   getWorkspaceProductTierTitle,
   workspaceProductTierMessages,
 } from "@/features/checkout/product-catalog.i18n";
+import {
+  getReservationQuoteDiscount,
+  getReservationQuoteDiscountLastDay,
+  type ReservationQuotePayment,
+} from "@/features/checkout/reservation-quote-schema";
 import { type Locale, m } from "@/features/i18n";
 import { getCoworkAdvertisedPriceReservation } from "@/features/reservation/cowork-reservation";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
@@ -99,11 +104,30 @@ export type PublicOfferingListing = {
 };
 
 /** The anonymous price a reservation page advertises for a smallest booking. */
-type PublicOfferingAdvertisedPrice = {
+export type PublicOfferingAdvertisedPrice = {
   /** Includes any public sale running now. */
   readonly price: Money;
   /** The sale discount included in `price`; zero without one. */
   readonly discount: Money;
+  /** The last Prague day the sale can be booked, while one with an end runs. */
+  readonly saleLastDay?: string;
+};
+
+/** The advertised price a quote's payment gives its smallest booking. */
+export const getPublicOfferingAdvertisedPrice = (
+  payment: ReservationQuotePayment
+): PublicOfferingAdvertisedPrice => {
+  const discount = getReservationQuoteDiscount(payment);
+  const saleLastDay =
+    discount.value > 0
+      ? getReservationQuoteDiscountLastDay(payment)
+      : undefined;
+
+  return {
+    price: payment.expectedPrice,
+    discount,
+    ...(saleLastDay && { saleLastDay }),
+  };
 };
 
 /** One bookable product at its regular and its advertised price. */

@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { eq } from "drizzle-orm";
 import { Effect, Layer } from "effect";
@@ -8,6 +9,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { customerAccounts } from "@/db/schema";
 import { ReviewAccounts } from "@/features/review-accounts";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type CustomerAccountId,
@@ -22,16 +24,14 @@ const testDatabase = await connectWorkspacePostgresTestDatabase();
 const uniqueId = () => crypto.randomUUID();
 const uniqueDotyposId = () => String(60000 + Math.floor(Math.random() * 999));
 
-const insertAuthUser = async (id: string, email: string) => {
-  await testDatabase!.pool.query(
-    "insert into customer_accounts (id) values ($1) on conflict do nothing",
-    [id]
+const insertAuthUser = (id: CustomerAccountId, email: string) =>
+  Effect.runPromise(
+    workspaceFixtures(testDatabase!.db).account("deletion", {
+      id,
+      email,
+      verified: false,
+    })
   );
-  await testDatabase!.pool.query(
-    `insert into auth."user" (id, name, email) values ($1, '', $2)`,
-    [id, email]
-  );
-};
 
 const insertLink = async (account: string, dotyposCustomerId: string) => {
   await testDatabase!.pool.query(
@@ -119,11 +119,13 @@ describe.skipIf(!testDatabase)(
     test("refuses to delete a review account and leaves its login and account untouched", async () => {
       const layer = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
-      await testDatabase!.pool.query(
-        "insert into customer_accounts (id, review) values ($1, true)",
-        [account]
+      await Effect.runPromise(
+        workspaceFixtures(testDatabase!.db).account("del-review", {
+          id: account,
+          verified: false,
+          review: true,
+        })
       );
-      await insertAuthUser(account, testEmailAddress(`del-review-${account}`));
       const providerCalls: string[] = [];
 
       const outcome = await Effect.runPromise(
@@ -208,17 +210,13 @@ describe.skipIf(!testDatabase)(
       const dotyposCustomerId = uniqueDotyposId();
       await insertAuthUser(account, testEmailAddress(`del-${account}`));
       await insertLink(account, dotyposCustomerId);
-      const reservation = await testDatabase!.pool.query<{ id: string }>(
-        `insert into workspace_reservations
-           (checkout_attempt_key, dotypos_customer_id, author_account_id,
-            reservation_state, payment_state, fulfillment_state,
-            reservation_details, locale)
-         values ($1, $2, $3, 'draft', 'not_started', 'not_started',
-           '{"kind":"cowork","entryTier":"basic","coffee":false}', 'en-US')
-         returning id`,
-        [`attempt:${uniqueId()}`, dotyposCustomerId, account]
+      const { id: reservationId } = await Effect.runPromise(
+        workspaceFixtures(testDatabase!.db).reservation({
+          stage: { reservation: "draft" },
+          customer: DotyposCustomerIdSchema.make(dotyposCustomerId),
+          author: account,
+        })
       );
-      const reservationId = reservation.rows[0]!.id;
 
       try {
         await Effect.runPromise(
@@ -282,9 +280,11 @@ describe.skipIf(!testDatabase)(
       const layer = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
       const dotyposCustomerId = `${Date.now()}${Math.floor(Math.random() * 1_000_000)}`;
-      await testDatabase!.pool.query(
-        `insert into customer_accounts (id, dotypos_customer_id) values ($1, $2)`,
-        [account, dotyposCustomerId]
+      await Effect.runPromise(
+        workspaceFixtures(testDatabase!.db).customerAccount({
+          id: account,
+          linkedCustomer: DotyposCustomerIdSchema.make(dotyposCustomerId),
+        })
       );
 
       const tombstoneAt = (deletedAt: string) =>

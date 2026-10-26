@@ -7,7 +7,7 @@
   },
   "routes": [
     {
-      "src": "^/(?:en-US|cs-CZ)(?:/(?:contact|faq|ai-assistants|pricing|meeting-room|team|ttrpg-room|logo|terms-and-conditions|privacy-policy|cookie-policy|operating-rules|marketing-communications|reservation/cowork|reservation/meeting-room|reservation/office))?$",
+      "src": "^/(?:en-US|cs-CZ)(?:/(?:coworking|contact|faq|ai-assistants|pricing|meeting-room|team|gallery|ttrpg-room|terms-and-conditions|privacy-policy|cookie-policy|operating-rules|marketing-communications|reservation/cowork|reservation/meeting-room|reservation/office))?$",
       "continue": true,
       "transforms": [
         {

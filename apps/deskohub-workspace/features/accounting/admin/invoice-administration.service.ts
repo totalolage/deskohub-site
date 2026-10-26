@@ -30,16 +30,22 @@ import {
 } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
-  getManualInvoicePayment,
   type InvoiceBuyer,
-  type InvoiceDocument,
   invoiceBuyerSchema,
   invoiceNumberSchema,
   isManualInvoiceDocument,
   makeManualInvoiceDocument,
 } from "@/features/accounting/invoice";
+import type { InvoiceDeliveryStatus } from "@/features/accounting/invoice-email-delivery";
 import { getInvoicePresentation } from "@/features/accounting/invoice-presentation";
 import {
+  getInvoicePaymentStatus,
+  getInvoiceSettlement,
+  getInvoiceTotal,
+  type InvoiceSettlement,
+} from "@/features/accounting/invoice-settlement";
+import {
+  type InvoiceId,
   invoiceEnabledCurrencyDefinitions,
   invoiceIdSchema,
   invoiceVariableSymbolSchema,
@@ -57,18 +63,18 @@ import {
   defaultWorkspaceCurrencyCode,
   findWorkspaceCurrencyDefinition,
 } from "@/shared/money/currencies";
-import { moneyToDecimalString } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
+  type PlainDate,
   plainDateStringSchema,
   temporalInstantToPlainDate,
 } from "@/shared/utils/temporal";
 import { AccountingSnapshotKeyService } from "../backend/accounting-snapshot-key.service";
+import { type Invoice, InvoiceRepository } from "../backend/invoice.repository";
 import {
-  type InvoiceDeliveryStatus,
-  type InvoiceListItem,
-  InvoiceRepository,
-} from "../backend/invoice.repository";
+  type InvoiceDeliverySummary,
+  InvoiceEmailDeliveryRepository,
+} from "../backend/invoice-email-delivery.repository";
 import { InvoiceEmailDeliveryService } from "../backend/invoice-email-delivery.service";
 import { renderInvoicePdf } from "../backend/invoice-pdf";
 import {
@@ -141,6 +147,8 @@ export type InvoiceAdministrationDetail = InvoiceAdministrationListItem & {
   }[];
   readonly buyer: InvoiceBuyer;
   readonly pdfUrl: string;
+  /** For the Admin UI; the administration API contract does not carry it. */
+  readonly settlement: InvoiceSettlement;
 };
 
 export type InvoiceAdministrationCustomer = {
@@ -192,6 +200,7 @@ export class InvoiceAdministrationInProgressError extends Data.TaggedError(
 const makeInvoiceAdministrationService = Effect.gen(function* () {
   const invoices = yield* InvoiceRepository;
   const deliveries = yield* InvoiceEmailDeliveryService;
+  const deliveryLedger = yield* InvoiceEmailDeliveryRepository;
   const dotypos = yield* DotyposService;
   const creationRequests = yield* ManualInvoiceCreationRequests;
 
@@ -242,10 +251,16 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
   const list = Effect.fn("InvoiceAdministrationService.list")(
     (query: InvoiceAdministrationListQuery = {}) =>
       invoices.list().pipe(
-        Effect.map((items) => {
-          const today = getPragueDate();
-          return items.map((item) => toListItem(item, today));
-        }),
+        Effect.flatMap((stored) =>
+          deliveryLedger.status(stored.map(({ id }) => id)).pipe(
+            Effect.map((statuses) => {
+              const today = getPragueDate();
+              return stored.map((invoice) =>
+                toListItem(invoice, statuses.get(invoice.id)!, today)
+              );
+            })
+          )
+        ),
         Effect.map((items): InvoiceAdministrationPage => {
           const sorted = sortInvoiceAdministrationItems(items, query);
           const pageSize = 24;
@@ -275,11 +290,15 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
     const stored = yield* invoices.findById(id);
     if (!stored)
       return yield* new InvoiceAdministrationNotFoundError({ invoiceId });
-    const all = yield* invoices.list();
-    const listed = all.find(({ invoice }) => invoice.id === stored.id);
-    if (!listed)
-      return yield* new InvoiceAdministrationNotFoundError({ invoiceId });
-    return toDetail(listed, getPragueDate());
+    const statuses = yield* deliveryLedger.status([stored.id]);
+    return toDetail(stored, statuses.get(stored.id)!, getPragueDate());
+  });
+
+  const needsAttention = Effect.fn(
+    "InvoiceAdministrationService.needsAttention"
+  )(function* (invoiceId: InvoiceId) {
+    const statuses = yield* deliveryLedger.status([invoiceId]);
+    return statuses.get(invoiceId)!.needsAttention;
   });
 
   const getPdf = Effect.fn("InvoiceAdministrationService.getPdf")(function* (
@@ -395,12 +414,11 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
           })
         )
       );
-    const detail = yield* get(issuance.invoice.id);
     return {
       invoiceId: AdministrationInvoiceId.make(issuance.invoice.id),
       invoiceNumber: issuance.invoice.invoiceNumber,
       changed: issuance.changed,
-      needsAttention: detail.needsAttention,
+      needsAttention: yield* needsAttention(issuance.invoice.id),
     } satisfies InvoiceAdministrationCreateResult;
   });
 
@@ -412,11 +430,10 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
     if (!stored)
       return yield* new InvoiceAdministrationNotFoundError({ invoiceId });
     const result = yield* deliveries.deliverByInvoiceId({ invoiceId: id });
-    const detail = yield* get(id);
     return {
       invoiceId: AdministrationInvoiceId.make(id),
       changed: result.status === "delivered" && result.changed,
-      needsAttention: detail.needsAttention,
+      needsAttention: yield* needsAttention(stored.id),
     } satisfies InvoiceAdministrationRetryResult;
   });
 
@@ -620,17 +637,13 @@ const toCustomer = (
 };
 
 const toListItem = (
-  { invoice, delivery, needsAttention }: InvoiceListItem,
-  today: string
+  invoice: Invoice,
+  { customer, internal, needsAttention }: InvoiceDeliverySummary,
+  today: PlainDate
 ): InvoiceAdministrationListItem => {
   const document = invoice.document;
   const manual = isManualInvoiceDocument(document);
-  const money = manual
-    ? { total: document.total, currency: document.currency }
-    : {
-        total: moneyToDecimalString(document.quote.payment.expectedPrice),
-        currency: document.quote.payment.expectedPrice.currency,
-      };
+  const total = getInvoiceTotal(document);
   return {
     id: AdministrationInvoiceId.make(invoice.id),
     invoiceNumber: invoice.invoiceNumber,
@@ -642,36 +655,50 @@ const toListItem = (
           invoice.workspaceReservationId
         )
       : null,
-    ...money,
-    paymentStatus: getInvoiceAdministrationPaymentStatus(document, today),
+    total: total.amount,
+    currency: total.currency,
+    paymentStatus: getInvoicePaymentStatus(document, today),
     source: manual
       ? document.provenance.source
       : (document.provenance?.source ?? "legacy"),
     actor: manual ? document.provenance.actor : null,
-    delivery,
+    delivery: { customer, internal },
     needsAttention,
   };
 };
 
 const toDetail = (
-  item: InvoiceListItem,
-  today: string
+  invoice: Invoice,
+  delivery: InvoiceDeliverySummary,
+  today: PlainDate
 ): InvoiceAdministrationDetail => {
-  const summary = toListItem(item, today);
-  const document = item.invoice.document;
+  const summary = toListItem(invoice, delivery, today);
+  const document = invoice.document;
+  const settlement = getInvoiceSettlement(document);
+  // The contract reports the due date a manual invoice states even when
+  // nothing is due; the Admin UI shows it only when payment is requested.
+  const terms = Match.value(settlement).pipe(
+    Match.tagsExhaustive({
+      Paid: ({ paidOn }) => ({ dueDate: null, paidOn }),
+      PaymentRequested: ({ dueDate }) => ({ dueDate, paidOn: null }),
+      NothingDue: ({ statedDueDate }) => ({
+        dueDate: statedDueDate,
+        paidOn: null,
+      }),
+    })
+  );
   if (isManualInvoiceDocument(document)) {
-    const payment = getManualInvoicePayment(document);
     return {
       ...summary,
       locale: document.locale,
       serviceDate: document.serviceDate,
-      dueDate: payment.status === "due" ? payment.date : null,
-      paidOn: payment.status === "paid" ? payment.date : null,
+      ...terms,
       variableSymbol: document.variableSymbol,
       lines: document.lines,
       buyer: document.buyer,
       // The API keeps this unprefixed; the proxy opens it in the operator's language.
-      pdfUrl: `/admin/invoices/${item.invoice.id}/pdf`,
+      pdfUrl: `/admin/invoices/${invoice.id}/pdf`,
+      settlement,
     };
   }
   const presentation = getInvoicePresentation(document);
@@ -686,8 +713,7 @@ const toDetail = (
           timeZone: workspaceSiteConstants.location.timeZone,
         }).toString()
       : null,
-    dueDate: null,
-    paidOn: null,
+    ...terms,
     variableSymbol: null,
     lines: presentation.lines.map(({ description, amount }) => ({
       description,
@@ -695,27 +721,17 @@ const toDetail = (
     })),
     buyer: document.buyer,
     // The API keeps this unprefixed; the proxy opens it in the operator's language.
-    pdfUrl: `/admin/invoices/${item.invoice.id}/pdf`,
+    pdfUrl: `/admin/invoices/${invoice.id}/pdf`,
+    settlement,
   };
 };
 
-export const getInvoiceAdministrationPaymentStatus = (
-  document: InvoiceDocument,
-  today: string
-): AdministrationInvoicePaymentStatusType => {
-  if (!isManualInvoiceDocument(document)) return "paid";
-  const payment = getManualInvoicePayment(document);
-  if (payment.status === "paid") return "paid";
-  if (!BigDecimal.isPositive(BigDecimal.fromStringUnsafe(document.total)))
-    return "issued";
-  if (payment.date < today) return "overdue";
-  return payment.date === today ? "due" : "issued";
-};
-
 const getPragueDate = () =>
-  Temporal.Now.zonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    .toPlainDate()
-    .toString();
+  plainDateStringSchema.make(
+    Temporal.Now.zonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+      .toPlainDate()
+      .toString()
+  );
 
 export const sortInvoiceAdministrationItems = (
   items: readonly InvoiceAdministrationListItem[],
@@ -755,6 +771,7 @@ function getDependencies() {
   );
   return Layer.mergeAll(
     InvoiceRepository.Live,
+    InvoiceEmailDeliveryRepository.Live,
     creationRequests,
     InvoiceEmailDeliveryService.Live,
     WorkspaceDotyposLayer

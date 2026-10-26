@@ -21,7 +21,6 @@ import {
   agentToolErrorResultSchema,
   publicAgentToolErrorResultSchema,
 } from "./agent-tool-error";
-import type { AgentToolAccess } from "./agent-tool-metadata";
 import type { AgentToolView } from "./agent-tool-view";
 import {
   type CustomerAgentCaller,
@@ -118,13 +117,6 @@ export type AgentTool<R> = AgentToolAuthorization & {
   ) => Effect.Effect<AgentToolResult | AgentToolReply, AgentToolError, R>;
 };
 
-/** Which tools a deployment publishes. */
-export interface AgentToolExposure {
-  readonly access: ReadonlyArray<AgentToolAccess>;
-  /** Whether tools that create state are published, not only reads. */
-  readonly transactional: boolean;
-}
-
 /**
  * The names of the published tools the calling agent may call in this
  * request: every public tool, and the signed-in tools its token grants.
@@ -133,16 +125,6 @@ export class CallableAgentTools extends Context.Service<
   CallableAgentTools,
   ReadonlySet<string>
 >()("@deskohub-workspace/agent-tools/CallableAgentTools") {}
-
-export const selectAgentTools = <R>(
-  tools: ReadonlyArray<AgentTool<R>>,
-  exposure: AgentToolExposure
-) =>
-  tools.filter(
-    (tool) =>
-      exposure.access.includes(tool.access) &&
-      (exposure.transactional || tool.readOnly)
-  );
 
 /** The optional `locale` every tool accepts; messages default to English. */
 export const agentToolLocaleField = Schema.optionalKey(

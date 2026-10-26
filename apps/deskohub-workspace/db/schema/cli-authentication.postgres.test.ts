@@ -1,12 +1,10 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
+import { Effect } from "effect";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import {
-  deleteTestAccounts,
-  insertTestAccount,
-} from "@/shared/testing/workspace-test-accounts.test-utils";
 
 const postgresDatabase = await connectWorkspacePostgresTestDatabase();
 const testAccounts: AdministratorAccountActor[] = [];
@@ -67,7 +65,9 @@ const insertAuthenticationRequest = async (input: {
 
 describe.skipIf(!postgresDatabase)("cli session ownership on Postgres", () => {
   afterAll(async () => {
-    await deleteTestAccounts(postgresDatabase!, testAccounts);
+    await Effect.runPromise(
+      workspaceFixtures(postgresDatabase!.db).deleteAccounts(testAccounts)
+    );
   });
 
   test("stores a session owned by a syntactically valid administrator", async () => {
@@ -84,9 +84,8 @@ describe.skipIf(!postgresDatabase)("cli session ownership on Postgres", () => {
   });
 
   test("accepts a session with only the account approver", async () => {
-    const account = await insertTestAccount(
-      postgresDatabase!,
-      "cli-session-approver"
+    const account = await Effect.runPromise(
+      workspaceFixtures(postgresDatabase!.db).account("cli-session-approver")
     );
     testAccounts.push(account);
 
@@ -104,9 +103,10 @@ describe.skipIf(!postgresDatabase)("cli session ownership on Postgres", () => {
   );
 
   test("enforces authentication request approver constraints", async () => {
-    const account = await insertTestAccount(
-      postgresDatabase!,
-      "cli-authentication-approver"
+    const account = await Effect.runPromise(
+      workspaceFixtures(postgresDatabase!.db).account(
+        "cli-authentication-approver"
+      )
     );
     testAccounts.push(account);
     const approvedAt = new Date();

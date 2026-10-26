@@ -2,7 +2,6 @@
 
 import { track } from "@vercel/analytics/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import posthog from "posthog-js";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   type CheckoutSessionId,
@@ -10,6 +9,7 @@ import {
   createCheckoutSessionId,
 } from "@/features/checkout/checkout-identifiers";
 import { useCookieConsent } from "@/features/cookie-consent";
+import { captureAnalyticsEvent } from "@/features/cookie-consent/analytics-events";
 import { type Locale, m } from "@/features/i18n";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
 import {
@@ -66,7 +66,7 @@ export function useReservationCheckout({
   const capturePrePaymentOutcome = useCallback(
     (outcome: ReservationPrePaymentOutcome) => {
       if (!isAccepted("analytics")) return;
-      posthog.capture("pre-payment outcome", { outcome });
+      captureAnalyticsEvent("pre-payment outcome", { outcome });
     },
     [isAccepted]
   );

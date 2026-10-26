@@ -1,12 +1,12 @@
-import type { Locale } from "@/features/i18n";
-import type { CloudinaryAsset } from "../backend/cloudinary.service";
+import type { CloudinaryAsset } from "@deskohub/cloudinary";
 
-type LocalizedCloudinaryContextField = "alt" | "caption" | "detail";
+type LocalizedContextField = "alt" | "caption" | "detail";
+type ContextLocale = "cs-CZ" | "en-US";
 
 export function getLocalizedCloudinaryContextValue(
   asset: CloudinaryAsset,
-  field: LocalizedCloudinaryContextField,
-  locale: Locale
+  field: LocalizedContextField,
+  locale: ContextLocale
 ): string | undefined {
   const custom = asset.context?.custom;
 

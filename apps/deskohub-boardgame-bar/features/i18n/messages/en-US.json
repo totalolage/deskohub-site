@@ -410,7 +410,8 @@
     "barAtmosphere": "Bar atmosphere",
     "barLocation": "Bar location",
     "heroImage": "Hero image",
-    "deskohub": "Deskohub"
+    "deskohub": "Deskohub",
+    "venue": "Deskohub board game bar on Palmovka"
   },
   "placeholders": {
     "fullName": "John Doe",

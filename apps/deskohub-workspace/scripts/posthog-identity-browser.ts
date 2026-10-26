@@ -9,6 +9,10 @@ import {
   type Page,
 } from "@playwright/test";
 import { Schema } from "effect";
+import {
+  accountCustomerLinkPath,
+  type accountCustomerLinkResponseSchema,
+} from "@/features/account/account-customer-link";
 import { buildPosthogIdentityFixtureBundle } from "./posthog-identity-fixture-bundle";
 import {
   capturedOnlyByPinnedSdk,
@@ -753,6 +757,19 @@ class LocalPostHogServer {
     });
   }
 
+  // Synthetic accounts have no Dotypos customer, so the identity never sends
+  // a `dotypos_customer_id` person property.
+  private handleCustomerLink(runId: string | undefined) {
+    const session = runId ? this.runs.get(runId)?.session : undefined;
+    return this.json({
+      accountId:
+        session === undefined || session === "anonymous"
+          ? null
+          : userIds[session],
+      dotyposCustomerId: null,
+    } satisfies typeof accountCustomerLinkResponseSchema.Encoded);
+  }
+
   private async handleSignOut(runId: string | undefined) {
     const state = runId ? this.runs.get(runId) : undefined;
     if (!state || state.signOutBehavior === "success") {
@@ -936,6 +953,10 @@ class LocalPostHogServer {
 
     if (pathname === "/api/auth/sign-out" && request.method === "POST") {
       return this.handleSignOut(runId);
+    }
+
+    if (pathname === accountCustomerLinkPath && request.method === "GET") {
+      return this.handleCustomerLink(runId);
     }
 
     if (this.isRemoteConfigScriptPath(pathname) && request.method === "GET") {

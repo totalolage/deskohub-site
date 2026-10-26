@@ -7,8 +7,11 @@ import { advertisedCatalogOfferings } from "@/features/checkout/public-offerings
 import { DiscountReleaseGateService } from "@/features/discounts/discount-release-gate.service";
 import type { Locale } from "@/features/i18n";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
-import { type PublicPage, publicPages } from "@/features/public-pages";
 import { PublishedPublicPagesService } from "@/features/public-pages/backend";
+import {
+  type PublicPage,
+  publicPages,
+} from "@/features/public-pages/public-page-definitions";
 import { markdownLinkUrls } from "@/shared/markdown/markdown.test-utils";
 
 // Outside a Next.js render there is no cache to configure.
@@ -88,6 +91,7 @@ describe("/llms.txt", () => {
     expect(response.headers.get("content-type")).toBe(
       "text/plain; charset=utf-8"
     );
+    expect(response.headers.get("x-robots-tag")).toBe("noindex");
     expect(body).toStartWith("# Deskohub Workspace\n");
     expect(markdownLinkUrls(body)).toContain(
       "https://workspace.deskohub.cz/reservation/office"
@@ -119,7 +123,7 @@ describe("/llms.txt", () => {
     "/checkout/pay",
     "/reservation/status",
     "/admin",
-    "/gallery",
+    "/logo",
     "/testing",
   ])("never links %s", async (pathname) => {
     const urls = markdownLinkUrls(await (await getLlmsTxt()).text());

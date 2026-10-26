@@ -1,12 +1,6 @@
-import { Option, Schema } from "effect";
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { m } from "@/features/i18n";
-import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { createPublicPageMetadata } from "@/features/public-pages/page-metadata";
 import { ReservationAccessRoute } from "@/features/reservation/components/reservation-access-route";
-import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { reservationAccessPath } from "@/features/reservation/routes";
+import { privateOrderPage } from "@/features/reservation/private-order-page.server";
 
 export const maxDuration = 30;
 export const instant = true;
@@ -15,27 +9,12 @@ type LocalizedReservationAccessPageProps = {
   params: Promise<{ orderId: string }>;
 };
 
-const decodeReservationAccessParams = Schema.decodeUnknownOption(
-  Schema.Struct({ orderId: workspaceReservationIdSchema })
-);
+const { generateMetadata } = privateOrderPage({
+  title: m.reservationAccessMetadataTitle,
+  description: m.reservationAccessMetadataDescription,
+});
 
-export async function generateMetadata({
-  params,
-}: LocalizedReservationAccessPageProps): Promise<Metadata> {
-  const decodedParams = decodeReservationAccessParams(await params);
-  const { orderId } = Option.getOrElse(decodedParams, () => notFound());
-
-  return runWithRequestLocale((locale) => ({
-    ...createPublicPageMetadata({
-      locale,
-      pathname: `${reservationAccessPath}/${orderId}`,
-      title: { absolute: m.reservationAccessMetadataTitle({}, { locale }) },
-      description: m.reservationAccessMetadataDescription({}, { locale }),
-    }),
-    robots: { index: false, follow: false },
-    referrer: "no-referrer",
-  }));
-}
+export { generateMetadata };
 
 export default function LocalizedReservationAccessPage({
   params,

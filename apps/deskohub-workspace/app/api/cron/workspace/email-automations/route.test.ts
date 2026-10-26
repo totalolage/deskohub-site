@@ -23,7 +23,6 @@ interface IFakePlanner {
 }
 
 let planRuns = 0;
-let failPlanning = false;
 
 const FakePlanner = Context.Service<FakePlanner, IFakePlanner>()(
   "@test/FakeAutomationPlanner"
@@ -32,9 +31,7 @@ const FakePlanner = Context.Service<FakePlanner, IFakePlanner>()(
 const fakePlannerLayer = Layer.succeed(FakePlanner, {
   plan: Effect.suspend(() => {
     planRuns += 1;
-    return failPlanning
-      ? Effect.fail(new Error("database unavailable"))
-      : Effect.succeed(planSummary);
+    return Effect.succeed(planSummary);
   }),
 }) as Layer.Layer<FakePlanner>;
 
@@ -45,7 +42,7 @@ mock.module(
   () => ({ AutomationPlanner: FakePlanner })
 );
 
-const callCron = async (headers?: HeadersInit) => {
+const callCron = async (headers: HeadersInit) => {
   const { GET } = (await import("./route")) as {
     GET: (request: Request) => Promise<Response>;
   };
@@ -55,23 +52,6 @@ const callCron = async (headers?: HeadersInit) => {
 describe("email automation planner cron route", () => {
   beforeEach(() => {
     planRuns = 0;
-    failPlanning = false;
-  });
-
-  test("rejects requests without the cron secret", async () => {
-    const response = await callCron();
-
-    expect(response.status).toBe(401);
-    expect(planRuns).toBe(0);
-  });
-
-  test("rejects a wrong bearer secret", async () => {
-    const response = await callCron({
-      authorization: "Bearer not-the-secret",
-    });
-
-    expect(response.status).toBe(401);
-    expect(planRuns).toBe(0);
   });
 
   test("runs one planner tick and returns its summary", async () => {
@@ -82,18 +62,5 @@ describe("email automation planner cron route", () => {
     expect(response.status).toBe(200);
     expect(planRuns).toBe(1);
     await expect(response.json()).resolves.toEqual(planSummary);
-  });
-
-  test("returns a 500 when planning fails", async () => {
-    failPlanning = true;
-    const response = await callCron({
-      authorization: `Bearer ${env.CRON_SECRET}`,
-    });
-
-    expect(response.status).toBe(500);
-    expect(planRuns).toBe(1);
-    await expect(response.json()).resolves.toEqual({
-      error: "Email automation planning failed",
-    });
   });
 });

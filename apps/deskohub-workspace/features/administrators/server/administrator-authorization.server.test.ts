@@ -236,6 +236,7 @@ describe("administration entry points without the administrator grant", () => {
       authorization.authorizeAdministratorPage,
       administration.loadAdministrationOverview,
       administration.loadAdministrationRefundAttention,
+      administration.loadAdministrationReservationActivity,
       administration.loadAdministrationReservationOverview,
       () =>
         administration.loadAdministrationReservationsPage(searchParams).result,

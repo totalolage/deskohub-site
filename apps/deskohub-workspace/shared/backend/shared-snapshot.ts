@@ -1,7 +1,6 @@
 import "server-only";
 
-import { ExternalAPIError } from "@deskohub/dotypos";
-import { Effect, Exit } from "effect";
+import { Data, Effect, Exit } from "effect";
 import { cacheLife } from "next/cache";
 
 /**
@@ -19,6 +18,15 @@ export function cachedOnSuccess(applyLifetime: () => void) {
     );
 }
 
+/** A `"use cache"` snapshot loader rejected instead of returning its value. */
+export class SharedSnapshotLoadFailure extends Data.TaggedError(
+  "SharedSnapshotLoadFailure"
+)<{
+  readonly service: string;
+  readonly operation: string;
+  readonly cause: unknown;
+}> {}
+
 /**
  * Reads a shared snapshot loader. Reference the loader only inside `load`:
  * the `"use cache"` compiler assigns it after module evaluation.
@@ -35,10 +43,5 @@ export const fromSharedSnapshot = <A>({
   Effect.tryPromise({
     try: load,
     catch: (cause) =>
-      new ExternalAPIError({
-        service,
-        operation,
-        message: "Shared snapshot could not be loaded",
-        cause,
-      }),
+      new SharedSnapshotLoadFailure({ service, operation, cause }),
   });

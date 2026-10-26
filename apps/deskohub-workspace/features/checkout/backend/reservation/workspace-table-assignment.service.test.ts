@@ -766,6 +766,6 @@ describe("WorkspaceTableAssignmentService", () => {
           }),
         ]
       )
-    ).rejects.toThrow("No active visible Dotypos workspace table matches tags");
+    ).rejects.toMatchObject({ _tag: "TableAssignmentUnconfigured" });
   });
 });

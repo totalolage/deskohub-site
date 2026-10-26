@@ -23,9 +23,13 @@ mock.module(
   "@/features/meeting-room/backend/meeting-room-page-feature-flag",
   () => ({ isMeetingRoomPageEnabled })
 );
+const officeFeatureFlag = await import(
+  "@/features/office/backend/office-reservation-feature-flag.server"
+);
 mock.module(
   "@/features/office/backend/office-reservation-feature-flag.server",
   () => ({
+    ...officeFeatureFlag,
     isOfficePageEnabled,
   })
 );
@@ -54,6 +58,15 @@ describe("getSiteHeaderConfig", () => {
       })
     );
     expect(config).not.toHaveProperty("disabledMenuItems");
+  });
+
+  test("links the coworking page", async () => {
+    const { getSiteHeaderConfig } = await import("./site-header-config");
+    const config = await getSiteHeaderConfig("cs-CZ");
+
+    expect(config.links).toContainEqual(
+      expect.objectContaining({ id: "coworking", href: "/cs-CZ/coworking" })
+    );
   });
 
   test("omits the Private Office link when its release flag is disabled", async () => {

@@ -1,14 +1,9 @@
-import type {
-  DotyposCustomerId,
-  DotyposReservationId,
-} from "@deskohub/dotypos";
+import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
-import type { WorkspaceDatabaseClient } from "@/db/database.service";
-import { workspaceReservations } from "@/db/schema";
+import type { WorkspaceReservation } from "@/db/schema";
 import { makeAccountingDocumentSnapshot } from "@/features/accounting/accounting-document-snapshot";
 import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import { calculateDiscounts } from "@/features/discounts/calculator";
 import { makeDiscountCommitment } from "@/features/discounts/commitment";
@@ -17,10 +12,7 @@ import type { DiscountCandidate } from "@/features/discounts/provider";
 import { type Locale, m } from "@/features/i18n";
 import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
 import { referralInvitationDiscountBasisPoints } from "@/features/referrals/program";
-import { fixtureReservationAuthorId } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { IPaymentLifecycleRepository } from "./payment-lifecycle.repository";
-
-type Reservation = typeof workspaceReservations.$inferSelect;
 
 const product = { kind: "cowork", tier: "basic" } as const;
 const reservationDetails = {
@@ -29,31 +21,6 @@ const reservationDetails = {
   coffee: false,
 } as const;
 const locale: Locale = "en-US";
-
-/** A synthetic held cowork reservation, ready for a payment attempt. */
-export const createHeldReservation = (
-  db: WorkspaceDatabaseClient,
-  dotyposCustomerId: DotyposCustomerId
-) =>
-  db
-    .insert(workspaceReservations)
-    .values({
-      authorAccountId: fixtureReservationAuthorId,
-      checkoutAttemptKey: checkoutAttemptKeySchema.make(
-        `payment-${crypto.randomUUID()}`
-      ),
-      dotyposCustomerId,
-      dotyposReservationId:
-        `dotypos-${crypto.randomUUID()}` as DotyposReservationId,
-      reservationState: "held",
-      paymentState: "not_started",
-      fulfillmentState: "not_started",
-      reservationDetails,
-      locale,
-      reservationHoldExpiresAt: Temporal.Now.instant().add({ hours: 1 }),
-    })
-    .returning()
-    .pipe(Effect.map(([reservation]) => reservation!));
 
 const makeInvitationCandidate = (referral: {
   readonly invitedDotyposCustomerId: DotyposCustomerId;
@@ -97,7 +64,7 @@ const makeInvitationCandidate = (referral: {
  */
 export const admitPendingNexiPayment = (
   repository: IPaymentLifecycleRepository,
-  reservation: Reservation,
+  reservation: WorkspaceReservation,
   referral?: {
     readonly referrerDotyposCustomerId: DotyposCustomerId;
     readonly promotionCodeId: string;

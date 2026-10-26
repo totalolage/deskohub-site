@@ -7,6 +7,7 @@ export {
   type SupportedSearchParams,
 } from "./search-params";
 export {
+  getDeskohubBarPageUrl,
   getWorkspaceCanonicalUrl,
   workspaceSiteConstants,
   workspaceSiteOrigin,
@@ -28,4 +29,5 @@ export {
   workspaceLocationMapEmailWidth,
   workspaceLocationMapImageOptions,
   workspaceLocationMapImagePath,
+  workspaceLocationMapZoom,
 } from "./workspace-location-map";

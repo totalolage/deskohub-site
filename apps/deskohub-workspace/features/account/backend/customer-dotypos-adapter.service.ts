@@ -2,7 +2,7 @@ import {
   type DotyposCustomer,
   type DotyposCustomerId,
   DotyposService,
-  ExternalAPIError,
+  type ExternalAPIError,
   type FindCustomerResult,
   type NetworkError,
   normalizePhoneNumber,
@@ -11,12 +11,14 @@ import {
 import type { UpdateCustomerRequest } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Option } from "effect";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { MissingDotyposId } from "@/shared/backend/missing-dotypos-id";
 import type { CustomerProfileInput } from "../contracts";
 
 export type DotyposCustomerError =
   | ValidationError
   | ExternalAPIError
-  | NetworkError;
+  | NetworkError
+  | MissingDotyposId;
 
 export type CustomerProfileBilling = {
   readonly kind: "personal" | "business";
@@ -352,11 +354,9 @@ export class CustomerDotyposAdapter extends Context.Service<
           };
         }
 
-        return yield* new ExternalAPIError({
-          service: "Dotypos",
-          operation: "createCustomer",
+        return yield* new MissingDotyposId({
+          entity: "customer",
           message: "Dotypos returned a created customer without an id.",
-          statusCode: 502,
         });
       });
 

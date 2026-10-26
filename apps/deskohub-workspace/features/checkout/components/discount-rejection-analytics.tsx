@@ -1,8 +1,8 @@
 "use client";
 
-import posthog from "posthog-js";
 import { useEffect, useRef } from "react";
 import { useCookieConsent } from "@/features/cookie-consent";
+import { captureAnalyticsEvent } from "@/features/cookie-consent/analytics-events";
 
 export function DiscountRejectionAnalytics() {
   const { isAccepted } = useCookieConsent();
@@ -12,7 +12,9 @@ export function DiscountRejectionAnalytics() {
     if (handled.current) return;
     handled.current = true;
     if (!isAccepted("analytics")) return;
-    posthog.capture("pre-payment outcome", { outcome: "discount_rejected" });
+    captureAnalyticsEvent("pre-payment outcome", {
+      outcome: "discount_rejected",
+    });
   }, [isAccepted]);
 
   return null;

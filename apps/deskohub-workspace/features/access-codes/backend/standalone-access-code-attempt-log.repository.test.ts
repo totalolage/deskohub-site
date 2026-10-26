@@ -20,16 +20,12 @@ import { Effect, Layer, Schema } from "effect";
 import { Pool } from "pg";
 import { standaloneAccessCodeAttemptEvents } from "@/db/schema";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { waitForPostgresLockWaiter } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import {
-  deleteTestAccounts,
-  insertTestAccount,
-  insertTestAdministrator,
-} from "@/shared/testing/workspace-test-accounts.test-utils";
 import {
   type IStandaloneAccessCodeAttemptLogRepository,
   type StandaloneAccessCodeAttempt,
@@ -119,14 +115,17 @@ describe.skipIf(!postgresDatabase)(
     };
 
     beforeAll(async () => {
-      actor = await insertTestAdministrator(
-        postgres,
-        "standalone-access-code-attempt"
+      actor = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account(
+          "standalone-access-code-attempt",
+          { roles: ["administrator"] }
+        )
       );
       testAccounts.push(actor);
-      otherAccountActor = await insertTestAccount(
-        postgres,
-        "standalone-access-code-other-actor"
+      otherAccountActor = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account(
+          "standalone-access-code-other-actor"
+        )
       );
       testAccounts.push(otherAccountActor);
       attempts = await Effect.runPromise(
@@ -176,7 +175,9 @@ describe.skipIf(!postgresDatabase)(
     });
     afterAll(async () => {
       await barrierPool.end();
-      await deleteTestAccounts(postgres, testAccounts);
+      await Effect.runPromise(
+        workspaceFixtures(postgres.db).deleteAccounts(testAccounts)
+      );
     });
 
     const reconcileBarrierKey = 987654321099;

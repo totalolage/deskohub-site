@@ -10,8 +10,6 @@ export {
   type ICloudinaryService,
 } from "./service";
 export {
-  CloudinaryWebhookAuthError,
-  CloudinaryWebhookValidationError,
   CloudinaryWebhookVerifier,
   type VerifiedCloudinaryWebhook,
   verifyCloudinaryWebhookRequest,

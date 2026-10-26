@@ -13,6 +13,7 @@ import {
   AdministrationInvoiceCreationDefaults,
   AdministrationLegacyUsername,
   AdministrationOverview,
+  AdministrationReservationActivity,
   type AdministrationReservationDetailType,
   AdministrationStandaloneAccessCodeAttemptId,
   type AdministrationStandaloneAccessCodeAttemptIdType,
@@ -337,6 +338,46 @@ describe("dhw mutation commands", () => {
 
     expect(requestedCustomerIds).toEqual([decodedCustomerId]);
     expect(JSON.parse(output.join(""))).toEqual(activity);
+  });
+
+  test("prints global reservation activity as JSON", async () => {
+    const activity = Schema.decodeUnknownSync(
+      AdministrationReservationActivity
+    )({
+      from: "2026-08-01",
+      to: "2026-08-02",
+      dates: [{ date: "2026-08-01", count: 2 }],
+    });
+    const { layer, output } = makeCommandLayer({
+      getReservationActivity: () => Effect.succeed(activity),
+    });
+
+    await runCommand(["--json", "reservations", "activity"], layer).pipe(
+      Effect.runPromise
+    );
+
+    expect(JSON.parse(output.join(""))).toEqual(activity);
+  });
+
+  test("prints unavailable global reservation activity for people", async () => {
+    const activity = Schema.decodeUnknownSync(
+      AdministrationReservationActivity
+    )({
+      from: "2026-08-01",
+      to: "2026-08-02",
+      dates: null,
+    });
+    const { layer, output } = makeCommandLayer({
+      getReservationActivity: () => Effect.succeed(activity),
+    });
+
+    await runCommand(["reservations", "activity"], layer).pipe(
+      Effect.runPromise
+    );
+
+    expect(output.join("")).toBe(
+      "Reservation activity 2026-08-01 to 2026-08-02: unavailable"
+    );
   });
 
   test("includes refund attention in overview JSON", async () => {
@@ -1484,6 +1525,7 @@ const makeCommandLayer = ({
   createInvoice = () => Effect.die("not used"),
   createStandaloneAccessCode = () => Effect.die("not used"),
   getCustomerReservationActivity = () => Effect.die("not used"),
+  getReservationActivity = () => Effect.die("not used"),
   getInvoiceCreationDefaults = () => Effect.die("not used"),
   getOverview = () => Effect.die("not used"),
   listDiscountGroups = () => Effect.die("not used"),
@@ -1503,6 +1545,7 @@ const makeCommandLayer = ({
   readonly createInvoice?: WorkspaceAdminApiClient["Service"]["createInvoice"];
   readonly createStandaloneAccessCode?: WorkspaceAdminApiClient["Service"]["createStandaloneAccessCode"];
   readonly getCustomerReservationActivity?: WorkspaceAdminApiClient["Service"]["getCustomerReservationActivity"];
+  readonly getReservationActivity?: WorkspaceAdminApiClient["Service"]["getReservationActivity"];
   readonly getInvoiceCreationDefaults?: WorkspaceAdminApiClient["Service"]["getInvoiceCreationDefaults"];
   readonly getOverview?: WorkspaceAdminApiClient["Service"]["getOverview"];
   readonly listDiscountGroups?: WorkspaceAdminApiClient["Service"]["listDiscountGroups"];
@@ -1548,6 +1591,7 @@ const makeCommandLayer = ({
         );
       }),
     getCustomerReservationActivity,
+    getReservationActivity,
     getInvoiceCreationDefaults,
     getOverview,
     getReservation,

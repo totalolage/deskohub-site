@@ -3,8 +3,9 @@ import { NextResponse } from "next/server";
 import {
   ResendWebhookProcessingError,
   ResendWebhookService,
+  resendWebhookRefusal,
 } from "@/features/checkout/backend/fulfillment";
-import { defineWorkspaceRoute } from "@/shared/backend/workspace-route";
+import { defineWebhookRoute } from "@/shared/backend/service-route";
 
 const processWebhookRequest = Effect.fn("processResendWebhookRequest")(
   function* (request: Request) {
@@ -31,67 +32,22 @@ const processWebhookRequest = Effect.fn("processResendWebhookRequest")(
   Effect.scoped
 );
 
-const handleResendWebhookProcessingError = Effect.fn(
-  "handleResendWebhookProcessingError"
-)(function* (error: ResendWebhookProcessingError) {
-  const status =
-    error.errorCode === "resend_webhook_headers_missing" ||
-    error.errorCode === "resend_webhook_verification_failed" ||
-    error.errorCode === "resend_webhook_payload_invalid"
-      ? 400
-      : 500;
-
-  yield* Effect.logError("Resend webhook processing failed", {
-    errorCode: error.errorCode,
-    eventId: error.eventId,
-    workspaceReservationId: error.workspaceReservationId,
-    cause: error.cause,
-  });
-
-  if (status === 500) {
-    yield* Effect.logWarning("Resend webhook response will trigger retry", {
-      errorCode: error.errorCode,
-      eventId: error.eventId,
-      workspaceReservationId: error.workspaceReservationId,
-    });
-  }
-
-  return NextResponse.json(
-    {
-      error: "Webhook processing failed",
-      code: error.errorCode,
-    },
-    { status }
-  );
-});
-
 /**
  * POST /api/webhooks/resend
  *
  * Receives Resend delivery status for workspace customer fulfilment emails.
  */
-export const POST = defineWorkspaceRoute(
+export const POST = defineWebhookRoute(
   {
     operation: "resendWebhook",
-    cancellation: "continue-after-disconnect",
-    caller: "service",
+    failureMessage: "Resend webhook processing failed",
   },
   (request) =>
     processWebhookRequest(request).pipe(
       Effect.tap((result) =>
         Effect.logInfo("Resend webhook response ready", { result })
       ),
-      Effect.map((result) =>
-        NextResponse.json({
-          message: "Webhook received",
-          status: result.status,
-          reason: result.reason,
-        })
-      ),
-      Effect.catchTag(
-        "ResendWebhookProcessingError",
-        handleResendWebhookProcessingError
-      ),
+      Effect.mapError(resendWebhookRefusal),
       Effect.provide(ResendWebhookService.Live)
     )
 );

@@ -4,6 +4,7 @@ export {
   NexiWebhookProcessingError,
   NexiWebhookService,
 } from "./nexi-webhook.service";
+export { nexiWebhookRefusal } from "./nexi-webhook-disposition";
 export {
   PaymentRefundService,
   refundBatchOverrunWorstCase,

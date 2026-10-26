@@ -1,20 +1,76 @@
 import type { Locale } from "@/features/i18n";
 import { formatCount } from "@/shared/utils/number";
 import { AdministrationLink as Link } from "./admin-link";
-import type { AdministrationOverviewMetric } from "./administration.service";
+import type {
+  AdministrationOverviewMetric,
+  AdministrationReservationActivity,
+} from "./administration.service";
 import { getAdministrationCustomerName } from "./customer-presentation";
 import { m } from "./i18n";
 import type {
   loadAdministrationOverview,
   loadAdministrationReservationOverview,
 } from "./page-data.server";
+import {
+  getReservationActivityCountAppearance,
+  ReservationActivityCalendar,
+  ReservationActivitySwatch,
+  ReservationActivityTotal,
+} from "./reservation-activity-calendar";
 
 type OverviewData = Awaited<ReturnType<typeof loadAdministrationOverview>>;
 type ReservationOverviewData = Awaited<
   ReturnType<typeof loadAdministrationReservationOverview>
 >;
 
-export async function ReservationActivity({
+/** Sample counts for the legend, from an empty day to a busy one. */
+const reservationActivityLegendCounts = [0, 2, 6, 12, 24];
+
+export async function OverviewReservationActivityTotal({
+  activity,
+  locale,
+}: {
+  readonly activity: Promise<AdministrationReservationActivity>;
+  readonly locale: Locale;
+}) {
+  return <ReservationActivityTotal activity={await activity} locale={locale} />;
+}
+
+export async function OverviewReservationActivityCalendar({
+  activity,
+  locale,
+}: {
+  readonly activity: Promise<AdministrationReservationActivity>;
+  readonly locale: Locale;
+}) {
+  return (
+    <ReservationActivityCalendar
+      activity={await activity}
+      getDayAppearance={({ count }) =>
+        getReservationActivityCountAppearance(count)
+      }
+      legend={
+        <>
+          <span>
+            {m.administrationReservationActivityLegendFewer({}, { locale })}
+          </span>
+          {reservationActivityLegendCounts.map((count) => (
+            <ReservationActivitySwatch
+              key={count}
+              {...getReservationActivityCountAppearance(count)}
+            />
+          ))}
+          <span>
+            {m.administrationReservationActivityLegendMore({}, { locale })}
+          </span>
+        </>
+      }
+      locale={locale}
+    />
+  );
+}
+
+export async function ReservationCounts({
   locale,
   overview,
 }: {

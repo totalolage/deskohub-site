@@ -9,13 +9,16 @@ import {
 } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { StaticImageData } from "next/image";
+import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
 mock.module("@deskohub/cloudinary-image", () => ({
-  CloudinaryImage: () => null,
+  CloudinaryImage: ({ alt }: { alt: string }) => (
+    <span aria-label={alt} role="img" />
+  ),
 }));
 
 mock.module("next/image", () => ({
@@ -23,8 +26,18 @@ mock.module("next/image", () => ({
 }));
 
 mock.module("yet-another-react-lightbox", () => ({
-  default: ({ index, open }: { index: number; open: boolean }) => (
-    <output data-index={index} data-open={open} data-testid="lightbox" />
+  default: ({
+    index,
+    open,
+    slides,
+  }: {
+    index: number;
+    open: boolean;
+    slides: readonly { alt?: string }[];
+  }) => (
+    <output data-index={index} data-open={open} data-testid="lightbox">
+      {slides.map((slide) => slide.alt).join("|")}
+    </output>
   ),
 }));
 
@@ -40,6 +53,25 @@ const testImages: readonly StaticImageData[] = [
     width: 800,
   },
 ];
+
+const cloudinaryImages = [
+  {
+    context: {
+      custom: { "alt-cs-CZ": "Czech alt", "alt-en-US": "Localized alt" },
+    },
+    height: 600,
+    public_id: "room-one",
+    secure_url: "https://example.test/room-one.jpg",
+    width: 800,
+  },
+  {
+    context: { custom: { alt: " " } },
+    height: 600,
+    public_id: "room-two",
+    secure_url: "https://example.test/room-two.jpg",
+    width: 800,
+  },
+] as readonly CloudinaryAsset[];
 
 const createPointerEvent = ({
   buttons,
@@ -85,6 +117,35 @@ describe("RoomImageCarousel", () => {
     await unregisterWorkspaceComponentTestEnv();
   });
 
+  test("describes Cloudinary photos with localized or fallback alts and numbered controls", async () => {
+    const { RoomImageCarousel } = await import("./room-image-carousel");
+    const view = render(
+      <RoomImageCarousel
+        emptyText="No photos"
+        imageAlt="Room fallback alt"
+        images={cloudinaryImages}
+        locale="en-US"
+        openLabel="Open room gallery"
+      />
+    );
+    const imageAlts = view
+      .getAllByRole("img", { hidden: true })
+      .map((image) => image.getAttribute("aria-label"));
+
+    expect(new Set(imageAlts)).toEqual(
+      new Set(["Localized alt", "Room fallback alt"])
+    );
+    expect(view.getByTestId("lightbox").textContent).toBe(
+      "Localized alt|Room fallback alt"
+    );
+    expect(
+      view.getAllByRole("button", { name: "Open room gallery 2" })
+    ).not.toHaveLength(0);
+    expect(
+      view.queryAllByRole("button", { hidden: true, name: /room-(one|two)/ })
+    ).toHaveLength(0);
+  });
+
   test("opens the current fallback photo with the shared lightbox", async () => {
     const { RoomImageCarousel } = await import("./room-image-carousel");
     const view = render(
@@ -94,7 +155,9 @@ describe("RoomImageCarousel", () => {
           alt: `Meeting room ${index + 1}`,
           src,
         }))}
+        imageAlt="Meeting room"
         images={[]}
+        locale="en-US"
         openLabel="Open meeting room gallery"
       />
     );
@@ -120,7 +183,9 @@ describe("RoomImageCarousel", () => {
           alt: `Meeting room ${index + 1}`,
           src,
         }))}
+        imageAlt="Meeting room"
         images={[]}
+        locale="en-US"
         openLabel="Open meeting room gallery"
       />
     );

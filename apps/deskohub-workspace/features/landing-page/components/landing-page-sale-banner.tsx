@@ -1,8 +1,8 @@
 import Interpolate from "@doist/react-interpolate";
 import { ArrowRight, DollarSign, Percent } from "lucide-react";
-import Link from "next/link";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
-import { Button } from "@/shared/components/ui/button";
+import type { LandingPageSaleBannerClick } from "../landing-page-sale-banner-analytics";
+import { LandingPageSaleBannerLink } from "./landing-page-sale-banner-link";
 
 /**
  * Keeps the translated template separate from the admin-entered title so the
@@ -20,6 +20,7 @@ export type LandingPageSaleBannerContent = {
   statusLabel: string;
   ctaLabel: string;
   href: string;
+  click: LandingPageSaleBannerClick;
 };
 
 export function LandingPageSaleBanner({
@@ -88,12 +89,14 @@ export function LandingPageSaleBanner({
             </p>
           </div>
         </div>
-        <Button asChild size="md" shape="rounded" caps>
-          <Link aria-label={content.ctaLabel} href={content.href}>
-            <span className="hidden sm:inline">{content.ctaLabel}</span>
-            <ArrowRight aria-hidden="true" className="size-4" />
-          </Link>
-        </Button>
+        <LandingPageSaleBannerLink
+          click={content.click}
+          href={content.href}
+          label={content.ctaLabel}
+        >
+          <span className="hidden sm:inline">{content.ctaLabel}</span>
+          <ArrowRight aria-hidden="true" className="size-4" />
+        </LandingPageSaleBannerLink>
       </div>
     </aside>
   );

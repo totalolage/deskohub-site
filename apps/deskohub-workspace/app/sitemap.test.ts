@@ -2,8 +2,11 @@ import { afterAll, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import * as envModule from "@/env";
 import { locales } from "@/features/i18n";
-import { type PublicPage, publicPages } from "@/features/public-pages";
 import { PublishedPublicPagesService } from "@/features/public-pages/backend";
+import {
+  type PublicPage,
+  publicPages,
+} from "@/features/public-pages/public-page-definitions";
 
 // The workspace env object is read once at import; route VERCEL_ENV through a
 // switchable override so one file covers every deployment.
@@ -66,8 +69,8 @@ const noindexPathnames = [
   "/auth/callback",
   "/auth/sign-in",
   "/checkout/pay",
+  "/logo",
   "/cookie-settings",
-  "/gallery",
   "/reservation/access",
   "/reservation/invoice",
   "/reservation/status",
@@ -111,6 +114,18 @@ describe("sitemap.xml", () => {
       const localePrefix = new RegExp(`^/(${locales.join("|")})(?=/|$)`);
       const unprefixed = new URL(entry.url).pathname.replace(localePrefix, "");
       expect(languages["x-default"]).toBe(`${origin}${unprefixed || "/"}`);
+    }
+  });
+
+  test("dates every page's entries by its content, the same in each locale", async () => {
+    const entries = await productionSitemap();
+    const entriesByUrl = new Map(entries.map((entry) => [entry.url, entry]));
+
+    for (const { pathname, contentDate } of publicPages) {
+      for (const locale of locales) {
+        const url = `${origin}/${locale}${pathname === "/" ? "" : pathname}`;
+        expect(entriesByUrl.get(url)?.lastModified).toBe(contentDate);
+      }
     }
   });
 

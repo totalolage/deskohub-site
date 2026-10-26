@@ -4,14 +4,15 @@ import {
   EmailServiceError,
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
-import { BigDecimal, Context, Data, Effect, Layer, Match } from "effect";
+import { Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { InvoiceDeliveryEmail } from "@/emails/invoice-delivery";
 import { env } from "@/env";
+import { isManualInvoiceDocument } from "@/features/accounting/invoice";
 import {
-  getManualInvoicePayment,
-  isManualInvoiceDocument,
-} from "@/features/accounting/invoice";
+  getInvoiceSettlement,
+  InvoiceSettlement,
+} from "@/features/accounting/invoice-settlement";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { m } from "@/features/i18n";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
@@ -35,7 +36,6 @@ import { type InvoicePdfRenderingError, renderInvoicePdf } from "./invoice-pdf";
 const invoiceCustomerEmailCategory = "workspace-invoice-customer";
 const invoiceInternalEmailCategory = "workspace-invoice-internal";
 const internalInvoiceLocale = "cs-CZ" as const;
-const INVOICE_EMAIL_PROCESSING_RETRY_AFTER_MS = 60 * 1000;
 
 export class InvoiceEmailDeliveryError extends Data.TaggedError(
   "InvoiceEmailDeliveryError"
@@ -91,19 +91,12 @@ export class InvoiceEmailDeliveryService extends Context.Service<
         readonly renderPdf: Effect.Effect<Buffer, InvoicePdfRenderingError>;
         readonly resend?: boolean;
       }) {
-        const staleProcessingBefore = Temporal.Now.instant().subtract({
-          milliseconds: INVOICE_EMAIL_PROCESSING_RETRY_AFTER_MS,
-        });
         const claim = yield* (
           input.resend
-            ? deliveries.claimResend({
-                invoiceId: input.invoice.id,
-                staleProcessingBefore,
-              })
+            ? deliveries.claimResend({ invoiceId: input.invoice.id })
             : deliveries.claim({
                 invoiceId: input.invoice.id,
                 audience: input.audience,
-                staleProcessingBefore,
               })
         ).pipe(
           Effect.mapError((cause) =>
@@ -122,17 +115,12 @@ export class InvoiceEmailDeliveryService extends Context.Service<
         const manualDocument = isManualInvoiceDocument(input.invoice.document)
           ? input.invoice.document
           : null;
-        const manualPayment = manualDocument
-          ? getManualInvoicePayment(manualDocument)
-          : null;
         const content = Match.value(input.audience).pipe(
           Match.when("customer", () => {
             const locale = input.invoice.document.locale;
-            const asksForPayment =
-              manualPayment?.status === "due" &&
-              BigDecimal.isPositive(
-                BigDecimal.fromStringUnsafe(manualDocument?.total ?? "0")
-              );
+            const asksForPayment = InvoiceSettlement.$is("PaymentRequested")(
+              getInvoiceSettlement(input.invoice.document)
+            );
             const manualBody = asksForPayment
               ? m.invoiceManualEmailBodyPaymentDetails(
                   { invoiceNumber: input.invoice.invoiceNumber },
@@ -480,9 +468,7 @@ function getInvoiceEmailDeliveryDependencies() {
   return Layer.mergeAll(
     accountingSnapshots,
     invoices,
-    InvoiceEmailDeliveryRepository.Default.pipe(
-      Layer.provide(WorkspaceDatabase.Default)
-    ),
+    InvoiceEmailDeliveryRepository.Live,
     Layer.provideMerge(EmailServiceTag.RecipientRouted, EmailConfigLayer)
   );
 }

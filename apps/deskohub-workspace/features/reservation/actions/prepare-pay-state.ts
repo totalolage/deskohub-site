@@ -4,7 +4,6 @@ import {
   type DotyposReservationId,
   DotyposReservationIdSchema,
   DotyposService,
-  ValidationError as DotyposValidationError,
 } from "@deskohub/dotypos";
 import { EmailRecipientDomainService } from "@deskohub/email/backend/recipient-domain.service";
 import {
@@ -108,6 +107,7 @@ import type { ReservationPrePaymentOutcome } from "@/features/reservation/reserv
 import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
 import { getReservationCustomerProfile } from "@/features/reservation/reservation-customer-profile";
 import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
+import { MissingDotyposId } from "@/shared/backend/missing-dotypos-id";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import {
   currentInstant,
@@ -255,7 +255,8 @@ const decodeDotyposEntityId = Effect.fn(
   ).pipe(
     Effect.mapError(
       () =>
-        new DotyposValidationError({
+        new MissingDotyposId({
+          entity: "reservation",
           message: input.missingIdMessage,
         })
     )
@@ -274,7 +275,8 @@ const getDotyposCustomerId = Effect.fn(
   decodeDotyposCustomerId(value).pipe(
     Effect.mapError(
       () =>
-        new DotyposValidationError({
+        new MissingDotyposId({
+          entity: "customer",
           message: "Dotypos customer is missing a valid ID",
         })
     )

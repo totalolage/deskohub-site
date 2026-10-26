@@ -27,6 +27,7 @@ test("FAQ focus indicator has at least 3:1 contrast against its navy offset", as
       averageReservationsPerDay={1.2}
       coworkSeatCapacity={28}
       locale="en-US"
+      officesOffered={false}
     />
   );
   const summary = view.container.querySelector("summary");
@@ -78,6 +79,7 @@ test("localizes Czech copy and formats the average with one decimal", () => {
       averageReservationsPerDay={1}
       coworkSeatCapacity={28}
       locale="cs-CZ"
+      officesOffered={false}
     />
   );
 
@@ -89,7 +91,7 @@ test("localizes Czech copy and formats the average with one decimal", () => {
   ).toBeTruthy();
   const busyness = view
     .getByRole("heading", {
-      level: 2,
+      level: 3,
       name: m.faqQuestionBusyness({}, { locale: "cs-CZ" }),
     })
     .closest("details") as HTMLDetailsElement;
@@ -103,6 +105,29 @@ test("localizes Czech copy and formats the average with one decimal", () => {
       )
     )
   ).toBeTruthy();
+});
+
+test("puts each topic's questions under its heading and links answers in the visitor's locale", () => {
+  const view = render(
+    <FaqPage
+      averageReservationsPerDay={1}
+      coworkSeatCapacity={28}
+      locale="cs-CZ"
+      officesOffered={false}
+    />
+  );
+
+  const topics = view.container.querySelectorAll("section");
+  expect(topics.length).toBeGreaterThan(1);
+  for (const topic of topics) {
+    expect(topic.querySelector("h2")).toBeTruthy();
+    expect(topic.querySelectorAll("details h3").length).toBeGreaterThan(0);
+  }
+  const links = [...view.container.querySelectorAll("details a")];
+  expect(links.length).toBeGreaterThan(0);
+  for (const link of links) {
+    expect(link.getAttribute("href")).toStartWith("/cs-CZ/");
+  }
 });
 
 function colorContrastRatio(foreground: string, background: string) {

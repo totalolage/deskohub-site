@@ -1,6 +1,7 @@
 import { Match } from "effect";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { PublicOfferingsStructuredData } from "@/features/checkout/components/public-offerings-structured-data";
 import type { PublicPriceListOffering } from "@/features/checkout/public-offerings";
 import { type Locale, m } from "@/features/i18n";
 import { getCoworkOfferSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
@@ -10,12 +11,13 @@ import { getReservationSelectionPath } from "@/features/reservation/reservation-
 import { Container } from "@/shared/components/container";
 import { GuardedLink as Link } from "@/shared/components/guarded-link";
 import { Button } from "@/shared/components/ui/button";
-import { formatMoney, type Money, moneyWithValue } from "@/shared/money/money";
+import { formatMoney, type Money } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   loadSharedPriceList,
   loadVisitorPriceList,
 } from "../backend/price-list.server";
+import { getOfferingSale } from "../offering-sale";
 import { getPriceFamilies } from "../price-family";
 
 type PricingPageProps = {
@@ -89,12 +91,17 @@ async function PriceLists({ locale }: PricingPageProps) {
   const { offerings, variesByVisitor } = await loadSharedPriceList(locale);
   const shared = <PriceList locale={locale} offerings={offerings} />;
 
-  return variesByVisitor ? (
-    <Suspense fallback={shared}>
-      <VisitorPriceList locale={locale} />
-    </Suspense>
-  ) : (
-    shared
+  return (
+    <>
+      <PublicOfferingsStructuredData locale={locale} offerings={offerings} />
+      {variesByVisitor ? (
+        <Suspense fallback={shared}>
+          <VisitorPriceList locale={locale} />
+        </Suspense>
+      ) : (
+        shared
+      )}
+    </>
   );
 }
 
@@ -206,7 +213,7 @@ const getPriceRow = (
     m.pricingPerDay({ price: format(money) }, { locale });
   const reserveLabel = (product: string) =>
     m.pricingReserveLabel({ product }, { locale });
-  const sale = getSale(offering, locale);
+  const sale = getOfferingSale(offering, locale);
 
   return Match.value(offering).pipe(
     Match.discriminatorsExhaustive("kind")({
@@ -275,20 +282,3 @@ const getPriceRow = (
     })
   );
 };
-
-/** The sale on the offering's smallest booking, when one runs today. */
-const getSale = (
-  { advertisedPrice }: PublicPriceListOffering,
-  locale: Locale
-) =>
-  advertisedPrice &&
-  advertisedPrice.discount.value > 0 && {
-    price: formatMoney(advertisedPrice.price, locale),
-    regularPrice: formatMoney(
-      moneyWithValue(
-        advertisedPrice.price.value + advertisedPrice.discount.value,
-        advertisedPrice.price
-      ),
-      locale
-    ),
-  };

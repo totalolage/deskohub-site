@@ -10,8 +10,8 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { Effect } from "effect";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { insertTestAdministrator } from "@/shared/testing/workspace-test-accounts.test-utils";
 import { richCampaignBodies } from "../body/campaign-body-document.test-utils";
 import { parseCampaignBodyMarkdown } from "../body/campaign-body-markdown";
 
@@ -87,7 +87,11 @@ const createDraft = () =>
 describe.skipIf(!testDatabase)("campaign editor content", () => {
   beforeAll(async () => {
     if (!testDatabase) return;
-    administrator = await insertTestAdministrator(testDatabase, "editor");
+    administrator = await Effect.runPromise(
+      workspaceFixtures(testDatabase.db).account("editor", {
+        roles: ["administrator"],
+      })
+    );
   });
 
   test("reads back the documents a new campaign was created with", async () => {

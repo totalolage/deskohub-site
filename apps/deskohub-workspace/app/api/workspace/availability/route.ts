@@ -1,6 +1,6 @@
-import { ValidationError } from "@deskohub/dotypos";
 import { Effect, Option } from "effect";
 import { NextResponse } from "next/server";
+import { AvailabilityQueryInvalid } from "@/features/reservation/backend/workspace-availability.service";
 import {
   loadAvailability,
   loadMeetingRoomStartTimes,
@@ -27,7 +27,7 @@ const loadWorkspaceAvailabilityRequest = Effect.fn(
       {
         onNone: () =>
           Effect.fail(
-            new ValidationError({
+            new AvailabilityQueryInvalid({
               message:
                 "Meeting-room start times need kind=meeting-room, a YYYY-MM-DD date, and a duration of hour:1, hour:4, or day:1.",
             })
@@ -46,7 +46,7 @@ const loadWorkspaceAvailabilityRequest = Effect.fn(
     {
       onNone: () =>
         Effect.fail(
-          new ValidationError({
+          new AvailabilityQueryInvalid({
             message:
               "Meeting-room availability needs startsAt and endsAt of one meeting-room booking of 1 hour, 4 hours, or a whole day.",
           })
@@ -77,7 +77,7 @@ export const GET = defineWorkspaceRoute(
         })
       ),
       Effect.provide(WorkspaceAvailabilityLoaderLive),
-      Effect.catchTag("ValidationError", (error) =>
+      Effect.catchTag("AvailabilityQueryInvalid", (error) =>
         Effect.succeed(
           NextResponse.json({ error: error.message }, { status: 400 })
         )

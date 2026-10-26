@@ -1,9 +1,17 @@
 import { Match } from "effect";
 import { getWorkspaceMeetingRoomDurationTitle } from "@/features/checkout/product-catalog.i18n";
-import type { PublicCatalogOffering } from "@/features/checkout/public-offerings";
-import { type Locale, m } from "@/features/i18n";
+import type {
+  PublicOfferingAdvertisedPrice,
+  PublicPriceListOffering,
+} from "@/features/checkout/public-offerings";
+import { getWorkspacePageUrl, type Locale, m } from "@/features/i18n";
 import { isMeetingRoomWholeDayReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
-import { type Money, moneyMajorAmount } from "@/shared/money/money";
+import { getShareableReservationStartPath } from "@/features/reservation/routes";
+import {
+  type Money,
+  moneyMajorAmount,
+  moneyWithValue,
+} from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   getEveryDayOpeningHours,
@@ -33,18 +41,57 @@ const getUnitPriceSpecification = (
   referenceQuantity: { "@type": "QuantitativeValue", value, unitCode },
 });
 
+/**
+ * The offer's price: the advertised one, and while a sale runs, its last
+ * bookable day and the regular price struck through beside it, so the sale
+ * price never reads as permanent.
+ */
+const getOfferPrice = ({
+  advertisedPrice,
+  regularPrice,
+  regularPriceSpecification,
+  unit,
+}: {
+  readonly advertisedPrice?: PublicOfferingAdvertisedPrice;
+  readonly regularPrice: Money;
+  readonly regularPriceSpecification: ReadonlyArray<object>;
+  /** The unit of the smallest booking, which the advertised price is for. */
+  readonly unit: PriceUnit;
+}) => {
+  if (!advertisedPrice || advertisedPrice.discount.value <= 0) {
+    return {
+      ...getPrice(advertisedPrice?.price ?? regularPrice),
+      priceSpecification: regularPriceSpecification,
+    };
+  }
+
+  const { price, discount, saleLastDay } = advertisedPrice;
+  return {
+    ...getPrice(price),
+    ...(saleLastDay && { priceValidUntil: saleLastDay }),
+    priceSpecification: [
+      getUnitPriceSpecification(price, unit),
+      {
+        ...getUnitPriceSpecification(
+          moneyWithValue(price.value + discount.value, price),
+          unit
+        ),
+        priceType: "https://schema.org/StrikethroughPrice",
+      },
+    ],
+  };
+};
+
 const getService = ({
   name,
   offering,
-  priceSpecification,
+  price,
   addOns = [],
-  url,
 }: {
   readonly name: string;
-  readonly offering: PublicCatalogOffering;
-  readonly priceSpecification: ReadonlyArray<object>;
+  readonly offering: PublicPriceListOffering;
+  readonly price: ReturnType<typeof getOfferPrice>;
   readonly addOns?: ReadonlyArray<object>;
-  readonly url: string;
 }) => ({
   "@type": "Service",
   name,
@@ -52,17 +99,20 @@ const getService = ({
   provider: { "@id": workspaceBusinessId },
   offers: {
     "@type": "Offer",
-    url,
+    url: getOfferingUrl(offering),
     description: offering.usage,
-    ...getPrice(offering.price),
-    priceSpecification,
+    ...price,
     ...(addOns.length > 0 && { addOn: addOns }),
   },
 });
 
+/** The page that books the offering. */
+const getOfferingUrl = ({ kind }: PublicPriceListOffering) =>
+  getWorkspacePageUrl(getShareableReservationStartPath(kind));
+
 const getOfferingService = (
-  offering: PublicCatalogOffering,
-  { locale, url }: { readonly locale: Locale; readonly url: string }
+  offering: PublicPriceListOffering,
+  locale: Locale
 ) =>
   Match.value(offering).pipe(
     Match.discriminatorsExhaustive("kind")({
@@ -70,18 +120,25 @@ const getOfferingService = (
         ...getService({
           name: cowork.name,
           offering: cowork,
-          priceSpecification: [getUnitPriceSpecification(cowork.price, day)],
-          // Included extras are part of the tier price.
+          price: getOfferPrice({
+            advertisedPrice: cowork.advertisedPrice,
+            regularPrice: cowork.price,
+            regularPriceSpecification: [
+              getUnitPriceSpecification(cowork.price, day),
+            ],
+            unit: day,
+          }),
+          // Included extras are part of the tier price. Sales never cover
+          // extras, so theirs is the regular price.
           addOns: cowork.addOns
             .filter(({ included }) => !included)
             .map((addOn) => ({
               "@type": "Offer",
               name: addOn.name,
-              url,
+              url: getOfferingUrl(cowork),
               ...getPrice(addOn.price),
               priceSpecification: getUnitPriceSpecification(addOn.price, day),
             })),
-          url,
         }),
         ...(cowork.tier === "open-space" && {
           hoursAvailable: getEveryDayOpeningHours(
@@ -89,56 +146,62 @@ const getOfferingService = (
           ),
         }),
       }),
-      "meeting-room": (meetingRoom) =>
-        getService({
+      "meeting-room": (meetingRoom) => {
+        const unit: PriceUnit = isMeetingRoomWholeDayReservationDuration(
+          meetingRoom.duration
+        )
+          ? day
+          : { unitCode: "HUR", value: meetingRoom.duration.amount };
+
+        return getService({
           name: getWorkspaceMeetingRoomDurationTitle(
             meetingRoom.duration,
             locale
           ),
           offering: meetingRoom,
-          priceSpecification: [
-            getUnitPriceSpecification(
-              meetingRoom.price,
-              isMeetingRoomWholeDayReservationDuration(meetingRoom.duration)
-                ? day
-                : { unitCode: "HUR", value: meetingRoom.duration.amount }
-            ),
-          ],
-          url,
-        }),
+          price: getOfferPrice({
+            advertisedPrice: meetingRoom.advertisedPrice,
+            regularPrice: meetingRoom.price,
+            regularPriceSpecification: [
+              getUnitPriceSpecification(meetingRoom.price, unit),
+            ],
+            unit,
+          }),
+        });
+      },
       office: (office) =>
         getService({
           name: office.name,
           offering: office,
-          priceSpecification: [
-            getUnitPriceSpecification(office.price, day),
-            getUnitPriceSpecification(
-              office.seatPrice,
-              day,
-              m.publicOfferingOfficeSeatPrice({}, { locale })
-            ),
-          ],
-          url,
+          // The advertised price is one day with one seat.
+          price: getOfferPrice({
+            advertisedPrice: office.advertisedPrice,
+            regularPrice: office.price,
+            regularPriceSpecification: [
+              getUnitPriceSpecification(office.price, day),
+              getUnitPriceSpecification(
+                office.seatPrice,
+                day,
+                m.publicOfferingOfficeSeatPrice({}, { locale })
+              ),
+            ],
+            unit: day,
+          }),
         }),
     })
   );
 
 /**
- * One Schema.org Service per offering, each with its Offer, provided by the
- * business node the site layout renders.
+ * One Schema.org Service per offering, each with its Offer on the page that
+ * books it, provided by the business node the site layout renders.
  */
 export const getPublicOfferingsStructuredData = ({
   locale,
   offerings,
-  url,
 }: {
   readonly locale: Locale;
-  readonly offerings: ReadonlyArray<PublicCatalogOffering>;
-  /** The page that books the offerings. */
-  readonly url: string;
+  readonly offerings: ReadonlyArray<PublicPriceListOffering>;
 }) =>
   getStructuredDataDocument({
-    "@graph": offerings.map((offering) =>
-      getOfferingService(offering, { locale, url })
-    ),
+    "@graph": offerings.map((offering) => getOfferingService(offering, locale)),
   });

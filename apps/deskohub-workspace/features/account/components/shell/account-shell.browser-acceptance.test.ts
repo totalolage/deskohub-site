@@ -3,23 +3,25 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Browser, chromium, type Page } from "@playwright/test";
-import type { AccountSection } from "@/features/account/sections";
+import {
+  type AccountSection,
+  accountSectionLabel,
+} from "@/features/account/sections";
 import { m } from "@/features/i18n";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles.test-utils";
 
 const locale = "en-US" as const;
 const navigationLabel = m.accountNavigationLabel({}, { locale });
-const sectionLabels = {
-  reservations: m.accountSectionReservations({}, { locale }),
-  referrals: m.accountSectionReferrals({}, { locale }),
-  profile: m.accountSectionProfile({}, { locale }),
-  assistants: m.accountSectionAssistants({}, { locale }),
-  billing: m.accountSectionBilling({}, { locale }),
-  legal: m.accountSectionLegal({}, { locale }),
-  danger: m.accountSectionDanger({}, { locale }),
-} as const satisfies Readonly<Record<AccountSection, string>>;
-const sections = Object.keys(sectionLabels) as AccountSection[];
+const sections = [
+  "reservations",
+  "referrals",
+  "profile",
+  "assistants",
+  "billing",
+  "legal",
+  "danger",
+] as const satisfies readonly AccountSection[];
 // Matches the harness's section links.
 const sectionHref = (section: AccountSection) =>
   `/${locale}/account/${section}`;
@@ -109,7 +111,7 @@ const readShellLayout = (page: Page) =>
 const selectSection = async (page: Page, section: AccountSection) => {
   await page
     .getByRole("navigation", { name: navigationLabel })
-    .getByRole("link", { name: sectionLabels[section] })
+    .getByRole("link", { name: accountSectionLabel(section, locale) })
     .filter({ visible: true })
     .click();
 };
