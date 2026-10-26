@@ -21,8 +21,10 @@ import type {
   WorkspaceReservationId,
 } from "../features/reservation/persistence-contracts";
 import type { ReservationInterval } from "../features/reservation/reservation-interval";
+import type { WorkspaceE2EStepRunner } from "./case-runner";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "./config";
 import type { WorkspaceE2EHostedPaymentPermitService } from "./coordination/hosted-payment-permit.service";
+import type { WorkspaceE2EProviderVerificationPermitService } from "./coordination/provider-verification-permit.service";
 import type { WorkspaceE2EError } from "./errors";
 import type { E2EDatabase } from "./integrations/database.service";
 
@@ -139,17 +141,8 @@ export type WorkspaceE2ECase = {
   }) => Effect.Effect<
     void,
     WorkspaceE2EError,
-    E2EDatabase | WorkspaceE2EHostedPaymentPermitService
+    | E2EDatabase
+    | WorkspaceE2EHostedPaymentPermitService
+    | WorkspaceE2EProviderVerificationPermitService
   >;
 };
-
-export type WorkspaceE2EStep<A, R = never> = {
-  readonly capacity?: "provider-verification";
-  readonly execute: Effect.Effect<A, WorkspaceE2EError, R>;
-  readonly id: string;
-  readonly timeoutMs: number;
-};
-
-export type WorkspaceE2EStepRunner = <A, R>(
-  step: WorkspaceE2EStep<A, R>
-) => Effect.Effect<A, WorkspaceE2EError, R>;

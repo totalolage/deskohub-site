@@ -11,13 +11,14 @@ import {
   waitForBrowserCondition,
   waitForBrowserText,
 } from "../browser";
+import type { WorkspaceE2EStep } from "../case-runner";
 import type { WorkspaceE2EConfig } from "../config";
 import { tryWorkspaceE2ESync, type WorkspaceE2EError } from "../errors";
 import { readCheckoutRow } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
 import { addRedaction, assert, log } from "../runtime";
-import type { CheckoutData, CheckoutRow, WorkspaceE2EStep } from "../types";
+import type { CheckoutData, CheckoutRow } from "../types";
 import { withWorkspaceE2ELocalReservationFixture } from "./local-reservation-fixture";
 
 const makeReservationStatusUrl = (

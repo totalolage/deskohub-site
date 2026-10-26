@@ -16,8 +16,6 @@ import {
   awaitActionQuiescence,
   openAdminBrowserPage,
   primePreviewBypass,
-  reportAdminCaseFailure,
-  runFinalizedCase,
   sanitizedBrowserOperation,
 } from "../admin-case";
 import {
@@ -25,19 +23,13 @@ import {
   type WorkspaceE2EAdministrationAccount,
   type WorkspaceE2EAdministrationIdentities,
 } from "../administrators/identities";
-import {
-  toWorkspaceE2EError,
-  type WorkspaceE2EError,
-  workspaceE2EError,
-} from "../errors";
-import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
+import { runE2ECase, type WorkspaceE2EStepRunner } from "../case-runner";
+import { toWorkspaceE2EError, workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
 import { runtimeTest as test } from "../playwright-checkout/runtime-fixtures";
 import { pollUntil, withinWorkspaceE2EDeadline } from "../polling";
 import { waitForReactSubmitHandler } from "../react-handlers";
 import { addRedaction } from "../runtime";
-import { E2ETelemetryService, toE2EResult } from "../services/telemetry";
-import type { WorkspaceE2EFailureReporter } from "../suite";
 import {
   workspaceE2EAccessCodeCleanupTimeout,
   workspaceE2EPollInitialIntervalMs,
@@ -95,10 +87,6 @@ test("creates a standalone access code through the admin form and replays the sa
         origin,
         page,
         plan,
-        reportFailure:
-          runContext.githubRunId === undefined
-            ? undefined
-            : writeWorkspaceE2EFailureAnnotation,
       })
     );
   } finally {
@@ -114,9 +102,7 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
     readonly origin: string;
     readonly page: Page;
     readonly plan: AccessCodeCreationPlan;
-    readonly reportFailure?: WorkspaceE2EFailureReporter;
   }) {
-    const telemetry = yield* E2ETelemetryService;
     const { db } = yield* E2EDatabase;
     const cleanup = cleanupSyntheticAttemptEvents(db, input.plan.name);
     // Registered before the submit click so cleanup waits on the action even
@@ -127,29 +113,6 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
     let replayBarrier: Promise<ActionResponseOutcome> | undefined;
     let capturedAction: CapturedActionRequest | undefined;
     let administrator: WorkspaceE2EAdministrationAccount | undefined;
-    let terminalStepId: string | undefined;
-
-    const step = (
-      stepId: string,
-      timeoutMs: number,
-      execute: Effect.Effect<void, WorkspaceE2EError>
-    ) => {
-      const operation = `${accessCodeCreationCaseId}/${stepId}`;
-      return telemetry.traceStep({
-        caseId: accessCodeCreationCaseId,
-        effect: Effect.onExit(
-          withinWorkspaceE2EDeadline(execute, operation, timeoutMs),
-          (exit) =>
-            Effect.sync(() => {
-              if (toE2EResult(exit).outcome !== "passed") {
-                terminalStepId = stepId;
-              }
-            })
-        ),
-        stepId,
-        timeoutMs,
-      });
-    };
 
     const waitForTerminalEvent = pollUntil(
       readSyntheticAttemptEvents(db, input.plan.name).pipe(
@@ -165,335 +128,327 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
       }
     );
 
-    const timedBody = withinWorkspaceE2EDeadline(
-      Effect.gen(function* () {
-        yield* step(
-          "clean-synthetic-rows",
-          workspaceE2ETimeouts.cleanupAction,
-          cleanup
-        );
-        yield* step(
-          "prime-preview-bypass",
-          workspaceE2ETimeouts.browserAction,
-          primePreviewBypass({
-            bypassSecret: input.bypassSecret,
-            context: input.context,
-            origin: input.origin,
-          })
-        );
-        yield* step(
-          "sign-in-seeded-administrator",
-          workspaceE2ETimeouts.datasource,
-          Effect.gen(function* () {
-            administrator = yield* input.identities.seed("acc-admin", [
-              "administrator",
-            ]);
-            yield* input.identities.signIn(administrator, input);
-          }).pipe(Effect.provideService(E2EDatabase, E2EDatabase.of({ db })))
-        );
-        yield* step(
-          "open-admin-form",
-          workspaceE2ETimeouts.browserNavigation,
-          sanitizedBrowserOperation("open the access-code admin page", () =>
+    const caseBody = Effect.fn(function* (step: WorkspaceE2EStepRunner) {
+      yield* step({
+        execute: cleanup,
+        id: "clean-synthetic-rows",
+        timeoutMs: workspaceE2ETimeouts.cleanupAction,
+      });
+      yield* step({
+        execute: primePreviewBypass({
+          bypassSecret: input.bypassSecret,
+          context: input.context,
+          origin: input.origin,
+        }),
+        id: "prime-preview-bypass",
+        timeoutMs: workspaceE2ETimeouts.browserAction,
+      });
+      yield* step({
+        execute: Effect.gen(function* () {
+          administrator = yield* input.identities.seed("acc-admin", [
+            "administrator",
+          ]);
+          yield* input.identities.signIn(administrator, input);
+        }).pipe(Effect.provideService(E2EDatabase, E2EDatabase.of({ db }))),
+        id: "sign-in-seeded-administrator",
+        timeoutMs: workspaceE2ETimeouts.datasource,
+      });
+      yield* step({
+        execute: sanitizedBrowserOperation(
+          "open the access-code admin page",
+          () =>
             input.page
               .goto(`${input.origin}/en-US/admin/access-codes`, {
                 timeout: workspaceE2ETimeouts.browserNavigation,
               })
               .then(() => undefined)
-          )
-        );
-        yield* step(
-          "wait-for-admin-form",
-          workspaceE2ETimeouts.browserAction,
-          sanitizedBrowserOperation(
-            "wait for the create access code form",
-            () =>
-              input.page.locator(editingFormSelector).waitFor({
-                state: "visible",
-                timeout: workspaceE2ETimeouts.browserAction,
-              })
-          )
-        );
-        yield* step(
-          "wait-for-form-hydration",
-          workspaceE2ETimeouts.uiTransition,
-          sanitizedBrowserOperation(
-            "wait for the hydrated create access code form handler",
-            () =>
-              waitForReactSubmitHandler(
-                input.page,
-                input.page.locator(editingFormSelector),
-                workspaceE2ETimeouts.uiTransition
-              )
-          )
-        );
-        yield* step(
-          "fill-access-code-name",
-          workspaceE2ETimeouts.browserAction,
-          sanitizedBrowserOperation("fill the access code name", () =>
-            input.page
-              .getByLabel("Name", { exact: true })
-              .fill(input.plan.name, {
-                timeout: workspaceE2ETimeouts.browserAction,
-              })
-          )
-        );
-        yield* step(
-          "fill-window-start",
-          workspaceE2ETimeouts.browserAction,
-          sanitizedBrowserOperation("fill the access window start", () =>
-            input.page
-              .getByLabel("Starts", { exact: true })
-              .fill(input.plan.startsAtLocal, {
-                timeout: workspaceE2ETimeouts.browserAction,
-              })
-          )
-        );
-        yield* step(
-          "fill-window-end",
-          workspaceE2ETimeouts.browserAction,
-          sanitizedBrowserOperation("fill the access window end", () =>
-            input.page
-              .getByLabel("Ends", { exact: true })
-              .fill(input.plan.endsAtLocal, {
-                timeout: workspaceE2ETimeouts.browserAction,
-              })
-          )
-        );
-        yield* step(
-          "assert-duration-preview",
-          workspaceE2ETimeouts.browserAction,
-          sanitizedBrowserOperation(
-            "wait for the hydrated window duration preview",
-            () =>
-              expect(
-                input.page.getByText(/^Duration: \d+ hours?$/)
-              ).toBeVisible({ timeout: workspaceE2ETimeouts.browserAction })
-          )
-        );
-        yield* step(
-          "submit-creation",
-          workspaceE2ETimeouts.uiTransition,
-          Effect.gen(function* () {
-            const actionRequest = yield* sanitizedBrowserOperation(
-              "activate the create access code submit control once and capture its server action request",
-              async () => {
-                const isActionRequest = (request: Request) =>
-                  request.method() === "POST" &&
-                  request.url().startsWith(input.origin) &&
-                  request.headers()["next-action"] !== undefined;
-                const requestPromise = input.page.waitForRequest(
-                  isActionRequest,
-                  { timeout: workspaceE2ETimeouts.uiTransition }
-                );
-                const responsePromise = input.page.waitForResponse(
-                  (response) => isActionRequest(response.request()),
-                  { timeout: workspaceE2ETimeouts.providerTransition }
-                );
-                // The mutation route keeps running after disconnects, so
-                // the retained settled response is the completion barrier
-                // cleanup waits on before deleting synthetic rows. It is
-                // registered in outer case state before the click, so an
-                // interrupted submit still leaves the barrier behind.
-                const responseSettled = responsePromise.then(
-                  (): ActionResponseOutcome => ({ kind: "responded" }),
-                  (): ActionResponseOutcome => ({ kind: "unresolved" })
-                );
-                actionBarrier = responseSettled;
-                try {
-                  await input.page
-                    .getByRole("button", {
-                      name: "Create access code",
-                      exact: true,
-                    })
-                    .click({
-                      timeout: workspaceE2ETimeouts.browserAction,
-                    });
-                  return await requestPromise;
-                } catch (cause) {
-                  void requestPromise.catch(() => undefined);
-                  void responsePromise.catch(() => undefined);
-                  throw cause;
-                }
-              }
-            );
-            const body = actionRequest.postDataBuffer();
-            if (!body) {
-              return yield* workspaceE2EError(
-                "The captured create access code server action request has no body",
-                {
-                  operation:
-                    "capture the create access code server action request",
-                }
-              );
-            }
-            capturedAction = {
-              body,
-              headers: actionRequest.headers(),
-              url: actionRequest.url(),
-            };
+        ),
+        id: "open-admin-form",
+        timeoutMs: workspaceE2ETimeouts.browserNavigation,
+      });
+      yield* step({
+        execute: sanitizedBrowserOperation(
+          "wait for the create access code form",
+          () =>
+            input.page.locator(editingFormSelector).waitFor({
+              state: "visible",
+              timeout: workspaceE2ETimeouts.browserAction,
+            })
+        ),
+        id: "wait-for-admin-form",
+        timeoutMs: workspaceE2ETimeouts.browserAction,
+      });
+      yield* step({
+        execute: sanitizedBrowserOperation(
+          "wait for the hydrated create access code form handler",
+          () =>
+            waitForReactSubmitHandler(
+              input.page,
+              input.page.locator(editingFormSelector),
+              workspaceE2ETimeouts.uiTransition
+            )
+        ),
+        id: "wait-for-form-hydration",
+        timeoutMs: workspaceE2ETimeouts.uiTransition,
+      });
+      yield* step({
+        execute: sanitizedBrowserOperation("fill the access code name", () =>
+          input.page.getByLabel("Name", { exact: true }).fill(input.plan.name, {
+            timeout: workspaceE2ETimeouts.browserAction,
           })
-        );
-        yield* step(
-          "wait-for-created-confirmation",
-          workspaceE2ETimeouts.uiTransition,
-          sanitizedBrowserOperation(
-            "wait for the created access code confirmation",
-            () =>
-              expect(input.page.locator(createdRegionSelector)).toBeVisible({
-                timeout: workspaceE2ETimeouts.uiTransition,
-              })
-          )
-        );
-        yield* step(
-          "assert-fixture-pin-output",
-          workspaceE2ETimeouts.browserAction,
-          sanitizedBrowserOperation(
-            "assert the one-time fixture PIN output",
-            () =>
-              expect(
-                input.page.locator(createdRegionSelector).getByRole("status")
-              ).toHaveAttribute("aria-label", fixturePinDigitsLabel, {
-                timeout: workspaceE2ETimeouts.browserAction,
-              })
-          )
-        );
-        yield* step(
-          "assert-created-summary",
-          workspaceE2ETimeouts.browserAction,
-          sanitizedBrowserOperation(
-            "assert the created access code summary",
-            () =>
-              expect(input.page.locator(createdRegionSelector)).toContainText(
-                input.plan.name,
-                {
-                  timeout: workspaceE2ETimeouts.browserAction,
-                }
-              )
-          )
-        );
-        yield* step(
-          "replay-deployed-action",
-          workspaceE2ETimeouts.providerTransition,
-          Effect.gen(function* () {
-            if (!capturedAction) {
-              return yield* workspaceE2EError(
-                "No captured create access code server action request is available for the replay",
-                {
-                  operation: "replay the deployed create access code action",
-                }
+        ),
+        id: "fill-access-code-name",
+        timeoutMs: workspaceE2ETimeouts.browserAction,
+      });
+      yield* step({
+        execute: sanitizedBrowserOperation("fill the access window start", () =>
+          input.page
+            .getByLabel("Starts", { exact: true })
+            .fill(input.plan.startsAtLocal, {
+              timeout: workspaceE2ETimeouts.browserAction,
+            })
+        ),
+        id: "fill-window-start",
+        timeoutMs: workspaceE2ETimeouts.browserAction,
+      });
+      yield* step({
+        execute: sanitizedBrowserOperation("fill the access window end", () =>
+          input.page
+            .getByLabel("Ends", { exact: true })
+            .fill(input.plan.endsAtLocal, {
+              timeout: workspaceE2ETimeouts.browserAction,
+            })
+        ),
+        id: "fill-window-end",
+        timeoutMs: workspaceE2ETimeouts.browserAction,
+      });
+      yield* step({
+        execute: sanitizedBrowserOperation(
+          "wait for the hydrated window duration preview",
+          () =>
+            expect(input.page.getByText(/^Duration: \d+ hours?$/)).toBeVisible({
+              timeout: workspaceE2ETimeouts.browserAction,
+            })
+        ),
+        id: "assert-duration-preview",
+        timeoutMs: workspaceE2ETimeouts.browserAction,
+      });
+      yield* step({
+        execute: Effect.gen(function* () {
+          const actionRequest = yield* sanitizedBrowserOperation(
+            "activate the create access code submit control once and capture its server action request",
+            async () => {
+              const isActionRequest = (request: Request) =>
+                request.method() === "POST" &&
+                request.url().startsWith(input.origin) &&
+                request.headers()["next-action"] !== undefined;
+              const requestPromise = input.page.waitForRequest(
+                isActionRequest,
+                { timeout: workspaceE2ETimeouts.uiTransition }
               );
+              const responsePromise = input.page.waitForResponse(
+                (response) => isActionRequest(response.request()),
+                { timeout: workspaceE2ETimeouts.providerTransition }
+              );
+              // The mutation route keeps running after disconnects, so
+              // the retained settled response is the completion barrier
+              // cleanup waits on before deleting synthetic rows. It is
+              // registered in outer case state before the click, so an
+              // interrupted submit still leaves the barrier behind.
+              const responseSettled = responsePromise.then(
+                (): ActionResponseOutcome => ({ kind: "responded" }),
+                (): ActionResponseOutcome => ({ kind: "unresolved" })
+              );
+              actionBarrier = responseSettled;
+              try {
+                await input.page
+                  .getByRole("button", {
+                    name: "Create access code",
+                    exact: true,
+                  })
+                  .click({
+                    timeout: workspaceE2ETimeouts.browserAction,
+                  });
+                return await requestPromise;
+              } catch (cause) {
+                void requestPromise.catch(() => undefined);
+                void responsePromise.catch(() => undefined);
+                throw cause;
+              }
             }
-            const action = capturedAction;
-            const replayResponsePromise = input.context.request.post(
-              action.url,
+          );
+          const body = actionRequest.postDataBuffer();
+          if (!body) {
+            return yield* workspaceE2EError(
+              "The captured create access code server action request has no body",
               {
-                data: action.body,
-                headers: selectActionReplayHeaders(action.headers),
-                timeout: workspaceE2ETimeouts.providerTransition,
+                operation:
+                  "capture the create access code server action request",
               }
             );
-            const replaySettled = replayResponsePromise.then(
-              (): ActionResponseOutcome => ({ kind: "responded" }),
-              (): ActionResponseOutcome => ({ kind: "unresolved" })
-            );
-            replayBarrier = replaySettled;
-            yield* sanitizedBrowserOperation(
-              "replay the captured create access code server action request",
-              async () => {
-                const response = await replayResponsePromise;
-                try {
-                  equal(response.status(), 200);
-                  const body = await response.text();
-                  ok(
-                    body.includes("already-created"),
-                    "the replayed attempt must return the already-created outcome"
-                  );
-                  ok(
-                    !body.includes('"outcome":"created"'),
-                    "the replayed attempt must not report a fresh creation"
-                  );
-                  ok(
-                    !body.includes(fixturePin),
-                    "the replayed attempt must not re-disclose the one-time PIN"
-                  );
-                } finally {
-                  await response.dispose();
-                }
+          }
+          capturedAction = {
+            body,
+            headers: actionRequest.headers(),
+            url: actionRequest.url(),
+          };
+        }),
+        id: "submit-creation",
+        timeoutMs: workspaceE2ETimeouts.uiTransition,
+      });
+      yield* step({
+        execute: sanitizedBrowserOperation(
+          "wait for the created access code confirmation",
+          () =>
+            expect(input.page.locator(createdRegionSelector)).toBeVisible({
+              timeout: workspaceE2ETimeouts.uiTransition,
+            })
+        ),
+        id: "wait-for-created-confirmation",
+        timeoutMs: workspaceE2ETimeouts.uiTransition,
+      });
+      yield* step({
+        execute: sanitizedBrowserOperation(
+          "assert the one-time fixture PIN output",
+          () =>
+            expect(
+              input.page.locator(createdRegionSelector).getByRole("status")
+            ).toHaveAttribute("aria-label", fixturePinDigitsLabel, {
+              timeout: workspaceE2ETimeouts.browserAction,
+            })
+        ),
+        id: "assert-fixture-pin-output",
+        timeoutMs: workspaceE2ETimeouts.browserAction,
+      });
+      yield* step({
+        execute: sanitizedBrowserOperation(
+          "assert the created access code summary",
+          () =>
+            expect(input.page.locator(createdRegionSelector)).toContainText(
+              input.plan.name,
+              {
+                timeout: workspaceE2ETimeouts.browserAction,
+              }
+            )
+        ),
+        id: "assert-created-summary",
+        timeoutMs: workspaceE2ETimeouts.browserAction,
+      });
+      yield* step({
+        execute: Effect.gen(function* () {
+          if (!capturedAction) {
+            return yield* workspaceE2EError(
+              "No captured create access code server action request is available for the replay",
+              {
+                operation: "replay the deployed create access code action",
               }
             );
-          })
-        );
-        yield* step(
-          "assert-attempt-persistence",
-          workspaceE2ETimeouts.datasource,
-          Effect.gen(function* () {
-            const events = yield* pollUntil(
-              readSyntheticAttemptEvents(db, input.plan.name).pipe(
-                Effect.map((rows) => (rows.length === 2 ? rows : undefined))
+          }
+          const action = capturedAction;
+          const replayResponsePromise = input.context.request.post(action.url, {
+            data: action.body,
+            headers: selectActionReplayHeaders(action.headers),
+            timeout: workspaceE2ETimeouts.providerTransition,
+          });
+          const replaySettled = replayResponsePromise.then(
+            (): ActionResponseOutcome => ({ kind: "responded" }),
+            (): ActionResponseOutcome => ({ kind: "unresolved" })
+          );
+          replayBarrier = replaySettled;
+          yield* sanitizedBrowserOperation(
+            "replay the captured create access code server action request",
+            async () => {
+              const response = await replayResponsePromise;
+              try {
+                equal(response.status(), 200);
+                const body = await response.text();
+                ok(
+                  body.includes("already-created"),
+                  "the replayed attempt must return the already-created outcome"
+                );
+                ok(
+                  !body.includes('"outcome":"created"'),
+                  "the replayed attempt must not report a fresh creation"
+                );
+                ok(
+                  !body.includes(fixturePin),
+                  "the replayed attempt must not re-disclose the one-time PIN"
+                );
+              } finally {
+                await response.dispose();
+              }
+            }
+          );
+        }),
+        id: "replay-deployed-action",
+        timeoutMs: workspaceE2ETimeouts.providerTransition,
+      });
+      yield* step({
+        execute: Effect.gen(function* () {
+          const events = yield* pollUntil(
+            readSyntheticAttemptEvents(db, input.plan.name).pipe(
+              Effect.map((rows) => (rows.length === 2 ? rows : undefined))
+            ),
+            {
+              initialIntervalMs: workspaceE2EPollInitialIntervalMs.database,
+              intervalMs: workspaceE2EPollIntervalMs.datasource,
+              label: "the standalone access code attempt events",
+              timeoutMs: workspaceE2ETimeouts.datasource,
+            }
+          );
+          equal(events.length, 2);
+          deepStrictEqual(events.map((row) => row.eventKind).sort(), [
+            "created",
+            "started",
+          ]);
+          const started = events.find((row) => row.eventKind === "started");
+          const created = events.find((row) => row.eventKind === "created");
+          ok(started && created);
+          const attemptIds = new Set(events.map((row) => row.attemptId));
+          equal(attemptIds.size, 1);
+          const [attemptId] = attemptIds;
+          ok(
+            typeof attemptId === "string" &&
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+                attemptId
               ),
-              {
-                initialIntervalMs: workspaceE2EPollInitialIntervalMs.database,
-                intervalMs: workspaceE2EPollIntervalMs.datasource,
-                label: "the standalone access code attempt events",
-                timeoutMs: workspaceE2ETimeouts.datasource,
-              }
-            );
-            equal(events.length, 2);
-            deepStrictEqual(events.map((row) => row.eventKind).sort(), [
-              "created",
-              "started",
-            ]);
-            const started = events.find((row) => row.eventKind === "started");
-            const created = events.find((row) => row.eventKind === "created");
-            ok(started && created);
-            const attemptIds = new Set(events.map((row) => row.attemptId));
-            equal(attemptIds.size, 1);
-            const [attemptId] = attemptIds;
-            ok(
-              typeof attemptId === "string" &&
-                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
-                  attemptId
-                ),
-              "both attempt events must share one valid form-generated attempt id"
-            );
-            ok(
+            "both attempt events must share one valid form-generated attempt id"
+          );
+          ok(
+            events.every(
+              (row) => row.startsAtLocal === input.plan.startsAtLocal
+            ) &&
+              events.every((row) => row.endsAtLocal === input.plan.endsAtLocal),
+            "the persisted access window must match the submitted plan"
+          );
+          equal(created.providerCredentialId, `fixture-${input.plan.name}`);
+          ok(
+            created.variance === 2 || created.variance === 3,
+            "the created event must record a supported provider variance"
+          );
+          equal(created.variance, started.variance);
+          equal(started.providerCredentialId, null);
+          ok(events.every((row) => row.source === "admin-ui"));
+          const actor = administrator;
+          ok(
+            actor !== undefined &&
               events.every(
-                (row) => row.startsAtLocal === input.plan.startsAtLocal
-              ) &&
-                events.every(
-                  (row) => row.endsAtLocal === input.plan.endsAtLocal
-                ),
-              "the persisted access window must match the submitted plan"
-            );
-            equal(created.providerCredentialId, `fixture-${input.plan.name}`);
-            ok(
-              created.variance === 2 || created.variance === 3,
-              "the created event must record a supported provider variance"
-            );
-            equal(created.variance, started.variance);
-            equal(started.providerCredentialId, null);
-            ok(events.every((row) => row.source === "admin-ui"));
-            const actor = administrator;
-            ok(
-              actor !== undefined &&
-                events.every(
-                  (row) =>
-                    row.actorAccountId === actor.accountId &&
-                    row.actorAccountEmail === actor.email
-                ),
-              "every attempt event must name the seeded administrator account"
-            );
-            ok(events.every((row) => row.name === input.plan.name));
-          })
-        );
-      }),
-      `${accessCodeCreationCaseId} e2e case`,
-      workspaceE2ETimeouts.accessCodeCase
-    );
+                (row) =>
+                  row.actorAccountId === actor.accountId &&
+                  row.actorAccountEmail === actor.email
+              ),
+            "every attempt event must name the seeded administrator account"
+          );
+          ok(events.every((row) => row.name === input.plan.name));
+        }),
+        id: "assert-attempt-persistence",
+        timeoutMs: workspaceE2ETimeouts.datasource,
+      });
+    });
 
-    const finalized = runFinalizedCase({
-      body: timedBody,
+    yield* runE2ECase({
+      body: caseBody,
+      caseId: accessCodeCreationCaseId,
       cleanup: withinWorkspaceE2EDeadline(
         Effect.gen(function* () {
           yield* awaitActionQuiescence({
@@ -512,20 +467,8 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
         `${accessCodeCreationCaseId}/cleanup`,
         workspaceE2EAccessCodeCleanupTimeout
       ).pipe(Effect.orDie),
-      trace: (effect) =>
-        telemetry.traceCase({
-          caseId: accessCodeCreationCaseId,
-          effect,
-          timeoutMs: workspaceE2ETimeouts.accessCodeCase,
-        }),
-      onExit: reportAdminCaseFailure({
-        caseId: accessCodeCreationCaseId,
-        reportFailure: input.reportFailure,
-        terminalStepId: () => terminalStepId,
-      }),
+      watchdogMs: workspaceE2ETimeouts.accessCodeCase,
     });
-
-    yield* finalized;
   }
 );
 

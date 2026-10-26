@@ -4,6 +4,7 @@ import {
   switchToBrowserTab,
   waitForBrowserUrl,
 } from "../browser";
+import type { WorkspaceE2EStepRunner } from "../case-runner";
 import { applyDiscountCode } from "../checkout/discount-code";
 import {
   submitCheckoutPayment,
@@ -19,11 +20,7 @@ import type { E2EDatabase } from "../integrations/database.service";
 import { validateDotypos } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { log } from "../runtime";
-import type {
-  CheckoutData,
-  CheckoutFlowState,
-  WorkspaceE2EStepRunner,
-} from "../types";
+import type { CheckoutData, CheckoutFlowState } from "../types";
 import { isExpectedCheckoutStatusUrl } from "../urls";
 import { assertFulfilledStatusPage } from "./checkout";
 

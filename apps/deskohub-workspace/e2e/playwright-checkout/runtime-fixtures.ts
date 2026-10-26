@@ -3,9 +3,11 @@ import "../../shared/polyfills/temporal";
 import { test as base } from "@playwright/test";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import type { HttpClient } from "effect/unstable/http";
+import type { WorkspaceE2EHostedPaymentPermitService } from "../coordination/hosted-payment-permit.service";
+import type { WorkspaceE2EProviderVerificationPermitService } from "../coordination/provider-verification-permit.service";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
 import type { E2EDatabase } from "../integrations/database.service";
-import type { WorkspaceE2ECaseService } from "../services/cases";
+import type { WorkspaceE2ECleanupService } from "../services/cleanup";
 import { makeWorkspaceE2ECaseRuntimeLive } from "../services/runner";
 import type { E2ERunContext, E2ETelemetryService } from "../services/telemetry";
 import { makeE2ETelemetryRuntime, runE2EEffect } from "../telemetry-runtime";
@@ -16,7 +18,9 @@ type WorkspaceE2ERuntimeServices =
   | E2EDatabase
   | E2ETelemetryService
   | HttpClient.HttpClient
-  | WorkspaceE2ECaseService;
+  | WorkspaceE2ECleanupService
+  | WorkspaceE2EHostedPaymentPermitService
+  | WorkspaceE2EProviderVerificationPermitService;
 
 type WorkspaceE2EEffectRunner = <A, E, R extends WorkspaceE2ERuntimeServices>(
   effect: Effect.Effect<A, E, R>

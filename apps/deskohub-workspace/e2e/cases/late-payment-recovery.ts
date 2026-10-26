@@ -6,6 +6,7 @@ import {
   waitForBrowserUrl,
 } from "../browser";
 import { getWorkspaceE2EDateInterval } from "../capacity";
+import type { WorkspaceE2EStepRunner } from "../case-runner";
 import { completeNexiHostedPayment } from "../checkout/nexi-hosted-payment";
 import {
   prepareCheckoutPaymentAttempt,
@@ -13,6 +14,7 @@ import {
 } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { WorkspaceE2EHostedPaymentPermitService } from "../coordination/hosted-payment-permit.service";
+import type { WorkspaceE2EProviderVerificationPermitService } from "../coordination/provider-verification-permit.service";
 import { tryWorkspaceE2ESync, type WorkspaceE2EError } from "../errors";
 import {
   markPreviewFulfillmentDeliveredForE2E,
@@ -30,11 +32,7 @@ import {
 } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { assert, log } from "../runtime";
-import type {
-  CheckoutData,
-  CheckoutFlowState,
-  WorkspaceE2EStepRunner,
-} from "../types";
+import type { CheckoutData, CheckoutFlowState } from "../types";
 import { isExpectedCheckoutStatusUrl, makeUrl, setSearchParams } from "../urls";
 import { assertFulfilledStatusPage } from "./checkout";
 
@@ -80,7 +78,10 @@ export const executeLatePaymentRecovery = ({
 }): Effect.Effect<
   void,
   WorkspaceE2EError,
-  E2EDatabase | HttpClient.HttpClient | WorkspaceE2EHostedPaymentPermitService
+  | E2EDatabase
+  | HttpClient.HttpClient
+  | WorkspaceE2EHostedPaymentPermitService
+  | WorkspaceE2EProviderVerificationPermitService
 > =>
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
@@ -206,7 +207,7 @@ export const executeLatePaymentRecovery = ({
       );
 
     yield* runStep({
-      capacity: "provider-verification",
+      permit: "provider-verification",
       execute: replayNexiWebhook(config, providerSessionRow).pipe(
         Effect.provideService(HttpClient.HttpClient, httpClient)
       ),

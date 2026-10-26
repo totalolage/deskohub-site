@@ -8,12 +8,12 @@ import {
   waitForBrowserReactFormSubmit,
   waitForBrowserText,
 } from "../browser";
+import type { WorkspaceE2EStepRunner } from "../case-runner";
 import type { WorkspaceE2EConfig } from "../config";
 import { failWorkspaceE2E, type WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
 import { log } from "../runtime";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
-import type { WorkspaceE2EStepRunner } from "../types";
 import { makeUrl, setSearchParams } from "../urls";
 
 export const assertContactForm = ({

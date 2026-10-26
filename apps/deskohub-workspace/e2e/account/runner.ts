@@ -1,15 +1,7 @@
-import { Cause, Effect, Exit, Option } from "effect";
-import {
-  WorkspaceE2EError,
-  workspaceE2EError,
-  workspaceE2ETimeoutError,
-} from "../errors";
+import { Effect, Exit } from "effect";
+import { runE2ECase, type WorkspaceE2EStep } from "../case-runner";
+import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
-import { log } from "../runtime";
-import { E2ETelemetryService } from "../services/telemetry";
-import type { WorkspaceE2EFailureReporter } from "../suite";
-import { formatWorkspaceE2EDuration } from "../timeouts";
-import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../types";
 import { writeWorkspaceE2EAccountJournal } from "./journal";
 import type {
   WorkspaceE2EAccountCase,
@@ -29,59 +21,25 @@ import type {
  */
 export const runWorkspaceE2EAccountCase = ({
   journalRef,
-  reportFailure,
   session,
   testCase,
   verifyPages,
 }: {
   readonly journalRef: WorkspaceE2EAccountJournalRef;
-  readonly reportFailure?: WorkspaceE2EFailureReporter;
   readonly session: string;
   readonly testCase: WorkspaceE2EAccountCase;
   readonly verifyPages?: readonly WorkspaceE2EStep<void, E2EDatabase>[];
 }): Effect.Effect<void, WorkspaceE2EError, WorkspaceE2EAccountRequirement> =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const telemetry = yield* E2ETelemetryService;
-      const startedAt = Date.now();
-      const runStep: WorkspaceE2EStepRunner = (step) => {
-        const operation = `${testCase.id}/${step.id}`;
-        return telemetry.traceStep({
-          caseId: testCase.id,
-          effect: Effect.suspend(() =>
-            Effect.sync(() => log(`STEP START ${operation}`)).pipe(
-              Effect.andThen(
-                step.execute.pipe(
-                  Effect.timeoutOrElse({
-                    duration: `${step.timeoutMs} millis`,
-                    orElse: () =>
-                      workspaceE2ETimeoutError(
-                        `Timed out running ${operation} after ${formatWorkspaceE2EDuration(step.timeoutMs)}`,
-                        { operation }
-                      ),
-                  })
-                )
-              ),
-              Effect.onExit((exit) =>
-                Effect.sync(() =>
-                  log(
-                    `STEP ${Exit.isSuccess(exit) ? "PASS" : "FAIL"} ${operation}`
-                  )
-                )
-              )
-            )
-          ),
-          stepId: step.id,
-          timeoutMs: step.timeoutMs,
-        });
-      };
-
-      const executeCase = Effect.acquireUseRelease(
+  runE2ECase({
+    // The case's own cleanup stays inside the watchdog and never replaces an
+    // earlier verification failure.
+    body: (step) =>
+      Effect.acquireUseRelease(
         Effect.interruptible(
-          testCase.execute({ journalRef, runStep, session })
+          testCase.execute({ journalRef, runStep: step, session })
         ),
         () =>
-          Effect.forEach(verifyPages ?? [], runStep, {
+          Effect.forEach(verifyPages ?? [], (page) => step(page), {
             concurrency: 1,
             discard: true,
           }),
@@ -89,71 +47,18 @@ export const runWorkspaceE2EAccountCase = ({
           completion.cleanup.pipe(
             Effect.exit,
             Effect.flatMap((cleanupExit) =>
-              Exit.match(useExit, {
-                onFailure: () => Effect.void,
-                onSuccess: () =>
-                  Exit.match(cleanupExit, {
-                    onFailure: (cause) => Effect.failCause(cause),
-                    onSuccess: () => Effect.void,
-                  }),
-              })
+              Exit.isSuccess(useExit) ? cleanupExit : Effect.void
             )
           )
-      );
-
-      const traced = telemetry.traceCase({
-        caseId: testCase.id,
-        effect: Effect.acquireUseRelease(
-          Effect.sync(() => log(`CASE START ${testCase.id}`)),
-          () =>
-            executeCase.pipe(
-              Effect.timeoutOrElse({
-                duration: `${testCase.timeoutMs} millis`,
-                orElse: () =>
-                  workspaceE2ETimeoutError(
-                    `Timed out running ${testCase.id} e2e case after ${formatWorkspaceE2EDuration(testCase.timeoutMs)}`,
-                    { operation: `${testCase.id} e2e case` }
-                  ),
-              })
-            ),
-          () =>
-            telemetry.tracePhase({
-              caseId: testCase.id,
-              effect: Effect.tryPromise({
-                catch: (cause) =>
-                  workspaceE2EError("flush workspace account e2e journal", {
-                    cause,
-                    operation: "flush workspace account e2e journal",
-                  }),
-                try: () => writeWorkspaceE2EAccountJournal(journalRef.journal),
-              }),
-              phaseId: "case-finalization",
-            })
-        ),
-        timeoutMs: testCase.timeoutMs,
-      });
-
-      yield* reportFailure
-        ? traced.pipe(
-            Effect.tapCause((cause) =>
-              Effect.sync(() => {
-                if (Cause.hasInterruptsOnly(cause)) return;
-                const found = Cause.findErrorOption(cause);
-                const error = Option.isSome(found) ? found.value : undefined;
-                reportFailure({
-                  caseId: testCase.id,
-                  ...(error instanceof WorkspaceE2EError && error.diagnosticCode
-                    ? { diagnosticCode: error.diagnosticCode }
-                    : {}),
-                  failureKind: "error",
-                  outcome: "failed",
-                });
-              })
-            )
-          )
-        : traced;
-      log(
-        `CASE SETTLED ${testCase.id} (${formatWorkspaceE2EDuration(Date.now() - startedAt)})`
-      );
-    })
-  );
+      ),
+    caseId: testCase.id,
+    cleanup: Effect.tryPromise({
+      catch: (cause) =>
+        workspaceE2EError("flush workspace account e2e journal", {
+          cause,
+          operation: "flush workspace account e2e journal",
+        }),
+      try: () => writeWorkspaceE2EAccountJournal(journalRef.journal),
+    }),
+    watchdogMs: testCase.timeoutMs,
+  });

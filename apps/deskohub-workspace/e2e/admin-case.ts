@@ -1,11 +1,9 @@
 import { AssertionError } from "node:assert";
 import type { Browser, BrowserContext, Page, Request } from "@playwright/test";
-import { Cause, Effect, Exit, Option } from "effect";
-import { WorkspaceE2EError, workspaceE2EError } from "./errors";
+import { Effect } from "effect";
+import { type WorkspaceE2EError, workspaceE2EError } from "./errors";
 import { withinWorkspaceE2EDeadline } from "./polling";
 import { primePreviewAccess } from "./preview-access";
-import { toE2EResult } from "./services/telemetry";
-import type { WorkspaceE2EFailureReporter } from "./suite";
 
 /**
  * Maps any browser-driver failure onto a fixed code-owned error. Raw Playwright
@@ -84,62 +82,6 @@ export const primePreviewBypass = (input: {
   sanitizedBrowserOperation("prime the Vercel protection bypass cookie", () =>
     primePreviewAccess(input.context, input.origin, input.bypassSecret)
   );
-
-/**
- * Runs the timed case body with the interruption-safe cleanup finalizer
- * attached first, then applies the caller's trace wrapper to that finalized
- * effect, and only observes the settled exit in an outer `onExit`, so the
- * annotation always describes the traced final outcome of body and cleanup
- * together and is emitted after trace finalization and cleanup.
- */
-export const runFinalizedCase = <A, E, R, R2>(input: {
-  readonly body: Effect.Effect<A, E, R>;
-  readonly cleanup: Effect.Effect<void, never, R2>;
-  readonly trace: (
-    finalized: Effect.Effect<A, E, R | R2>
-  ) => Effect.Effect<A, E, R | R2>;
-  readonly onExit: (exit: Exit.Exit<A, E>) => void;
-}): Effect.Effect<A, E, R | R2> =>
-  input
-    .trace(input.body.pipe(Effect.ensuring(input.cleanup)))
-    .pipe(Effect.onExit((exit) => Effect.sync(() => input.onExit(exit))));
-
-/**
- * Emits one failure annotation for a genuinely failed or timed-out admin case.
- * Interrupted siblings stay unannotated, and the annotation never masks the
- * case outcome.
- */
-export const reportAdminCaseFailure =
-  (input: {
-    readonly caseId: string;
-    readonly reportFailure: WorkspaceE2EFailureReporter | undefined;
-    readonly terminalStepId: () => string | undefined;
-  }) =>
-  <A, E>(exit: Exit.Exit<A, E>): void => {
-    if (Exit.isSuccess(exit) || !input.reportFailure) return;
-    if (Cause.hasInterruptsOnly(exit.cause)) return;
-    const result = toE2EResult(exit);
-    if (result.outcome !== "failed" && result.outcome !== "timed_out") {
-      return;
-    }
-    const error = Cause.findErrorOption(exit.cause);
-    const terminalStepId = input.terminalStepId();
-    try {
-      input.reportFailure({
-        caseId: input.caseId,
-        ...(Option.isSome(error) &&
-        error.value instanceof WorkspaceE2EError &&
-        error.value.diagnosticCode
-          ? { diagnosticCode: error.value.diagnosticCode }
-          : {}),
-        failureKind: result.failureKind,
-        outcome: result.outcome,
-        ...(terminalStepId ? { stepId: terminalStepId } : {}),
-      });
-    } catch {
-      // The annotation must never mask the case outcome.
-    }
-  };
 
 export type ActionResponseOutcome =
   | { readonly kind: "responded" }

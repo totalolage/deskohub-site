@@ -25,22 +25,20 @@ import {
   type ActionResponseOutcome,
   openAdminBrowserPage,
   primePreviewBypass,
-  reportAdminCaseFailure,
   retainServerActionSubmission,
-  runFinalizedCase,
   sanitizedBrowserOperation,
 } from "../admin-case";
 import {
   makeWorkspaceE2EAdministrationIdentities,
   type WorkspaceE2EAdministrationIdentities,
 } from "../administrators/identities";
+import { runE2ECase, type WorkspaceE2EStepRunner } from "../case-runner";
 import { type DatasourceConfig, getDatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
   type WorkspaceE2EError,
   workspaceE2EError,
 } from "../errors";
-import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import { E2EDatabase } from "../integrations/database.service";
 import { runtimeTest as test } from "../playwright-checkout/runtime-fixtures";
 import { pollUntil, withinWorkspaceE2EDeadline } from "../polling";
@@ -49,8 +47,6 @@ import {
   waitForReactSubmitHandler,
 } from "../react-handlers";
 import { addRedaction } from "../runtime";
-import { E2ETelemetryService, toE2EResult } from "../services/telemetry";
-import type { WorkspaceE2EFailureReporter } from "../suite";
 import {
   workspaceE2EEmailCampaignCleanupTimeout,
   workspaceE2EPollInitialIntervalMs,
@@ -102,10 +98,6 @@ test("previews the tagged synthetic customer as a draft marketing campaign recip
         plan,
         reviewScreenshots:
           environment.WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS === "true",
-        reportFailure:
-          runContext.githubRunId === undefined
-            ? undefined
-            : writeWorkspaceE2EFailureAnnotation,
       })
     );
   } finally {
@@ -123,9 +115,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
     readonly page: Page;
     readonly plan: EmailCampaignPreviewPlan;
     readonly reviewScreenshots: boolean;
-    readonly reportFailure?: WorkspaceE2EFailureReporter;
   }) {
-    const telemetry = yield* E2ETelemetryService;
     const { db } = yield* E2EDatabase;
     const { page, plan } = input;
     // Captured as soon as Dotypos returns it, so an interrupted setup still
@@ -136,41 +126,6 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
     // was dispatched even when the submit step is interrupted.
     let audienceSubmission: Promise<ActionResponseOutcome> | undefined;
     let campaignSubmission: Promise<ActionResponseOutcome> | undefined;
-    let terminalStepId: string | undefined;
-
-    const step = (
-      stepId: string,
-      timeoutMs: number,
-      execute: Effect.Effect<void, WorkspaceE2EError>
-    ) => {
-      const operation = `${emailCampaignPreviewCaseId}/${stepId}`;
-      return telemetry.traceStep({
-        caseId: emailCampaignPreviewCaseId,
-        effect: Effect.onExit(
-          withinWorkspaceE2EDeadline(execute, operation, timeoutMs),
-          (exit) =>
-            Effect.sync(() => {
-              if (toE2EResult(exit).outcome !== "passed") {
-                terminalStepId = stepId;
-              }
-            })
-        ),
-        stepId,
-        timeoutMs,
-      });
-    };
-
-    const browserStep = (
-      stepId: string,
-      timeoutMs: number,
-      operation: string,
-      run: () => Promise<unknown>
-    ) =>
-      step(
-        stepId,
-        timeoutMs,
-        sanitizedBrowserOperation(operation, () => run().then(() => undefined))
-      );
 
     // Submits a hydrated admin form once, retaining its Server Action
     // submission before the click. The submission stays pending until the
@@ -210,12 +165,24 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
     });
     const composerForm = page.locator("#campaign-composer");
 
-    const timedBody = withinWorkspaceE2EDeadline(
-      Effect.gen(function* () {
-        yield* step(
-          "create-tagged-customer",
-          workspaceE2ETimeouts.providerTransition,
-          Effect.gen(function* () {
+    const caseBody = (step: WorkspaceE2EStepRunner) => {
+      const browserStep = (
+        stepId: string,
+        timeoutMs: number,
+        operation: string,
+        run: () => Promise<unknown>
+      ) =>
+        step({
+          execute: sanitizedBrowserOperation(operation, () =>
+            run().then(() => undefined)
+          ),
+          id: stepId,
+          timeoutMs,
+        });
+
+      return Effect.gen(function* () {
+        yield* step({
+          execute: Effect.gen(function* () {
             const createdId = yield* createSyntheticCustomerProfile(
               input.datasourceConfig,
               {
@@ -230,12 +197,12 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
               createdId,
               [plan.customerTag]
             );
-          })
-        );
-        yield* step(
-          "grant-marketing-consent",
-          workspaceE2ETimeouts.cleanupAction,
-          Effect.gen(function* () {
+          }),
+          id: "create-tagged-customer",
+          timeoutMs: workspaceE2ETimeouts.providerTransition,
+        });
+        yield* step({
+          execute: Effect.gen(function* () {
             if (customerId === undefined) {
               return yield* workspaceE2EError(
                 "No synthetic Dotypos customer is available for marketing consent",
@@ -267,27 +234,29 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
                   )
                 )
               );
-          })
-        );
-        yield* step(
-          "prime-preview-bypass",
-          workspaceE2ETimeouts.browserAction,
-          primePreviewBypass({
+          }),
+          id: "grant-marketing-consent",
+          timeoutMs: workspaceE2ETimeouts.cleanupAction,
+        });
+        yield* step({
+          execute: primePreviewBypass({
             bypassSecret: input.bypassSecret,
             context: input.context,
             origin: input.origin,
-          })
-        );
-        yield* step(
-          "sign-in-seeded-administrator",
-          workspaceE2ETimeouts.datasource,
-          Effect.gen(function* () {
+          }),
+          id: "prime-preview-bypass",
+          timeoutMs: workspaceE2ETimeouts.browserAction,
+        });
+        yield* step({
+          execute: Effect.gen(function* () {
             const administrator = yield* input.identities.seed("ecp-admin", [
               "administrator",
             ]);
             yield* input.identities.signIn(administrator, input);
-          }).pipe(Effect.provideService(E2EDatabase, E2EDatabase.of({ db })))
-        );
+          }).pipe(Effect.provideService(E2EDatabase, E2EDatabase.of({ db }))),
+          id: "sign-in-seeded-administrator",
+          timeoutMs: workspaceE2ETimeouts.datasource,
+        });
         yield* browserStep(
           "open-audience-form",
           workspaceE2ETimeouts.browserNavigation,
@@ -337,10 +306,8 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           () =>
             waitForPath(savedAudiencePath, workspaceE2ETimeouts.uiTransition)
         );
-        yield* step(
-          "assert-audience-persistence",
-          workspaceE2ETimeouts.datasource,
-          Effect.gen(function* () {
+        yield* step({
+          execute: Effect.gen(function* () {
             const [audience] = yield* rowsAppear(
               readSyntheticAudiences(db, plan),
               "the synthetic email campaign audience"
@@ -358,8 +325,10 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
               "the saved audience must target the synthetic Dotypos tag"
             );
             audienceId = audience.id;
-          })
-        );
+          }),
+          id: "assert-audience-persistence",
+          timeoutMs: workspaceE2ETimeouts.datasource,
+        });
         yield* browserStep(
           "open-campaign-composer",
           workspaceE2ETimeouts.browserNavigation,
@@ -502,10 +471,8 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           () =>
             waitForPath(savedCampaignPath, workspaceE2ETimeouts.uiTransition)
         );
-        yield* step(
-          "assert-campaign-persistence",
-          workspaceE2ETimeouts.datasource,
-          Effect.gen(function* () {
+        yield* step({
+          execute: Effect.gen(function* () {
             const [campaign] = yield* rowsAppear(
               readSyntheticCampaigns(db, plan),
               "the synthetic email campaign draft"
@@ -515,8 +482,10 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
             equal(campaign.purpose, "marketing");
             equal(campaign.audienceId, audienceId);
             equal(campaign.content["cs-CZ"]?.subject, plan.subject);
-          })
-        );
+          }),
+          id: "assert-campaign-persistence",
+          timeoutMs: workspaceE2ETimeouts.datasource,
+        });
         yield* browserStep(
           "open-recipient-preview",
           workspaceE2ETimeouts.uiTransition,
@@ -551,10 +520,8 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
             });
           }
         );
-      }),
-      `${emailCampaignPreviewCaseId} e2e case`,
-      workspaceE2ETimeouts.emailCampaignCase
-    );
+      });
+    };
 
     const releaseSyntheticRows = Effect.suspend(() =>
       releaseEmailCampaignFixture({
@@ -587,8 +554,9 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           })
     );
 
-    yield* runFinalizedCase({
-      body: timedBody,
+    yield* runE2ECase({
+      body: caseBody,
+      caseId: emailCampaignPreviewCaseId,
       cleanup: withinWorkspaceE2EDeadline(
         releaseSyntheticRows.pipe(
           Effect.ensuring(retireSyntheticCustomer.pipe(Effect.orDie))
@@ -596,17 +564,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
         `${emailCampaignPreviewCaseId}/cleanup`,
         workspaceE2EEmailCampaignCleanupTimeout
       ).pipe(Effect.orDie),
-      trace: (effect) =>
-        telemetry.traceCase({
-          caseId: emailCampaignPreviewCaseId,
-          effect,
-          timeoutMs: workspaceE2ETimeouts.emailCampaignCase,
-        }),
-      onExit: reportAdminCaseFailure({
-        caseId: emailCampaignPreviewCaseId,
-        reportFailure: input.reportFailure,
-        terminalStepId: () => terminalStepId,
-      }),
+      watchdogMs: workspaceE2ETimeouts.emailCampaignCase,
     });
   }
 );

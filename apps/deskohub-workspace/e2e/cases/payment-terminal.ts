@@ -12,6 +12,7 @@ import {
   waitForBrowserUrl,
 } from "../browser";
 import { getPrefilledReservationConditionScript } from "../browser-scripts";
+import type { WorkspaceE2EStepRunner } from "../case-runner";
 import {
   prepareCheckoutPaymentAttempt,
   submitPaymentAndWaitForHostedPage,
@@ -33,7 +34,6 @@ import type {
   CheckoutData,
   CheckoutFlowState,
   PaymentTerminalScenario,
-  WorkspaceE2EStepRunner,
 } from "../types";
 import { makeUrl, setSearchParams } from "../urls";
 import { completeHostedCheckoutPayment } from "./checkout";
@@ -367,8 +367,7 @@ const assertTerminalStatusPage = ({
   });
 
 const isOrderStatusUrl = (value: string, orderId: WorkspaceReservationId) =>
-  parseUrl(value)?.pathname.endsWith(`/reservation/status/${orderId}`) ===
-  true;
+  parseUrl(value)?.pathname.endsWith(`/reservation/status/${orderId}`) === true;
 
 // The customer stays on the status page Nexi returned to; it refreshes while
 // the payment is pending and reconciles the order with Nexi.
@@ -402,7 +401,9 @@ const assertReturnedTerminalStatusPage = ({
       timeoutMs: timeouts.uiTransition,
     });
 
-    log(`Checkout ${scenario.state} status page validated after the Nexi return`);
+    log(
+      `Checkout ${scenario.state} status page validated after the Nexi return`
+    );
   });
 
 const validateReconciledTerminalRow = ({

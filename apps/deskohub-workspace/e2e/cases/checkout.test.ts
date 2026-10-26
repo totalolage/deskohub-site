@@ -5,6 +5,7 @@ import type { Customer } from "@deskohub/dotypos/generated";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import type { WorkspaceE2EStepRunner } from "../case-runner";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { makeWorkspaceE2EHostedPaymentPermitRecorder } from "../coordination/hosted-payment-permit.service.mock";
 import {
@@ -15,12 +16,7 @@ import {
 import { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
-import type {
-  CheckoutData,
-  CheckoutFlowState,
-  CheckoutRow,
-  WorkspaceE2EStepRunner,
-} from "../types";
+import type { CheckoutData, CheckoutFlowState, CheckoutRow } from "../types";
 import {
   assertFreshPaymentAttempt,
   assertFulfilledStatusPage,
@@ -162,7 +158,7 @@ const runCheckoutFlowSteps = async (
 ) => {
   const hostedPaymentPermit = makeWorkspaceE2EHostedPaymentPermitRecorder();
   const observedSteps: Array<{
-    readonly capacity: "provider-verification" | undefined;
+    readonly permit: "provider-verification" | undefined;
     readonly hosted: boolean;
     readonly id: string;
   }> = [];
@@ -172,7 +168,7 @@ const runCheckoutFlowSteps = async (
   } as CheckoutRow;
   const runStep = ((step) => {
     observedSteps.push({
-      capacity: step.capacity,
+      permit: step.permit,
       hosted: hostedPaymentPermit.isHolding(),
       id: step.id,
     });
@@ -253,12 +249,12 @@ test("holds the provider-verification permit only for the webhook replay", async
   });
 
   expect(
-    observedSteps.flatMap(({ capacity, id }) =>
-      capacity === undefined ? [] : [{ capacity, id }]
+    observedSteps.flatMap(({ id, permit }) =>
+      permit === undefined ? [] : [{ id, permit }]
     )
   ).toEqual([
     {
-      capacity: "provider-verification",
+      permit: "provider-verification",
       id: "replay-payment-webhook",
     },
   ]);

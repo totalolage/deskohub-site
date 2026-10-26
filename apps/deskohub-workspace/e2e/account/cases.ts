@@ -817,7 +817,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         const invitation = yield* runStep(
           step(
-            "creates the synthetic referrer whose share link the account follows",
+            "create-synthetic-referrer",
             Effect.gen(function* () {
               yield* recordFixtureIds(journalRef, {
                 authUserIds: [referralOwnerAccountId],
@@ -844,7 +844,7 @@ export const makeWorkspaceE2EAccountCases = ({
         lifecycleHandoff.referralInvitation = invitation;
         yield* runStep(
           step(
-            "remembers an anonymous locale-free share link and redirects to sign-in",
+            "remember-anonymous-share-link",
             Effect.gen(function* () {
               yield* waitForNoRememberedReferralCode({ config, run, session });
               yield* openPage(
@@ -860,13 +860,13 @@ export const makeWorkspaceE2EAccountCases = ({
       Effect.gen(function* () {
         const invitation = yield* runStep(
           step(
-            "requires the share-link sign-in handoff",
+            "require-share-link-sign-in-handoff",
             requireReferralInvitation()
           )
         );
         lifecycleHandoff.passkeySignIn = yield* runStep(
           step(
-            "records whether the sign-in form offers passkeys",
+            "record-passkey-sign-in-offer",
             Effect.gen(function* () {
               yield* waitShareLinkSignIn(invitation.code);
               return yield* passkeys.readSignInOffer;
@@ -875,7 +875,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "rejects an invalid email without requesting a link",
+            "reject-invalid-email",
             Effect.gen(function* () {
               // Native validation blocks the submit, so the share-link form
               // stays loaded for the first accepted request.
@@ -914,7 +914,7 @@ export const makeWorkspaceE2EAccountCases = ({
         const { returnTo: selection } = signInReturns.sameBrowser;
         yield* runStep(
           step(
-            "opens the sign-in from a cowork selection",
+            "open-sign-in-from-cowork-selection",
             Effect.gen(function* () {
               yield* openPage(`${config.baseUrl}${selection}`);
               yield* waitCoworkSelection(
@@ -937,7 +937,7 @@ export const makeWorkspaceE2EAccountCases = ({
           "send",
           runStep(
             step(
-              "accepts a first unknown email generically from the selection's sign-in",
+              "accept-first-unknown-email",
               Effect.gen(function* () {
                 const startedAt = new Date();
                 lifecycleHandoff.firstAcceptedRequestedAt = startedAt;
@@ -955,7 +955,7 @@ export const makeWorkspaceE2EAccountCases = ({
           "send",
           runStep(
             step(
-              "accepts a second unknown email with an identical response",
+              "accept-second-unknown-email",
               Effect.gen(function* () {
                 // The code step offers a different email instead of another link.
                 const restartLabel =
@@ -981,7 +981,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "renders both accepted responses identically",
+            "assert-identical-accepted-responses",
             Effect.sync(() => {
               const comparable = (text: string) =>
                 text.replaceAll(signInCodeResendCooldownPattern, "");
@@ -1018,7 +1018,7 @@ export const makeWorkspaceE2EAccountCases = ({
       Effect.fn("accountSignInCode")(function* ({ journalRef, runStep }) {
         const requestedAt = yield* runStep(
           step(
-            "requires the second unknown email's code step",
+            "require-second-email-code-step",
             Effect.sync(() => {
               assert(
                 lifecycleHandoff.signInConfirmation === "code",
@@ -1035,7 +1035,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         const { code } = yield* runStep(
           step(
-            "retrieves the delivered sign-in code",
+            "retrieve-sign-in-code",
             previewLogs.retrieveSignInEmail({
               callbackPath: `/${config.locale}${callbackSuffix}`,
               excludeLogEntryIds: [],
@@ -1047,7 +1047,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "rejects a wrong code and keeps the code step",
+            "reject-wrong-sign-in-code",
             Effect.gen(function* () {
               yield* waitSignInCodeInput();
               yield* fillBrowserField(
@@ -1074,7 +1074,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "signs in with the emailed code into the completion state",
+            "sign-in-with-emailed-code",
             Effect.gen(function* () {
               yield* fillBrowserField(run, session, signInCodeSelector, code, {
                 timeoutMs: browserTimeout,
@@ -1103,7 +1103,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "signs the code account out before the main link sign-in",
+            "sign-out-code-account",
             signOutAndRequireAnonymous(),
             navigationTimeout
           )
@@ -1114,7 +1114,7 @@ export const makeWorkspaceE2EAccountCases = ({
       Effect.gen(function* () {
         const firstRequest = yield* runStep(
           step(
-            "requires the first accepted main request handoff",
+            "require-first-accepted-request-handoff",
             Effect.gen(function* () {
               const requestedAt = lifecycleHandoff.firstAcceptedRequestedAt;
               assert(
@@ -1128,7 +1128,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "leaves Dotypos untouched before verification",
+            "assert-dotypos-untouched-before-verification",
             assertNoSyntheticCustomerProfile(datasourceConfig, recipient).pipe(
               Effect.timeoutOrElse({
                 duration: `${datasourceTimeout} millis`,
@@ -1144,7 +1144,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         const link = yield* runStep(
           step(
-            "retrieves the delivered single-use link",
+            "retrieve-magic-link",
             retrieveSignInLink(recipient, [], firstRequest.requestedAt),
             authDeliveryTimeout
           )
@@ -1153,7 +1153,7 @@ export const makeWorkspaceE2EAccountCases = ({
           "verify",
           runStep(
             step(
-              "consumes the link back onto the selection, then completes with the share code",
+              "consume-magic-link-onto-selection",
               Effect.gen(function* () {
                 // The lane wraps this case in the callback handoff hold,
                 // which proves the signed-in callback's returning copy
@@ -1200,13 +1200,13 @@ export const makeWorkspaceE2EAccountCases = ({
       Effect.gen(function* () {
         const invitation = yield* runStep(
           step(
-            "requires the share-link referral handoff",
+            "require-share-link-referral-handoff",
             requireReferralInvitation()
           )
         );
         yield* runStep(
           step(
-            "keeps the completion login email input read-only",
+            "assert-completion-login-email-read-only",
             Effect.gen(function* () {
               yield* waitText("completion page", completionTitle);
               const result = yield* evalBrowserScript(
@@ -1239,7 +1239,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "completes the profile with the share code and a required first name",
+            "complete-profile-with-share-code",
             Effect.gen(function* () {
               yield* waitText("completion page", completionTitle);
               yield* waitReferralFieldValue(
@@ -1284,7 +1284,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         const customerId = yield* runStep(
           step(
-            "links the completed profile to the synthetic customer",
+            "assert-profile-linked-to-synthetic-customer",
             Effect.gen(function* () {
               const userId = yield* requireAuthUserId(recipient);
               const linked = yield* requireLinkedCustomerId(userId);
@@ -1298,7 +1298,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "records the share-link referral submitted with the completed profile",
+            "assert-share-link-referral-recorded",
             pollUntil(
               findWorkspaceE2EReferralReferrer(customerId).pipe(
                 Effect.map((referrer) =>
@@ -1319,7 +1319,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "keeps the linked login email display read-only",
+            "assert-linked-login-email-read-only",
             Effect.gen(function* () {
               yield* selectAccountSectionInRunner(run, session, "profile");
               const result = yield* evalBrowserScript(
@@ -1357,7 +1357,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "persists optional profile and billing fields to the provider profile",
+            "persist-optional-profile-and-billing-fields",
             Effect.gen(function* () {
               yield* selectAccountSectionInRunner(run, session, "profile");
               yield* fillBrowserField(
@@ -1464,7 +1464,7 @@ export const makeWorkspaceE2EAccountCases = ({
       Effect.gen(function* () {
         const customerId = yield* runStep(
           step(
-            "reads the linked synthetic customer",
+            "read-linked-synthetic-customer",
             Effect.gen(function* () {
               const userId = yield* requireAuthUserId(recipient);
               return yield* requireLinkedCustomerId(userId);
@@ -1474,7 +1474,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         const reservations = yield* runStep(
           step(
-            "creates far-future synthetic provider reservations",
+            "create-far-future-reservations",
             Effect.gen(function* () {
               const first = yield* createSyntheticReservation(
                 datasourceConfig,
@@ -1501,7 +1501,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "shows the confirmed reservations in the current group",
+            "assert-current-reservations",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
               // One aria-snapshot poll samples the interactive tree for both
@@ -1522,7 +1522,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "cancels the second synthetic reservation",
+            "cancel-second-reservation",
             Effect.gen(function* () {
               const second = reservations[1]?.reservationId;
               assert(second, "second synthetic reservation id missing");
@@ -1536,7 +1536,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "moves the cancelled reservation to the past group",
+            "assert-cancelled-reservation-in-past-group",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
               yield* waitForInteractiveSnapshot({
@@ -1558,7 +1558,7 @@ export const makeWorkspaceE2EAccountCases = ({
       Effect.gen(function* () {
         const userId = yield* runStep(
           step(
-            "reads the synthetic account identity",
+            "read-account-identity",
             Effect.gen(function* () {
               const userId = yield* requireAuthUserId(recipient);
               const linked = yield* requireLinkedCustomerId(userId);
@@ -1573,7 +1573,7 @@ export const makeWorkspaceE2EAccountCases = ({
         const startedAt = new Date();
         yield* runStep(
           step(
-            "shows the durable deletion marker state",
+            "assert-deletion-marker-state",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
               yield* selectAccountSectionInRunner(run, session, "danger");
@@ -1590,7 +1590,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "asks for reauthentication behind the stale-session gate",
+            "request-reauthentication-at-stale-session-gate",
             Effect.gen(function* () {
               yield* clickBrowserElement(run, session, deleteTriggerSelector, {
                 timeoutMs: browserTimeout,
@@ -1623,7 +1623,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         const observedLogEntryIds = yield* runStep(
           step(
-            "records the delivered log baseline",
+            "record-delivered-log-baseline",
             observeDeliveredLogEntryIds(recipient, startedAt),
             providerTransition
           )
@@ -1632,7 +1632,7 @@ export const makeWorkspaceE2EAccountCases = ({
           "send",
           runStep(
             step(
-              "sends the reauthentication link",
+              "send-reauthentication-link",
               Effect.gen(function* () {
                 yield* clickBrowserElement(
                   run,
@@ -1661,7 +1661,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         const reauthenticationLink = yield* runStep(
           step(
-            "retrieves the delivered reauthentication link",
+            "retrieve-reauthentication-link",
             retrieveSignInLink(recipient, observedLogEntryIds, startedAt),
             authDeliveryTimeout
           )
@@ -1677,7 +1677,7 @@ export const makeWorkspaceE2EAccountCases = ({
       Effect.gen(function* () {
         const reauthentication = yield* runStep(
           step(
-            "requires the reauthentication handoff from the marker case",
+            "require-reauthentication-handoff",
             Effect.sync(() => {
               const handoff = lifecycleHandoff.reauthentication;
               assert(
@@ -1690,7 +1690,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "opens the pending account before signing out",
+            "open-pending-account",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
               yield* waitText(
@@ -1703,7 +1703,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "signs out on the current device before consuming reauthentication",
+            "sign-out-before-reauthentication",
             signOutAndRequireAnonymous(),
             navigationTimeout
           )
@@ -1714,7 +1714,7 @@ export const makeWorkspaceE2EAccountCases = ({
         // the sign-in must still land on the saved Czech site.
         yield* runStep(
           step(
-            "saves Čeština as the pending account's preference",
+            "save-czech-preference",
             setAccountLocalePreference(reauthentication.userId, "cs-CZ"),
             datasourceTimeout
           )
@@ -1723,7 +1723,7 @@ export const makeWorkspaceE2EAccountCases = ({
           "verify",
           runStep(
             step(
-              "signs the same account back in onto the saved Czech site",
+              "sign-in-onto-saved-czech-site",
               Effect.gen(function* () {
                 yield* openPage(reauthentication.link);
                 yield* waitPathname(
@@ -1751,7 +1751,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "restores English (US) before completing the deletion",
+            "restore-english-before-deletion",
             Effect.gen(function* () {
               yield* setAccountLocalePreference(
                 reauthentication.userId,
@@ -1772,7 +1772,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "completes the deletion on retry behind the destructive confirmation",
+            "complete-deletion-on-retry",
             Effect.gen(function* () {
               yield* clickBrowserElement(run, session, deleteTriggerSelector, {
                 timeoutMs: browserTimeout,
@@ -1800,7 +1800,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "expires the provider profile first and removes every identity row",
+            "assert-deletion-removed-profile-and-identity-rows",
             Effect.gen(function* () {
               const customer = yield* readProviderProfile(
                 reauthentication.linkedCustomerId
@@ -1831,7 +1831,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "requires anonymous access after the completed deletion",
+            "assert-anonymous-after-deletion",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
               yield* waitUrlContains(
@@ -1848,7 +1848,7 @@ export const makeWorkspaceE2EAccountCases = ({
       Effect.gen(function* () {
         yield* runStep(
           step(
-            "requires the completed deletion handoff from the marker case",
+            "require-completed-deletion-handoff",
             Effect.sync(() => {
               assert(
                 lifecycleHandoff.deletedUserId != null &&
@@ -1865,7 +1865,7 @@ export const makeWorkspaceE2EAccountCases = ({
         if (passkeysOffered()) {
           yield* runStep(
             step(
-              "adds the virtual passkey authenticator before the reactivation sign-in",
+              "add-virtual-passkey-authenticator",
               passkeys.installAuthenticator,
               browserTimeout
             )
@@ -1880,7 +1880,7 @@ export const makeWorkspaceE2EAccountCases = ({
         const reactivatedUserId = yield* Effect.gen(function* () {
           yield* runStep(
             step(
-              "opens a Czech cowork selection in the assistant's browser",
+              "open-czech-selection-in-assistant-browser",
               Effect.gen(function* () {
                 yield* assistant.openPage(`${config.baseUrl}${returnTo}`);
                 yield* waitCoworkSelection(
@@ -1894,7 +1894,7 @@ export const makeWorkspaceE2EAccountCases = ({
           const startedAt = new Date();
           const observedLogEntryIds = yield* runStep(
             step(
-              "records the delivered log baseline",
+              "record-delivered-log-baseline",
               observeDeliveredLogEntryIds(recipient, startedAt),
               providerTransition
             )
@@ -1903,7 +1903,7 @@ export const makeWorkspaceE2EAccountCases = ({
             "send",
             runStep(
               step(
-                "requests the reactivation link from the selection's sign-in",
+                "request-reactivation-link",
                 Effect.gen(function* () {
                   yield* assistant.openPage(
                     `${config.baseUrl}${getAccountSignInPath(handoffLocale, returnTo)}`
@@ -1927,7 +1927,7 @@ export const makeWorkspaceE2EAccountCases = ({
           );
           const link = yield* runStep(
             step(
-              "retrieves the reactivation link",
+              "retrieve-reactivation-link",
               previewLogs.retrieveMagicLink({
                 callbackPath: `/${handoffLocale}${callbackSuffix}`,
                 excludeLogEntryIds: observedLogEntryIds,
@@ -1941,7 +1941,7 @@ export const makeWorkspaceE2EAccountCases = ({
             "verify",
             runStep(
               step(
-                "reactivates the retained profile in the browser that opens the link",
+                "reactivate-retained-profile",
                 Effect.gen(function* () {
                   // The lane wraps this case in the callback handoff hold,
                   // which proves the signed-in callback copy before the
@@ -1979,7 +1979,7 @@ export const makeWorkspaceE2EAccountCases = ({
           // again instead of the email form.
           yield* runStep(
             step(
-              "keeps the assistant's browser signed out",
+              "assert-assistant-browser-signed-out",
               Effect.gen(function* () {
                 yield* assistant.openPage(
                   localized(accountSuffix, handoffLocale)
@@ -1999,7 +1999,7 @@ export const makeWorkspaceE2EAccountCases = ({
             "verify",
             runStep(
               step(
-                "rejects the consumed link in the assistant's browser",
+                "reject-consumed-reactivation-link",
                 Effect.gen(function* () {
                   yield* assistant.openPage(link);
                   yield* assistant.waitText(
@@ -2024,7 +2024,7 @@ export const makeWorkspaceE2EAccountCases = ({
           );
           yield* runStep(
             step(
-              "requests a new link that keeps the selection as its return",
+              "request-new-link-with-selection-return",
               Effect.gen(function* () {
                 yield* clickBrowserElement(
                   run,
@@ -2070,14 +2070,14 @@ export const makeWorkspaceE2EAccountCases = ({
         // reactivation would have saved it.
         yield* runStep(
           step(
-            "restores English (US) as the reactivated account's preference",
+            "restore-english-preference",
             setAccountLocalePreference(reactivatedUserId, "en-US"),
             datasourceTimeout
           )
         );
         yield* runStep(
           step(
-            "opens the reactivated account in English",
+            "open-reactivated-account-in-english",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
               yield* waitPathname(
@@ -2107,7 +2107,7 @@ export const makeWorkspaceE2EAccountCases = ({
         if (passkeysOffered()) {
           yield* runStep(
             step(
-              "creates a passkey from the post-sign-in prompt",
+              "create-passkey-from-prompt",
               Effect.gen(function* () {
                 yield* passkeys.createFromPrompt;
                 const credentials =
@@ -2130,7 +2130,7 @@ export const makeWorkspaceE2EAccountCases = ({
         }
         yield* runStep(
           step(
-            "keeps the retained reservation history across reactivation",
+            "assert-retained-reservation-history",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
               yield* waitForInteractiveSnapshot({
@@ -2153,7 +2153,7 @@ export const makeWorkspaceE2EAccountCases = ({
       Effect.gen(function* () {
         const userId = yield* runStep(
           step(
-            "requires the reactivated account's prompt passkey",
+            "require-prompt-passkey",
             Effect.gen(function* () {
               assert(
                 passkeysOffered(),
@@ -2172,21 +2172,21 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "signs out before the passkey sign-in",
+            "sign-out-before-passkey-sign-in",
             signOutAndRequireAnonymous(),
             navigationTimeout
           )
         );
         const sessionBeforeSignIn = yield* runStep(
           step(
-            "reads the account's newest session before the passkey sign-in",
+            "read-newest-session",
             readNewestSessionCreatedAt(userId),
             datasourceTimeout
           )
         );
         yield* runStep(
           step(
-            "signs the same account in with the passkey button",
+            "sign-in-with-passkey",
             Effect.gen(function* () {
               yield* passkeys.signIn;
               yield* waitDefaultReservations(
@@ -2209,14 +2209,14 @@ export const makeWorkspaceE2EAccountCases = ({
       Effect.gen(function* () {
         const userId = yield* runStep(
           step(
-            "reads the passkey account identity",
+            "read-passkey-account-identity",
             requireAuthUserId(recipient),
             datasourceTimeout
           )
         );
         yield* runStep(
           step(
-            "renames the passkey in Sign-in & security",
+            "rename-passkey",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
               yield* passkeys.renameOnly(passkeyNameFixture);
@@ -2226,7 +2226,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "deletes the last passkey behind its email sign-in note",
+            "delete-last-passkey",
             Effect.gen(function* () {
               yield* passkeys.deleteOnly(passkeyNameFixture);
               yield* requirePasskeyCount(
@@ -2240,7 +2240,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "creates a passkey from Sign-in & security on the fresh session",
+            "create-passkey-from-security-section",
             Effect.gen(function* () {
               yield* passkeys.createFromSettings;
               yield* requirePasskeyCount(
@@ -2255,7 +2255,7 @@ export const makeWorkspaceE2EAccountCases = ({
         const staleSessionCreatedAt = new Date(Date.now() - staleSessionAgeMs);
         yield* runStep(
           step(
-            "confirms the account deletion with the passkey behind the stale-session gate",
+            "confirm-deletion-with-passkey",
             Effect.gen(function* () {
               yield* setSessionCreatedAt(userId, staleSessionCreatedAt);
               yield* openPage(localized(accountSuffix));
@@ -2266,7 +2266,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "keeps the same active account on a fresh passkey session",
+            "assert-active-account-on-fresh-passkey-session",
             Effect.gen(function* () {
               const newest = yield* readNewestSessionCreatedAt(userId);
               assert(
@@ -2284,7 +2284,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "removes the virtual passkey authenticator",
+            "remove-virtual-passkey-authenticator",
             passkeys.removeAuthenticator,
             browserTimeout
           )
@@ -2423,7 +2423,7 @@ export const makeWorkspaceE2EAccountCases = ({
         // an English callback lands on the saved Czech site.
         yield* runStep(
           step(
-            "opens the English profile of the reactivated account",
+            "open-english-profile",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
               // The reactivated account was created under en-US, so its
@@ -2440,7 +2440,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "chooses Čeština, which saves it and moves the site to Czech",
+            "choose-czech-language",
             Effect.gen(function* () {
               // The English account shows English (US), the page locale.
               // Choosing Čeština saves the preference through the shared
@@ -2474,7 +2474,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "shows Čeština selected on the Czech profile",
+            "assert-czech-selected",
             Effect.gen(function* () {
               yield* openCzechProfile("Czech profile after the save");
               yield* requireSelectedLanguage(
@@ -2488,7 +2488,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "redirects a conflicting en-US URL and cookie to the saved Czech locale",
+            "redirect-conflicting-locale-to-czech",
             Effect.gen(function* () {
               yield* evalBrowserScript(
                 "overwrite the locale cookie with en-US",
@@ -2528,7 +2528,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "keeps Čeština selected on the Czech profile after the redirect",
+            "assert-czech-selected-after-redirect",
             Effect.gen(function* () {
               yield* openCzechProfile("Czech profile after the redirect");
               yield* requireSelectedLanguage(
@@ -2541,14 +2541,14 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "switches to English through the header language switcher",
+            "switch-to-english-in-header",
             switchLocale(run, session, "en-US", config.timeouts),
             providerTransition
           )
         );
         yield* runStep(
           step(
-            "redirects a Czech account URL to the switched English preference",
+            "redirect-czech-url-to-english",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix, "cs-CZ"));
               yield* waitPathname(
@@ -2567,7 +2567,7 @@ export const makeWorkspaceE2EAccountCases = ({
         // the English profile with English (US) saved.
         yield* runStep(
           step(
-            "shows English (US) as the saved language after the switch",
+            "assert-english-saved-after-switch",
             Effect.gen(function* () {
               yield* selectAccountSectionInRunner(run, session, "profile");
               yield* requireSelectedLanguage(
@@ -2584,7 +2584,7 @@ export const makeWorkspaceE2EAccountCases = ({
       Effect.gen(function* () {
         const mainIdentity = yield* runStep(
           step(
-            "reads the reactivated main identity",
+            "read-reactivated-main-identity",
             Effect.gen(function* () {
               const userId = yield* requireAuthUserId(recipient);
               const customerId = yield* requireLinkedCustomerId(userId);
@@ -2617,14 +2617,14 @@ export const makeWorkspaceE2EAccountCases = ({
 
         yield* runStep(
           step(
-            "navigates to public contact before the active unlink",
+            "open-contact-before-active-unlink",
             openPage(localized("/contact")),
             navigationTimeout
           )
         );
         yield* runStep(
           step(
-            "removes the active main account link",
+            "remove-active-account-link",
             removeSyntheticAccountLink(
               mainIdentity.userId,
               mainIdentity.customerId
@@ -2634,7 +2634,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "links the active provider profile without completion",
+            "link-active-provider-profile",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
               yield* waitDefaultReservations(
@@ -2657,14 +2657,14 @@ export const makeWorkspaceE2EAccountCases = ({
 
         yield* runStep(
           step(
-            "navigates to public contact before the expired unlink",
+            "open-contact-before-expired-unlink",
             openPage(localized("/contact")),
             navigationTimeout
           )
         );
         yield* runStep(
           step(
-            "removes the expired main account link",
+            "remove-expired-account-link",
             removeSyntheticAccountLink(
               mainIdentity.userId,
               mainIdentity.customerId
@@ -2674,7 +2674,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "expires the retained provider profile after unlinking",
+            "expire-retained-provider-profile",
             expireSyntheticCustomerProfile(
               datasourceConfig,
               mainIdentity.customerId
@@ -2693,7 +2693,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "reactivates the expired provider profile on linking",
+            "reactivate-expired-provider-profile",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
               yield* waitDefaultReservations(
@@ -2721,14 +2721,14 @@ export const makeWorkspaceE2EAccountCases = ({
 
         yield* runStep(
           step(
-            "navigates to public contact before the ambiguous unlink",
+            "open-contact-before-ambiguous-unlink",
             openPage(localized("/contact")),
             navigationTimeout
           )
         );
         yield* runStep(
           step(
-            "removes the ambiguous main account link",
+            "remove-ambiguous-account-link",
             removeSyntheticAccountLink(
               mainIdentity.userId,
               mainIdentity.customerId
@@ -2738,7 +2738,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "creates one additional ambiguous provider profile",
+            "create-ambiguous-provider-profile",
             Effect.gen(function* () {
               const duplicateCustomerId = yield* createSyntheticCustomerProfile(
                 datasourceConfig,
@@ -2756,7 +2756,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "requires support for an ambiguous provider profile",
+            "require-support-for-ambiguous-profile",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
               yield* waitText("support-required state", supportTitle);

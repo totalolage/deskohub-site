@@ -31,6 +31,7 @@ import {
   waitForBrowserReactFormSubmit,
   waitForBrowserText,
 } from "../browser";
+import type { WorkspaceE2EStepRunner } from "../case-runner";
 import { assertDisplayedDiscounts } from "../cases/discounts";
 import {
   type DatasourceConfig,
@@ -47,11 +48,7 @@ import { waitForReactClickHandler } from "../react-handlers";
 import type { WorkspaceE2ERunId } from "../run-identifiers";
 import { assert, type Runner } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
-import type {
-  CheckoutFlowState,
-  WorkspaceE2ECase,
-  WorkspaceE2EStepRunner,
-} from "../types";
+import type { CheckoutFlowState, WorkspaceE2ECase } from "../types";
 import {
   applyCodeAndReadFreshPayUrl,
   assertOrdinaryCodeSlotAvailable,
@@ -165,7 +162,7 @@ export const bindWorkspaceE2EReferralCase = ({
         // Each case's own context starts without a remembered shared link.
         yield* runStep({
           execute: waitForNoRememberedReferralCode({ config, run, session }),
-          id: "starts without a remembered referral code",
+          id: "assert-no-remembered-referral-code",
           timeoutMs: config.timeouts.uiTransition,
         });
         yield* execute(
@@ -449,7 +446,7 @@ const referrerScreen: ReferralCaseExecutor = (context) =>
         yield* identities.signIn(referrer, context.session);
         return referrer;
       }),
-      id: "seeds and signs in a referrer without invitees",
+      id: "seed-and-sign-in-referrer-without-invitees",
       timeoutMs: config.timeouts.datasource,
     });
 
@@ -463,12 +460,12 @@ const referrerScreen: ReferralCaseExecutor = (context) =>
         `${config.baseUrl}${getAccountSectionPath("cs-CZ", "referrals")}`,
         { timeoutMs: config.timeouts.browserNavigation }
       ),
-      id: "opens the Referrals screen in Czech",
+      id: "open-czech-referrals-screen",
       timeoutMs: config.timeouts.browserNavigation,
     });
     yield* pageStep(
       context,
-      "shows the zero-invite Referrals screen in Czech",
+      "assert-zero-invite-referrals-screen",
       config.timeouts.browserAction * 2,
       async (page) => {
         await waitForReferralStats({
@@ -519,13 +516,13 @@ const referrerScreen: ReferralCaseExecutor = (context) =>
         });
         return yield* identities.seedReferrer("rrs-other-referrer");
       }),
-      id: "seeds two eligible invitees, one pending invitee, and savings",
+      id: "seed-invitees-and-savings",
       timeoutMs: config.timeouts.datasource * 3,
     });
 
     yield* pageStep(
       context,
-      "shows counts, the rounded-up discount, badge, savings, and link",
+      "assert-referral-overview",
       config.timeouts.browserNavigation + config.timeouts.browserAction * 2,
       async (page) => {
         await page.goto(
@@ -582,7 +579,7 @@ const referrerScreen: ReferralCaseExecutor = (context) =>
 
     yield* pageStep(
       context,
-      "copies the referral code and link",
+      "copy-referral-code-and-link",
       config.timeouts.browserAction * 2,
       async (page) => {
         await page
@@ -621,7 +618,7 @@ const referrerScreen: ReferralCaseExecutor = (context) =>
 
     yield* pageStep(
       context,
-      "shows the positive overview in Czech and ignores another share link",
+      "assert-czech-overview-ignores-share-link",
       config.timeouts.browserNavigation * 3 + config.timeouts.browserAction,
       async (page) => {
         await page.goto(
@@ -677,7 +674,7 @@ const profileCompletionCheckout: ReferralCaseExecutor = (
         yield* identities.signIn(account, session);
         return { account, otherReferrer, referrer };
       }),
-      id: "seeds two referrers and signs in a new account",
+      id: "seed-two-referrers-and-sign-in-new-account",
       timeoutMs: config.timeouts.datasource,
     });
 
@@ -700,13 +697,13 @@ const profileCompletionCheckout: ReferralCaseExecutor = (
         yield* waitForNoRememberedReferralCode(context);
         return customerId;
       }),
-      id: "completes the profile from the remembered code and records the referral",
+      id: "complete-profile-from-remembered-code",
       timeoutMs: config.timeouts.checkoutStart,
     });
 
     yield* pageStep(
       context,
-      "dismisses the referral notice for good",
+      "dismiss-referral-notice",
       config.timeouts.browserAction * 2 + config.timeouts.browserNavigation,
       async (page) => {
         const dismiss = page.getByRole("button", {
@@ -748,12 +745,12 @@ const profileCompletionCheckout: ReferralCaseExecutor = (
     });
     yield* runStep({
       execute: assertOrdinaryCodeSlotAvailable({ config, run, session }),
-      id: "keeps the code box free after the automatic invitation",
+      id: "assert-code-box-free-after-automatic-invitation",
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* expectDiscounts(
       context,
-      "applies the recorded referral's 15% automatically",
+      "assert-recorded-referral-discount",
       invitationDiscounts
     );
     yield* captureReviewStep({
@@ -776,12 +773,12 @@ const profileCompletionCheckout: ReferralCaseExecutor = (
         run,
         session,
       }),
-      id: "rejects another referrer's code",
+      id: "reject-another-referrer-code",
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* expectDiscounts(
       context,
-      "keeps the recorded referral after the rejection",
+      "assert-referral-kept-after-rejection",
       invitationDiscounts
     );
     yield* runStep({
@@ -790,7 +787,7 @@ const profileCompletionCheckout: ReferralCaseExecutor = (
         referrer.customerId,
         "another referrer's code changed the recorded referral"
       ),
-      id: "keeps the recorded referrer",
+      id: "assert-recorded-referrer-kept",
       timeoutMs: config.timeouts.datasource,
     });
     yield* captureReviewStep({
@@ -811,11 +808,11 @@ const profileCompletionCheckout: ReferralCaseExecutor = (
       run,
       runStep,
       session,
-      stepId: "re-enters the recorded referral code harmlessly",
+      stepId: "reenter-recorded-referral-code",
     });
     yield* expectDiscounts(
       context,
-      "applies the invitation once after re-entry",
+      "assert-invitation-applied-once",
       invitationDiscounts
     );
   });
@@ -833,7 +830,7 @@ const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
         yield* identities.signIn(customer, session);
         return { customer, linkReferrer, referrer };
       }),
-      id: "seeds two referrers and signs in a completed profile without a referral",
+      id: "seed-two-referrers-and-sign-in-completed-profile",
       timeoutMs: config.timeouts.datasource,
     });
     const state = requireSingleState(checkoutStates, customer);
@@ -852,7 +849,7 @@ const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
     });
     yield* runStep({
       execute: waitForRememberedReferralCode(context, linkReferrer.code),
-      id: "remembers the shared link's code",
+      id: "remember-share-link-code",
       timeoutMs: config.timeouts.uiTransition,
     });
 
@@ -868,7 +865,7 @@ const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
         run,
         session,
       }),
-      id: "rejects the customer's own code",
+      id: "reject-own-referral-code",
       timeoutMs: config.timeouts.uiTransition,
     });
 
@@ -882,22 +879,22 @@ const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
       run,
       runStep,
       session,
-      stepId: "applies the referrer's typed code over the shared one",
+      stepId: "apply-typed-referrer-code",
     });
     yield* expectDiscounts(
       context,
-      "prices the typed referral at 15%",
+      "assert-typed-referral-discount",
       invitationDiscounts
     );
     yield* runStep({
       // An accepted typed code replaces the shared link's remembered code.
       execute: waitForRememberedReferralCode(context, referrer.code),
-      id: "remembers the accepted typed code instead",
+      id: "assert-typed-code-remembered",
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
       execute: assertNothingRecordedBeforePayment(customer.customerId),
-      id: "records nothing before payment",
+      id: "assert-nothing-recorded-before-payment",
       timeoutMs: config.timeouts.datasource,
     });
 
@@ -914,7 +911,7 @@ const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
       run,
       runStep,
       session,
-      stepId: "applies an ordinary code after the referral",
+      stepId: "apply-ordinary-code-after-referral",
     });
     yield* runStep({
       execute: assertReferralConfirmationCleared({
@@ -923,17 +920,13 @@ const checkoutCodeEntry: ReferralCaseExecutor = (context, checkoutStates) =>
         run,
         session,
       }),
-      id: "clears the referral confirmation after the ordinary code",
+      id: "assert-referral-confirmation-cleared-after-ordinary-code",
       timeoutMs: config.timeouts.uiTransition,
     });
-    yield* expectDiscounts(
-      context,
-      "keeps the referral with the ordinary code",
-      [
-        ...invitationDiscounts,
-        { adjustment: ordinaryCodeAdjustment, label: "E2E promo code" },
-      ]
-    );
+    yield* expectDiscounts(context, "assert-referral-kept-with-ordinary-code", [
+      ...invitationDiscounts,
+      { adjustment: ordinaryCodeAdjustment, label: "E2E promo code" },
+    ]);
     yield* captureReviewStep({
       captureReview: checkoutCapture(context),
       expectedPayUrl: payUrl,
@@ -966,7 +959,7 @@ const shareLinkCheckout: ReferralCaseExecutor = (context, checkoutStates) =>
         yield* identities.signIn(customer, session);
         return { customer, referrer };
       }),
-      id: "seeds a referrer and signs in a customer with one eligible invitee",
+      id: "seed-referrer-and-sign-in-customer-with-invitee",
       timeoutMs: config.timeouts.datasource * 2,
     });
     const state = requireSingleState(checkoutStates, customer);
@@ -992,17 +985,17 @@ const shareLinkCheckout: ReferralCaseExecutor = (context, checkoutStates) =>
         run,
         session,
       }),
-      id: "applies the share-link referral on the first pay page",
+      id: "assert-share-link-referral-on-first-pay-page",
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
       execute: assertOrdinaryCodeSlotAvailable({ config, run, session }),
-      id: "keeps the code box free after the share-link referral",
+      id: "assert-code-box-free-after-share-link-referral",
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* expectDiscounts(
       context,
-      "prices the share-link referral at 15%",
+      "assert-share-link-referral-discount",
       invitationDiscounts
     );
     yield* runStep({
@@ -1011,7 +1004,7 @@ const shareLinkCheckout: ReferralCaseExecutor = (context, checkoutStates) =>
         run,
         session,
       }),
-      id: "applies the customer's referrer discount after the invitation",
+      id: "assert-referrer-discount-after-invitation",
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
@@ -1020,7 +1013,7 @@ const shareLinkCheckout: ReferralCaseExecutor = (context, checkoutStates) =>
         // Unsettled, so the browser keeps remembering the shared code.
         yield* waitForRememberedReferralCode(context, referrer.code);
       }),
-      id: "records nothing before payment and keeps the remembered code",
+      id: "assert-nothing-recorded-and-code-remembered",
       timeoutMs: config.timeouts.datasource,
     });
     yield* captureReviewStep({
@@ -1044,7 +1037,7 @@ const shareLinkCheckout: ReferralCaseExecutor = (context, checkoutStates) =>
       run,
       runStep,
       session,
-      stepId: "applies a voucher after the referral",
+      stepId: "apply-voucher-after-referral",
     });
     yield* runStep({
       execute: assertReferralConfirmationCleared({
@@ -1053,10 +1046,10 @@ const shareLinkCheckout: ReferralCaseExecutor = (context, checkoutStates) =>
         run,
         session,
       }),
-      id: "clears the referral confirmation after the voucher",
+      id: "assert-referral-confirmation-cleared-after-voucher",
       timeoutMs: config.timeouts.uiTransition,
     });
-    yield* expectDiscounts(context, "keeps the referral with the voucher", [
+    yield* expectDiscounts(context, "assert-referral-kept-with-voucher", [
       ...invitationDiscounts,
       {
         adjustment: referralVoucherAdjustment,
@@ -1070,7 +1063,7 @@ const shareLinkCheckout: ReferralCaseExecutor = (context, checkoutStates) =>
         run,
         session,
       }),
-      id: "credits the voucher after both referral discounts",
+      id: "assert-voucher-credited-after-referral-discounts",
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* captureReviewStep({
@@ -1092,7 +1085,7 @@ const autoLinkedSignIn: ReferralCaseExecutor = (context) =>
           yield* identities.seedReferrer("ral-other-referrer");
         return { otherReferrer, referrer };
       }),
-      id: "seeds two referrers",
+      id: "seed-two-referrers",
       timeoutMs: config.timeouts.datasource,
     });
 
@@ -1141,7 +1134,7 @@ const autoLinkedSignIn: ReferralCaseExecutor = (context) =>
         yield* waitForReferrer(context, customerId, referrer.customerId);
         yield* waitForNoRememberedReferralCode(context);
       }),
-      id: "records the remembered code at an auto-linked first sign-in",
+      id: "assert-remembered-code-recorded-at-auto-link",
       timeoutMs: config.timeouts.checkoutStart,
     });
 
@@ -1164,7 +1157,7 @@ const autoLinkedSignIn: ReferralCaseExecutor = (context) =>
         );
         yield* waitForNoRememberedReferralCode(context);
       }),
-      id: "keeps an existing referral at an auto-linked first sign-in",
+      id: "assert-existing-referral-kept-at-auto-link",
       timeoutMs: config.timeouts.checkoutStart,
     });
 
@@ -1182,7 +1175,7 @@ const autoLinkedSignIn: ReferralCaseExecutor = (context) =>
         );
         yield* waitForRememberedReferralCode(context, unusableCode);
       }),
-      id: "links without a referral for an unusable remembered code",
+      id: "assert-auto-link-skips-unusable-code",
       timeoutMs: config.timeouts.checkoutStart,
     });
   });
@@ -1197,7 +1190,7 @@ const profileCompletionUnusableLink: ReferralCaseExecutor = (context) =>
         yield* identities.signIn(account, session);
         return { account, referrer };
       }),
-      id: "seeds a referrer and signs in a new account",
+      id: "seed-referrer-and-sign-in-new-account",
       timeoutMs: config.timeouts.datasource,
     });
     const unusableCode = makeUnusableReferralCode();
@@ -1211,7 +1204,7 @@ const profileCompletionUnusableLink: ReferralCaseExecutor = (context) =>
         yield* waitForRememberedReferralCode(context, unusableCode);
         yield* waitForCompletionForm(context, "");
       }),
-      id: "remembers only the first shared link and never prefills an unusable code",
+      id: "assert-first-share-link-remembered",
       timeoutMs:
         2 * (config.timeouts.browserNavigation + config.timeouts.uiTransition),
     });
@@ -1225,7 +1218,7 @@ const profileCompletionUnusableLink: ReferralCaseExecutor = (context) =>
           "an unusable remembered code recorded a referral"
         );
       }),
-      id: "completes the profile despite the unusable remembered code",
+      id: "complete-profile-despite-unusable-code",
       timeoutMs: config.timeouts.checkoutStart,
     });
   });

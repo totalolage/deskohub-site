@@ -22,6 +22,7 @@ import {
   getPrepareMeetingRoomAdvertisedPriceScript,
   getPrepareOfficeAdvertisedPriceScript,
 } from "../browser-scripts";
+import type { WorkspaceE2EStepRunner } from "../case-runner";
 import {
   makeCoworkCheckoutData,
   makeMeetingRoomCheckoutData,
@@ -43,11 +44,7 @@ import {
 import { loadDotyposOfficeSeatCapacity } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { assert, log, parseUrl } from "../runtime";
-import type {
-  CheckoutData,
-  WorkspaceE2ECase,
-  WorkspaceE2EStepRunner,
-} from "../types";
+import type { CheckoutData, WorkspaceE2ECase } from "../types";
 import type { DiscountAvailabilityE2EPreparation } from "./discounts";
 import {
   type MeetingRoomE2EPreparation,

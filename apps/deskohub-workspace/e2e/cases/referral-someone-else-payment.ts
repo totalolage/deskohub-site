@@ -15,6 +15,7 @@ import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-sessi
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { waitForBrowserUrl } from "../browser";
 import { getSubmitCoworkReservationScript } from "../browser-scripts";
+import type { WorkspaceE2EStep } from "../case-runner";
 import {
   makeCoworkCheckoutData,
   requireCheckoutDate,
@@ -59,7 +60,6 @@ import type {
   CheckoutFlowState,
   CheckoutRow,
   WorkspaceE2ECase,
-  WorkspaceE2EStep,
 } from "../types";
 import { executeCheckoutFlow } from "./checkout";
 import {

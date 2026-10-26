@@ -22,6 +22,7 @@ import {
   submitPreparedCoworkReservationScript,
 } from "../browser-scripts";
 import { workspaceE2EMaximumSameDateCoworkReservations } from "../capacity";
+import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
 import {
   loadAvailableCoworkDates,
   makeCoworkCheckoutData,
@@ -39,6 +40,7 @@ import {
 } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EHostedPaymentPermitService } from "../coordination/hosted-payment-permit.service";
+import type { WorkspaceE2EProviderVerificationPermitService } from "../coordination/provider-verification-permit.service";
 import {
   isWorkspaceE2ETimeout,
   toWorkspaceE2EError,
@@ -70,8 +72,6 @@ import type {
   CheckoutData,
   CheckoutFlowState,
   WorkspaceE2ECase,
-  WorkspaceE2EStep,
-  WorkspaceE2EStepRunner,
 } from "../types";
 import { makeUrl, setSearchParams } from "../urls";
 import { executeCheckoutFlow } from "./checkout";
@@ -1100,7 +1100,10 @@ const executeFullyConsumedVoucherCheckout = ({
 }): Effect.Effect<
   void,
   WorkspaceE2EError,
-  E2EDatabase | HttpClient.HttpClient | WorkspaceE2EHostedPaymentPermitService
+  | E2EDatabase
+  | HttpClient.HttpClient
+  | WorkspaceE2EHostedPaymentPermitService
+  | WorkspaceE2EProviderVerificationPermitService
 > =>
   Effect.gen(function* () {
     const fixture = discountCodeFixtures.voucherFull;
@@ -1181,7 +1184,10 @@ const executeDiscountCheckout = ({
 }): Effect.Effect<
   void,
   WorkspaceE2EError,
-  E2EDatabase | HttpClient.HttpClient | WorkspaceE2EHostedPaymentPermitService
+  | E2EDatabase
+  | HttpClient.HttpClient
+  | WorkspaceE2EHostedPaymentPermitService
+  | WorkspaceE2EProviderVerificationPermitService
 > =>
   executeCheckoutFlow({
     beforeReservationSubmit: reservationPageDiscounts

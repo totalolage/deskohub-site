@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Fiber } from "effect";
+import { TestClock } from "effect/testing";
+import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
 import {
   type ActionResponseOutcome,
   awaitActionQuiescence,
   retainActionSubmission,
-  runFinalizedCase,
   sanitizedBrowserOperation,
 } from "./admin-case";
 import { formatWorkspaceE2EFailure, workspaceE2ETimeoutError } from "./errors";
-import { type E2EOutcome, toE2EResult } from "./services/telemetry";
 
 describe("sanitized browser failure reporting", () => {
   test("discards raw causes that can carry the session cookie, bypass, or the PIN", async () => {
@@ -39,57 +39,6 @@ describe("sanitized browser failure reporting", () => {
   });
 });
 
-describe("case finalization order", () => {
-  test("marks cleanup-only failures failed, keeps them in the traced exit, and annotates once after trace finalization", async () => {
-    const operations: string[] = [];
-    let annotatedOutcomes: E2EOutcome[] = [];
-
-    const exit = await Effect.runPromiseExit(
-      runFinalizedCase({
-        body: Effect.sync(() => {
-          operations.push("body");
-        }),
-        cleanup: Effect.gen(function* () {
-          operations.push("cleanup");
-          return yield* workspaceE2ETimeoutError("cleanup timed out", {
-            operation: "cleanup",
-          });
-        }).pipe(Effect.orDie),
-        trace: (finalized) =>
-          Effect.onExit(finalized, (tracedExit) =>
-            Effect.sync(() => {
-              operations.push("trace-finalize");
-              if (!Exit.isSuccess(tracedExit)) {
-                annotatedOutcomes = [
-                  ...annotatedOutcomes,
-                  toE2EResult(tracedExit).outcome,
-                ];
-              }
-            })
-          ),
-        onExit: (settled) => {
-          operations.push("annotation");
-          if (!Exit.isSuccess(settled)) {
-            annotatedOutcomes = [
-              ...annotatedOutcomes,
-              toE2EResult(settled).outcome,
-            ];
-          }
-        },
-      })
-    );
-
-    expect(Exit.isFailure(exit)).toBe(true);
-    expect(operations).toEqual([
-      "body",
-      "cleanup",
-      "trace-finalize",
-      "annotation",
-    ]);
-    expect(annotatedOutcomes).toEqual(["failed", "failed"]);
-  });
-});
-
 describe("action completion barrier", () => {
   test("deletes only after the retained action response settles", async () => {
     const operations: string[] = [];
@@ -98,47 +47,50 @@ describe("action completion barrier", () => {
       releaseResponse = () => resolve({ kind: "responded" });
     });
 
-    const completed = Effect.runPromise(
+    await Effect.runPromise(
       Effect.gen(function* () {
-        yield* awaitActionQuiescence({
-          barrierTimeoutMs: 5_000,
-          label: "initial access code action",
-          responseSettled,
-          waitForTerminalEvent: Effect.sync(() => {
-            operations.push("converge");
-            return true;
-          }),
-        });
-        operations.push("delete");
-      })
-    ).then(() => operations.push("done"));
+        const barrier = yield* Effect.forkChild(
+          awaitActionQuiescence({
+            barrierTimeoutMs: 5_000,
+            label: "initial access code action",
+            responseSettled,
+            waitForTerminalEvent: Effect.sync(() => {
+              operations.push("converge");
+              return true;
+            }),
+          }).pipe(Effect.andThen(Effect.sync(() => operations.push("delete"))))
+        );
+        // Just before its deadline the barrier still holds the deletion.
+        yield* TestClock.adjust("4999 millis");
+        operations.push("server-write");
+        releaseResponse?.();
+        yield* Fiber.join(barrier);
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
 
-    await Bun.sleep(10);
-    operations.push("server-write");
-    releaseResponse?.();
-    await completed;
-
-    expect(operations).toEqual(["server-write", "delete", "done"]);
+    expect(operations).toEqual(["server-write", "delete"]);
   });
 
   test("falls back to bounded terminal convergence when the barrier times out", async () => {
     const operations: string[] = [];
 
     await Effect.runPromise(
-      Effect.gen(function* () {
-        yield* awaitActionQuiescence({
-          barrierTimeoutMs: 20,
-          label: "initial access code action",
-          responseSettled: new Promise<ActionResponseOutcome>(() => {}),
-          waitForTerminalEvent: Effect.gen(function* () {
-            operations.push("converge");
-            yield* Effect.sleep(5);
-            operations.push("terminal");
-            return true;
-          }),
-        });
-        operations.push("delete");
-      })
+      withInstantSleeps(
+        Effect.gen(function* () {
+          yield* awaitActionQuiescence({
+            barrierTimeoutMs: 20,
+            label: "initial access code action",
+            responseSettled: new Promise<ActionResponseOutcome>(() => {}),
+            waitForTerminalEvent: Effect.gen(function* () {
+              operations.push("converge");
+              yield* Effect.sleep(5);
+              operations.push("terminal");
+              return true;
+            }),
+          });
+          operations.push("delete");
+        })
+      )
     );
 
     expect(operations).toEqual(["converge", "terminal", "delete"]);

@@ -7,20 +7,20 @@ import {
 import type { Browser } from "@playwright/test";
 import { Effect } from "effect";
 import type { Locale } from "@/features/i18n";
+import type { WorkspaceE2EStep } from "../case-runner";
 import { WorkspaceE2EError, workspaceE2EError } from "../errors";
-import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import type { E2EDatabase } from "../integrations/database.service";
 import { readWorkspaceE2ERunPlan } from "../playwright-checkout/run-plan";
 import { runtimeTest } from "../playwright-checkout/runtime-fixtures";
 import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
-import type { WorkspaceE2EStep } from "../types";
 import { verifyAccountLayoutNavigation } from "./account-layout-navigation";
 import {
   findAuthUserIdByEmail,
   findLinkedDotyposCustomerId,
 } from "./auth-rows";
 import { withCallbackHandoffReview } from "./callback-handoff";
+import type { WorkspaceE2ESignInReturns } from "./cases";
 import {
   type WorkspaceE2EAccountCaseId,
   workspaceE2EAccountCaseIds,
@@ -68,7 +68,6 @@ import {
   type SignInHandoffReviewStage,
   signInHandoffReviewTargetByStage,
 } from "./review-targets";
-import type { WorkspaceE2ESignInReturns } from "./cases";
 import type { WorkspaceE2EAccountLifecycleHandoff } from "./types";
 import {
   resolveWorkspaceE2EPreviewLogs,
@@ -312,7 +311,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
                 );
               },
             }),
-            id: "checks profile re-entry and unsaved navigation",
+            id: "verify-profile-navigation",
             timeoutMs: workspaceE2ETimeouts.providerTransition,
           },
           {
@@ -348,7 +347,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
                 });
               },
             }),
-            id: "checks reservation existing customer card",
+            id: "verify-reservation-existing-customer-card",
             timeoutMs: workspaceE2ETimeouts.providerTransition,
           },
         ];
@@ -368,7 +367,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
                   accountLane.config.baseUrl
                 ),
             }),
-            id: "switches locale from the profile without the error page",
+            id: "switch-profile-locale",
             timeoutMs: workspaceE2ETimeouts.providerTransition,
           },
         ];
@@ -447,7 +446,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
                   ),
               });
             }),
-            id: "checks account layout navigation",
+            id: "verify-account-layout-navigation",
             timeoutMs: workspaceE2ETimeouts.providerTransition,
           },
           {
@@ -462,7 +461,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
                 reviewScreenshots: accountLane.config.review.screenshots,
               });
             }),
-            id: "checks account marketing preferences",
+            id: "verify-account-marketing-preferences",
             timeoutMs: workspaceE2ETimeouts.providerTransition,
           },
           {
@@ -510,7 +509,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
                   })
               );
             }),
-            id: "checks reservation history navigation and access privacy",
+            id: "verify-reservation-history-navigation",
             timeoutMs: workspaceE2ETimeouts.providerTransition,
           },
         ];
@@ -519,7 +518,6 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         runEffect(
           runWorkspaceE2EAccountCase({
             journalRef: accountLane.journalRef,
-            reportFailure: writeWorkspaceE2EFailureAnnotation,
             session: accountLane.session,
             testCase: selected,
             ...(verifyPages ? { verifyPages } : {}),

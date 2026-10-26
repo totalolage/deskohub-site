@@ -5,12 +5,13 @@ import {
   waitForBrowserCondition,
   waitForBrowserUrl,
 } from "../browser";
+import type { WorkspaceE2EStepRunner } from "../case-runner";
 import type { WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
 import { log, parseUrl } from "../runtime";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
-import type { CheckoutData, WorkspaceE2EStepRunner } from "../types";
+import type { CheckoutData } from "../types";
 
 export const assertLocaleSwitcher = ({
   config,

@@ -29,6 +29,7 @@ import {
   getAssertFulfillmentFailedSupportScript,
   getAssertRepeatReservationScript,
 } from "../browser-scripts";
+import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
 import {
   formatNexiBuildFailureCodes,
   parseNexiBuildFailures,
@@ -52,6 +53,7 @@ import { matchesExpectedReservationDetails } from "../checkout/reservation-detai
 import { reservationStatusIsolationStep } from "../checkout/reservation-status-isolation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { WorkspaceE2EHostedPaymentPermitService } from "../coordination/hosted-payment-permit.service";
+import type { WorkspaceE2EProviderVerificationPermitService } from "../coordination/provider-verification-permit.service";
 import { tryWorkspaceE2ESync, type WorkspaceE2EError } from "../errors";
 import {
   type ExpectedDiscountApplication,
@@ -75,8 +77,6 @@ import type {
   CheckoutFlow,
   CheckoutFlowState,
   CheckoutRow,
-  WorkspaceE2EStep,
-  WorkspaceE2EStepRunner,
 } from "../types";
 import { isExpectedCheckoutStatusUrl, makeUrl, setSearchParams } from "../urls";
 
@@ -122,7 +122,10 @@ export const executeCheckoutFlow = ({
 }): Effect.Effect<
   void,
   WorkspaceE2EError,
-  E2EDatabase | HttpClient.HttpClient | WorkspaceE2EHostedPaymentPermitService
+  | E2EDatabase
+  | HttpClient.HttpClient
+  | WorkspaceE2EHostedPaymentPermitService
+  | WorkspaceE2EProviderVerificationPermitService
 > =>
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
@@ -166,7 +169,7 @@ export const executeCheckoutFlow = ({
     // Nexi verification happens inside the deployed webhook handler. The runner
     // validates the resulting payment/webhook state without holding Nexi secrets.
     yield* runStep({
-      capacity: "provider-verification",
+      permit: "provider-verification",
       execute: replayNexiWebhook(config, providerSessionRow).pipe(
         Effect.provideService(HttpClient.HttpClient, httpClient)
       ),

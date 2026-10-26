@@ -3,7 +3,6 @@ import type { Page } from "@playwright/test";
 import { Effect } from "effect";
 import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
 import { openAdminBrowserPage, sanitizedBrowserOperation } from "../admin-case";
-import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import { runtimeTest as test } from "../playwright-checkout/runtime-fixtures";
 import { addRedaction } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
@@ -42,16 +41,10 @@ test("sends a signed-out administration URL to sign-in with its return path, whi
         caseId,
         context,
         origin,
-        reportFailure:
-          runContext.githubRunId === undefined
-            ? undefined
-            : writeWorkspaceE2EFailureAnnotation,
         body: Effect.fn(function* (step) {
           let returnPath: string | undefined;
-          yield* step(
-            "redirect-signed-out-administration-url",
-            workspaceE2ETimeouts.browserNavigation,
-            sanitizedBrowserOperation(
+          yield* step({
+            execute: sanitizedBrowserOperation(
               "request the administration URL signed out",
               async () => {
                 const response = await context.request.get(
@@ -92,12 +85,12 @@ test("sends a signed-out administration URL to sign-in with its return path, whi
                   await response.dispose();
                 }
               }
-            )
-          );
-          yield* step(
-            "show-sign-in-form",
-            workspaceE2ETimeouts.browserNavigation,
-            sanitizedBrowserOperation(
+            ),
+            id: "redirect-signed-out-administration-url",
+            timeoutMs: workspaceE2ETimeouts.browserNavigation,
+          });
+          yield* step({
+            execute: sanitizedBrowserOperation(
               "open the administration URL signed out in the browser",
               async () => {
                 await page.goto(
@@ -115,22 +108,22 @@ test("sends a signed-out administration URL to sign-in with its return path, whi
                   timeout: workspaceE2ETimeouts.browserAction,
                 });
               }
-            )
-          );
-          yield* step(
-            "sign-in-seeded-administrator",
-            workspaceE2ETimeouts.datasource,
-            Effect.gen(function* () {
+            ),
+            id: "show-sign-in-form",
+            timeoutMs: workspaceE2ETimeouts.browserNavigation,
+          });
+          yield* step({
+            execute: Effect.gen(function* () {
               const administrator = yield* identities.seed("asr-admin", [
                 "administrator",
               ]);
               yield* identities.signIn(administrator, { context, origin });
-            })
-          );
-          yield* step(
-            "open-return-path-as-administrator",
-            workspaceE2ETimeouts.browserNavigation,
-            sanitizedBrowserOperation(
+            }),
+            id: "sign-in-seeded-administrator",
+            timeoutMs: workspaceE2ETimeouts.datasource,
+          });
+          yield* step({
+            execute: sanitizedBrowserOperation(
               "open the sign-in return path as the administrator",
               async () => {
                 ok(returnPath, "the sign-in return path was not captured");
@@ -148,8 +141,10 @@ test("sends a signed-out administration URL to sign-in with its return path, whi
                 equal(`${url.pathname}${url.search}`, returnPath);
                 await expectAdministrationContent(page, "Reservations");
               }
-            )
-          );
+            ),
+            id: "open-return-path-as-administrator",
+            timeoutMs: workspaceE2ETimeouts.browserNavigation,
+          });
         }),
       })
     );
@@ -184,23 +179,17 @@ test("answers a signed-in account without the administrator role with the ordina
         caseId,
         context,
         origin,
-        reportFailure:
-          runContext.githubRunId === undefined
-            ? undefined
-            : writeWorkspaceE2EFailureAnnotation,
         body: Effect.fn(function* (step) {
-          yield* step(
-            "sign-in-seeded-account-without-role",
-            workspaceE2ETimeouts.datasource,
-            Effect.gen(function* () {
+          yield* step({
+            execute: Effect.gen(function* () {
               const member = yield* identities.seed("anr-member", []);
               yield* identities.signIn(member, { context, origin });
-            })
-          );
-          yield* step(
-            "refuse-administration-overview",
-            workspaceE2ETimeouts.browserNavigation,
-            sanitizedBrowserOperation(
+            }),
+            id: "sign-in-seeded-account-without-role",
+            timeoutMs: workspaceE2ETimeouts.datasource,
+          });
+          yield* step({
+            execute: sanitizedBrowserOperation(
               "open the administration overview without the role",
               async () => {
                 const response = await page.goto(
@@ -225,8 +214,10 @@ test("answers a signed-in account without the administrator role with the ordina
                   "the refused page must not render the administration shell"
                 );
               }
-            )
-          );
+            ),
+            id: "refuse-administration-overview",
+            timeoutMs: workspaceE2ETimeouts.browserNavigation,
+          });
         }),
       })
     );

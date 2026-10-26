@@ -5,7 +5,12 @@ import {
   type WorkspaceE2EDateAllocation,
 } from "../allocation";
 import type { E2EEnvironment } from "../e2e-env";
-import { isWorkspaceE2ETimeout, WorkspaceE2EError } from "../errors";
+import {
+  isWorkspaceE2ETimeout,
+  type WorkspaceE2EDiagnosticCode,
+  WorkspaceE2EError,
+} from "../errors";
+import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import {
   type GitHubActionsRunId,
   githubActionsRunIdSchema,
@@ -17,7 +22,7 @@ import { formatWorkspaceE2EDuration } from "../timeouts";
 
 type E2EExecutionContext = "ci" | "manual";
 export type E2EOutcome = "cancelled" | "failed" | "passed" | "timed_out";
-export type E2EFailureKind = "defect" | "error" | "timeout";
+type E2EFailureKind = "defect" | "error" | "timeout";
 type E2EPhaseId =
   | "case-construction"
   | "case-finalization"
@@ -41,6 +46,18 @@ export type E2EResult =
       readonly failureKind: "timeout";
       readonly outcome: "timed_out";
     };
+
+/**
+ * The closed facts one GitHub check annotation may carry for a genuinely
+ * failed or timed-out case.
+ */
+export type WorkspaceE2EFailureDiagnostic = {
+  readonly caseId: string;
+  readonly diagnosticCode?: WorkspaceE2EDiagnosticCode;
+  readonly failureKind: E2EFailureKind;
+  readonly outcome: "failed" | "timed_out";
+  readonly stepId?: string;
+};
 
 export type E2ERunContext = {
   readonly allocation: WorkspaceE2EDateAllocation;
@@ -90,6 +107,10 @@ export class E2ERunContextService extends Context.Service<
 }
 
 export interface E2ETelemetry {
+  /** Emits the case's one failure annotation; only GitHub Actions runs annotate. */
+  readonly annotateFailure: (
+    diagnostic: WorkspaceE2EFailureDiagnostic
+  ) => Effect.Effect<void>;
   readonly traceCase: <A, E, R>(input: {
     readonly caseId: string;
     readonly effect: Effect.Effect<A, E, R>;
@@ -121,6 +142,10 @@ export class E2ETelemetryService extends Context.Service<
       const { value: runContext } = yield* E2ERunContextService;
 
       return {
+        annotateFailure: (diagnostic) =>
+          runContext.githubRunId === undefined
+            ? Effect.void
+            : Effect.sync(() => writeWorkspaceE2EFailureAnnotation(diagnostic)),
         traceCase: ({ caseId, effect, timeoutMs }) =>
           traceE2EEffect(runContext, { caseId, scope: "case", timeoutMs })(
             effect
@@ -210,6 +235,16 @@ export const toE2EResult = <A, E>(exit: Exit.Exit<A, E>): E2EResult => {
   };
 };
 
+/** The allowlisted diagnostic code of the cause's first typed failure. */
+export const findWorkspaceE2EDiagnosticCode = <E>(
+  cause: Cause.Cause<E>
+): WorkspaceE2EDiagnosticCode | undefined => {
+  const error = Cause.findErrorOption(cause);
+  return Option.isSome(error) && error.value instanceof WorkspaceE2EError
+    ? error.value.diagnosticCode
+    : undefined;
+};
+
 export const toE2ESpanAttributes = (
   runContext: E2ERunContext,
   span: E2ESpan
@@ -277,13 +312,9 @@ const toE2ETerminalSpanAttributes = <A, E>(
   exit: Exit.Exit<A, E>
 ): Record<string, string> => {
   const result = toE2EResult(exit);
-  const error = Exit.isFailure(exit)
-    ? Cause.findErrorOption(exit.cause)
-    : Option.none();
-  const diagnosticCode =
-    Option.isSome(error) && error.value instanceof WorkspaceE2EError
-      ? error.value.diagnosticCode
-      : undefined;
+  const diagnosticCode = Exit.isFailure(exit)
+    ? findWorkspaceE2EDiagnosticCode(exit.cause)
+    : undefined;
 
   return {
     ...(diagnosticCode ? { "e2e.failure.code": diagnosticCode } : {}),
