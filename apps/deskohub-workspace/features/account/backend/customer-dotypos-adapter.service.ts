@@ -4,7 +4,6 @@ import {
   type DotyposCustomerId,
   type DotyposReadFailure,
   DotyposService,
-  type DotyposUncertain,
   type FindCustomerResult,
   normalizePhoneNumber,
 } from "@deskohub/dotypos";
@@ -28,6 +27,22 @@ export class DotyposCustomerMissing extends Data.TaggedError(
 class CustomerRereadFailure extends Data.TaggedError("CustomerRereadFailure")<{
   readonly cause: DotyposReadFailure;
 }> {}
+
+/**
+ * Stage 3 compatibility: the patch failures the adapter settled by rereading
+ * before the outcome tags, i.e. a lost connection or HTTP 429 or 5xx,
+ * including a synthetic 502. An unreadable or status-less response still
+ * fails at once, and an exhausted 429 or ETag read is still settled. Stage 5
+ * may narrow this to DotyposUncertain.
+ */
+const settlesByReread = (failure: DotyposConditionalWriteFailure): boolean =>
+  failure._tag === "DotyposVersionConflict"
+    ? false
+    : failure.reason === "transport" ||
+      failure.reason === "timeout" ||
+      failure.reason === "rate-limited" ||
+      failure.reason === "server" ||
+      (failure.httpStatus !== undefined && failure.httpStatus >= 500);
 
 export type DotyposCustomerError =
   | DotyposConditionalWriteFailure
@@ -379,11 +394,11 @@ export class CustomerDotyposAdapter extends Context.Service<
       };
 
       /**
-       * Patches the customer and settles an uncertain patch by rereading it.
-       * At most two patch executions run, each of which the package may
-       * replay: a second one follows a version conflict, an uncertain patch
-       * the reread shows unapplied, or an unavailable Dotypos. Reread
-       * failures are never retried. None means the customer does not exist.
+       * Patches the customer and settles a possibly applied failure by
+       * rereading it. At most two patch executions run, each of which the
+       * package may replay: a second one follows a version conflict or a
+       * settled failure the reread shows unapplied. Reread failures are never
+       * retried. None means the customer does not exist.
        */
       const patchWithReread = Effect.fn(
         "CustomerDotyposAdapter.patchWithReread"
@@ -392,26 +407,34 @@ export class CustomerDotyposAdapter extends Context.Service<
         readonly payload: UpdateCustomerRequest;
         readonly isApplied: (customer: DotyposCustomer) => boolean;
       }) {
-        // An uncertain patch is settled by rereading. A missing customer is
-        // not an applied patch.
-        const settle = (uncertain: DotyposUncertain) =>
+        // A missing customer is not an applied patch.
+        const settle = <Failure>(failure: Failure) =>
           dotypos.getCustomer(input.customerId).pipe(
             Effect.mapError((cause) => new CustomerRereadFailure({ cause })),
-            Effect.filterOrFail(Option.exists(input.isApplied), () => uncertain)
+            Effect.filterOrFail(Option.exists(input.isApplied), () => failure)
           );
         // Each execution sends a fresh patch request.
         const attempt = Effect.suspend(() =>
           dotypos.patchCustomer(input.customerId, input.payload)
-        ).pipe(Effect.catchTag("DotyposUncertain", settle));
+        ).pipe(Effect.catchIf(settlesByReread, settle));
+        const isPatchFailure = (
+          failure: DotyposConditionalWriteFailure | CustomerRereadFailure
+        ): failure is DotyposConditionalWriteFailure =>
+          failure._tag !== "CustomerRereadFailure";
 
         return yield* attempt.pipe(
-          Effect.catchTags({
-            DotyposVersionConflict: () => attempt,
-            DotyposUncertain: () => attempt,
-            DotyposUnavailable: () => attempt,
-          }),
+          Effect.catchIf(
+            (failure) =>
+              isPatchFailure(failure) &&
+              (failure._tag === "DotyposVersionConflict" ||
+                settlesByReread(failure)),
+            () => attempt
+          ),
           // The final settlement read after the second execution.
-          Effect.catchTag("DotyposUncertain", settle),
+          Effect.catchIf(
+            (failure) => isPatchFailure(failure) && settlesByReread(failure),
+            settle
+          ),
           Effect.catchTag("CustomerRereadFailure", ({ cause }) =>
             Effect.fail(cause)
           )

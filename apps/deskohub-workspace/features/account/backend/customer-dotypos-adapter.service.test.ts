@@ -469,7 +469,34 @@ describe("CustomerDotyposAdapter", () => {
       }
     });
 
-    test("patches once more after an exhausted rate limit, without rereading", async () => {
+    test("accepts an exhausted rate limit once a reread shows it applied", async () => {
+      const calls: string[] = [];
+
+      await runWithDotypos(
+        {
+          patchCustomer: () => {
+            calls.push("patch");
+            return Effect.fail(
+              new DotyposUnavailable({
+                operation: "patchCustomer",
+                request: "customer.patch",
+                reason: "rate-limited",
+                httpStatus: 429,
+              })
+            );
+          },
+          getCustomer: () => {
+            calls.push("read");
+            return Effect.succeed(Option.some(expiredCustomer));
+          },
+        },
+        (adapter) => adapter.expireCustomer("60111")
+      );
+
+      expect(calls).toEqual(["patch", "read"]);
+    });
+
+    test("rereads around the replay of an exhausted rate limit and then fails with it", async () => {
       const calls: string[] = [];
 
       const outcome = await runWithDotypos(
@@ -481,18 +508,19 @@ describe("CustomerDotyposAdapter", () => {
                 operation: "patchCustomer",
                 request: "customer.patch",
                 reason: "rate-limited",
+                httpStatus: 429,
               })
             );
           },
           getCustomer: () => {
             calls.push("read");
-            return Effect.succeed(Option.some(expiredCustomer));
+            return Effect.succeed(Option.some(activeCustomer));
           },
         },
         (adapter) => adapter.expireCustomer("60111").pipe(Effect.result)
       );
 
-      expect(calls).toEqual(["patch", "patch"]);
+      expect(calls).toEqual(["patch", "read", "patch", "read", "read"]);
       expect(outcome._tag).toBe("Failure");
       if (outcome._tag === "Failure") {
         expect(outcome.failure).toMatchObject({
@@ -502,7 +530,7 @@ describe("CustomerDotyposAdapter", () => {
       }
     });
 
-    test("patches once more after a failed version read, without rereading", async () => {
+    test("rereads around the replay of a failed version read and then fails with it", async () => {
       const calls: string[] = [];
 
       const outcome = await runWithDotypos(
@@ -514,18 +542,19 @@ describe("CustomerDotyposAdapter", () => {
                 operation: "patchCustomer",
                 request: "customer.version",
                 reason: "server",
+                httpStatus: 503,
               })
             );
           },
           getCustomer: () => {
             calls.push("read");
-            return Effect.succeed(Option.some(activeCustomer));
+            return Effect.succeed(Option.some(expiredCustomer));
           },
         },
         (adapter) => adapter.reactivateCustomer("60222").pipe(Effect.result)
       );
 
-      expect(calls).toEqual(["patch", "patch"]);
+      expect(calls).toEqual(["patch", "read", "patch", "read", "read"]);
       expect(outcome._tag).toBe("Failure");
       if (outcome._tag === "Failure") {
         expect(outcome.failure).toMatchObject({
@@ -533,6 +562,69 @@ describe("CustomerDotyposAdapter", () => {
           request: "customer.version",
         });
       }
+    });
+
+    for (const httpStatus of [undefined, 200]) {
+      test(`fails an unreadable patch response (status ${httpStatus}) without rereading or retrying`, async () => {
+        const calls: string[] = [];
+
+        const outcome = await runWithDotypos(
+          {
+            patchCustomer: () => {
+              calls.push("patch");
+              return Effect.fail(
+                new DotyposUncertain({
+                  operation: "patchCustomer",
+                  request: "customer.patch",
+                  reason: "invalid-response",
+                  ...(httpStatus !== undefined && { httpStatus }),
+                })
+              );
+            },
+            getCustomer: () => {
+              calls.push("read");
+              return Effect.succeed(Option.some(expiredCustomer));
+            },
+          },
+          (adapter) => adapter.expireCustomer("60111").pipe(Effect.result)
+        );
+
+        expect(calls).toEqual(["patch"]);
+        expect(outcome._tag).toBe("Failure");
+        if (outcome._tag === "Failure") {
+          expect(outcome.failure).toMatchObject({
+            _tag: "DotyposUncertain",
+            reason: "invalid-response",
+          });
+        }
+      });
+    }
+
+    test("settles a synthetic 502 patch response by rereading", async () => {
+      const calls: string[] = [];
+
+      await runWithDotypos(
+        {
+          patchCustomer: () => {
+            calls.push("patch");
+            return Effect.fail(
+              new DotyposUncertain({
+                operation: "patchCustomer",
+                request: "customer.patch",
+                reason: "invalid-response",
+                httpStatus: 502,
+              })
+            );
+          },
+          getCustomer: () => {
+            calls.push("read");
+            return Effect.succeed(Option.some(expiredCustomer));
+          },
+        },
+        (adapter) => adapter.expireCustomer("60111")
+      );
+
+      expect(calls).toEqual(["patch", "read"]);
     });
 
     test("reports an already missing customer as none when expiring", async () => {
