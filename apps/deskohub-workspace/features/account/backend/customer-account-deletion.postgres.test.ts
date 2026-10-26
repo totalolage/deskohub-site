@@ -1,10 +1,14 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
+import {
+  type DotyposCustomerId,
+  DotyposCustomerIdSchema,
+  DotyposCustomerSchema,
+} from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { eq } from "drizzle-orm";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { customerAccounts } from "@/db/schema";
@@ -18,11 +22,29 @@ import {
 import { CustomerAccountRepository } from "./customer-account.repository";
 import { expireLinkedDotyposProfile } from "./customer-account-deletion";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import { CustomerAvatarProviderError } from "./customer-avatar.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
 const uniqueId = () => crypto.randomUUID();
 const uniqueDotyposId = () => String(60000 + Math.floor(Math.random() * 999));
+
+/** The adapter's success: the reread customer shows the expiration. */
+const expireCustomer = (customerId: DotyposCustomerId) =>
+  Effect.succeed(
+    Option.some(
+      Schema.decodeSync(DotyposCustomerSchema)({
+        id: customerId,
+        _cloudId: "cloud",
+        firstName: "Smazaná",
+        lastName: "Zákaznice",
+        points: "0",
+        flags: "0",
+        display: true,
+        deleted: true,
+      })
+    )
+  );
 
 const insertAuthUser = (id: CustomerAccountId, email: string) =>
   Effect.runPromise(
@@ -90,7 +112,7 @@ describe.skipIf(!testDatabase)(
             findLink: links.find,
             expireCustomer: (customerId) => {
               order.push(`expire:${customerId}`);
-              return Effect.void;
+              return expireCustomer(customerId);
             },
             destroyAvatar: (destroyAccountId) => {
               order.push(`destroy-avatar:${destroyAccountId}`);
@@ -137,9 +159,9 @@ describe.skipIf(!testDatabase)(
             isReviewAccount: reviewAccounts.isReviewAccount,
             markDeletionRequested: links.markDeletionRequested,
             findLink: links.find,
-            expireCustomer: () => {
+            expireCustomer: (customerId) => {
               providerCalls.push("expire");
-              return Effect.void;
+              return expireCustomer(customerId);
             },
             destroyAvatar: () => {
               providerCalls.push("destroy-avatar");
@@ -177,9 +199,9 @@ describe.skipIf(!testDatabase)(
             isReviewAccount: reviewAccounts.isReviewAccount,
             markDeletionRequested: links.markDeletionRequested,
             findLink: links.find,
-            expireCustomer: () => Effect.void,
+            expireCustomer,
             destroyAvatar: () =>
-              Effect.fail({ _tag: "CustomerAvatarProviderError" }),
+              Effect.fail(new CustomerAvatarProviderError({})),
             tombstone: accounts.tombstone,
             withAccountLock: links.withAccountLock,
           });
@@ -228,7 +250,7 @@ describe.skipIf(!testDatabase)(
               isReviewAccount: reviewAccounts.isReviewAccount,
               markDeletionRequested: links.markDeletionRequested,
               findLink: links.find,
-              expireCustomer: () => Effect.void,
+              expireCustomer,
               destroyAvatar: () => Effect.void,
               tombstone: accounts.tombstone,
               withAccountLock: links.withAccountLock,
