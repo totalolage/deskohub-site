@@ -78,6 +78,14 @@ const replaysPatch = (failure: DotyposConditionalWriteFailure): boolean => {
   );
 };
 
+/**
+ * Stage 3 compatibility: expiration reads any 404 that ends it as a missing
+ * customer, as before the outcome tags. That includes an access-token 404 and
+ * a replay or settlement reread answered 404, which stay failures elsewhere.
+ */
+const endsNotFound = (failure: DotyposConditionalWriteFailure): boolean =>
+  terminalAttempt(failure).httpStatus === 404;
+
 export type DotyposCustomerError =
   | DotyposConditionalWriteFailure
   | MissingDotyposId
@@ -509,7 +517,11 @@ export class CustomerDotyposAdapter extends Context.Service<
             payload: expirationPatch(true),
             isApplied: (customer) =>
               customer.deleted || isCustomerProfileExpired(customer),
-          })
+          }).pipe(
+            Effect.catchIf(endsNotFound, () =>
+              Effect.succeed(Option.none<DotyposCustomer>())
+            )
+          )
       );
 
       const reactivateCustomer = Effect.fn(
