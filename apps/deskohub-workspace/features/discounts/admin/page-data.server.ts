@@ -1,307 +1,252 @@
 import "server-only";
 
-import { Effect } from "effect";
-import { notFound } from "next/navigation";
-import { cache } from "react";
-import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
+import { Effect, Layer } from "effect";
+import {
+  AdministrationRecordNotFound,
+  runAdministrationPage,
+} from "@/features/administrators/server/administration-request.server";
 import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import type { DiscountCodeId, VoucherId } from "../persistence-contracts";
 import { formatDiscountAdminCustomerName } from "./customer-display-name";
-import { DiscountAdministration } from "./discount-administration.service";
+import {
+  DiscountAdministration,
+  type DiscountAdminNotFoundError,
+} from "./discount-administration.service";
 
 export type DiscountAdminSearchParams = Promise<{
   readonly notice?: string;
   readonly status?: string;
 }>;
 
-export const loadDiscountAdminPageData = async (
-  searchParams: DiscountAdminSearchParams
-) => {
-  await authorizeAdministratorPage();
+type DiscountAdministrationQuery<A, E> = (
+  administration: DiscountAdministration["Service"]
+) => Effect.Effect<A, E>;
 
-  const dashboard = Effect.gen(function* () {
-    const administration = yield* DiscountAdministration;
-    return yield* administration.loadDashboard();
-  }).pipe(
-    Effect.provide(DiscountAdministration.Live),
-    runWorkspaceEffect("discount-administration.load", {
-      boundary: "route",
-    })
+/** Runs a discounts page query against the discount administration. */
+const runDiscountAdministration = <A, E>(
+  operation: string,
+  query: DiscountAdministrationQuery<A, E | AdministrationRecordNotFound>
+) =>
+  runAdministrationPage(
+    operation,
+    Effect.gen(function* () {
+      return yield* query(yield* DiscountAdministration);
+    }),
+    DiscountAdministration.Live
   );
-  const [resolvedDashboard, notice] = await Promise.all([
-    dashboard,
-    loadNotice(searchParams),
-  ]);
 
-  return { dashboard: resolvedDashboard, notice };
-};
-
-export const loadDiscountAdminCodesPageData = async (
-  searchParams: DiscountAdminSearchParams
-) => {
-  await authorizeAdministratorPage();
-  const dashboard = Effect.gen(function* () {
-    const administration = yield* DiscountAdministration;
-    return yield* administration.loadCodesPage();
-  }).pipe(
-    Effect.provide(DiscountAdministration.Live),
-    runWorkspaceEffect("discount-administration.load-codes", {
-      boundary: "route",
-    })
+/**
+ * Runs a discounts page query for one record. A record that doesn't exist
+ * answers the page with the ordinary 404.
+ */
+const runDiscountAdminRecordPage = <A, E>(
+  operation: string,
+  query: DiscountAdministrationQuery<A, E | DiscountAdminNotFoundError>
+) =>
+  runDiscountAdministration(operation, (administration) =>
+    query(administration).pipe(
+      Effect.catchTag("DiscountAdminNotFoundError", () =>
+        Effect.fail(new AdministrationRecordNotFound())
+      )
+    )
   );
-  const [resolvedDashboard, notice] = await Promise.all([
-    dashboard,
-    loadNotice(searchParams),
-  ]);
-  return { dashboard: resolvedDashboard, notice };
-};
 
-export const loadDiscountAdminSalesPageData = async (
-  searchParams: DiscountAdminSearchParams
-) => {
-  await authorizeAdministratorPage();
-  const dashboard = Effect.gen(function* () {
-    const administration = yield* DiscountAdministration;
-    return yield* administration.loadSalesPage();
-  }).pipe(
-    Effect.provide(DiscountAdministration.Live),
-    runWorkspaceEffect("discount-administration.load-sales", {
-      boundary: "route",
-    })
+const isNoticeStatus = (
+  status: string | undefined
+): status is "error" | "success" => status === "success" || status === "error";
+
+const readNotice = (searchParams: DiscountAdminSearchParams) =>
+  Effect.promise(() => searchParams).pipe(
+    Effect.map(({ notice, status }) =>
+      notice && isNoticeStatus(status) ? { message: notice, status } : undefined
+    )
   );
-  const [resolvedDashboard, notice] = await Promise.all([
-    dashboard,
-    loadNotice(searchParams),
-  ]);
-  return { dashboard: resolvedDashboard, notice };
-};
 
-export const loadDiscountAdminVouchersPageData = async (
+export const loadDiscountAdminPageData = (
   searchParams: DiscountAdminSearchParams
-) => {
-  await authorizeAdministratorPage();
-  const dashboard = Effect.gen(function* () {
-    const administration = yield* DiscountAdministration;
-    return yield* administration.loadVouchersPage();
-  }).pipe(
-    Effect.provide(DiscountAdministration.Live),
-    runWorkspaceEffect("discount-administration.load-vouchers", {
-      boundary: "route",
-    })
+) =>
+  runDiscountAdministration("discount-administration.load", (administration) =>
+    Effect.all(
+      {
+        dashboard: administration.loadDashboard(),
+        notice: readNotice(searchParams),
+      },
+      { concurrency: "unbounded" }
+    )
   );
-  const [resolvedDashboard, notice] = await Promise.all([
-    dashboard,
-    loadNotice(searchParams),
-  ]);
-  return { dashboard: resolvedDashboard, notice };
-};
 
-export const loadDiscountAdminShellPageData = async (
+export const loadDiscountAdminCodesPageData = (
   searchParams: DiscountAdminSearchParams
-) => {
-  await authorizeAdministratorPage();
-  return { notice: await loadNotice(searchParams) };
-};
+) =>
+  runDiscountAdministration(
+    "discount-administration.load-codes",
+    (administration) =>
+      Effect.all(
+        {
+          dashboard: administration.loadCodesPage(),
+          notice: readNotice(searchParams),
+        },
+        { concurrency: "unbounded" }
+      )
+  );
 
-export const loadDiscountAdminCodePageData = async (
+export const loadDiscountAdminSalesPageData = (
+  searchParams: DiscountAdminSearchParams
+) =>
+  runDiscountAdministration(
+    "discount-administration.load-sales",
+    (administration) =>
+      Effect.all(
+        {
+          dashboard: administration.loadSalesPage(),
+          notice: readNotice(searchParams),
+        },
+        { concurrency: "unbounded" }
+      )
+  );
+
+export const loadDiscountAdminVouchersPageData = (
+  searchParams: DiscountAdminSearchParams
+) =>
+  runDiscountAdministration(
+    "discount-administration.load-vouchers",
+    (administration) =>
+      Effect.all(
+        {
+          dashboard: administration.loadVouchersPage(),
+          notice: readNotice(searchParams),
+        },
+        { concurrency: "unbounded" }
+      )
+  );
+
+export const loadDiscountAdminShellPageData = (
+  searchParams: DiscountAdminSearchParams
+) =>
+  runAdministrationPage(
+    "discount-administration.load-shell",
+    Effect.all({ notice: readNotice(searchParams) }),
+    Layer.empty
+  );
+
+export const loadDiscountAdminCodePageData = (
   codeId: DiscountCodeId,
   searchParams: DiscountAdminSearchParams
-) => {
-  await authorizeAdministratorPage();
-
-  const detail = Effect.gen(function* () {
-    const administration = yield* DiscountAdministration;
-    return yield* administration.loadCodeDetail({ codeId });
-  }).pipe(
-    Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
-    Effect.provide(DiscountAdministration.Live),
-    runWorkspaceEffect("discount-administration.load-code", {
-      boundary: "route",
-    })
+) =>
+  runDiscountAdminRecordPage(
+    "discount-administration.load-code",
+    (administration) =>
+      Effect.all(
+        {
+          detail: administration.loadCodeDetail({ codeId }),
+          notice: readNotice(searchParams),
+        },
+        { concurrency: "unbounded" }
+      )
   );
-  const [resolvedDetail, notice] = await Promise.all([
-    detail,
-    loadNotice(searchParams),
-  ]);
-  if (!resolvedDetail) notFound();
 
-  return {
-    detail: resolvedDetail,
-    notice,
-  };
-};
-
-export const loadDiscountAdminCustomerPageData = async (
+export const loadDiscountAdminCustomerPageData = (
   customerId: DotyposCustomerId,
   searchParams: DiscountAdminSearchParams
-) => {
-  await authorizeAdministratorPage();
-
-  const profile = Effect.gen(function* () {
-    const administration = yield* DiscountAdministration;
-    return yield* administration.loadCustomerProfile({ customerId });
-  }).pipe(
-    Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
-    Effect.provide(DiscountAdministration.Live),
-    runWorkspaceEffect("discount-administration.load-customer", {
-      boundary: "route",
-    })
+) =>
+  runDiscountAdminRecordPage(
+    "discount-administration.load-customer",
+    (administration) =>
+      Effect.all(
+        {
+          profile: administration.loadCustomerProfile({ customerId }),
+          notice: readNotice(searchParams),
+        },
+        { concurrency: "unbounded" }
+      )
   );
-  const [resolvedProfile, notice] = await Promise.all([
-    profile,
-    loadNotice(searchParams),
-  ]);
-  if (!resolvedProfile) notFound();
 
-  return {
-    profile: resolvedProfile,
-    notice,
-  };
-};
-
-export const loadDiscountAdminVoucherPageData = async (
+export const loadDiscountAdminVoucherPageData = (
   voucherId: VoucherId,
   searchParams: DiscountAdminSearchParams
-) => {
-  await authorizeAdministratorPage();
-  const detail = Effect.gen(function* () {
-    const administration = yield* DiscountAdministration;
-    return yield* administration.loadVoucherDetail({ voucherId });
-  }).pipe(
-    Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
-    Effect.provide(DiscountAdministration.Live),
-    runWorkspaceEffect("discount-administration.load-voucher", {
-      boundary: "route",
-    })
+) =>
+  runDiscountAdminRecordPage(
+    "discount-administration.load-voucher",
+    (administration) =>
+      Effect.all(
+        {
+          detail: administration.loadVoucherDetail({ voucherId }),
+          notice: readNotice(searchParams),
+        },
+        { concurrency: "unbounded" }
+      )
   );
-  const [resolvedDetail, notice] = await Promise.all([
-    detail,
-    loadNotice(searchParams),
-  ]);
-  if (!resolvedDetail) notFound();
-  return { detail: resolvedDetail, notice };
-};
 
-export const loadDiscountAdminCustomerCodeCreationPageData = async (
+export const loadDiscountAdminCustomerCodeCreationPageData = (
   customerId: DotyposCustomerId
-) => {
-  await authorizeAdministratorPage();
-
-  const data = await Effect.gen(function* () {
-    const administration = yield* DiscountAdministration;
-    return yield* administration.loadCustomerCodeCreation({ customerId });
-  }).pipe(
-    Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
-    Effect.provide(DiscountAdministration.Live),
-    runWorkspaceEffect("discount-administration.load-customer-code-creation", {
-      boundary: "route",
-    })
+) =>
+  runDiscountAdminRecordPage(
+    "discount-administration.load-customer-code-creation",
+    (administration) => administration.loadCustomerCodeCreation({ customerId })
   );
-  if (!data) notFound();
-  return data;
-};
 
-export const loadDiscountAdminCustomerVoucherCreationPageData = async (
+export const loadDiscountAdminCustomerVoucherCreationPageData = (
   customerId: DotyposCustomerId
-) => {
-  await authorizeAdministratorPage();
-
-  const data = await Effect.gen(function* () {
-    const administration = yield* DiscountAdministration;
-    return yield* administration.loadCustomerVoucherCreation({ customerId });
-  }).pipe(
-    Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
-    Effect.provide(DiscountAdministration.Live),
-    runWorkspaceEffect(
-      "discount-administration.load-customer-voucher-creation",
-      {
-        boundary: "route",
-      }
-    )
+) =>
+  runDiscountAdminRecordPage(
+    "discount-administration.load-customer-voucher-creation",
+    (administration) =>
+      administration.loadCustomerVoucherCreation({ customerId })
   );
-  if (!data) notFound();
-  return data;
-};
 
-const loadOptionalDiscountAdminCustomerProfile = cache(
-  async (customerId: DotyposCustomerId) =>
-    loadDiscountAdminCustomerProfile(customerId)
-);
-
-const loadDiscountAdminCustomerProfile = Effect.fn(
-  function* (customerId: DotyposCustomerId) {
-    const administration = yield* DiscountAdministration;
-    return yield* administration.loadCustomerProfile({ customerId });
-  },
-  (effect, customerId) =>
-    effect.pipe(
-      Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
-      Effect.catch((cause) =>
-        Effect.logWarning("Customer administration details unavailable", {
-          cause,
-          customerId,
-        }).pipe(Effect.as(null))
-      ),
-      Effect.provide(DiscountAdministration.Live),
-      runWorkspaceEffect("discount-administration.load-customer-optional", {
-        boundary: "route",
-      })
-    )
-);
-
-export const loadOptionalDiscountAdminCustomerPageData = async (
+/**
+ * The customer page without a 404: a customer the discount administration
+ * can't read still shows their workspace activity.
+ */
+export const loadOptionalDiscountAdminCustomerPageData = (
   customerId: DotyposCustomerId,
   searchParams: DiscountAdminSearchParams
-) => {
-  await authorizeAdministratorPage();
-  const [profile, notice] = await Promise.all([
-    loadOptionalDiscountAdminCustomerProfile(customerId),
-    loadNotice(searchParams),
-  ]);
+) =>
+  runDiscountAdministration(
+    "discount-administration.load-customer-optional",
+    (administration) =>
+      Effect.all(
+        {
+          profile: administration.loadCustomerProfile({ customerId }).pipe(
+            Effect.catchTag("DiscountAdminNotFoundError", () =>
+              Effect.succeed(null)
+            ),
+            Effect.catch((cause) =>
+              Effect.logWarning("Customer administration details unavailable", {
+                cause,
+                customerId,
+              }).pipe(Effect.as(null))
+            )
+          ),
+          notice: readNotice(searchParams),
+        },
+        { concurrency: "unbounded" }
+      )
+  );
 
-  return {
-    profile,
-    notice,
-  };
-};
-
-export const loadDiscountAdminCustomerBreadcrumbLabel = async (
+export const loadDiscountAdminCustomerBreadcrumbLabel = (
   customerId: DotyposCustomerId,
   locale: Locale
-) => {
-  await authorizeAdministratorPage();
-  return Effect.gen(function* () {
-    const administration = yield* DiscountAdministration;
-    const customer = yield* administration.loadCustomerBreadcrumbLabel({
-      customerId,
-    });
-    return formatDiscountAdminCustomerName(customer, locale);
-  }).pipe(
-    Effect.provide(DiscountAdministration.Live),
-    Effect.catch((cause) =>
-      Effect.logWarning("Customer breadcrumb label unavailable", {
-        cause,
+) =>
+  runAdministrationPage(
+    "discount-administration.customer-breadcrumb",
+    Effect.gen(function* () {
+      const administration = yield* DiscountAdministration;
+      const customer = yield* administration.loadCustomerBreadcrumbLabel({
         customerId,
-      }).pipe(Effect.as(undefined))
+      });
+      return formatDiscountAdminCustomerName(customer, locale);
+    }).pipe(
+      // The label falls back to the route segment even when the discount
+      // administration itself can't start.
+      Effect.provide(DiscountAdministration.Live),
+      Effect.catch((cause) =>
+        Effect.logWarning("Customer breadcrumb label unavailable", {
+          cause,
+          customerId,
+        }).pipe(Effect.as(undefined))
+      )
     ),
-    runWorkspaceEffect("discount-administration.customer-breadcrumb", {
-      boundary: "route",
-    })
+    Layer.empty
   );
-};
-
-const loadNotice = async (searchParams: DiscountAdminSearchParams) => {
-  const params = await searchParams;
-  const status = params.status;
-  const notice =
-    params.notice && (status === "success" || status === "error")
-      ? {
-          message: params.notice,
-          status: status as "error" | "success",
-        }
-      : undefined;
-
-  return notice;
-};
