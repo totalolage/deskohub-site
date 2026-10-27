@@ -641,59 +641,75 @@ const stallingContextClose = (options: { readonly failNewPage: boolean }) => {
 };
 
 /**
- * Closes the session's Scope while `context.close()` stalls, then moves the
- * clock past one browser action and reports whether the Scope settled.
+ * Closes the session's Scope while `context.close()` stalls, moves the clock
+ * to just short of one browser action and then past it, and reports whether
+ * the Scope was still waiting before the bound and settled after it. When the
+ * session opened, it lets the close go and reports the raw HAR files left.
  */
 const settleScopeOverStalledClose = async (options: {
   readonly failNewPage: boolean;
 }) => {
   const stalling = stallingContextClose(options);
-  try {
-    return await Effect.runPromise(
-      Effect.gen(function* () {
-        // Detached, so a Scope stuck in its finalizers cannot hold the test.
-        const scoped = yield* Effect.forkDetach(
-          Effect.scoped(
-            Effect.flatMap(
-              E2EBrowserSession.open({
-                browser: stalling.browser,
-                id: `session-stalled-close-${randomUUID()}`,
-              }),
-              (session) => goto(session, "/")
-            )
+  const id = `session-stalled-close-${randomUUID()}`;
+  let opened: E2EBrowserSession | undefined;
+  const observed = await Effect.runPromise(
+    Effect.gen(function* () {
+      // Detached, so a Scope stuck in its finalizers cannot hold the test.
+      const scoped = yield* Effect.forkDetach(
+        Effect.scoped(
+          Effect.flatMap(
+            E2EBrowserSession.open({ browser: stalling.browser, id }),
+            (session) => {
+              opened = session;
+              return goto(session, "/");
+            }
           )
-        );
-        yield* Effect.promise(() => stalling.closeRequested);
-        yield* TestClock.adjust(
-          `${workspaceE2ETimeouts.browserAction + 1000} millis`
-        );
-        // Real time, which the TestClock does not control.
-        return yield* Effect.raceFirst(
-          Fiber.await(scoped),
-          Effect.promise(() => Bun.sleep(2000)).pipe(Effect.as("stalled"))
-        );
-      }).pipe(Effect.provide(TestClock.layer()))
-    );
-  } finally {
-    await stalling.release();
-  }
+        )
+      );
+      yield* Effect.promise(() => stalling.closeRequested);
+      yield* TestClock.adjust(
+        `${workspaceE2ETimeouts.browserAction - 1000} millis`
+      );
+      // Real time, which the TestClock does not control, lets anything the
+      // clock released run before the fiber is inspected.
+      yield* Effect.promise(() => Bun.sleep(100));
+      const waitingBeforeBound = scoped.pollUnsafe() === undefined;
+      yield* TestClock.adjust("2 seconds");
+      const settled = yield* Effect.raceFirst(
+        Fiber.await(scoped),
+        Effect.promise(() => Bun.sleep(2000)).pipe(Effect.as("stalled"))
+      );
+      return {
+        settled: settled === "stalled" ? settled : settled._tag,
+        waitingBeforeBound,
+      };
+    }).pipe(Effect.provide(TestClock.layer()))
+  ).finally(stalling.release);
+  if (!opened) return observed;
+  // The detached close finishes once the context really closes; a later
+  // close shares its outcome, raw HAR removal included.
+  await Effect.runPromise(Effect.ignore(opened.close()));
+  return { ...observed, rawHars: await rawHarFiles(id) };
 };
 
 test.skipIf(!chromiumAvailable)(
   "waits for a stalled context close at most one browser action",
   async () => {
-    const settled = await settleScopeOverStalledClose({ failNewPage: false });
-
-    expect(settled === "stalled" ? settled : settled._tag).toBe("Success");
+    expect(await settleScopeOverStalledClose({ failNewPage: false })).toEqual({
+      rawHars: [],
+      settled: "Success",
+      waitingBeforeBound: true,
+    });
   }
 );
 
 test.skipIf(!chromiumAvailable)(
   "bounds the close of a context whose first page failed to open",
   async () => {
-    const settled = await settleScopeOverStalledClose({ failNewPage: true });
-
-    expect(settled === "stalled" ? settled : settled._tag).toBe("Failure");
+    expect(await settleScopeOverStalledClose({ failNewPage: true })).toEqual({
+      settled: "Failure",
+      waitingBeforeBound: true,
+    });
   }
 );
 

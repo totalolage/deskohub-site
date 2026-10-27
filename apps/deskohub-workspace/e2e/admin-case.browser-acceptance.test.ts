@@ -253,6 +253,25 @@ test.skipIf(!chromiumAvailable)(
 );
 
 test.skipIf(!chromiumAvailable)(
+  "still times out an admin call at its own deadline",
+  async () => {
+    const forever = () => new Promise<never>(() => undefined);
+    expect([
+      await annotateAdminStep({
+        execute: (session) =>
+          session.use("wait forever", forever, { timeoutMs: 50 }),
+      }),
+      await annotateAdminStep({
+        execute: (session) =>
+          session.evaluate("evaluate forever", forever, undefined, {
+            timeoutMs: 50,
+          }),
+      }),
+    ]).toEqual([timedOut, timedOut]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
   "fails a context's preview access priming instead of timing it out",
   async () => {
     if (!browser) throw new Error("Chromium is not running");
