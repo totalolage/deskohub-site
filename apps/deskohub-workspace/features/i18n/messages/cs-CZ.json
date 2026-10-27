@@ -509,6 +509,9 @@
   "reservationMeetingRoomStartTimesLoading": "Načítáme volné časy začátku pro tento den.",
   "reservationMeetingRoomStartTimesEmpty": "V tento den pro zvolenou délku nejsou volné žádné časy začátku. Zkus jiné datum nebo kratší délku rezervace.",
   "reservationMeetingRoomStartTimesError": "Volné časy začátku se nepodařilo načíst. Čas začátku můžeš i tak zadat výše.",
+  "reservationMeetingRoomEarlySetupLabel": "Chci přijít o 15 minut dřív a připravit se",
+  "reservationMeetingRoomEarlySetupUnavailable": "Zasedací místnost je těsně před tímto časem obsazená.",
+  "reservationMeetingRoomEarlySetupError": "Nepodařilo se ověřit, jestli je zasedací místnost před tímto časem volná. Zkus to prosím později.",
   "reservationOfficeProductTitle": "Soukromá kancelář",
   "reservationOfficeBasePriceLabel": [
     {

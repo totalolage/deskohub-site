@@ -208,6 +208,8 @@ const startTimesResponse = {
       startDateTime: `2099-07-30T${time}`,
       startsAt: startsAt.toString(),
       endsAt: startsAt.add({ hours: 1 }).toString(),
+      // The room is booked just before 14:00.
+      earlySetupAvailable: time !== "14:00",
     };
   }),
 };
@@ -442,6 +444,9 @@ describe("MeetingRoomReservationForm", () => {
     }
     let availabilityUrl = "";
     globalThis.fetch = mock((request: RequestInfo | URL) => {
+      if (isStartTimesRequest(request)) {
+        return Promise.resolve(jsonResponse(startTimesResponse));
+      }
       availabilityUrl = String(request);
       return Promise.resolve(jsonResponse(availabilityResponse));
     }) as typeof fetch;
@@ -873,6 +878,189 @@ describe("MeetingRoomReservationForm", () => {
       await waitFor(() =>
         expect(view.queryByText("Free start times")).toBe(null)
       );
+    });
+  });
+
+  describe("early setup", () => {
+    const getEarlySetupCheckbox = (view: ReturnType<typeof renderForm>) =>
+      view.getByRole("checkbox", {
+        name: "I'd like to come 15 minutes early to set up",
+      });
+    const isChecked = (checkbox: HTMLElement) =>
+      checkbox.getAttribute("aria-checked") === "true";
+    const isDisabled = (checkbox: HTMLElement) =>
+      checkbox.hasAttribute("disabled");
+    const getReason = (checkbox: HTMLElement) => {
+      const reasonId = checkbox.getAttribute("aria-describedby");
+      return reasonId ? document.getElementById(reasonId)?.textContent : "";
+    };
+    const selectStart = (view: ReturnType<typeof renderForm>, time: string) =>
+      fireEvent.click(
+        view
+          .getByRole("radiogroup", { name: "Free start times" })
+          .querySelector(`input[value="2099-07-30T${time}"]`) as HTMLElement
+      );
+
+    test("starts unchecked, enables for a free setup time, and submits it", async () => {
+      globalThis.fetch = availabilityFetch(
+        availabilityResponse
+      ) as typeof fetch;
+
+      const view = renderForm();
+      const checkbox = getEarlySetupCheckbox(view);
+      expect(isChecked(checkbox)).toBe(false);
+      await waitFor(() => expect(isDisabled(checkbox)).toBe(false));
+      expect(getReason(checkbox)).toBeFalsy();
+
+      fireEvent.click(checkbox);
+      await waitFor(() => expect(isChecked(checkbox)).toBe(true));
+
+      const continueButton = view.getByRole("button", { name: "Continue" });
+      await waitFor(() =>
+        expect(continueButton.hasAttribute("disabled")).toBe(false)
+      );
+      await continueAndSubmitReservation(continueButton);
+
+      await waitFor(() => expect(executeAsync).toHaveBeenCalledTimes(1));
+      expect(executeAsync.mock.calls[0]?.[0]).toMatchObject({
+        reservation: { ...initialReservation, earlySetup: true },
+      });
+    });
+
+    test("turns off and explains itself when the room is booked just before the new start", async () => {
+      globalThis.fetch = availabilityFetch(
+        availabilityResponse
+      ) as typeof fetch;
+
+      const view = renderForm();
+      const checkbox = getEarlySetupCheckbox(view);
+      await waitFor(() => expect(isDisabled(checkbox)).toBe(false));
+      fireEvent.click(checkbox);
+      await waitFor(() => expect(isChecked(checkbox)).toBe(true));
+
+      selectStart(view, "14:00");
+
+      await waitFor(() => {
+        expect(isChecked(checkbox)).toBe(false);
+        expect(isDisabled(checkbox)).toBe(true);
+        expect(getReason(checkbox)).toBeTruthy();
+      });
+
+      selectStart(view, "15:00");
+
+      await waitFor(() => expect(isDisabled(checkbox)).toBe(false));
+      expect(isChecked(checkbox)).toBe(false);
+      expect(getReason(checkbox)).toBeFalsy();
+    });
+
+    test("follows the midnight start's setup time for a whole day", async () => {
+      const midnight = Temporal.PlainDate.from("2099-07-30")
+        .toZonedDateTime("Europe/Prague")
+        .toInstant();
+      const wholeDayStartTimes = {
+        date: "2099-07-30",
+        duration: "day:1",
+        startTimes: [
+          {
+            startDateTime: "2099-07-30T00:00",
+            startsAt: midnight.toString(),
+            endsAt: midnight.add({ hours: 24 }).toString(),
+            earlySetupAvailable: false,
+          },
+        ],
+      };
+      const fetchCalls = mock((request: RequestInfo | URL) => {
+        if (!isStartTimesRequest(request)) {
+          return Promise.resolve(jsonResponse(availabilityResponse));
+        }
+        return Promise.resolve(
+          jsonResponse(
+            String(request).includes("duration=day")
+              ? wholeDayStartTimes
+              : startTimesResponse
+          )
+        );
+      });
+      globalThis.fetch = fetchCalls as typeof fetch;
+
+      const view = renderForm();
+      const checkbox = getEarlySetupCheckbox(view);
+      await waitFor(() => expect(isDisabled(checkbox)).toBe(false));
+      fireEvent.click(checkbox);
+      await waitFor(() => expect(isChecked(checkbox)).toBe(true));
+
+      fireEvent.click(
+        view.container.querySelector(
+          'input[type="radio"][value="day:1"]'
+        ) as HTMLInputElement
+      );
+
+      await waitFor(() => {
+        expect(isChecked(checkbox)).toBe(false);
+        expect(isDisabled(checkbox)).toBe(true);
+        expect(getReason(checkbox)).toBeTruthy();
+      });
+      expect(
+        fetchCalls.mock.calls.some(([request]) =>
+          String(request).includes(
+            "mode=start-times&date=2099-07-30&duration=day%3A1"
+          )
+        )
+      ).toBe(true);
+    });
+
+    test("keeps a restored choice while the free starts load", async () => {
+      globalThis.fetch = mock((request: RequestInfo | URL) =>
+        isStartTimesRequest(request)
+          ? new Promise<Response>(() => undefined)
+          : Promise.resolve(jsonResponse(availabilityResponse))
+      ) as typeof fetch;
+
+      const view = renderForm({
+        initialReservation: { ...initialReservation, earlySetup: true },
+      });
+      const checkbox = getEarlySetupCheckbox(view);
+
+      await waitFor(() =>
+        expect(
+          view
+            .getByRole("button", { name: "Continue" })
+            .hasAttribute("disabled")
+        ).toBe(false)
+      );
+      expect(isChecked(checkbox)).toBe(true);
+      expect(getReason(checkbox)).toBeFalsy();
+
+      // The customer can still remove it, but not choose it again.
+      fireEvent.click(checkbox);
+      await waitFor(() => expect(isChecked(checkbox)).toBe(false));
+      expect(isDisabled(checkbox)).toBe(true);
+    });
+
+    test("explains a whole day's setup time it couldn't check", async () => {
+      globalThis.fetch = mock((request: RequestInfo | URL) =>
+        Promise.resolve(
+          isStartTimesRequest(request)
+            ? new Response(null, { status: 503 })
+            : jsonResponse(availabilityResponse)
+        )
+      ) as typeof fetch;
+
+      const view = renderForm({
+        initialReservation: {
+          ...initialReservation,
+          duration: { unit: "day", amount: 1 },
+          startsAt: "2099-07-29T22:00:00Z",
+          endsAt: "2099-07-30T22:00:00Z",
+        },
+      });
+      const checkbox = getEarlySetupCheckbox(view);
+
+      await waitFor(() => expect(getReason(checkbox)).toBeTruthy(), {
+        timeout: 5000,
+      });
+      expect(isChecked(checkbox)).toBe(false);
+      expect(isDisabled(checkbox)).toBe(true);
     });
   });
 });

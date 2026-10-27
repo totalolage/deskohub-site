@@ -507,6 +507,9 @@
   "reservationMeetingRoomStartTimesLoading": "Loading free start times for this day.",
   "reservationMeetingRoomStartTimesEmpty": "No free start times on this day for this duration. Try another date or a shorter duration.",
   "reservationMeetingRoomStartTimesError": "Free start times could not be loaded. You can still enter a start time above.",
+  "reservationMeetingRoomEarlySetupLabel": "I'd like to come 15 minutes early to set up",
+  "reservationMeetingRoomEarlySetupUnavailable": "The meeting room is booked just before this time.",
+  "reservationMeetingRoomEarlySetupError": "We couldn't check whether the meeting room is free before this time. Try again later.",
   "reservationOfficeProductTitle": "Private office",
   "reservationOfficeBasePriceLabel": [
     {

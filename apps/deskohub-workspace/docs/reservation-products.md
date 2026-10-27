@@ -61,6 +61,14 @@ Hourly products begin at the selected local time. The selected duration remains 
 
 A meeting-room reservation remains eligible for submission and payment after its start while its exclusive end is still in the future. It is no longer eligible after that end.
 
+### Early setup
+
+A customer booking a meeting room may choose to come 15 minutes before the booked start to set up. The choice is off by default and free. It holds the room, and lets the customer in, from 15 minutes before the booked start until the booked end. Price, discounts, cancellation, and every other time rule still apply to the booked interval alone.
+
+The choice is offered only when a meeting room is free for the booked interval extended 15 minutes earlier. The workspace is open around the clock, so a booking that starts at midnight sets up from 23:45 on the previous day. When the room is booked just before the start, the choice stays visible but can't be selected, with a short reason, and changing to such a time or duration turns it off. Availability is checked again when the booking is submitted.
+
+Reservations made without the choice keep their booked interval as they always have.
+
 ## Office
 
 An office reservation spans an inclusive range of Prague calendar dates. The customer selects a start date, a positive number of days, and a positive number of seats supported by the office capacity.

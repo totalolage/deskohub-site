@@ -682,7 +682,7 @@ describe("WorkspaceAvailabilityService", () => {
     expect(availability.meetingRoomUnavailable).toBe(true);
   });
 
-  test("loads a meeting-room check through every date a start on its date can occupy", async () => {
+  test("loads a meeting-room check from the previous date through every date a start on its date can occupy", async () => {
     const intervals: DotyposReservationInterval[] = [];
     const availability = await getAvailability({
       kind: "meeting-room",
@@ -715,7 +715,7 @@ describe("WorkspaceAvailabilityService", () => {
         startDate.toISOString(),
         endDate.toISOString(),
       ])
-    ).toEqual([["2099-06-09T22:00:00.000Z", "2099-06-11T22:00:00.000Z"]]);
+    ).toEqual([["2099-06-08T22:00:00.000Z", "2099-06-11T22:00:00.000Z"]]);
     expect(availability.unavailableDates).toEqual([]);
     expect(availability.meetingRoomUnavailable).toBe(false);
     expect(availability.notices).toEqual([
@@ -1741,6 +1741,7 @@ describe("WorkspaceAvailabilityService meeting-room start times", () => {
       startDateTime: "2099-06-10T00:00",
       startsAt: "2099-06-09T22:00:00Z",
       endsAt: "2099-06-09T23:00:00Z",
+      earlySetupAvailable: true,
     });
   });
 
@@ -1795,6 +1796,128 @@ describe("WorkspaceAvailabilityService meeting-room start times", () => {
     });
 
     expect(startHours(result)).toContain("10:00");
+  });
+
+  const earlySetupByHour = (result: {
+    readonly startTimes: ReadonlyArray<{
+      readonly startDateTime: string;
+      readonly earlySetupAvailable: boolean;
+    }>;
+  }) =>
+    Object.fromEntries(
+      result.startTimes.map(({ startDateTime, earlySetupAvailable }) => [
+        startDateTime.slice(11),
+        earlySetupAvailable,
+      ])
+    );
+
+  // 09:00-10:00 in Prague.
+  const morningReservation = makeReservation({
+    tableId: "room-1",
+    status: "CONFIRMED",
+    startDate: "2099-06-10T07:00:00Z",
+    endDate: "2099-06-10T08:00:00Z",
+  });
+
+  test("offers setup time only where the room is free 15 minutes before the start", async () => {
+    const result = await getMeetingRoomStartTimes({
+      duration: "hour:1",
+      reservations: [morningReservation],
+    });
+
+    expect(earlySetupByHour(result)).toMatchObject({
+      "08:00": true,
+      "10:00": false,
+      "11:00": true,
+    });
+    expect(startHours(result)).not.toContain("09:00");
+  });
+
+  test("checks a midnight start's setup time against the previous evening", async () => {
+    // 23:00-23:50 and 23:00-23:45 on the previous Prague day.
+    const overlapping = makeReservation({
+      tableId: "room-1",
+      status: "CONFIRMED",
+      startDate: "2099-06-09T21:00:00Z",
+      endDate: "2099-06-09T21:50:00Z",
+    });
+    const endingAtSetupStart = makeReservation({
+      tableId: "room-1",
+      status: "CONFIRMED",
+      startDate: "2099-06-09T21:00:00Z",
+      endDate: "2099-06-09T21:45:00Z",
+    });
+
+    for (const duration of ["hour:1", "day:1"] as const) {
+      const blocked = await getMeetingRoomStartTimes({
+        duration,
+        reservations: [overlapping],
+      });
+      const free = await getMeetingRoomStartTimes({
+        duration,
+        reservations: [endingAtSetupStart],
+      });
+
+      expect(earlySetupByHour(blocked)["00:00"]).toBe(false);
+      expect(earlySetupByHour(free)["00:00"]).toBe(true);
+    }
+  });
+
+  test("blocks setup time on a fully occupied previous day", async () => {
+    const result = await getMeetingRoomStartTimes({
+      duration: "hour:1",
+      limitations: [
+        WorkspaceCalendarLimitation.FullyOccupied({
+          date: "2099-06-09",
+          sourceEventId: "calendar-full",
+        }),
+      ],
+    });
+
+    expect(earlySetupByHour(result)).toMatchObject({
+      "00:00": false,
+      "01:00": true,
+    });
+  });
+
+  test("needs one room free for both the setup time and the booking", async () => {
+    const tables = [
+      makeTable({ id: "room-1", tags: ["reservation:meeting-room"] }),
+      makeTable({ id: "room-2", tags: ["reservation:meeting-room"] }),
+    ];
+    // 10:30-11:00 in Prague.
+    const secondRoomReservation = makeReservation({
+      tableId: "room-2",
+      status: "CONFIRMED",
+      startDate: "2099-06-10T08:30:00Z",
+      endDate: "2099-06-10T09:00:00Z",
+    });
+
+    const split = await getMeetingRoomStartTimes({
+      duration: "hour:1",
+      tables,
+      reservations: [morningReservation, secondRoomReservation],
+    });
+    const secondRoomFree = await getMeetingRoomStartTimes({
+      duration: "hour:1",
+      tables,
+      reservations: [morningReservation],
+    });
+
+    expect(earlySetupByHour(split)["10:00"]).toBe(false);
+    expect(earlySetupByHour(secondRoomFree)["10:00"]).toBe(true);
+  });
+
+  test("frees setup time the replaced hold occupies", async () => {
+    const result = await getMeetingRoomStartTimes({
+      duration: "hour:1",
+      reservations: [
+        { ...morningReservation, id: "replaced-hold", status: "NEW" },
+      ],
+      excludedDotyposReservationId: "replaced-hold",
+    });
+
+    expect(earlySetupByHour(result)["10:00"]).toBe(true);
   });
 
   test("blocks late starts that run into a reservation after midnight", async () => {
@@ -1872,6 +1995,7 @@ describe("WorkspaceAvailabilityService meeting-room start times", () => {
         startDateTime: "2099-06-10T00:00",
         startsAt: "2099-06-09T22:00:00Z",
         endsAt: "2099-06-10T22:00:00Z",
+        earlySetupAvailable: true,
       },
     ]);
     expect(booked.startTimes).toEqual([]);
@@ -1906,7 +2030,7 @@ describe("WorkspaceAvailabilityService meeting-room start times", () => {
     expect(reads).toEqual([]);
   });
 
-  test("reads one inventory snapshot covering every date a start on the day can occupy", async () => {
+  test("reads one inventory snapshot covering every date a start on the day or its setup can occupy", async () => {
     for (const duration of ["hour:1", "hour:4", "day:1"] as const) {
       const reads: string[] = [];
       const intervals: DotyposReservationInterval[] = [];
@@ -1926,7 +2050,7 @@ describe("WorkspaceAvailabilityService meeting-room start times", () => {
           startDate.toISOString(),
           endDate.toISOString(),
         ])
-      ).toEqual([["2099-06-09T22:00:00.000Z", "2099-06-11T22:00:00.000Z"]]);
+      ).toEqual([["2099-06-08T22:00:00.000Z", "2099-06-11T22:00:00.000Z"]]);
     }
   });
 
@@ -2022,6 +2146,7 @@ describe("WorkspaceAvailabilityService meeting-room start times", () => {
         startDateTime: "2027-10-31T00:00",
         startsAt: "2027-10-30T22:00:00Z",
         endsAt: "2027-10-31T23:00:00Z",
+        earlySetupAvailable: true,
       },
     ]);
   });
@@ -2037,6 +2162,7 @@ describe("WorkspaceAvailabilityService meeting-room start times", () => {
       startDateTime: "2027-03-28T23:00",
       startsAt: "2027-03-28T21:00:00Z",
       endsAt: "2027-03-29T01:00:00Z",
+      earlySetupAvailable: true,
     });
   });
 });
