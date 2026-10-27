@@ -1,7 +1,11 @@
 "use client";
 
 import { type Editor, useEditorState } from "@tiptap/react";
+import { Option } from "effect";
 import {
+  AlignHorizontalJustifyCenter,
+  AlignHorizontalJustifyEnd,
+  AlignHorizontalJustifyStart,
   Bold,
   ImagePlus,
   Italic,
@@ -42,7 +46,17 @@ import {
 } from "@/shared/components/ui/tooltip";
 import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import {
+  type CampaignImageAlignment,
+  defaultCampaignImageAlignment,
+  isCampaignImageAlignment,
+  isCampaignImageWidth,
+} from "../../body/campaign-image";
 import { uploadCampaignImage } from "./actions";
+import {
+  campaignImageMediaTypes,
+  campaignImageUploadIssue,
+} from "./campaign-image-upload";
 import { normalizeCampaignLinkHref } from "./campaign-link-href";
 import { CtaButtonDialog, type CtaButtonValues } from "./cta-button-dialog";
 
@@ -64,6 +78,8 @@ const selectToolbarState = ({ editor }: { editor: Editor | null }) =>
     ctaButton: editor.isActive("ctaButton"),
     ctaLabel: String(editor.getAttributes("ctaButton").label ?? ""),
     ctaHref: String(editor.getAttributes("ctaButton").href ?? ""),
+    image: editor.isActive("image"),
+    imageAlign: selectedImageAlignment(editor),
     canUndo: editor.can().undo(),
     canRedo: editor.can().redo(),
   };
@@ -184,6 +200,14 @@ export function CampaignBodyToolbar({
             editor={editor}
             locale={locale}
           />
+          {state?.image && (
+            <ImageAlignmentControl
+              alignment={state.imageAlign}
+              disabled={disabled}
+              editor={editor}
+              locale={locale}
+            />
+          )}
           <ToolbarButton
             disabled={disabled}
             label={
@@ -441,6 +465,95 @@ function LinkControl({
   );
 }
 
+const imageAlignmentOptions = [
+  {
+    alignment: "left",
+    Icon: AlignHorizontalJustifyStart,
+    label: m.emailCampaignsImageAlignLeft,
+  },
+  {
+    alignment: "center",
+    Icon: AlignHorizontalJustifyCenter,
+    label: m.emailCampaignsImageAlignCenter,
+  },
+  {
+    alignment: "right",
+    Icon: AlignHorizontalJustifyEnd,
+    label: m.emailCampaignsImageAlignRight,
+  },
+] as const satisfies ReadonlyArray<{
+  readonly alignment: CampaignImageAlignment;
+  readonly Icon: typeof AlignHorizontalJustifyStart;
+  readonly label: (...args: never) => string;
+}>;
+
+/** The selected image's alignment; one saved without any is centered. */
+function selectedImageAlignment(editor: Editor): CampaignImageAlignment {
+  const { align } = editor.getAttributes("image");
+  return isCampaignImageAlignment(align)
+    ? align
+    : defaultCampaignImageAlignment;
+}
+
+/**
+ * The selected image's width in pixels: its own, or else the natural width of
+ * the picture the editor shows, so an image added before widths were kept
+ * stops filling the column once it is aligned. Unknown while that picture
+ * hasn't loaded; the image then keeps filling the column.
+ */
+function selectedImageWidth(editor: Editor): Option.Option<number> {
+  const { width } = editor.getAttributes("image");
+  if (isCampaignImageWidth(width)) return Option.some(width);
+  const element = editor.view.nodeDOM(editor.state.selection.from);
+  return element instanceof HTMLImageElement && element.naturalWidth > 0
+    ? Option.some(element.naturalWidth)
+    : Option.none();
+}
+
+/**
+ * Aligns the selected image, shown only while one is selected. Aligning
+ * records the image's width, which an image saved before widths were kept
+ * lacks; without one it fills the column, so alignment would not show.
+ */
+function ImageAlignmentControl({
+  alignment,
+  disabled,
+  editor,
+  locale,
+}: {
+  readonly alignment: CampaignImageAlignment;
+  readonly disabled: boolean;
+  readonly editor: Editor | null;
+  readonly locale: Locale;
+}) {
+  const align = (option: CampaignImageAlignment) => {
+    if (!editor) return;
+    const width = selectedImageWidth(editor);
+    editor
+      .chain()
+      .focus()
+      .updateAttributes(
+        "image",
+        Option.isSome(width)
+          ? { align: option, width: width.value }
+          : { align: option }
+      )
+      .run();
+  };
+
+  return imageAlignmentOptions.map(({ alignment: option, Icon, label }) => (
+    <ToolbarToggle
+      disabled={disabled}
+      key={option}
+      label={label({}, { locale })}
+      onPressedChange={() => align(option)}
+      pressed={alignment === option}
+    >
+      <Icon aria-hidden className="size-4" />
+    </ToolbarToggle>
+  ));
+}
+
 function ImageUploadControl({
   disabled,
   editor,
@@ -455,7 +568,11 @@ function ImageUploadControl({
   const upload = useWorkspaceAction(uploadCampaignImage, {
     onSuccess: ({ data }) => {
       setError(undefined);
-      editor?.chain().focus().setImage({ src: data.url, alt: "" }).run();
+      editor
+        ?.chain()
+        .focus()
+        .setImage({ src: data.url, alt: "", width: data.width })
+        .run();
     },
     onError: ({ error }) =>
       setError(
@@ -483,12 +600,17 @@ function ImageUploadControl({
         )}
       </ToolbarButton>
       <input
-        accept="image/png,image/jpeg,image/gif,image/webp"
+        accept={campaignImageMediaTypes.join(",")}
         className="sr-only"
         onChange={(event) => {
           const file = event.target.files?.[0];
           event.target.value = "";
           if (!file) return;
+          const issue = campaignImageUploadIssue(file, locale);
+          if (Option.isSome(issue)) {
+            setError(issue.value);
+            return;
+          }
           const formData = new FormData();
           formData.set("file", file);
           upload.execute(formData);

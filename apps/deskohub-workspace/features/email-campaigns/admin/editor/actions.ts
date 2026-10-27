@@ -1,23 +1,14 @@
 "use server";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import { m } from "@/features/administration/i18n";
 import { defineAdministrationAction } from "@/features/administrators/server/administration-request.server";
 import { CampaignImageService } from "@/features/email-campaigns/backend/campaign-image.service";
 import type { Locale } from "@/features/i18n";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { emailCampaignsActionFailureCopy } from "../campaign-operation-failure";
-
-const campaignImageMaxMegabytes = 5;
-const campaignImageMaxBytes = campaignImageMaxMegabytes * 1024 * 1024;
-
-const campaignImageMediaTypes: ReadonlySet<string> = new Set([
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
+import { campaignImageUploadIssue } from "./campaign-image-upload";
 
 /**
  * Reads the upload form. The file itself is checked in the action, which
@@ -40,33 +31,18 @@ const campaignImageUploadSchema: StandardSchemaV1<
 const validateCampaignImage = (
   file: FormDataEntryValue | null,
   locale: Locale
-): Effect.Effect<File, PublicSafeActionError> => {
-  if (!(file instanceof File) || file.size === 0) {
-    return Effect.fail(
-      new PublicSafeActionError({
-        message: m.emailCampaignsImageUploadMissing({}, { locale }),
+): Effect.Effect<File, PublicSafeActionError> =>
+  file instanceof File
+    ? Option.match(campaignImageUploadIssue(file, locale), {
+        onNone: () => Effect.succeed(file),
+        onSome: (message) =>
+          Effect.fail(new PublicSafeActionError({ message })),
       })
-    );
-  }
-  if (!campaignImageMediaTypes.has(file.type)) {
-    return Effect.fail(
-      new PublicSafeActionError({
-        message: m.emailCampaignsImageUploadUnsupportedType({}, { locale }),
-      })
-    );
-  }
-  if (file.size > campaignImageMaxBytes) {
-    return Effect.fail(
-      new PublicSafeActionError({
-        message: m.emailCampaignsImageUploadTooLarge(
-          { maxMegabytes: campaignImageMaxMegabytes },
-          { locale }
-        ),
-      })
-    );
-  }
-  return Effect.succeed(file);
-};
+    : Effect.fail(
+        new PublicSafeActionError({
+          message: m.emailCampaignsImageUploadMissing({}, { locale }),
+        })
+      );
 
 const uploadCampaignImageAction = defineAdministrationAction(
   {

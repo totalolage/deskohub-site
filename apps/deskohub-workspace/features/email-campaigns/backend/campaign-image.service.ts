@@ -10,11 +10,14 @@ import { env } from "@/env";
 import { WorkspaceCloudinaryLayer } from "@/features/gallery/backend/cloudinary.service";
 
 interface ICampaignImageService {
-  /** Uploads a body image and returns its public Cloudinary URL. */
+  /**
+   * Uploads a body image and returns its public Cloudinary URL and its width
+   * in pixels.
+   */
   readonly upload: (
     file: File
   ) => Effect.Effect<
-    { readonly url: string },
+    { readonly url: string; readonly width: number },
     CloudinaryUploadError | Schema.SchemaError
   >;
 }
@@ -41,7 +44,7 @@ export class CampaignImageService extends Context.Service<
           publicId,
           folder: `email-campaigns/${env.VERCEL_ENV}`,
         });
-        return { url: asset.secure_url };
+        return { url: asset.secure_url, width: asset.width };
       });
 
       return { upload } satisfies ICampaignImageService;

@@ -4,6 +4,10 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
 import { m } from "@/features/administration/i18n";
 import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
+import {
+  campaignImageMaxBytes,
+  campaignImageMaxMegabytes,
+} from "./campaign-image-upload";
 
 const access = mockAdministratorAccess("campaign-image-upload");
 
@@ -27,7 +31,10 @@ mock.module("@/instrumentation", () => ({
 }));
 
 const upload = mock((_file: File) =>
-  Effect.succeed({ url: "https://images.deskohub.test/campaign.png" })
+  Effect.succeed({
+    url: "https://images.deskohub.test/campaign.png",
+    width: 640,
+  })
 );
 
 class StubCampaignImageService extends Context.Service<
@@ -68,6 +75,7 @@ describe("uploadCampaignImage", () => {
 
     expect(result?.data).toEqual({
       url: "https://images.deskohub.test/campaign.png",
+      width: 640,
     });
     expect(upload).toHaveBeenCalledTimes(1);
   });
@@ -77,6 +85,24 @@ describe("uploadCampaignImage", () => {
 
     expect(result?.serverError).toBe(
       m.emailCampaignsImageUploadMissing({}, { locale })
+    );
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  test("refuses an image too large for the editor to send", async () => {
+    const tooLarge = new File(
+      [new Uint8Array(campaignImageMaxBytes + 1)],
+      "campaign.png",
+      { type: "image/png" }
+    );
+
+    const result = await uploadCampaignImage(uploadForm(tooLarge));
+
+    expect(result?.serverError).toBe(
+      m.emailCampaignsImageUploadTooLarge(
+        { maxMegabytes: campaignImageMaxMegabytes },
+        { locale }
+      )
     );
     expect(upload).not.toHaveBeenCalled();
   });
