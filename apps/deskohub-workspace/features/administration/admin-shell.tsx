@@ -42,111 +42,72 @@ import {
 import { cn } from "@/shared/utils";
 import { AdministrationLink as Link } from "./admin-link";
 import {
-  type AdministrationHref,
-  administrationHref,
-} from "./administration-href";
+  type AdministrationLabel,
+  administrationAreas,
+  administrationOverview,
+  getAdministrationTrail,
+} from "./administration-areas";
+import type { AdministrationHref } from "./administration-href";
 import { m } from "./i18n";
 import { AdministrationBreadcrumbLoading } from "./loading";
 
-// Every shell label is a message without inputs.
-type ShellMessage = typeof m.shellNavigationOverview;
-
 type NavigationEntry = {
-  readonly href: AdministrationHref;
   readonly icon: ComponentType<SVGProps<SVGSVGElement>>;
-  readonly label: ShellMessage;
+  readonly page: {
+    readonly href: AdministrationHref;
+    readonly label: AdministrationLabel;
+  };
 };
 
+// An area's entry links to its collection under its breadcrumb label.
 const navigation = [
   {
     label: m.shellNavigationSectionOperations,
     items: [
-      {
-        href: administrationHref("/[locale]/admin"),
-        icon: CircleGauge,
-        label: m.shellNavigationOverview,
-      },
-      {
-        href: administrationHref("/[locale]/admin/reservations"),
-        icon: CalendarRange,
-        label: m.shellNavigationReservations,
-      },
-      {
-        href: administrationHref("/[locale]/admin/customers"),
-        icon: Users,
-        label: m.shellNavigationCustomers,
-      },
+      { icon: CircleGauge, page: administrationOverview },
+      { icon: CalendarRange, page: administrationAreas.reservations },
+      { icon: Users, page: administrationAreas.customers },
     ],
   },
   {
     label: m.shellNavigationSectionDiscounts,
     items: [
-      {
-        href: administrationHref("/[locale]/admin/codes"),
-        icon: Ticket,
-        label: m.shellNavigationCodes,
-      },
-      {
-        href: administrationHref("/[locale]/admin/vouchers"),
-        icon: Gift,
-        label: m.shellNavigationVouchers,
-      },
-      {
-        href: administrationHref("/[locale]/admin/sales"),
-        icon: BadgePercent,
-        label: m.shellNavigationSales,
-      },
+      { icon: Ticket, page: administrationAreas.codes },
+      { icon: Gift, page: administrationAreas.vouchers },
+      { icon: BadgePercent, page: administrationAreas.sales },
     ],
   },
   {
     label: m.shellNavigationSectionEmail,
     items: [
-      {
-        href: administrationHref("/[locale]/admin/email-campaigns"),
-        icon: Mail,
-        label: m.shellNavigationCampaigns,
-      },
-      {
-        href: administrationHref("/[locale]/admin/email-audiences"),
-        icon: ListFilter,
-        label: m.shellNavigationAudiences,
-      },
+      { icon: Mail, page: administrationAreas["email-campaigns"] },
+      { icon: ListFilter, page: administrationAreas["email-audiences"] },
     ],
   },
   {
     label: m.shellNavigationSectionAdministration,
     items: [
+      { icon: FileText, page: administrationAreas.invoices },
+      { icon: KeyRound, page: administrationAreas["access-codes"] },
+      { icon: ShieldCheck, page: administrationAreas.administrators },
       {
-        href: administrationHref("/[locale]/admin/invoices"),
-        icon: FileText,
-        label: m.shellNavigationInvoices,
-      },
-      {
-        href: administrationHref("/[locale]/admin/access-codes"),
-        icon: KeyRound,
-        label: m.shellNavigationAccessCodes,
-      },
-      {
-        href: administrationHref("/[locale]/admin/administrators"),
-        icon: ShieldCheck,
-        label: m.administratorsNavigation,
-      },
-      {
-        href: administrationHref("/[locale]/admin/cli/sessions"),
         icon: SquareTerminal,
-        label: m.shellNavigationCliSessions,
+        page: {
+          href: administrationAreas.cli.pages.sessions.href,
+          label: m.shellNavigationCliSessions,
+        },
       },
     ],
   },
 ] as const satisfies readonly {
-  readonly label: ShellMessage;
+  readonly label: AdministrationLabel;
   readonly items: readonly NavigationEntry[];
 }[];
 
 // Navigation hrefs are unprefixed; the current pathname carries the locale.
 const isActive = (pathname: string, href: AdministrationHref) => {
   const unprefixedPathname = stripLocaleFromPathname(pathname, locales);
-  return href === administrationHref("/[locale]/admin")
+  return href === administrationOverview.href
     ? unprefixedPathname === href
     : unprefixedPathname.startsWith(href);
 };
@@ -173,7 +134,7 @@ function Navigation({
       className="space-y-7"
     >
       {navigation.map((section, index) => (
-        <div key={section.items[0].href}>
+        <div key={section.items[0].page.href}>
           <p
             className="mb-2 px-3 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-navy-blue/65"
             id={`${id}-${index}`}
@@ -183,7 +144,7 @@ function Navigation({
           <ul aria-labelledby={`${id}-${index}`} className="space-y-1">
             {section.items.map((item) => {
               return (
-                <li key={item.href}>
+                <li key={item.page.href}>
                   <NavigationLink
                     item={item}
                     locale={locale}
@@ -211,82 +172,29 @@ function NavigationLink({
   readonly mobile: boolean;
   readonly pathname?: string;
 }) {
-  const active = pathname ? isActive(pathname, item.href) : false;
+  const active = pathname ? isActive(pathname, item.page.href) : false;
   const Icon = item.icon;
   const link = (
     <NavItem active={active} asChild>
-      <Link href={item.href}>
+      <Link href={item.page.href}>
         <Icon aria-hidden />
-        {item.label({}, { locale })}
+        {item.page.label({}, { locale })}
       </Link>
     </NavItem>
   );
   return mobile ? <SheetClose asChild>{link}</SheetClose> : link;
 }
 
-const breadcrumbNames: Readonly<Record<string, ShellMessage>> = {
-  admin: m.shellBreadcrumbOverview,
-  "access-codes": m.shellBreadcrumbAccessCodes,
-  administrators: m.administratorsBreadcrumb,
-  bookings: m.shellBreadcrumbBookings,
-  cli: m.shellBreadcrumbCli,
-  codes: m.shellBreadcrumbCodes,
-  customers: m.shellBreadcrumbCustomers,
-  "create-code": m.shellBreadcrumbCreateDiscountCode,
-  "create-voucher": m.shellBreadcrumbCreateVoucher,
-  discounts: m.shellBreadcrumbDiscounts,
-  "email-audiences": m.shellBreadcrumbAudiences,
-  "email-campaigns": m.shellBreadcrumbCampaigns,
-  recipients: m.shellBreadcrumbRecipients,
-  invoices: m.shellBreadcrumbInvoices,
-  new: m.shellBreadcrumbNewInvoice,
-  authenticate: m.shellBreadcrumbAuthenticate,
-  operations: m.shellBreadcrumbOperations,
-  orders: m.shellBreadcrumbOrders,
-  reservations: m.shellBreadcrumbReservations,
-  sales: m.shellBreadcrumbSales,
-  vouchers: m.shellBreadcrumbVouchers,
-  sessions: m.shellBreadcrumbSessions,
-};
-
-// The label of a record segment, by the collection segment before it.
-const breadcrumbRecordNames: Readonly<Record<string, ShellMessage>> = {
-  codes: m.shellBreadcrumbCode,
-  bookings: m.shellBreadcrumbBooking,
-  customers: m.shellBreadcrumbCustomer,
-  "email-audiences": m.shellBreadcrumbAudience,
-  "email-campaigns": m.shellBreadcrumbCampaign,
-  invoices: m.shellBreadcrumbInvoice,
-  operations: m.shellBreadcrumbOperation,
-  orders: m.shellBreadcrumbOrder,
-  reservations: m.shellBreadcrumbReservation,
-  vouchers: m.shellBreadcrumbVoucher,
-};
-
 export function AdministrationBreadcrumbs({
-  entityLabel,
-  segmentLabels,
-  segments,
+  recordLabel,
+  segments = [],
 }: {
-  readonly entityLabel?: string;
-  readonly segmentLabels?: Readonly<Record<string, string>>;
-  readonly segments: readonly ["admin", ...string[]];
+  readonly recordLabel?: string;
+  /** The path under `/admin`; none for the overview. */
+  readonly segments?: readonly string[];
 }) {
   const locale = useRouteLocale();
-  const crumbHref = (index: number): AdministrationHref =>
-    index === 0
-      ? administrationHref("/[locale]/admin")
-      : `/admin/${segments.slice(1, index + 1).join("/")}`;
-  const crumbs = segments.map((segment, index) => ({
-    href: crumbHref(index),
-    label:
-      segmentLabels?.[segment] ||
-      (index === segments.length - 1 && entityLabel) ||
-      (Object.hasOwn(breadcrumbNames, segment)
-        ? breadcrumbNames[segment]
-        : breadcrumbRecordNames[segments[index - 1] ?? ""])?.({}, { locale }) ||
-      segment,
-  }));
+  const crumbs = getAdministrationTrail(segments, locale, recordLabel);
   return (
     <nav
       aria-label={m.shellBreadcrumbLabel({}, { locale })}
@@ -346,7 +254,7 @@ function Brand({
   return (
     <Link
       className="flex min-w-0 items-center gap-3"
-      href={administrationHref("/[locale]/admin")}
+      href={administrationOverview.href}
     >
       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-burned-orange text-sm font-semibold text-white">
         D
