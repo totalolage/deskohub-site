@@ -64,7 +64,8 @@ export const runE2EEffect = <A, E>(
 ) =>
   runUntracedE2EEffect(
     effect.pipe(
-      Effect.onExit(() => telemetry.shutdown),
+      Effect.exit,
+      Effect.tap(() => telemetry.shutdown),
       Effect.provide(telemetry.tracingLayer)
     )
   );

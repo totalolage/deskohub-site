@@ -3,7 +3,7 @@ import { devNull } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser, Frame, Page } from "@playwright/test";
-import { Cause, Effect, Exit, Scope } from "effect";
+import { Effect, Exit, Scope } from "effect";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
 import { E2EBrowserSession } from "./browser-session";
 import { runUntracedE2EEffect } from "./effect-edge";
@@ -127,7 +127,11 @@ export const makePlaywrightBrowserRunner = (
         await Promise.allSettled(
           opened.flatMap((entry) =>
             entry.status === "fulfilled"
-              ? [runArgvEffect(Scope.close(entry.value.scope, Exit.void))]
+              ? [
+                  runUntracedE2EEffect(
+                    Scope.close(entry.value.scope, Exit.void)
+                  ),
+                ]
               : []
           )
         );
@@ -150,7 +154,7 @@ const openArgvSession = (
   id: string,
   recordHar: boolean | undefined
 ): Promise<ArgvSession> =>
-  runArgvEffect(
+  runUntracedE2EEffect(
     Effect.gen(function* () {
       const pageState: ArgvPageState = { pageIds: new Map() };
       const scope = yield* Scope.make();
@@ -169,23 +173,6 @@ const openArgvSession = (
     })
   );
 
-/**
- * Settles an argv command's Effect, run at the E2E Effect edge, as the
- * argv protocol's promise. An aborted command rejects with the signal's
- * reason at once; the case finalizer closes the context, which stops the
- * browser work. Any other failure rejects with its own cause.
- */
-const runArgvEffect = async <A, E>(
-  effect: Effect.Effect<A, E>,
-  signal?: AbortSignal
-): Promise<A> => {
-  const exit = await runUntracedE2EEffect(effect, { signal });
-  if (Exit.isSuccess(exit)) return exit.value;
-  if (Cause.hasInterruptsOnly(exit.cause))
-    throw signal?.reason ?? new DOMException("Aborted", "AbortError");
-  throw Cause.squash(exit.cause);
-};
-
 const execute = (
   getSession: (id: string) => Promise<ArgvSession>,
   args: string[],
@@ -197,14 +184,14 @@ const execute = (
   if (!sessionId) throw new Error("Playwright session is required");
   const commandArgs = args.slice(2);
 
-  return runArgvEffect(
+  return runUntracedE2EEffect(
     // A failed session opening rejects with its own cause.
     Effect.promise(() => getSession(sessionId)).pipe(
       Effect.flatMap((session) =>
         Effect.suspend(() => runCommand(session, commandArgs, input, timeoutMs))
       )
     ),
-    signal
+    { signal }
   );
 };
 

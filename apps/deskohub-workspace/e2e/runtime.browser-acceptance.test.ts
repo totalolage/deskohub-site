@@ -29,11 +29,7 @@ beforeAll(async () => {
     fetch: (request) => {
       const { pathname } = new URL(request.url);
       if (pathname === "/favicon.svg") {
-        previewProbes.push(
-          Object.fromEntries(
-            [...request.headers].filter(([name]) => name.startsWith("x-"))
-          )
-        );
+        previewProbes.push(Object.fromEntries(request.headers));
         return new Response("<svg/>", {
           headers: { "content-type": "image/svg+xml" },
         });
@@ -254,15 +250,18 @@ test.skipIf(!chromiumAvailable)(
   "probes preview access with any --headers map, forwarding every header",
   async () => {
     previewProbes.length = 0;
-    const bypassHeaders = {
-      "x-e2e-extra": "kept",
-      "x-vercel-protection-bypass": "synthetic-runner-bypass",
-      "x-vercel-set-bypass-cookie": "true",
-    };
-    const otherHeaders = { "X-E2E-Probe": "kept" };
+    const headerMaps = [
+      {
+        "e2e-probe-label": "bypass",
+        "x-vercel-protection-bypass": "synthetic-runner-bypass",
+        "x-vercel-set-bypass-cookie": "true",
+      },
+      { "E2E-Probe-Label": "without-bypass" },
+      {},
+    ];
     const openedUrls = await withRunner(async (run) =>
       Promise.all(
-        [bypassHeaders, otherHeaders].map((headers) =>
+        headerMaps.map((headers) =>
           command(run, `headers-${randomUUID()}`, [
             "--headers",
             JSON.stringify(headers),
@@ -273,10 +272,13 @@ test.skipIf(!chromiumAvailable)(
       )
     );
 
-    expect(openedUrls).toEqual([`${origin()}/`, `${origin()}/`]);
+    expect(openedUrls).toEqual(headerMaps.map(() => `${origin()}/`));
+    expect(previewProbes).toHaveLength(headerMaps.length);
     expect(previewProbes).toEqual(
-      expect.arrayContaining([bypassHeaders, { "x-e2e-probe": "kept" }])
+      expect.arrayContaining([
+        expect.objectContaining(headerMaps[0]),
+        expect.objectContaining({ "e2e-probe-label": "without-bypass" }),
+      ])
     );
-    expect(previewProbes).toHaveLength(2);
   }
 );
