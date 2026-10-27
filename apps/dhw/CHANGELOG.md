@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.28.0...dhw-v1.29.0) (2026-10-27)
+
+
+### Features
+
+* **admin:** add reservation activity calendar ([706b7ba](https://github.com/totalolage/deskohub-site/commit/706b7ba950870b4cb7498d5a5bbdb572dc4fd6fa))
+
 ## [1.28.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.27.0...dhw-v1.28.0) (2026-10-25)
 
 
