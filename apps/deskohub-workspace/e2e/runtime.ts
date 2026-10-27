@@ -73,13 +73,17 @@ type ArgvPageState = {
  */
 export const makePlaywrightBrowserRunner = (
   browser: Browser,
-  options: { readonly recordHar?: boolean } = {}
+  options: {
+    /** Exchanges the preview bypass secret; see `E2EBrowserSession.open`. */
+    readonly fetch?: typeof fetch;
+    readonly recordHar?: boolean;
+  } = {}
 ): Runner => {
   const sessions = new Map<string, Promise<ArgvSession>>();
   const getSession = (id: string) => {
     const existing = sessions.get(id);
     if (existing) return existing;
-    const created = openArgvSession(browser, id, options.recordHar);
+    const created = openArgvSession(browser, id, options);
     sessions.set(id, created);
     return created;
   };
@@ -152,7 +156,10 @@ export const makePlaywrightBrowserRunner = (
 const openArgvSession = (
   browser: Browser,
   id: string,
-  recordHar: boolean | undefined
+  options: {
+    readonly fetch?: typeof fetch;
+    readonly recordHar?: boolean;
+  }
 ): Promise<ArgvSession> =>
   runUntracedE2EEffect(
     Effect.gen(function* () {
@@ -160,11 +167,12 @@ const openArgvSession = (
       const scope = yield* Scope.make();
       const browserSession = yield* E2EBrowserSession.open({
         browser,
+        fetch: options.fetch,
         id,
         onActivate: () => {
           pageState.frame = undefined;
         },
-        recordHar,
+        recordHar: options.recordHar,
       }).pipe(
         Scope.provide(scope),
         Effect.onError((cause) => Scope.close(scope, Exit.failCause(cause)))
@@ -225,7 +233,9 @@ const runCommand = (
       });
       return headers
         ? browserSession
-            .primePreviewAccess(url, headers, { timeoutMs })
+            .primePreviewAccess(url, readPreviewBypassSecret(headers), {
+              timeoutMs,
+            })
             .pipe(Effect.mapError(toArgvFailure), Effect.andThen(navigate))
         : navigate;
     }
@@ -605,6 +615,26 @@ const parseBrowserCommand = (args: string[]) => {
     headers,
     json,
   };
+};
+
+const previewBypassHeaders = new Set([
+  "x-vercel-protection-bypass",
+  "x-vercel-set-bypass-cookie",
+]);
+
+/**
+ * `--headers` is the argv form of the preview bypass secret: the session
+ * exchanges the secret itself, so a header it would not send is refused.
+ */
+const readPreviewBypassSecret = (headers: Record<string, string>) => {
+  let secret: string | undefined;
+  for (const [name, value] of Object.entries(headers)) {
+    const header = name.toLowerCase();
+    if (!previewBypassHeaders.has(header))
+      throw new Error("Only the preview bypass headers are supported");
+    if (header === "x-vercel-protection-bypass") secret = value;
+  }
+  return secret;
 };
 
 const toPlaywrightSelector = (selector: string) =>

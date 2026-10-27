@@ -1,11 +1,6 @@
 import { deepStrictEqual, equal, ok } from "node:assert/strict";
 import type { AdministrationStandaloneAccessCodeName } from "@deskohub/workspace-admin-api";
-import {
-  type BrowserContext,
-  expect,
-  type Page,
-  type Request,
-} from "@playwright/test";
+import { expect, type Request } from "@playwright/test";
 import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import type { DatabaseClient } from "@/db/database-client";
@@ -14,15 +9,14 @@ import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-sessi
 import {
   type ActionResponseOutcome,
   awaitActionQuiescence,
-  openAdminBrowserPage,
-  primePreviewBypass,
-  sanitizedBrowserOperation,
+  openAdminSession,
 } from "../admin-case";
 import {
   makeWorkspaceE2EAdministrationIdentities,
   type WorkspaceE2EAdministrationAccount,
   type WorkspaceE2EAdministrationIdentities,
 } from "../administrators/identities";
+import type { E2EBrowserSession } from "../browser-session";
 import { runE2ECase, type WorkspaceE2EStepRunner } from "../case-runner";
 import { toWorkspaceE2EError, workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
@@ -73,35 +67,34 @@ test("creates a standalone access code through the admin form and replays the sa
   const plan = planAccessCodeCreationAttempt({
     name: makeSyntheticAccessCodeName(),
   });
-  const { context, origin, page } = await openAdminBrowserPage({
-    baseURL,
-    browser,
-    caseName: "access code creation",
-  });
-  try {
-    await runEffect(
-      runAccessCodeCreationCase({
-        bypassSecret: environment.VERCEL_AUTOMATION_BYPASS_SECRET,
-        context,
-        identities,
-        origin,
-        page,
-        plan,
-      })
-    );
-  } finally {
-    await context.close().catch(() => undefined);
-  }
+  await runEffect(
+    Effect.scoped(
+      Effect.flatMap(
+        openAdminSession({
+          baseURL,
+          browser,
+          caseName: "access code creation",
+        }),
+        ({ origin, session }) =>
+          runAccessCodeCreationCase({
+            bypassSecret: environment.VERCEL_AUTOMATION_BYPASS_SECRET,
+            identities,
+            origin,
+            plan,
+            session,
+          })
+      )
+    )
+  );
 });
 
 const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
   function* (input: {
     readonly bypassSecret: string | undefined;
-    readonly context: BrowserContext;
     readonly identities: WorkspaceE2EAdministrationIdentities<"acc-admin">;
     readonly origin: string;
-    readonly page: Page;
     readonly plan: AccessCodeCreationPlan;
+    readonly session: E2EBrowserSession;
   }) {
     const { db } = yield* E2EDatabase;
     const cleanup = cleanupSyntheticAttemptEvents(db, input.plan.name);
@@ -135,11 +128,11 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
         timeoutMs: workspaceE2ETimeouts.cleanupAction,
       });
       yield* step({
-        execute: primePreviewBypass({
-          bypassSecret: input.bypassSecret,
-          context: input.context,
-          origin: input.origin,
-        }),
+        execute: input.session.primePreviewAccess(
+          input.origin,
+          input.bypassSecret,
+          { timeoutMs: workspaceE2ETimeouts.browserAction }
+        ),
         id: "prime-preview-bypass",
         timeoutMs: workspaceE2ETimeouts.browserAction,
       });
@@ -154,23 +147,21 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
         timeoutMs: workspaceE2ETimeouts.datasource,
       });
       yield* step({
-        execute: sanitizedBrowserOperation(
-          "open the access-code admin page",
-          () =>
-            input.page
-              .goto(`${input.origin}/en-US/admin/access-codes`, {
-                timeout: workspaceE2ETimeouts.browserNavigation,
-              })
-              .then(() => undefined)
+        execute: input.session.use("open the access-code admin page", (page) =>
+          page
+            .goto(`${input.origin}/en-US/admin/access-codes`, {
+              timeout: workspaceE2ETimeouts.browserNavigation,
+            })
+            .then(() => undefined)
         ),
         id: "open-admin-form",
         timeoutMs: workspaceE2ETimeouts.browserNavigation,
       });
       yield* step({
-        execute: sanitizedBrowserOperation(
+        execute: input.session.use(
           "wait for the create access code form",
-          () =>
-            input.page.locator(editingFormSelector).waitFor({
+          (page) =>
+            page.locator(editingFormSelector).waitFor({
               state: "visible",
               timeout: workspaceE2ETimeouts.browserAction,
             })
@@ -179,12 +170,12 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
         timeoutMs: workspaceE2ETimeouts.browserAction,
       });
       yield* step({
-        execute: sanitizedBrowserOperation(
+        execute: input.session.use(
           "wait for the hydrated create access code form handler",
-          () =>
+          (page) =>
             waitForReactSubmitHandler(
-              input.page,
-              input.page.locator(editingFormSelector),
+              page,
+              page.locator(editingFormSelector),
               workspaceE2ETimeouts.uiTransition
             )
         ),
@@ -192,8 +183,8 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
         timeoutMs: workspaceE2ETimeouts.uiTransition,
       });
       yield* step({
-        execute: sanitizedBrowserOperation("fill the access code name", () =>
-          input.page.getByLabel("Name", { exact: true }).fill(input.plan.name, {
+        execute: input.session.use("fill the access code name", (page) =>
+          page.getByLabel("Name", { exact: true }).fill(input.plan.name, {
             timeout: workspaceE2ETimeouts.browserAction,
           })
         ),
@@ -201,8 +192,8 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
         timeoutMs: workspaceE2ETimeouts.browserAction,
       });
       yield* step({
-        execute: sanitizedBrowserOperation("fill the access window start", () =>
-          input.page
+        execute: input.session.use("fill the access window start", (page) =>
+          page
             .getByLabel("Starts", { exact: true })
             .fill(input.plan.startsAtLocal, {
               timeout: workspaceE2ETimeouts.browserAction,
@@ -212,8 +203,8 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
         timeoutMs: workspaceE2ETimeouts.browserAction,
       });
       yield* step({
-        execute: sanitizedBrowserOperation("fill the access window end", () =>
-          input.page
+        execute: input.session.use("fill the access window end", (page) =>
+          page
             .getByLabel("Ends", { exact: true })
             .fill(input.plan.endsAtLocal, {
               timeout: workspaceE2ETimeouts.browserAction,
@@ -223,10 +214,10 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
         timeoutMs: workspaceE2ETimeouts.browserAction,
       });
       yield* step({
-        execute: sanitizedBrowserOperation(
+        execute: input.session.use(
           "wait for the hydrated window duration preview",
-          () =>
-            expect(input.page.getByText(/^Duration: \d+ hours?$/)).toBeVisible({
+          (page) =>
+            expect(page.getByText(/^Duration: \d+ hours?$/)).toBeVisible({
               timeout: workspaceE2ETimeouts.browserAction,
             })
         ),
@@ -235,18 +226,17 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
       });
       yield* step({
         execute: Effect.gen(function* () {
-          const actionRequest = yield* sanitizedBrowserOperation(
+          const actionRequest = yield* input.session.use(
             "activate the create access code submit control once and capture its server action request",
-            async () => {
+            async (page) => {
               const isActionRequest = (request: Request) =>
                 request.method() === "POST" &&
                 request.url().startsWith(input.origin) &&
                 request.headers()["next-action"] !== undefined;
-              const requestPromise = input.page.waitForRequest(
-                isActionRequest,
-                { timeout: workspaceE2ETimeouts.uiTransition }
-              );
-              const responsePromise = input.page.waitForResponse(
+              const requestPromise = page.waitForRequest(isActionRequest, {
+                timeout: workspaceE2ETimeouts.uiTransition,
+              });
+              const responsePromise = page.waitForResponse(
                 (response) => isActionRequest(response.request()),
                 { timeout: workspaceE2ETimeouts.providerTransition }
               );
@@ -261,7 +251,7 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
               );
               actionBarrier = responseSettled;
               try {
-                await input.page
+                await page
                   .getByRole("button", {
                     name: "Create access code",
                     exact: true,
@@ -297,10 +287,10 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
         timeoutMs: workspaceE2ETimeouts.uiTransition,
       });
       yield* step({
-        execute: sanitizedBrowserOperation(
+        execute: input.session.use(
           "wait for the created access code confirmation",
-          () =>
-            expect(input.page.locator(createdRegionSelector)).toBeVisible({
+          (page) =>
+            expect(page.locator(createdRegionSelector)).toBeVisible({
               timeout: workspaceE2ETimeouts.uiTransition,
             })
         ),
@@ -308,11 +298,11 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
         timeoutMs: workspaceE2ETimeouts.uiTransition,
       });
       yield* step({
-        execute: sanitizedBrowserOperation(
+        execute: input.session.use(
           "assert the one-time fixture PIN output",
-          () =>
+          (page) =>
             expect(
-              input.page.locator(createdRegionSelector).getByRole("status")
+              page.locator(createdRegionSelector).getByRole("status")
             ).toHaveAttribute("aria-label", fixturePinDigitsLabel, {
               timeout: workspaceE2ETimeouts.browserAction,
             })
@@ -321,10 +311,10 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
         timeoutMs: workspaceE2ETimeouts.browserAction,
       });
       yield* step({
-        execute: sanitizedBrowserOperation(
+        execute: input.session.use(
           "assert the created access code summary",
-          () =>
-            expect(input.page.locator(createdRegionSelector)).toContainText(
+          (page) =>
+            expect(page.locator(createdRegionSelector)).toContainText(
               input.plan.name,
               {
                 timeout: workspaceE2ETimeouts.browserAction,
@@ -345,19 +335,20 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
             );
           }
           const action = capturedAction;
-          const replayResponsePromise = input.context.request.post(action.url, {
-            data: action.body,
-            headers: selectActionReplayHeaders(action.headers),
-            timeout: workspaceE2ETimeouts.providerTransition,
-          });
-          const replaySettled = replayResponsePromise.then(
-            (): ActionResponseOutcome => ({ kind: "responded" }),
-            (): ActionResponseOutcome => ({ kind: "unresolved" })
-          );
-          replayBarrier = replaySettled;
-          yield* sanitizedBrowserOperation(
+          yield* input.session.use(
             "replay the captured create access code server action request",
-            async () => {
+            async (page) => {
+              const replayResponsePromise = page.request.post(action.url, {
+                data: action.body,
+                headers: selectActionReplayHeaders(action.headers),
+                timeout: workspaceE2ETimeouts.providerTransition,
+              });
+              // Registered before the response is awaited, so an
+              // interrupted replay still gates cleanup.
+              replayBarrier = replayResponsePromise.then(
+                (): ActionResponseOutcome => ({ kind: "responded" }),
+                (): ActionResponseOutcome => ({ kind: "unresolved" })
+              );
               const response = await replayResponsePromise;
               try {
                 equal(response.status(), 200);

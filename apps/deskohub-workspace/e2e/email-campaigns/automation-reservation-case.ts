@@ -27,10 +27,8 @@ import { getWorkspaceE2EMarketingDocumentHash } from "../account/marketing-docum
 import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
 import {
   type ActionResponseOutcome,
-  openAdminBrowserPage,
-  primePreviewBypass,
+  openAdminSession,
   retainServerActionSubmission,
-  sanitizedBrowserOperation,
 } from "../admin-case";
 import { makeWorkspaceE2EAdministrationIdentities } from "../administrators/identities";
 import { bindWorkspaceE2ECheckoutBooker } from "../checkout/booker";
@@ -42,7 +40,7 @@ import {
 } from "../config";
 import {
   toWorkspaceE2EError,
-  WorkspaceE2EError,
+  type WorkspaceE2EError,
   workspaceE2EError,
 } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
@@ -149,21 +147,11 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
   const { db } = yield* E2EDatabase;
   const { plan } = journey;
   const { runStep } = context;
-  const admin = yield* Effect.tryPromise({
-    catch: (cause) =>
-      cause instanceof WorkspaceE2EError
-        ? cause
-        : workspaceE2EError("open the automation admin page failed", {
-            operation: "open the automation admin page",
-          }),
-    try: () =>
-      openAdminBrowserPage({
-        baseURL: journey.origin,
-        browser: journey.browser,
-        caseName: "automation journey",
-      }),
+  const admin = yield* openAdminSession({
+    baseURL: journey.origin,
+    browser: journey.browser,
+    caseName: "automation journey",
   });
-  const { page } = admin;
   const origin = admin.origin;
   // Captured as soon as each is known, so an interrupted case still deletes
   // what it created.
@@ -178,17 +166,17 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
     id: string,
     timeoutMs: number,
     operation: string,
-    run: () => Promise<unknown>
+    run: (page: Page) => Promise<unknown>
   ) =>
     runStep({
-      execute: sanitizedBrowserOperation(operation, () =>
-        run().then(() => undefined)
+      execute: admin.session.use(operation, (page) =>
+        run(page).then(() => undefined)
       ),
       id,
       timeoutMs,
     });
 
-  const waitForPath = (path: RegExp, timeoutMs: number) =>
+  const waitForPath = (page: Page, path: RegExp, timeoutMs: number) =>
     page.waitForURL((url) => path.test(url.pathname), {
       timeout: timeoutMs,
       waitUntil: "commit",
@@ -219,26 +207,26 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
   const campaignPath = (suffix = "") =>
     `${origin}/en-US/admin/email-campaigns/${campaignId}${suffix}`;
 
-  const audienceForm = page.locator("form").filter({
-    has: page.getByRole("button", { exact: true, name: "Create audience" }),
-  });
-  const composerForm = page.locator("#campaign-composer");
+  const audienceForm = (page: Page) =>
+    page.locator("form").filter({
+      has: page.getByRole("button", { exact: true, name: "Create audience" }),
+    });
+  const composerForm = (page: Page) => page.locator("#campaign-composer");
   // The composer's submit button sits in the page header, outside the form,
   // linked to it only by its form attribute.
-  const composerSubmit = (name: string) =>
+  const composerSubmit = (page: Page, name: string) =>
     page
       .getByRole("button", { exact: true, name })
       .and(page.locator('[form="campaign-composer"]'));
-  const flowForm = page.locator("form").filter({
-    has: page.getByRole("button", { exact: true, name: "Save flow" }),
-  });
+  const flowForm = (page: Page) =>
+    page.locator("form").filter({
+      has: page.getByRole("button", { exact: true, name: "Save flow" }),
+    });
 
   const body = Effect.gen(function* () {
     yield* runStep({
-      execute: primePreviewBypass({
-        bypassSecret: journey.bypassSecret,
-        context: admin.context,
-        origin,
+      execute: admin.session.primePreviewAccess(origin, journey.bypassSecret, {
+        timeoutMs: workspaceE2ETimeouts.browserAction,
       }),
       id: "automation-prime-preview-bypass",
       timeoutMs: workspaceE2ETimeouts.browserAction,
@@ -249,8 +237,8 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
           "administrator",
         ]);
         yield* journey.identities.signIn(administrator, {
-          context: admin.context,
           origin,
+          session: admin.session,
         });
       }),
       id: "automation-sign-in-administrator",
@@ -261,26 +249,34 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
       "automation-create-audience",
       workspaceE2ETimeouts.uiTransition * 2,
       "create the tagged automation audience",
-      async () => {
+      async (page) => {
         await page.goto(`${origin}/en-US/admin/email-audiences/new`, {
           timeout: workspaceE2ETimeouts.browserNavigation,
         });
         await waitForReactSubmitHandler(
           page,
-          audienceForm,
+          audienceForm(page),
           workspaceE2ETimeouts.uiTransition
         );
-        await audienceForm
+        await audienceForm(page)
           .getByLabel("Title", { exact: true })
           .fill(plan.audienceTitle, {
             timeout: workspaceE2ETimeouts.browserAction,
           });
-        await addDotyposTagCondition(page, audienceForm, plan.customerTag);
+        await addDotyposTagCondition(
+          page,
+          audienceForm(page),
+          plan.customerTag
+        );
         audienceSubmission = retainServerActionSubmission(page, origin);
         await page
           .getByRole("button", { exact: true, name: "Create audience" })
           .click({ timeout: workspaceE2ETimeouts.browserAction });
-        await waitForPath(savedAudiencePath, workspaceE2ETimeouts.uiTransition);
+        await waitForPath(
+          page,
+          savedAudiencePath,
+          workspaceE2ETimeouts.uiTransition
+        );
       }
     );
 
@@ -288,34 +284,38 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
       "automation-create-campaign",
       workspaceE2ETimeouts.uiTransition * 2,
       "create the automated campaign draft",
-      async () => {
+      async (page) => {
         await page.goto(`${origin}/en-US/admin/email-campaigns/new`, {
           timeout: workspaceE2ETimeouts.browserNavigation,
         });
         await waitForReactSubmitHandler(
           page,
-          composerForm,
+          composerForm(page),
           workspaceE2ETimeouts.uiTransition
         );
-        await composerForm.getByLabel("Title").fill(plan.campaignTitle, {
+        await composerForm(page).getByLabel("Title").fill(plan.campaignTitle, {
           timeout: workspaceE2ETimeouts.browserAction,
         });
-        await composerForm
+        await composerForm(page)
           .getByRole("radio", { name: /^Automated\b/ })
           .check({ timeout: workspaceE2ETimeouts.browserAction });
-        await composerForm
+        await composerForm(page)
           .getByRole("combobox", { name: /^Audience\b/ })
           .click({ timeout: workspaceE2ETimeouts.browserAction });
         await page
           .getByRole("option", { exact: true, name: plan.audienceTitle })
           .click({ timeout: workspaceE2ETimeouts.browserAction });
         campaignSubmission = retainServerActionSubmission(page, origin);
-        await composerSubmit("Create draft").click({
+        await composerSubmit(page, "Create draft").click({
           timeout: workspaceE2ETimeouts.browserAction,
         });
         // The composer stays inert from the submit until the new campaign's
         // page opens, so nothing touches it in between.
-        await waitForPath(savedCampaignPath, workspaceE2ETimeouts.uiTransition);
+        await waitForPath(
+          page,
+          savedCampaignPath,
+          workspaceE2ETimeouts.uiTransition
+        );
         const createdId = new URL(page.url()).pathname.split("/").at(-1);
         campaignId = createdId ? campaignIdSchema.make(createdId) : undefined;
       }
@@ -336,22 +336,22 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
       "automation-build-flow",
       workspaceE2ETimeouts.uiTransition * 2,
       "build the reservation-booked flow with a tag condition",
-      async () => {
+      async (page) => {
         await waitForReactSubmitHandler(
           page,
-          flowForm,
+          flowForm(page),
           workspaceE2ETimeouts.uiTransition
         );
         // Until a trigger is chosen, the family radios are visually hidden
         // inside their cards, so the card takes the click.
-        await flowForm
+        await flowForm(page)
           .locator("label")
           .filter({ has: page.getByRole("radio", { name: /^Event\b/ }) })
           .click({ timeout: workspaceE2ETimeouts.browserAction });
-        await flowForm
+        await flowForm(page)
           .getByRole("radio", { name: /^Reservation booked\b/ })
           .check({ timeout: workspaceE2ETimeouts.browserAction });
-        await flowForm
+        await flowForm(page)
           .getByRole("button", { exact: true, name: "Add a step as step 1" })
           .click({ timeout: workspaceE2ETimeouts.browserAction });
         // Insert menu items carry a hint after their name.
@@ -359,8 +359,8 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
           .getByRole("menu")
           .getByRole("menuitem", { name: /^Condition\b/ })
           .click({ timeout: workspaceE2ETimeouts.browserAction });
-        await addDotyposTagCondition(page, flowForm, plan.customerTag);
-        const save = flowForm.getByRole("button", {
+        await addDotyposTagCondition(page, flowForm(page), plan.customerTag);
+        const save = flowForm(page).getByRole("button", {
           exact: true,
           name: "Save flow",
         });
@@ -395,7 +395,9 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
         );
         const [condition] = flow.steps;
         const filter =
-          condition?._tag === "Condition" ? JSON.stringify(condition.filter) : "";
+          condition?._tag === "Condition"
+            ? JSON.stringify(condition.filter)
+            : "";
         ok(
           filter.includes('"dotyposTags"') && filter.includes(plan.customerTag),
           "the saved condition must require the run's Dotypos tag"
@@ -409,16 +411,16 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
       "automation-write-email",
       workspaceE2ETimeouts.uiTransition * 2,
       "write and save the Czech automation email",
-      async () => {
+      async (page) => {
         await page.goto(campaignPath("/email"), {
           timeout: workspaceE2ETimeouts.browserNavigation,
         });
         await waitForReactSubmitHandler(
           page,
-          composerForm,
+          composerForm(page),
           workspaceE2ETimeouts.uiTransition
         );
-        await composerForm
+        await composerForm(page)
           .getByRole("tabpanel")
           .getByLabel("Subject", { exact: true })
           .fill(plan.subject, { timeout: workspaceE2ETimeouts.browserAction });
@@ -427,7 +429,7 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
         await editor.pressSequentially(plan.body, {
           timeout: workspaceE2ETimeouts.browserAction,
         });
-        await composerSubmit("Save changes").click({
+        await composerSubmit(page, "Save changes").click({
           timeout: workspaceE2ETimeouts.browserAction,
         });
       }
@@ -449,7 +451,7 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
       "automation-start-dry-run",
       workspaceE2ETimeouts.uiTransition * 2,
       "start the automation dry run",
-      async () => {
+      async (page) => {
         await page.goto(campaignPath("/preview"), {
           timeout: workspaceE2ETimeouts.browserNavigation,
         });
@@ -498,7 +500,7 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
       "automation-activate",
       workspaceE2ETimeouts.uiTransition * 2,
       "activate the dry-run automation",
-      async () => {
+      async (page) => {
         // The database already shows the dry run finished; a reload renders
         // the page from that state instead of waiting on the page's poll.
         await page.reload({ timeout: workspaceE2ETimeouts.browserNavigation });
@@ -612,7 +614,8 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
         yield* Effect.sleep(
           Math.max(
             0,
-            eligibleAt.epochMilliseconds - Temporal.Now.instant().epochMilliseconds
+            eligibleAt.epochMilliseconds -
+              Temporal.Now.instant().epochMilliseconds
           )
         );
         return yield* pollAutomationEngine({
@@ -647,7 +650,7 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
       "automation-open-sent-run",
       workspaceE2ETimeouts.uiTransition * 2,
       "find the sent run in the run log and open it",
-      async () => {
+      async (page) => {
         await page.goto(campaignPath("/runs"), {
           timeout: workspaceE2ETimeouts.browserNavigation,
         });
@@ -671,6 +674,7 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
           .filter({ visible: true });
         await runLink.click({ timeout: workspaceE2ETimeouts.uiTransition });
         await waitForPath(
+          page,
           new RegExp(`/runs/${runId}$`),
           workspaceE2ETimeouts.uiTransition
         );
@@ -684,7 +688,7 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
       "automation-pause",
       workspaceE2ETimeouts.uiTransition,
       "pause the automation",
-      async () => {
+      async (page) => {
         const pause = page.getByRole("button", { exact: true, name: "Pause" });
         await waitForReactClickHandler(page, pause);
         await pause.click({ timeout: workspaceE2ETimeouts.browserAction });
@@ -724,10 +728,7 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
       ).pipe(Effect.as(true)),
       campaignSubmission,
       closeBrowser: withinWorkspaceE2EDeadline(
-        sanitizedBrowserOperation(
-          "close the automation admin browser context",
-          () => admin.context.close()
-        ),
+        admin.session.close(),
         `${automationReservationCaseId}/close-browser`,
         workspaceE2ETimeouts.browserAction
       ),
@@ -757,7 +758,7 @@ const runAutomationJourney = Effect.fn("runAutomationJourney")(function* (
       ).pipe(Effect.orDie)
     )
   );
-});
+}, Effect.scoped);
 
 const readCampaigns = (db: DatabaseClient, plan: AutomationJourneyPlan) =>
   db
@@ -851,84 +852,84 @@ const readCustomerRuns = (
  * customers' synthetic consent rows, and proves none remain. Runs reference
  * the booked reservation, so this runs before checkout cleanup.
  */
-const deleteAutomationJourneyRows = Effect.fn(
-  "deleteAutomationJourneyRows"
-)(function* (
-  db: DatabaseClient,
-  rows: {
-    readonly audienceTitles: readonly string[];
-    readonly campaignTitles: readonly string[];
-    readonly customerIds: readonly DotyposCustomerId[];
-  }
-) {
-  const campaignIds =
-    rows.campaignTitles.length === 0
-      ? []
-      : (yield* db
-          .select({ id: emailCampaigns.id })
-          .from(emailCampaigns)
-          .where(inArray(emailCampaigns.title, [...rows.campaignTitles]))
-          .pipe(
-            Effect.mapError((cause) =>
-              toWorkspaceE2EError("find the automated campaigns", cause)
-            )
-          )).map((row) => row.id);
-  if (campaignIds.length > 0) {
-    yield* Effect.tryPromise({
-      catch: (cause) =>
-        toWorkspaceE2EError("delete the automated campaigns", cause),
-      try: () => deleteAutomatedCampaigns(db, campaignIds),
-    });
-  }
-  if (rows.audienceTitles.length > 0) {
-    yield* db
-      .delete(emailCampaignAudiences)
-      .where(inArray(emailCampaignAudiences.title, [...rows.audienceTitles]))
-      .pipe(
-        Effect.mapError((cause) =>
-          toWorkspaceE2EError("delete the automation audiences", cause)
+const deleteAutomationJourneyRows = Effect.fn("deleteAutomationJourneyRows")(
+  function* (
+    db: DatabaseClient,
+    rows: {
+      readonly audienceTitles: readonly string[];
+      readonly campaignTitles: readonly string[];
+      readonly customerIds: readonly DotyposCustomerId[];
+    }
+  ) {
+    const campaignIds =
+      rows.campaignTitles.length === 0
+        ? []
+        : (yield* db
+            .select({ id: emailCampaigns.id })
+            .from(emailCampaigns)
+            .where(inArray(emailCampaigns.title, [...rows.campaignTitles]))
+            .pipe(
+              Effect.mapError((cause) =>
+                toWorkspaceE2EError("find the automated campaigns", cause)
+              )
+            )).map((row) => row.id);
+    if (campaignIds.length > 0) {
+      yield* Effect.tryPromise({
+        catch: (cause) =>
+          toWorkspaceE2EError("delete the automated campaigns", cause),
+        try: () => deleteAutomatedCampaigns(db, campaignIds),
+      });
+    }
+    if (rows.audienceTitles.length > 0) {
+      yield* db
+        .delete(emailCampaignAudiences)
+        .where(inArray(emailCampaignAudiences.title, [...rows.audienceTitles]))
+        .pipe(
+          Effect.mapError((cause) =>
+            toWorkspaceE2EError("delete the automation audiences", cause)
+          )
+        );
+    }
+    if (rows.customerIds.length > 0) {
+      yield* db
+        .delete(customerMarketingConsents)
+        .where(
+          inArray(customerMarketingConsents.dotyposCustomerId, [
+            ...rows.customerIds,
+          ])
         )
-      );
+        .pipe(
+          Effect.mapError((cause) =>
+            toWorkspaceE2EError("delete synthetic marketing consent", cause)
+          )
+        );
+    }
+    if (rows.campaignTitles.length > 0) {
+      const remaining = yield* db
+        .select({ id: emailCampaigns.id })
+        .from(emailCampaigns)
+        .where(inArray(emailCampaigns.title, [...rows.campaignTitles]))
+        .pipe(
+          Effect.mapError((cause) =>
+            toWorkspaceE2EError("verify automated campaign cleanup", cause)
+          )
+        );
+      equal(remaining.length, 0);
+    }
+    if (rows.audienceTitles.length > 0) {
+      const remaining = yield* db
+        .select({ id: emailCampaignAudiences.id })
+        .from(emailCampaignAudiences)
+        .where(inArray(emailCampaignAudiences.title, [...rows.audienceTitles]))
+        .pipe(
+          Effect.mapError((cause) =>
+            toWorkspaceE2EError("verify automation audience cleanup", cause)
+          )
+        );
+      equal(remaining.length, 0);
+    }
   }
-  if (rows.customerIds.length > 0) {
-    yield* db
-      .delete(customerMarketingConsents)
-      .where(
-        inArray(customerMarketingConsents.dotyposCustomerId, [
-          ...rows.customerIds,
-        ])
-      )
-      .pipe(
-        Effect.mapError((cause) =>
-          toWorkspaceE2EError("delete synthetic marketing consent", cause)
-        )
-      );
-  }
-  if (rows.campaignTitles.length > 0) {
-    const remaining = yield* db
-      .select({ id: emailCampaigns.id })
-      .from(emailCampaigns)
-      .where(inArray(emailCampaigns.title, [...rows.campaignTitles]))
-      .pipe(
-        Effect.mapError((cause) =>
-          toWorkspaceE2EError("verify automated campaign cleanup", cause)
-        )
-      );
-    equal(remaining.length, 0);
-  }
-  if (rows.audienceTitles.length > 0) {
-    const remaining = yield* db
-      .select({ id: emailCampaignAudiences.id })
-      .from(emailCampaignAudiences)
-      .where(inArray(emailCampaignAudiences.title, [...rows.audienceTitles]))
-      .pipe(
-        Effect.mapError((cause) =>
-          toWorkspaceE2EError("verify automation audience cleanup", cause)
-        )
-      );
-    equal(remaining.length, 0);
-  }
-});
+);
 
 /**
  * The suite cleanup's fallback for a run whose case never reached its own
