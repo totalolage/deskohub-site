@@ -1,4 +1,3 @@
-import type { BrowserContext } from "@playwright/test";
 import { Effect } from "effect";
 import {
   type CustomerAccountId,
@@ -11,9 +10,10 @@ import type { WorkspaceE2EAccountJournalOwner } from "../account/reconcile";
 import {
   revokeWorkspaceE2ESyntheticAccountRoles,
   seedWorkspaceE2ESyntheticAccount,
-  signInWorkspaceE2ESyntheticBrowserContext,
+  signInWorkspaceE2ESyntheticBrowserSession,
   type WorkspaceE2ESessionSigningSecret,
 } from "../account/seeded-session";
+import type { E2EBrowserSession } from "../browser-session";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
 import type { WorkspaceE2ERunId } from "../run-identifiers";
@@ -111,19 +111,19 @@ export const makeWorkspaceE2EAdministrationIdentities = <Label extends string>({
       account: Pick<WorkspaceE2EAdministrationAccount, "accountId">
     ) => revokeWorkspaceE2ESyntheticAccountRoles(account.accountId),
 
-    /** Signs a browser context in as one of the seeded accounts. */
+    /** Signs a browser session in as one of the seeded accounts. */
     signIn: (
       account: Pick<WorkspaceE2EAdministrationAccount, "accountId">,
       browser: {
-        readonly context: Pick<BrowserContext, "addCookies">;
         readonly origin: string;
+        readonly session: E2EBrowserSession;
       }
     ) =>
-      signInWorkspaceE2ESyntheticBrowserContext({
+      signInWorkspaceE2ESyntheticBrowserSession({
         accountId: account.accountId,
-        context: browser.context,
         origin: browser.origin,
         secret,
+        session: browser.session,
       }),
   };
 };

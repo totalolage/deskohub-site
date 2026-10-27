@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { BrowserContext } from "@playwright/test";
+import type { Browser } from "@playwright/test";
 import { Effect, Layer, Schema } from "effect";
 import { env } from "../../env";
 import {
@@ -11,8 +11,9 @@ import type { WorkspaceE2EAccountJournalOwner } from "../account/reconcile";
 import { WorkspaceE2EAccountResourceService } from "../account/resources.service";
 import {
   resolveWorkspaceE2ESessionSigningSecret,
-  signInWorkspaceE2ESyntheticBrowserContext,
+  signInWorkspaceE2ESyntheticBrowserSession,
 } from "../account/seeded-session";
+import { E2EBrowserSession } from "../browser-session";
 import { getDatasourceConfig } from "../config";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
 import type { WorkspaceE2EError } from "../errors";
@@ -26,6 +27,7 @@ import {
   workspaceDir,
   writeJsonAtomically,
 } from "../runtime";
+import { workspaceE2ETimeouts } from "../timeouts";
 import { requireBaseUrl } from "./navigation-test-helpers";
 
 /**
@@ -114,12 +116,17 @@ export const readInstantNavigationAdministratorRunId = async (): Promise<
 };
 
 /**
- * Signs a browser context in as the administrator the setup project seeded,
- * with a fresh short-lived session for this test.
+ * Runs `use` with a browser session for one test, primed for the preview and
+ * signed in as the administrator the setup project seeded, with a fresh
+ * short-lived session. The session closes once `use` settles. It records no
+ * HAR: instant navigation keeps no failure artifacts.
  */
-export const signInInstantNavigationAdministrator = async (
-  context: Pick<BrowserContext, "addCookies">,
-  baseURL: string | undefined
+export const withInstantNavigationAdministratorSession = async (
+  input: {
+    readonly baseURL: string | undefined;
+    readonly browser: Browser;
+  },
+  use: (session: E2EBrowserSession) => Promise<void>
 ) => {
   const { environment, runPromise } =
     makeInstantNavigationAdministratorRuntime();
@@ -133,12 +140,30 @@ export const signInInstantNavigationAdministrator = async (
       "The administrator setup project did not journal exactly one seeded administrator"
     );
   }
+  const baseURL = requireBaseUrl(input.baseURL);
+  const { origin } = new URL(baseURL);
   await runPromise(
-    signInWorkspaceE2ESyntheticBrowserContext({
-      accountId,
-      context,
-      origin: new URL(requireBaseUrl(baseURL)).origin,
-      secret: resolveWorkspaceE2ESessionSigningSecret(environment),
-    })
+    Effect.scoped(
+      Effect.gen(function* () {
+        const session = yield* E2EBrowserSession.open({
+          baseURL,
+          browser: input.browser,
+          id: "instant-navigation-administrator",
+          recordHar: false,
+        });
+        yield* session.primePreviewAccess(
+          origin,
+          environment.VERCEL_AUTOMATION_BYPASS_SECRET,
+          { timeoutMs: workspaceE2ETimeouts.browserAction }
+        );
+        yield* signInWorkspaceE2ESyntheticBrowserSession({
+          accountId,
+          origin,
+          secret: resolveWorkspaceE2ESessionSigningSecret(environment),
+          session,
+        });
+        yield* Effect.promise(() => use(session));
+      })
+    )
   );
 };

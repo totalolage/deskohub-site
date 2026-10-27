@@ -10,7 +10,7 @@ import type {
   Request,
   Response,
 } from "@playwright/test";
-import { Deferred, Effect, type Scope } from "effect";
+import { Cause, Deferred, Effect, Exit, FiberSet, type Scope } from "effect";
 import {
   formatNexiBuildFailureLine,
   isNexiBuildApiUrl,
@@ -24,8 +24,8 @@ import {
   workspaceE2ETimeoutError,
 } from "./errors";
 import { withinWorkspaceE2EDeadline } from "./polling";
+import { primePreviewAccess } from "./preview-access";
 import { redact, redactJsonValue } from "./redaction";
-import { workspaceE2ETimeouts } from "./timeouts";
 
 /** What the session captured from every page of its context, redacted. */
 type E2EBrowserDiagnostics = {
@@ -56,7 +56,7 @@ type E2EBrowserDeadline = {
  * Drive it with native Playwright through `use` and `evaluate`. The session
  * owns what Playwright does not: the context lifecycle, the HAR (closed,
  * sanitized, and only then handed out), capped console, error, and network
- * capture across every page, preview bypass priming, redaction, and failure
+ * capture across every page, preview access priming, redaction, and failure
  * classification.
  *
  * `use` drives the active page. A page the app opens becomes active; closing
@@ -101,13 +101,19 @@ export type E2EBrowserSession = {
     options?: E2EBrowserDeadline
   ) => Effect.Effect<A, WorkspaceE2EError>;
   /**
-   * Probes the origin's favicon with the caller's request headers, intact,
-   * once per origin, so Vercel can answer with its bypass cookie. A rejected
-   * probe fails and leaves the origin unprimed.
+   * Lets the context through Vercel protection on the URL's origin with
+   * `primePreviewAccess` (`preview-access.ts`): the secret is exchanged
+   * outside Playwright and only Vercel's cookie enters the context. An origin
+   * is primed once the probe is accepted, with or without a cookie, or when it
+   * is not a Workspace deployment origin and so never gets the secret. Each
+   * origin is probed once; concurrent calls share the probe, bounded by the
+   * first call's `timeoutMs`, and interrupting a caller stops only its wait.
+   * A failed probe fails every waiter and leaves the origin unprimed, so the
+   * next call probes again. Without a secret it does nothing.
    */
   readonly primePreviewAccess: (
     url: string,
-    headers: Readonly<Record<string, string>>,
+    bypassSecret: string | undefined,
     options: { readonly timeoutMs: number }
   ) => Effect.Effect<void, WorkspaceE2EError>;
   /** Adds an HTTP-only, Secure, Lax cookie bound to one HTTPS origin. */
@@ -129,14 +135,25 @@ type SessionState = {
     readonly errors: string[];
     readonly requests: string[];
   };
-  readonly primedOrigins: Set<string>;
+  /** Each origin's probe; a failed probe is removed, a settled one kept. */
+  readonly previewAccess: Map<
+    string,
+    Deferred.Deferred<void, WorkspaceE2EError>
+  >;
   readonly registeredPages: WeakSet<Page>;
 };
 
 const maximumDiagnosticEntries = 500;
 
 const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
+  /** Resolves relative `page.goto` URLs, as Playwright's `baseURL` does. */
+  readonly baseURL?: string;
   readonly browser: Browser;
+  /**
+   * Exchanges the preview bypass secret; the global `fetch` by default.
+   * Tests point a Workspace deployment origin at a local server with it.
+   */
+  readonly fetch?: typeof fetch;
   /** Names the raw HAR file; any characters are safe. */
   readonly id: string;
   /**
@@ -169,6 +186,7 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
       catch: (cause) => toSessionFailure("open the browser context", cause),
       try: () =>
         options.browser.newContext({
+          baseURL: options.baseURL,
           recordHar: rawHarPath
             ? { content: "embed", mode: "full", path: rawHarPath }
             : undefined,
@@ -188,13 +206,17 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
     active: initialPage,
     onActivate: options.onActivate,
     diagnostics: { console: [], errors: [], requests: [] },
-    primedOrigins: new Set(),
+    previewAccess: new Map(),
     registeredPages: new WeakSet(),
   };
+  // Preview access probes outlive the caller that started them; closing the
+  // session interrupts them.
+  const probes = yield* FiberSet.make<void, WorkspaceE2EError>();
   context.on("page", (page) => registerPage(state, context, page));
   registerPage(state, context, initialPage);
 
-  const isClosing = () => closing !== undefined;
+  // Closing starts with the first close request, before the context closes.
+  const isClosing = () => closeRequest !== undefined || closing !== undefined;
 
   const use = <A>(
     label: string,
@@ -212,6 +234,7 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
 
   const closeAndExport = Effect.fn("E2EBrowserSession.close")(
     function* (harPath: string | undefined) {
+      yield* FiberSet.clear(probes);
       yield* Effect.tryPromise({
         catch: (cause) => toSessionFailure("close the browser context", cause),
         try: closeContext,
@@ -305,7 +328,7 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
         (page) => page.evaluate(fn as (arg: unknown) => A | Promise<A>, arg),
         deadline
       ),
-    primePreviewAccess: (url, headers, { timeoutMs }) =>
+    primePreviewAccess: (url, bypassSecret, { timeoutMs }) =>
       Effect.suspend(() => {
         const origin = URL.parse(url)?.origin;
         if (!origin)
@@ -314,56 +337,51 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
               operation: "prime preview access",
             })
           );
-        if (state.primedOrigins.has(origin)) return Effect.void;
-        return Effect.tryPromise({
-          catch: (cause) =>
-            toSessionFailure("prime preview access", cause, isClosing()),
-          // The wait stays interruptible; a probe answered after an
-          // interruption still has its response disposed.
-          try: (signal) => {
-            const probe = context.request.get(
-              new URL("/favicon.svg", origin).toString(),
-              {
-                headers,
-                maxRedirects: 3,
-                timeout: timeoutMs,
-              }
-            );
-            signal.addEventListener(
-              "abort",
-              () => {
-                probe
-                  .then((response) => response.dispose())
-                  .catch(() => undefined);
-              },
-              { once: true }
-            );
-            return probe;
-          },
-        }).pipe(
-          Effect.flatMap((response) =>
-            (response.ok()
-              ? Effect.sync(() => {
-                  state.primedOrigins.add(origin);
-                })
-              : Effect.fail(
-                  workspaceE2EError(
-                    `Preview bypass probe failed with ${response.status()}`,
-                    { operation: "prime preview access" }
-                  )
-                )
-            ).pipe(
-              Effect.ensuring(
-                Effect.tryPromise(() => response.dispose()).pipe(
-                  Effect.timeout(
-                    `${workspaceE2ETimeouts.browserResponseDisposal} millis`
-                  ),
-                  Effect.ignore
-                )
-              )
+        if (!bypassSecret) return Effect.void;
+        if (isClosing())
+          return Effect.fail(
+            toSessionFailure("prime preview access", undefined, true)
+          );
+        const probe = (primed: Deferred.Deferred<void, WorkspaceE2EError>) =>
+          Effect.tryPromise({
+            catch: (cause) =>
+              toSessionFailure("prime preview access", cause, isClosing()),
+            try: (signal) =>
+              primePreviewAccess(context, origin, bypassSecret, {
+                fetch: options.fetch,
+                signal,
+                timeoutMs,
+              }),
+          }).pipe(
+            Effect.interruptible,
+            Effect.onExit((exit) =>
+              Effect.suspend(() => {
+                if (Exit.isSuccess(exit)) return Deferred.done(primed, exit);
+                state.previewAccess.delete(origin);
+                // Only the session's close interrupts a probe; its waiters
+                // fail as cut off by the close rather than as interrupted.
+                return Cause.hasInterruptsOnly(exit.cause)
+                  ? Deferred.fail(
+                      primed,
+                      toSessionFailure("prime preview access", undefined, true)
+                    )
+                  : Deferred.done(primed, exit);
+              })
             )
-          )
+          );
+        // Registered and forked together, so no caller can find a probe that
+        // never started. The probe belongs to the session, not to the first
+        // caller, so only the session's close ends it early.
+        const started = Effect.uninterruptible(
+          Effect.suspend(() => {
+            const existing = state.previewAccess.get(origin);
+            if (existing) return Effect.succeed(existing);
+            const primed = Deferred.makeUnsafe<void, WorkspaceE2EError>();
+            state.previewAccess.set(origin, primed);
+            return FiberSet.run(probes, probe(primed)).pipe(Effect.as(primed));
+          })
         );
+        return Effect.flatMap(started, Deferred.await);
       }),
     setSessionCookie: (cookie) =>
       Effect.suspend(() => {

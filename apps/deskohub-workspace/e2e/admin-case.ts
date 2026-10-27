@@ -1,87 +1,38 @@
-import { AssertionError } from "node:assert";
-import type { Browser, BrowserContext, Page, Request } from "@playwright/test";
+import type { Browser, Request } from "@playwright/test";
 import { Effect } from "effect";
+import { E2EBrowserSession } from "./browser-session";
 import { type WorkspaceE2EError, workspaceE2EError } from "./errors";
 import { withinWorkspaceE2EDeadline } from "./polling";
-import { primePreviewAccess } from "./preview-access";
 
 /**
- * Maps any browser-driver failure onto a fixed code-owned error. Raw Playwright
- * causes can embed request headers, cookies, the Vercel bypass, URLs,
- * credentials, and response bodies, so the cause is discarded instead of
- * attached, redacted, or stringified.
+ * Opens an isolated, signed-out admin browser session for the preview origin,
+ * bound to the caller's Scope. The case primes preview access and signs it in
+ * as a seeded synthetic administrator (`e2e/administrators/identities.ts`)
+ * before it opens an admin page. Admin cases keep no failure artifacts, so
+ * the session records no HAR.
  */
-const sanitizedBrowserFailure = (operation: string) => (): WorkspaceE2EError =>
-  workspaceE2EError(`${operation} failed`, { operation });
-
-/**
- * Runs one browser or preview-HTTP operation and maps every failure onto a
- * reporter-safe error. Only code-owned assertion failures keep their messages;
- * every other cause is discarded.
- */
-export const sanitizedBrowserOperation = <A>(
-  operation: string,
-  run: (signal: AbortSignal) => Promise<A>
-): Effect.Effect<A, WorkspaceE2EError> =>
-  Effect.tryPromise({
-    catch: (cause): WorkspaceE2EError =>
-      cause instanceof AssertionError
-        ? workspaceE2EError(`${operation} failed: ${cause.message}`, {
-            operation,
-          })
-        : sanitizedBrowserFailure(operation)(),
-    try: run,
-  });
-
-/**
- * Opens an isolated, signed-out admin browser context for the preview origin.
- * The case signs it in as a seeded synthetic administrator
- * (`e2e/administrators/identities.ts`) before it opens an admin page.
- */
-export const openAdminBrowserPage = async (input: {
-  readonly baseURL: string | undefined;
-  readonly browser: Browser;
-  readonly caseName: string;
-}): Promise<{
-  readonly context: BrowserContext;
-  readonly origin: string;
-  readonly page: Page;
-}> => {
-  const { baseURL } = input;
-  if (!baseURL) {
-    throw workspaceE2EError(
-      `Playwright baseURL is required for the ${input.caseName} case`,
-      { operation: `start the ${input.caseName} case` }
-    );
-  }
-  const origin = new URL(baseURL).origin;
-  let context: BrowserContext;
-  try {
-    context = await input.browser.newContext({
+export const openAdminSession = Effect.fn("openAdminSession")(
+  function* (input: {
+    readonly baseURL: string | undefined;
+    readonly browser: Browser;
+    readonly caseName: string;
+  }) {
+    const { baseURL } = input;
+    if (!baseURL) {
+      return yield* workspaceE2EError(
+        `Playwright baseURL is required for the ${input.caseName} case`,
+        { operation: `start the ${input.caseName} case` }
+      );
+    }
+    const session = yield* E2EBrowserSession.open({
       baseURL,
-      viewport: { height: 900, width: 1440 },
+      browser: input.browser,
+      id: input.caseName,
+      recordHar: false,
     });
-  } catch {
-    throw sanitizedBrowserFailure(
-      `start the ${input.caseName} browser context`
-    )();
+    return { origin: new URL(baseURL).origin, session };
   }
-  try {
-    return { context, origin, page: await context.newPage() };
-  } catch {
-    await context.close().catch(() => undefined);
-    throw sanitizedBrowserFailure(`open the ${input.caseName} page`)();
-  }
-};
-
-export const primePreviewBypass = (input: {
-  readonly bypassSecret: string | undefined;
-  readonly context: BrowserContext;
-  readonly origin: string;
-}) =>
-  sanitizedBrowserOperation("prime the Vercel protection bypass cookie", () =>
-    primePreviewAccess(input.context, input.origin, input.bypassSecret)
-  );
+);
 
 export type ActionResponseOutcome =
   | { readonly kind: "responded" }
@@ -149,7 +100,7 @@ type ServerActionRequest = Pick<
 /**
  * Retains the next Server Action request the page sends to `origin`. The wait
  * has no timeout, so the submission settles as undispatched only when the page
- * closes without sending one. Close the browser context before awaiting it:
+ * closes without sending one. Close the browser session before awaiting it:
  * after the close, no late request can leave the browser.
  */
 export const retainServerActionSubmission = (

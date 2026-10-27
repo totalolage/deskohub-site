@@ -1,5 +1,6 @@
 import type { BrowserContext } from "@playwright/test";
 import { isWorkspaceDeploymentOrigin } from "./config";
+import { workspaceE2EError, workspaceE2ETimeoutError } from "./errors";
 import { workspaceE2ETimeouts } from "./timeouts";
 
 type PreviewAccessCookie = Parameters<BrowserContext["addCookies"]>[0][number];
@@ -12,8 +13,9 @@ type PreviewAccessCookie = Parameters<BrowserContext["addCookies"]>[0][number];
  *
  * The secret is exchanged for Vercel's bypass cookie with a request outside
  * Playwright: Playwright records request headers in its traces and echoes
- * them in its error messages. Failures report only the HTTP status, never
- * the request or its cause.
+ * them in its error messages. Failures are `WorkspaceE2EError`s that report
+ * only the HTTP status, never the request or its cause; a request that runs
+ * out of `timeoutMs` is a timeout. Aborting `signal` stops the request.
  */
 export const primePreviewAccess = async (
   context: Pick<BrowserContext, "addCookies">,
@@ -21,6 +23,7 @@ export const primePreviewAccess = async (
   bypassSecret: string | undefined,
   options: {
     readonly fetch?: typeof fetch;
+    readonly signal?: AbortSignal;
     readonly timeoutMs?: number;
   } = {}
 ): Promise<void> => {
@@ -28,6 +31,9 @@ export const primePreviewAccess = async (
   const { origin } = new URL(baseUrl);
   if (!isWorkspaceDeploymentOrigin(origin)) return;
 
+  const timeout = AbortSignal.timeout(
+    options.timeoutMs ?? workspaceE2ETimeouts.browserAction
+  );
   let response: Response;
   try {
     response = await (options.fetch ?? fetch)(new URL("/favicon.svg", origin), {
@@ -36,18 +42,26 @@ export const primePreviewAccess = async (
         "x-vercel-set-bypass-cookie": "true",
       },
       redirect: "manual",
-      signal: AbortSignal.timeout(
-        options.timeoutMs ?? workspaceE2ETimeouts.browserAction
-      ),
+      signal: options.signal
+        ? AbortSignal.any([timeout, options.signal])
+        : timeout,
     });
   } catch {
-    throw new Error("The Vercel protection bypass request failed");
+    throw timeout.aborted
+      ? workspaceE2ETimeoutError(
+          "The Vercel protection bypass request timed out",
+          { operation: previewAccessOperation }
+        )
+      : workspaceE2EError("The Vercel protection bypass request failed", {
+          operation: previewAccessOperation,
+        });
   }
   await response.body?.cancel();
   // Vercel sets the cookie on a redirect back to the requested path.
   if (!(response.ok || response.status === 307)) {
-    throw new Error(
-      `The Vercel protection bypass probe failed with ${response.status}`
+    throw workspaceE2EError(
+      `The Vercel protection bypass probe failed with ${response.status}`,
+      { operation: previewAccessOperation }
     );
   }
 
@@ -70,6 +84,8 @@ export const enablePreviewAccess = (
     baseURL,
     process.env.VERCEL_AUTOMATION_BYPASS_SECRET
   );
+
+const previewAccessOperation = "prime preview access";
 
 const toPreviewAccessCookie = (
   header: string,

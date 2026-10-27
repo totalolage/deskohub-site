@@ -10,6 +10,7 @@ import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { AccountRole } from "@/features/administrators/account-role";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { setBrowserCookie } from "../browser";
+import type { E2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EEnvironment } from "../e2e-env";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
@@ -225,6 +226,36 @@ export const signInWorkspaceE2ESyntheticAccount = ({
   });
 
 /**
+ * Signs an E2E browser session in as one journaled synthetic account, with
+ * the same cookie `signInWorkspaceE2ESyntheticBrowserContext` sets.
+ */
+export const signInWorkspaceE2ESyntheticBrowserSession = ({
+  accountId,
+  origin,
+  secret,
+  session,
+}: {
+  readonly accountId: string;
+  readonly origin: string;
+  readonly secret: WorkspaceE2ESessionSigningSecret;
+  readonly session: E2EBrowserSession;
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const cookie = workspaceE2ESessionCookieFor(origin);
+    const value = yield* issueWorkspaceE2ESyntheticSession({
+      accountId,
+      secret,
+    });
+    yield* session
+      .use(syntheticSessionCookieOperation, (page) =>
+        page
+          .context()
+          .addCookies([toSyntheticSessionCookie(cookie, origin, value)])
+      )
+      .pipe(Effect.mapError(syntheticSessionCookieFailure));
+  });
+
+/**
  * Signs a Playwright browser context in as one journaled synthetic account:
  * the seeded session's HTTP-only, Lax cookie is added for the target origin
  * only, Secure on a preview.
@@ -248,20 +279,29 @@ export const signInWorkspaceE2ESyntheticBrowserContext = ({
     });
     yield* Effect.tryPromise({
       // Playwright causes can echo the cookie, so the cause is discarded.
-      catch: () =>
-        workspaceE2EError("set synthetic account session cookie failed", {
-          operation: "set synthetic account session cookie",
-        }),
+      catch: syntheticSessionCookieFailure,
       try: () =>
-        context.addCookies([
-          {
-            httpOnly: true,
-            name: cookie.name,
-            sameSite: "Lax",
-            secure: cookie.secure,
-            url: origin,
-            value,
-          },
-        ]),
+        context.addCookies([toSyntheticSessionCookie(cookie, origin, value)]),
     });
   });
+
+const syntheticSessionCookieOperation = "set synthetic account session cookie";
+
+const syntheticSessionCookieFailure = () =>
+  workspaceE2EError(`${syntheticSessionCookieOperation} failed`, {
+    operation: syntheticSessionCookieOperation,
+  });
+
+/** The seeded session's HTTP-only, Lax cookie for one origin. */
+const toSyntheticSessionCookie = (
+  cookie: ReturnType<typeof workspaceE2ESessionCookieFor>,
+  origin: string,
+  value: string
+): Parameters<BrowserContext["addCookies"]>[0][number] => ({
+  httpOnly: true,
+  name: cookie.name,
+  sameSite: "Lax",
+  secure: cookie.secure,
+  url: origin,
+  value,
+});
