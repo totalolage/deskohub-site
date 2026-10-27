@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Effect, Layer } from "effect";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import {
@@ -8,7 +9,10 @@ import {
   unavailableQueue,
 } from "@/shared/backend/queue/memory-queue.test-utils";
 import type { QueuePublisher } from "@/shared/backend/queue/queue-publisher";
-import { LatePaymentRecoveryQueueService } from "./late-payment-recovery-queue.service";
+import {
+  LatePaymentRecoveryQueueService,
+  latePaymentRecoveryTopic,
+} from "./late-payment-recovery-queue.service";
 
 const paymentAttemptId = "attempt-id" as PaymentAttemptId;
 
@@ -63,5 +67,18 @@ describe("late-payment recovery queue", () => {
     expect(result).toMatchObject({
       failure: { _tag: "LatePaymentRecoveryQueueError", cause },
     });
+  });
+
+  test("decodes only well-formed messages", () => {
+    for (const message of [{}, { paymentAttemptId: "" }]) {
+      expect(
+        decodeStandardSchema(latePaymentRecoveryTopic.message, message)
+      ).toBeUndefined();
+    }
+    expect(
+      decodeStandardSchema(latePaymentRecoveryTopic.message, {
+        paymentAttemptId,
+      })
+    ).toEqual({ paymentAttemptId });
   });
 });

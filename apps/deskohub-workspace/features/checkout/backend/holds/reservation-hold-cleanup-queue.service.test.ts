@@ -2,7 +2,7 @@ import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Logger } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "./reservation-hold-cleanup.service";
@@ -146,6 +146,13 @@ describe("ReservationHoldCleanupScheduleService", () => {
       "@/shared/backend/queue/memory-queue.test-utils"
     );
     const queue = makeMemoryQueue();
+    const logs: Array<{ message: unknown; fields: unknown }> = [];
+    const captureLogs = Logger.layer([
+      Logger.make(({ message }) => {
+        const [text, fields] = Array.isArray(message) ? message : [message];
+        logs.push({ message: text, fields });
+      }),
+    ]);
     const enqueue = () =>
       ReservationHoldCleanupScheduleService.use((service) =>
         service.enqueueCleanup({
@@ -154,8 +161,11 @@ describe("ReservationHoldCleanupScheduleService", () => {
         })
       ).pipe(
         Effect.provide(
-          ReservationHoldCleanupScheduleService.Default.pipe(
-            Layer.provide(queue.layer)
+          Layer.mergeAll(
+            ReservationHoldCleanupScheduleService.Default.pipe(
+              Layer.provide(queue.layer)
+            ),
+            captureLogs
           )
         ),
         Effect.runPromise
@@ -165,6 +175,41 @@ describe("ReservationHoldCleanupScheduleService", () => {
     await enqueue();
     await enqueue();
     expect(queue.published()).toHaveLength(1);
+    expect(logs.map(({ message }) => message)).toEqual([
+      "Reservation hold cleanup enqueue started",
+      "Reservation hold cleanup enqueued",
+      "Reservation hold cleanup enqueue started",
+      "Reservation hold cleanup was already enqueued",
+    ]);
+    // The logged message keeps its pre-topic shape.
+    expect(logs[0]?.fields).toEqual({
+      message: {
+        topic: "workspace-reservation-hold-cleanup",
+        payload: duePayload,
+        options: queue.published()[0]?.options,
+      },
+    });
+  });
+
+  test("decodes only well-formed messages", async () => {
+    const { reservationHoldCleanupTopic } = await import(
+      "./reservation-hold-cleanup-queue.service"
+    );
+    const { decodeStandardSchema } = await import("@deskohub/standard-schema");
+
+    for (const message of [
+      { ...duePayload, schemaVersion: 2 },
+      { ...duePayload, orderId: "" },
+      { ...duePayload, reservationHoldExpiresAtIso: "tomorrow" },
+      { schemaVersion: 1, orderId: "order-id" },
+    ]) {
+      expect(
+        decodeStandardSchema(reservationHoldCleanupTopic.message, message)
+      ).toBeUndefined();
+    }
+    expect(
+      decodeStandardSchema(reservationHoldCleanupTopic.message, duePayload)
+    ).toEqual(duePayload);
   });
 
   test("ignores not-due, changed-expiry, and completed reservations", async () => {

@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Effect, Layer } from "effect";
 import {
   makeMemoryQueue,
@@ -8,7 +9,10 @@ import {
 } from "@/shared/backend/queue/memory-queue.test-utils";
 import type { QueuePublisher } from "@/shared/backend/queue/queue-publisher";
 import type { CampaignSendId } from "../campaign-identifiers";
-import { CampaignSendQueueService } from "./campaign-send-queue.service";
+import {
+  CampaignSendQueueService,
+  campaignSendTopic,
+} from "./campaign-send-queue.service";
 
 const sendId = "send-1" as CampaignSendId;
 
@@ -61,5 +65,24 @@ describe("campaign send queue", () => {
         cause: { _tag: "QueueMessageSendError" },
       },
     });
+  });
+
+  test("decodes only well-formed messages", () => {
+    for (const message of [
+      { sendId: "", deliveryAttempt: 1 },
+      { sendId, deliveryAttempt: 0 },
+      { sendId, deliveryAttempt: 1.5 },
+      { sendId },
+    ]) {
+      expect(
+        decodeStandardSchema(campaignSendTopic.message, message)
+      ).toBeUndefined();
+    }
+    expect(
+      decodeStandardSchema(campaignSendTopic.message, {
+        sendId,
+        deliveryAttempt: 1,
+      })
+    ).toEqual({ sendId, deliveryAttempt: 1 });
   });
 });

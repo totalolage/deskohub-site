@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
+import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Effect, Layer, Result } from "effect";
 import {
   type PaidFulfillmentProgress,
@@ -17,7 +18,10 @@ import {
   WorkspacePaidFulfillmentError,
   WorkspacePaidFulfillmentService,
 } from "./paid-fulfillment.service";
-import { PaidFulfillmentQueueService } from "./paid-fulfillment-queue.service";
+import {
+  PaidFulfillmentQueueService,
+  paidFulfillmentTopic,
+} from "./paid-fulfillment-queue.service";
 import {
   paidFulfillmentRedelivery,
   processPaidFulfillmentMessage,
@@ -379,5 +383,16 @@ describe("paid fulfillment queue", () => {
       { orderId: "stalled-b" },
     ]);
     expect(result).toEqual({ attempted: 2, failed: 1 });
+  });
+
+  test("decodes only well-formed messages", () => {
+    for (const message of [{}, { orderId: "" }]) {
+      expect(
+        decodeStandardSchema(paidFulfillmentTopic.message, message)
+      ).toBeUndefined();
+    }
+    expect(
+      decodeStandardSchema(paidFulfillmentTopic.message, { orderId })
+    ).toEqual({ orderId });
   });
 });

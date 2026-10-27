@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Effect, Layer } from "effect";
 import {
   makeMemoryQueue,
@@ -8,7 +9,10 @@ import {
 } from "@/shared/backend/queue/memory-queue.test-utils";
 import type { QueuePublisher } from "@/shared/backend/queue/queue-publisher";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
-import { AutomationUnitQueue } from "./automation-unit-queue.service";
+import {
+  AutomationUnitQueue,
+  automationUnitTopic,
+} from "./automation-unit-queue.service";
 import type { EnqueuedAutomationUnit } from "./automation-unit-slots";
 
 const unitId = "unit-1" as AutomationWorkUnitId;
@@ -71,5 +75,16 @@ describe("automation unit queue", () => {
     expect(result).toMatchObject({
       failure: { _tag: "QueueMessageSendError" },
     });
+  });
+
+  test("decodes only well-formed messages", () => {
+    for (const message of [{}, { unitId: "" }, { unitId: 1 }]) {
+      expect(
+        decodeStandardSchema(automationUnitTopic.message, message)
+      ).toBeUndefined();
+    }
+    expect(
+      decodeStandardSchema(automationUnitTopic.message, { unitId })
+    ).toEqual({ unitId });
   });
 });

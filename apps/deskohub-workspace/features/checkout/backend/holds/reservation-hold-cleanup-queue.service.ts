@@ -123,17 +123,22 @@ export class ReservationHoldCleanupScheduleService extends Context.Service<
         enqueueCleanup: Effect.fn(
           "reservationHoldCleanupSchedule.enqueueCleanup"
         )(function* (input) {
-          const message = reservationHoldCleanupTopic.publication({
-            ...input,
-            now: Temporal.Now.instant(),
-          });
+          const schedule = { ...input, now: Temporal.Now.instant() };
+          const publication = reservationHoldCleanupTopic.publication(schedule);
+          // Keeps the log fields these lines had before the topic definition.
+          const message = {
+            topic: publication.topic,
+            payload: publication.message,
+            options: publication.options,
+          };
           yield* Effect.logInfo("Reservation hold cleanup enqueue started", {
             message,
           });
 
-          const outcome = yield* publisher
-            .publish(message)
+          const outcome = yield* reservationHoldCleanupTopic
+            .publish(schedule)
             .pipe(
+              Effect.provideService(QueuePublisher, publisher),
               Effect.mapError((error) =>
                 ReservationHoldCleanupScheduleError.fromError(
                   "Reservation hold cleanup could not be enqueued."

@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import * as vercelQueue from "@vercel/queue";
 import { Data, Duration, Effect, Schema } from "effect";
 
@@ -138,12 +138,21 @@ describe("defineQueueTopic", () => {
 
   test("acknowledges a message that doesn't decode without consuming it", async () => {
     const handle = mock(() => Effect.succeed("consumed"));
+    const warn = spyOn(console, "warn");
 
     // Resolving acknowledges the message.
     for (const message of [{ parcelId: "" }, {}, "p-1", null]) {
       await routeFor(handle).handler(message, metadata);
     }
     expect(handle).not.toHaveBeenCalled();
+    expect(
+      warn.mock.calls.filter(([line]) =>
+        String(line).includes(
+          'message="Parcel queue message ignored: invalid payload"'
+        )
+      )
+    ).toHaveLength(4);
+    warn.mockRestore();
   });
 
   test("redelivers a failed delivery as the consumer classifies it", async () => {

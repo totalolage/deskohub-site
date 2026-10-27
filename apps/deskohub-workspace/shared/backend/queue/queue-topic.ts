@@ -30,7 +30,11 @@ export interface QueueTopic<
   Message extends StandardSchemaV1,
 > {
   readonly topic: Topic;
-  readonly message: Message;
+  /** Decodes the topic's messages. */
+  readonly message: StandardSchemaV1<
+    StandardSchemaV1.InferInput<Message>,
+    StandardSchemaV1.InferOutput<Message>
+  >;
   /** The message, key, and options a publish of `input` sends. */
   readonly publication: (
     input: Input
