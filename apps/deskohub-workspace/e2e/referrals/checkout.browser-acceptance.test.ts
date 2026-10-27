@@ -645,6 +645,46 @@ test.skipIf(!chromiumAvailable)(
   }
 );
 
+test.skipIf(!chromiumAvailable)(
+  "leaves a stalled discount read to the step deadline, which times it out",
+  async () => {
+    // The read has no deadline of its own: every caller's step is shorter
+    // than the argv evaluation's former bound, so the step times it out.
+    const stalledRead = `<script>
+      const querySelector = document.querySelector.bind(document);
+      document.querySelector = (candidate) => {
+        if (candidate === "[data-checkout-discount-details]") {
+          const until = Date.now() + 4000;
+          while (Date.now() < until) {}
+        }
+        return querySelector(candidate);
+      };
+    </script>`;
+
+    expect(
+      classify(
+        await runCheckoutStep(
+          openCheckout(
+            () =>
+              `${discountDetails({ voucher: "after-referrer" })}${stalledRead}`
+          ),
+          (session) =>
+            assertReferrerDiscountMatchesRemainingSubtotal({
+              locale,
+              requireVoucherAfterReferrer: true,
+              session,
+            }),
+          { stepTimeoutMs: 1000 }
+        )
+      )
+    ).toEqual({
+      annotations: [timedOutAnnotation],
+      failures: [],
+      succeeded: false,
+    });
+  }
+);
+
 const rejectionError = "referral-already-attributed";
 const rejectedPayUrl = `${origin}/${locale}/checkout/pay?payState=rejected&orderId=${orderId}&discountCodeError=${rejectionError}`;
 const rejectedCode = "RFLSYNTHETICREJECT";
