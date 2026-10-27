@@ -45,4 +45,17 @@ test("runs Workspace and dhw CI for stacked pull requests", () => {
   );
   expect(migrationCount?.run).toContain('"$BASE_SHA"');
   expect(migrationCount?.run).not.toContain("$" + "{{");
+
+  const releaseIntent = findStepByName(dhw, "Require a releasable CLI commit");
+  expect(releaseIntent?.run).toContain(
+    String.raw`releasable_files="$(grep -Ev '\.(test\.ts|golden\.json)$' <<<"$changed_files" || true)"`
+  );
+  const releaseChecks =
+    releaseIntent?.run
+      .split("\n")
+      .filter(
+        (line) =>
+          line.includes("grep -Eq") && line.includes('<<<"$releasable_files"')
+      ) ?? [];
+  expect(releaseChecks).toHaveLength(3);
 });
