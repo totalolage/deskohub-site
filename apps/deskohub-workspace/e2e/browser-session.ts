@@ -25,6 +25,7 @@ import {
 } from "./errors";
 import { withinWorkspaceE2EDeadline } from "./polling";
 import { redact, redactJsonValue } from "./redaction";
+import { workspaceE2ETimeouts } from "./timeouts";
 
 /** What the session captured from every page of its context, redacted. */
 type E2EBrowserDiagnostics = {
@@ -331,10 +332,9 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
             signal.addEventListener(
               "abort",
               () => {
-                probe.then(
-                  (response) => response.dispose(),
-                  () => undefined
-                );
+                probe
+                  .then((response) => response.dispose())
+                  .catch(() => undefined);
               },
               { once: true }
             );
@@ -354,7 +354,12 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
                 )
             ).pipe(
               Effect.ensuring(
-                Effect.tryPromise(() => response.dispose()).pipe(Effect.ignore)
+                Effect.tryPromise(() => response.dispose()).pipe(
+                  Effect.timeout(
+                    `${workspaceE2ETimeouts.browserResponseDisposal} millis`
+                  ),
+                  Effect.ignore
+                )
               )
             )
           )

@@ -5,6 +5,11 @@ import { runUntracedE2EEffect } from "./effect-edge";
 // What `Effect.runPromise` rejects an interrupted run with.
 const interruptedRejection = Cause.squash(Cause.interrupt());
 
+// Settles with `promise`, or resolves "still pending" if it hasn't settled
+// within a second.
+const promptly = <A>(promise: Promise<A>) =>
+  Promise.race([promise, Bun.sleep(1_000).then(() => "still pending")]);
+
 describe("E2E Effect edge", () => {
   test("settles a run like Effect.runPromise", async () => {
     const failure = { reason: "typed failure" };
@@ -54,5 +59,82 @@ describe("E2E Effect edge", () => {
     during.abort(reason);
 
     await expect(stopped).rejects.toBe(reason);
+  });
+
+  test("rejects an already aborted signal's reason as is", async () => {
+    const defaulted = new AbortController();
+    defaulted.abort();
+    const withNull = new AbortController();
+    withNull.abort(null);
+
+    await expect(
+      runUntracedE2EEffect(Effect.void, { signal: defaulted.signal })
+    ).rejects.toBe(defaulted.signal.reason);
+    expect(defaulted.signal.reason).toBeInstanceOf(DOMException);
+    expect(defaulted.signal.reason.name).toBe("AbortError");
+    await expect(
+      runUntracedE2EEffect(Effect.void, { signal: withNull.signal })
+    ).rejects.toBeNull();
+  });
+
+  test("rejects a mid-run abort without a reason with an AbortError", async () => {
+    const defaulted = new AbortController();
+    const defaultedRun = runUntracedE2EEffect(Effect.never, {
+      signal: defaulted.signal,
+    });
+    defaulted.abort();
+
+    await expect(defaultedRun).rejects.toBe(defaulted.signal.reason);
+
+    const withNull = new AbortController();
+    const withNullRun = runUntracedE2EEffect(Effect.never, {
+      signal: withNull.signal,
+    });
+    withNull.abort(null);
+    const rejection = await withNullRun.catch((cause: unknown) => cause);
+
+    expect(rejection).toBeInstanceOf(DOMException);
+    expect((rejection as DOMException).name).toBe("AbortError");
+  });
+
+  test("rejects as soon as its signal aborts, leaving finalizers in the background", async () => {
+    const reason = new Error("case stopped");
+    const stuck = new AbortController();
+    const stuckRun = runUntracedE2EEffect(
+      Effect.never.pipe(Effect.ensuring(Effect.never)),
+      { signal: stuck.signal }
+    );
+    stuck.abort(reason);
+
+    await expect(promptly(stuckRun)).rejects.toBe(reason);
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (cause: unknown) => unhandled.push(cause);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const release = Promise.withResolvers<void>();
+      const finalized = Promise.withResolvers<void>();
+      const slow = new AbortController();
+      const slowRun = runUntracedE2EEffect(
+        Effect.never.pipe(
+          Effect.ensuring(
+            Effect.promise(() => release.promise).pipe(
+              Effect.andThen(Effect.die("finalizer failed")),
+              Effect.ensuring(Effect.sync(() => finalized.resolve()))
+            )
+          )
+        ),
+        { signal: slow.signal }
+      );
+      slow.abort(reason);
+
+      await expect(promptly(slowRun)).rejects.toBe(reason);
+      release.resolve();
+      await finalized.promise;
+      await Bun.sleep(0);
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
   });
 });
