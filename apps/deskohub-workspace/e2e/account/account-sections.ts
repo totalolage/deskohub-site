@@ -295,7 +295,7 @@ export const selectAccountSectionInSession = (
       );
     }
 
-    yield* session.use("click browser element", (page) =>
+    yield* session.use(`click account ${section} section link`, (page) =>
       page
         .locator(
           desktop

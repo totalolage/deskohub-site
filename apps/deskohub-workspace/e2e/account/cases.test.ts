@@ -9,9 +9,13 @@ import {
   readAuthCallbackReturnTo,
   signInCallbackReturnParam,
 } from "@/features/account/routes";
-import { accountSectionLabel } from "@/features/account/sections";
+import {
+  type AccountSection,
+  accountSectionLabel,
+} from "@/features/account/sections";
 import { m } from "@/features/i18n";
 import { referralCodeCookieName } from "@/features/referrals/referral-code-cookie";
+import type { E2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
 import type { DatasourceConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -1872,12 +1876,6 @@ class FakeBrowser {
       }
       return;
     }
-    if (description === "account billing panel hydration") {
-      if (!condition.includes("[data-screen='profile-screen']")) {
-        throw new Error("the billing panel hydration anchor is wrong");
-      }
-      return;
-    }
     if (description === "account billing section") {
       if (this.selectedSection !== "billing") {
         throw new Error("the billing section is not selected");
@@ -2037,6 +2035,62 @@ const requireExternal = () => {
 let assistantBrowser: FakeBrowser | undefined;
 const assistantSession = `${session}-assistant`;
 
+/**
+ * The lane's browser session over the fake browser. It answers what the
+ * cases read through the session: cookie descriptions and the account
+ * section selection's steps, by their labels.
+ */
+const fakeLaneBrowserSession = (): E2EBrowserSession => {
+  const unexpected = (label: string) =>
+    Effect.die(new Error(`the account case used the session for ${label}`));
+  const selectionStep =
+    /^(?:wait for account (?<hydrated>[a-z]+) panel hydration|click account (?<clicked>[a-z]+) section link|wait for account (?<selected>[a-z]+) section)$/;
+  return {
+    activate: () => unexpected("activate"),
+    clearDiagnostics: () => unexpected("clearDiagnostics"),
+    close: () => unexpected("close"),
+    describeCookie: ({ name, value: expected }) =>
+      Effect.sync(() => {
+        const value = requireBrowser().referralCookie;
+        return name !== referralCodeCookieName || value === undefined
+          ? { present: false as const }
+          : {
+              httpOnly: false,
+              lifetimeDays: 30,
+              matches: expected === undefined ? null : expected === value,
+              path: "/",
+              present: true as const,
+              sameSite: "Lax" as const,
+              secure: true,
+            };
+      }),
+    diagnostics: unexpected("diagnostics"),
+    evaluate: (label: string) =>
+      label === "read account navigation viewport mode"
+        ? Effect.sync(
+            () =>
+              (requireBrowser().eval("window.matchMedia") === "true") as never
+          )
+        : unexpected(label),
+    primePreviewAccess: () => unexpected("primePreviewAccess"),
+    setSessionCookie: () => unexpected("setSessionCookie"),
+    use: (label: string) => {
+      const step = selectionStep.exec(label)?.groups;
+      if (!step) return unexpected(label);
+      return Effect.sync(() => {
+        const browser = requireBrowser();
+        if (step.clicked)
+          browser.click(
+            `nav a:has-text(${JSON.stringify(accountSectionLabel(step.clicked as AccountSection, "en-US"))})`
+          );
+        if (step.selected)
+          browser.waitForCondition(`account ${step.selected} section`, "");
+        return undefined as never;
+      });
+    },
+  };
+};
+
 const requireBrowser = (browserSession = session) => {
   if (!activeBrowser) throw new Error("synthetic browser is not installed");
   if (browserSession === session) return activeBrowser;
@@ -2116,25 +2170,6 @@ mock.module("../browser", () => ({
     Effect.sync(() => requireBrowser(browserSession).press(key)),
   readBrowserText: (_run: Runner, browserSession: string) =>
     Effect.sync(() => requireBrowser(browserSession).text()),
-  readBrowserCookie: (
-    _run: Runner,
-    browserSession: string,
-    query: { readonly name: string; readonly value?: string }
-  ) =>
-    Effect.sync(() => {
-      const value = requireBrowser(browserSession).referralCookie;
-      return query.name !== referralCodeCookieName || value === undefined
-        ? { present: false as const }
-        : {
-            httpOnly: false,
-            lifetimeDays: 30,
-            matches: query.value === undefined ? null : query.value === value,
-            path: "/",
-            present: true as const,
-            sameSite: "Lax",
-            secure: true,
-          };
-    }),
   readBrowserUrl: (_run: Runner, browserSession: string) =>
     Effect.sync(() => requireBrowser(browserSession).url()),
   waitForBrowserCondition: (
@@ -2331,9 +2366,19 @@ const makeScenario = (
       return realBudget.run(operation, effect);
     },
   };
-  const run: Runner = async () => {
-    throw new Error("the account case bypassed the mocked browser boundary");
-  };
+  const run: Runner = Object.assign(
+    async (): Promise<BrowserCommandResult> => {
+      throw new Error("the account case bypassed the mocked browser boundary");
+    },
+    {
+      session: (id: string) =>
+        id === session
+          ? Effect.succeed(fakeLaneBrowserSession())
+          : Effect.die(
+              new Error("the account case bridged an unknown session")
+            ),
+    }
+  );
   const previewLogs: WorkspaceE2EPreviewLogs = {
     listSyntheticLogEntryIds: (request) =>
       Effect.sync(() => external.listMessageIds(request.recipient)),

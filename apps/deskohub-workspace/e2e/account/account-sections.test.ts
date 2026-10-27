@@ -1,6 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { Effect } from "effect";
 import { createElement, useState } from "react";
 import { AccountShell } from "@/features/account/components/shell/account-shell";
 import { getAccountSectionPath } from "@/features/account/routes";
@@ -9,12 +8,10 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import type { Runner } from "../runtime";
 import {
   type AccountSectionPage,
   accountSectionLandmarks,
   selectAccountSection,
-  selectAccountSectionInRunner,
 } from "./account-sections";
 
 const sections = [
@@ -257,53 +254,6 @@ const setResponsiveNavigationVisibility = (
   }
 };
 
-const playwrightTextSelector = /^(?<base>.+):has-text\((?<text>".*")\)$/;
-
-const queryRunnerClickTarget = (selector: string): HTMLElement => {
-  const groups = playwrightTextSelector.exec(selector)?.groups;
-  const text =
-    groups?.text === undefined ? undefined : String(JSON.parse(groups.text));
-  const target = Array.from(
-    document.querySelectorAll<HTMLElement>(groups?.base ?? selector)
-  ).find(
-    (element) => text === undefined || element.textContent?.includes(text)
-  );
-  if (target === undefined)
-    throw new Error("fake runner click target was not found");
-  return target;
-};
-
-/** Runs browser commands against the rendered AccountShell. */
-const makeDomRunner = (desktop: boolean) => {
-  const commands: string[] = [];
-  const clicked: HTMLElement[] = [];
-  const run: Runner = async (_command, args) => {
-    const [command, target] = args.slice(2);
-    if (command === undefined) throw new Error("fake runner command missing");
-    commands.push(command);
-    if (command === "eval") {
-      return { exitCode: 0, stderr: "", stdout: String(desktop) };
-    }
-    if (command === "click" && target !== undefined) {
-      const element = queryRunnerClickTarget(target);
-      clicked.push(element);
-      fireEvent.click(element);
-      return { exitCode: 0, stderr: "", stdout: "" };
-    }
-    const condition = args[4];
-    if (command === "wait" && condition !== undefined) {
-      const satisfied = new Function(`return ${condition};`)() === true;
-      return {
-        exitCode: satisfied ? 0 : 1,
-        stderr: satisfied ? "" : "fake browser condition was not met",
-        stdout: "",
-      };
-    }
-    throw new Error("fake runner received an unexpected command");
-  };
-  return { clicked, commands, run };
-};
-
 beforeAll(registerWorkspaceComponentTestEnv);
 afterEach(cleanup);
 afterAll(unregisterWorkspaceComponentTestEnv);
@@ -504,35 +454,6 @@ test("waits for the rendered section link handler before clicking it", async () 
   ]);
   expect(billingLink.getAttribute("aria-current")).toBe("page");
 });
-
-test.each([
-  { desktop: true, navigation: "desktop" },
-  { desktop: false, navigation: "mobile" },
-] as const)(
-  "clicks the $navigation section link after panel hydration in the Runner adapter",
-  async ({ desktop, navigation }) => {
-    const { clicked, commands, run } = makeDomRunner(desktop);
-    render(createElement(AccountShellHarness));
-
-    await Effect.runPromise(
-      selectAccountSectionInRunner(run, "account-sections-test", "billing")
-    );
-
-    expect(commands).toEqual(["eval", "wait", "click", "wait"]);
-    const [link] = clicked;
-    expect(
-      link?.closest("[data-account-mobile-navigation]") === null
-        ? "desktop"
-        : "mobile"
-    ).toBe(navigation);
-    expect(link?.getAttribute("aria-current")).toBe("page");
-    expect(
-      document
-        .querySelector(accountSectionLandmarks.billing)
-        ?.closest("[hidden]")
-    ).toBeNull();
-  }
-);
 
 test("does not click a section before its streamed panel is hydrated", async () => {
   const calls: string[] = [];
