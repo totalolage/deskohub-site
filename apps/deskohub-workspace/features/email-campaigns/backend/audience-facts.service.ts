@@ -7,17 +7,12 @@ import {
   DotyposService,
 } from "@deskohub/dotypos";
 import type { AudienceAttributeOfKind } from "@deskohub/workspace-admin-api";
+import { Array as Arr, Context, Effect, Layer, Match, Option } from "effect";
+import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import {
-  Array as Arr,
-  Context,
-  Effect,
-  Layer,
-  Match,
-  Option,
-  Schema,
-} from "effect";
-import type { ReservationVisit } from "@/features/reservation/backend/reservation-visits.service";
-import { reservationIntervalSchema } from "@/features/reservation/reservation-interval";
+  InvalidDotyposReservationInterval,
+  type ReservationVisit,
+} from "@/features/reservation/backend/reservation-visits.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import {
   type AudienceCountRequest,
@@ -134,17 +129,21 @@ export const audienceDotyposReads = (
   };
 };
 
-const decodeInterval = Schema.decodeUnknownEffect(reservationIntervalSchema);
-
-/** The Dotypos start of a reservation, decoded through the interval schema. */
-const visitStart = (reservation: DotyposReservation) =>
-  decodeInterval({
-    startsAt: reservation.startDate,
-    endsAt: reservation.endDate,
-  }).pipe(
-    Effect.map(({ startsAt }) => Temporal.Instant.from(startsAt)),
-    Effect.mapError(CampaignRecipientResolutionError.dotypos)
-  );
+/** A visit's start; a visit without a readable interval fails the resolution. */
+const visitStart = (
+  reservation: DotyposReservation
+): Effect.Effect<Temporal.Instant, CampaignRecipientResolutionError> =>
+  Option.match(decodeBookedReservation(reservation).interval, {
+    onNone: () =>
+      Effect.fail(
+        CampaignRecipientResolutionError.dotypos(
+          new InvalidDotyposReservationInterval({
+            message: "Dotypos returned an invalid reservation interval",
+          })
+        )
+      ),
+    onSome: ({ startsAt }) => Effect.succeed(startsAt),
+  });
 
 /**
  * The exclusive end of a Dotypos start-date query. Dotypos filters have no

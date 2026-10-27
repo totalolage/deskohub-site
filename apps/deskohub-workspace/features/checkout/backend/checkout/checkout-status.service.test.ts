@@ -779,97 +779,110 @@ describe("CheckoutStatusService", () => {
     expect(JSON.stringify(status)).not.toContain("customer-access-code");
   });
 
-  test("reconstructs office dates and seats from Dotypos", async () => {
-    const { CheckoutStatusService } = await import("./checkout-status.service");
-    const { ProviderPaymentFinalizationService } = await import(
-      "../payment/provider-payment-finalization.service"
-    );
-    const { WorkspaceReservationRepository } = await import(
-      "@/features/reservation/backend/workspace-reservation.repository"
-    );
-    const { PaymentAttemptRepository } = await import(
-      "../repositories/payment-attempt.repository"
-    );
+  test.each([
+    ["readable", "3", 3],
+    ["unreadable", "abc", undefined],
+  ] as const)(
+    "reconstructs office dates and seats from Dotypos with %s seats",
+    async (_readability, seats, expectedSeats) => {
+      const { CheckoutStatusService } = await import(
+        "./checkout-status.service"
+      );
+      const { ProviderPaymentFinalizationService } = await import(
+        "../payment/provider-payment-finalization.service"
+      );
+      const { WorkspaceReservationRepository } = await import(
+        "@/features/reservation/backend/workspace-reservation.repository"
+      );
+      const { PaymentAttemptRepository } = await import(
+        "../repositories/payment-attempt.repository"
+      );
 
-    const reservations = {
-      findById: mock(() =>
-        Effect.succeed(
-          makeReservation({
-            reservationDetails: { kind: "office" },
-            productTier: null,
-            productCoffee: false,
-            productMonitorOption: null,
-            paymentState: "paid",
-            fulfillmentState: "fulfilled",
+      const reservations = {
+        findById: mock(() =>
+          Effect.succeed(
+            makeReservation({
+              reservationDetails: { kind: "office" },
+              productTier: null,
+              productCoffee: false,
+              productMonitorOption: null,
+              paymentState: "paid",
+              fulfillmentState: "fulfilled",
+            })
+          )
+        ),
+      };
+      const paymentAttempts = {
+        findDisplayableForReservation: mock(() =>
+          Effect.succeed(makePaymentAttempt())
+        ),
+      };
+      const finalization: ProviderPaymentFinalizationServiceType = {
+        finalizePendingProviderPayment: mock(() => Effect.die("not used")),
+      };
+      const dotypos = makeDotypos({
+        getReservationWithoutCustomer: mock(() =>
+          Effect.succeed({
+            id: "dotypos-reservation-id",
+            _customerId: "customer-id",
+            _tableId: "office-table",
+            startDate: "2026-06-11T22:00:00.000Z",
+            endDate: "2026-06-14T22:00:00.000Z",
+            seats,
+            status: "CONFIRMED",
           })
-        )
-      ),
-    };
-    const paymentAttempts = {
-      findDisplayableForReservation: mock(() =>
-        Effect.succeed(makePaymentAttempt())
-      ),
-    };
-    const finalization: ProviderPaymentFinalizationServiceType = {
-      finalizePendingProviderPayment: mock(() => Effect.die("not used")),
-    };
-    const dotypos = makeDotypos({
-      getReservationWithoutCustomer: mock(() =>
-        Effect.succeed({
-          id: "dotypos-reservation-id",
-          _customerId: "customer-id",
-          _tableId: "office-table",
-          startDate: "2026-06-11T22:00:00.000Z",
-          endDate: "2026-06-14T22:00:00.000Z",
-          seats: "3",
-          status: "CONFIRMED",
-        })
-      ),
-    });
-
-    const status = await Effect.gen(function* () {
-      const service = yield* CheckoutStatusService;
-      return yield* service.getStatus({
-        orderId: "reservation-provider-return",
-        returnOutcome: "success",
+        ),
       });
-    }).pipe(
-      Effect.provide(
-        CheckoutStatusService.Default.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.mock(ProviderPaymentFinalizationService, finalization),
-              Layer.mock(WorkspaceReservationRepository, reservations),
-              Layer.mock(PaymentAttemptRepository, paymentAttempts),
-              reviewSandboxLayer,
-              dotyposLayer(dotypos),
-              noLatePaymentLayer(),
-              SeatingMapFeatureFlagServiceMock({
-                isEnabled: Effect.succeed(false),
-              })
+
+      const status = await Effect.gen(function* () {
+        const service = yield* CheckoutStatusService;
+        return yield* service.getStatus({
+          orderId: "reservation-provider-return",
+          returnOutcome: "success",
+        });
+      }).pipe(
+        Effect.provide(
+          CheckoutStatusService.Default.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.mock(ProviderPaymentFinalizationService, finalization),
+                Layer.mock(WorkspaceReservationRepository, reservations),
+                Layer.mock(PaymentAttemptRepository, paymentAttempts),
+                reviewSandboxLayer,
+                dotyposLayer(dotypos),
+                noLatePaymentLayer(),
+                SeatingMapFeatureFlagServiceMock({
+                  isEnabled: Effect.succeed(false),
+                })
+              )
             )
           )
-        )
-      ),
-      Effect.runPromise
-    );
+        ),
+        Effect.runPromise
+      );
 
-    expect(status).toMatchObject({
-      kind: "office",
-      status: "fulfilled",
-      summary: {
+      expect(status.kind).toBe("office");
+      if (expectedSeats === undefined) {
+        expect(status.summary).toBeUndefined();
+        return;
+      }
+      expect(status).toMatchObject({
         kind: "office",
-        seats: 3,
-        price: { value: 55_000, exponent: 2, currency: "CZK" },
-      },
-    });
-    expect(status.summary?.reservedFrom.toString()).toBe(
-      "2026-06-11T22:00:00Z"
-    );
-    expect(status.summary?.reservedUntil.toString()).toBe(
-      "2026-06-14T22:00:00Z"
-    );
-  });
+        status: "fulfilled",
+        summary: {
+          kind: "office",
+          seats: expectedSeats,
+          price: { value: 55_000, exponent: 2, currency: "CZK" },
+        },
+      });
+      expect(status.summary?.reservedFrom.toString()).toBe(
+        "2026-06-11T22:00:00Z"
+      );
+      expect(status.summary?.reservedUntil.toString()).toBe(
+        "2026-06-14T22:00:00Z"
+      );
+    }
+  );
 
   describe("a paid reservation whose fulfillment has not completed", () => {
     const paidAt = testInstant("2026-06-01T10:00:00.000Z");
@@ -1422,30 +1435,40 @@ describe("CheckoutStatusService retry selection", () => {
     });
   });
 
-  test("rebuilds the booked office start date, day count, and seats", async () => {
-    const result = await getStatusFor({
-      reservation: makeReservation({
-        paymentState: "expired",
-        reservationDetails: { kind: "office", dayCount: 3, seats: 2 },
-      }),
-      dotypos: makeDotypos({
-        getReservationWithoutCustomer: mock(() =>
-          Effect.succeed({
-            id: "dotypos-reservation-id",
-            _customerId: "customer-id",
-            startDate: "2099-06-20T00:00:00.000+02:00",
-            endDate: "2099-06-23T00:00:00.000+02:00",
-            seats: "3",
-            status: "CANCELLED",
-          })
-        ),
-      }),
-    });
+  test.each([
+    ["readable", "3", "3"],
+    ["unreadable", "abc", "2"],
+  ] as const)(
+    "rebuilds the booked office start date, day count, and seats with %s Dotypos seats",
+    async (_readability, dotyposSeats, expectedSeats) => {
+      const result = await getStatusFor({
+        reservation: makeReservation({
+          paymentState: "expired",
+          reservationDetails: { kind: "office", dayCount: 3, seats: 2 },
+        }),
+        dotypos: makeDotypos({
+          getReservationWithoutCustomer: mock(() =>
+            Effect.succeed({
+              id: "dotypos-reservation-id",
+              _customerId: "customer-id",
+              startDate: "2099-06-20T00:00:00.000+02:00",
+              endDate: "2099-06-23T00:00:00.000+02:00",
+              seats: dotyposSeats,
+              status: "CANCELLED",
+            })
+          ),
+        }),
+      });
 
-    expect(result).toMatchObject({
-      retrySearchParams: { startsOn: "2099-06-20", dayCount: "3", seats: "3" },
-    });
-  });
+      expect(result).toMatchObject({
+        retrySearchParams: {
+          startsOn: "2099-06-20",
+          dayCount: "3",
+          seats: expectedSeats,
+        },
+      });
+    }
+  );
 
   test("renders a retry status without a selection when Dotypos can't load the reservation", async () => {
     const result = await getStatusFor({

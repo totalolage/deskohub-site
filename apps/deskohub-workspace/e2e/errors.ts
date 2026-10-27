@@ -287,6 +287,24 @@ export const withWorkspaceE2EDiagnosticCode =
       )
     );
 
+/**
+ * Reports `effect` running out of time as an ordinary `<operation> failed`,
+ * for a bound that is a safety net rather than the case's timing contract,
+ * such as a page evaluation's deadline.
+ */
+export const withoutWorkspaceE2ETimeout =
+  (operation: string) =>
+  <A, R>(
+    effect: Effect.Effect<A, WorkspaceE2EError, R>
+  ): Effect.Effect<A, WorkspaceE2EError, R> =>
+    effect.pipe(
+      Effect.mapError((error) =>
+        error.reason === "timeout"
+          ? workspaceE2EError(`${operation} failed`, { operation })
+          : error
+      )
+    );
+
 export const failWorkspaceE2E = (
   message: string,
   options: {

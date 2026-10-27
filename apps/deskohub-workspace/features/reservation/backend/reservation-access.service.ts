@@ -3,6 +3,7 @@ import { Context, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/reservation/access-code.service";
 import type { Locale } from "@/features/i18n";
+import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getDotyposReservationTiming } from "@/features/reservation/backend/workspace-reservation.service";
@@ -97,7 +98,7 @@ const implementation = Effect.gen(function* () {
 
       const timing = yield* getDotyposReservationTiming({
         reservationId: reservation.id,
-        reservation: providerReservation.reservation,
+        reservation: decodeBookedReservation(providerReservation.reservation),
       }).pipe(
         Effect.tapError(() =>
           Effect.logWarning("Reservation access timing is invalid")

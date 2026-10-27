@@ -7,7 +7,11 @@ import { Effect, Exit, Scope } from "effect";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
 import { E2EBrowserSession } from "./browser-session";
 import { runUntracedE2EEffect } from "./effect-edge";
-import { toWorkspaceE2EError, type WorkspaceE2EError } from "./errors";
+import {
+  toWorkspaceE2EError,
+  type WorkspaceE2EError,
+  workspaceE2EError,
+} from "./errors";
 import { redact } from "./redaction";
 
 export {
@@ -50,6 +54,22 @@ export type Runner = {
     id: string
   ) => Effect.Effect<E2EBrowserSession, WorkspaceE2EError>;
 };
+
+/**
+ * The browser session behind a runner's `--session` id, for helpers that
+ * drive it directly while the argv commands around them still use the id.
+ */
+export const browserSessionFor = (
+  run: Runner,
+  id: string
+): Effect.Effect<E2EBrowserSession, WorkspaceE2EError> =>
+  run.session
+    ? run.session(id)
+    : Effect.fail(
+        workspaceE2EError("This runner has no browser sessions", {
+          operation: "open browser session",
+        })
+      );
 
 /**
  * One argv session: the browser session plus the state only the argv
@@ -415,24 +435,6 @@ const runCommand = (
       throw new Error(
         `Unsupported Playwright network operation: ${commandArgs.join(" ")}`
       );
-    case "cookie": {
-      if (commandArgs[1] !== "--stdin" || input === undefined)
-        throw new Error("Playwright cookie input is required");
-      if (commandArgs[0] === "set")
-        return browserSession
-          .setSessionCookie(parseHttpsOnlyCookie(input))
-          .pipe(Effect.mapError(toArgvFailure), asDone);
-      if (commandArgs[0] === "get") {
-        const query = parseCookieQuery(input);
-        return drive("cookie get", async (page) => {
-          const cookie = (await page.context().cookies(query.url)).find(
-            ({ name }) => name === query.name
-          );
-          return JSON.stringify(describeCookie(cookie, query.value));
-        });
-      }
-      throw new Error("Unsupported Playwright cookie operation");
-    }
     case "close":
       return browserSession
         .close()
@@ -498,97 +500,6 @@ const requirePageId = (
   if (!pageId) throw new Error("Playwright tab is unavailable");
   return pageId;
 };
-
-/**
- * Decodes one cookie for the session's own context. Cookie values never
- * travel in command arguments, which the runner logs; only an HTTP-only,
- * Secure, Lax cookie bound to one HTTPS origin is accepted.
- */
-export const parseHttpsOnlyCookie = (input: string) => {
-  const value: unknown = JSON.parse(input);
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("name" in value) ||
-    !("url" in value) ||
-    !("value" in value) ||
-    typeof value.name !== "string" ||
-    typeof value.url !== "string" ||
-    typeof value.value !== "string" ||
-    value.name === "" ||
-    value.value === ""
-  ) {
-    throw new Error("Playwright cookie input is invalid");
-  }
-  const url = new URL(value.url);
-  if (url.protocol !== "https:" || url.pathname !== "/" || url.search) {
-    throw new Error("Playwright cookies require an HTTPS origin");
-  }
-  return {
-    httpOnly: true,
-    name: value.name,
-    sameSite: "Lax" as const,
-    secure: true,
-    url: url.origin,
-    value: value.value,
-  };
-};
-
-const parseCookieQuery = (input: string) => {
-  const value: unknown = JSON.parse(input);
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("name" in value) ||
-    !("url" in value) ||
-    typeof value.name !== "string" ||
-    typeof value.url !== "string" ||
-    ("value" in value &&
-      value.value !== undefined &&
-      typeof value.value !== "string")
-  ) {
-    throw new Error("Playwright cookie query is invalid");
-  }
-  return {
-    name: value.name,
-    url: new URL(value.url).origin,
-    value: "value" in value ? (value.value as string | undefined) : undefined,
-  };
-};
-
-/**
- * A cookie's attributes and whether it holds an expected value. The value
- * itself never leaves the browser context, so it cannot reach a log.
- */
-export const describeCookie = (
-  cookie:
-    | {
-        readonly expires: number;
-        readonly httpOnly: boolean;
-        readonly path: string;
-        readonly sameSite: string;
-        readonly secure: boolean;
-        readonly value: string;
-      }
-    | undefined,
-  expectedValue: string | undefined,
-  nowSeconds = Date.now() / 1000
-) =>
-  cookie === undefined
-    ? { present: false as const }
-    : {
-        httpOnly: cookie.httpOnly,
-        lifetimeDays:
-          cookie.expires < 0
-            ? null
-            : Math.round((cookie.expires - nowSeconds) / 86_400),
-        matches:
-          expectedValue === undefined ? null : cookie.value === expectedValue,
-        path: cookie.path,
-        present: true as const,
-        sameSite: cookie.sameSite,
-        secure: cookie.secure,
-      };
 
 const parseBrowserCommand = (args: string[]) => {
   let cursor = 0;

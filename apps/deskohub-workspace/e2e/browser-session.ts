@@ -6,6 +6,7 @@ import type {
   Browser,
   BrowserContext,
   ConsoleMessage,
+  Cookie,
   Page,
   Request,
   Response,
@@ -41,6 +42,24 @@ type E2EBrowserSessionCookie = {
   readonly url: string;
   readonly value: string;
 };
+
+/**
+ * One cookie of the context for an origin: its attributes and whether it
+ * holds an expected value, never the value itself.
+ */
+export type E2EBrowserCookieDescription =
+  | { readonly present: false }
+  | {
+      readonly httpOnly: boolean;
+      /** Whole days until it expires; `null` for a session cookie. */
+      readonly lifetimeDays: number | null;
+      /** Whether it holds the expected value; `null` when none was given. */
+      readonly matches: boolean | null;
+      readonly path: string;
+      readonly present: true;
+      readonly sameSite: "Lax" | "None" | "Strict";
+      readonly secure: boolean;
+    };
 
 type E2EBrowserDeadline = {
   /**
@@ -91,6 +110,15 @@ export type E2EBrowserSession = {
   readonly close: (options?: {
     readonly harPath?: string;
   }) => Effect.Effect<void, WorkspaceE2EError>;
+  /**
+   * Describes the context's cookie `name` for the URL's origin, comparing it
+   * with `value` when one is given. The value never leaves the session.
+   */
+  readonly describeCookie: (query: {
+    readonly name: string;
+    readonly url: string;
+    readonly value?: string;
+  }) => Effect.Effect<E2EBrowserCookieDescription, WorkspaceE2EError>;
   readonly diagnostics: Effect.Effect<E2EBrowserDiagnostics>;
   /**
    * Evaluates `fn` in the active page. Playwright serializes `fn`, so it must
@@ -312,6 +340,28 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
         state.diagnostics[kind].length = 0;
       }),
     close,
+    describeCookie: ({ name, url, value }) =>
+      Effect.suspend(() => {
+        const origin = URL.parse(url)?.origin;
+        if (!origin || origin === "null")
+          return Effect.fail(
+            workspaceE2EError("Cookie queries need an absolute URL", {
+              operation: readCookieOperation,
+            })
+          );
+        return Effect.tryPromise({
+          catch: (cause) =>
+            toSessionFailure(readCookieOperation, cause, isClosing()),
+          try: () => context.cookies(origin),
+        }).pipe(
+          Effect.map((cookies) =>
+            describeCookie(
+              cookies.find((cookie) => cookie.name === name),
+              value
+            )
+          )
+        );
+      }),
     diagnostics: Effect.sync(() => ({
       console: state.diagnostics.console.map(redact),
       errors: state.diagnostics.errors.map(redact),
@@ -422,6 +472,28 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
 });
 
 export const E2EBrowserSession = { open };
+
+const readCookieOperation = "read browser cookie";
+
+const describeCookie = (
+  cookie: Cookie | undefined,
+  expectedValue: string | undefined
+): E2EBrowserCookieDescription =>
+  cookie === undefined
+    ? { present: false }
+    : {
+        httpOnly: cookie.httpOnly,
+        lifetimeDays:
+          cookie.expires < 0
+            ? null
+            : Math.round((cookie.expires - Date.now() / 1000) / 86_400),
+        matches:
+          expectedValue === undefined ? null : cookie.value === expectedValue,
+        path: cookie.path,
+        present: true,
+        sameSite: cookie.sameSite,
+        secure: cookie.secure,
+      };
 
 const removeFile = (path: string) =>
   Effect.tryPromise(() => rm(path, { force: true })).pipe(Effect.ignore);

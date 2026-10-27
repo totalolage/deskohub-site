@@ -1,17 +1,19 @@
 import { Effect } from "effect";
 import { sharedReferralCodeRememberedDays } from "@/features/referrals/program";
 import { referralCodeCookieName } from "@/features/referrals/referral-code-cookie";
-import { type BrowserCookieDescription, readBrowserCookie } from "../browser";
+import type {
+  E2EBrowserCookieDescription,
+  E2EBrowserSession,
+} from "../browser-session";
 import type { WorkspaceE2EConfig } from "../config";
 import { pollUntil } from "../polling";
-import type { Runner } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
 
 /**
  * The remembered referral cookie a shared link sets: first-party, readable by
  * the page, sent on top-level navigations, and kept for the program's window.
  */
-const isRememberedReferralCookie = (cookie: BrowserCookieDescription) =>
+const isRememberedReferralCookie = (cookie: E2EBrowserCookieDescription) =>
   cookie.present &&
   cookie.matches === true &&
   !cookie.httpOnly &&
@@ -24,23 +26,23 @@ const isRememberedReferralCookie = (cookie: BrowserCookieDescription) =>
 const pollReferralCookie = (
   {
     config,
-    run,
     session,
   }: {
     readonly config: Pick<WorkspaceE2EConfig, "baseUrl" | "timeouts">;
-    readonly run: Runner;
-    readonly session: string;
+    readonly session: E2EBrowserSession;
   },
   label: string,
   code: string | undefined,
-  accept: (cookie: BrowserCookieDescription) => boolean
+  accept: (cookie: E2EBrowserCookieDescription) => boolean
 ) =>
   pollUntil(
-    readBrowserCookie(run, session, {
-      name: referralCodeCookieName,
-      url: config.baseUrl,
-      ...(code === undefined ? {} : { value: code }),
-    }).pipe(Effect.map((cookie) => (accept(cookie) ? cookie : undefined))),
+    session
+      .describeCookie({
+        name: referralCodeCookieName,
+        url: config.baseUrl,
+        ...(code === undefined ? {} : { value: code }),
+      })
+      .pipe(Effect.map((cookie) => (accept(cookie) ? cookie : undefined))),
     {
       intervalMs: workspaceE2EPollIntervalMs.browser,
       label,
