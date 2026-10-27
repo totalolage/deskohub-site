@@ -1,12 +1,10 @@
 import { Schema } from "effect";
-import type { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import {
   AdministrationCampaignAudienceId,
   AdministrationCampaignId,
 } from "./campaign-identifiers";
 import type { DhwVersion } from "./dhw-version";
 import {
-  AdminCliAutomationsApi,
   AutomationActivateInput,
   AutomationDetail,
   AutomationDryRun,
@@ -28,7 +26,6 @@ import {
   CalendarPreviewInput,
 } from "./email-automations";
 import {
-  AdminCliCampaignsApi,
   AdministrationCampaignAudience,
   AdministrationCampaignAudienceCreateRequest,
   AdministrationCampaignAudienceDeleted,
@@ -68,13 +65,17 @@ export interface OperationDefinition<
   Input extends Schema.Top = Schema.Top,
   Output extends Schema.Top = Schema.Top,
   Ledger extends boolean = boolean,
+  Kind extends OperationKind = OperationKind,
 > {
-  readonly kind: "query" | "mutation";
+  readonly kind: Kind;
   readonly input: Input;
   readonly output: Output;
   readonly ledger: Ledger;
   readonly minimumDhwVersion: DhwVersion | undefined;
 }
+
+/** A query only reads; a mutation writes. */
+export type OperationKind = "query" | "mutation";
 
 /** A registered operation; it also knows its own name. */
 export interface Operation<
@@ -82,7 +83,8 @@ export interface Operation<
   Input extends Schema.Top = Schema.Top,
   Output extends Schema.Top = Schema.Top,
   Ledger extends boolean = boolean,
-> extends OperationDefinition<Input, Output, Ledger> {
+  Kind extends OperationKind = OperationKind,
+> extends OperationDefinition<Input, Output, Ledger, Kind> {
   readonly name: Name;
 }
 
@@ -104,7 +106,8 @@ export const query = <Input extends Schema.Top, Output extends Schema.Top>({
 }: OperationOptions<Input, Output>): OperationDefinition<
   Input,
   Output,
-  false
+  false,
+  "query"
 > => ({
   kind: "query",
   input,
@@ -119,10 +122,10 @@ export const query = <Input extends Schema.Top, Output extends Schema.Top>({
  */
 export function mutation<Input extends Schema.Top, Output extends Schema.Top>(
   options: OperationOptions<Input, Output> & { readonly ledger: true }
-): OperationDefinition<Input, Output, true>;
+): OperationDefinition<Input, Output, true, "mutation">;
 export function mutation<Input extends Schema.Top, Output extends Schema.Top>(
   options: OperationOptions<Input, Output>
-): OperationDefinition<Input, Output, false>;
+): OperationDefinition<Input, Output, false, "mutation">;
 export function mutation<Input extends Schema.Top, Output extends Schema.Top>({
   input,
   output,
@@ -130,7 +133,7 @@ export function mutation<Input extends Schema.Top, Output extends Schema.Top>({
   minimumDhwVersion,
 }: OperationOptions<Input, Output> & {
   readonly ledger?: boolean;
-}): OperationDefinition<Input, Output> {
+}): OperationDefinition<Input, Output, boolean, "mutation"> {
   return { kind: "mutation", input, output, ledger, minimumDhwVersion };
 }
 
@@ -144,7 +147,8 @@ export const defineOperations = <
     Name,
     Definitions[Name]["input"],
     Definitions[Name]["output"],
-    Definitions[Name]["ledger"]
+    Definitions[Name]["ledger"],
+    Definitions[Name]["kind"]
   >;
 } =>
   Object.fromEntries(
@@ -164,56 +168,6 @@ export type OperationOutput<Op extends Operation> = Op["output"]["Type"];
 export type LedgerOperationName<Ops extends Operations> = {
   readonly [Name in keyof Ops]: Ops[Name]["ledger"] extends true ? Name : never;
 }[keyof Ops];
-
-/** Names of operations that have no endpoint of the same name. */
-export type OperationsWithoutEndpoint<
-  Ops extends Operations,
-  Endpoint extends HttpApiEndpoint.Any,
-> = {
-  readonly [Name in keyof Ops]: [
-    Extract<Endpoint, { readonly name: Name }>,
-  ] extends [never]
-    ? Name
-    : never;
-}[keyof Ops];
-
-/** The HTTP endpoint serving each operation, by the operation's name. */
-export type OperationEndpoints<
-  Ops extends Operations,
-  Endpoint extends HttpApiEndpoint.Any,
-> = {
-  readonly [Name in keyof Ops]: Extract<Endpoint, { readonly name: Name }>;
-};
-
-/**
- * Pairs each operation with the endpoint of the same name in one of the
- * groups. An operation without one fails the typecheck.
- */
-export const operationEndpoints = <
-  Ops extends Operations,
-  const Groups extends ReadonlyArray<HttpApiGroup.Any>,
->(
-  operations: Ops,
-  groups: Groups &
-    ([
-      OperationsWithoutEndpoint<Ops, HttpApiGroup.Endpoints<Groups[number]>>,
-    ] extends [never]
-      ? unknown
-      : {
-          readonly missingEndpoints: OperationsWithoutEndpoint<
-            Ops,
-            HttpApiGroup.Endpoints<Groups[number]>
-          >;
-        })
-): OperationEndpoints<Ops, HttpApiGroup.Endpoints<Groups[number]>> =>
-  Object.fromEntries(
-    Object.keys(operations).map((name) => [
-      name,
-      groups.find((group) => Object.hasOwn(group.endpoints, name))?.endpoints[
-        name
-      ],
-    ])
-  ) as never;
 
 const strictParseOptions = {
   parseOptions: { errors: "all", onExcessProperty: "error" },
@@ -297,7 +251,7 @@ export const CampaignAudienceRef = Schema.Struct({
 export type CampaignAudienceRef = typeof CampaignAudienceRef.Type;
 
 /** An empty input; an empty struct would accept any object. */
-const NoInput = Schema.Record(Schema.String, Schema.Never);
+export const NoInput = Schema.Record(Schema.String, Schema.Never);
 
 /** A draft edit of one campaign; omitted fields keep their value. */
 export const CampaignPatchInput = Schema.Struct({
@@ -343,11 +297,8 @@ export const CampaignRetryInput = Schema.Struct({
 }).annotate(strictParseOptions);
 export type CampaignRetryInput = typeof CampaignRetryInput.Type;
 
-/**
- * Every campaign operation, the single contract the Admin UI, `/api/v1/cli`
- * and future adapters serve through `CampaignOperations.invoke`.
- */
-export const campaignOperations = defineOperations({
+/** The operations on campaigns, their audiences and templates. */
+export const emailCampaignOperations = defineOperations({
   listCampaignAudiences: query({
     minimumDhwVersion: campaignsMinimumDhwVersion,
     input: NoInput,
@@ -462,6 +413,10 @@ export const campaignOperations = defineOperations({
     input: CampaignRef,
     output: AdministrationCampaignSendStatusResult,
   }),
+});
+
+/** The operations on automated campaigns and their engine. */
+export const emailAutomationOperations = defineOperations({
   getAutomation: query({
     minimumDhwVersion: automationsMinimumDhwVersion,
     input: CampaignRef,
@@ -540,11 +495,14 @@ export const campaignOperations = defineOperations({
     output: AutomationEngineHealth,
   }),
 });
+
+/**
+ * Every campaign operation, the single contract the Admin UI, `/api/v1/cli`
+ * and future adapters serve through `CampaignOperations.invoke`.
+ */
+export const campaignOperations = {
+  ...emailCampaignOperations,
+  ...emailAutomationOperations,
+};
 export type CampaignOperations = typeof campaignOperations;
 export type CampaignOperationName = keyof CampaignOperations;
-
-/** The `/api/v1/cli` endpoint of every campaign operation. */
-export const campaignOperationEndpoints = operationEndpoints(
-  campaignOperations,
-  [AdminCliCampaignsApi, AdminCliAutomationsApi]
-);
