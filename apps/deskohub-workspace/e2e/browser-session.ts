@@ -100,12 +100,13 @@ export type E2EBrowserSession = {
     options?: E2EBrowserDeadline
   ) => Effect.Effect<A, WorkspaceE2EError>;
   /**
-   * Exchanges the automation bypass secret for Vercel's bypass cookie, once
-   * per origin. A rejected probe fails and leaves the origin unprimed.
+   * Probes the origin's favicon with the caller's request headers, intact,
+   * once per origin, so Vercel can answer with its bypass cookie. A rejected
+   * probe fails and leaves the origin unprimed.
    */
   readonly primePreviewAccess: (
     url: string,
-    bypassSecret: string,
+    headers: Readonly<Record<string, string>>,
     options: { readonly timeoutMs: number }
   ) => Effect.Effect<void, WorkspaceE2EError>;
   /** Adds an HTTP-only, Secure, Lax cookie bound to one HTTPS origin. */
@@ -303,7 +304,7 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
         (page) => page.evaluate(fn as (arg: unknown) => A | Promise<A>, arg),
         deadline
       ),
-    primePreviewAccess: (url, bypassSecret, { timeoutMs }) =>
+    primePreviewAccess: (url, headers, { timeoutMs }) =>
       Effect.suspend(() => {
         const origin = URL.parse(url)?.origin;
         if (!origin)
@@ -322,10 +323,7 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
             const probe = context.request.get(
               new URL("/favicon.svg", origin).toString(),
               {
-                headers: {
-                  "x-vercel-protection-bypass": bypassSecret,
-                  "x-vercel-set-bypass-cookie": "true",
-                },
+                headers,
                 maxRedirects: 3,
                 timeout: timeoutMs,
               }

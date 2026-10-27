@@ -2,6 +2,7 @@ import { Effect, Layer } from "effect";
 import { createTracingLive } from "../shared/backend/observability/otel-tracing";
 import { createPostHogTracerProvider } from "../shared/backend/observability/posthog-tracing";
 import type { E2EEnvironment } from "./e2e-env";
+import { runUntracedE2EEffect } from "./effect-edge";
 import { workspaceE2EError } from "./errors";
 
 const e2eServiceName = "deskohub-workspace-e2e";
@@ -61,10 +62,9 @@ export const runE2EEffect = <A, E>(
   effect: Effect.Effect<A, E>,
   telemetry: E2ETelemetryRuntime
 ) =>
-  Effect.runPromise(
+  runUntracedE2EEffect(
     effect.pipe(
-      Effect.exit,
-      Effect.tap(() => telemetry.shutdown),
+      Effect.onExit(() => telemetry.shutdown),
       Effect.provide(telemetry.tracingLayer)
     )
   );

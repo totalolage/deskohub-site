@@ -18,6 +18,7 @@ const chromiumAvailable = await playwrightChromiumAvailable();
 let browser: Browser | undefined;
 let server: ReturnType<typeof Bun.serve> | undefined;
 let artifactDir = "";
+const previewProbes: Record<string, string>[] = [];
 
 beforeAll(async () => {
   if (!chromiumAvailable) return;
@@ -25,15 +26,27 @@ beforeAll(async () => {
   browser = await chromium.launch({ headless: true });
   server = Bun.serve({
     port: 0,
-    fetch: (request) =>
-      new Response(
-        new URL(request.url).pathname === "/popup"
+    fetch: (request) => {
+      const { pathname } = new URL(request.url);
+      if (pathname === "/favicon.svg") {
+        previewProbes.push(
+          Object.fromEntries(
+            [...request.headers].filter(([name]) => name.startsWith("x-"))
+          )
+        );
+        return new Response("<svg/>", {
+          headers: { "content-type": "image/svg+xml" },
+        });
+      }
+      return new Response(
+        pathname === "/popup"
           ? "<!doctype html><title>Popup</title>"
           : `<!doctype html><title>Checkout</title>
             <button id="popup" onclick="window.open('/popup')">Open</button>
             <iframe id="card" srcdoc="<input id='holder' aria-label='Holder'>"></iframe>`,
         { headers: { "content-type": "text/html; charset=utf-8" } }
-      ),
+      );
+    },
   });
 });
 
@@ -234,5 +247,36 @@ test.skipIf(!chromiumAvailable)(
     expect(JSON.parse(har).log.entries.length).toBeGreaterThan(0);
     expect(har).not.toContain(secret);
     expect(afterStop.exitCode).toBe(1);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "probes preview access with any --headers map, forwarding every header",
+  async () => {
+    previewProbes.length = 0;
+    const bypassHeaders = {
+      "x-e2e-extra": "kept",
+      "x-vercel-protection-bypass": "synthetic-runner-bypass",
+      "x-vercel-set-bypass-cookie": "true",
+    };
+    const otherHeaders = { "X-E2E-Probe": "kept" };
+    const openedUrls = await withRunner(async (run) =>
+      Promise.all(
+        [bypassHeaders, otherHeaders].map((headers) =>
+          command(run, `headers-${randomUUID()}`, [
+            "--headers",
+            JSON.stringify(headers),
+            "open",
+            `${origin()}/`,
+          ])
+        )
+      )
+    );
+
+    expect(openedUrls).toEqual([`${origin()}/`, `${origin()}/`]);
+    expect(previewProbes).toEqual(
+      expect.arrayContaining([bypassHeaders, { "x-e2e-probe": "kept" }])
+    );
+    expect(previewProbes).toHaveLength(2);
   }
 );

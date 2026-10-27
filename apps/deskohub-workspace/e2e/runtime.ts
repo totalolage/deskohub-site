@@ -6,6 +6,7 @@ import type { Browser, Frame, Page } from "@playwright/test";
 import { Cause, Effect, Exit, Scope } from "effect";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
 import { E2EBrowserSession } from "./browser-session";
+import { runUntracedE2EEffect } from "./effect-edge";
 import { toWorkspaceE2EError, type WorkspaceE2EError } from "./errors";
 import { redact } from "./redaction";
 
@@ -169,15 +170,16 @@ const openArgvSession = (
   );
 
 /**
- * The argv runner's one Effect edge. An aborted command rejects with the
- * signal's reason at once; the case finalizer closes the context, which
- * stops the browser work. Any other failure rejects with its own cause.
+ * Settles an argv command's Effect, run at the E2E Effect edge, as the
+ * argv protocol's promise. An aborted command rejects with the signal's
+ * reason at once; the case finalizer closes the context, which stops the
+ * browser work. Any other failure rejects with its own cause.
  */
 const runArgvEffect = async <A, E>(
   effect: Effect.Effect<A, E>,
   signal?: AbortSignal
 ): Promise<A> => {
-  const exit = await Effect.runPromiseExit(effect, { signal });
+  const exit = await runUntracedE2EEffect(effect, { signal });
   if (Exit.isSuccess(exit)) return exit.value;
   if (Cause.hasInterruptsOnly(exit.cause))
     throw signal?.reason ?? new DOMException("Aborted", "AbortError");
@@ -229,15 +231,14 @@ const runCommand = (
   switch (command) {
     case "open": {
       const url = requireArgument(commandArgs[0], "browser URL");
-      const bypassSecret = headers?.["x-vercel-protection-bypass"];
       const navigate = drive("open", async (page) => {
         await page.goto(url, { timeout: timeoutMs, waitUntil: "load" });
         session.frame = undefined;
         return page.url();
       });
-      return bypassSecret
+      return headers
         ? browserSession
-            .primePreviewAccess(url, bypassSecret, { timeoutMs })
+            .primePreviewAccess(url, headers, { timeoutMs })
             .pipe(Effect.mapError(toArgvFailure), Effect.andThen(navigate))
         : navigate;
     }

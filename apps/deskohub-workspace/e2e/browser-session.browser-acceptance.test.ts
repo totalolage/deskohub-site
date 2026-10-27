@@ -23,6 +23,10 @@ let browser: Browser | undefined;
 let server: ReturnType<typeof Bun.serve> | undefined;
 let artifactDir = "";
 const bypassProbes: (string | null)[] = [];
+const bypassHeaders = (secret: string) => ({
+  "x-vercel-protection-bypass": secret,
+  "x-vercel-set-bypass-cookie": "true",
+});
 let heldProbe: PromiseWithResolvers<Response> | undefined;
 let heldProbeArrived: PromiseWithResolvers<void> | undefined;
 
@@ -339,12 +343,12 @@ test.skipIf(!chromiumAvailable)(
       Effect.gen(function* () {
         yield* session.primePreviewAccess(
           `${origin()}/en-US/reservation`,
-          acceptedBypassSecret,
+          bypassHeaders(acceptedBypassSecret),
           { timeoutMs: 5000 }
         );
         yield* session.primePreviewAccess(
           `${origin()}/`,
-          acceptedBypassSecret,
+          bypassHeaders(acceptedBypassSecret),
           {
             timeoutMs: 5000,
           }
@@ -362,7 +366,7 @@ test.skipIf(!chromiumAvailable)(
       Effect.gen(function* () {
         const prime = session.primePreviewAccess(
           `${origin()}/`,
-          "synthetic-rejected-secret",
+          bypassHeaders("synthetic-rejected-secret"),
           { timeoutMs: 5000 }
         );
         const first = yield* Effect.flip(prime);
@@ -386,7 +390,7 @@ test.skipIf(!chromiumAvailable)(
           const probing = yield* Effect.forkChild(
             session.primePreviewAccess(
               `${origin()}/`,
-              "synthetic-held-secret",
+              bypassHeaders("synthetic-held-secret"),
               {
                 timeoutMs: 10_000,
               }
