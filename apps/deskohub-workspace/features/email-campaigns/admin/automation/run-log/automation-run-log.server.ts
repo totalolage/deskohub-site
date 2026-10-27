@@ -9,13 +9,16 @@ import type {
   AutomationVersionSummary,
 } from "@deskohub/workspace-admin-api";
 import { Array as Arr, Clock, Effect, Option, Result, Schema } from "effect";
-import { notFound } from "next/navigation";
+import {
+  AdministrationRecordNotFound,
+  runAdministrationPage,
+} from "@/features/administrators/server/administration-request.server";
 import { automationRunIdSchema } from "../../../automation/automation-identifiers";
 import type { CampaignId } from "../../../campaign-identifiers";
 import { loadAudienceValueLookups } from "../../audiences/audience-value-lookups.server";
 import {
+  campaignOperationCapabilities,
   invokeCampaignOperation,
-  runCampaignPageQuery,
 } from "../../campaign-operation-query.server";
 import type { AutomatedCampaign } from "../automated-campaign.server";
 import type { ConditionWording } from "./automation-condition-failures";
@@ -143,9 +146,10 @@ export const loadAutomationRunLog = (
   automated: AutomatedCampaign,
   filters: AutomationRunFilters
 ): Promise<AutomationRunLog> =>
-  runCampaignPageQuery(
+  runAdministrationPage(
     "email-campaigns.admin.load-automation-run-log",
-    loadRunLog(automated, filters)
+    loadRunLog(automated, filters),
+    campaignOperationCapabilities
   );
 
 export interface AutomationRunRecord {
@@ -158,10 +162,19 @@ export interface AutomationRunRecord {
 
 const loadRun = Effect.fn("AutomationRun.load")(function* (
   campaignId: CampaignId,
-  runId: string
+  routeRunId: string
 ) {
+  const runId = yield* Option.match(
+    Schema.decodeOption(automationRunIdSchema)(routeRunId),
+    {
+      onNone: () => Effect.fail(new AdministrationRecordNotFound()),
+      onSome: Effect.succeed,
+    }
+  );
   const run = yield* invokeCampaignOperation("getAutomationRun", { runId });
-  if (run.campaignId !== campaignId) return Option.none();
+  if (run.campaignId !== campaignId) {
+    return yield* new AdministrationRecordNotFound();
+  }
   const conditionFailed = run.timeline.some(
     ({ kind }) => kind === "condition-failed"
   );
@@ -179,12 +192,12 @@ const loadRun = Effect.fn("AutomationRun.load")(function* (
     ],
     { concurrency: "unbounded" }
   );
-  return Option.some({
+  return {
     run,
     flow: flows.get(run.versionNumber) ?? null,
     conditionFailed,
     audiences,
-  });
+  };
 });
 
 /**
@@ -195,19 +208,14 @@ export const loadAutomationRun = async (
   campaignId: CampaignId,
   routeRunId: string
 ): Promise<AutomationRunRecord> => {
-  const runId = Option.getOrElse(
-    Schema.decodeOption(automationRunIdSchema)(routeRunId),
-    () => notFound()
-  );
-  const record = await runCampaignPageQuery(
+  const { run, flow, conditionFailed, audiences } = await runAdministrationPage(
     "email-campaigns.admin.load-automation-run",
-    loadRun(campaignId, runId).pipe(
-      Effect.catchTag("OperationNotFound", () => Effect.succeedNone)
-    )
-  );
-  const { run, flow, conditionFailed, audiences } = Option.getOrElse(
-    record,
-    () => notFound()
+    loadRun(campaignId, routeRunId).pipe(
+      Effect.catchTag("OperationNotFound", () =>
+        Effect.fail(new AdministrationRecordNotFound())
+      )
+    ),
+    campaignOperationCapabilities
   );
   return {
     run,

@@ -12,12 +12,8 @@ mock.module("@/instrumentation", () => ({
   },
 }));
 
-const {
-  defineWorkspacePage,
-  defineWorkspaceTask,
-  runWorkspaceEffect,
-  runWorkspaceEffectOrElse,
-} = await import("./workspace-effect");
+const { defineWorkspaceTask, runWorkspaceEffect, runWorkspaceEffectOrElse } =
+  await import("./workspace-effect");
 
 describe("Workspace Effect execution", () => {
   test("provides the censored Workspace logger", async () => {
@@ -45,15 +41,6 @@ describe("Workspace Effect execution", () => {
     );
 
     expect(emitPostHogLog).toHaveBeenCalledTimes(1);
-  });
-
-  test("pages pass props into an Effect component", async () => {
-    const page = defineWorkspacePage(
-      "test.page",
-      ({ slug }: { readonly slug: string }) => Effect.succeed(`page:${slug}`)
-    );
-
-    await expect(page({ slug: "sale" })).resolves.toBe("page:sale");
   });
 
   test("tasks serve no customer request, so their agent traffic is unclassified", async () => {

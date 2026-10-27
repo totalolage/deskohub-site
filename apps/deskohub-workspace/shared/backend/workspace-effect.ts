@@ -176,19 +176,6 @@ export const defineWorkspaceTask =
       runWorkspaceEffect(operation, { boundary: "task" })
     );
 
-export const defineWorkspacePage = <Props, A, E>(
-  operation: string,
-  component: (props: Props) => Effect.Effect<A, E, never>
-) =>
-  workspaceRuntime.page((props: Props) =>
-    component(props).pipe(
-      Effect.annotateLogs({
-        boundary: "page",
-        operation,
-      })
-    )
-  );
-
 /**
  * Schedules `effect` to run with `runWorkspaceEffect` after the current
  * response is sent, so the request never waits for it. A failure to schedule

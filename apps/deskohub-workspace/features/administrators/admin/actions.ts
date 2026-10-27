@@ -1,29 +1,27 @@
 "use server";
 
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 import { administrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
-import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
-import {
-  defineWorkspaceAction,
-  type WorkspaceActionFailureCopy,
-} from "@/shared/backend/workspace-action";
-import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
+import type { WorkspaceActionFailureCopy } from "@/shared/backend/workspace-action";
 import { AdministratorRoster } from "../backend/administrator-roster.service";
-import { requireAdministratorAuthorization } from "../server/administrator-authorization.server";
+import { CurrentAdministrator } from "../backend/current-administrator";
+import { defineAdministrationAction } from "../server/administration-request.server";
 import {
   grantAdministratorStandardSchema,
   revokeAdministratorStandardSchema,
 } from "./contracts";
 
-const administratorsPath = administrationHref("/[locale]/admin/administrators");
+const administratorsPath = () => [
+  administrationHref("/[locale]/admin/administrators"),
+];
 
 const failureCopy: WorkspaceActionFailureCopy = {
   timeout: m.administratorsActionTimedOut,
   unexpected: m.administratorsActionFailedUnexpectedly,
 };
 
-const grantAdministratorAction = defineWorkspaceAction(
+const grantAdministratorAction = defineAdministrationAction(
   {
     operation: "administrators.grant",
     schema: grantAdministratorStandardSchema,
@@ -31,28 +29,18 @@ const grantAdministratorAction = defineWorkspaceAction(
     failureCopy,
     // A missing grant and every other failure read as the operation failing.
     fallback: m.administratorsGrantFailed,
+    capabilities: AdministratorRoster.Live,
+    publicFailure: (cause, locale) =>
+      Predicate.isTagged(cause, "AdministratorAccountNotFoundError")
+        ? m.administratorsGrantAccountNotFound({}, { locale })
+        : undefined,
+    revalidates: administratorsPath,
   },
-  Effect.fn(
-    function* (input, _context) {
-      const actor = yield* requireAdministratorAuthorization;
-      const roster = yield* AdministratorRoster;
-      const granted = yield* roster.grant({ email: input.email, actor });
-      yield* Effect.sync(() => revalidateLocalizedPath(administratorsPath));
-      return granted;
-    },
-    (effect, _input, { locale }) =>
-      effect.pipe(
-        Effect.provide(AdministratorRoster.Live),
-        Effect.catchTag("AdministratorAccountNotFoundError", (cause) =>
-          Effect.fail(
-            new PublicSafeActionError({
-              message: m.administratorsGrantAccountNotFound({}, { locale }),
-              cause,
-            })
-          )
-        )
-      )
-  )
+  Effect.fn(function* (input) {
+    const actor = yield* CurrentAdministrator;
+    const roster = yield* AdministratorRoster;
+    return yield* roster.grant({ email: input.email, actor });
+  })
 );
 
 export const grantAdministrator: typeof grantAdministratorAction = async (
@@ -62,37 +50,24 @@ export const grantAdministrator: typeof grantAdministratorAction = async (
   return await grantAdministratorAction(...args);
 };
 
-const revokeAdministratorAction = defineWorkspaceAction(
+const revokeAdministratorAction = defineAdministrationAction(
   {
     operation: "administrators.revoke",
     schema: revokeAdministratorStandardSchema,
     failureCopy,
     fallback: m.administratorsRevokeFailed,
+    capabilities: AdministratorRoster.Live,
+    publicFailure: (cause, locale) =>
+      Predicate.isTagged(cause, "AdministratorSelfRevocationError")
+        ? m.administratorsRevokeSelf({}, { locale })
+        : undefined,
+    revalidates: administratorsPath,
   },
-  Effect.fn(
-    function* (input, _context) {
-      const actor = yield* requireAdministratorAuthorization;
-      const roster = yield* AdministratorRoster;
-      const revoked = yield* roster.revoke({
-        accountId: input.accountId,
-        actor,
-      });
-      yield* Effect.sync(() => revalidateLocalizedPath(administratorsPath));
-      return revoked;
-    },
-    (effect, _input, { locale }) =>
-      effect.pipe(
-        Effect.provide(AdministratorRoster.Live),
-        Effect.catchTag("AdministratorSelfRevocationError", (cause) =>
-          Effect.fail(
-            new PublicSafeActionError({
-              message: m.administratorsRevokeSelf({}, { locale }),
-              cause,
-            })
-          )
-        )
-      )
-  )
+  Effect.fn(function* (input) {
+    const actor = yield* CurrentAdministrator;
+    const roster = yield* AdministratorRoster;
+    return yield* roster.revoke({ accountId: input.accountId, actor });
+  })
 );
 
 export const revokeAdministrator: typeof revokeAdministratorAction = async (

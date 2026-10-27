@@ -25,14 +25,16 @@ import type {
   AutomationScheduleMinutesNotAllowed,
 } from "../automation/errors";
 import {
-  CampaignLocalizedContent,
+  type CampaignLocalizedContent,
   type CampaignPurpose,
   type CampaignTemplateKey,
+  campaignLocalizedContent,
 } from "../body/campaign-content";
 import {
   type CampaignContentChanges,
   changeCampaignContent,
 } from "../body/campaign-content-change";
+import { campaignImageCloudName } from "../body/campaign-image-account";
 import type { CampaignAudienceId, CampaignId } from "../campaign-identifiers";
 import {
   type CampaignDelivery,
@@ -372,7 +374,12 @@ export class CampaignService extends Context.Service<
       ) =>
         content === undefined
           ? Effect.void
-          : Schema.decodeEffect(CampaignLocalizedContent)(content).pipe(
+          : campaignImageCloudName.pipe(
+              Effect.flatMap((imageCloudName) =>
+                Schema.decodeEffect(campaignLocalizedContent(imageCloudName))(
+                  content
+                )
+              ),
               Effect.asVoid,
               Effect.mapError((cause) => new CampaignContentInvalid({ cause }))
             );

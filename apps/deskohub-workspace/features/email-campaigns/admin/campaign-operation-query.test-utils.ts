@@ -1,5 +1,4 @@
 import { mock } from "bun:test";
-import { testEmailAddress } from "@deskohub/test-email";
 import type {
   CampaignOperationError,
   CampaignOperationName,
@@ -7,8 +6,7 @@ import type {
   OperationInput,
 } from "@deskohub/workspace-admin-api";
 import { Context, Effect, Layer } from "effect";
-import { customerAccountIdSchema } from "@/features/account/customer-account";
-import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
 import type { ICampaignOperations } from "../backend/campaign-operations.service";
 
 class StubCampaignOperations extends Context.Service<
@@ -24,16 +22,15 @@ type Invocation = {
 };
 
 /**
- * Stubs the campaign operation port and the page gate for page-load tests.
- * Call it before importing the loader; set `responses` per operation name
- * and read the names the loader invoked, in order, from `invoked`.
+ * Stubs the campaign operation port and the session behind the page gate for
+ * page-load tests. Call it before importing the loader; set `responses` per
+ * operation name, read the names the loader invoked, in order, from
+ * `invoked`, and set who the request acts as through `access`.
  */
 export const stubCampaignPageQueries = () => {
-  const actor: AdministratorAccountActor = {
-    accountId: customerAccountIdSchema.make("fixture-administrator"),
-    email: testEmailAddress("campaign-page-actor"),
-  };
+  const access = mockAdministratorAccess("campaign-page-actor");
   const port = {
+    access,
     responses: {} as Partial<
       Record<
         CampaignOperationName,
@@ -59,10 +56,15 @@ export const stubCampaignPageQueries = () => {
       }),
     })
   );
-  mock.module(
-    "@/features/administrators/server/administrator-authorization.server",
-    () => ({ authorizeAdministratorPage: async () => actor })
-  );
+  mock.module("next/headers", () => ({
+    cookies: async () => ({ get: () => undefined, getAll: () => [] }),
+    headers: async () =>
+      new Headers({ referer: "https://deskohub.test/en-US/admin" }),
+  }));
+  mock.module("next/server", () => ({
+    after: () => undefined,
+    connection: () => Promise.resolve(),
+  }));
   mock.module("@/instrumentation", () => ({
     postHogLoggerProvider: {
       forceFlush: () => Promise.resolve(),

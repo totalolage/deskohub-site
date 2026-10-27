@@ -6,13 +6,15 @@ import {
   CampaignBodyMarkdownInvalid,
 } from "../errors";
 import {
-  CampaignBodyDocument,
+  type CampaignBodyDocument,
+  campaignBodyDocument,
   UnfinishedCampaignBodyDocument,
 } from "./campaign-body-document";
 import {
   parseCampaignBodyMarkdown,
   parseUnfinishedCampaignBodyMarkdown,
 } from "./campaign-body-markdown";
+import { campaignImageCloudName } from "./campaign-image-account";
 import { InvalidCampaignBody } from "./invalid-campaign-body";
 
 /** A locale's body as the campaign port takes it. */
@@ -23,7 +25,7 @@ export type CampaignBodyInput =
 const readBody =
   (
     parseMarkdown: typeof parseCampaignBodyMarkdown,
-    document: typeof CampaignBodyDocument
+    document: Effect.Effect<typeof UnfinishedCampaignBodyDocument>
   ) =>
   (
     locale: Locale,
@@ -33,7 +35,10 @@ const readBody =
     CampaignBodyDocumentInvalid | CampaignBodyMarkdownInvalid
   > =>
     "bodyDocument" in input
-      ? Schema.decodeUnknownEffect(document)(input.bodyDocument).pipe(
+      ? document.pipe(
+          Effect.flatMap((schema) =>
+            Schema.decodeUnknownEffect(schema)(input.bodyDocument)
+          ),
           Effect.mapError(
             (cause) =>
               new CampaignBodyDocumentInvalid({
@@ -55,7 +60,7 @@ const readBody =
  */
 export const readCampaignBody = readBody(
   parseCampaignBodyMarkdown,
-  CampaignBodyDocument
+  campaignImageCloudName.pipe(Effect.map(campaignBodyDocument))
 );
 
 /**
@@ -64,5 +69,5 @@ export const readCampaignBody = readBody(
  */
 export const readUnfinishedCampaignBody = readBody(
   parseUnfinishedCampaignBodyMarkdown,
-  UnfinishedCampaignBodyDocument
+  Effect.succeed(UnfinishedCampaignBodyDocument)
 );

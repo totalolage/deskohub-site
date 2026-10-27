@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AdministrationCampaignEditorContentType } from "@deskohub/workspace-admin-api";
-import { getClientEnv } from "@/client-env";
+import { Option } from "effect";
 import type { CampaignBodyNode } from "../../body/campaign-body-document";
 import { richCampaignBodies } from "../../body/campaign-body-document.test-utils";
 import { campaignBodySchema } from "../../body/campaign-body-extensions";
@@ -9,6 +9,7 @@ import {
   type CampaignComposerLocaleFields,
   campaignComposerFieldsFromCampaign,
   composerLocales,
+  localeContentIssueMessage,
   localeContentIssues,
   newCampaignComposerFields,
   toAdministrationCampaignContent,
@@ -202,6 +203,7 @@ describe("editor round trip", () => {
 });
 
 describe("localeContentIssues", () => {
+  const imageCloudName = Option.some("synthetic-cloud");
   const paragraph = (...content: CampaignBodyNode[]): CampaignBodyNode => ({
     type: "paragraph",
     content,
@@ -213,27 +215,19 @@ describe("localeContentIssues", () => {
     subject: "Synthetic subject",
     body: { type: "doc", content },
   });
-  const issueMessages = (
-    fields: CampaignComposerLocaleFields,
-    locale: "cs-CZ" | "en-US" = "en-US"
-  ) => localeContentIssues(fields, locale).map(({ issue }) => issue);
+  const issueTags = (fields: CampaignComposerLocaleFields) =>
+    localeContentIssues(fields, imageCloudName).map(({ _tag }) => _tag);
 
-  test("asks for a subject and a body in the admin's language", () => {
-    const empty = newCampaignComposerFields.locales["cs-CZ"];
-    expect(issueMessages(empty)).toEqual([
-      "Add a subject.",
-      "Write the email body.",
-    ]);
-    expect(issueMessages(empty, "cs-CZ")).toEqual([
-      "Doplňte předmět.",
-      "Napište text e-mailu.",
+  test("asks for a subject and a body", () => {
+    expect(issueTags(newCampaignComposerFields.locales["cs-CZ"])).toEqual([
+      "SubjectMissing",
+      "BodyMissing",
     ]);
   });
 
-  test("names each body rule problem by where it points", () => {
-    const cloudinaryImage = `https://res.cloudinary.com/${getClientEnv().NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload/synthetic.png`;
+  test("checks a written body against the body rules", () => {
     expect(
-      issueMessages(
+      issueTags(
         withBody(
           paragraph({
             type: "text",
@@ -241,7 +235,12 @@ describe("localeContentIssues", () => {
             marks: [{ type: "link", attrs: { href: "http://example.test" } }],
           }),
           { type: "image", attrs: { src: "https://example.test/a.png" } },
-          { type: "image", attrs: { src: cloudinaryImage } },
+          {
+            type: "image",
+            attrs: {
+              src: "https://res.cloudinary.com/synthetic-cloud/image/upload/synthetic.png",
+            },
+          },
           { type: "ctaButton", attrs: { label: " ", href: "ftp://x" } },
           {
             type: "ctaButton",
@@ -250,25 +249,50 @@ describe("localeContentIssues", () => {
         )
       )
     ).toEqual([
-      "A link must use an https: or mailto: URL.",
-      "An image must come from the Deskohub Cloudinary account.",
-      "A button needs a label.",
-      "A button needs an https: or mailto: URL.",
-      "A button label must break lines with line feeds only.",
+      "LinkHrefInvalid",
+      "ImageSourceInvalid",
+      "ButtonLabelMissing",
+      "ButtonHrefInvalid",
+      "ButtonLabelLineBreaks",
     ]);
   });
 
-  test("reports a body outside the content set without its internal message", () => {
+  test("reports a body outside the content set as invalid structure", () => {
     expect(
-      issueMessages(
+      issueTags(
         withBody({
           type: "unknownNode",
           content: [{ type: "text", text: "Synthetic" }],
-        }),
-        "cs-CZ"
+        })
       )
-    ).toEqual([
-      "Text e-mailu obsahuje prvky, které e-maily kampaní nepodporují.",
-    ]);
+    ).toEqual(["StructureInvalid"]);
+  });
+
+  test("describes every issue in each admin language", () => {
+    const issues = [
+      ...localeContentIssues(
+        newCampaignComposerFields.locales["en-US"],
+        imageCloudName
+      ),
+      ...localeContentIssues(
+        withBody(
+          paragraph({
+            type: "text",
+            text: "link",
+            marks: [{ type: "link", attrs: { href: "http://example.test" } }],
+          }),
+          { type: "ctaButton", attrs: { label: null, href: null } }
+        ),
+        imageCloudName
+      ),
+    ];
+
+    for (const locale of ["cs-CZ", "en-US"] as const) {
+      const messages = issues.map((issue) =>
+        localeContentIssueMessage(issue, locale)
+      );
+      expect(messages.every((message) => message.length > 0)).toBe(true);
+      expect(new Set(messages).size).toBe(messages.length);
+    }
   });
 });

@@ -47,12 +47,12 @@ export const readAutomationCustomerContacts = Effect.fn(
         ) as ReadonlyMap<DotyposCustomerId, AutomationCustomerContact>
       )
     ),
-    // Only the tag and status: Dotypos failures can carry customer values.
+    // Only the classification: Dotypos failures can carry customer values.
     Effect.catch((cause) =>
-      Effect.logWarning("Customer contacts couldn't be read", {
-        errorTag: cause._tag,
-        statusCode: dotyposFailureLogFields(cause).dotyposHttpStatus,
-      }).pipe(
+      Effect.logWarning(
+        "Customer contacts couldn't be read",
+        dotyposFailureLogFields(cause)
+      ).pipe(
         Effect.as(
           Option.none<
             ReadonlyMap<DotyposCustomerId, AutomationCustomerContact>

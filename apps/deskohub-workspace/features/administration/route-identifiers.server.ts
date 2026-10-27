@@ -5,14 +5,25 @@ import {
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import { NexiOperationIdSchema, NexiOrderIdSchema } from "@deskohub/nexi";
-import { Option, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { notFound } from "next/navigation";
+import { AdministrationRecordNotFound } from "@/features/administrators/server/administration-request.server";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 
 const requireRouteIdentifier = <A>(
   decode: (input: string | undefined) => Option.Option<A>,
   input: string | undefined
 ): A => Option.getOrElse(decode(input), notFound);
+
+/** Decodes a route identifier inside a page query, or answers with a 404. */
+const decodeRouteIdentifier = <A>(
+  decode: (input: string | undefined) => Option.Option<A>,
+  input: string | undefined
+) =>
+  Option.match(decode(input), {
+    onNone: () => Effect.fail(new AdministrationRecordNotFound()),
+    onSome: Effect.succeed,
+  });
 
 const decodeWorkspaceReservationId = Schema.decodeUnknownOption(
   workspaceReservationIdSchema
@@ -26,20 +37,23 @@ const decodeDotyposCustomerId = Schema.decodeUnknownOption(
 const decodeNexiOrderId = Schema.decodeUnknownOption(NexiOrderIdSchema);
 const decodeNexiOperationId = Schema.decodeUnknownOption(NexiOperationIdSchema);
 
-export const requireWorkspaceReservationRouteId = (input: string | undefined) =>
-  requireRouteIdentifier(decodeWorkspaceReservationId, input);
+export const decodeWorkspaceReservationRouteId = (input: string | undefined) =>
+  decodeRouteIdentifier(decodeWorkspaceReservationId, input);
 
-export const requireDotyposReservationRouteId = (input: string | undefined) =>
-  requireRouteIdentifier(decodeDotyposReservationId, input);
+export const decodeDotyposReservationRouteId = (input: string | undefined) =>
+  decodeRouteIdentifier(decodeDotyposReservationId, input);
+
+export const decodeDotyposCustomerRouteId = (input: string | undefined) =>
+  decodeRouteIdentifier(decodeDotyposCustomerId, input);
 
 export const requireDotyposCustomerRouteId = (input: string | undefined) =>
   requireRouteIdentifier(decodeDotyposCustomerId, input);
 
-export const requireNexiOrderRouteId = (input: string | undefined) =>
-  requireRouteIdentifier(decodeNexiOrderId, input);
+export const decodeNexiOrderRouteId = (input: string | undefined) =>
+  decodeRouteIdentifier(decodeNexiOrderId, input);
 
-export const requireNexiOperationRouteId = (input: string | undefined) =>
-  requireRouteIdentifier(decodeNexiOperationId, input);
+export const decodeNexiOperationRouteId = (input: string | undefined) =>
+  decodeRouteIdentifier(decodeNexiOperationId, input);
 
 export const getDotyposCustomerRouteId = (input: string | undefined) =>
   Option.getOrUndefined(decodeDotyposCustomerId(input));

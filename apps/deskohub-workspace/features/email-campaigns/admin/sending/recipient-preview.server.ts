@@ -7,15 +7,19 @@ import type {
   CampaignOperationError,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Match, Option } from "effect";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
+import {
+  AdministrationRecordNotFound,
+  runAdministrationPage,
+} from "@/features/administrators/server/administration-request.server";
 import { getLocalizedPagePath } from "@/features/i18n/routing";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import type { CampaignId } from "../../campaign-identifiers";
 import { describeAudienceFilter } from "../audience-filter-summary";
 import { loadAudienceValueLookups } from "../audiences/audience-value-lookups.server";
 import {
+  campaignOperationCapabilities,
   invokeCampaignOperation,
-  runCampaignPageQuery,
 } from "../campaign-operation-query.server";
 
 type Campaign = AdministrationCampaignDetailType;
@@ -38,7 +42,6 @@ export type RecipientPreview =
 
 /** What the port says about a campaign's recipients, before the summary. */
 type RecipientPreviewQuery =
-  | { readonly kind: "not-found" }
   | { readonly kind: "not-draft" }
   | { readonly kind: "no-audience"; readonly campaign: Campaign }
   | {
@@ -71,7 +74,9 @@ const queryRecipientPreview = Effect.fn("loadRecipientPreview")(
       campaignId,
     });
     // Automated campaigns have no admin pages yet.
-    if (campaign.delivery !== "once") return { kind: "not-found" } as const;
+    if (campaign.delivery !== "once") {
+      return yield* new AdministrationRecordNotFound();
+    }
     if (campaign.status !== "draft") return { kind: "not-draft" } as const;
     if (campaign.audienceId === null) {
       return { kind: "no-audience", campaign } as const;
@@ -108,7 +113,7 @@ const queryRecipientPreview = Effect.fn("loadRecipientPreview")(
     );
   },
   Effect.catchTag("OperationNotFound", () =>
-    Effect.succeed<RecipientPreviewQuery>({ kind: "not-found" })
+    Effect.fail(new AdministrationRecordNotFound())
   )
 );
 
@@ -120,9 +125,10 @@ export const loadRecipientPreview = async (
   campaignId: CampaignId
 ): Promise<RecipientPreview> => {
   const [query, lookups, locale] = await Promise.all([
-    runCampaignPageQuery(
+    runAdministrationPage(
       "email-campaigns.admin.preview-recipients",
-      queryRecipientPreview(campaignId)
+      queryRecipientPreview(campaignId),
+      campaignOperationCapabilities
     ),
     loadAudienceValueLookups(),
     getRequestLocale(),
@@ -133,7 +139,6 @@ export const loadRecipientPreview = async (
   });
   return Match.value(query).pipe(
     Match.discriminatorsExhaustive("kind")({
-      "not-found": () => notFound(),
       "not-draft": () =>
         redirect(
           getLocalizedPagePath(

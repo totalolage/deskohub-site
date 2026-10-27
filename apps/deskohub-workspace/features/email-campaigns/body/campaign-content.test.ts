@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Option, Schema } from "effect";
 import { runCommand } from "@/scripts/shared/command";
-import { CampaignLocaleContent } from "./campaign-content";
+import { campaignLocaleContent } from "./campaign-content";
 
 const localeContent = {
   subject: "Provozní doba",
@@ -17,7 +17,9 @@ const localeContent = {
   },
 };
 
-const decode = Schema.decodeUnknownOption(CampaignLocaleContent);
+const decode = Schema.decodeUnknownOption(
+  campaignLocaleContent(Option.some("cloud"))
+);
 
 describe("CampaignLocaleContent", () => {
   test("accepts content without an operational reason", () => {
@@ -50,14 +52,12 @@ describe("campaign content without Cloudinary config", () => {
     // A fresh process without the test preload, as scripts and CLI contracts
     // import these modules.
     const script = `
-      const { Effect, Schema } = await import("effect");
-      const { CampaignContent } = await import("./campaign-content.ts");
+      const { Effect, Option, Schema } = await import("effect");
+      const { campaignLocalizedContent } = await import("./campaign-content.ts");
       const { campaignBodyToMarkdown, parseCampaignBodyMarkdown } = await import("./campaign-body-markdown.ts");
       const body = await Effect.runPromise(parseCampaignBodyMarkdown("Dobrý den\\n\\n[[button: Rezervovat](https://deskohub.cz/book)]"));
-      Schema.decodeUnknownSync(CampaignContent)({
-        purpose: "operational",
-        templateKey: "workspace",
-        locales: { "cs-CZ": { subject: "S", preheader: "P", body } },
+      Schema.decodeUnknownSync(campaignLocalizedContent(Option.none()))({
+        "cs-CZ": { subject: "S", preheader: "P", body },
       });
       console.log(campaignBodyToMarkdown(body));
     `;

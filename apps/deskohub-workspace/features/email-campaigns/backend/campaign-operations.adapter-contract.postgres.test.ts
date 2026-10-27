@@ -25,6 +25,7 @@ import { HttpRouter } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { cliSessions } from "@/db/schema";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
 import type { CampaignId } from "@/features/email-campaigns/campaign-identifiers";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
@@ -40,25 +41,15 @@ const testDatabase = await createWorkspacePostgresSuiteDatabase(
 afterAll(() => testDatabase?.close());
 
 // Every Live layer reads the disposable database, and the admin UI's
-// session gate yields the seeded administrator; the port re-checks the
-// grant itself.
-let currentAdministrator: AdministratorAccountActor | undefined;
+// session gate yields the administrator the suite seeds; the port re-checks
+// the grant itself.
+const access = mockAdministratorAccess("campaign-operations-contract");
 let administrator: AdministratorAccountActor;
 if (testDatabase) {
   mock.module("@/db/database-provider.server", () => ({
     workspaceDatabaseLayer: testDatabase.layer,
   }));
 }
-mock.module(
-  "@/features/administrators/server/administrator-authorization.server",
-  () => ({
-    requireAdministratorAuthorization: Effect.suspend(() =>
-      currentAdministrator
-        ? Effect.succeed(currentAdministrator)
-        : Effect.die("no administrator seeded")
-    ),
-  })
-);
 mock.module("next/cache", () => ({
   revalidatePath: () => undefined,
   revalidateTag: () => undefined,
@@ -753,6 +744,8 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
   beforeAll(async () => {
     administrator = await Effect.runPromise(
       workspaceFixtures(testDatabase.db).account("contract", {
+        id: access.administrator.accountId,
+        email: access.administrator.email,
         roles: ["administrator"],
       })
     );
@@ -959,7 +952,6 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
       const { runCampaignOperation } = await import(
         "../admin/campaign-operations.actions"
       );
-      currentAdministrator = administrator;
       const result = await runCampaignOperation({
         operation: name,
         input: input as never,

@@ -4,6 +4,7 @@
 
 ## Contract changes
 
+- `packages/workspace-admin-api/src/campaign-operation-wire-contract.test.ts` pins the campaign and automation wire contract decoded by released `dhw` binaries against `campaign-operation-wire-contract.golden.json`. It compares schemas by structure with every `$ref` inlined, so renaming a component schema, reordering mutually exclusive union members such as tagged errors, or a changed generated response description passes. Every other difference is wire drift that can break shipped binaries. Regenerate it only for an intended contract change by running the test with `UPDATE_WIRE_CONTRACT=1`, then format the fixture with Biome.
 - Treat `workspace-admin-api.ts` as the single contract for the Admin UI, the API, and `dhw`. Extend the generic mutation endpoint and client unless the transport itself changes.
 - Give each new response field a decoding default so a newer `dhw` still decodes an older server's response. `CliSession.expiresAt` and the payment-attempt `refundedAmount` and `refundedAt` fields use `Schema.withDecodingDefaultTypeKey` to decode a missing value as `null`. The overview's `uniqueCustomers`, `newCustomers`, and `refundAttention` decode a missing value as `{ value: 0, unavailable: true }`, and `dhw` shows it as unavailable rather than zero. The "overview contract" test in `workspace-admin-api.test.ts` decodes the current response with the released schema.
 - Bounded filters use schema-typed GET query parameters. Keep service operations and shared schemas transport-independent.
@@ -192,5 +193,6 @@ Release Please owns `apps/dhw/package.json`, `apps/dhw/CHANGELOG.md`, and the `d
 
 - A pull request that changes `apps/dhw` or `packages/workspace-admin-api` needs at least one `feat(dhw): ...` or `fix(dhw): ...` commit.
 - A contract change under `packages/workspace-admin-api` must also change `apps/dhw`, because Release Please scopes the component to `apps/dhw`. `dhw-ci.yml` rejects contract-only changes.
+- Files matching `*.test.ts` and `*.golden.json` do not count as releasable `dhw` changes.
 - After merge, `.github/workflows/dhw-release.yml` auto-merges the Release Please pull request, then builds, attests, uploads, and publishes the binaries with `SHA256SUMS`. There's no manual release step.
 - The workflow needs a GitHub App (Contents, Pull requests, and Issues read/write; Administration read) in the `DHW_RELEASE_APP_ID` variable and `DHW_RELEASE_APP_PRIVATE_KEY` secret. The repository must allow auto-merge and merge commits and have immutable releases enabled. The workflow fails closed without immutable releases.

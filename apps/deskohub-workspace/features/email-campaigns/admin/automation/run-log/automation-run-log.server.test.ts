@@ -55,6 +55,7 @@ const inputsOf = (name: string) =>
   port.invoked.filter((call) => call.name === name).map(({ input }) => input);
 
 beforeEach(() => {
+  port.access.set("administrator");
   port.invoked.length = 0;
   loadAudienceValueLookups.mockClear();
   port.responses = {
@@ -289,6 +290,15 @@ describe("loadAutomationRun", () => {
     await expect(loadAutomationRun(campaignId, "")).rejects.toMatchObject(
       notFoundSignal
     );
+    expect(port.invoked).toEqual([]);
+  });
+
+  test("sends a signed-out visitor to sign-in before reading the id", async () => {
+    port.access.set("signed-out");
+
+    await expect(loadAutomationRun(campaignId, "")).rejects.toMatchObject({
+      digest: expect.stringMatching(/^NEXT_REDIRECT;/),
+    });
     expect(port.invoked).toEqual([]);
   });
 });

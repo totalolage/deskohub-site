@@ -1,7 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationInstant,
   AdministrationProviderCredentialId,
@@ -10,9 +9,9 @@ import {
   AdministrationStandaloneAccessCodePin,
 } from "@deskohub/workspace-admin-api";
 import { Context, Effect, Layer, Schema } from "effect";
-import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { m } from "@/features/administration/i18n";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
 
 interface StubCreateCall {
   readonly attemptId: AdministrationStandaloneAccessCodeAttemptId;
@@ -28,12 +27,8 @@ interface StubCreateCall {
     | undefined;
 }
 
-let authorizationCalls = 0;
-let authorizationAllowed = true;
-const actor: AdministratorAccountActor = {
-  accountId: customerAccountIdSchema.make(crypto.randomUUID()),
-  email: testEmailAddress("fixture-operator"),
-};
+const access = mockAdministratorAccess("fixture-operator");
+const actor = access.administrator;
 
 const serviceCreateCalls: StubCreateCall[] = [];
 const serviceCreate = mock((input: StubCreateCall) => {
@@ -64,21 +59,9 @@ mock.module("@/features/access-codes", () => ({
   ),
 }));
 
-mock.module(
-  "@/features/administrators/server/administrator-authorization.server",
-  () => ({
-    requireAdministratorAuthorization: Effect.gen(function* () {
-      authorizationCalls += 1;
-      if (!authorizationAllowed) {
-        return yield* Effect.fail(new Error("unauthorized"));
-      }
-      return actor;
-    }),
-  })
-);
-
 mock.module("next/server", () => ({
   after: () => undefined,
+  connection: () => Promise.resolve(),
 }));
 
 mock.module("@/instrumentation", () => ({
@@ -141,15 +124,15 @@ const creationError = (
 
 describe("createStandaloneAccessCode action", () => {
   test("creates with the server-derived actor and the admin-ui source", async () => {
-    authorizationCalls = 0;
-    authorizationAllowed = true;
+    access.set("administrator");
     serviceCreateCalls.length = 0;
     serviceCreateResult = Effect.succeed(createdOutcome);
     const { createStandaloneAccessCode } = await import("./actions");
+    const readsBefore = access.reads();
 
     const result = await createStandaloneAccessCode(validInput);
 
-    expect(authorizationCalls).toBe(1);
+    expect(access.reads() - readsBefore).toBe(1);
     expect(result).toEqual({
       data: { status: "succeeded", outcome: createdOutcome },
     });
@@ -164,7 +147,7 @@ describe("createStandaloneAccessCode action", () => {
         endsAt: "2026-09-10T12:00",
       },
     });
-    expect(serviceCreateCalls[0]?.actor).toBe(actor);
+    expect(serviceCreateCalls[0]?.actor).toEqual(actor);
     expect(
       serviceCreateCalls[0]?.providerCredentialRemovedAttemptId
     ).toBeUndefined();
@@ -206,8 +189,7 @@ describe("createStandaloneAccessCode action", () => {
   });
 
   test("forwards the confirmed cleanup target attempt id to the service", async () => {
-    authorizationCalls = 0;
-    authorizationAllowed = true;
+    access.set("administrator");
     serviceCreateCalls.length = 0;
     serviceCreateResult = Effect.succeed(createdOutcome);
     const { createStandaloneAccessCode } = await import("./actions");
@@ -245,17 +227,17 @@ describe("createStandaloneAccessCode action", () => {
   });
 
   test("rejects unauthenticated callers before calling the service", async () => {
-    authorizationAllowed = false;
+    access.set("signed-out");
     serviceCreateCalls.length = 0;
     serviceCreateResult = Effect.die("must not be called");
     const { createStandaloneAccessCode } = await import("./actions");
 
     const result = await createStandaloneAccessCode(validInput);
 
-    expect(result).toMatchObject({
-      serverError: "Administrator authentication is required.",
+    expect(result).toEqual({
+      serverError: m.accessCodesAuthenticationRequired({}, { locale: "en-US" }),
     });
     expect(serviceCreateCalls).toHaveLength(0);
-    authorizationAllowed = true;
+    access.set("administrator");
   });
 });

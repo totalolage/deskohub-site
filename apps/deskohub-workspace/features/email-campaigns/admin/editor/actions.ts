@@ -3,10 +3,9 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Effect } from "effect";
 import { m } from "@/features/administration/i18n";
-import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
+import { defineAdministrationAction } from "@/features/administrators/server/administration-request.server";
 import { CampaignImageService } from "@/features/email-campaigns/backend/campaign-image.service";
 import type { Locale } from "@/features/i18n";
-import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { emailCampaignsActionFailureCopy } from "../campaign-operation-failure";
 
@@ -69,29 +68,20 @@ const validateCampaignImage = (
   return Effect.succeed(file);
 };
 
-const uploadCampaignImageAction = defineWorkspaceAction(
+const uploadCampaignImageAction = defineAdministrationAction(
   {
     operation: "email-campaigns.admin.upload-image",
     schema: campaignImageUploadSchema,
     logInput: false,
     failureCopy: emailCampaignsActionFailureCopy,
+    capabilities: CampaignImageService.Live,
+    publicFailure: (_, locale) =>
+      m.emailCampaignsImageUploadFailed({}, { locale }),
   },
   ({ file }, { locale }) =>
     validateCampaignImage(file, locale).pipe(
       Effect.andThen((image) =>
-        requireAdministratorAuthorization.pipe(
-          Effect.andThen(
-            CampaignImageService.use((images) => images.upload(image))
-          ),
-          Effect.provide(CampaignImageService.Live),
-          Effect.mapError(
-            (cause) =>
-              new PublicSafeActionError({
-                message: m.emailCampaignsImageUploadFailed({}, { locale }),
-                cause,
-              })
-          )
-        )
+        CampaignImageService.use((images) => images.upload(image))
       )
     )
 );

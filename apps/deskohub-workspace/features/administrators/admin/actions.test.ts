@@ -7,7 +7,9 @@ import {
   type CustomerAccountId,
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
+import { m } from "@/features/administration/i18n";
 import type { AdministratorAccountActor } from "../account-role";
+import { mockAdministratorAccess } from "../server/administrator-access.test-utils";
 
 class StubAdministratorAccountNotFoundError extends Data.TaggedError(
   "AdministratorAccountNotFoundError"
@@ -17,14 +19,11 @@ class StubAdministratorSelfRevocationError extends Data.TaggedError(
   "AdministratorSelfRevocationError"
 )<{ readonly message: string }> {}
 
-const actor: AdministratorAccountActor = {
-  accountId: customerAccountIdSchema.make("fixture-administrator"),
-  email: testEmailAddress("roster-actor"),
-};
+const access = mockAdministratorAccess("roster-actor");
+const actor = access.administrator;
 const otherAccountId = customerAccountIdSchema.make("fixture-other");
 const otherEmail = testEmailAddress("roster-other");
 
-let authorizationAllowed = true;
 let referer = "https://deskohub.test/en-US/admin/administrators";
 const rosterCalls: { readonly method: string; readonly input: unknown }[] = [];
 const revalidatedPaths: string[] = [];
@@ -66,17 +65,6 @@ mock.module(
   })
 );
 
-mock.module(
-  "@/features/administrators/server/administrator-authorization.server",
-  () => ({
-    requireAdministratorAuthorization: Effect.suspend(() =>
-      authorizationAllowed
-        ? Effect.succeed(actor)
-        : Effect.fail({ _tag: "AdministratorUnauthorizedError" } as const)
-    ),
-  })
-);
-
 mock.module("@/features/i18n/server/revalidate-localized-path", () => ({
   revalidateLocalizedPath: (path: string) => {
     revalidatedPaths.push(path);
@@ -85,6 +73,7 @@ mock.module("@/features/i18n/server/revalidate-localized-path", () => ({
 
 mock.module("next/server", () => ({
   after: () => undefined,
+  connection: () => Promise.resolve(),
 }));
 
 mock.module("@/instrumentation", () => ({
@@ -102,7 +91,7 @@ mock.module("next/headers", () => ({
 const { grantAdministrator, revokeAdministrator } = await import("./actions");
 
 beforeEach(() => {
-  authorizationAllowed = true;
+  access.set("administrator");
   referer = "https://deskohub.test/en-US/admin/administrators";
   rosterCalls.length = 0;
   revalidatedPaths.length = 0;
@@ -136,7 +125,9 @@ describe("grantAdministrator action", () => {
 
     const result = await grantAdministrator({ email: otherEmail });
 
-    expect(result.serverError).toContain("sign in to Deskohub once");
+    expect(result.serverError).toBe(
+      m.administratorsGrantAccountNotFound({}, { locale: "en-US" })
+    );
     expect(result.data).toBeUndefined();
     expect(revalidatedPaths).toEqual([]);
   });
@@ -149,7 +140,9 @@ describe("grantAdministrator action", () => {
 
     const result = await grantAdministrator({ email: otherEmail });
 
-    expect(result.serverError).toContain("jednou přihlásila do Deskohubu");
+    expect(result.serverError).toBe(
+      m.administratorsGrantAccountNotFound({}, { locale: "cs-CZ" })
+    );
   });
 
   test("rejects an invalid email before authorizing", async () => {
@@ -160,13 +153,13 @@ describe("grantAdministrator action", () => {
   });
 
   test("fails closed without the administrator grant", async () => {
-    authorizationAllowed = false;
+    access.set("not-administrator");
 
     const result = await grantAdministrator({ email: otherEmail });
 
     expect(result.data).toBeUndefined();
     expect(result.serverError).toBe(
-      "The administrator role could not be granted. Try again."
+      m.administratorsGrantFailed({}, { locale: "en-US" })
     );
     expect(rosterCalls).toEqual([]);
     expect(revalidatedPaths).toEqual([]);
@@ -194,19 +187,19 @@ describe("revokeAdministrator action", () => {
     const result = await revokeAdministrator({ accountId: actor.accountId });
 
     expect(result.serverError).toBe(
-      "You can't revoke your own administrator role."
+      m.administratorsRevokeSelf({}, { locale: "en-US" })
     );
     expect(revalidatedPaths).toEqual([]);
   });
 
   test("fails closed without the administrator grant", async () => {
-    authorizationAllowed = false;
+    access.set("not-administrator");
 
     const result = await revokeAdministrator({ accountId: otherAccountId });
 
     expect(result.data).toBeUndefined();
     expect(result.serverError).toBe(
-      "The administrator role could not be revoked. Try again."
+      m.administratorsRevokeFailed({}, { locale: "en-US" })
     );
     expect(rosterCalls).toEqual([]);
   });

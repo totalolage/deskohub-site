@@ -3,15 +3,10 @@
 import { Effect } from "effect";
 import { administrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
-import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
+import { defineAdministrationAction } from "@/features/administrators/server/administration-request.server";
 import type { Locale } from "@/features/i18n";
-import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
-import {
-  defineWorkspaceAction,
-  type WorkspaceActionFailureCopy,
-} from "@/shared/backend/workspace-action";
-import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
-import { refreshCalendarDiscountSourceAfterMutation } from "./calendar-discount-source-maintenance.server";
+import type { WorkspaceActionFailureCopy } from "@/shared/backend/workspace-action";
+import { startCalendarDiscountSourceRefresh } from "./calendar-discount-source-maintenance.server";
 import {
   type DiscountAdminCustomerSearch,
   type DiscountAdminMutation,
@@ -55,7 +50,6 @@ const executeDiscountAdminActionMutation = Effect.fn(
   "DiscountAdministration.executeActionMutation"
 )(function* (input: DiscountAdminMutation, locale: Locale) {
   const result = yield* executeDiscountAdminMutation(input);
-  yield* refreshCalendarDiscountSourceAfterMutation(input);
 
   return {
     ...(result.createdDiscountId && {
@@ -65,25 +59,43 @@ const executeDiscountAdminActionMutation = Effect.fn(
   };
 });
 
-const discountAdminMutationAction = defineWorkspaceAction(
+const getMutatedCustomerPaths = (input: DiscountAdminMutation) => {
+  if (input.kind === "create-customer-code") {
+    return [
+      administrationHref("/[locale]/admin/customers/[customerId]", {
+        customerId: input.customerId,
+      }),
+    ];
+  }
+  if (input.kind === "create-customer-voucher") {
+    return [
+      administrationHref("/[locale]/admin/customers/[customerId]", {
+        customerId: input.voucher.customerId,
+      }),
+    ];
+  }
+  return [];
+};
+
+const discountAdminMutationAction = defineAdministrationAction(
   {
     operation: "discount-administration.mutate",
     failureCopy,
     schema: discountAdminMutationStandardSchema,
+    capabilities: DiscountAdministration.Live,
+    publicFailure: getDiscountAdminMutationErrorMessage,
+    revalidates: getMutatedCustomerPaths,
+    refreshes: startCalendarDiscountSourceRefresh,
   },
-  (input, { locale }) =>
-    requireAdministratorAuthorization.pipe(
-      Effect.andThen(executeDiscountAdminActionMutation(input, locale)),
-      Effect.provide(DiscountAdministration.Live),
-      Effect.mapError(
-        (cause) =>
-          new PublicSafeActionError({
-            message: getDiscountAdminMutationErrorMessage(cause, locale),
-            cause,
-          })
-      )
-    )
+  (input, { locale }) => executeDiscountAdminActionMutation(input, locale)
 );
+
+export const mutateDiscountAdmin: typeof discountAdminMutationAction = async (
+  ...args: Parameters<typeof discountAdminMutationAction>
+) => {
+  "use server";
+  return await discountAdminMutationAction(...args);
+};
 
 const executeCustomerSearch = Effect.fn(
   "DiscountAdministration.executeCustomerSearch"
@@ -92,55 +104,18 @@ const executeCustomerSearch = Effect.fn(
   return yield* administration.searchCustomers(input);
 });
 
-const discountAdminCustomerSearchAction = defineWorkspaceAction(
+const discountAdminCustomerSearchAction = defineAdministrationAction(
   {
     operation: "discount-administration.search-customers",
     failureCopy,
     schema: discountAdminCustomerSearchStandardSchema,
     logInput: false,
+    capabilities: DiscountAdministration.Live,
+    publicFailure: (_, locale) =>
+      m.discountsErrorCustomerSearchUnavailable({}, { locale }),
   },
-  (input, { locale }) =>
-    requireAdministratorAuthorization.pipe(
-      Effect.andThen(executeCustomerSearch(input)),
-      Effect.provide(DiscountAdministration.Live),
-      Effect.mapError(
-        (cause) =>
-          new PublicSafeActionError({
-            message: m.discountsErrorCustomerSearchUnavailable({}, { locale }),
-            cause,
-          })
-      )
-    )
+  executeCustomerSearch
 );
-
-const getMutatedCustomerPath = (
-  input: Parameters<typeof discountAdminMutationAction>[0]
-) => {
-  if (input.kind === "create-customer-code") {
-    return administrationHref("/[locale]/admin/customers/[customerId]", {
-      customerId: input.customerId,
-    });
-  }
-  if (input.kind === "create-customer-voucher") {
-    return administrationHref("/[locale]/admin/customers/[customerId]", {
-      customerId: input.voucher.customerId,
-    });
-  }
-  return null;
-};
-
-export const mutateDiscountAdmin: typeof discountAdminMutationAction = async (
-  ...args: Parameters<typeof discountAdminMutationAction>
-) => {
-  "use server";
-  const result = await discountAdminMutationAction(...args);
-  // Revalidate here rather than inside the Effect: a fiber resumed by a
-  // database callback can run under another request's Next.js work store,
-  // where revalidatePath throws because that request is rendering.
-  const customerPath = result?.data ? getMutatedCustomerPath(args[0]) : null;
-  if (customerPath) revalidateLocalizedPath(customerPath);
-  return result;
-};
 
 export const searchDiscountAdminCustomers: typeof discountAdminCustomerSearchAction =
   async (...args: Parameters<typeof discountAdminCustomerSearchAction>) => {

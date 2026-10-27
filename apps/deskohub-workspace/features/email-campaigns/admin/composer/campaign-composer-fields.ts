@@ -5,17 +5,18 @@ import type {
   AdministrationCampaignUpdateInputType,
   CampaignTemplatePreviewInputType,
 } from "@deskohub/workspace-admin-api";
-import { Schema } from "effect";
+import { Data, Match, type Option, Schema } from "effect";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import {
-  type CampaignBodyNode,
   CampaignBodyNode as CampaignBodyNodeSchema,
   campaignBodyFormatVersion,
 } from "../../body/campaign-body-document";
 import {
   type CampaignBodyIssue,
   campaignBodyIssues,
+  emptyCampaignBody,
+  isCampaignBodyEmpty,
 } from "../../body/campaign-body-rules";
 import {
   CampaignPurpose,
@@ -25,7 +26,6 @@ import {
   campaignFallbackLocale,
   campaignLocales,
 } from "../../recipient-locale";
-import { campaignBodyIssueMessage } from "./campaign-body-issue-message";
 
 const CampaignComposerLocaleFields = Schema.Struct({
   subject: Schema.String,
@@ -64,11 +64,6 @@ export const createCampaignComposerFields = (locale: Locale) =>
 export type CampaignComposerFields = ReturnType<
   typeof createCampaignComposerFields
 >["Type"];
-
-const emptyCampaignBody: CampaignBodyNode = {
-  type: "doc",
-  content: [{ type: "paragraph" }],
-};
 
 const emptyLocaleFields: CampaignComposerLocaleFields = {
   subject: "",
@@ -110,17 +105,6 @@ export const campaignComposerFieldsFromCampaign = (
     "en-US": localeFieldsFromContent(campaign.content["en-US"]),
   },
 });
-
-const contentNodeTypes: ReadonlySet<string> = new Set([
-  "image",
-  "ctaButton",
-  "horizontalRule",
-]);
-
-const isCampaignBodyEmpty = (node: CampaignBodyNode): boolean =>
-  !contentNodeTypes.has(node.type) &&
-  (node.text ?? "").trim().length === 0 &&
-  (node.content ?? []).every(isCampaignBodyEmpty);
 
 /** The locale has any text, so saving keeps it as campaign content. */
 export const hasLocaleContent = (fields: CampaignComposerLocaleFields) =>
@@ -224,30 +208,64 @@ export const toAdministrationCampaignContentChange = (
 };
 
 /**
- * Problems in one locale's content that a send would trip over, described in
- * the admin's `locale`.
+ * What the composer asks for before a send, besides the body rules: a subject
+ * and a body. `path` names the field.
+ */
+type CampaignComposerContentIssue = Data.TaggedEnum<{
+  SubjectMissing: { readonly path: readonly ["subject"] };
+  BodyMissing: { readonly path: readonly ["body"] };
+}>;
+
+const CampaignComposerContentIssue =
+  Data.taggedEnum<CampaignComposerContentIssue>();
+
+/**
+ * A problem in one locale's content that a send would trip over. A body rule
+ * issue's `path` points into the body.
+ */
+export type LocaleContentIssue =
+  | CampaignComposerContentIssue
+  | CampaignBodyIssue;
+
+/**
+ * Problems in one locale's content that a send would trip over. Images must
+ * come from the Cloudinary account `imageCloudName`.
  */
 export const localeContentIssues = (
   fields: CampaignComposerLocaleFields,
-  locale: Locale
-): readonly CampaignBodyIssue[] => [
+  imageCloudName: Option.Option<string>
+): readonly LocaleContentIssue[] => [
   ...(fields.subject.trim().length === 0
-    ? [
-        {
-          path: ["subject"],
-          issue: m.emailCampaignsComposerSubjectMissing({}, { locale }),
-        },
-      ]
+    ? [CampaignComposerContentIssue.SubjectMissing({ path: ["subject"] })]
     : []),
   ...(isCampaignBodyEmpty(fields.body)
-    ? [
-        {
-          path: ["body"],
-          issue: m.emailCampaignsBodyMissing({}, { locale }),
-        },
-      ]
-    : campaignBodyIssues(fields.body).map((issue) => ({
-        path: issue.path,
-        issue: campaignBodyIssueMessage(fields.body, issue, locale),
-      }))),
+    ? [CampaignComposerContentIssue.BodyMissing({ path: ["body"] })]
+    : campaignBodyIssues(fields.body, imageCloudName)),
 ];
+
+/** The issue described in the admin's `locale`. */
+export const localeContentIssueMessage = (
+  issue: LocaleContentIssue,
+  locale: Locale
+): string =>
+  Match.value(issue).pipe(
+    Match.tagsExhaustive({
+      SubjectMissing: () =>
+        m.emailCampaignsComposerSubjectMissing({}, { locale }),
+      BodyMissing: () => m.emailCampaignsBodyMissing({}, { locale }),
+      NotDocument: () => m.emailCampaignsBodyNotDocument({}, { locale }),
+      // The schema's own message is internal, so it isn't shown.
+      StructureInvalid: () =>
+        m.emailCampaignsBodyStructureInvalid({}, { locale }),
+      LinkHrefInvalid: () =>
+        m.emailCampaignsBodyLinkHrefInvalid({}, { locale }),
+      ImageSourceInvalid: () =>
+        m.emailCampaignsBodyImageSourceInvalid({}, { locale }),
+      ButtonLabelMissing: () =>
+        m.emailCampaignsBodyButtonLabelMissing({}, { locale }),
+      ButtonLabelLineBreaks: () =>
+        m.emailCampaignsBodyButtonLabelLineBreaks({}, { locale }),
+      ButtonHrefInvalid: () =>
+        m.emailCampaignsBodyButtonHrefInvalid({}, { locale }),
+    })
+  );

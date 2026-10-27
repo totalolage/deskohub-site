@@ -1,14 +1,10 @@
 "use server";
 
-import { Effect, Result } from "effect";
+import { Effect, Predicate, Result } from "effect";
 import { StandaloneAccessCodeAdministration } from "@/features/access-codes";
 import { m } from "@/features/administration/i18n";
-import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
-import {
-  defineWorkspaceAction,
-  type WorkspaceActionContext,
-} from "@/shared/backend/workspace-action";
-import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
+import { CurrentAdministrator } from "@/features/administrators/backend/current-administrator";
+import { defineAdministrationAction } from "@/features/administrators/server/administration-request.server";
 import {
   type CreateStandaloneAccessCodeInput,
   createStandaloneAccessCodeInputSchema,
@@ -18,59 +14,42 @@ import {
 
 const createStandaloneAccessCodeWorkflow = Effect.fn(
   "access-codes.createStandaloneAccessCode"
-)(
-  function* (
-    input: CreateStandaloneAccessCodeInput,
-    {
-      locale,
-    }: WorkspaceActionContext<typeof createStandaloneAccessCodeInputSchema>
-  ) {
-    const actor = yield* requireAdministratorAuthorization.pipe(
-      Effect.mapError(
-        (cause) =>
-          new PublicSafeActionError({
-            message: m.accessCodesAuthenticationRequired({}, { locale }),
-            cause,
-          })
-      )
-    );
-    const administration = yield* StandaloneAccessCodeAdministration;
-    const attempted = yield* administration
-      .create({
-        attemptId: input.attemptId,
-        actor,
-        source: "admin-ui",
-        request: {
-          name: input.name,
-          startsAt: input.startsAt,
-          endsAt: input.endsAt,
-        },
-        ...(input.providerCredentialRemovedAttemptId !== undefined && {
-          providerCredentialRemovedAttemptId:
-            input.providerCredentialRemovedAttemptId,
-        }),
-      })
-      .pipe(Effect.result);
-    if (Result.isFailure(attempted)) {
-      const failure = toStandaloneAccessCodeCreationFailure(attempted.failure);
-      if (failure === null) {
-        return yield* Effect.die(
-          new Error(
-            `The ${attempted.failure.outcome} outcome is missing its cleanup target.`
-          )
-        );
-      }
-      return encodeCreateStandaloneAccessCodeResult(Result.fail(failure));
+)(function* (input: CreateStandaloneAccessCodeInput) {
+  const actor = yield* CurrentAdministrator;
+  const administration = yield* StandaloneAccessCodeAdministration;
+  const attempted = yield* administration
+    .create({
+      attemptId: input.attemptId,
+      actor,
+      source: "admin-ui",
+      request: {
+        name: input.name,
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+      },
+      ...(input.providerCredentialRemovedAttemptId !== undefined && {
+        providerCredentialRemovedAttemptId:
+          input.providerCredentialRemovedAttemptId,
+      }),
+    })
+    .pipe(Effect.result);
+  if (Result.isFailure(attempted)) {
+    const failure = toStandaloneAccessCodeCreationFailure(attempted.failure);
+    if (failure === null) {
+      return yield* Effect.die(
+        new Error(
+          `The ${attempted.failure.outcome} outcome is missing its cleanup target.`
+        )
+      );
     }
-    return encodeCreateStandaloneAccessCodeResult(
-      Result.succeed(attempted.success)
-    );
-  },
-  (effect) =>
-    effect.pipe(Effect.provide(StandaloneAccessCodeAdministration.Live))
-);
+    return encodeCreateStandaloneAccessCodeResult(Result.fail(failure));
+  }
+  return encodeCreateStandaloneAccessCodeResult(
+    Result.succeed(attempted.success)
+  );
+});
 
-const createStandaloneAccessCodeAction = defineWorkspaceAction(
+const createStandaloneAccessCodeAction = defineAdministrationAction(
   {
     operation: "access-codes.create-standalone",
     schema: createStandaloneAccessCodeInputSchema,
@@ -80,6 +59,11 @@ const createStandaloneAccessCodeAction = defineWorkspaceAction(
       unexpected: m.accessCodesActionFailedUnexpectedly,
     },
     fallback: m.accessCodesCreateFailed,
+    capabilities: StandaloneAccessCodeAdministration.Live,
+    publicFailure: (cause, locale) =>
+      Predicate.isTagged(cause, "AdministratorUnauthorizedError")
+        ? m.accessCodesAuthenticationRequired({}, { locale })
+        : undefined,
   },
   createStandaloneAccessCodeWorkflow
 );

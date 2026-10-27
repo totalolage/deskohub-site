@@ -1,10 +1,12 @@
 "use client";
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
+import { Option } from "effect";
 import { CheckCircle2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { type Control, useForm, useWatch } from "react-hook-form";
+import { getClientEnv } from "@/client-env";
 import { AdministrationPageHeader } from "@/features/administration/components";
 import { m } from "@/features/administration/i18n";
 import { m as customerMessages, type Locale } from "@/features/i18n";
@@ -53,6 +55,7 @@ import {
   composerLocales,
   createCampaignComposerFields,
   hasLocaleContent,
+  localeContentIssueMessage,
   localeContentIssues,
   toAdministrationCampaignContent,
   toAdministrationCampaignContentChange,
@@ -710,6 +713,10 @@ export function CampaignComposer({
   );
 }
 
+/** The Cloudinary account body images must come from. */
+const imageCloudName = () =>
+  Option.some(getClientEnv().NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME);
+
 function ComposerSection({
   children,
   title,
@@ -747,7 +754,7 @@ function LocaleStatus({
       </Badge>
     );
   }
-  const issueCount = localeContentIssues(fields, locale).length;
+  const issueCount = localeContentIssues(fields, imageCloudName()).length;
   return issueCount > 0 ? (
     <Badge className="px-1.5 py-0 text-[11px]" variant="default">
       {m.emailCampaignsComposerLocaleIssues({ count: issueCount }, { locale })}
@@ -780,7 +787,7 @@ function LocaleContentFields({
   readonly purpose: CampaignPurpose;
 }) {
   const issues = hasLocaleContent(fields)
-    ? localeContentIssues(fields, locale)
+    ? localeContentIssues(fields, imageCloudName())
     : [];
   const bodyId = `campaign-body-${contentLocale}`;
 
@@ -854,7 +861,7 @@ function LocaleContentFields({
             <CampaignBodyEditor
               contentLocale={contentLocale}
               id={bodyId}
-              invalid={issues.some(({ path }) => path[0] !== "subject")}
+              invalid={issues.some(({ _tag }) => _tag !== "SubjectMissing")}
               label={m.emailCampaignsComposerBodyEditorLabel(
                 { language: campaignLocaleName(contentLocale, locale) },
                 { locale }
@@ -868,12 +875,12 @@ function LocaleContentFields({
       <div aria-live="polite">
         {issues.length > 0 && (
           <ul className="space-y-1 rounded-md border border-burned-orange/25 bg-burned-orange/5 px-4 py-3 text-burned-orange-ink text-sm">
-            {issues.map(({ issue, path }) => (
+            {issues.map((issue) => (
               <li
                 className="list-inside list-disc"
-                key={`${path.join(".")}:${issue}`}
+                key={`${issue.path.join(".")}:${issue._tag}`}
               >
-                {issue}
+                {localeContentIssueMessage(issue, locale)}
               </li>
             ))}
           </ul>
